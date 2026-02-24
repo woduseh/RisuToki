@@ -3134,6 +3134,7 @@ function updateRpButtonStyle(btn) {
 }
 
 async function handleClaudeStart() {
+  console.log('[Claude] handleClaudeStart called, rpMode:', rpMode);
   if (!term) {
     setStatus('터미널이 준비되지 않았습니다');
     return;
@@ -3186,6 +3187,9 @@ async function handleClaudeStart() {
       lines.push(`- add_lorebook(data) / delete_lorebook(index): 로어북 추가/삭제`);
       lines.push(`- list_regex / read_regex(index) / write_regex(index, data): 정규식 관리`);
       lines.push(`- add_regex(data) / delete_regex(index): 정규식 추가/삭제`);
+      lines.push(`- list_lua / read_lua(index) / write_lua(index, content): Lua 섹션별 읽기/쓰기 (300KB+ lua 전체 대신 섹션 단위 편집)`);
+      lines.push(`- replace_in_lua(index, find, replace, regex?, flags?): Lua 섹션 내 문자열 치환 (대용량 섹션을 읽지 않고 서버에서 직접 치환)`);
+      lines.push(`- insert_in_lua(index, content, position?, anchor?): Lua 섹션에 코드 삽입 (end/start/after/before). 대용량 섹션에 새 코드 추가용`);
       lines.push(`- list_references: 로드된 참고 자료 파일 목록 (읽기 전용)`);
       lines.push(`- read_reference_field(index, field): 참고 파일의 필드 읽기 (읽기 전용)`);
       lines.push(`write/add/delete 도구 사용 시 에디터에서 사용자 확인 팝업이 뜹니다.`);
@@ -3207,11 +3211,20 @@ async function handleClaudeStart() {
     initPrompt = await loadRpPersona();
   }
 
-  // Write system prompt to temp file and use --append-system-prompt-file
+  // Write system prompt to temp file and pass via --append-system-prompt
+  // Note: --append-system-prompt-file only works in print (-p) mode;
+  // for interactive mode, read the file via shell and pass inline
   let cmd;
   if (initPrompt) {
-    const { filePath } = await window.tokiAPI.writeSystemPrompt(initPrompt);
-    cmd = `claude --append-system-prompt-file "${filePath}"\r`;
+    const { filePath, platform } = await window.tokiAPI.writeSystemPrompt(initPrompt);
+    console.log('[Claude] System prompt written:', filePath, '(' + initPrompt.length + ' chars)', 'RP:', rpMode);
+    if (platform === 'win32') {
+      // PowerShell: subexpression returns file content as single string argument
+      cmd = `claude --append-system-prompt (Get-Content -Raw '${filePath}')\r`;
+    } else {
+      // bash: command substitution
+      cmd = `claude --append-system-prompt "$(cat '${filePath}')"\r`;
+    }
   } else {
     cmd = `claude\r`;
   }
@@ -3486,11 +3499,11 @@ function applyDarkMode() {
   // Switch avatar image
   if (tokiImg) {
     if (tokiActive) {
-      if (darkMode) loadTokiImage(RISU_DANCING, true);
-      else loadTokiImage(TOKI_DANCING, true);
+      if (darkMode) loadTokiImage(RISU_DANCING);
+      else loadTokiImage(TOKI_DANCING);
     } else {
-      if (darkMode) loadTokiImage(RISU_IDLE, false);
-      else loadTokiImage(TOKI_IDLE, false);
+      if (darkMode) loadTokiImage(RISU_IDLE);
+      else loadTokiImage(TOKI_IDLE);
     }
   }
 
@@ -3670,54 +3683,31 @@ function randomLine(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 let tokiImg = null;
-let tokiCanvas = null;
-let tokiCtx = null;
-let tokiAnimId = null;
 let tokiCurrentSrc = TOKI_IDLE;
-let tokiNeedsChromakey = false;
-let tokiCover = null;
 
 function initTokiAvatar() {
   const display = document.getElementById('toki-avatar-display');
-  tokiCanvas = document.getElementById('toki-canvas');
-  tokiCtx = tokiCanvas.getContext('2d', { willReadFrequently: true });
 
-  // Create img as DOM element — must stay visible (opacity:1) for Chromium GIF decoding
+  // Hide unused canvas element from HTML
+  const canvas = document.getElementById('toki-canvas');
+  if (canvas) canvas.style.display = 'none';
+
+  // Img directly displays everything (static PNG + animated GIF)
   tokiImg = document.createElement('img');
   tokiImg.id = 'toki-img-source';
+  tokiImg.style.cssText = 'width:100%;height:auto;';
   display.appendChild(tokiImg);
 
-  // Opaque cover between img and canvas: hides img from view while keeping it rendered
-  tokiCover = document.createElement('div');
-  tokiCover.id = 'toki-img-cover';
-  tokiCover.style.cssText = 'display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;background:var(--bg-secondary);';
-  display.appendChild(tokiCover);
-
-  tokiImg.addEventListener('load', () => {
-    if (tokiNeedsChromakey) {
-      // Canvas mode: img visible (z:0) → cover hides it (z:1) → canvas on top (z:2)
-      tokiImg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;';
-      tokiCover.style.display = '';
-      tokiCanvas.style.cssText = 'width:100%;height:auto;position:relative;z-index:2;';
-      tokiCanvas.width = tokiImg.naturalWidth;
-      tokiCanvas.height = tokiImg.naturalHeight;
-      if (tokiAnimId) cancelAnimationFrame(tokiAnimId);
-      renderTokiFrame();
-    } else {
-      // Direct display: show img, hide canvas and cover (width-fit to avatar area)
-      tokiImg.style.cssText = 'width:100%;height:auto;position:relative;z-index:3;';
-      tokiCover.style.display = 'none';
-      tokiCanvas.style.cssText = 'display:none;';
-      if (tokiAnimId) { cancelAnimationFrame(tokiAnimId); tokiAnimId = null; }
-    }
+  tokiImg.addEventListener('error', () => {
+    console.error('[Toki] Image load error:', tokiCurrentSrc);
   });
 
   // Load saved idle image or default
   const savedIdleInit = JSON.parse(localStorage.getItem('toki-avatar-idle') || 'null');
   if (savedIdleInit) {
-    loadTokiImage(savedIdleInit.src, savedIdleInit.chromakey);
+    loadTokiImage(savedIdleInit.src);
   } else {
-    loadTokiImage(darkMode ? RISU_IDLE : TOKI_IDLE, false);
+    loadTokiImage(darkMode ? RISU_IDLE : TOKI_IDLE);
   }
 
   // Set initial dialogue
@@ -3756,11 +3746,11 @@ function showAvatarPicker() {
 
   // Built-in images
   const images = [
-    { src: TOKI_IDLE, label: '토키 (기본)', chromakey: false },
-    { src: TOKI_CUTE, label: '토키 (cute)', chromakey: true },
-    { src: TOKI_DANCING, label: '토키 (dancing)', chromakey: true },
-    { src: RISU_IDLE, label: '아리스 (기본)', chromakey: false },
-    { src: RISU_DANCING, label: '아리스 (dancing)', chromakey: true },
+    { src: TOKI_IDLE, label: '토키 (기본)' },
+    { src: TOKI_CUTE, label: '토키 (cute)' },
+    { src: TOKI_DANCING, label: '토키 (dancing)' },
+    { src: RISU_IDLE, label: '아리스 (기본)' },
+    { src: RISU_DANCING, label: '아리스 (dancing)' },
   ];
 
   const savedIdle = JSON.parse(localStorage.getItem('toki-avatar-idle') || 'null');
@@ -3807,8 +3797,8 @@ function showAvatarPicker() {
   const idleSrc = savedIdle ? savedIdle.src : (tokiCurrentSrc || '');
   for (const img of images) {
     idleGrid.appendChild(makeCard(img, idleSrc, () => {
-      localStorage.setItem('toki-avatar-idle', JSON.stringify({ src: img.src, chromakey: img.chromakey }));
-      if (!tokiActive) loadTokiImage(img.src, img.chromakey);
+      localStorage.setItem('toki-avatar-idle', JSON.stringify({ src: img.src }));
+      if (!tokiActive) loadTokiImage(img.src);
       overlay.remove();
       setStatus(`대기 이미지: ${img.label}`);
     }));
@@ -3817,8 +3807,8 @@ function showAvatarPicker() {
   idleGrid.appendChild(makeAddCard(async () => {
     const dataUri = await window.tokiAPI.pickBgImage();
     if (!dataUri) return;
-    localStorage.setItem('toki-avatar-idle', JSON.stringify({ src: dataUri, chromakey: false }));
-    if (!tokiActive) loadTokiImage(dataUri, false);
+    localStorage.setItem('toki-avatar-idle', JSON.stringify({ src: dataUri }));
+    if (!tokiActive) loadTokiImage(dataUri);
     overlay.remove();
     setStatus('대기 이미지: 커스텀');
   }));
@@ -3835,8 +3825,8 @@ function showAvatarPicker() {
   const workSrc = savedWork ? savedWork.src : '';
   for (const img of images) {
     workGrid.appendChild(makeCard(img, workSrc, () => {
-      localStorage.setItem('toki-avatar-working', JSON.stringify({ src: img.src, chromakey: img.chromakey }));
-      if (tokiActive) loadTokiImage(img.src, img.chromakey);
+      localStorage.setItem('toki-avatar-working', JSON.stringify({ src: img.src }));
+      if (tokiActive) loadTokiImage(img.src);
       overlay.remove();
       setStatus(`작업중 이미지: ${img.label}`);
     }));
@@ -3845,8 +3835,8 @@ function showAvatarPicker() {
   workGrid.appendChild(makeAddCard(async () => {
     const dataUri = await window.tokiAPI.pickBgImage();
     if (!dataUri) return;
-    localStorage.setItem('toki-avatar-working', JSON.stringify({ src: dataUri, chromakey: false }));
-    if (tokiActive) loadTokiImage(dataUri, false);
+    localStorage.setItem('toki-avatar-working', JSON.stringify({ src: dataUri }));
+    if (tokiActive) loadTokiImage(dataUri);
     overlay.remove();
     setStatus('작업중 이미지: 커스텀');
   }));
@@ -3859,22 +3849,12 @@ function showAvatarPicker() {
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 }
 
-function loadTokiImage(src, chromakey) {
+function loadTokiImage(src) {
   const prevSrc = tokiCurrentSrc;
   tokiCurrentSrc = src;
-  tokiNeedsChromakey = chromakey;
-  if (tokiAnimId) { cancelAnimationFrame(tokiAnimId); tokiAnimId = null; }
 
-  // If same GIF is already loaded, just restart animation loop (no reload flicker)
-  if (prevSrc === src && chromakey && tokiImg.complete && tokiImg.naturalWidth > 0) {
-    tokiImg.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;';
-    if (tokiCover) tokiCover.style.display = '';
-    tokiCanvas.style.cssText = 'width:100%;height:auto;position:relative;z-index:2;';
-    tokiCanvas.width = tokiImg.naturalWidth;
-    tokiCanvas.height = tokiImg.naturalHeight;
-    renderTokiFrame();
-    return;
-  }
+  // If same src is already loaded, do nothing
+  if (prevSrc === src && tokiImg.complete && tokiImg.naturalWidth > 0) return;
 
   // Force GIF reload to restart animation from frame 1
   if (src.endsWith('.gif')) {
@@ -3883,29 +3863,6 @@ function loadTokiImage(src, chromakey) {
   } else {
     tokiImg.src = src;
   }
-}
-
-function renderTokiFrame() {
-  if (!tokiCanvas || !tokiCtx || !tokiImg) return;
-
-  tokiCtx.clearRect(0, 0, tokiCanvas.width, tokiCanvas.height);
-  tokiCtx.drawImage(tokiImg, 0, 0);
-
-  if (tokiNeedsChromakey) {
-    const imageData = tokiCtx.getImageData(0, 0, tokiCanvas.width, tokiCanvas.height);
-    const d = imageData.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const r = d[i], g = d[i + 1], b = d[i + 2];
-      // Green screen: green is dominant and bright
-      if (g > 120 && g > r * 1.2 && g > b * 1.2) {
-        d[i + 3] = 0; // transparent
-      }
-    }
-    tokiCtx.putImageData(imageData, 0, 0);
-  }
-
-  // Keep animating for GIFs
-  tokiAnimId = requestAnimationFrame(renderTokiFrame);
 }
 
 function setTokiActive(active) {
@@ -3922,11 +3879,11 @@ function setTokiActive(active) {
     // Read saved working image from localStorage, fallback to defaults
     const savedWork = JSON.parse(localStorage.getItem('toki-avatar-working') || 'null');
     if (savedWork) {
-      loadTokiImage(savedWork.src, savedWork.chromakey);
+      loadTokiImage(savedWork.src);
     } else if (darkMode) {
-      loadTokiImage(RISU_DANCING, true);
+      loadTokiImage(RISU_DANCING);
     } else {
-      loadTokiImage(TOKI_DANCING, true);
+      loadTokiImage(TOKI_DANCING);
     }
     statusText.textContent = darkMode ? randomLine(RISU_WORKING_LINES) : randomLine(TOKI_WORKING_LINES);
   } else if (!active && tokiActive) {
@@ -3937,11 +3894,11 @@ function setTokiActive(active) {
     // Read saved idle image from localStorage, fallback to defaults
     const savedIdle = JSON.parse(localStorage.getItem('toki-avatar-idle') || 'null');
     if (savedIdle) {
-      loadTokiImage(savedIdle.src, savedIdle.chromakey);
+      loadTokiImage(savedIdle.src);
     } else if (darkMode) {
-      loadTokiImage(RISU_IDLE, false);
+      loadTokiImage(RISU_IDLE);
     } else {
-      loadTokiImage(TOKI_IDLE, false);
+      loadTokiImage(TOKI_IDLE);
     }
     statusText.textContent = darkMode ? randomLine(RISU_IDLE_LINES) : randomLine(TOKI_IDLE_LINES);
   }

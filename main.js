@@ -872,6 +872,79 @@ ipcMain.on('popout-sidebar-click', (_, itemId) => {
   }
 });
 
+// --- Lua Section Parsing (mirrors renderer logic) ---
+
+function detectLuaSection(line) {
+  const trimmed = line.trim();
+  if (!/^-{2,3}/.test(trimmed)) return null;
+  const eqGroups = trimmed.match(/={3,}/g);
+  if (!eqGroups) return null;
+  const totalEq = eqGroups.reduce((sum, m) => sum + m.length, 0);
+  if (totalEq < 6) return null;
+  const inlineMatch = trimmed.match(/^-{2,3}\s*={3,}\s+(.+?)\s+={3,}\s*$/);
+  if (inlineMatch) return inlineMatch[1].trim();
+  if (/^-{2,3}\s*={6,}\s*$/.test(trimmed)) return '';
+  return null;
+}
+
+function parseLuaSections(luaCode) {
+  if (!luaCode || !luaCode.trim()) return [{ name: 'main', content: '' }];
+  const lines = luaCode.split('\n');
+  const sections = [];
+  let currentName = null;
+  let currentLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const sectionName = detectLuaSection(line);
+    if (sectionName !== null) {
+      if (currentName !== null) {
+        sections.push({ name: currentName, content: currentLines.join('\n').trim() });
+      }
+      if (sectionName === '') {
+        const nextLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+        const commentMatch = nextLine.match(/^--\s*(.+)$/);
+        if (commentMatch && detectLuaSection(nextLine) === null) {
+          currentName = commentMatch[1].trim();
+          i++;
+          const closingLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+          if (detectLuaSection(closingLine) !== null) i++;
+        } else {
+          currentName = `section_${sections.length}`;
+        }
+      } else {
+        const nextLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+        if (nextLine && detectLuaSection(nextLine) === '') i++;
+        currentName = sectionName;
+      }
+      currentLines = [];
+    } else {
+      currentLines.push(line);
+    }
+  }
+  if (currentName !== null) {
+    sections.push({ name: currentName, content: currentLines.join('\n').trim() });
+  }
+  if (sections.length === 0) {
+    sections.push({ name: 'main', content: luaCode.trim() });
+  }
+  // Merge empty sections with following section
+  const merged = [];
+  for (let i = 0; i < sections.length; i++) {
+    if (!sections[i].content && i + 1 < sections.length) {
+      merged.push({ name: sections[i].name, content: sections[i + 1].content });
+      i++;
+    } else {
+      merged.push(sections[i]);
+    }
+  }
+  return merged;
+}
+
+function combineLuaSections(sections) {
+  return sections.map(s => `-- ===== ${s.name} =====\n${s.content}`).join('\n\n');
+}
+
 // --- Helpers ---
 
 function serializeForRenderer(data) {
@@ -1148,6 +1221,164 @@ function startApiServer() {
           currentData.regex.splice(idx, 1);
           broadcastToAll('data-updated', 'regex', currentData.regex);
           return jsonRes(res, { success: true, deleted: idx });
+        } else {
+          return jsonRes(res, { error: '사용자가 거부했습니다', rejected: true }, 403);
+        }
+      }
+
+      // GET /lua — list Lua sections
+      if (parts[0] === 'lua' && !parts[1] && req.method === 'GET') {
+        const sections = parseLuaSections(currentData.lua);
+        const result = sections.map((s, i) => ({
+          index: i, name: s.name, contentSize: s.content.length
+        }));
+        return jsonRes(res, { count: result.length, sections: result });
+      }
+
+      // GET /lua/:idx — read Lua section
+      if (parts[0] === 'lua' && parts[1] && req.method === 'GET') {
+        const sections = parseLuaSections(currentData.lua);
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= sections.length) {
+          return jsonRes(res, { error: `Lua section index ${idx} out of range (0-${sections.length - 1})` }, 400);
+        }
+        return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
+      }
+
+      // POST /lua/:idx — write Lua section
+      if (parts[0] === 'lua' && parts[1] && req.method === 'POST') {
+        const sections = parseLuaSections(currentData.lua);
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= sections.length) {
+          return jsonRes(res, { error: `Lua section index ${idx} out of range (0-${sections.length - 1})` }, 400);
+        }
+        const body = JSON.parse(await readBody(req));
+        if (body.content === undefined) {
+          return jsonRes(res, { error: 'Missing "content"' }, 400);
+        }
+        const sectionName = sections[idx].name;
+        const oldSize = sections[idx].content.length;
+        const newSize = body.content.length;
+
+        const allowed = await askRendererConfirm(
+          'MCP 수정 요청',
+          `Claude가 Lua 섹션 "${sectionName}" (index ${idx})을 수정하려 합니다.\n현재 크기: ${oldSize}자 → 새 크기: ${newSize}자`
+        );
+
+        if (allowed) {
+          sections[idx].content = body.content;
+          currentData.lua = combineLuaSections(sections);
+          broadcastToAll('data-updated', 'lua', currentData.lua);
+          return jsonRes(res, { success: true, index: idx, name: sectionName, size: newSize });
+        } else {
+          return jsonRes(res, { error: '사용자가 거부했습니다', rejected: true }, 403);
+        }
+      }
+
+      // POST /lua/:idx/replace — find-and-replace within a Lua section
+      if (parts[0] === 'lua' && parts[1] && parts[2] === 'replace' && req.method === 'POST') {
+        const sections = parseLuaSections(currentData.lua);
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= sections.length) {
+          return jsonRes(res, { error: `Lua section index ${idx} out of range (0-${sections.length - 1})` }, 400);
+        }
+        const body = JSON.parse(await readBody(req));
+        if (!body.find) {
+          return jsonRes(res, { error: 'Missing "find"' }, 400);
+        }
+        const sectionName = sections[idx].name;
+        const content = sections[idx].content;
+        const findStr = body.find;
+        const replaceStr = body.replace !== undefined ? body.replace : '';
+        const useRegex = !!body.regex;
+        const flags = body.flags || 'g';
+
+        let newContent;
+        let matchCount;
+        if (useRegex) {
+          const re = new RegExp(findStr, flags);
+          const matches = content.match(re);
+          matchCount = matches ? matches.length : 0;
+          newContent = content.replace(re, replaceStr);
+        } else {
+          // Count occurrences
+          matchCount = 0;
+          let searchFrom = 0;
+          while (true) {
+            const pos = content.indexOf(findStr, searchFrom);
+            if (pos === -1) break;
+            matchCount++;
+            searchFrom = pos + findStr.length;
+          }
+          // Replace all occurrences
+          newContent = content.split(findStr).join(replaceStr);
+        }
+
+        if (matchCount === 0) {
+          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0 });
+        }
+
+        const allowed = await askRendererConfirm(
+          'MCP 치환 요청',
+          `Claude가 Lua 섹션 "${sectionName}" (index ${idx})에서 ${matchCount}건 치환하려 합니다.\n찾기: ${findStr.substring(0, 80)}${findStr.length > 80 ? '...' : ''}\n바꾸기: ${replaceStr.substring(0, 80)}${replaceStr.length > 80 ? '...' : ''}`
+        );
+
+        if (allowed) {
+          sections[idx].content = newContent;
+          currentData.lua = combineLuaSections(sections);
+          broadcastToAll('data-updated', 'lua', currentData.lua);
+          return jsonRes(res, { success: true, index: idx, name: sectionName, matchCount, oldSize: content.length, newSize: newContent.length });
+        } else {
+          return jsonRes(res, { error: '사용자가 거부했습니다', rejected: true }, 403);
+        }
+      }
+
+      // POST /lua/:idx/insert — insert content into a Lua section
+      if (parts[0] === 'lua' && parts[1] && parts[2] === 'insert' && req.method === 'POST') {
+        const sections = parseLuaSections(currentData.lua);
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= sections.length) {
+          return jsonRes(res, { error: `Lua section index ${idx} out of range (0-${sections.length - 1})` }, 400);
+        }
+        const body = JSON.parse(await readBody(req));
+        if (body.content === undefined) {
+          return jsonRes(res, { error: 'Missing "content"' }, 400);
+        }
+        const sectionName = sections[idx].name;
+        const oldContent = sections[idx].content;
+        let newContent;
+        const position = body.position || 'end'; // 'start' | 'end' | 'after' | 'before'
+
+        if (position === 'end') {
+          newContent = oldContent + '\n' + body.content;
+        } else if (position === 'start') {
+          newContent = body.content + '\n' + oldContent;
+        } else if ((position === 'after' || position === 'before') && body.anchor) {
+          const anchorPos = oldContent.indexOf(body.anchor);
+          if (anchorPos === -1) {
+            return jsonRes(res, { success: false, message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}` });
+          }
+          if (position === 'after') {
+            const insertAt = anchorPos + body.anchor.length;
+            newContent = oldContent.slice(0, insertAt) + '\n' + body.content + oldContent.slice(insertAt);
+          } else {
+            newContent = oldContent.slice(0, anchorPos) + body.content + '\n' + oldContent.slice(anchorPos);
+          }
+        } else {
+          return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
+        }
+
+        const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
+        const allowed = await askRendererConfirm(
+          'MCP 삽입 요청',
+          `Claude가 Lua 섹션 "${sectionName}" (index ${idx})에 코드를 삽입하려 합니다.\n위치: ${position}${body.anchor ? ' "' + body.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`
+        );
+
+        if (allowed) {
+          sections[idx].content = newContent;
+          currentData.lua = combineLuaSections(sections);
+          broadcastToAll('data-updated', 'lua', currentData.lua);
+          return jsonRes(res, { success: true, index: idx, name: sectionName, position, oldSize: oldContent.length, newSize: newContent.length });
         } else {
           return jsonRes(res, { error: '사용자가 거부했습니다', rejected: true }, 403);
         }

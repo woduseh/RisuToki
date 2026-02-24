@@ -528,10 +528,6 @@ html, body {
   position: relative;
 }
 
-#toki-avatar-display canvas {
-  width: 100%;
-  height: auto;
-}
 
 #toki-status {
   display: flex;
@@ -934,10 +930,7 @@ html, body {
   color: var(--accent);
 }
 
-/* ===== Toki avatar image source ===== */
-#toki-img-source {
-  /* Default: hidden, set by JS */
-}
+
 
 /* ===== Sidebar expand strip ===== */
 #sidebar-expand {
