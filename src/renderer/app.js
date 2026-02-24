@@ -3420,7 +3420,7 @@ function setStatus(text) {
 // ==================== Dark Mode ====================
 
 const RISU_IDLE = '../../assets/icon_risu.png';
-const RISU_DANCING = '../../assets/Danciing_risu.gif';
+const RISU_DANCING = '../../assets/Dancing_risu.gif';
 
 
 function defineDarkMonacoTheme() {

@@ -1,8 +1,25 @@
-# RisuToki 사용 가이드
+# RisuToki
 
 > RisuAI .charx 파일 전용 에디터 + Claude Code 통합 터미널
 
+## 설치
+
+### 다운로드 (일반 사용자)
+[Releases](https://github.com/komodoD/RisuToki/releases) 페이지에서 최신 버전을 다운로드하세요.
+- **RisuToki Setup x.x.x.exe** — 설치형
+- **RisuToki-x.x.x-portable.exe** — 포터블 (설치 불필요)
+
+### 소스에서 실행 (개발자)
+```bash
+git clone https://github.com/komodoD/RisuToki.git
+cd RisuToki
+npm install
+npm start
+```
+
 ---
+
+# 사용 가이드
 
 ## 목차
 
