@@ -1,0 +1,75 @@
+{
+  "name": "risutoki",
+  "version": "1.0.0",
+  "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test-rpack": "node test/test-rpack.js",
+    "test-charx": "node test/test-charx.js",
+    "dist": "electron-builder",
+    "dist:portable": "electron-builder --win portable",
+    "dist:installer": "electron-builder --win nsis",
+    "dist:all": "electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "adm-zip": "^0.5.16",
+    "monaco-editor": "^0.52.2",
+    "node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.0"
+  },
+  "author": "toki",
+  "build": {
+    "appId": "com.risutoki.editor",
+    "productName": "RisuToki",
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.png",
+      "signAndEditExecutable": false,
+      "sign": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.png",
+      "uninstallerIcon": "assets/icon.png",
+      "installerHeaderIcon": "assets/icon.png",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "RisuToki"
+    },
+    "portable": {
+      "artifactName": "RisuToki-${version}-portable.exe"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "popout-preload.js",
+      "toki-mcp-server.js",
+      "src/**/*",
+      "assets/**/*",
+      "guides/**/*",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "toki-mcp-server.js",
+      "node_modules/node-pty/**/*",
+      "assets/persona/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "guides",
+        "to": "guides"
+      }
+    ]
+  }
+}
