@@ -945,6 +945,116 @@ function combineLuaSections(sections) {
   return sections.map(s => `-- ===== ${s.name} =====\n${s.content}`).join('\n\n');
 }
 
+// --- CSS Section Parsing ---
+// Supports two header formats:
+// 1) Single-line: /* ===== name ===== */
+// 2) Multi-line block:
+//    /* ============================================================
+//       Section Name
+//       ============================================================ */
+
+function detectCssSectionInline(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('/*') || !trimmed.endsWith('*/')) return null;
+  const inner = trimmed.slice(2, -2).trim();
+  const eqGroups = inner.match(/={3,}/g);
+  if (!eqGroups) return null;
+  const totalEq = eqGroups.reduce((sum, m) => sum + m.length, 0);
+  if (totalEq < 6) return null;
+  const inlineMatch = inner.match(/^={3,}\s+(.+?)\s+={3,}$/);
+  if (inlineMatch) return inlineMatch[1].trim();
+  return null;
+}
+
+function detectCssBlockOpen(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('/*')) return false;
+  if (trimmed.endsWith('*/')) return false;
+  const after = trimmed.slice(2).trim();
+  return /^={6,}$/.test(after);
+}
+
+function detectCssBlockClose(line) {
+  const trimmed = line.trim();
+  if (!trimmed.endsWith('*/')) return false;
+  const before = trimmed.slice(0, -2).trim();
+  return /^={6,}$/.test(before);
+}
+
+function parseCssSections(cssCode) {
+  if (!cssCode || !cssCode.trim()) return [{ name: 'main', content: '' }];
+  const lines = cssCode.split('\n');
+  const sections = [];
+  let currentName = null;
+  let currentLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Check single-line: /* ===== name ===== */
+    const inlineName = detectCssSectionInline(line);
+    if (inlineName !== null) {
+      if (currentName !== null) {
+        sections.push({ name: currentName, content: currentLines.join('\n').trim() });
+      }
+      currentName = inlineName;
+      currentLines = [];
+      continue;
+    }
+
+    // Check multi-line block open: /* ====...====
+    if (detectCssBlockOpen(line)) {
+      const nameLines = [];
+      let j = i + 1;
+      let closed = false;
+      while (j < lines.length) {
+        if (detectCssBlockClose(lines[j])) {
+          closed = true;
+          break;
+        }
+        const text = lines[j].trim();
+        if (text) nameLines.push(text);
+        j++;
+      }
+      if (closed && nameLines.length > 0) {
+        if (currentName !== null) {
+          sections.push({ name: currentName, content: currentLines.join('\n').trim() });
+        }
+        currentName = nameLines[0]; // first text line = section name
+        currentLines = [];
+        i = j; // skip past closing line
+        continue;
+      }
+    }
+
+    currentLines.push(line);
+  }
+
+  if (currentName !== null) {
+    sections.push({ name: currentName, content: currentLines.join('\n').trim() });
+  }
+  if (sections.length === 0) {
+    sections.push({ name: 'main', content: cssCode.trim() });
+  }
+  const merged = [];
+  for (let i = 0; i < sections.length; i++) {
+    if (!sections[i].content && i + 1 < sections.length) {
+      merged.push({ name: sections[i].name, content: sections[i + 1].content });
+      i++;
+    } else {
+      merged.push(sections[i]);
+    }
+  }
+  return merged;
+}
+
+function combineCssSections(sections) {
+  const eq = '============================================================';
+  return sections.map(s =>
+    `/* ${eq}\n   ${s.name}\n   ${eq} */\n${s.content}`
+  ).join('\n\n');
+}
+
 // --- Helpers ---
 
 function serializeForRenderer(data) {
@@ -1378,6 +1488,162 @@ function startApiServer() {
           sections[idx].content = newContent;
           currentData.lua = combineLuaSections(sections);
           broadcastToAll('data-updated', 'lua', currentData.lua);
+          return jsonRes(res, { success: true, index: idx, name: sectionName, position, oldSize: oldContent.length, newSize: newContent.length });
+        } else {
+          return jsonRes(res, { error: '사용자가 거부했습니다', rejected: true }, 403);
+        }
+      }
+
+      // GET /css-section — list CSS sections
+      if (parts[0] === 'css-section' && !parts[1] && req.method === 'GET') {
+        const sections = parseCssSections(currentData.css);
+        const result = sections.map((s, i) => ({
+          index: i, name: s.name, contentSize: s.content.length
+        }));
+        return jsonRes(res, { count: result.length, sections: result });
+      }
+
+      // GET /css-section/:idx — read CSS section
+      if (parts[0] === 'css-section' && parts[1] && !parts[2] && req.method === 'GET') {
+        const sections = parseCssSections(currentData.css);
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= sections.length) {
+          return jsonRes(res, { error: `CSS section index ${idx} out of range (0-${sections.length - 1})` }, 400);
+        }
+        return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
+      }
+
+      // POST /css-section/:idx — write CSS section
+      if (parts[0] === 'css-section' && parts[1] && !parts[2] && req.method === 'POST') {
+        const sections = parseCssSections(currentData.css);
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= sections.length) {
+          return jsonRes(res, { error: `CSS section index ${idx} out of range (0-${sections.length - 1})` }, 400);
+        }
+        const body = JSON.parse(await readBody(req));
+        if (body.content === undefined) {
+          return jsonRes(res, { error: 'Missing "content"' }, 400);
+        }
+        const sectionName = sections[idx].name;
+        const oldSize = sections[idx].content.length;
+        const newSize = body.content.length;
+
+        const allowed = await askRendererConfirm(
+          'MCP 수정 요청',
+          `Claude가 CSS 섹션 "${sectionName}" (index ${idx})을 수정하려 합니다.\n현재 크기: ${oldSize}자 → 새 크기: ${newSize}자`
+        );
+
+        if (allowed) {
+          sections[idx].content = body.content;
+          currentData.css = combineCssSections(sections);
+          broadcastToAll('data-updated', 'css', currentData.css);
+          return jsonRes(res, { success: true, index: idx, name: sectionName, size: newSize });
+        } else {
+          return jsonRes(res, { error: '사용자가 거부했습니다', rejected: true }, 403);
+        }
+      }
+
+      // POST /css-section/:idx/replace — find-and-replace within a CSS section
+      if (parts[0] === 'css-section' && parts[1] && parts[2] === 'replace' && req.method === 'POST') {
+        const sections = parseCssSections(currentData.css);
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= sections.length) {
+          return jsonRes(res, { error: `CSS section index ${idx} out of range (0-${sections.length - 1})` }, 400);
+        }
+        const body = JSON.parse(await readBody(req));
+        if (!body.find) {
+          return jsonRes(res, { error: 'Missing "find"' }, 400);
+        }
+        const sectionName = sections[idx].name;
+        const content = sections[idx].content;
+        const findStr = body.find;
+        const replaceStr = body.replace !== undefined ? body.replace : '';
+        const useRegex = !!body.regex;
+        const flags = body.flags || 'g';
+
+        let newContent;
+        let matchCount;
+        if (useRegex) {
+          const re = new RegExp(findStr, flags);
+          const matches = content.match(re);
+          matchCount = matches ? matches.length : 0;
+          newContent = content.replace(re, replaceStr);
+        } else {
+          matchCount = 0;
+          let searchFrom = 0;
+          while (true) {
+            const pos = content.indexOf(findStr, searchFrom);
+            if (pos === -1) break;
+            matchCount++;
+            searchFrom = pos + findStr.length;
+          }
+          newContent = content.split(findStr).join(replaceStr);
+        }
+
+        if (matchCount === 0) {
+          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0 });
+        }
+
+        const allowed = await askRendererConfirm(
+          'MCP 치환 요청',
+          `Claude가 CSS 섹션 "${sectionName}" (index ${idx})에서 ${matchCount}건 치환하려 합니다.\n찾기: ${findStr.substring(0, 80)}${findStr.length > 80 ? '...' : ''}\n바꾸기: ${replaceStr.substring(0, 80)}${replaceStr.length > 80 ? '...' : ''}`
+        );
+
+        if (allowed) {
+          sections[idx].content = newContent;
+          currentData.css = combineCssSections(sections);
+          broadcastToAll('data-updated', 'css', currentData.css);
+          return jsonRes(res, { success: true, index: idx, name: sectionName, matchCount, oldSize: content.length, newSize: newContent.length });
+        } else {
+          return jsonRes(res, { error: '사용자가 거부했습니다', rejected: true }, 403);
+        }
+      }
+
+      // POST /css-section/:idx/insert — insert content into a CSS section
+      if (parts[0] === 'css-section' && parts[1] && parts[2] === 'insert' && req.method === 'POST') {
+        const sections = parseCssSections(currentData.css);
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= sections.length) {
+          return jsonRes(res, { error: `CSS section index ${idx} out of range (0-${sections.length - 1})` }, 400);
+        }
+        const body = JSON.parse(await readBody(req));
+        if (body.content === undefined) {
+          return jsonRes(res, { error: 'Missing "content"' }, 400);
+        }
+        const sectionName = sections[idx].name;
+        const oldContent = sections[idx].content;
+        let newContent;
+        const position = body.position || 'end';
+
+        if (position === 'end') {
+          newContent = oldContent + '\n' + body.content;
+        } else if (position === 'start') {
+          newContent = body.content + '\n' + oldContent;
+        } else if ((position === 'after' || position === 'before') && body.anchor) {
+          const anchorPos = oldContent.indexOf(body.anchor);
+          if (anchorPos === -1) {
+            return jsonRes(res, { success: false, message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}` });
+          }
+          if (position === 'after') {
+            const insertAt = anchorPos + body.anchor.length;
+            newContent = oldContent.slice(0, insertAt) + '\n' + body.content + oldContent.slice(insertAt);
+          } else {
+            newContent = oldContent.slice(0, anchorPos) + body.content + '\n' + oldContent.slice(anchorPos);
+          }
+        } else {
+          return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
+        }
+
+        const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
+        const allowed = await askRendererConfirm(
+          'MCP 삽입 요청',
+          `Claude가 CSS 섹션 "${sectionName}" (index ${idx})에 코드를 삽입하려 합니다.\n위치: ${position}${body.anchor ? ' "' + body.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`
+        );
+
+        if (allowed) {
+          sections[idx].content = newContent;
+          currentData.css = combineCssSections(sections);
+          broadcastToAll('data-updated', 'css', currentData.css);
           return jsonRes(res, { success: true, index: idx, name: sectionName, position, oldSize: oldContent.length, newSize: newContent.length });
         } else {
           return jsonRes(res, { error: '사용자가 거부했습니다', rejected: true }, 403);

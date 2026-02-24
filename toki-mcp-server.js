@@ -191,6 +191,61 @@ const TOOLS = [
     }
   },
   {
+    name: 'list_css',
+    description: 'CSS 코드의 섹션 목록을 확인합니다 (/* ===== 섹션명 ===== */ 구분자 기준). 각 섹션의 인덱스, 이름, 크기를 반환합니다.',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'read_css',
+    description: '특정 인덱스의 CSS 섹션 코드를 읽습니다. list_css로 섹션 목록을 먼저 확인하세요.',
+    inputSchema: {
+      type: 'object',
+      properties: { index: { type: 'number', description: 'CSS 섹션 인덱스 (list_css 결과 참조)' } },
+      required: ['index']
+    }
+  },
+  {
+    name: 'write_css',
+    description: '특정 인덱스의 CSS 섹션 코드를 교체합니다. 사용자 확인 필요. 섹션 전체 코드를 content로 전달하세요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: 'CSS 섹션 인덱스' },
+        content: { type: 'string', description: '새로운 섹션 코드 (전체 교체)' }
+      },
+      required: ['index', 'content']
+    }
+  },
+  {
+    name: 'replace_in_css',
+    description: 'CSS 섹션 내에서 문자열 치환을 수행합니다. 대용량 섹션을 통째로 읽고 쓸 필요 없이 서버에서 직접 치환합니다. 사용자 확인 필요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: 'CSS 섹션 인덱스 (list_css 결과 참조)' },
+        find: { type: 'string', description: '찾을 문자열 (또는 regex: true일 때 정규식 패턴)' },
+        replace: { type: 'string', description: '바꿀 문자열 (기본: 빈 문자열 = 삭제)' },
+        regex: { type: 'boolean', description: '정규식 모드 여부 (기본: false = 일반 문자열 매칭)' },
+        flags: { type: 'string', description: '정규식 플래그 (기본: "g"). regex: true일 때만 사용' }
+      },
+      required: ['index', 'find']
+    }
+  },
+  {
+    name: 'insert_in_css',
+    description: 'CSS 섹션에 코드를 삽입합니다. 전체를 읽지 않고 특정 위치에 추가. position: "end"(기본, 끝에 추가), "start"(앞에 추가), "after"(anchor 뒤에 삽입), "before"(anchor 앞에 삽입). 사용자 확인 필요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: 'CSS 섹션 인덱스' },
+        content: { type: 'string', description: '삽입할 코드' },
+        position: { type: 'string', description: '삽입 위치: "end"(기본), "start", "after", "before"' },
+        anchor: { type: 'string', description: 'position이 "after"/"before"일 때 기준 문자열' }
+      },
+      required: ['index', 'content']
+    }
+  },
+  {
     name: 'list_references',
     description: '로드된 참고 자료 파일 목록을 확인합니다 (읽기 전용). 각 파일의 필드와 크기를 포함합니다.',
     inputSchema: { type: 'object', properties: {}, required: [] }
@@ -315,6 +370,30 @@ async function handleToolCall(name, args) {
 
     case 'insert_in_lua':
       return await apiRequest('POST', `/lua/${args.index}/insert`, {
+        content: args.content,
+        position: args.position || 'end',
+        anchor: args.anchor || ''
+      });
+
+    case 'list_css':
+      return await apiRequest('GET', '/css-section');
+
+    case 'read_css':
+      return await apiRequest('GET', `/css-section/${args.index}`);
+
+    case 'write_css':
+      return await apiRequest('POST', `/css-section/${args.index}`, { content: args.content });
+
+    case 'replace_in_css':
+      return await apiRequest('POST', `/css-section/${args.index}/replace`, {
+        find: args.find,
+        replace: args.replace || '',
+        regex: args.regex || false,
+        flags: args.flags || 'g'
+      });
+
+    case 'insert_in_css':
+      return await apiRequest('POST', `/css-section/${args.index}/insert`, {
         content: args.content,
         position: args.position || 'end',
         anchor: args.anchor || ''

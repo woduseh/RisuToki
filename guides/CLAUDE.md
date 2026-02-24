@@ -27,6 +27,23 @@ lua 필드는 `-- ===== 섹션명 =====` 구분자로 여러 섹션으로 분할
 | `replace_in_lua(index, find, replace)` | 섹션 내 문자열 치환 — 대용량 섹션도 전체를 읽지 않고 서버에서 직접 처리. `regex: true` + `flags` 옵션으로 정규식 지원 |
 | `insert_in_lua(index, content, position?, anchor?)` | 섹션에 코드 삽입. position: `end`(기본), `start`, `after`, `before`. after/before는 `anchor` 문자열 기준 |
 
+### CSS 섹션 (CSS Sections)
+css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
+```
+/* ============================================================
+   섹션명
+   ============================================================ */
+```
+단일행 `/* ===== 섹션명 ===== */`도 지원. Lua 섹션과 동일한 패턴으로 개별 섹션 편집 가능.
+
+| 도구 | 설명 |
+|------|------|
+| `list_css` | CSS 섹션 목록 (index, 이름, 크기) |
+| `read_css(index)` | 특정 인덱스의 CSS 섹션 코드 읽기 |
+| `write_css(index, content)` | 특정 인덱스의 CSS 섹션 전체 교체 (사용자 확인 필요) |
+| `replace_in_css(index, find, replace)` | 섹션 내 문자열 치환 — 대용량 섹션도 전체를 읽지 않고 서버에서 직접 처리. `regex: true` + `flags` 옵션으로 정규식 지원 |
+| `insert_in_css(index, content, position?, anchor?)` | 섹션에 코드 삽입. position: `end`(기본), `start`, `after`, `before`. after/before는 `anchor` 문자열 기준 |
+
 ### 로어북 (Lorebook)
 | 도구 | 설명 |
 |------|------|
@@ -171,6 +188,14 @@ callAxModel(triggerId, systemPrompt, userPrompt, options)
    - `replace_in_lua(index, find, replace)` — 문자열 치환 (정규식 지원)
    - `insert_in_lua(index, content, position, anchor?)` — 코드 삽입 (end/start/after/before)
 4. `read_field("lua")`는 전체 합산 반환 (수백 KB). 전체 탐색이 필요할 때만 사용
+
+### CSS 코드 수정 시
+1. `list_css`로 섹션 목록 확인 (index, 이름, 크기)
+2. **소형 섹션** (수 KB): `read_css(index)` → `write_css(index, content)` 로 전체 교체
+3. **대형 섹션** (수십 KB+): 전체를 읽지 않고 아래 도구 사용
+   - `replace_in_css(index, find, replace)` — 문자열 치환 (정규식 지원)
+   - `insert_in_css(index, content, position, anchor?)` — 코드 삽입 (end/start/after/before)
+4. `read_field("css")`는 전체 합산 반환. 전체 탐색이 필요할 때만 사용
 
 ### 대용량 필드 처리
 - `lua`, `css` 등 대용량 필드는 `read_field` 시 파일로 저장될 수 있음

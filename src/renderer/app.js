@@ -599,12 +599,15 @@ function buildSidebar() {
   });
   luaCombinedEl.addEventListener('contextmenu', (e) => {
     e.preventDefault(); e.stopPropagation();
+    const items = [
+      { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText('read_field("lua")'); setStatus('복사됨: read_field("lua")'); } },
+    ];
     const store = backupStore['lua'] || [];
     if (store.length > 0) {
-      showContextMenu(e.clientX, e.clientY, [
-        { label: '백업 불러오기', action: () => showBackupMenu('lua', e.clientX, e.clientY) },
-      ]);
+      items.push('---');
+      items.push({ label: '백업 불러오기', action: () => showBackupMenu('lua', e.clientX, e.clientY) });
     }
+    showContextMenu(e.clientX, e.clientY, items);
   });
   luaFolder.children.appendChild(luaCombinedEl);
 
@@ -626,6 +629,7 @@ function buildSidebar() {
       e.preventDefault(); e.stopPropagation();
       const items = [
         { label: '이름 변경', action: () => renameLuaSection(idx) },
+        { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_lua(${idx})`); setStatus(`복사됨: read_lua(${idx})`); } },
       ];
       const store = backupStore[`lua_s${idx}`] || [];
       if (store.length > 0) {
@@ -639,11 +643,81 @@ function buildSidebar() {
     luaFolder.children.appendChild(sectionEl);
   }
 
+  // ---- CSS folder (section-based, like Lua) ----
+  cssSections = parseCssSections(fileData.css);
+  const cssFolder = createFolderItem('CSS', '🎨', 0);
+  tree.appendChild(cssFolder.header);
+  tree.appendChild(cssFolder.children);
+
+  // Right-click on CSS folder: add new section
+  cssFolder.header.addEventListener('contextmenu', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    showContextMenu(e.clientX, e.clientY, [
+      { label: '새 하위항목 추가', action: () => addCssSection() },
+    ]);
+  });
+
+  // Combined CSS view
+  const cssCombinedEl = createTreeItem('통합 보기', '📋', 1);
+  cssCombinedEl.addEventListener('click', () => {
+    openTab('css', 'CSS (통합)', 'css',
+      () => fileData.css,
+      (v) => {
+        fileData.css = v;
+        cssSections = parseCssSections(v);
+      }
+    );
+  });
+  cssCombinedEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const items = [
+      { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText('read_field("css")'); setStatus('복사됨: read_field("css")'); } },
+    ];
+    const store = backupStore['css'] || [];
+    if (store.length > 0) {
+      items.push('---');
+      items.push({ label: '백업 불러오기', action: () => showBackupMenu('css', e.clientX, e.clientY) });
+    }
+    showContextMenu(e.clientX, e.clientY, items);
+  });
+  cssFolder.children.appendChild(cssCombinedEl);
+
+  // Individual CSS sections
+  for (let i = 0; i < cssSections.length; i++) {
+    const section = cssSections[i];
+    const sectionEl = createTreeItem(section.name, '·', 1);
+    const idx = i;
+    sectionEl.addEventListener('click', () => {
+      openTab(`css_s${idx}`, section.name, 'css',
+        () => cssSections[idx].content,
+        (v) => {
+          cssSections[idx].content = v;
+          fileData.css = combineCssSections();
+        }
+      );
+    });
+    sectionEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const items = [
+        { label: '이름 변경', action: () => renameCssSection(idx) },
+        { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_css(${idx})`); setStatus(`복사됨: read_css(${idx})`); } },
+      ];
+      const store = backupStore[`css_s${idx}`] || [];
+      if (store.length > 0) {
+        items.push('---');
+        items.push({ label: '백업 불러오기', action: () => showBackupMenu(`css_s${idx}`, e.clientX, e.clientY) });
+      }
+      items.push('---');
+      items.push({ label: '삭제', action: () => deleteCssSection(idx) });
+      showContextMenu(e.clientX, e.clientY, items);
+    });
+    cssFolder.children.appendChild(sectionEl);
+  }
+
   // ---- Single items ----
   const singles = [
     { id: 'globalNote', label: '글로벌노트', icon: '📝', lang: 'plaintext', field: 'globalNote' },
     { id: 'firstMessage', label: '첫 메시지', icon: '💬', lang: 'html', field: 'firstMessage' },
-    { id: 'css', label: 'CSS', icon: '🎨', lang: 'css', field: 'css' },
     { id: 'defaultVariables', label: '기본변수', icon: '⚙', lang: 'plaintext', field: 'defaultVariables' },
     { id: 'description', label: '설명', icon: '📄', lang: 'plaintext', field: 'description' },
   ];
@@ -656,15 +730,18 @@ function buildSidebar() {
         (v) => { fileData[item.field] = v; }
       );
     });
-    // Backup context menu for single items
+    // Single item right-click: MCP path / backup
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault(); e.stopPropagation();
+      const items = [
+        { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_field("${item.field}")`); setStatus(`복사됨: read_field("${item.field}")`); } },
+      ];
       const store = backupStore[item.id] || [];
       if (store.length > 0) {
-        showContextMenu(e.clientX, e.clientY, [
-          { label: '백업 불러오기', action: () => showBackupMenu(item.id, e.clientX, e.clientY) },
-        ]);
+        items.push('---');
+        items.push({ label: '백업 불러오기', action: () => showBackupMenu(item.id, e.clientX, e.clientY) });
       }
+      showContextMenu(e.clientX, e.clientY, items);
     });
     tree.appendChild(el);
   }
@@ -756,11 +833,12 @@ function buildSidebar() {
         (v) => { Object.assign(fileData.regex[idx], v); }
       );
     });
-    // Regex item right-click: rename / backup / delete
+    // Regex item right-click: rename / copy path / backup / delete
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault(); e.stopPropagation();
       const items = [
         { label: '이름 변경', action: () => renameRegex(idx) },
+        { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_regex(${idx})`); setStatus(`복사됨: read_regex(${idx})`); } },
       ];
       const store = backupStore[`regex_${idx}`] || [];
       if (store.length > 0) {
@@ -962,6 +1040,12 @@ async function buildRefsSidebar() {
         el.addEventListener('click', () => {
           openTab(`ref_${refIdx}_lua`, `[참고] ${ref.fileName} - Lua`, 'lua', () => ref.data.lua, null);
         });
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          showContextMenu(e.clientX, e.clientY, [
+            { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_reference_field(${refIdx}, "lua")`); setStatus(`복사됨: read_reference_field(${refIdx}, "lua")`); } },
+          ]);
+        });
         refFolder.children.appendChild(el);
       } else {
         // Multiple sections — show as folder
@@ -973,6 +1057,12 @@ async function buildRefsSidebar() {
         combinedEl.addEventListener('click', () => {
           openTab(`ref_${refIdx}_lua`, `[참고] ${ref.fileName} - Lua (통합)`, 'lua', () => ref.data.lua, null);
         });
+        combinedEl.addEventListener('contextmenu', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          showContextMenu(e.clientX, e.clientY, [
+            { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_reference_field(${refIdx}, "lua")`); setStatus(`복사됨: read_reference_field(${refIdx}, "lua")`); } },
+          ]);
+        });
         luaFolder.children.appendChild(combinedEl);
         // Individual sections
         for (let si = 0; si < refLuaSections.length; si++) {
@@ -982,6 +1072,12 @@ async function buildRefsSidebar() {
           secEl.addEventListener('click', () => {
             openTab(`ref_${refIdx}_lua_s${secIdx}`, `[참고] ${ref.fileName} - ${sec.name}`, 'lua', () => refLuaSections[secIdx].content, null);
           });
+          secEl.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            showContextMenu(e.clientX, e.clientY, [
+              { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_reference_field(${refIdx}, "lua") → 섹션 "${sec.name}" (index ${secIdx})`); setStatus(`복사됨: 참고자료[${refIdx}] Lua 섹션[${secIdx}]`); } },
+            ]);
+          });
           luaFolder.children.appendChild(secEl);
         }
       }
@@ -990,7 +1086,6 @@ async function buildRefsSidebar() {
     const refFields = [
       { id: 'globalNote', label: '글로벌노트', lang: 'plaintext' },
       { id: 'firstMessage', label: '첫 메시지', lang: 'html' },
-      { id: 'css', label: 'CSS', lang: 'css' },
       { id: 'description', label: '설명', lang: 'plaintext' },
     ];
 
@@ -1001,7 +1096,61 @@ async function buildRefsSidebar() {
       el.addEventListener('click', () => {
         openTab(tabId, `[참고] ${ref.fileName} - ${f.label}`, f.lang, () => ref.data[f.id], null);
       });
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        showContextMenu(e.clientX, e.clientY, [
+          { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_reference_field(${refIdx}, "${f.id}")`); setStatus(`복사됨: read_reference_field(${refIdx}, "${f.id}")`); } },
+        ]);
+      });
       refFolder.children.appendChild(el);
+    }
+
+    // CSS — split into sections like main sidebar
+    if (ref.data.css) {
+      const refCssSections = parseCssSections(ref.data.css);
+      if (refCssSections.length <= 1) {
+        const el = createTreeItem('CSS', '·', 1);
+        el.addEventListener('click', () => {
+          openTab(`ref_${refIdx}_css`, `[참고] ${ref.fileName} - CSS`, 'css', () => ref.data.css, null);
+        });
+        el.addEventListener('contextmenu', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          showContextMenu(e.clientX, e.clientY, [
+            { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_reference_field(${refIdx}, "css")`); setStatus(`복사됨: read_reference_field(${refIdx}, "css")`); } },
+          ]);
+        });
+        refFolder.children.appendChild(el);
+      } else {
+        const cssFolderRef = createFolderItem('CSS', '🎨', 1);
+        refFolder.children.appendChild(cssFolderRef.header);
+        refFolder.children.appendChild(cssFolderRef.children);
+        const combinedEl = createTreeItem('통합 보기', '📋', 2);
+        combinedEl.addEventListener('click', () => {
+          openTab(`ref_${refIdx}_css`, `[참고] ${ref.fileName} - CSS (통합)`, 'css', () => ref.data.css, null);
+        });
+        combinedEl.addEventListener('contextmenu', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          showContextMenu(e.clientX, e.clientY, [
+            { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_reference_field(${refIdx}, "css")`); setStatus(`복사됨: read_reference_field(${refIdx}, "css")`); } },
+          ]);
+        });
+        cssFolderRef.children.appendChild(combinedEl);
+        for (let si = 0; si < refCssSections.length; si++) {
+          const sec = refCssSections[si];
+          const secEl = createTreeItem(sec.name, '·', 2);
+          const secIdx = si;
+          secEl.addEventListener('click', () => {
+            openTab(`ref_${refIdx}_css_s${secIdx}`, `[참고] ${ref.fileName} - ${sec.name}`, 'css', () => refCssSections[secIdx].content, null);
+          });
+          secEl.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            showContextMenu(e.clientX, e.clientY, [
+              { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_reference_field(${refIdx}, "css") → 섹션 "${sec.name}" (index ${secIdx})`); setStatus(`복사됨: 참고자료[${refIdx}] CSS 섹션[${secIdx}]`); } },
+            ]);
+          });
+          cssFolderRef.children.appendChild(secEl);
+        }
+      }
     }
 
     // Lorebook — folder structure + _loreform (readonly)
@@ -1050,6 +1199,7 @@ async function buildRefsSidebar() {
           showContextMenu(e.clientX, e.clientY, [
             { label: '키 복사', action: () => { navigator.clipboard.writeText(child.entry.key || ''); setStatus(`복사됨: ${child.entry.key}`); } },
             { label: '내용 복사', action: () => { navigator.clipboard.writeText(child.entry.content || ''); setStatus('내용 복사됨'); } },
+            { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_reference_field(${refIdx}, "lorebook") → index ${li}`); setStatus(`복사됨: 참고자료[${refIdx}] 로어북[${li}]`); } },
           ]);
         });
         return lbEl;
@@ -1087,6 +1237,7 @@ async function buildRefsSidebar() {
           showContextMenu(e.clientX, e.clientY, [
             { label: '패턴 복사', action: () => { navigator.clipboard.writeText(rx.in || rx.findRegex || ''); setStatus('패턴 복사됨'); } },
             { label: '내용 복사', action: () => { navigator.clipboard.writeText(JSON.stringify(rx, null, 2)); setStatus('내용 복사됨'); } },
+            { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_reference_field(${refIdx}, "regex") → index ${rxIdx}`); setStatus(`복사됨: 참고자료[${refIdx}] 정규식[${rxIdx}]`); } },
           ]);
         });
         rxFolder.children.appendChild(rxEl);
@@ -1215,11 +1366,12 @@ function createLoreEntryItem(child, indent) {
       (v) => { Object.assign(fileData.lorebook[idx], v); }
     );
   });
-  // Lorebook entry right-click: rename / backup / delete
+  // Lorebook entry right-click: rename / copy path / backup / delete
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault(); e.stopPropagation();
     const items = [
       { label: '이름 변경', action: () => renameLorebook(idx) },
+      { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_lorebook(${idx})`); setStatus(`복사됨: read_lorebook(${idx})`); } },
     ];
     const store = backupStore[`lore_${idx}`] || [];
     if (store.length > 0) {
@@ -1573,6 +1725,118 @@ function combineLuaSections() {
     .join('\n\n');
 }
 
+// --- CSS Sections ---
+// Supports two header formats:
+// 1) Single-line: /* ===== name ===== */
+// 2) Multi-line block:
+//    /* ============================================================
+//       Section Name
+//       ============================================================ */
+
+function detectCssSectionInline(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('/*') || !trimmed.endsWith('*/')) return null;
+  const inner = trimmed.slice(2, -2).trim();
+  const eqGroups = inner.match(/={3,}/g);
+  if (!eqGroups) return null;
+  const totalEq = eqGroups.reduce((sum, m) => sum + m.length, 0);
+  if (totalEq < 6) return null;
+  const inlineMatch = inner.match(/^={3,}\s+(.+?)\s+={3,}$/);
+  if (inlineMatch) return inlineMatch[1].trim();
+  return null;
+}
+
+function detectCssBlockOpen(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('/*')) return false;
+  if (trimmed.endsWith('*/')) return false;
+  const after = trimmed.slice(2).trim();
+  return /^={6,}$/.test(after);
+}
+
+function detectCssBlockClose(line) {
+  const trimmed = line.trim();
+  if (!trimmed.endsWith('*/')) return false;
+  const before = trimmed.slice(0, -2).trim();
+  return /^={6,}$/.test(before);
+}
+
+function parseCssSections(cssCode) {
+  if (!cssCode || !cssCode.trim()) return [{ name: 'main', content: '' }];
+  const lines = cssCode.split('\n');
+  const sections = [];
+  let currentName = null;
+  let currentLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Check single-line: /* ===== name ===== */
+    const inlineName = detectCssSectionInline(line);
+    if (inlineName !== null) {
+      if (currentName !== null) {
+        sections.push({ name: currentName, content: currentLines.join('\n').trim() });
+      }
+      currentName = inlineName;
+      currentLines = [];
+      continue;
+    }
+
+    // Check multi-line block open: /* ====...====
+    if (detectCssBlockOpen(line)) {
+      const nameLines = [];
+      let j = i + 1;
+      let closed = false;
+      while (j < lines.length) {
+        if (detectCssBlockClose(lines[j])) {
+          closed = true;
+          break;
+        }
+        const text = lines[j].trim();
+        if (text) nameLines.push(text);
+        j++;
+      }
+      if (closed && nameLines.length > 0) {
+        if (currentName !== null) {
+          sections.push({ name: currentName, content: currentLines.join('\n').trim() });
+        }
+        currentName = nameLines[0];
+        currentLines = [];
+        i = j;
+        continue;
+      }
+    }
+
+    currentLines.push(line);
+  }
+
+  if (currentName !== null) {
+    sections.push({ name: currentName, content: currentLines.join('\n').trim() });
+  }
+  if (sections.length === 0) {
+    sections.push({ name: 'main', content: cssCode.trim() });
+  }
+  const merged = [];
+  for (let i = 0; i < sections.length; i++) {
+    if (!sections[i].content && i + 1 < sections.length) {
+      merged.push({ name: sections[i].name, content: sections[i + 1].content });
+      i++;
+    } else {
+      merged.push(sections[i]);
+    }
+  }
+  return merged;
+}
+
+let cssSections = [];
+
+function combineCssSections() {
+  const eq = '============================================================';
+  return cssSections.map(s =>
+    `/* ${eq}\n   ${s.name}\n   ${eq} */\n${s.content}`
+  ).join('\n\n');
+}
+
 async function addLuaSection() {
   if (!fileData) return;
   const name = await showPrompt('새 Lua 섹션 이름:', `section_${luaSections.length}`);
@@ -1615,6 +1879,52 @@ async function deleteLuaSection(idx) {
   fileData.lua = combineLuaSections();
   buildSidebar();
   setStatus(`Lua 섹션 삭제됨: ${name}`);
+}
+
+// --- CSS Section Management ---
+
+async function addCssSection() {
+  if (!fileData) return;
+  const name = await showPrompt('새 CSS 섹션 이름:', `section_${cssSections.length}`);
+  if (!name) return;
+
+  cssSections.push({ name, content: '' });
+  fileData.css = combineCssSections();
+  buildSidebar();
+
+  const idx = cssSections.length - 1;
+  openTab(`css_s${idx}`, name, 'css',
+    () => cssSections[idx].content,
+    (v) => {
+      cssSections[idx].content = v;
+      fileData.css = combineCssSections();
+    }
+  );
+  setStatus(`CSS 섹션 추가됨: ${name}`);
+}
+
+async function renameCssSection(idx) {
+  if (idx < 0 || idx >= cssSections.length) return;
+  const oldName = cssSections[idx].name;
+  const newName = await showPrompt('새 이름:', oldName);
+  if (!newName || newName === oldName) return;
+
+  cssSections[idx].name = newName;
+  fileData.css = combineCssSections();
+  buildSidebar();
+  setStatus(`CSS 섹션 이름 변경: ${newName}`);
+}
+
+async function deleteCssSection(idx) {
+  if (idx < 0 || idx >= cssSections.length) return;
+  const name = cssSections[idx].name;
+  if (!await showConfirm(`"${name}" CSS 섹션을 삭제하시겠습니까?`)) return;
+
+  closeTab(`css_s${idx}`);
+  cssSections.splice(idx, 1);
+  fileData.css = combineCssSections();
+  buildSidebar();
+  setStatus(`CSS 섹션 삭제됨: ${name}`);
 }
 
 // ==================== Backup System ====================
@@ -1763,6 +2073,9 @@ function restoreBackup(tabId, backupIdx) {
     } else if (tabId === 'lua') {
       fileData.lua = backup.content;
       luaSections = parseLuaSections(backup.content);
+    } else if (tabId === 'css') {
+      fileData.css = backup.content;
+      cssSections = parseCssSections(backup.content);
     } else if (tabId.startsWith('lore_')) {
       const idx = parseInt(tabId.replace('lore_', ''), 10);
       if (fileData.lorebook[idx]) {
@@ -3187,9 +3500,12 @@ async function handleClaudeStart() {
       lines.push(`- add_lorebook(data) / delete_lorebook(index): 로어북 추가/삭제`);
       lines.push(`- list_regex / read_regex(index) / write_regex(index, data): 정규식 관리`);
       lines.push(`- add_regex(data) / delete_regex(index): 정규식 추가/삭제`);
-      lines.push(`- list_lua / read_lua(index) / write_lua(index, content): Lua 섹션별 읽기/쓰기 (300KB+ lua 전체 대신 섹션 단위 편집)`);
-      lines.push(`- replace_in_lua(index, find, replace, regex?, flags?): Lua 섹션 내 문자열 치환 (대용량 섹션을 읽지 않고 서버에서 직접 치환)`);
-      lines.push(`- insert_in_lua(index, content, position?, anchor?): Lua 섹션에 코드 삽입 (end/start/after/before). 대용량 섹션에 새 코드 추가용`);
+      lines.push(`- list_lua / read_lua(index) / write_lua(index, content): Lua 섹션별 읽기/쓰기 (-- ===== 섹션명 ===== 구분자 기준)`);
+      lines.push(`- replace_in_lua(index, find, replace, regex?, flags?): Lua 섹션 내 문자열 치환 (서버에서 직접 처리)`);
+      lines.push(`- insert_in_lua(index, content, position?, anchor?): Lua 섹션에 코드 삽입 (end/start/after/before)`);
+      lines.push(`- list_css / read_css(index) / write_css(index, content): CSS 섹션별 읽기/쓰기 (/* ===== 섹션명 ===== */ 구분자 기준)`);
+      lines.push(`- replace_in_css(index, find, replace, regex?, flags?): CSS 섹션 내 문자열 치환 (서버에서 직접 처리)`);
+      lines.push(`- insert_in_css(index, content, position?, anchor?): CSS 섹션에 코드 삽입 (end/start/after/before)`);
       lines.push(`- list_references: 로드된 참고 자료 파일 목록 (읽기 전용)`);
       lines.push(`- read_reference_field(index, field): 참고 파일의 필드 읽기 (읽기 전용)`);
       lines.push(`write/add/delete 도구 사용 시 에디터에서 사용자 확인 팝업이 뜹니다.`);
@@ -5562,7 +5878,7 @@ function openTabById(tabId) {
     lua: { label: 'Lua (통합)', lang: 'lua', get: () => fileData.lua, set: (v) => { fileData.lua = v; luaSections = parseLuaSections(v); } },
     globalNote: { label: '글로벌노트', lang: 'plaintext', get: () => fileData.globalNote, set: (v) => { fileData.globalNote = v; } },
     firstMessage: { label: '첫 메시지', lang: 'html', get: () => fileData.firstMessage, set: (v) => { fileData.firstMessage = v; } },
-    css: { label: 'CSS', lang: 'css', get: () => fileData.css, set: (v) => { fileData.css = v; } },
+    css: { label: 'CSS (통합)', lang: 'css', get: () => fileData.css, set: (v) => { fileData.css = v; cssSections = parseCssSections(v); } },
     defaultVariables: { label: '기본변수', lang: 'plaintext', get: () => fileData.defaultVariables, set: (v) => { fileData.defaultVariables = v; } },
     description: { label: '설명', lang: 'plaintext', get: () => fileData.description, set: (v) => { fileData.description = v; } },
   };
@@ -5758,6 +6074,11 @@ async function init() {
       // Lua: re-parse sections
       if (field === 'lua') {
         luaSections = parseLuaSections(value);
+        buildSidebar();
+      }
+      // CSS: re-parse sections
+      if (field === 'css') {
+        cssSections = parseCssSections(value);
         buildSidebar();
       }
       // Refresh editor if this field's tab is active
