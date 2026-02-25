@@ -3578,7 +3578,7 @@ async function handleSave() {
   // Sync current editor content (skip form/image tabs)
   if (editorInstance && activeTabId) {
     const curTab = openTabs.find(t => t.id === activeTabId);
-    if (curTab && !['_image', '_loreform', '_regexform'].includes(curTab.language)) {
+    if (curTab && !['_image', '_loreform', '_regexform'].includes(curTab.language) && curTab.setValue) {
       curTab.setValue(editorInstance.getValue());
     }
   }
@@ -3598,7 +3598,7 @@ async function handleSaveAs() {
   if (!fileData) return;
   if (editorInstance && activeTabId) {
     const curTab = openTabs.find(t => t.id === activeTabId);
-    if (curTab && !['_image', '_loreform', '_regexform'].includes(curTab.language)) {
+    if (curTab && !['_image', '_loreform', '_regexform'].includes(curTab.language) && curTab.setValue) {
       curTab.setValue(editorInstance.getValue());
     }
   }
