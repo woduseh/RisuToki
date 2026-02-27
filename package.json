@@ -1,6 +1,6 @@
 {
   "name": "risutoki",
-  "version": "0.2.0-beta",
+  "version": "0.2.1",
   "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
   "main": "main.js",
   "scripts": {
@@ -35,7 +35,7 @@
         "portable"
       ],
       "icon": "assets/icon.ico",
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "sign": null
     },
     "nsis": {

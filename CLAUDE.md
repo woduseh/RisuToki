@@ -130,6 +130,12 @@ css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
 - `folder`: 폴더 그룹 UUID. `mode: "folder"`인 항목이 폴더 자체.
 - `key=""` + `alwaysActive=false` → **0 토큰** (완전히 스킵됨). DB 저장용으로 활용.
 
+**폴더 관리:**
+- 폴더 생성: `add_lorebook({ comment: "폴더이름", mode: "folder", key: "", content: "" })`
+- 아이템을 폴더로 이동: `write_lorebook(index, { folder: "folder:UUID" })` — UUID는 폴더 항목의 `id` 값
+- 폴더에서 꺼내기: `write_lorebook(index, { folder: "" })`
+- `list_lorebook` 결과에서 `mode: "folder"`인 항목이 폴더 자체 (내용 없음)
+
 ### 정규식 항목 구조
 ```json
 {
@@ -242,17 +248,20 @@ callAxModel(triggerId, systemPrompt, userPrompt, options)
 > 프로젝트 고유의 규칙, 구조, 가이드 경로 등을 여기에 추가하세요.
 
 ### 가이드 파일 위치
-`resources/guides/` 폴더에 프로젝트별 상세 가이드가 있을 수 있습니다.
+`resources/guides/` 폴더에 문법 가이드가 포함되어 있습니다. 필요 시 참고하세요.
 
 ```
 resources/guides/
-├── CLAUDE.md              — 프로젝트별 작업 인수인계 문서
-├── TECHNICAL_REFERENCE.md — 기술 노트, 함수 레퍼런스
-├── PROJECT_GUIDE.md       — 프로젝트 구조, 빌드 파이프라인
-└── ...기타 문법가이드 등
+├── CLAUDE.md                    — 이 파일 (MCP 도구 레퍼런스, charx 구조)
+├── 문법가이드_Lua.md             — Lua 트리거 스크립트 API 상세 (RisuAI Lua 5.4)
+├── 문법가이드_로어북.md           — 로어북 구조, CBS 문법, 활용 패턴
+├── 문법가이드_정규식.md           — 정규식 스크립트 type별 용도, 패턴 예시
+├── 문법가이드_HTML_CSS.md        — CSS/HTML UI 제작, backgroundHTML, 에셋 활용
+├── 문법가이드_트리거_스크립트.md    — Lua 트리거 이벤트, callAxModel, 고급 패턴
+└── ...프로젝트별 추가 가이드
 ```
 
-세션 시작 시 `resources/guides/CLAUDE.md`를 먼저 읽으면 프로젝트 맥락을 빠르게 파악할 수 있습니다.
+세션 시작 시 이 파일(`CLAUDE.md`)이 자동 로드됩니다. 상세 문법이 필요하면 위 가이드를 `read_reference_field` 도구로 읽거나, 파일 경로로 직접 참조하세요.
 
 ### 프로젝트 규칙
 <!-- 프로젝트별 절대 규칙, 네이밍 컨벤션, 빌드 절차 등을 여기에 작성 -->

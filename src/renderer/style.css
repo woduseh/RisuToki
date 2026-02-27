@@ -786,6 +786,9 @@ html, body {
 
 #terminal-container .xterm-viewport {
   border-radius: var(--radius-sm);
+  z-index: 1;
+  cursor: text;
+  background-color: transparent !important;
 }
 
 /* xterm scrollbar styling (match app-wide scrollbar) */

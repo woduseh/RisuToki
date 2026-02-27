@@ -236,6 +236,8 @@ ipcMain.handle('open-file', async () => {
     invalidateAssetsMapCache();
     invalidateSectionCaches();
     mainWindow.setTitle(`RisuToki - ${path.basename(currentFilePath)}`);
+    // Update .mcp.json in the file's directory so Claude Code can find it
+    if (apiPort) writeCurrentMcpConfig();
     return serializeForRenderer(currentData);
   } catch (err) {
     console.error('[main] open-file error:', err);
@@ -491,7 +493,7 @@ ipcMain.handle('get-mcp-info', () => {
 function writeCurrentMcpConfig() {
   if (!apiPort || !apiToken) return null;
 
-  const cwd = currentFilePath ? path.dirname(currentFilePath) : process.cwd();
+  const cwd = currentFilePath ? path.dirname(currentFilePath) : app.getPath('userData');
   const configPath = path.join(cwd, '.mcp.json');
 
   let serverPath = path.join(__dirname, 'toki-mcp-server.js');

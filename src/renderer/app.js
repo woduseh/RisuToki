@@ -1499,6 +1499,7 @@ function addNewLorebook() {
     folder: ''
   };
   fileData.lorebook.push(newEntry);
+  dirtyFields.add('lorebook');
   buildSidebar();
   const idx = fileData.lorebook.length - 1;
   openTab(`lore_${idx}`, newEntry.comment, '_loreform',
@@ -2380,6 +2381,25 @@ async function initTerminal() {
   fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
   term.open(container);
+
+  // Make xterm scrollbar draggable: viewport is z-index:1 (on top),
+  // forward content-area clicks to the screen element below
+  const vp = container.querySelector('.xterm-viewport');
+  if (vp) {
+    ['mousedown', 'dblclick', 'contextmenu', 'auxclick'].forEach(evt => {
+      vp.addEventListener(evt, (e) => {
+        const sw = vp.offsetWidth - vp.clientWidth;
+        const rect = vp.getBoundingClientRect();
+        if (e.clientX >= rect.right - sw - 2) return; // scrollbar area — let native handle
+        e.stopPropagation();
+        e.preventDefault();
+        vp.style.pointerEvents = 'none';
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        vp.style.pointerEvents = '';
+        if (el) el.dispatchEvent(new MouseEvent(evt, e));
+      });
+    });
+  }
 
   // Wait a frame for layout
   await new Promise(r => setTimeout(r, 50));
