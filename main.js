@@ -143,6 +143,14 @@ app.on('window-all-closed', () => {
     const mcpPath = path.join(cwd, '.mcp.json');
     if (fs.existsSync(mcpPath)) fs.unlinkSync(mcpPath);
   } catch (e) { /* ignore */ }
+  // Cleanup Codex MCP config
+  cleanupCodexMcpConfig();
+  // Cleanup AGENTS.md from CWD
+  try {
+    const cwd = currentFilePath ? path.dirname(currentFilePath) : process.cwd();
+    const agentsPath = path.join(cwd, 'AGENTS.md');
+    if (fs.existsSync(agentsPath)) fs.unlinkSync(agentsPath);
+  } catch (e) { /* ignore */ }
   // Cleanup autosave file
   if (currentFilePath) {
     try {
@@ -521,6 +529,72 @@ function writeCurrentMcpConfig() {
 
 ipcMain.handle('write-mcp-config', () => {
   return writeCurrentMcpConfig();
+});
+
+// --- Codex MCP config (config.toml) ---
+
+function writeCodexMcpConfig() {
+  if (!apiPort || !apiToken) return null;
+
+  const codexDir = path.join(os.homedir(), '.codex');
+  if (!fs.existsSync(codexDir)) fs.mkdirSync(codexDir, { recursive: true });
+  const configPath = path.join(codexDir, 'config.toml');
+
+  let serverPath = path.join(__dirname, 'toki-mcp-server.js');
+  if (app.isPackaged) {
+    serverPath = serverPath.replace('app.asar', 'app.asar.unpacked');
+  }
+  // Normalize backslashes for TOML
+  serverPath = serverPath.replace(/\\/g, '/');
+
+  const risutokiBlock = [
+    '',
+    '# --- RisuToki MCP (auto-generated, do not edit) ---',
+    '[mcp_servers.risutoki]',
+    `command = "node"`,
+    `args = ["${serverPath}"]`,
+    '',
+    '[mcp_servers.risutoki.env]',
+    `TOKI_PORT = "${apiPort}"`,
+    `TOKI_TOKEN = "${apiToken}"`,
+    '# --- /RisuToki MCP ---',
+    '',
+  ].join('\n');
+
+  let existing = '';
+  if (fs.existsSync(configPath)) {
+    existing = fs.readFileSync(configPath, 'utf-8');
+    // Remove old risutoki block if present
+    existing = existing.replace(/\n?# --- RisuToki MCP \(auto-generated.*?\n# --- \/RisuToki MCP ---\n?/s, '');
+  }
+
+  fs.writeFileSync(configPath, existing.trimEnd() + '\n' + risutokiBlock, 'utf-8');
+  console.log('[main] Codex MCP config written:', configPath);
+  return configPath;
+}
+
+function cleanupCodexMcpConfig() {
+  try {
+    const configPath = path.join(os.homedir(), '.codex', 'config.toml');
+    if (!fs.existsSync(configPath)) return;
+    let content = fs.readFileSync(configPath, 'utf-8');
+    const cleaned = content.replace(/\n?# --- RisuToki MCP \(auto-generated.*?\n# --- \/RisuToki MCP ---\n?/s, '');
+    fs.writeFileSync(configPath, cleaned, 'utf-8');
+    console.log('[main] Codex MCP config cleaned up');
+  } catch (e) { /* ignore */ }
+}
+
+ipcMain.handle('write-codex-mcp-config', () => {
+  return writeCodexMcpConfig();
+});
+
+// Write AGENTS.md for Codex (system prompt)
+ipcMain.handle('write-codex-agents-md', (_, content) => {
+  const cwd = currentFilePath ? path.dirname(currentFilePath) : process.cwd();
+  const agentsPath = path.join(cwd, 'AGENTS.md');
+  fs.writeFileSync(agentsPath, content, 'utf-8');
+  console.log('[main] AGENTS.md written:', agentsPath);
+  return agentsPath;
 });
 
 // --- Image assets ---

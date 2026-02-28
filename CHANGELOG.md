@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.2 (2026-02-28)
+
+### 새 기능
+- **OpenAI Codex CLI 연동** — 터미널 메뉴에서 "Codex 시작"으로 Codex CLI + MCP 연동
+  - `~/.codex/config.toml`에 MCP 설정 자동 생성/정리
+  - `AGENTS.md` 자동 생성으로 시스템 프롬프트 전달
+  - 기존 MCP 도구(필드/로어북/정규식/Lua/CSS 섹션) 그대로 사용 가능
+
+---
+
 ## v0.2.0-beta (2026-02-26)
 
 ### 새 기능

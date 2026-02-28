@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('tokiAPI', {
   // MCP
   getMcpInfo: () => ipcRenderer.invoke('get-mcp-info'),
   writeMcpConfig: () => ipcRenderer.invoke('write-mcp-config'),
+  writeCodexMcpConfig: () => ipcRenderer.invoke('write-codex-mcp-config'),
+  writeCodexAgentsMd: (content) => ipcRenderer.invoke('write-codex-agents-md', content),
   onDataUpdated: (cb) => { ipcRenderer.on('data-updated', (_, field, value) => cb(field, value)); },
 
   // MCP Confirm (MomoTalk style popup)
