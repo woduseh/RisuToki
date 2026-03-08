@@ -19,6 +19,17 @@ const { risuArrayToCCV3 } = require('./lorebook-convert') as {
 };
 
 const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+const MAX_FILE_SIZE: number = 200 * 1024 * 1024; // 200 MB
+
+function validateFileSize(filePath: string): void {
+  const stats = fs.statSync(filePath);
+  if (stats.size > MAX_FILE_SIZE) {
+    const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
+    throw new Error(
+      `파일이 너무 큽니다 (${sizeMB}MB). 최대 ${MAX_FILE_SIZE / (1024 * 1024)}MB까지 지원합니다.`,
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -298,6 +309,7 @@ interface ZipResult {
 }
 
 function openZipEntriesWithPreludeSupport(filePath: string): ZipResult {
+  validateFileSize(filePath);
   try {
     const zip = new AdmZip(filePath);
     return { zip, entries: zip.getEntries() };
@@ -557,6 +569,7 @@ export function saveCharx(filePath: string, data: CharxData): void {
  * Open and parse a standalone .risum file
  */
 export function openRisum(filePath: string): CharxData {
+  validateFileSize(filePath);
   const buf: Buffer = fs.readFileSync(filePath);
   const parsed = parseRisum(buf);
   const mod = ((parsed.module as Record<string, unknown>)?.module as Record<string, unknown>) || parsed.module || {};
@@ -892,6 +905,7 @@ function applyPresetFields(preset: Record<string, unknown>, data: CharxData): vo
  * Format: RPack → zlib inflate → msgpack → AES-GCM decrypt → msgpack → botPreset
  */
 export function openRisup(filePath: string): CharxData {
+  validateFileSize(filePath);
   const raw: Buffer = fs.readFileSync(filePath);
 
   // Step 1: RPack decode (byte substitution)
