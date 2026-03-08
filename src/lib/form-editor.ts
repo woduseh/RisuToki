@@ -1,0 +1,765 @@
+import { ensureBlueArchiveMonacoTheme } from './monaco-loader';
+import { defineDarkMonacoTheme } from './dark-mode';
+import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
+
+type MonacoWindow = Window & {
+  _baDarkThemeDefined?: boolean;
+  monaco?: {
+    editor: {
+      create: (container: HTMLElement, options: Record<string, unknown>) => MonacoEditor;
+    };
+  };
+};
+
+interface MonacoEditor {
+  dispose: () => void;
+  getValue: () => string;
+  getDomNode: () => HTMLElement | null;
+  layout: () => void;
+  updateOptions: (options: Record<string, unknown>) => void;
+  onDidChangeModelContent: (cb: () => void) => void;
+}
+
+interface FallbackEditor {
+  dispose: () => void;
+  getValue: () => string;
+  updateOptions: (options: Record<string, unknown>) => void;
+}
+
+type FormEditor = MonacoEditor | FallbackEditor;
+
+// ── Tab-like interface used by showLoreEditor / showRegexEditor ──
+
+export interface FormTabInfo {
+  id: string;
+  label: string;
+  language: string;
+  getValue: () => unknown;
+  setValue?: ((data: unknown) => void) | null;
+  _lastValue?: string | null;
+  _refLorebook?: Record<string, unknown>[];
+}
+
+// ── Dependency-injection interface ──
+
+export interface FormEditorDeps {
+  isMonacoReady: () => boolean;
+  isDarkMode: () => boolean;
+  getEditorInstance: () => MonacoEditor | null;
+  setEditorInstance: (ed: MonacoEditor | null) => void;
+  getFileData: () => Record<string, unknown> | null;
+  tabMgr: {
+    activeTabId: string | null;
+    openTabs: FormTabInfo[];
+    dirtyFields: Set<string>;
+    renderTabs: () => void;
+  };
+  createBackup: (id: string, data: unknown) => void;
+  showPrompt: (msg: string, defaultVal?: string) => Promise<string | null>;
+  buildSidebar: () => void;
+}
+
+// ── Module state ──
+
+let formEditors: FormEditor[] = [];
+let deps: FormEditorDeps | null = null;
+
+// ── Public API ──
+
+export function initFormEditor(d: FormEditorDeps): void {
+  deps = d;
+}
+
+export function disposeFormEditors(): void {
+  for (const ed of formEditors) {
+    try {
+      ed.dispose();
+    } catch (error) {
+      console.warn('[Editor] Failed to dispose form editor:', error);
+    }
+  }
+  formEditors = [];
+}
+
+export function getFormEditors(): FormEditor[] {
+  return formEditors;
+}
+
+// ── Mini Monaco factory ──
+
+export function createMiniMonaco(
+  container: HTMLElement,
+  value: string,
+  language: string,
+  onChange: ((val: string) => void) | null,
+): FormEditor {
+  const d = deps!;
+  const win = window as unknown as MonacoWindow;
+
+  if (!d.isMonacoReady()) {
+    const textarea = document.createElement('textarea');
+    textarea.className = 'settings-textarea form-monaco-fallback';
+    textarea.value = value || '';
+    textarea.readOnly = !onChange;
+    textarea.style.width = '100%';
+    textarea.style.height = '100%';
+    textarea.style.minHeight = 'inherit';
+    textarea.style.margin = '0';
+    textarea.style.border = 'none';
+    textarea.style.borderRadius = '0';
+    textarea.style.resize = 'none';
+    container.replaceChildren(textarea);
+
+    const handleInput = () => {
+      if (onChange) onChange(textarea.value);
+    };
+    if (onChange) {
+      textarea.addEventListener('input', handleInput);
+    }
+
+    const fallbackEditor: FallbackEditor = {
+      dispose() {
+        if (onChange) {
+          textarea.removeEventListener('input', handleInput);
+        }
+        textarea.remove();
+      },
+      getValue() {
+        return textarea.value;
+      },
+      updateOptions(options: Record<string, unknown>) {
+        if (options && Object.prototype.hasOwnProperty.call(options, 'readOnly')) {
+          textarea.readOnly = !!options.readOnly;
+        }
+      }
+    };
+    formEditors.push(fallbackEditor);
+    return fallbackEditor;
+  }
+
+  ensureBlueArchiveMonacoTheme();
+  if (d.isDarkMode() && !win._baDarkThemeDefined) {
+    defineDarkMonacoTheme();
+  }
+
+  try {
+    const ed = win.monaco!.editor.create(container, {
+      value: value || '',
+      language: language,
+      theme: d.isDarkMode() ? 'blue-archive-dark' : 'blue-archive',
+      fontSize: 13,
+      minimap: { enabled: false },
+      wordWrap: 'on',
+      automaticLayout: true,
+      scrollBeyondLastLine: false,
+      lineNumbers: 'off',
+      glyphMargin: false,
+      folding: false,
+      renderLineHighlight: 'none',
+      overviewRulerLanes: 0,
+      hideCursorInOverviewRuler: true,
+      scrollbar: { vertical: 'auto', horizontal: 'auto' },
+      tabSize: 2,
+    });
+
+    ed.onDidChangeModelContent(() => {
+      if (onChange) onChange(ed.getValue());
+    });
+
+    formEditors.push(ed);
+    return ed;
+  } catch (error) {
+    console.error('[Editor] Failed to create mini Monaco, falling back to textarea:', error);
+    return createMiniMonaco(container, value, language, onChange);
+  }
+}
+
+// ── Helpers shared by both editors ──
+
+function saveCurrentMonacoState(tabInfo: FormTabInfo): void {
+  const d = deps!;
+  const editorInstance = d.getEditorInstance();
+  if (editorInstance && d.tabMgr.activeTabId !== tabInfo.id) {
+    const curTab = d.tabMgr.openTabs.find(t => t.id === d.tabMgr.activeTabId);
+    if (curTab && !NON_MONACO_EDITOR_TAB_TYPES.has(curTab.language) && curTab.setValue) {
+      curTab._lastValue = editorInstance.getValue();
+      curTab.setValue(curTab._lastValue);
+    }
+  }
+}
+
+function clearEditorContainer(): HTMLElement {
+  const d = deps!;
+  disposeFormEditors();
+  const container = document.getElementById('editor-container')!;
+  container.innerHTML = '';
+  const editorInstance = d.getEditorInstance();
+  if (editorInstance) {
+    editorInstance.dispose();
+    d.setEditorInstance(null);
+  }
+  return container;
+}
+
+type DirtyCallback = () => void;
+
+function buildMarkDirty(tabInfo: FormTabInfo, data: Record<string, unknown>): DirtyCallback {
+  const d = deps!;
+  const readonly = !tabInfo.setValue;
+  return () => {
+    if (readonly) return;
+    if (!d.tabMgr.dirtyFields.has(tabInfo.id)) {
+      d.createBackup(tabInfo.id, data);
+    }
+    tabInfo.setValue!(data);
+    d.tabMgr.dirtyFields.add(tabInfo.id);
+    d.tabMgr.renderTabs();
+  };
+}
+
+// ── Lorebook form editor ──
+
+export function showLoreEditor(tabInfo: FormTabInfo): void {
+  const d = deps!;
+  saveCurrentMonacoState(tabInfo);
+  const container = clearEditorContainer();
+
+  const rawData = tabInfo.getValue();
+  if (!rawData) return;
+  const data = rawData as Record<string, unknown>;
+
+  const readonly = !tabInfo.setValue;
+  const markDirty = buildMarkDirty(tabInfo, data);
+
+  // Build form HTML
+  const form = document.createElement('div');
+  form.className = 'form-editor';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'form-editor-header';
+  const headerTitle = document.createElement('span');
+  headerTitle.textContent = `📚 로어북: ${(data.comment as string) || tabInfo.label}`;
+  header.appendChild(headerTitle);
+  if (readonly) {
+    const badge = document.createElement('span');
+    badge.style.cssText = 'font-size:10px;color:var(--accent);margin-left:8px;';
+    badge.textContent = '[읽기 전용]';
+    headerTitle.appendChild(badge);
+  }
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'form-editor-body';
+
+  // Helper: create text input row
+  function addTextRow(labelText: string, field: string): HTMLInputElement {
+    const row = document.createElement('div');
+    row.className = 'form-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'form-label';
+    lbl.textContent = labelText;
+    const input = document.createElement('input');
+    input.className = 'form-input';
+    input.type = 'text';
+    input.value = (data[field] as string) || '';
+    if (readonly) { input.readOnly = true; } else {
+      input.addEventListener('input', () => {
+        data[field] = input.value;
+        markDirty();
+      });
+    }
+    row.appendChild(lbl);
+    row.appendChild(input);
+    body.appendChild(row);
+    return input;
+  }
+
+  addTextRow('이름', 'comment');
+
+  // Folder dropdown (show folder names, not UUIDs)
+  const folderRow = document.createElement('div');
+  folderRow.className = 'form-row';
+  const folderLbl = document.createElement('span');
+  folderLbl.className = 'form-label';
+  folderLbl.textContent = '폴더';
+  const folderSelect = document.createElement('select');
+  folderSelect.className = 'form-select';
+  folderSelect.style.flex = '1';
+  if (readonly) folderSelect.disabled = true;
+
+  // Build folder options from lorebook (use ref source if readonly)
+  const refLore = tabInfo._refLorebook;
+  const fileData = d.getFileData();
+  const loreSource = (refLore || (fileData ? (fileData as Record<string, unknown>).lorebook as Record<string, unknown>[] : []) || []) as Record<string, unknown>[];
+  const folderEntries = loreSource
+    .map((e, i) => ({ entry: e, index: i }))
+    .filter(f => f.entry.mode === 'folder');
+
+  // "(없음)" = root
+  const optNone = document.createElement('option');
+  optNone.value = '';
+  optNone.textContent = '(없음)';
+  folderSelect.appendChild(optNone);
+
+  // "+ 새 폴더 추가" (바로 아래)
+  const optNew = document.createElement('option');
+  optNew.value = '__new__';
+  optNew.textContent = '+ 새 폴더 추가';
+  folderSelect.appendChild(optNew);
+
+  // Existing folders
+  for (const f of folderEntries) {
+    const opt = document.createElement('option');
+    const folderId = `folder:${(f.entry.key as string) || f.index}`;
+    opt.value = folderId;
+    opt.textContent = (f.entry.comment as string) || folderId;
+    folderSelect.appendChild(opt);
+  }
+
+  // Select current value (match by ID or find by comment)
+  if (data.folder) {
+    let matched = false;
+    for (const opt of folderSelect.options) {
+      if (opt.value === data.folder) { opt.selected = true; matched = true; break; }
+    }
+    if (!matched) {
+      for (const f of folderEntries) {
+        const folderId = `folder:${(f.entry.key as string) || f.index}`;
+        if (data.folder === folderId || data.folder === f.entry.key || data.folder === f.entry.comment) {
+          for (const opt of folderSelect.options) {
+            if (opt.value === folderId) { opt.selected = true; matched = true; break; }
+          }
+          if (matched) break;
+        }
+      }
+    }
+  }
+
+  folderSelect.addEventListener('change', async () => {
+    if (folderSelect.value === '__new__') {
+      const name = await d.showPrompt('새 폴더 이름을 입력하세요', '새 폴더');
+      if (!name) {
+        // Revert to previous selection
+        folderSelect.value = (data.folder as string) || '';
+        return;
+      }
+      const folderId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const newFolder = {
+        key: folderId, content: '', comment: name, mode: 'folder',
+        insertorder: 100, alwaysActive: false, forceActivation: false,
+        selective: false, secondkey: '', constant: false,
+        order: (fileData as Record<string, unknown> & { lorebook: unknown[] }).lorebook.length, folder: ''
+      };
+      ((fileData as Record<string, unknown>).lorebook as unknown[]).push(newFolder);
+      // Add new option before the "+ 새 폴더" option
+      const newOpt = document.createElement('option');
+      newOpt.value = `folder:${folderId}`;
+      newOpt.textContent = name;
+      folderSelect.insertBefore(newOpt, optNew);
+      folderSelect.value = `folder:${folderId}`;
+      data.folder = `folder:${folderId}`;
+      markDirty();
+      d.buildSidebar();
+    } else {
+      data.folder = folderSelect.value;
+      markDirty();
+    }
+  });
+
+  folderRow.appendChild(folderLbl);
+  folderRow.appendChild(folderSelect);
+  body.appendChild(folderRow);
+
+  addTextRow('활성화 키', 'key');
+  addTextRow('멀티플 키', 'secondkey');
+
+  // Insert order row
+  const orderRow = document.createElement('div');
+  orderRow.className = 'form-row';
+  const orderLbl = document.createElement('span');
+  orderLbl.className = 'form-label';
+  orderLbl.textContent = '배치 순서';
+  const orderInput = document.createElement('input');
+  orderInput.className = 'form-input form-number';
+  orderInput.type = 'number';
+  orderInput.value = String(data.insertorder ?? 100);
+  if (readonly) { orderInput.readOnly = true; } else {
+    orderInput.addEventListener('input', () => {
+      data.insertorder = parseInt(orderInput.value, 10) || 0;
+      markDirty();
+    });
+  }
+  orderRow.appendChild(orderLbl);
+  orderRow.appendChild(orderInput);
+  body.appendChild(orderRow);
+
+  // Checkboxes row
+  const checks = document.createElement('div');
+  checks.className = 'form-checks';
+
+  function addCheck(labelText: string, field: string): void {
+    const item = document.createElement('label');
+    item.className = 'form-check-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!data[field];
+    if (readonly) { cb.disabled = true; } else {
+      cb.addEventListener('change', () => {
+        data[field] = cb.checked;
+        markDirty();
+      });
+    }
+    item.appendChild(cb);
+    item.appendChild(document.createTextNode(labelText));
+    checks.appendChild(item);
+  }
+
+  addCheck('언제나 활성화', 'alwaysActive');
+  addCheck('강제 활성화', 'forceActivation');
+  addCheck('선택적', 'selective');
+  body.appendChild(checks);
+
+  // Content label
+  const contentLabel = document.createElement('div');
+  contentLabel.className = 'form-section-label';
+  contentLabel.textContent = '프롬프트 (content)';
+  body.appendChild(contentLabel);
+
+  // Mini Monaco for content
+  const monacoContainer = document.createElement('div');
+  monacoContainer.className = 'form-monaco form-monaco-lore';
+  body.appendChild(monacoContainer);
+
+  form.appendChild(header);
+  form.appendChild(body);
+  container.appendChild(form);
+
+  // Create mini Monaco after DOM insertion
+  setTimeout(() => {
+    const ed = createMiniMonaco(monacoContainer, (data.content as string) || '', 'plaintext', readonly ? null : (val) => {
+      data.content = val;
+      markDirty();
+    });
+    if (ed && readonly) ed.updateOptions({ readOnly: true });
+  }, 10);
+}
+
+// ── Regex form editor ──
+
+export function showRegexEditor(tabInfo: FormTabInfo): void {
+  saveCurrentMonacoState(tabInfo);
+  const container = clearEditorContainer();
+
+  const rawData = tabInfo.getValue();
+  if (!rawData) return;
+  const data = rawData as Record<string, unknown>;
+
+  const readonly = !tabInfo.setValue;
+  const markDirty = buildMarkDirty(tabInfo, data);
+
+  // Build form
+  const form = document.createElement('div');
+  form.className = 'form-editor';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'form-editor-header';
+  const headerTitle = document.createElement('span');
+  headerTitle.textContent = `⚡ 정규식: ${(data.comment as string) || tabInfo.label}`;
+  header.appendChild(headerTitle);
+  if (readonly) {
+    const badge = document.createElement('span');
+    badge.style.cssText = 'font-size:10px;color:var(--accent);margin-left:8px;';
+    badge.textContent = '[읽기 전용]';
+    headerTitle.appendChild(badge);
+  }
+
+  // Toggle (ableFlag)
+  const toggle = document.createElement('div');
+  toggle.className = 'form-toggle' + (data.ableFlag !== false ? ' active' : '');
+  toggle.title = '활성화 토글';
+  if (!readonly) {
+    toggle.addEventListener('click', () => {
+      data.ableFlag = !toggle.classList.contains('active');
+      toggle.classList.toggle('active');
+      markDirty();
+    });
+  }
+  header.appendChild(toggle);
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'form-editor-body';
+
+  // Name
+  const nameRow = document.createElement('div');
+  nameRow.className = 'form-row';
+  const nameLbl = document.createElement('span');
+  nameLbl.className = 'form-label';
+  nameLbl.textContent = '이름';
+  const nameInput = document.createElement('input');
+  nameInput.className = 'form-input';
+  nameInput.type = 'text';
+  nameInput.value = (data.comment as string) || '';
+  if (readonly) { nameInput.readOnly = true; } else {
+    nameInput.addEventListener('input', () => {
+      data.comment = nameInput.value;
+      markDirty();
+    });
+  }
+  nameRow.appendChild(nameLbl);
+  nameRow.appendChild(nameInput);
+  body.appendChild(nameRow);
+
+  // Modification Type
+  const typeRow = document.createElement('div');
+  typeRow.className = 'form-row';
+  const typeLbl = document.createElement('span');
+  typeLbl.className = 'form-label';
+  typeLbl.textContent = 'Type';
+  const typeSelect = document.createElement('select');
+  typeSelect.className = 'form-select';
+  if (readonly) typeSelect.disabled = true;
+  const types = [
+    { value: 'editInput', label: '입력문 수정' },
+    { value: 'editOutput', label: '출력문 수정' },
+    { value: 'editRequest', label: '리퀘스트 데이터 수정' },
+    { value: 'editDisplay', label: '디스플레이 수정' },
+    { value: 'editTranslation', label: '번역문 수정' },
+    { value: 'disabled', label: '비활성화됨' },
+  ];
+  for (const t of types) {
+    const opt = document.createElement('option');
+    opt.value = t.value;
+    opt.textContent = t.label;
+    if (data.type === t.value) opt.selected = true;
+    typeSelect.appendChild(opt);
+  }
+  if (!readonly) {
+    typeSelect.addEventListener('change', () => {
+      data.type = typeSelect.value;
+      markDirty();
+    });
+  }
+  typeRow.appendChild(typeLbl);
+  typeRow.appendChild(typeSelect);
+  body.appendChild(typeRow);
+
+  // Find (in) label + mini Monaco
+  const findLabel = document.createElement('div');
+  findLabel.className = 'form-section-label';
+  findLabel.textContent = 'Find (in)';
+  body.appendChild(findLabel);
+
+  const findContainer = document.createElement('div');
+  findContainer.className = 'form-monaco form-monaco-regex';
+  body.appendChild(findContainer);
+
+  // Replace (out) label + mini Monaco (resizable)
+  const replaceLabel = document.createElement('div');
+  replaceLabel.className = 'form-section-label';
+  replaceLabel.textContent = 'Replace (out)';
+  body.appendChild(replaceLabel);
+
+  const replaceContainer = document.createElement('div');
+  replaceContainer.className = 'form-monaco form-monaco-regex form-monaco-resizable';
+  body.appendChild(replaceContainer);
+
+  // Resize handle for replace out
+  const resizeHandle = document.createElement('div');
+  resizeHandle.className = 'form-monaco-resize-handle';
+  body.appendChild(resizeHandle);
+
+  // === FLAGS PANEL ===
+  const flagsPanel = document.createElement('div');
+  flagsPanel.className = 'regex-flags-panel';
+
+  // Parse current flag string
+  const flagStr = (data.flag as string) || '';
+  const normalFlags = [
+    { key: 'g', label: 'Global (g)' },
+    { key: 'i', label: 'Case Insensitive (i)' },
+    { key: 'm', label: 'Multi Line (m)' },
+    { key: 'u', label: 'Unicode (u)' },
+    { key: 's', label: 'Dot All (s)' },
+  ];
+  const specialFlags = [
+    { key: 'T', label: 'Move Top' },
+    { key: 'B', label: 'Move Bottom' },
+    { key: 'R', label: 'Repeat Back' },
+    { key: 'C', label: 'IN CBS Parsing' },
+    { key: 'N', label: 'No Newline Suffix' },
+  ];
+
+  // Track active flags
+  const activeFlags = new Set(flagStr.split(''));
+  const knownKeys = new Set([...normalFlags.map(f => f.key), ...specialFlags.map(f => f.key)]);
+  const customChars = flagStr.split('').filter(c => !knownKeys.has(c)).join('');
+  const nonDefaultFlags = [...activeFlags].filter(f => f !== 'g');
+  const hasAnyFlag = nonDefaultFlags.length > 0 || customChars.length > 0;
+
+  // Custom flag text input (declared early for rebuildFlagString)
+  const customFlagInput = document.createElement('input');
+  customFlagInput.className = 'form-input';
+  customFlagInput.type = 'text';
+  customFlagInput.placeholder = '직접 입력...';
+  customFlagInput.value = customChars;
+  customFlagInput.style.cssText = 'flex:1;margin-left:8px;';
+
+  function rebuildFlagString(): void {
+    let result = '';
+    for (const f of normalFlags) { if (activeFlags.has(f.key)) result += f.key; }
+    for (const f of specialFlags) { if (activeFlags.has(f.key)) result += f.key; }
+    if (customFlagInput.value) result += customFlagInput.value;
+    data.flag = result;
+    markDirty();
+  }
+
+  // Toggle button: "커스텀 플래그"
+  const flagsToggleBtn = document.createElement('button');
+  flagsToggleBtn.className = 'regex-flags-toggle-btn' + (hasAnyFlag ? ' active' : '');
+  flagsToggleBtn.innerHTML = `<span class="toggle-indicator">${hasAnyFlag ? '▼' : '▶'}</span> 커스텀 플래그`;
+  flagsPanel.appendChild(flagsToggleBtn);
+
+  // Flag content wrapper
+  const flagsContent = document.createElement('div');
+  flagsContent.style.display = hasAnyFlag ? '' : 'none';
+
+  // Normal Flag section
+  const normalLabel = document.createElement('div');
+  normalLabel.className = 'regex-flags-title';
+  normalLabel.textContent = 'Normal Flag';
+  flagsContent.appendChild(normalLabel);
+
+  const normalGrid = document.createElement('div');
+  normalGrid.className = 'regex-flags-grid';
+  for (const f of normalFlags) {
+    const btn = document.createElement('button');
+    btn.className = 'regex-flag-btn' + (activeFlags.has(f.key) ? ' active' : '');
+    btn.textContent = f.label;
+    if (readonly) { btn.disabled = true; } else {
+      btn.addEventListener('click', () => {
+        if (activeFlags.has(f.key)) activeFlags.delete(f.key);
+        else activeFlags.add(f.key);
+        btn.classList.toggle('active');
+        rebuildFlagString();
+      });
+    }
+    normalGrid.appendChild(btn);
+  }
+  flagsContent.appendChild(normalGrid);
+
+  // Special Flag (Other Flag) section
+  const specialLabel = document.createElement('div');
+  specialLabel.className = 'regex-flags-title';
+  specialLabel.textContent = 'Other Flag';
+  flagsContent.appendChild(specialLabel);
+
+  const specialGrid = document.createElement('div');
+  specialGrid.className = 'regex-flags-grid';
+  for (const f of specialFlags) {
+    const btn = document.createElement('button');
+    btn.className = 'regex-flag-btn' + (activeFlags.has(f.key) ? ' active' : '');
+    btn.textContent = f.label;
+    if (readonly) { btn.disabled = true; } else {
+      btn.addEventListener('click', () => {
+        if (activeFlags.has(f.key)) activeFlags.delete(f.key);
+        else activeFlags.add(f.key);
+        btn.classList.toggle('active');
+        rebuildFlagString();
+      });
+    }
+    specialGrid.appendChild(btn);
+  }
+  flagsContent.appendChild(specialGrid);
+
+  // Order Flag
+  const orderLabel = document.createElement('div');
+  orderLabel.className = 'regex-flags-title';
+  orderLabel.textContent = 'Order Flag';
+  flagsContent.appendChild(orderLabel);
+
+  const orderInput = document.createElement('input');
+  orderInput.className = 'form-input form-number';
+  orderInput.type = 'number';
+  orderInput.value = String(data.replaceOrder ?? 0);
+  orderInput.style.width = '100%';
+  if (readonly) { orderInput.readOnly = true; } else {
+    orderInput.addEventListener('input', () => {
+      data.replaceOrder = parseInt(orderInput.value, 10) || 0;
+      markDirty();
+    });
+  }
+  flagsContent.appendChild(orderInput);
+
+  // Custom Flag text row
+  const customRow = document.createElement('div');
+  customRow.className = 'regex-custom-flag-row';
+  const customFlagLabel = document.createElement('span');
+  customFlagLabel.textContent = 'Custom';
+  customFlagLabel.style.cssText = 'font-size:12px;font-weight:600;color:var(--text-primary);';
+  if (readonly) { customFlagInput.readOnly = true; } else {
+    customFlagInput.addEventListener('input', () => rebuildFlagString());
+  }
+  customRow.appendChild(customFlagLabel);
+  customRow.appendChild(customFlagInput);
+  flagsContent.appendChild(customRow);
+
+  flagsPanel.appendChild(flagsContent);
+
+  // Toggle button click handler
+  flagsToggleBtn.addEventListener('click', () => {
+    const isActive = flagsToggleBtn.classList.toggle('active');
+    flagsContent.style.display = isActive ? '' : 'none';
+    flagsToggleBtn.querySelector('.toggle-indicator')!.textContent = isActive ? '▼' : '▶';
+  });
+
+  body.appendChild(flagsPanel);
+
+  form.appendChild(header);
+  form.appendChild(body);
+  container.appendChild(form);
+
+  // Drag-to-resize for replace out
+  let startY = 0;
+  let startH = 0;
+  const onResizeMove = (e: MouseEvent) => {
+    const dy = e.clientY - startY;
+    replaceContainer.style.height = Math.max(40, startH + dy) + 'px';
+    for (const fe of formEditors) {
+      if (fe && typeof (fe as MonacoEditor).getDomNode === 'function' && replaceContainer.contains((fe as MonacoEditor).getDomNode())) {
+        (fe as MonacoEditor).layout();
+      }
+    }
+  };
+  const onResizeUp = () => {
+    document.body.style.cursor = '';
+    document.removeEventListener('mousemove', onResizeMove);
+    document.removeEventListener('mouseup', onResizeUp);
+  };
+  resizeHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startY = e.clientY;
+    startH = replaceContainer.offsetHeight;
+    document.body.style.cursor = 'ns-resize';
+    document.addEventListener('mousemove', onResizeMove);
+    document.addEventListener('mouseup', onResizeUp);
+  });
+
+  // Create mini Monacos after DOM insertion
+  setTimeout(() => {
+    const edFind = createMiniMonaco(findContainer, (data.in as string) || '', 'plaintext', readonly ? null : (val) => {
+      data.in = val;
+      markDirty();
+    });
+    const edReplace = createMiniMonaco(replaceContainer, (data.out as string) || '', 'plaintext', readonly ? null : (val) => {
+      data.out = val;
+      markDirty();
+    });
+    if (readonly) {
+      if (edFind) edFind.updateOptions({ readOnly: true });
+      if (edReplace) edReplace.updateOptions({ readOnly: true });
+    }
+  }, 10);
+}
