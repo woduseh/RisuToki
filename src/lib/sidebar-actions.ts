@@ -1,0 +1,417 @@
+import type { Section } from './section-parser';
+import type { Tab } from './tab-manager';
+import type { ContextMenuItem } from './context-menu';
+
+type TabStateFn = (index: number, tab: Tab) => Partial<Tab> | null;
+
+export interface SidebarActionDeps {
+  getFileData: () => Record<string, unknown> | null;
+  getLuaSections: () => Section[];
+  getCssSections: () => Section[];
+  getCssStylePrefix: () => string;
+  getCssStyleSuffix: () => string;
+
+  showConfirm: (msg: string) => Promise<boolean>;
+  showPrompt: (msg: string, defaultValue?: string) => Promise<string | null>;
+  showContextMenu: (x: number, y: number, items: ContextMenuItem[]) => void;
+  setStatus: (msg: string) => void;
+  buildSidebar: () => void;
+
+  combineLuaSections: (sections: Section[]) => string;
+  combineCssSections: (sections: Section[], prefix: string, suffix: string) => string;
+
+  openTab: (
+    id: string,
+    label: string,
+    language: string,
+    getValue: () => unknown,
+    setValue: ((v: unknown) => void) | null,
+  ) => void;
+  closeTab: (id: string) => void;
+  markFieldDirty: (field: string) => void;
+  shiftIndexedTabsAfterRemoval: (
+    prefix: string,
+    removedIndices: number[],
+    buildTabState: TabStateFn,
+  ) => void;
+  refreshIndexedTabs: (prefix: string, buildTabState: TabStateFn) => void;
+
+  buildLorebookTabState: TabStateFn;
+  buildRegexTabState: TabStateFn;
+  buildLuaSectionTabState: TabStateFn;
+  buildCssSectionTabState: TabStateFn;
+}
+
+export function createSidebarActions(deps: SidebarActionDeps) {
+  // ----- helpers -----
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function fd(): any { return deps.getFileData(); }
+
+  // ==================== Lorebook ====================
+
+  function addNewLorebook(): void {
+    const fileData = fd();
+    if (!fileData) return;
+    const newEntry = {
+      key: '',
+      content: '',
+      comment: `new_entry_${fileData.lorebook.length}`,
+      mode: 'normal',
+      insertorder: 100,
+      alwaysActive: false,
+      forceActivation: false,
+      selective: false,
+      secondkey: '',
+      constant: false,
+      order: fileData.lorebook.length,
+      folder: ''
+    };
+    fileData.lorebook.push(newEntry);
+    deps.markFieldDirty('lorebook');
+    deps.buildSidebar();
+    const idx = fileData.lorebook.length - 1;
+    deps.openTab(`lore_${idx}`, newEntry.comment, '_loreform',
+      () => fd().lorebook[idx],
+      (v: unknown) => { Object.assign(fd().lorebook[idx], v as object); }
+    );
+    deps.setStatus('새 로어북 항목 추가됨');
+  }
+
+  async function addNewLorebookFolder(): Promise<void> {
+    const fileData = fd();
+    if (!fileData) return;
+    const name = await deps.showPrompt('폴더 이름을 입력하세요', '새 폴더');
+    if (!name) return;
+    const folderId = crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const newFolder = {
+      key: folderId,
+      content: '',
+      comment: name,
+      mode: 'folder',
+      insertorder: 100,
+      alwaysActive: false,
+      forceActivation: false,
+      selective: false,
+      secondkey: '',
+      constant: false,
+      order: fileData.lorebook.length,
+      folder: ''
+    };
+    fileData.lorebook.push(newFolder);
+    deps.buildSidebar();
+    deps.markFieldDirty('lorebook');
+    deps.setStatus(`로어북 폴더 추가: ${name}`);
+  }
+
+  async function importLorebook(): Promise<void> {
+    const fileData = fd();
+    if (!fileData) return;
+    const imported = await window.tokiAPI.importJson();
+    if (!imported || imported.length === 0) return;
+
+    let addedCount = 0;
+    for (const raw of imported) {
+      const item = raw as { fileName: string; data: Record<string, unknown> };
+      const entries = Array.isArray(item.data) ? item.data : ((item.data.entries as unknown[]) || [item.data]);
+      for (const entry of entries) {
+        fileData.lorebook.push({
+          key: entry.key || (entry.keys ? entry.keys.join(', ') : ''),
+          content: entry.content || '',
+          comment: entry.comment || entry.name || item.fileName.replace('.json', ''),
+          mode: entry.mode || 'normal',
+          insertorder: entry.insertorder || entry.insertion_order || 100,
+          alwaysActive: entry.alwaysActive || entry.constant || false,
+          forceActivation: entry.forceActivation || false,
+          selective: entry.selective || false,
+          secondkey: entry.secondkey || (entry.secondary_keys ? entry.secondary_keys.join(', ') : ''),
+          constant: entry.constant || false,
+          order: fileData.lorebook.length,
+          folder: entry.folder || ''
+        });
+        addedCount++;
+      }
+    }
+
+    deps.markFieldDirty('lorebook');
+    deps.buildSidebar();
+    deps.setStatus(`로어북 ${addedCount}개 항목 가져옴`);
+  }
+
+  async function deleteLorebook(idx: number): Promise<void> {
+    const fileData = fd();
+    if (!fileData || idx < 0 || idx >= fileData.lorebook.length) return;
+    const name = fileData.lorebook[idx].comment || `entry_${idx}`;
+    if (!await deps.showConfirm(`"${name}" 로어북 항목을 삭제하시겠습니까?`)) return;
+
+    deps.closeTab(`lore_${idx}`);
+    fileData.lorebook.splice(idx, 1);
+    deps.markFieldDirty('lorebook');
+    deps.buildSidebar();
+    deps.shiftIndexedTabsAfterRemoval('lore_', [idx], deps.buildLorebookTabState);
+    deps.setStatus(`로어북 항목 삭제됨: ${name}`);
+  }
+
+  async function renameLorebook(idx: number): Promise<void> {
+    const fileData = fd();
+    if (!fileData || idx < 0 || idx >= fileData.lorebook.length) return;
+    const oldName = fileData.lorebook[idx].comment || `entry_${idx}`;
+    const newName = await deps.showPrompt('새 이름:', oldName);
+    if (!newName || newName === oldName) return;
+    fileData.lorebook[idx].comment = newName;
+    deps.markFieldDirty('lorebook');
+    deps.buildSidebar();
+    deps.refreshIndexedTabs('lore_', deps.buildLorebookTabState);
+    deps.setStatus(`로어북 항목 이름 변경: ${newName}`);
+  }
+
+  // ==================== Regex ====================
+
+  function addNewRegex(): void {
+    const fileData = fd();
+    if (!fileData) return;
+    const newRegex = {
+      comment: `new_regex_${fileData.regex.length}`,
+      in: '',
+      out: '',
+      type: 'editInput',
+      ableFlag: true,
+      flag: '',
+      replaceOrder: 0
+    };
+    fileData.regex.push(newRegex);
+    deps.markFieldDirty('regex');
+    deps.buildSidebar();
+    const idx = fileData.regex.length - 1;
+    deps.openTab(`regex_${idx}`, newRegex.comment, '_regexform',
+      () => fd().regex[idx],
+      (v: unknown) => { Object.assign(fd().regex[idx], v as object); }
+    );
+    deps.setStatus('새 정규식 항목 추가됨');
+  }
+
+  async function importRegex(): Promise<void> {
+    const fileData = fd();
+    if (!fileData) return;
+    const imported = await window.tokiAPI.importJson();
+    if (!imported || imported.length === 0) return;
+
+    let addedCount = 0;
+    for (const raw of imported) {
+      const item = raw as { fileName: string; data: Record<string, unknown> };
+      const entries = Array.isArray(item.data) ? item.data : [item.data] as Record<string, unknown>[];
+      for (const entry of entries) {
+        fileData.regex.push({
+          comment: entry.comment || entry.name || item.fileName.replace('.json', ''),
+          in: entry.in || entry.findRegex || '',
+          out: entry.out || entry.replaceString || '',
+          type: entry.type || 'editDisplay',
+          ableFlag: entry.ableFlag !== undefined ? entry.ableFlag : true
+        });
+        addedCount++;
+      }
+    }
+
+    deps.markFieldDirty('regex');
+    deps.buildSidebar();
+    deps.setStatus(`정규식 ${addedCount}개 항목 가져옴`);
+  }
+
+  async function deleteRegex(idx: number): Promise<void> {
+    const fileData = fd();
+    if (!fileData || idx < 0 || idx >= fileData.regex.length) return;
+    const name = fileData.regex[idx].comment || `regex_${idx}`;
+    if (!await deps.showConfirm(`"${name}" 정규식을 삭제하시겠습니까?`)) return;
+
+    deps.closeTab(`regex_${idx}`);
+    fileData.regex.splice(idx, 1);
+    deps.markFieldDirty('regex');
+    deps.buildSidebar();
+    deps.shiftIndexedTabsAfterRemoval('regex_', [idx], deps.buildRegexTabState);
+    deps.setStatus(`정규식 삭제됨: ${name}`);
+  }
+
+  async function renameRegex(idx: number): Promise<void> {
+    const fileData = fd();
+    if (!fileData || idx < 0 || idx >= fileData.regex.length) return;
+    const oldName = fileData.regex[idx].comment || `regex_${idx}`;
+    const newName = await deps.showPrompt('새 이름:', oldName);
+    if (!newName || newName === oldName) return;
+    fileData.regex[idx].comment = newName;
+    deps.markFieldDirty('regex');
+    deps.buildSidebar();
+    deps.refreshIndexedTabs('regex_', deps.buildRegexTabState);
+    deps.setStatus(`정규식 이름 변경: ${newName}`);
+  }
+
+  // ==================== Assets ====================
+
+  async function addAssetFromDialog(targetFolder?: string): Promise<void> {
+    const added = await window.tokiAPI.addAsset(targetFolder || 'other');
+    if (!added || (Array.isArray(added) && added.length === 0)) return;
+    deps.buildSidebar();
+    const count = Array.isArray(added) ? added.length : 1;
+    deps.setStatus(`에셋 ${count}개 추가됨`);
+  }
+
+  function attachAssetContextMenu(el: HTMLElement, assetPath: string, fileName: string): void {
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      deps.showContextMenu(e.clientX, e.clientY, [
+        { label: '이름 변경', action: async () => {
+          const newName = await deps.showPrompt('새 파일명:', fileName);
+          if (!newName || newName === fileName) return;
+          const newPath = await window.tokiAPI.renameAsset(assetPath, newName);
+          if (newPath) {
+            deps.buildSidebar();
+            deps.setStatus(`에셋 이름 변경: ${newName}`);
+          }
+        }},
+        '---',
+        { label: '삭제', action: async () => {
+          if (!await deps.showConfirm(`"${fileName}" 에셋을 삭제하시겠습니까?`)) return;
+          const ok = await window.tokiAPI.deleteAsset(assetPath);
+          if (ok) {
+            deps.closeTab(`img_${assetPath}`);
+            deps.buildSidebar();
+            deps.setStatus(`에셋 삭제됨: ${fileName}`);
+          }
+        }}
+      ]);
+    });
+  }
+
+  // ==================== Lua Sections ====================
+
+  async function addLuaSection(): Promise<void> {
+    const fileData = fd();
+    if (!fileData) return;
+    const luaSections = deps.getLuaSections();
+    const name = await deps.showPrompt('새 Lua 섹션 이름:', `section_${luaSections.length}`);
+    if (!name) return;
+
+    luaSections.push({ name, content: '' });
+    fileData.lua = deps.combineLuaSections(luaSections);
+    deps.markFieldDirty('lua');
+    deps.buildSidebar();
+
+    const idx = luaSections.length - 1;
+    deps.openTab(`lua_s${idx}`, name, 'lua',
+      () => deps.getLuaSections()[idx].content,
+      (v: unknown) => {
+        deps.getLuaSections()[idx].content = v as string;
+        fd().lua = deps.combineLuaSections(deps.getLuaSections());
+      }
+    );
+    deps.setStatus(`Lua 섹션 추가됨: ${name}`);
+  }
+
+  async function renameLuaSection(idx: number): Promise<void> {
+    const luaSections = deps.getLuaSections();
+    if (idx < 0 || idx >= luaSections.length) return;
+    const oldName = luaSections[idx].name;
+    const newName = await deps.showPrompt('새 이름:', oldName);
+    if (!newName || newName === oldName) return;
+
+    luaSections[idx].name = newName;
+    fd().lua = deps.combineLuaSections(luaSections);
+    deps.markFieldDirty('lua');
+    deps.buildSidebar();
+    deps.refreshIndexedTabs('lua_s', deps.buildLuaSectionTabState);
+    deps.setStatus(`Lua 섹션 이름 변경: ${newName}`);
+  }
+
+  async function deleteLuaSection(idx: number): Promise<void> {
+    const luaSections = deps.getLuaSections();
+    if (idx < 0 || idx >= luaSections.length) return;
+    const name = luaSections[idx].name;
+    if (!await deps.showConfirm(`"${name}" Lua 섹션을 삭제하시겠습니까?`)) return;
+
+    deps.closeTab(`lua_s${idx}`);
+    luaSections.splice(idx, 1);
+    fd().lua = deps.combineLuaSections(luaSections);
+    deps.markFieldDirty('lua');
+    deps.buildSidebar();
+    deps.shiftIndexedTabsAfterRemoval('lua_s', [idx], deps.buildLuaSectionTabState);
+    deps.setStatus(`Lua 섹션 삭제됨: ${name}`);
+  }
+
+  // ==================== CSS Sections ====================
+
+  async function addCssSection(): Promise<void> {
+    const fileData = fd();
+    if (!fileData) return;
+    const cssSections = deps.getCssSections();
+    const name = await deps.showPrompt('새 CSS 섹션 이름:', `section_${cssSections.length}`);
+    if (!name) return;
+
+    cssSections.push({ name, content: '' });
+    fileData.css = deps.combineCssSections(cssSections, deps.getCssStylePrefix(), deps.getCssStyleSuffix());
+    deps.markFieldDirty('css');
+    deps.buildSidebar();
+
+    const idx = cssSections.length - 1;
+    deps.openTab(`css_s${idx}`, name, 'css',
+      () => deps.getCssSections()[idx].content,
+      (v: unknown) => {
+        deps.getCssSections()[idx].content = v as string;
+        fd().css = deps.combineCssSections(
+          deps.getCssSections(), deps.getCssStylePrefix(), deps.getCssStyleSuffix()
+        );
+      }
+    );
+    deps.setStatus(`CSS 섹션 추가됨: ${name}`);
+  }
+
+  async function renameCssSection(idx: number): Promise<void> {
+    const cssSections = deps.getCssSections();
+    if (idx < 0 || idx >= cssSections.length) return;
+    const oldName = cssSections[idx].name;
+    const newName = await deps.showPrompt('새 이름:', oldName);
+    if (!newName || newName === oldName) return;
+
+    cssSections[idx].name = newName;
+    fd().css = deps.combineCssSections(cssSections, deps.getCssStylePrefix(), deps.getCssStyleSuffix());
+    deps.markFieldDirty('css');
+    deps.buildSidebar();
+    deps.refreshIndexedTabs('css_s', deps.buildCssSectionTabState);
+    deps.setStatus(`CSS 섹션 이름 변경: ${newName}`);
+  }
+
+  async function deleteCssSection(idx: number): Promise<void> {
+    const cssSections = deps.getCssSections();
+    if (idx < 0 || idx >= cssSections.length) return;
+    const name = cssSections[idx].name;
+    if (!await deps.showConfirm(`"${name}" CSS 섹션을 삭제하시겠습니까?`)) return;
+
+    deps.closeTab(`css_s${idx}`);
+    cssSections.splice(idx, 1);
+    fd().css = deps.combineCssSections(cssSections, deps.getCssStylePrefix(), deps.getCssStyleSuffix());
+    deps.markFieldDirty('css');
+    deps.buildSidebar();
+    deps.shiftIndexedTabsAfterRemoval('css_s', [idx], deps.buildCssSectionTabState);
+    deps.setStatus(`CSS 섹션 삭제됨: ${name}`);
+  }
+
+  return {
+    addNewLorebook,
+    addNewLorebookFolder,
+    importLorebook,
+    deleteLorebook,
+    renameLorebook,
+    addNewRegex,
+    importRegex,
+    deleteRegex,
+    renameRegex,
+    addAssetFromDialog,
+    attachAssetContextMenu,
+    addLuaSection,
+    renameLuaSection,
+    deleteLuaSection,
+    addCssSection,
+    renameCssSection,
+    deleteCssSection,
+  };
+}

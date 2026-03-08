@@ -93,6 +93,7 @@ import { createBackup, formatBackupTime, getBackups, showBackupMenu } from '../l
 import { setStatus } from '../lib/status-bar';
 import { showHelpPopup } from '../lib/help-popup';
 import { showSettingsPopup as renderSettingsPopup } from '../lib/settings-popup';
+import { createSidebarActions } from '../lib/sidebar-actions';
 
 const settingsSnapshot = readAppSettingsSnapshot();
 
@@ -1492,331 +1493,44 @@ function updateSidebarActive() {
   _updateSidebarActive(tabMgr.activeTabId, tabMgr.openTabs);
 }
 
-// ==================== Sidebar Actions ====================
-
-// --- Lorebook ---
-function addNewLorebook() {
-  if (!fileData) return;
-  const newEntry = {
-    key: '',
-    content: '',
-    comment: `new_entry_${fileData.lorebook.length}`,
-    mode: 'normal',
-    insertorder: 100,
-    alwaysActive: false,
-    forceActivation: false,
-    selective: false,
-    secondkey: '',
-    constant: false,
-    order: fileData.lorebook.length,
-    folder: ''
-  };
-  fileData.lorebook.push(newEntry);
-  tabMgr.markFieldDirty('lorebook');
-  buildSidebar();
-  const idx = fileData.lorebook.length - 1;
-  tabMgr.openTab(`lore_${idx}`, newEntry.comment, '_loreform',
-    () => fileData.lorebook[idx],
-    (v) => { Object.assign(fileData.lorebook[idx], v); }
-  );
-  setStatus('새 로어북 항목 추가됨');
-}
-
-async function addNewLorebookFolder() {
-  if (!fileData) return;
-  const name = await showPrompt('폴더 이름을 입력하세요', '새 폴더');
-  if (!name) return;
-  const folderId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const newFolder = {
-    key: folderId,
-    content: '',
-    comment: name,
-    mode: 'folder',
-    insertorder: 100,
-    alwaysActive: false,
-    forceActivation: false,
-    selective: false,
-    secondkey: '',
-    constant: false,
-    order: fileData.lorebook.length,
-    folder: ''
-  };
-  fileData.lorebook.push(newFolder);
-  buildSidebar();
-  tabMgr.markFieldDirty('lorebook');
-  setStatus(`로어북 폴더 추가: ${name}`);
-}
-
-async function importLorebook() {
-  if (!fileData) return;
-  const imported = await window.tokiAPI.importJson();
-  if (!imported || imported.length === 0) return;
-
-  let addedCount = 0;
-  for (const { fileName, data } of imported) {
-    const entries = Array.isArray(data) ? data : (data.entries || [data]);
-    for (const entry of entries) {
-      fileData.lorebook.push({
-        key: entry.key || (entry.keys ? entry.keys.join(', ') : ''),
-        content: entry.content || '',
-        comment: entry.comment || entry.name || fileName.replace('.json', ''),
-        mode: entry.mode || 'normal',
-        insertorder: entry.insertorder || entry.insertion_order || 100,
-        alwaysActive: entry.alwaysActive || entry.constant || false,
-        forceActivation: entry.forceActivation || false,
-        selective: entry.selective || false,
-        secondkey: entry.secondkey || (entry.secondary_keys ? entry.secondary_keys.join(', ') : ''),
-        constant: entry.constant || false,
-        order: fileData.lorebook.length,
-        folder: entry.folder || ''
-      });
-      addedCount++;
-    }
-  }
-
-  tabMgr.markFieldDirty('lorebook');
-  buildSidebar();
-  setStatus(`로어북 ${addedCount}개 항목 가져옴`);
-}
-
-async function deleteLorebook(idx) {
-  if (!fileData || idx < 0 || idx >= fileData.lorebook.length) return;
-  const name = fileData.lorebook[idx].comment || `entry_${idx}`;
-  if (!await showConfirm(`"${name}" 로어북 항목을 삭제하시겠습니까?`)) return;
-
-  tabMgr.closeTab(`lore_${idx}`);
-  fileData.lorebook.splice(idx, 1);
-  tabMgr.markFieldDirty('lorebook');
-  buildSidebar();
-  tabMgr.shiftIndexedTabsAfterRemoval('lore_', [idx], buildLorebookTabState);
-  setStatus(`로어북 항목 삭제됨: ${name}`);
-}
-
-async function renameLorebook(idx) {
-  if (!fileData || idx < 0 || idx >= fileData.lorebook.length) return;
-  const oldName = fileData.lorebook[idx].comment || `entry_${idx}`;
-  const newName = await showPrompt('새 이름:', oldName);
-  if (!newName || newName === oldName) return;
-  fileData.lorebook[idx].comment = newName;
-  tabMgr.markFieldDirty('lorebook');
-  buildSidebar();
-  tabMgr.refreshIndexedTabs('lore_', buildLorebookTabState);
-  setStatus(`로어북 항목 이름 변경: ${newName}`);
-}
-
-// --- Regex ---
-function addNewRegex() {
-  if (!fileData) return;
-  const newRegex = {
-    comment: `new_regex_${fileData.regex.length}`,
-    in: '',
-    out: '',
-    type: 'editInput',
-    ableFlag: true,
-    flag: '',
-    replaceOrder: 0
-  };
-  fileData.regex.push(newRegex);
-  tabMgr.markFieldDirty('regex');
-  buildSidebar();
-  const idx = fileData.regex.length - 1;
-  tabMgr.openTab(`regex_${idx}`, newRegex.comment, '_regexform',
-    () => fileData.regex[idx],
-    (v) => { Object.assign(fileData.regex[idx], v); }
-  );
-  setStatus('새 정규식 항목 추가됨');
-}
-
-async function importRegex() {
-  if (!fileData) return;
-  const imported = await window.tokiAPI.importJson();
-  if (!imported || imported.length === 0) return;
-
-  let addedCount = 0;
-  for (const { fileName, data } of imported) {
-    const entries = Array.isArray(data) ? data : [data];
-    for (const entry of entries) {
-      fileData.regex.push({
-        comment: entry.comment || entry.name || fileName.replace('.json', ''),
-        in: entry.in || entry.findRegex || '',
-        out: entry.out || entry.replaceString || '',
-        type: entry.type || 'editDisplay',
-        ableFlag: entry.ableFlag !== undefined ? entry.ableFlag : true
-      });
-      addedCount++;
-    }
-  }
-
-  tabMgr.markFieldDirty('regex');
-  buildSidebar();
-  setStatus(`정규식 ${addedCount}개 항목 가져옴`);
-}
-
-async function deleteRegex(idx) {
-  if (!fileData || idx < 0 || idx >= fileData.regex.length) return;
-  const name = fileData.regex[idx].comment || `regex_${idx}`;
-  if (!await showConfirm(`"${name}" 정규식을 삭제하시겠습니까?`)) return;
-
-  tabMgr.closeTab(`regex_${idx}`);
-  fileData.regex.splice(idx, 1);
-  tabMgr.markFieldDirty('regex');
-  buildSidebar();
-  tabMgr.shiftIndexedTabsAfterRemoval('regex_', [idx], buildRegexTabState);
-  setStatus(`정규식 삭제됨: ${name}`);
-}
-
-async function renameRegex(idx) {
-  if (!fileData || idx < 0 || idx >= fileData.regex.length) return;
-  const oldName = fileData.regex[idx].comment || `regex_${idx}`;
-  const newName = await showPrompt('새 이름:', oldName);
-  if (!newName || newName === oldName) return;
-  fileData.regex[idx].comment = newName;
-  tabMgr.markFieldDirty('regex');
-  buildSidebar();
-  tabMgr.refreshIndexedTabs('regex_', buildRegexTabState);
-  setStatus(`정규식 이름 변경: ${newName}`);
-}
-
-// --- Assets ---
-async function addAssetFromDialog(targetFolder) {
-  const added = await window.tokiAPI.addAsset(targetFolder || 'other');
-  if (!added || added.length === 0) return;
-  buildSidebar();
-  setStatus(`에셋 ${added.length}개 추가됨`);
-}
-
-function attachAssetContextMenu(el, assetPath, fileName) {
-  el.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    showContextMenu(e.clientX, e.clientY, [
-      { label: '이름 변경', action: async () => {
-        const newName = await showPrompt('새 파일명:', fileName);
-        if (!newName || newName === fileName) return;
-        const newPath = await window.tokiAPI.renameAsset(assetPath, newName);
-        if (newPath) {
-          buildSidebar();
-          setStatus(`에셋 이름 변경: ${newName}`);
-        }
-      }},
-      '---',
-      { label: '삭제', action: async () => {
-        if (!await showConfirm(`"${fileName}" 에셋을 삭제하시겠습니까?`)) return;
-        const ok = await window.tokiAPI.deleteAsset(assetPath);
-        if (ok) {
-          tabMgr.closeTab(`img_${assetPath}`);
-          buildSidebar();
-          setStatus(`에셋 삭제됨: ${fileName}`);
-        }
-      }}
-    ]);
-  });
-}
+// ==================== Sidebar Actions (delegated to ../lib/sidebar-actions) ====================
 
 let _cssStylePrefix = '';
 let _cssStyleSuffix = '';
 
 let cssSections = [];
 
-async function addLuaSection() {
-  if (!fileData) return;
-  const name = await showPrompt('새 Lua 섹션 이름:', `section_${luaSections.length}`);
-  if (!name) return;
+const sidebarActions = createSidebarActions({
+  getFileData: () => fileData,
+  getLuaSections: () => luaSections,
+  getCssSections: () => cssSections,
+  getCssStylePrefix: () => _cssStylePrefix,
+  getCssStyleSuffix: () => _cssStyleSuffix,
+  showConfirm,
+  showPrompt,
+  showContextMenu,
+  setStatus,
+  buildSidebar,
+  combineLuaSections,
+  combineCssSections,
+  openTab: (id, label, language, getValue, setValue) => tabMgr.openTab(id, label, language, getValue, setValue),
+  closeTab: (id) => tabMgr.closeTab(id),
+  markFieldDirty: (field) => tabMgr.markFieldDirty(field),
+  shiftIndexedTabsAfterRemoval: (prefix, removed, fn) => tabMgr.shiftIndexedTabsAfterRemoval(prefix, removed, fn),
+  refreshIndexedTabs: (prefix, fn) => tabMgr.refreshIndexedTabs(prefix, fn),
+  buildLorebookTabState,
+  buildRegexTabState,
+  buildLuaSectionTabState,
+  buildCssSectionTabState,
+});
 
-  luaSections.push({ name, content: '' });
-  fileData.lua = combineLuaSections(luaSections);
-  tabMgr.markFieldDirty('lua');
-  buildSidebar();
-
-  const idx = luaSections.length - 1;
-  tabMgr.openTab(`lua_s${idx}`, name, 'lua',
-    () => luaSections[idx].content,
-    (v) => {
-      luaSections[idx].content = v;
-      fileData.lua = combineLuaSections(luaSections);
-    }
-  );
-  setStatus(`Lua 섹션 추가됨: ${name}`);
-}
-
-async function renameLuaSection(idx) {
-  if (idx < 0 || idx >= luaSections.length) return;
-  const oldName = luaSections[idx].name;
-  const newName = await showPrompt('새 이름:', oldName);
-  if (!newName || newName === oldName) return;
-
-  luaSections[idx].name = newName;
-  fileData.lua = combineLuaSections(luaSections);
-  tabMgr.markFieldDirty('lua');
-  buildSidebar();
-  tabMgr.refreshIndexedTabs('lua_s', buildLuaSectionTabState);
-  setStatus(`Lua 섹션 이름 변경: ${newName}`);
-}
-
-async function deleteLuaSection(idx) {
-  if (idx < 0 || idx >= luaSections.length) return;
-  const name = luaSections[idx].name;
-  if (!await showConfirm(`"${name}" Lua 섹션을 삭제하시겠습니까?`)) return;
-
-  tabMgr.closeTab(`lua_s${idx}`);
-  luaSections.splice(idx, 1);
-  fileData.lua = combineLuaSections(luaSections);
-  tabMgr.markFieldDirty('lua');
-  buildSidebar();
-  tabMgr.shiftIndexedTabsAfterRemoval('lua_s', [idx], buildLuaSectionTabState);
-  setStatus(`Lua 섹션 삭제됨: ${name}`);
-}
-
-// --- CSS Section Management ---
-
-async function addCssSection() {
-  if (!fileData) return;
-  const name = await showPrompt('새 CSS 섹션 이름:', `section_${cssSections.length}`);
-  if (!name) return;
-
-  cssSections.push({ name, content: '' });
-  fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
-  tabMgr.markFieldDirty('css');
-  buildSidebar();
-
-  const idx = cssSections.length - 1;
-  tabMgr.openTab(`css_s${idx}`, name, 'css',
-    () => cssSections[idx].content,
-    (v) => {
-      cssSections[idx].content = v;
-      fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
-    }
-  );
-  setStatus(`CSS 섹션 추가됨: ${name}`);
-}
-
-async function renameCssSection(idx) {
-  if (idx < 0 || idx >= cssSections.length) return;
-  const oldName = cssSections[idx].name;
-  const newName = await showPrompt('새 이름:', oldName);
-  if (!newName || newName === oldName) return;
-
-  cssSections[idx].name = newName;
-  fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
-  tabMgr.markFieldDirty('css');
-  buildSidebar();
-  tabMgr.refreshIndexedTabs('css_s', buildCssSectionTabState);
-  setStatus(`CSS 섹션 이름 변경: ${newName}`);
-}
-
-async function deleteCssSection(idx) {
-  if (idx < 0 || idx >= cssSections.length) return;
-  const name = cssSections[idx].name;
-  if (!await showConfirm(`"${name}" CSS 섹션을 삭제하시겠습니까?`)) return;
-
-  tabMgr.closeTab(`css_s${idx}`);
-  cssSections.splice(idx, 1);
-  fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
-  tabMgr.markFieldDirty('css');
-  buildSidebar();
-  tabMgr.shiftIndexedTabsAfterRemoval('css_s', [idx], buildCssSectionTabState);
-  setStatus(`CSS 섹션 삭제됨: ${name}`);
-}
+const {
+  addNewLorebook, addNewLorebookFolder, importLorebook, deleteLorebook, renameLorebook,
+  addNewRegex, importRegex, deleteRegex, renameRegex,
+  addAssetFromDialog, attachAssetContextMenu,
+  addLuaSection, renameLuaSection, deleteLuaSection,
+  addCssSection, renameCssSection, deleteCssSection,
+} = sidebarActions;
 
 // ==================== Backup System ====================
 
