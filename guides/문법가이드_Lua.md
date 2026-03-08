@@ -31,12 +31,14 @@ Lua는 8가지 기본 타입을 가집니다:
 - **table**: 연관 배열 (배열, 딕셔너리, 객체 등)
 
 #### 타입 확인
+
 ```lua
 type(value)  -- 타입 이름을 문자열로 반환
 math.type(x)  -- number 타입인 경우 "integer" 또는 "float" 반환
 ```
 
 #### 숫자 타입 (Lua 5.3+)
+
 ```lua
 local int = 42        -- 정수
 local float = 3.14    -- 부동소수점
@@ -47,6 +49,7 @@ math.tointeger(42.0)  -- 42 (정수로 변환)
 ```
 
 #### 변수 (Variables)
+
 ```lua
 x = 10  -- 전역 변수
 local x = 10  -- 지역 변수
@@ -54,6 +57,7 @@ local a, b, c = 1, 2, 3  -- 다중 할당
 ```
 
 #### 환경 (Environments)
+
 - `_G`: 전역 환경 테이블
 - `_VERSION`: Lua 버전 문자열
 
@@ -62,14 +66,17 @@ local a, b, c = 1, 2, 3  -- 다중 할당
 ### 언어 문법
 
 #### 주석·식별자·예약어
+
 ```lua
 -- 한 줄 주석
 --[[ 여러 줄 주석 ]]
 ```
+
 - 식별자: 문자, 숫자, 언더스코어 / 숫자로 시작 불가
 - 예약어: `and break do else elseif end false for function goto if in local nil not or repeat return then true until while`
 
 #### 제어 구조
+
 ```lua
 if condition then -- 코드
 elseif condition then -- 코드
@@ -86,6 +93,7 @@ for i, v in ipairs(array) do -- 코드 end
 ```
 
 #### 함수
+
 ```lua
 function func(param1, param2) return result end
 local function func(param1, param2) return result end
@@ -95,6 +103,7 @@ function func(...) local args = {...}; return select('#', ...) end
 ```
 
 #### 연산자 (요약)
+
 - 산술: `+ - * / // % ^`
 - 비트: `& | ~ >> <<`
 - 관계: `== ~= < > <= >=`
@@ -102,6 +111,7 @@ function func(...) local args = {...}; return select('#', ...) end
 - 연결: `..` / 길이: `#table`, `#"string"`
 
 #### 테이블 생성자
+
 ```lua
 t = {1, 2, 3}
 t = {name = "Lua", version = 5.4}
@@ -160,11 +170,11 @@ end
 
 ### 주요 이벤트 함수
 
-| 함수 | 실행 시점 | 주요 용도 |
-|------|----------|----------|
-| `onInput(id)` | 유저 전송 시 | 입력 검증, 전처리 |
-| `onStart(id)` | 프롬프트 생성 시 | 내용 수정, 변수 처리 |
-| `onOutput(id)` | AI 응답 후 | 결과 처리, 이벤트 |
+| 함수           | 실행 시점        | 주요 용도            |
+| -------------- | ---------------- | -------------------- |
+| `onInput(id)`  | 유저 전송 시     | 입력 검증, 전처리    |
+| `onStart(id)`  | 프롬프트 생성 시 | 내용 수정, 변수 처리 |
+| `onOutput(id)` | AI 응답 후       | 결과 처리, 이벤트    |
 
 전역 API 함수(채팅 조작, 변수, 알림, LLM 등)는 **3. API 참조**를 사용하세요.
 
@@ -175,6 +185,7 @@ listenEdit('editOutput', function(triggerId, data)
     return data .. " (수정됨)"
 end)
 ```
+
 **이벤트:** `editInput`, `editOutput`, `editRequest`, `editDisplay`
 
 ### 비동기 함수
@@ -185,12 +196,14 @@ end)
 ### 버튼 트리거
 
 **HTML**
+
 ```html
 <button risu-trigger="onButton">클릭</button>
 <div risu-trigger="onDivClick">영역 클릭</div>
 ```
 
 **Lua**
+
 ```lua
 function onButton(triggerId)
   alertNormal(triggerId, "버튼 클릭!")
@@ -200,9 +213,11 @@ end
 **CBS 버튼**: `{{button::라벨::함수명}}` → 클릭 시 해당 함수 호출.
 
 **risu-btn**
+
 ```html
 <button risu-btn="item-apple">사과</button>
 ```
+
 ```lua
 function onButtonClick(triggerId, data)
   alertNormal(triggerId, "아이템: " .. data)
@@ -231,6 +246,8 @@ local data = json.decode(getChatVar(id, "player_data"))
 3. **인덱스 불일치**: `getChatLength(id)`는 **1부터**, `getChat(id, i)` / `setChat(id, i, ...)`는 **0부터**.
 4. **비동기**: 해당 함수는 반드시 `:await()` 사용 (3장에 표시).
 5. **stopChat(id)** 는 버그로 사용 불가.
+6. **보안 컨텍스트**: `setChatVar`, `setChat`, `addChat` 등 쓰기 함수는 safe 컨텍스트(editInput/editOutput/editDisplay)에서만 작동.
+7. **저수준 접근**: `request`, `generateImage`, `similarity`는 `lowLevelAccess` 플래그가 활성화된 모듈/캐릭터에서만 사용 가능.
 
 ---
 
@@ -238,11 +255,11 @@ local data = json.decode(getChatVar(id, "player_data"))
 
 ### 3.1 콜백 함수
 
-| 함수 | 설명 |
-|------|------|
-| `onStart(triggerId)` | 채팅이 전송될 때 호출 |
-| `onOutput(triggerId)` | AI 응답 수신 시 호출 |
-| `onInput(triggerId)` | 사용자 입력 수신 시 호출 |
+| 함수                         | 설명                                                                       |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| `onStart(triggerId)`         | 채팅이 전송될 때 호출                                                      |
+| `onOutput(triggerId)`        | AI 응답 수신 시 호출                                                       |
+| `onInput(triggerId)`         | 사용자 입력 수신 시 호출                                                   |
 | `listenEdit(type, callback)` | 수정 이벤트 감지 (`editRequest`, `editDisplay`, `editInput`, `editOutput`) |
 
 버튼: `{{button::Display::TriggerName}}` 클릭 시 **TriggerName** 함수 호출.
@@ -255,13 +272,17 @@ local data = json.decode(getChatVar(id, "player_data"))
 
 **마지막 메시지:** `getCharacterLastMessage(id)`, `getUserLastMessage(id)`.
 
+**메시지 형식:** `{ role: 'user' | 'char', data: string, time?: number }`
+
 ### 3.3 상태 및 변수
 
-| 함수 | 설명 |
-|------|------|
-| `getChatVar(id, key)` / `setChatVar(id, key, value)` | 채팅 변수 |
-| `getGlobalVar(id, key)` | 전역 변수 (읽기) |
-| `getState(id, name)` / `setState(id, name, value)` | 객체/배열 저장 (JSON 자동 변환) |
+| 함수                                                 | 설명                            |
+| ---------------------------------------------------- | ------------------------------- |
+| `getChatVar(id, key)` / `setChatVar(id, key, value)` | 채팅 변수 (문자열)              |
+| `getGlobalVar(id, key)`                              | 전역 변수 (읽기, 채팅 간 공유)  |
+| `getState(id, name)` / `setState(id, name, value)`   | 객체/배열 저장 (JSON 자동 변환) |
+
+> **주의:** `setChatVar`는 safe 컨텍스트(editInput, editOutput, editDisplay)에서만 작동합니다. 복잡한 데이터는 `getState`/`setState`를 사용하세요.
 
 ### 3.4 캐릭터 정보
 
@@ -275,14 +296,15 @@ local data = json.decode(getChatVar(id, "player_data"))
 
 ### 3.5 AI 모델 호출 (LLM)
 
-| 함수 | 설명 | 비고 |
-|------|------|------|
-| `LLM(id, prompt, useMultimodal?)` | 메인 모델 호출 | LLMResult |
-| `simpleLLM(id, prompt)` | 간단 질문 | **await 필요** |
-| `axLLM(id, prompt, useMultimodal?)` | 대체 모델 | LLMResult |
+| 함수                                | 설명             | 비고                       |
+| ----------------------------------- | ---------------- | -------------------------- |
+| `LLM(id, prompt, useMultimodal?)`   | 메인 모델 호출   | **await 필요** → LLMResult |
+| `simpleLLM(id, prompt)`             | 간단 문자열 질문 | **await 필요** → LLMResult |
+| `axLLM(id, prompt, useMultimodal?)` | 보조/대체 모델   | **await 필요** → LLMResult |
 
 - prompt: `{ {role: "user/system/assistant", content: "..."} }`
 - LLMResult: `{ success: boolean, result: string }`
+- `useMultimodal=true`로 `{{inlay::*}}` 태그를 통한 이미지 입력 가능
 
 ### 3.6 로어북
 
@@ -296,17 +318,25 @@ local data = json.decode(getChatVar(id, "player_data"))
 
 **텍스트:** `getTokens(id, value)`, `hash(id, value)`, `similarity(id, source, value)` — **await 필요**. `cbs(id, value)` — CBS 파싱.
 
-**네트워크:** `request(id, url)` — **await 필요**, 120자·분당 5회 제한.
+**네트워크:** `request(id, url)` — **await 필요**, 120자 URL 제한·분당 5회 제한. `lowLevelAccess` 필요.
 
-**미디어:** `generateImage(id, value, negValue?)` — **await 필요**.
+**미디어:** `generateImage(id, value, negValue?)` — **await 필요**. `lowLevelAccess` 필요.
 
-**기타:** `sleep(id, time)` (밀리초), `log(message)` (가능하면 `print` 권장).
+**기타:** `sleep(id, time)` (밀리초, **await 필요**), `log(message)` (가능하면 `print` 권장).
 
 ### 3.9 채팅 제어
 
 `stopChat(id)`, `reloadDisplay(id)`, `reloadChat(id, index)` — stopChat 현재 오류로 비추천.
 
-### 3.10 비동기 헬퍼
+### 3.10 배경/메타데이터
+
+| 함수                               | 설명             |
+| ---------------------------------- | ---------------- |
+| `getAuthorsNote(id)`               | 작성자 노트 읽기 |
+| `getBackgroundEmbedding(id)`       | 배경 HTML 읽기   |
+| `setBackgroundEmbedding(id, data)` | 배경 HTML 쓰기   |
+
+### 3.11 비동기 헬퍼
 
 `async(callback)` — Lua 코루틴을 Promise로 변환. `promise:await()` — 결과 대기.
 
@@ -388,4 +418,4 @@ end)
 
 ---
 
-*RisuAI 프로젝트 템플릿 · 문법가이드 Lua*
+_RisuAI 프로젝트 템플릿 · 문법가이드 Lua · 마지막 업데이트: 2026년 3월_
