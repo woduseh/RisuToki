@@ -21,6 +21,25 @@ let deps: AssetManagerDeps;
 let _assetsMapCache: { assets: Record<string, string>; debug: Record<string, any> } | null = null;
 
 // ---------------------------------------------------------------------------
+// MIME helpers
+// ---------------------------------------------------------------------------
+
+function getMimeType(ext: string): string {
+  switch (ext.toLowerCase()) {
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    case 'svg':
+      return 'image/svg+xml';
+    default:
+      return 'image/jpeg';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public helpers
 // ---------------------------------------------------------------------------
 
@@ -83,20 +102,24 @@ export function initAssetManager(d: AssetManagerDeps): void {
         const asset = data.assets.find((a: any) => a.path === zipPath);
         if (asset) {
           const ext = (ca.ext || 'png').toLowerCase();
-          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' :
-                       ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
+          const mime = getMimeType(ext);
           result[name] = `data:${mime};base64,${asset.data.toString('base64')}`;
           cardResolved++;
         } else {
-          const targetName = zipPath.split('/').pop()!.replace(/\.[^.]+$/, '');
+          const targetName = zipPath
+            .split('/')
+            .pop()!
+            .replace(/\.[^.]+$/, '');
           const fallback = data.assets.find((a: any) => {
-            const fn = a.path.split('/').pop()!.replace(/\.[^.]+$/, '');
+            const fn = a.path
+              .split('/')
+              .pop()!
+              .replace(/\.[^.]+$/, '');
             return fn === targetName;
           });
           if (fallback) {
             const ext = (ca.ext || 'png').toLowerCase();
-            const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' :
-                         ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
+            const mime = getMimeType(ext);
             result[name] = `data:${mime};base64,${fallback.data.toString('base64')}`;
             cardResolved++;
           } else {
@@ -108,8 +131,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
         const asset = data.assets.find((a: any) => a.path === zipPath);
         if (asset) {
           const ext = (ca.ext || zipPath.split('.').pop() || 'png').toLowerCase();
-          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' :
-                       ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
+          const mime = getMimeType(ext);
           result[name] = `data:${mime};base64,${asset.data.toString('base64')}`;
           cardResolved++;
         } else {
@@ -145,21 +167,20 @@ export function initAssetManager(d: AssetManagerDeps): void {
       const bin = risumBinaries[idx];
       if (bin) {
         const ext = (ma.ext || (Array.isArray(ma) ? ma[2] : '') || 'png').toLowerCase();
-        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' :
-                     ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
-        result[name] = `data:${mime};base64,${Buffer.isBuffer(bin) ? bin.toString('base64') : Buffer.from(bin).toString('base64')}`;
+        const mime = getMimeType(ext);
+        result[name] =
+          `data:${mime};base64,${Buffer.isBuffer(bin) ? bin.toString('base64') : Buffer.from(bin).toString('base64')}`;
       }
     }
 
     // 4) zip assets — filename-based mapping (fallback)
     debug.zipAssets = (data.assets || []).length;
-    for (const asset of (data.assets || [])) {
+    for (const asset of data.assets || []) {
       const fileName: string = asset.path.split('/').pop()!;
       const nameNoExt = fileName.replace(/\.[^.]+$/, '');
       if (result[nameNoExt]) continue;
       const ext = fileName.split('.').pop()!.toLowerCase();
-      const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' :
-                   ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
+      const mime = getMimeType(ext);
       result[nameNoExt] = `data:${mime};base64,${asset.data.toString('base64')}`;
     }
 
@@ -251,8 +272,8 @@ export function initAssetManager(d: AssetManagerDeps): void {
     const filePath = result.filePaths[0];
     const data = fs.readFileSync(filePath);
     const ext = path.extname(filePath).replace('.', '').toLowerCase();
-    const mime = ext === 'gif' ? 'image/gif' : ext === 'png' ? 'image/png' :
-                 ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    const mime =
+      ext === 'gif' ? 'image/gif' : ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
     return `data:${mime};base64,${data.toString('base64')}`;
   });
 

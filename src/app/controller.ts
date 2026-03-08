@@ -1,13 +1,4 @@
-import {
-  parseLuaSections,
-  combineLuaSections,
-  parseCssSections,
-  combineCssSections,
-  detectLuaSection,
-  detectCssSectionInline,
-  detectCssBlockOpen,
-  detectCssBlockClose,
-} from '../lib/section-parser';
+import { parseLuaSections, combineLuaSections, parseCssSections, combineCssSections } from '../lib/section-parser';
 import type { Section } from '../lib/section-parser';
 import type { Tab } from '../lib/tab-manager';
 import type { LayoutState, LayoutSlot, PanelPosition } from '../lib/layout-manager';
@@ -620,6 +611,31 @@ function openRefTabById(tabId: string): void {
   _openRefTabById(tabId, getRefsSidebarDeps());
 }
 
+// ---------------------------------------------------------------------------
+// Context-menu helpers (shared by sidebar items)
+// ---------------------------------------------------------------------------
+
+function createMcpCopyItem(mcpPath: string): ContextMenuItem {
+  return {
+    label: 'MCP 경로 복사',
+    action: () => {
+      navigator.clipboard.writeText(mcpPath);
+      setStatus(`복사됨: ${mcpPath}`);
+    },
+  };
+}
+
+function appendBackupItems(items: ContextMenuItem[], backupKey: string, x: number, y: number): void {
+  const store = getBackups(backupKey);
+  if (store.length > 0) {
+    items.push('---');
+    items.push({
+      label: '백업 불러오기',
+      action: () => showBackupMenu(backupKey, x, y, backupMenuCallbacks),
+    });
+  }
+}
+
 function buildSidebar(): void {
   const tree = document.getElementById('sidebar-tree')!;
   tree.innerHTML = '';
@@ -662,23 +678,8 @@ function buildSidebar(): void {
   luaCombinedEl.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const items: ContextMenuItem[] = [
-      {
-        label: 'MCP 경로 복사',
-        action: () => {
-          navigator.clipboard.writeText('read_field("lua")');
-          setStatus('복사됨: read_field("lua")');
-        },
-      },
-    ];
-    const store = getBackups('lua');
-    if (store.length > 0) {
-      items.push('---');
-      items.push({
-        label: '백업 불러오기',
-        action: () => showBackupMenu('lua', e.clientX, e.clientY, backupMenuCallbacks),
-      });
-    }
+    const items: ContextMenuItem[] = [createMcpCopyItem('read_field("lua")')];
+    appendBackupItems(items, 'lua', e.clientX, e.clientY);
     showContextMenu(e.clientX, e.clientY, items);
   });
   luaFolder.children.appendChild(luaCombinedEl);
@@ -705,22 +706,9 @@ function buildSidebar(): void {
       e.stopPropagation();
       const items: ContextMenuItem[] = [
         { label: '이름 변경', action: () => renameLuaSection(idx) },
-        {
-          label: 'MCP 경로 복사',
-          action: () => {
-            navigator.clipboard.writeText(`read_lua(${idx})`);
-            setStatus(`복사됨: read_lua(${idx})`);
-          },
-        },
+        createMcpCopyItem(`read_lua(${idx})`),
       ];
-      const store = getBackups(`lua_s${idx}`);
-      if (store.length > 0) {
-        items.push('---');
-        items.push({
-          label: '백업 불러오기',
-          action: () => showBackupMenu(`lua_s${idx}`, e.clientX, e.clientY, backupMenuCallbacks),
-        });
-      }
+      appendBackupItems(items, `lua_s${idx}`, e.clientX, e.clientY);
       items.push('---');
       items.push({ label: '삭제', action: () => deleteLuaSection(idx) });
       showContextMenu(e.clientX, e.clientY, items);
@@ -760,23 +748,8 @@ function buildSidebar(): void {
       );
     });
     cssCombinedEl.addEventListener('contextmenu', (e) => {
-      const items: ContextMenuItem[] = [
-        {
-          label: 'MCP 경로 복사',
-          action: () => {
-            navigator.clipboard.writeText('read_field("css")');
-            setStatus('복사됨: read_field("css")');
-          },
-        },
-      ];
-      const store = getBackups('css');
-      if (store.length > 0) {
-        items.push('---');
-        items.push({
-          label: '백업 불러오기',
-          action: () => showBackupMenu('css', e.clientX, e.clientY, backupMenuCallbacks),
-        });
-      }
+      const items: ContextMenuItem[] = [createMcpCopyItem('read_field("css")')];
+      appendBackupItems(items, 'css', e.clientX, e.clientY);
       showContextMenu(e.clientX, e.clientY, items);
     });
     cssFolder.children.appendChild(cssCombinedEl);
@@ -803,22 +776,9 @@ function buildSidebar(): void {
         e.stopPropagation();
         const items: ContextMenuItem[] = [
           { label: '이름 변경', action: () => renameCssSection(idx) },
-          {
-            label: 'MCP 경로 복사',
-            action: () => {
-              navigator.clipboard.writeText(`read_css(${idx})`);
-              setStatus(`복사됨: read_css(${idx})`);
-            },
-          },
+          createMcpCopyItem(`read_css(${idx})`),
         ];
-        const store = getBackups(`css_s${idx}`);
-        if (store.length > 0) {
-          items.push('---');
-          items.push({
-            label: '백업 불러오기',
-            action: () => showBackupMenu(`css_s${idx}`, e.clientX, e.clientY, backupMenuCallbacks),
-          });
-        }
+        appendBackupItems(items, `css_s${idx}`, e.clientX, e.clientY);
         items.push('---');
         items.push({ label: '삭제', action: () => deleteCssSection(idx) });
         showContextMenu(e.clientX, e.clientY, items);
@@ -896,22 +856,9 @@ function buildSidebar(): void {
       e.stopPropagation();
       const items: ContextMenuItem[] = [];
       if (item.field) {
-        items.push({
-          label: 'MCP 경로 복사',
-          action: () => {
-            navigator.clipboard.writeText(`read_field("${item.field}")`);
-            setStatus(`복사됨: read_field("${item.field}")`);
-          },
-        });
+        items.push(createMcpCopyItem(`read_field("${item.field}")`));
       }
-      const store = getBackups(item.id);
-      if (store.length > 0) {
-        items.push('---');
-        items.push({
-          label: '백업 불러오기',
-          action: () => showBackupMenu(item.id, e.clientX, e.clientY, backupMenuCallbacks),
-        });
-      }
+      appendBackupItems(items, item.id, e.clientX, e.clientY);
       showContextMenu(e.clientX, e.clientY, items);
     });
     tree.appendChild(el);
@@ -1192,22 +1139,9 @@ function buildSidebar(): void {
       e.stopPropagation();
       const items: ContextMenuItem[] = [
         { label: '이름 변경', action: () => renameRegex(idx) },
-        {
-          label: 'MCP 경로 복사',
-          action: () => {
-            navigator.clipboard.writeText(`read_regex(${idx})`);
-            setStatus(`복사됨: read_regex(${idx})`);
-          },
-        },
+        createMcpCopyItem(`read_regex(${idx})`),
       ];
-      const store = getBackups(`regex_${idx}`);
-      if (store.length > 0) {
-        items.push('---');
-        items.push({
-          label: '백업 불러오기',
-          action: () => showBackupMenu(`regex_${idx}`, e.clientX, e.clientY, backupMenuCallbacks),
-        });
-      }
+      appendBackupItems(items, `regex_${idx}`, e.clientX, e.clientY);
       items.push('---');
       items.push({ label: '삭제', action: () => deleteRegex(idx) });
       showContextMenu(e.clientX, e.clientY, items);
