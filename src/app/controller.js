@@ -40,6 +40,12 @@ import {
 import { ensureBlueArchiveMonacoTheme, loadMonacoRuntime } from '../lib/monaco-loader';
 import { createBufferedTerminalChatSession } from '../lib/chat-session';
 import {
+  feedBgBuffer,
+  initChatMode as initChatModeUi,
+  isChatMode,
+  onChatData
+} from '../lib/chat-ui';
+import {
   NON_MONACO_EDITOR_TAB_TYPES,
   requiresMonacoEditor,
   resolvePendingEditorTab
@@ -54,7 +60,14 @@ import {
   V_SLOTS
 } from '../lib/layout-manager';
 import { planMcpDataUpdate } from '../lib/mcp-data-update';
-import { applyDockedLayoutState, applyPopoutLayoutState } from '../lib/popout-state';
+import {
+  dockPanel as _dockPanel,
+  isPanelPoppedOut,
+  popOutEditorPanel as _popOutEditorPanel,
+  popOutPanel as _popOutPanel,
+  removePoppedOut,
+  updatePopoutButtons
+} from '../lib/popout-window';
 import { showPreviewPanel as renderPreviewPanel } from '../lib/preview-panel';
 import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
@@ -77,7 +90,6 @@ import {
   AI_AGENT_LABELS,
   applySelectedChoice,
   cleanTuiOutput,
-  extractChatChoices,
   filterDisplayChatMessages,
   isAssistantWelcomeBanner,
   isSpinnerNoise,
@@ -139,17 +151,13 @@ let autosaveDir = settingsSnapshot.autosaveDir; // empty = same as file
 let autosaveTimer = null;
 
 
-// Chat mode state
-let chatMode = false;
+// Chat mode state — UI lives in ../lib/chat-ui, session created here for wiring
 const chatSession = createBufferedTerminalChatSession({
   applySelectedChoice,
   cleanTuiOutput,
   filterDisplayChatMessages,
   isAssistantWelcomeBanner,
   isSpinnerNoise,
-  onUpdate: () => {
-    if (chatMode) renderChatMessages();
-  },
   stripAnsi
 });
 
@@ -1422,7 +1430,7 @@ async function initTerminal() {
     container,
     onActivity: () => handleTerminalDataForBgm(),
     onTerminalData: (data) => {
-      if (chatMode) onChatData(data);
+      if (isChatMode()) onChatData(data);
       feedBgBuffer(data);
     },
     onUserInput: () => {
@@ -1904,154 +1912,6 @@ function updateBgmButtonStyle(btn) {
 // Echo filter: ignore terminal data within 300ms of user input
 let lastUserInputTime = 0;
 
-// ==================== Chat Mode (TokiTalk Bubbles) ====================
-
-function initChatMode() {
-  const termArea = document.getElementById('terminal-area');
-
-  const chatView = document.createElement('div');
-  chatView.id = 'chat-view';
-
-  const chatMsgs = document.createElement('div');
-  chatMsgs.id = 'chat-messages';
-
-  const chatInputArea = document.createElement('div');
-  chatInputArea.id = 'chat-input-area';
-
-  const chatInput = document.createElement('input');
-  chatInput.type = 'text';
-  chatInput.id = 'chat-input';
-  chatInput.placeholder = '메시지를 입력하세요...';
-
-  const chatSendBtn = document.createElement('button');
-  chatSendBtn.id = 'chat-send-btn';
-  chatSendBtn.textContent = '전송';
-
-  chatInputArea.appendChild(chatInput);
-  chatInputArea.appendChild(chatSendBtn);
-  chatView.appendChild(chatMsgs);
-  chatView.appendChild(chatInputArea);
-  termArea.appendChild(chatView);
-
-  chatSendBtn.addEventListener('click', chatSendInput);
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      chatSendInput();
-    }
-  });
-
-  document.getElementById('btn-chat-mode').addEventListener('click', toggleChatMode);
-}
-
-function toggleChatMode() {
-  chatMode = !chatMode;
-  const termContainer = document.getElementById('terminal-container');
-  const chatView = document.getElementById('chat-view');
-  const btn = document.getElementById('btn-chat-mode');
-
-  if (chatMode) {
-    chatSession.setActive(true);
-
-    termContainer.style.display = 'none';
-    chatView.classList.add('active');
-    btn.style.background = 'rgba(255,255,255,0.5)';
-    renderChatMessages();
-    document.getElementById('chat-input').focus();
-  } else {
-    chatSession.setActive(false);
-    termContainer.style.display = '';
-    chatView.classList.remove('active');
-    btn.style.background = '';
-    if (fitAddon && term) setTimeout(() => fitAddon.fit(), 20);
-  }
-}
-
-function chatSendInput() {
-  const input = document.getElementById('chat-input');
-  const text = input.value.trim();
-  if (!text) return;
-
-  input.value = '';
-  chatSession.send(text);
-  renderChatMessages();
-
-  // Send to pty: text first, then Enter after short delay
-  // Interactive CLI TUI needs separate text input and Enter key
-  window.tokiAPI.terminalInput(text);
-  setTimeout(() => {
-    window.tokiAPI.terminalInput('\r');
-  }, 50);
-}
-
-function onChatData(rawData) {
-  chatSession.handleTerminalData(rawData);
-}
-
-function finalizeChatResponse() {
-  chatSession.finalizeResponse();
-  renderChatMessages();
-}
-
-function renderChatMessages() {
-  const container = document.getElementById('chat-messages');
-  if (!container) return;
-
-  const chatState = chatSession.getState();
-  const chatMessages = chatSession.getMessages();
-  container.innerHTML = '';
-
-  for (const msg of chatMessages) {
-    if (!msg.text && !chatState.isStreaming) continue;
-
-    const bubble = document.createElement('div');
-    bubble.className = `chat-bubble ${msg.type}`;
-
-    const name = document.createElement('div');
-    name.className = 'chat-bubble-name';
-    name.textContent = msg.type === 'user' ? 'You' : 'Toki';
-    bubble.appendChild(name);
-
-    const content = document.createElement('div');
-    content.className = 'chat-bubble-text';
-    content.textContent = msg.text || '...';
-    bubble.appendChild(content);
-
-    container.appendChild(bubble);
-
-    // Detect numbered choices in system message and render buttons (skip if already chosen)
-    if (msg.type === 'system' && msg.text && !chatState.isStreaming && !msg._choiceMade) {
-        const choices = extractChatChoices(msg.text);
-        if (choices.length >= 2) {
-        const choiceContainer = document.createElement('div');
-        choiceContainer.className = 'chat-choices';
-        for (const choice of choices) {
-          const btn = document.createElement('button');
-          btn.className = 'chat-choice-btn';
-          btn.textContent = choice.label;
-          btn.addEventListener('click', () => sendChatChoice(choice.value));
-          choiceContainer.appendChild(btn);
-        }
-        container.appendChild(choiceContainer);
-      }
-    }
-  }
-
-  container.scrollTop = container.scrollHeight;
-}
-
-function sendChatChoice(value) {
-  if (!term) return;
-  chatSession.selectChoice(value);
-  renderChatMessages();
-  window.tokiAPI.terminalInput(value);
-  setTimeout(() => window.tokiAPI.terminalInput('\r'), 50);
-}
-
-// Background buffer: always collects terminal output so chat mode can show recent data
-function feedBgBuffer(rawData) {
-  chatSession.feedBackgroundData(rawData);
-}
 
 // Help popup and syntax reference are now in '../lib/help-popup'
 
@@ -2403,118 +2263,32 @@ function applyPanelDrop(panelId, position) {
 }
 
 // ==================== Pop-out Mode (External Window) ====================
+// Core logic lives in ../lib/popout-window.ts; thin wrappers below close
+// over controller-level state via a lazily-built deps object.
 
-const poppedOutPanels = new Set(); // tracks which panels are popped out
-
-function isPanelPoppedOut(panelId) {
-  return poppedOutPanels.has(panelId);
+function getPopoutDeps() {
+  return {
+    layoutState,
+    rebuildLayout,
+    setStatus,
+    getEditorInstance: () => editorInstance,
+    setEditorInstance: (ed) => { editorInstance = ed; },
+    createOrSwitchEditor,
+    tabMgr,
+    fitTerminal: () => { if (fitAddon && term) fitAddon.fit(); }
+  };
 }
 
-async function popOutPanel(panelId, requestId = null) {
-  if (isPanelPoppedOut(panelId)) return;
-
-  const handleTitle = panelId === 'sidebar' ? '항목' : panelId === 'refs' ? '참고자료' : 'TokiTalk';
-
-  // Create external window via IPC
-  await window.tokiAPI.popoutPanel(panelId, requestId);
-  poppedOutPanels.add(panelId);
-
-  // Hide the panel in main window
-  applyPopoutLayoutState(panelId, layoutState);
-  rebuildLayout();
-
-  // Update popout button icon
-  updatePopoutButtons();
-  setStatus(`${handleTitle} 팝아웃됨 (외부 창)`);
+function popOutPanel(panelId, requestId = null) {
+  return _popOutPanel(panelId, getPopoutDeps(), requestId);
 }
 
-async function popOutEditorPanel(tabId) {
-  if (isPanelPoppedOut('editor')) return;
-
-  const targetId = tabId || tabMgr.activeTabId;
-  if (!targetId) return;
-
-  const curTab = tabMgr.openTabs.find(t => t.id === targetId);
-  if (!curTab || curTab.language === '_image') return;
-
-  // Switch to target tab first if not active
-  if (targetId !== tabMgr.activeTabId) {
-    createOrSwitchEditor(curTab);
-  }
-
-  // Get current content
-  let content = '';
-  if (editorInstance) {
-    content = editorInstance.getValue();
-    if (curTab.setValue) curTab.setValue(content);
-  } else {
-    content = curTab.getValue();
-  }
-
-  // Send tab data to main process for popout to pick up
-  const requestId = await window.tokiAPI.setEditorPopoutData({
-    tabId: curTab.id,
-    label: curTab.label,
-    language: curTab.language,
-    content: content,
-    readOnly: !curTab.setValue
-  });
-
-  // Create popout window
-  await window.tokiAPI.popoutPanel('editor', requestId);
-  poppedOutPanels.add('editor');
-
-  // Show placeholder in editor area
-  const container = document.getElementById('editor-container');
-  if (editorInstance) { editorInstance.dispose(); editorInstance = null; }
-  container.innerHTML = '<div class="empty-state">편집중 (팝아웃 창)</div>';
-
-  tabMgr.renderTabs();
-  setStatus(`에디터 팝아웃됨: ${curTab.label}`);
+function popOutEditorPanel(tabId) {
+  return _popOutEditorPanel(tabId, getPopoutDeps());
 }
 
 function dockPanel(panelId) {
-  if (!isPanelPoppedOut(panelId)) return;
-
-  // Close external window via IPC
-  window.tokiAPI.closePopout(panelId);
-  poppedOutPanels.delete(panelId);
-
-  // Show the panel back in main window
-  if (panelId === 'editor') {
-    // Re-open the active tab in the main editor
-    if (tabMgr.activeTabId) {
-      const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
-      if (curTab) createOrSwitchEditor(curTab);
-    }
-  } else {
-    applyDockedLayoutState(panelId, layoutState);
-  }
-  rebuildLayout();
-
-  // Refit terminal
-  if (panelId === 'terminal' && fitAddon && term) {
-    setTimeout(() => fitAddon.fit(), 50);
-  }
-
-  updatePopoutButtons();
-  tabMgr.renderTabs();
-  const panelName = panelId === 'sidebar' ? '항목' : panelId === 'editor' ? '에디터' : panelId === 'refs' ? '참고자료' : 'TokiTalk';
-  setStatus(`${panelName} 도킹됨`);
-}
-
-function updatePopoutButtons() {
-  // Update popout button icons based on current state
-  document.querySelectorAll('[data-popout-panel]').forEach(btn => {
-    const panel = btn.dataset.popoutPanel;
-    if (poppedOutPanels.has(panel)) {
-      btn.textContent = '📌';
-      btn.title = '도킹 (복원)';
-    } else {
-      btn.textContent = '↗';
-      btn.title = '팝아웃 (분리)';
-    }
-  });
+  return _dockPanel(panelId, getPopoutDeps());
 }
 
 // Tab open by ID (used for sidebar popout clicks)
@@ -2739,7 +2513,12 @@ export async function initMainRenderer() {
   initSidebarSplitResizer();
   initTokiAvatarUi(document.getElementById('toki-avatar-display'), { darkMode, setStatus });
   refreshDarkModeUi(); // Apply saved dark mode preference
-  initChatMode();
+  initChatModeUi(document.getElementById('terminal-area'), {
+    chatSession,
+    fitTerminal: () => { if (fitAddon && term) setTimeout(() => fitAddon.fit(), 20); },
+    isTerminalReady: () => !!term,
+    terminalInput: (text) => window.tokiAPI.terminalInput(text)
+  });
   initPanelDragDrop();
   // Refs panel dock button
   const refsPanelDockBtn = document.getElementById('btn-refs-panel-dock');
@@ -2766,7 +2545,7 @@ export async function initMainRenderer() {
 
   // Listen for popout window events
   window.tokiAPI.onPopoutClosed((panelType) => {
-    poppedOutPanels.delete(panelType);
+    removePoppedOut(panelType);
     // Show the panel back in main window
     if (panelType === 'sidebar') {
       layoutState.itemsVisible = true;
