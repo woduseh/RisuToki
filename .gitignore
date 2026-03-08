@@ -4,6 +4,16 @@ node_modules/
 # Build output
 dist/
 
+# Compiled Electron files (generated from .ts sources)
+/main.js
+preload.js
+popout-preload.js
+
+# Compiled node-libs (generated from .ts sources via tsconfig.node-libs.json)
+src/rpack.js
+src/lorebook-convert.js
+/toki-mcp-server.js
+
 # Autosave files
 *.autosave.charx
 

@@ -4,7 +4,6 @@ import pluginVue from 'eslint-plugin-vue';
 import tseslint from 'typescript-eslint';
 
 const commonJsFiles = [
-  'main.js',
   'src/lib/**/*.cjs',
   'test/**/*.js'
 ];
@@ -20,7 +19,7 @@ const portedRendererFiles = [
   'src/lib/preview-format.ts'
 ];
 
-const tsFiles = ['src/**/*.{ts,vue}', 'preload.ts', 'popout-preload.ts', 'vite.config.ts', 'vitest.setup.ts', 'toki-mcp-server.ts'];
+const tsFiles = ['src/**/*.{ts,vue}', 'main.ts', 'preload.ts', 'popout-preload.ts', 'vite.config.ts', 'vitest.setup.ts', 'toki-mcp-server.ts'];
 
 export default [
   {
@@ -107,7 +106,7 @@ export default [
     }
   },
   {
-    files: ['src/charx-io.ts'],
+    files: ['src/charx-io.ts', 'main.ts'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off'
     }
