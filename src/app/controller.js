@@ -2,10 +2,10 @@ import { parseLuaSections, combineLuaSections, parseCssSections, combineCssSecti
 import { createTreeItem, createFolderItem, updateSidebarActive as _updateSidebarActive } from '../lib/sidebar-builder';
 import PreviewEngine from '../lib/preview-engine';
 import {
-  buildAssistantLaunchCommand,
-  buildWindowsAssistantBootstrapCommand,
-  detectRuntimePlatform
-} from '../lib/assistant-launch';
+  handleClaudeStart as _handleClaudeStart,
+  handleCopilotStart as _handleCopilotStart,
+  handleCodexStart as _handleCodexStart,
+} from '../lib/assistant-prompt';
 import {
   getDefaultRpModeForDarkMode,
   readAppSettingsSnapshot,
@@ -88,7 +88,6 @@ import {
   TERM_THEME_LIGHT
 } from '../lib/terminal-ui';
 import {
-  AI_AGENT_LABELS,
   applySelectedChoice,
   cleanTuiOutput,
   filterDisplayChatMessages,
@@ -98,6 +97,7 @@ import {
 } from '../lib/terminal-chat';
 import { buildAssetPromptTemplate } from '../lib/asset-prompt-template';
 import { createBackup, formatBackupTime, getBackups, showBackupMenu } from '../lib/backup-store';
+import { initDragDrop } from '../lib/drag-drop-import';
 import { setStatus } from '../lib/status-bar';
 import { showHelpPopup } from '../lib/help-popup';
 import { showSettingsPopup as renderSettingsPopup } from '../lib/settings-popup';
@@ -109,7 +109,6 @@ import {
   handleSaveAs as _handleSaveAs,
 } from '../lib/file-actions';
 import {
-  isSameReferencePath,
   stringifyStringArray,
   addReferenceFile as _addReferenceFile,
   buildRefsSidebar as _buildRefsSidebar,
@@ -1295,123 +1294,6 @@ function restoreBackup(tabId, backupIdx) {
   setStatus(`백업 v${backupIdx + 1} 복원됨 (${formatBackupTime(backup.time)})`);
 }
 
-// ==================== Drag & Drop ====================
-function readFileAsBase64(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.readAsDataURL(file);
-  });
-}
-
-function initDragDrop() {
-  const sidebar = document.getElementById('sidebar');
-
-  sidebar.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    sidebar.classList.add('drop-highlight');
-  });
-
-  sidebar.addEventListener('dragleave', (e) => {
-    e.preventDefault();
-    sidebar.classList.remove('drop-highlight');
-  });
-
-  sidebar.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    sidebar.classList.remove('drop-highlight');
-
-    const files = e.dataTransfer.files;
-    if (!files || files.length === 0) return;
-
-    let jsonCount = 0, imgCount = 0, charxCount = 0;
-
-    for (const file of files) {
-      const ext = file.name.split('.').pop().toLowerCase();
-
-      // .charx/.risum files → add as reference (works even without main file open)
-      if (ext === 'charx' || ext === 'risum') {
-        if (referenceFiles.some(r => isSameReferencePath(r.filePath, file.path))) {
-          setStatus(`이미 로드됨: ${file.name}`);
-          continue;
-        }
-        const ref = await window.tokiAPI.openReferencePath(file.path);
-        if (ref) {
-          await syncReferenceFiles();
-          charxCount++;
-        }
-        continue;
-      }
-
-      if (!fileData) {
-        setStatus('파일을 먼저 열어주세요');
-        return;
-      }
-
-      if (ext === 'json') {
-        const text = await file.text();
-        try {
-          const data = JSON.parse(text);
-          const entries = Array.isArray(data) ? data : [data];
-          // Detect regex vs lorebook: regex has "in"/"findRegex" or type "editDisplay"/"editInput"
-          const isRegex = entries.some(e =>
-            e.in !== undefined || e.findRegex !== undefined ||
-            e.type === 'editDisplay' || e.type === 'editInput'
-          );
-
-          if (isRegex) {
-            for (const entry of entries) {
-              fileData.regex.push({
-                comment: entry.comment || entry.name || file.name.replace('.json', ''),
-                in: entry.in || entry.findRegex || '',
-                out: entry.out || entry.replaceString || '',
-                type: entry.type || 'editDisplay',
-                ableFlag: entry.ableFlag !== undefined ? entry.ableFlag : true
-              });
-            }
-          } else {
-            const lbEntries = data.entries || entries;
-            for (const entry of lbEntries) {
-              fileData.lorebook.push({
-                key: entry.key || (entry.keys ? entry.keys.join(', ') : ''),
-                content: entry.content || '',
-                comment: entry.comment || entry.name || file.name.replace('.json', ''),
-                mode: entry.mode || 'normal',
-                insertorder: entry.insertorder || entry.insertion_order || 100,
-                alwaysActive: entry.alwaysActive || entry.constant || false,
-                forceActivation: entry.forceActivation || false,
-                selective: entry.selective || false,
-                secondkey: entry.secondkey || (entry.secondary_keys ? entry.secondary_keys.join(', ') : ''),
-                constant: entry.constant || false,
-                order: fileData.lorebook.length,
-                folder: entry.folder || ''
-              });
-            }
-          }
-          jsonCount++;
-        } catch (err) {
-          console.warn('[drag-drop] Invalid JSON:', file.name, err);
-        }
-      } else if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {
-        const base64 = await readFileAsBase64(file);
-        const result = await window.tokiAPI.addAssetBuffer(file.name, base64);
-        if (result) imgCount++;
-      }
-    }
-
-    buildSidebar();
-    const parts = [];
-    if (charxCount > 0) parts.push(`참고 파일 ${charxCount}개`);
-    if (jsonCount > 0) parts.push(`JSON ${jsonCount}개`);
-    if (imgCount > 0) parts.push(`이미지 ${imgCount}개`);
-    if (parts.length > 0) {
-      setStatus(`드래그 드롭: ${parts.join(', ')} 추가됨`);
-    }
-  });
-}
-
 // ==================== Terminal (xterm.js + node-pty) ====================
 let term = null;
 let fitAddon = null;
@@ -1559,15 +1441,6 @@ async function handleSaveAs() { return _handleSaveAs(fileActionDeps); }
 
 // ==================== RP Mode ====================
 
-// Load RP persona text (from file or custom)
-async function loadRpPersona() {
-  if (rpMode === 'off') return '';
-  if (rpMode === 'custom') return rpCustomText;
-  // 'toki' or 'aris' — read from file
-  const text = await window.tokiAPI.readPersona(rpMode);
-  return text || '';
-}
-
 function getRpLabel() {
   if (rpMode === 'off') return 'OFF';
   if (rpMode === 'toki') return '토키';
@@ -1650,140 +1523,35 @@ function mergeLuaIntoTriggerScriptsText(triggerScriptsText, lua) {
   }
 }
 
-async function buildAssistantPrompt(promptInfo, mcpConnected) {
-  if (!promptInfo) {
-    return rpMode !== 'off' ? await loadRpPersona() : '';
-  }
-
-  const lines = [
-    `당신은 RisuToki에 내장된 AI 어시스턴트입니다.`,
-    ``,
-    `== 현재 파일 ==`,
-    `파일: ${promptInfo.fileName}`,
-    `캐릭터: ${promptInfo.name}`,
-    `구성: ${promptInfo.stats}`,
-    ``,
-    `== .charx 파일 구조 ==`,
-    `.charx = ZIP 아카이브 (card.json + module.risum + assets/)`,
-    `card.json: V3 캐릭터 카드 스펙 (name, description, firstMessage, personality 등)`,
-    `module.risum: RPack 인코딩된 바이너리 (Lua 트리거, 정규식 스크립트, 로어북)`,
-    `assets/: 이미지 리소스 (icon/, other/image/)`,
-    ``,
-    `== 편집 가능 필드 ==`,
-    `- lua: Lua 5.4 트리거 스크립트 (RisuAI CBS API 사용). "-- ===== 섹션명 =====" 구분자로 섹션 분리됨`,
-    `- globalNote: 포스트 히스토리 인스트럭션 (시스템 프롬프트 뒤에 삽입됨)`,
-    `- firstMessage: 첫 메시지 (HTML/마크다운 혼용 가능)`,
-    `- description: 캐릭터 설명`,
-    `- css: 커스텀 CSS (RisuAI 채팅 UI에 적용)`,
-    `- defaultVariables: 기본 변수 (평문)`,
-    `- name: 캐릭터 이름`,
-    ``,
-    `== 로어북 항목 구조 ==`,
-    `{ key: "트리거키워드", secondkey: "", comment: "설명", content: "본문",`,
-    `  order: 100, priority: 0, selective: false, alwaysActive: false, mode: "normal" }`,
-    ``,
-    `== 정규식 스크립트 구조 ==`,
-    `{ comment: "설명", type: "editoutput"|"editinput"|"editdisplay",`,
-    `  find: "정규식패턴", replace: "치환문자열", flag: "g"|"gi"|"gm" }`,
-  ];
-
-  if (mcpConnected) {
-    lines.push(``);
-    lines.push(`== RisuToki MCP 도구 ==`);
-    lines.push(`연결됨. 다음 도구로 에디터 데이터를 직접 읽기/쓰기할 수 있습니다:`);
-    lines.push(`- list_fields: 필드 목록 + 크기 확인`);
-    lines.push(`- read_field(field) / write_field(field, content): 필드 읽기/쓰기`);
-    lines.push(`- list_lorebook / read_lorebook(index) / write_lorebook(index, data): 로어북 관리`);
-    lines.push(`- add_lorebook(data) / delete_lorebook(index): 로어북 추가/삭제`);
-    lines.push(`- list_regex / read_regex(index) / write_regex(index, data): 정규식 관리`);
-    lines.push(`- add_regex(data) / delete_regex(index): 정규식 추가/삭제`);
-    lines.push(`- list_lua / read_lua(index) / write_lua(index, content): Lua 섹션별 읽기/쓰기 (-- ===== 섹션명 ===== 구분자 기준)`);
-    lines.push(`- replace_in_lua(index, find, replace, regex?, flags?): Lua 섹션 내 문자열 치환 (서버에서 직접 처리)`);
-    lines.push(`- insert_in_lua(index, content, position?, anchor?): Lua 섹션에 코드 삽입 (end/start/after/before)`);
-    lines.push(`- list_css / read_css(index) / write_css(index, content): CSS 섹션별 읽기/쓰기 (/* ===== 섹션명 ===== */ 구분자 기준)`);
-    lines.push(`- replace_in_css(index, find, replace, regex?, flags?): CSS 섹션 내 문자열 치환 (서버에서 직접 처리)`);
-    lines.push(`- insert_in_css(index, content, position?, anchor?): CSS 섹션에 코드 삽입 (end/start/after/before)`);
-    lines.push(`- list_references: 로드된 참고 자료 파일 목록 (읽기 전용)`);
-    lines.push(`- read_reference_field(index, field): 참고 파일의 필드 읽기 (읽기 전용)`);
-    lines.push(`write/add/delete 도구 사용 시 에디터에서 사용자 확인 팝업이 뜹니다.`);
-    lines.push(`도구를 적극 활용하여 사용자의 요청을 수행하세요.`);
-    lines.push(``);
-    lines.push(`== 중요: 읽기 규칙 ==`);
-    lines.push(`- lua, css 필드는 반드시 섹션 단위로 읽으세요: list_lua → read_lua(index)`);
-    lines.push(`- read_field("lua")나 read_field("css")는 전체를 한번에 반환하므로 사용하지 마세요`);
-    lines.push(`- 로어북도 list_lorebook → read_lorebook(index) 순서로 개별 읽기`);
-    lines.push(`- 정규식도 list_regex → read_regex(index) 순서로 개별 읽기`);
-  } else {
-    lines.push(`편집 중인 항목의 내용을 알려주면 수정을 도와드리겠습니다.`);
-  }
-
-  const rpText = await loadRpPersona();
-  if (rpText) {
-    lines.push(``);
-    lines.push(`== Response Persona ==`);
-    lines.push(rpText);
-  }
-
-  return lines.join('\n');
-}
-
-async function startAssistantCli(agent) {
-  if (!term) {
-    setStatus('터미널이 준비되지 않았습니다');
-    return;
-  }
-
-  const promptInfo = await window.tokiAPI.getClaudePrompt();
-  const runtimePlatform = detectRuntimePlatform(window.navigator);
-  let mcpConnected = false;
-
-  if (agent === 'claude') {
-    mcpConnected = !!(await window.tokiAPI.writeMcpConfig());
-    await window.tokiAPI.cleanupAgentsMd();
-  } else if (agent === 'copilot') {
-    mcpConnected = !!(await window.tokiAPI.writeCopilotMcpConfig());
-  } else if (agent === 'codex') {
-    mcpConnected = !!(await window.tokiAPI.writeCodexMcpConfig());
-  }
-
-  const initPrompt = await buildAssistantPrompt(promptInfo, mcpConnected);
-  let cmd;
-
-  if (agent === 'claude') {
-    if (initPrompt) {
-      const { filePath, platform } = await window.tokiAPI.writeSystemPrompt(initPrompt);
-      cmd = buildAssistantLaunchCommand({
-        agent,
-        hasInitPrompt: true,
-        platform: platform || runtimePlatform,
-        systemPromptPath: filePath
-      });
-    } else {
-      cmd = buildAssistantLaunchCommand({ agent, platform: runtimePlatform });
-    }
-  } else {
-    await window.tokiAPI.writeAgentsMd(initPrompt || '');
-    cmd = buildAssistantLaunchCommand({ agent, platform: runtimePlatform });
-  }
-
-  if (runtimePlatform === 'win32') {
-    window.tokiAPI.terminalInput(buildWindowsAssistantBootstrapCommand());
-  }
-
-  window.tokiAPI.terminalInput(cmd);
-  setStatus(`${AI_AGENT_LABELS[agent]} 시작 중...`);
+function getAssistantDeps() {
+  return {
+    rpMode,
+    rpCustomText,
+    hasTerminal: !!term,
+    readPersona: (mode) => window.tokiAPI.readPersona(mode),
+    getClaudePrompt: () => window.tokiAPI.getClaudePrompt(),
+    writeMcpConfig: () => window.tokiAPI.writeMcpConfig(),
+    writeCopilotMcpConfig: () => window.tokiAPI.writeCopilotMcpConfig(),
+    writeCodexMcpConfig: () => window.tokiAPI.writeCodexMcpConfig(),
+    cleanupAgentsMd: () => window.tokiAPI.cleanupAgentsMd(),
+    writeSystemPrompt: (content) => window.tokiAPI.writeSystemPrompt(content),
+    writeAgentsMd: (content) => window.tokiAPI.writeAgentsMd(content),
+    terminalInput: (text) => window.tokiAPI.terminalInput(text),
+    setStatus,
+    navigatorLike: window.navigator,
+  };
 }
 
 async function handleClaudeStart() {
-  await startAssistantCli('claude');
+  await _handleClaudeStart(getAssistantDeps());
 }
 
 async function handleCopilotStart() {
-  await startAssistantCli('copilot');
+  await _handleCopilotStart(getAssistantDeps());
 }
 
 async function handleCodexStart() {
-  await startAssistantCli('codex');
+  await _handleCodexStart(getAssistantDeps());
 }
 
 
@@ -2322,7 +2090,15 @@ export async function initMainRenderer() {
   });
   initResizers();
   initKeyboard();
-  initDragDrop();
+  initDragDrop(document.getElementById('sidebar'), {
+    get fileData() { return fileData; },
+    get referenceFiles() { return referenceFiles; },
+    syncReferenceFiles,
+    addAssetBuffer: (name, data) => window.tokiAPI.addAssetBuffer(name, data),
+    buildSidebar,
+    setStatus,
+    openReferencePath: (path) => window.tokiAPI.openReferencePath(path),
+  });
   initEditor();
   document.getElementById('btn-terminal-bg').addEventListener('click', handleTerminalBg);
   initRpModeButton();
