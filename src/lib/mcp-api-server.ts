@@ -297,6 +297,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (req.method === 'GET' && parts[0] === 'fields' && !parts[1]) {
         const fileType = currentData._fileType || 'charx';
         const isRisum = fileType === 'risum';
+        const isRisup = fileType === 'risup';
 
         const fieldNames = [
           'name',
@@ -346,6 +347,24 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           fields.push({ name: 'hideIcon', value: !!currentData.hideIcon, type: 'boolean' });
         }
 
+        // Risup preset-specific fields
+        if (isRisup) {
+          const risupStringFields = [
+            'mainPrompt', 'jailbreak', 'aiModel', 'subModel', 'apiType',
+            'promptTemplate', 'presetBias', 'formatingOrder', 'presetImage',
+          ];
+          for (const f of risupStringFields) {
+            fields.push({ name: f, size: ((currentData[f] as string) || '').length, type: 'string' });
+          }
+          const risupNumberFields = [
+            'temperature', 'maxContext', 'maxResponse', 'frequencyPenalty', 'presencePenalty',
+          ];
+          for (const f of risupNumberFields) {
+            fields.push({ name: f, value: currentData[f] ?? 0, type: 'number' });
+          }
+          fields.push({ name: 'promptPreprocess', value: !!currentData.promptPreprocess, type: 'boolean' });
+        }
+
         return jsonRes(res, { fileType, fields });
       }
 
@@ -372,13 +391,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'moduleName', 'moduleDescription',
         ];
         const risumReadOnlyFields = ['moduleId'];
+        const risupFields = [
+          'mainPrompt', 'jailbreak', 'temperature', 'maxContext', 'maxResponse',
+          'frequencyPenalty', 'presencePenalty', 'aiModel', 'subModel', 'apiType',
+          'promptPreprocess', 'promptTemplate', 'presetBias', 'formatingOrder', 'presetImage',
+        ];
         const isRisum = (currentData._fileType || 'charx') === 'risum';
-        const allAllowed = isRisum
-          ? [...allowedFields, ...risumFields, ...risumReadOnlyFields]
-          : allowedFields;
+        const isRisup = (currentData._fileType || 'charx') === 'risup';
+        const allAllowed = [
+          ...allowedFields,
+          ...(isRisum ? [...risumFields, ...risumReadOnlyFields] : []),
+          ...(isRisup ? risupFields : []),
+        ];
 
         if (!allAllowed.includes(fieldName)) {
-          const hint = isRisum ? '(risum 필드 포함)' : '(charx 파일에서는 risum 전용 필드를 사용할 수 없습니다)';
+          const hint = isRisum ? '(risum 필드 포함)' : isRisup ? '(risup 프리셋 필드 포함)' : '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
           return jsonRes(res, { error: `Unknown field: ${fieldName} ${hint}` }, 400);
         }
 
@@ -393,8 +420,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return jsonRes(res, { field: fieldName, content: currentData[fieldName] || [] });
           }
           // Boolean fields
-          if (fieldName === 'lowLevelAccess' || fieldName === 'hideIcon') {
+          if (fieldName === 'lowLevelAccess' || fieldName === 'hideIcon' || fieldName === 'promptPreprocess') {
             return jsonRes(res, { field: fieldName, content: !!currentData[fieldName], type: 'boolean' });
+          }
+          // Number fields
+          if (['temperature', 'maxContext', 'maxResponse', 'frequencyPenalty', 'presencePenalty'].includes(fieldName)) {
+            return jsonRes(res, { field: fieldName, content: currentData[fieldName] ?? 0, type: 'number' });
           }
           return jsonRes(res, { field: fieldName, content: currentData[fieldName] || '' });
         }

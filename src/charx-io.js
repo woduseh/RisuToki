@@ -2,8 +2,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
+const crypto = require('crypto');
 const AdmZip = require('adm-zip');
-const { parseRisum, buildRisum } = require('./rpack');
+const { rpackDecode, rpackEncode, parseRisum, buildRisum } = require('./rpack');
+const { pack, unpack } = require('msgpackr');
 const { risuArrayToCCV3 } = require('./lorebook-convert');
 const ZIP_LOCAL_FILE_HEADER = Buffer.from([0x50, 0x4B, 0x03, 0x04]);
 // ---------------------------------------------------------------------------
@@ -205,7 +208,8 @@ function openCharx(filePath) {
         // Preserve full card for fields we don't edit
         _card: card,
         // Preserve full module for fields we don't edit
-        _moduleData: moduleData
+        _moduleData: moduleData,
+        _presetData: null
     };
 }
 /**
@@ -333,7 +337,8 @@ function openRisum(filePath) {
         // Preserve original data for save
         _moduleData: parsed.module,
         _risuExt: {},
-        _card: { spec: 'chara_card_v3', spec_version: '3.0', data: { extensions: { risuai: {} } } }
+        _card: { spec: 'chara_card_v3', spec_version: '3.0', data: { extensions: { risuai: {} } } },
+        _presetData: null
     };
 }
 /**
@@ -366,6 +371,197 @@ function saveRisum(filePath, data) {
     fs.writeFileSync(filePath, risumBuf);
 }
 // ---------------------------------------------------------------------------
+// Open / Save .risup (Bot Preset)
+// ---------------------------------------------------------------------------
+const RISUP_ENCRYPTION_KEY = 'risupreset';
+const RISUP_IV = Buffer.alloc(12); // 12 zero bytes
+/**
+ * Derive AES-256-GCM key from passphrase using SHA-256 (matches RisuAI Web Crypto)
+ */
+function deriveRisupKey() {
+    return crypto.createHash('sha256').update(RISUP_ENCRYPTION_KEY, 'utf8').digest();
+}
+/**
+ * Decrypt AES-GCM encrypted buffer (compatible with Web Crypto API output)
+ * Web Crypto appends 16-byte auth tag to ciphertext
+ */
+function decryptAesGcm(encrypted) {
+    const key = deriveRisupKey();
+    const tagLength = 16;
+    const ciphertext = encrypted.subarray(0, encrypted.length - tagLength);
+    const authTag = encrypted.subarray(encrypted.length - tagLength);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, RISUP_IV);
+    decipher.setAuthTag(authTag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
+/**
+ * Encrypt buffer with AES-GCM (compatible with Web Crypto API input)
+ * Returns ciphertext + 16-byte auth tag appended
+ */
+function encryptAesGcm(plaintext) {
+    const key = deriveRisupKey();
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, RISUP_IV);
+    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    return Buffer.concat([encrypted, authTag]);
+}
+/** Extract commonly-edited preset fields from a botPreset object into CharxData. */
+function extractPresetFields(preset) {
+    return {
+        name: preset.name || 'Unnamed Preset',
+        mainPrompt: preset.mainPrompt || '',
+        jailbreak: preset.jailbreak || '',
+        globalNote: preset.globalNote || '',
+        temperature: typeof preset.temperature === 'number' ? preset.temperature : 80,
+        maxContext: typeof preset.maxContext === 'number' ? preset.maxContext : 4000,
+        maxResponse: typeof preset.maxResponse === 'number' ? preset.maxResponse : 300,
+        frequencyPenalty: typeof preset.frequencyPenalty === 'number' ? preset.frequencyPenalty : 70,
+        presencePenalty: typeof preset.PresensePenalty === 'number' ? preset.PresensePenalty : 70,
+        aiModel: preset.aiModel || '',
+        subModel: preset.subModel || '',
+        apiType: preset.apiType || '',
+        promptPreprocess: !!preset.promptPreprocess,
+        promptTemplate: preset.promptTemplate ? JSON.stringify(preset.promptTemplate) : '[]',
+        presetBias: preset.bias ? JSON.stringify(preset.bias) : '[]',
+        formatingOrder: preset.formatingOrder ? JSON.stringify(preset.formatingOrder) : '[]',
+        regex: Array.isArray(preset.regex) ? preset.regex : [],
+        presetImage: preset.image || '',
+    };
+}
+/** Write edited preset fields back into a botPreset object. */
+function applyPresetFields(preset, data) {
+    preset.name = data.name;
+    if (data.mainPrompt !== undefined)
+        preset.mainPrompt = data.mainPrompt;
+    if (data.jailbreak !== undefined)
+        preset.jailbreak = data.jailbreak;
+    if (data.globalNote !== undefined)
+        preset.globalNote = data.globalNote;
+    if (data.temperature !== undefined)
+        preset.temperature = data.temperature;
+    if (data.maxContext !== undefined)
+        preset.maxContext = data.maxContext;
+    if (data.maxResponse !== undefined)
+        preset.maxResponse = data.maxResponse;
+    if (data.frequencyPenalty !== undefined)
+        preset.frequencyPenalty = data.frequencyPenalty;
+    if (data.presencePenalty !== undefined)
+        preset.PresensePenalty = data.presencePenalty;
+    if (data.aiModel !== undefined)
+        preset.aiModel = data.aiModel;
+    if (data.subModel !== undefined)
+        preset.subModel = data.subModel;
+    if (data.apiType !== undefined)
+        preset.apiType = data.apiType;
+    if (data.promptPreprocess !== undefined)
+        preset.promptPreprocess = data.promptPreprocess;
+    if (data.promptTemplate !== undefined) {
+        try {
+            preset.promptTemplate = JSON.parse(data.promptTemplate);
+        }
+        catch { /* keep original */ }
+    }
+    if (data.presetBias !== undefined) {
+        try {
+            preset.bias = JSON.parse(data.presetBias);
+        }
+        catch { /* keep original */ }
+    }
+    if (data.formatingOrder !== undefined) {
+        try {
+            preset.formatingOrder = JSON.parse(data.formatingOrder);
+        }
+        catch { /* keep original */ }
+    }
+    if (data.regex !== undefined)
+        preset.regex = data.regex;
+    if (data.presetImage !== undefined)
+        preset.image = data.presetImage;
+}
+/**
+ * Open and parse a .risup preset file
+ * Format: RPack → zlib inflate → msgpack → AES-GCM decrypt → msgpack → botPreset
+ */
+function openRisup(filePath) {
+    const raw = fs.readFileSync(filePath);
+    // Step 1: RPack decode (byte substitution)
+    const decoded = rpackDecode(raw);
+    // Step 2: Zlib decompress (fflate.compressSync produces zlib format)
+    const decompressed = zlib.inflateSync(decoded);
+    // Step 3: MessagePack decode outer envelope
+    const envelope = unpack(decompressed);
+    if (!envelope || (envelope.type !== 'preset')) {
+        throw new Error('Invalid .risup file: missing type=preset marker');
+    }
+    // Step 4: AES-GCM decrypt the preset payload
+    const encryptedPreset = envelope.preset ?? envelope.pres;
+    if (!encryptedPreset) {
+        throw new Error('Invalid .risup file: no encrypted preset data');
+    }
+    const decryptedBuf = decryptAesGcm(Buffer.from(encryptedPreset));
+    // Step 5: MessagePack decode the actual preset
+    const preset = unpack(decryptedBuf);
+    // Clear sensitive keys for safety
+    const sanitized = { ...preset };
+    delete sanitized.openAIKey;
+    delete sanitized.proxyKey;
+    return {
+        _fileType: 'risup',
+        // Extract editable fields
+        ...extractPresetFields(sanitized),
+        // Fields not applicable to presets (empty defaults)
+        description: '',
+        firstMessage: '',
+        alternateGreetings: [],
+        groupOnlyGreetings: [],
+        css: '',
+        defaultVariables: '',
+        lua: '',
+        triggerScripts: [],
+        lorebook: [],
+        // Assets (presets don't have them)
+        assets: [],
+        xMeta: {},
+        risumAssets: [],
+        cardAssets: [],
+        // Preserved data
+        _risuExt: {},
+        _card: {},
+        _moduleData: null,
+        _presetData: sanitized,
+    };
+}
+/**
+ * Save data back to a .risup preset file
+ * Format: botPreset → msgpack → AES-GCM encrypt → msgpack envelope → zlib deflate → RPack
+ */
+function saveRisup(filePath, data) {
+    // Start from preserved preset data, or create minimal preset
+    const preset = data._presetData
+        ? JSON.parse(JSON.stringify(data._presetData))
+        : {};
+    // Apply edited fields
+    applyPresetFields(preset, data);
+    // Clear sensitive keys (never re-export API keys)
+    delete preset.openAIKey;
+    delete preset.proxyKey;
+    // Step 1: MessagePack encode preset
+    const presetBuf = pack(preset);
+    // Step 2: AES-GCM encrypt
+    const encrypted = encryptAesGcm(presetBuf);
+    // Step 3: MessagePack encode envelope
+    const envelope = pack({
+        presetVersion: 2,
+        type: 'preset',
+        preset: encrypted,
+    });
+    // Step 4: Zlib compress
+    const compressed = zlib.deflateSync(envelope);
+    // Step 5: RPack encode
+    const encoded = rpackEncode(compressed);
+    fs.writeFileSync(filePath, encoded);
+}
+// ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 function generateUUID() {
@@ -379,6 +575,8 @@ module.exports = {
     saveCharx,
     openRisum,
     saveRisum,
+    openRisup,
+    saveRisup,
     extractPrimaryLuaFromTriggerScripts,
     mergePrimaryLuaIntoTriggerScripts,
     normalizeTriggerScripts,

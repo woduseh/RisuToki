@@ -15,12 +15,12 @@ if (!TOKI_PORT || !TOKI_TOKEN) {
 const TOOLS = [
     {
         name: 'list_fields',
-        description: '현재 열린 파일(.charx 또는 .risum)의 편집 가능한 필드 목록과 크기를 확인합니다. 응답에 fileType 포함.',
+        description: '현재 열린 파일(.charx, .risum, .risup)의 편집 가능한 필드 목록과 크기를 확인합니다. 응답에 fileType 포함.',
         inputSchema: { type: 'object', properties: {}, required: [] }
     },
     {
         name: 'read_field',
-        description: '필드의 전체 내용을 읽습니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. risum 전용 필드: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용)',
+        description: '필드의 전체 내용을 읽습니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. risum 전용: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용). risup 전용: mainPrompt, jailbreak, temperature(number), maxContext(number), maxResponse(number), frequencyPenalty(number), presencePenalty(number), aiModel, subModel, apiType, promptPreprocess(boolean), promptTemplate(JSON), presetBias(JSON), formatingOrder(JSON), presetImage',
         inputSchema: {
             type: 'object',
             properties: { field: { type: 'string', description: '필드 이름' } },
@@ -29,14 +29,14 @@ const TOOLS = [
     },
     {
         name: 'write_field',
-        description: '필드에 새 내용을 씁니다. 에디터에서 사용자 확인 팝업이 뜹니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. risum 전용 필드: cjs, lowLevelAccess(boolean), hideIcon(boolean), backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription',
+        description: '필드에 새 내용을 씁니다. 에디터에서 사용자 확인 팝업이 뜹니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. risum 전용: cjs, lowLevelAccess(boolean), hideIcon(boolean), backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription. risup 전용: mainPrompt, jailbreak, temperature(number), maxContext(number), maxResponse(number), frequencyPenalty(number), presencePenalty(number), aiModel, subModel, apiType, promptPreprocess(boolean), promptTemplate(JSON), presetBias(JSON), formatingOrder(JSON), presetImage',
         inputSchema: {
             type: 'object',
             properties: {
                 field: { type: 'string', description: '필드 이름' },
                 content: {
-                    description: '새로운 내용. alternateGreetings/groupOnlyGreetings는 문자열 배열, triggerScripts는 JSON 문자열, lowLevelAccess/hideIcon은 boolean, 나머지는 문자열',
-                    oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }, { type: 'boolean' }]
+                    description: '새로운 내용. alternateGreetings/groupOnlyGreetings는 문자열 배열, triggerScripts는 JSON 문자열, lowLevelAccess/hideIcon/promptPreprocess는 boolean, temperature 등은 number, 나머지는 문자열',
+                    oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }, { type: 'boolean' }, { type: 'number' }]
                 }
             },
             required: ['field', 'content']

@@ -69,6 +69,8 @@ const {
   saveCharx,
   openRisum,
   saveRisum,
+  openRisup,
+  saveRisup,
   extractPrimaryLuaFromTriggerScripts,
   mergePrimaryLuaIntoTriggerScripts,
   normalizeTriggerScripts,
@@ -78,6 +80,8 @@ const {
   saveCharx: (filePath: string, data: CharxData) => void;
   openRisum: (filePath: string) => CharxData;
   saveRisum: (filePath: string, data: CharxData) => void;
+  openRisup: (filePath: string) => CharxData;
+  saveRisup: (filePath: string, data: CharxData) => void;
   extractPrimaryLuaFromTriggerScripts: (triggerScripts: unknown) => string;
   mergePrimaryLuaIntoTriggerScripts: (triggerScripts: unknown, lua: unknown) => unknown[];
   normalizeTriggerScripts: (triggerScripts: unknown) => unknown[];
@@ -462,7 +466,12 @@ function createWindow(): void {
         if (choice === 0) {
           // 저장하고 닫기
           if (mainState.currentFilePath) {
-            try { saveCharx(mainState.currentFilePath, mainState.currentData!); } catch (err) { console.error('[main] Failed to save before close:', err); }
+            try {
+              const ft = mainState.currentData!._fileType;
+              if (ft === 'risum') saveRisum(mainState.currentFilePath, mainState.currentData!);
+              else if (ft === 'risup') saveRisup(mainState.currentFilePath, mainState.currentData!);
+              else saveCharx(mainState.currentFilePath, mainState.currentData!);
+            } catch (err) { console.error('[main] Failed to save before close:', err); }
           }
           isClosingForReal = true;
           mainWindow!.close();
@@ -674,7 +683,8 @@ ipcMain.handle('new-file', async () => {
     cardAssets: [],
     _risuExt: {},
     _card: { spec: 'chara_card_v3', spec_version: '3.0', data: { extensions: { risuai: {} } } },
-    _moduleData: null
+    _moduleData: null,
+    _presetData: null
   } as CharxData);
   mainWindow!.setTitle('RisuToki - New');
   broadcastSidebarDataChanged();
@@ -686,9 +696,10 @@ ipcMain.handle('open-file', async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow!, {
       filters: [
-        { name: 'RisuAI Files', extensions: ['charx', 'risum'] },
+        { name: 'RisuAI Files', extensions: ['charx', 'risum', 'risup'] },
         { name: 'Character Card', extensions: ['charx'] },
-        { name: 'RisuAI Module', extensions: ['risum'] }
+        { name: 'RisuAI Module', extensions: ['risum'] },
+        { name: 'Bot Preset', extensions: ['risup'] }
       ],
       properties: ['openFile']
     });
@@ -696,9 +707,14 @@ ipcMain.handle('open-file', async () => {
 
     const nextFilePath = result.filePaths[0];
     console.log('[main] Opening:', nextFilePath);
-    const nextData = nextFilePath.endsWith('.risum')
-      ? openRisum(nextFilePath)
-      : openCharx(nextFilePath);
+    let nextData: CharxData;
+    if (nextFilePath.endsWith('.risum')) {
+      nextData = openRisum(nextFilePath);
+    } else if (nextFilePath.endsWith('.risup')) {
+      nextData = openRisup(nextFilePath);
+    } else {
+      nextData = openCharx(nextFilePath);
+    }
     mainState.setCurrentDocument(nextFilePath, nextData);
     console.log('[main] Parsed OK, name:', mainState.currentData!.name, 'type:', mainState.currentData!._fileType || 'charx');
     invalidateAssetsMapCache();
@@ -719,11 +735,19 @@ async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promis
   try {
     applyUpdates(mainState.currentData!, updatedFields);
 
-    const isRisum = mainState.currentData!._fileType === 'risum';
-    const filters = isRisum
-      ? [{ name: 'RisuAI Module', extensions: ['risum'] }]
-      : [{ name: 'Character Card', extensions: ['charx'] }];
-    const defaultExt = isRisum ? '.risum' : '.charx';
+    const fileType = mainState.currentData!._fileType;
+    let filters: { name: string; extensions: string[] }[];
+    let defaultExt: string;
+    if (fileType === 'risum') {
+      filters = [{ name: 'RisuAI Module', extensions: ['risum'] }];
+      defaultExt = '.risum';
+    } else if (fileType === 'risup') {
+      filters = [{ name: 'Bot Preset', extensions: ['risup'] }];
+      defaultExt = '.risup';
+    } else {
+      filters = [{ name: 'Character Card', extensions: ['charx'] }];
+      defaultExt = '.charx';
+    }
 
     const result = await dialog.showSaveDialog(mainWindow!, {
       filters,
@@ -732,8 +756,10 @@ async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promis
     if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' };
 
     mainState.setCurrentDocument(result.filePath, mainState.currentData!);
-    if (isRisum) {
+    if (fileType === 'risum') {
       saveRisum(mainState.currentFilePath!, mainState.currentData!);
+    } else if (fileType === 'risup') {
+      saveRisup(mainState.currentFilePath!, mainState.currentData!);
     } else {
       saveCharx(mainState.currentFilePath!, mainState.currentData!);
     }
@@ -756,6 +782,8 @@ ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown
     }
     if (mainState.currentData._fileType === 'risum') {
       saveRisum(mainState.currentFilePath, mainState.currentData);
+    } else if (mainState.currentData._fileType === 'risup') {
+      saveRisup(mainState.currentFilePath, mainState.currentData);
     } else {
       saveCharx(mainState.currentFilePath, mainState.currentData);
     }

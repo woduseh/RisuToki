@@ -29,6 +29,22 @@ export interface CharxData {
   moduleNamespace?: string;
   customModuleToggle?: string;
   mcpUrl?: string;
+  // Risup preset fields
+  mainPrompt?: string;
+  jailbreak?: string;
+  temperature?: number;
+  maxContext?: number;
+  maxResponse?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  aiModel?: string;
+  subModel?: string;
+  apiType?: string;
+  promptPreprocess?: boolean;
+  promptTemplate?: string;
+  presetBias?: string;
+  formatingOrder?: string;
+  presetImage?: string;
   [key: string]: unknown;
 }
 

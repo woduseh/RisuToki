@@ -163,6 +163,42 @@ describe('applyUpdates', () => {
     // Fields are set even on charx — this is safe since saveCharx writes them to module.risum
     expect(data.cjs).toBe('some code');
   });
+
+  it('updates risup preset fields', () => {
+    const data: Record<string, unknown> = { name: 'Test', _fileType: 'risup' };
+    applyUpdates(data, {
+      mainPrompt: 'You are helpful.',
+      jailbreak: 'Stay in character.',
+      temperature: 85,
+      maxContext: 8000,
+      maxResponse: 600,
+      frequencyPenalty: 50,
+      presencePenalty: 60,
+      aiModel: 'gpt4',
+      subModel: 'gpt-4-turbo',
+      apiType: 'openai',
+      promptPreprocess: true,
+      promptTemplate: '[{"type":"plain"}]',
+      presetBias: '[["hello",5]]',
+      formatingOrder: '["main","jailbreak"]',
+      presetImage: 'data:image/png;base64,abc',
+    });
+    expect(data.mainPrompt).toBe('You are helpful.');
+    expect(data.jailbreak).toBe('Stay in character.');
+    expect(data.temperature).toBe(85);
+    expect(data.maxContext).toBe(8000);
+    expect(data.maxResponse).toBe(600);
+    expect(data.frequencyPenalty).toBe(50);
+    expect(data.presencePenalty).toBe(60);
+    expect(data.aiModel).toBe('gpt4');
+    expect(data.subModel).toBe('gpt-4-turbo');
+    expect(data.apiType).toBe('openai');
+    expect(data.promptPreprocess).toBe(true);
+    expect(data.promptTemplate).toBe('[{"type":"plain"}]');
+    expect(data.presetBias).toBe('[["hello",5]]');
+    expect(data.formatingOrder).toBe('["main","jailbreak"]');
+    expect(data.presetImage).toBe('data:image/png;base64,abc');
+  });
 });
 
 // ── serializeForRenderer risum support ──────────────────────────────────────
@@ -203,5 +239,59 @@ describe('serializeForRenderer risum support', () => {
     expect(result).not.toHaveProperty('cjs');
     expect(result).not.toHaveProperty('lowLevelAccess');
     expect(result).not.toHaveProperty('moduleNamespace');
+  });
+});
+
+// ── serializeForRenderer risup support ─────────────────────────────────────
+
+describe('serializeForRenderer risup support', () => {
+  it('includes risup preset fields for risup file type', () => {
+    const data = {
+      _fileType: 'risup',
+      name: 'Preset',
+      mainPrompt: 'You are helpful.',
+      jailbreak: 'Stay in character.',
+      temperature: 85,
+      maxContext: 8000,
+      maxResponse: 600,
+      frequencyPenalty: 50,
+      presencePenalty: 60,
+      aiModel: 'gpt4',
+      subModel: 'gpt-4-turbo',
+      apiType: 'openai',
+      promptPreprocess: true,
+      promptTemplate: '[{"type":"plain"}]',
+      presetBias: '[["hello",5]]',
+      formatingOrder: '["main","jailbreak"]',
+      presetImage: 'data:image/png;base64,abc',
+    };
+    const result = serializeForRenderer(data);
+    expect(result._fileType).toBe('risup');
+    expect(result.mainPrompt).toBe('You are helpful.');
+    expect(result.jailbreak).toBe('Stay in character.');
+    expect(result.temperature).toBe(85);
+    expect(result.maxContext).toBe(8000);
+    expect(result.maxResponse).toBe(600);
+    expect(result.frequencyPenalty).toBe(50);
+    expect(result.presencePenalty).toBe(60);
+    expect(result.aiModel).toBe('gpt4');
+    expect(result.subModel).toBe('gpt-4-turbo');
+    expect(result.apiType).toBe('openai');
+    expect(result.promptPreprocess).toBe(true);
+    expect(result.promptTemplate).toBe('[{"type":"plain"}]');
+    expect(result.presetBias).toBe('[["hello",5]]');
+    expect(result.formatingOrder).toBe('["main","jailbreak"]');
+    expect(result.presetImage).toBe('data:image/png;base64,abc');
+  });
+
+  it('omits risup fields for charx file type', () => {
+    const data = {
+      _fileType: 'charx',
+      name: 'Character',
+    };
+    const result = serializeForRenderer(data);
+    expect(result).not.toHaveProperty('mainPrompt');
+    expect(result).not.toHaveProperty('temperature');
+    expect(result).not.toHaveProperty('promptTemplate');
   });
 });

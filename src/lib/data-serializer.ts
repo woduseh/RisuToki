@@ -59,6 +59,24 @@ export function serializeForRenderer(data: any): Record<string, any> {
     result.customModuleToggle = data.customModuleToggle || '';
     result.mcpUrl = data.mcpUrl || '';
   }
+  // Include risup preset fields
+  if (data._fileType === 'risup') {
+    result.mainPrompt = data.mainPrompt || '';
+    result.jailbreak = data.jailbreak || '';
+    result.temperature = typeof data.temperature === 'number' ? data.temperature : 80;
+    result.maxContext = typeof data.maxContext === 'number' ? data.maxContext : 4000;
+    result.maxResponse = typeof data.maxResponse === 'number' ? data.maxResponse : 300;
+    result.frequencyPenalty = typeof data.frequencyPenalty === 'number' ? data.frequencyPenalty : 70;
+    result.presencePenalty = typeof data.presencePenalty === 'number' ? data.presencePenalty : 70;
+    result.aiModel = data.aiModel || '';
+    result.subModel = data.subModel || '';
+    result.apiType = data.apiType || '';
+    result.promptPreprocess = !!data.promptPreprocess;
+    result.promptTemplate = data.promptTemplate || '[]';
+    result.presetBias = data.presetBias || '[]';
+    result.formatingOrder = data.formatingOrder || '[]';
+    result.presetImage = data.presetImage || '';
+  }
   return result;
 }
 
@@ -74,6 +92,12 @@ export function applyUpdates(data: any, fields: any): void {
     'moduleName', 'moduleDescription', 'cjs', 'lowLevelAccess', 'hideIcon',
     'backgroundEmbedding', 'moduleNamespace', 'customModuleToggle', 'mcpUrl',
   ];
+  // Risup preset fields
+  const risupAllowed = [
+    'mainPrompt', 'jailbreak', 'temperature', 'maxContext', 'maxResponse',
+    'frequencyPenalty', 'presencePenalty', 'aiModel', 'subModel', 'apiType',
+    'promptPreprocess', 'promptTemplate', 'presetBias', 'formatingOrder', 'presetImage',
+  ];
   for (const key of allowed) {
     if (fields[key] !== undefined) {
       if (key === 'triggerScripts') {
@@ -88,6 +112,11 @@ export function applyUpdates(data: any, fields: any): void {
     }
   }
   for (const key of risumAllowed) {
+    if (fields[key] !== undefined) {
+      data[key] = fields[key];
+    }
+  }
+  for (const key of risupAllowed) {
     if (fields[key] !== undefined) {
       data[key] = fields[key];
     }

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { openCharx, openRisum, saveCharx, saveRisum } = require('../src/charx-io');
+const { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup } = require('../src/charx-io');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
 
@@ -394,4 +394,143 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
 })();
 
 fs.rmSync(tempDir, { recursive: true, force: true });
-console.log('test-charx passed');
+
+// ---- .risup round-trip test ----
+const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
+
+(function testRisupRoundTrip() {
+  const filePath = path.join(risupTempDir, 'roundtrip.risup');
+  const data = {
+    _fileType: 'risup',
+    name: 'Test Preset',
+    description: '',
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: 'System note for preset',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [
+      { comment: 'Bold', type: 'editdisplay', find: '\\*\\*(.+?)\\*\\*', replace: '<b>$1</b>', flag: 'g' }
+    ],
+    moduleId: '',
+    moduleName: '',
+    moduleDescription: '',
+    // Preset-specific fields
+    mainPrompt: 'You are a helpful assistant.',
+    jailbreak: 'Stay in character.',
+    temperature: 85,
+    maxContext: 8000,
+    maxResponse: 600,
+    frequencyPenalty: 50,
+    presencePenalty: 60,
+    aiModel: 'gpt4',
+    subModel: 'gpt-4-turbo',
+    apiType: 'openai',
+    promptPreprocess: true,
+    promptTemplate: JSON.stringify([{ type: 'plain', role: 'system', text: 'Hello' }]),
+    presetBias: JSON.stringify([['hello', 5]]),
+    formatingOrder: JSON.stringify(['main', 'jailbreak']),
+    presetImage: '',
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {},
+    _moduleData: null,
+    _presetData: null,
+  };
+
+  saveRisup(filePath, data);
+  assert.ok(fs.existsSync(filePath), '.risup file should exist');
+
+  const reopened = openRisup(filePath);
+
+  assert.equal(reopened._fileType, 'risup');
+  assert.equal(reopened.name, data.name);
+  assert.equal(reopened.mainPrompt, data.mainPrompt);
+  assert.equal(reopened.jailbreak, data.jailbreak);
+  assert.equal(reopened.globalNote, data.globalNote);
+  assert.equal(reopened.temperature, data.temperature);
+  assert.equal(reopened.maxContext, data.maxContext);
+  assert.equal(reopened.maxResponse, data.maxResponse);
+  assert.equal(reopened.frequencyPenalty, data.frequencyPenalty);
+  assert.equal(reopened.presencePenalty, data.presencePenalty);
+  assert.equal(reopened.aiModel, data.aiModel);
+  assert.equal(reopened.subModel, data.subModel);
+  assert.equal(reopened.apiType, data.apiType);
+  assert.equal(reopened.promptPreprocess, data.promptPreprocess);
+  assert.equal(reopened.promptTemplate, data.promptTemplate);
+  assert.equal(reopened.presetBias, data.presetBias);
+  assert.equal(reopened.formatingOrder, data.formatingOrder);
+  assert.deepStrictEqual(reopened.regex, data.regex);
+  assert.ok(reopened._presetData != null, '_presetData should be preserved');
+})();
+
+(function testRisupPreservesExtraPresetFields() {
+  // Verify that _presetData round-trips all fields, even ones not in CharxData
+  const filePath = path.join(risupTempDir, 'preserve-extra.risup');
+  const data = {
+    _fileType: 'risup',
+    name: 'Extra Fields Preset',
+    description: '',
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    moduleId: '',
+    moduleName: '',
+    moduleDescription: '',
+    mainPrompt: 'Test prompt',
+    jailbreak: '',
+    temperature: 70,
+    maxContext: 4000,
+    maxResponse: 300,
+    frequencyPenalty: 70,
+    presencePenalty: 70,
+    aiModel: '',
+    subModel: '',
+    apiType: '',
+    promptPreprocess: false,
+    promptTemplate: '[]',
+    presetBias: '[]',
+    formatingOrder: '[]',
+    presetImage: '',
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {},
+    _moduleData: null,
+    _presetData: {
+      name: 'Extra Fields Preset',
+      mainPrompt: 'Test prompt',
+      temperature: 70,
+      customFieldFromRisu: 'should be preserved',
+      someNestedConfig: { nested: true, value: 42 },
+    },
+  };
+
+  saveRisup(filePath, data);
+  const reopened = openRisup(filePath);
+
+  // The custom field should survive the round-trip via _presetData
+  assert.equal(reopened._presetData.customFieldFromRisu, 'should be preserved');
+  assert.deepStrictEqual(reopened._presetData.someNestedConfig, { nested: true, value: 42 });
+  // Edited field should override _presetData
+  assert.equal(reopened.mainPrompt, 'Test prompt');
+})();
+
+fs.rmSync(risupTempDir, { recursive: true, force: true });
+console.log('test-charx passed (including risup)');
