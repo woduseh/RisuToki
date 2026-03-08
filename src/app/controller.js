@@ -51,7 +51,7 @@ import {
 } from '../lib/editor-activation';
 import { createExternalTextTabState } from '../lib/external-text-tab';
 import { collectDirtyEditorFields } from '../lib/editor-dirty-fields';
-import { createRemovalIndexResolver, remapIndexedTabs } from '../lib/indexed-tabs';
+import { TabManager } from '../lib/tab-manager';
 import {
   applyStoredLayoutState,
   createDefaultLayoutState,
@@ -92,13 +92,9 @@ const settingsSnapshot = readAppSettingsSnapshot();
 
 // ==================== State ====================
 let fileData = null;       // Current charx data
-let openTabs = [];         // { id, label, language, getValue, setValue }
-let activeTabId = null;
 let editorInstance = null;  // Monaco editor instance
 let monacoReady = false;
 let monacoLoadTask = null;
-let pendingEditorTabId = null;
-let dirtyFields = new Set();
 
 // Lua section management
 let luaSections = []; // [{ name, content }]
@@ -153,6 +149,19 @@ const chatSession = createBufferedTerminalChatSession({
 
 // Form tab types that use special editors (not Monaco)
 const FORM_TAB_TYPES = NON_MONACO_EDITOR_TAB_TYPES;
+
+const tabMgr = new TabManager('editor-tabs', {
+  onActivateTab: (tab) => createOrSwitchEditor(tab),
+  onDisposeFormEditors: () => disposeFormEditors(),
+  onClearEditor: () => {
+    document.getElementById('editor-container').innerHTML =
+      '<div class="empty-state">항목을 선택하세요</div>';
+    editorInstance = null;
+  },
+  isPanelPoppedOut: (panelId) => isPanelPoppedOut(panelId),
+  onPopOutTab: (tabId) => popOutEditorPanel(tabId),
+  isFormTabType: (language) => FORM_TAB_TYPES.has(language)
+});
 
 const layoutState = createDefaultLayoutState();
 try {
@@ -250,7 +259,7 @@ function ensureMonacoEditorReady() {
     })
     .catch((err) => {
       console.error('[editor] Monaco load failed:', err);
-      pendingEditorTabId = null;
+      tabMgr.pendingEditorTabId = null;
       renderEditorEmptyState('Monaco 로딩 실패 — 에디터를 사용할 수 없습니다');
       setStatus('Monaco 로딩 실패 — 에디터 없이 동작');
       return false;
@@ -263,17 +272,17 @@ function ensureMonacoEditorReady() {
 }
 
 function queueEditorActivation(tabInfo) {
-  pendingEditorTabId = tabInfo.id;
-  activeTabId = tabInfo.id;
+  tabMgr.pendingEditorTabId = tabInfo.id;
+  tabMgr.activeTabId = tabInfo.id;
   renderEditorEmptyState('에디터 로딩 중...');
-  updateTabUI();
+  tabMgr.renderTabs();
   updateSidebarActive();
   void ensureMonacoEditorReady();
 }
 
 function flushPendingEditorActivation() {
-  const pendingTab = resolvePendingEditorTab(openTabs, pendingEditorTabId, activeTabId);
-  pendingEditorTabId = null;
+  const pendingTab = resolvePendingEditorTab(tabMgr.openTabs, tabMgr.pendingEditorTabId, tabMgr.activeTabId);
+  tabMgr.pendingEditorTabId = null;
   if (pendingTab) {
     createOrSwitchEditor(pendingTab);
   }
@@ -286,25 +295,25 @@ function createOrSwitchEditor(tabInfo) {
 
   if (tabInfo.language === '_image') {
     disposeFormEditors();
-    activeTabId = tabInfo.id;
+    tabMgr.activeTabId = tabInfo.id;
     showImageViewer(tabInfo.id, tabInfo._assetPath);
-    updateTabUI();
+    tabMgr.renderTabs();
     updateSidebarActive();
     return;
   }
 
   if (tabInfo.language === '_loreform') {
-    activeTabId = tabInfo.id;
+    tabMgr.activeTabId = tabInfo.id;
     showLoreEditor(tabInfo);
-    updateTabUI();
+    tabMgr.renderTabs();
     updateSidebarActive();
     return;
   }
 
   if (tabInfo.language === '_regexform') {
-    activeTabId = tabInfo.id;
+    tabMgr.activeTabId = tabInfo.id;
     showRegexEditor(tabInfo);
-    updateTabUI();
+    tabMgr.renderTabs();
     updateSidebarActive();
     return;
   }
@@ -315,12 +324,12 @@ function createOrSwitchEditor(tabInfo) {
   }
 
   // Save current editor content before switching + backup if dirty
-  if (editorInstance && activeTabId) {
-    const curTab = openTabs.find(t => t.id === activeTabId);
+  if (editorInstance && tabMgr.activeTabId) {
+    const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
     if (curTab && !FORM_TAB_TYPES.has(curTab.language) && curTab.setValue) {
       curTab._lastValue = editorInstance.getValue();
       curTab.setValue(curTab._lastValue);
-      if (dirtyFields.has(curTab.id)) {
+      if (tabMgr.dirtyFields.has(curTab.id)) {
         createBackup(curTab.id, curTab._lastValue);
       }
     }
@@ -330,7 +339,7 @@ function createOrSwitchEditor(tabInfo) {
   container.innerHTML = '';
   if (editorInstance) { editorInstance.dispose(); }
 
-  pendingEditorTabId = null;
+  tabMgr.pendingEditorTabId = null;
   ensureBlueArchiveMonacoTheme();
 
   if (darkMode) defineDarkMonacoTheme();
@@ -352,88 +361,31 @@ function createOrSwitchEditor(tabInfo) {
   });
 
   editorInstance.onDidChangeModelContent(() => {
-    const curTab = openTabs.find(t => t.id === activeTabId);
+    const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
     if (curTab && curTab.setValue) {
       // Auto-backup on first change (save original before modification)
-      if (!dirtyFields.has(curTab.id)) {
+      if (!tabMgr.dirtyFields.has(curTab.id)) {
         createBackup(curTab.id, curTab.getValue());
       }
       curTab.setValue(editorInstance.getValue());
-      dirtyFields.add(curTab.id);
-      updateTabUI();
+      tabMgr.dirtyFields.add(curTab.id);
+      tabMgr.renderTabs();
       setStatus('수정됨');
     }
   });
 
-  activeTabId = tabInfo.id;
-  updateTabUI();
+  tabMgr.activeTabId = tabInfo.id;
+  tabMgr.renderTabs();
   updateSidebarActive();
 }
 
 // ==================== Tab Management ====================
-function openTab(id, label, language, getValue, setValue) {
-  let tab = openTabs.find(t => t.id === id);
-  if (!tab) {
-    tab = { id, label, language, getValue, setValue, _lastValue: null };
-    openTabs.push(tab);
-  } else {
-    tab.label = label;
-    tab.language = language;
-    tab.getValue = getValue;
-    tab.setValue = setValue;
-  }
-  createOrSwitchEditor(tab);
-  return tab;
-}
 
 function openExternalTextTab(id, label, initialValue, persist, language = 'plaintext') {
   const state = createExternalTextTabState(initialValue, persist);
-  return openTab(id, label, language, () => state.getValue(), (value) => {
+  return tabMgr.openTab(id, label, language, () => state.getValue(), (value) => {
     void state.setValue(value);
   });
-}
-
-function closeTab(id) {
-  const idx = openTabs.findIndex(t => t.id === id);
-  if (idx === -1) return;
-  openTabs.splice(idx, 1);
-  dirtyFields.delete(id);
-  if (pendingEditorTabId === id) pendingEditorTabId = null;
-
-  if (activeTabId === id) {
-    disposeFormEditors();
-    if (openTabs.length > 0) {
-      const newTab = openTabs[Math.max(0, idx - 1)];
-      createOrSwitchEditor(newTab);
-    } else {
-      activeTabId = null;
-      document.getElementById('editor-container').innerHTML =
-        '<div class="empty-state">항목을 선택하세요</div>';
-      editorInstance = null;
-      updateTabUI();
-    }
-  } else {
-    updateTabUI();
-  }
-}
-
-function markFieldDirty(field) {
-  dirtyFields.add(field);
-  updateTabUI();
-}
-
-function markDirtyForTabId(tabId) {
-  dirtyFields.add(tabId);
-  if (tabId === 'lua' || tabId.startsWith('lua_s')) {
-    dirtyFields.add('lua');
-  } else if (tabId === 'css' || tabId.startsWith('css_s')) {
-    dirtyFields.add('css');
-  } else if (tabId.startsWith('lore_')) {
-    dirtyFields.add('lorebook');
-  } else if (tabId.startsWith('regex_')) {
-    dirtyFields.add('regex');
-  }
-  updateTabUI();
 }
 
 function buildLorebookTabState(index, tab) {
@@ -527,108 +479,7 @@ function buildCssSectionTabState(index, tab) {
   };
 }
 
-function applyIndexedTabRemap(prefix, resolveIndex, buildTabState) {
-  const result = remapIndexedTabs({
-    tabs: openTabs,
-    dirtyIds: dirtyFields,
-    activeTabId,
-    prefix,
-    resolveIndex,
-    buildTabState
-  });
-
-  openTabs = result.tabs;
-  dirtyFields = result.dirtyIds;
-  activeTabId = result.activeTabId;
-
-  const activeTab = activeTabId ? openTabs.find((tab) => tab.id === activeTabId) : null;
-  if (activeTab && activeTab.id.startsWith(prefix) && FORM_TAB_TYPES.has(activeTab.language)) {
-    createOrSwitchEditor(activeTab);
-    return;
-  }
-
-  updateTabUI();
-}
-
-function refreshIndexedTabs(prefix, buildTabState) {
-  applyIndexedTabRemap(prefix, (index) => index, buildTabState);
-}
-
-function shiftIndexedTabsAfterRemoval(prefix, removedIndices, buildTabState) {
-  applyIndexedTabRemap(prefix, createRemovalIndexResolver(removedIndices), buildTabState);
-}
-
-function updateTabUI() {
-  const tabBar = document.getElementById('editor-tabs');
-  tabBar.innerHTML = '';
-
-  for (let i = 0; i < openTabs.length; i++) {
-    const tab = openTabs[i];
-    const el = document.createElement('div');
-    el.className = 'editor-tab' + (tab.id === activeTabId ? ' active' : '');
-
-    // Drag-and-drop reorder
-    el.draggable = true;
-    el.dataset.tabIdx = i;
-    el.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/tab-index', String(i));
-      el.classList.add('tab-dragging');
-    });
-    el.addEventListener('dragend', () => el.classList.remove('tab-dragging'));
-    el.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      el.classList.add('tab-drag-over');
-    });
-    el.addEventListener('dragleave', () => el.classList.remove('tab-drag-over'));
-    el.addEventListener('drop', (e) => {
-      e.preventDefault();
-      el.classList.remove('tab-drag-over');
-      const fromIdx = parseInt(e.dataTransfer.getData('text/tab-index'), 10);
-      const toIdx = i;
-      if (fromIdx !== toIdx && !isNaN(fromIdx)) {
-        const [moved] = openTabs.splice(fromIdx, 1);
-        openTabs.splice(toIdx, 0, moved);
-        updateTabUI();
-      }
-    });
-
-    const labelSpan = document.createElement('span');
-    labelSpan.textContent = tab.label;
-    el.appendChild(labelSpan);
-
-    if (dirtyFields.has(tab.id)) {
-      const dot = document.createElement('span');
-      dot.className = 'modified';
-      dot.textContent = '●';
-      el.appendChild(dot);
-    }
-
-    const closeBtn = document.createElement('span');
-    closeBtn.className = 'close-btn';
-    closeBtn.textContent = '×';
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeTab(tab.id);
-    });
-    el.appendChild(closeBtn);
-
-    // Per-tab popout button (text tabs including readonly, not images)
-    if (tab.language !== '_image' && !isPanelPoppedOut('editor')) {
-      const popBtn = document.createElement('span');
-      popBtn.className = 'tab-popout-btn';
-      popBtn.title = '팝아웃 (분리)';
-      popBtn.textContent = '↗';
-      popBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        popOutEditorPanel(tab.id);
-      });
-      el.appendChild(popBtn);
-    }
-
-    el.addEventListener('click', () => createOrSwitchEditor(tab));
-    tabBar.appendChild(el);
-  }
-}
+// ==================== Sidebar ====================
 
 // ==================== Sidebar ====================
 function buildSidebar() {
@@ -660,7 +511,7 @@ function buildSidebar() {
   luaCombinedEl.dataset.label = 'Lua';
   luaCombinedEl.addEventListener('click', () => {
     fileData.lua = combineLuaSections(luaSections);
-    openTab('lua', 'Lua (통합)', 'lua',
+    tabMgr.openTab('lua', 'Lua (통합)', 'lua',
       () => fileData.lua,
       (v) => {
         fileData.lua = v;
@@ -688,7 +539,7 @@ function buildSidebar() {
     const sectionEl = createTreeItem(section.name, '·', 1);
     const idx = i;
     sectionEl.addEventListener('click', () => {
-      openTab(`lua_s${idx}`, section.name, 'lua',
+      tabMgr.openTab(`lua_s${idx}`, section.name, 'lua',
         () => luaSections[idx].content,
         (v) => {
           luaSections[idx].content = v;
@@ -735,7 +586,7 @@ function buildSidebar() {
   // Combined CSS view
   const cssCombinedEl = createTreeItem('통합 보기', '📋', 1);
   cssCombinedEl.addEventListener('click', () => {
-    openTab('css', 'CSS (통합)', 'css',
+    tabMgr.openTab('css', 'CSS (통합)', 'css',
       () => fileData.css,
       (v) => {
         fileData.css = v;
@@ -762,7 +613,7 @@ function buildSidebar() {
     const sectionEl = createTreeItem(section.name, '·', 1);
     const idx = i;
     sectionEl.addEventListener('click', () => {
-      openTab(`css_s${idx}`, section.name, 'css',
+      tabMgr.openTab(`css_s${idx}`, section.name, 'css',
         () => cssSections[idx].content,
         (v) => {
           cssSections[idx].content = v;
@@ -843,7 +694,7 @@ function buildSidebar() {
   for (const item of singles) {
     const el = createTreeItem(item.label, item.icon, 0);
     el.addEventListener('click', () => {
-      openTab(item.id, item.label, item.lang,
+      tabMgr.openTab(item.id, item.label, item.lang,
         item.get || (() => fileData[item.field]),
         item.readonly ? null : (item.set || ((v) => { fileData[item.field] = v; }))
       );
@@ -887,9 +738,9 @@ function buildSidebar() {
       items.push({ label: `전체 삭제 (${fileData.lorebook.length}개)`, action: async () => {
         if (!await showConfirm(`로어북 전체 ${fileData.lorebook.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
         // Close all lorebook tabs
-        for (let i = fileData.lorebook.length - 1; i >= 0; i--) closeTab(`lore_${i}`);
+        for (let i = fileData.lorebook.length - 1; i >= 0; i--) tabMgr.closeTab(`lore_${i}`);
         fileData.lorebook = [];
-        markFieldDirty('lorebook');
+        tabMgr.markFieldDirty('lorebook');
         buildSidebar();
         setStatus('로어북 전체 삭제됨');
       }});
@@ -944,7 +795,7 @@ function buildSidebar() {
           const newName = await showPrompt('폴더 이름', fEntry.comment || '');
           if (!newName) return;
           fEntry.comment = newName;
-          markFieldDirty('lorebook');
+          tabMgr.markFieldDirty('lorebook');
           buildSidebar();
           setStatus(`폴더 이름 변경: ${newName}`);
         }},
@@ -956,10 +807,10 @@ function buildSidebar() {
             order: fileData.lorebook.length, folder: folderId
           };
           fileData.lorebook.push(newEntry);
-          markFieldDirty('lorebook');
+          tabMgr.markFieldDirty('lorebook');
           buildSidebar();
           const idx = fileData.lorebook.length - 1;
-          openTab(`lore_${idx}`, newEntry.comment, '_loreform',
+          tabMgr.openTab(`lore_${idx}`, newEntry.comment, '_loreform',
             () => fileData.lorebook[idx], (v) => { Object.assign(fileData.lorebook[idx], v); });
           setStatus('폴더에 새 항목 추가됨');
         }},
@@ -968,12 +819,12 @@ function buildSidebar() {
           if (!await showConfirm(`"${fEntry.comment}" 폴더 내 ${folderChildren.length}개 항목을 모두 삭제하시겠습니까?`)) return;
           const indices = folderChildren.map(c => c.index).sort((a, b) => b - a);
           for (const i of indices) {
-            closeTab(`lore_${i}`);
+            tabMgr.closeTab(`lore_${i}`);
             fileData.lorebook.splice(i, 1);
           }
-          markFieldDirty('lorebook');
+          tabMgr.markFieldDirty('lorebook');
           buildSidebar();
-          shiftIndexedTabsAfterRemoval('lore_', indices, buildLorebookTabState);
+          tabMgr.shiftIndexedTabsAfterRemoval('lore_', indices, buildLorebookTabState);
           setStatus(`${indices.length}개 항목 삭제됨`);
         }}] : []),
         { label: '폴더 삭제 (폴더만)', action: async () => {
@@ -982,11 +833,11 @@ function buildSidebar() {
           for (const child of folderChildren) {
             fileData.lorebook[child.index].folder = '';
           }
-          closeTab(`lore_${folderIdx}`);
+          tabMgr.closeTab(`lore_${folderIdx}`);
           fileData.lorebook.splice(folderIdx, 1);
-          markFieldDirty('lorebook');
+          tabMgr.markFieldDirty('lorebook');
           buildSidebar();
-          shiftIndexedTabsAfterRemoval('lore_', [folderIdx], buildLorebookTabState);
+          tabMgr.shiftIndexedTabsAfterRemoval('lore_', [folderIdx], buildLorebookTabState);
           setStatus(`폴더 삭제됨: ${fEntry.comment}`);
         }},
         { label: '폴더+내용 전체 삭제', action: async () => {
@@ -994,12 +845,12 @@ function buildSidebar() {
           if (!await showConfirm(`"${fEntry.comment}" 폴더와 내부 ${folderChildren.length}개 항목을 모두 삭제하시겠습니까?`)) return;
           const indices = [folderIdx, ...folderChildren.map(c => c.index)].sort((a, b) => b - a);
           for (const i of indices) {
-            closeTab(`lore_${i}`);
+            tabMgr.closeTab(`lore_${i}`);
             fileData.lorebook.splice(i, 1);
           }
-          markFieldDirty('lorebook');
+          tabMgr.markFieldDirty('lorebook');
           buildSidebar();
-          shiftIndexedTabsAfterRemoval('lore_', indices, buildLorebookTabState);
+          tabMgr.shiftIndexedTabsAfterRemoval('lore_', indices, buildLorebookTabState);
           setStatus(`폴더+내용 삭제됨 (${total}개)`);
         }},
       ]);
@@ -1032,9 +883,9 @@ function buildSidebar() {
       items.push('---');
       items.push({ label: `전체 삭제 (${fileData.regex.length}개)`, action: async () => {
         if (!await showConfirm(`정규식 전체 ${fileData.regex.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
-        for (let i = fileData.regex.length - 1; i >= 0; i--) closeTab(`regex_${i}`);
+        for (let i = fileData.regex.length - 1; i >= 0; i--) tabMgr.closeTab(`regex_${i}`);
         fileData.regex = [];
-        markFieldDirty('regex');
+        tabMgr.markFieldDirty('regex');
         buildSidebar();
         setStatus('정규식 전체 삭제됨');
       }});
@@ -1048,7 +899,7 @@ function buildSidebar() {
     const el = createTreeItem(label, '·', 1);
     const idx = i;
     el.addEventListener('click', () => {
-      openTab(`regex_${idx}`, label, '_regexform',
+      tabMgr.openTab(`regex_${idx}`, label, '_regexform',
         () => fileData.regex[idx],
         (v) => { Object.assign(fileData.regex[idx], v); }
       );
@@ -1189,11 +1040,11 @@ async function buildRefsSidebar() {
     const el = createTreeItem(prefix + fileName, '·', 1);
     el.addEventListener('click', async () => {
       const tabId = `guide_${fileName}`;
-      const existing = openTabs.find(t => t.id === tabId);
+      const existing = tabMgr.openTabs.find(t => t.id === tabId);
       if (existing) {
-        activeTabId = tabId;
+        tabMgr.activeTabId = tabId;
         createOrSwitchEditor(existing);
-        updateTabUI();
+        tabMgr.renderTabs();
         return;
       }
       const content = await window.tokiAPI.readGuide(fileName);
@@ -1222,7 +1073,7 @@ async function buildRefsSidebar() {
       items.push({ label: isSession ? '제거' : '삭제', action: async () => {
         const msg = isSession ? `"${fileName}" 세션 가이드를 제거하시겠습니까?` : `"${fileName}" 가이드를 삭제하시겠습니까?`;
         if (!await showConfirm(msg)) return;
-        closeTab(`guide_${fileName}`);
+        tabMgr.closeTab(`guide_${fileName}`);
         await window.tokiAPI.deleteGuide(fileName);
         buildRefsSidebar();
         setStatus(isSession ? `가이드 제거됨: ${fileName}` : `가이드 삭제됨: ${fileName}`);
@@ -1285,7 +1136,7 @@ async function buildRefsSidebar() {
         // Single section — just show as a single item
         const el = createTreeItem('Lua', '·', 1);
         el.addEventListener('click', () => {
-          openTab(`ref_${refIdx}_lua`, `[참고] ${ref.fileName} - Lua`, 'lua', () => ref.data.lua, null);
+          tabMgr.openTab(`ref_${refIdx}_lua`, `[참고] ${ref.fileName} - Lua`, 'lua', () => ref.data.lua, null);
         });
         el.addEventListener('contextmenu', (e) => {
           e.preventDefault(); e.stopPropagation();
@@ -1302,7 +1153,7 @@ async function buildRefsSidebar() {
         // Combined view
         const combinedEl = createTreeItem('통합 보기', '📋', 2);
         combinedEl.addEventListener('click', () => {
-          openTab(`ref_${refIdx}_lua`, `[참고] ${ref.fileName} - Lua (통합)`, 'lua', () => ref.data.lua, null);
+          tabMgr.openTab(`ref_${refIdx}_lua`, `[참고] ${ref.fileName} - Lua (통합)`, 'lua', () => ref.data.lua, null);
         });
         combinedEl.addEventListener('contextmenu', (e) => {
           e.preventDefault(); e.stopPropagation();
@@ -1317,7 +1168,7 @@ async function buildRefsSidebar() {
           const secEl = createTreeItem(sec.name, '·', 2);
           const secIdx = si;
           secEl.addEventListener('click', () => {
-            openTab(`ref_${refIdx}_lua_s${secIdx}`, `[참고] ${ref.fileName} - ${sec.name}`, 'lua', () => refLuaSections[secIdx].content, null);
+            tabMgr.openTab(`ref_${refIdx}_lua_s${secIdx}`, `[참고] ${ref.fileName} - ${sec.name}`, 'lua', () => refLuaSections[secIdx].content, null);
           });
           secEl.addEventListener('contextmenu', (e) => {
             e.preventDefault(); e.stopPropagation();
@@ -1350,7 +1201,7 @@ async function buildRefsSidebar() {
       const el = createTreeItem(f.label, '·', 1);
       const tabId = `ref_${refIdx}_${f.id}`;
       el.addEventListener('click', () => {
-        openTab(tabId, `[참고] ${ref.fileName} - ${f.label}`, f.lang, f.get || (() => ref.data[f.id]), null);
+        tabMgr.openTab(tabId, `[참고] ${ref.fileName} - ${f.label}`, f.lang, f.get || (() => ref.data[f.id]), null);
       });
       el.addEventListener('contextmenu', (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -1367,7 +1218,7 @@ async function buildRefsSidebar() {
       if (refCssSections.length <= 1) {
         const el = createTreeItem('CSS', '·', 1);
         el.addEventListener('click', () => {
-          openTab(`ref_${refIdx}_css`, `[참고] ${ref.fileName} - CSS`, 'css', () => ref.data.css, null);
+          tabMgr.openTab(`ref_${refIdx}_css`, `[참고] ${ref.fileName} - CSS`, 'css', () => ref.data.css, null);
         });
         el.addEventListener('contextmenu', (e) => {
           e.preventDefault(); e.stopPropagation();
@@ -1382,7 +1233,7 @@ async function buildRefsSidebar() {
         refFolder.children.appendChild(cssFolderRef.children);
         const combinedEl = createTreeItem('통합 보기', '📋', 2);
         combinedEl.addEventListener('click', () => {
-          openTab(`ref_${refIdx}_css`, `[참고] ${ref.fileName} - CSS (통합)`, 'css', () => ref.data.css, null);
+          tabMgr.openTab(`ref_${refIdx}_css`, `[참고] ${ref.fileName} - CSS (통합)`, 'css', () => ref.data.css, null);
         });
         combinedEl.addEventListener('contextmenu', (e) => {
           e.preventDefault(); e.stopPropagation();
@@ -1396,7 +1247,7 @@ async function buildRefsSidebar() {
           const secEl = createTreeItem(sec.name, '·', 2);
           const secIdx = si;
           secEl.addEventListener('click', () => {
-            openTab(`ref_${refIdx}_css_s${secIdx}`, `[참고] ${ref.fileName} - ${sec.name}`, 'css', () => refCssSections[secIdx].content, null);
+            tabMgr.openTab(`ref_${refIdx}_css_s${secIdx}`, `[참고] ${ref.fileName} - ${sec.name}`, 'css', () => refCssSections[secIdx].content, null);
           });
           secEl.addEventListener('contextmenu', (e) => {
             e.preventDefault(); e.stopPropagation();
@@ -1447,7 +1298,7 @@ async function buildRefsSidebar() {
         const li = child.index;
         const lbTabId = `ref_${refIdx}_lb_${li}`;
         lbEl.addEventListener('click', () => {
-          const tab = openTab(lbTabId, `[참고] ${ref.fileName} - ${lbLabel}`, '_loreform', () => refLorebook[li], null);
+          const tab = tabMgr.openTab(lbTabId, `[참고] ${ref.fileName} - ${lbLabel}`, '_loreform', () => refLorebook[li], null);
           if (tab) tab._refLorebook = refLorebook;
         });
         lbEl.addEventListener('contextmenu', (e) => {
@@ -1486,7 +1337,7 @@ async function buildRefsSidebar() {
         const rxTabId = `ref_${refIdx}_rx_${xi}`;
         const rxIdx = xi;
         rxEl.addEventListener('click', () => {
-          openTab(rxTabId, `[참고] ${ref.fileName} - ${rxLabel}`, '_regexform', () => ref.data.regex[rxIdx], null);
+          tabMgr.openTab(rxTabId, `[참고] ${ref.fileName} - ${rxLabel}`, '_regexform', () => ref.data.regex[rxIdx], null);
         });
         rxEl.addEventListener('contextmenu', (e) => {
           e.preventDefault(); e.stopPropagation();
@@ -1598,7 +1449,7 @@ function createLoreEntryItem(child, indent) {
   const el = createTreeItem(label, '·', indent);
   const idx = child.index;
   el.addEventListener('click', () => {
-    openTab(`lore_${idx}`, label, '_loreform',
+    tabMgr.openTab(`lore_${idx}`, label, '_loreform',
       () => fileData.lorebook[idx],
       (v) => { Object.assign(fileData.lorebook[idx], v); }
     );
@@ -1623,7 +1474,7 @@ function createLoreEntryItem(child, indent) {
 }
 
 function updateSidebarActive() {
-  _updateSidebarActive(activeTabId, openTabs);
+  _updateSidebarActive(tabMgr.activeTabId, tabMgr.openTabs);
 }
 
 // ==================== Sidebar Actions ====================
@@ -1646,10 +1497,10 @@ function addNewLorebook() {
     folder: ''
   };
   fileData.lorebook.push(newEntry);
-  markFieldDirty('lorebook');
+  tabMgr.markFieldDirty('lorebook');
   buildSidebar();
   const idx = fileData.lorebook.length - 1;
-  openTab(`lore_${idx}`, newEntry.comment, '_loreform',
+  tabMgr.openTab(`lore_${idx}`, newEntry.comment, '_loreform',
     () => fileData.lorebook[idx],
     (v) => { Object.assign(fileData.lorebook[idx], v); }
   );
@@ -1677,7 +1528,7 @@ async function addNewLorebookFolder() {
   };
   fileData.lorebook.push(newFolder);
   buildSidebar();
-  markFieldDirty('lorebook');
+  tabMgr.markFieldDirty('lorebook');
   setStatus(`로어북 폴더 추가: ${name}`);
 }
 
@@ -1708,7 +1559,7 @@ async function importLorebook() {
     }
   }
 
-  markFieldDirty('lorebook');
+  tabMgr.markFieldDirty('lorebook');
   buildSidebar();
   setStatus(`로어북 ${addedCount}개 항목 가져옴`);
 }
@@ -1718,11 +1569,11 @@ async function deleteLorebook(idx) {
   const name = fileData.lorebook[idx].comment || `entry_${idx}`;
   if (!await showConfirm(`"${name}" 로어북 항목을 삭제하시겠습니까?`)) return;
 
-  closeTab(`lore_${idx}`);
+  tabMgr.closeTab(`lore_${idx}`);
   fileData.lorebook.splice(idx, 1);
-  markFieldDirty('lorebook');
+  tabMgr.markFieldDirty('lorebook');
   buildSidebar();
-  shiftIndexedTabsAfterRemoval('lore_', [idx], buildLorebookTabState);
+  tabMgr.shiftIndexedTabsAfterRemoval('lore_', [idx], buildLorebookTabState);
   setStatus(`로어북 항목 삭제됨: ${name}`);
 }
 
@@ -1732,9 +1583,9 @@ async function renameLorebook(idx) {
   const newName = await showPrompt('새 이름:', oldName);
   if (!newName || newName === oldName) return;
   fileData.lorebook[idx].comment = newName;
-  markFieldDirty('lorebook');
+  tabMgr.markFieldDirty('lorebook');
   buildSidebar();
-  refreshIndexedTabs('lore_', buildLorebookTabState);
+  tabMgr.refreshIndexedTabs('lore_', buildLorebookTabState);
   setStatus(`로어북 항목 이름 변경: ${newName}`);
 }
 
@@ -1751,10 +1602,10 @@ function addNewRegex() {
     replaceOrder: 0
   };
   fileData.regex.push(newRegex);
-  markFieldDirty('regex');
+  tabMgr.markFieldDirty('regex');
   buildSidebar();
   const idx = fileData.regex.length - 1;
-  openTab(`regex_${idx}`, newRegex.comment, '_regexform',
+  tabMgr.openTab(`regex_${idx}`, newRegex.comment, '_regexform',
     () => fileData.regex[idx],
     (v) => { Object.assign(fileData.regex[idx], v); }
   );
@@ -1781,7 +1632,7 @@ async function importRegex() {
     }
   }
 
-  markFieldDirty('regex');
+  tabMgr.markFieldDirty('regex');
   buildSidebar();
   setStatus(`정규식 ${addedCount}개 항목 가져옴`);
 }
@@ -1791,11 +1642,11 @@ async function deleteRegex(idx) {
   const name = fileData.regex[idx].comment || `regex_${idx}`;
   if (!await showConfirm(`"${name}" 정규식을 삭제하시겠습니까?`)) return;
 
-  closeTab(`regex_${idx}`);
+  tabMgr.closeTab(`regex_${idx}`);
   fileData.regex.splice(idx, 1);
-  markFieldDirty('regex');
+  tabMgr.markFieldDirty('regex');
   buildSidebar();
-  shiftIndexedTabsAfterRemoval('regex_', [idx], buildRegexTabState);
+  tabMgr.shiftIndexedTabsAfterRemoval('regex_', [idx], buildRegexTabState);
   setStatus(`정규식 삭제됨: ${name}`);
 }
 
@@ -1805,9 +1656,9 @@ async function renameRegex(idx) {
   const newName = await showPrompt('새 이름:', oldName);
   if (!newName || newName === oldName) return;
   fileData.regex[idx].comment = newName;
-  markFieldDirty('regex');
+  tabMgr.markFieldDirty('regex');
   buildSidebar();
-  refreshIndexedTabs('regex_', buildRegexTabState);
+  tabMgr.refreshIndexedTabs('regex_', buildRegexTabState);
   setStatus(`정규식 이름 변경: ${newName}`);
 }
 
@@ -1838,7 +1689,7 @@ function attachAssetContextMenu(el, assetPath, fileName) {
         if (!await showConfirm(`"${fileName}" 에셋을 삭제하시겠습니까?`)) return;
         const ok = await window.tokiAPI.deleteAsset(assetPath);
         if (ok) {
-          closeTab(`img_${assetPath}`);
+          tabMgr.closeTab(`img_${assetPath}`);
           buildSidebar();
           setStatus(`에셋 삭제됨: ${fileName}`);
         }
@@ -1859,11 +1710,11 @@ async function addLuaSection() {
 
   luaSections.push({ name, content: '' });
   fileData.lua = combineLuaSections(luaSections);
-  markFieldDirty('lua');
+  tabMgr.markFieldDirty('lua');
   buildSidebar();
 
   const idx = luaSections.length - 1;
-  openTab(`lua_s${idx}`, name, 'lua',
+  tabMgr.openTab(`lua_s${idx}`, name, 'lua',
     () => luaSections[idx].content,
     (v) => {
       luaSections[idx].content = v;
@@ -1881,9 +1732,9 @@ async function renameLuaSection(idx) {
 
   luaSections[idx].name = newName;
   fileData.lua = combineLuaSections(luaSections);
-  markFieldDirty('lua');
+  tabMgr.markFieldDirty('lua');
   buildSidebar();
-  refreshIndexedTabs('lua_s', buildLuaSectionTabState);
+  tabMgr.refreshIndexedTabs('lua_s', buildLuaSectionTabState);
   setStatus(`Lua 섹션 이름 변경: ${newName}`);
 }
 
@@ -1892,12 +1743,12 @@ async function deleteLuaSection(idx) {
   const name = luaSections[idx].name;
   if (!await showConfirm(`"${name}" Lua 섹션을 삭제하시겠습니까?`)) return;
 
-  closeTab(`lua_s${idx}`);
+  tabMgr.closeTab(`lua_s${idx}`);
   luaSections.splice(idx, 1);
   fileData.lua = combineLuaSections(luaSections);
-  markFieldDirty('lua');
+  tabMgr.markFieldDirty('lua');
   buildSidebar();
-  shiftIndexedTabsAfterRemoval('lua_s', [idx], buildLuaSectionTabState);
+  tabMgr.shiftIndexedTabsAfterRemoval('lua_s', [idx], buildLuaSectionTabState);
   setStatus(`Lua 섹션 삭제됨: ${name}`);
 }
 
@@ -1910,11 +1761,11 @@ async function addCssSection() {
 
   cssSections.push({ name, content: '' });
   fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
-  markFieldDirty('css');
+  tabMgr.markFieldDirty('css');
   buildSidebar();
 
   const idx = cssSections.length - 1;
-  openTab(`css_s${idx}`, name, 'css',
+  tabMgr.openTab(`css_s${idx}`, name, 'css',
     () => cssSections[idx].content,
     (v) => {
       cssSections[idx].content = v;
@@ -1932,9 +1783,9 @@ async function renameCssSection(idx) {
 
   cssSections[idx].name = newName;
   fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
-  markFieldDirty('css');
+  tabMgr.markFieldDirty('css');
   buildSidebar();
-  refreshIndexedTabs('css_s', buildCssSectionTabState);
+  tabMgr.refreshIndexedTabs('css_s', buildCssSectionTabState);
   setStatus(`CSS 섹션 이름 변경: ${newName}`);
 }
 
@@ -1943,12 +1794,12 @@ async function deleteCssSection(idx) {
   const name = cssSections[idx].name;
   if (!await showConfirm(`"${name}" CSS 섹션을 삭제하시겠습니까?`)) return;
 
-  closeTab(`css_s${idx}`);
+  tabMgr.closeTab(`css_s${idx}`);
   cssSections.splice(idx, 1);
   fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
-  markFieldDirty('css');
+  tabMgr.markFieldDirty('css');
   buildSidebar();
-  shiftIndexedTabsAfterRemoval('css_s', [idx], buildCssSectionTabState);
+  tabMgr.shiftIndexedTabsAfterRemoval('css_s', [idx], buildCssSectionTabState);
   setStatus(`CSS 섹션 삭제됨: ${name}`);
 }
 
@@ -1963,15 +1814,15 @@ function restoreBackup(tabId, backupIdx) {
   const backup = store[backupIdx];
 
   // Find the matching tab or open it
-  const tab = openTabs.find(t => t.id === tabId);
+  const tab = tabMgr.openTabs.find(t => t.id === tabId);
   if (tab) {
     // Backup current content before restoring
-    if (editorInstance && activeTabId === tabId) {
+    if (editorInstance && tabMgr.activeTabId === tabId) {
       createBackup(tabId, editorInstance.getValue());
     }
     tab.setValue(backup.content);
     // Refresh editor if it's the active tab
-    if (activeTabId === tabId && editorInstance) {
+    if (tabMgr.activeTabId === tabId && editorInstance) {
       editorInstance.setValue(backup.content);
     }
   } else {
@@ -2018,15 +1869,15 @@ function restoreBackup(tabId, backupIdx) {
     }
   }
 
-  markDirtyForTabId(tabId);
+  tabMgr.markDirtyForTabId(tabId);
   if (tabId.startsWith('lore_')) {
-    refreshIndexedTabs('lore_', buildLorebookTabState);
+    tabMgr.refreshIndexedTabs('lore_', buildLorebookTabState);
   } else if (tabId.startsWith('regex_')) {
-    refreshIndexedTabs('regex_', buildRegexTabState);
+    tabMgr.refreshIndexedTabs('regex_', buildRegexTabState);
   } else if (tabId.startsWith('lua_s')) {
-    refreshIndexedTabs('lua_s', buildLuaSectionTabState);
+    tabMgr.refreshIndexedTabs('lua_s', buildLuaSectionTabState);
   } else if (tabId.startsWith('css_s')) {
-    refreshIndexedTabs('css_s', buildCssSectionTabState);
+    tabMgr.refreshIndexedTabs('css_s', buildCssSectionTabState);
   }
   setStatus(`백업 v${backupIdx + 1} 복원됨 (${formatBackupTime(backup.time)})`);
 }
@@ -2280,8 +2131,8 @@ function showLoreEditor(tabInfo) {
   const container = document.getElementById('editor-container');
 
   // Save current Monaco state
-  if (editorInstance && activeTabId !== tabInfo.id) {
-    const curTab = openTabs.find(t => t.id === activeTabId);
+  if (editorInstance && tabMgr.activeTabId !== tabInfo.id) {
+    const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
     if (curTab && !FORM_TAB_TYPES.has(curTab.language) && curTab.setValue) {
       curTab._lastValue = editorInstance.getValue();
       curTab.setValue(curTab._lastValue);
@@ -2299,12 +2150,12 @@ function showLoreEditor(tabInfo) {
   const markDirty = () => {
     if (readonly) return;
     // First-change backup (save original before modification)
-    if (!dirtyFields.has(tabInfo.id)) {
+    if (!tabMgr.dirtyFields.has(tabInfo.id)) {
       createBackup(tabInfo.id, data);
     }
     tabInfo.setValue(data);
-    dirtyFields.add(tabInfo.id);
-    updateTabUI();
+    tabMgr.dirtyFields.add(tabInfo.id);
+    tabMgr.renderTabs();
   };
 
   // Build form HTML
@@ -2546,8 +2397,8 @@ function showRegexEditor(tabInfo) {
   const container = document.getElementById('editor-container');
 
   // Save current Monaco state
-  if (editorInstance && activeTabId !== tabInfo.id) {
-    const curTab = openTabs.find(t => t.id === activeTabId);
+  if (editorInstance && tabMgr.activeTabId !== tabInfo.id) {
+    const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
     if (curTab && !FORM_TAB_TYPES.has(curTab.language) && curTab.setValue) {
       curTab._lastValue = editorInstance.getValue();
       curTab.setValue(curTab._lastValue);
@@ -2565,12 +2416,12 @@ function showRegexEditor(tabInfo) {
   const markDirty = () => {
     if (readonly) return;
     // First-change backup (save original before modification)
-    if (!dirtyFields.has(tabInfo.id)) {
+    if (!tabMgr.dirtyFields.has(tabInfo.id)) {
       createBackup(tabInfo.id, data);
     }
     tabInfo.setValue(data);
-    dirtyFields.add(tabInfo.id);
-    updateTabUI();
+    tabMgr.dirtyFields.add(tabInfo.id);
+    tabMgr.renderTabs();
   };
 
   // Build form
@@ -2885,10 +2736,10 @@ function showRegexEditor(tabInfo) {
 function openImageTab(assetPath, fileName) {
   const tabId = `img_${assetPath}`;
   // Check if already open
-  if (openTabs.find(t => t.id === tabId)) {
-    activeTabId = tabId;
+  if (tabMgr.openTabs.find(t => t.id === tabId)) {
+    tabMgr.activeTabId = tabId;
     showImageViewer(tabId, assetPath);
-    updateTabUI();
+    tabMgr.renderTabs();
     updateSidebarActive();
     return;
   }
@@ -2903,17 +2754,17 @@ function openImageTab(assetPath, fileName) {
     _lastValue: null,
     _assetPath: assetPath
   };
-  openTabs.push(tab);
-  activeTabId = tabId;
+  tabMgr.openTabs.push(tab);
+  tabMgr.activeTabId = tabId;
   showImageViewer(tabId, assetPath);
-  updateTabUI();
+  tabMgr.renderTabs();
   updateSidebarActive();
 }
 
 async function showImageViewer(tabId, assetPath) {
   // Save current Monaco editor
-  if (editorInstance && activeTabId !== tabId) {
-    const curTab = openTabs.find(t => t.id === activeTabId);
+  if (editorInstance && tabMgr.activeTabId !== tabId) {
+    const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
     if (curTab && curTab.language !== '_image' && curTab.setValue) {
       curTab._lastValue = editorInstance.getValue();
       curTab.setValue(curTab._lastValue);
@@ -2976,10 +2827,7 @@ async function handleNew() {
   const data = await window.tokiAPI.newFile();
   if (!data) return;
   fileData = data;
-  dirtyFields.clear();
-  openTabs = [];
-  activeTabId = null;
-  pendingEditorTabId = null;
+  tabMgr.reset();
   if (editorInstance) { editorInstance.dispose(); editorInstance = null; }
 
   document.getElementById('file-label').textContent = 'New Character';
@@ -3230,10 +3078,7 @@ async function handleOpen() {
     const data = await window.tokiAPI.openFile();
     if (!data) { setStatus('준비'); return; }
     fileData = data;
-    dirtyFields.clear();
-    openTabs = [];
-    activeTabId = null;
-    pendingEditorTabId = null;
+    tabMgr.reset();
     if (editorInstance) { editorInstance.dispose(); editorInstance = null; }
 
     document.getElementById('file-label').textContent = `${data.name || 'Untitled'}`;
@@ -3252,16 +3097,16 @@ async function handleOpen() {
 async function handleSave() {
   if (!fileData) return;
   // Sync current editor content (skip form/image tabs)
-  if (editorInstance && activeTabId) {
-    const curTab = openTabs.find(t => t.id === activeTabId);
+  if (editorInstance && tabMgr.activeTabId) {
+    const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
     if (curTab && !FORM_TAB_TYPES.has(curTab.language) && curTab.setValue) {
       curTab.setValue(editorInstance.getValue());
     }
   }
   const result = await window.tokiAPI.saveFile(fileData);
   if (result.success) {
-    dirtyFields.clear();
-    updateTabUI();
+    tabMgr.dirtyFields.clear();
+    tabMgr.renderTabs();
     setStatus('저장 완료');
     // Cleanup autosave temp file after successful save
     window.tokiAPI.cleanupAutosave(autosaveDir || undefined);
@@ -3272,16 +3117,16 @@ async function handleSave() {
 
 async function handleSaveAs() {
   if (!fileData) return;
-  if (editorInstance && activeTabId) {
-    const curTab = openTabs.find(t => t.id === activeTabId);
+  if (editorInstance && tabMgr.activeTabId) {
+    const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
     if (curTab && !FORM_TAB_TYPES.has(curTab.language) && curTab.setValue) {
       curTab.setValue(editorInstance.getValue());
     }
   }
   const result = await window.tokiAPI.saveFileAs(fileData);
   if (result.success) {
-    dirtyFields.clear();
-    updateTabUI();
+    tabMgr.dirtyFields.clear();
+    tabMgr.renderTabs();
     setStatus(`저장 완료: ${result.path}`);
   } else {
     setStatus(`저장 취소`);
@@ -3840,7 +3685,7 @@ function startAutosave() {
   stopAutosave();
   if (!autosaveEnabled) return;
   autosaveTimer = setInterval(async () => {
-    if (dirtyFields.size === 0 || !fileData) return;
+    if (tabMgr.dirtyFields.size === 0 || !fileData) return;
     const filePath = await window.tokiAPI.getFilePath();
     if (!filePath && !autosaveDir) return;
     const updatedFields = collectDirtyFields();
@@ -3858,9 +3703,9 @@ function stopAutosave() {
 
 function collectDirtyFields() {
   return collectDirtyEditorFields({
-    dirtyFields,
+    dirtyFields: tabMgr.dirtyFields,
     fileData,
-    openTabs
+    openTabs: tabMgr.openTabs
   });
 }
 
@@ -3932,8 +3777,8 @@ function showSettingsPopup() {
       },
       async onOpenPersonaTab(name) {
         const tabId = `persona_${name}`;
-        const existing = openTabs.find(t => t.id === tabId);
-        if (existing) { activeTabId = tabId; createOrSwitchEditor(existing); updateTabUI(); }
+        const existing = tabMgr.openTabs.find(t => t.id === tabId);
+        if (existing) { tabMgr.activeTabId = tabId; createOrSwitchEditor(existing); tabMgr.renderTabs(); }
         else {
           const content = await window.tokiAPI.readPersona(name);
           openExternalTextTab(
@@ -4523,14 +4368,14 @@ async function popOutPanel(panelId, requestId = null) {
 async function popOutEditorPanel(tabId) {
   if (isPanelPoppedOut('editor')) return;
 
-  const targetId = tabId || activeTabId;
+  const targetId = tabId || tabMgr.activeTabId;
   if (!targetId) return;
 
-  const curTab = openTabs.find(t => t.id === targetId);
+  const curTab = tabMgr.openTabs.find(t => t.id === targetId);
   if (!curTab || curTab.language === '_image') return;
 
   // Switch to target tab first if not active
-  if (targetId !== activeTabId) {
+  if (targetId !== tabMgr.activeTabId) {
     createOrSwitchEditor(curTab);
   }
 
@@ -4561,7 +4406,7 @@ async function popOutEditorPanel(tabId) {
   if (editorInstance) { editorInstance.dispose(); editorInstance = null; }
   container.innerHTML = '<div class="empty-state">편집중 (팝아웃 창)</div>';
 
-  updateTabUI();
+  tabMgr.renderTabs();
   setStatus(`에디터 팝아웃됨: ${curTab.label}`);
 }
 
@@ -4575,8 +4420,8 @@ function dockPanel(panelId) {
   // Show the panel back in main window
   if (panelId === 'editor') {
     // Re-open the active tab in the main editor
-    if (activeTabId) {
-      const curTab = openTabs.find(t => t.id === activeTabId);
+    if (tabMgr.activeTabId) {
+      const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
       if (curTab) createOrSwitchEditor(curTab);
     }
   } else {
@@ -4590,7 +4435,7 @@ function dockPanel(panelId) {
   }
 
   updatePopoutButtons();
-  updateTabUI();
+  tabMgr.renderTabs();
   const panelName = panelId === 'sidebar' ? '항목' : panelId === 'editor' ? '에디터' : panelId === 'refs' ? '참고자료' : 'TokiTalk';
   setStatus(`${panelName} 도킹됨`);
 }
@@ -4655,7 +4500,7 @@ function openTabById(tabId) {
   if (tabMap[tabId]) {
     const t = tabMap[tabId];
     if (tabId === 'lua') fileData.lua = combineLuaSections(luaSections);
-    openTab(tabId, t.label, t.lang, t.get, t.set);
+    tabMgr.openTab(tabId, t.label, t.lang, t.get, t.set);
     return;
   }
 
@@ -4663,7 +4508,7 @@ function openTabById(tabId) {
     const idx = parseInt(tabId.replace('lore_', ''), 10);
     if (fileData.lorebook[idx]) {
       const label = fileData.lorebook[idx].comment || `entry_${idx}`;
-      openTab(tabId, label, 'plaintext',
+      tabMgr.openTab(tabId, label, 'plaintext',
         () => fileData.lorebook[idx].content || '',
         (v) => { fileData.lorebook[idx].content = v; });
     }
@@ -4671,18 +4516,18 @@ function openTabById(tabId) {
     const idx = parseInt(tabId.replace('regex_', ''), 10);
     if (fileData.regex[idx]) {
       const label = fileData.regex[idx].comment || `regex_${idx}`;
-      openTab(tabId, label, 'json',
+      tabMgr.openTab(tabId, label, 'json',
         () => JSON.stringify(fileData.regex[idx], null, 2),
         (v) => { try { fileData.regex[idx] = JSON.parse(v); } catch(e){} });
     }
   } else if (tabId.startsWith('guide_')) {
     // Guide file from refs popout
     const fileName = tabId.replace('guide_', '');
-    const existing = openTabs.find(t => t.id === tabId);
+    const existing = tabMgr.openTabs.find(t => t.id === tabId);
     if (existing) {
-      activeTabId = tabId;
+      tabMgr.activeTabId = tabId;
       createOrSwitchEditor(existing);
-      updateTabUI();
+      tabMgr.renderTabs();
       return;
     }
     window.tokiAPI.readGuide(fileName).then(content => {
@@ -4702,11 +4547,11 @@ function openTabById(tabId) {
 
 function openRefTabById(tabId) {
   // Check if tab already open
-  const existing = openTabs.find(t => t.id === tabId);
+  const existing = tabMgr.openTabs.find(t => t.id === tabId);
   if (existing) {
-    activeTabId = tabId;
+    tabMgr.activeTabId = tabId;
     createOrSwitchEditor(existing);
-    updateTabUI();
+    tabMgr.renderTabs();
     return;
   }
 
@@ -4719,33 +4564,33 @@ function openRefTabById(tabId) {
   const fieldPart = parts[2];
 
   if (fieldPart === 'lua') {
-    openTab(tabId, `[참고] ${ref.fileName} - Lua`, 'lua', () => ref.data.lua, null);
+    tabMgr.openTab(tabId, `[참고] ${ref.fileName} - Lua`, 'lua', () => ref.data.lua, null);
   } else if (fieldPart === 'css') {
-    openTab(tabId, `[참고] ${ref.fileName} - CSS`, 'css', () => ref.data.css, null);
+    tabMgr.openTab(tabId, `[참고] ${ref.fileName} - CSS`, 'css', () => ref.data.css, null);
   } else if (fieldPart === 'globalNote') {
-    openTab(tabId, `[참고] ${ref.fileName} - 글로벌노트`, 'plaintext', () => ref.data.globalNote, null);
+    tabMgr.openTab(tabId, `[참고] ${ref.fileName} - 글로벌노트`, 'plaintext', () => ref.data.globalNote, null);
   } else if (fieldPart === 'firstMessage') {
-    openTab(tabId, `[참고] ${ref.fileName} - 첫 메시지`, 'html', () => ref.data.firstMessage, null);
+    tabMgr.openTab(tabId, `[참고] ${ref.fileName} - 첫 메시지`, 'html', () => ref.data.firstMessage, null);
   } else if (fieldPart === 'triggerScripts') {
-    openTab(tabId, `[참고] ${ref.fileName} - 트리거 스크립트`, 'json', () => ref.data.triggerScripts || '[]', null);
+    tabMgr.openTab(tabId, `[참고] ${ref.fileName} - 트리거 스크립트`, 'json', () => ref.data.triggerScripts || '[]', null);
   } else if (fieldPart === 'alternateGreetings') {
-    openTab(tabId, `[참고] ${ref.fileName} - 추가 첫 메시지`, 'json', () => stringifyStringArray(ref.data.alternateGreetings), null);
+    tabMgr.openTab(tabId, `[참고] ${ref.fileName} - 추가 첫 메시지`, 'json', () => stringifyStringArray(ref.data.alternateGreetings), null);
   } else if (fieldPart === 'groupOnlyGreetings') {
-    openTab(tabId, `[참고] ${ref.fileName} - 그룹 첫 메시지`, 'json', () => stringifyStringArray(ref.data.groupOnlyGreetings), null);
+    tabMgr.openTab(tabId, `[참고] ${ref.fileName} - 그룹 첫 메시지`, 'json', () => stringifyStringArray(ref.data.groupOnlyGreetings), null);
   } else if (fieldPart === 'description') {
-    openTab(tabId, `[참고] ${ref.fileName} - 설명`, 'plaintext', () => ref.data.description, null);
+    tabMgr.openTab(tabId, `[참고] ${ref.fileName} - 설명`, 'plaintext', () => ref.data.description, null);
   } else if (fieldPart === 'lb' && parts.length >= 4) {
     const li = parseInt(parts[3], 10);
     if (ref.data.lorebook && ref.data.lorebook[li]) {
       const lbLabel = ref.data.lorebook[li].comment || ref.data.lorebook[li].key || `#${li}`;
-      const tab = openTab(tabId, `[참고] ${ref.fileName} - ${lbLabel}`, '_loreform', () => ref.data.lorebook[li], null);
+      const tab = tabMgr.openTab(tabId, `[참고] ${ref.fileName} - ${lbLabel}`, '_loreform', () => ref.data.lorebook[li], null);
       if (tab) tab._refLorebook = ref.data.lorebook;
     }
   } else if (fieldPart === 'rx' && parts.length >= 4) {
     const xi = parseInt(parts[3], 10);
     if (ref.data.regex && ref.data.regex[xi]) {
       const rxLabel = ref.data.regex[xi].comment || `#${xi}`;
-      openTab(tabId, `[참고] ${ref.fileName} - ${rxLabel}`, '_regexform', () => ref.data.regex[xi], null);
+      tabMgr.openTab(tabId, `[참고] ${ref.fileName} - ${rxLabel}`, '_regexform', () => ref.data.regex[xi], null);
     }
   }
 }
@@ -4762,7 +4607,7 @@ function initKeyboard() {
     } else if (e.ctrlKey && e.key === 's') {
       e.preventDefault(); handleSave();
     } else if (e.ctrlKey && e.key === 'w') {
-      e.preventDefault(); if (activeTabId) closeTab(activeTabId);
+      e.preventDefault(); if (tabMgr.activeTabId) tabMgr.closeTab(tabMgr.activeTabId);
     } else if (e.ctrlKey && e.key === 'b') {
       e.preventDefault(); toggleSidebar();
     } else if (e.ctrlKey && e.key === '`') {
@@ -4800,7 +4645,7 @@ export async function initMainRenderer() {
     'open': () => handleOpen(),
     'save': () => handleSave(),
     'save-as': () => handleSaveAs(),
-    'close-tab': () => { if (activeTabId) closeTab(activeTabId); },
+    'close-tab': () => { if (tabMgr.activeTabId) tabMgr.closeTab(tabMgr.activeTabId); },
 
     // Edit (Monaco editor commands)
     'undo': () => { if (editorInstance) editorInstance.trigger('menu', 'undo'); },
@@ -4916,11 +4761,11 @@ export async function initMainRenderer() {
       layoutState.terminalVisible = true;
     } else if (panelType === 'editor') {
       // Re-open editor in main window
-      if (activeTabId) {
-        const curTab = openTabs.find(t => t.id === activeTabId);
+      if (tabMgr.activeTabId) {
+        const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
         if (curTab) createOrSwitchEditor(curTab);
       }
-      updateTabUI();
+      tabMgr.renderTabs();
     } else if (panelType === 'preview') {
       // Re-open inline preview when popout docks
       showPreviewPanel();
@@ -4939,12 +4784,12 @@ export async function initMainRenderer() {
 
   // Listen for editor popout content changes
   window.tokiAPI.onEditorPopoutChange((tabId, content) => {
-    const tab = openTabs.find(t => t.id === tabId);
+    const tab = tabMgr.openTabs.find(t => t.id === tabId);
     if (tab && tab.setValue) {
       tab.setValue(content);
       tab._lastValue = content;
-      dirtyFields.add(tabId);
-      updateTabUI();
+      tabMgr.dirtyFields.add(tabId);
+      tabMgr.renderTabs();
     }
   });
 
@@ -4968,9 +4813,9 @@ export async function initMainRenderer() {
     if (!fileData) return;
     // (debug log removed)
 
-    const updatePlan = planMcpDataUpdate(field, openTabs);
+    const updatePlan = planMcpDataUpdate(field, tabMgr.openTabs);
     for (const tabId of updatePlan.backupTabIds) {
-      const tab = openTabs.find((entry) => entry.id === tabId);
+      const tab = tabMgr.openTabs.find((entry) => entry.id === tabId);
       if (tab?.getValue) {
         createBackup(tab.id, tab.getValue());
       }
@@ -4980,9 +4825,9 @@ export async function initMainRenderer() {
       fileData.lorebook = value;
       if (updatePlan.refreshSidebar) buildSidebar();
       if (updatePlan.refreshIndexedPrefixes.includes('lore_')) {
-        refreshIndexedTabs('lore_', buildLorebookTabState);
+        tabMgr.refreshIndexedTabs('lore_', buildLorebookTabState);
       }
-      const activeTab = activeTabId ? openTabs.find((tab) => tab.id === activeTabId) : null;
+      const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
       if (activeTab && activeTab.id.startsWith('lore_') && editorInstance && !FORM_TAB_TYPES.has(activeTab.language)) {
         const pos = editorInstance.getPosition();
         editorInstance.setValue(activeTab.getValue() || '');
@@ -4992,9 +4837,9 @@ export async function initMainRenderer() {
       fileData.regex = value;
       if (updatePlan.refreshSidebar) buildSidebar();
       if (updatePlan.refreshIndexedPrefixes.includes('regex_')) {
-        refreshIndexedTabs('regex_', buildRegexTabState);
+        tabMgr.refreshIndexedTabs('regex_', buildRegexTabState);
       }
-      const activeTab = activeTabId ? openTabs.find((tab) => tab.id === activeTabId) : null;
+      const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
       if (activeTab && activeTab.id.startsWith('regex_') && editorInstance && !FORM_TAB_TYPES.has(activeTab.language)) {
         const pos = editorInstance.getPosition();
         editorInstance.setValue(activeTab.getValue() || '');
@@ -5020,35 +4865,35 @@ export async function initMainRenderer() {
       }
       for (const prefix of updatePlan.refreshIndexedPrefixes) {
         if (prefix === 'lua_s') {
-          refreshIndexedTabs(prefix, buildLuaSectionTabState);
+          tabMgr.refreshIndexedTabs(prefix, buildLuaSectionTabState);
         } else if (prefix === 'css_s') {
-          refreshIndexedTabs(prefix, buildCssSectionTabState);
+          tabMgr.refreshIndexedTabs(prefix, buildCssSectionTabState);
         }
       }
-      if (field === activeTabId && editorInstance) {
-        const activeTab = openTabs.find((tab) => tab.id === field);
+      if (field === tabMgr.activeTabId && editorInstance) {
+        const activeTab = tabMgr.openTabs.find((tab) => tab.id === field);
         const pos = editorInstance.getPosition();
         editorInstance.setValue(activeTab?.getValue ? (activeTab.getValue() || '') : (value || ''));
         if (pos) editorInstance.setPosition(pos);
       }
-      if ((field === 'description' || field === 'name') && activeTabId === 'assetPromptTemplate' && editorInstance) {
-        const activeTab = openTabs.find((tab) => tab.id === 'assetPromptTemplate');
+      if ((field === 'description' || field === 'name') && tabMgr.activeTabId === 'assetPromptTemplate' && editorInstance) {
+        const activeTab = tabMgr.openTabs.find((tab) => tab.id === 'assetPromptTemplate');
         if (activeTab) {
           const pos = editorInstance.getPosition();
           editorInstance.setValue(activeTab.getValue() || '');
           if (pos) editorInstance.setPosition(pos);
         }
       }
-      if (field === 'lua' && activeTabId?.startsWith('lua_s') && editorInstance) {
-        const activeTab = openTabs.find((tab) => tab.id === activeTabId);
+      if (field === 'lua' && tabMgr.activeTabId?.startsWith('lua_s') && editorInstance) {
+        const activeTab = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
         if (activeTab) {
           const pos = editorInstance.getPosition();
           editorInstance.setValue(activeTab.getValue() || '');
           if (pos) editorInstance.setPosition(pos);
         }
       }
-      if (field === 'css' && activeTabId?.startsWith('css_s') && editorInstance) {
-        const activeTab = openTabs.find((tab) => tab.id === activeTabId);
+      if (field === 'css' && tabMgr.activeTabId?.startsWith('css_s') && editorInstance) {
+        const activeTab = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
         if (activeTab) {
           const pos = editorInstance.getPosition();
           editorInstance.setValue(activeTab.getValue() || '');
@@ -5061,7 +4906,7 @@ export async function initMainRenderer() {
       }
     }
     setStatus(updatePlan.statusMessage);
-    markFieldDirty(field);
+    tabMgr.markFieldDirty(field);
   });
 
   // (debug log removed)
