@@ -36,6 +36,57 @@ export function simpleMarkdown(text: string): string {
     return `\x00HTAG${htmlTags.length - 1}\x00`;
   });
 
+  // Resolve RisuAI Private Use Area escape characters
+  rendered = rendered
+    .replace(/\uE9B8/g, '{{')
+    .replace(/\uE9B9/g, '}}')
+    .replace(/\uE9BA/g, '{')
+    .replace(/\uE9BB/g, '}')
+    .replace(/\uE9BC/g, '(')
+    .replace(/\uE9BD/g, ')')
+    .replace(/\uE9BE/g, ':');
+
+  // Table support: detect lines that start with | and convert to HTML table
+  const lines = rendered.split('\n');
+  const tableBlocks: { start: number; end: number }[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+      const start = i;
+      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) i++;
+      tableBlocks.push({ start, end: i });
+    } else {
+      i++;
+    }
+  }
+  for (let t = tableBlocks.length - 1; t >= 0; t--) {
+    const block = tableBlocks[t];
+    const tableLines = lines.slice(block.start, block.end);
+    const isSepLine = (line: string) => /^\|[\s:|-]+\|$/.test(line.trim());
+    const rows: string[][] = [];
+    let headerCount = 0;
+    for (const tl of tableLines) {
+      if (isSepLine(tl)) { if (rows.length > 0) headerCount = rows.length; continue; }
+      const cells = tl.split('|').slice(1, -1).map(c => c.trim());
+      rows.push(cells);
+    }
+    let html = '<table>';
+    for (let r = 0; r < rows.length; r++) {
+      const tag = r < headerCount ? 'th' : 'td';
+      html += '<tr>' + rows[r].map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+    }
+    html += '</table>';
+    lines.splice(block.start, block.end - block.start, html);
+  }
+  rendered = lines.join('\n');
+
+  // Blockquote: lines starting with >
+  rendered = rendered.replace(/^(&gt;|>)\s?(.*)$/gm, '<blockquote>$2</blockquote>');
+  rendered = rendered.replace(/<\/blockquote>\n<blockquote>/g, '\n');
+
+  // Code blocks: ```...```
+  rendered = rendered.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+
   rendered = rendered.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   rendered = rendered.replace(/__(.+?)__/g, '<strong>$1</strong>');
   rendered = rendered.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');

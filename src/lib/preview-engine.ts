@@ -440,14 +440,26 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('reverse', (_p1, _arg, args) => (args[0] || '').split('').reverse().join(''));
     reg('contains', (_p1, _arg, args) => ((args[0] || '').includes(args[1] || '') ? '1' : '0'));
     reg('index', (_p1, _arg, args) => String((args[0] || '').indexOf(args[1] || '')));
+    reg('capitalize', (_p1, _arg, args) => {
+      const s = args[0] || '';
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    });
+    reg('startswith', (_p1, _arg, args) => ((args[0] || '').startsWith(args[1] || '') ? '1' : '0'));
+    reg('endswith', (_p1, _arg, args) => ((args[0] || '').endsWith(args[1] || '') ? '1' : '0'));
+    reg('join', (_p1, _arg, args) => {
+      try { return JSON.parse(args[0] || '[]').join(args[1] ?? ','); } catch { return args[0] || ''; }
+    });
+    reg('spread', (_p1, _arg, args) => {
+      try { return JSON.parse(args[0] || '[]').join('::'); } catch { return args[0] || ''; }
+    });
 
     // --- Comparison helpers ---
     reg('equal', (_p1, _arg, args) => ((args[0] || '') === (args[1] || '') ? '1' : '0'));
     reg('notequal', (_p1, _arg, args) => ((args[0] || '') !== (args[1] || '') ? '1' : '0'));
     reg('greater', (_p1, _arg, args) => (parseFloat(args[0] || '0') > parseFloat(args[1] || '0') ? '1' : '0'));
     reg('less', (_p1, _arg, args) => (parseFloat(args[0] || '0') < parseFloat(args[1] || '0') ? '1' : '0'));
-    reg('greaterorequal', (_p1, _arg, args) => (parseFloat(args[0] || '0') >= parseFloat(args[1] || '0') ? '1' : '0'));
-    reg('lessorequal', (_p1, _arg, args) => (parseFloat(args[0] || '0') <= parseFloat(args[1] || '0') ? '1' : '0'));
+    reg('greaterorequal', (_p1, _arg, args) => (parseFloat(args[0] || '0') >= parseFloat(args[1] || '0') ? '1' : '0'), ['greaterequal', 'greater_equal']);
+    reg('lessorequal', (_p1, _arg, args) => (parseFloat(args[0] || '0') <= parseFloat(args[1] || '0') ? '1' : '0'), ['lessequal', 'less_equal']);
     reg('and', (_p1, _arg, args) =>
       args[0] && args[0] !== '0' && args[0] !== '' && args[1] && args[1] !== '0' && args[1] !== '' ? '1' : '0',
     );
@@ -459,30 +471,10 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('ifneq', (_p1, _arg, args) => (args[0] !== args[1] ? args[2] || '' : args[3] || ''));
 
     // --- Asset ---
-    reg('asset', (_p1, arg, args) => {
-      const name = args[0] || '';
-      // Exact match first
-      const dataUri = assetMap[name];
-      if (dataUri) return `<img src="${dataUri}" alt="${name}" class="cbs-asset">`;
-      // Case-insensitive fallback
-      const nameLower = name.toLowerCase();
-      for (const key of Object.keys(assetMap)) {
-        if (key.toLowerCase() === nameLower) return `<img src="${assetMap[key]}" alt="${name}" class="cbs-asset">`;
-      }
-      if (arg.assets) {
-        const assets = arg.assets as [string, string][];
-        const asset = assets.find((a) => a[0] === name || a[0].toLowerCase() === nameLower);
-        if (asset) return `<img src="${asset[1]}" alt="${name}" class="cbs-asset">`;
-      }
-      return `[asset:${name}]`;
-    });
-    // {{raw::name}} — returns raw data URI (used in <img src="{{raw::name}}">)
-    reg('raw', (_p1, arg, args) => {
-      const name = args[0] || '';
-      // Exact match first
+    const resolveAsset = (name: string, arg: CBSArg): string | null => {
+      if (!name) return null;
       const dataUri = assetMap[name];
       if (dataUri) return dataUri;
-      // Case-insensitive fallback
       const nameLower = name.toLowerCase();
       for (const key of Object.keys(assetMap)) {
         if (key.toLowerCase() === nameLower) return assetMap[key];
@@ -492,8 +484,221 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         const asset = assets.find((a) => a[0] === name || a[0].toLowerCase() === nameLower);
         if (asset) return asset[1];
       }
+      return null;
+    };
+    reg('asset', (_p1, arg, args) => {
+      const name = args[0] || '';
+      const uri = resolveAsset(name, arg);
+      if (uri) return `<img src="${uri}" alt="${name}" class="cbs-asset">`;
+      return `[asset:${name}]`;
+    });
+    reg('emotion', (_p1, arg, args) => {
+      const name = args[0] || '';
+      const uri = resolveAsset(name, arg);
+      if (uri) return `<img src="${uri}" alt="${name}" class="cbs-asset cbs-emotion" style="max-width:100%;">`;
+      return `[emotion:${name}]`;
+    });
+    reg('raw', (_p1, arg, args) => {
+      const name = args[0] || '';
+      const uri = resolveAsset(name, arg);
+      if (uri) return uri;
       console.warn('[CBS raw] Asset not found:', name);
       return '';
+    }, ['path']);
+    reg('bg', (_p1, arg, args) => {
+      const name = args[0] || '';
+      const uri = resolveAsset(name, arg);
+      if (uri) return `<div class="cbs-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background-image:url('${uri}');background-size:cover;background-position:center;z-index:-1;"></div>`;
+      return '';
+    });
+    reg('bgm', (_p1, arg, args) => {
+      const name = args[0] || '';
+      const uri = resolveAsset(name, arg);
+      if (uri) return `<audio src="${uri}" autoplay loop style="display:none;"></audio>`;
+      return '';
+    });
+    reg('videoimg', (_p1, arg, args) => {
+      const name = args[0] || '';
+      const uri = resolveAsset(name, arg);
+      if (uri) return `<video src="${uri}" autoplay muted loop playsinline style="max-width:100%;"></video>`;
+      return `[video-img:${name}]`;
+    });
+    reg('inlay', (_p1, arg, args) => {
+      const name = args[0] || '';
+      const uri = resolveAsset(name, arg);
+      if (uri) return `<img src="${uri}" alt="${name}" style="max-width:100%;">`;
+      return '';
+    }, ['inlayed', 'inlayeddata']);
+    reg('source', () => '');
+    reg('assetlist', () => {
+      try { return JSON.stringify(Object.keys(assetMap)); } catch { return '[]'; }
+    });
+    reg('emotionlist', () => '[]');
+    reg('chardisplayasset', () => '[]');
+
+    // --- Array/Object operations ---
+    const parseArray = (s: string): string[] => {
+      try { const r = JSON.parse(s); return Array.isArray(r) ? r.map(String) : []; } catch { return []; }
+    };
+    const makeArray = (arr: string[]): string => JSON.stringify(arr);
+    const parseDict = (s: string): Record<string, string> => {
+      try { const r = JSON.parse(s); return typeof r === 'object' && r !== null && !Array.isArray(r) ? r as Record<string, string> : {}; } catch { return {}; }
+    };
+    const stringifyValue = (v: unknown): string => {
+      if (v === null || v === undefined) return 'null';
+      if (typeof v === 'object') return JSON.stringify(v);
+      return String(v);
+    };
+
+    reg('makearray', (_p1, _arg, args) => makeArray(args), ['array', 'a']);
+    reg('makedict', (_p1, _arg, args) => {
+      const obj: Record<string, string> = {};
+      for (const a of args) {
+        const eqIdx = a.indexOf('=');
+        if (eqIdx <= 0) continue;
+        obj[a.substring(0, eqIdx)] = a.substring(eqIdx + 1);
+      }
+      return JSON.stringify(obj);
+    }, ['dict', 'd', 'makeobject', 'object', 'o']);
+    reg('arraylength', (_p1, _arg, args) => String(parseArray(args[0] || '[]').length));
+    reg('arrayelement', (_p1, _arg, args) => {
+      const arr = parseArray(args[0] || '[]');
+      const idx = Number(args[1] || '0');
+      const val = arr.at(idx);
+      return val !== undefined ? val : 'null';
+    });
+    reg('arrayshift', (_p1, _arg, args) => { const a = parseArray(args[0] || '[]'); a.shift(); return makeArray(a); });
+    reg('arraypop', (_p1, _arg, args) => { const a = parseArray(args[0] || '[]'); a.pop(); return makeArray(a); });
+    reg('arraypush', (_p1, _arg, args) => { const a = parseArray(args[0] || '[]'); a.push(args[1] || ''); return makeArray(a); });
+    reg('arraysplice', (_p1, _arg, args) => {
+      const a = parseArray(args[0] || '[]');
+      a.splice(Number(args[1] || '0'), Number(args[2] || '0'), args[3] || '');
+      return makeArray(a);
+    });
+    reg('arrayassert', (_p1, _arg, args) => {
+      const a = parseArray(args[0] || '[]');
+      const idx = Number(args[1] || '0');
+      if (idx >= a.length) a[idx] = args[2] || '';
+      return makeArray(a);
+    });
+    reg('dictelement', (_p1, _arg, args) => {
+      const d = parseDict(args[0] || '{}');
+      const v = d[args[1] || ''];
+      return v !== undefined ? stringifyValue(v) : 'null';
+    }, ['objectelement']);
+    reg('objectassert', (_p1, _arg, args) => {
+      const d = parseDict(args[0] || '{}');
+      const key = args[1] || '';
+      if (!(key in d)) d[key] = args[2] || '';
+      return JSON.stringify(d);
+    }, ['dictassert', 'objectassert']);
+    reg('element', (_p1, _arg, args) => {
+      try {
+        let current: unknown = JSON.parse(args[0] || 'null');
+        for (let i = 1; i < args.length; i++) {
+          if (current === null || current === undefined || typeof current !== 'object') return 'null';
+          current = (current as Record<string, unknown>)[args[i]];
+        }
+        return stringifyValue(current);
+      } catch { return 'null'; }
+    }, ['ele']);
+    reg('filter', (_p1, _arg, args) => {
+      const a = parseArray(args[0] || '[]');
+      const mode = (args[1] || 'all').toLowerCase();
+      if (mode === 'nonempty') return makeArray(a.filter(v => v !== ''));
+      if (mode === 'unique') return makeArray(a.filter((v, i, arr) => arr.indexOf(v) === i));
+      // 'all' = nonempty + unique
+      return makeArray(a.filter(v => v !== '').filter((v, i, arr) => arr.indexOf(v) === i));
+    });
+    reg('range', (_p1, _arg, args) => {
+      const params = parseArray(args[0] || '[]').map(Number);
+      let start = 0, end = 0, step = 1;
+      if (params.length === 1) { end = params[0]; }
+      else if (params.length === 2) { start = params[0]; end = params[1]; }
+      else if (params.length >= 3) { start = params[0]; end = params[1]; step = params[2] || 1; }
+      const result: number[] = [];
+      if (step > 0) { for (let i = start; i < end; i += step) result.push(i); }
+      else if (step < 0) { for (let i = start; i > end; i += step) result.push(i); }
+      return JSON.stringify(result);
+    });
+
+    // --- Math functions ---
+    reg('round', (_p1, _arg, args) => String(Math.round(Number(args[0] || '0'))));
+    reg('floor', (_p1, _arg, args) => String(Math.floor(Number(args[0] || '0'))));
+    reg('ceil', (_p1, _arg, args) => String(Math.ceil(Number(args[0] || '0'))));
+    reg('abs', (_p1, _arg, args) => String(Math.abs(Number(args[0] || '0'))));
+    reg('remaind', (_p1, _arg, args) => String(Number(args[0] || '0') % Number(args[1] || '1')));
+    reg('pow', (_p1, _arg, args) => String(Math.pow(Number(args[0] || '0'), Number(args[1] || '0'))));
+    reg('fixnum', (_p1, _arg, args) => Number(args[0] || '0').toFixed(Number(args[1] || '0')), ['fixnumber']);
+    reg('tonumber', (_p1, _arg, args) => (args[0] || '').replace(/[^\d.]/g, ''));
+    reg('min', (_p1, _arg, args) => {
+      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map(v => Number(v) || 0);
+      return nums.length ? String(Math.min(...nums)) : '0';
+    });
+    reg('max', (_p1, _arg, args) => {
+      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map(v => Number(v) || 0);
+      return nums.length ? String(Math.max(...nums)) : '0';
+    });
+    reg('sum', (_p1, _arg, args) => {
+      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map(v => Number(v) || 0);
+      return String(nums.reduce((a, b) => a + b, 0));
+    });
+    reg('average', (_p1, _arg, args) => {
+      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map(v => Number(v) || 0);
+      return nums.length ? String(nums.reduce((a, b) => a + b, 0) / nums.length) : '0';
+    });
+    reg('all', (_p1, _arg, args) => {
+      const vals = args.length > 1 ? args : parseArray(args[0] || '[]');
+      return vals.every(v => v === '1' || v.toLowerCase() === 'true') ? '1' : '0';
+    });
+    reg('any', (_p1, _arg, args) => {
+      const vals = args.length > 1 ? args : parseArray(args[0] || '[]');
+      return vals.some(v => v === '1' || v.toLowerCase() === 'true') ? '1' : '0';
+    });
+    reg('randint', (_p1, _arg, args) => {
+      const min = parseInt(args[0] || '0', 10);
+      const max = parseInt(args[1] || '0', 10);
+      if (isNaN(min) || isNaN(max)) return 'NaN';
+      return String(Math.floor(Math.random() * (max - min + 1)) + min);
+    });
+
+    // --- Escape characters (RisuAI Private Use Area) ---
+    reg('bo', () => '\uE9B8\uE9B8', ['ddecbo', 'doubledisplayescapedcurlybracketopen']);
+    reg('bc', () => '\uE9B9\uE9B9', ['ddecbc', 'doubledisplayescapedcurlybracketclose']);
+    reg('decbo', () => '\uE9B8', ['displayescapedcurlybracketopen']);
+    reg('decbc', () => '\uE9B9', ['displayescapedcurlybracketclose']);
+    reg('debo', () => '\uE9BA', ['displayescapedbracketopen', '(']);
+    reg('debc', () => '\uE9BB', ['displayescapedbracketclose', ')']);
+    reg('deabo', () => '\uE9BC', ['displayescapedanglebracketopen', '<']);
+    reg('deabc', () => '\uE9BD', ['displayescapedanglebracketclose', '>']);
+    reg('dec', () => '\uE9BE', ['displayescapedcolon', ':']);
+    reg(';', () => ';', ['displayescapedsemicolon']);
+
+    // --- Formatting ---
+    reg('ruby', (_p1, _arg, args) =>
+      `<ruby>${args[0] || ''}<rp> (</rp><rt>${args[1] || ''}</rt><rp>) </rp></ruby>`,
+    ['furigana']);
+    reg('codeblock', (_p1, _arg, args) => {
+      let code: string, lang: string;
+      if (args.length > 1) { lang = args[0] || ''; code = args[1] || ''; }
+      else { lang = ''; code = args[0] || ''; }
+      const escaped = code.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return lang ? `<pre><code class="language-${lang}">${escaped}</code></pre>` : `<pre><code>${escaped}</code></pre>`;
+    });
+    reg('blank', () => '', ['none']);
+    reg('cbr', (_p1, _arg, args) => {
+      const count = Math.max(1, parseInt(args[0] || '1', 10) || 1);
+      return '\\n'.repeat(count);
+    }, ['cnl', 'cnewline']);
+    reg('tex', (_p1, _arg, args) => `$$${args[0] || ''}$$`, ['latex', 'katex']);
+    reg('iserror', (_p1, _arg, args) => ((args[0] || '').toLowerCase().startsWith('error:') ? '1' : '0'));
+    reg('return', (_p1, _arg, _args) => '');
+    reg('hiddenkey', () => '');
+    reg('hash', (_p1, _arg, args) => {
+      const s = args[0] || '';
+      let h = 0;
+      for (let i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+      return String(Math.abs(h) % 10000000);
     });
 
     // --- Misc ---
@@ -512,13 +717,49 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       (_p1, arg) => ((arg.chatID as number | undefined) === 0 || (arg.chatID as number | undefined) === -1 ? '1' : '0'),
       ['isfirstmessage'],
     );
+    reg('tempvar', (_p1, _arg, args) => {
+      const v = tempVars[args[0] || ''];
+      return v !== undefined ? String(v) : 'null';
+    });
     reg('slot', () => '');
     reg('originalmessage', () => '', ['original_message']);
     reg('maxcontext', () => '8000');
-    reg('lastcharamessage', () => '', ['lastchar']);
-    reg('lastusermessage', () => '', ['lastuser']);
+    reg('lastcharamessage', () => '', ['lastchar', 'previouscharchat', 'lastcharmessage']);
+    reg('lastusermessage', () => '', ['lastuser', 'previoususerchat']);
     reg('previousmessage', () => '');
-    reg('history', () => '', ['chat']);
+    reg('history', () => '', ['chat', 'messages']);
+    reg('charhistory', () => '[]', ['charmessages', 'char_history']);
+    reg('userhistory', () => '[]', ['usermessages', 'user_history']);
+    reg('previouschatlog', () => '');
+    reg('role', () => '');
+    reg('model', () => 'preview');
+    reg('axmodel', () => 'preview');
+    reg('jbtoggled', () => '0');
+    reg('screenwidth', () => String(window.innerWidth), ['screen_width']);
+    reg('screenheight', () => String(window.innerHeight), ['screen_height']);
+    reg('prefillsupported', () => '0', ['prefill_supported', 'prefill']);
+    reg('metadata', () => '');
+    reg('moduleenabled', () => '0', ['module_enabled']);
+    reg('moduleassetlist', () => '[]', ['module_assetlist']);
+    reg('triggerid', () => '', ['trigger_id']);
+    reg('globalnote', () => '', ['systemnote', 'ujb']);
+    reg('mainprompt', () => '', ['systemprompt', 'main_prompt']);
+    reg('jb', () => '', ['jailbreak']);
+    reg('authornote', () => '', ['author_note']);
+    reg('userpersona', () => userName, ['persona_desc']);
+    reg('chardesc', () => charDescription);
+    reg('charpersona', () => charDescription);
+    reg('exampledialogue', () => '', ['examplemessage', 'example_dialogue']);
+    reg('lorebook', () => '[]', ['worldinfo']);
+    reg('messagetime', () => new Date().toLocaleTimeString('ko-KR'), ['message_time']);
+    reg('messagedate', () => new Date().toLocaleDateString('ko-KR'), ['message_date']);
+    reg('firstmsgindex', () => '0', ['firstmessageindex', 'first_msg_index']);
+    reg('idleduration', () => '0', ['idle_duration']);
+    reg('messageidleduration', () => '0', ['message_idle_duration']);
+    reg('risu', (_p1, _arg, args) => `<img src="" alt="risu" style="width:${args[0] || '2em'};">`);
+    reg('file', (_p1, _arg, args) => `<div class="risu-file">${args[0] || ''}</div>`);
+    reg('declare', () => '');
+    reg('position', () => '');
   }
 
   // --- CBS Block Parser (stack-based) ---
@@ -580,7 +821,22 @@ export const PreviewEngine: PreviewEngineModule = (() => {
               }
             }
             if (blockData) {
-              const output = blockData.active ? blockData.content : blockData.elseContent || '';
+              let output: string;
+              if (blockData.type === 'each') {
+                // #each iteration: repeat content for each array element
+                const iterArr = (blockData as BlockState & { _iterArr?: string[] })._iterArr || [];
+                const iterVar = (blockData as BlockState & { _iterVar?: string })._iterVar || 'item';
+                const template = blockData.content;
+                const parts: string[] = [];
+                for (const item of iterArr) {
+                  parts.push(template.replace(new RegExp(`\\{\\{slot::${iterVar}\\}\\}`, 'gi'), item));
+                }
+                output = parts.join('');
+              } else if (blockData.type === 'puredisplay' || blockData.type === 'escape') {
+                output = blockData.content;
+              } else {
+                output = blockData.active ? blockData.content : blockData.elseContent || '';
+              }
               const activeBlock = stack.length > 0 ? stack[stack.length - 1] : null;
               if (activeBlock && activeBlock.isBlock) {
                 if (activeBlock.active) activeBlock.content += output;
@@ -591,7 +847,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
             continue;
           }
           // {{else}} inside a block
-          if (parsed.toLowerCase().trim() === 'else') {
+          if (parsed.toLowerCase().trim() === 'else' || parsed.toLowerCase().trim() === ':else') {
             const activeBlock = stack.length > 0 ? stack[stack.length - 1] : null;
             if (activeBlock && activeBlock.isBlock) {
               activeBlock.elseContent = '';
@@ -706,10 +962,26 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       return { isBlock: true, active, content: '', elseContent: '', _inElse: false, type: 'when' };
     }
     if (name === 'each') {
-      return { isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: 'each' };
+      // Parse: {{#each arrayJSON as varName}} or {{#each::arrayJSON::as::varName}}
+      const rawContent = args.join('::');
+      const asIdx = rawContent.toLowerCase().indexOf(' as ');
+      let iterArr: string[] = [];
+      let iterVar = 'item';
+      if (asIdx >= 0) {
+        const arrStr = rawContent.substring(0, asIdx).trim();
+        iterVar = rawContent.substring(asIdx + 4).trim();
+        try { const parsed = JSON.parse(arrStr); iterArr = Array.isArray(parsed) ? parsed.map(String) : []; } catch { /* empty */ }
+      }
+      return {
+        isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: 'each',
+        _iterArr: iterArr, _iterVar: iterVar,
+      } as BlockState;
     }
-    if (name === 'pure') {
-      return { isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: 'pure' };
+    if (name === 'pure' || name === 'puredisplay') {
+      return { isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: 'puredisplay' };
+    }
+    if (name === 'escape') {
+      return { isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: 'escape' };
     }
     return { isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: name };
   }
@@ -747,9 +1019,9 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     return result !== 0;
   }
 
-  // FIX: Correct or/and chain logic in when
+  // FIX: Correct or/and chain logic in when — extended with RisuAI operators
   function evaluateWhen(args: string[]): boolean {
-    if (args.length < 3) return false;
+    if (!args.length) return false;
     const stack = [...args];
 
     function resolveVar(val: string): string {
@@ -764,35 +1036,81 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       return val;
     }
 
+    function isTruthy(v: string): boolean {
+      return v === '1' || v.toLowerCase() === 'true';
+    }
+
+    // Process modifiers first (keep, legacy, not at the start)
+    let negate = false;
+    while (stack.length > 0) {
+      const first = stack[0].toLowerCase();
+      if (first === 'keep' || first === 'legacy') {
+        stack.shift();
+        continue;
+      }
+      if (first === 'not') {
+        negate = !negate;
+        stack.shift();
+        continue;
+      }
+      break;
+    }
+
+    // Single value check
+    if (stack.length === 0) return negate;
+    if (stack.length === 1) {
+      const v = resolveVar(stack[0]);
+      const result = isTruthy(v);
+      return negate ? !result : result;
+    }
+
+    // Check for special two-arg operators
+    if (stack.length === 2) {
+      const op = stack[0].toLowerCase();
+      if (op === 'var') {
+        const result = isTruthy(getChatVar(stack[1]));
+        return negate ? !result : result;
+      }
+      if (op === 'toggle') {
+        const result = isTruthy(getGlobalChatVar('toggle_' + stack[1]));
+        return negate ? !result : result;
+      }
+    }
+
+    // Standard comparison chain: val op cmp [and/or val2 op2 cmp2 ...]
     let val = resolveVar(stack.shift() ?? '');
     let result: boolean | null = null;
     let pendingLogic = 'and';
 
     while (stack.length >= 2) {
       const op = stack.shift()!.toLowerCase();
-      const cmp = resolveVar(stack.shift()!);
       let cmpResult: boolean;
-      switch (op) {
-        case 'is':
-          cmpResult = val === cmp;
-          break;
-        case 'isnot':
-          cmpResult = val !== cmp;
-          break;
-        case '>':
-          cmpResult = parseFloat(val) > parseFloat(cmp);
-          break;
-        case '<':
-          cmpResult = parseFloat(val) < parseFloat(cmp);
-          break;
-        case '>=':
-          cmpResult = parseFloat(val) >= parseFloat(cmp);
-          break;
-        case '<=':
-          cmpResult = parseFloat(val) <= parseFloat(cmp);
-          break;
-        default:
-          cmpResult = false;
+
+      if (op === 'vis') {
+        const cmpVal = stack.shift() || '';
+        cmpResult = getChatVar(val) === cmpVal;
+      } else if (op === 'visnot') {
+        const cmpVal = stack.shift() || '';
+        cmpResult = getChatVar(val) !== cmpVal;
+      } else if (op === 'tis') {
+        const cmpVal = stack.shift() || '';
+        cmpResult = getGlobalChatVar('toggle_' + val) === cmpVal;
+      } else if (op === 'tisnot') {
+        const cmpVal = stack.shift() || '';
+        cmpResult = getGlobalChatVar('toggle_' + val) !== cmpVal;
+      } else {
+        const cmp = resolveVar(stack.shift()!);
+        switch (op) {
+          case 'is': cmpResult = val === cmp; break;
+          case 'isnot': cmpResult = val !== cmp; break;
+          case '>': cmpResult = parseFloat(val) > parseFloat(cmp); break;
+          case '<': cmpResult = parseFloat(val) < parseFloat(cmp); break;
+          case '>=': cmpResult = parseFloat(val) >= parseFloat(cmp); break;
+          case '<=': cmpResult = parseFloat(val) <= parseFloat(cmp); break;
+          case 'and': cmpResult = isTruthy(val) && isTruthy(cmp); break;
+          case 'or': cmpResult = isTruthy(val) || isTruthy(cmp); break;
+          default: cmpResult = false;
+        }
       }
 
       if (result === null) result = cmpResult;
@@ -804,7 +1122,9 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         val = resolveVar(stack.shift()!);
       }
     }
-    return result ?? false;
+
+    const finalResult = result ?? isTruthy(resolveVar(val));
+    return negate ? !finalResult : finalResult;
   }
 
   // ==================== Regex Script Pipeline ====================
