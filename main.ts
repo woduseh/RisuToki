@@ -917,15 +917,23 @@ ipcMain.handle('import-json', async () => {
 });
 
 // --- Persona files ---
+function isValidPersonaName(name: unknown): name is string {
+  return typeof name === 'string' && /^[a-zA-Z0-9가-힣_\- ]+$/.test(name) && name.length <= 128;
+}
+
 ipcMain.handle('read-persona', (_event, name: string) => {
+  if (!isValidPersonaName(name)) { console.warn('[main] Invalid persona name:', name); return null; }
   const filePath = path.join(__dirname, 'assets', 'persona', `${name}.txt`);
+  if (!filePath.startsWith(path.join(__dirname, 'assets', 'persona'))) { console.warn('[main] Path traversal blocked:', name); return null; }
   try { return fs.readFileSync(filePath, 'utf-8'); } catch (e) { console.warn('[main] Failed to read persona:', name, (e as Error).message); return null; }
 });
 
 ipcMain.handle('write-persona', (_event, name: string, content: string) => {
+  if (!isValidPersonaName(name)) { console.warn('[main] Invalid persona name:', name); return false; }
   const dir = path.join(__dirname, 'assets', 'persona');
   try { fs.mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
   const filePath = path.join(dir, `${name}.txt`);
+  if (!filePath.startsWith(dir)) { console.warn('[main] Path traversal blocked:', name); return false; }
   try { fs.writeFileSync(filePath, content, 'utf-8'); return true; } catch (e) { console.warn('[main] Failed to write persona:', name, (e as Error).message); return false; }
 });
 

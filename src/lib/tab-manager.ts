@@ -34,6 +34,7 @@ export class TabManager {
 
   private tabBarId: string;
   private callbacks: TabManagerCallbacks;
+  private tabIndex = new Map<string, Tab>();
 
   constructor(tabBarId: string, callbacks: TabManagerCallbacks) {
     this.tabBarId = tabBarId;
@@ -41,7 +42,7 @@ export class TabManager {
   }
 
   findTab(id: string): Tab | undefined {
-    return this.openTabs.find(t => t.id === id);
+    return this.tabIndex.get(id);
   }
 
   openTab(
@@ -51,10 +52,11 @@ export class TabManager {
     getValue: () => unknown,
     setValue: ((value: unknown) => void) | null
   ): Tab {
-    let tab = this.openTabs.find(t => t.id === id);
+    let tab = this.tabIndex.get(id);
     if (!tab) {
       tab = { id, label, language, getValue, setValue, _lastValue: null };
       this.openTabs.push(tab);
+      this.tabIndex.set(id, tab);
     } else {
       tab.label = label;
       tab.language = language;
@@ -69,6 +71,7 @@ export class TabManager {
     const idx = this.openTabs.findIndex(t => t.id === id);
     if (idx === -1) return;
     this.openTabs.splice(idx, 1);
+    this.tabIndex.delete(id);
     this.dirtyFields.delete(id);
     if (this.pendingEditorTabId === id) this.pendingEditorTabId = null;
 
@@ -126,9 +129,10 @@ export class TabManager {
     this.openTabs = result.tabs;
     this.dirtyFields = result.dirtyIds;
     this.activeTabId = result.activeTabId;
+    this.rebuildIndex();
 
     const activeTab = this.activeTabId
-      ? this.openTabs.find(tab => tab.id === this.activeTabId)
+      ? this.tabIndex.get(this.activeTabId)
       : null;
     if (
       activeTab &&
@@ -163,9 +167,15 @@ export class TabManager {
 
   reset(): void {
     this.openTabs = [];
+    this.tabIndex.clear();
     this.activeTabId = null;
     this.dirtyFields.clear();
     this.pendingEditorTabId = null;
+  }
+
+  private rebuildIndex(): void {
+    this.tabIndex.clear();
+    for (const tab of this.openTabs) this.tabIndex.set(tab.id, tab);
   }
 
   renderTabs(): void {

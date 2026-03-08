@@ -13,7 +13,7 @@ import type { Tab } from '../lib/tab-manager';
 import type { LayoutState, LayoutSlot, PanelPosition } from '../lib/layout-manager';
 import { registerActions } from '../lib/action-registry';
 import { useAppStore } from '../stores/app-store';
-import type { RpMode } from '../stores/app-store';
+import type { RpMode, CharxData, LorebookEntry, RegexEntry, ReferenceFile } from '../stores/app-store';
 import {
   createTreeItem,
   createFolderItem,
@@ -43,6 +43,7 @@ import {
   writeRpCustomText,
   writeRpMode,
 } from '../lib/app-settings';
+import type { StoredLayoutState } from '../lib/app-settings';
 import { initTokiAvatar as initTokiAvatarUi, setTokiActive, refreshAvatarForDarkMode } from '../lib/avatar-ui';
 import { applyDarkMode, defineDarkMonacoTheme } from '../lib/dark-mode';
 import { showImageViewer as renderImageViewer } from '../lib/image-viewer';
@@ -64,6 +65,7 @@ import { collectDirtyEditorFields } from '../lib/editor-dirty-fields';
 import { TabManager } from '../lib/tab-manager';
 import { applyStoredLayoutState, createDefaultLayoutState, createLayoutManager, V_SLOTS } from '../lib/layout-manager';
 import { planMcpDataUpdate } from '../lib/mcp-data-update';
+import type { PopoutDeps } from '../lib/popout-window';
 import {
   dockPanel as _dockPanel,
   isPanelPoppedOut,
@@ -82,8 +84,10 @@ import {
   showLoreEditor,
   showRegexEditor,
 } from '../lib/form-editor';
+import type { FormTabInfo } from '../lib/form-editor';
 import { showConfirm, resetConfirmAllowAll, showCloseConfirm, showPrompt } from '../lib/dialog';
 import { showContextMenu, hideContextMenu } from '../lib/context-menu';
+import type { ContextMenuItem } from '../lib/context-menu';
 import { initPanelDragDrop as _initPanelDragDrop } from '../lib/panel-drag';
 import {
   initializeTerminalUi,
@@ -122,11 +126,29 @@ import {
 
 const settingsSnapshot = readAppSettingsSnapshot();
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Monaco global is complex; ambient declaration
 declare const monaco: any;
 
 // ==================== State ====================
-let fileData: any = null; // Current charx data
-let editorInstance: any = null; // Monaco editor instance
+
+interface MonacoEditorInstance {
+  getValue(): string;
+  setValue(value: string): void;
+  getModel(): unknown;
+  dispose(): void;
+  updateOptions(opts: unknown): void;
+  onDidChangeModelContent(listener: () => void): { dispose(): void };
+  getAction(id: string): { run(): void } | null;
+  trigger(source: string, handlerId: string, payload?: unknown): void;
+  getOption(id: number): unknown;
+  getPosition(): { lineNumber: number; column: number } | null;
+  setPosition(position: { lineNumber: number; column: number }): void;
+  layout(dimension?: { width: number; height: number }): void;
+  [key: string]: unknown;
+}
+
+let fileData: CharxData | null = null; // Current charx data
+let editorInstance: MonacoEditorInstance | null = null; // Monaco editor instance
 let monacoReady = false;
 let monacoLoadTask: Promise<boolean> | null = null;
 
@@ -134,9 +156,9 @@ let monacoLoadTask: Promise<boolean> | null = null;
 let luaSections: Section[] = []; // [{ name, content }]
 
 // Reference files (read-only)
-let referenceFiles: any[] = []; // [{ fileName, data }]
+let referenceFiles: ReferenceFile[] = []; // [{ fileName, data }]
 
-async function syncReferenceFiles(): Promise<any[]> {
+async function syncReferenceFiles(): Promise<ReferenceFile[]> {
   referenceFiles = await window.tokiAPI.listReferences();
   return referenceFiles;
 }
@@ -193,12 +215,12 @@ const tabMgr = new TabManager('editor-tabs', {
 initFormEditor({
   isMonacoReady: () => monacoReady,
   isDarkMode: () => darkMode,
-  getEditorInstance: () => editorInstance,
+  getEditorInstance: (() => editorInstance) as Parameters<typeof initFormEditor>[0]['getEditorInstance'],
   setEditorInstance: (ed) => {
-    editorInstance = ed;
+    editorInstance = ed as MonacoEditorInstance | null;
   },
-  getFileData: () => fileData,
-  tabMgr: tabMgr as any,
+  getFileData: () => fileData as Record<string, unknown> | null,
+  tabMgr: tabMgr as unknown as Parameters<typeof initFormEditor>[0]['tabMgr'],
   createBackup,
   showPrompt,
   buildSidebar,
@@ -206,7 +228,7 @@ initFormEditor({
 
 const layoutState = createDefaultLayoutState();
 try {
-  applyStoredLayoutState(layoutState, readStoredLayoutState() as any);
+  applyStoredLayoutState(layoutState, readStoredLayoutState() as StoredLayoutState & Partial<LayoutState> | null);
 } catch (error) {
   reportRuntimeError({
     context: '레이아웃 상태 복원 실패',
@@ -345,7 +367,7 @@ function createOrSwitchEditor(tabInfo: Tab): void {
 
   if (tabInfo.language === '_loreform') {
     tabMgr.activeTabId = tabInfo.id;
-    showLoreEditor(tabInfo as any);
+    showLoreEditor(tabInfo as FormTabInfo);
     tabMgr.renderTabs();
     updateSidebarActive();
     return;
@@ -353,7 +375,7 @@ function createOrSwitchEditor(tabInfo: Tab): void {
 
   if (tabInfo.language === '_regexform') {
     tabMgr.activeTabId = tabInfo.id;
-    showRegexEditor(tabInfo as any);
+    showRegexEditor(tabInfo as FormTabInfo);
     tabMgr.renderTabs();
     updateSidebarActive();
     return;
@@ -403,14 +425,14 @@ function createOrSwitchEditor(tabInfo: Tab): void {
     readOnly: isReadOnly,
   });
 
-  editorInstance.onDidChangeModelContent(() => {
+  editorInstance!.onDidChangeModelContent(() => {
     const curTab = tabMgr.openTabs.find((t) => t.id === tabMgr.activeTabId);
     if (curTab && curTab.setValue) {
       // Auto-backup on first change (save original before modification)
       if (!tabMgr.dirtyFields.has(curTab.id)) {
         createBackup(curTab.id, curTab.getValue());
       }
-      curTab.setValue(editorInstance.getValue());
+      curTab.setValue(editorInstance!.getValue());
       tabMgr.dirtyFields.add(curTab.id);
       tabMgr.renderTabs();
       setStatus('수정됨');
@@ -430,7 +452,7 @@ function openExternalTextTab(
   initialValue: string,
   persist: (value: string) => Promise<void> | void,
   language = 'plaintext',
-): any {
+): Tab | null {
   const state = createExternalTextTabState(initialValue, persist);
   return tabMgr.openTab(
     id,
@@ -443,7 +465,7 @@ function openExternalTextTab(
   );
 }
 
-function buildLorebookTabState(index: number, tab: Tab): any {
+function buildLorebookTabState(index: number, tab: Tab): Record<string, unknown> | null {
   const entry = fileData?.lorebook?.[index];
   if (!entry) return null;
 
@@ -453,9 +475,9 @@ function buildLorebookTabState(index: number, tab: Tab): any {
       id: `lore_${index}`,
       label,
       language: '_loreform',
-      getValue: () => fileData.lorebook[index],
-      setValue: (value: any) => {
-        Object.assign(fileData.lorebook[index], value);
+      getValue: () => fileData!.lorebook[index],
+      setValue: (value: unknown) => {
+        Object.assign(fileData!.lorebook[index], value as Record<string, unknown>);
       },
     };
   }
@@ -464,14 +486,14 @@ function buildLorebookTabState(index: number, tab: Tab): any {
     id: `lore_${index}`,
     label,
     language: tab.language || 'plaintext',
-    getValue: () => fileData.lorebook[index].content || '',
-    setValue: (value: any) => {
-      fileData.lorebook[index].content = value;
+    getValue: () => fileData!.lorebook[index].content || '',
+    setValue: (value: unknown) => {
+      fileData!.lorebook[index].content = value as string;
     },
   };
 }
 
-function buildRegexTabState(index: number, tab: Tab): any {
+function buildRegexTabState(index: number, tab: Tab): Record<string, unknown> | null {
   const entry = fileData?.regex?.[index];
   if (!entry) return null;
 
@@ -481,9 +503,9 @@ function buildRegexTabState(index: number, tab: Tab): any {
       id: `regex_${index}`,
       label,
       language: '_regexform',
-      getValue: () => fileData.regex[index],
-      setValue: (value: any) => {
-        Object.assign(fileData.regex[index], value);
+      getValue: () => fileData!.regex[index],
+      setValue: (value: unknown) => {
+        Object.assign(fileData!.regex[index], value as Record<string, unknown>);
       },
     };
   }
@@ -492,10 +514,10 @@ function buildRegexTabState(index: number, tab: Tab): any {
     id: `regex_${index}`,
     label,
     language: tab.language || 'json',
-    getValue: () => JSON.stringify(fileData.regex[index], null, 2),
-    setValue: (value: any) => {
+    getValue: () => JSON.stringify(fileData!.regex[index], null, 2),
+    setValue: (value: unknown) => {
       try {
-        fileData.regex[index] = JSON.parse(value);
+        fileData!.regex[index] = JSON.parse(value as string);
       } catch (error) {
         reportRuntimeError({
           context: '정규식 JSON 파싱 실패',
@@ -508,7 +530,7 @@ function buildRegexTabState(index: number, tab: Tab): any {
   };
 }
 
-function buildLuaSectionTabState(index: number, tab: Tab): any {
+function buildLuaSectionTabState(index: number, tab: Tab): Record<string, unknown> | null {
   const section = luaSections[index];
   if (!section) return null;
 
@@ -517,14 +539,14 @@ function buildLuaSectionTabState(index: number, tab: Tab): any {
     label: section.name,
     language: tab.language || 'lua',
     getValue: () => luaSections[index].content,
-    setValue: (value: any) => {
-      luaSections[index].content = value;
-      fileData.lua = combineLuaSections(luaSections);
+    setValue: (value: unknown) => {
+      luaSections[index].content = value as string;
+      fileData!.lua = combineLuaSections(luaSections);
     },
   };
 }
 
-function buildCssSectionTabState(index: number, tab: Tab): any {
+function buildCssSectionTabState(index: number, tab: Tab): Record<string, unknown> | null {
   const section = cssSections[index];
   if (!section) return null;
 
@@ -533,9 +555,9 @@ function buildCssSectionTabState(index: number, tab: Tab): any {
     label: section.name,
     language: tab.language || 'css',
     getValue: () => cssSections[index].content,
-    setValue: (value: any) => {
-      cssSections[index].content = value;
-      fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
+    setValue: (value: unknown) => {
+      cssSections[index].content = value as string;
+      fileData!.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
     },
   };
 }
@@ -553,7 +575,7 @@ function getRefsSidebarDeps() {
     showConfirm,
     showPrompt,
     setStatus,
-    openTab: (id: string, label: string, lang: string, getValue: any, setValue: any) =>
+    openTab: (id: string, label: string, lang: string, getValue: () => unknown, setValue: ((v: unknown) => void) | null) =>
       tabMgr.openTab(id, label, lang, getValue, setValue),
     findOpenTab: (id: string) => tabMgr.openTabs.find((t) => t.id === id),
     activateTab: (id: string) => {
@@ -578,16 +600,16 @@ function getRefsSidebarDeps() {
   };
 }
 
-function buildRefsSidebar(): any {
+function buildRefsSidebar(): void {
   const refsEl = document.getElementById('sidebar-refs');
   if (!refsEl) return;
-  return _buildRefsSidebar(refsEl, getRefsSidebarDeps() as any);
+  _buildRefsSidebar(refsEl, getRefsSidebarDeps() as unknown as Parameters<typeof _buildRefsSidebar>[1]);
 }
 
-function addReferenceFile(): any {
+function addReferenceFile(): void {
   const refsEl = document.getElementById('sidebar-refs');
   if (!refsEl) return;
-  return _addReferenceFile(refsEl, getRefsSidebarDeps() as any);
+  _addReferenceFile(refsEl, getRefsSidebarDeps() as unknown as Parameters<typeof _addReferenceFile>[1]);
 }
 
 function openRefTabById(tabId: string): void {
@@ -621,22 +643,22 @@ function buildSidebar(): void {
   const luaCombinedEl = createTreeItem('통합 보기', '📋', 1);
   luaCombinedEl.dataset.label = 'Lua';
   luaCombinedEl.addEventListener('click', () => {
-    fileData.lua = combineLuaSections(luaSections);
+    fileData!.lua = combineLuaSections(luaSections);
     tabMgr.openTab(
       'lua',
       'Lua (통합)',
       'lua',
-      () => fileData.lua,
-      (v: any) => {
-        fileData.lua = v;
-        luaSections = parseLuaSections(v);
+      () => fileData!.lua,
+      (v: unknown) => {
+        fileData!.lua = v as string;
+        luaSections = parseLuaSections(v as string);
       },
     );
   });
   luaCombinedEl.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const items = [
+    const items: ContextMenuItem[] = [
       {
         label: 'MCP 경로 복사',
         action: () => {
@@ -647,13 +669,13 @@ function buildSidebar(): void {
     ];
     const store = getBackups('lua');
     if (store.length > 0) {
-      items.push('---' as any);
+      items.push('---');
       items.push({
         label: '백업 불러오기',
         action: () => showBackupMenu('lua', e.clientX, e.clientY, backupMenuCallbacks),
       });
     }
-    showContextMenu(e.clientX, e.clientY, items as any);
+    showContextMenu(e.clientX, e.clientY, items);
   });
   luaFolder.children.appendChild(luaCombinedEl);
 
@@ -668,16 +690,16 @@ function buildSidebar(): void {
         section.name,
         'lua',
         () => luaSections[idx].content,
-        (v: any) => {
-          luaSections[idx].content = v;
-          fileData.lua = combineLuaSections(luaSections);
+        (v: unknown) => {
+          luaSections[idx].content = v as string;
+          fileData!.lua = combineLuaSections(luaSections);
         },
       );
     });
     sectionEl.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const items = [
+      const items: ContextMenuItem[] = [
         { label: '이름 변경', action: () => renameLuaSection(idx) },
         {
           label: 'MCP 경로 복사',
@@ -689,15 +711,15 @@ function buildSidebar(): void {
       ];
       const store = getBackups(`lua_s${idx}`);
       if (store.length > 0) {
-        items.push('---' as any);
+        items.push('---');
         items.push({
           label: '백업 불러오기',
           action: () => showBackupMenu(`lua_s${idx}`, e.clientX, e.clientY, backupMenuCallbacks),
         });
       }
-      items.push('---' as any);
+      items.push('---');
       items.push({ label: '삭제', action: () => deleteLuaSection(idx) });
-      showContextMenu(e.clientX, e.clientY, items as any);
+      showContextMenu(e.clientX, e.clientY, items);
     });
     luaFolder.children.appendChild(sectionEl);
   }
@@ -726,15 +748,15 @@ function buildSidebar(): void {
         'css',
         'CSS (통합)',
         'css',
-        () => fileData.css,
-        (v: any) => {
-          fileData.css = v;
-          ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(v));
+        () => fileData!.css,
+        (v: unknown) => {
+          fileData!.css = v as string;
+          ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(v as string));
         },
       );
     });
     cssCombinedEl.addEventListener('contextmenu', (e) => {
-      const items = [
+      const items: ContextMenuItem[] = [
         {
           label: 'MCP 경로 복사',
           action: () => {
@@ -745,13 +767,13 @@ function buildSidebar(): void {
       ];
       const store = getBackups('css');
       if (store.length > 0) {
-        items.push('---' as any);
+        items.push('---');
         items.push({
           label: '백업 불러오기',
           action: () => showBackupMenu('css', e.clientX, e.clientY, backupMenuCallbacks),
         });
       }
-      showContextMenu(e.clientX, e.clientY, items as any);
+      showContextMenu(e.clientX, e.clientY, items);
     });
     cssFolder.children.appendChild(cssCombinedEl);
 
@@ -766,16 +788,16 @@ function buildSidebar(): void {
           section.name,
           'css',
           () => cssSections[idx].content,
-          (v: any) => {
-            cssSections[idx].content = v;
-            fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
+          (v: unknown) => {
+            cssSections[idx].content = v as string;
+            fileData!.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
           },
         );
       });
       sectionEl.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const items = [
+        const items: ContextMenuItem[] = [
           { label: '이름 변경', action: () => renameCssSection(idx) },
           {
             label: 'MCP 경로 복사',
@@ -787,15 +809,15 @@ function buildSidebar(): void {
         ];
         const store = getBackups(`css_s${idx}`);
         if (store.length > 0) {
-          items.push('---' as any);
+          items.push('---');
           items.push({
             label: '백업 불러오기',
             action: () => showBackupMenu(`css_s${idx}`, e.clientX, e.clientY, backupMenuCallbacks),
           });
         }
-        items.push('---' as any);
+        items.push('---');
         items.push({ label: '삭제', action: () => deleteCssSection(idx) });
-        showContextMenu(e.clientX, e.clientY, items as any);
+        showContextMenu(e.clientX, e.clientY, items);
       });
       cssFolder.children.appendChild(sectionEl);
     }
@@ -820,8 +842,8 @@ function buildSidebar(): void {
       readonly: true,
       get: () =>
         buildAssetPromptTemplate({
-          name: fileData.name,
-          description: fileData.description,
+          name: fileData!.name,
+          description: fileData!.description,
         }),
     },
     {
@@ -830,11 +852,11 @@ function buildSidebar(): void {
       icon: '🪝',
       lang: 'json',
       field: 'triggerScripts',
-      get: () => fileData.triggerScripts || '[]',
-      set: (value: string) => {
-        fileData.triggerScripts = value;
-        const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(value);
-        if (nextLua !== null) fileData.lua = nextLua;
+      get: () => fileData!.triggerScripts || '[]',
+      set: (value: unknown) => {
+        fileData!.triggerScripts = value as string;
+        const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(value as string);
+        if (nextLua !== null) fileData!.lua = nextLua;
       },
     },
     {
@@ -844,7 +866,7 @@ function buildSidebar(): void {
       lang: 'json',
       field: 'alternateGreetings',
       readonly: true,
-      get: () => stringifyStringArray(fileData.alternateGreetings),
+      get: () => stringifyStringArray(fileData!.alternateGreetings),
     },
     {
       id: 'groupOnlyGreetings',
@@ -853,7 +875,7 @@ function buildSidebar(): void {
       lang: 'json',
       field: 'groupOnlyGreetings',
       readonly: true,
-      get: () => stringifyStringArray(fileData.groupOnlyGreetings),
+      get: () => stringifyStringArray(fileData!.groupOnlyGreetings),
     },
     { id: 'defaultVariables', label: '기본변수', icon: '⚙', lang: 'plaintext', field: 'defaultVariables' },
     { id: 'description', label: '설명', icon: '📄', lang: 'plaintext', field: 'description' },
@@ -866,20 +888,20 @@ function buildSidebar(): void {
         item.id,
         item.label,
         item.lang,
-        item.get || (() => fileData[item.field!]),
+        item.get || (() => fileData![item.field!]),
         item.readonly
           ? null
-          : ((item.set ||
-              ((v: any) => {
-                fileData[item.field!] = v;
-              })) as any),
+          : (item.set ||
+              ((v: unknown) => {
+                fileData![item.field!] = v;
+              })),
       );
     });
     // Single item right-click: MCP path / backup
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const items = [];
+      const items: ContextMenuItem[] = [];
       if (item.field) {
         items.push({
           label: 'MCP 경로 복사',
@@ -900,13 +922,13 @@ function buildSidebar(): void {
       }
       const store = getBackups(item.id);
       if (store.length > 0) {
-        items.push('---' as any);
+        items.push('---');
         items.push({
           label: '백업 불러오기',
           action: () => showBackupMenu(item.id, e.clientX, e.clientY, backupMenuCallbacks),
         });
       }
-      showContextMenu(e.clientX, e.clientY, items as any);
+      showContextMenu(e.clientX, e.clientY, items);
     });
     tree.appendChild(el);
   }
@@ -920,43 +942,45 @@ function buildSidebar(): void {
   lbFolder.header.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const items = [
+    const items: ContextMenuItem[] = [
       { label: '새 항목 추가', action: () => addNewLorebook() },
       { label: '새 폴더 추가', action: () => addNewLorebookFolder() },
-      '---' as any,
+      '---',
       { label: 'JSON 파일 가져오기', action: () => importLorebook() },
     ];
-    if (fileData.lorebook.length > 0) {
-      items.push('---' as any);
+    if (fileData!.lorebook.length > 0) {
+      items.push('---');
       items.push({
-        label: `전체 삭제 (${fileData.lorebook.length}개)`,
+        label: `전체 삭제 (${fileData!.lorebook.length}개)`,
         action: async () => {
           if (
             !(await showConfirm(
-              `로어북 전체 ${fileData.lorebook.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
+              `로어북 전체 ${fileData!.lorebook.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
             ))
           )
             return;
           // Close all lorebook tabs
-          for (let i = fileData.lorebook.length - 1; i >= 0; i--) tabMgr.closeTab(`lore_${i}`);
-          fileData.lorebook = [];
+          for (let i = fileData!.lorebook.length - 1; i >= 0; i--) tabMgr.closeTab(`lore_${i}`);
+          fileData!.lorebook = [];
           tabMgr.markFieldDirty('lorebook');
           buildSidebar();
           setStatus('로어북 전체 삭제됨');
         },
       });
     }
-    showContextMenu(e.clientX, e.clientY, items as any);
+    showContextMenu(e.clientX, e.clientY, items);
   });
 
   // Group lorebook by folder (robust multi-key matching)
-  const folderDataList: { entry: any; index: number; children: { entry: any; index: number }[] }[] = []; // { entry, index, children }
-  const folderLookup: Record<string, any> = {}; // multiple keys → same folderData
-  const rootEntries: { entry: any; index: number }[] = [];
+  type LoreChild = { entry: LorebookEntry; index: number };
+  type LoreFolder = { entry: LorebookEntry; index: number; children: LoreChild[] };
+  const folderDataList: LoreFolder[] = []; // { entry, index, children }
+  const folderLookup: Record<string, LoreFolder> = {}; // multiple keys → same folderData
+  const rootEntries: LoreChild[] = [];
   for (let i = 0; i < fileData.lorebook.length; i++) {
     const entry = fileData.lorebook[i];
     if (entry.mode === 'folder') {
-      const fd: { entry: any; index: number; children: { entry: any; index: number }[] } = {
+      const fd: LoreFolder = {
         entry,
         index: i,
         children: [],
@@ -1000,7 +1024,7 @@ function buildSidebar(): void {
     subFolder.header.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const fEntry = fileData.lorebook[folderIdx];
+      const fEntry = fileData!.lorebook[folderIdx];
       const folderId = `folder:${fEntry.key || fEntry.comment || folderIdx}`;
       showContextMenu(e.clientX, e.clientY, [
         {
@@ -1017,10 +1041,10 @@ function buildSidebar(): void {
         {
           label: '새 항목 추가',
           action: () => {
-            const newEntry = {
+            const newEntry: LorebookEntry = {
               key: '',
               content: '',
-              comment: `new_entry_${fileData.lorebook.length}`,
+              comment: `new_entry_${fileData!.lorebook.length}`,
               mode: 'normal',
               insertorder: 100,
               alwaysActive: false,
@@ -1028,20 +1052,23 @@ function buildSidebar(): void {
               selective: false,
               secondkey: '',
               constant: false,
-              order: fileData.lorebook.length,
+              order: fileData!.lorebook.length,
+              priority: 0,
+              useRegex: false,
+              extentions: {},
               folder: folderId,
             };
-            fileData.lorebook.push(newEntry);
+            fileData!.lorebook.push(newEntry);
             tabMgr.markFieldDirty('lorebook');
             buildSidebar();
-            const idx = fileData.lorebook.length - 1;
+            const idx = fileData!.lorebook.length - 1;
             tabMgr.openTab(
               `lore_${idx}`,
               newEntry.comment,
               '_loreform',
-              () => fileData.lorebook[idx],
+              () => fileData!.lorebook[idx],
               (v) => {
-                Object.assign(fileData.lorebook[idx], v);
+                Object.assign(fileData!.lorebook[idx], v);
               },
             );
             setStatus('폴더에 새 항목 추가됨');
@@ -1062,7 +1089,7 @@ function buildSidebar(): void {
                   const indices = folderChildren.map((c) => c.index).sort((a, b) => b - a);
                   for (const i of indices) {
                     tabMgr.closeTab(`lore_${i}`);
-                    fileData.lorebook.splice(i, 1);
+                    fileData!.lorebook.splice(i, 1);
                   }
                   tabMgr.markFieldDirty('lorebook');
                   buildSidebar();
@@ -1079,10 +1106,10 @@ function buildSidebar(): void {
               return;
             // Move children to root
             for (const child of folderChildren) {
-              fileData.lorebook[child.index].folder = '';
+              fileData!.lorebook[child.index].folder = '';
             }
             tabMgr.closeTab(`lore_${folderIdx}`);
-            fileData.lorebook.splice(folderIdx, 1);
+            fileData!.lorebook.splice(folderIdx, 1);
             tabMgr.markFieldDirty('lorebook');
             buildSidebar();
             tabMgr.shiftIndexedTabsAfterRemoval('lore_', [folderIdx], buildLorebookTabState);
@@ -1102,7 +1129,7 @@ function buildSidebar(): void {
             const indices = [folderIdx, ...folderChildren.map((c) => c.index)].sort((a, b) => b - a);
             for (const i of indices) {
               tabMgr.closeTab(`lore_${i}`);
-              fileData.lorebook.splice(i, 1);
+              fileData!.lorebook.splice(i, 1);
             }
             tabMgr.markFieldDirty('lorebook');
             buildSidebar();
@@ -1133,30 +1160,30 @@ function buildSidebar(): void {
   rxFolder.header.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const items = [
+    const items: ContextMenuItem[] = [
       { label: '새 항목 추가', action: () => addNewRegex() },
       { label: 'JSON 파일 가져오기', action: () => importRegex() },
     ];
-    if (fileData.regex.length > 0) {
-      items.push('---' as any);
+    if (fileData!.regex.length > 0) {
+      items.push('---');
       items.push({
-        label: `전체 삭제 (${fileData.regex.length}개)`,
+        label: `전체 삭제 (${fileData!.regex.length}개)`,
         action: async () => {
           if (
             !(await showConfirm(
-              `정규식 전체 ${fileData.regex.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
+              `정규식 전체 ${fileData!.regex.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
             ))
           )
             return;
-          for (let i = fileData.regex.length - 1; i >= 0; i--) tabMgr.closeTab(`regex_${i}`);
-          fileData.regex = [];
+          for (let i = fileData!.regex.length - 1; i >= 0; i--) tabMgr.closeTab(`regex_${i}`);
+          fileData!.regex = [];
           tabMgr.markFieldDirty('regex');
           buildSidebar();
           setStatus('정규식 전체 삭제됨');
         },
       });
     }
-    showContextMenu(e.clientX, e.clientY, items as any);
+    showContextMenu(e.clientX, e.clientY, items);
   });
 
   for (let i = 0; i < fileData.regex.length; i++) {
@@ -1169,9 +1196,9 @@ function buildSidebar(): void {
         `regex_${idx}`,
         label,
         '_regexform',
-        () => fileData.regex[idx],
+        () => fileData!.regex[idx],
         (v) => {
-          Object.assign(fileData.regex[idx], v);
+          Object.assign(fileData!.regex[idx], v);
         },
       );
     });
@@ -1179,7 +1206,7 @@ function buildSidebar(): void {
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const items = [
+      const items: ContextMenuItem[] = [
         { label: '이름 변경', action: () => renameRegex(idx) },
         {
           label: 'MCP 경로 복사',
@@ -1191,15 +1218,15 @@ function buildSidebar(): void {
       ];
       const store = getBackups(`regex_${idx}`);
       if (store.length > 0) {
-        items.push('---' as any);
+        items.push('---');
         items.push({
           label: '백업 불러오기',
           action: () => showBackupMenu(`regex_${idx}`, e.clientX, e.clientY, backupMenuCallbacks),
         });
       }
-      items.push('---' as any);
+      items.push('---');
       items.push({ label: '삭제', action: () => deleteRegex(idx) });
-      showContextMenu(e.clientX, e.clientY, items as any);
+      showContextMenu(e.clientX, e.clientY, items);
     });
     rxFolder.children.appendChild(el);
   }
@@ -1208,8 +1235,8 @@ function buildSidebar(): void {
   buildAssetsSidebar(tree);
 }
 
-function buildAssetsSidebar(tree: HTMLElement): any {
-  return _buildAssetsSidebar(tree, {
+function buildAssetsSidebar(tree: HTMLElement): void {
+  _buildAssetsSidebar(tree, {
     showContextMenu,
     addAssetFromDialog,
     openImageTab,
@@ -1219,7 +1246,7 @@ function buildAssetsSidebar(tree: HTMLElement): any {
 
 function initSidebarSplitResizer(): void {
   _initSidebarSplitResizer({
-    moveRefs: moveRefs as any,
+    moveRefs: moveRefs as (pos: string) => void,
     popOutPanel,
     dockPanel,
     isPanelPoppedOut,
@@ -1227,7 +1254,7 @@ function initSidebarSplitResizer(): void {
   });
 }
 
-function createLoreEntryItem(child: { entry: any; index: number }, indent: number): HTMLElement {
+function createLoreEntryItem(child: { entry: LorebookEntry; index: number }, indent: number): HTMLElement {
   return _createLoreEntryItem(child, indent, {
     getFileData: () => fileData,
     openTab: (id, label, language, getValue, setValue) => tabMgr.openTab(id, label, language, getValue, setValue),
@@ -1315,9 +1342,10 @@ function restoreBackup(tabId: string, backupIdx: number): void {
     tab.setValue!(backup.content);
     // Refresh editor if it's the active tab
     if (tabMgr.activeTabId === tabId && editorInstance) {
-      editorInstance.setValue(backup.content);
+      editorInstance.setValue(backup.content as string);
     }
   } else {
+    if (!fileData) return;
     // Tab not open - need to update the data directly
     // For lua sections
     if (tabId.startsWith('lua_s')) {
@@ -1342,7 +1370,7 @@ function restoreBackup(tabId: string, backupIdx: number): void {
         if (typeof backup.content === 'object') {
           Object.assign(fileData.lorebook[idx], backup.content);
         } else {
-          fileData.lorebook[idx].content = backup.content;
+          fileData.lorebook[idx].content = backup.content as string;
         }
       }
     } else if (tabId.startsWith('regex_')) {
@@ -1379,7 +1407,9 @@ function restoreBackup(tabId: string, backupIdx: number): void {
 }
 
 // ==================== Terminal (xterm.js + node-pty) ====================
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- xterm.js types would need additional imports
 let term: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- xterm.js FitAddon type
 let fitAddon: any = null;
 
 async function initTerminal(): Promise<void> {
@@ -1512,7 +1542,7 @@ async function restartTerminal(): Promise<void> {
 const fileActionDeps: FileActionDeps = {
   getFileData: () => fileData,
   setFileData: (d) => {
-    fileData = d;
+    fileData = d as CharxData;
   },
   getEditorInstance: () => editorInstance,
   setEditorInstance: (v) => {
@@ -1645,15 +1675,17 @@ function getAssistantDeps() {
 }
 
 async function handleClaudeStart(): Promise<void> {
-  await _handleClaudeStart(getAssistantDeps() as any);
+  // getAssistantDeps() is structurally compatible at runtime; minor return-type
+  // mismatches (Promise<boolean> vs Promise<void>) require the double assertion.
+  await _handleClaudeStart(getAssistantDeps() as unknown as Parameters<typeof _handleClaudeStart>[0]);
 }
 
 async function handleCopilotStart(): Promise<void> {
-  await _handleCopilotStart(getAssistantDeps() as any);
+  await _handleCopilotStart(getAssistantDeps() as unknown as Parameters<typeof _handleCopilotStart>[0]);
 }
 
 async function handleCodexStart(): Promise<void> {
-  await _handleCodexStart(getAssistantDeps() as any);
+  await _handleCodexStart(getAssistantDeps() as unknown as Parameters<typeof _handleCodexStart>[0]);
 }
 
 // ==================== Terminal Background ====================
@@ -1713,7 +1745,10 @@ function toggleDarkMode(): void {
 }
 
 function refreshDarkModeUi(): void {
-  applyDarkMode(darkMode, { editorInstance, formEditors: getFormEditors() as any });
+  applyDarkMode(darkMode, {
+    editorInstance: editorInstance as { updateOptions: (opts: unknown) => void } | null,
+    formEditors: getFormEditors() as Array<{ updateOptions: (opts: unknown) => void }>,
+  });
 
   // Update TokiTalk title
   const titleEl = document.querySelector('.momo-title');
@@ -1811,7 +1846,7 @@ function stopAutosave(): void {
 function collectDirtyFields() {
   return collectDirtyEditorFields({
     dirtyFields: tabMgr.dirtyFields,
-    fileData,
+    fileData: fileData!,
     openTabs: tabMgr.openTabs,
   });
 }
@@ -1873,7 +1908,7 @@ function showSettingsPopup(): void {
         if (!isBgmEnabled()) pauseBgm();
       },
       onRpModeChange(mode: string) {
-        rpMode = mode as any;
+        rpMode = mode as RpMode;
         writeRpMode(rpMode);
         const btn = document.getElementById('btn-rp-mode');
         if (btn) updateRpButtonStyle(btn);
@@ -1915,7 +1950,7 @@ async function showPreviewPanel(): Promise<void> {
   if (existing) existing.remove();
 
   // Load all assets (name → data URI)
-  let assetMapForEngine: any = {};
+  let assetMapForEngine: Record<string, string> = {};
   try {
     const assetResult = await window.tokiAPI.getAllAssetsMap();
     assetMapForEngine = assetResult.assets || assetResult;
@@ -1936,7 +1971,7 @@ async function showPreviewPanel(): Promise<void> {
     engine: PreviewEngine,
     setStatus,
     popoutPreview: async (charData) => {
-      const requestId = await window.tokiAPI.setPreviewPopoutData(charData as any);
+      const requestId = await window.tokiAPI.setPreviewPopoutData(charData as unknown as Record<string, unknown>);
       await window.tokiAPI.popoutPanel('preview', requestId);
     },
   });
@@ -1969,7 +2004,7 @@ function getPopoutDeps() {
     rebuildLayout,
     setStatus,
     getEditorInstance: () => editorInstance,
-    setEditorInstance: (ed: any) => {
+    setEditorInstance: (ed: MonacoEditorInstance | null) => {
       editorInstance = ed;
     },
     createOrSwitchEditor,
@@ -1980,142 +2015,145 @@ function getPopoutDeps() {
   };
 }
 
-function popOutPanel(panelId: string, requestId: string | null = null): any {
-  return _popOutPanel(panelId, getPopoutDeps() as any, requestId);
+function popOutPanel(panelId: string, requestId: string | null = null): Promise<void> {
+  return _popOutPanel(panelId, getPopoutDeps() as unknown as PopoutDeps, requestId);
 }
 
-function popOutEditorPanel(tabId: string): any {
-  return _popOutEditorPanel(tabId, getPopoutDeps() as any);
+function popOutEditorPanel(tabId: string): Promise<void> {
+  return _popOutEditorPanel(tabId, getPopoutDeps() as unknown as PopoutDeps);
 }
 
-function dockPanel(panelId: string): any {
-  return _dockPanel(panelId, getPopoutDeps() as any);
+function dockPanel(panelId: string): void {
+  _dockPanel(panelId, getPopoutDeps() as unknown as PopoutDeps);
 }
 
 // Tab open by ID (used for sidebar popout clicks)
 function openTabById(tabId: string): void {
   if (!fileData) return;
+  const data = fileData;
 
-  const tabMap = {
+  const tabMap: Record<string, { label: string; lang: string; get: () => unknown; set: ((v: unknown) => void) | null }> = {
     assetPromptTemplate: {
       label: '에셋 프롬프트 템플릿',
       lang: 'markdown',
       get: () =>
         buildAssetPromptTemplate({
-          name: fileData.name,
-          description: fileData.description,
+          name: data.name,
+          description: data.description,
         }),
       set: null,
     },
     lua: {
       label: 'Lua (통합)',
       lang: 'lua',
-      get: () => fileData.lua,
-      set: (v: any) => {
-        fileData.lua = v;
-        fileData.triggerScripts = mergeLuaIntoTriggerScriptsText(fileData.triggerScripts, v);
-        luaSections = parseLuaSections(v);
+      get: () => data.lua,
+      set: (v: unknown) => {
+        data.lua = v as string;
+        data.triggerScripts = mergeLuaIntoTriggerScriptsText(data.triggerScripts, v as string);
+        luaSections = parseLuaSections(v as string);
       },
     },
     globalNote: {
       label: '글로벌노트',
       lang: 'plaintext',
-      get: () => fileData.globalNote,
-      set: (v: any) => {
-        fileData.globalNote = v;
+      get: () => data.globalNote,
+      set: (v: unknown) => {
+        data.globalNote = v as string;
       },
     },
     firstMessage: {
       label: '첫 메시지',
       lang: 'html',
-      get: () => fileData.firstMessage,
-      set: (v: any) => {
-        fileData.firstMessage = v;
+      get: () => data.firstMessage,
+      set: (v: unknown) => {
+        data.firstMessage = v as string;
       },
     },
     triggerScripts: {
       label: '트리거 스크립트',
       lang: 'json',
-      get: () => fileData.triggerScripts || '[]',
-      set: (v: any) => {
-        fileData.triggerScripts = v;
-        const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(v);
-        if (nextLua !== null) fileData.lua = nextLua;
+      get: () => data.triggerScripts || '[]',
+      set: (v: unknown) => {
+        data.triggerScripts = v as string;
+        const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(v as string);
+        if (nextLua !== null) data.lua = nextLua;
       },
     },
     alternateGreetings: {
       label: '추가 첫 메시지',
       lang: 'json',
-      get: () => stringifyStringArray(fileData.alternateGreetings),
+      get: () => stringifyStringArray(data.alternateGreetings),
       set: null,
     },
     groupOnlyGreetings: {
       label: '그룹 첫 메시지',
       lang: 'json',
-      get: () => stringifyStringArray(fileData.groupOnlyGreetings),
+      get: () => stringifyStringArray(data.groupOnlyGreetings),
       set: null,
     },
     css: {
       label: 'CSS (통합)',
       lang: 'css',
-      get: () => fileData.css,
-      set: (v: any) => {
-        fileData.css = v;
-        ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(v));
+      get: () => data.css,
+      set: (v: unknown) => {
+        data.css = v as string;
+        ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(v as string));
       },
     },
     defaultVariables: {
       label: '기본변수',
       lang: 'plaintext',
-      get: () => fileData.defaultVariables,
-      set: (v: any) => {
-        fileData.defaultVariables = v;
+      get: () => data.defaultVariables,
+      set: (v: unknown) => {
+        data.defaultVariables = v as string;
       },
     },
     description: {
       label: '설명',
       lang: 'plaintext',
-      get: () => fileData.description,
-      set: (v: any) => {
-        fileData.description = v;
+      get: () => data.description,
+      set: (v: unknown) => {
+        data.description = v as string;
       },
     },
   };
 
-  if ((tabMap as any)[tabId]) {
-    const t = (tabMap as any)[tabId];
-    if (tabId === 'lua') fileData.lua = combineLuaSections(luaSections);
+  if (tabMap[tabId]) {
+    const t = tabMap[tabId];
+    if (tabId === 'lua') data.lua = combineLuaSections(luaSections);
     tabMgr.openTab(tabId, t.label, t.lang, t.get, t.set);
     return;
   }
 
   if (tabId.startsWith('lore_')) {
     const idx = parseInt(tabId.replace('lore_', ''), 10);
-    if (fileData.lorebook[idx]) {
-      const label = fileData.lorebook[idx].comment || `entry_${idx}`;
+    if (data.lorebook[idx]) {
+      const label = data.lorebook[idx].comment || `entry_${idx}`;
       tabMgr.openTab(
         tabId,
         label,
         'plaintext',
-        () => fileData.lorebook[idx].content || '',
-        (v: any) => {
-          fileData.lorebook[idx].content = v;
+        () => data.lorebook[idx].content || '',
+        (v: unknown) => {
+          data.lorebook[idx].content = v as string;
         },
       );
     }
   } else if (tabId.startsWith('regex_')) {
     const idx = parseInt(tabId.replace('regex_', ''), 10);
-    if (fileData.regex[idx]) {
-      const label = fileData.regex[idx].comment || `regex_${idx}`;
+    if (data.regex[idx]) {
+      const label = data.regex[idx].comment || `regex_${idx}`;
       tabMgr.openTab(
         tabId,
         label,
         'json',
-        () => JSON.stringify(fileData.regex[idx], null, 2),
-        (v: any) => {
+        () => JSON.stringify(data.regex[idx], null, 2),
+        (v: unknown) => {
           try {
-            fileData.regex[idx] = JSON.parse(v);
-          } catch (e) {}
+            data.regex[idx] = JSON.parse(v as string);
+          } catch (e) {
+            console.warn('[controller] Invalid JSON in regex editor:', (e as Error).message);
+          }
         },
       );
     }
@@ -2138,7 +2176,7 @@ function openTabById(tabId: string): void {
         tabId,
         `[가이드] ${fileName}`,
         content,
-        (val: string) => window.tokiAPI.writeGuide(fileName, val) as any,
+        (val: string) => { window.tokiAPI.writeGuide(fileName, val); },
       );
     });
   } else if (tabId.startsWith('ref_')) {
@@ -2257,13 +2295,13 @@ export async function initMainRenderer(): Promise<void> {
     'layout-reset': () => resetLayout(),
     'zoom-in': () => {
       if (editorInstance) {
-        const sz = editorInstance.getOption(monaco.editor.EditorOption.fontSize);
+        const sz = editorInstance.getOption(monaco.editor.EditorOption.fontSize) as number;
         editorInstance.updateOptions({ fontSize: sz + 1 });
       }
     },
     'zoom-out': () => {
       if (editorInstance) {
-        const sz = editorInstance.getOption(monaco.editor.EditorOption.fontSize);
+        const sz = editorInstance.getOption(monaco.editor.EditorOption.fontSize) as number;
         editorInstance.updateOptions({ fontSize: Math.max(8, sz - 1) });
       }
     },
@@ -2447,7 +2485,7 @@ export async function initMainRenderer(): Promise<void> {
     }
 
     if (field === 'lorebook') {
-      fileData.lorebook = value;
+      fileData.lorebook = value as LorebookEntry[];
       if (updatePlan.refreshSidebar) buildSidebar();
       if (updatePlan.refreshIndexedPrefixes.includes('lore_')) {
         tabMgr.refreshIndexedTabs('lore_', buildLorebookTabState);
@@ -2459,7 +2497,7 @@ export async function initMainRenderer(): Promise<void> {
         if (pos) editorInstance.setPosition(pos);
       }
     } else if (field === 'regex') {
-      fileData.regex = value;
+      fileData.regex = value as RegexEntry[];
       if (updatePlan.refreshSidebar) buildSidebar();
       if (updatePlan.refreshIndexedPrefixes.includes('regex_')) {
         tabMgr.refreshIndexedTabs('regex_', buildRegexTabState);
@@ -2502,7 +2540,7 @@ export async function initMainRenderer(): Promise<void> {
       if (field === tabMgr.activeTabId && editorInstance) {
         const activeTab = tabMgr.openTabs.find((tab) => tab.id === field);
         const pos = editorInstance.getPosition();
-        editorInstance.setValue(activeTab?.getValue ? (activeTab.getValue() as string) || '' : value || '');
+        editorInstance.setValue(activeTab?.getValue ? (activeTab.getValue() as string) || '' : (value as string) || '');
         if (pos) editorInstance.setPosition(pos);
       }
       if (

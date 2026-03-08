@@ -71,6 +71,15 @@ export interface CharxData {
   moduleName?: string;
   moduleDescription?: string;
 
+  // Risum module-specific fields
+  cjs?: string;
+  lowLevelAccess?: boolean;
+  hideIcon?: boolean;
+  backgroundEmbedding?: string;
+  moduleNamespace?: string;
+  customModuleToggle?: string;
+  mcpUrl?: string;
+
   // Assets
   assets: CharxAsset[];
   xMeta: Record<string, unknown>;
@@ -86,6 +95,39 @@ export interface CharxData {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/** Extract risum module-specific fields from a parsed module object. */
+function extractRisumModuleFields(mod: Record<string, unknown>): Pick<CharxData,
+  'cjs' | 'lowLevelAccess' | 'hideIcon' | 'backgroundEmbedding' |
+  'moduleNamespace' | 'customModuleToggle' | 'mcpUrl'
+> {
+  const mcp = mod.mcp as Record<string, unknown> | undefined;
+  return {
+    cjs: (mod.cjs as string) || '',
+    lowLevelAccess: !!(mod.lowLevelAccess),
+    hideIcon: !!(mod.hideIcon),
+    backgroundEmbedding: (mod.backgroundEmbedding as string) || '',
+    moduleNamespace: (mod.namespace as string) || '',
+    customModuleToggle: (mod.customModuleToggle as string) || '',
+    mcpUrl: (mcp?.url as string) || '',
+  };
+}
+
+/** Write risum module-specific fields back into a module JSON object. */
+function applyRisumModuleFields(mod: Record<string, unknown>, data: CharxData): void {
+  if (data.cjs !== undefined) mod.cjs = data.cjs || undefined;
+  mod.lowLevelAccess = data.lowLevelAccess || false;
+  mod.hideIcon = data.hideIcon || false;
+  if (data.backgroundEmbedding !== undefined) mod.backgroundEmbedding = data.backgroundEmbedding || undefined;
+  if (data.moduleNamespace !== undefined) mod.namespace = data.moduleNamespace || undefined;
+  if (data.customModuleToggle !== undefined) mod.customModuleToggle = data.customModuleToggle || undefined;
+
+  if (data.mcpUrl) {
+    mod.mcp = { url: data.mcpUrl };
+  } else if (data.mcpUrl === '') {
+    delete mod.mcp;
+  }
+}
 
 function cloneTriggerScripts(triggerScripts: unknown): TriggerScript[] {
   return Array.isArray(triggerScripts)
@@ -270,6 +312,9 @@ function openCharx(filePath: string): CharxData {
     moduleName: (mod.name as string) || '',
     moduleDescription: (mod.description as string) || '',
 
+    // Risum module-specific fields (from embedded module.risum)
+    ...extractRisumModuleFields(mod),
+
     // Assets
     assets,
     xMeta,
@@ -362,6 +407,9 @@ function saveCharx(filePath: string, data: CharxData): void {
   // Lorebook (risu format)
   mod.lorebook = data.lorebook || [];
 
+  // Apply risum module-specific fields
+  applyRisumModuleFields(mod, data);
+
   const risumBuf: Buffer = buildRisum(moduleJson, data.risumAssets || []);
   zip.addFile('module.risum', risumBuf);
 
@@ -402,6 +450,9 @@ function openRisum(filePath: string): CharxData {
     moduleId: (mod.id as string) || '',
     moduleName: (mod.name as string) || '',
     moduleDescription: (mod.description as string) || '',
+
+    // Risum module-specific fields
+    ...extractRisumModuleFields(mod),
 
     // Editable content
     lua: extractPrimaryLuaFromTriggerScripts((mod.trigger as unknown[]) || []),
@@ -456,6 +507,9 @@ function saveRisum(filePath: string, data: CharxData): void {
   // Update module name/description
   mod.name = data.moduleName || data.name || mod.name;
   mod.description = data.moduleDescription || data.description || mod.description;
+
+  // Apply risum module-specific fields
+  applyRisumModuleFields(mod, data);
 
   mod.trigger = mergePrimaryLuaIntoTriggerScripts(
     data.triggerScripts !== undefined ? data.triggerScripts : mod.trigger,

@@ -45,28 +45,28 @@ interface JSONRPCResponse {
 const TOOLS: MCPTool[] = [
   {
     name: 'list_fields',
-    description: '현재 열린 .charx 파일의 편집 가능한 필드 목록과 크기를 확인합니다.',
+    description: '현재 열린 파일(.charx 또는 .risum)의 편집 가능한 필드 목록과 크기를 확인합니다. 응답에 fileType 포함.',
     inputSchema: { type: 'object', properties: {}, required: [] }
   },
   {
     name: 'read_field',
-    description: '필드의 전체 내용을 읽습니다. 사용 가능한 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name',
+    description: '필드의 전체 내용을 읽습니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. risum 전용 필드: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용)',
     inputSchema: {
       type: 'object',
-      properties: { field: { type: 'string', description: '필드 이름 (lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name)' } },
+      properties: { field: { type: 'string', description: '필드 이름' } },
       required: ['field']
     }
   },
   {
     name: 'write_field',
-    description: '필드에 새 내용을 씁니다. 에디터에서 사용자 확인 팝업이 뜹니다. 사용 가능한 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name',
+    description: '필드에 새 내용을 씁니다. 에디터에서 사용자 확인 팝업이 뜹니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. risum 전용 필드: cjs, lowLevelAccess(boolean), hideIcon(boolean), backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription',
     inputSchema: {
       type: 'object',
       properties: {
         field: { type: 'string', description: '필드 이름' },
         content: {
-          description: '새로운 내용. alternateGreetings/groupOnlyGreetings는 문자열 배열, triggerScripts는 JSON 문자열, 나머지는 문자열',
-          oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }]
+          description: '새로운 내용. alternateGreetings/groupOnlyGreetings는 문자열 배열, triggerScripts는 JSON 문자열, lowLevelAccess/hideIcon은 boolean, 나머지는 문자열',
+          oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }, { type: 'boolean' }]
         }
       },
       required: ['field', 'content']
@@ -296,6 +296,43 @@ const TOOLS: MCPTool[] = [
       },
       required: ['index', 'field']
     }
+  },
+  // Risum asset tools
+  {
+    name: 'list_risum_assets',
+    description: '.risum 파일의 내장 에셋 목록을 확인합니다 (인덱스, 이름, 경로, 크기).',
+    inputSchema: { type: 'object', properties: {}, required: [] }
+  },
+  {
+    name: 'read_risum_asset',
+    description: '.risum 파일의 내장 에셋을 base64로 읽습니다.',
+    inputSchema: {
+      type: 'object',
+      properties: { index: { type: 'number', description: '에셋 인덱스 (list_risum_assets 결과 참조)' } },
+      required: ['index']
+    }
+  },
+  {
+    name: 'add_risum_asset',
+    description: '.risum 파일에 에셋을 추가합니다. base64로 인코딩된 데이터를 전달. 사용자 확인 필요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '에셋 이름' },
+        path: { type: 'string', description: '에셋 경로 (선택사항)' },
+        base64: { type: 'string', description: 'base64 인코딩된 에셋 데이터' }
+      },
+      required: ['name', 'base64']
+    }
+  },
+  {
+    name: 'delete_risum_asset',
+    description: '.risum 파일의 내장 에셋을 삭제합니다. 사용자 확인 필요.',
+    inputSchema: {
+      type: 'object',
+      properties: { index: { type: 'number', description: '삭제할 에셋 인덱스' } },
+      required: ['index']
+    }
   }
 ];
 
@@ -441,6 +478,19 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
     case 'read_reference_field':
       return await apiRequest('GET', `/reference/${args.index}/${encodeURIComponent(args.field as string)}`);
+
+    // Risum asset tools
+    case 'list_risum_assets':
+      return await apiRequest('GET', '/risum-assets');
+
+    case 'read_risum_asset':
+      return await apiRequest('GET', `/risum-asset/${args.index}`);
+
+    case 'add_risum_asset':
+      return await apiRequest('POST', '/risum-asset/add', { name: args.name, path: args.path || '', base64: args.base64 });
+
+    case 'delete_risum_asset':
+      return await apiRequest('POST', `/risum-asset/${args.index}/delete`);
 
     default:
       throw new Error(`Unknown tool: ${name}`);

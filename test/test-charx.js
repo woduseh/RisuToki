@@ -281,5 +281,117 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.deepStrictEqual(reopened.risumAssets, data.risumAssets);
 })();
 
+(function testRisumModuleFieldsRoundTrip() {
+  const filePath = path.join(tempDir, 'risum-fields.risum');
+  const data = {
+    name: 'Module With Fields',
+    description: 'Module with all risum-specific fields',
+    moduleId: 'module-fields-001',
+    moduleName: 'Module With Fields',
+    moduleDescription: 'Testing risum-specific fields',
+    lua: 'print("fields")',
+    triggerScripts: [
+      {
+        comment: 'main',
+        type: 'start',
+        conditions: [],
+        effect: [{ type: 'triggerlua', code: 'print("fields")' }],
+        lowLevelAccess: false
+      }
+    ],
+    lorebook: [],
+    regex: [],
+    // Risum-specific fields
+    cjs: 'console.log("custom js")',
+    lowLevelAccess: true,
+    hideIcon: true,
+    backgroundEmbedding: 'You are an assistant module.',
+    moduleNamespace: 'my-namespace',
+    customModuleToggle: 'toggle-config-string',
+    mcpUrl: 'http://localhost:3000/mcp',
+    risumAssets: [],
+    _moduleData: null
+  };
+
+  saveRisum(filePath, data);
+  const reopened = openRisum(filePath);
+
+  assert.equal(reopened._fileType, 'risum');
+  assert.equal(reopened.name, data.moduleName);
+  assert.equal(reopened.cjs, data.cjs);
+  assert.equal(reopened.lowLevelAccess, data.lowLevelAccess);
+  assert.equal(reopened.hideIcon, data.hideIcon);
+  assert.equal(reopened.backgroundEmbedding, data.backgroundEmbedding);
+  assert.equal(reopened.moduleNamespace, data.moduleNamespace);
+  assert.equal(reopened.customModuleToggle, data.customModuleToggle);
+  assert.equal(reopened.mcpUrl, data.mcpUrl);
+})();
+
+(function testCharxPreservesRisumModuleFields() {
+  const filePath = path.join(tempDir, 'charx-risum-fields.charx');
+  const data = {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'Character With Module Fields',
+    description: 'Test character',
+    personality: '',
+    scenario: '',
+    creatorcomment: '',
+    tags: [],
+    firstMessage: 'Hello',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: 'print("charx-risum")',
+    triggerScripts: [
+      {
+        comment: 'main',
+        type: 'start',
+        conditions: [],
+        effect: [{ type: 'triggerlua', code: 'print("charx-risum")' }],
+        lowLevelAccess: false
+      }
+    ],
+    lorebook: [],
+    regex: [],
+    moduleId: 'module-charx-risum',
+    moduleName: 'Embedded Module',
+    moduleDescription: 'Module with risum fields in charx',
+    // Risum-specific fields
+    cjs: 'console.log("embedded")',
+    lowLevelAccess: true,
+    hideIcon: false,
+    backgroundEmbedding: 'Background text',
+    moduleNamespace: 'embedded-ns',
+    customModuleToggle: '',
+    mcpUrl: '',
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: { extensions: { risuai: {} }, character_book: { entries: [] }, assets: [] }
+    },
+    _moduleData: null
+  };
+
+  saveCharx(filePath, data);
+  const reopened = openCharx(filePath);
+
+  assert.equal(reopened.cjs, data.cjs);
+  assert.equal(reopened.lowLevelAccess, data.lowLevelAccess);
+  assert.equal(reopened.hideIcon, data.hideIcon);
+  assert.equal(reopened.backgroundEmbedding, data.backgroundEmbedding);
+  assert.equal(reopened.moduleNamespace, data.moduleNamespace);
+  // Empty strings become undefined (cleaned on save)
+  assert.equal(reopened.customModuleToggle || '', '');
+  assert.equal(reopened.mcpUrl || '', '');
+})();
+
 fs.rmSync(tempDir, { recursive: true, force: true });
 console.log('test-charx passed');

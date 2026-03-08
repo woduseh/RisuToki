@@ -10,12 +10,24 @@ preload.js
 popout-preload.js
 
 # Compiled node-libs (generated from .ts sources via tsconfig.node-libs.json)
+src/charx-io.js
 src/rpack.js
 src/lorebook-convert.js
+src/lib/agents-md-manager.js
+src/lib/asset-manager.js
+src/lib/autosave-manager.js
+src/lib/data-serializer.js
+src/lib/guides-manager.js
+src/lib/ipc-confirm.js
 src/lib/main-state-store.js
+src/lib/mcp-api-server.js
+src/lib/mcp-config.js
+src/lib/popout-manager.js
 src/lib/popout-payload-store.js
 src/lib/reference-store.js
 src/lib/refs-popout-data.js
+src/lib/sync-server.js
+src/lib/terminal-manager.js
 src/lib/terminal-shell.js
 /toki-mcp-server.js
 

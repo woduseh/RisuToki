@@ -31,6 +31,8 @@ export interface McpApiDeps {
   broadcastMcpStatus: (payload: Record<string, unknown>) => void;
   /** Called once the HTTP server begins listening, providing the assigned port. */
   onListening: (port: number) => void;
+  /** Invalidate the cached assets map (call after mutating data.assets). */
+  invalidateAssetsMapCache?: () => void;
 
   // Section parsing
   parseLuaSections: (lua: string) => Section[];
@@ -293,6 +295,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /fields
       // ----------------------------------------------------------------
       if (req.method === 'GET' && parts[0] === 'fields' && !parts[1]) {
+        const fileType = currentData._fileType || 'charx';
+        const isRisum = fileType === 'risum';
+
         const fieldNames = [
           'name',
           'description',
@@ -327,7 +332,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         });
         fields.push({ name: 'lorebook', count: (currentData.lorebook || []).length, type: 'array' });
         fields.push({ name: 'regex', count: (currentData.regex || []).length, type: 'array' });
-        return jsonRes(res, { fields });
+
+        // Risum module-specific fields
+        if (isRisum) {
+          const risumStringFields = [
+            'cjs', 'backgroundEmbedding', 'moduleNamespace',
+            'customModuleToggle', 'mcpUrl', 'moduleId', 'moduleName', 'moduleDescription',
+          ];
+          for (const f of risumStringFields) {
+            fields.push({ name: f, size: ((currentData[f] as string) || '').length, type: 'string' });
+          }
+          fields.push({ name: 'lowLevelAccess', value: !!currentData.lowLevelAccess, type: 'boolean' });
+          fields.push({ name: 'hideIcon', value: !!currentData.hideIcon, type: 'boolean' });
+        }
+
+        return jsonRes(res, { fileType, fields });
       }
 
       // ----------------------------------------------------------------
@@ -347,8 +366,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'triggerScripts',
           'lua',
         ];
-        if (!allowedFields.includes(fieldName)) {
-          return jsonRes(res, { error: `Unknown field: ${fieldName}` }, 400);
+        const risumFields = [
+          'cjs', 'lowLevelAccess', 'hideIcon', 'backgroundEmbedding',
+          'moduleNamespace', 'customModuleToggle', 'mcpUrl',
+          'moduleName', 'moduleDescription',
+        ];
+        const risumReadOnlyFields = ['moduleId'];
+        const isRisum = (currentData._fileType || 'charx') === 'risum';
+        const allAllowed = isRisum
+          ? [...allowedFields, ...risumFields, ...risumReadOnlyFields]
+          : allowedFields;
+
+        if (!allAllowed.includes(fieldName)) {
+          const hint = isRisum ? '(risum 필드 포함)' : '(charx 파일에서는 risum 전용 필드를 사용할 수 없습니다)';
+          return jsonRes(res, { error: `Unknown field: ${fieldName} ${hint}` }, 400);
         }
 
         if (req.method === 'GET') {
@@ -361,10 +392,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (fieldName === 'alternateGreetings' || fieldName === 'groupOnlyGreetings') {
             return jsonRes(res, { field: fieldName, content: currentData[fieldName] || [] });
           }
+          // Boolean fields
+          if (fieldName === 'lowLevelAccess' || fieldName === 'hideIcon') {
+            return jsonRes(res, { field: fieldName, content: !!currentData[fieldName], type: 'boolean' });
+          }
           return jsonRes(res, { field: fieldName, content: currentData[fieldName] || '' });
         }
 
         if (req.method === 'POST') {
+          // moduleId is read-only
+          if (risumReadOnlyFields.includes(fieldName)) {
+            return mcpError(res, 400, {
+              action: 'update field',
+              message: `"${fieldName}" 필드는 읽기 전용입니다.`,
+              suggestion: '이 필드는 수정할 수 없습니다.',
+              target: `field:${fieldName}`,
+            });
+          }
           const body = await readJsonBody(req, res, `field/${fieldName}`, broadcastStatus);
           if (!body) return;
           if (body.content === undefined) {
@@ -1368,6 +1412,293 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           field: fieldName,
           content: ref.data[fieldName] || '',
         });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /assets — list all assets (path + size)
+      // ----------------------------------------------------------------
+      if (parts[0] === 'assets' && !parts[1] && req.method === 'GET') {
+        const assets = currentData.assets || [];
+        return jsonRes(res, {
+          count: assets.length,
+          assets: assets.map((a: any, i: number) => ({
+            index: i,
+            path: a.path,
+            size: a.data ? a.data.length : 0,
+          })),
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /asset/:idx — read asset as base64
+      // ----------------------------------------------------------------
+      if (parts[0] === 'asset' && parts[1] && !parts[2] && req.method === 'GET') {
+        const assets = currentData.assets || [];
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= assets.length) {
+          return mcpError(res, 400, {
+            action: 'read_asset',
+            message: `에셋 index ${idx}이(가) 범위를 벗어났습니다 (0–${assets.length - 1}).`,
+            suggestion: 'list_assets 또는 GET /assets 로 유효한 index를 다시 확인하세요.',
+            target: `asset:${idx}`,
+          });
+        }
+        const asset = assets[idx];
+        const ext = (asset.path.split('.').pop() || 'png').toLowerCase();
+        const mime =
+          ext === 'png' ? 'image/png' :
+          ext === 'webp' ? 'image/webp' :
+          ext === 'gif' ? 'image/gif' :
+          ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
+        return jsonRes(res, {
+          index: idx,
+          path: asset.path,
+          size: asset.data ? asset.data.length : 0,
+          mimeType: mime,
+          base64: asset.data ? asset.data.toString('base64') : '',
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /asset/add — add asset from base64 data
+      // ----------------------------------------------------------------
+      if (parts[0] === 'asset' && parts[1] === 'add' && req.method === 'POST') {
+        const body = JSON.parse(await readBody(req));
+        const fileName: string = body.fileName || '';
+        const base64Data: string = body.base64 || '';
+        const folder: string = body.folder || 'other';
+        if (!fileName || !base64Data) {
+          return jsonRes(res, { error: 'fileName과 base64 데이터가 필요합니다.' }, 400);
+        }
+        if (!/^[a-zA-Z0-9가-힣._\- ]+$/.test(fileName)) {
+          return jsonRes(res, { error: '파일명에 허용되지 않는 문자가 포함되어 있습니다.' }, 400);
+        }
+        const allowed = await deps.askRendererConfirm(
+          'MCP 에셋 추가 요청',
+          `AI 어시스턴트가 에셋 "${fileName}" (폴더: ${folder})을(를) 추가하려 합니다. 허용하시겠습니까?`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'add_asset',
+            message: '사용자가 에셋 추가를 거부했습니다.',
+            rejected: true,
+            suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
+            target: fileName,
+          });
+        }
+        const basePath = folder === 'icon' ? 'assets/icon' : 'assets/other/image';
+        const assetPath = `${basePath}/${fileName}`;
+        if (currentData.assets.find((a: any) => a.path === assetPath)) {
+          return jsonRes(res, { error: `에셋 경로 "${assetPath}"가 이미 존재합니다.` }, 409);
+        }
+        const buf = Buffer.from(base64Data, 'base64');
+        currentData.assets.push({ path: assetPath, data: buf });
+        deps.broadcastToAll('data-updated', { field: 'assets' });
+        return jsonRes(res, { ok: true, path: assetPath, size: buf.length });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /asset/:idx/delete — delete asset by index
+      // ----------------------------------------------------------------
+      if (parts[0] === 'asset' && parts[1] && parts[2] === 'delete' && req.method === 'POST') {
+        const assets = currentData.assets || [];
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= assets.length) {
+          return mcpError(res, 400, {
+            action: 'delete_asset',
+            message: `에셋 index ${idx}이(가) 범위를 벗어났습니다 (0–${assets.length - 1}).`,
+            suggestion: 'list_assets 또는 GET /assets 로 유효한 index를 다시 확인하세요.',
+            target: `asset:${idx}`,
+          });
+        }
+        const assetToDelete = assets[idx];
+        const allowed = await deps.askRendererConfirm(
+          'MCP 에셋 삭제 요청',
+          `AI 어시스턴트가 에셋 "${assetToDelete.path}"을(를) 삭제하려 합니다. 허용하시겠습니까?`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'delete_asset',
+            message: '사용자가 에셋 삭제를 거부했습니다.',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: `asset:${idx}`,
+          });
+        }
+        assets.splice(idx, 1);
+        deps.broadcastToAll('data-updated', { field: 'assets' });
+        return jsonRes(res, { ok: true, deleted: assetToDelete.path });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /asset/:idx/rename — rename asset
+      // ----------------------------------------------------------------
+      if (parts[0] === 'asset' && parts[1] && parts[2] === 'rename' && req.method === 'POST') {
+        const assets = currentData.assets || [];
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= assets.length) {
+          return mcpError(res, 400, {
+            action: 'rename_asset',
+            message: `에셋 index ${idx}이(가) 범위를 벗어났습니다 (0–${assets.length - 1}).`,
+            suggestion: 'list_assets 또는 GET /assets 로 유효한 index를 다시 확인하세요.',
+            target: `asset:${idx}`,
+          });
+        }
+        const body = JSON.parse(await readBody(req));
+        const newName: string = body.newName || '';
+        if (!newName || !/^[a-zA-Z0-9가-힣._\- ]+$/.test(newName)) {
+          return jsonRes(res, { error: '유효한 newName이 필요합니다.' }, 400);
+        }
+        const asset = assets[idx];
+        const oldPath = asset.path;
+        const allowed = await deps.askRendererConfirm(
+          'MCP 에셋 이름 변경 요청',
+          `AI 어시스턴트가 에셋 "${oldPath}"의 이름을 "${newName}"(으)로 변경하려 합니다. 허용하시겠습니까?`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'rename_asset',
+            message: '사용자가 에셋 이름 변경을 거부했습니다.',
+            rejected: true,
+            suggestion: '앱에서 이름 변경 요청을 허용한 뒤 다시 시도하세요.',
+            target: `asset:${idx}`,
+          });
+        }
+        const dir = oldPath.substring(0, oldPath.lastIndexOf('/') + 1);
+        const newPath = dir + newName;
+        asset.path = newPath;
+        deps.broadcastToAll('data-updated', { field: 'assets' });
+        return jsonRes(res, { ok: true, oldPath, newPath });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /risum-assets — list embedded risum module assets
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risum-assets' && !parts[1] && req.method === 'GET') {
+        const risumAssets: Buffer[] = currentData.risumAssets || [];
+        const modAssets: unknown[] =
+          ((currentData._moduleData as Record<string, unknown>)?.module as Record<string, unknown>)?.assets as unknown[] ||
+          (currentData._moduleData as Record<string, unknown>)?.assets as unknown[] ||
+          [];
+        const items = risumAssets.map((buf: Buffer, i: number) => {
+          const meta = Array.isArray(modAssets[i]) ? modAssets[i] as string[] : null;
+          return {
+            index: i,
+            name: meta?.[0] || `asset_${i}`,
+            path: meta?.[2] || '',
+            size: buf.length,
+          };
+        });
+        return jsonRes(res, { count: items.length, assets: items });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /risum-asset/:idx — read risum asset as base64
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risum-asset' && parts[1] && !parts[2] && req.method === 'GET') {
+        const risumAssets: Buffer[] = currentData.risumAssets || [];
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= risumAssets.length) {
+          return mcpError(res, 400, {
+            action: 'read_risum_asset',
+            message: `리슘 에셋 index ${idx}이(가) 범위를 벗어났습니다 (0–${risumAssets.length - 1}).`,
+            suggestion: 'list_risum_assets 또는 GET /risum-assets 로 유효한 index를 다시 확인하세요.',
+            target: `risum-asset:${idx}`,
+          });
+        }
+        const modAssets: unknown[] =
+          ((currentData._moduleData as Record<string, unknown>)?.module as Record<string, unknown>)?.assets as unknown[] ||
+          (currentData._moduleData as Record<string, unknown>)?.assets as unknown[] ||
+          [];
+        const meta = Array.isArray(modAssets[idx]) ? modAssets[idx] as string[] : null;
+        const assetBuf = risumAssets[idx];
+        return jsonRes(res, {
+          index: idx,
+          name: meta?.[0] || `asset_${idx}`,
+          path: meta?.[2] || '',
+          size: assetBuf.length,
+          base64: assetBuf.toString('base64'),
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risum-asset/add — add risum asset from base64
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risum-asset' && parts[1] === 'add' && req.method === 'POST') {
+        const body = JSON.parse(await readBody(req));
+        const assetName: string = body.name || '';
+        const assetPath: string = body.path || '';
+        const base64Data: string = body.base64 || '';
+        if (!assetName || !base64Data) {
+          return jsonRes(res, { error: 'name과 base64 데이터가 필요합니다.' }, 400);
+        }
+        const allowed = await deps.askRendererConfirm(
+          'MCP 리슘 에셋 추가 요청',
+          `AI 어시스턴트가 리슘 에셋 "${assetName}"을(를) 추가하려 합니다. 허용하시겠습니까?`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'add_risum_asset',
+            message: '사용자가 에셋 추가를 거부했습니다.',
+            rejected: true,
+            suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
+            target: assetName,
+          });
+        }
+        const buf = Buffer.from(base64Data, 'base64');
+        if (!currentData.risumAssets) currentData.risumAssets = [];
+        currentData.risumAssets.push(buf);
+        // Update module asset metadata
+        const modData = currentData._moduleData as Record<string, unknown>;
+        if (modData) {
+          const mod = (modData.module as Record<string, unknown>) || modData;
+          if (!Array.isArray(mod.assets)) mod.assets = [];
+          (mod.assets as unknown[]).push([assetName, '', assetPath || assetName]);
+        }
+        deps.broadcastToAll('data-updated', { field: 'risumAssets' });
+        return jsonRes(res, { ok: true, index: currentData.risumAssets.length - 1, name: assetName, size: buf.length });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risum-asset/:idx/delete — delete risum asset
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risum-asset' && parts[1] && parts[2] === 'delete' && req.method === 'POST') {
+        const risumAssets: Buffer[] = currentData.risumAssets || [];
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= risumAssets.length) {
+          return mcpError(res, 400, {
+            action: 'delete_risum_asset',
+            message: `리슘 에셋 index ${idx}이(가) 범위를 벗어났습니다 (0–${risumAssets.length - 1}).`,
+            suggestion: 'list_risum_assets 또는 GET /risum-assets 로 유효한 index를 다시 확인하세요.',
+            target: `risum-asset:${idx}`,
+          });
+        }
+        const modAssets: unknown[] =
+          ((currentData._moduleData as Record<string, unknown>)?.module as Record<string, unknown>)?.assets as unknown[] ||
+          (currentData._moduleData as Record<string, unknown>)?.assets as unknown[] ||
+          [];
+        const meta = Array.isArray(modAssets[idx]) ? modAssets[idx] as string[] : null;
+        const deleteName = meta?.[0] || `asset_${idx}`;
+        const allowed = await deps.askRendererConfirm(
+          'MCP 리슘 에셋 삭제 요청',
+          `AI 어시스턴트가 리슘 에셋 "${deleteName}"을(를) 삭제하려 합니다. 허용하시겠습니까?`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'delete_risum_asset',
+            message: '사용자가 에셋 삭제를 거부했습니다.',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: `risum-asset:${idx}`,
+          });
+        }
+        risumAssets.splice(idx, 1);
+        // Also remove from module metadata
+        if (Array.isArray(modAssets) && idx < modAssets.length) {
+          modAssets.splice(idx, 1);
+        }
+        deps.broadcastToAll('data-updated', { field: 'risumAssets' });
+        return jsonRes(res, { ok: true, deleted: deleteName });
       }
 
       // ----------------------------------------------------------------

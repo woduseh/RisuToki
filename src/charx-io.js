@@ -9,6 +9,38 @@ const ZIP_LOCAL_FILE_HEADER = Buffer.from([0x50, 0x4B, 0x03, 0x04]);
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+/** Extract risum module-specific fields from a parsed module object. */
+function extractRisumModuleFields(mod) {
+    const mcp = mod.mcp;
+    return {
+        cjs: mod.cjs || '',
+        lowLevelAccess: !!(mod.lowLevelAccess),
+        hideIcon: !!(mod.hideIcon),
+        backgroundEmbedding: mod.backgroundEmbedding || '',
+        moduleNamespace: mod.namespace || '',
+        customModuleToggle: mod.customModuleToggle || '',
+        mcpUrl: mcp?.url || '',
+    };
+}
+/** Write risum module-specific fields back into a module JSON object. */
+function applyRisumModuleFields(mod, data) {
+    if (data.cjs !== undefined)
+        mod.cjs = data.cjs || undefined;
+    mod.lowLevelAccess = data.lowLevelAccess || false;
+    mod.hideIcon = data.hideIcon || false;
+    if (data.backgroundEmbedding !== undefined)
+        mod.backgroundEmbedding = data.backgroundEmbedding || undefined;
+    if (data.moduleNamespace !== undefined)
+        mod.namespace = data.moduleNamespace || undefined;
+    if (data.customModuleToggle !== undefined)
+        mod.customModuleToggle = data.customModuleToggle || undefined;
+    if (data.mcpUrl) {
+        mod.mcp = { url: data.mcpUrl };
+    }
+    else if (data.mcpUrl === '') {
+        delete mod.mcp;
+    }
+}
 function cloneTriggerScripts(triggerScripts) {
     return Array.isArray(triggerScripts)
         ? JSON.parse(JSON.stringify(triggerScripts))
@@ -160,6 +192,8 @@ function openCharx(filePath) {
         moduleId: mod.id || '',
         moduleName: mod.name || '',
         moduleDescription: mod.description || '',
+        // Risum module-specific fields (from embedded module.risum)
+        ...extractRisumModuleFields(mod),
         // Assets
         assets,
         xMeta,
@@ -238,6 +272,8 @@ function saveCharx(filePath, data) {
     mod.regex = data.regex || [];
     // Lorebook (risu format)
     mod.lorebook = data.lorebook || [];
+    // Apply risum module-specific fields
+    applyRisumModuleFields(mod, data);
     const risumBuf = buildRisum(moduleJson, data.risumAssets || []);
     zip.addFile('module.risum', risumBuf);
     // Add image assets
@@ -271,6 +307,8 @@ function openRisum(filePath) {
         moduleId: mod.id || '',
         moduleName: mod.name || '',
         moduleDescription: mod.description || '',
+        // Risum module-specific fields
+        ...extractRisumModuleFields(mod),
         // Editable content
         lua: extractPrimaryLuaFromTriggerScripts(mod.trigger || []),
         triggerScripts: cloneTriggerScripts(mod.trigger || []),
@@ -318,6 +356,8 @@ function saveRisum(filePath, data) {
     // Update module name/description
     mod.name = data.moduleName || data.name || mod.name;
     mod.description = data.moduleDescription || data.description || mod.description;
+    // Apply risum module-specific fields
+    applyRisumModuleFields(mod, data);
     mod.trigger = mergePrimaryLuaIntoTriggerScripts(data.triggerScripts !== undefined ? data.triggerScripts : mod.trigger, data.lua);
     // Regex & Lorebook
     mod.regex = data.regex || [];

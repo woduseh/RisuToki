@@ -16,6 +16,17 @@ export function escapePreviewHtml(value: unknown): string {
     .replace(/>/g, '&gt;');
 }
 
+/** Strip dangerous HTML elements and event-handler attributes from chat content. */
+export function sanitizePreviewHtml(html: string): string {
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed\b[^>]*\/?>/gi, '')
+    .replace(/\bon\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/javascript\s*:/gi, 'blocked:');
+}
+
 export function simpleMarkdown(text: string): string {
   if (!text) return '';
 
@@ -244,12 +255,12 @@ document.addEventListener('click', function(event) {
 export function buildPreviewMessageHtml({ index, name, avatarBg, content }: PreviewMessageHtmlInput): string {
   return `<div class="risu-chat" data-chat-index="${index}">
   <div class="risu-chat-inner">
-    <div class="chat-avatar" style="background-color:${avatarBg}"></div>
+    <div class="chat-avatar" style="background-color:${escapePreviewHtml(avatarBg)}"></div>
     <span class="chat-content">
       <div class="flexium items-center chat-width">
         <div class="chat-width chat-name">${escapePreviewHtml(name)}</div>
       </div>
-      <span class="chattext chat-width prose">${content}</span>
+      <span class="chattext chat-width prose">${sanitizePreviewHtml(content)}</span>
     </span>
   </div>
 </div>`;

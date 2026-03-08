@@ -242,9 +242,10 @@ describe('TabManager', () => {
 
   describe('findTab', () => {
     it('returns tab by id', () => {
-      const tab = makeTab('x');
-      mgr.openTabs = [tab];
-      expect(mgr.findTab('x')).toBe(tab);
+      mgr.openTab('x', 'x', 'plaintext', () => '', vi.fn());
+      const tab = mgr.findTab('x');
+      expect(tab).toBeDefined();
+      expect(tab!.id).toBe('x');
     });
 
     it('returns undefined for missing id', () => {

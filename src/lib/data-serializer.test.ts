@@ -132,4 +132,76 @@ describe('applyUpdates', () => {
     applyUpdates(data, { css: '   ' });
     expect((data.css as string).trim()).toBe('');
   });
+
+  it('updates risum module-specific fields', () => {
+    const data: Record<string, unknown> = { name: 'Test', _fileType: 'risum' };
+    applyUpdates(data, {
+      moduleName: 'New Module Name',
+      moduleDescription: 'New desc',
+      cjs: 'console.log("updated")',
+      lowLevelAccess: true,
+      hideIcon: false,
+      backgroundEmbedding: 'bg text',
+      moduleNamespace: 'ns',
+      customModuleToggle: 'toggle',
+      mcpUrl: 'http://localhost:3000',
+    });
+    expect(data.moduleName).toBe('New Module Name');
+    expect(data.moduleDescription).toBe('New desc');
+    expect(data.cjs).toBe('console.log("updated")');
+    expect(data.lowLevelAccess).toBe(true);
+    expect(data.hideIcon).toBe(false);
+    expect(data.backgroundEmbedding).toBe('bg text');
+    expect(data.moduleNamespace).toBe('ns');
+    expect(data.customModuleToggle).toBe('toggle');
+    expect(data.mcpUrl).toBe('http://localhost:3000');
+  });
+
+  it('does not reject risum fields on charx data (no-op safe)', () => {
+    const data: Record<string, unknown> = { name: 'Test', _fileType: 'charx' };
+    applyUpdates(data, { cjs: 'some code', lowLevelAccess: true });
+    // Fields are set even on charx — this is safe since saveCharx writes them to module.risum
+    expect(data.cjs).toBe('some code');
+  });
+});
+
+// ── serializeForRenderer risum support ──────────────────────────────────────
+
+describe('serializeForRenderer risum support', () => {
+  it('includes risum fields for risum file type', () => {
+    const data = {
+      _fileType: 'risum',
+      name: 'Module',
+      description: 'desc',
+      moduleId: 'mod-123',
+      moduleDescription: 'mod desc',
+      cjs: 'console.log("x")',
+      lowLevelAccess: true,
+      hideIcon: false,
+      backgroundEmbedding: 'bg',
+      moduleNamespace: 'ns',
+      customModuleToggle: 'toggle',
+      mcpUrl: 'http://test',
+    };
+    const result = serializeForRenderer(data);
+    expect(result._fileType).toBe('risum');
+    expect(result.moduleId).toBe('mod-123');
+    expect(result.cjs).toBe('console.log("x")');
+    expect(result.lowLevelAccess).toBe(true);
+    expect(result.hideIcon).toBe(false);
+    expect(result.backgroundEmbedding).toBe('bg');
+    expect(result.moduleNamespace).toBe('ns');
+    expect(result.mcpUrl).toBe('http://test');
+  });
+
+  it('omits risum fields for charx file type', () => {
+    const data = {
+      _fileType: 'charx',
+      name: 'Character',
+    };
+    const result = serializeForRenderer(data);
+    expect(result).not.toHaveProperty('cjs');
+    expect(result).not.toHaveProperty('lowLevelAccess');
+    expect(result).not.toHaveProperty('moduleNamespace');
+  });
 });

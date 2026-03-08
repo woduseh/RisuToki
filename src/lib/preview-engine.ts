@@ -745,7 +745,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       let keyMatch = false;
       for (const key of keys) {
         if (entry['useRegex'] as boolean | undefined) {
-          try { if (new RegExp(key, 'i').test(searchText)) { keyMatch = true; break; } } catch (e) {}
+          try { if (new RegExp(key, 'i').test(searchText)) { keyMatch = true; break; } } catch (e) { console.warn('[preview] Invalid regex in lorebook key:', key, (e as Error).message); }
         } else {
           if (searchText.includes(key.toLowerCase())) { keyMatch = true; break; }
         }
@@ -990,7 +990,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       luaEngine.global.set('_raw_getLoreBooks', (_id: unknown, filter: unknown) => {
         const filterStr = (filter != null) ? String(filter).trim() : '';
         if (!filterStr) {
-          try { luaEngine!.global.set('_lbResult', []); } catch {}
+          try { luaEngine!.global.set('_lbResult', []); } catch (e) { console.warn('[preview] Lua _lbResult reset failed:', e); }
           return;
         }
         const f = filterStr.toLowerCase();
@@ -1031,7 +1031,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
           }
         } catch (error) {
           console.warn('[getLoreBooks] set result error:', error);
-          try { luaEngine!.global.set('_lbCount', 0); } catch {}
+          try { luaEngine!.global.set('_lbCount', 0); } catch (e) { console.warn('[preview] Lua _lbCount reset failed:', e); }
         }
       });
       luaEngine.global.set('upsertLocalLoreBook', (_id: unknown, lbId: unknown, content: unknown, opts: unknown) => {

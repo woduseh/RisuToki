@@ -18,6 +18,17 @@ export interface CharxData {
   lorebook: LorebookEntry[];
   regex: RegexEntry[];
   _fileType?: string;
+  // Risum module-specific fields
+  moduleName?: string;
+  moduleDescription?: string;
+  moduleId?: string;
+  cjs?: string;
+  lowLevelAccess?: boolean;
+  hideIcon?: boolean;
+  backgroundEmbedding?: string;
+  moduleNamespace?: string;
+  customModuleToggle?: string;
+  mcpUrl?: string;
   [key: string]: unknown;
 }
 
