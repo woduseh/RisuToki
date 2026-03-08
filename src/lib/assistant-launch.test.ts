@@ -13,7 +13,7 @@ describe('assistant launch helpers', () => {
   });
 
   it('uses cmd shims for Windows assistant launches', () => {
-    expect(buildAssistantLaunchCommand({ agent: 'copilot', platform: 'win32' })).toBe('copilot.bat\r');
+    expect(buildAssistantLaunchCommand({ agent: 'copilot', platform: 'win32' })).toBe('copilot.ps1\r');
     expect(buildAssistantLaunchCommand({ agent: 'codex', platform: 'win32' })).toBe('codex.cmd\r');
     expect(buildAssistantLaunchCommand({ agent: 'claude', platform: 'win32' })).toBe('claude.cmd\r');
   });
@@ -51,7 +51,7 @@ describe('assistant launch helpers', () => {
     const command = buildWindowsAssistantBootstrapCommand();
 
     expect(command).toContain("function global:copilot");
-    expect(command).toContain("copilot.bat");
+    expect(command).toContain("copilot.ps1");
     expect(command).toContain("function global:claude");
     expect(command).toContain("function global:codex");
     expect(command.endsWith('\r')).toBe(true);

@@ -29,7 +29,7 @@ export function detectRuntimePlatform(navigatorLike: NavigatorLike = globalThis.
 function getCliExecutable(agent: AssistantAgent | string, platform: RuntimePlatform): string {
   if (platform === 'win32') {
     if (agent === 'copilot') {
-      return 'copilot.bat';
+      return 'copilot.ps1';
     }
     return `${agent}.cmd`;
   }
@@ -41,7 +41,7 @@ export function buildWindowsAssistantBootstrapCommand(): string {
   return [
     "$ErrorActionPreference='SilentlyContinue'",
     "function global:__TokiInvokeCommand([string]$primary,[string[]]$fallbacks,[object[]]$argv){ foreach ($candidate in @($primary) + $fallbacks) { $resolved = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($resolved) { & $resolved.Source @argv; return } }; & $primary @argv }",
-    "function global:copilot { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'copilot.bat' @('copilot.cmd', 'copilot.exe') $argv }",
+    "function global:copilot { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'copilot.ps1' @('copilot.bat', 'copilot.cmd', 'copilot.exe') $argv }",
     "function global:claude { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'claude.cmd' @('claude.exe', 'claude.bat') $argv }",
     "function global:codex { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'codex.cmd' @('codex.exe', 'codex.bat') $argv }",
     "$ErrorActionPreference='Continue'\r"
