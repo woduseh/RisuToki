@@ -18,7 +18,7 @@ const { risuArrayToCCV3 } = require('./lorebook-convert') as {
   risuArrayToCCV3: (entries: unknown[]) => unknown[];
 };
 
-const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4B, 0x03, 0x04]);
+const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -59,6 +59,18 @@ export interface CharxData {
   scenario?: string;
   creatorcomment?: string;
   tags?: string[];
+  exampleMessage?: string;
+  systemPrompt?: string;
+  creator?: string;
+  characterVersion?: string;
+  nickname?: string;
+  source?: string[];
+  creationDate?: number;
+  modificationDate?: number;
+
+  // RisuAI extension fields
+  additionalText?: string;
+  license?: string;
 
   // Editable content
   firstMessage: string;
@@ -88,7 +100,7 @@ export interface CharxData {
   customModuleToggle?: string;
   mcpUrl?: string;
 
-  // Risup preset fields
+  // Risup preset fields (basic)
   mainPrompt?: string;
   jailbreak?: string;
   temperature?: number;
@@ -100,10 +112,50 @@ export interface CharxData {
   subModel?: string;
   apiType?: string;
   promptPreprocess?: boolean;
-  promptTemplate?: string;   // JSON string of PromptItem[]
-  presetBias?: string;       // JSON string of [string, number][]
-  formatingOrder?: string;   // JSON string of FormatingOrderItem[]
+  promptTemplate?: string; // JSON string of PromptItem[]
+  presetBias?: string; // JSON string of [string, number][]
+  formatingOrder?: string; // JSON string of FormatingOrderItem[]
   presetImage?: string;
+
+  // Risup preset fields (sampling parameters)
+  top_p?: number;
+  top_k?: number;
+  repetition_penalty?: number;
+  min_p?: number;
+  top_a?: number;
+
+  // Risup preset fields (thinking/reasoning)
+  reasonEffort?: number;
+  thinkingTokens?: number;
+  thinkingType?: string;
+  adaptiveThinkingEffort?: string;
+
+  // Risup preset fields (templates & formatting)
+  useInstructPrompt?: boolean;
+  instructChatTemplate?: string;
+  JinjaTemplate?: string;
+  customPromptTemplateToggle?: string;
+  templateDefaultVariables?: string;
+  moduleIntergration?: string;
+
+  // Risup preset fields (JSON schema & structured output)
+  jsonSchemaEnabled?: boolean;
+  jsonSchema?: string;
+  strictJsonSchema?: boolean;
+  extractJson?: string;
+
+  // Risup preset fields (group & misc)
+  groupTemplate?: string;
+  groupOtherBotRole?: string;
+  autoSuggestPrompt?: string;
+  autoSuggestPrefix?: string;
+  autoSuggestClean?: boolean;
+  localStopStrings?: string; // JSON string of string[]
+  outputImageModal?: boolean;
+  verbosity?: number;
+  fallbackWhenBlankResponse?: boolean;
+  systemContentReplacement?: string;
+  systemRoleReplacement?: string;
 
   // Assets
   assets: CharxAsset[];
@@ -123,15 +175,17 @@ export interface CharxData {
 // ---------------------------------------------------------------------------
 
 /** Extract risum module-specific fields from a parsed module object. */
-function extractRisumModuleFields(mod: Record<string, unknown>): Pick<CharxData,
-  'cjs' | 'lowLevelAccess' | 'hideIcon' | 'backgroundEmbedding' |
-  'moduleNamespace' | 'customModuleToggle' | 'mcpUrl'
+function extractRisumModuleFields(
+  mod: Record<string, unknown>,
+): Pick<
+  CharxData,
+  'cjs' | 'lowLevelAccess' | 'hideIcon' | 'backgroundEmbedding' | 'moduleNamespace' | 'customModuleToggle' | 'mcpUrl'
 > {
   const mcp = mod.mcp as Record<string, unknown> | undefined;
   return {
     cjs: (mod.cjs as string) || '',
-    lowLevelAccess: !!(mod.lowLevelAccess),
-    hideIcon: !!(mod.hideIcon),
+    lowLevelAccess: !!mod.lowLevelAccess,
+    hideIcon: !!mod.hideIcon,
     backgroundEmbedding: (mod.backgroundEmbedding as string) || '',
     moduleNamespace: (mod.namespace as string) || '',
     customModuleToggle: (mod.customModuleToggle as string) || '',
@@ -156,9 +210,7 @@ function applyRisumModuleFields(mod: Record<string, unknown>, data: CharxData): 
 }
 
 function cloneTriggerScripts(triggerScripts: unknown): TriggerScript[] {
-  return Array.isArray(triggerScripts)
-    ? JSON.parse(JSON.stringify(triggerScripts)) as TriggerScript[]
-    : [];
+  return Array.isArray(triggerScripts) ? (JSON.parse(JSON.stringify(triggerScripts)) as TriggerScript[]) : [];
 }
 
 function extractPrimaryLuaFromTriggerScripts(triggerScripts: unknown): string {
@@ -167,7 +219,11 @@ function extractPrimaryLuaFromTriggerScripts(triggerScripts: unknown): string {
   for (const trigger of triggerScripts as TriggerScript[]) {
     const effects: TriggerEffect[] = Array.isArray(trigger?.effect) ? trigger.effect : [];
     for (const effect of effects) {
-      if (effect && typeof effect.code === 'string' && (effect.type === 'triggerlua' || typeof effect.type !== 'string')) {
+      if (
+        effect &&
+        typeof effect.code === 'string' &&
+        (effect.type === 'triggerlua' || typeof effect.type !== 'string')
+      ) {
         return effect.code;
       }
     }
@@ -216,7 +272,7 @@ function mergePrimaryLuaIntoTriggerScripts(triggerScripts: unknown, lua: unknown
     type: 'start',
     conditions: [],
     effect: [{ type: 'triggerlua', code: lua }],
-    lowLevelAccess: false
+    lowLevelAccess: false,
   });
   return scripts;
 }
@@ -289,7 +345,7 @@ function openCharx(filePath: string): CharxData {
     if (entry.entryName.startsWith('assets/') && !entry.isDirectory) {
       assets.push({
         path: entry.entryName,
-        data: entry.getData()
+        data: entry.getData(),
       });
     }
     if (entry.entryName.startsWith('x_meta/') && entry.entryName.endsWith('.json')) {
@@ -301,7 +357,7 @@ function openCharx(filePath: string): CharxData {
   // Extract editable components
   const data = card.data || {};
   const risuExt = data.extensions?.risuai || {};
-  const mod = (moduleData as Record<string, unknown>)?.module as Record<string, unknown> || {};
+  const mod = ((moduleData as Record<string, unknown>)?.module as Record<string, unknown>) || {};
   const triggerScripts: TriggerScript[] = cloneTriggerScripts(mod.trigger || []);
 
   return {
@@ -314,8 +370,20 @@ function openCharx(filePath: string): CharxData {
     description: data.description || '',
     personality: data.personality || '',
     scenario: data.scenario || '',
-    creatorcomment: data.creatorcomment || '',
+    creatorcomment: data.creator_notes || data.creatorcomment || '',
     tags: data.tags || [],
+    exampleMessage: data.mes_example || '',
+    systemPrompt: data.system_prompt || '',
+    creator: data.creator || '',
+    characterVersion: data.character_version || '',
+    nickname: data.nickname || '',
+    source: Array.isArray(data.source) ? data.source : [],
+    creationDate: typeof data.creation_date === 'number' ? data.creation_date : 0,
+    modificationDate: typeof data.modification_date === 'number' ? data.modification_date : 0,
+
+    // RisuAI extension fields
+    additionalText: (risuExt.additionalText as string) || '',
+    license: (risuExt.license as string) || '',
 
     // Editable content
     firstMessage: data.first_mes || '',
@@ -355,7 +423,7 @@ function openCharx(filePath: string): CharxData {
     _card: card,
     // Preserve full module for fields we don't edit
     _moduleData: moduleData,
-    _presetData: null
+    _presetData: null,
   };
 }
 
@@ -376,8 +444,16 @@ function saveCharx(filePath: string, data: CharxData): void {
   cardData.description = data.description;
   cardData.personality = data.personality || '';
   cardData.scenario = data.scenario || '';
-  cardData.creatorcomment = data.creatorcomment || '';
+  cardData.creator_notes = data.creatorcomment || '';
   cardData.tags = data.tags || [];
+  cardData.mes_example = data.exampleMessage || '';
+  cardData.system_prompt = data.systemPrompt || '';
+  cardData.creator = data.creator || '';
+  cardData.character_version = data.characterVersion || '';
+  cardData.nickname = data.nickname || '';
+  cardData.source = data.source || [];
+  if (data.creationDate) cardData.creation_date = data.creationDate;
+  cardData.modification_date = Math.floor(Date.now() / 1000);
   cardData.first_mes = data.firstMessage;
   cardData.alternate_greetings = data.alternateGreetings || [];
   cardData.group_only_greetings = data.groupOnlyGreetings || [];
@@ -390,6 +466,8 @@ function saveCharx(filePath: string, data: CharxData): void {
   const risuExt = extensions.risuai as Record<string, unknown>;
   risuExt.backgroundHTML = data.css;
   risuExt.defaultVariables = data.defaultVariables;
+  if (data.additionalText !== undefined) risuExt.additionalText = data.additionalText;
+  if (data.license !== undefined) risuExt.license = data.license;
 
   // Remove trigger/script from card (they go in module.risum)
   delete risuExt.customScripts;
@@ -408,24 +486,26 @@ function saveCharx(filePath: string, data: CharxData): void {
   zip.addFile('card.json', Buffer.from(JSON.stringify(card, null, 2), 'utf-8'));
 
   // Build module.risum
-  const moduleJson: Record<string, unknown> = data._moduleData ? JSON.parse(JSON.stringify(data._moduleData)) : {
-    type: 'risuModule',
-    module: {
-      name: data.moduleName || `${data.name} Module`,
-      description: data.moduleDescription || `Module for ${data.name}`,
-      id: data.moduleId || generateUUID(),
-      trigger: [],
-      regex: [],
-      lorebook: [],
-      assets: []
-    }
-  };
+  const moduleJson: Record<string, unknown> = data._moduleData
+    ? JSON.parse(JSON.stringify(data._moduleData))
+    : {
+        type: 'risuModule',
+        module: {
+          name: data.moduleName || `${data.name} Module`,
+          description: data.moduleDescription || `Module for ${data.name}`,
+          id: data.moduleId || generateUUID(),
+          trigger: [],
+          regex: [],
+          lorebook: [],
+          assets: [],
+        },
+      };
 
   const mod = moduleJson.module as Record<string, unknown>;
 
   mod.trigger = mergePrimaryLuaIntoTriggerScripts(
     data.triggerScripts !== undefined ? data.triggerScripts : mod.trigger,
-    data.lua
+    data.lua,
   );
 
   // Regex
@@ -441,7 +521,7 @@ function saveCharx(filePath: string, data: CharxData): void {
   zip.addFile('module.risum', risumBuf);
 
   // Add image assets
-  for (const asset of (data.assets || [])) {
+  for (const asset of data.assets || []) {
     zip.addFile(asset.path, asset.data);
   }
 
@@ -464,9 +544,7 @@ function saveCharx(filePath: string, data: CharxData): void {
 function openRisum(filePath: string): CharxData {
   const buf: Buffer = fs.readFileSync(filePath);
   const parsed = parseRisum(buf);
-  const mod = ((parsed.module as Record<string, unknown>)?.module as Record<string, unknown>)
-    || parsed.module
-    || {};
+  const mod = ((parsed.module as Record<string, unknown>)?.module as Record<string, unknown>) || parsed.module || {};
 
   return {
     _fileType: 'risum',
@@ -498,6 +576,16 @@ function openRisum(filePath: string): CharxData {
     scenario: '',
     creatorcomment: '',
     tags: [],
+    exampleMessage: '',
+    systemPrompt: '',
+    creator: '',
+    characterVersion: '',
+    nickname: '',
+    source: [],
+    creationDate: 0,
+    modificationDate: 0,
+    additionalText: '',
+    license: '',
 
     // Assets
     assets: [],
@@ -509,7 +597,7 @@ function openRisum(filePath: string): CharxData {
     _moduleData: parsed.module,
     _risuExt: {},
     _card: { spec: 'chara_card_v3', spec_version: '3.0', data: { extensions: { risuai: {} } } },
-    _presetData: null
+    _presetData: null,
   };
 }
 
@@ -517,18 +605,20 @@ function openRisum(filePath: string): CharxData {
  * Save data back to a standalone .risum file
  */
 function saveRisum(filePath: string, data: CharxData): void {
-  const moduleJson: Record<string, unknown> = data._moduleData ? JSON.parse(JSON.stringify(data._moduleData)) : {
-    type: 'risuModule',
-    module: {
-      name: data.moduleName || data.name || 'Module',
-      description: data.moduleDescription || '',
-      id: data.moduleId || generateUUID(),
-      trigger: [],
-      regex: [],
-      lorebook: [],
-      assets: []
-    }
-  };
+  const moduleJson: Record<string, unknown> = data._moduleData
+    ? JSON.parse(JSON.stringify(data._moduleData))
+    : {
+        type: 'risuModule',
+        module: {
+          name: data.moduleName || data.name || 'Module',
+          description: data.moduleDescription || '',
+          id: data.moduleId || generateUUID(),
+          trigger: [],
+          regex: [],
+          lorebook: [],
+          assets: [],
+        },
+      };
 
   const mod = (moduleJson.module as Record<string, unknown>) || moduleJson;
 
@@ -541,7 +631,7 @@ function saveRisum(filePath: string, data: CharxData): void {
 
   mod.trigger = mergePrimaryLuaIntoTriggerScripts(
     data.triggerScripts !== undefined ? data.triggerScripts : mod.trigger,
-    data.lua
+    data.lua,
   );
 
   // Regex & Lorebook
@@ -592,25 +682,85 @@ function encryptAesGcm(plaintext: Buffer): Buffer {
   return Buffer.concat([encrypted, authTag]);
 }
 
-/** Extract commonly-edited preset fields from a botPreset object into CharxData. */
+/** Helper: extract optional number field from preset */
+function presetNum(preset: Record<string, unknown>, key: string, def?: number): number | undefined {
+  return typeof preset[key] === 'number' ? (preset[key] as number) : def;
+}
+
+/** Extract preset fields from a botPreset object into CharxData. */
 function extractPresetFields(preset: Record<string, unknown>): Partial<CharxData> {
   return {
     name: (preset.name as string) || 'Unnamed Preset',
+
+    // Basic prompt fields
     mainPrompt: (preset.mainPrompt as string) || '',
     jailbreak: (preset.jailbreak as string) || '',
     globalNote: (preset.globalNote as string) || '',
-    temperature: typeof preset.temperature === 'number' ? preset.temperature : 80,
-    maxContext: typeof preset.maxContext === 'number' ? preset.maxContext : 4000,
-    maxResponse: typeof preset.maxResponse === 'number' ? preset.maxResponse : 300,
-    frequencyPenalty: typeof preset.frequencyPenalty === 'number' ? preset.frequencyPenalty : 70,
-    presencePenalty: typeof preset.PresensePenalty === 'number' ? preset.PresensePenalty : 70,
+
+    // Core parameters
+    temperature: presetNum(preset, 'temperature', 80),
+    maxContext: presetNum(preset, 'maxContext', 4000),
+    maxResponse: presetNum(preset, 'maxResponse', 300),
+    frequencyPenalty: presetNum(preset, 'frequencyPenalty', 70),
+    presencePenalty: typeof preset.PresensePenalty === 'number' ? (preset.PresensePenalty as number) : 70,
+
+    // Sampling parameters
+    top_p: presetNum(preset, 'top_p'),
+    top_k: presetNum(preset, 'top_k'),
+    repetition_penalty: presetNum(preset, 'repetition_penalty'),
+    min_p: presetNum(preset, 'min_p'),
+    top_a: presetNum(preset, 'top_a'),
+
+    // Thinking / reasoning
+    reasonEffort: presetNum(preset, 'reasonEffort'),
+    thinkingTokens: presetNum(preset, 'thinkingTokens'),
+    thinkingType: (preset.thinkingType as string) || undefined,
+    adaptiveThinkingEffort: (preset.adaptiveThinkingEffort as string) || undefined,
+
+    // Model & API
     aiModel: (preset.aiModel as string) || '',
     subModel: (preset.subModel as string) || '',
     apiType: (preset.apiType as string) || '',
     promptPreprocess: !!preset.promptPreprocess,
+
+    // Templates & formatting
     promptTemplate: preset.promptTemplate ? JSON.stringify(preset.promptTemplate) : '[]',
     presetBias: preset.bias ? JSON.stringify(preset.bias) : '[]',
     formatingOrder: preset.formatingOrder ? JSON.stringify(preset.formatingOrder) : '[]',
+    useInstructPrompt: preset.useInstructPrompt != null ? !!preset.useInstructPrompt : undefined,
+    instructChatTemplate: (preset.instructChatTemplate as string) || undefined,
+    JinjaTemplate: (preset.JinjaTemplate as string) || undefined,
+    customPromptTemplateToggle: (preset.customPromptTemplateToggle as string) || undefined,
+    templateDefaultVariables: (preset.templateDefaultVariables as string) || undefined,
+    moduleIntergration: (preset.moduleIntergration as string) || undefined,
+
+    // JSON schema & structured output
+    jsonSchemaEnabled: preset.jsonSchemaEnabled != null ? !!preset.jsonSchemaEnabled : undefined,
+    jsonSchema: (preset.jsonSchema as string) || undefined,
+    strictJsonSchema: preset.strictJsonSchema != null ? !!preset.strictJsonSchema : undefined,
+    extractJson: (preset.extractJson as string) || undefined,
+
+    // Group settings
+    groupTemplate: (preset.groupTemplate as string) || undefined,
+    groupOtherBotRole: (preset.groupOtherBotRole as string) || undefined,
+
+    // Auto-suggest
+    autoSuggestPrompt: (preset.autoSuggestPrompt as string) || undefined,
+    autoSuggestPrefix: (preset.autoSuggestPrefix as string) || undefined,
+    autoSuggestClean: preset.autoSuggestClean != null ? !!preset.autoSuggestClean : undefined,
+
+    // Stop strings
+    localStopStrings: Array.isArray(preset.localStopStrings) ? JSON.stringify(preset.localStopStrings) : undefined,
+
+    // Misc
+    outputImageModal: preset.outputImageModal != null ? !!preset.outputImageModal : undefined,
+    verbosity: presetNum(preset, 'verbosity'),
+    fallbackWhenBlankResponse:
+      preset.fallbackWhenBlankResponse != null ? !!preset.fallbackWhenBlankResponse : undefined,
+    systemContentReplacement: (preset.systemContentReplacement as string) || undefined,
+    systemRoleReplacement: (preset.systemRoleReplacement as string) || undefined,
+
+    // Regex & image
     regex: Array.isArray(preset.regex) ? preset.regex : [],
     presetImage: (preset.image as string) || '',
   };
@@ -619,27 +769,102 @@ function extractPresetFields(preset: Record<string, unknown>): Partial<CharxData
 /** Write edited preset fields back into a botPreset object. */
 function applyPresetFields(preset: Record<string, unknown>, data: CharxData): void {
   preset.name = data.name;
+
+  // Basic prompt fields
   if (data.mainPrompt !== undefined) preset.mainPrompt = data.mainPrompt;
   if (data.jailbreak !== undefined) preset.jailbreak = data.jailbreak;
   if (data.globalNote !== undefined) preset.globalNote = data.globalNote;
+
+  // Core parameters
   if (data.temperature !== undefined) preset.temperature = data.temperature;
   if (data.maxContext !== undefined) preset.maxContext = data.maxContext;
   if (data.maxResponse !== undefined) preset.maxResponse = data.maxResponse;
   if (data.frequencyPenalty !== undefined) preset.frequencyPenalty = data.frequencyPenalty;
   if (data.presencePenalty !== undefined) preset.PresensePenalty = data.presencePenalty;
+
+  // Sampling parameters
+  if (data.top_p !== undefined) preset.top_p = data.top_p;
+  if (data.top_k !== undefined) preset.top_k = data.top_k;
+  if (data.repetition_penalty !== undefined) preset.repetition_penalty = data.repetition_penalty;
+  if (data.min_p !== undefined) preset.min_p = data.min_p;
+  if (data.top_a !== undefined) preset.top_a = data.top_a;
+
+  // Thinking / reasoning
+  if (data.reasonEffort !== undefined) preset.reasonEffort = data.reasonEffort;
+  if (data.thinkingTokens !== undefined) preset.thinkingTokens = data.thinkingTokens;
+  if (data.thinkingType !== undefined) preset.thinkingType = data.thinkingType;
+  if (data.adaptiveThinkingEffort !== undefined) preset.adaptiveThinkingEffort = data.adaptiveThinkingEffort;
+
+  // Model & API
   if (data.aiModel !== undefined) preset.aiModel = data.aiModel;
   if (data.subModel !== undefined) preset.subModel = data.subModel;
   if (data.apiType !== undefined) preset.apiType = data.apiType;
   if (data.promptPreprocess !== undefined) preset.promptPreprocess = data.promptPreprocess;
+
+  // Templates & formatting (JSON-encoded fields)
   if (data.promptTemplate !== undefined) {
-    try { preset.promptTemplate = JSON.parse(data.promptTemplate); } catch { /* keep original */ }
+    try {
+      preset.promptTemplate = JSON.parse(data.promptTemplate);
+    } catch {
+      /* keep original */
+    }
   }
   if (data.presetBias !== undefined) {
-    try { preset.bias = JSON.parse(data.presetBias); } catch { /* keep original */ }
+    try {
+      preset.bias = JSON.parse(data.presetBias);
+    } catch {
+      /* keep original */
+    }
   }
   if (data.formatingOrder !== undefined) {
-    try { preset.formatingOrder = JSON.parse(data.formatingOrder); } catch { /* keep original */ }
+    try {
+      preset.formatingOrder = JSON.parse(data.formatingOrder);
+    } catch {
+      /* keep original */
+    }
   }
+
+  // Templates & formatting (scalar fields)
+  if (data.useInstructPrompt !== undefined) preset.useInstructPrompt = data.useInstructPrompt;
+  if (data.instructChatTemplate !== undefined) preset.instructChatTemplate = data.instructChatTemplate;
+  if (data.JinjaTemplate !== undefined) preset.JinjaTemplate = data.JinjaTemplate;
+  if (data.customPromptTemplateToggle !== undefined)
+    preset.customPromptTemplateToggle = data.customPromptTemplateToggle;
+  if (data.templateDefaultVariables !== undefined) preset.templateDefaultVariables = data.templateDefaultVariables;
+  if (data.moduleIntergration !== undefined) preset.moduleIntergration = data.moduleIntergration;
+
+  // JSON schema & structured output
+  if (data.jsonSchemaEnabled !== undefined) preset.jsonSchemaEnabled = data.jsonSchemaEnabled;
+  if (data.jsonSchema !== undefined) preset.jsonSchema = data.jsonSchema;
+  if (data.strictJsonSchema !== undefined) preset.strictJsonSchema = data.strictJsonSchema;
+  if (data.extractJson !== undefined) preset.extractJson = data.extractJson;
+
+  // Group settings
+  if (data.groupTemplate !== undefined) preset.groupTemplate = data.groupTemplate;
+  if (data.groupOtherBotRole !== undefined) preset.groupOtherBotRole = data.groupOtherBotRole;
+
+  // Auto-suggest
+  if (data.autoSuggestPrompt !== undefined) preset.autoSuggestPrompt = data.autoSuggestPrompt;
+  if (data.autoSuggestPrefix !== undefined) preset.autoSuggestPrefix = data.autoSuggestPrefix;
+  if (data.autoSuggestClean !== undefined) preset.autoSuggestClean = data.autoSuggestClean;
+
+  // Stop strings (JSON-encoded)
+  if (data.localStopStrings !== undefined) {
+    try {
+      preset.localStopStrings = JSON.parse(data.localStopStrings);
+    } catch {
+      /* keep original */
+    }
+  }
+
+  // Misc
+  if (data.outputImageModal !== undefined) preset.outputImageModal = data.outputImageModal;
+  if (data.verbosity !== undefined) preset.verbosity = data.verbosity;
+  if (data.fallbackWhenBlankResponse !== undefined) preset.fallbackWhenBlankResponse = data.fallbackWhenBlankResponse;
+  if (data.systemContentReplacement !== undefined) preset.systemContentReplacement = data.systemContentReplacement;
+  if (data.systemRoleReplacement !== undefined) preset.systemRoleReplacement = data.systemRoleReplacement;
+
+  // Regex & image
   if (data.regex !== undefined) preset.regex = data.regex;
   if (data.presetImage !== undefined) preset.image = data.presetImage;
 }
@@ -659,7 +884,7 @@ function openRisup(filePath: string): CharxData {
 
   // Step 3: MessagePack decode outer envelope
   const envelope = unpack(decompressed) as Record<string, unknown>;
-  if (!envelope || (envelope.type !== 'preset')) {
+  if (!envelope || envelope.type !== 'preset') {
     throw new Error('Invalid .risup file: missing type=preset marker');
   }
 
@@ -682,7 +907,7 @@ function openRisup(filePath: string): CharxData {
     _fileType: 'risup',
 
     // Extract editable fields
-    ...extractPresetFields(sanitized) as CharxData,
+    ...(extractPresetFields(sanitized) as CharxData),
 
     // Fields not applicable to presets (empty defaults)
     description: '',
@@ -715,9 +940,7 @@ function openRisup(filePath: string): CharxData {
  */
 function saveRisup(filePath: string, data: CharxData): void {
   // Start from preserved preset data, or create minimal preset
-  const preset: Record<string, unknown> = data._presetData
-    ? JSON.parse(JSON.stringify(data._presetData))
-    : {};
+  const preset: Record<string, unknown> = data._presetData ? JSON.parse(JSON.stringify(data._presetData)) : {};
 
   // Apply edited fields
   applyPresetFields(preset, data);
@@ -754,8 +977,8 @@ function saveRisup(filePath: string, data: CharxData): void {
 
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c: string) => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
   });
 }
 
@@ -769,5 +992,5 @@ module.exports = {
   extractPrimaryLuaFromTriggerScripts,
   mergePrimaryLuaIntoTriggerScripts,
   normalizeTriggerScripts,
-  stringifyTriggerScripts
+  stringifyTriggerScripts,
 };

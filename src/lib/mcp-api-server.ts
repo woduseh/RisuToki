@@ -298,6 +298,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const fileType = currentData._fileType || 'charx';
         const isRisum = fileType === 'risum';
         const isRisup = fileType === 'risup';
+        const isCharx = !isRisum && !isRisup;
 
         const fieldNames = [
           'name',
@@ -334,11 +335,44 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         fields.push({ name: 'lorebook', count: (currentData.lorebook || []).length, type: 'array' });
         fields.push({ name: 'regex', count: (currentData.regex || []).length, type: 'array' });
 
+        // Charx card.data fields
+        if (isCharx) {
+          const charxStringFields = [
+            'personality',
+            'scenario',
+            'creatorcomment',
+            'exampleMessage',
+            'systemPrompt',
+            'creator',
+            'characterVersion',
+            'nickname',
+            'additionalText',
+            'license',
+          ];
+          for (const f of charxStringFields) {
+            fields.push({ name: f, size: ((currentData[f] as string) || '').length, type: 'string' });
+          }
+          fields.push({ name: 'tags', count: (currentData.tags || []).length, type: 'array' });
+          fields.push({ name: 'source', count: (currentData.source || []).length, type: 'array' });
+          fields.push({ name: 'creationDate', value: currentData.creationDate ?? 0, type: 'number (read-only)' });
+          fields.push({
+            name: 'modificationDate',
+            value: currentData.modificationDate ?? 0,
+            type: 'number (read-only)',
+          });
+        }
+
         // Risum module-specific fields
         if (isRisum) {
           const risumStringFields = [
-            'cjs', 'backgroundEmbedding', 'moduleNamespace',
-            'customModuleToggle', 'mcpUrl', 'moduleId', 'moduleName', 'moduleDescription',
+            'cjs',
+            'backgroundEmbedding',
+            'moduleNamespace',
+            'customModuleToggle',
+            'mcpUrl',
+            'moduleId',
+            'moduleName',
+            'moduleDescription',
           ];
           for (const f of risumStringFields) {
             fields.push({ name: f, size: ((currentData[f] as string) || '').length, type: 'string' });
@@ -350,19 +384,65 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         // Risup preset-specific fields
         if (isRisup) {
           const risupStringFields = [
-            'mainPrompt', 'jailbreak', 'aiModel', 'subModel', 'apiType',
-            'promptTemplate', 'presetBias', 'formatingOrder', 'presetImage',
+            'mainPrompt',
+            'jailbreak',
+            'aiModel',
+            'subModel',
+            'apiType',
+            'promptTemplate',
+            'presetBias',
+            'formatingOrder',
+            'presetImage',
+            'thinkingType',
+            'adaptiveThinkingEffort',
+            'instructChatTemplate',
+            'JinjaTemplate',
+            'customPromptTemplateToggle',
+            'templateDefaultVariables',
+            'moduleIntergration',
+            'jsonSchema',
+            'extractJson',
+            'groupTemplate',
+            'groupOtherBotRole',
+            'autoSuggestPrompt',
+            'autoSuggestPrefix',
+            'localStopStrings',
+            'systemContentReplacement',
+            'systemRoleReplacement',
           ];
           for (const f of risupStringFields) {
             fields.push({ name: f, size: ((currentData[f] as string) || '').length, type: 'string' });
           }
           const risupNumberFields = [
-            'temperature', 'maxContext', 'maxResponse', 'frequencyPenalty', 'presencePenalty',
+            'temperature',
+            'maxContext',
+            'maxResponse',
+            'frequencyPenalty',
+            'presencePenalty',
+            'top_p',
+            'top_k',
+            'repetition_penalty',
+            'min_p',
+            'top_a',
+            'reasonEffort',
+            'thinkingTokens',
+            'verbosity',
           ];
           for (const f of risupNumberFields) {
             fields.push({ name: f, value: currentData[f] ?? 0, type: 'number' });
           }
-          fields.push({ name: 'promptPreprocess', value: !!currentData.promptPreprocess, type: 'boolean' });
+          const risupBoolFields = [
+            'promptPreprocess',
+            'useInstructPrompt',
+            'jsonSchemaEnabled',
+            'strictJsonSchema',
+            'autoSuggestClean',
+            'outputImageModal',
+            'fallbackWhenBlankResponse',
+          ];
+          for (const f of risupBoolFields) {
+            fields.push({ name: f, value: !!currentData[f], type: 'boolean' });
+          }
         }
 
         return jsonRes(res, { fileType, fields });
@@ -385,27 +465,104 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'triggerScripts',
           'lua',
         ];
+        // Charx card.data fields (additional character metadata)
+        const charxFields = [
+          'personality',
+          'scenario',
+          'creatorcomment',
+          'tags',
+          'exampleMessage',
+          'systemPrompt',
+          'creator',
+          'characterVersion',
+          'nickname',
+          'source',
+          'additionalText',
+          'license',
+        ];
+        const charxReadOnlyFields = ['creationDate', 'modificationDate'];
         const risumFields = [
-          'cjs', 'lowLevelAccess', 'hideIcon', 'backgroundEmbedding',
-          'moduleNamespace', 'customModuleToggle', 'mcpUrl',
-          'moduleName', 'moduleDescription',
+          'cjs',
+          'lowLevelAccess',
+          'hideIcon',
+          'backgroundEmbedding',
+          'moduleNamespace',
+          'customModuleToggle',
+          'mcpUrl',
+          'moduleName',
+          'moduleDescription',
         ];
         const risumReadOnlyFields = ['moduleId'];
         const risupFields = [
-          'mainPrompt', 'jailbreak', 'temperature', 'maxContext', 'maxResponse',
-          'frequencyPenalty', 'presencePenalty', 'aiModel', 'subModel', 'apiType',
-          'promptPreprocess', 'promptTemplate', 'presetBias', 'formatingOrder', 'presetImage',
+          // Basic
+          'mainPrompt',
+          'jailbreak',
+          'temperature',
+          'maxContext',
+          'maxResponse',
+          'frequencyPenalty',
+          'presencePenalty',
+          'aiModel',
+          'subModel',
+          'apiType',
+          'promptPreprocess',
+          'promptTemplate',
+          'presetBias',
+          'formatingOrder',
+          'presetImage',
+          // Sampling
+          'top_p',
+          'top_k',
+          'repetition_penalty',
+          'min_p',
+          'top_a',
+          // Thinking / reasoning
+          'reasonEffort',
+          'thinkingTokens',
+          'thinkingType',
+          'adaptiveThinkingEffort',
+          // Templates & formatting
+          'useInstructPrompt',
+          'instructChatTemplate',
+          'JinjaTemplate',
+          'customPromptTemplateToggle',
+          'templateDefaultVariables',
+          'moduleIntergration',
+          // JSON schema
+          'jsonSchemaEnabled',
+          'jsonSchema',
+          'strictJsonSchema',
+          'extractJson',
+          // Group & misc
+          'groupTemplate',
+          'groupOtherBotRole',
+          'autoSuggestPrompt',
+          'autoSuggestPrefix',
+          'autoSuggestClean',
+          'localStopStrings',
+          'outputImageModal',
+          'verbosity',
+          'fallbackWhenBlankResponse',
+          'systemContentReplacement',
+          'systemRoleReplacement',
         ];
         const isRisum = (currentData._fileType || 'charx') === 'risum';
         const isRisup = (currentData._fileType || 'charx') === 'risup';
+        const isCharx = !isRisum && !isRisup;
+        const allReadOnly = [...(isRisum ? risumReadOnlyFields : []), ...(isCharx ? charxReadOnlyFields : [])];
         const allAllowed = [
           ...allowedFields,
+          ...(isCharx ? [...charxFields, ...charxReadOnlyFields] : []),
           ...(isRisum ? [...risumFields, ...risumReadOnlyFields] : []),
           ...(isRisup ? risupFields : []),
         ];
 
         if (!allAllowed.includes(fieldName)) {
-          const hint = isRisum ? '(risum 필드 포함)' : isRisup ? '(risup 프리셋 필드 포함)' : '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
+          const hint = isRisum
+            ? '(risum 필드 포함)'
+            : isRisup
+              ? '(risup 프리셋 필드 포함)'
+              : '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
           return jsonRes(res, { error: `Unknown field: ${fieldName} ${hint}` }, 400);
         }
 
@@ -416,23 +573,52 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               content: deps.stringifyTriggerScripts(currentData.triggerScripts),
             });
           }
-          if (fieldName === 'alternateGreetings' || fieldName === 'groupOnlyGreetings') {
+          // Array fields
+          if (['alternateGreetings', 'groupOnlyGreetings', 'tags', 'source'].includes(fieldName)) {
             return jsonRes(res, { field: fieldName, content: currentData[fieldName] || [] });
           }
           // Boolean fields
-          if (fieldName === 'lowLevelAccess' || fieldName === 'hideIcon' || fieldName === 'promptPreprocess') {
+          const boolFields = [
+            'lowLevelAccess',
+            'hideIcon',
+            'promptPreprocess',
+            'useInstructPrompt',
+            'jsonSchemaEnabled',
+            'strictJsonSchema',
+            'autoSuggestClean',
+            'outputImageModal',
+            'fallbackWhenBlankResponse',
+          ];
+          if (boolFields.includes(fieldName)) {
             return jsonRes(res, { field: fieldName, content: !!currentData[fieldName], type: 'boolean' });
           }
           // Number fields
-          if (['temperature', 'maxContext', 'maxResponse', 'frequencyPenalty', 'presencePenalty'].includes(fieldName)) {
+          const numFields = [
+            'temperature',
+            'maxContext',
+            'maxResponse',
+            'frequencyPenalty',
+            'presencePenalty',
+            'top_p',
+            'top_k',
+            'repetition_penalty',
+            'min_p',
+            'top_a',
+            'reasonEffort',
+            'thinkingTokens',
+            'verbosity',
+            'creationDate',
+            'modificationDate',
+          ];
+          if (numFields.includes(fieldName)) {
             return jsonRes(res, { field: fieldName, content: currentData[fieldName] ?? 0, type: 'number' });
           }
           return jsonRes(res, { field: fieldName, content: currentData[fieldName] || '' });
         }
 
         if (req.method === 'POST') {
-          // moduleId is read-only
-          if (risumReadOnlyFields.includes(fieldName)) {
+          // Read-only fields check
+          if (allReadOnly.includes(fieldName)) {
             return mcpError(res, 400, {
               action: 'update field',
               message: `"${fieldName}" 필드는 읽기 전용입니다.`,
@@ -1477,10 +1663,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const asset = assets[idx];
         const ext = (asset.path.split('.').pop() || 'png').toLowerCase();
         const mime =
-          ext === 'png' ? 'image/png' :
-          ext === 'webp' ? 'image/webp' :
-          ext === 'gif' ? 'image/gif' :
-          ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
+          ext === 'png'
+            ? 'image/png'
+            : ext === 'webp'
+              ? 'image/webp'
+              : ext === 'gif'
+                ? 'image/gif'
+                : ext === 'svg'
+                  ? 'image/svg+xml'
+                  : 'image/jpeg';
         return jsonRes(res, {
           index: idx,
           path: asset.path,
@@ -1608,11 +1799,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'risum-assets' && !parts[1] && req.method === 'GET') {
         const risumAssets: Buffer[] = currentData.risumAssets || [];
         const modAssets: unknown[] =
-          ((currentData._moduleData as Record<string, unknown>)?.module as Record<string, unknown>)?.assets as unknown[] ||
-          (currentData._moduleData as Record<string, unknown>)?.assets as unknown[] ||
+          (((currentData._moduleData as Record<string, unknown>)?.module as Record<string, unknown>)
+            ?.assets as unknown[]) ||
+          ((currentData._moduleData as Record<string, unknown>)?.assets as unknown[]) ||
           [];
         const items = risumAssets.map((buf: Buffer, i: number) => {
-          const meta = Array.isArray(modAssets[i]) ? modAssets[i] as string[] : null;
+          const meta = Array.isArray(modAssets[i]) ? (modAssets[i] as string[]) : null;
           return {
             index: i,
             name: meta?.[0] || `asset_${i}`,
@@ -1638,10 +1830,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const modAssets: unknown[] =
-          ((currentData._moduleData as Record<string, unknown>)?.module as Record<string, unknown>)?.assets as unknown[] ||
-          (currentData._moduleData as Record<string, unknown>)?.assets as unknown[] ||
+          (((currentData._moduleData as Record<string, unknown>)?.module as Record<string, unknown>)
+            ?.assets as unknown[]) ||
+          ((currentData._moduleData as Record<string, unknown>)?.assets as unknown[]) ||
           [];
-        const meta = Array.isArray(modAssets[idx]) ? modAssets[idx] as string[] : null;
+        const meta = Array.isArray(modAssets[idx]) ? (modAssets[idx] as string[]) : null;
         const assetBuf = risumAssets[idx];
         return jsonRes(res, {
           index: idx,
@@ -1705,10 +1898,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const modAssets: unknown[] =
-          ((currentData._moduleData as Record<string, unknown>)?.module as Record<string, unknown>)?.assets as unknown[] ||
-          (currentData._moduleData as Record<string, unknown>)?.assets as unknown[] ||
+          (((currentData._moduleData as Record<string, unknown>)?.module as Record<string, unknown>)
+            ?.assets as unknown[]) ||
+          ((currentData._moduleData as Record<string, unknown>)?.assets as unknown[]) ||
           [];
-        const meta = Array.isArray(modAssets[idx]) ? modAssets[idx] as string[] : null;
+        const meta = Array.isArray(modAssets[idx]) ? (modAssets[idx] as string[]) : null;
         const deleteName = meta?.[0] || `asset_${idx}`;
         const allowed = await deps.askRendererConfirm(
           'MCP 리슘 에셋 삭제 요청',

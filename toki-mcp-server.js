@@ -20,7 +20,7 @@ const TOOLS = [
     },
     {
         name: 'read_field',
-        description: '필드의 전체 내용을 읽습니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. risum 전용: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용). risup 전용: mainPrompt, jailbreak, temperature(number), maxContext(number), maxResponse(number), frequencyPenalty(number), presencePenalty(number), aiModel, subModel, apiType, promptPreprocess(boolean), promptTemplate(JSON), presetBias(JSON), formatingOrder(JSON), presetImage',
+        description: '필드의 전체 내용을 읽습니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, creationDate(읽기전용), modificationDate(읽기전용), additionalText, license. risum 전용: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용). risup 전용: mainPrompt, jailbreak, temperature, maxContext, maxResponse, frequencyPenalty, presencePenalty, aiModel, subModel, apiType, promptPreprocess, promptTemplate(JSON), presetBias(JSON), formatingOrder(JSON), presetImage, top_p, top_k, repetition_penalty, min_p, top_a, reasonEffort, thinkingTokens, thinkingType, adaptiveThinkingEffort, useInstructPrompt, instructChatTemplate, JinjaTemplate, customPromptTemplateToggle, templateDefaultVariables, moduleIntergration, jsonSchemaEnabled, jsonSchema, strictJsonSchema, extractJson, groupTemplate, groupOtherBotRole, autoSuggestPrompt, autoSuggestPrefix, autoSuggestClean, localStopStrings(JSON), outputImageModal, verbosity, fallbackWhenBlankResponse, systemContentReplacement, systemRoleReplacement',
         inputSchema: {
             type: 'object',
             properties: { field: { type: 'string', description: '필드 이름' } },
@@ -29,13 +29,13 @@ const TOOLS = [
     },
     {
         name: 'write_field',
-        description: '필드에 새 내용을 씁니다. 에디터에서 사용자 확인 팝업이 뜹니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. risum 전용: cjs, lowLevelAccess(boolean), hideIcon(boolean), backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription. risup 전용: mainPrompt, jailbreak, temperature(number), maxContext(number), maxResponse(number), frequencyPenalty(number), presencePenalty(number), aiModel, subModel, apiType, promptPreprocess(boolean), promptTemplate(JSON), presetBias(JSON), formatingOrder(JSON), presetImage',
+        description: '필드에 새 내용을 씁니다. 에디터에서 사용자 확인 팝업이 뜹니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, additionalText, license. risum 전용: cjs, lowLevelAccess(boolean), hideIcon(boolean), backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription. risup 전용: mainPrompt, jailbreak, temperature(number), maxContext(number), maxResponse(number), frequencyPenalty(number), presencePenalty(number), aiModel, subModel, apiType, promptPreprocess(boolean), promptTemplate(JSON), presetBias(JSON), formatingOrder(JSON), presetImage, top_p(number), top_k(number), repetition_penalty(number), min_p(number), top_a(number), reasonEffort(number), thinkingTokens(number), thinkingType, adaptiveThinkingEffort, useInstructPrompt(boolean), instructChatTemplate, JinjaTemplate, customPromptTemplateToggle, templateDefaultVariables, moduleIntergration, jsonSchemaEnabled(boolean), jsonSchema, strictJsonSchema(boolean), extractJson, groupTemplate, groupOtherBotRole, autoSuggestPrompt, autoSuggestPrefix, autoSuggestClean(boolean), localStopStrings(JSON), outputImageModal(boolean), verbosity(number), fallbackWhenBlankResponse(boolean), systemContentReplacement, systemRoleReplacement',
         inputSchema: {
             type: 'object',
             properties: {
                 field: { type: 'string', description: '필드 이름' },
                 content: {
-                    description: '새로운 내용. alternateGreetings/groupOnlyGreetings는 문자열 배열, triggerScripts는 JSON 문자열, lowLevelAccess/hideIcon/promptPreprocess는 boolean, temperature 등은 number, 나머지는 문자열',
+                    description: '새로운 내용. alternateGreetings/groupOnlyGreetings/tags/source는 문자열 배열, triggerScripts는 JSON 문자열, boolean 필드는 boolean, number 필드는 number, 나머지는 문자열',
                     oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }, { type: 'boolean' }, { type: 'number' }]
                 }
             },

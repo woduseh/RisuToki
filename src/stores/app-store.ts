@@ -18,6 +18,25 @@ export interface CharxData {
   lorebook: LorebookEntry[];
   regex: RegexEntry[];
   _fileType?: string;
+
+  // Charx card.data fields
+  personality?: string;
+  scenario?: string;
+  creatorcomment?: string;
+  tags?: string[];
+  exampleMessage?: string;
+  systemPrompt?: string;
+  creator?: string;
+  characterVersion?: string;
+  nickname?: string;
+  source?: string[];
+  creationDate?: number;
+  modificationDate?: number;
+
+  // RisuAI extension fields
+  additionalText?: string;
+  license?: string;
+
   // Risum module-specific fields
   moduleName?: string;
   moduleDescription?: string;
@@ -29,7 +48,8 @@ export interface CharxData {
   moduleNamespace?: string;
   customModuleToggle?: string;
   mcpUrl?: string;
-  // Risup preset fields
+
+  // Risup preset fields (basic)
   mainPrompt?: string;
   jailbreak?: string;
   temperature?: number;
@@ -45,6 +65,47 @@ export interface CharxData {
   presetBias?: string;
   formatingOrder?: string;
   presetImage?: string;
+
+  // Risup preset fields (sampling)
+  top_p?: number;
+  top_k?: number;
+  repetition_penalty?: number;
+  min_p?: number;
+  top_a?: number;
+
+  // Risup preset fields (thinking/reasoning)
+  reasonEffort?: number;
+  thinkingTokens?: number;
+  thinkingType?: string;
+  adaptiveThinkingEffort?: string;
+
+  // Risup preset fields (templates & formatting)
+  useInstructPrompt?: boolean;
+  instructChatTemplate?: string;
+  JinjaTemplate?: string;
+  customPromptTemplateToggle?: string;
+  templateDefaultVariables?: string;
+  moduleIntergration?: string;
+
+  // Risup preset fields (JSON schema)
+  jsonSchemaEnabled?: boolean;
+  jsonSchema?: string;
+  strictJsonSchema?: boolean;
+  extractJson?: string;
+
+  // Risup preset fields (group & misc)
+  groupTemplate?: string;
+  groupOtherBotRole?: string;
+  autoSuggestPrompt?: string;
+  autoSuggestPrefix?: string;
+  autoSuggestClean?: boolean;
+  localStopStrings?: string;
+  outputImageModal?: boolean;
+  verbosity?: number;
+  fallbackWhenBlankResponse?: boolean;
+  systemContentReplacement?: string;
+  systemRoleReplacement?: string;
+
   [key: string]: unknown;
 }
 

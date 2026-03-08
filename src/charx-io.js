@@ -176,8 +176,19 @@ function openCharx(filePath) {
         description: data.description || '',
         personality: data.personality || '',
         scenario: data.scenario || '',
-        creatorcomment: data.creatorcomment || '',
+        creatorcomment: data.creator_notes || data.creatorcomment || '',
         tags: data.tags || [],
+        exampleMessage: data.mes_example || '',
+        systemPrompt: data.system_prompt || '',
+        creator: data.creator || '',
+        characterVersion: data.character_version || '',
+        nickname: data.nickname || '',
+        source: Array.isArray(data.source) ? data.source : [],
+        creationDate: typeof data.creation_date === 'number' ? data.creation_date : 0,
+        modificationDate: typeof data.modification_date === 'number' ? data.modification_date : 0,
+        // RisuAI extension fields
+        additionalText: risuExt.additionalText || '',
+        license: risuExt.license || '',
         // Editable content
         firstMessage: data.first_mes || '',
         alternateGreetings: data.alternate_greetings || [],
@@ -230,8 +241,17 @@ function saveCharx(filePath, data) {
     cardData.description = data.description;
     cardData.personality = data.personality || '';
     cardData.scenario = data.scenario || '';
-    cardData.creatorcomment = data.creatorcomment || '';
+    cardData.creator_notes = data.creatorcomment || '';
     cardData.tags = data.tags || [];
+    cardData.mes_example = data.exampleMessage || '';
+    cardData.system_prompt = data.systemPrompt || '';
+    cardData.creator = data.creator || '';
+    cardData.character_version = data.characterVersion || '';
+    cardData.nickname = data.nickname || '';
+    cardData.source = data.source || [];
+    if (data.creationDate)
+        cardData.creation_date = data.creationDate;
+    cardData.modification_date = Math.floor(Date.now() / 1000);
     cardData.first_mes = data.firstMessage;
     cardData.alternate_greetings = data.alternateGreetings || [];
     cardData.group_only_greetings = data.groupOnlyGreetings || [];
@@ -245,6 +265,10 @@ function saveCharx(filePath, data) {
     const risuExt = extensions.risuai;
     risuExt.backgroundHTML = data.css;
     risuExt.defaultVariables = data.defaultVariables;
+    if (data.additionalText !== undefined)
+        risuExt.additionalText = data.additionalText;
+    if (data.license !== undefined)
+        risuExt.license = data.license;
     // Remove trigger/script from card (they go in module.risum)
     delete risuExt.customScripts;
     delete risuExt.triggerscript;
@@ -329,6 +353,16 @@ function openRisum(filePath) {
         scenario: '',
         creatorcomment: '',
         tags: [],
+        exampleMessage: '',
+        systemPrompt: '',
+        creator: '',
+        characterVersion: '',
+        nickname: '',
+        source: [],
+        creationDate: 0,
+        modificationDate: 0,
+        additionalText: '',
+        license: '',
         // Assets
         assets: [],
         xMeta: {},
@@ -405,25 +439,71 @@ function encryptAesGcm(plaintext) {
     const authTag = cipher.getAuthTag();
     return Buffer.concat([encrypted, authTag]);
 }
-/** Extract commonly-edited preset fields from a botPreset object into CharxData. */
+/** Helper: extract optional number field from preset */
+function presetNum(preset, key, def) {
+    return typeof preset[key] === 'number' ? preset[key] : def;
+}
+/** Extract preset fields from a botPreset object into CharxData. */
 function extractPresetFields(preset) {
     return {
         name: preset.name || 'Unnamed Preset',
+        // Basic prompt fields
         mainPrompt: preset.mainPrompt || '',
         jailbreak: preset.jailbreak || '',
         globalNote: preset.globalNote || '',
-        temperature: typeof preset.temperature === 'number' ? preset.temperature : 80,
-        maxContext: typeof preset.maxContext === 'number' ? preset.maxContext : 4000,
-        maxResponse: typeof preset.maxResponse === 'number' ? preset.maxResponse : 300,
-        frequencyPenalty: typeof preset.frequencyPenalty === 'number' ? preset.frequencyPenalty : 70,
+        // Core parameters
+        temperature: presetNum(preset, 'temperature', 80),
+        maxContext: presetNum(preset, 'maxContext', 4000),
+        maxResponse: presetNum(preset, 'maxResponse', 300),
+        frequencyPenalty: presetNum(preset, 'frequencyPenalty', 70),
         presencePenalty: typeof preset.PresensePenalty === 'number' ? preset.PresensePenalty : 70,
+        // Sampling parameters
+        top_p: presetNum(preset, 'top_p'),
+        top_k: presetNum(preset, 'top_k'),
+        repetition_penalty: presetNum(preset, 'repetition_penalty'),
+        min_p: presetNum(preset, 'min_p'),
+        top_a: presetNum(preset, 'top_a'),
+        // Thinking / reasoning
+        reasonEffort: presetNum(preset, 'reasonEffort'),
+        thinkingTokens: presetNum(preset, 'thinkingTokens'),
+        thinkingType: preset.thinkingType || undefined,
+        adaptiveThinkingEffort: preset.adaptiveThinkingEffort || undefined,
+        // Model & API
         aiModel: preset.aiModel || '',
         subModel: preset.subModel || '',
         apiType: preset.apiType || '',
         promptPreprocess: !!preset.promptPreprocess,
+        // Templates & formatting
         promptTemplate: preset.promptTemplate ? JSON.stringify(preset.promptTemplate) : '[]',
         presetBias: preset.bias ? JSON.stringify(preset.bias) : '[]',
         formatingOrder: preset.formatingOrder ? JSON.stringify(preset.formatingOrder) : '[]',
+        useInstructPrompt: preset.useInstructPrompt != null ? !!preset.useInstructPrompt : undefined,
+        instructChatTemplate: preset.instructChatTemplate || undefined,
+        JinjaTemplate: preset.JinjaTemplate || undefined,
+        customPromptTemplateToggle: preset.customPromptTemplateToggle || undefined,
+        templateDefaultVariables: preset.templateDefaultVariables || undefined,
+        moduleIntergration: preset.moduleIntergration || undefined,
+        // JSON schema & structured output
+        jsonSchemaEnabled: preset.jsonSchemaEnabled != null ? !!preset.jsonSchemaEnabled : undefined,
+        jsonSchema: preset.jsonSchema || undefined,
+        strictJsonSchema: preset.strictJsonSchema != null ? !!preset.strictJsonSchema : undefined,
+        extractJson: preset.extractJson || undefined,
+        // Group settings
+        groupTemplate: preset.groupTemplate || undefined,
+        groupOtherBotRole: preset.groupOtherBotRole || undefined,
+        // Auto-suggest
+        autoSuggestPrompt: preset.autoSuggestPrompt || undefined,
+        autoSuggestPrefix: preset.autoSuggestPrefix || undefined,
+        autoSuggestClean: preset.autoSuggestClean != null ? !!preset.autoSuggestClean : undefined,
+        // Stop strings
+        localStopStrings: Array.isArray(preset.localStopStrings) ? JSON.stringify(preset.localStopStrings) : undefined,
+        // Misc
+        outputImageModal: preset.outputImageModal != null ? !!preset.outputImageModal : undefined,
+        verbosity: presetNum(preset, 'verbosity'),
+        fallbackWhenBlankResponse: preset.fallbackWhenBlankResponse != null ? !!preset.fallbackWhenBlankResponse : undefined,
+        systemContentReplacement: preset.systemContentReplacement || undefined,
+        systemRoleReplacement: preset.systemRoleReplacement || undefined,
+        // Regex & image
         regex: Array.isArray(preset.regex) ? preset.regex : [],
         presetImage: preset.image || '',
     };
@@ -431,12 +511,14 @@ function extractPresetFields(preset) {
 /** Write edited preset fields back into a botPreset object. */
 function applyPresetFields(preset, data) {
     preset.name = data.name;
+    // Basic prompt fields
     if (data.mainPrompt !== undefined)
         preset.mainPrompt = data.mainPrompt;
     if (data.jailbreak !== undefined)
         preset.jailbreak = data.jailbreak;
     if (data.globalNote !== undefined)
         preset.globalNote = data.globalNote;
+    // Core parameters
     if (data.temperature !== undefined)
         preset.temperature = data.temperature;
     if (data.maxContext !== undefined)
@@ -447,6 +529,27 @@ function applyPresetFields(preset, data) {
         preset.frequencyPenalty = data.frequencyPenalty;
     if (data.presencePenalty !== undefined)
         preset.PresensePenalty = data.presencePenalty;
+    // Sampling parameters
+    if (data.top_p !== undefined)
+        preset.top_p = data.top_p;
+    if (data.top_k !== undefined)
+        preset.top_k = data.top_k;
+    if (data.repetition_penalty !== undefined)
+        preset.repetition_penalty = data.repetition_penalty;
+    if (data.min_p !== undefined)
+        preset.min_p = data.min_p;
+    if (data.top_a !== undefined)
+        preset.top_a = data.top_a;
+    // Thinking / reasoning
+    if (data.reasonEffort !== undefined)
+        preset.reasonEffort = data.reasonEffort;
+    if (data.thinkingTokens !== undefined)
+        preset.thinkingTokens = data.thinkingTokens;
+    if (data.thinkingType !== undefined)
+        preset.thinkingType = data.thinkingType;
+    if (data.adaptiveThinkingEffort !== undefined)
+        preset.adaptiveThinkingEffort = data.adaptiveThinkingEffort;
+    // Model & API
     if (data.aiModel !== undefined)
         preset.aiModel = data.aiModel;
     if (data.subModel !== undefined)
@@ -455,6 +558,7 @@ function applyPresetFields(preset, data) {
         preset.apiType = data.apiType;
     if (data.promptPreprocess !== undefined)
         preset.promptPreprocess = data.promptPreprocess;
+    // Templates & formatting (JSON-encoded fields)
     if (data.promptTemplate !== undefined) {
         try {
             preset.promptTemplate = JSON.parse(data.promptTemplate);
@@ -473,6 +577,59 @@ function applyPresetFields(preset, data) {
         }
         catch { /* keep original */ }
     }
+    // Templates & formatting (scalar fields)
+    if (data.useInstructPrompt !== undefined)
+        preset.useInstructPrompt = data.useInstructPrompt;
+    if (data.instructChatTemplate !== undefined)
+        preset.instructChatTemplate = data.instructChatTemplate;
+    if (data.JinjaTemplate !== undefined)
+        preset.JinjaTemplate = data.JinjaTemplate;
+    if (data.customPromptTemplateToggle !== undefined)
+        preset.customPromptTemplateToggle = data.customPromptTemplateToggle;
+    if (data.templateDefaultVariables !== undefined)
+        preset.templateDefaultVariables = data.templateDefaultVariables;
+    if (data.moduleIntergration !== undefined)
+        preset.moduleIntergration = data.moduleIntergration;
+    // JSON schema & structured output
+    if (data.jsonSchemaEnabled !== undefined)
+        preset.jsonSchemaEnabled = data.jsonSchemaEnabled;
+    if (data.jsonSchema !== undefined)
+        preset.jsonSchema = data.jsonSchema;
+    if (data.strictJsonSchema !== undefined)
+        preset.strictJsonSchema = data.strictJsonSchema;
+    if (data.extractJson !== undefined)
+        preset.extractJson = data.extractJson;
+    // Group settings
+    if (data.groupTemplate !== undefined)
+        preset.groupTemplate = data.groupTemplate;
+    if (data.groupOtherBotRole !== undefined)
+        preset.groupOtherBotRole = data.groupOtherBotRole;
+    // Auto-suggest
+    if (data.autoSuggestPrompt !== undefined)
+        preset.autoSuggestPrompt = data.autoSuggestPrompt;
+    if (data.autoSuggestPrefix !== undefined)
+        preset.autoSuggestPrefix = data.autoSuggestPrefix;
+    if (data.autoSuggestClean !== undefined)
+        preset.autoSuggestClean = data.autoSuggestClean;
+    // Stop strings (JSON-encoded)
+    if (data.localStopStrings !== undefined) {
+        try {
+            preset.localStopStrings = JSON.parse(data.localStopStrings);
+        }
+        catch { /* keep original */ }
+    }
+    // Misc
+    if (data.outputImageModal !== undefined)
+        preset.outputImageModal = data.outputImageModal;
+    if (data.verbosity !== undefined)
+        preset.verbosity = data.verbosity;
+    if (data.fallbackWhenBlankResponse !== undefined)
+        preset.fallbackWhenBlankResponse = data.fallbackWhenBlankResponse;
+    if (data.systemContentReplacement !== undefined)
+        preset.systemContentReplacement = data.systemContentReplacement;
+    if (data.systemRoleReplacement !== undefined)
+        preset.systemRoleReplacement = data.systemRoleReplacement;
+    // Regex & image
     if (data.regex !== undefined)
         preset.regex = data.regex;
     if (data.presetImage !== undefined)
