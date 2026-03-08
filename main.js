@@ -24,12 +24,11 @@ const {
 } = require('./src/lib/reference-store.cjs');
 const { buildRefsPopoutData } = require('./src/lib/refs-popout-data.cjs');
 const { createPopoutPayloadStore } = require('./src/lib/popout-payload-store.cjs');
-const { buildTerminalLaunchAttempts } = require('./src/lib/terminal-shell.cjs');
 const { createMainStateStore } = require('./src/lib/main-state-store.cjs');
 const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server');
+const { initTerminalManager, killTerminal } = require('./src/lib/terminal-manager');
 
 let mainWindow;
-let ptyProcess = null;
 let popoutWindows = {}; // { terminal: BrowserWindow, sidebar: BrowserWindow }
 let activeAgentsFilePath = null;
 let activeAgentsOriginalContent = null;
@@ -40,26 +39,6 @@ const popoutPayloadStore = createPopoutPayloadStore();
 // MCP confirmation via renderer (MomoTalk style popup)
 let mcpConfirmId = 0;
 const mcpConfirmCallbacks = {};
-
-function getTerminalStatusMessage(level, message, detail = null) {
-  const payload = { level, message };
-  if (detail) payload.detail = detail;
-  return payload;
-}
-
-function broadcastTerminalStatus(level, message, detail = null) {
-  broadcastToAll('terminal-status', getTerminalStatusMessage(level, message, detail));
-}
-
-function formatTerminalError(error) {
-  if (error instanceof Error) {
-    return error.message || '알 수 없는 오류';
-  }
-  if (typeof error === 'string' && error.trim()) {
-    return error;
-  }
-  return '알 수 없는 오류';
-}
 
 function askRendererConfirm(title, message) {
   return new Promise((resolve) => {
@@ -335,13 +314,17 @@ app.whenReady().then(() => {
     stringifyTriggerScripts,
   });
   apiToken = mcpApi.token;
+
+  // Initialize terminal (node-pty) IPC handlers
+  initTerminalManager({
+    broadcastToAll,
+    getCurrentFilePath: () => mainState.currentFilePath,
+    getApiPort: () => apiPort,
+    getApiToken: () => apiToken,
+  });
 });
 app.on('window-all-closed', () => {
-  if (ptyProcess) {
-    ptyProcess.__tokiStopRequested = true;
-    ptyProcess.kill();
-    ptyProcess = null;
-  }
+  killTerminal();
   if (mcpApi) { mcpApi.server.close(); mcpApi = null; }
   cleanupJsonMcpConfig(path.join(os.homedir(), '.mcp.json'));
   cleanupJsonMcpConfig(path.join(os.homedir(), '.copilot', 'mcp-config.json'));
@@ -640,117 +623,6 @@ ipcMain.handle('get-autosave-info', (_, customDir) => {
   if (!dir) return null;
   const base = mainState.currentFilePath ? path.basename(mainState.currentFilePath, path.extname(mainState.currentFilePath)) : '';
   return { dir, prefix: base ? `${base}_autosave_` : '', hasFile: !!mainState.currentFilePath };
-});
-
-// --- Terminal (node-pty) ---
-
-ipcMain.handle('terminal-start', async (_, cols, rows) => {
-  if (ptyProcess) {
-    ptyProcess.__tokiStopRequested = true;
-    ptyProcess.kill();
-    ptyProcess = null;
-  }
-
-  let pty;
-  try {
-    pty = require('node-pty');
-  } catch (error) {
-    const detail = formatTerminalError(error);
-    broadcastTerminalStatus('error', '터미널 구성요소를 불러오지 못했습니다.', detail);
-    console.warn('[Terminal] failed to load node-pty:', error);
-    return false;
-  }
-
-  const preferredCwd = mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : process.cwd();
-  const attempts = buildTerminalLaunchAttempts({
-    platform: process.platform,
-    env: process.env,
-    cwd: preferredCwd,
-    fallbackCwd: process.cwd()
-  });
-
-  // Clean env: remove CLAUDECODE so nested claude sessions work
-  const cleanEnv = Object.assign({}, process.env);
-  delete cleanEnv.CLAUDECODE;
-
-  // Inject MCP API info for toki-mcp-server
-  if (apiPort && apiToken) {
-    cleanEnv.TOKI_PORT = String(apiPort);
-    cleanEnv.TOKI_TOKEN = apiToken;
-  }
-
-  const failures = [];
-
-  for (const attempt of attempts) {
-    try {
-      const processHandle = pty.spawn(attempt.shell, attempt.args, {
-        name: 'xterm-256color',
-        cols: cols || 120,
-        rows: rows || 24,
-        cwd: attempt.cwd,
-        env: cleanEnv
-      });
-
-      processHandle.__tokiStopRequested = false;
-      ptyProcess = processHandle;
-      ptyProcess.onData((data) => broadcastToAll('terminal-data', data));
-      ptyProcess.onExit((event = {}) => {
-        const exitCode = typeof event.exitCode === 'number' ? event.exitCode : null;
-        const signal = typeof event.signal === 'number' ? event.signal : null;
-        const wasRequested = !!processHandle.__tokiStopRequested;
-        const isCurrentProcess = ptyProcess === processHandle;
-        if (isCurrentProcess) {
-          broadcastToAll('terminal-exit');
-          ptyProcess = null;
-        }
-        if (isCurrentProcess && !wasRequested && (exitCode !== null || signal !== null)) {
-          const parts = [];
-          if (exitCode !== null) parts.push(`exit code ${exitCode}`);
-          if (signal !== null) parts.push(`signal ${signal}`);
-          broadcastTerminalStatus('warn', '터미널 프로세스가 종료되었습니다.', parts.join(', '));
-        }
-      });
-
-      if (failures.length > 0) {
-        const recoveryDetail = attempt.isFallbackCwd
-          ? `${attempt.label} / ${attempt.cwd}`
-          : attempt.label;
-        broadcastTerminalStatus('warn', '터미널을 복구해 다시 연결했습니다.', recoveryDetail);
-      }
-
-      return true;
-    } catch (error) {
-      failures.push({
-        label: attempt.label,
-        cwd: attempt.cwd,
-        detail: formatTerminalError(error)
-      });
-      console.warn('[Terminal] failed to start attempt:', attempt, error);
-    }
-  }
-
-  const detail = failures
-    .map((failure) => `${failure.label} @ ${failure.cwd}: ${failure.detail}`)
-    .join(' | ');
-  broadcastTerminalStatus('error', '터미널 시작에 실패했습니다.', detail);
-  return false;
-});
-
-ipcMain.on('terminal-input', (_, data) => {
-  if (ptyProcess) ptyProcess.write(data);
-});
-
-ipcMain.on('terminal-resize', (_, cols, rows) => {
-  if (ptyProcess) ptyProcess.resize(cols, rows);
-});
-
-ipcMain.handle('terminal-stop', () => {
-  if (ptyProcess) {
-    ptyProcess.__tokiStopRequested = true;
-    ptyProcess.kill();
-    ptyProcess = null;
-  }
-  return true;
 });
 
 // --- Assistant prompt info ---
@@ -1440,8 +1312,6 @@ ipcMain.handle('delete-guide', (_, filename) => {
 });
 
 // --- Popout Windows ---
-
-ipcMain.handle('terminal-is-running', () => !!ptyProcess);
 
 ipcMain.handle('popout-create', async (_, panelType, requestId) => {
   // Close existing popout of same type

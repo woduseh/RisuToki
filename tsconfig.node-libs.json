@@ -14,6 +14,7 @@
     "src/lorebook-convert.ts",
     "src/rpack.ts",
     "src/lib/mcp-api-server.ts",
+    "src/lib/terminal-manager.ts",
     "toki-mcp-server.ts"
   ],
   "exclude": [
