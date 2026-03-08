@@ -1,4 +1,5 @@
 import { parseLuaSections, combineLuaSections, parseCssSections, combineCssSections, detectLuaSection, detectCssSectionInline, detectCssBlockOpen, detectCssBlockClose } from '../lib/section-parser';
+import { createTreeItem, createFolderItem, updateSidebarActive as _updateSidebarActive } from '../lib/sidebar-builder';
 import PreviewEngine from '../lib/preview-engine';
 import {
   buildAssistantLaunchCommand,
@@ -1590,52 +1591,7 @@ function initSidebarSplitResizer() {
   }
 }
 
-function createTreeItem(label, icon, indent) {
-  const el = document.createElement('div');
-  el.className = `tree-item indent-${indent}`;
-  el.dataset.label = label;
-
-  const iconSpan = document.createElement('span');
-  iconSpan.className = 'icon';
-  iconSpan.textContent = icon;
-  el.appendChild(iconSpan);
-
-  const labelSpan = document.createElement('span');
-  labelSpan.textContent = label;
-  el.appendChild(labelSpan);
-
-  return el;
-}
-
-function createFolderItem(label, icon, indent) {
-  const header = document.createElement('div');
-  header.className = `tree-item indent-${indent}`;
-
-  const arrow = document.createElement('span');
-  arrow.className = 'arrow';
-  arrow.textContent = '▶';
-  header.appendChild(arrow);
-
-  const iconSpan = document.createElement('span');
-  iconSpan.className = 'icon';
-  iconSpan.textContent = icon;
-  header.appendChild(iconSpan);
-
-  const labelSpan = document.createElement('span');
-  labelSpan.textContent = label;
-  header.appendChild(labelSpan);
-
-  const children = document.createElement('div');
-  children.className = 'tree-children';
-
-  header.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const expanded = children.classList.toggle('expanded');
-    arrow.textContent = expanded ? '▼' : '▶';
-  });
-
-  return { header, children };
-}
+// createTreeItem and createFolderItem are imported from '../lib/sidebar-builder'
 
 function createLoreEntryItem(child, indent) {
   const label = child.entry.comment || `entry_${child.index}`;
@@ -1667,12 +1623,7 @@ function createLoreEntryItem(child, indent) {
 }
 
 function updateSidebarActive() {
-  const items = document.querySelectorAll('.tree-item');
-  const tab = activeTabId ? openTabs.find(t => t.id === activeTabId) : null;
-  const targetLabel = tab ? tab.label : null;
-  items.forEach(el => {
-    el.classList.toggle('active', targetLabel !== null && el.dataset.label === targetLabel);
-  });
+  _updateSidebarActive(activeTabId, openTabs);
 }
 
 // ==================== Sidebar Actions ====================
