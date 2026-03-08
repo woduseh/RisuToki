@@ -8,7 +8,7 @@ const AdmZip = require('adm-zip');
 const { rpackDecode, rpackEncode, parseRisum, buildRisum } = require('./rpack');
 const { pack, unpack } = require('msgpackr');
 const { risuArrayToCCV3 } = require('./lorebook-convert');
-const ZIP_LOCAL_FILE_HEADER = Buffer.from([0x50, 0x4B, 0x03, 0x04]);
+const ZIP_LOCAL_FILE_HEADER = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -17,8 +17,8 @@ function extractRisumModuleFields(mod) {
     const mcp = mod.mcp;
     return {
         cjs: mod.cjs || '',
-        lowLevelAccess: !!(mod.lowLevelAccess),
-        hideIcon: !!(mod.hideIcon),
+        lowLevelAccess: !!mod.lowLevelAccess,
+        hideIcon: !!mod.hideIcon,
         backgroundEmbedding: mod.backgroundEmbedding || '',
         moduleNamespace: mod.namespace || '',
         customModuleToggle: mod.customModuleToggle || '',
@@ -45,9 +45,7 @@ function applyRisumModuleFields(mod, data) {
     }
 }
 function cloneTriggerScripts(triggerScripts) {
-    return Array.isArray(triggerScripts)
-        ? JSON.parse(JSON.stringify(triggerScripts))
-        : [];
+    return Array.isArray(triggerScripts) ? JSON.parse(JSON.stringify(triggerScripts)) : [];
 }
 function extractPrimaryLuaFromTriggerScripts(triggerScripts) {
     if (!Array.isArray(triggerScripts))
@@ -55,7 +53,9 @@ function extractPrimaryLuaFromTriggerScripts(triggerScripts) {
     for (const trigger of triggerScripts) {
         const effects = Array.isArray(trigger?.effect) ? trigger.effect : [];
         for (const effect of effects) {
-            if (effect && typeof effect.code === 'string' && (effect.type === 'triggerlua' || typeof effect.type !== 'string')) {
+            if (effect &&
+                typeof effect.code === 'string' &&
+                (effect.type === 'triggerlua' || typeof effect.type !== 'string')) {
                 return effect.code;
             }
         }
@@ -98,7 +98,7 @@ function mergePrimaryLuaIntoTriggerScripts(triggerScripts, lua) {
         type: 'start',
         conditions: [],
         effect: [{ type: 'triggerlua', code: lua }],
-        lowLevelAccess: false
+        lowLevelAccess: false,
     });
     return scripts;
 }
@@ -154,7 +154,7 @@ function openCharx(filePath) {
         if (entry.entryName.startsWith('assets/') && !entry.isDirectory) {
             assets.push({
                 path: entry.entryName,
-                data: entry.getData()
+                data: entry.getData(),
             });
         }
         if (entry.entryName.startsWith('x_meta/') && entry.entryName.endsWith('.json')) {
@@ -220,7 +220,7 @@ function openCharx(filePath) {
         _card: card,
         // Preserve full module for fields we don't edit
         _moduleData: moduleData,
-        _presetData: null
+        _presetData: null,
     };
 }
 /**
@@ -282,18 +282,20 @@ function saveCharx(filePath, data) {
     cardData.assets = data.cardAssets || [];
     zip.addFile('card.json', Buffer.from(JSON.stringify(card, null, 2), 'utf-8'));
     // Build module.risum
-    const moduleJson = data._moduleData ? JSON.parse(JSON.stringify(data._moduleData)) : {
-        type: 'risuModule',
-        module: {
-            name: data.moduleName || `${data.name} Module`,
-            description: data.moduleDescription || `Module for ${data.name}`,
-            id: data.moduleId || generateUUID(),
-            trigger: [],
-            regex: [],
-            lorebook: [],
-            assets: []
-        }
-    };
+    const moduleJson = data._moduleData
+        ? JSON.parse(JSON.stringify(data._moduleData))
+        : {
+            type: 'risuModule',
+            module: {
+                name: data.moduleName || `${data.name} Module`,
+                description: data.moduleDescription || `Module for ${data.name}`,
+                id: data.moduleId || generateUUID(),
+                trigger: [],
+                regex: [],
+                lorebook: [],
+                assets: [],
+            },
+        };
     const mod = moduleJson.module;
     mod.trigger = mergePrimaryLuaIntoTriggerScripts(data.triggerScripts !== undefined ? data.triggerScripts : mod.trigger, data.lua);
     // Regex
@@ -305,7 +307,7 @@ function saveCharx(filePath, data) {
     const risumBuf = buildRisum(moduleJson, data.risumAssets || []);
     zip.addFile('module.risum', risumBuf);
     // Add image assets
-    for (const asset of (data.assets || [])) {
+    for (const asset of data.assets || []) {
         zip.addFile(asset.path, asset.data);
     }
     // Add x_meta
@@ -324,9 +326,7 @@ function saveCharx(filePath, data) {
 function openRisum(filePath) {
     const buf = fs.readFileSync(filePath);
     const parsed = parseRisum(buf);
-    const mod = parsed.module?.module
-        || parsed.module
-        || {};
+    const mod = parsed.module?.module || parsed.module || {};
     return {
         _fileType: 'risum',
         // Module metadata
@@ -372,25 +372,27 @@ function openRisum(filePath) {
         _moduleData: parsed.module,
         _risuExt: {},
         _card: { spec: 'chara_card_v3', spec_version: '3.0', data: { extensions: { risuai: {} } } },
-        _presetData: null
+        _presetData: null,
     };
 }
 /**
  * Save data back to a standalone .risum file
  */
 function saveRisum(filePath, data) {
-    const moduleJson = data._moduleData ? JSON.parse(JSON.stringify(data._moduleData)) : {
-        type: 'risuModule',
-        module: {
-            name: data.moduleName || data.name || 'Module',
-            description: data.moduleDescription || '',
-            id: data.moduleId || generateUUID(),
-            trigger: [],
-            regex: [],
-            lorebook: [],
-            assets: []
-        }
-    };
+    const moduleJson = data._moduleData
+        ? JSON.parse(JSON.stringify(data._moduleData))
+        : {
+            type: 'risuModule',
+            module: {
+                name: data.moduleName || data.name || 'Module',
+                description: data.moduleDescription || '',
+                id: data.moduleId || generateUUID(),
+                trigger: [],
+                regex: [],
+                lorebook: [],
+                assets: [],
+            },
+        };
     const mod = moduleJson.module || moduleJson;
     // Update module name/description
     mod.name = data.moduleName || data.name || mod.name;
@@ -563,19 +565,25 @@ function applyPresetFields(preset, data) {
         try {
             preset.promptTemplate = JSON.parse(data.promptTemplate);
         }
-        catch { /* keep original */ }
+        catch {
+            /* keep original */
+        }
     }
     if (data.presetBias !== undefined) {
         try {
             preset.bias = JSON.parse(data.presetBias);
         }
-        catch { /* keep original */ }
+        catch {
+            /* keep original */
+        }
     }
     if (data.formatingOrder !== undefined) {
         try {
             preset.formatingOrder = JSON.parse(data.formatingOrder);
         }
-        catch { /* keep original */ }
+        catch {
+            /* keep original */
+        }
     }
     // Templates & formatting (scalar fields)
     if (data.useInstructPrompt !== undefined)
@@ -616,7 +624,9 @@ function applyPresetFields(preset, data) {
         try {
             preset.localStopStrings = JSON.parse(data.localStopStrings);
         }
-        catch { /* keep original */ }
+        catch {
+            /* keep original */
+        }
     }
     // Misc
     if (data.outputImageModal !== undefined)
@@ -647,7 +657,7 @@ function openRisup(filePath) {
     const decompressed = zlib.inflateSync(decoded);
     // Step 3: MessagePack decode outer envelope
     const envelope = unpack(decompressed);
-    if (!envelope || (envelope.type !== 'preset')) {
+    if (!envelope || envelope.type !== 'preset') {
         throw new Error('Invalid .risup file: missing type=preset marker');
     }
     // Step 4: AES-GCM decrypt the preset payload
@@ -694,9 +704,7 @@ function openRisup(filePath) {
  */
 function saveRisup(filePath, data) {
     // Start from preserved preset data, or create minimal preset
-    const preset = data._presetData
-        ? JSON.parse(JSON.stringify(data._presetData))
-        : {};
+    const preset = data._presetData ? JSON.parse(JSON.stringify(data._presetData)) : {};
     // Apply edited fields
     applyPresetFields(preset, data);
     // Clear sensitive keys (never re-export API keys)
@@ -723,8 +731,8 @@ function saveRisup(filePath, data) {
 // ---------------------------------------------------------------------------
 function generateUUID() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
     });
 }
 module.exports = {
@@ -737,5 +745,5 @@ module.exports = {
     extractPrimaryLuaFromTriggerScripts,
     mergePrimaryLuaIntoTriggerScripts,
     normalizeTriggerScripts,
-    stringifyTriggerScripts
+    stringifyTriggerScripts,
 };

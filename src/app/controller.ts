@@ -829,9 +829,11 @@ function buildSidebar(): void {
   } // end if (!isRisum) — CSS folder
 
   // ---- Single items ----
+  const isRisup = fileData._fileType === 'risup';
   const charxOnlyFields = [
     'globalNote',
     'firstMessage',
+    'assetPromptTemplate',
     'alternateGreetings',
     'groupOnlyGreetings',
     'defaultVariables',
@@ -884,7 +886,7 @@ function buildSidebar(): void {
     },
     { id: 'defaultVariables', label: '기본변수', icon: '⚙', lang: 'plaintext', field: 'defaultVariables' },
     { id: 'description', label: '설명', icon: '📄', lang: 'plaintext', field: 'description' },
-  ].filter((item) => !isRisum || !charxOnlyFields.includes(item.id));
+  ].filter((item) => (!isRisum && !isRisup) || !charxOnlyFields.includes(item.id));
 
   for (const item of singles) {
     const el = createTreeItem(item.label, item.icon, 0);

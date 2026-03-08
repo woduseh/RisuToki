@@ -16,7 +16,7 @@ const TOOLS = [
     {
         name: 'list_fields',
         description: '현재 열린 파일(.charx, .risum, .risup)의 편집 가능한 필드 목록과 크기를 확인합니다. 응답에 fileType 포함.',
-        inputSchema: { type: 'object', properties: {}, required: [] }
+        inputSchema: { type: 'object', properties: {}, required: [] },
     },
     {
         name: 'read_field',
@@ -24,8 +24,8 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: { field: { type: 'string', description: '필드 이름' } },
-            required: ['field']
-        }
+            required: ['field'],
+        },
     },
     {
         name: 'write_field',
@@ -36,11 +36,16 @@ const TOOLS = [
                 field: { type: 'string', description: '필드 이름' },
                 content: {
                     description: '새로운 내용. alternateGreetings/groupOnlyGreetings/tags/source는 문자열 배열, triggerScripts는 JSON 문자열, boolean 필드는 boolean, number 필드는 number, 나머지는 문자열',
-                    oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }, { type: 'boolean' }, { type: 'number' }]
-                }
+                    oneOf: [
+                        { type: 'string' },
+                        { type: 'array', items: { type: 'string' } },
+                        { type: 'boolean' },
+                        { type: 'number' },
+                    ],
+                },
             },
-            required: ['field', 'content']
-        }
+            required: ['field', 'content'],
+        },
     },
     {
         name: 'list_lorebook',
@@ -48,10 +53,10 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                filter: { type: 'string', description: '검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환' }
+                filter: { type: 'string', description: '검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환' },
             },
-            required: []
-        }
+            required: [],
+        },
     },
     {
         name: 'read_lorebook',
@@ -59,8 +64,8 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: { index: { type: 'number', description: '로어북 항목 인덱스' } },
-            required: ['index']
-        }
+            required: ['index'],
+        },
     },
     {
         name: 'write_lorebook',
@@ -69,15 +74,15 @@ const TOOLS = [
             type: 'object',
             properties: {
                 index: { type: 'number', description: '로어북 항목 인덱스' },
-                data: { type: 'object', description: '수정할 로어북 데이터 (부분 또는 전체)' }
+                data: { type: 'object', description: '수정할 로어북 데이터 (부분 또는 전체)' },
             },
-            required: ['index', 'data']
-        }
+            required: ['index', 'data'],
+        },
     },
     {
         name: 'list_regex',
         description: '정규식 스크립트 항목 목록을 확인합니다.',
-        inputSchema: { type: 'object', properties: {}, required: [] }
+        inputSchema: { type: 'object', properties: {}, required: [] },
     },
     {
         name: 'read_regex',
@@ -85,8 +90,8 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: { index: { type: 'number', description: '정규식 항목 인덱스' } },
-            required: ['index']
-        }
+            required: ['index'],
+        },
     },
     {
         name: 'write_regex',
@@ -95,10 +100,10 @@ const TOOLS = [
             type: 'object',
             properties: {
                 index: { type: 'number', description: '정규식 항목 인덱스' },
-                data: { type: 'object', description: '수정할 정규식 데이터' }
+                data: { type: 'object', description: '수정할 정규식 데이터' },
             },
-            required: ['index', 'data']
-        }
+            required: ['index', 'data'],
+        },
     },
     {
         name: 'add_lorebook',
@@ -106,10 +111,10 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                data: { type: 'object', description: '로어북 항목 데이터 (key, comment, content 등)' }
+                data: { type: 'object', description: '로어북 항목 데이터 (key, comment, content 등)' },
             },
-            required: ['data']
-        }
+            required: ['data'],
+        },
     },
     {
         name: 'delete_lorebook',
@@ -117,8 +122,8 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: { index: { type: 'number', description: '삭제할 로어북 항목 인덱스' } },
-            required: ['index']
-        }
+            required: ['index'],
+        },
     },
     {
         name: 'add_regex',
@@ -126,10 +131,10 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                data: { type: 'object', description: '정규식 항목 데이터 (comment, type, find, replace, flag)' }
+                data: { type: 'object', description: '정규식 항목 데이터 (comment, type, find, replace, flag)' },
             },
-            required: ['data']
-        }
+            required: ['data'],
+        },
     },
     {
         name: 'delete_regex',
@@ -137,13 +142,13 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: { index: { type: 'number', description: '삭제할 정규식 항목 인덱스' } },
-            required: ['index']
-        }
+            required: ['index'],
+        },
     },
     {
         name: 'list_lua',
         description: 'Lua 코드의 섹션 목록을 확인합니다 (-- ===== 섹션명 ===== 구분자 기준). 각 섹션의 인덱스, 이름, 크기를 반환합니다.',
-        inputSchema: { type: 'object', properties: {}, required: [] }
+        inputSchema: { type: 'object', properties: {}, required: [] },
     },
     {
         name: 'read_lua',
@@ -151,8 +156,8 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: { index: { type: 'number', description: 'Lua 섹션 인덱스 (list_lua 결과 참조)' } },
-            required: ['index']
-        }
+            required: ['index'],
+        },
     },
     {
         name: 'write_lua',
@@ -161,10 +166,10 @@ const TOOLS = [
             type: 'object',
             properties: {
                 index: { type: 'number', description: 'Lua 섹션 인덱스' },
-                content: { type: 'string', description: '새로운 섹션 코드 (전체 교체)' }
+                content: { type: 'string', description: '새로운 섹션 코드 (전체 교체)' },
             },
-            required: ['index', 'content']
-        }
+            required: ['index', 'content'],
+        },
     },
     {
         name: 'replace_in_lua',
@@ -176,10 +181,10 @@ const TOOLS = [
                 find: { type: 'string', description: '찾을 문자열 (또는 regex: true일 때 정규식 패턴)' },
                 replace: { type: 'string', description: '바꿀 문자열 (기본: 빈 문자열 = 삭제)' },
                 regex: { type: 'boolean', description: '정규식 모드 여부 (기본: false = 일반 문자열 매칭)' },
-                flags: { type: 'string', description: '정규식 플래그 (기본: "g"). regex: true일 때만 사용' }
+                flags: { type: 'string', description: '정규식 플래그 (기본: "g"). regex: true일 때만 사용' },
             },
-            required: ['index', 'find']
-        }
+            required: ['index', 'find'],
+        },
     },
     {
         name: 'insert_in_lua',
@@ -190,15 +195,15 @@ const TOOLS = [
                 index: { type: 'number', description: 'Lua 섹션 인덱스' },
                 content: { type: 'string', description: '삽입할 코드' },
                 position: { type: 'string', description: '삽입 위치: "end"(기본), "start", "after", "before"' },
-                anchor: { type: 'string', description: 'position이 "after"/"before"일 때 기준 문자열' }
+                anchor: { type: 'string', description: 'position이 "after"/"before"일 때 기준 문자열' },
             },
-            required: ['index', 'content']
-        }
+            required: ['index', 'content'],
+        },
     },
     {
         name: 'list_css',
         description: 'CSS 코드의 섹션 목록을 확인합니다 (/* ===== 섹션명 ===== */ 구분자 기준). 각 섹션의 인덱스, 이름, 크기를 반환합니다.',
-        inputSchema: { type: 'object', properties: {}, required: [] }
+        inputSchema: { type: 'object', properties: {}, required: [] },
     },
     {
         name: 'read_css',
@@ -206,8 +211,8 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: { index: { type: 'number', description: 'CSS 섹션 인덱스 (list_css 결과 참조)' } },
-            required: ['index']
-        }
+            required: ['index'],
+        },
     },
     {
         name: 'write_css',
@@ -216,10 +221,10 @@ const TOOLS = [
             type: 'object',
             properties: {
                 index: { type: 'number', description: 'CSS 섹션 인덱스' },
-                content: { type: 'string', description: '새로운 섹션 코드 (전체 교체)' }
+                content: { type: 'string', description: '새로운 섹션 코드 (전체 교체)' },
             },
-            required: ['index', 'content']
-        }
+            required: ['index', 'content'],
+        },
     },
     {
         name: 'replace_in_css',
@@ -231,10 +236,10 @@ const TOOLS = [
                 find: { type: 'string', description: '찾을 문자열 (또는 regex: true일 때 정규식 패턴)' },
                 replace: { type: 'string', description: '바꿀 문자열 (기본: 빈 문자열 = 삭제)' },
                 regex: { type: 'boolean', description: '정규식 모드 여부 (기본: false = 일반 문자열 매칭)' },
-                flags: { type: 'string', description: '정규식 플래그 (기본: "g"). regex: true일 때만 사용' }
+                flags: { type: 'string', description: '정규식 플래그 (기본: "g"). regex: true일 때만 사용' },
             },
-            required: ['index', 'find']
-        }
+            required: ['index', 'find'],
+        },
     },
     {
         name: 'insert_in_css',
@@ -245,15 +250,15 @@ const TOOLS = [
                 index: { type: 'number', description: 'CSS 섹션 인덱스' },
                 content: { type: 'string', description: '삽입할 코드' },
                 position: { type: 'string', description: '삽입 위치: "end"(기본), "start", "after", "before"' },
-                anchor: { type: 'string', description: 'position이 "after"/"before"일 때 기준 문자열' }
+                anchor: { type: 'string', description: 'position이 "after"/"before"일 때 기준 문자열' },
             },
-            required: ['index', 'content']
-        }
+            required: ['index', 'content'],
+        },
     },
     {
         name: 'list_references',
         description: '로드된 참고 자료 파일 목록을 확인합니다 (읽기 전용). 각 파일의 필드와 크기를 포함합니다.',
-        inputSchema: { type: 'object', properties: {}, required: [] }
+        inputSchema: { type: 'object', properties: {}, required: [] },
     },
     {
         name: 'read_reference_field',
@@ -262,16 +267,16 @@ const TOOLS = [
             type: 'object',
             properties: {
                 index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
-                field: { type: 'string', description: '필드 이름' }
+                field: { type: 'string', description: '필드 이름' },
             },
-            required: ['index', 'field']
-        }
+            required: ['index', 'field'],
+        },
     },
     // Risum asset tools
     {
         name: 'list_risum_assets',
         description: '.risum 파일의 내장 에셋 목록을 확인합니다 (인덱스, 이름, 경로, 크기).',
-        inputSchema: { type: 'object', properties: {}, required: [] }
+        inputSchema: { type: 'object', properties: {}, required: [] },
     },
     {
         name: 'read_risum_asset',
@@ -279,8 +284,8 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: { index: { type: 'number', description: '에셋 인덱스 (list_risum_assets 결과 참조)' } },
-            required: ['index']
-        }
+            required: ['index'],
+        },
     },
     {
         name: 'add_risum_asset',
@@ -290,10 +295,10 @@ const TOOLS = [
             properties: {
                 name: { type: 'string', description: '에셋 이름' },
                 path: { type: 'string', description: '에셋 경로 (선택사항)' },
-                base64: { type: 'string', description: 'base64 인코딩된 에셋 데이터' }
+                base64: { type: 'string', description: 'base64 인코딩된 에셋 데이터' },
             },
-            required: ['name', 'base64']
-        }
+            required: ['name', 'base64'],
+        },
     },
     {
         name: 'delete_risum_asset',
@@ -301,17 +306,17 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: { index: { type: 'number', description: '삭제할 에셋 인덱스' } },
-            required: ['index']
-        }
-    }
+            required: ['index'],
+        },
+    },
 ];
 // ==================== HTTP Client ====================
 async function apiRequest(method, urlPath, body) {
     return new Promise((resolve, reject) => {
         const payload = body ? JSON.stringify(body) : null;
         const headers = {
-            'Authorization': `Bearer ${TOKI_TOKEN}`,
-            'Content-Type': 'application/json'
+            Authorization: `Bearer ${TOKI_TOKEN}`,
+            'Content-Type': 'application/json',
         };
         if (payload) {
             headers['Content-Length'] = Buffer.byteLength(payload);
@@ -321,11 +326,11 @@ async function apiRequest(method, urlPath, body) {
             port: TOKI_PORT,
             path: urlPath,
             method: method,
-            headers: headers
+            headers: headers,
         };
         const req = http.request(options, (res) => {
             let data = '';
-            res.on('data', (chunk) => data += chunk);
+            res.on('data', (chunk) => (data += chunk));
             res.on('end', () => {
                 try {
                     const parsed = JSON.parse(data);
@@ -342,7 +347,10 @@ async function apiRequest(method, urlPath, body) {
             });
         });
         req.on('error', (err) => reject(err));
-        req.setTimeout(120000, () => { req.destroy(); reject(new Error('Request timeout')); });
+        req.setTimeout(120000, () => {
+            req.destroy();
+            reject(new Error('Request timeout'));
+        });
         if (payload)
             req.write(payload);
         req.end();
@@ -388,13 +396,13 @@ async function handleToolCall(name, args) {
                 find: args.find,
                 replace: args.replace || '',
                 regex: args.regex || false,
-                flags: args.flags || 'g'
+                flags: args.flags || 'g',
             });
         case 'insert_in_lua':
             return await apiRequest('POST', `/lua/${args.index}/insert`, {
                 content: args.content,
                 position: args.position || 'end',
-                anchor: args.anchor || ''
+                anchor: args.anchor || '',
             });
         case 'list_css':
             return await apiRequest('GET', '/css-section');
@@ -407,13 +415,13 @@ async function handleToolCall(name, args) {
                 find: args.find,
                 replace: args.replace || '',
                 regex: args.regex || false,
-                flags: args.flags || 'g'
+                flags: args.flags || 'g',
             });
         case 'insert_in_css':
             return await apiRequest('POST', `/css-section/${args.index}/insert`, {
                 content: args.content,
                 position: args.position || 'end',
-                anchor: args.anchor || ''
+                anchor: args.anchor || '',
             });
         case 'list_references':
             return await apiRequest('GET', '/references');
@@ -425,7 +433,11 @@ async function handleToolCall(name, args) {
         case 'read_risum_asset':
             return await apiRequest('GET', `/risum-asset/${args.index}`);
         case 'add_risum_asset':
-            return await apiRequest('POST', '/risum-asset/add', { name: args.name, path: args.path || '', base64: args.base64 });
+            return await apiRequest('POST', '/risum-asset/add', {
+                name: args.name,
+                path: args.path || '',
+                base64: args.base64,
+            });
         case 'delete_risum_asset':
             return await apiRequest('POST', `/risum-asset/${args.index}/delete`);
         default:
@@ -452,15 +464,15 @@ async function handleMessage(msg) {
                     result: {
                         protocolVersion: '2024-11-05',
                         capabilities: { tools: {} },
-                        serverInfo: { name: 'risutoki', version: '1.0.0' }
-                    }
+                        serverInfo: { name: 'risutoki', version: '1.0.0' },
+                    },
                 });
                 break;
             case 'tools/list':
                 send({
                     jsonrpc: '2.0',
                     id: msg.id,
-                    result: { tools: TOOLS }
+                    result: { tools: TOOLS },
                 });
                 break;
             case 'tools/call': {
@@ -472,8 +484,8 @@ async function handleMessage(msg) {
                         jsonrpc: '2.0',
                         id: msg.id,
                         result: {
-                            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
-                        }
+                            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+                        },
                     });
                 }
                 catch (err) {
@@ -484,8 +496,8 @@ async function handleMessage(msg) {
                         id: msg.id,
                         result: {
                             content: [{ type: 'text', text: `Error: ${errMsg}` }],
-                            isError: true
-                        }
+                            isError: true,
+                        },
                     });
                 }
                 break;
@@ -495,7 +507,7 @@ async function handleMessage(msg) {
                 send({
                     jsonrpc: '2.0',
                     id: msg.id,
-                    error: { code: -32601, message: `Method not found: ${msg.method}` }
+                    error: { code: -32601, message: `Method not found: ${msg.method}` },
                 });
         }
     }
@@ -505,7 +517,7 @@ async function handleMessage(msg) {
         send({
             jsonrpc: '2.0',
             id: msg.id,
-            error: { code: -32603, message: errMsg }
+            error: { code: -32603, message: errMsg },
         });
     }
 }
