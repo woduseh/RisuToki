@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
 import { handleNew, handleOpen, handleSave, handleSaveAs } from './file-actions';
 import type { FileActionDeps } from './file-actions';
 import { TabManager } from './tab-manager';
+import { useAppStore } from '../stores/app-store';
 
 function makeDeps(overrides: Partial<FileActionDeps> = {}): FileActionDeps {
   const tabMgr = new TabManager('editor-tabs', {
@@ -32,6 +34,7 @@ function installTokiAPI(api: Record<string, unknown>) {
 
 describe('file-actions', () => {
   beforeEach(() => {
+    setActivePinia(createPinia());
     document.body.innerHTML = `
       <div id="file-label"></div>
       <div id="editor-container"></div>
@@ -50,7 +53,7 @@ describe('file-actions', () => {
       expect(deps.setFileData).toHaveBeenCalledWith(newData);
       expect(deps.buildSidebar).toHaveBeenCalled();
       expect(deps.setStatus).toHaveBeenCalledWith('새 파일 생성됨');
-      expect(document.getElementById('file-label')!.textContent).toBe('New Character');
+      expect(useAppStore().fileLabel).toBe('New Character');
     });
 
     it('does nothing when newFile returns null', async () => {

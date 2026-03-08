@@ -60,11 +60,23 @@ export interface McpApiServer {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
+
 function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', (chunk: string) => body += chunk);
+    let bytes = 0;
+    req.on('data', (chunk: Buffer | string) => {
+      bytes += Buffer.byteLength(chunk as string);
+      if (bytes > MAX_BODY_BYTES) {
+        req.destroy();
+        reject(new Error(`Request body exceeds ${MAX_BODY_BYTES} bytes`));
+        return;
+      }
+      body += chunk;
+    });
     req.on('end', () => resolve(body));
+    req.on('error', reject);
   });
 }
 
@@ -126,20 +138,73 @@ async function readJsonBody(
   context: string,
   broadcastStatus: (payload: Record<string, unknown>) => void,
 ): Promise<Record<string, any> | null> {
-  const raw = await readBody(req);
+  let raw: string;
+  try {
+    raw = await readBody(req);
+  } catch (sizeError) {
+    jsonMcpError(
+      res,
+      413,
+      {
+        action: `${context} request`,
+        message: '요청 본문이 너무 큽니다 (최대 10MB).',
+        suggestion: '본문 크기를 줄여서 다시 시도하세요.',
+        target: context,
+      },
+      broadcastStatus,
+      sizeError,
+    );
+    return null;
+  }
   if (!raw.trim()) return {};
   try {
     return JSON.parse(raw);
   } catch (error) {
-    jsonMcpError(res, 400, {
-      action: `${context} request`,
-      message: '요청 본문 JSON이 올바르지 않습니다.',
-      suggestion: '유효한 JSON 객체를 다시 보내세요.',
-      details: { bodyLength: raw.length },
-      target: context,
-    }, broadcastStatus, error);
+    jsonMcpError(
+      res,
+      400,
+      {
+        action: `${context} request`,
+        message: '요청 본문 JSON이 올바르지 않습니다.',
+        suggestion: '유효한 JSON 객체를 다시 보내세요.',
+        details: { bodyLength: raw.length },
+        target: context,
+      },
+      broadcastStatus,
+      error,
+    );
     return null;
   }
+}
+
+// Allowed fields for lorebook/regex entries — prevents prototype pollution
+const LOREBOOK_ALLOWED_FIELDS = new Set([
+  'key',
+  'secondkey',
+  'comment',
+  'content',
+  'mode',
+  'insertorder',
+  'order',
+  'priority',
+  'alwaysActive',
+  'forceActivation',
+  'selective',
+  'constant',
+  'useRegex',
+  'folder',
+  'extentions',
+  'id',
+]);
+
+const REGEX_ALLOWED_FIELDS = new Set(['comment', 'type', 'find', 'replace', 'in', 'out', 'flag', 'ableFlag']);
+
+function pickAllowedFields(source: Record<string, unknown>, allowed: Set<string>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(source)) {
+    if (allowed.has(key)) result[key] = source[key];
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,13 +225,19 @@ function createLuaCache(parse: (lua: string) => Section[]): { get(lua: string): 
         cache.result = parse(lua);
       }
       // Return deep copy so callers can mutate safely
-      return cache.result!.map(s => ({ name: s.name, content: s.content }));
+      return cache.result!.map((s) => ({ name: s.name, content: s.content }));
     },
-    invalidate() { cache.source = null; cache.result = null; },
+    invalidate() {
+      cache.source = null;
+      cache.result = null;
+    },
   };
 }
 
-function createCssCache(parse: (css: string) => CssCacheEntry): { get(css: string): CssCacheEntry; invalidate(): void } {
+function createCssCache(parse: (css: string) => CssCacheEntry): {
+  get(css: string): CssCacheEntry;
+  invalidate(): void;
+} {
   const cache: SectionCacheState<CssCacheEntry> = { source: null, result: null };
   return {
     get(css: string): CssCacheEntry {
@@ -176,12 +247,15 @@ function createCssCache(parse: (css: string) => CssCacheEntry): { get(css: strin
       }
       // Return deep copy of sections
       return {
-        sections: cache.result!.sections.map(s => ({ name: s.name, content: s.content })),
+        sections: cache.result!.sections.map((s) => ({ name: s.name, content: s.content })),
         prefix: cache.result!.prefix,
         suffix: cache.result!.suffix,
       };
     },
-    invalidate() { cache.source = null; cache.result = null; },
+    invalidate() {
+      cache.source = null;
+      cache.result = null;
+    },
   };
 }
 
@@ -219,14 +293,38 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /fields
       // ----------------------------------------------------------------
       if (req.method === 'GET' && parts[0] === 'fields' && !parts[1]) {
-        const fieldNames = ['name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'triggerScripts', 'lua'];
-        const fields: Record<string, unknown>[] = fieldNames.map(f => ({
+        const fieldNames = [
+          'name',
+          'description',
+          'firstMessage',
+          'globalNote',
+          'css',
+          'defaultVariables',
+          'triggerScripts',
+          'lua',
+        ];
+        const fields: Record<string, unknown>[] = fieldNames.map((f) => ({
           name: f,
-          size: (f === 'triggerScripts' ? deps.stringifyTriggerScripts(currentData.triggerScripts) : (currentData[f] || '')).length,
-          sizeKB: (((f === 'triggerScripts' ? deps.stringifyTriggerScripts(currentData.triggerScripts) : (currentData[f] || '')).length) / 1024).toFixed(1) + 'KB',
+          size: (f === 'triggerScripts'
+            ? deps.stringifyTriggerScripts(currentData.triggerScripts)
+            : currentData[f] || ''
+          ).length,
+          sizeKB:
+            (
+              (f === 'triggerScripts' ? deps.stringifyTriggerScripts(currentData.triggerScripts) : currentData[f] || '')
+                .length / 1024
+            ).toFixed(1) + 'KB',
         }));
-        fields.push({ name: 'alternateGreetings', count: (currentData.alternateGreetings || []).length, type: 'array' });
-        fields.push({ name: 'groupOnlyGreetings', count: (currentData.groupOnlyGreetings || []).length, type: 'array' });
+        fields.push({
+          name: 'alternateGreetings',
+          count: (currentData.alternateGreetings || []).length,
+          type: 'array',
+        });
+        fields.push({
+          name: 'groupOnlyGreetings',
+          count: (currentData.groupOnlyGreetings || []).length,
+          type: 'array',
+        });
         fields.push({ name: 'lorebook', count: (currentData.lorebook || []).length, type: 'array' });
         fields.push({ name: 'regex', count: (currentData.regex || []).length, type: 'array' });
         return jsonRes(res, { fields });
@@ -237,14 +335,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1]) {
         const fieldName = decodeURIComponent(parts[1]);
-        const allowedFields = ['name', 'description', 'firstMessage', 'alternateGreetings', 'groupOnlyGreetings', 'globalNote', 'css', 'defaultVariables', 'triggerScripts', 'lua'];
+        const allowedFields = [
+          'name',
+          'description',
+          'firstMessage',
+          'alternateGreetings',
+          'groupOnlyGreetings',
+          'globalNote',
+          'css',
+          'defaultVariables',
+          'triggerScripts',
+          'lua',
+        ];
         if (!allowedFields.includes(fieldName)) {
           return jsonRes(res, { error: `Unknown field: ${fieldName}` }, 400);
         }
 
         if (req.method === 'GET') {
           if (fieldName === 'triggerScripts') {
-            return jsonRes(res, { field: fieldName, content: deps.stringifyTriggerScripts(currentData.triggerScripts) });
+            return jsonRes(res, {
+              field: fieldName,
+              content: deps.stringifyTriggerScripts(currentData.triggerScripts),
+            });
           }
           if (fieldName === 'alternateGreetings' || fieldName === 'groupOnlyGreetings') {
             return jsonRes(res, { field: fieldName, content: currentData[fieldName] || [] });
@@ -263,12 +375,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${fieldName}`,
             });
           }
-          const oldSize = fieldName === 'triggerScripts'
-            ? deps.stringifyTriggerScripts(currentData.triggerScripts).length
-            : (Array.isArray(currentData[fieldName]) ? currentData[fieldName].length : (currentData[fieldName] || '').length);
-          const newSize = fieldName === 'triggerScripts'
-            ? String(body.content || '').length
-            : (Array.isArray(body.content) ? body.content.length : body.content.length);
+          const oldSize =
+            fieldName === 'triggerScripts'
+              ? deps.stringifyTriggerScripts(currentData.triggerScripts).length
+              : Array.isArray(currentData[fieldName])
+                ? currentData[fieldName].length
+                : (currentData[fieldName] || '').length;
+          const newSize =
+            fieldName === 'triggerScripts'
+              ? String(body.content || '').length
+              : Array.isArray(body.content)
+                ? body.content.length
+                : body.content.length;
 
           const allowed = await deps.askRendererConfirm(
             'MCP 수정 요청',
@@ -297,22 +415,39 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
                 currentData.triggerScripts = deps.normalizeTriggerScripts(content);
                 currentData.lua = deps.extractPrimaryLua(currentData.triggerScripts);
               } catch (error) {
-                return mcpError(res, 400, {
-                  action: 'update field',
-                  message: (error as Error).message,
-                  suggestion: 'triggerScripts JSON 구조와 스크립트 배열 형식을 확인하세요.',
-                  target: 'field:triggerScripts',
-                }, error);
+                return mcpError(
+                  res,
+                  400,
+                  {
+                    action: 'update field',
+                    message: (error as Error).message,
+                    suggestion: 'triggerScripts JSON 구조와 스크립트 배열 형식을 확인하세요.',
+                    target: 'field:triggerScripts',
+                  },
+                  error,
+                );
               }
               logMcpMutation('update field', 'field:triggerScripts', { oldSize, newSize });
-              deps.broadcastToAll('data-updated', 'triggerScripts', deps.stringifyTriggerScripts(currentData.triggerScripts));
+              deps.broadcastToAll(
+                'data-updated',
+                'triggerScripts',
+                deps.stringifyTriggerScripts(currentData.triggerScripts),
+              );
               deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-              return jsonRes(res, { success: true, field: fieldName, size: deps.stringifyTriggerScripts(currentData.triggerScripts).length });
+              return jsonRes(res, {
+                success: true,
+                field: fieldName,
+                size: deps.stringifyTriggerScripts(currentData.triggerScripts).length,
+              });
             }
             currentData[fieldName] = content;
             if (fieldName === 'lua') {
               currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
-              deps.broadcastToAll('data-updated', 'triggerScripts', deps.stringifyTriggerScripts(currentData.triggerScripts));
+              deps.broadcastToAll(
+                'data-updated',
+                'triggerScripts',
+                deps.stringifyTriggerScripts(currentData.triggerScripts),
+              );
             }
             logMcpMutation('update field', `field:${fieldName}`, { oldSize, newSize });
             deps.broadcastToAll('data-updated', fieldName, content);
@@ -334,16 +469,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && !parts[1] && req.method === 'GET') {
         let entries = (currentData.lorebook || []).map((e: any, i: number) => ({
-          index: i, comment: e.comment || '', key: e.key || '',
-          mode: e.mode || 'normal', alwaysActive: !!e.alwaysActive,
+          index: i,
+          comment: e.comment || '',
+          key: e.key || '',
+          mode: e.mode || 'normal',
+          alwaysActive: !!e.alwaysActive,
           contentSize: (e.content || '').length,
         }));
         const filterParam = url.searchParams.get('filter');
         if (filterParam) {
           const q = filterParam.toLowerCase();
-          entries = entries.filter((e: any) =>
-            e.comment.toLowerCase().includes(q) || e.key.toLowerCase().includes(q),
-          );
+          entries = entries.filter((e: any) => e.comment.toLowerCase().includes(q) || e.key.toLowerCase().includes(q));
         }
         return jsonRes(res, { count: entries.length, entries });
       }
@@ -382,7 +518,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
 
         if (allowed) {
-          Object.assign(currentData.lorebook[idx], body);
+          Object.assign(currentData.lorebook[idx], pickAllowedFields(body, LOREBOOK_ALLOWED_FIELDS));
           logMcpMutation('update lorebook entry', `lorebook:${idx}`, { entryName, updatedKeys: Object.keys(body) });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
           return jsonRes(res, { success: true, index: idx });
@@ -411,14 +547,27 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
 
         if (allowed) {
-          const entry = Object.assign({
-            key: '', secondkey: '', comment: '', content: '',
-            order: 100, priority: 0, selective: false,
-            alwaysActive: false, mode: 'normal', extentions: {},
-          }, body);
+          const entry = Object.assign(
+            {
+              key: '',
+              secondkey: '',
+              comment: '',
+              content: '',
+              order: 100,
+              priority: 0,
+              selective: false,
+              alwaysActive: false,
+              mode: 'normal',
+              extentions: {},
+            },
+            pickAllowedFields(body, LOREBOOK_ALLOWED_FIELDS),
+          );
           if (!currentData.lorebook) currentData.lorebook = [];
           currentData.lorebook.push(entry);
-          logMcpMutation('add lorebook entry', 'lorebook:add', { entryName: name, newIndex: currentData.lorebook.length - 1 });
+          logMcpMutation('add lorebook entry', 'lorebook:add', {
+            entryName: name,
+            newIndex: currentData.lorebook.length - 1,
+          });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
           return jsonRes(res, { success: true, index: currentData.lorebook.length - 1 });
         } else {
@@ -473,7 +622,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && !parts[1] && req.method === 'GET') {
         const entries = (currentData.regex || []).map((e: any, i: number) => ({
-          index: i, comment: e.comment || '', type: e.type || '',
+          index: i,
+          comment: e.comment || '',
+          type: e.type || '',
         }));
         return jsonRes(res, { count: entries.length, entries });
       }
@@ -515,7 +666,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
 
         if (allowed) {
-          Object.assign(currentData.regex[idx], body);
+          Object.assign(currentData.regex[idx], pickAllowedFields(body, REGEX_ALLOWED_FIELDS));
           const entry = currentData.regex[idx];
           if (body.find !== undefined && body.in === undefined) entry.in = body.find;
           if (body.in !== undefined && body.find === undefined) entry.find = body.in;
@@ -549,9 +700,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
 
         if (allowed) {
-          const entry = Object.assign({
-            comment: '', type: 'editoutput', find: '', replace: '', flag: 'g',
-          }, body);
+          const defaults: Record<string, unknown> = {
+            comment: '',
+            type: 'editoutput',
+            find: '',
+            replace: '',
+            flag: 'g',
+          };
+          const entry: Record<string, unknown> = Object.assign(defaults, pickAllowedFields(body, REGEX_ALLOWED_FIELDS));
           if (entry.find && !entry.in) entry.in = entry.find;
           if (entry.in && !entry.find) entry.find = entry.in;
           if (entry.replace && !entry.out) entry.out = entry.replace;
@@ -614,7 +770,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'lua' && !parts[1] && req.method === 'GET') {
         const sections = luaCache.get(currentData.lua);
         const result = sections.map((s, i) => ({
-          index: i, name: s.name, contentSize: s.content.length,
+          index: i,
+          name: s.name,
+          contentSize: s.content.length,
         }));
         return jsonRes(res, { count: result.length, sections: result });
       }
@@ -750,7 +908,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.lua = deps.combineLuaSections(sections);
           logMcpMutation('replace lua section content', `lua:${idx}`, { sectionName, matchCount });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-          return jsonRes(res, { success: true, index: idx, name: sectionName, matchCount, oldSize: content.length, newSize: newContent.length });
+          return jsonRes(res, {
+            success: true,
+            index: idx,
+            name: sectionName,
+            matchCount,
+            oldSize: content.length,
+            newSize: newContent.length,
+          });
         } else {
           return mcpError(res, 403, {
             action: 'replace lua section content',
@@ -798,7 +963,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         } else if ((position === 'after' || position === 'before') && body.anchor) {
           const anchorPos = oldContent.indexOf(body.anchor);
           if (anchorPos === -1) {
-            return jsonRes(res, { success: false, message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}` });
+            return jsonRes(res, {
+              success: false,
+              message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+            });
           }
           if (position === 'after') {
             const insertAt = anchorPos + body.anchor.length;
@@ -817,20 +985,35 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
 
         if (allowed) {
-          const separatorLines = newContent.split('\n').filter(l => deps.detectLuaSection(l) !== null && !oldContent.includes(l));
+          const separatorLines = newContent
+            .split('\n')
+            .filter((l) => deps.detectLuaSection(l) !== null && !oldContent.includes(l));
           let warning = '';
           if (separatorLines.length > 0) {
             for (const sepLine of separatorLines) {
-              const escaped = sepLine.replace(/={3,}/g, m => m.slice(0, 2) + '·' + m.slice(3));
+              const escaped = sepLine.replace(/={3,}/g, (m) => m.slice(0, 2) + '·' + m.slice(3));
               newContent = newContent.replace(sepLine, escaped);
             }
             warning = ` (경고: 섹션 구분자 ${separatorLines.length}건을 이스케이프 처리했습니다)`;
           }
           sections[idx].content = newContent;
           currentData.lua = deps.combineLuaSections(sections);
-          logMcpMutation('insert lua section content', `lua:${idx}`, { sectionName, position, oldSize: oldContent.length, newSize: newContent.length });
+          logMcpMutation('insert lua section content', `lua:${idx}`, {
+            sectionName,
+            position,
+            oldSize: oldContent.length,
+            newSize: newContent.length,
+          });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-          return jsonRes(res, { success: true, index: idx, name: sectionName, position, oldSize: oldContent.length, newSize: newContent.length, warning: warning || undefined });
+          return jsonRes(res, {
+            success: true,
+            index: idx,
+            name: sectionName,
+            position,
+            oldSize: oldContent.length,
+            newSize: newContent.length,
+            warning: warning || undefined,
+          });
         } else {
           return mcpError(res, 403, {
             action: 'insert lua section content',
@@ -848,7 +1031,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'css-section' && !parts[1] && req.method === 'GET') {
         const { sections } = cssCache.get(currentData.css);
         const result = sections.map((s, i) => ({
-          index: i, name: s.name, contentSize: s.content.length,
+          index: i,
+          name: s.name,
+          contentSize: s.content.length,
         }));
         return jsonRes(res, { count: result.length, sections: result });
       }
@@ -979,7 +1164,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.css = deps.combineCssSections(sections, prefix, suffix);
           logMcpMutation('replace css section content', `css-section:${idx}`, { sectionName, matchCount });
           deps.broadcastToAll('data-updated', 'css', currentData.css);
-          return jsonRes(res, { success: true, index: idx, name: sectionName, matchCount, oldSize: content.length, newSize: newContent.length });
+          return jsonRes(res, {
+            success: true,
+            index: idx,
+            name: sectionName,
+            matchCount,
+            oldSize: content.length,
+            newSize: newContent.length,
+          });
         } else {
           return mcpError(res, 403, {
             action: 'replace css section content',
@@ -1027,7 +1219,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         } else if ((position === 'after' || position === 'before') && body.anchor) {
           const anchorPos = oldContent.indexOf(body.anchor);
           if (anchorPos === -1) {
-            return jsonRes(res, { success: false, message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}` });
+            return jsonRes(res, {
+              success: false,
+              message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+            });
           }
           if (position === 'after') {
             const insertAt = anchorPos + body.anchor.length;
@@ -1052,8 +1247,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           for (let li = 0; li < newLines.length; li++) {
             const line = newLines[li];
             if (oldContent.includes(line)) continue;
-            if (deps.detectCssSectionInline(line) !== null || deps.detectCssBlockOpen(line) || deps.detectCssBlockClose(line)) {
-              newLines[li] = line.replace(/={3,}/g, m => m.slice(0, 2) + '·' + m.slice(3));
+            if (
+              deps.detectCssSectionInline(line) !== null ||
+              deps.detectCssBlockOpen(line) ||
+              deps.detectCssBlockClose(line)
+            ) {
+              newLines[li] = line.replace(/={3,}/g, (m) => m.slice(0, 2) + '·' + m.slice(3));
               escapedCount++;
             }
           }
@@ -1063,9 +1262,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           sections[idx].content = newContent;
           currentData.css = deps.combineCssSections(sections, prefix, suffix);
-          logMcpMutation('insert css section content', `css-section:${idx}`, { sectionName, position, oldSize: oldContent.length, newSize: newContent.length });
+          logMcpMutation('insert css section content', `css-section:${idx}`, {
+            sectionName,
+            position,
+            oldSize: oldContent.length,
+            newSize: newContent.length,
+          });
           deps.broadcastToAll('data-updated', 'css', currentData.css);
-          return jsonRes(res, { success: true, index: idx, name: sectionName, position, oldSize: oldContent.length, newSize: newContent.length, warning: warning || undefined });
+          return jsonRes(res, {
+            success: true,
+            index: idx,
+            name: sectionName,
+            position,
+            oldSize: oldContent.length,
+            newSize: newContent.length,
+            warning: warning || undefined,
+          });
         } else {
           return mcpError(res, 403, {
             action: 'insert css section content',
@@ -1087,9 +1299,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           for (const f of ['lua', 'globalNote', 'firstMessage', 'css', 'description', 'defaultVariables']) {
             if (r.data[f]) fields.push({ name: f, size: r.data[f].length });
           }
-          if (r.data.triggerScripts && r.data.triggerScripts !== '[]') fields.push({ name: 'triggerScripts', size: r.data.triggerScripts.length });
-          if (r.data.alternateGreetings?.length) fields.push({ name: 'alternateGreetings', count: r.data.alternateGreetings.length, type: 'array' });
-          if (r.data.groupOnlyGreetings?.length) fields.push({ name: 'groupOnlyGreetings', count: r.data.groupOnlyGreetings.length, type: 'array' });
+          if (r.data.triggerScripts && r.data.triggerScripts !== '[]')
+            fields.push({ name: 'triggerScripts', size: r.data.triggerScripts.length });
+          if (r.data.alternateGreetings?.length)
+            fields.push({ name: 'alternateGreetings', count: r.data.alternateGreetings.length, type: 'array' });
+          if (r.data.groupOnlyGreetings?.length)
+            fields.push({ name: 'groupOnlyGreetings', count: r.data.groupOnlyGreetings.length, type: 'array' });
           if (r.data.lorebook?.length) fields.push({ name: 'lorebook', count: r.data.lorebook.length, type: 'array' });
           if (r.data.regex?.length) fields.push({ name: 'regex', count: r.data.regex.length, type: 'array' });
           return { index: i, fileName: r.fileName, fields };
@@ -1109,22 +1324,50 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const ref = refFiles[idx];
         if (fieldName === 'lorebook') {
-          return jsonRes(res, { index: idx, fileName: ref.fileName, field: 'lorebook', content: ref.data.lorebook || [] });
+          return jsonRes(res, {
+            index: idx,
+            fileName: ref.fileName,
+            field: 'lorebook',
+            content: ref.data.lorebook || [],
+          });
         }
         if (fieldName === 'regex') {
           return jsonRes(res, { index: idx, fileName: ref.fileName, field: 'regex', content: ref.data.regex || [] });
         }
         if (fieldName === 'triggerScripts') {
-          return jsonRes(res, { index: idx, fileName: ref.fileName, field: 'triggerScripts', content: ref.data.triggerScripts || '[]' });
+          return jsonRes(res, {
+            index: idx,
+            fileName: ref.fileName,
+            field: 'triggerScripts',
+            content: ref.data.triggerScripts || '[]',
+          });
         }
         if (fieldName === 'alternateGreetings' || fieldName === 'groupOnlyGreetings') {
-          return jsonRes(res, { index: idx, fileName: ref.fileName, field: fieldName, content: ref.data[fieldName] || [] });
+          return jsonRes(res, {
+            index: idx,
+            fileName: ref.fileName,
+            field: fieldName,
+            content: ref.data[fieldName] || [],
+          });
         }
-        const allowedRefFields = ['lua', 'globalNote', 'firstMessage', 'css', 'description', 'defaultVariables', 'name'];
+        const allowedRefFields = [
+          'lua',
+          'globalNote',
+          'firstMessage',
+          'css',
+          'description',
+          'defaultVariables',
+          'name',
+        ];
         if (!allowedRefFields.includes(fieldName)) {
           return jsonRes(res, { error: `Unknown field: ${fieldName}` }, 400);
         }
-        return jsonRes(res, { index: idx, fileName: ref.fileName, field: fieldName, content: ref.data[fieldName] || '' });
+        return jsonRes(res, {
+          index: idx,
+          fileName: ref.fileName,
+          field: fieldName,
+          content: ref.data[fieldName] || '',
+        });
       }
 
       // ----------------------------------------------------------------
@@ -1137,12 +1380,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         target: url.pathname,
       });
     } catch (err) {
-      mcpError(res, 500, {
-        action: `${req.method} ${url.pathname}`,
-        message: (err as Error).message,
-        suggestion: '요청 payload와 현재 열려 있는 데이터를 확인한 뒤 다시 시도하세요.',
-        target: url.pathname,
-      }, err);
+      mcpError(
+        res,
+        500,
+        {
+          action: `${req.method} ${url.pathname}`,
+          message: (err as Error).message,
+          suggestion: '요청 payload와 현재 열려 있는 데이터를 확인한 뒤 다시 시도하세요.',
+          target: url.pathname,
+        },
+        err,
+      );
     }
   });
 

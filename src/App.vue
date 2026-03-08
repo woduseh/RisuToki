@@ -1,109 +1,22 @@
 <script setup lang="ts">
-const initialTalkTitle = localStorage.getItem('toki-dark-mode') === 'true' ? 'ArisTalk' : 'TokiTalk';
+import { useAppStore } from './stores/app-store';
+import { executeAction } from './lib/action-registry';
+import MenuBar from './components/MenuBar.vue';
+import StatusBar from './components/StatusBar.vue';
+
+const store = useAppStore();
+
+function handleAction(action: string) {
+  executeAction(action);
+}
 </script>
 
 <template>
-  <div id="menubar">
-    <div class="menu-item" data-menu="file">
-      <span class="menu-label">파일</span>
-      <div class="menu-dropdown">
-        <div class="menu-action" data-action="new">새로 만들기<span class="menu-shortcut">Ctrl+N</span></div>
-        <div class="menu-action" data-action="open">열기<span class="menu-shortcut">Ctrl+O</span></div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="save">저장<span class="menu-shortcut">Ctrl+S</span></div>
-        <div class="menu-action" data-action="save-as">다른 이름 저장<span class="menu-shortcut">Ctrl+Shift+S</span></div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="close-tab">탭 닫기<span class="menu-shortcut">Ctrl+W</span></div>
-      </div>
-    </div>
-    <div class="menu-item" data-menu="edit">
-      <span class="menu-label">편집</span>
-      <div class="menu-dropdown">
-        <div class="menu-action" data-action="undo">실행 취소<span class="menu-shortcut">Ctrl+Z</span></div>
-        <div class="menu-action" data-action="redo">다시 실행<span class="menu-shortcut">Ctrl+Y</span></div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="cut">잘라내기<span class="menu-shortcut">Ctrl+X</span></div>
-        <div class="menu-action" data-action="copy">복사<span class="menu-shortcut">Ctrl+C</span></div>
-        <div class="menu-action" data-action="paste">붙여넣기<span class="menu-shortcut">Ctrl+V</span></div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="select-all">모두 선택<span class="menu-shortcut">Ctrl+A</span></div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="find">찾기<span class="menu-shortcut">Ctrl+F</span></div>
-        <div class="menu-action" data-action="replace">바꾸기<span class="menu-shortcut">Ctrl+H</span></div>
-      </div>
-    </div>
-    <div class="menu-item" data-menu="view">
-      <span class="menu-label">보기</span>
-      <div class="menu-dropdown">
-        <div class="menu-action" data-action="toggle-sidebar">항목 토글<span class="menu-shortcut">Ctrl+B</span></div>
-        <div class="menu-action" data-action="toggle-terminal">터미널 토글<span class="menu-shortcut">Ctrl+`</span></div>
-        <div class="menu-action" data-action="toggle-avatar">아바타 토글</div>
-        <div class="menu-sep"></div>
-        <div class="menu-sub">
-          <span>항목 배치</span><span class="menu-arrow">▸</span>
-          <div class="menu-submenu">
-            <div class="menu-action" data-action="items-left">좌측</div>
-            <div class="menu-action" data-action="items-right">우측</div>
-            <div class="menu-action" data-action="items-far-left">좌끝</div>
-            <div class="menu-action" data-action="items-far-right">우끝</div>
-            <div class="menu-action" data-action="items-top">상단</div>
-            <div class="menu-action" data-action="items-bottom">하단</div>
-          </div>
-        </div>
-        <div class="menu-sub">
-          <span>참고자료 배치</span><span class="menu-arrow">▸</span>
-          <div class="menu-submenu">
-            <div class="menu-action" data-action="refs-sidebar">사이드바</div>
-            <div class="menu-action" data-action="refs-left">좌측</div>
-            <div class="menu-action" data-action="refs-right">우측</div>
-            <div class="menu-action" data-action="refs-far-left">좌끝</div>
-            <div class="menu-action" data-action="refs-far-right">우끝</div>
-            <div class="menu-action" data-action="refs-top">상단</div>
-            <div class="menu-action" data-action="refs-bottom">하단</div>
-          </div>
-        </div>
-        <div class="menu-sub">
-          <span>터미널 배치</span><span class="menu-arrow">▸</span>
-          <div class="menu-submenu">
-            <div class="menu-action" data-action="terminal-bottom">하단</div>
-            <div class="menu-action" data-action="terminal-left">좌측</div>
-            <div class="menu-action" data-action="terminal-right">우측</div>
-            <div class="menu-action" data-action="terminal-far-left">좌끝</div>
-            <div class="menu-action" data-action="terminal-far-right">우끝</div>
-            <div class="menu-action" data-action="terminal-top">상단</div>
-          </div>
-        </div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="layout-reset">레이아웃 초기화</div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="zoom-in">확대<span class="menu-shortcut">Ctrl++</span></div>
-        <div class="menu-action" data-action="zoom-out">축소<span class="menu-shortcut">Ctrl+-</span></div>
-        <div class="menu-action" data-action="zoom-reset">기본 크기<span class="menu-shortcut">Ctrl+0</span></div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="toggle-dark">다크 모드 토글</div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="preview-test">프리뷰 테스트<span class="menu-shortcut">F5</span></div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="devtools">개발자 도구<span class="menu-shortcut">F12</span></div>
-      </div>
-    </div>
-    <div class="menu-item" data-menu="terminal">
-      <span class="menu-label">터미널</span>
-      <div class="menu-dropdown">
-        <div class="menu-action" data-action="claude-start">Claude Code 시작</div>
-        <div class="menu-action" data-action="copilot-start">GitHub Copilot CLI 시작</div>
-        <div class="menu-action" data-action="codex-start">Codex 시작</div>
-        <div class="menu-sep"></div>
-        <div class="menu-action" data-action="terminal-clear">터미널 지우기</div>
-        <div class="menu-action" data-action="terminal-restart">터미널 재시작</div>
-      </div>
-    </div>
-    <div class="menu-item" data-menu="settings">
-      <span id="btn-settings" class="menu-label">설정</span>
-    </div>
-    <span style="flex: 1; -webkit-app-region: drag"></span>
-    <span id="file-label"></span>
-  </div>
+  <MenuBar @action="handleAction">
+    <template #file-label>
+      <span id="file-label">{{ store.fileLabel }}</span>
+    </template>
+  </MenuBar>
 
   <div id="app-body">
     <div id="slot-far-left" class="layout-slot slot-v"></div>
@@ -138,7 +51,14 @@ const initialTalkTitle = localStorage.getItem('toki-dark-mode') === 'true' ? 'Ar
         <div class="sidebar-header">
           <span>항목</span>
           <div class="sidebar-header-btns">
-            <button id="btn-sidebar-collapse" class="panel-collapse-btn" title="접기">◀</button>
+            <button
+              id="btn-sidebar-collapse"
+              class="panel-collapse-btn"
+              title="접기"
+              @click="handleAction('toggle-sidebar')"
+            >
+              ◀
+            </button>
           </div>
         </div>
         <div id="sidebar-tree"></div>
@@ -148,7 +68,14 @@ const initialTalkTitle = localStorage.getItem('toki-dark-mode') === 'true' ? 'Ar
         <div class="sidebar-header sidebar-header-refs">
           <span>참고자료</span>
           <div class="sidebar-header-btns">
-            <button id="btn-refs-extpopout" class="panel-collapse-btn" title="팝아웃 (외부 창)" data-popout-panel="refs">↗</button>
+            <button
+              id="btn-refs-extpopout"
+              class="panel-collapse-btn"
+              title="팝아웃 (외부 창)"
+              data-popout-panel="refs"
+            >
+              ↗
+            </button>
             <button id="btn-refs-separate" class="panel-collapse-btn" title="분리">⧉</button>
             <button id="btn-refs-collapse" class="panel-collapse-btn" title="접기">▼</button>
             <button id="btn-refs-close" class="panel-collapse-btn" title="닫기">✕</button>
@@ -162,7 +89,14 @@ const initialTalkTitle = localStorage.getItem('toki-dark-mode') === 'true' ? 'Ar
       <div class="refs-panel-header">
         <span>참고자료</span>
         <div class="sidebar-header-btns">
-          <button id="btn-refs-panel-popout" class="panel-collapse-btn" title="팝아웃 (외부 창)" data-popout-panel="refs">↗</button>
+          <button
+            id="btn-refs-panel-popout"
+            class="panel-collapse-btn"
+            title="팝아웃 (외부 창)"
+            data-popout-panel="refs"
+          >
+            ↗
+          </button>
           <button id="btn-refs-panel-dock" class="panel-collapse-btn" title="사이드바로 복귀">⇲</button>
         </div>
       </div>
@@ -171,39 +105,61 @@ const initialTalkTitle = localStorage.getItem('toki-dark-mode') === 'true' ? 'Ar
 
     <div id="bottom-area">
       <div id="toki-avatar">
-        <button id="btn-avatar-collapse" class="panel-collapse-btn avatar-collapse" title="아바타 접기">✕</button>
+        <button
+          id="btn-avatar-collapse"
+          class="panel-collapse-btn avatar-collapse"
+          title="아바타 접기"
+          @click="handleAction('toggle-avatar')"
+        >
+          ✕
+        </button>
         <div id="toki-avatar-display"></div>
         <div id="toki-status">
           <span id="toki-status-icon">💤</span>
           <span id="toki-status-text"></span>
         </div>
-        <div id="toki-help-btn">❓ 도움말</div>
+        <div id="toki-help-btn" @click="handleAction('help')">❓ 도움말</div>
       </div>
       <div id="avatar-resizer" class="resizer resizer-h" style="display: none"></div>
       <div id="terminal-area">
         <div id="terminal-header">
           <div class="momo-header-left">
             <span class="momo-icon">💬</span>
-            <span class="momo-title">{{ initialTalkTitle }}</span>
+            <span class="momo-title">{{ store.talkTitle }}</span>
           </div>
           <div class="momo-header-right">
-            <button id="btn-rp-mode" title="RP 모드 (토키 말투)">🐰</button>
-            <button id="btn-bgm" title="BGM OFF">🔇</button>
-            <button id="btn-chat-mode" title="채팅 모드" style="display: none">💭</button>
-            <button id="btn-terminal-bg" title="배경 이미지 설정">🖼</button>
-            <button id="btn-terminal-toggle" title="터미널 토글">━</button>
+            <button
+              id="btn-rp-mode"
+              :title="store.rpMode !== 'off' ? `RP: ${store.rpLabel} (클릭: OFF)` : 'RP 모드 OFF (클릭: ON)'"
+              :style="{ background: store.rpMode !== 'off' ? 'rgba(255,255,255,0.5)' : '' }"
+              @click="handleAction('rp-toggle')"
+            >
+              🐰
+            </button>
+            <button
+              id="btn-bgm"
+              :title="store.bgmEnabled ? 'BGM ON (우클릭: 파일 변경)' : 'BGM OFF (우클릭: 파일 변경)'"
+              :style="{ background: store.bgmEnabled ? 'rgba(255,255,255,0.5)' : '' }"
+              @click="handleAction('bgm-toggle')"
+              @contextmenu.prevent="handleAction('bgm-pick')"
+            >
+              {{ store.bgmEnabled ? '🔊' : '🔇' }}
+            </button>
+            <button id="btn-chat-mode" title="채팅 모드" style="display: none" @click="handleAction('chat-mode')">
+              💭
+            </button>
+            <button id="btn-terminal-bg" title="배경 이미지 설정" @click="handleAction('terminal-bg')">🖼</button>
+            <button id="btn-terminal-toggle" title="터미널 토글" @click="handleAction('toggle-terminal')">━</button>
           </div>
         </div>
         <div id="terminal-container"></div>
       </div>
     </div>
 
-    <div id="sidebar-expand" title="사이드바 열기" style="display: none">▶</div>
+    <div id="sidebar-expand" title="사이드바 열기" style="display: none" @click="handleAction('sidebar-expand')">▶</div>
   </div>
 
-  <div id="statusbar" class="hidden">
-    <span id="status-text"></span>
-  </div>
+  <StatusBar />
 </template>
 
 <style>

@@ -20,9 +20,9 @@ npm run build
 
 ## Project map
 
-- `main.js`: Electron main process and IPC
-- `src/app/controller.js`: main renderer integration layer
-- `src/popout/controller.js`: popout integration layer
+- `main.ts`: Electron main process and IPC (compiles to `main.js`)
+- `src/app/controller.ts`: main renderer integration layer
+- `src/popout/controller.ts`: popout integration layer
 - `src/lib/*`: reusable renderer logic
 
 If a change touches the renderer and feels reusable, prefer adding or extending a shared module in `src/lib/` rather than expanding a controller further.

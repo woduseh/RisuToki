@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>프로덕션 준비도 코드 감사 보고서</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;--orange:#db6d28;--blue:#58a6ff;--purple:#bc8cff}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Noto Sans,Helvetica,Arial,sans-serif;line-height:1.6;padding:1.5rem;max-width:1200px;margin:0 auto}
+h1{font-size:1.6rem;margin-bottom:.5rem;color:var(--accent)}
+h2{font-size:1.25rem;margin:1.5rem 0 .75rem;color:var(--text);border-bottom:1px solid var(--border);padding-bottom:.4rem}
+h3{font-size:1.05rem;margin:1rem 0 .5rem;color:var(--muted)}
+p,li{font-size:.92rem}
+.header{text-align:center;padding:1.5rem 0;border-bottom:2px solid var(--border);margin-bottom:1.5rem}
+.header .subtitle{color:var(--muted);font-size:.9rem;margin-top:.3rem}
+.grid{display:grid;gap:1rem}
+.grid-2{grid-template-columns:1fr 1fr}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1rem}
+.card-header{font-weight:600;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem}
+table{width:100%;border-collapse:collapse;margin:.5rem 0}
+th,td{padding:.45rem .6rem;text-align:left;border-bottom:1px solid var(--border);font-size:.88rem}
+th{color:var(--muted);font-weight:600;font-size:.82rem;text-transform:uppercase;letter-spacing:.03em}
+.score{font-size:1.8rem;font-weight:700;font-family:'SF Mono',Consolas,monospace}
+.score-row td:nth-child(3){font-weight:700;font-family:'SF Mono',Consolas,monospace}
+.score-row td:nth-child(4){font-weight:700;font-family:'SF Mono',Consolas,monospace;color:var(--accent)}
+.total-row{border-top:2px solid var(--accent)}
+.total-row td{font-weight:700;padding-top:.7rem}
+.badge{display:inline-block;padding:.15rem .5rem;border-radius:12px;font-size:.78rem;font-weight:600}
+.badge-critical{background:rgba(248,81,73,.15);color:var(--red)}
+.badge-major{background:rgba(219,109,40,.15);color:var(--orange)}
+.badge-minor{background:rgba(210,153,34,.15);color:var(--yellow)}
+.badge-suggestion{background:rgba(88,166,255,.15);color:var(--blue)}
+.tag{display:inline-block;padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:600;margin-left:.3rem}
+.tag-oversight{background:rgba(248,81,73,.1);color:var(--red);border:1px solid rgba(248,81,73,.3)}
+.tag-tradeoff{background:rgba(210,153,34,.1);color:var(--yellow);border:1px solid rgba(210,153,34,.3)}
+.finding{margin:.6rem 0;padding:.6rem .8rem;border-left:3px solid var(--border);background:rgba(22,27,34,.6)}
+.finding-title{font-weight:600;margin-bottom:.3rem}
+code{background:rgba(110,118,129,.15);padding:.1rem .35rem;border-radius:4px;font-size:.84rem;font-family:'SF Mono',Consolas,monospace;color:var(--purple)}
+.evidence{color:var(--muted);font-size:.82rem;margin-top:.2rem}
+.action-item{padding:.5rem .7rem;margin:.4rem 0;border-radius:6px;border:1px solid var(--border);background:var(--surface)}
+.action-tag{display:inline-block;padding:.1rem .4rem;border-radius:4px;font-size:.72rem;font-weight:700;text-transform:uppercase;margin-right:.4rem}
+.action-quick{background:rgba(63,185,80,.15);color:var(--green)}
+.action-harden{background:rgba(219,109,40,.15);color:var(--orange)}
+.action-strategic{background:rgba(188,140,255,.15);color:var(--purple)}
+.grade-box{text-align:center;padding:2rem;margin:1rem 0}
+.grade{font-size:5rem;font-weight:900;line-height:1;font-family:'SF Mono',Consolas,monospace}
+.grade-b{color:var(--yellow)}
+.total-score{font-size:2rem;font-weight:700;color:var(--muted);margin-top:.3rem}
+.verdict{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.2rem;margin:1rem 0;line-height:1.8}
+.verdict p{margin:.4rem 0}
+.summary-zone{border-top:3px solid var(--accent);margin-top:2rem;padding-top:1.5rem}
+.tech-pill{display:inline-block;padding:.15rem .5rem;margin:.15rem .1rem;border-radius:12px;font-size:.78rem;background:rgba(88,166,255,.1);color:var(--accent);border:1px solid rgba(88,166,255,.25)}
+.stat{text-align:center}
+.stat-value{font-size:1.5rem;font-weight:700;font-family:'SF Mono',Consolas,monospace}
+.stat-label{font-size:.78rem;color:var(--muted)}
+.section-divider{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
+ul{padding-left:1.2rem;margin:.3rem 0}
+li{margin:.2rem 0}
+@media(max-width:768px){.grid-2{grid-template-columns:1fr}body{padding:.8rem}}
+.anti-pattern{border-left:3px solid var(--purple);background:rgba(188,140,255,.05)}
+.positive{border-left-color:var(--green)}
+.score-bar{display:flex;align-items:center;gap:.5rem;margin:.2rem 0}
+.score-fill{height:6px;border-radius:3px;background:var(--accent)}
+.score-track{flex:1;height:6px;border-radius:3px;background:var(--border)}
+.ruling{text-align:center;padding:.8rem;margin-top:1rem;border:2px solid var(--yellow);border-radius:8px;font-weight:700;font-size:1rem;color:var(--yellow)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>프로덕션 준비도 코드 감사 보고서</h1>
+  <div class="subtitle">Staff Engineer 게이트 리뷰 — 현재 코드베이스 기준 정적 분석</div>
+</div>
+
+<!-- ====================================================================
+     A. OVERVIEW & STACK
+     ==================================================================== -->
+<h2>A. 개요 및 기술 스택</h2>
+
+<div class="card">
+  <p>데스크톱 캐릭터 카드 편집기 애플리케이션으로, 특정 AI 챗봇 플랫폼의 <code>.charx</code> 파일을 시각적으로 편집하며 통합 터미널과 MCP API 서버를 제공한다.
+  메인 프로세스에서 HTTP API를 노출해 외부 AI 어시스턴트가 캐릭터 데이터를 읽고 쓸 수 있도록 하는 구조가 핵심이다.
+  최근 대규모 모듈화 및 TypeScript 마이그레이션을 거쳐 레거시 JS 코드 ~9,000줄이 제거되고, 모놀리식 파일이 64개 모듈로 분리되었다.</p>
+</div>
+
+<div class="grid grid-2" style="margin-top:.8rem">
+  <div class="card">
+    <div class="card-header">기술 스택</div>
+    <div>
+      <span class="tech-pill">Electron 40</span>
+      <span class="tech-pill">Vue 3.5</span>
+      <span class="tech-pill">TypeScript 5.9</span>
+      <span class="tech-pill">Vite 7.3</span>
+      <span class="tech-pill">Monaco Editor</span>
+      <span class="tech-pill">xterm.js</span>
+      <span class="tech-pill">node-pty</span>
+      <span class="tech-pill">wasmoon (Lua 5.4)</span>
+      <span class="tech-pill">ESLint 10</span>
+      <span class="tech-pill">Vitest 4</span>
+      <span class="tech-pill">vue-tsc</span>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">정량 지표</div>
+    <div class="grid grid-2" style="gap:.5rem">
+      <div class="stat"><div class="stat-value">17,145</div><div class="stat-label">소스 LOC (74 TS 파일)</div></div>
+      <div class="stat"><div class="stat-value">124</div><div class="stat-label">테스트 (25 파일, 330 assertion)</div></div>
+      <div class="stat"><div class="stat-value">43</div><div class="stat-label">커밋 수</div></div>
+      <div class="stat"><div class="stat-value">7 + 18</div><div class="stat-label">프로덕션 + 개발 의존성</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================
+     B. SCORES TABLE
+     ==================================================================== -->
+<h2>B. 점수 요약</h2>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>카테고리</th><th>가중치</th><th>점수</th><th>가중 점수</th><th>한줄 요약</th></tr>
+    </thead>
+    <tbody>
+      <tr class="score-row"><td>코드 품질 & 유지보수성</td><td>25%</td><td>7.0</td><td>1.75</td><td>모듈화 우수, <code>any</code> 92건과 린트 예외가 흠</td></tr>
+      <tr class="score-row"><td>보안 & 신뢰성</td><td>25%</td><td>7.0</td><td>1.75</td><td>IPC 격리·토큰 인증 견고, Object.assign 필터링 부재</td></tr>
+      <tr class="score-row"><td>재현성 & 운영 준비도</td><td>20%</td><td>7.0</td><td>1.40</td><td>CI·락파일·테스트 존재, 모듈 61% 미커버</td></tr>
+      <tr class="score-row"><td>아키텍처 & 확장성</td><td>20%</td><td>6.0</td><td>1.20</td><td>분리 진행 중이나 오케스트레이터 모놀리식, DOM vs Vue 혼재</td></tr>
+      <tr class="score-row"><td>기술 스택 & 의존성 건전성</td><td>10%</td><td>8.0</td><td>0.80</td><td>최신 스택, 의존성 최소화, CVE 2건 존재</td></tr>
+      <tr class="total-row"><td colspan="3" style="text-align:right;color:var(--accent)">가중 합계</td><td style="font-size:1.3rem;color:var(--accent)">6.90</td><td></td></tr>
+    </tbody>
+  </table>
+  <p style="color:var(--muted);font-size:.82rem;margin-top:.5rem"><strong>가중치 조정:</strong> 데스크톱 전용 Electron 앱으로 수평 확장·멀티테넌시 우려 없이 단일 사용자 맥락이므로 기본 가중치를 그대로 적용. 로컬 HTTP API가 노출되는 특성상 보안 카테고리 비중을 유지했다.</p>
+</div>
+
+<!-- ====================================================================
+     C. KEY FINDINGS
+     ==================================================================== -->
+<h2>C. 주요 발견 사항</h2>
+
+<!-- C-1. Code Quality -->
+<h3>1. 코드 품질 &amp; 유지보수성 — 7.0 / 10</h3>
+
+<div class="finding positive">
+  <div class="finding-title"><span class="badge badge-suggestion">🔵 강점</span> 체계적 모듈 분리</div>
+  <p>5,947줄 모놀리식 파일에서 64개 <code>src/lib/</code> 모듈로 추출 완료. 대부분 의존성 주입 패턴(<code>deps</code> 객체)을 사용해 테스트 용이성 확보.</p>
+  <div class="evidence">근거: <code>src/lib/mcp-api-server.ts</code> (McpApiDeps 인터페이스), <code>src/lib/terminal-manager.ts</code>, <code>src/lib/autosave-manager.ts</code> 등 11개 메인 프로세스 모듈 일관 적용</div>
+</div>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-major">🟠 주요</span> <code>any</code> 타입 92건 — 타입 안전성 공백 <span class="tag tag-tradeoff">TRADE-OFF: JS→TS 마이그레이션 과도기</span></div>
+  <p><code>controller.ts</code>에 47건 집중, <code>@typescript-eslint/no-explicit-any: off</code>로 린트 예외 처리. 나머지 45건은 9개 모듈에 분산. TypeScript를 도입했으나 엄격 모드의 핵심 이점을 활용하지 못하는 상태.</p>
+  <div class="evidence">근거: <code>controller.ts</code> 47건, <code>mcp-api-server.ts</code> 9건, <code>asset-manager.ts</code> 9건, <code>data-serializer.ts</code> 7건</div>
+</div>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-minor">🟡 경미</span> ESLint 규칙 완화가 핵심 파일에 적용 <span class="tag tag-tradeoff">TRADE-OFF: 포팅 코드 점진적 개선</span></div>
+  <p><code>controller.ts</code>, <code>preview-engine.ts</code>, <code>popout/controller.ts</code>에 <code>no-unused-vars</code>, <code>no-explicit-any</code>, <code>no-useless-escape</code> 등 핵심 규칙이 비활성화. 전체 코드의 ~16%가 린트 사각지대.</p>
+  <div class="evidence">근거: <code>eslint.config.mjs</code> L72-142, <code>portedRendererFiles</code> 배열 및 5개 파일별 오버라이드</div>
+</div>
+
+<!-- C-2. Security -->
+<h3>2. 보안 &amp; 신뢰성 — 7.0 / 10</h3>
+
+<div class="finding positive">
+  <div class="finding-title"><span class="badge badge-suggestion">🔵 강점</span> Electron 보안 모범 사례 준수</div>
+  <p><code>contextIsolation: true</code>, <code>nodeIntegration: false</code>로 렌더러-메인 프로세스 격리. <code>contextBridge.exposeInMainWorld</code>로 명시적 IPC API만 노출. MCP API에 <code>crypto.randomBytes(32)</code> Bearer 토큰 인증과 모든 mutation에 사용자 확인 다이얼로그 적용.</p>
+  <div class="evidence">근거: <code>main.ts</code> L436-439, <code>preload.ts</code> contextBridge, <code>mcp-api-server.ts</code> L193·L206·L273-276</div>
+</div>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-major">🟠 주요</span> <code>Object.assign</code> 필드 필터링 부재 (CWE-915) <span class="tag tag-oversight">OVERSIGHT</span></div>
+  <p>로어북/정규식 수정 시 <code>Object.assign(entry, body)</code>로 요청 본문 전체를 병합. 공격자가 <code>__proto__</code>, <code>constructor</code> 또는 임의의 내부 속성을 주입할 수 있는 prototype pollution 벡터. 허용 필드 화이트리스트로 필터링 필요.</p>
+  <div class="evidence">근거: <code>mcp-api-server.ts</code> L385, L458 (regex도 동일 패턴)</div>
+</div>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-minor">🟡 경미</span> <code>readBody</code> 크기 제한 없음 <span class="tag tag-oversight">OVERSIGHT</span></div>
+  <p>HTTP 요청 본문을 무한히 버퍼링. 로컬 네트워크 전용이지만 악의적 클라이언트(또는 오작동하는 MCP 도구)가 대용량 본문으로 메모리 소진 가능.</p>
+  <div class="evidence">근거: <code>mcp-api-server.ts</code> L63-69, 청크 크기 확인·최대 길이 체크 없음</div>
+</div>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-minor">🟡 경미</span> 프로덕션 의존성 CVE 2건 <span class="tag tag-oversight">OVERSIGHT</span></div>
+  <p><code>monaco-editor ≥0.54</code>의 내부 의존성 <code>dompurify 3.1.3-3.3.1</code>에 XSS 취약점(GHSA-v2wj-7wpq-c8vv, moderate). Monaco를 코드 에디터로만 사용하므로 실제 위험은 낮으나 패치 필요.</p>
+  <div class="evidence">근거: <code>npm audit --omit=dev</code> 결과, <code>package.json</code> L34 monaco-editor ^0.55.1</div>
+</div>
+
+<!-- Security checklist -->
+<div class="card" style="margin-top:.8rem;border-left:3px solid var(--muted)">
+  <div class="card-header" style="font-size:.88rem;color:var(--muted)">필수 보안 체크리스트</div>
+  <table>
+    <tr><td><strong>SQL Injection (CWE-89)</strong></td><td>N/A — SQL 데이터베이스 미사용. 모든 데이터는 인메모리 JSON 객체 + 파일 I/O.</td></tr>
+    <tr><td><strong>XSS (CWE-79/80)</strong></td><td>🟡 59건의 innerHTML 할당 존재. 대부분 정적 HTML 또는 <code>escapePreviewHtml()</code>로 이스케이프 처리. 그러나 <code>popout/controller.ts</code>(16건), <code>settings-popup.ts</code>(8건)에서 고밀도 사용 — 사용자 입력이 아닌 앱 내부 데이터이므로 즉각적 위험은 낮음.</td></tr>
+    <tr><td><strong>Log Injection (CWE-117)</strong></td><td>🟡 MCP API 에러 로거가 사용자 제어 값(필드명, 본문 크기)을 <code>console.warn/error</code>로 직접 출력. 구조화된 로깅 부재로 로그 파싱 공격에 이론적 노출.</td></tr>
+    <tr><td><strong>Insecure Deserialization</strong></td><td>🟡 <code>JSON.parse</code>로 요청 본문 역직렬화 후 스키마 검증 없이 Object.assign 병합. 위 Object.assign 항목과 동일 벡터.</td></tr>
+    <tr><td><strong>비밀번호 처리 / 안전하지 않은 객체 참조</strong></td><td>N/A — 사용자 인증 시스템 없음. API 토큰은 <code>crypto.randomBytes</code>로 세션마다 생성, 디스크 저장은 <code>~/.mcp.json</code>에 한정, 앱 종료 시 정리.</td></tr>
+  </table>
+</div>
+
+<!-- C-3. Reproducibility -->
+<h3>3. 재현성 &amp; 운영 준비도 — 7.0 / 10</h3>
+
+<div class="finding positive">
+  <div class="finding-title"><span class="badge badge-suggestion">🔵 강점</span> 완전한 CI 파이프라인</div>
+  <p>GitHub Actions에서 <code>lint → typecheck → test → build:renderer</code> 4단계 검증. <code>package-lock.json</code> 커밋으로 결정적 설치 보장. <code>npm run build</code>에 전 단계 통합.</p>
+  <div class="evidence">근거: <code>.github/workflows/ci.yml</code> (Node 22, ubuntu-latest), <code>package.json</code> L22 build 스크립트</div>
+</div>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-major">🟠 주요</span> 모듈 61%에 테스트 부재 <span class="tag tag-oversight">OVERSIGHT</span></div>
+  <p>64개 라이브러리 모듈 중 39개(61%)에 단위 테스트 없음. 테스트된 25개 모듈의 커버리지도 불균형 — <code>tab-manager.test.ts</code>는 21개 행위 테스트로 우수하지만 <code>preview-session.test.ts</code>는 282줄 모듈에 3개 테스트만 존재.</p>
+  <div class="evidence">근거: <code>src/lib/</code> 39개 .ts 파일에 대응 .test.ts 없음 (mcp-api-server, form-editor, preview-engine 등 핵심 모듈 포함)</div>
+</div>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-minor">🟡 경미</span> 문서 불일치 <span class="tag tag-oversight">OVERSIGHT</span></div>
+  <p><code>CONTRIBUTING.md</code>가 <code>controller.js</code>, <code>main.js</code> 등 구 파일명을 참조. TS 마이그레이션 후 업데이트되지 않음. 신규 기여자에게 혼란을 줄 수 있다.</p>
+  <div class="evidence">근거: <code>CONTRIBUTING.md</code> 내 controller.js, main.js 참조 (실제: controller.ts, main.ts)</div>
+</div>
+
+<!-- C-4. Architecture -->
+<h3>4. 아키텍처 &amp; 확장성 — 6.0 / 10</h3>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-major">🟠 주요</span> 오케스트레이터 모놀리스 지속 <span class="tag tag-tradeoff">TRADE-OFF: 점진적 분리 과정</span></div>
+  <p><code>controller.ts</code>가 여전히 1,997줄, 42개 import, 15개 가변 모듈 수준 변수. <code>buildSidebar()</code> 단일 함수가 ~444줄. 이벤트 기반 느슨한 결합 대신 직접 함수 호출로 모듈 간 통신.</p>
+  <div class="evidence">근거: <code>controller.ts</code> L1-128 (42 import), L133-165 (15 let 선언), L558-1001 (buildSidebar)</div>
+</div>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-major">🟠 주요</span> Vue 프레임워크 위에서 원시 DOM 조작 <span class="tag tag-tradeoff">TRADE-OFF: 포팅 원본의 구조 유지</span></div>
+  <p>Vue 3를 번들링에 사용하면서도 실제 UI는 59곳에서 <code>innerHTML</code>, <code>document.createElement</code>, <code>querySelector</code>로 직접 조작. 반응형 상태 관리(Pinia/Vuex) 없이 15개 <code>let</code> 변수로 전역 상태를 관리. Vue의 핵심 이점인 선언적 UI와 반응성을 활용하지 못하는 구조.</p>
+  <div class="evidence">근거: 59 innerHTML 할당 (19개 파일), <code>controller.ts</code> L133-165 module-level state, <code>App.vue</code>는 마운트 포인트 역할만</div>
+</div>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-minor">🟡 경미</span> 이벤트 리스너 정리 불완전 <span class="tag tag-oversight">OVERSIGHT</span></div>
+  <p>일부 모듈에서 <code>addEventListener</code>에 대응하는 <code>removeEventListener</code>가 누락. 탭 전환/패널 교체 시 메모리 누수 가능성.</p>
+  <div class="evidence">근거: <code>form-editor.ts</code> resize observer 정리 부재, <code>preview-panel.ts</code> 이벤트 리스너 부분적 정리</div>
+</div>
+
+<!-- C-5. Tech Stack -->
+<h3>5. 기술 스택 &amp; 의존성 건전성 — 8.0 / 10</h3>
+
+<div class="finding positive">
+  <div class="finding-title"><span class="badge badge-suggestion">🔵 강점</span> 최소한의 의존성, 최신 버전</div>
+  <p>프로덕션 의존성 7개로 공격 면적 최소화. Electron 40, Vue 3.5, TypeScript 5.9, Vite 7.3 — 모두 최신 안정 릴리스. 개발 의존성 18개도 적정 수준이며 중복 없음.</p>
+  <div class="evidence">근거: <code>package.json</code> L28-56, <code>package-lock.json</code> 커밋됨</div>
+</div>
+
+<div class="finding">
+  <div class="finding-title"><span class="badge badge-minor">🟡 경미</span> 사전 커밋 훅·포매터 부재 <span class="tag tag-oversight">OVERSIGHT</span></div>
+  <p>ESLint + vue-tsc가 CI에서 실행되지만 로컬 개발 시 pre-commit 훅(husky/lint-staged)이 없어 린트 미통과 코드가 커밋될 수 있음. Prettier 등 코드 포매터도 미설정.</p>
+  <div class="evidence">근거: <code>package.json</code>에 husky/lint-staged 의존성 없음, <code>.husky/</code> 디렉토리 미존재</div>
+</div>
+
+<!-- AI anti-patterns -->
+<h3>AI 생성 코드 안티패턴</h3>
+
+<div class="finding anti-pattern">
+  <div class="finding-title"><span class="badge badge-minor">🟡 경미</span> 리팩토링 회피 (Refactoring avoidance)</div>
+  <p>모듈 추출은 완료되었으나 <code>controller.ts</code>의 기존 명령형 DOM 조작 패턴을 그대로 유지한 채 분리. Vue 반응형 시스템으로의 전환 없이 레거시 패턴을 모듈 단위로 감싸기만 한 형태. 장기적으로 두 번째 리팩토링이 불가피.</p>
+  <div class="evidence">빈도: 전체 lib 모듈 64개 중 대다수가 DOM 직접 조작. 위험: 유지보수 비용 증가, 새 개발자 학습 곡선 상승.</div>
+</div>
+
+<div class="finding anti-pattern">
+  <div class="finding-title"><span class="badge badge-suggestion">🔵 제안</span> 과잉 명세 (Over-specification) — 경미</div>
+  <p>일부 deps 인터페이스가 단일 구현체만 존재함에도 세밀한 getter 함수 패턴을 적용 (예: <code>getDirname: () =&gt; __dirname</code>). 테스트 편의를 위한 설계이나 실제 모킹 대상이 아닌 항목까지 포함.</p>
+  <div class="evidence">빈도: 11개 메인 프로세스 모듈의 deps 인터페이스. 실제 위험: 낮음 (코드 양 미미하게 증가).</div>
+</div>
+
+<!-- ====================================================================
+     D. ACTION PLAN
+     ==================================================================== -->
+<h2>D. 실행 계획</h2>
+
+<div class="action-item">
+  <span class="action-tag action-quick">Quick Win</span>
+  <strong>1. Object.assign 필드 화이트리스트 적용</strong>
+  <p style="color:var(--muted);font-size:.85rem">로어북/정규식 수정 엔드포인트에서 허용 필드만 추출 후 병합. <code>mcp-api-server.ts</code> L385, L458.</p>
+</div>
+
+<div class="action-item">
+  <span class="action-tag action-quick">Quick Win</span>
+  <strong>2. readBody 크기 제한 추가</strong>
+  <p style="color:var(--muted);font-size:.85rem"><code>readBody</code>에 최대 10MB 등 상한선 설정, 초과 시 413 응답.</p>
+</div>
+
+<div class="action-item">
+  <span class="action-tag action-quick">Quick Win</span>
+  <strong>3. CONTRIBUTING.md 파일명 업데이트</strong>
+  <p style="color:var(--muted);font-size:.85rem">controller.js → controller.ts, main.js → main.ts 등 TS 마이그레이션 반영.</p>
+</div>
+
+<div class="action-item">
+  <span class="action-tag action-harden">Hardening</span>
+  <strong>4. <code>any</code> 타입 점진적 제거 (92건 → 0)</strong>
+  <p style="color:var(--muted);font-size:.85rem"><code>controller.ts</code> 47건 우선 처리, <code>no-explicit-any</code> 규칙 활성화.</p>
+</div>
+
+<div class="action-item">
+  <span class="action-tag action-harden">Hardening</span>
+  <strong>5. 미커버 모듈 테스트 보강 (39개)</strong>
+  <p style="color:var(--muted);font-size:.85rem">핵심 모듈 우선: mcp-api-server, form-editor, preview-engine, section-parser, backup-store.</p>
+</div>
+
+<div class="action-item">
+  <span class="action-tag action-harden">Hardening</span>
+  <strong>6. pre-commit 훅 + 포매터 설정</strong>
+  <p style="color:var(--muted);font-size:.85rem">husky + lint-staged로 커밋 시 린트/타입체크 자동 실행. Prettier 도입.</p>
+</div>
+
+<div class="action-item">
+  <span class="action-tag action-strategic">Strategic</span>
+  <strong>7. controller.ts를 Vue 컴포넌트 기반 아키텍처로 전환</strong>
+  <p style="color:var(--muted);font-size:.85rem">innerHTML/DOM 조작을 Vue SFC + Pinia 상태 관리로 점진 전환. 현재 1,997줄 오케스트레이터를 선언적 UI로 분해.</p>
+</div>
+
+<hr class="section-divider">
+
+<!-- ====================================================================
+     SUMMARY ZONE
+     ==================================================================== -->
+<div class="summary-zone">
+
+<h2>E. 코드베이스 캐릭터</h2>
+<div class="card">
+  <p style="font-size:1rem;font-weight:500">대규모 모듈화·TS 마이그레이션을 최근 완료한 과도기 코드베이스 — 구조적 뼈대는 갖추었으나, 포팅 원본의 명령형 DOM 패턴이 프레임워크와 공존하며 타입 안전성의 마지막 10%를 남겨둔 상태.</p>
+</div>
+
+<h2>F. 최종 판정</h2>
+
+<div class="grade-box">
+  <div class="grade grade-b">B</div>
+  <div class="total-score">6.90 / 10.0</div>
+</div>
+
+<div class="card" style="margin-bottom:.5rem">
+  <table>
+    <tr><td><strong>프로젝트</strong></td><td>AI 챗봇 플랫폼용 캐릭터 카드 파일 에디터. Electron 데스크톱 앱으로, 통합 터미널과 HTTP API 기반 외부 AI 어시스턴트 연동을 제공한다.</td></tr>
+    <tr><td><strong>스택</strong></td><td>Electron · Vue 3 · TypeScript · Vite · Monaco Editor · xterm.js · Lua (wasmoon)</td></tr>
+  </table>
+</div>
+
+<div class="card" style="margin-bottom:.5rem">
+  <table>
+    <tr><td style="width:40%"><strong>코드 품질 & 유지보수성</strong></td><td><strong>7.0</strong> — 모듈화 완수, 타입 적용 미완</td></tr>
+    <tr><td><strong>보안 & 신뢰성</strong></td><td><strong>7.0</strong> — IPC 격리 견고, API 입력 필터링 부족</td></tr>
+    <tr><td><strong>재현성 & 운영 준비도</strong></td><td><strong>7.0</strong> — CI 존재, 테스트 커버리지 불균형</td></tr>
+    <tr><td><strong>아키텍처 & 확장성</strong></td><td><strong>6.0</strong> — 분리 진행 중, 프레임워크 활용 미흡</td></tr>
+    <tr><td><strong>기술 스택 & 의존성</strong></td><td><strong>8.0</strong> — 최신·최소, 도구 체인 완비</td></tr>
+    <tr class="total-row"><td><strong>가중 합계</strong></td><td style="color:var(--accent);font-size:1.1rem"><strong>6.90 — Grade B</strong></td></tr>
+  </table>
+</div>
+
+<div class="verdict">
+  <p>최근 대규모 리팩토링(레거시 9,000줄 삭제, 64개 모듈 추출, 전면 TypeScript 전환)을 거친 직후의 코드베이스로, 구조적 기반은 확실히 마련되어 있다. Electron 보안 설정(IPC 격리, 토큰 인증, 사용자 확인 다이얼로그)이 데스크톱 앱 수준에서 합리적으로 적용되어 있고, 프로덕션 의존성 7개로 공격 면적을 최소화한 것은 명확한 의도가 보이는 선택이다.</p>
+
+  <p>그러나 TypeScript 전환이 <code>any</code> 92건과 ESLint 핵심 규칙 비활성화라는 "선언만의 타입 안전성"으로 남아 있고, Vue 3 프레임워크를 도입했음에도 실제 UI는 <code>innerHTML</code> 59건의 명령형 DOM 조작으로 구현되어 있어 프레임워크의 핵심 가치를 활용하지 못하고 있다. 64개 모듈 중 61%에 테스트가 없어 리팩토링 안전망도 불완전하다. Object.assign 필터링 부재와 readBody 크기 제한 미설정은 로컬 전용 API라 하더라도 수정이 필요한 보안 공백이다.</p>
+
+  <p>핵심 기능은 작동하고 CI 파이프라인도 갖춰져 있으므로 현 상태에서 배포 자체는 가능하나, <code>any</code> 제거·테스트 보강·API 입력 검증 강화를 거쳐야 유지보수 가능한 프로덕션 수준에 도달한다.</p>
+</div>
+
+<div class="ruling">⚠️ 조건부 배포 가능 — 보안 패치(Object.assign 필터링, readBody 제한) 적용 후 배포 권장</div>
+
+</div>
+
+</body>
+</html>

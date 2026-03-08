@@ -1,5 +1,6 @@
 import type { TabManager } from './tab-manager';
 import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
+import { useAppStore } from '../stores/app-store';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any;
@@ -20,7 +21,7 @@ function syncEditorToActiveTab(deps: FileActionDeps): void {
   const editor = deps.getEditorInstance();
   const { tabMgr } = deps;
   if (editor && tabMgr.activeTabId) {
-    const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
+    const curTab = tabMgr.openTabs.find((t) => t.id === tabMgr.activeTabId);
     if (curTab && !NON_MONACO_EDITOR_TAB_TYPES.has(curTab.language) && curTab.setValue) {
       curTab.setValue(editor.getValue());
     }
@@ -30,10 +31,12 @@ function syncEditorToActiveTab(deps: FileActionDeps): void {
 function resetEditorUI(deps: FileActionDeps): void {
   const editor = deps.getEditorInstance();
   deps.tabMgr.reset();
-  if (editor) { editor.dispose(); deps.setEditorInstance(null); }
+  if (editor) {
+    editor.dispose();
+    deps.setEditorInstance(null);
+  }
 
-  document.getElementById('editor-container')!.innerHTML =
-    '<div class="empty-state">항목을 선택하세요</div>';
+  document.getElementById('editor-container')!.innerHTML = '<div class="empty-state">항목을 선택하세요</div>';
   document.getElementById('editor-tabs')!.innerHTML = '';
 }
 
@@ -44,7 +47,7 @@ export async function handleNew(deps: FileActionDeps): Promise<void> {
   deps.setFileData(data);
   resetEditorUI(deps);
 
-  document.getElementById('file-label')!.textContent = 'New Character';
+  useAppStore().setFileLabel('New Character');
 
   deps.buildSidebar();
   deps.setStatus('새 파일 생성됨');
@@ -55,12 +58,14 @@ export async function handleOpen(deps: FileActionDeps): Promise<void> {
     deps.setStatus('파일 열기 중...');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await (window as any).tokiAPI.openFile();
-    if (!data) { deps.setStatus('준비'); return; }
+    if (!data) {
+      deps.setStatus('준비');
+      return;
+    }
     deps.setFileData(data);
     resetEditorUI(deps);
 
-    document.getElementById('file-label')!.textContent =
-      `${(data as Record<string, unknown>).name || 'Untitled'}`;
+    useAppStore().setFileLabel(`${(data as Record<string, unknown>).name || 'Untitled'}`);
 
     deps.buildSidebar();
     deps.setStatus(`파일 열림: ${(data as Record<string, unknown>).name}`);
