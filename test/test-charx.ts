@@ -537,4 +537,111 @@ const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
 })();
 
 fs.rmSync(risupTempDir, { recursive: true, force: true });
-console.log('test-charx passed (including risup)');
+
+// ---- Error case tests ----
+const errorTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-error-'));
+
+(function testOpenCharxNonexistentFile() {
+  assert.throws(
+    () => openCharx(path.join(errorTempDir, 'nonexistent.charx')),
+    (err: Error) => err.message.includes('ENOENT') || err.message.includes('no such file'),
+    'Opening nonexistent charx should throw ENOENT',
+  );
+})();
+
+(function testOpenRisumNonexistentFile() {
+  assert.throws(
+    () => openRisum(path.join(errorTempDir, 'nonexistent.risum')),
+    (err: Error) => err.message.includes('ENOENT') || err.message.includes('no such file'),
+    'Opening nonexistent risum should throw ENOENT',
+  );
+})();
+
+(function testOpenRisupNonexistentFile() {
+  assert.throws(
+    () => openRisup(path.join(errorTempDir, 'nonexistent.risup')),
+    (err: Error) => err.message.includes('ENOENT') || err.message.includes('no such file'),
+    'Opening nonexistent risup should throw ENOENT',
+  );
+})();
+
+(function testOpenCharxEmptyFile() {
+  const filePath = path.join(errorTempDir, 'empty.charx');
+  fs.writeFileSync(filePath, Buffer.alloc(0));
+  assert.throws(
+    () => openCharx(filePath),
+    (err: Error) => err instanceof Error,
+    'Opening empty charx file should throw',
+  );
+})();
+
+(function testOpenCharxCorruptedZip() {
+  const filePath = path.join(errorTempDir, 'corrupted.charx');
+  fs.writeFileSync(filePath, Buffer.from('this is not a zip file'));
+  assert.throws(
+    () => openCharx(filePath),
+    (err: Error) => err instanceof Error,
+    'Opening corrupted charx file should throw',
+  );
+})();
+
+(function testOpenRisumInvalidMsgpack() {
+  const filePath = path.join(errorTempDir, 'invalid.risum');
+  fs.writeFileSync(filePath, Buffer.from([0xff, 0xfe, 0xfd, 0x00, 0x01]));
+  assert.throws(
+    () => openRisum(filePath),
+    (err: Error) => err instanceof Error,
+    'Opening risum with invalid msgpack should throw',
+  );
+})();
+
+(function testOpenRisupCorruptedData() {
+  const filePath = path.join(errorTempDir, 'corrupted.risup');
+  fs.writeFileSync(filePath, Buffer.from('not-encrypted-data'));
+  assert.throws(
+    () => openRisup(filePath),
+    (err: Error) => err instanceof Error,
+    'Opening corrupted risup file should throw',
+  );
+})();
+
+(function testOpenRisupTooSmall() {
+  const filePath = path.join(errorTempDir, 'tiny.risup');
+  // AES-CBC requires at least 16 bytes (one block); write fewer
+  fs.writeFileSync(filePath, Buffer.from([0x01, 0x02, 0x03]));
+  assert.throws(
+    () => openRisup(filePath),
+    (err: Error) => err instanceof Error,
+    'Opening risup file smaller than AES block size should throw',
+  );
+})();
+
+(function testOpenCharxTruncatedZip() {
+  const validPath = path.join(errorTempDir, 'valid-for-truncate.charx');
+  const truncatedPath = path.join(errorTempDir, 'truncated.charx');
+  const data = {
+    spec: 'chara_card_v3', specVersion: '3.0', name: 'Truncate Test',
+    description: '', personality: '', scenario: '', creatorcomment: '',
+    tags: [], firstMessage: '', alternateGreetings: [], groupOnlyGreetings: [],
+    globalNote: '', css: '', defaultVariables: '', lua: '',
+    triggerScripts: [], lorebook: [], regex: [],
+    moduleId: '', moduleName: '', moduleDescription: '',
+    assets: [], xMeta: {}, risumAssets: [], cardAssets: [],
+    _risuExt: {},
+    _card: { spec: 'chara_card_v3', spec_version: '3.0', data: { extensions: { risuai: {} }, character_book: { entries: [] }, assets: [] } },
+    _moduleData: null,
+  };
+  saveCharx(validPath, data as any);
+  const fullBuffer = fs.readFileSync(validPath);
+  // Truncate to half the file
+  fs.writeFileSync(truncatedPath, fullBuffer.subarray(0, Math.floor(fullBuffer.length / 2)));
+  assert.throws(
+    () => openCharx(truncatedPath),
+    (err: Error) => err instanceof Error,
+    'Opening truncated charx file should throw',
+  );
+})();
+
+fs.rmSync(errorTempDir, { recursive: true, force: true });
+
+console.log('test-charx passed (including risup and error cases)');
