@@ -10,7 +10,6 @@ import {
   readAppSettingsSnapshot,
   readStoredLayoutState,
   subscribeToAppSettings,
-  syncBodyDarkMode,
   writeAutosaveDir,
   writeAutosaveEnabled,
   writeAutosaveInterval,
@@ -24,6 +23,15 @@ import {
   writeWorkingAvatarState
 } from '../lib/app-settings';
 import { toMediaAsset } from '../lib/asset-runtime';
+import { applyDarkMode, defineDarkMonacoTheme } from '../lib/dark-mode';
+import {
+  handleTerminalDataForBgm,
+  initBgm as initBgmModule,
+  isBgmEnabled,
+  pauseBgm,
+  setBgmEnabled,
+  setBgmFilePath
+} from '../lib/bgm';
 import { ensureBlueArchiveMonacoTheme, loadMonacoRuntime } from '../lib/monaco-loader';
 import { createBufferedTerminalChatSession } from '../lib/chat-session';
 import {
@@ -65,9 +73,10 @@ import {
   stripAnsi
 } from '../lib/terminal-chat';
 import { buildAssetPromptTemplate } from '../lib/asset-prompt-template';
+import { createBackup, formatBackupTime, getBackups, showBackupMenu } from '../lib/backup-store';
+import { setStatus } from '../lib/status-bar';
 
 const settingsSnapshot = readAppSettingsSnapshot();
-const storedBgmPath = settingsSnapshot.bgmPath;
 
 // ==================== State ====================
 let fileData = null;       // Current charx data
@@ -96,10 +105,6 @@ async function syncReferenceFiles() {
   return referenceFiles;
 }
 
-// Backup store
-const MAX_BACKUPS = 20;
-const backupStore = {}; // { tabId: [{ time, content }] }
-
 // RP mode: 'off' | 'toki' | 'aris' | 'custom'
 // Migrate old boolean value
 // Dark mode (Risu theme)
@@ -112,19 +117,6 @@ let rpCustomText = settingsSnapshot.rpCustomText;
 
 // Form editor mini-Monaco instances (lorebook/regex)
 let formEditors = [];
-
-// BGM state
-let bgmEnabled = settingsSnapshot.bgmEnabled;
-let bgmAudio = null;
-let bgmFilePath = !storedBgmPath || storedBgmPath === '../../assets/Usagi_Flap.mp3'
-  ? toMediaAsset('Usagi_Flap.mp3')
-  : storedBgmPath;
-let bgmSilenceTimer = null;
-const BGM_SILENCE_MS = 3000; // pause after 3s of silence
-let bgmBurstCount = 0;
-let bgmBurstTimer = null;
-const BGM_BURST_THRESHOLD = 3;  // need 3+ data events within window to start
-const BGM_BURST_WINDOW = 500;   // ms
 
 // Autosave state
 let autosaveEnabled = settingsSnapshot.autosaveEnabled;
@@ -669,10 +661,10 @@ function buildSidebar() {
     const items = [
       { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText('read_field("lua")'); setStatus('복사됨: read_field("lua")'); } },
     ];
-    const store = backupStore['lua'] || [];
+    const store = getBackups('lua');
     if (store.length > 0) {
       items.push('---');
-      items.push({ label: '백업 불러오기', action: () => showBackupMenu('lua', e.clientX, e.clientY) });
+      items.push({ label: '백업 불러오기', action: () => showBackupMenu('lua', e.clientX, e.clientY, backupMenuCallbacks) });
     }
     showContextMenu(e.clientX, e.clientY, items);
   });
@@ -698,10 +690,10 @@ function buildSidebar() {
         { label: '이름 변경', action: () => renameLuaSection(idx) },
         { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_lua(${idx})`); setStatus(`복사됨: read_lua(${idx})`); } },
       ];
-      const store = backupStore[`lua_s${idx}`] || [];
+      const store = getBackups(`lua_s${idx}`);
       if (store.length > 0) {
         items.push('---');
-        items.push({ label: '백업 불러오기', action: () => showBackupMenu(`lua_s${idx}`, e.clientX, e.clientY) });
+        items.push({ label: '백업 불러오기', action: () => showBackupMenu(`lua_s${idx}`, e.clientX, e.clientY, backupMenuCallbacks) });
       }
       items.push('---');
       items.push({ label: '삭제', action: () => deleteLuaSection(idx) });
@@ -743,10 +735,10 @@ function buildSidebar() {
     const items = [
       { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText('read_field("css")'); setStatus('복사됨: read_field("css")'); } },
     ];
-    const store = backupStore['css'] || [];
+    const store = getBackups('css');
     if (store.length > 0) {
       items.push('---');
-      items.push({ label: '백업 불러오기', action: () => showBackupMenu('css', e.clientX, e.clientY) });
+      items.push({ label: '백업 불러오기', action: () => showBackupMenu('css', e.clientX, e.clientY, backupMenuCallbacks) });
     }
     showContextMenu(e.clientX, e.clientY, items);
   });
@@ -772,10 +764,10 @@ function buildSidebar() {
         { label: '이름 변경', action: () => renameCssSection(idx) },
         { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_css(${idx})`); setStatus(`복사됨: read_css(${idx})`); } },
       ];
-      const store = backupStore[`css_s${idx}`] || [];
+      const store = getBackups(`css_s${idx}`);
       if (store.length > 0) {
         items.push('---');
-        items.push({ label: '백업 불러오기', action: () => showBackupMenu(`css_s${idx}`, e.clientX, e.clientY) });
+        items.push({ label: '백업 불러오기', action: () => showBackupMenu(`css_s${idx}`, e.clientX, e.clientY, backupMenuCallbacks) });
       }
       items.push('---');
       items.push({ label: '삭제', action: () => deleteCssSection(idx) });
@@ -854,10 +846,10 @@ function buildSidebar() {
       if (item.id === 'assetPromptTemplate') {
         items.push({ label: '템플릿 복사', action: () => { navigator.clipboard.writeText(item.get()); setStatus('에셋 프롬프트 템플릿 복사됨'); } });
       }
-      const store = backupStore[item.id] || [];
+      const store = getBackups(item.id);
       if (store.length > 0) {
         items.push('---');
-        items.push({ label: '백업 불러오기', action: () => showBackupMenu(item.id, e.clientX, e.clientY) });
+        items.push({ label: '백업 불러오기', action: () => showBackupMenu(item.id, e.clientX, e.clientY, backupMenuCallbacks) });
       }
       showContextMenu(e.clientX, e.clientY, items);
     });
@@ -1056,10 +1048,10 @@ function buildSidebar() {
         { label: '이름 변경', action: () => renameRegex(idx) },
         { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_regex(${idx})`); setStatus(`복사됨: read_regex(${idx})`); } },
       ];
-      const store = backupStore[`regex_${idx}`] || [];
+      const store = getBackups(`regex_${idx}`);
       if (store.length > 0) {
         items.push('---');
-        items.push({ label: '백업 불러오기', action: () => showBackupMenu(`regex_${idx}`, e.clientX, e.clientY) });
+        items.push({ label: '백업 불러오기', action: () => showBackupMenu(`regex_${idx}`, e.clientX, e.clientY, backupMenuCallbacks) });
       }
       items.push('---');
       items.push({ label: '삭제', action: () => deleteRegex(idx) });
@@ -1651,10 +1643,10 @@ function createLoreEntryItem(child, indent) {
       { label: '이름 변경', action: () => renameLorebook(idx) },
       { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_lorebook(${idx})`); setStatus(`복사됨: read_lorebook(${idx})`); } },
     ];
-    const store = backupStore[`lore_${idx}`] || [];
+    const store = getBackups(`lore_${idx}`);
     if (store.length > 0) {
       items.push('---');
-      items.push({ label: '백업 불러오기', action: () => showBackupMenu(`lore_${idx}`, e.clientX, e.clientY) });
+      items.push({ label: '백업 불러오기', action: () => showBackupMenu(`lore_${idx}`, e.clientX, e.clientY, backupMenuCallbacks) });
     }
     items.push('---');
     items.push({ label: '삭제', action: () => deleteLorebook(idx) });
@@ -2000,123 +1992,11 @@ async function deleteCssSection(idx) {
 
 // ==================== Backup System ====================
 
-function createBackup(tabId, content) {
-  if (!content && content !== '') return;
-  if (!backupStore[tabId]) backupStore[tabId] = [];
-  const store = backupStore[tabId];
-
-  // Deep copy objects to prevent reference mutation
-  const stored = (typeof content === 'object' && content !== null) ? JSON.parse(JSON.stringify(content)) : content;
-
-  // Skip duplicate of same content
-  const lastStr = store.length > 0 ? (typeof store[store.length - 1].content === 'object' ? JSON.stringify(store[store.length - 1].content) : store[store.length - 1].content) : null;
-  const curStr = typeof stored === 'object' ? JSON.stringify(stored) : stored;
-  if (lastStr !== null && lastStr === curStr) return;
-
-  store.push({ time: new Date(), content: stored });
-  while (store.length > MAX_BACKUPS) store.shift();
-}
-
-function showBackupMenu(tabId, x, y) {
-  const store = backupStore[tabId] || [];
-  if (store.length === 0) {
-    setStatus('백업이 없습니다');
-    return;
-  }
-
-  // Show as MomoTalk popup with preview
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:99999;display:flex;align-items:center;justify-content:center;';
-  const popup = document.createElement('div');
-  popup.className = 'settings-popup';
-  popup.style.cssText += 'width:520px;max-width:90vw;max-height:80vh;display:flex;flex-direction:column;';
-
-  const header = document.createElement('div');
-  header.className = 'help-popup-header';
-  header.innerHTML = `<span>백업 불러오기 — ${tabId}</span>`;
-  const closeBtn = document.createElement('span');
-  closeBtn.className = 'help-popup-close';
-  closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', () => overlay.remove());
-  header.appendChild(closeBtn);
-
-  const body = document.createElement('div');
-  body.style.cssText = 'padding:8px;overflow-y:auto;flex:1;min-height:0;';
-
-  // Preview area
-  const previewBox = document.createElement('pre');
-  previewBox.style.cssText = 'background:var(--bg-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px;font-size:11px;color:var(--text-primary);max-height:180px;overflow:auto;margin:0 0 8px;white-space:pre-wrap;word-break:break-all;';
-  previewBox.textContent = '항목을 선택하면 미리보기가 표시됩니다.';
-
-  // List of backup versions
-  const list = document.createElement('div');
-  list.style.cssText = 'display:flex;flex-direction:column;gap:2px;margin-bottom:8px;';
-
-  function getPreviewText(content) {
-    if (typeof content === 'string') return content;
-    try { return JSON.stringify(content, null, 2); } catch { return String(content); }
-  }
-
-  let selectedIdx = null;
-  const rows = [];
-
-  for (let i = store.length - 1; i >= 0; i--) {
-    const backup = store[i];
-    const ver = i + 1;
-    const preview = getPreviewText(backup.content);
-    const snippet = preview.length > 60 ? preview.slice(0, 60) + '…' : preview;
-    const lenStr = typeof backup.content === 'string' ? `${backup.content.length}자` : '';
-
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;font-size:12px;color:var(--text-primary);border:1px solid var(--border-color);transition:background 0.15s;';
-    row.innerHTML = `<span style="font-weight:700;min-width:28px;color:var(--accent);">v${ver}</span>`
-      + `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary);font-size:11px;">${snippet}</span>`
-      + `<span style="font-size:10px;color:var(--text-secondary);white-space:nowrap;">${lenStr} · ${formatBackupTime(backup.time)}</span>`;
-
-    const idx = i;
-    row.addEventListener('click', () => {
-      selectedIdx = idx;
-      previewBox.textContent = getPreviewText(store[idx].content).slice(0, 2000);
-      rows.forEach(r => r.style.background = '');
-      row.style.background = 'var(--accent-light)';
-    });
-    row.addEventListener('mouseenter', () => { if (selectedIdx !== idx) row.style.background = 'var(--bg-secondary)'; });
-    row.addEventListener('mouseleave', () => { if (selectedIdx !== idx) row.style.background = ''; });
-    list.appendChild(row);
-    rows.push(row);
-  }
-
-  // Restore button
-  const btnRow = document.createElement('div');
-  btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;padding:4px 0;';
-  const btnRestore = document.createElement('button');
-  btnRestore.textContent = '복원';
-  btnRestore.style.cssText = 'padding:6px 20px;border:none;border-radius:4px;background:var(--accent);color:#fff;cursor:pointer;font-size:13px;';
-  btnRestore.addEventListener('click', () => {
-    if (selectedIdx === null) { setStatus('버전을 선택하세요'); return; }
-    overlay.remove();
-    restoreBackup(tabId, selectedIdx);
-  });
-  const btnCancel = document.createElement('button');
-  btnCancel.textContent = '취소';
-  btnCancel.style.cssText = 'padding:6px 20px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);color:var(--text-primary);cursor:pointer;font-size:13px;';
-  btnCancel.addEventListener('click', () => overlay.remove());
-  btnRow.appendChild(btnCancel);
-  btnRow.appendChild(btnRestore);
-
-  body.appendChild(list);
-  body.appendChild(previewBox);
-  body.appendChild(btnRow);
-  popup.appendChild(header);
-  popup.appendChild(body);
-  overlay.appendChild(popup);
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-}
+const backupMenuCallbacks = { setStatus, onRestore: restoreBackup };
 
 function restoreBackup(tabId, backupIdx) {
-  const store = backupStore[tabId];
-  if (!store || !store[backupIdx]) return;
+  const store = getBackups(tabId);
+  if (!store[backupIdx]) return;
 
   const backup = store[backupIdx];
 
@@ -2187,15 +2067,6 @@ function restoreBackup(tabId, backupIdx) {
     refreshIndexedTabs('css_s', buildCssSectionTabState);
   }
   setStatus(`백업 v${backupIdx + 1} 복원됨 (${formatBackupTime(backup.time)})`);
-}
-
-function formatBackupTime(date) {
-  const mon = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const h = String(date.getHours()).padStart(2, '0');
-  const m = String(date.getMinutes()).padStart(2, '0');
-  const s = String(date.getSeconds()).padStart(2, '0');
-  return `${mon}/${day} ${h}:${m}:${s}`;
 }
 
 // ==================== Drag & Drop ====================
@@ -2332,7 +2203,7 @@ async function initTerminal() {
       terminalStart: (cols, rows) => window.tokiAPI.terminalStart(cols, rows)
     },
     container,
-    onActivity: () => bgmOnTerminalData(),
+    onActivity: () => handleTerminalDataForBgm(),
     onTerminalData: (data) => {
       if (chatMode) onChatData(data);
       feedBgBuffer(data);
@@ -3722,75 +3593,21 @@ function initResizers() {
   document.getElementById('btn-terminal-toggle').addEventListener('click', () => toggleTerminal());
 }
 
-// ==================== Status (auto-hide) ====================
-let statusTimer = null;
-let _statusBar, _statusSpan;
-
-function setStatus(text) {
-  if (!_statusBar) {
-    _statusBar = document.getElementById('statusbar');
-    _statusSpan = document.getElementById('status-text');
-  }
-  _statusSpan.textContent = text;
-  _statusBar.classList.add('visible');
-
-  if (statusTimer) clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => {
-    _statusBar.classList.remove('visible');
-  }, 3000);
-}
-
 // ==================== Dark Mode ====================
 
 const RISU_IDLE = toMediaAsset('icon_risu.png');
 const RISU_DANCING = toMediaAsset('Dancing_risu.gif');
 
 
-function defineDarkMonacoTheme() {
-  if (window._baDarkThemeDefined) return;
-  if (!monacoReady) return;
-  monaco.editor.defineTheme('blue-archive-dark', {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: '', foreground: 'd8dce8', background: '1c2340' },
-      { token: 'comment', foreground: '7a8ba5', fontStyle: 'italic' },
-      { token: 'keyword', foreground: '6fb3f2', fontStyle: 'bold' },
-      { token: 'string', foreground: '66bb6a' },
-      { token: 'number', foreground: 'ffca28' },
-      { token: 'type', foreground: 'f06292' },
-      { token: 'function', foreground: '74b9ff' },
-      { token: 'variable', foreground: 'ef9a9a' },
-      { token: 'operator', foreground: 'f06292' },
-      { token: 'delimiter', foreground: '7a8ba5' },
-    ],
-    colors: {
-      'editor.background': '#181e34',
-      'editor.foreground': '#d8dce8',
-      'editor.lineHighlightBackground': '#1e2844',
-      'editor.selectionBackground': '#4a90d944',
-      'editorCursor.foreground': '#4a90d9',
-      'editorLineNumber.foreground': '#3a4a68',
-      'editorLineNumber.activeForeground': '#4a90d9',
-      'editorWidget.background': '#1c2340',
-      'editorWidget.border': '#2e3a56',
-      'minimap.background': '#141a31',
-      'scrollbarSlider.background': '#2e3a5644',
-      'scrollbarSlider.hoverBackground': '#4a90d966',
-    }
-  });
-  window._baDarkThemeDefined = true;
-}
-
 function toggleDarkMode() {
   darkMode = !darkMode;
   writeDarkMode(darkMode);
-  applyDarkMode();
+  refreshDarkModeUi();
   setStatus(darkMode ? '다크 모드 ON (Aris)' : '라이트 모드 ON (Toki)');
 }
 
-function applyDarkMode() {
-  syncBodyDarkMode(document.body, darkMode);
+function refreshDarkModeUi() {
+  applyDarkMode(darkMode, { editorInstance, formEditors });
 
   // Update TokiTalk title
   const titleEl = document.querySelector('.momo-title');
@@ -3822,12 +3639,6 @@ function applyDarkMode() {
     term.options.theme = darkMode ? TERM_THEME_DARK : TERM_THEME_LIGHT;
   }
 
-  // Switch Monaco theme (global — affects all editor instances)
-  if (monacoReady) {
-    defineDarkMonacoTheme();
-    monaco.editor.setTheme(darkMode ? 'blue-archive-dark' : 'blue-archive');
-  }
-
   // Auto-switch RP persona on dark mode toggle (if not custom/off)
   if (rpMode === 'toki' || rpMode === 'aris') {
     rpMode = getDefaultRpModeForDarkMode(darkMode);
@@ -3842,10 +3653,8 @@ function applyDarkMode() {
 
 // ==================== BGM (Terminal Response Music) ====================
 
-function initBgm() {
-  bgmAudio = new Audio(bgmFilePath);
-  bgmAudio.loop = true;
-  bgmAudio.volume = 0.3;
+function initBgmUi() {
+  initBgmModule(settingsSnapshot.bgmEnabled, settingsSnapshot.bgmPath);
 
   const btn = document.getElementById('btn-bgm');
   if (!btn) return;
@@ -3854,13 +3663,13 @@ function initBgm() {
 
   // Left-click: toggle on/off
   btn.addEventListener('click', () => {
-    bgmEnabled = !bgmEnabled;
-    writeBgmEnabled(bgmEnabled);
+    setBgmEnabled(!isBgmEnabled());
+    writeBgmEnabled(isBgmEnabled());
     updateBgmButtonStyle(btn);
-    if (!bgmEnabled && bgmAudio) {
-      bgmAudio.pause();
+    if (!isBgmEnabled()) {
+      pauseBgm();
     }
-    setStatus(bgmEnabled ? 'BGM ON' : 'BGM OFF');
+    setStatus(isBgmEnabled() ? 'BGM ON' : 'BGM OFF');
   });
 
   // Right-click: pick new BGM file
@@ -3868,44 +3677,17 @@ function initBgm() {
     e.preventDefault();
     const filePath = await window.tokiAPI.pickBgm();
     if (!filePath) return;
-    bgmFilePath = filePath;
+    setBgmFilePath(filePath);
     writeBgmPath(filePath);
-    bgmAudio.src = filePath;
     setStatus(`BGM 변경: ${filePath.split(/[/\\]/).pop()}`);
   });
 }
 
 function updateBgmButtonStyle(btn) {
-  btn.textContent = bgmEnabled ? '🔊' : '🔇';
-  btn.title = bgmEnabled ? 'BGM ON (우클릭: 파일 변경)' : 'BGM OFF (우클릭: 파일 변경)';
-  btn.style.background = bgmEnabled ? 'rgba(255,255,255,0.5)' : '';
-}
-
-function bgmOnTerminalData() {
-  if (!bgmEnabled || !bgmAudio) return;
-
-  // Burst detection: only play BGM during sustained output (Claude streaming)
-  // Single data events (shell prompt, short command output) won't trigger
-  bgmBurstCount++;
-  if (bgmBurstTimer) clearTimeout(bgmBurstTimer);
-  bgmBurstTimer = setTimeout(() => { bgmBurstCount = 0; }, BGM_BURST_WINDOW);
-
-  // Don't start playing until we see sustained output
-  if (bgmBurstCount < BGM_BURST_THRESHOLD && bgmAudio.paused) return;
-
-  // Start or resume playing
-  if (bgmAudio.paused) {
-    bgmAudio.play().catch(() => { /* autoplay blocked, ignore */ });
-  }
-
-  // Reset silence timer
-  if (bgmSilenceTimer) clearTimeout(bgmSilenceTimer);
-  bgmSilenceTimer = setTimeout(() => {
-    if (bgmAudio && !bgmAudio.paused) {
-      bgmAudio.pause();
-    }
-    bgmBurstCount = 0;
-  }, BGM_SILENCE_MS);
+  const enabled = isBgmEnabled();
+  btn.textContent = enabled ? '🔊' : '🔇';
+  btn.title = enabled ? 'BGM ON (우클릭: 파일 변경)' : 'BGM OFF (우클릭: 파일 변경)';
+  btn.style.background = enabled ? 'rgba(255,255,255,0.5)' : '';
 }
 
 // ==================== Toki Avatar ====================
@@ -5058,13 +4840,13 @@ function showSettingsPopup() {
   bgmRow.className = 'settings-row';
   const bgmLeft = document.createElement('div');
   bgmLeft.innerHTML = '<div class="settings-label">BGM</div><div class="settings-desc">터미널 응답 시 배경음악 재생</div>';
-  const bgmToggle = createToggle(bgmEnabled);
+  const bgmToggle = createToggle(isBgmEnabled());
   bgmToggle.addEventListener('click', () => {
-    bgmEnabled = bgmToggle.classList.contains('on');
-    writeBgmEnabled(bgmEnabled);
+    setBgmEnabled(bgmToggle.classList.contains('on'));
+    writeBgmEnabled(isBgmEnabled());
     const bgmBtn = document.getElementById('btn-bgm');
     if (bgmBtn) updateBgmButtonStyle(bgmBtn);
-    if (!bgmEnabled && bgmAudio && !bgmAudio.paused) bgmAudio.pause();
+    if (!isBgmEnabled()) pauseBgm();
   });
   bgmRow.appendChild(bgmLeft);
   bgmRow.appendChild(bgmToggle);
@@ -5991,12 +5773,12 @@ export async function initMainRenderer() {
     darkMode = snapshot.darkMode;
     rpMode = snapshot.rpMode;
     rpCustomText = snapshot.rpCustomText;
-    bgmEnabled = snapshot.bgmEnabled;
+    setBgmEnabled(snapshot.bgmEnabled);
     autosaveEnabled = snapshot.autosaveEnabled;
     autosaveInterval = snapshot.autosaveInterval;
     autosaveDir = snapshot.autosaveDir;
     if (darkModeChanged) {
-      applyDarkMode();
+      refreshDarkModeUi();
     }
     const rpBtn = document.getElementById('btn-rp-mode');
     if (rpBtn) updateRpButtonStyle(rpBtn);
@@ -6010,7 +5792,7 @@ export async function initMainRenderer() {
   initEditor();
   document.getElementById('btn-terminal-bg').addEventListener('click', handleTerminalBg);
   initRpModeButton();
-  initBgm();
+  initBgmUi();
   document.getElementById('btn-sidebar-collapse').addEventListener('click', toggleSidebar);
   document.getElementById('btn-avatar-collapse').addEventListener('click', toggleAvatar);
   document.getElementById('sidebar-expand').addEventListener('click', () => {
@@ -6020,7 +5802,7 @@ export async function initMainRenderer() {
   document.getElementById('btn-settings').addEventListener('click', showSettingsPopup);
   initSidebarSplitResizer();
   initTokiAvatar();
-  applyDarkMode(); // Apply saved dark mode preference
+  refreshDarkModeUi(); // Apply saved dark mode preference
   initChatMode();
   initPanelDragDrop();
   // Refs panel dock button
