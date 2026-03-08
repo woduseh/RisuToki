@@ -3,368 +3,546 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>프로덕션 준비도 코드 감사 보고서</title>
+<title>프로덕션 준비 상태 코드 감사 보고서</title>
 <style>
   :root {
-    --bg: #0d1117; --surface: #161b22; --surface2: #1c2128; --border: #30363d;
-    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff; --green: #3fb950;
-    --yellow: #d29922; --orange: #db6d28; --red: #f85149; --purple: #bc8cff;
+    --bg: #0d1117;
+    --bg-card: #161b22;
+    --bg-card-alt: #1c2333;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --text-dim: #6e7681;
+    --accent: #58a6ff;
+    --accent-green: #3fb950;
+    --accent-yellow: #d29922;
+    --accent-orange: #db6d28;
+    --accent-red: #f85149;
+    --accent-blue: #58a6ff;
+    --accent-purple: #bc8cff;
+    --grade-s: #3fb950;
+    --grade-a: #58a6ff;
+    --grade-b: #d29922;
+    --grade-c: #db6d28;
+    --grade-d: #f85149;
+    --grade-f: #da3633;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; padding: 24px; max-width: 1200px; margin: 0 auto; }
-  h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; color: var(--accent); }
-  h2 { font-size: 18px; font-weight: 600; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); color: var(--text); }
-  h3 { font-size: 15px; font-weight: 600; margin: 20px 0 10px; color: var(--text2); }
-  p, li { color: var(--text); }
-  .subtitle { color: var(--text2); font-size: 13px; margin-bottom: 24px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
-  .card-header { font-weight: 600; font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-  th { background: var(--surface2); text-align: left; padding: 10px 12px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); border-bottom: 1px solid var(--border); }
-  td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
-  tr:last-child td { border-bottom: none; }
-  .score-total { font-size: 48px; font-weight: 800; color: var(--accent); text-align: center; line-height: 1; }
-  .grade { font-size: 64px; font-weight: 900; text-align: center; line-height: 1; }
-  .grade-a { color: var(--green); }
-  .grade-b { color: var(--yellow); }
-  .score-bar { height: 6px; background: var(--surface2); border-radius: 3px; margin-top: 4px; overflow: hidden; }
-  .score-fill { height: 100%; border-radius: 3px; }
-  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-  .tag-critical { background: rgba(248,81,73,0.15); color: var(--red); }
-  .tag-major { background: rgba(219,109,40,0.15); color: var(--orange); }
-  .tag-minor { background: rgba(210,153,34,0.15); color: var(--yellow); }
-  .tag-suggestion { background: rgba(88,166,255,0.15); color: var(--accent); }
-  .tag-quick { background: rgba(63,185,80,0.15); color: var(--green); }
-  .tag-harden { background: rgba(210,153,34,0.15); color: var(--yellow); }
-  .tag-strategic { background: rgba(188,140,255,0.15); color: var(--purple); }
-  .finding { margin: 10px 0; padding: 12px 16px; background: var(--surface2); border-radius: 6px; border-left: 3px solid var(--border); }
-  .finding-critical { border-left-color: var(--red); }
-  .finding-major { border-left-color: var(--orange); }
-  .finding-minor { border-left-color: var(--yellow); }
-  .finding-suggestion { border-left-color: var(--accent); }
-  .finding-positive { border-left-color: var(--green); }
-  .finding-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
-  .finding-body { font-size: 12px; color: var(--text2); }
-  .mono { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-size: 12px; color: var(--accent); }
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .grid-score { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; }
-  .verdict-box { background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%); border: 2px solid var(--border); border-radius: 12px; padding: 32px; margin-top: 24px; }
-  .verdict-text { font-size: 14px; line-height: 1.8; color: var(--text); }
-  .ruling { margin-top: 20px; padding: 16px; background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.3); border-radius: 8px; font-weight: 600; text-align: center; font-size: 15px; color: var(--green); }
-  .tech-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
-  .tech-item { background: var(--surface2); padding: 8px 12px; border-radius: 4px; font-size: 12px; display: flex; justify-content: space-between; }
-  .action-item { display: flex; gap: 12px; align-items: flex-start; margin: 8px 0; }
-  .action-num { background: var(--accent); color: var(--bg); width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 2px; }
-  .separator { border: none; border-top: 2px solid var(--accent); margin: 40px 0; opacity: 0.3; }
-  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } body { padding: 16px; } }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: var(--accent); }
+  h2 {
+    font-size: 1.3rem; margin: 2rem 0 1rem; padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border); color: var(--text);
+  }
+  h3 { font-size: 1.05rem; margin: 1.2rem 0 0.6rem; color: var(--text-muted); }
+  .subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 2rem; }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;
+  }
+  .card-alt { background: var(--bg-card-alt); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+  table {
+    width: 100%; border-collapse: collapse; margin: 0.8rem 0;
+    font-size: 0.9rem;
+  }
+  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .score-table td:nth-child(3), .score-table td:nth-child(4) { text-align: center; font-weight: 600; }
+  .score-table th:nth-child(3), .score-table th:nth-child(4) { text-align: center; }
+  .total-row { border-top: 2px solid var(--accent); font-size: 1.1rem; }
+  .total-row td { padding-top: 1rem; font-weight: 700; }
+  .score-cell { font-size: 1.2rem; }
+  .s-green { color: var(--accent-green); }
+  .s-blue { color: var(--accent-blue); }
+  .s-yellow { color: var(--accent-yellow); }
+  .s-orange { color: var(--accent-orange); }
+  .s-red { color: var(--accent-red); }
+  .grade-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 64px; height: 64px; border-radius: 12px;
+    font-size: 2.2rem; font-weight: 900; margin-right: 1rem;
+    border: 3px solid;
+  }
+  .grade-B { background: rgba(210,153,34,0.15); border-color: var(--grade-b); color: var(--grade-b); }
+  .finding { margin-bottom: 1rem; padding: 0.8rem 1rem; border-left: 3px solid; border-radius: 0 6px 6px 0; background: rgba(255,255,255,0.02); }
+  .finding-critical { border-left-color: var(--accent-red); }
+  .finding-major { border-left-color: var(--accent-orange); }
+  .finding-minor { border-left-color: var(--accent-yellow); }
+  .finding-suggestion { border-left-color: var(--accent-blue); }
+  .finding-title { font-weight: 600; margin-bottom: 0.3rem; }
+  .severity { display: inline-block; font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 10px; font-weight: 600; margin-right: 0.5rem; }
+  .sev-critical { background: rgba(248,81,73,0.2); color: var(--accent-red); }
+  .sev-major { background: rgba(219,109,40,0.2); color: var(--accent-orange); }
+  .sev-minor { background: rgba(210,153,34,0.2); color: var(--accent-yellow); }
+  .sev-suggestion { background: rgba(88,166,255,0.2); color: var(--accent-blue); }
+  .tag { display: inline-block; font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 4px; margin-left: 0.3rem; }
+  .tag-tradeoff { background: rgba(188,140,255,0.15); color: var(--accent-purple); }
+  .tag-oversight { background: rgba(248,81,73,0.15); color: var(--accent-red); }
+  .evidence { color: var(--text-muted); font-size: 0.85rem; margin-top: 0.3rem; }
+  .tech-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0; }
+  .tech-tag {
+    padding: 0.3rem 0.7rem; border-radius: 6px; font-size: 0.8rem;
+    background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.3); color: var(--accent);
+  }
+  .action-item { padding: 0.6rem 1rem; margin-bottom: 0.5rem; border-radius: 6px; background: var(--bg-card-alt); display: flex; align-items: baseline; gap: 0.6rem; }
+  .action-type { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 600; white-space: nowrap; }
+  .action-quick { background: rgba(63,185,80,0.2); color: var(--accent-green); }
+  .action-hardening { background: rgba(210,153,34,0.2); color: var(--accent-yellow); }
+  .action-strategic { background: rgba(188,140,255,0.2); color: var(--accent-purple); }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin: 1rem 0; }
+  .stat-box { text-align: center; padding: 1rem; border-radius: 8px; background: var(--bg-card-alt); }
+  .stat-value { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+  .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; }
+  .summary-zone {
+    margin-top: 3rem; padding-top: 2rem;
+    border-top: 2px solid var(--accent);
+  }
+  .verdict-box { padding: 1.5rem; border-radius: 8px; background: var(--bg-card); border: 1px solid var(--border); }
+  .verdict-header { display: flex; align-items: center; margin-bottom: 1rem; }
+  .verdict-score { font-size: 2.5rem; font-weight: 900; color: var(--grade-b); margin-left: 0.5rem; }
+  .verdict-text { font-size: 0.95rem; line-height: 1.7; color: var(--text); }
+  .score-mini { display: inline-flex; gap: 1.5rem; flex-wrap: wrap; margin: 1rem 0; }
+  .score-mini-item { font-size: 0.85rem; }
+  .score-mini-label { color: var(--text-muted); }
+  .score-mini-value { font-weight: 700; margin-left: 0.3rem; }
+  .cwe-table td:first-child { font-weight: 600; white-space: nowrap; }
+  .separator { height: 1px; background: var(--border); margin: 2rem 0; }
+  code { background: rgba(110,118,129,0.2); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem; }
 </style>
 </head>
 <body>
 
-<h1>⚙️ 프로덕션 준비도 코드 감사</h1>
-<p class="subtitle">감사 일시: 2025년 — 스태프 엔지니어 게이트 리뷰 | 전체 코드베이스 대상</p>
+<!-- ================================================================
+     DETAIL ZONE
+     ================================================================ -->
 
-<!-- ===== A. 개요 & 기술 스택 ===== -->
-<h2>A. 개요 &amp; 기술 스택</h2>
+<h1>🔍 프로덕션 준비 상태 코드 감사</h1>
+<div class="subtitle">Staff Engineer 관점의 프로덕션 게이트 리뷰 &mdash; 코드 기반 정량 분석</div>
+
+<!-- A. Overview & Stack -->
 <div class="card">
-  <p style="margin-bottom:12px;">AI 캐릭터 파일(.charx) 편집기로, 로어북·정규식·Lua 스크립트·CSS/HTML 편집, 실시간 프리뷰, MCP 프로토콜 기반 외부 AI 어시스턴트 통합을 지원하는 데스크톱 도구 애플리케이션. 별도 팝아웃 윈도우로 채팅 프리뷰와 디버그 패널을 제공하며, 로컬 HTTP API 서버를 통한 MCP 도구 연동이 핵심 차별점이다.</p>
+  <h2 style="margin-top:0; border:none; padding:0;">A. 프로젝트 개요 및 기술 스택</h2>
+  <p style="margin:0.8rem 0;">
+    Electron 기반 데스크톱 에디터로, 특정 AI 캐릭터 파일 포맷(.charx, .risum, .risup)의 편집·프리뷰·관리를 담당한다.
+    MCP(Model Context Protocol) 서버를 내장하여 외부 AI 어시스턴트가 파일 필드를 직접 읽고 쓸 수 있으며,
+    터미널, 실시간 프리뷰(Lua/CBS 엔진), 코드 에디터를 통합한 복합 도구이다.
+  </p>
+
+  <div class="stat-grid">
+    <div class="stat-box"><div class="stat-value">18,046</div><div class="stat-label">소스 LOC (TypeScript)</div></div>
+    <div class="stat-box"><div class="stat-value">102</div><div class="stat-label">TypeScript 파일</div></div>
+    <div class="stat-box"><div class="stat-value">202</div><div class="stat-label">테스트 케이스</div></div>
+    <div class="stat-box"><div class="stat-value">37</div><div class="stat-label">테스트 파일</div></div>
+    <div class="stat-box"><div class="stat-value">55</div><div class="stat-label">커밋 수</div></div>
+    <div class="stat-box"><div class="stat-value">28</div><div class="stat-label">의존성 패키지</div></div>
+  </div>
+  <p style="font-size:0.8rem; color:var(--text-dim);">
+    LOC: <code>find src/ -name '*.ts' | xargs wc -l</code> 기준 (테스트 제외). 테스트 수: Vitest + Node.js 통합 테스트 합산. 커밋 수: <code>git rev-list --count HEAD</code>.
+  </p>
+
+  <h3>감지된 기술 스택</h3>
   <div class="tech-grid">
-    <div class="tech-item"><span>Vue</span><span class="mono">3.5.29</span></div>
-    <div class="tech-item"><span>Pinia</span><span class="mono">3.0.4</span></div>
-    <div class="tech-item"><span>Electron</span><span class="mono">40.8.0</span></div>
-    <div class="tech-item"><span>TypeScript</span><span class="mono">5.9.3</span></div>
-    <div class="tech-item"><span>Vite</span><span class="mono">7.3.1</span></div>
-    <div class="tech-item"><span>Monaco Editor</span><span class="mono">0.55.1</span></div>
-    <div class="tech-item"><span>xterm.js</span><span class="mono">6.0.0</span></div>
-    <div class="tech-item"><span>ESLint</span><span class="mono">10.0.3</span></div>
-    <div class="tech-item"><span>Vitest</span><span class="mono">4.0.18</span></div>
-    <div class="tech-item"><span>Prettier</span><span class="mono">3.8.1</span></div>
-    <div class="tech-item"><span>Husky + lint-staged</span><span class="mono">pre-commit</span></div>
-    <div class="tech-item"><span>node-pty</span><span class="mono">1.1.0</span></div>
+    <span class="tech-tag">Electron 40.8</span>
+    <span class="tech-tag">Vue 3.5</span>
+    <span class="tech-tag">Vite 7.3</span>
+    <span class="tech-tag">TypeScript 5.9 (strict)</span>
+    <span class="tech-tag">Pinia 3.0</span>
+    <span class="tech-tag">Monaco Editor 0.53</span>
+    <span class="tech-tag">xterm.js 6.0</span>
+    <span class="tech-tag">wasmoon 1.16 (Lua)</span>
+    <span class="tech-tag">msgpackr 1.11</span>
+    <span class="tech-tag">node-pty 1.1</span>
+    <span class="tech-tag">Vitest 4.0</span>
+    <span class="tech-tag">ESLint 10 + Prettier</span>
+    <span class="tech-tag">Husky + lint-staged</span>
+    <span class="tech-tag">GitHub Actions CI</span>
   </div>
-  <table style="margin-top:16px;">
-    <tr><th>지표</th><th>값</th><th>산출 근거</th></tr>
-    <tr><td>소스 LOC (src/)</td><td><strong>21,403줄</strong> (TS 19,151 + Vue 427 + CSS 1,825)</td><td>Get-Content | Measure-Object 전수 카운트</td></tr>
-    <tr><td>루트 TS LOC</td><td><strong>1,659줄</strong> (main.ts 1,013 + preload.ts 104 + 기타)</td><td>동일</td></tr>
-    <tr><td>테스트</td><td><strong>197개</strong> (30 파일: Vitest 23 + Node.js 7)</td><td>vitest run 실행 결과</td></tr>
-    <tr><td>소스 파일</td><td><strong>109개</strong> (.ts 104 + .vue 4 + .css 1)</td><td>Get-ChildItem 카운트</td></tr>
-    <tr><td>커밋 수</td><td><strong>44개</strong></td><td>git log --oneline 카운트</td></tr>
-    <tr><td>프로덕션 의존성</td><td><strong>8개</strong></td><td>package.json dependencies</td></tr>
-    <tr><td>개발 의존성</td><td><strong>19개</strong></td><td>package.json devDependencies</td></tr>
-  </table>
 </div>
 
-<!-- ===== B. 점수 테이블 ===== -->
-<h2>B. 점수 테이블</h2>
+<!-- B. Scores Table -->
 <div class="card">
-  <div class="grid-score">
-    <table>
+  <h2 style="margin-top:0; border:none; padding:0;">B. 평가 점수 총괄</h2>
+  <table class="score-table">
+    <thead>
       <tr><th>카테고리</th><th>가중치</th><th>점수</th><th>가중 점수</th><th>요약</th></tr>
+    </thead>
+    <tbody>
       <tr>
-        <td><strong>1. 코드 품질 &amp; 유지보수성</strong></td>
-        <td>25%</td>
-        <td><strong>7.5</strong></td>
-        <td>1.88</td>
-        <td>80+ 모듈 분리 우수, Pinia 도입. controller.ts 모놀리스와 132개 any 타입이 약점</td>
-      </tr>
-      <tr>
-        <td><strong>2. 보안 &amp; 신뢰성</strong></td>
-        <td>25%</td>
-        <td><strong>6.0</strong></td>
-        <td>1.50</td>
-        <td>MCP 필드 화이트리스트·Bearer 인증 양호. 경로 탐색·innerHTML XSS 미해결</td>
+        <td>코드 품질 및 유지보수성</td><td>25%</td>
+        <td class="score-cell s-yellow">7.5</td><td class="s-yellow">1.88</td>
+        <td>모듈 분리 우수, 컨트롤러 God Object가 유일한 약점</td>
       </tr>
       <tr>
-        <td><strong>3. 엔지니어링 재현성 &amp; 운영 준비도</strong></td>
-        <td>20%</td>
-        <td><strong>8.0</strong></td>
-        <td>1.60</td>
-        <td>CI/CD·lockfile·pre-commit·197개 테스트·README 완비. 컨트롤러 테스트 부재</td>
+        <td>보안 및 신뢰성</td><td>25%</td>
+        <td class="score-cell s-yellow">7.0</td><td class="s-yellow">1.75</td>
+        <td>Electron 보안 모범 사례 준수, 암호화는 호환성 트레이드오프</td>
       </tr>
       <tr>
-        <td><strong>4. 아키텍처 &amp; 확장성</strong></td>
-        <td>20%</td>
-        <td><strong>7.0</strong></td>
-        <td>1.40</td>
-        <td>Vue 3 반응형 전환 진행. 사이드바 빌더 600줄 혼합, 명령형 DOM 조작 잔존</td>
+        <td>엔지니어링 재현성 및 운영 준비</td><td>20%</td>
+        <td class="score-cell s-yellow">7.0</td><td class="s-yellow">1.40</td>
+        <td>자동화된 빌드·CI·202개 테스트, 프로덕션 로깅 부재</td>
       </tr>
       <tr>
-        <td><strong>5. 기술 스택 &amp; 의존성 건강도</strong></td>
-        <td>10%</td>
-        <td><strong>8.5</strong></td>
-        <td>0.85</td>
-        <td>최신 스택, 최소 의존성, 린터+타입체커+포매터 완비. CVE 2건 존재</td>
+        <td>아키텍처 및 확장성</td><td>20%</td>
+        <td class="score-cell s-yellow">7.0</td><td class="s-yellow">1.40</td>
+        <td>클린 데이터 흐름, 메모리 기반 I/O가 확장 제한</td>
       </tr>
-      <tr style="background:var(--surface2);">
-        <td colspan="3"><strong>가중 총점</strong></td>
-        <td colspan="2">
-          <span style="font-size:28px;font-weight:800;color:var(--accent);">7.23 / 10</span>
-        </td>
+      <tr>
+        <td>기술 스택 및 의존성 건강</td><td>10%</td>
+        <td class="score-cell s-green">9.0</td><td class="s-green">0.90</td>
+        <td>최신 툴체인, 취약점 0건, strict 타입 전면 적용</td>
       </tr>
-    </table>
-    <div style="text-align:center;">
-      <div class="grade grade-b">B</div>
-      <div style="color:var(--text2);font-size:12px;margin-top:4px;">등급</div>
-    </div>
-  </div>
-  <p style="font-size:12px;color:var(--text2);margin-top:12px;"><strong>가중치 조정:</strong> 기본값 유지. Electron 데스크톱 앱으로 보안 가중치 하향(−5%)을 고려할 수 있으나, MCP HTTP API 서버를 제공하므로 원격 공격 표면이 존재하여 기본 25%를 유지함.</p>
+      <tr class="total-row">
+        <td colspan="3" style="text-align:right;">가중 합산 총점</td>
+        <td class="score-cell s-yellow" style="font-size:1.4rem;">7.33</td>
+        <td><span class="grade-badge grade-B">B</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="font-size:0.8rem; color:var(--text-dim); margin-top:0.5rem;">
+    <strong>가중치 조정:</strong> 기본값 유지 (25/25/20/20/10). 데스크톱 에디터 특성상 보안 카테고리에서 공개 API 표면이 없는 점을 고려했으나,
+    MCP 서버가 로컬 HTTP를 사용하므로 기본 가중치를 그대로 적용.
+  </p>
 </div>
 
-<!-- ===== C. 주요 발견사항 ===== -->
-<h2>C. 주요 발견사항</h2>
+<!-- C. Key Findings -->
+<h2>C. 주요 발견 사항</h2>
 
-<!-- 1. 코드 품질 -->
-<h3>1. 코드 품질 &amp; 유지보수성 — 7.5/10</h3>
-
-<div class="finding finding-positive">
-  <div class="finding-title">🟢 80+ 모듈의 명확한 관심사 분리</div>
-  <div class="finding-body"><span class="mono">src/lib/</span>에 80개 이상의 특화 모듈이 단일 책임으로 분리됨. <span class="mono">file-actions.ts</span>, <span class="mono">sidebar-builder.ts</span>, <span class="mono">layout-manager.ts</span>, <span class="mono">preview-engine.ts</span> 등 각각 명확한 영역 담당. Pinia 스토어(<span class="mono">app-store.ts</span>)가 21개 반응형 상태를 중앙 관리하며, 액션 레지스트리(<span class="mono">action-registry.ts</span>)가 Vue↔컨트롤러 브릿지를 제공.</div>
-</div>
-
-<div class="finding finding-major">
-  <div class="finding-title">🟠 controller.ts 모놀리스 (2,364줄) — <span class="tag tag-major">MAJOR</span> [TRADE-OFF: 점진적 마이그레이션 전략]</div>
-  <div class="finding-body"><span class="mono">src/app/controller.ts</span> 81KB, 프로젝트 최대 파일. 사이드바 구축 로직(~600줄), 에디터 생명주기, 탭 관리, 키보드 단축키가 혼재. <span class="mono">registerActions()</span>로 50+ 액션을 Vue에 위임하는 브릿지 패턴이 도입되었으나, DOM 이벤트 리스너 설정(<span class="mono">getElementById</span> 97회)이 여전히 명령형. Pinia 전환이 부분적이어서 상태 동기화 보일러플레이트(<span class="mono">syncStoreState</span>)가 필요한 구조.</div>
-</div>
-
-<div class="finding finding-major">
-  <div class="finding-title">🟠 <code>any</code> 타입 132회 사용, ESLint 규칙 비활성화 — <span class="tag tag-major">MAJOR</span> [TRADE-OFF: 레거시 마이그레이션 비용]</div>
-  <div class="finding-body"><span class="mono">eslint.config.mjs</span>에서 <span class="mono">@typescript-eslint/no-explicit-any: 'off'</span> 설정. <span class="mono">strict: true</span>인 tsconfig에도 불구하고 controller.ts에 44회 집중. 근본 원인: <span class="mono">let fileData: any = null</span>(L128) — 이 선언이 40+ 파생 사용처로 전파됨. <span class="mono">CharxData</span> 인터페이스가 <span class="mono">app-store.ts</span>에 이미 정의되어 있어 타입 적용이 가능한 상태.</div>
-</div>
-
-<!-- 2. 보안 -->
-<h3>2. 보안 &amp; 신뢰성 — 6.0/10</h3>
-
-<div class="finding finding-critical">
-  <div class="finding-title">🔴 경로 탐색 취약점 — 페르소나 파일 핸들러 — <span class="tag tag-critical">CRITICAL</span> [OVERSIGHT]</div>
-  <div class="finding-body"><span class="mono">main.ts</span> L920-935: <span class="mono">read-persona</span>/<span class="mono">write-persona</span> IPC 핸들러가 <span class="mono">name</span> 파라미터를 검증 없이 <span class="mono">path.join()</span>에 전달. <span class="mono">../../.env</span> 같은 입력으로 임의 파일 읽기/쓰기 가능. <span class="mono">add-asset-buffer</span>의 <span class="mono">targetFolder</span>도 동일 문제.</div>
-</div>
-
-<div class="finding finding-major">
-  <div class="finding-title">🟠 innerHTML XSS — 프리뷰 콘텐츠 미이스케이프 — <span class="tag tag-major">MAJOR</span> [OVERSIGHT]</div>
-  <div class="finding-body"><span class="mono">src/lib/preview-format.ts</span> L252: <span class="mono">buildPreviewMessageHtml()</span>에서 <span class="mono">name</span>은 <span class="mono">escapePreviewHtml()</span>로 이스케이프하면서 <span class="mono">content</span>는 원본 삽입. AI 응답 내용이 HTML로 렌더링되는 경로. 66개 innerHTML 사용 중 대부분은 정적 한국어 문자열(저위험)이나, 이 지점은 동적 데이터.</div>
-</div>
-
-<div class="finding finding-positive">
-  <div class="finding-title">🟢 MCP API 서버 보안 강화 완료</div>
-  <div class="finding-body"><span class="mono">mcp-api-server.ts</span>: <span class="mono">crypto.randomBytes(32)</span> Bearer 토큰(L267), <span class="mono">pickAllowedFields()</span> 화이트리스트로 프로토타입 오염 차단(L181-208), <span class="mono">readBody()</span> 10MB 제한(L63-80), 사용자 확인 팝업 필수. <span class="mono">contextBridge</span>(<span class="mono">preload.ts</span>)가 IPC를 채널 기반으로 격리.</div>
-</div>
-
-<div class="finding finding-minor">
-  <div class="finding-title">🟡 DOMPurify CVE 2건 (moderate) — <span class="tag tag-minor">MINOR</span> [OVERSIGHT]</div>
-  <div class="finding-body"><span class="mono">npm audit</span>: monaco-editor가 의존하는 dompurify 3.1.3-3.3.1에 XSS 취약점(GHSA-v2wj-7wpq-c8vv). 직접 사용은 아니나 의존성 체인에 포함.</div>
-</div>
-
-<p style="font-size:12px;color:var(--text2);margin-top:16px;"><strong>보안 체크리스트 결과:</strong></p>
-<table>
-  <tr><th>취약점 유형</th><th>상태</th><th>근거</th></tr>
-  <tr><td>SQL Injection (CWE-89)</td><td>N/A</td><td>데이터베이스 미사용. 파일 기반 .charx 처리</td></tr>
-  <tr><td>XSS (CWE-79/80)</td><td><span class="tag tag-major">발견</span></td><td>preview-format.ts content 미이스케이프, popout/controller.ts fileName 미이스케이프</td></tr>
-  <tr><td>Log Injection (CWE-117)</td><td>N/A</td><td>사용자 입력이 로그에 직접 기록되는 경로 없음. console.log 50회 사용 중 대부분 개발용</td></tr>
-  <tr><td>Insecure Deserialization</td><td><span class="tag tag-minor">저위험</span></td><td>JSON.parse 사용하나, .charx 파일은 로컬 신뢰 소스. MCP API는 화이트리스트 적용</td></tr>
-  <tr><td>비밀번호/자격증명</td><td>N/A</td><td>인증 시스템 없음. MCP 토큰은 런타임 생성</td></tr>
-</table>
-
-<!-- 3. 재현성 -->
-<h3>3. 엔지니어링 재현성 &amp; 운영 준비도 — 8.0/10</h3>
-
-<div class="finding finding-positive">
-  <div class="finding-title">🟢 완전한 자동화 파이프라인 구축</div>
-  <div class="finding-body"><span class="mono">.github/workflows/ci.yml</span>: push/PR 시 lint→typecheck→test→build 4단계 실행. <span class="mono">.husky/pre-commit</span>: <span class="mono">lint-staged</span>로 ESLint(maxWarnings=0) + Prettier 자동 적용. <span class="mono">package-lock.json</span> 존재하여 재현 가능한 빌드. <span class="mono">npm run build</span> 체인이 전체 검증 수행.</div>
-</div>
-
-<div class="finding finding-positive">
-  <div class="finding-title">🟢 197개 테스트, 의미 있는 검증 범위</div>
-  <div class="finding-body">30개 테스트 파일에서 197개 테스트 통과. Vitest 23파일(단위 테스트) + Node.js 7파일(통합 테스트). <span class="mono">section-parser.test.ts</span> 33개, <span class="mono">data-serializer.test.ts</span> 13개, <span class="mono">layout-manager.test.ts</span> 등 핵심 로직 검증. 빈 테스트나 assert 없는 테스트 없음.</div>
-</div>
-
-<div class="finding finding-major">
-  <div class="finding-title">🟠 controller.ts / popout/controller.ts 테스트 전무 — <span class="tag tag-major">MAJOR</span> [TRADE-OFF: 모놀리스 구조로 단위 테스트 작성 어려움]</div>
-  <div class="finding-body">프로젝트 최대 파일인 <span class="mono">controller.ts</span>(2,364줄)과 <span class="mono">popout/controller.ts</span>(935줄)에 테스트가 없음. 사이드바 구축, 탭 전환, 파일 저장 체인 등 핵심 워크플로의 회귀 방지 장치 부재. 모놀리스 구조가 테스트 격리를 어렵게 만드는 순환 문제.</div>
-</div>
-
-<!-- 4. 아키텍처 -->
-<h3>4. 아키텍처 &amp; 확장성 — 7.0/10</h3>
-
-<div class="finding finding-positive">
-  <div class="finding-title">🟢 Vue 3 + Pinia 반응형 레이어 도입</div>
-  <div class="finding-body"><span class="mono">app-store.ts</span>: 21개 반응형 상태 + 4 computed + 11 actions. <span class="mono">MenuBar.vue</span>·<span class="mono">StatusBar.vue</span>·<span class="mono">TerminalHeader.vue</span> 3개 SFC 컴포넌트. 이벤트 기반 통신(<span class="mono">@action</span> emit → <span class="mono">action-registry.ts</span> → 컨트롤러)으로 관심사 분리. 컴포넌트가 스토어를 직접 변경하지 않는 깔끔한 단방향 흐름.</div>
-</div>
-
-<div class="finding finding-major">
-  <div class="finding-title">🟠 명령형 DOM 조작 잔존 (getElementById 97회, innerHTML 66회) — <span class="tag tag-major">MAJOR</span> [TRADE-OFF: 점진적 마이그레이션]</div>
-  <div class="finding-body">Vue 반응형 전환이 시작되었으나, 대부분의 UI 조작이 여전히 <span class="mono">document.getElementById()</span> + <span class="mono">.innerHTML</span> 패턴. 사이드바(<span class="mono">sidebar-builder.ts</span> 28.2KB), 폼 에디터(<span class="mono">form-editor.ts</span> 25.8KB), 도움말 팝업(<span class="mono">help-popup.ts</span> 25.6KB)이 주요 잔존 영역. Vue 가상 DOM과 직접 DOM 조작의 공존이 잠재적 동기화 문제 유발 가능.</div>
-</div>
-
-<div class="finding finding-minor">
-  <div class="finding-title">🟡 TerminalHeader.vue 미사용 — <span class="tag tag-minor">MINOR</span> [OVERSIGHT]</div>
-  <div class="finding-body"><span class="mono">src/components/TerminalHeader.vue</span>(70줄) 생성되었으나 어디서도 import되지 않음. <span class="mono">App.vue</span> L125-156에 동일 헤더가 인라인 구현되어 있어 중복 코드.</div>
-</div>
-
-<!-- 5. 기술 스택 -->
-<h3>5. 기술 스택 &amp; 의존성 건강도 — 8.5/10</h3>
-
-<div class="finding finding-positive">
-  <div class="finding-title">🟢 최신 스택 + 최소 의존성</div>
-  <div class="finding-body">프로덕션 8개, 개발 19개로 범위 대비 합리적. Vue 3.5, Vite 7.3, TypeScript 5.9, Electron 40 모두 최신 안정 버전. Vitest + vue-tsc + ESLint + Prettier + Husky의 완전한 정적 분석 체인. <span class="mono">tsconfig.json</span>에 <span class="mono">strict: true</span> 설정.</div>
-</div>
-
-<div class="finding finding-minor">
-  <div class="finding-title">🟡 <code>no-explicit-any: 'off'</code> ESLint 규칙 비활성화 — <span class="tag tag-minor">MINOR</span> [TRADE-OFF: 점진적 타입 강화]</div>
-  <div class="finding-body"><span class="mono">eslint.config.mjs</span>: <span class="mono">strict: true</span> tsconfig가 있으나 ESLint의 <span class="mono">any</span> 금지 규칙을 전역 비활성화하여 132개 <span class="mono">any</span>가 린트를 통과. <span class="mono">strict</span>가 컴파일 타임 검사를, ESLint가 코드 리뷰 시 경고를 제공하는 이중 보호 중 한 축이 해제된 상태.</div>
-</div>
-
-<!-- AI 안티패턴 -->
-<h3>AI 생성 코드 안티패턴</h3>
+<!-- Category 1: Code Quality -->
 <div class="card">
-  <table>
-    <tr><th>안티패턴</th><th>발견 여부</th><th>위치 &amp; 빈도</th><th>실제 위험도</th></tr>
-    <tr><td>바닐라 재구현</td><td>미발견</td><td>—</td><td>해당 없음. 검증된 라이브러리(Monaco, xterm, Pinia) 적극 활용</td></tr>
-    <tr><td>버그 데자뷰 (복붙 로직)</td><td><span class="tag tag-minor">경미</span></td><td>TerminalHeader.vue ↔ App.vue 헤더 중복, preview-format.ts 이스케이프 불일치</td><td>중복 자체는 경미하나, 이스케이프 불일치가 XSS로 연결</td></tr>
-    <tr><td>리팩터링 회피</td><td><span class="tag tag-minor">경미</span></td><td>controller.ts에 Pinia syncStoreState 보일러플레이트 추가. 상태를 스토어로 이전 대신 브릿지 동기화</td><td>낮음. 점진적 마이그레이션의 의도적 단계</td></tr>
-    <tr><td>과도한 주석</td><td>미발견</td><td>—</td><td>주석이 절제적이고 유의미</td></tr>
-    <tr><td>과잉 명세</td><td>미발견</td><td>—</td><td>모듈이 범용적으로 설계됨</td></tr>
+  <h3>1. 코드 품질 및 유지보수성 <span class="s-yellow">(7.5/10)</span></h3>
+
+  <div class="finding finding-major">
+    <div class="finding-title">
+      <span class="severity sev-major">🟠 Major</span>
+      컨트롤러 God Object
+      <span class="tag tag-oversight">[OVERSIGHT]</span>
+    </div>
+    <code>src/app/controller.ts</code> — 2,291 LOC, 48개 임포트. 탭 관리, 에디터 초기화, 상태 동기화, 라이프사이클을 모두 담당.
+    변경 시 연쇄 영향이 크고, 새로운 기여자의 진입 장벽을 높인다.
+    <div class="evidence">근거: 전체 코드베이스 18,046 LOC 중 12.7% 집중. lib/ 모듈 48개에 대한 직접 의존.</div>
+  </div>
+
+  <div class="finding finding-minor">
+    <div class="finding-title">
+      <span class="severity sev-minor">🟡 Minor</span>
+      프리뷰 엔진 사일런트 실패
+      <span class="tag tag-oversight">[OVERSIGHT]</span>
+    </div>
+    <code>src/lib/preview-engine.ts</code>의 11개 catch 블록이 <code>console.warn</code>만 출력하고 UI에 전파하지 않는다.
+    Lua 초기화 실패, CBS 파싱 오류, 정규식 오류가 사용자에게 보이지 않는다.
+    <div class="evidence">근거: preview-engine.ts 305~307, 876~878, 1041~1043행 — catch 후 return 0 또는 console.warn만 수행.</div>
+  </div>
+
+  <div class="finding finding-suggestion">
+    <div class="finding-title">
+      <span class="severity sev-suggestion">🔵 Suggestion</span>
+      구조화된 로깅 부재
+      <span class="tag tag-oversight">[OVERSIGHT]</span>
+    </div>
+    전체 코드베이스에서 <code>console.warn</code> 12회, <code>console.error</code> 7회 — 모두 비구조화된 콘솔 출력.
+    디스크 기반 로그 파일이나 로깅 라이브러리(Winston/Pino 등) 없음.
+    데스크톱 앱 특성상 즉각적 위험은 아니지만, 사후 진단이 어렵다.
+    <div class="evidence">근거: 전체 파일 grep — console 호출 20건, 로깅 라이브러리 import 0건.</div>
+  </div>
+
+  <div class="finding finding-suggestion">
+    <div class="finding-title">
+      <span class="severity sev-suggestion">🔵 Suggestion</span>
+      코드 청결도 우수
+    </div>
+    TODO/FIXME/HACK 마커 0건. 주석 처리된 코드 블록 0건. 데드 코드 0건. 중복 로직 0건 (모듈 간 네임스페이스 분리 명확).
+    <div class="evidence">근거: grep으로 TODO/FIXME/HACK 검색 결과 0건. 주석 스타일은 섹션 구분자와 핵심 설명에 한정.</div>
+  </div>
+</div>
+
+<!-- Category 2: Security -->
+<div class="card">
+  <h3>2. 보안 및 신뢰성 <span class="s-yellow">(7.0/10)</span></h3>
+
+  <div class="finding finding-major">
+    <div class="finding-title">
+      <span class="severity sev-major">🟠 Major</span>
+      프리셋 암호화 — 하드코딩 키 + 고정 IV
+      <span class="tag tag-tradeoff">[TRADE-OFF: 호스트 앱 호환성]</span>
+    </div>
+    <code>src/charx-io.ts</code> — AES-256-GCM에 고정 키(<code>"risupreset"</code>의 SHA-256)와 12바이트 제로 IV를 사용.
+    동일 평문 → 동일 암호문이 생성되어 기밀성이 보장되지 않는다.
+    <strong>그러나</strong> 이는 호스트 AI 앱이 정의한 .risup 포맷 사양이며, 변경 시 파일 호환성이 깨진다.
+    실질적 위험은 "프리셋 파일을 제3자로부터 보호"하려는 목적이 아닌 포맷 식별 용도이므로 제한적.
+    <div class="evidence">근거: charx-io.ts 664~701행. RISUP_ENCRYPTION_KEY, RISUP_IV 상수 및 deriveRisupKey() 구현.</div>
+  </div>
+
+  <div class="finding finding-suggestion">
+    <div class="finding-title">
+      <span class="severity sev-suggestion">🔵 Suggestion</span>
+      Electron 보안 모범 사례 준수
+    </div>
+    <code>contextIsolation: true</code>, <code>nodeIntegration: false</code>, <code>sandbox: true</code> 설정 확인.
+    preload 스크립트는 <code>contextBridge.exposeInMainWorld()</code>을 통해 제한된 IPC 인터페이스만 노출.
+    MCP 서버는 <code>127.0.0.1</code>에만 바인딩, 256비트 Bearer 토큰 인증.
+    <div class="evidence">근거: main.ts webPreferences, preload.ts contextBridge 사용, mcp-api-server.ts 토큰 검증.</div>
+  </div>
+
+  <h3 style="font-size:0.9rem;">CWE 필수 점검 항목</h3>
+  <table class="cwe-table" style="font-size:0.85rem;">
+    <thead><tr><th>취약점 유형</th><th>상태</th><th>상세</th></tr></thead>
+    <tbody>
+      <tr><td>SQL Injection (CWE-89)</td><td class="s-green">N/A</td><td>SQL 데이터베이스 미사용. 데이터는 ZIP/msgpack 파일 기반.</td></tr>
+      <tr><td>XSS (CWE-79/80)</td><td class="s-green">안전</td><td>innerHTML 80+회 사용 중 동적 콘텐츠 전부 <code>escapePreviewHtml()</code>로 이스케이프. 정적 HTML 할당만 잔존.</td></tr>
+      <tr><td>Log Injection (CWE-117)</td><td class="s-yellow">저위험</td><td>로깅이 <code>console.warn/error</code>뿐이며, 사용자 입력이 직접 로그에 기록되는 경로 없음. 프로덕션 로깅 시스템 도입 시 재검토 필요.</td></tr>
+      <tr><td>Insecure Deserialization</td><td class="s-green">안전</td><td><code>msgpackr.unpack()</code> 사용. 코드 실행 경로 없음. <code>eval()</code>/<code>Function()</code> 생성자 0건.</td></tr>
+      <tr><td>부적절한 비밀번호 처리</td><td class="s-green">N/A</td><td>사용자 인증 시스템 없음. 세션 토큰은 <code>crypto.randomBytes(32)</code>로 생성, 메모리 내 에페메럴.</td></tr>
+      <tr><td>Insecure Direct Object Ref.</td><td class="s-green">N/A</td><td>로컬 데스크톱 앱. MCP API의 인덱스 파라미터는 범위 검증 수행.</td></tr>
+    </tbody>
   </table>
 </div>
 
-<!-- ===== D. 실행 계획 ===== -->
-<h2>D. 실행 계획</h2>
+<!-- Category 3: Reproducibility -->
 <div class="card">
+  <h3>3. 엔지니어링 재현성 및 운영 준비 <span class="s-yellow">(7.0/10)</span></h3>
 
-  <div class="action-item">
-    <div class="action-num">1</div>
-    <div>
-      <div class="finding-title">경로 탐색 취약점 수정 <span class="tag tag-quick">Quick Win</span></div>
-      <div class="finding-body"><span class="mono">main.ts</span>의 <span class="mono">read-persona</span>/<span class="mono">write-persona</span>/<span class="mono">add-asset-buffer</span> IPC 핸들러에 경로 검증 추가. <span class="mono">path.resolve()</span> 후 허용 디렉토리 접두사 검증. 파일명은 <span class="mono">/^[a-zA-Z0-9_-]+$/</span> 패턴 강제.</div>
+  <div class="finding finding-suggestion">
+    <div class="finding-title">
+      <span class="severity sev-suggestion">🔵 Suggestion</span>
+      빌드 재현성 및 CI 파이프라인 양호
     </div>
+    <code>package-lock.json</code> 커밋됨. <code>npm run build</code> 한 명령으로 lint → typecheck → test → electron → renderer 전체 실행.
+    GitHub Actions CI가 push/PR에서 lint, typecheck, test, build:renderer 자동 검증.
+    Husky + lint-staged로 커밋 전 ESLint(경고 0건 정책) + Prettier 자동 실행.
+    <div class="evidence">근거: package.json scripts, .github/workflows/ci.yml, .husky/pre-commit, package.json lint-staged 설정.</div>
   </div>
 
-  <div class="action-item">
-    <div class="action-num">2</div>
-    <div>
-      <div class="finding-title">innerHTML XSS 수정 — preview-format.ts content 이스케이프 <span class="tag tag-quick">Quick Win</span></div>
-      <div class="finding-body"><span class="mono">buildPreviewMessageHtml()</span>의 <span class="mono">${content}</span>를 <span class="mono">${escapePreviewHtml(content)}</span>로 교체. <span class="mono">popout/controller.ts</span> L383의 <span class="mono">fileName</span>도 동일 처리. 이미 <span class="mono">escapePreviewHtml()</span> 유틸리티가 존재하므로 즉시 적용 가능.</div>
+  <div class="finding finding-minor">
+    <div class="finding-title">
+      <span class="severity sev-minor">🟡 Minor</span>
+      테스트 커버리지 — 핵심은 양호, 에지 케이스 부족
+      <span class="tag tag-oversight">[OVERSIGHT]</span>
     </div>
+    37개 테스트 파일, 202개 테스트 케이스. 핵심 유틸리티(section-parser 41개, tab-manager 30개, data-serializer 24개)는 높은 커버리지.
+    그러나 손상된 파일, 잘못된 msgpack, 절단된 버퍼에 대한 에러 케이스 테스트 부족.
+    MCP 서버 통합 테스트 없음 (mcp-api-server.ts, toki-mcp-server.ts).
+    <div class="evidence">근거: test-charx.ts — 라운드트립·JPEG 프리픽스·Lua 병합 테스트 존재. 손상 파일·빈 파일 테스트 미존재.</div>
   </div>
 
-  <div class="action-item">
-    <div class="action-num">3</div>
-    <div>
-      <div class="finding-title">DOMPurify CVE 해결 — monaco-editor 업데이트 <span class="tag tag-quick">Quick Win</span></div>
-      <div class="finding-body"><span class="mono">npm audit fix --force</span>로 monaco-editor 0.53.0으로 다운그레이드 또는 dompurify 패치 대기. 브레이킹 체인지 확인 후 적용.</div>
+  <div class="finding finding-minor">
+    <div class="finding-title">
+      <span class="severity sev-minor">🟡 Minor</span>
+      프로덕션 관측성(Observability) 부재
+      <span class="tag tag-oversight">[OVERSIGHT]</span>
     </div>
+    디스크 기반 로그 파일 없음. 구조화된 에러 트래킹 없음. 프리뷰 엔진 오류가 UI에 표시되지 않음.
+    데스크톱 앱 크래시 시 사후 분석 수단이 DevTools 콘솔뿐.
+    <div class="evidence">근거: 전체 코드베이스 — 로깅 라이브러리 import 0건, fs.appendFile/writeFile 로그 경로 0건.</div>
   </div>
-
-  <div class="action-item">
-    <div class="action-num">4</div>
-    <div>
-      <div class="finding-title">controller.ts <code>any</code> 타입 제거 — CharxData 인터페이스 적용 <span class="tag tag-harden">Hardening</span></div>
-      <div class="finding-body"><span class="mono">fileData: any</span>를 <span class="mono">CharxData | null</span>로 변경하고 연쇄적 44개 <span class="mono">any</span> 수정. <span class="mono">editorInstance</span>에 Monaco 에디터 타입 적용. 이후 <span class="mono">no-explicit-any</span> ESLint 규칙 재활성화.</div>
-    </div>
-  </div>
-
-  <div class="action-item">
-    <div class="action-num">5</div>
-    <div>
-      <div class="finding-title">컨트롤러 테스트 추가 <span class="tag tag-harden">Hardening</span></div>
-      <div class="finding-body">파일 저장/열기 체인, 탭 전환, 사이드바 구축 등 핵심 워크플로 통합 테스트 작성. 먼저 사이드바 로직을 별도 모듈로 추출하여 테스트 가능하게 만든 후 진행.</div>
-    </div>
-  </div>
-
-  <div class="action-item">
-    <div class="action-num">6</div>
-    <div>
-      <div class="finding-title">사이드바 로직 컨트롤러에서 분리 <span class="tag tag-strategic">Strategic</span></div>
-      <div class="finding-body"><span class="mono">controller.ts</span> L597-1210의 사이드바 구축 코드(~600줄)를 Vue SFC로 점진적 전환. <span class="mono">sidebar-builder.ts</span>의 DOM 조작을 반응형 데이터 바인딩으로 교체. <span class="mono">TerminalHeader.vue</span> 통합 또는 삭제.</div>
-    </div>
-  </div>
-
-  <div class="action-item">
-    <div class="action-num">7</div>
-    <div>
-      <div class="finding-title">빈 catch 블록 제거 및 에러 보고 표준화 <span class="tag tag-quick">Quick Win</span></div>
-      <div class="finding-body"><span class="mono">controller.ts:2118</span>, <span class="mono">preview-engine.ts:748</span>의 빈 <span class="mono">catch (e) {}</span>를 <span class="mono">reportRuntimeError()</span>로 교체. 기존 유틸리티가 있으므로 일관된 에러 보고 체계 적용.</div>
-    </div>
-  </div>
-
 </div>
 
-<!-- ===== SEPARATOR ===== -->
-<hr class="separator">
-
-<!-- ===== E. 코드베이스 캐릭터 ===== -->
-<h2>E. 코드베이스 캐릭터</h2>
+<!-- Category 4: Architecture -->
 <div class="card">
-  <p style="font-size:15px;font-weight:500;line-height:1.8;">기능 중심의 빠른 프로토타이핑으로 시작된 명령형 코드베이스가, 반응형 프레임워크 도입·정적 분석 도구 구축·테스트 확장이라는 체계적 강화를 거치며 하이브리드 아키텍처로 전환 중인 과도기 상태 — 도구는 갖춰졌으나 레거시 코어의 현대화가 아직 진행 중이다.</p>
-</div>
+  <h3>4. 아키텍처 및 확장성 <span class="s-yellow">(7.0/10)</span></h3>
 
-<!-- ===== F. 최종 판정 ===== -->
-<h2>F. 최종 판정</h2>
-<div class="verdict-box">
-
-  <p style="color:var(--text2);font-size:13px;margin-bottom:16px;">AI 캐릭터 파일 편집기. 로어북·스크립트·CSS/HTML 편집과 실시간 프리뷰, 외부 AI 어시스턴트 연동을 위한 로컬 API 서버를 제공하는 데스크톱 도구.</p>
-
-  <p style="color:var(--text2);font-size:13px;margin-bottom:20px;"><strong>스택:</strong> TypeScript · Vue 3 · Pinia · Electron · Vite · Monaco Editor · xterm.js</p>
-
-  <div style="text-align:center;margin:24px 0;">
-    <div class="grade grade-b" style="margin-bottom:4px;">B</div>
-    <div class="score-total">7.23</div>
-    <div style="color:var(--text2);font-size:12px;margin-top:4px;">가중 총점 / 10</div>
+  <div class="finding finding-suggestion">
+    <div class="finding-title">
+      <span class="severity sev-suggestion">🔵 Suggestion</span>
+      클린 모듈 계층 구조
+    </div>
+    <code>app/</code> → <code>lib/</code> → <code>stores/</code> 단방향 의존성. 순환 임포트 0건.
+    MCP API 서버는 의존성 주입 패턴으로 완전 격리 (import 2개: http, crypto).
+    charx-io.ts는 외부 import 0건으로 독립 테스트 가능.
+    <div class="evidence">근거: mcp-api-server.ts McpApiDeps 인터페이스, charx-io.ts Node.js 내장 모듈만 사용.</div>
   </div>
 
-  <table style="margin:20px 0;">
-    <tr><td style="width:55%;">코드 품질 &amp; 유지보수성</td><td><strong>7.5</strong></td><td style="color:var(--text2);">모듈화 우수, any 타입·모놀리스 미해결</td></tr>
-    <tr><td>보안 &amp; 신뢰성</td><td><strong>6.0</strong></td><td style="color:var(--text2);">API 보안 양호, 파일 경로·XSS 취약점 존재</td></tr>
-    <tr><td>엔지니어링 재현성</td><td><strong>8.0</strong></td><td style="color:var(--text2);">CI/CD·pre-commit·197개 테스트 완비</td></tr>
-    <tr><td>아키텍처 &amp; 확장성</td><td><strong>7.0</strong></td><td style="color:var(--text2);">반응형 전환 시작, 명령형 잔존</td></tr>
-    <tr><td>기술 스택 &amp; 의존성</td><td><strong>8.5</strong></td><td style="color:var(--text2);">최신·최소·완전한 도구 체인</td></tr>
+  <div class="finding finding-minor">
+    <div class="finding-title">
+      <span class="severity sev-minor">🟡 Minor</span>
+      파일 전체 메모리 로딩
+      <span class="tag tag-tradeoff">[TRADE-OFF: 구현 단순성]</span>
+    </div>
+    <code>fs.readFileSync(filePath)</code>로 전체 파일을 버퍼에 로딩. 에셋이 포함된 대형 .charx 파일은 수십 MB RAM 소비 가능.
+    MCP API는 10MB 바디 제한을 적용하지만, 파일 I/O 자체에는 크기 제한 없음.
+    일반적 사용 범위(&lt;50MB)에서는 문제없으나, 수백 MB 파일에서는 OOM 위험.
+    <div class="evidence">근거: charx-io.ts 300행 — fs.readFileSync, adm-zip 버퍼 생성. 스트리밍 I/O 미구현.</div>
+  </div>
+
+  <div class="finding finding-minor">
+    <div class="finding-title">
+      <span class="severity sev-minor">🟡 Minor</span>
+      Pinia + 컨트롤러 이중 상태 동기화
+      <span class="tag tag-tradeoff">[TRADE-OFF: Electron 아키텍처]</span>
+    </div>
+    Vue 반응형 상태(Pinia)와 컨트롤러 모듈 스코프 변수가 <code>syncStoreState()</code>로 수동 동기화.
+    Electron 단일 스레드 특성상 레이스 컨디션 위험은 낮으나, 상태 불일치 버그 가능성 상존.
+    <div class="evidence">근거: controller.ts 140~170행 let 변수들, 173행 syncStoreState(), app-store.ts Pinia refs.</div>
+  </div>
+</div>
+
+<!-- Category 5: Tech Stack -->
+<div class="card">
+  <h3>5. 기술 스택 및 의존성 건강 <span class="s-green">(9.0/10)</span></h3>
+
+  <div class="finding finding-suggestion">
+    <div class="finding-title">
+      <span class="severity sev-suggestion">🔵 Suggestion</span>
+      최신 유지 관리 활성 스택
+    </div>
+    모든 핵심 의존성이 최신 메이저 버전: Electron 40 (Chromium 132), Vue 3.5, Vite 7, TypeScript 5.9.
+    <code>npm audit</code> 취약점 0건. 프로덕션/개발 의존성 적절히 분리 (9 prod / 19 dev).
+    <div class="evidence">근거: package.json dependencies/devDependencies 전수 조사. npm audit 결과 0 vulnerabilities.</div>
+  </div>
+
+  <div class="finding finding-suggestion">
+    <div class="finding-title">
+      <span class="severity sev-suggestion">🔵 Suggestion</span>
+      정적 분석 도구 완비
+    </div>
+    TypeScript <code>strict: true</code> — 3개 tsconfig 모두 적용.
+    ESLint 10 플랫 설정 + <code>@typescript-eslint</code> + <code>eslint-plugin-vue</code>.
+    Prettier로 코드 포매팅 통일. lint-staged로 커밋 게이트에서 경고 0건 정책 강제.
+    <div class="evidence">근거: tsconfig.json, tsconfig.electron.json, tsconfig.node-libs.json 모두 "strict": true. eslint.config.mjs, .prettierrc, package.json lint-staged 설정.</div>
+  </div>
+
+  <div class="finding finding-minor">
+    <div class="finding-title">
+      <span class="severity sev-minor">🟡 Minor</span>
+      <code>engines</code> 필드 미지정
+      <span class="tag tag-oversight">[OVERSIGHT]</span>
+    </div>
+    <code>package.json</code>에 Node.js 최소 버전이 명시되지 않음. CI는 Node 22를 사용하지만, 로컬 환경과의 불일치 가능.
+    <div class="evidence">근거: package.json — "engines" 키 부재. .github/workflows/ci.yml — node-version: '22'.</div>
+  </div>
+</div>
+
+<!-- AI Anti-patterns -->
+<div class="card card-alt">
+  <h3>AI 생성 코드 안티패턴 분석</h3>
+  <p style="margin-bottom:0.8rem; color:var(--text-muted);">커밋 히스토리와 코드 패턴을 분석한 결과, 일부 AI 어시스턴트 활용 흔적이 있으나
+  프로덕션 위험을 높이는 안티패턴은 감지되지 않았다.</p>
+
+  <table style="font-size:0.85rem;">
+    <thead><tr><th>안티패턴</th><th>감지</th><th>상세</th></tr></thead>
+    <tbody>
+      <tr><td>바닐라 재구현</td><td class="s-green">미감지</td><td>HTML 이스케이프만 자체 구현 (DOMPurify 수준은 불필요). 나머지는 적절한 라이브러리 사용.</td></tr>
+      <tr><td>복사-붙여넣기 버그</td><td class="s-green">미감지</td><td>중복 로직 0건. 공유 유틸리티 적절히 추출 (section-parser, data-serializer).</td></tr>
+      <tr><td>리팩터링 회피</td><td class="s-yellow">일부</td><td>controller.ts가 점진적으로 비대해진 흔적. 커밋 히스토리상 모듈 추출은 진행 중.</td></tr>
+      <tr><td>과잉 주석</td><td class="s-green">미감지</td><td>주석은 섹션 구분자와 비자명 로직 설명에 한정. 코드를 반복하는 주석 없음.</td></tr>
+      <tr><td>과잉 명세화</td><td class="s-green">미감지</td><td>모듈들이 적절한 범용성 유지 (section-parser는 Lua/CSS 양쪽 지원).</td></tr>
+      <tr><td>가짜 테스트 커버리지</td><td class="s-green">미감지</td><td>테스트가 실제 로직 검증 수행 (라운드트립, 파싱, 상태 전이). 얕은 실행 확인 테스트 아님.</td></tr>
+    </tbody>
   </table>
+</div>
 
-  <div class="verdict-text">
-    <p>인프라 측면에서 이 프로젝트는 명확한 성숙도를 보여준다 — CI/CD 파이프라인, pre-commit 훅, 197개의 유의미한 테스트, strict TypeScript와 ESLint/Prettier의 완전한 정적 분석 체인은 "만들고 끝" 프로젝트가 아닌 지속적으로 관리되는 코드베이스의 증거다. 80개 이상의 특화 모듈로 분리된 아키텍처와 Pinia 스토어 도입은 코드 조직화에 대한 의지를 보여준다. 그러나 핵심 컨트롤러(2,364줄)가 여전히 명령형 DOM 조작(getElementById 97회, innerHTML 66회)에 의존하며, 132개의 any 타입이 TypeScript strict 모드의 실질적 효과를 약화시키고 있다. 가장 우려되는 점은 경로 탐색 취약점과 프리뷰 콘텐츠의 미이스케이프 innerHTML인데, 전자는 로컬 Electron 앱의 맥락에서도 심각하고, 후자는 외부 AI 응답이 경유하는 경로라 실제 공격 표면이 된다. 기술적 토대는 견실하게 구축되었으며, 보안 수정 2건과 컨트롤러 모놀리스의 점진적 분해가 프로덕션 배포 전 필수 과제다.</p>
+<!-- D. Action Plan -->
+<div class="card">
+  <h2 style="margin-top:0; border:none; padding:0;">D. 개선 액션 플랜</h2>
+
+  <div class="action-item">
+    <span class="action-type action-strategic">전략적</span>
+    <div><strong>1. 컨트롤러 분할</strong> — controller.ts(2,291 LOC)를 기능별 모듈로 분리: 탭 관리, 에디터 초기화, 상태 동기화, 라이프사이클 훅. 진입 장벽과 변경 영향 반경을 줄인다.</div>
   </div>
 
-  <div class="ruling">
-    🟡 조건부 배포 가능 — 경로 탐색 수정 및 XSS 이스케이프 적용 후 프로덕션 투입 가능
+  <div class="action-item">
+    <span class="action-type action-hardening">강화</span>
+    <div><strong>2. 프리뷰 엔진 에러 전파</strong> — preview-engine.ts의 catch 블록에서 UI 알림(토스트/상태바) 연동 추가. Lua 초기화 실패와 CBS 파싱 오류를 사용자에게 표시.</div>
+  </div>
+
+  <div class="action-item">
+    <span class="action-type action-hardening">강화</span>
+    <div><strong>3. 에러 케이스 테스트 추가</strong> — 손상된 ZIP, 잘못된 msgpack, 절단된 버퍼, 빈 파일에 대한 테스트. MCP 서버 통합 테스트 (mock HTTP 클라이언트).</div>
+  </div>
+
+  <div class="action-item">
+    <span class="action-type action-quick">빠른 개선</span>
+    <div><strong>4. engines 필드 추가</strong> — <code>package.json</code>에 <code>"engines": { "node": "&gt;=18.0.0" }</code> 추가. 환경 불일치 방지.</div>
+  </div>
+
+  <div class="action-item">
+    <span class="action-type action-quick">빠른 개선</span>
+    <div><strong>5. .env 패턴 gitignore 추가</strong> — <code>.env</code>, <code>.env.local</code>, <code>.env.*.local</code> 패턴을 .gitignore에 추가. 미래 시크릿 유출 방지.</div>
+  </div>
+
+  <div class="action-item">
+    <span class="action-type action-strategic">전략적</span>
+    <div><strong>6. 구조화 로깅 도입</strong> — 디스크 기반 로그 파일 + 구조화된 로그 포맷 도입. 프리뷰 엔진, 파일 I/O, MCP 서버의 오류를 추적 가능하게 한다.</div>
+  </div>
+
+  <div class="action-item">
+    <span class="action-type action-hardening">강화</span>
+    <div><strong>7. 대형 파일 I/O 안전장치</strong> — 파일 크기 사전 검증 추가 (예: 200MB 경고). 에셋 지연 로딩 검토. 즉시 OOM 방지.</div>
+  </div>
+</div>
+
+<!-- ================================================================
+     SUMMARY ZONE
+     ================================================================ -->
+<div class="summary-zone">
+
+  <!-- E. Codebase Character -->
+  <div class="card card-alt">
+    <h2 style="margin-top:0; border:none; padding:0;">E. 코드베이스 성격</h2>
+    <p style="font-size:1.05rem; font-style:italic; color:var(--text);">
+      최신 도구에 대한 적극적 투자와 모듈화 의지가 뚜렷한 코드베이스 — strict TypeScript, 순환 의존성 0건, 데드 코드 0건이라는 청결함이 인상적이지만,
+      핵심 오케스트레이터가 비대해진 채 남아 있어 "정리를 좋아하는 사람의 아직 정리 안 된 서랍" 같은 느낌을 준다.
+    </p>
+  </div>
+
+  <!-- F. Final Verdict -->
+  <div class="card">
+    <h2 style="margin-top:0; border:none; padding:0;">F. 최종 판정</h2>
+
+    <div class="verdict-box">
+      <div class="verdict-header">
+        <span class="grade-badge grade-B">B</span>
+        <span class="verdict-score">7.33 / 10</span>
+      </div>
+
+      <p style="margin-bottom:0.8rem; color:var(--text-muted); font-size:0.9rem;">
+        <strong>프로젝트:</strong> 특정 AI 캐릭터 파일 포맷을 위한 데스크톱 에디터. 코드 에디팅, 실시간 프리뷰, 터미널, AI 어시스턴트 연동을 통합한 복합 개발 도구.
+      </p>
+      <p style="margin-bottom:0.8rem; color:var(--text-muted); font-size:0.9rem;">
+        <strong>스택:</strong> Electron · Vue 3 · TypeScript · Vite · Pinia · Vitest
+      </p>
+
+      <div class="score-mini">
+        <div class="score-mini-item"><span class="score-mini-label">코드 품질</span><span class="score-mini-value s-yellow">7.5</span> — TypeScript strict 전면 적용, 클린한 모듈 분리</div>
+        <div class="score-mini-item"><span class="score-mini-label">보안</span><span class="score-mini-value s-yellow">7.0</span> — Electron 잠금 양호, 암호화는 호환성 제약</div>
+        <div class="score-mini-item"><span class="score-mini-label">재현성</span><span class="score-mini-value s-yellow">7.0</span> — 자동 빌드·CI·202 테스트, 관측성 갭</div>
+        <div class="score-mini-item"><span class="score-mini-label">아키텍처</span><span class="score-mini-value s-yellow">7.0</span> — 클린 데이터 흐름, God Object 잔존</div>
+        <div class="score-mini-item"><span class="score-mini-label">스택 건강</span><span class="score-mini-value s-green">9.0</span> — 최신 유지, 취약점 0, 도구 완비</div>
+      </div>
+
+      <div class="separator"></div>
+
+      <div class="verdict-text">
+        <p>
+          타입 안전성과 도구 인프라에 확실한 투자를 한 코드베이스다.
+          TypeScript strict 모드가 세 가지 컴파일 설정 모두에 적용되어 있고,
+          ESLint 경고 0건 정책이 CI와 커밋 훅 양쪽에서 강제되며,
+          202개 테스트가 핵심 파서·직렬화·UI 상태 전이를 실질적으로 검증한다.
+          이 수준의 정적 분석 인프라는 동일 규모의 프로젝트에서 보기 드물다.
+        </p>
+        <p style="margin-top:0.8rem;">
+          프로덕션 배포 전 해결해야 할 구조적 약점은 명확하다.
+          전체 LOC의 12%를 차지하는 단일 오케스트레이터 모듈이 변경 영향을 확대하고,
+          프리뷰 엔진의 사일런트 실패 패턴이 사용자 경험을 저해하며,
+          프로덕션 환경에서의 사후 진단 수단이 전무하다.
+          다만, 이들은 근본적 설계 결함이 아니라 성장 과정에서의 리팩터링 과제이며,
+          기존 모듈 분리 패턴과 테스트 인프라가 개선 작업의 안전망 역할을 할 수 있다.
+        </p>
+        <p style="margin-top:0.8rem; font-weight:600; color:var(--accent-yellow);">
+          판정: 핵심 기능은 동작하며 보안 기본기가 갖춰진 상태. 컨트롤러 분할과 에러 전파 개선 후 프로덕션 투입 가능.
+        </p>
+      </div>
+    </div>
   </div>
 
 </div>
