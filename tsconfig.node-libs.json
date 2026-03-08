@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "noEmit": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/adm-zip.d.ts",
+    "src/charx-io.ts",
+    "src/lorebook-convert.ts",
+    "src/rpack.ts",
+    "src/lib/mcp-api-server.ts",
+    "toki-mcp-server.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}
