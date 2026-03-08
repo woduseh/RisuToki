@@ -1,5 +1,15 @@
 import { parseLuaSections, combineLuaSections, parseCssSections, combineCssSections, detectLuaSection, detectCssSectionInline, detectCssBlockOpen, detectCssBlockClose } from '../lib/section-parser';
-import { createTreeItem, createFolderItem, updateSidebarActive as _updateSidebarActive } from '../lib/sidebar-builder';
+import type { Section } from '../lib/section-parser';
+import type { Tab } from '../lib/tab-manager';
+import type { LayoutState, LayoutSlot, PanelPosition } from '../lib/layout-manager';
+import {
+  createTreeItem,
+  createFolderItem,
+  updateSidebarActive as _updateSidebarActive,
+  initSidebarSplitResizer as _initSidebarSplitResizer,
+  buildAssetsSidebar as _buildAssetsSidebar,
+  createLoreEntryItem as _createLoreEntryItem,
+} from '../lib/sidebar-builder';
 import PreviewEngine from '../lib/preview-engine';
 import {
   handleClaudeStart as _handleClaudeStart,
@@ -108,6 +118,7 @@ import {
   handleSave as _handleSave,
   handleSaveAs as _handleSaveAs,
 } from '../lib/file-actions';
+import type { FileActionDeps } from '../lib/file-actions';
 import {
   stringifyStringArray,
   addReferenceFile as _addReferenceFile,
@@ -117,19 +128,21 @@ import {
 
 const settingsSnapshot = readAppSettingsSnapshot();
 
+declare const monaco: any;
+
 // ==================== State ====================
-let fileData = null;       // Current charx data
-let editorInstance = null;  // Monaco editor instance
+let fileData: any = null;       // Current charx data
+let editorInstance: any = null;  // Monaco editor instance
 let monacoReady = false;
-let monacoLoadTask = null;
+let monacoLoadTask: Promise<boolean> | null = null;
 
 // Lua section management
-let luaSections = []; // [{ name, content }]
+let luaSections: Section[] = []; // [{ name, content }]
 
 // Reference files (read-only)
-let referenceFiles = []; // [{ fileName, data }]
+let referenceFiles: any[] = []; // [{ fileName, data }]
 
-async function syncReferenceFiles() {
+async function syncReferenceFiles(): Promise<any[]> {
   referenceFiles = await window.tokiAPI.listReferences();
   return referenceFiles;
 }
@@ -148,7 +161,7 @@ let rpCustomText = settingsSnapshot.rpCustomText;
 let autosaveEnabled = settingsSnapshot.autosaveEnabled;
 let autosaveInterval = settingsSnapshot.autosaveInterval;
 let autosaveDir = settingsSnapshot.autosaveDir; // empty = same as file
-let autosaveTimer = null;
+let autosaveTimer: ReturnType<typeof setInterval> | null = null;
 
 
 // Chat mode state — UI lives in ../lib/chat-ui, session created here for wiring
@@ -168,7 +181,7 @@ const tabMgr = new TabManager('editor-tabs', {
   onActivateTab: (tab) => createOrSwitchEditor(tab),
   onDisposeFormEditors: () => disposeFormEditors(),
   onClearEditor: () => {
-    document.getElementById('editor-container').innerHTML =
+    document.getElementById('editor-container')!.innerHTML =
       '<div class="empty-state">항목을 선택하세요</div>';
     editorInstance = null;
   },
@@ -183,7 +196,7 @@ initFormEditor({
   getEditorInstance: () => editorInstance,
   setEditorInstance: (ed) => { editorInstance = ed; },
   getFileData: () => fileData,
-  tabMgr,
+  tabMgr: tabMgr as any,
   createBackup,
   showPrompt,
   buildSidebar,
@@ -191,7 +204,7 @@ initFormEditor({
 
 const layoutState = createDefaultLayoutState();
 try {
-  applyStoredLayoutState(layoutState, readStoredLayoutState());
+  applyStoredLayoutState(layoutState, readStoredLayoutState() as any);
 } catch (error) {
   reportRuntimeError({
     context: '레이아웃 상태 복원 실패',
@@ -201,7 +214,7 @@ try {
   });
 }
 
-function saveLayout() {
+function saveLayout(): void {
   try {
     writeLayoutState(layoutState);
   } catch (error) {
@@ -248,26 +261,26 @@ window.tokiAPI.onCloseConfirmRequest(async (id) => {
   window.tokiAPI.sendCloseConfirmResponse(id, choice);
 });
 
-function loadMonaco() {
+function loadMonaco(): Promise<void> {
   return loadMonacoRuntime().then(() => {
     monacoReady = true;
   });
 }
 
 // ==================== Editor ====================
-function initEditor() {
-  const container = document.getElementById('editor-container');
+function initEditor(): void {
+  const container = document.getElementById('editor-container')!;
   container.innerHTML = '<div class="empty-state">파일을 열어주세요 (Ctrl+O)</div>';
 }
 
-function renderEditorEmptyState(message) {
-  const container = document.getElementById('editor-container');
+function renderEditorEmptyState(message: string): void {
+  const container = document.getElementById('editor-container')!;
   if (container) {
     container.innerHTML = `<div class="empty-state">${message}</div>`;
   }
 }
 
-function ensureMonacoEditorReady() {
+function ensureMonacoEditorReady(): Promise<boolean> {
   if (monacoReady) {
     return Promise.resolve(true);
   }
@@ -297,7 +310,7 @@ function ensureMonacoEditorReady() {
   return monacoLoadTask;
 }
 
-function queueEditorActivation(tabInfo) {
+function queueEditorActivation(tabInfo: Tab): void {
   tabMgr.pendingEditorTabId = tabInfo.id;
   tabMgr.activeTabId = tabInfo.id;
   renderEditorEmptyState('에디터 로딩 중...');
@@ -306,7 +319,7 @@ function queueEditorActivation(tabInfo) {
   void ensureMonacoEditorReady();
 }
 
-function flushPendingEditorActivation() {
+function flushPendingEditorActivation(): void {
   const pendingTab = resolvePendingEditorTab(tabMgr.openTabs, tabMgr.pendingEditorTabId, tabMgr.activeTabId);
   tabMgr.pendingEditorTabId = null;
   if (pendingTab) {
@@ -314,15 +327,15 @@ function flushPendingEditorActivation() {
   }
 }
 
-function createOrSwitchEditor(tabInfo) {
-  const container = document.getElementById('editor-container');
+function createOrSwitchEditor(tabInfo: Tab): void {
+  const container = document.getElementById('editor-container')!;
 
   // Special tab types: image, lorebook form, regex form
 
   if (tabInfo.language === '_image') {
     disposeFormEditors();
     tabMgr.activeTabId = tabInfo.id;
-    showImageViewer(tabInfo.id, tabInfo._assetPath);
+    showImageViewer(tabInfo.id, tabInfo._assetPath as string);
     tabMgr.renderTabs();
     updateSidebarActive();
     return;
@@ -330,7 +343,7 @@ function createOrSwitchEditor(tabInfo) {
 
   if (tabInfo.language === '_loreform') {
     tabMgr.activeTabId = tabInfo.id;
-    showLoreEditor(tabInfo);
+    showLoreEditor(tabInfo as any);
     tabMgr.renderTabs();
     updateSidebarActive();
     return;
@@ -338,7 +351,7 @@ function createOrSwitchEditor(tabInfo) {
 
   if (tabInfo.language === '_regexform') {
     tabMgr.activeTabId = tabInfo.id;
-    showRegexEditor(tabInfo);
+    showRegexEditor(tabInfo as any);
     tabMgr.renderTabs();
     updateSidebarActive();
     return;
@@ -407,14 +420,14 @@ function createOrSwitchEditor(tabInfo) {
 
 // ==================== Tab Management ====================
 
-function openExternalTextTab(id, label, initialValue, persist, language = 'plaintext') {
+function openExternalTextTab(id: string, label: string, initialValue: string, persist: (value: string) => Promise<void> | void, language = 'plaintext'): any {
   const state = createExternalTextTabState(initialValue, persist);
   return tabMgr.openTab(id, label, language, () => state.getValue(), (value) => {
-    void state.setValue(value);
+    void state.setValue(value as string);
   });
 }
 
-function buildLorebookTabState(index, tab) {
+function buildLorebookTabState(index: number, tab: Tab): any {
   const entry = fileData?.lorebook?.[index];
   if (!entry) return null;
 
@@ -425,7 +438,7 @@ function buildLorebookTabState(index, tab) {
       label,
       language: '_loreform',
       getValue: () => fileData.lorebook[index],
-      setValue: (value) => { Object.assign(fileData.lorebook[index], value); }
+      setValue: (value: any) => { Object.assign(fileData.lorebook[index], value); }
     };
   }
 
@@ -434,11 +447,11 @@ function buildLorebookTabState(index, tab) {
     label,
     language: tab.language || 'plaintext',
     getValue: () => fileData.lorebook[index].content || '',
-    setValue: (value) => { fileData.lorebook[index].content = value; }
+    setValue: (value: any) => { fileData.lorebook[index].content = value; }
   };
 }
 
-function buildRegexTabState(index, tab) {
+function buildRegexTabState(index: number, tab: Tab): any {
   const entry = fileData?.regex?.[index];
   if (!entry) return null;
 
@@ -449,7 +462,7 @@ function buildRegexTabState(index, tab) {
       label,
       language: '_regexform',
       getValue: () => fileData.regex[index],
-      setValue: (value) => { Object.assign(fileData.regex[index], value); }
+      setValue: (value: any) => { Object.assign(fileData.regex[index], value); }
     };
   }
 
@@ -458,7 +471,7 @@ function buildRegexTabState(index, tab) {
     label,
     language: tab.language || 'json',
     getValue: () => JSON.stringify(fileData.regex[index], null, 2),
-    setValue: (value) => {
+    setValue: (value: any) => {
       try {
         fileData.regex[index] = JSON.parse(value);
       } catch (error) {
@@ -473,7 +486,7 @@ function buildRegexTabState(index, tab) {
   };
 }
 
-function buildLuaSectionTabState(index, tab) {
+function buildLuaSectionTabState(index: number, tab: Tab): any {
   const section = luaSections[index];
   if (!section) return null;
 
@@ -482,14 +495,14 @@ function buildLuaSectionTabState(index, tab) {
     label: section.name,
     language: tab.language || 'lua',
     getValue: () => luaSections[index].content,
-    setValue: (value) => {
+    setValue: (value: any) => {
       luaSections[index].content = value;
       fileData.lua = combineLuaSections(luaSections);
     }
   };
 }
 
-function buildCssSectionTabState(index, tab) {
+function buildCssSectionTabState(index: number, tab: Tab): any {
   const section = cssSections[index];
   if (!section) return null;
 
@@ -498,7 +511,7 @@ function buildCssSectionTabState(index, tab) {
     label: section.name,
     language: tab.language || 'css',
     getValue: () => cssSections[index].content,
-    setValue: (value) => {
+    setValue: (value: any) => {
       cssSections[index].content = value;
       fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
     }
@@ -518,9 +531,9 @@ function getRefsSidebarDeps() {
     showConfirm,
     showPrompt,
     setStatus,
-    openTab: (id, label, lang, getValue, setValue) => tabMgr.openTab(id, label, lang, getValue, setValue),
-    findOpenTab: (id) => tabMgr.openTabs.find(t => t.id === id),
-    activateTab: (id) => {
+    openTab: (id: string, label: string, lang: string, getValue: any, setValue: any) => tabMgr.openTab(id, label, lang, getValue, setValue),
+    findOpenTab: (id: string) => tabMgr.openTabs.find(t => t.id === id),
+    activateTab: (id: string) => {
       const tab = tabMgr.openTabs.find(t => t.id === id);
       if (tab) {
         tabMgr.activeTabId = id;
@@ -528,38 +541,38 @@ function getRefsSidebarDeps() {
         tabMgr.renderTabs();
       }
     },
-    closeTab: (id) => tabMgr.closeTab(id),
+    closeTab: (id: string) => tabMgr.closeTab(id),
     openExternalTextTab,
     openReference: () => window.tokiAPI.openReference(),
-    removeReference: (p) => window.tokiAPI.removeReference(p),
+    removeReference: (p: string) => window.tokiAPI.removeReference(p),
     removeAllReferences: () => window.tokiAPI.removeAllReferences(),
     listGuides: () => window.tokiAPI.listGuides(),
-    readGuide: (n) => window.tokiAPI.readGuide(n),
-    writeGuide: (n, c) => window.tokiAPI.writeGuide(n, c),
-    deleteGuide: (n) => window.tokiAPI.deleteGuide(n),
+    readGuide: (n: string) => window.tokiAPI.readGuide(n),
+    writeGuide: (n: string, c: string) => window.tokiAPI.writeGuide(n, c),
+    deleteGuide: (n: string) => window.tokiAPI.deleteGuide(n),
     importGuide: () => window.tokiAPI.importGuide(),
     getGuidesPath: () => window.tokiAPI.getGuidesPath(),
   };
 }
 
-function buildRefsSidebar() {
+function buildRefsSidebar(): any {
   const refsEl = document.getElementById('sidebar-refs');
   if (!refsEl) return;
-  return _buildRefsSidebar(refsEl, getRefsSidebarDeps());
+  return _buildRefsSidebar(refsEl, getRefsSidebarDeps() as any);
 }
 
-function addReferenceFile() {
+function addReferenceFile(): any {
   const refsEl = document.getElementById('sidebar-refs');
   if (!refsEl) return;
-  return _addReferenceFile(refsEl, getRefsSidebarDeps());
+  return _addReferenceFile(refsEl, getRefsSidebarDeps() as any);
 }
 
-function openRefTabById(tabId) {
+function openRefTabById(tabId: string): void {
   _openRefTabById(tabId, getRefsSidebarDeps());
 }
 
-function buildSidebar() {
-  const tree = document.getElementById('sidebar-tree');
+function buildSidebar(): void {
+  const tree = document.getElementById('sidebar-tree')!;
   tree.innerHTML = '';
 
   // Always build refs sidebar regardless of fileData
@@ -589,7 +602,7 @@ function buildSidebar() {
     fileData.lua = combineLuaSections(luaSections);
     tabMgr.openTab('lua', 'Lua (통합)', 'lua',
       () => fileData.lua,
-      (v) => {
+      (v: any) => {
         fileData.lua = v;
         luaSections = parseLuaSections(v);
       }
@@ -602,10 +615,10 @@ function buildSidebar() {
     ];
     const store = getBackups('lua');
     if (store.length > 0) {
-      items.push('---');
+      items.push('---' as any);
       items.push({ label: '백업 불러오기', action: () => showBackupMenu('lua', e.clientX, e.clientY, backupMenuCallbacks) });
     }
-    showContextMenu(e.clientX, e.clientY, items);
+    showContextMenu(e.clientX, e.clientY, items as any);
   });
   luaFolder.children.appendChild(luaCombinedEl);
 
@@ -617,7 +630,7 @@ function buildSidebar() {
     sectionEl.addEventListener('click', () => {
       tabMgr.openTab(`lua_s${idx}`, section.name, 'lua',
         () => luaSections[idx].content,
-        (v) => {
+        (v: any) => {
           luaSections[idx].content = v;
           fileData.lua = combineLuaSections(luaSections);
         }
@@ -631,12 +644,12 @@ function buildSidebar() {
       ];
       const store = getBackups(`lua_s${idx}`);
       if (store.length > 0) {
-        items.push('---');
+        items.push('---' as any);
         items.push({ label: '백업 불러오기', action: () => showBackupMenu(`lua_s${idx}`, e.clientX, e.clientY, backupMenuCallbacks) });
       }
-      items.push('---');
+      items.push('---' as any);
       items.push({ label: '삭제', action: () => deleteLuaSection(idx) });
-      showContextMenu(e.clientX, e.clientY, items);
+      showContextMenu(e.clientX, e.clientY, items as any);
     });
     luaFolder.children.appendChild(sectionEl);
   }
@@ -664,7 +677,7 @@ function buildSidebar() {
   cssCombinedEl.addEventListener('click', () => {
     tabMgr.openTab('css', 'CSS (통합)', 'css',
       () => fileData.css,
-      (v) => {
+      (v: any) => {
         fileData.css = v;
         ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(v));
       }
@@ -676,10 +689,10 @@ function buildSidebar() {
     ];
     const store = getBackups('css');
     if (store.length > 0) {
-      items.push('---');
+      items.push('---' as any);
       items.push({ label: '백업 불러오기', action: () => showBackupMenu('css', e.clientX, e.clientY, backupMenuCallbacks) });
     }
-    showContextMenu(e.clientX, e.clientY, items);
+    showContextMenu(e.clientX, e.clientY, items as any);
   });
   cssFolder.children.appendChild(cssCombinedEl);
 
@@ -691,7 +704,7 @@ function buildSidebar() {
     sectionEl.addEventListener('click', () => {
       tabMgr.openTab(`css_s${idx}`, section.name, 'css',
         () => cssSections[idx].content,
-        (v) => {
+        (v: any) => {
           cssSections[idx].content = v;
           fileData.css = combineCssSections(cssSections, _cssStylePrefix, _cssStyleSuffix);
         }
@@ -705,12 +718,12 @@ function buildSidebar() {
       ];
       const store = getBackups(`css_s${idx}`);
       if (store.length > 0) {
-        items.push('---');
+        items.push('---' as any);
         items.push({ label: '백업 불러오기', action: () => showBackupMenu(`css_s${idx}`, e.clientX, e.clientY, backupMenuCallbacks) });
       }
-      items.push('---');
+      items.push('---' as any);
       items.push({ label: '삭제', action: () => deleteCssSection(idx) });
-      showContextMenu(e.clientX, e.clientY, items);
+      showContextMenu(e.clientX, e.clientY, items as any);
     });
     cssFolder.children.appendChild(sectionEl);
   }
@@ -739,7 +752,7 @@ function buildSidebar() {
       lang: 'json',
       field: 'triggerScripts',
       get: () => fileData.triggerScripts || '[]',
-      set: (value) => {
+      set: (value: string) => {
         fileData.triggerScripts = value;
         const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(value);
         if (nextLua !== null) fileData.lua = nextLua;
@@ -771,8 +784,8 @@ function buildSidebar() {
     const el = createTreeItem(item.label, item.icon, 0);
     el.addEventListener('click', () => {
       tabMgr.openTab(item.id, item.label, item.lang,
-        item.get || (() => fileData[item.field]),
-        item.readonly ? null : (item.set || ((v) => { fileData[item.field] = v; }))
+        item.get || (() => fileData[item.field!]),
+        item.readonly ? null : (item.set || ((v: any) => { fileData[item.field!] = v; })) as any
       );
     });
     // Single item right-click: MCP path / backup
@@ -783,14 +796,14 @@ function buildSidebar() {
         items.push({ label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_field("${item.field}")`); setStatus(`복사됨: read_field("${item.field}")`); } });
       }
       if (item.id === 'assetPromptTemplate') {
-        items.push({ label: '템플릿 복사', action: () => { navigator.clipboard.writeText(item.get()); setStatus('에셋 프롬프트 템플릿 복사됨'); } });
+        items.push({ label: '템플릿 복사', action: () => { navigator.clipboard.writeText(item.get!()); setStatus('에셋 프롬프트 템플릿 복사됨'); } });
       }
       const store = getBackups(item.id);
       if (store.length > 0) {
-        items.push('---');
+        items.push('---' as any);
         items.push({ label: '백업 불러오기', action: () => showBackupMenu(item.id, e.clientX, e.clientY, backupMenuCallbacks) });
       }
-      showContextMenu(e.clientX, e.clientY, items);
+      showContextMenu(e.clientX, e.clientY, items as any);
     });
     tree.appendChild(el);
   }
@@ -806,11 +819,11 @@ function buildSidebar() {
     const items = [
       { label: '새 항목 추가', action: () => addNewLorebook() },
       { label: '새 폴더 추가', action: () => addNewLorebookFolder() },
-      '---',
+      '---' as any,
       { label: 'JSON 파일 가져오기', action: () => importLorebook() },
     ];
     if (fileData.lorebook.length > 0) {
-      items.push('---');
+      items.push('---' as any);
       items.push({ label: `전체 삭제 (${fileData.lorebook.length}개)`, action: async () => {
         if (!await showConfirm(`로어북 전체 ${fileData.lorebook.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
         // Close all lorebook tabs
@@ -821,17 +834,17 @@ function buildSidebar() {
         setStatus('로어북 전체 삭제됨');
       }});
     }
-    showContextMenu(e.clientX, e.clientY, items);
+    showContextMenu(e.clientX, e.clientY, items as any);
   });
 
   // Group lorebook by folder (robust multi-key matching)
-  const folderDataList = []; // { entry, index, children }
-  const folderLookup = {};   // multiple keys → same folderData
-  const rootEntries = [];
+  const folderDataList: { entry: any; index: number; children: { entry: any; index: number }[] }[] = []; // { entry, index, children }
+  const folderLookup: Record<string, any> = {};   // multiple keys → same folderData
+  const rootEntries: { entry: any; index: number }[] = [];
   for (let i = 0; i < fileData.lorebook.length; i++) {
     const entry = fileData.lorebook[i];
     if (entry.mode === 'folder') {
-      const fd = { entry, index: i, children: [] };
+      const fd: { entry: any; index: number; children: { entry: any; index: number }[] } = { entry, index: i, children: [] };
       folderDataList.push(fd);
       // Map by all possible IDs a child might reference
       const k = entry.key || '';
@@ -956,7 +969,7 @@ function buildSidebar() {
       { label: 'JSON 파일 가져오기', action: () => importRegex() },
     ];
     if (fileData.regex.length > 0) {
-      items.push('---');
+      items.push('---' as any);
       items.push({ label: `전체 삭제 (${fileData.regex.length}개)`, action: async () => {
         if (!await showConfirm(`정규식 전체 ${fileData.regex.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
         for (let i = fileData.regex.length - 1; i >= 0; i--) tabMgr.closeTab(`regex_${i}`);
@@ -966,7 +979,7 @@ function buildSidebar() {
         setStatus('정규식 전체 삭제됨');
       }});
     }
-    showContextMenu(e.clientX, e.clientY, items);
+    showContextMenu(e.clientX, e.clientY, items as any);
   });
 
   for (let i = 0; i < fileData.regex.length; i++) {
@@ -989,12 +1002,12 @@ function buildSidebar() {
       ];
       const store = getBackups(`regex_${idx}`);
       if (store.length > 0) {
-        items.push('---');
+        items.push('---' as any);
         items.push({ label: '백업 불러오기', action: () => showBackupMenu(`regex_${idx}`, e.clientX, e.clientY, backupMenuCallbacks) });
       }
-      items.push('---');
+      items.push('---' as any);
       items.push({ label: '삭제', action: () => deleteRegex(idx) });
-      showContextMenu(e.clientX, e.clientY, items);
+      showContextMenu(e.clientX, e.clientY, items as any);
     });
     rxFolder.children.appendChild(el);
   }
@@ -1003,176 +1016,39 @@ function buildSidebar() {
   buildAssetsSidebar(tree);
 }
 
-async function buildAssetsSidebar(tree) {
-  const assetList = await window.tokiAPI.getAssetList();
-
-  const assetsFolder = createFolderItem('에셋 (이미지)', '🖼', 0);
-  tree.appendChild(assetsFolder.header);
-  tree.appendChild(assetsFolder.children);
-
-  // Group assets by folder
-  const groups = { icon: [], other: [] };
-  if (assetList) {
-    for (const asset of assetList) {
-      const parts = asset.path.split('/');
-      const group = parts[1] === 'icon' ? 'icon' : 'other';
-      groups[group].push(asset);
-    }
-  }
-
-  // Always show icon and other folders
-  const folderDefs = [
-    { key: 'icon', label: '아이콘 (icon)', icon: '⭐' },
-    { key: 'other', label: '기타 (other)', icon: '📁' },
-  ];
-
-  for (const def of folderDefs) {
-    const subFolder = createFolderItem(def.label, def.icon, 1);
-    assetsFolder.children.appendChild(subFolder.header);
-    assetsFolder.children.appendChild(subFolder.children);
-
-    // Right-click on subfolder: add to this folder
-    const targetFolder = def.key;
-    subFolder.header.addEventListener('contextmenu', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      showContextMenu(e.clientX, e.clientY, [
-        { label: '이미지 추가', action: () => addAssetFromDialog(targetFolder) },
-      ]);
-    });
-
-    // Add existing assets under this folder
-    for (const asset of groups[def.key]) {
-      const fileName = asset.path.split('/').pop();
-      const el = createTreeItem(`${fileName} (${(asset.size/1024).toFixed(0)}KB)`, '·', 2);
-      el.addEventListener('click', () => openImageTab(asset.path, fileName));
-      attachAssetContextMenu(el, asset.path, fileName);
-      subFolder.children.appendChild(el);
-    }
-  }
+function buildAssetsSidebar(tree: HTMLElement): any {
+  return _buildAssetsSidebar(tree, {
+    showContextMenu,
+    addAssetFromDialog,
+    openImageTab,
+    attachAssetContextMenu,
+  });
 }
 
-
-function initSidebarSplitResizer() {
-  const resizer = document.getElementById('sidebar-split-resizer');
-  const itemsSection = document.getElementById('sidebar-items-section');
-  const refsSection = document.getElementById('sidebar-refs-section');
-  if (!resizer || !itemsSection || !refsSection) return;
-
-  let startY = 0;
-  let startItemsH = 0;
-  let startRefsH = 0;
-
-  const onMove = (e) => {
-    const dy = e.clientY - startY;
-    const newItemsH = Math.max(60, startItemsH + dy);
-    const newRefsH = Math.max(60, startRefsH - dy);
-    itemsSection.style.flex = `0 0 ${newItemsH}px`;
-    refsSection.style.flex = `0 0 ${newRefsH}px`;
-  };
-  const onUp = () => {
-    document.body.style.cursor = '';
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-  };
-  resizer.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    startY = e.clientY;
-    startItemsH = itemsSection.offsetHeight;
-    startRefsH = refsSection.offsetHeight;
-    document.body.style.cursor = 'ns-resize';
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+function initSidebarSplitResizer(): void {
+  _initSidebarSplitResizer({
+    moveRefs: moveRefs as any,
+    popOutPanel,
+    dockPanel,
+    isPanelPoppedOut,
+    showContextMenu,
   });
-
-  // --- Refs section buttons ---
-  // refsSection already declared above
-  const refsContent = document.getElementById('sidebar-refs');
-  const collapseBtn = document.getElementById('btn-refs-collapse');
-  const closeBtn = document.getElementById('btn-refs-close');
-  const separateBtn = document.getElementById('btn-refs-separate');
-  const extPopoutBtn = document.getElementById('btn-refs-extpopout');
-
-  if (collapseBtn && refsContent) {
-    let refsCollapsed = false;
-    collapseBtn.addEventListener('click', () => {
-      refsCollapsed = !refsCollapsed;
-      refsContent.style.display = refsCollapsed ? 'none' : '';
-      collapseBtn.textContent = refsCollapsed ? '▶' : '▼';
-      collapseBtn.title = refsCollapsed ? '참고자료 펼치기' : '참고자료 접기';
-    });
-  }
-  if (closeBtn && refsSection && resizer) {
-    closeBtn.addEventListener('click', () => {
-      refsSection.style.display = 'none';
-      resizer.style.display = 'none';
-      itemsSection.style.flex = '1';
-    });
-  }
-  if (separateBtn) {
-    separateBtn.addEventListener('click', () => {
-      moveRefs('right');
-    });
-  }
-  if (extPopoutBtn) {
-    extPopoutBtn.addEventListener('click', () => {
-      if (isPanelPoppedOut('refs')) {
-        dockPanel('refs');
-      } else {
-        popOutPanel('refs');
-      }
-    });
-  }
-  // Right-click on refs header for position options
-  const refsHeader = document.querySelector('.sidebar-header-refs');
-  if (refsHeader) {
-    refsHeader.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      showContextMenu(e.clientX, e.clientY, [
-        { label: '→ 사이드바', action: () => moveRefs('sidebar') },
-        { label: '→ 좌측', action: () => moveRefs('left') },
-        { label: '→ 우측', action: () => moveRefs('right') },
-        { label: '→ 좌끝', action: () => moveRefs('far-left') },
-        { label: '→ 우끝', action: () => moveRefs('far-right') },
-        { label: '→ 상단', action: () => moveRefs('top') },
-        { label: '→ 하단', action: () => moveRefs('bottom') },
-      ]);
-    });
-  }
 }
 
-// createTreeItem and createFolderItem are imported from '../lib/sidebar-builder'
-
-function createLoreEntryItem(child, indent) {
-  const label = child.entry.comment || `entry_${child.index}`;
-  const el = createTreeItem(label, '·', indent);
-  const idx = child.index;
-  el.addEventListener('click', () => {
-    tabMgr.openTab(`lore_${idx}`, label, '_loreform',
-      () => fileData.lorebook[idx],
-      (v) => { Object.assign(fileData.lorebook[idx], v); }
-    );
+function createLoreEntryItem(child: { entry: any; index: number }, indent: number): HTMLElement {
+  return _createLoreEntryItem(child, indent, {
+    getFileData: () => fileData,
+    openTab: (id, label, language, getValue, setValue) => tabMgr.openTab(id, label, language, getValue, setValue),
+    showContextMenu,
+    renameLorebook,
+    deleteLorebook,
+    setStatus,
+    getBackups,
+    showBackupMenu: (tabId, x, y) => showBackupMenu(tabId, x, y, backupMenuCallbacks),
   });
-  // Lorebook entry right-click: rename / copy path / backup / delete
-  el.addEventListener('contextmenu', (e) => {
-    e.preventDefault(); e.stopPropagation();
-    const items = [
-      { label: '이름 변경', action: () => renameLorebook(idx) },
-      { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_lorebook(${idx})`); setStatus(`복사됨: read_lorebook(${idx})`); } },
-    ];
-    const store = getBackups(`lore_${idx}`);
-    if (store.length > 0) {
-      items.push('---');
-      items.push({ label: '백업 불러오기', action: () => showBackupMenu(`lore_${idx}`, e.clientX, e.clientY, backupMenuCallbacks) });
-    }
-    items.push('---');
-    items.push({ label: '삭제', action: () => deleteLorebook(idx) });
-    showContextMenu(e.clientX, e.clientY, items);
-  });
-  return el;
 }
 
-function updateSidebarActive() {
+function updateSidebarActive(): void {
   _updateSidebarActive(tabMgr.activeTabId, tabMgr.openTabs);
 }
 
@@ -1181,7 +1057,7 @@ function updateSidebarActive() {
 let _cssStylePrefix = '';
 let _cssStyleSuffix = '';
 
-let cssSections = [];
+let cssSections: Section[] = [];
 
 const sidebarActions = createSidebarActions({
   getFileData: () => fileData,
@@ -1197,7 +1073,7 @@ const sidebarActions = createSidebarActions({
   combineLuaSections,
   combineCssSections,
   openTab: (id, label, language, getValue, setValue) => tabMgr.openTab(id, label, language, getValue, setValue),
-  closeTab: (id) => tabMgr.closeTab(id),
+  closeTab: (id: string) => tabMgr.closeTab(id),
   markFieldDirty: (field) => tabMgr.markFieldDirty(field),
   shiftIndexedTabsAfterRemoval: (prefix, removed, fn) => tabMgr.shiftIndexedTabsAfterRemoval(prefix, removed, fn),
   refreshIndexedTabs: (prefix, fn) => tabMgr.refreshIndexedTabs(prefix, fn),
@@ -1219,7 +1095,7 @@ const {
 
 const backupMenuCallbacks = { setStatus, onRestore: restoreBackup };
 
-function restoreBackup(tabId, backupIdx) {
+function restoreBackup(tabId: string, backupIdx: number): void {
   const store = getBackups(tabId);
   if (!store[backupIdx]) return;
 
@@ -1232,7 +1108,7 @@ function restoreBackup(tabId, backupIdx) {
     if (editorInstance && tabMgr.activeTabId === tabId) {
       createBackup(tabId, editorInstance.getValue());
     }
-    tab.setValue(backup.content);
+    tab.setValue!(backup.content);
     // Refresh editor if it's the active tab
     if (tabMgr.activeTabId === tabId && editorInstance) {
       editorInstance.setValue(backup.content);
@@ -1243,15 +1119,15 @@ function restoreBackup(tabId, backupIdx) {
     if (tabId.startsWith('lua_s')) {
       const idx = parseInt(tabId.replace('lua_s', ''), 10);
       if (luaSections[idx]) {
-        luaSections[idx].content = backup.content;
+        luaSections[idx].content = backup.content as string;
         fileData.lua = combineLuaSections(luaSections);
       }
     } else if (tabId === 'lua') {
-      fileData.lua = backup.content;
-      luaSections = parseLuaSections(backup.content);
+      fileData.lua = backup.content as string;
+      luaSections = parseLuaSections(backup.content as string);
     } else if (tabId === 'css') {
-      fileData.css = backup.content;
-      ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(backup.content));
+      fileData.css = backup.content as string;
+      ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(backup.content as string));
     } else if (tabId.startsWith('lore_')) {
       const idx = parseInt(tabId.replace('lore_', ''), 10);
       if (fileData.lorebook[idx]) {
@@ -1268,7 +1144,7 @@ function restoreBackup(tabId, backupIdx) {
           Object.assign(fileData.regex[idx], backup.content);
         } else {
           try {
-            Object.assign(fileData.regex[idx], JSON.parse(backup.content));
+            Object.assign(fileData.regex[idx], JSON.parse(backup.content as string));
           } catch (error) {
             console.warn('[Backup] Failed to parse regex backup JSON:', error);
             setStatus('정규식 백업 복원 실패: JSON 형식이 올바르지 않습니다');
@@ -1295,11 +1171,11 @@ function restoreBackup(tabId, backupIdx) {
 }
 
 // ==================== Terminal (xterm.js + node-pty) ====================
-let term = null;
-let fitAddon = null;
+let term: any = null;
+let fitAddon: any = null;
 
-async function initTerminal() {
-  const container = document.getElementById('terminal-container');
+async function initTerminal(): Promise<void> {
+  const container = document.getElementById('terminal-container')!;
   const terminalUi = await initializeTerminalUi({
     api: {
       onTerminalData: (callback) => window.tokiAPI.onTerminalData(callback),
@@ -1332,7 +1208,7 @@ async function initTerminal() {
 
 
 // ==================== Image Viewer ====================
-function openImageTab(assetPath, fileName) {
+function openImageTab(assetPath: string, fileName: string): void {
   const tabId = `img_${assetPath}`;
   // Check if already open
   if (tabMgr.openTabs.find(t => t.id === tabId)) {
@@ -1360,7 +1236,7 @@ function openImageTab(assetPath, fileName) {
   updateSidebarActive();
 }
 
-async function showImageViewer(tabId, assetPath) {
+async function showImageViewer(tabId: string, assetPath: string): Promise<void> {
   // Save current Monaco editor
   if (editorInstance && tabMgr.activeTabId !== tabId) {
     const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
@@ -1370,7 +1246,7 @@ async function showImageViewer(tabId, assetPath) {
     }
   }
 
-  const container = document.getElementById('editor-container');
+  const container = document.getElementById('editor-container')!;
   container.innerHTML = '';
   if (editorInstance) { editorInstance.dispose(); editorInstance = null; }
 
@@ -1379,39 +1255,39 @@ async function showImageViewer(tabId, assetPath) {
 
 // ==================== Layout Management ====================
 
-function rebuildLayout() {
+function rebuildLayout(): void {
   layoutManager.rebuild();
 }
 
-function toggleSidebar() {
+function toggleSidebar(): void {
   layoutManager.toggleSidebar();
 }
 
-function toggleTerminal() {
+function toggleTerminal(): void {
   layoutManager.toggleTerminal();
 }
 
-function toggleAvatar() {
+function toggleAvatar(): void {
   layoutManager.toggleAvatar();
 }
 
-function moveItems(pos) {
+function moveItems(pos: LayoutSlot | "hide"): void {
   layoutManager.moveItems(pos);
 }
 
-function moveTerminal(pos) {
+function moveTerminal(pos: LayoutSlot): void {
   layoutManager.moveTerminal(pos);
 }
 
-function moveRefs(pos) {
+function moveRefs(pos: PanelPosition): void {
   layoutManager.moveRefs(pos);
 }
 
-function resetLayout() {
+function resetLayout(): void {
   layoutManager.resetLayout();
 }
 
-async function restartTerminal() {
+async function restartTerminal(): Promise<void> {
   if (!term) return;
   await window.tokiAPI.terminalStop();
   // Wait for pty to fully terminate before starting a new one
@@ -1423,7 +1299,7 @@ async function restartTerminal() {
 
 // ==================== Actions ====================
 /** @type {import('../lib/file-actions').FileActionDeps} */
-const fileActionDeps = {
+const fileActionDeps: FileActionDeps = {
   getFileData: () => fileData,
   setFileData: (d) => { fileData = d; },
   getEditorInstance: () => editorInstance,
@@ -1434,14 +1310,14 @@ const fileActionDeps = {
   setStatus,
 };
 
-async function handleNew() { return _handleNew(fileActionDeps); }
-async function handleOpen() { return _handleOpen(fileActionDeps); }
-async function handleSave() { return _handleSave(fileActionDeps); }
-async function handleSaveAs() { return _handleSaveAs(fileActionDeps); }
+async function handleNew(): Promise<void> { return _handleNew(fileActionDeps); }
+async function handleOpen(): Promise<void> { return _handleOpen(fileActionDeps); }
+async function handleSave(): Promise<void> { return _handleSave(fileActionDeps); }
+async function handleSaveAs(): Promise<void> { return _handleSaveAs(fileActionDeps); }
 
 // ==================== RP Mode ====================
 
-function getRpLabel() {
+function getRpLabel(): string {
   if (rpMode === 'off') return 'OFF';
   if (rpMode === 'toki') return '토키';
   if (rpMode === 'aris') return '아리스';
@@ -1449,7 +1325,7 @@ function getRpLabel() {
   return 'OFF';
 }
 
-function initRpModeButton() {
+function initRpModeButton(): void {
   const btn = document.getElementById('btn-rp-mode');
   if (!btn) return;
   updateRpButtonStyle(btn);
@@ -1466,13 +1342,13 @@ function initRpModeButton() {
   });
 }
 
-function updateRpButtonStyle(btn) {
+function updateRpButtonStyle(btn: HTMLElement): void {
   const isOn = rpMode !== 'off';
   btn.style.background = isOn ? 'rgba(255,255,255,0.5)' : '';
   btn.title = isOn ? `RP: ${getRpLabel()} (클릭: OFF)` : 'RP 모드 OFF (클릭: ON)';
 }
 
-function tryExtractPrimaryLuaFromTriggerScriptsText(value) {
+function tryExtractPrimaryLuaFromTriggerScriptsText(value: string): string | null {
   try {
     const parsed = JSON.parse(value);
     if (!Array.isArray(parsed)) return null;
@@ -1490,7 +1366,7 @@ function tryExtractPrimaryLuaFromTriggerScriptsText(value) {
   }
 }
 
-function mergeLuaIntoTriggerScriptsText(triggerScriptsText, lua) {
+function mergeLuaIntoTriggerScriptsText(triggerScriptsText: string, lua: string): string {
   if (typeof lua !== 'string' || !lua) {
     return triggerScriptsText;
   }
@@ -1528,37 +1404,37 @@ function getAssistantDeps() {
     rpMode,
     rpCustomText,
     hasTerminal: !!term,
-    readPersona: (mode) => window.tokiAPI.readPersona(mode),
+    readPersona: (mode: string) => window.tokiAPI.readPersona(mode),
     getClaudePrompt: () => window.tokiAPI.getClaudePrompt(),
     writeMcpConfig: () => window.tokiAPI.writeMcpConfig(),
     writeCopilotMcpConfig: () => window.tokiAPI.writeCopilotMcpConfig(),
     writeCodexMcpConfig: () => window.tokiAPI.writeCodexMcpConfig(),
     cleanupAgentsMd: () => window.tokiAPI.cleanupAgentsMd(),
-    writeSystemPrompt: (content) => window.tokiAPI.writeSystemPrompt(content),
-    writeAgentsMd: (content) => window.tokiAPI.writeAgentsMd(content),
-    terminalInput: (text) => window.tokiAPI.terminalInput(text),
+    writeSystemPrompt: (content: string) => window.tokiAPI.writeSystemPrompt(content),
+    writeAgentsMd: (content: string) => window.tokiAPI.writeAgentsMd(content),
+    terminalInput: (text: string) => window.tokiAPI.terminalInput(text),
     setStatus,
     navigatorLike: window.navigator,
   };
 }
 
-async function handleClaudeStart() {
-  await _handleClaudeStart(getAssistantDeps());
+async function handleClaudeStart(): Promise<void> {
+  await _handleClaudeStart(getAssistantDeps() as any);
 }
 
-async function handleCopilotStart() {
-  await _handleCopilotStart(getAssistantDeps());
+async function handleCopilotStart(): Promise<void> {
+  await _handleCopilotStart(getAssistantDeps() as any);
 }
 
-async function handleCodexStart() {
-  await _handleCodexStart(getAssistantDeps());
+async function handleCodexStart(): Promise<void> {
+  await _handleCodexStart(getAssistantDeps() as any);
 }
 
 
 // ==================== Terminal Background ====================
-async function handleTerminalBg() {
+async function handleTerminalBg(): Promise<void> {
   const dataUrl = await window.tokiAPI.pickBgImage();
-  const container = document.getElementById('terminal-container');
+  const container = document.getElementById('terminal-container')!;
   if (dataUrl) {
     container.style.backgroundImage = `url("${dataUrl}")`;
     container.classList.add('has-bg');
@@ -1570,12 +1446,12 @@ async function handleTerminalBg() {
 }
 
 // ==================== Resizers ====================
-function initResizers() {
+function initResizers(): void {
   // Slot resizers are initialized by rebuildLayout() → initSlotResizers()
   // Only avatar-terminal resizer needs static init here
 
   const avatarResizer = document.getElementById('avatar-resizer');
-  const avatar = document.getElementById('toki-avatar');
+  const avatar = document.getElementById('toki-avatar')!;
   if (avatarResizer) {
     avatarResizer.addEventListener('mousedown', (e) => {
       if (!V_SLOTS.has(layoutState.terminalPos)) return; // only in vertical slots
@@ -1583,7 +1459,7 @@ function initResizers() {
       avatarResizer.classList.add('active');
       const startY = e.clientY;
       const startH = avatar.offsetHeight;
-      const onMove = (ev) => {
+      const onMove = (ev: MouseEvent) => {
         const dy = ev.clientY - startY;
         avatar.style.height = Math.max(60, Math.min(400, startH + dy)) + 'px';
       };
@@ -1599,21 +1475,21 @@ function initResizers() {
   }
 
   // Terminal toggle
-  document.getElementById('btn-terminal-toggle').addEventListener('click', () => toggleTerminal());
+  document.getElementById('btn-terminal-toggle')!.addEventListener('click', () => toggleTerminal());
 }
 
 // ==================== Dark Mode ====================
 
 
-function toggleDarkMode() {
+function toggleDarkMode(): void {
   darkMode = !darkMode;
   writeDarkMode(darkMode);
   refreshDarkModeUi();
   setStatus(darkMode ? '다크 모드 ON (Aris)' : '라이트 모드 ON (Toki)');
 }
 
-function refreshDarkModeUi() {
-  applyDarkMode(darkMode, { editorInstance, formEditors: getFormEditors() });
+function refreshDarkModeUi(): void {
+  applyDarkMode(darkMode, { editorInstance, formEditors: getFormEditors() as any });
 
   // Update TokiTalk title
   const titleEl = document.querySelector('.momo-title');
@@ -1641,7 +1517,7 @@ function refreshDarkModeUi() {
 
 // ==================== BGM (Terminal Response Music) ====================
 
-function initBgmUi() {
+function initBgmUi(): void {
   initBgmModule(settingsSnapshot.bgmEnabled, settingsSnapshot.bgmPath);
 
   const btn = document.getElementById('btn-bgm');
@@ -1671,7 +1547,7 @@ function initBgmUi() {
   });
 }
 
-function updateBgmButtonStyle(btn) {
+function updateBgmButtonStyle(btn: HTMLElement): void {
   const enabled = isBgmEnabled();
   btn.textContent = enabled ? '🔊' : '🔇';
   btn.title = enabled ? 'BGM ON (우클릭: 파일 변경)' : 'BGM OFF (우클릭: 파일 변경)';
@@ -1686,7 +1562,7 @@ let lastUserInputTime = 0;
 
 // ==================== Autosave ====================
 
-function startAutosave() {
+function startAutosave(): void {
   stopAutosave();
   if (!autosaveEnabled) return;
   autosaveTimer = setInterval(async () => {
@@ -1697,12 +1573,12 @@ function startAutosave() {
     if (autosaveDir) updatedFields._autosaveDir = autosaveDir;
     const result = await window.tokiAPI.autosaveFile(updatedFields);
     if (result && result.success) {
-      setStatus(`자동 저장됨: ${result.path.split(/[/\\]/).pop()}`);
+      setStatus(`자동 저장됨: ${result.path?.split(/[/\\]/).pop()}`);
     }
   }, autosaveInterval);
 }
 
-function stopAutosave() {
+function stopAutosave(): void {
   if (autosaveTimer) { clearInterval(autosaveTimer); autosaveTimer = null; }
 }
 
@@ -1716,7 +1592,7 @@ function collectDirtyFields() {
 
 // ==================== Settings Popup ====================
 
-function showSettingsPopup() {
+function showSettingsPopup(): void {
   renderSettingsPopup(
     {
       autosaveEnabled,
@@ -1770,8 +1646,8 @@ function showSettingsPopup() {
         if (bgmBtn) updateBgmButtonStyle(bgmBtn);
         if (!isBgmEnabled()) pauseBgm();
       },
-      onRpModeChange(mode) {
-        rpMode = mode;
+      onRpModeChange(mode: string) {
+        rpMode = mode as any;
         writeRpMode(rpMode);
         const btn = document.getElementById('btn-rp-mode');
         if (btn) updateRpButtonStyle(btn);
@@ -1802,7 +1678,7 @@ function showSettingsPopup() {
 
 // ==================== Preview Test Panel ====================
 
-async function showPreviewPanel() {
+async function showPreviewPanel(): Promise<void> {
   if (!fileData) { setStatus('파일을 먼저 열어주세요'); return; }
 
   // Remove existing
@@ -1810,7 +1686,7 @@ async function showPreviewPanel() {
   if (existing) existing.remove();
 
   // Load all assets (name → data URI)
-  let assetMapForEngine = {};
+  let assetMapForEngine: any = {};
   try {
     const assetResult = await window.tokiAPI.getAllAssetsMap();
     assetMapForEngine = assetResult.assets || assetResult;
@@ -1831,7 +1707,7 @@ async function showPreviewPanel() {
     engine: PreviewEngine,
     setStatus,
     popoutPreview: async (charData) => {
-      const requestId = await window.tokiAPI.setPreviewPopoutData(charData);
+      const requestId = await window.tokiAPI.setPreviewPopoutData(charData as any);
       await window.tokiAPI.popoutPanel('preview', requestId);
     }
   });
@@ -1841,7 +1717,7 @@ async function showPreviewPanel() {
 // Core logic lives in ../lib/panel-drag.ts; thin wrapper below closes
 // over controller-level state via a lazily-built deps object.
 
-function initPanelDragDrop() {
+function initPanelDragDrop(): void {
   _initPanelDragDrop({
     moveItems,
     moveTerminal,
@@ -1864,27 +1740,27 @@ function getPopoutDeps() {
     rebuildLayout,
     setStatus,
     getEditorInstance: () => editorInstance,
-    setEditorInstance: (ed) => { editorInstance = ed; },
+    setEditorInstance: (ed: any) => { editorInstance = ed; },
     createOrSwitchEditor,
     tabMgr,
     fitTerminal: () => { if (fitAddon && term) fitAddon.fit(); }
   };
 }
 
-function popOutPanel(panelId, requestId = null) {
-  return _popOutPanel(panelId, getPopoutDeps(), requestId);
+function popOutPanel(panelId: string, requestId: string | null = null): any {
+  return _popOutPanel(panelId, getPopoutDeps() as any, requestId);
 }
 
-function popOutEditorPanel(tabId) {
-  return _popOutEditorPanel(tabId, getPopoutDeps());
+function popOutEditorPanel(tabId: string): any {
+  return _popOutEditorPanel(tabId, getPopoutDeps() as any);
 }
 
-function dockPanel(panelId) {
-  return _dockPanel(panelId, getPopoutDeps());
+function dockPanel(panelId: string): any {
+  return _dockPanel(panelId, getPopoutDeps() as any);
 }
 
 // Tab open by ID (used for sidebar popout clicks)
-function openTabById(tabId) {
+function openTabById(tabId: string): void {
   if (!fileData) return;
 
   const tabMap = {
@@ -1901,19 +1777,19 @@ function openTabById(tabId) {
       label: 'Lua (통합)',
       lang: 'lua',
       get: () => fileData.lua,
-      set: (v) => {
+      set: (v: any) => {
         fileData.lua = v;
         fileData.triggerScripts = mergeLuaIntoTriggerScriptsText(fileData.triggerScripts, v);
         luaSections = parseLuaSections(v);
       }
     },
-    globalNote: { label: '글로벌노트', lang: 'plaintext', get: () => fileData.globalNote, set: (v) => { fileData.globalNote = v; } },
-    firstMessage: { label: '첫 메시지', lang: 'html', get: () => fileData.firstMessage, set: (v) => { fileData.firstMessage = v; } },
+    globalNote: { label: '글로벌노트', lang: 'plaintext', get: () => fileData.globalNote, set: (v: any) => { fileData.globalNote = v; } },
+    firstMessage: { label: '첫 메시지', lang: 'html', get: () => fileData.firstMessage, set: (v: any) => { fileData.firstMessage = v; } },
     triggerScripts: {
       label: '트리거 스크립트',
       lang: 'json',
       get: () => fileData.triggerScripts || '[]',
-      set: (v) => {
+      set: (v: any) => {
         fileData.triggerScripts = v;
         const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(v);
         if (nextLua !== null) fileData.lua = nextLua;
@@ -1921,13 +1797,13 @@ function openTabById(tabId) {
     },
     alternateGreetings: { label: '추가 첫 메시지', lang: 'json', get: () => stringifyStringArray(fileData.alternateGreetings), set: null },
     groupOnlyGreetings: { label: '그룹 첫 메시지', lang: 'json', get: () => stringifyStringArray(fileData.groupOnlyGreetings), set: null },
-    css: { label: 'CSS (통합)', lang: 'css', get: () => fileData.css, set: (v) => { fileData.css = v; ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(v)); } },
-    defaultVariables: { label: '기본변수', lang: 'plaintext', get: () => fileData.defaultVariables, set: (v) => { fileData.defaultVariables = v; } },
-    description: { label: '설명', lang: 'plaintext', get: () => fileData.description, set: (v) => { fileData.description = v; } },
+    css: { label: 'CSS (통합)', lang: 'css', get: () => fileData.css, set: (v: any) => { fileData.css = v; ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(v)); } },
+    defaultVariables: { label: '기본변수', lang: 'plaintext', get: () => fileData.defaultVariables, set: (v: any) => { fileData.defaultVariables = v; } },
+    description: { label: '설명', lang: 'plaintext', get: () => fileData.description, set: (v: any) => { fileData.description = v; } },
   };
 
-  if (tabMap[tabId]) {
-    const t = tabMap[tabId];
+  if ((tabMap as any)[tabId]) {
+    const t = (tabMap as any)[tabId];
     if (tabId === 'lua') fileData.lua = combineLuaSections(luaSections);
     tabMgr.openTab(tabId, t.label, t.lang, t.get, t.set);
     return;
@@ -1939,7 +1815,7 @@ function openTabById(tabId) {
       const label = fileData.lorebook[idx].comment || `entry_${idx}`;
       tabMgr.openTab(tabId, label, 'plaintext',
         () => fileData.lorebook[idx].content || '',
-        (v) => { fileData.lorebook[idx].content = v; });
+        (v: any) => { fileData.lorebook[idx].content = v; });
     }
   } else if (tabId.startsWith('regex_')) {
     const idx = parseInt(tabId.replace('regex_', ''), 10);
@@ -1947,7 +1823,7 @@ function openTabById(tabId) {
       const label = fileData.regex[idx].comment || `regex_${idx}`;
       tabMgr.openTab(tabId, label, 'json',
         () => JSON.stringify(fileData.regex[idx], null, 2),
-        (v) => { try { fileData.regex[idx] = JSON.parse(v); } catch(e){} });
+        (v: any) => { try { fileData.regex[idx] = JSON.parse(v); } catch(e){} });
     }
   } else if (tabId.startsWith('guide_')) {
     // Guide file from refs popout
@@ -1965,7 +1841,7 @@ function openTabById(tabId) {
         tabId,
         `[가이드] ${fileName}`,
         content,
-        (val) => window.tokiAPI.writeGuide(fileName, val)
+        (val: string) => window.tokiAPI.writeGuide(fileName, val) as any
       );
     });
   } else if (tabId.startsWith('ref_')) {
@@ -1975,7 +1851,7 @@ function openTabById(tabId) {
 }
 
 // ==================== Keyboard Shortcuts ====================
-function initKeyboard() {
+function initKeyboard(): void {
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key === 'n') {
       e.preventDefault(); handleNew();
@@ -2000,7 +1876,7 @@ function initKeyboard() {
 }
 
 // ==================== Init ====================
-export async function initMainRenderer() {
+export async function initMainRenderer(): Promise<void> {
   subscribeToAppSettings((snapshot) => {
     const darkModeChanged = snapshot.darkMode !== darkMode;
     darkMode = snapshot.darkMode;
@@ -2090,7 +1966,7 @@ export async function initMainRenderer() {
   });
   initResizers();
   initKeyboard();
-  initDragDrop(document.getElementById('sidebar'), {
+  initDragDrop(document.getElementById('sidebar')!, {
     get fileData() { return fileData; },
     get referenceFiles() { return referenceFiles; },
     syncReferenceFiles,
@@ -2100,20 +1976,20 @@ export async function initMainRenderer() {
     openReferencePath: (path) => window.tokiAPI.openReferencePath(path),
   });
   initEditor();
-  document.getElementById('btn-terminal-bg').addEventListener('click', handleTerminalBg);
+  document.getElementById('btn-terminal-bg')!.addEventListener('click', handleTerminalBg);
   initRpModeButton();
   initBgmUi();
-  document.getElementById('btn-sidebar-collapse').addEventListener('click', toggleSidebar);
-  document.getElementById('btn-avatar-collapse').addEventListener('click', toggleAvatar);
-  document.getElementById('sidebar-expand').addEventListener('click', () => {
+  document.getElementById('btn-sidebar-collapse')!.addEventListener('click', toggleSidebar);
+  document.getElementById('btn-avatar-collapse')!.addEventListener('click', toggleAvatar);
+  document.getElementById('sidebar-expand')!.addEventListener('click', () => {
     moveItems(layoutState.itemsPos);
   });
-  document.getElementById('toki-help-btn').addEventListener('click', showHelpPopup);
-  document.getElementById('btn-settings').addEventListener('click', showSettingsPopup);
+  document.getElementById('toki-help-btn')!.addEventListener('click', showHelpPopup);
+  document.getElementById('btn-settings')!.addEventListener('click', showSettingsPopup);
   initSidebarSplitResizer();
-  initTokiAvatarUi(document.getElementById('toki-avatar-display'), { darkMode, setStatus });
+  initTokiAvatarUi(document.getElementById('toki-avatar-display')!, { darkMode, setStatus });
   refreshDarkModeUi(); // Apply saved dark mode preference
-  initChatModeUi(document.getElementById('terminal-area'), {
+  initChatModeUi(document.getElementById('terminal-area')!, {
     chatSession,
     fitTerminal: () => { if (fitAddon && term) setTimeout(() => fitAddon.fit(), 20); },
     isTerminalReady: () => !!term,
@@ -2222,7 +2098,7 @@ export async function initMainRenderer() {
       const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
       if (activeTab && activeTab.id.startsWith('lore_') && editorInstance && !FORM_TAB_TYPES.has(activeTab.language)) {
         const pos = editorInstance.getPosition();
-        editorInstance.setValue(activeTab.getValue() || '');
+        editorInstance.setValue((activeTab.getValue() as string) || '');
         if (pos) editorInstance.setPosition(pos);
       }
     } else if (field === 'regex') {
@@ -2234,23 +2110,23 @@ export async function initMainRenderer() {
       const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
       if (activeTab && activeTab.id.startsWith('regex_') && editorInstance && !FORM_TAB_TYPES.has(activeTab.language)) {
         const pos = editorInstance.getPosition();
-        editorInstance.setValue(activeTab.getValue() || '');
+        editorInstance.setValue((activeTab.getValue() as string) || '');
         if (pos) editorInstance.setPosition(pos);
       }
     } else {
       fileData[field] = value;
       if (field === 'triggerScripts') {
-        const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(value);
+        const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(value as string);
         if (nextLua !== null) fileData.lua = nextLua;
       }
       if (field === 'lua') {
-        fileData.triggerScripts = mergeLuaIntoTriggerScriptsText(fileData.triggerScripts, value);
+        fileData.triggerScripts = mergeLuaIntoTriggerScriptsText(fileData.triggerScripts, value as string);
       }
       if (field === 'lua') {
-        luaSections = parseLuaSections(value);
+        luaSections = parseLuaSections(value as string);
       }
       if (field === 'css') {
-        ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(value));
+        ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(value as string));
       }
       if (updatePlan.refreshSidebar) {
         buildSidebar();
@@ -2265,14 +2141,14 @@ export async function initMainRenderer() {
       if (field === tabMgr.activeTabId && editorInstance) {
         const activeTab = tabMgr.openTabs.find((tab) => tab.id === field);
         const pos = editorInstance.getPosition();
-        editorInstance.setValue(activeTab?.getValue ? (activeTab.getValue() || '') : (value || ''));
+        editorInstance.setValue(activeTab?.getValue ? ((activeTab.getValue() as string) || '') : (value || ''));
         if (pos) editorInstance.setPosition(pos);
       }
       if ((field === 'description' || field === 'name') && tabMgr.activeTabId === 'assetPromptTemplate' && editorInstance) {
         const activeTab = tabMgr.openTabs.find((tab) => tab.id === 'assetPromptTemplate');
         if (activeTab) {
           const pos = editorInstance.getPosition();
-          editorInstance.setValue(activeTab.getValue() || '');
+          editorInstance.setValue((activeTab.getValue() as string) || '');
           if (pos) editorInstance.setPosition(pos);
         }
       }
@@ -2280,7 +2156,7 @@ export async function initMainRenderer() {
         const activeTab = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
         if (activeTab) {
           const pos = editorInstance.getPosition();
-          editorInstance.setValue(activeTab.getValue() || '');
+          editorInstance.setValue((activeTab.getValue() as string) || '');
           if (pos) editorInstance.setPosition(pos);
         }
       }
@@ -2288,13 +2164,13 @@ export async function initMainRenderer() {
         const activeTab = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
         if (activeTab) {
           const pos = editorInstance.getPosition();
-          editorInstance.setValue(activeTab.getValue() || '');
+          editorInstance.setValue((activeTab.getValue() as string) || '');
           if (pos) editorInstance.setPosition(pos);
         }
       }
       if (updatePlan.updateFileLabel) {
         const label = document.getElementById('file-label');
-        if (label) label.textContent = value || 'Untitled';
+        if (label) label.textContent = (value as string) || 'Untitled';
       }
     }
     setStatus(updatePlan.statusMessage);
@@ -2312,7 +2188,7 @@ export async function initMainRenderer() {
     // (debug log removed)
   } catch (err) {
     console.error('[init] Terminal load failed:', err);
-    document.getElementById('terminal-container').innerHTML =
-      '<div style="color:#f44;padding:8px;font-size:12px;">터미널 로딩 실패: ' + err.message + '</div>';
+    document.getElementById('terminal-container')!.innerHTML =
+      '<div style="color:#f44;padding:8px;font-size:12px;">터미널 로딩 실패: ' + (err as Error).message + '</div>';
   }
 }
