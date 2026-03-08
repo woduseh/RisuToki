@@ -11,13 +11,11 @@ const commonJsFiles = [
 
 const browserJsFiles = [
   'src/app/**/*.js',
-  'src/popout/**/*.js',
   'src/lib/**/*.js'
 ];
 
 const portedRendererFiles = [
   'src/app/controller.ts',
-  'src/popout/controller.js',
   'src/lib/preview-engine.ts',
   'src/lib/preview-format.ts'
 ];
@@ -136,6 +134,12 @@ export default [
       'no-useless-escape': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-explicit-any': 'off'
+    }
+  },
+  {
+    files: ['src/popout/controller.ts'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off'
     }
   }
 ];
