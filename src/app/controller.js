@@ -80,6 +80,7 @@ import {
 } from '../lib/form-editor';
 import { showConfirm, resetConfirmAllowAll, showCloseConfirm, showPrompt } from '../lib/dialog';
 import { showContextMenu, hideContextMenu } from '../lib/context-menu';
+import { initPanelDragDrop as _initPanelDragDrop } from '../lib/panel-drag';
 import {
   initializeTerminalUi,
   shouldTreatTerminalDataAsActivity,
@@ -2069,197 +2070,20 @@ async function showPreviewPanel() {
 }
 
 // ==================== Panel Drag & Drop ====================
+// Core logic lives in ../lib/panel-drag.ts; thin wrapper below closes
+// over controller-level state via a lazily-built deps object.
 
 function initPanelDragDrop() {
-  // Make panel headers draggable
-  const draggables = [
-    { el: document.querySelector('.sidebar-header'), panel: 'sidebar', label: '항목' },
-    { el: document.getElementById('terminal-header'), panel: 'terminal', label: 'TokiTalk' },
-  ];
-
-  for (const item of draggables) {
-    if (!item.el) continue;
-    item.el.style.cursor = 'grab';
-
-    // Add pop-out button to header
-    const popoutBtn = document.createElement('button');
-    popoutBtn.className = 'panel-collapse-btn';
-    popoutBtn.title = '팝아웃 (분리)';
-    popoutBtn.textContent = '↗';
-    popoutBtn.dataset.popoutPanel = item.panel;
-    popoutBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (isPanelPoppedOut(item.panel)) {
-        dockPanel(item.panel);
-      } else {
-        popOutPanel(item.panel);
-      }
-    });
-
-    // Add close button (✕)
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'panel-collapse-btn';
-    closeBtn.title = '닫기';
-    closeBtn.textContent = '✕';
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (item.panel === 'sidebar') toggleSidebar();
-      else if (item.panel === 'terminal') toggleTerminal();
-    });
-
-    if (item.panel === 'sidebar') {
-      // Sidebar header: buttons group [↗ popout] [◀ collapse] [✕ close]
-      const btnsGroup = item.el.querySelector('.sidebar-header-btns');
-      const collapseBtn = document.getElementById('btn-sidebar-collapse');
-      if (btnsGroup && collapseBtn) {
-        btnsGroup.insertBefore(popoutBtn, collapseBtn);
-        btnsGroup.appendChild(closeBtn);
-      }
-    } else if (item.panel === 'terminal') {
-      // Terminal header: [↗ popout] [━ toggle] [✕ close]
-      const headerRight = item.el.querySelector('.momo-header-right');
-      const toggleBtn = document.getElementById('btn-terminal-toggle');
-      if (headerRight && toggleBtn) {
-        headerRight.insertBefore(popoutBtn, toggleBtn);
-        toggleBtn.after(closeBtn);
-      }
-    }
-
-    item.el.addEventListener('mousedown', (e) => {
-      // Ignore if clicking a button inside the header
-      if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
-      // Ignore right-click
-      if (e.button !== 0) return;
-
-      e.preventDefault();
-      startPanelDrag(e, item.panel, item.label);
-    });
-
-    // Right-click for position + pop-out options
-    item.el.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const isPoppedOut_ = isPanelPoppedOut(item.panel);
-      const moveFn = item.panel === 'sidebar' ? moveItems : moveTerminal;
-      const posItems = [
-        { label: '→ 좌측', action: () => moveFn('left') },
-        { label: '→ 우측', action: () => moveFn('right') },
-        { label: '→ 좌끝', action: () => moveFn('far-left') },
-        { label: '→ 우끝', action: () => moveFn('far-right') },
-        { label: '→ 상단', action: () => moveFn('top') },
-        { label: '→ 하단', action: () => moveFn('bottom') },
-        { separator: true },
-        isPoppedOut_
-          ? { label: '도킹 (복원)', action: () => dockPanel(item.panel) }
-          : { label: '팝아웃 (분리)', action: () => popOutPanel(item.panel) },
-      ];
-      showContextMenu(e.clientX, e.clientY, posItems);
-    });
-  }
-}
-
-function startPanelDrag(e, panelId, label) {
-  const startX = e.clientX;
-  const startY = e.clientY;
-  let dragging = false;
-  let dropZones = [];
-
-  const onMove = (ev) => {
-    const dx = Math.abs(ev.clientX - startX);
-    const dy = Math.abs(ev.clientY - startY);
-
-    // Start drag after 8px movement threshold
-    if (!dragging && (dx > 8 || dy > 8)) {
-      dragging = true;
-      dropZones = createDropZones(panelId);
-      document.body.style.cursor = 'grabbing';
-    }
-
-    if (dragging) {
-      // Highlight the zone under cursor (rects cached at creation time)
-      for (const zone of dropZones) {
-        const r = zone._rect;
-        if (ev.clientX >= r.left && ev.clientX <= r.right &&
-            ev.clientY >= r.top && ev.clientY <= r.bottom) {
-          zone.el.classList.add('hover');
-        } else {
-          zone.el.classList.remove('hover');
-        }
-      }
-    }
-  };
-
-  const onUp = (ev) => {
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-    document.body.style.cursor = '';
-
-    if (!dragging) return;
-
-    // Find which zone was dropped on (use cached rects)
-    let dropped = null;
-    for (const zone of dropZones) {
-      const r = zone._rect;
-      if (ev.clientX >= r.left && ev.clientX <= r.right &&
-          ev.clientY >= r.top && ev.clientY <= r.bottom) {
-        dropped = zone;
-      }
-      zone.el.remove();
-    }
-
-    if (dropped) {
-      applyPanelDrop(panelId, dropped.position);
-    }
-  };
-
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
-}
-
-function createDropZones(panelId) {
-  const zones = [];
-  const appBody = document.getElementById('app-body');
-  const rect = appBody.getBoundingClientRect();
-  const e = 0.08; // edge ratio for far zones
-  const s = 0.15; // side ratio
-
-  // All panels can go to all 6 positions
-  const positions = [
-    { position: 'far-left', label: '좌끝', x: rect.left, y: rect.top, w: rect.width * e, h: rect.height },
-    { position: 'left', label: '좌측', x: rect.left + rect.width * e, y: rect.top + rect.height * 0.15, w: rect.width * (s - e), h: rect.height * 0.7 },
-    { position: 'top', label: '상단', x: rect.left + rect.width * e, y: rect.top, w: rect.width * (1 - 2 * e), h: rect.height * 0.15 },
-    { position: 'bottom', label: '하단', x: rect.left + rect.width * e, y: rect.bottom - rect.height * 0.15, w: rect.width * (1 - 2 * e), h: rect.height * 0.15 },
-    { position: 'right', label: '우측', x: rect.right - rect.width * s, y: rect.top + rect.height * 0.15, w: rect.width * (s - e), h: rect.height * 0.7 },
-    { position: 'far-right', label: '우끝', x: rect.right - rect.width * e, y: rect.top, w: rect.width * e, h: rect.height },
-  ];
-
-  for (const pos of positions) {
-    const zone = document.createElement('div');
-    zone.className = 'panel-drop-zone visible';
-    zone.style.left = pos.x + 'px';
-    zone.style.top = pos.y + 'px';
-    zone.style.width = pos.w + 'px';
-    zone.style.height = pos.h + 'px';
-
-    const labelEl = document.createElement('div');
-    labelEl.className = 'panel-drop-zone-label';
-    labelEl.textContent = pos.label;
-    zone.appendChild(labelEl);
-
-    document.body.appendChild(zone);
-    zones.push({ el: zone, position: pos.position, _rect: zone.getBoundingClientRect() });
-  }
-
-  return zones;
-}
-
-function applyPanelDrop(panelId, position) {
-  if (panelId === 'sidebar') {
-    moveItems(position);
-  } else if (panelId === 'terminal') {
-    moveTerminal(position);
-  }
+  _initPanelDragDrop({
+    moveItems,
+    moveTerminal,
+    toggleSidebar,
+    toggleTerminal,
+    isPanelPoppedOut,
+    popOutPanel,
+    dockPanel,
+    showContextMenu,
+  });
 }
 
 // ==================== Pop-out Mode (External Window) ====================
