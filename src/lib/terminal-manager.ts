@@ -77,7 +77,7 @@ export function initTerminalManager(deps: TerminalManagerDeps): void {
   const { broadcastToAll, getCurrentFilePath, getApiPort, getApiToken } = deps;
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { buildTerminalLaunchAttempts } = require('./terminal-shell.cjs') as {
+  const { buildTerminalLaunchAttempts } = require('./terminal-shell') as {
     buildTerminalLaunchAttempts: (opts: Record<string, unknown>) => LaunchAttempt[];
   };
 

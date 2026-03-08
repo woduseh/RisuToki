@@ -4,7 +4,6 @@ import pluginVue from 'eslint-plugin-vue';
 import tseslint from 'typescript-eslint';
 
 const commonJsFiles = [
-  'src/lib/**/*.cjs',
   'test/**/*.js'
 ];
 

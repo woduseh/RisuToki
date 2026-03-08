@@ -91,7 +91,7 @@ const {
   serializeReferenceManifest,
   parseReferenceManifest,
   validateReferenceManifestPaths
-} = require('./src/lib/reference-store.cjs') as {
+} = require('./src/lib/reference-store') as {
   normalizeReferencePath: (filePath: string) => string;
   upsertReferenceRecord: (records: ReferenceRecord[], record: ReferenceRecord) => ReferenceRecord[];
   removeReferenceRecord: (records: ReferenceRecord[], identifier: string) => ReferenceRecord[];
@@ -103,15 +103,15 @@ const {
   ) => { validPaths: string[]; issues: ReferenceManifestIssue[] };
 };
 
-const { buildRefsPopoutData } = require('./src/lib/refs-popout-data.cjs') as {
+const { buildRefsPopoutData } = require('./src/lib/refs-popout-data') as {
   buildRefsPopoutData: (guidesListResult: GuidesListResult, referenceFiles: ReferenceRecord[]) => unknown;
 };
 
-const { createPopoutPayloadStore } = require('./src/lib/popout-payload-store.cjs') as {
+const { createPopoutPayloadStore } = require('./src/lib/popout-payload-store') as {
   createPopoutPayloadStore: () => PopoutPayloadStore;
 };
 
-const { createMainStateStore } = require('./src/lib/main-state-store.cjs') as {
+const { createMainStateStore } = require('./src/lib/main-state-store') as {
   createMainStateStore: () => MainStateStore;
 };
 

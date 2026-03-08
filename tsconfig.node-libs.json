@@ -20,6 +20,15 @@
     "src/lib/sync-server.ts",
     "src/lib/guides-manager.ts",
     "src/lib/terminal-manager.ts",
+    "src/lib/ipc-confirm.ts",
+    "src/lib/data-serializer.ts",
+    "src/lib/autosave-manager.ts",
+    "src/lib/popout-manager.ts",
+    "src/lib/main-state-store.ts",
+    "src/lib/popout-payload-store.ts",
+    "src/lib/reference-store.ts",
+    "src/lib/refs-popout-data.ts",
+    "src/lib/terminal-shell.ts",
     "toki-mcp-server.ts"
   ],
   "exclude": [

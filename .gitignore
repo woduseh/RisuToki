@@ -12,6 +12,11 @@ popout-preload.js
 # Compiled node-libs (generated from .ts sources via tsconfig.node-libs.json)
 src/rpack.js
 src/lorebook-convert.js
+src/lib/main-state-store.js
+src/lib/popout-payload-store.js
+src/lib/reference-store.js
+src/lib/refs-popout-data.js
+src/lib/terminal-shell.js
 /toki-mcp-server.js
 
 # Autosave files
