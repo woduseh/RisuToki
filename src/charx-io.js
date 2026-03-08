@@ -70,7 +70,13 @@ function normalizeTriggerScripts(triggerScripts) {
         const trimmed = triggerScripts.trim();
         if (!trimmed)
             return [];
-        const parsed = JSON.parse(trimmed);
+        let parsed;
+        try {
+            parsed = JSON.parse(trimmed);
+        }
+        catch (e) {
+            throw new Error(`Invalid trigger script JSON: ${e instanceof Error ? e.message : String(e)}`);
+        }
         if (!Array.isArray(parsed)) {
             throw new Error('Trigger scripts must be a JSON array.');
         }
@@ -137,7 +143,14 @@ function openCharx(filePath) {
     const cardEntry = zip.getEntry('card.json');
     if (!cardEntry)
         throw new Error('card.json not found in .charx');
-    const card = JSON.parse(cardEntry.getData().toString('utf-8'));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let card;
+    try {
+        card = JSON.parse(cardEntry.getData().toString('utf-8'));
+    }
+    catch (e) {
+        throw new Error(`Invalid card.json: ${e instanceof Error ? e.message : String(e)}`);
+    }
     // Parse module.risum
     let moduleData = null;
     let risumAssets = [];
@@ -159,7 +172,12 @@ function openCharx(filePath) {
         }
         if (entry.entryName.startsWith('x_meta/') && entry.entryName.endsWith('.json')) {
             const metaName = path.basename(entry.entryName, '.json');
-            xMeta[metaName] = JSON.parse(entry.getData().toString('utf-8'));
+            try {
+                xMeta[metaName] = JSON.parse(entry.getData().toString('utf-8'));
+            }
+            catch {
+                console.warn(`[charx-io] Skipping corrupted x_meta/${metaName}.json`);
+            }
         }
     }
     // Extract editable components
@@ -424,6 +442,9 @@ function deriveRisupKey() {
 function decryptAesGcm(encrypted) {
     const key = deriveRisupKey();
     const tagLength = 16;
+    if (encrypted.length < tagLength) {
+        throw new Error(`Encrypted data too small (${encrypted.length} bytes, need ≥${tagLength})`);
+    }
     const ciphertext = encrypted.subarray(0, encrypted.length - tagLength);
     const authTag = encrypted.subarray(encrypted.length - tagLength);
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, RISUP_IV);
@@ -656,7 +677,13 @@ function openRisup(filePath) {
     // Step 2: Raw DEFLATE decompress (fflate.compressSync produces raw DEFLATE, not zlib)
     const decompressed = zlib.inflateRawSync(decoded);
     // Step 3: MessagePack decode outer envelope
-    const envelope = unpack(decompressed);
+    let envelope;
+    try {
+        envelope = unpack(decompressed);
+    }
+    catch (e) {
+        throw new Error(`Failed to decode .risup envelope: ${e instanceof Error ? e.message : String(e)}`);
+    }
     if (!envelope || envelope.type !== 'preset') {
         throw new Error('Invalid .risup file: missing type=preset marker');
     }
@@ -667,7 +694,13 @@ function openRisup(filePath) {
     }
     const decryptedBuf = decryptAesGcm(Buffer.from(encryptedPreset));
     // Step 5: MessagePack decode the actual preset
-    const preset = unpack(decryptedBuf);
+    let preset;
+    try {
+        preset = unpack(decryptedBuf);
+    }
+    catch (e) {
+        throw new Error(`Failed to decode preset data: ${e instanceof Error ? e.message : String(e)}`);
+    }
     // Clear sensitive keys for safety
     const sanitized = { ...preset };
     delete sanitized.openAIKey;

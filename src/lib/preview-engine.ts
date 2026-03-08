@@ -8,7 +8,7 @@ import type {
   PreviewLorebookEntry,
   PreviewLoreMatch,
   PreviewMessage,
-  PreviewRegexScript
+  PreviewRegexScript,
 } from './preview-session';
 
 // ==================== Wasmoon Types (broad, minimal surface) ====================
@@ -172,34 +172,72 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       const tokens: Array<number | string> = [];
       let i = 0;
       while (i < expr.length) {
-        if (/\s/.test(expr[i])) { i++; continue; }
-        if (/[\d.]/.test(expr[i]) || (expr[i] === '-' && (tokens.length === 0 || typeof tokens[tokens.length - 1] === 'string'))) {
+        if (/\s/.test(expr[i])) {
+          i++;
+          continue;
+        }
+        if (
+          /[\d.]/.test(expr[i]) ||
+          (expr[i] === '-' && (tokens.length === 0 || typeof tokens[tokens.length - 1] === 'string'))
+        ) {
           let num = '';
-          if (expr[i] === '-') { num = '-'; i++; }
-          while (i < expr.length && /[\d.]/.test(expr[i])) { num += expr[i]; i++; }
+          if (expr[i] === '-') {
+            num = '-';
+            i++;
+          }
+          while (i < expr.length && /[\d.]/.test(expr[i])) {
+            num += expr[i];
+            i++;
+          }
           tokens.push(parseFloat(num) || 0);
           continue;
         }
         if (i + 1 < expr.length) {
           const two = expr[i] + expr[i + 1];
           if (['<=', '>=', '==', '!=', '&&', '||'].includes(two)) {
-            tokens.push(two); i += 2; continue;
+            tokens.push(two);
+            i += 2;
+            continue;
           }
         }
         if ('+-*/%^<>|&()'.includes(expr[i])) {
-          tokens.push(expr[i]); i++; continue;
+          tokens.push(expr[i]);
+          i++;
+          continue;
         }
         i++;
       }
-      const prec: Record<string, number> = { '||': 1, '&&': 2, '==': 3, '!=': 3, '<': 4, '>': 4, '<=': 4, '>=': 4, '+': 5, '-': 5, '*': 6, '/': 6, '%': 6, '^': 7 };
+      const prec: Record<string, number> = {
+        '||': 1,
+        '&&': 2,
+        '==': 3,
+        '!=': 3,
+        '<': 4,
+        '>': 4,
+        '<=': 4,
+        '>=': 4,
+        '+': 5,
+        '-': 5,
+        '*': 6,
+        '/': 6,
+        '%': 6,
+        '^': 7,
+      };
       const output: Array<number | string> = [];
       const ops: string[] = [];
       for (const t of tokens) {
-        if (typeof t === 'number') { output.push(t); continue; }
-        if (t === '(') { ops.push(t); continue; }
+        if (typeof t === 'number') {
+          output.push(t);
+          continue;
+        }
+        if (t === '(') {
+          ops.push(t);
+          continue;
+        }
         if (t === ')') {
           while (ops.length && ops[ops.length - 1] !== '(') output.push(ops.pop()!);
-          ops.pop(); continue;
+          ops.pop();
+          continue;
         }
         while (ops.length && ops[ops.length - 1] !== '(' && (prec[ops[ops.length - 1]] || 0) >= (prec[t] || 0)) {
           output.push(ops.pop()!);
@@ -209,25 +247,57 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       while (ops.length) output.push(ops.pop()!);
       const stack: number[] = [];
       for (const t of output) {
-        if (typeof t === 'number') { stack.push(t); continue; }
+        if (typeof t === 'number') {
+          stack.push(t);
+          continue;
+        }
         const b = stack.pop() ?? 0;
         const a = stack.pop() ?? 0;
         switch (t) {
-          case '+': stack.push(a + b); break;
-          case '-': stack.push(a - b); break;
-          case '*': stack.push(a * b); break;
-          case '/': stack.push(b !== 0 ? a / b : 0); break;
-          case '%': stack.push(b !== 0 ? a % b : 0); break;
-          case '^': stack.push(Math.pow(a, b)); break;
-          case '<': stack.push(a < b ? 1 : 0); break;
-          case '>': stack.push(a > b ? 1 : 0); break;
-          case '<=': stack.push(a <= b ? 1 : 0); break;
-          case '>=': stack.push(a >= b ? 1 : 0); break;
-          case '==': stack.push(Math.abs(a - b) < 1e-9 ? 1 : 0); break;
-          case '!=': stack.push(Math.abs(a - b) >= 1e-9 ? 1 : 0); break;
-          case '&&': stack.push(a && b ? 1 : 0); break;
-          case '||': stack.push(a || b ? 1 : 0); break;
-          default: stack.push(0);
+          case '+':
+            stack.push(a + b);
+            break;
+          case '-':
+            stack.push(a - b);
+            break;
+          case '*':
+            stack.push(a * b);
+            break;
+          case '/':
+            stack.push(b !== 0 ? a / b : 0);
+            break;
+          case '%':
+            stack.push(b !== 0 ? a % b : 0);
+            break;
+          case '^':
+            stack.push(Math.pow(a, b));
+            break;
+          case '<':
+            stack.push(a < b ? 1 : 0);
+            break;
+          case '>':
+            stack.push(a > b ? 1 : 0);
+            break;
+          case '<=':
+            stack.push(a <= b ? 1 : 0);
+            break;
+          case '>=':
+            stack.push(a >= b ? 1 : 0);
+            break;
+          case '==':
+            stack.push(Math.abs(a - b) < 1e-9 ? 1 : 0);
+            break;
+          case '!=':
+            stack.push(Math.abs(a - b) >= 1e-9 ? 1 : 0);
+            break;
+          case '&&':
+            stack.push(a && b ? 1 : 0);
+            break;
+          case '||':
+            stack.push(a || b ? 1 : 0);
+            break;
+          default:
+            stack.push(0);
         }
       }
       const result = stack[0] || 0;
@@ -323,11 +393,15 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('br', () => '\n', ['newline', 'nl']);
 
     // --- HTML helpers ---
-    reg('img', (_p1, _arg, args) => `<img src="${args[0] || ''}" alt="${args[1] || ''}" style="max-width:100%;">`, ['image']);
+    reg('img', (_p1, _arg, args) => `<img src="${args[0] || ''}" alt="${args[1] || ''}" style="max-width:100%;">`, [
+      'image',
+    ]);
     reg('video', (_p1, _arg, args) => `<video src="${args[0] || ''}" controls style="max-width:100%;"></video>`);
     reg('audio', (_p1, _arg, args) => `<audio src="${args[0] || ''}" controls></audio>`);
     reg('color', (_p1, _arg, args) => `<span style="color:${args[0] || '#fff'}">${args[1] || ''}</span>`);
-    reg('fontsize', (_p1, _arg, args) => `<span style="font-size:${args[0] || '1em'}">${args[1] || ''}</span>`, ['size']);
+    reg('fontsize', (_p1, _arg, args) => `<span style="font-size:${args[0] || '1em'}">${args[1] || ''}</span>`, [
+      'size',
+    ]);
     reg('bold', (_p1, _arg, args) => `<strong>${args[0] || ''}</strong>`, ['b']);
     reg('italic', (_p1, _arg, args) => `<em>${args[0] || ''}</em>`, ['i']);
     reg('strike', (_p1, _arg, args) => `<s>${args[0] || ''}</s>`, ['s', 'del']);
@@ -357,21 +431,25 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       return parts[idx] || '';
     });
     reg('reverse', (_p1, _arg, args) => (args[0] || '').split('').reverse().join(''));
-    reg('contains', (_p1, _arg, args) => (args[0] || '').includes(args[1] || '') ? '1' : '0');
+    reg('contains', (_p1, _arg, args) => ((args[0] || '').includes(args[1] || '') ? '1' : '0'));
     reg('index', (_p1, _arg, args) => String((args[0] || '').indexOf(args[1] || '')));
 
     // --- Comparison helpers ---
-    reg('equal', (_p1, _arg, args) => (args[0] || '') === (args[1] || '') ? '1' : '0');
-    reg('notequal', (_p1, _arg, args) => (args[0] || '') !== (args[1] || '') ? '1' : '0');
-    reg('greater', (_p1, _arg, args) => parseFloat(args[0] || '0') > parseFloat(args[1] || '0') ? '1' : '0');
-    reg('less', (_p1, _arg, args) => parseFloat(args[0] || '0') < parseFloat(args[1] || '0') ? '1' : '0');
-    reg('greaterorequal', (_p1, _arg, args) => parseFloat(args[0] || '0') >= parseFloat(args[1] || '0') ? '1' : '0');
-    reg('lessorequal', (_p1, _arg, args) => parseFloat(args[0] || '0') <= parseFloat(args[1] || '0') ? '1' : '0');
-    reg('and', (_p1, _arg, args) => (args[0] && args[0] !== '0' && args[0] !== '') && (args[1] && args[1] !== '0' && args[1] !== '') ? '1' : '0');
-    reg('or', (_p1, _arg, args) => (args[0] && args[0] !== '0' && args[0] !== '') || (args[1] && args[1] !== '0' && args[1] !== '') ? '1' : '0');
-    reg('not', (_p1, _arg, args) => (!args[0] || args[0] === '0' || args[0] === '') ? '1' : '0');
-    reg('ifeq', (_p1, _arg, args) => args[0] === args[1] ? (args[2] || '') : (args[3] || ''));
-    reg('ifneq', (_p1, _arg, args) => args[0] !== args[1] ? (args[2] || '') : (args[3] || ''));
+    reg('equal', (_p1, _arg, args) => ((args[0] || '') === (args[1] || '') ? '1' : '0'));
+    reg('notequal', (_p1, _arg, args) => ((args[0] || '') !== (args[1] || '') ? '1' : '0'));
+    reg('greater', (_p1, _arg, args) => (parseFloat(args[0] || '0') > parseFloat(args[1] || '0') ? '1' : '0'));
+    reg('less', (_p1, _arg, args) => (parseFloat(args[0] || '0') < parseFloat(args[1] || '0') ? '1' : '0'));
+    reg('greaterorequal', (_p1, _arg, args) => (parseFloat(args[0] || '0') >= parseFloat(args[1] || '0') ? '1' : '0'));
+    reg('lessorequal', (_p1, _arg, args) => (parseFloat(args[0] || '0') <= parseFloat(args[1] || '0') ? '1' : '0'));
+    reg('and', (_p1, _arg, args) =>
+      args[0] && args[0] !== '0' && args[0] !== '' && args[1] && args[1] !== '0' && args[1] !== '' ? '1' : '0',
+    );
+    reg('or', (_p1, _arg, args) =>
+      (args[0] && args[0] !== '0' && args[0] !== '') || (args[1] && args[1] !== '0' && args[1] !== '') ? '1' : '0',
+    );
+    reg('not', (_p1, _arg, args) => (!args[0] || args[0] === '0' || args[0] === '' ? '1' : '0'));
+    reg('ifeq', (_p1, _arg, args) => (args[0] === args[1] ? args[2] || '' : args[3] || ''));
+    reg('ifneq', (_p1, _arg, args) => (args[0] !== args[1] ? args[2] || '' : args[3] || ''));
 
     // --- Asset ---
     reg('asset', (_p1, arg, args) => {
@@ -386,7 +464,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       }
       if (arg.assets) {
         const assets = arg.assets as [string, string][];
-        const asset = assets.find(a => a[0] === name || a[0].toLowerCase() === nameLower);
+        const asset = assets.find((a) => a[0] === name || a[0].toLowerCase() === nameLower);
         if (asset) return `<img src="${asset[1]}" alt="${name}" class="cbs-asset">`;
       }
       return `[asset:${name}]`;
@@ -404,7 +482,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       }
       if (arg.assets) {
         const assets = arg.assets as [string, string][];
-        const asset = assets.find(a => a[0] === name || a[0].toLowerCase() === nameLower);
+        const asset = assets.find((a) => a[0] === name || a[0].toLowerCase() === nameLower);
         if (asset) return asset[1];
       }
       console.warn('[CBS raw] Asset not found:', name);
@@ -416,9 +494,17 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('lastmessage', (_p1, arg) => (arg.lastMessage as string | undefined) || '');
     reg('lastinput', (_p1, arg) => (arg.lastInput as string | undefined) || '');
     reg('messagecount', (_p1, arg) => String((arg.messageCount as number | undefined) || 0));
-    reg('lastmessageid', (_p1, arg) => String((arg.messageCount as number | undefined) ? (arg.messageCount as number) - 1 : 0), ['lastmessageindex']);
+    reg(
+      'lastmessageid',
+      (_p1, arg) => String((arg.messageCount as number | undefined) ? (arg.messageCount as number) - 1 : 0),
+      ['lastmessageindex'],
+    );
     reg('chatindex', (_p1, arg) => String((arg.chatID as number | undefined) ?? -1), ['chat_index']);
-    reg('isfirstmsg', (_p1, arg) => ((arg.chatID as number | undefined) === 0 || (arg.chatID as number | undefined) === -1) ? '1' : '0', ['isfirstmessage']);
+    reg(
+      'isfirstmsg',
+      (_p1, arg) => ((arg.chatID as number | undefined) === 0 || (arg.chatID as number | undefined) === -1 ? '1' : '0'),
+      ['isfirstmessage'],
+    );
     reg('slot', () => '');
     reg('originalmessage', () => '', ['original_message']);
     reg('maxcontext', () => '8000');
@@ -450,13 +536,23 @@ export const PreviewEngine: PreviewEngineModule = (() => {
           let nestLevel = 0;
           while (i < len) {
             if (input[i] === '{' && i + 1 < len && input[i + 1] === '{') {
-              nestLevel++; inner += '{{'; i += 2; continue;
+              nestLevel++;
+              inner += '{{';
+              i += 2;
+              continue;
             }
             if (input[i] === '}' && i + 1 < len && input[i + 1] === '}') {
-              if (nestLevel > 0) { nestLevel--; inner += '}}'; i += 2; continue; }
-              i += 2; break;
+              if (nestLevel > 0) {
+                nestLevel--;
+                inner += '}}';
+                i += 2;
+                continue;
+              }
+              i += 2;
+              break;
             }
-            inner += input[i]; i++;
+            inner += input[i];
+            i++;
           }
 
           const parsed = parse(inner);
@@ -477,7 +573,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
               }
             }
             if (blockData) {
-              const output = blockData.active ? blockData.content : (blockData.elseContent || '');
+              const output = blockData.active ? blockData.content : blockData.elseContent || '';
               const activeBlock = stack.length > 0 ? stack[stack.length - 1] : null;
               if (activeBlock && activeBlock.isBlock) {
                 if (activeBlock.active) activeBlock.content += output;
@@ -545,7 +641,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
 
       for (const b of stack) {
         if (b && b.isBlock) {
-          result += b.active ? b.content : (b.elseContent || '');
+          result += b.active ? b.content : b.elseContent || '';
         }
       }
 
@@ -583,7 +679,10 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       // Space-separated: {{#if $hp > 0}}
       const spaceIdx = content.indexOf(' ');
       if (spaceIdx > 0) {
-        name = content.substring(0, spaceIdx).toLowerCase().replace(/[\s_-]/g, '');
+        name = content
+          .substring(0, spaceIdx)
+          .toLowerCase()
+          .replace(/[\s_-]/g, '');
         args = [content.substring(spaceIdx + 1)];
       } else {
         name = content.toLowerCase().replace(/[\s_-]/g, '');
@@ -667,13 +766,26 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       const cmp = resolveVar(stack.shift()!);
       let cmpResult: boolean;
       switch (op) {
-        case 'is': cmpResult = val === cmp; break;
-        case 'isnot': cmpResult = val !== cmp; break;
-        case '>': cmpResult = parseFloat(val) > parseFloat(cmp); break;
-        case '<': cmpResult = parseFloat(val) < parseFloat(cmp); break;
-        case '>=': cmpResult = parseFloat(val) >= parseFloat(cmp); break;
-        case '<=': cmpResult = parseFloat(val) <= parseFloat(cmp); break;
-        default: cmpResult = false;
+        case 'is':
+          cmpResult = val === cmp;
+          break;
+        case 'isnot':
+          cmpResult = val !== cmp;
+          break;
+        case '>':
+          cmpResult = parseFloat(val) > parseFloat(cmp);
+          break;
+        case '<':
+          cmpResult = parseFloat(val) < parseFloat(cmp);
+          break;
+        case '>=':
+          cmpResult = parseFloat(val) >= parseFloat(cmp);
+          break;
+        case '<=':
+          cmpResult = parseFloat(val) <= parseFloat(cmp);
+          break;
+        default:
+          cmpResult = false;
       }
 
       if (result === null) result = cmpResult;
@@ -693,10 +805,8 @@ export const PreviewEngine: PreviewEngineModule = (() => {
   function processRegex(text: string, scripts: PreviewRegexScript[], mode: string): string {
     if (!scripts || !scripts.length) return text;
     const modeLower = mode.toLowerCase();
-    const filtered = scripts.filter(s =>
-      (s.type || '').toLowerCase() === modeLower &&
-      s.ableFlag !== false &&
-      (s.find || s.in)
+    const filtered = scripts.filter(
+      (s) => (s.type || '').toLowerCase() === modeLower && s.ableFlag !== false && (s.find || s.in),
     );
     filtered.sort((a, b) => {
       const orderA = (a.replaceOrder as number | undefined) ?? extractOrder(String(a['flag'] ?? a['flags'] ?? ''));
@@ -707,7 +817,10 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       try {
         const find = script.find || script.in || '';
         const replace = script.replace || script.out || '';
-        let flags = String(script['flag'] ?? script['flags'] ?? 'g').replace(/<[^>]*>/g, '').trim();
+        let flags = String(script['flag'] ?? script['flags'] ?? 'g')
+          .split('')
+          .filter((c) => 'gimsuy'.includes(c))
+          .join('');
         if (!flags) flags = 'g';
         const regex = new RegExp(find, flags);
         text = text.replace(regex, replace);
@@ -724,10 +837,17 @@ export const PreviewEngine: PreviewEngineModule = (() => {
   }
 
   // ==================== Lorebook Matching ====================
-  function matchLorebook(messages: PreviewMessage[], lorebook: PreviewLorebookEntry[], scanDepth = 10): PreviewLoreMatch[] {
+  function matchLorebook(
+    messages: PreviewMessage[],
+    lorebook: PreviewLorebookEntry[],
+    scanDepth = 10,
+  ): PreviewLoreMatch[] {
     if (!lorebook || !lorebook.length) return [];
     const recentMsgs = messages.slice(-scanDepth);
-    const searchText = recentMsgs.map(m => m.content).join(' ').toLowerCase();
+    const searchText = recentMsgs
+      .map((m) => m.content)
+      .join(' ')
+      .toLowerCase();
     const activated: LoreMatchWithEntry[] = [];
 
     for (let i = 0; i < lorebook.length; i++) {
@@ -739,15 +859,28 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         continue;
       }
 
-      const keys = (entry.key || '').split(',').map(k => k.trim()).filter(Boolean);
+      const keys = (entry.key || '')
+        .split(',')
+        .map((k) => k.trim())
+        .filter(Boolean);
       if (!keys.length) continue;
 
       let keyMatch = false;
       for (const key of keys) {
         if (entry['useRegex'] as boolean | undefined) {
-          try { if (new RegExp(key, 'i').test(searchText)) { keyMatch = true; break; } } catch (e) { console.warn('[preview] Invalid regex in lorebook key:', key, (e as Error).message); }
+          try {
+            if (new RegExp(key, 'i').test(searchText)) {
+              keyMatch = true;
+              break;
+            }
+          } catch (e) {
+            console.warn('[preview] Invalid regex in lorebook key:', key, (e as Error).message);
+          }
         } else {
-          if (searchText.includes(key.toLowerCase())) { keyMatch = true; break; }
+          if (searchText.includes(key.toLowerCase())) {
+            keyMatch = true;
+            break;
+          }
         }
       }
 
@@ -755,21 +888,28 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       const secondkey = entry['secondkey'] as string | undefined;
       if (selective && secondkey) {
         if (!keyMatch) continue;
-        const secondKeys = secondkey.split(',').map(k => k.trim()).filter(Boolean);
+        const secondKeys = secondkey
+          .split(',')
+          .map((k) => k.trim())
+          .filter(Boolean);
         let secondMatch = false;
         for (const sk of secondKeys) {
-          if (searchText.includes(sk.toLowerCase())) { secondMatch = true; break; }
+          if (searchText.includes(sk.toLowerCase())) {
+            secondMatch = true;
+            break;
+          }
         }
         if (!secondMatch) continue;
         activated.push({ index: i, entry, reason: 'key+secondkey' });
       } else if (keyMatch) {
-        activated.push({ index: i, entry, reason: `key: ${keys.find(k => searchText.includes(k.toLowerCase()))}` });
+        activated.push({ index: i, entry, reason: `key: ${keys.find((k) => searchText.includes(k.toLowerCase()))}` });
       }
     }
 
-    activated.sort((a, b) =>
-      ((a.entry['insertorder'] as number | undefined) || (a.entry['order'] as number | undefined) || 100) -
-      ((b.entry['insertorder'] as number | undefined) || (b.entry['order'] as number | undefined) || 100)
+    activated.sort(
+      (a, b) =>
+        ((a.entry['insertorder'] as number | undefined) || (a.entry['order'] as number | undefined) || 100) -
+        ((b.entry['insertorder'] as number | undefined) || (b.entry['order'] as number | undefined) || 100),
     );
     return activated;
   }
@@ -778,7 +918,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
   let luaFactory: WasmoonFactory | null = null;
   let luaEngine: WasmoonEngine | null = null;
   let luaOutput: string[] = [];
-
+  const MAX_LUA_OUTPUT_LINES = 10000;
   async function initLua(luaCode: string): Promise<boolean> {
     if (!window.wasmoon) {
       console.warn('[PreviewEngine] wasmoon not loaded');
@@ -786,7 +926,10 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     }
     try {
       if (!luaFactory) luaFactory = await new window.wasmoon.LuaFactory();
-      if (luaEngine) { luaEngine.global.close(); luaEngine = null; }
+      if (luaEngine) {
+        luaEngine.global.close();
+        luaEngine = null;
+      }
       luaEngine = await luaFactory.createEngine();
 
       // wasmoon corrupts return values of JS-bound functions called from Lua.
@@ -795,28 +938,39 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       const _safeBind = (name: string, fn: (...args: unknown[]) => unknown): void => {
         luaEngine!.global.set('_raw_' + name, (...args: unknown[]) => {
           const result = fn(...args);
-          const safe = (result != null) ? String(result) : '';
+          const safe = result != null ? String(result) : '';
           try {
             luaEngine!.global.set('_jsRet', safe);
             // (debug log removed)
-          } catch(e) { console.warn('[safeBind] ERROR', name, e); }
+          } catch (e) {
+            console.warn('[safeBind] ERROR', name, e);
+          }
           return result;
         });
       };
       _safeBind('getChatVar', (_id: unknown, key: unknown) => getChatVar(String(key ?? '')) || '');
-      luaEngine.global.set('setChatVar', (_id: unknown, key: unknown, val: unknown) => setChatVar(String(key ?? ''), String(val ?? '')));
+      luaEngine.global.set('setChatVar', (_id: unknown, key: unknown, val: unknown) =>
+        setChatVar(String(key ?? ''), String(val ?? '')),
+      );
       _safeBind('getGlobalVar', (_id: unknown, key: unknown) => getGlobalChatVar(String(key ?? '')) || '');
-      luaEngine.global.set('setGlobalVar', (_id: unknown, key: unknown, val: unknown) => setGlobalChatVar(String(key ?? ''), String(val ?? '')));
+      luaEngine.global.set('setGlobalVar', (_id: unknown, key: unknown, val: unknown) =>
+        setGlobalChatVar(String(key ?? ''), String(val ?? '')),
+      );
       _safeBind('getName', () => charName || '');
-      luaEngine.global.set('setName', (_id: unknown, name: unknown) => { charName = name != null ? String(name) : ''; });
+      luaEngine.global.set('setName', (_id: unknown, name: unknown) => {
+        charName = name != null ? String(name) : '';
+      });
       _safeBind('getPersonaName', () => userName || '');
       luaEngine.global.set('print', (...args: unknown[]) => {
-        const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join('\t');
+        if (luaOutput.length >= MAX_LUA_OUTPUT_LINES) return;
+        const msg = args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join('\t');
         luaOutput.push(msg);
       });
 
       let outputHTML = '';
-      luaEngine.global.set('setOutput', (_id: unknown, html: unknown) => { outputHTML = html != null ? String(html) : ''; });
+      luaEngine.global.set('setOutput', (_id: unknown, html: unknown) => {
+        outputHTML = html != null ? String(html) : '';
+      });
       _safeBind('getOutput', () => outputHTML || '');
 
       await luaEngine.doString(`
@@ -979,32 +1133,42 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       `);
       // JS callback for capturing Lua results (2-step workaround for wasmoon return value bug)
       let _luaCaptured = '';
-      luaEngine.global.set('_capture', (val: unknown) => { _luaCaptured = (val != null) ? String(val) : ''; });
+      luaEngine.global.set('_capture', (val: unknown) => {
+        _luaCaptured = val != null ? String(val) : '';
+      });
       Object.assign(initLua, {
         _getCaptured: (): string => _luaCaptured,
-        _resetCaptured: (): void => { _luaCaptured = ''; }
+        _resetCaptured: (): void => {
+          _luaCaptured = '';
+        },
       });
 
       _safeBind('callAxModel', () => '[Preview] AI model not available');
       // getLoreBooks: search lorebook entries (file + local) and set result as Lua table
       luaEngine.global.set('_raw_getLoreBooks', (_id: unknown, filter: unknown) => {
-        const filterStr = (filter != null) ? String(filter).trim() : '';
+        const filterStr = filter != null ? String(filter).trim() : '';
         if (!filterStr) {
-          try { luaEngine!.global.set('_lbResult', []); } catch (e) { console.warn('[preview] Lua _lbResult reset failed:', e); }
+          try {
+            luaEngine!.global.set('_lbResult', []);
+          } catch (e) {
+            console.warn('[preview] Lua _lbResult reset failed:', e);
+          }
           return;
         }
         const f = filterStr.toLowerCase();
         // Search file lorebook entries
-        const fileMatches = lorebookEntries.filter(e => {
-          const comment = (e.comment || '').toLowerCase();
-          if (comment.includes(f)) return true;
-          const keys = Array.isArray(e.key) ? (e.key as string[]) : (e.key || '').split(',');
-          return keys.some(k => k.trim().toLowerCase().includes(f));
-        }).map(e => ({
-          content: String(e['content'] ?? ''),
-          comment: e.comment || '',
-          key: Array.isArray(e.key) ? (e.key as string[]).join(',') : (e.key || ''),
-        }));
+        const fileMatches = lorebookEntries
+          .filter((e) => {
+            const comment = (e.comment || '').toLowerCase();
+            if (comment.includes(f)) return true;
+            const keys = Array.isArray(e.key) ? (e.key as string[]) : (e.key || '').split(',');
+            return keys.some((k) => k.trim().toLowerCase().includes(f));
+          })
+          .map((e) => ({
+            content: String(e['content'] ?? ''),
+            comment: e.comment || '',
+            key: Array.isArray(e.key) ? (e.key as string[]).join(',') : e.key || '',
+          }));
         // Search local (Lua-created) lorebook entries
         const localMatches: Array<{ content: string; comment: string; key: string }> = [];
         for (const [lbId, entry] of Object.entries(localLorebooks)) {
@@ -1031,7 +1195,11 @@ export const PreviewEngine: PreviewEngineModule = (() => {
           }
         } catch (error) {
           console.warn('[getLoreBooks] set result error:', error);
-          try { luaEngine!.global.set('_lbCount', 0); } catch (e) { console.warn('[preview] Lua _lbCount reset failed:', e); }
+          try {
+            luaEngine!.global.set('_lbCount', 0);
+          } catch (e) {
+            console.warn('[preview] Lua _lbCount reset failed:', e);
+          }
         }
       });
       luaEngine.global.set('upsertLocalLoreBook', (_id: unknown, lbId: unknown, content: unknown, opts: unknown) => {
@@ -1050,13 +1218,21 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         delete localLorebooks[String(lbId ?? '')];
       });
       _safeBind('getChat', () => '[]');
-      luaEngine.global.set('setChat', (_id: unknown, _chat: unknown) => { /* stub */ });
+      luaEngine.global.set('setChat', (_id: unknown, _chat: unknown) => {
+        /* stub */
+      });
       _safeBind('getMemory', () => '');
-      luaEngine.global.set('setMemory', (_id: unknown, _mem: unknown) => { /* stub */ });
+      luaEngine.global.set('setMemory', (_id: unknown, _mem: unknown) => {
+        /* stub */
+      });
       _safeBind('getCharacterName', () => charName || '');
-      luaEngine.global.set('alertError', (msg: unknown) => { luaOutput.push('[Alert] ' + String(msg ?? '')); });
+      luaEngine.global.set('alertError', (msg: unknown) => {
+        luaOutput.push('[Alert] ' + String(msg ?? ''));
+      });
       _safeBind('requestInput', () => '');
-      luaEngine.global.set('sleep', (_ms: unknown) => { /* stub */ });
+      luaEngine.global.set('sleep', (_ms: unknown) => {
+        /* stub */
+      });
 
       // Additional RisuAI Lua API stubs
       _safeBind('getCharacterLastMessage', () => charFirstMessage || '');
@@ -1067,17 +1243,31 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       _safeBind('getLastMessage', () => charFirstMessage || '');
       _safeBind('getCurrentChatId', () => 'preview');
       _safeBind('getCharacterId', () => 'preview');
-      luaEngine.global.set('setDescription', (_id: unknown, _desc: unknown) => { /* stub */ });
-      luaEngine.global.set('setPersonality', (_id: unknown, _p: unknown) => { /* stub */ });
-      luaEngine.global.set('setScenario', (_id: unknown, _s: unknown) => { /* stub */ });
-      luaEngine.global.set('setFirstMessage', (_id: unknown, _m: unknown) => { /* stub */ });
-      luaEngine.global.set('addChat', (_id: unknown, _role: unknown, _content: unknown) => { /* stub */ });
-      luaEngine.global.set('removeChat', (_id: unknown, _idx: unknown) => { /* stub */ });
+      luaEngine.global.set('setDescription', (_id: unknown, _desc: unknown) => {
+        /* stub */
+      });
+      luaEngine.global.set('setPersonality', (_id: unknown, _p: unknown) => {
+        /* stub */
+      });
+      luaEngine.global.set('setScenario', (_id: unknown, _s: unknown) => {
+        /* stub */
+      });
+      luaEngine.global.set('setFirstMessage', (_id: unknown, _m: unknown) => {
+        /* stub */
+      });
+      luaEngine.global.set('addChat', (_id: unknown, _role: unknown, _content: unknown) => {
+        /* stub */
+      });
+      luaEngine.global.set('removeChat', (_id: unknown, _idx: unknown) => {
+        /* stub */
+      });
       luaEngine.global.set('reloadDisplay', (_id: unknown) => {
         _reloadDisplayRequested = true;
         if (_onReloadDisplay) _onReloadDisplay();
       });
-      luaEngine.global.set('sendInput', (_id: unknown, _text: unknown) => { /* stub */ });
+      luaEngine.global.set('sendInput', (_id: unknown, _text: unknown) => {
+        /* stub */
+      });
 
       // Lua wrappers: call raw JS function (side-effect: sets _jsRet), then return _jsRet
       await luaEngine.doString(`
@@ -1154,9 +1344,9 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     }
     // Fallback: try direct read
     const r = luaEngine.global.get('_callResult');
-    const rs = (r != null) ? String(r) : '';
+    const rs = r != null ? String(r) : '';
     // (debug log removed)
-    return (rs.length > 0 && rs !== 'nil') ? rs : data;
+    return rs.length > 0 && rs !== 'nil' ? rs : data;
   }
 
   async function runLuaTrigger(mode: string, data: string | null): Promise<string | null> {
@@ -1212,19 +1402,46 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     getChatVar,
     setGlobalChatVar,
     getGlobalChatVar,
-    setUserName: (n: string): void => { userName = n; },
-    setCharName: (n: string): void => { charName = n; },
-    setDefaultVars: (s: string): void => { defaultVarStr = s; },
-    setCharDescription: (s: string): void => { charDescription = s; },
-    setCharFirstMessage: (s: string): void => { charFirstMessage = s; },
+    setUserName: (n: string): void => {
+      userName = n;
+    },
+    setCharName: (n: string): void => {
+      charName = n;
+    },
+    setDefaultVars: (s: string): void => {
+      defaultVarStr = s;
+    },
+    setCharDescription: (s: string): void => {
+      charDescription = s;
+    },
+    setCharFirstMessage: (s: string): void => {
+      charFirstMessage = s;
+    },
     setAssets: (map: Record<string, string>): void => {
       assetMap = map || {};
     },
-    setLorebook: (entries: PreviewLorebookEntry[]): void => { lorebookEntries = entries || []; },
-    resetVars: (): void => { chatVars = {}; globalVars = {}; tempVars = {}; localLorebooks = {}; _reloadDisplayRequested = false; luaOutput = []; },
-    clearTempVars: (): void => { tempVars = {}; },
-    onReloadDisplay: (cb: () => void): void => { _onReloadDisplay = cb; },
-    consumeReloadRequest: (): boolean => { const r = _reloadDisplayRequested; _reloadDisplayRequested = false; return r; },
+    setLorebook: (entries: PreviewLorebookEntry[]): void => {
+      lorebookEntries = entries || [];
+    },
+    resetVars: (): void => {
+      chatVars = {};
+      globalVars = {};
+      tempVars = {};
+      localLorebooks = {};
+      _reloadDisplayRequested = false;
+      luaOutput = [];
+    },
+    clearTempVars: (): void => {
+      tempVars = {};
+    },
+    onReloadDisplay: (cb: () => void): void => {
+      _onReloadDisplay = cb;
+    },
+    consumeReloadRequest: (): boolean => {
+      const r = _reloadDisplayRequested;
+      _reloadDisplayRequested = false;
+      return r;
+    },
 
     risuChatParser,
     processRegex,
@@ -1234,19 +1451,22 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     resolveAssetImages: (html: string): string => {
       if (!html || !assetMap || Object.keys(assetMap).length === 0) return html;
       const unresolved = new Set<string>();
-      const result = html.replace(/<img\s([^>]*?)src="([^"]+)"([^>]*?)>/gi, (match, pre: string, src: string, post: string) => {
-        // Skip if already a data URI or full URL
-        if (src.startsWith('data:') || src.startsWith('http') || src.startsWith('blob:')) return match;
-        // Try exact match
-        if (assetMap[src]) return `<img ${pre}src="${assetMap[src]}"${post}>`;
-        // Case-insensitive
-        const srcLower = src.toLowerCase();
-        for (const key of Object.keys(assetMap)) {
-          if (key.toLowerCase() === srcLower) return `<img ${pre}src="${assetMap[key]}"${post}>`;
-        }
-        unresolved.add(src);
-        return match;
-      });
+      const result = html.replace(
+        /<img\s([^>]*?)src="([^"]+)"([^>]*?)>/gi,
+        (match, pre: string, src: string, post: string) => {
+          // Skip if already a data URI or full URL
+          if (src.startsWith('data:') || src.startsWith('http') || src.startsWith('blob:')) return match;
+          // Try exact match
+          if (assetMap[src]) return `<img ${pre}src="${assetMap[src]}"${post}>`;
+          // Case-insensitive
+          const srcLower = src.toLowerCase();
+          for (const key of Object.keys(assetMap)) {
+            if (key.toLowerCase() === srcLower) return `<img ${pre}src="${assetMap[key]}"${post}>`;
+          }
+          unresolved.add(src);
+          return match;
+        },
+      );
       // (debug warn removed)
       return result;
     },
@@ -1263,7 +1483,9 @@ export const PreviewEngine: PreviewEngineModule = (() => {
             onButtonClick(_btnChatId, _btnData)
           end
         `);
-      } catch (e) { console.warn('[runLuaButtonClick]', e); }
+      } catch (e) {
+        console.warn('[runLuaButtonClick]', e);
+      }
     },
     runLuaTriggerByName: async (name: string): Promise<void> => {
       if (!luaEngine) return;
@@ -1274,14 +1496,16 @@ export const PreviewEngine: PreviewEngineModule = (() => {
             _triggers[_trigName]()
           end
         `);
-      } catch (e) { console.warn('[runLuaTriggerByName]', e); }
+      } catch (e) {
+        console.warn('[runLuaTriggerByName]', e);
+      }
     },
 
     getLuaOutput: (): string[] => [...luaOutput],
     getLuaOutputHTML: (): string => {
       if (!luaEngine) return '';
       const fn = luaEngine.global.get('getOutput');
-      return typeof fn === 'function' ? ((fn as () => string)() || '') : '';
+      return typeof fn === 'function' ? (fn as () => string)() || '' : '';
     },
     getVariables: (): Record<string, string> => {
       // Merge: defaults → chatVars (chatVars overrides defaults)
@@ -1294,6 +1518,5 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     },
   };
 })();
-
 
 export default PreviewEngine;

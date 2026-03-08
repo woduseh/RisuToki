@@ -636,6 +636,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${fieldName}`,
             });
           }
+          // Validate content type: must be string or array (for alternateGreetings/groupOnlyGreetings)
+          const arrayFields = ['alternateGreetings', 'groupOnlyGreetings'];
+          if (arrayFields.includes(fieldName)) {
+            if (!Array.isArray(body.content)) {
+              return mcpError(res, 400, {
+                action: 'update field',
+                message: `"${fieldName}" must be an array`,
+                suggestion: '문자열 배열 형태로 값을 다시 보내세요.',
+                target: `field:${fieldName}`,
+              });
+            }
+          } else if (fieldName !== 'triggerScripts' && typeof body.content !== 'string') {
+            return mcpError(res, 400, {
+              action: 'update field',
+              message: `"${fieldName}" must be a string`,
+              suggestion: '문자열 형태로 값을 다시 보내세요.',
+              target: `field:${fieldName}`,
+            });
+          }
           const oldSize =
             fieldName === 'triggerScripts'
               ? deps.stringifyTriggerScripts(currentData.triggerScripts).length
@@ -657,15 +676,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (allowed) {
             let content = body.content;
             if (fieldName === 'alternateGreetings' || fieldName === 'groupOnlyGreetings') {
-              if (!Array.isArray(content)) {
-                return mcpError(res, 400, {
-                  action: 'update field',
-                  message: `"${fieldName}" must be an array`,
-                  suggestion: '문자열 배열 형태로 값을 다시 보내세요.',
-                  target: `field:${fieldName}`,
-                });
-              }
-              content = content.map((item: unknown) => String(item));
+              content = (content as unknown[]).map((item: unknown) => String(item));
             }
             // Strip <style> wrapper from CSS to prevent nesting
             if (fieldName === 'css') {

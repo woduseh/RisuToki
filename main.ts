@@ -74,7 +74,7 @@ const {
   extractPrimaryLuaFromTriggerScripts,
   mergePrimaryLuaIntoTriggerScripts,
   normalizeTriggerScripts,
-  stringifyTriggerScripts
+  stringifyTriggerScripts,
 } = require('./src/charx-io') as {
   openCharx: (filePath: string) => CharxData;
   saveCharx: (filePath: string, data: CharxData) => void;
@@ -94,7 +94,7 @@ const {
   removeReferenceRecord,
   serializeReferenceManifest,
   parseReferenceManifest,
-  validateReferenceManifestPaths
+  validateReferenceManifestPaths,
 } = require('./src/lib/reference-store') as {
   normalizeReferencePath: (filePath: string) => string;
   upsertReferenceRecord: (records: ReferenceRecord[], record: ReferenceRecord) => ReferenceRecord[];
@@ -103,7 +103,7 @@ const {
   parseReferenceManifest: (value: unknown) => string[];
   validateReferenceManifestPaths: (
     paths: string[],
-    opts: { existsSync: (p: string) => boolean }
+    opts: { existsSync: (p: string) => boolean },
   ) => { validPaths: string[]; issues: ReferenceManifestIssue[] };
 };
 
@@ -152,17 +152,18 @@ const { initTerminalManager, killTerminal } = require('./src/lib/terminal-manage
   killTerminal: () => void;
 };
 
-const { initMcpConfig, writeCurrentMcpConfig, cleanupJsonMcpConfig, cleanupCodexMcpConfig } = require('./src/lib/mcp-config') as {
-  initMcpConfig: (deps: {
-    getApiPort: () => number | null;
-    getApiToken: () => string | null;
-    getDirname: () => string;
-    isPackaged: () => boolean;
-  }) => void;
-  writeCurrentMcpConfig: () => string | null;
-  cleanupJsonMcpConfig: (configPath: string) => void;
-  cleanupCodexMcpConfig: () => void;
-};
+const { initMcpConfig, writeCurrentMcpConfig, cleanupJsonMcpConfig, cleanupCodexMcpConfig } =
+  require('./src/lib/mcp-config') as {
+    initMcpConfig: (deps: {
+      getApiPort: () => number | null;
+      getApiToken: () => string | null;
+      getDirname: () => string;
+      isPackaged: () => boolean;
+    }) => void;
+    writeCurrentMcpConfig: () => string | null;
+    cleanupJsonMcpConfig: (configPath: string) => void;
+    cleanupCodexMcpConfig: () => void;
+  };
 
 const { initAgentsMdManager, cleanupAgentsMd } = require('./src/lib/agents-md-manager') as {
   initAgentsMdManager: (deps: {
@@ -211,7 +212,11 @@ const { initPopoutManager, getPopoutWindows } = require('./src/lib/popout-manage
     getMainWindow: () => BrowserWindow | null;
     getCurrentData: () => CharxData | null;
     getReferenceFiles: () => ReferenceRecord[];
-    loadRendererPage: (win: BrowserWindow, entryFile: string, query?: Record<string, string | undefined>) => Promise<void>;
+    loadRendererPage: (
+      win: BrowserWindow,
+      entryFile: string,
+      query?: Record<string, string | undefined>,
+    ) => Promise<void>;
     getGuidesDir: () => string;
     getGuidesListResult: () => GuidesListResult;
     buildRefsPopoutData: (guidesListResult: GuidesListResult, referenceFiles: ReferenceRecord[]) => unknown;
@@ -270,11 +275,7 @@ function persistReferenceFiles(): void {
   try {
     const statePath = getReferenceStatePath();
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
-    fs.writeFileSync(
-      statePath,
-      JSON.stringify(serializeReferenceManifest(mainState.referenceFiles), null, 2),
-      'utf8'
-    );
+    fs.writeFileSync(statePath, JSON.stringify(serializeReferenceManifest(mainState.referenceFiles), null, 2), 'utf8');
   } catch (error) {
     console.error('[main] failed to persist references:', error);
   }
@@ -286,15 +287,17 @@ function restoreReferenceRecord(filePath: string): ReferenceRecord {
   return {
     fileName: path.basename(normalizedPath),
     filePath: normalizedPath,
-    data: serializeForRenderer(refData)
+    data: serializeForRenderer(refData),
   };
 }
 
 function addReferenceRecord(ref: ReferenceRecord): void {
-  mainState.setReferenceFiles(upsertReferenceRecord(mainState.referenceFiles, {
-    ...ref,
-    filePath: normalizeReferencePath(ref.filePath)
-  }));
+  mainState.setReferenceFiles(
+    upsertReferenceRecord(mainState.referenceFiles, {
+      ...ref,
+      filePath: normalizeReferencePath(ref.filePath),
+    }),
+  );
   persistReferenceFiles();
 }
 
@@ -324,10 +327,9 @@ function loadPersistedReferenceFiles(): void {
     const persisted: unknown = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     const restored: ReferenceRecord[] = [];
     const issues: ReferenceManifestIssue[] = [];
-    const { validPaths, issues: manifestIssues } = validateReferenceManifestPaths(
-      parseReferenceManifest(persisted),
-      { existsSync: (fp: string) => fs.existsSync(fp) }
-    );
+    const { validPaths, issues: manifestIssues } = validateReferenceManifestPaths(parseReferenceManifest(persisted), {
+      existsSync: (fp: string) => fs.existsSync(fp),
+    });
     issues.push(...manifestIssues);
 
     for (const refPath of validPaths) {
@@ -338,7 +340,7 @@ function loadPersistedReferenceFiles(): void {
         issues.push({
           filePath: refPath,
           reason: 'restore-failed',
-          detail: error instanceof Error ? error.message : String(error)
+          detail: error instanceof Error ? error.message : String(error),
         });
       }
     }
@@ -349,7 +351,7 @@ function loadPersistedReferenceFiles(): void {
       mainState.setReferenceManifestStatus({
         level: 'warn',
         message: `참고 파일 ${issues.length}개를 복원하지 못해 목록에서 정리했습니다.`,
-        detail: issues.slice(0, 3).map(describeReferenceManifestIssue).join(' | ')
+        detail: issues.slice(0, 3).map(describeReferenceManifestIssue).join(' | '),
       });
     }
   } catch (error) {
@@ -358,7 +360,7 @@ function loadPersistedReferenceFiles(): void {
     mainState.setReferenceManifestStatus({
       level: 'error',
       message: '저장된 참고 파일 목록을 읽지 못했습니다.',
-      detail: error instanceof Error ? error.message : String(error)
+      detail: error instanceof Error ? error.message : String(error),
     });
   }
 }
@@ -411,7 +413,11 @@ function getRendererEntryUrl(entryFile: string, query: Record<string, string | u
   return url.toString();
 }
 
-function loadRendererPage(windowRef: BrowserWindow, entryFile: string, query: Record<string, string | undefined> = {}): Promise<void> {
+function loadRendererPage(
+  windowRef: BrowserWindow,
+  entryFile: string,
+  query: Record<string, string | undefined> = {},
+): Promise<void> {
   const devUrl = getRendererEntryUrl(entryFile, query);
   if (devUrl) {
     return windowRef.loadURL(devUrl);
@@ -440,8 +446,8 @@ function createWindow(): void {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
-    }
+      nodeIntegration: false,
+    },
   });
 
   loadRendererPage(mainWindow, 'index.html').catch((error) => {
@@ -462,26 +468,34 @@ function createWindow(): void {
   mainWindow.on('close', (e) => {
     if (mainState.currentData && !isClosingForReal) {
       e.preventDefault();
-      askRendererCloseConfirm().then((choice) => {
-        if (choice === 0) {
-          // 저장하고 닫기
-          if (mainState.currentFilePath) {
-            try {
-              const ft = mainState.currentData!._fileType;
-              if (ft === 'risum') saveRisum(mainState.currentFilePath, mainState.currentData!);
-              else if (ft === 'risup') saveRisup(mainState.currentFilePath, mainState.currentData!);
-              else saveCharx(mainState.currentFilePath, mainState.currentData!);
-            } catch (err) { console.error('[main] Failed to save before close:', err); }
+      askRendererCloseConfirm()
+        .then((choice) => {
+          if (choice === 0) {
+            // 저장하고 닫기
+            if (mainState.currentFilePath) {
+              try {
+                const ft = mainState.currentData!._fileType;
+                if (ft === 'risum') saveRisum(mainState.currentFilePath, mainState.currentData!);
+                else if (ft === 'risup') saveRisup(mainState.currentFilePath, mainState.currentData!);
+                else saveCharx(mainState.currentFilePath, mainState.currentData!);
+              } catch (err) {
+                console.error('[main] Failed to save before close:', err);
+              }
+            }
+            isClosingForReal = true;
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+          } else if (choice === 1) {
+            // 저장 안 하고 닫기
+            isClosingForReal = true;
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
           }
+          // choice === 2: 취소 — 아무것도 안 함
+        })
+        .catch((err) => {
+          console.error('[main] Close confirmation failed:', err);
           isClosingForReal = true;
-          mainWindow!.close();
-        } else if (choice === 1) {
-          // 저장 안 하고 닫기
-          isClosingForReal = true;
-          mainWindow!.close();
-        }
-        // choice === 2: 취소 — 아무것도 안 함
-      });
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+        });
     }
   });
 }
@@ -601,7 +615,10 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   killTerminal();
   stopSyncServer();
-  if (mcpApi) { mcpApi.server.close(); mcpApi = null; }
+  if (mcpApi) {
+    mcpApi.server.close();
+    mcpApi = null;
+  }
   cleanupJsonMcpConfig(path.join(os.homedir(), '.mcp.json'));
   cleanupJsonMcpConfig(path.join(os.homedir(), '.copilot', 'mcp-config.json'));
   // Cleanup Codex MCP config
@@ -614,7 +631,9 @@ app.on('window-all-closed', () => {
       const base = path.basename(mainState.currentFilePath);
       const autosavePath = path.join(dir, `.${base}.autosave.charx`);
       if (fs.existsSync(autosavePath)) fs.unlinkSync(autosavePath);
-    } catch (e) { console.warn('[main] Failed to cleanup autosave:', (e as Error).message); }
+    } catch (e) {
+      console.warn('[main] Failed to cleanup autosave:', (e as Error).message);
+    }
   }
   app.quit();
 });
@@ -641,16 +660,20 @@ ipcMain.handle('new-file', async () => {
     css: '/* ============================================================\n   main\n   ============================================================ */\n/* 메인 스타일시트 */\n\n/* ============================================================\n   layout\n   ============================================================ */\n/* 레이아웃 관련 스타일 */\n',
     defaultVariables: '',
     lua: '-- ===== main =====\n-- 메인 트리거 스크립트\n\n-- ===== utils =====\n-- 유틸리티 함수\n',
-    triggerScripts: [{
-      comment: '',
-      type: 'start',
-      conditions: [],
-      effect: [{
-        type: 'triggerlua',
-        code: '-- ===== main =====\n-- 메인 트리거 스크립트\n\n-- ===== utils =====\n-- 유틸리티 함수\n'
-      }],
-      lowLevelAccess: false
-    }],
+    triggerScripts: [
+      {
+        comment: '',
+        type: 'start',
+        conditions: [],
+        effect: [
+          {
+            type: 'triggerlua',
+            code: '-- ===== main =====\n-- 메인 트리거 스크립트\n\n-- ===== utils =====\n-- 유틸리티 함수\n',
+          },
+        ],
+        lowLevelAccess: false,
+      },
+    ],
     lorebook: [
       {
         key: '캐릭터,이름',
@@ -662,8 +685,8 @@ ipcMain.handle('new-file', async () => {
         selective: false,
         alwaysActive: false,
         mode: 'normal',
-        extentions: {}
-      }
+        extentions: {},
+      },
     ],
     regex: [
       {
@@ -671,8 +694,8 @@ ipcMain.handle('new-file', async () => {
         type: 'editoutput',
         find: '\\*\\*(.+?)\\*\\*',
         replace: '<b>$1</b>',
-        flag: 'g'
-      }
+        flag: 'g',
+      },
     ],
     moduleId: '',
     moduleName: 'New Module',
@@ -684,7 +707,7 @@ ipcMain.handle('new-file', async () => {
     _risuExt: {},
     _card: { spec: 'chara_card_v3', spec_version: '3.0', data: { extensions: { risuai: {} } } },
     _moduleData: null,
-    _presetData: null
+    _presetData: null,
   } as CharxData);
   mainWindow!.setTitle('RisuToki - New');
   broadcastSidebarDataChanged();
@@ -699,9 +722,9 @@ ipcMain.handle('open-file', async () => {
         { name: 'RisuAI Files', extensions: ['charx', 'risum', 'risup'] },
         { name: 'Character Card', extensions: ['charx'] },
         { name: 'RisuAI Module', extensions: ['risum'] },
-        { name: 'Bot Preset', extensions: ['risup'] }
+        { name: 'Bot Preset', extensions: ['risup'] },
       ],
-      properties: ['openFile']
+      properties: ['openFile'],
     });
     if (result.canceled || !result.filePaths[0]) return null;
 
@@ -716,7 +739,12 @@ ipcMain.handle('open-file', async () => {
       nextData = openCharx(nextFilePath);
     }
     mainState.setCurrentDocument(nextFilePath, nextData);
-    console.log('[main] Parsed OK, name:', mainState.currentData!.name, 'type:', mainState.currentData!._fileType || 'charx');
+    console.log(
+      '[main] Parsed OK, name:',
+      mainState.currentData!.name,
+      'type:',
+      mainState.currentData!._fileType || 'charx',
+    );
     invalidateAssetsMapCache();
     if (mcpApi) mcpApi.invalidateSectionCaches();
     mainWindow!.setTitle(`RisuToki - ${path.basename(mainState.currentFilePath!)}`);
@@ -751,7 +779,7 @@ async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promis
 
     const result = await dialog.showSaveDialog(mainWindow!, {
       filters,
-      defaultPath: mainState.currentFilePath || `untitled${defaultExt}`
+      defaultPath: mainState.currentFilePath || `untitled${defaultExt}`,
     });
     if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' };
 
@@ -812,9 +840,9 @@ ipcMain.handle('open-reference', async () => {
       filters: [
         { name: 'RisuAI Files', extensions: ['charx', 'risum'] },
         { name: 'Character Card', extensions: ['charx'] },
-        { name: 'RisuAI Module', extensions: ['risum'] }
+        { name: 'RisuAI Module', extensions: ['risum'] },
       ],
-      properties: ['openFile', 'multiSelections']
+      properties: ['openFile', 'multiSelections'],
     });
     if (result.canceled || !result.filePaths.length) return null;
     const refs: ReferenceRecord[] = [];
@@ -892,7 +920,9 @@ ipcMain.handle('open-folder', (_event, folderPath: string) => {
 ipcMain.handle('get-autosave-info', (_event, customDir?: string) => {
   const dir = customDir || (mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : null);
   if (!dir) return null;
-  const base = mainState.currentFilePath ? path.basename(mainState.currentFilePath, path.extname(mainState.currentFilePath)) : '';
+  const base = mainState.currentFilePath
+    ? path.basename(mainState.currentFilePath, path.extname(mainState.currentFilePath))
+    : '';
   return { dir, prefix: base ? `${base}_autosave_` : '', hasFile: !!mainState.currentFilePath };
 });
 
@@ -904,14 +934,15 @@ ipcMain.handle('get-claude-prompt', () => {
   if (mainState.currentData.lua) stats.push(`Lua: ${(mainState.currentData.lua.length / 1024).toFixed(0)}KB`);
   if (mainState.currentData.lorebook?.length) stats.push(`로어북: ${mainState.currentData.lorebook.length}개`);
   if (mainState.currentData.regex?.length) stats.push(`정규식: ${mainState.currentData.regex.length}개`);
-  if (mainState.currentData.globalNote) stats.push(`글로벌노트: ${(mainState.currentData.globalNote.length / 1024).toFixed(0)}KB`);
+  if (mainState.currentData.globalNote)
+    stats.push(`글로벌노트: ${(mainState.currentData.globalNote.length / 1024).toFixed(0)}KB`);
   if (mainState.currentData.css) stats.push(`CSS: ${(mainState.currentData.css.length / 1024).toFixed(0)}KB`);
 
   return {
     fileName,
     name: mainState.currentData.name || '',
     stats: stats.join(', '),
-    cwd: mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : process.cwd()
+    cwd: mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : process.cwd(),
   };
 });
 
@@ -921,7 +952,7 @@ ipcMain.handle('get-mcp-info', () => {
   return {
     port: apiPort,
     token: apiToken,
-    mcpServerPath: path.join(__dirname, 'toki-mcp-server.js')
+    mcpServerPath: path.join(__dirname, 'toki-mcp-server.js'),
   };
 });
 
@@ -929,7 +960,7 @@ ipcMain.handle('get-mcp-info', () => {
 ipcMain.handle('import-json', async () => {
   const result = await dialog.showOpenDialog(mainWindow!, {
     filters: [{ name: 'JSON', extensions: ['json'] }],
-    properties: ['openFile', 'multiSelections']
+    properties: ['openFile', 'multiSelections'],
   });
   if (result.canceled || !result.filePaths.length) return null;
 
@@ -939,7 +970,9 @@ ipcMain.handle('import-json', async () => {
       const content = fs.readFileSync(filePath, 'utf-8');
       const json: unknown = JSON.parse(content);
       imported.push({ fileName: path.basename(filePath), data: json });
-    } catch (e) { console.warn('[main] Skipping invalid reference file:', filePath, (e as Error).message); }
+    } catch (e) {
+      console.warn('[main] Skipping invalid reference file:', filePath, (e as Error).message);
+    }
   }
   return imported;
 });
@@ -950,24 +983,59 @@ function isValidPersonaName(name: unknown): name is string {
 }
 
 ipcMain.handle('read-persona', (_event, name: string) => {
-  if (!isValidPersonaName(name)) { console.warn('[main] Invalid persona name:', name); return null; }
+  if (!isValidPersonaName(name)) {
+    console.warn('[main] Invalid persona name:', name);
+    return null;
+  }
   const filePath = path.join(__dirname, 'assets', 'persona', `${name}.txt`);
-  if (!filePath.startsWith(path.join(__dirname, 'assets', 'persona'))) { console.warn('[main] Path traversal blocked:', name); return null; }
-  try { return fs.readFileSync(filePath, 'utf-8'); } catch (e) { console.warn('[main] Failed to read persona:', name, (e as Error).message); return null; }
+  if (!filePath.startsWith(path.join(__dirname, 'assets', 'persona'))) {
+    console.warn('[main] Path traversal blocked:', name);
+    return null;
+  }
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch (e) {
+    console.warn('[main] Failed to read persona:', name, (e as Error).message);
+    return null;
+  }
 });
 
 ipcMain.handle('write-persona', (_event, name: string, content: string) => {
-  if (!isValidPersonaName(name)) { console.warn('[main] Invalid persona name:', name); return false; }
+  if (!isValidPersonaName(name)) {
+    console.warn('[main] Invalid persona name:', name);
+    return false;
+  }
   const dir = path.join(__dirname, 'assets', 'persona');
-  try { fs.mkdirSync(dir, { recursive: true }); } catch { /* exists */ }
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    /* exists */
+  }
   const filePath = path.join(dir, `${name}.txt`);
-  if (!filePath.startsWith(dir)) { console.warn('[main] Path traversal blocked:', name); return false; }
-  try { fs.writeFileSync(filePath, content, 'utf-8'); return true; } catch (e) { console.warn('[main] Failed to write persona:', name, (e as Error).message); return false; }
+  if (!filePath.startsWith(dir)) {
+    console.warn('[main] Path traversal blocked:', name);
+    return false;
+  }
+  try {
+    fs.writeFileSync(filePath, content, 'utf-8');
+    return true;
+  } catch (e) {
+    console.warn('[main] Failed to write persona:', name, (e as Error).message);
+    return false;
+  }
 });
 
 ipcMain.handle('list-personas', () => {
   const dir = path.join(__dirname, 'assets', 'persona');
-  try { return fs.readdirSync(dir).filter((f: string) => f.endsWith('.txt')).map((f: string) => f.replace('.txt', '')); } catch (e) { console.warn('[main] Failed to list personas:', (e as Error).message); return []; }
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter((f: string) => f.endsWith('.txt'))
+      .map((f: string) => f.replace('.txt', ''));
+  } catch (e) {
+    console.warn('[main] Failed to list personas:', (e as Error).message);
+    return [];
+  }
 });
 
 // --- System Prompt (temp file for Claude CLI) ---
@@ -1009,18 +1077,18 @@ function parseLuaSections(luaCode: string): Section[] {
         sections.push({ name: currentName, content: currentLines.join('\n').trim() });
       }
       if (sectionName === '') {
-        const nextLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+        const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
         const commentMatch = nextLine.match(/^--\s*(.+)$/);
         if (commentMatch && detectLuaSection(nextLine) === null) {
           currentName = commentMatch[1].trim();
           i++;
-          const closingLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+          const closingLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
           if (detectLuaSection(closingLine) !== null) i++;
         } else {
           currentName = `section_${sections.length}`;
         }
       } else {
-        const nextLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+        const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
         if (nextLine && detectLuaSection(nextLine) === '') i++;
         currentName = sectionName;
       }
@@ -1048,7 +1116,7 @@ function parseLuaSections(luaCode: string): Section[] {
 }
 
 function combineLuaSections(sections: Section[]): string {
-  return sections.map(s => `-- ===== ${s.name} =====\n${s.content}`).join('\n\n');
+  return sections.map((s) => `-- ===== ${s.name} =====\n${s.content}`).join('\n\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -1118,7 +1186,10 @@ function parseCssSections(cssCode: string): CssCacheEntry {
       let j = i + 1;
       let closed = false;
       while (j < lines.length) {
-        if (detectCssBlockClose(lines[j])) { closed = true; break; }
+        if (detectCssBlockClose(lines[j])) {
+          closed = true;
+          break;
+        }
         const text = lines[j].trim();
         if (text) nameLines.push(text);
         j++;
@@ -1156,9 +1227,7 @@ function parseCssSections(cssCode: string): CssCacheEntry {
 
 function combineCssSections(sections: Section[], prefix: string, suffix: string): string {
   const eq = '============================================================';
-  const body = sections.map(s =>
-    `/* ${eq}\n   ${s.name}\n   ${eq} */\n${s.content}`
-  ).join('\n\n');
+  const body = sections.map((s) => `/* ${eq}\n   ${s.name}\n   ${eq} */\n${s.content}`).join('\n\n');
   const effectivePrefix = prefix || '<style>\n';
   const effectiveSuffix = suffix || '\n</style>';
   return effectivePrefix + body + effectiveSuffix;
