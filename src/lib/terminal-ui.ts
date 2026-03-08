@@ -43,6 +43,7 @@ interface TerminalLike {
   onData: (handler: (data: string) => void) => void;
   open: (container: HTMLElement) => void;
   resize: (cols: number, rows: number) => void;
+  scrollLines: (amount: number) => void;
   write: (data: string) => void;
   writeln: (data: string) => void;
 }
@@ -225,6 +226,13 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
   term.loadAddon(fitAddon);
   term.open(options.container);
   forwardViewportPointerEvents(options.container);
+
+  options.container.addEventListener('wheel', (e: WheelEvent) => {
+    const lines = e.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? e.deltaY
+      : Math.sign(e.deltaY) * 3;
+    term.scrollLines(lines);
+  }, { passive: true });
 
   await new Promise<void>((resolve) => {
     window.setTimeout(resolve, 50);
