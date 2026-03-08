@@ -10,19 +10,22 @@ type MonacoThemeRule = {
 type MonacoThemeColors = Record<string, string>;
 
 type MonacoEditor = {
-  defineTheme: (name: string, theme: {
-    base: string;
-    colors: MonacoThemeColors;
-    inherit: boolean;
-    rules: MonacoThemeRule[];
-  }) => void;
+  defineTheme: (
+    name: string,
+    theme: {
+      base: string;
+      colors: MonacoThemeColors;
+      inherit: boolean;
+      rules: MonacoThemeRule[];
+    },
+  ) => void;
 };
 
 type MonacoRuntime = {
   editor: MonacoEditor;
 };
 
-type MonacoLoader = ((dependencies: string[], callback: () => void) => void) & {
+type MonacoLoader = ((dependencies: string[], callback: () => void, errorCallback?: (err: Error) => void) => void) & {
   config: (options: { paths: { vs: string } }) => void;
 };
 
@@ -48,7 +51,7 @@ const BLUE_ARCHIVE_THEME = {
     { token: 'delimiter', foreground: '546e7a' },
     { token: 'tag', foreground: '4a90d9' },
     { token: 'attribute.name', foreground: 'e65100' },
-    { token: 'attribute.value', foreground: '2e7d32' }
+    { token: 'attribute.value', foreground: '2e7d32' },
   ],
   colors: {
     'editor.background': '#f7f9fc',
@@ -69,8 +72,8 @@ const BLUE_ARCHIVE_THEME = {
     'minimap.background': '#f2f4f8',
     'scrollbarSlider.background': '#c8d6e544',
     'scrollbarSlider.hoverBackground': '#4a90d966',
-    'scrollbarSlider.activeBackground': '#4a90d9aa'
-  }
+    'scrollbarSlider.activeBackground': '#4a90d9aa',
+  },
 } satisfies {
   base: string;
   colors: MonacoThemeColors;
@@ -109,15 +112,23 @@ export async function loadMonacoRuntime(): Promise<void> {
         }
 
         runtimeWindow.require.config({ paths: { vs: getMonacoBaseUrl() } });
-        runtimeWindow.require(['vs/editor/editor.main'], () => {
-          try {
-            ensureBlueArchiveMonacoTheme();
-            resolve();
-          } catch (error) {
+        runtimeWindow.require(
+          ['vs/editor/editor.main'],
+          () => {
+            try {
+              ensureBlueArchiveMonacoTheme();
+              resolve();
+            } catch (error) {
+              monacoLoadPromise = null;
+              reject(error instanceof Error ? error : new Error(String(error)));
+            }
+          },
+          (err: Error) => {
             monacoLoadPromise = null;
-            reject(error instanceof Error ? error : new Error(String(error)));
-          }
-        });
+            console.error('[Monaco] AMD load error:', err);
+            reject(err instanceof Error ? err : new Error(String(err)));
+          },
+        );
       };
       loaderScript.onerror = () => {
         monacoLoadPromise = null;

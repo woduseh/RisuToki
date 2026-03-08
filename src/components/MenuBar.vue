@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 
 interface MenuItem {
   label: string;
@@ -159,6 +159,24 @@ function onSettingsClick() {
   emit('action', 'settings');
 }
 
+function onClickOutside() {
+  openMenu.value = null;
+}
+
+function onCloseMenusEvent() {
+  openMenu.value = null;
+}
+
+onMounted(() => {
+  document.addEventListener('click', onClickOutside);
+  document.addEventListener('toki:close-menus', onCloseMenusEvent);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onClickOutside);
+  document.removeEventListener('toki:close-menus', onCloseMenusEvent);
+});
+
 defineExpose({ closeMenus });
 </script>
 
@@ -168,6 +186,7 @@ defineExpose({ closeMenus });
       v-for="menu in menus"
       :key="menu.id"
       class="menu-item"
+      :class="{ open: openMenu === menu.id }"
       @click.stop="toggleMenu(menu.id)"
       @mouseenter="onMenuEnter(menu.id)"
     >

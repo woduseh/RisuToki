@@ -10,4 +10,6 @@ syncBodyDarkMode(document.body, readAppSettingsSnapshot().darkMode);
 const app = createApp(App);
 app.use(createPinia());
 app.mount('#app');
-void initMainRenderer();
+initMainRenderer().catch((err) => {
+  console.error('[Toki] initMainRenderer failed:', err);
+});

@@ -228,7 +228,7 @@ initFormEditor({
 
 const layoutState = createDefaultLayoutState();
 try {
-  applyStoredLayoutState(layoutState, readStoredLayoutState() as StoredLayoutState & Partial<LayoutState> | null);
+  applyStoredLayoutState(layoutState, readStoredLayoutState() as (StoredLayoutState & Partial<LayoutState>) | null);
 } catch (error) {
   reportRuntimeError({
     context: '레이아웃 상태 복원 실패',
@@ -575,8 +575,13 @@ function getRefsSidebarDeps() {
     showConfirm,
     showPrompt,
     setStatus,
-    openTab: (id: string, label: string, lang: string, getValue: () => unknown, setValue: ((v: unknown) => void) | null) =>
-      tabMgr.openTab(id, label, lang, getValue, setValue),
+    openTab: (
+      id: string,
+      label: string,
+      lang: string,
+      getValue: () => unknown,
+      setValue: ((v: unknown) => void) | null,
+    ) => tabMgr.openTab(id, label, lang, getValue, setValue),
     findOpenTab: (id: string) => tabMgr.openTabs.find((t) => t.id === id),
     activateTab: (id: string) => {
       const tab = tabMgr.openTabs.find((t) => t.id === id);
@@ -891,10 +896,10 @@ function buildSidebar(): void {
         item.get || (() => fileData![item.field!]),
         item.readonly
           ? null
-          : (item.set ||
+          : item.set ||
               ((v: unknown) => {
                 fileData![item.field!] = v;
-              })),
+              }),
       );
     });
     // Single item right-click: MCP path / backup
@@ -2032,7 +2037,10 @@ function openTabById(tabId: string): void {
   if (!fileData) return;
   const data = fileData;
 
-  const tabMap: Record<string, { label: string; lang: string; get: () => unknown; set: ((v: unknown) => void) | null }> = {
+  const tabMap: Record<
+    string,
+    { label: string; lang: string; get: () => unknown; set: ((v: unknown) => void) | null }
+  > = {
     assetPromptTemplate: {
       label: '에셋 프롬프트 템플릿',
       lang: 'markdown',
@@ -2172,12 +2180,9 @@ function openTabById(tabId: string): void {
         setStatus('가이드 파일 읽기 실패');
         return;
       }
-      openExternalTextTab(
-        tabId,
-        `[가이드] ${fileName}`,
-        content,
-        (val: string) => { window.tokiAPI.writeGuide(fileName, val); },
-      );
+      openExternalTextTab(tabId, `[가이드] ${fileName}`, content, (val: string) => {
+        window.tokiAPI.writeGuide(fileName, val);
+      });
     });
   } else if (tabId.startsWith('ref_')) {
     // Reference file item from refs popout
@@ -2579,15 +2584,12 @@ export async function initMainRenderer(): Promise<void> {
     tabMgr.markFieldDirty(field);
   });
 
-  // (debug log removed)
-
   // Load Monaco (async)
   await ensureMonacoEditorReady();
 
   // Load Terminal (async, non-blocking)
   try {
     await initTerminal();
-    // (debug log removed)
   } catch (err) {
     console.error('[init] Terminal load failed:', err);
     document.getElementById('terminal-container')!.innerHTML =
