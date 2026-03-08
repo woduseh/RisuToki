@@ -22,8 +22,16 @@ import {
   writeRpMode,
   writeWorkingAvatarState
 } from '../lib/app-settings';
-import { toMediaAsset } from '../lib/asset-runtime';
+import {
+  RISU_IDLE,
+  RISU_DANCING,
+  TOKI_IDLE,
+  TOKI_CUTE,
+  TOKI_DANCING,
+  loadAvatarImage
+} from '../lib/avatar';
 import { applyDarkMode, defineDarkMonacoTheme } from '../lib/dark-mode';
+import { showImageViewer as renderImageViewer } from '../lib/image-viewer';
 import {
   handleTerminalDataForBgm,
   initBgm as initBgmModule,
@@ -2962,83 +2970,7 @@ async function showImageViewer(tabId, assetPath) {
   container.innerHTML = '';
   if (editorInstance) { editorInstance.dispose(); editorInstance = null; }
 
-  const base64 = await window.tokiAPI.getAssetData(assetPath);
-  if (!base64) {
-    container.innerHTML = '<div class="empty-state">이미지를 불러올 수 없습니다</div>';
-    return;
-  }
-
-  // Detect type from path
-  const ext = assetPath.split('.').pop().toLowerCase();
-  const mime = ext === 'png' ? 'image/png' :
-               ext === 'webp' ? 'image/webp' :
-               ext === 'gif' ? 'image/gif' : 'image/jpeg';
-
-  const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'position:relative;width:100%;height:100%;background:#e8edf5;overflow:hidden;cursor:grab;';
-
-  const img = document.createElement('img');
-  img.src = `data:${mime};base64,${base64}`;
-  img.style.cssText = 'position:absolute;top:50%;left:50%;transform-origin:0 0;border:1px solid #c8d6e5;border-radius:6px;pointer-events:none;box-shadow:0 4px 16px rgba(74,144,217,0.12);';
-  img.draggable = false;
-  img.title = assetPath;
-
-  const info = document.createElement('div');
-  info.style.cssText = 'position:absolute;bottom:8px;right:8px;color:#4a6a8a;font-size:11px;background:rgba(255,255,255,0.9);padding:5px 10px;border-radius:6px;z-index:10;border:1px solid #c8d6e5;';
-
-  // Pan & Zoom state
-  let scale = 1, panX = 0, panY = 0;
-  let dragging = false, dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;
-
-  function updateTransform() {
-    img.style.transform = `translate(calc(-50% + ${panX}px), calc(-50% + ${panY}px)) scale(${scale})`;
-    info.textContent = `${assetPath} (${(base64.length * 0.75 / 1024).toFixed(1)} KB) — ${Math.round(scale * 100)}%`;
-  }
-  updateTransform();
-
-  // Ctrl+Wheel zoom
-  wrapper.addEventListener('wheel', (e) => {
-    if (e.ctrlKey) {
-      e.preventDefault();
-      const factor = e.deltaY > 0 ? 0.9 : 1.1;
-      scale = Math.max(0.05, Math.min(20, scale * factor));
-      updateTransform();
-    }
-  }, { passive: false });
-
-  // Left-click drag to pan (listeners added/removed per drag to avoid leaks)
-  const onMove = (e) => {
-    panX = panStartX + (e.clientX - dragStartX);
-    panY = panStartY + (e.clientY - dragStartY);
-    updateTransform();
-  };
-  const onUp = () => {
-    dragging = false;
-    wrapper.style.cursor = 'grab';
-    window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('mouseup', onUp);
-  };
-  wrapper.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;
-    dragging = true;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    panStartX = panX;
-    panStartY = panY;
-    wrapper.style.cursor = 'grabbing';
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  });
-
-  // Double-click to reset
-  wrapper.addEventListener('dblclick', () => {
-    scale = 1; panX = 0; panY = 0;
-    updateTransform();
-  });
-
-  wrapper.appendChild(img);
-  wrapper.appendChild(info);
-  container.appendChild(wrapper);
+  await renderImageViewer(container, assetPath);
 }
 
 // ==================== Menu Bar ====================
@@ -3595,9 +3527,6 @@ function initResizers() {
 
 // ==================== Dark Mode ====================
 
-const RISU_IDLE = toMediaAsset('icon_risu.png');
-const RISU_DANCING = toMediaAsset('Dancing_risu.gif');
-
 
 function toggleDarkMode() {
   darkMode = !darkMode;
@@ -3691,9 +3620,6 @@ function updateBgmButtonStyle(btn) {
 }
 
 // ==================== Toki Avatar ====================
-const TOKI_IDLE = toMediaAsset('icon.png');
-const TOKI_CUTE = toMediaAsset('toki-cute.gif');
-const TOKI_DANCING = toMediaAsset('Dancing_toki.gif');
 let tokiActive = false;
 
 // Echo filter: ignore terminal data within 300ms of user input
@@ -3897,13 +3823,7 @@ function loadTokiImage(src) {
   // If same src is already loaded, do nothing
   if (prevSrc === src && tokiImg.complete && tokiImg.naturalWidth > 0) return;
 
-  // Force GIF reload to restart animation from frame 1
-  if (src.endsWith('.gif')) {
-    tokiImg.src = '';
-    tokiImg.src = src + '?t=' + Date.now();
-  } else {
-    tokiImg.src = src;
-  }
+  loadAvatarImage(src, tokiImg);
 }
 
 // Cached avatar DOM elements (populated on first call)
