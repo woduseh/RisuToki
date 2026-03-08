@@ -14,7 +14,7 @@
 | `read_field(field)` | 필드 전체 내용 읽기 |
 | `write_field(field, content)` | 필드에 새 내용 쓰기 (사용자 확인 필요) |
 
-**사용 가능한 필드:** `name`, `description`, `firstMessage`, `globalNote`, `css`, `defaultVariables`, `lua`
+**사용 가능한 필드:** `name`, `description`, `firstMessage`, `alternateGreetings`, `groupOnlyGreetings`, `globalNote`, `css`, `defaultVariables`, `lua`, `triggerScripts`
 
 ### Lua 섹션 (Lua Sections)
 lua 필드는 `-- ===== 섹션명 =====` 구분자로 여러 섹션으로 분할됨. 로어북/정규식과 동일한 패턴으로 개별 섹션 편집 가능.
@@ -253,6 +253,7 @@ callAxModel(triggerId, systemPrompt, userPrompt, options)
 ```
 resources/guides/
 ├── CLAUDE.md                    — 이 파일 (MCP 도구 레퍼런스, charx 구조)
+├── 문법가이드_에셋_프롬프트.md      — description 기반 스탠딩 프로필 이미지 프롬프트 작성 가이드 (ComfyUI + Anima)
 ├── 문법가이드_Lua.md             — Lua 트리거 스크립트 API 상세 (RisuAI Lua 5.4)
 ├── 문법가이드_로어북.md           — 로어북 구조, CBS 문법, 활용 패턴
 ├── 문법가이드_정규식.md           — 정규식 스크립트 type별 용도, 패턴 예시

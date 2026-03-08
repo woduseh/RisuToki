@@ -1,0 +1,285 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { openCharx, openRisum, saveCharx, saveRisum } = require('../src/charx-io');
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
+
+(function testCharxRoundTrip() {
+  const filePath = path.join(tempDir, 'roundtrip.charx');
+  const data = {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'Test Character',
+    description: 'Character description',
+    personality: 'Calm',
+    scenario: 'Classroom',
+    creatorcomment: 'Created for tests',
+    tags: ['test', 'charx'],
+    firstMessage: '안녕하세요.',
+    alternateGreetings: ['안녕하세요. 두 번째 인사입니다.', '세 번째 인사입니다.'],
+    groupOnlyGreetings: ['그룹 채팅 첫 인사입니다.'],
+    globalNote: '[시스템] 테스트 노트',
+    css: '/* test css */',
+    defaultVariables: 'mood=happy',
+    lua: '-- ===== main =====\nprint("hello")\n',
+    triggerScripts: [
+      {
+        comment: 'main',
+        type: 'start',
+        conditions: [],
+        effect: [{ type: 'triggerlua', code: '-- ===== main =====\nprint("hello")\n' }],
+        lowLevelAccess: false
+      },
+      {
+        comment: 'manual',
+        type: 'manual',
+        conditions: [{ type: 'custom', key: 'mode', value: 'debug' }],
+        effect: [{ type: 'triggerlua', code: 'print("secondary")' }],
+        lowLevelAccess: true
+      }
+    ],
+    lorebook: [
+      {
+        key: 'hero',
+        secondkey: '',
+        comment: 'Hero entry',
+        content: 'Primary lorebook content',
+        insertorder: 100,
+        alwaysActive: false,
+        selective: false,
+        mode: 'normal'
+      }
+    ],
+    regex: [
+      {
+        comment: 'Bold markdown',
+        type: 'editoutput',
+        find: '\\*\\*(.+?)\\*\\*',
+        replace: '<b>$1</b>',
+        flag: 'g'
+      }
+    ],
+    moduleId: 'module-456',
+    moduleName: 'Character Module',
+    moduleDescription: 'Test module description',
+    assets: [{ path: 'assets/test.bin', data: Buffer.from([1, 2, 3, 4]) }],
+    xMeta: { portrait: { width: 128, height: 128 } },
+    risumAssets: [Buffer.from('embedded-asset')],
+    cardAssets: [{ type: 'icon', uri: 'assets/test.bin', name: 'test.bin' }],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {
+        extensions: { risuai: {} },
+        character_book: { entries: [] },
+        assets: []
+      }
+    },
+    _moduleData: null
+  };
+
+  saveCharx(filePath, data);
+  const reopened = openCharx(filePath);
+
+  assert.equal(reopened.name, data.name);
+  assert.equal(reopened.description, data.description);
+  assert.equal(reopened.firstMessage, data.firstMessage);
+  assert.deepStrictEqual(reopened.alternateGreetings, data.alternateGreetings);
+  assert.deepStrictEqual(reopened.groupOnlyGreetings, data.groupOnlyGreetings);
+  assert.equal(reopened.globalNote, data.globalNote);
+  assert.equal(reopened.css, data.css);
+  assert.equal(reopened.defaultVariables, data.defaultVariables);
+  assert.equal(reopened.lua, data.lua);
+  assert.deepStrictEqual(reopened.triggerScripts, data.triggerScripts);
+  assert.deepStrictEqual(reopened.tags, data.tags);
+  assert.deepStrictEqual(reopened.lorebook, data.lorebook);
+  assert.deepStrictEqual(reopened.regex, data.regex);
+  assert.deepStrictEqual(reopened.xMeta, data.xMeta);
+  assert.deepStrictEqual(reopened.cardAssets, data.cardAssets);
+  assert.deepStrictEqual(reopened.assets.map((asset) => asset.path), ['assets/test.bin']);
+  assert.deepStrictEqual(reopened.assets[0].data, Buffer.from([1, 2, 3, 4]));
+  assert.deepStrictEqual(reopened.risumAssets, data.risumAssets);
+})();
+
+(function testCharxWithPrependedImageData() {
+  const sourcePath = path.join(tempDir, 'prefixed-source.charx');
+  const prefixedPath = path.join(tempDir, 'prefixed.charx');
+  const data = {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'Prefixed Character',
+    description: 'Character description',
+    personality: '',
+    scenario: '',
+    creatorcomment: '',
+    tags: [],
+    firstMessage: '프리픽스 테스트',
+    alternateGreetings: ['프리픽스 추가 첫 메시지'],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [
+      {
+        comment: 'prefixed',
+        type: 'start',
+        conditions: [],
+        effect: [{ type: 'triggerlua', code: 'print("prefixed")' }],
+        lowLevelAccess: false
+      }
+    ],
+    lorebook: [],
+    regex: [],
+    moduleId: 'module-prefixed',
+    moduleName: 'Prefixed Module',
+    moduleDescription: 'Prefixed module description',
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {
+        extensions: { risuai: {} },
+        character_book: { entries: [] },
+        assets: []
+      }
+    },
+    _moduleData: null
+  };
+
+  saveCharx(sourcePath, data);
+  const original = fs.readFileSync(sourcePath);
+  const fakeJpegPrelude = Buffer.from([
+    0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
+    0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01
+  ]);
+  fs.writeFileSync(prefixedPath, Buffer.concat([fakeJpegPrelude, original]));
+
+  const reopened = openCharx(prefixedPath);
+  assert.equal(reopened.name, data.name);
+  assert.equal(reopened.firstMessage, data.firstMessage);
+  assert.deepStrictEqual(reopened.alternateGreetings, data.alternateGreetings);
+  assert.deepStrictEqual(reopened.triggerScripts, data.triggerScripts);
+  assert.equal(reopened.lua, 'print("prefixed")');
+})();
+
+(function testLuaUpdatesPreserveTriggerScriptArray() {
+  const filePath = path.join(tempDir, 'lua-merge.charx');
+  const data = {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'Lua Merge Character',
+    description: '',
+    personality: '',
+    scenario: '',
+    creatorcomment: '',
+    tags: [],
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: 'print("updated-main")',
+    triggerScripts: [
+      {
+        comment: 'main',
+        type: 'start',
+        conditions: [],
+        effect: [{ type: 'triggerlua', code: 'print("original-main")' }],
+        lowLevelAccess: false
+      },
+      {
+        comment: 'manual',
+        type: 'manual',
+        conditions: [],
+        effect: [{ type: 'triggerlua', code: 'print("manual")' }],
+        lowLevelAccess: false
+      }
+    ],
+    lorebook: [],
+    regex: [],
+    moduleId: 'module-lua-merge',
+    moduleName: 'Lua Merge Module',
+    moduleDescription: '',
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {
+        extensions: { risuai: {} },
+        character_book: { entries: [] },
+        assets: []
+      }
+    },
+    _moduleData: null
+  };
+
+  saveCharx(filePath, data);
+  const reopened = openCharx(filePath);
+
+  assert.equal(reopened.lua, 'print("updated-main")');
+  assert.equal(reopened.triggerScripts[0].effect[0].code, 'print("updated-main")');
+  assert.equal(reopened.triggerScripts[1].effect[0].code, 'print("manual")');
+})();
+
+(function testRisumRoundTrip() {
+  const filePath = path.join(tempDir, 'roundtrip.risum');
+  const data = {
+    name: 'Standalone Module',
+    description: 'Risum description',
+    moduleId: 'module-789',
+    moduleName: 'Standalone Module',
+    moduleDescription: 'Standalone description',
+    lua: '-- ===== main =====\nprint("risum")\n',
+    lorebook: [
+      {
+        key: 'npc',
+        secondkey: '',
+        comment: 'NPC entry',
+        content: 'Standalone lore',
+        insertorder: 80,
+        alwaysActive: true,
+        selective: false,
+        mode: 'normal'
+      }
+    ],
+    regex: [
+      {
+        comment: 'Trim spaces',
+        type: 'editinput',
+        find: '^\\s+|\\s+$',
+        replace: '',
+        flag: 'gm'
+      }
+    ],
+    risumAssets: [Buffer.from('standalone')],
+    _moduleData: null
+  };
+
+  saveRisum(filePath, data);
+  const reopened = openRisum(filePath);
+
+  assert.equal(reopened.name, data.moduleName);
+  assert.equal(reopened.moduleDescription, data.moduleDescription);
+  assert.equal(reopened.lua, data.lua);
+  assert.deepStrictEqual(reopened.lorebook, data.lorebook);
+  assert.deepStrictEqual(reopened.regex, data.regex);
+  assert.deepStrictEqual(reopened.risumAssets, data.risumAssets);
+})();
+
+fs.rmSync(tempDir, { recursive: true, force: true });
+console.log('test-charx passed');

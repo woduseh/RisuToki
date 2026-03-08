@@ -1,0 +1,53 @@
+# RisuToki State Extraction & JS->TS Migration Analysis
+
+## EXECUTIVE SUMMARY
+
+### (1) GLOBAL MUTABLE STATE GROUPS IDENTIFIED
+
+**GROUP A: CURRENT FILE STATE** [HIGHEST PRIORITY FOR EXTRACTION]
+- currentFilePath (string | null)
+- currentData (CharxData | null)
+- Read by: 35+ IPC handlers (file ops, assets, terminal, MCP API, sync, popouts)
+- Written by: new-file, open-file, save-file, applyUpdates(), MCP HTTP endpoints
+- **CRITICAL**: No locks; cache invalidation scattered; multiple mutation sources
+
+**GROUP B: WINDOW MANAGEMENT**
+- mainWindow (BrowserWindow)
+- popoutWindows ({} object)
+- 20+ handler dependencies; cannot mock in tests
+
+**GROUPS C-H**: MCP callbacks, API servers, terminal, guides, caches
+- Smaller scope but still coupled
+
+### (2) RECOMMENDED FIRST EXTRACTION
+
+Create: src/electron/main-state-store.ts (250 lines)
+
+Three core classes:
+1. CurrentFileStore (get/setPath, get/setData, subscribe)
+2. WindowStore (manage mainWindow and popoutWindows)
+3. MainStateStore (root, combines all stores)
+
+Benefits: Zero behavior change, incremental adoption, type-safe, testable, observable
+
+### (3) IMPACTED FILES
+
+- main.js: ~70 references to replace (HIGH)
+- preload.js: Update imports (LOW)
+- charx-io.js: No change (called by main.js)
+- app/controller.js: No change (uses IPC)
+
+### (4) JS->TS MIGRATION ORDER (6-8 weeks total)
+
+Phase 1 (Weeks 1-2):
+1. Create main-state-store.ts (4h)
+2. Convert preload.js -> preload.ts (2h)
+3. Convert popout-preload.js -> popout-preload.ts (2h)
+
+Phase 2 (Weeks 2-4):
+4. Refactor main.js -> main.ts (3-4 days)
+   - Extract classes, integrate store, migrate handlers
+
+Phase 3-6: charx-io.ts, controller.ts, terminal-chat.ts, preview-engine.ts, toki-mcp-server.ts
+
+Full details in MIGRATION_ANALYSIS.md

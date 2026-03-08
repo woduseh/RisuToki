@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; font-src * data: blob:; style-src * 'unsafe-inline'; img-src * data: blob:; media-src 'self' file: data: blob:; worker-src 'self' blob:; connect-src * data: blob: ws: wss:;" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RisuToki Popout</title>
+</head>
+<body>
+  <script>
+    if (localStorage.getItem('toki-dark-mode') === 'true') document.body.classList.add('dark-mode');
+  </script>
+  <div id="popout-root"></div>
+  <script type="module" src="/src/popout.ts"></script>
+</body>
+</html>

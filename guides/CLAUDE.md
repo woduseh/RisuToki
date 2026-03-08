@@ -253,6 +253,7 @@ callAxModel(triggerId, systemPrompt, userPrompt, options)
 ```
 resources/guides/
 ├── CLAUDE.md                    — 이 파일 (MCP 도구 레퍼런스, charx 구조)
+├── 문법가이드_에셋_프롬프트.md      — description 기반 스탠딩 프로필 이미지 프롬프트 작성 가이드 (ComfyUI + Anima)
 ├── 문법가이드_Lua.md             — Lua 트리거 스크립트 API 상세 (RisuAI Lua 5.4)
 ├── 문법가이드_로어북.md           — 로어북 구조, CBS 문법, 활용 패턴
 ├── 문법가이드_정규식.md           — 정규식 스크립트 type별 용도, 패턴 예시

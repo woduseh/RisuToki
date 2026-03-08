@@ -73,7 +73,7 @@ function killTerminal() {
 function initTerminalManager(deps) {
     const { broadcastToAll, getCurrentFilePath, getApiPort, getApiToken } = deps;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { buildTerminalLaunchAttempts } = require('./terminal-shell.cjs');
+    const { buildTerminalLaunchAttempts } = require('./terminal-shell');
     function broadcastTerminalStatus(level, message, detail = null) {
         broadcastToAll('terminal-status', getTerminalStatusMessage(level, message, detail));
     }
