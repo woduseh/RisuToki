@@ -78,6 +78,7 @@ interface PreviewEngineModule extends PreviewEngineContract {
   getChatVar(key: string): string;
   getGlobalChatVar(key: string): string;
   setGlobalChatVar(key: string, value: unknown): void;
+  setErrorHandler(handler: ((context: string, message: string) => void) | null): void;
 }
 interface InitLuaFn {
   (luaCode: string): Promise<boolean>;
@@ -115,6 +116,12 @@ export const PreviewEngine: PreviewEngineModule = (() => {
   let localLorebooks: Record<string, LocalLorebookEntry> = {}; // loreBookId → { content, key, secondKey, alwaysActive }
   let _reloadDisplayRequested = false;
   let _onReloadDisplay: (() => void) | null = null; // callback set by app.js
+  let _errorHandler: ((context: string, message: string) => void) | null = null;
+
+  function notifyError(context: string, error: unknown): void {
+    const msg = getErrorMessage(error);
+    if (_errorHandler) _errorHandler(context, msg);
+  }
 
   // ==================== Variable System ====================
   function parseKeyValue(str: string | undefined): [string, string][] {
@@ -826,6 +833,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         text = text.replace(regex, replace);
       } catch (e) {
         console.warn('[PreviewEngine] Regex error:', (e as Error).message, script.comment);
+        notifyError('정규식 오류', e);
       }
     }
     return text;
@@ -875,6 +883,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
             }
           } catch (e) {
             console.warn('[preview] Invalid regex in lorebook key:', key, (e as Error).message);
+            notifyError('로어북 키 정규식 오류', e);
           }
         } else {
           if (searchText.includes(key.toLowerCase())) {
@@ -1321,6 +1330,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     } catch (e) {
       console.error('[PreviewEngine] Lua init error:', e);
       luaOutput.push('[Lua Error] ' + (e as Error).message);
+      notifyError('Lua 초기화 오류', e);
       return false;
     }
   }
@@ -1389,6 +1399,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     } catch (e) {
       luaOutput.push(`[Lua ${mode} Error] ${(e as Error).message}`);
       console.warn(`[Lua ${mode} Error]`, e);
+      notifyError(`Lua ${mode} 오류`, e);
       return data;
     }
   }
@@ -1398,6 +1409,9 @@ export const PreviewEngine: PreviewEngineModule = (() => {
 
   // ==================== Public API ====================
   return {
+    setErrorHandler: (handler: ((context: string, message: string) => void) | null): void => {
+      _errorHandler = handler;
+    },
     setChatVar,
     getChatVar,
     setGlobalChatVar,
@@ -1485,6 +1499,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         `);
       } catch (e) {
         console.warn('[runLuaButtonClick]', e);
+        notifyError('Lua 버튼 클릭 오류', e);
       }
     },
     runLuaTriggerByName: async (name: string): Promise<void> => {
@@ -1498,6 +1513,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         `);
       } catch (e) {
         console.warn('[runLuaTriggerByName]', e);
+        notifyError('Lua 트리거 오류', e);
       }
     },
 

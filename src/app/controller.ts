@@ -29,19 +29,17 @@ import {
   writeAutosaveInterval,
   writeBgmEnabled,
   writeBgmPath,
-  writeDarkMode,
   writeLayoutState,
   writeRpCustomText,
   writeRpMode,
 } from '../lib/app-settings';
 import type { StoredLayoutState } from '../lib/app-settings';
-import { initTokiAvatar as initTokiAvatarUi, setTokiActive, refreshAvatarForDarkMode } from '../lib/avatar-ui';
-import { applyDarkMode, defineDarkMonacoTheme } from '../lib/dark-mode';
+import { initTokiAvatar as initTokiAvatarUi, setTokiActive } from '../lib/avatar-ui';
+import { defineDarkMonacoTheme } from '../lib/dark-mode';
 import { showImageViewer as renderImageViewer } from '../lib/image-viewer';
 import { closeAllMenus } from '../lib/menu-bar';
 import {
   handleTerminalDataForBgm,
-  initBgm as initBgmModule,
   isBgmEnabled,
   pauseBgm,
   setBgmEnabled,
@@ -98,7 +96,6 @@ import { createBackup, formatBackupTime, getBackups, showBackupMenu } from '../l
 import { initDragDrop } from '../lib/drag-drop-import';
 import { setStatus } from '../lib/status-bar';
 import { showHelpPopup } from '../lib/help-popup';
-import { showSettingsPopup as renderSettingsPopup } from '../lib/settings-popup';
 import { createSidebarActions } from '../lib/sidebar-actions';
 import {
   handleNew as _handleNew,
@@ -113,6 +110,24 @@ import {
   buildRefsSidebar as _buildRefsSidebar,
   openRefTabById as _openRefTabById,
 } from '../lib/sidebar-refs';
+import { initKeyboard } from './keyboard-shortcuts';
+import {
+  getRpLabel,
+  updateRpButtonStyle,
+  updateBgmButtonStyle,
+  initBgmUi,
+  initRpModeButton,
+  toggleDarkMode as _toggleDarkMode,
+  refreshDarkModeUi as _refreshDarkModeUi,
+  startAutosave,
+  stopAutosave,
+  showSettingsPopup as _showSettingsPopup,
+  handleTerminalBg,
+} from './settings-handlers';
+import {
+  tryExtractPrimaryLuaFromTriggerScriptsText,
+  mergeLuaIntoTriggerScriptsText,
+} from './trigger-script-utils';
 
 const settingsSnapshot = readAppSettingsSnapshot();
 
@@ -167,7 +182,6 @@ let rpCustomText = settingsSnapshot.rpCustomText;
 let autosaveEnabled = settingsSnapshot.autosaveEnabled;
 let autosaveInterval = settingsSnapshot.autosaveInterval;
 let autosaveDir = settingsSnapshot.autosaveDir; // empty = same as file
-let autosaveTimer: ReturnType<typeof setInterval> | null = null;
 
 /** Sync imperative controller state → Pinia store for reactive UI */
 function syncStoreState(): void {
@@ -1486,92 +1500,9 @@ async function handleSaveAs(): Promise<void> {
 }
 
 // ==================== RP Mode ====================
+// RP mode UI is in ./settings-handlers.ts
 
-function getRpLabel(): string {
-  if (rpMode === 'off') return 'OFF';
-  if (rpMode === 'toki') return '토키';
-  if (rpMode === 'aris') return '아리스';
-  if (rpMode === 'custom') return '커스텀';
-  return 'OFF';
-}
-
-function initRpModeButton(): void {
-  const btn = document.getElementById('btn-rp-mode');
-  if (!btn) return;
-  updateRpButtonStyle(btn);
-  // Click: quick toggle ON/OFF (auto picks toki/aris based on dark mode)
-  btn.addEventListener('click', () => {
-    if (rpMode === 'off') {
-      rpMode = getDefaultRpModeForDarkMode(darkMode);
-    } else {
-      rpMode = 'off';
-    }
-    writeRpMode(rpMode);
-    updateRpButtonStyle(btn);
-    setStatus(rpMode === 'off' ? 'RP 모드 OFF' : `RP 모드 ON (${getRpLabel()}) — 다음 AI CLI 시작 시 적용`);
-  });
-}
-
-function updateRpButtonStyle(btn: HTMLElement): void {
-  const isOn = rpMode !== 'off';
-  btn.style.background = isOn ? 'rgba(255,255,255,0.5)' : '';
-  btn.title = isOn ? `RP: ${getRpLabel()} (클릭: OFF)` : 'RP 모드 OFF (클릭: ON)';
-}
-
-function tryExtractPrimaryLuaFromTriggerScriptsText(value: string): string | null {
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return null;
-    for (const trigger of parsed) {
-      const effects = Array.isArray(trigger?.effect) ? trigger.effect : [];
-      for (const effect of effects) {
-        if (
-          effect &&
-          typeof effect.code === 'string' &&
-          (effect.type === 'triggerlua' || typeof effect.type !== 'string')
-        ) {
-          return effect.code;
-        }
-      }
-    }
-    return '';
-  } catch {
-    return null;
-  }
-}
-
-function mergeLuaIntoTriggerScriptsText(triggerScriptsText: string, lua: string): string {
-  if (typeof lua !== 'string' || !lua) {
-    return triggerScriptsText;
-  }
-
-  try {
-    const parsed = JSON.parse(triggerScriptsText || '[]');
-    if (!Array.isArray(parsed)) return triggerScriptsText;
-
-    for (const trigger of parsed) {
-      const effects = Array.isArray(trigger?.effect) ? trigger.effect : [];
-      for (const effect of effects) {
-        if (effect && (effect.type === 'triggerlua' || typeof effect.code === 'string')) {
-          effect.type = effect.type || 'triggerlua';
-          effect.code = lua;
-          return JSON.stringify(parsed, null, 2);
-        }
-      }
-    }
-
-    parsed.unshift({
-      comment: '',
-      type: 'start',
-      conditions: [],
-      effect: [{ type: 'triggerlua', code: lua }],
-      lowLevelAccess: false,
-    });
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    return triggerScriptsText;
-  }
-}
+// Trigger script text helpers are in ./trigger-script-utils.ts
 
 function getAssistantDeps() {
   return {
@@ -1607,18 +1538,7 @@ async function handleCodexStart(): Promise<void> {
 }
 
 // ==================== Terminal Background ====================
-async function handleTerminalBg(): Promise<void> {
-  const dataUrl = await window.tokiAPI.pickBgImage();
-  const container = document.getElementById('terminal-container')!;
-  if (dataUrl) {
-    container.style.backgroundImage = `url("${dataUrl}")`;
-    container.classList.add('has-bg');
-  } else {
-    // Clicked cancel → remove background
-    container.style.backgroundImage = '';
-    container.classList.remove('has-bg');
-  }
-}
+// Terminal background handler is in ./settings-handlers.ts
 
 // ==================== Resizers ====================
 function initResizers(): void {
@@ -1655,81 +1575,29 @@ function initResizers(): void {
 
 // ==================== Dark Mode ====================
 
+function getDarkModeDeps() {
+  return {
+    getEditorInstance: () => editorInstance as { updateOptions(opts: unknown): void } | null,
+    getFormEditors: () => getFormEditors() as Array<{ updateOptions(opts: unknown): void }>,
+    getTerminal: () => term as { options: { theme: unknown } } | null,
+    getRpMode: () => rpMode,
+    setRpMode: (mode: string) => { rpMode = mode as RpMode; },
+    termThemeDark: TERM_THEME_DARK,
+    termThemeLight: TERM_THEME_LIGHT,
+  };
+}
+
 function toggleDarkMode(): void {
-  darkMode = !darkMode;
-  writeDarkMode(darkMode);
-  refreshDarkModeUi();
-  setStatus(darkMode ? '다크 모드 ON (Aris)' : '라이트 모드 ON (Toki)');
+  darkMode = _toggleDarkMode(darkMode, getDarkModeDeps());
+  syncStoreState();
 }
 
 function refreshDarkModeUi(): void {
-  applyDarkMode(darkMode, {
-    editorInstance: editorInstance as { updateOptions: (opts: unknown) => void } | null,
-    formEditors: getFormEditors() as Array<{ updateOptions: (opts: unknown) => void }>,
-  });
-
-  // Update TokiTalk title
-  const titleEl = document.querySelector('.momo-title');
-  if (titleEl) titleEl.textContent = darkMode ? 'ArisTalk' : 'TokiTalk';
-
-  // Update status text and avatar image for dark-mode switch
-  refreshAvatarForDarkMode(darkMode);
-
-  // Switch terminal (xterm) theme
-  if (typeof term !== 'undefined' && term) {
-    term.options.theme = darkMode ? TERM_THEME_DARK : TERM_THEME_LIGHT;
-  }
-
-  // Auto-switch RP persona on dark mode toggle (if not custom/off)
-  if (rpMode === 'toki' || rpMode === 'aris') {
-    rpMode = getDefaultRpModeForDarkMode(darkMode);
-    writeRpMode(rpMode);
-  }
-  const rpBtn = document.getElementById('btn-rp-mode');
-  if (rpBtn) updateRpButtonStyle(rpBtn);
-
-  // Update avatar right-click menu character name in context
-  // (handled dynamically when contextmenu is shown)
+  _refreshDarkModeUi(darkMode, getDarkModeDeps());
 }
 
 // ==================== BGM (Terminal Response Music) ====================
-
-function initBgmUi(): void {
-  initBgmModule(settingsSnapshot.bgmEnabled, settingsSnapshot.bgmPath);
-
-  const btn = document.getElementById('btn-bgm');
-  if (!btn) return;
-
-  updateBgmButtonStyle(btn);
-
-  // Left-click: toggle on/off
-  btn.addEventListener('click', () => {
-    setBgmEnabled(!isBgmEnabled());
-    writeBgmEnabled(isBgmEnabled());
-    updateBgmButtonStyle(btn);
-    if (!isBgmEnabled()) {
-      pauseBgm();
-    }
-    setStatus(isBgmEnabled() ? 'BGM ON' : 'BGM OFF');
-  });
-
-  // Right-click: pick new BGM file
-  btn.addEventListener('contextmenu', async (e) => {
-    e.preventDefault();
-    const filePath = await window.tokiAPI.pickBgm();
-    if (!filePath) return;
-    setBgmFilePath(filePath);
-    writeBgmPath(filePath);
-    setStatus(`BGM 변경: ${filePath.split(/[/\\]/).pop()}`);
-  });
-}
-
-function updateBgmButtonStyle(btn: HTMLElement): void {
-  const enabled = isBgmEnabled();
-  btn.textContent = enabled ? '🔊' : '🔇';
-  btn.title = enabled ? 'BGM ON (우클릭: 파일 변경)' : 'BGM OFF (우클릭: 파일 변경)';
-  btn.style.background = enabled ? 'rgba(255,255,255,0.5)' : '';
-}
+// BGM UI initialization is in ./settings-handlers.ts
 
 // Echo filter: ignore terminal data within 300ms of user input
 let lastUserInputTime = 0;
@@ -1737,43 +1605,28 @@ let lastUserInputTime = 0;
 // Help popup and syntax reference are now in '../lib/help-popup'
 
 // ==================== Autosave ====================
+// Autosave is in ./settings-handlers.ts
 
-function startAutosave(): void {
-  stopAutosave();
-  if (!autosaveEnabled) return;
-  autosaveTimer = setInterval(async () => {
-    if (tabMgr.dirtyFields.size === 0 || !fileData) return;
-    const filePath = await window.tokiAPI.getFilePath();
-    if (!filePath && !autosaveDir) return;
-    const updatedFields = collectDirtyFields();
-    if (autosaveDir) updatedFields._autosaveDir = autosaveDir;
-    const result = await window.tokiAPI.autosaveFile(updatedFields);
-    if (result && result.success) {
-      setStatus(`자동 저장됨: ${result.path?.split(/[/\\]/).pop()}`);
-    }
-  }, autosaveInterval);
-}
-
-function stopAutosave(): void {
-  if (autosaveTimer) {
-    clearInterval(autosaveTimer);
-    autosaveTimer = null;
-  }
-}
-
-function collectDirtyFields() {
-  return collectDirtyEditorFields({
-    dirtyFields: tabMgr.dirtyFields,
-    fileData: fileData!,
-    openTabs: tabMgr.openTabs,
-  });
+function getAutosaveDeps() {
+  return {
+    getAutosaveEnabled: () => autosaveEnabled,
+    getAutosaveInterval: () => autosaveInterval,
+    getAutosaveDir: () => autosaveDir,
+    getDirtyFieldCount: () => tabMgr.dirtyFields.size,
+    getFileData: () => fileData as Record<string, unknown> | null,
+    collectDirtyFields: () => collectDirtyEditorFields({
+      dirtyFields: tabMgr.dirtyFields,
+      fileData: fileData!,
+      openTabs: tabMgr.openTabs,
+    }),
+  };
 }
 
 // ==================== Settings Popup ====================
 
 function showSettingsPopup(): void {
-  renderSettingsPopup(
-    {
+  _showSettingsPopup({
+    getState: () => ({
       autosaveEnabled,
       autosaveInterval,
       autosaveDir,
@@ -1781,78 +1634,76 @@ function showSettingsPopup(): void {
       bgmEnabled: isBgmEnabled(),
       rpMode,
       rpCustomText,
+    }),
+    onAutosaveToggle(enabled) {
+      autosaveEnabled = enabled;
+      writeAutosaveEnabled(autosaveEnabled);
+      if (autosaveEnabled) startAutosave(getAutosaveDeps());
+      else stopAutosave();
     },
-    {
-      onAutosaveToggle(enabled) {
-        autosaveEnabled = enabled;
-        writeAutosaveEnabled(autosaveEnabled);
-        if (autosaveEnabled) startAutosave();
-        else stopAutosave();
-      },
-      onAutosaveIntervalChange(interval) {
-        autosaveInterval = interval;
-        writeAutosaveInterval(autosaveInterval);
-        if (autosaveEnabled) startAutosave();
-      },
-      async onPickAutosaveDir() {
-        const dir = await window.tokiAPI.pickAutosaveDir();
-        if (dir) {
-          autosaveDir = dir;
-          writeAutosaveDir(dir);
-        }
-        return dir;
-      },
-      onResetAutosaveDir() {
-        autosaveDir = '';
-        writeAutosaveDir('');
-      },
-      async onOpenAutosaveDir() {
-        if (autosaveDir) {
-          window.tokiAPI.openFolder(autosaveDir);
-        } else {
-          const info = await window.tokiAPI.getAutosaveInfo();
-          if (info) window.tokiAPI.openFolder(info.dir);
-          else setStatus('파일을 먼저 열어주세요');
-        }
-      },
-      onDarkModeToggle() {
-        toggleDarkMode();
-      },
-      onBgmToggle(enabled) {
-        setBgmEnabled(enabled);
-        writeBgmEnabled(isBgmEnabled());
-        const bgmBtn = document.getElementById('btn-bgm');
-        if (bgmBtn) updateBgmButtonStyle(bgmBtn);
-        if (!isBgmEnabled()) pauseBgm();
-      },
-      onRpModeChange(mode: string) {
-        rpMode = mode as RpMode;
-        writeRpMode(rpMode);
-        const btn = document.getElementById('btn-rp-mode');
-        if (btn) updateRpButtonStyle(btn);
-      },
-      onRpCustomTextChange(text) {
-        rpCustomText = text;
-        writeRpCustomText(rpCustomText);
-      },
-      async onOpenPersonaTab(name) {
-        const tabId = `persona_${name}`;
-        const existing = tabMgr.openTabs.find((t) => t.id === tabId);
-        if (existing) {
-          tabMgr.activeTabId = tabId;
-          createOrSwitchEditor(existing);
-          tabMgr.renderTabs();
-        } else {
-          const content = await window.tokiAPI.readPersona(name);
-          openExternalTextTab(tabId, `[페르소나] ${name}.txt`, content || '', (val) =>
-            window.tokiAPI.writePersona(name, val).then(() => {
-              setStatus(`페르소나 저장: ${name}.txt`);
-            }),
-          );
-        }
-      },
+    onAutosaveIntervalChange(interval) {
+      autosaveInterval = interval;
+      writeAutosaveInterval(autosaveInterval);
+      if (autosaveEnabled) startAutosave(getAutosaveDeps());
     },
-  );
+    async onPickAutosaveDir() {
+      const dir = await window.tokiAPI.pickAutosaveDir();
+      if (dir) {
+        autosaveDir = dir;
+        writeAutosaveDir(dir);
+      }
+      return dir;
+    },
+    onResetAutosaveDir() {
+      autosaveDir = '';
+      writeAutosaveDir('');
+    },
+    async onOpenAutosaveDir() {
+      if (autosaveDir) {
+        window.tokiAPI.openFolder(autosaveDir);
+      } else {
+        const info = await window.tokiAPI.getAutosaveInfo();
+        if (info) window.tokiAPI.openFolder(info.dir);
+        else setStatus('파일을 먼저 열어주세요');
+      }
+    },
+    onDarkModeToggle() {
+      toggleDarkMode();
+    },
+    onBgmToggle(enabled) {
+      setBgmEnabled(enabled);
+      writeBgmEnabled(isBgmEnabled());
+      const bgmBtn = document.getElementById('btn-bgm');
+      if (bgmBtn) updateBgmButtonStyle(bgmBtn);
+      if (!isBgmEnabled()) pauseBgm();
+    },
+    onRpModeChange(mode: string) {
+      rpMode = mode as RpMode;
+      writeRpMode(rpMode);
+      const btn = document.getElementById('btn-rp-mode');
+      if (btn) updateRpButtonStyle(btn, rpMode);
+    },
+    onRpCustomTextChange(text) {
+      rpCustomText = text;
+      writeRpCustomText(rpCustomText);
+    },
+    async onOpenPersonaTab(name) {
+      const tabId = `persona_${name}`;
+      const existing = tabMgr.openTabs.find((t) => t.id === tabId);
+      if (existing) {
+        tabMgr.activeTabId = tabId;
+        createOrSwitchEditor(existing);
+        tabMgr.renderTabs();
+      } else {
+        const content = await window.tokiAPI.readPersona(name);
+        openExternalTextTab(tabId, `[페르소나] ${name}.txt`, content || '', (val) =>
+          window.tokiAPI.writePersona(name, val).then(() => {
+            setStatus(`페르소나 저장: ${name}.txt`);
+          }),
+        );
+      }
+    },
+  });
 }
 
 // ==================== Preview Test Panel ====================
@@ -2094,37 +1945,7 @@ function openTabById(tabId: string): void {
 }
 
 // ==================== Keyboard Shortcuts ====================
-function initKeyboard(): void {
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'n') {
-      e.preventDefault();
-      handleNew();
-    } else if (e.ctrlKey && e.key === 'o') {
-      e.preventDefault();
-      handleOpen();
-    } else if (e.ctrlKey && e.shiftKey && e.key === 'S') {
-      e.preventDefault();
-      handleSaveAs();
-    } else if (e.ctrlKey && e.key === 's') {
-      e.preventDefault();
-      handleSave();
-    } else if (e.ctrlKey && e.key === 'w') {
-      e.preventDefault();
-      if (tabMgr.activeTabId) tabMgr.closeTab(tabMgr.activeTabId);
-    } else if (e.ctrlKey && e.key === 'b') {
-      e.preventDefault();
-      toggleSidebar();
-    } else if (e.ctrlKey && e.key === '`') {
-      e.preventDefault();
-      toggleTerminal();
-    } else if (e.key === 'F5') {
-      e.preventDefault();
-      showPreviewPanel();
-    } else if (e.key === 'Escape') {
-      closeAllMenus();
-    }
-  });
-}
+// Keyboard shortcuts are in ./keyboard-shortcuts.ts
 
 // ==================== Init ====================
 export async function initMainRenderer(): Promise<void> {
@@ -2142,6 +1963,11 @@ export async function initMainRenderer(): Promise<void> {
     }
     // Sync to Pinia store for reactive UI
     syncStoreState();
+  });
+
+  // Wire preview engine errors to status bar
+  PreviewEngine.setErrorHandler((context, message) => {
+    setStatus(`⚠️ ${context}: ${message}`);
   });
   registerActions({
     // File
@@ -2239,7 +2065,7 @@ export async function initMainRenderer(): Promise<void> {
       }
       writeRpMode(rpMode);
       syncStoreState();
-      setStatus(rpMode === 'off' ? 'RP 모드 OFF' : `RP 모드 ON (${getRpLabel()}) — 다음 AI CLI 시작 시 적용`);
+      setStatus(rpMode === 'off' ? 'RP 모드 OFF' : `RP 모드 ON (${getRpLabel(rpMode)}) — 다음 AI CLI 시작 시 적용`);
     },
     'bgm-toggle': () => {
       setBgmEnabled(!isBgmEnabled());
@@ -2259,11 +2085,20 @@ export async function initMainRenderer(): Promise<void> {
     'sidebar-expand': () => moveItems(layoutState.itemsPos),
     help: () => showHelpPopup(),
   });
-  // Initialize BGM module (state only, no DOM listeners)
-  initBgmModule(settingsSnapshot.bgmEnabled, settingsSnapshot.bgmPath);
+  // Initialize BGM module (state + UI)
+  initBgmUi(settingsSnapshot.bgmEnabled, settingsSnapshot.bgmPath);
   syncStoreState();
   initResizers();
-  initKeyboard();
+  initKeyboard({
+    handleNew,
+    handleOpen,
+    handleSave,
+    handleSaveAs,
+    closeActiveTab: () => { if (tabMgr.activeTabId) tabMgr.closeTab(tabMgr.activeTabId); },
+    toggleSidebar,
+    toggleTerminal,
+    showPreviewPanel,
+  });
   initDragDrop(document.getElementById('sidebar')!, {
     get fileData() {
       return fileData;
@@ -2303,7 +2138,7 @@ export async function initMainRenderer(): Promise<void> {
   }
   // Apply saved layout (restore positions)
   rebuildLayout();
-  if (autosaveEnabled) startAutosave();
+  if (autosaveEnabled) startAutosave(getAutosaveDeps());
   await buildRefsSidebar(); // Load guides & refs even without a file open
   const referenceManifestStatus = await window.tokiAPI.getReferenceManifestStatus();
   if (referenceManifestStatus) {
