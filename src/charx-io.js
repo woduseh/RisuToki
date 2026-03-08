@@ -1,5 +1,15 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.extractPrimaryLuaFromTriggerScripts = extractPrimaryLuaFromTriggerScripts;
+exports.normalizeTriggerScripts = normalizeTriggerScripts;
+exports.mergePrimaryLuaIntoTriggerScripts = mergePrimaryLuaIntoTriggerScripts;
+exports.stringifyTriggerScripts = stringifyTriggerScripts;
+exports.openCharx = openCharx;
+exports.saveCharx = saveCharx;
+exports.openRisum = openRisum;
+exports.saveRisum = saveRisum;
+exports.openRisup = openRisup;
+exports.saveRisup = saveRisup;
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
@@ -768,15 +778,3 @@ function generateUUID() {
         return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
     });
 }
-module.exports = {
-    openCharx,
-    saveCharx,
-    openRisum,
-    saveRisum,
-    openRisup,
-    saveRisup,
-    extractPrimaryLuaFromTriggerScripts,
-    mergePrimaryLuaIntoTriggerScripts,
-    normalizeTriggerScripts,
-    stringifyTriggerScripts,
-};

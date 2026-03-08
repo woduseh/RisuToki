@@ -1,7 +1,5 @@
-'use strict';
-
-const assert = require('node:assert/strict');
-const { createPopoutPayloadStore } = require('../src/lib/popout-payload-store');
+import assert from 'node:assert/strict';
+import { createPopoutPayloadStore } from '../src/lib/popout-payload-store';
 
 async function main() {
   {

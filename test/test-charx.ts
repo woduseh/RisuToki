@@ -1,10 +1,11 @@
-'use strict';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup } from '../src/charx-io';
 
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup } = require('../src/charx-io');
+// Test data objects are intentionally partial — cast to any at call sites
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
 
@@ -32,15 +33,15 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
         type: 'start',
         conditions: [],
         effect: [{ type: 'triggerlua', code: '-- ===== main =====\nprint("hello")\n' }],
-        lowLevelAccess: false
+        lowLevelAccess: false,
       },
       {
         comment: 'manual',
         type: 'manual',
         conditions: [{ type: 'custom', key: 'mode', value: 'debug' }],
         effect: [{ type: 'triggerlua', code: 'print("secondary")' }],
-        lowLevelAccess: true
-      }
+        lowLevelAccess: true,
+      },
     ],
     lorebook: [
       {
@@ -51,8 +52,8 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
         insertorder: 100,
         alwaysActive: false,
         selective: false,
-        mode: 'normal'
-      }
+        mode: 'normal',
+      },
     ],
     regex: [
       {
@@ -60,8 +61,8 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
         type: 'editoutput',
         find: '\\*\\*(.+?)\\*\\*',
         replace: '<b>$1</b>',
-        flag: 'g'
-      }
+        flag: 'g',
+      },
     ],
     moduleId: 'module-456',
     moduleName: 'Character Module',
@@ -77,13 +78,13 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
       data: {
         extensions: { risuai: {} },
         character_book: { entries: [] },
-        assets: []
-      }
+        assets: [],
+      },
     },
-    _moduleData: null
+    _moduleData: null,
   };
 
-  saveCharx(filePath, data);
+  saveCharx(filePath, data as any);
   const reopened = openCharx(filePath);
 
   assert.equal(reopened.name, data.name);
@@ -101,7 +102,10 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.deepStrictEqual(reopened.regex, data.regex);
   assert.deepStrictEqual(reopened.xMeta, data.xMeta);
   assert.deepStrictEqual(reopened.cardAssets, data.cardAssets);
-  assert.deepStrictEqual(reopened.assets.map((asset) => asset.path), ['assets/test.bin']);
+  assert.deepStrictEqual(
+    reopened.assets.map((asset: { path: string }) => asset.path),
+    ['assets/test.bin'],
+  );
   assert.deepStrictEqual(reopened.assets[0].data, Buffer.from([1, 2, 3, 4]));
   assert.deepStrictEqual(reopened.risumAssets, data.risumAssets);
 })();
@@ -131,8 +135,8 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
         type: 'start',
         conditions: [],
         effect: [{ type: 'triggerlua', code: 'print("prefixed")' }],
-        lowLevelAccess: false
-      }
+        lowLevelAccess: false,
+      },
     ],
     lorebook: [],
     regex: [],
@@ -150,17 +154,17 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
       data: {
         extensions: { risuai: {} },
         character_book: { entries: [] },
-        assets: []
-      }
+        assets: [],
+      },
     },
-    _moduleData: null
+    _moduleData: null,
   };
 
-  saveCharx(sourcePath, data);
+  saveCharx(sourcePath, data as any);
   const original = fs.readFileSync(sourcePath);
   const fakeJpegPrelude = Buffer.from([
-    0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
-    0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01
+    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00,
+    0x01,
   ]);
   fs.writeFileSync(prefixedPath, Buffer.concat([fakeJpegPrelude, original]));
 
@@ -196,15 +200,15 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
         type: 'start',
         conditions: [],
         effect: [{ type: 'triggerlua', code: 'print("original-main")' }],
-        lowLevelAccess: false
+        lowLevelAccess: false,
       },
       {
         comment: 'manual',
         type: 'manual',
         conditions: [],
         effect: [{ type: 'triggerlua', code: 'print("manual")' }],
-        lowLevelAccess: false
-      }
+        lowLevelAccess: false,
+      },
     ],
     lorebook: [],
     regex: [],
@@ -222,18 +226,18 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
       data: {
         extensions: { risuai: {} },
         character_book: { entries: [] },
-        assets: []
-      }
+        assets: [],
+      },
     },
-    _moduleData: null
+    _moduleData: null,
   };
 
-  saveCharx(filePath, data);
+  saveCharx(filePath, data as any);
   const reopened = openCharx(filePath);
 
   assert.equal(reopened.lua, 'print("updated-main")');
-  assert.equal(reopened.triggerScripts[0].effect[0].code, 'print("updated-main")');
-  assert.equal(reopened.triggerScripts[1].effect[0].code, 'print("manual")');
+  assert.equal(reopened.triggerScripts[0].effect![0].code, 'print("updated-main")');
+  assert.equal(reopened.triggerScripts[1].effect![0].code, 'print("manual")');
 })();
 
 (function testRisumRoundTrip() {
@@ -254,8 +258,8 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
         insertorder: 80,
         alwaysActive: true,
         selective: false,
-        mode: 'normal'
-      }
+        mode: 'normal',
+      },
     ],
     regex: [
       {
@@ -263,14 +267,14 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
         type: 'editinput',
         find: '^\\s+|\\s+$',
         replace: '',
-        flag: 'gm'
-      }
+        flag: 'gm',
+      },
     ],
     risumAssets: [Buffer.from('standalone')],
-    _moduleData: null
+    _moduleData: null,
   };
 
-  saveRisum(filePath, data);
+  saveRisum(filePath, data as any);
   const reopened = openRisum(filePath);
 
   assert.equal(reopened.name, data.moduleName);
@@ -296,12 +300,11 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
         type: 'start',
         conditions: [],
         effect: [{ type: 'triggerlua', code: 'print("fields")' }],
-        lowLevelAccess: false
-      }
+        lowLevelAccess: false,
+      },
     ],
     lorebook: [],
     regex: [],
-    // Risum-specific fields
     cjs: 'console.log("custom js")',
     lowLevelAccess: true,
     hideIcon: true,
@@ -310,10 +313,10 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
     customModuleToggle: 'toggle-config-string',
     mcpUrl: 'http://localhost:3000/mcp',
     risumAssets: [],
-    _moduleData: null
+    _moduleData: null,
   };
 
-  saveRisum(filePath, data);
+  saveRisum(filePath, data as any);
   const reopened = openRisum(filePath);
 
   assert.equal(reopened._fileType, 'risum');
@@ -351,15 +354,14 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
         type: 'start',
         conditions: [],
         effect: [{ type: 'triggerlua', code: 'print("charx-risum")' }],
-        lowLevelAccess: false
-      }
+        lowLevelAccess: false,
+      },
     ],
     lorebook: [],
     regex: [],
     moduleId: 'module-charx-risum',
     moduleName: 'Embedded Module',
     moduleDescription: 'Module with risum fields in charx',
-    // Risum-specific fields
     cjs: 'console.log("embedded")',
     lowLevelAccess: true,
     hideIcon: false,
@@ -375,12 +377,12 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
     _card: {
       spec: 'chara_card_v3',
       spec_version: '3.0',
-      data: { extensions: { risuai: {} }, character_book: { entries: [] }, assets: [] }
+      data: { extensions: { risuai: {} }, character_book: { entries: [] }, assets: [] },
     },
-    _moduleData: null
+    _moduleData: null,
   };
 
-  saveCharx(filePath, data);
+  saveCharx(filePath, data as any);
   const reopened = openCharx(filePath);
 
   assert.equal(reopened.cjs, data.cjs);
@@ -401,7 +403,7 @@ const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
 (function testRisupRoundTrip() {
   const filePath = path.join(risupTempDir, 'roundtrip.risup');
   const data = {
-    _fileType: 'risup',
+    _fileType: 'risup' as const,
     name: 'Test Preset',
     description: '',
     firstMessage: '',
@@ -414,12 +416,17 @@ const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
     triggerScripts: [],
     lorebook: [],
     regex: [
-      { comment: 'Bold', type: 'editdisplay', find: '\\*\\*(.+?)\\*\\*', replace: '<b>$1</b>', flag: 'g' }
+      {
+        comment: 'Bold',
+        type: 'editdisplay',
+        find: '\\*\\*(.+?)\\*\\*',
+        replace: '<b>$1</b>',
+        flag: 'g',
+      },
     ],
     moduleId: '',
     moduleName: '',
     moduleDescription: '',
-    // Preset-specific fields
     mainPrompt: 'You are a helpful assistant.',
     jailbreak: 'Stay in character.',
     temperature: 85,
@@ -445,7 +452,7 @@ const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
     _presetData: null,
   };
 
-  saveRisup(filePath, data);
+  saveRisup(filePath, data as any);
   assert.ok(fs.existsSync(filePath), '.risup file should exist');
 
   const reopened = openRisup(filePath);
@@ -472,9 +479,8 @@ const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
 })();
 
 (function testRisupPreservesExtraPresetFields() {
-  // Verify that _presetData round-trips all fields, even ones not in CharxData
   const filePath = path.join(risupTempDir, 'preserve-extra.risup');
-  const data = {
+  const data: any = {
     _fileType: 'risup',
     name: 'Extra Fields Preset',
     description: '',
@@ -522,13 +528,11 @@ const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
     },
   };
 
-  saveRisup(filePath, data);
+  saveRisup(filePath, data as any);
   const reopened = openRisup(filePath);
 
-  // The custom field should survive the round-trip via _presetData
-  assert.equal(reopened._presetData.customFieldFromRisu, 'should be preserved');
-  assert.deepStrictEqual(reopened._presetData.someNestedConfig, { nested: true, value: 42 });
-  // Edited field should override _presetData
+  assert.equal(reopened._presetData!.customFieldFromRisu, 'should be preserved');
+  assert.deepStrictEqual(reopened._presetData!.someNestedConfig, { nested: true, value: 42 });
   assert.equal(reopened.mainPrompt, 'Test prompt');
 })();
 

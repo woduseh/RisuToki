@@ -1,15 +1,13 @@
-'use strict';
-
-const assert = require('node:assert/strict');
-const { buildRefsPopoutData } = require('../src/lib/refs-popout-data');
+import assert from 'node:assert/strict';
+import { buildRefsPopoutData } from '../src/lib/refs-popout-data';
 
 (function testPopoutDataIncludesSessionGuides() {
   const result = buildRefsPopoutData(
     {
       builtIn: ['A.md'],
-      session: ['B.md']
+      session: ['B.md'],
     },
-    []
+    [],
   );
 
   assert.deepEqual(result.guides, ['A.md']);
@@ -27,12 +25,12 @@ const { buildRefsPopoutData } = require('../src/lib/refs-popout-data');
           triggerScripts: '[{"name":"main"}]',
           lorebook: [
             { mode: 'folder', comment: 'folder' },
-            { mode: 'normal', comment: 'entry' }
+            { mode: 'normal', comment: 'entry' },
           ],
-          regex: [{ comment: 'cleanup' }]
-        }
-      }
-    ]
+          regex: [{ comment: 'cleanup' }],
+        },
+      },
+    ],
   );
 
   assert.equal(result.refs[0].label, 'bot.charx');

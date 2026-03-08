@@ -1,7 +1,5 @@
-'use strict';
-
-const assert = require('node:assert/strict');
-const { buildRisum, parseRisum, rpackEncode, rpackDecode } = require('../src/rpack');
+import assert from 'node:assert/strict';
+import { buildRisum, parseRisum, rpackEncode, rpackDecode } from '../src/rpack';
 
 (function testByteRoundTrip() {
   const original = Buffer.from(Array.from({ length: 256 }, (_, index) => index));
@@ -24,8 +22,8 @@ const { buildRisum, parseRisum, rpackEncode, rpackDecode } = require('../src/rpa
           type: 'start',
           conditions: [],
           effect: [{ type: 'triggerlua', code: 'print("hello")' }],
-          lowLevelAccess: false
-        }
+          lowLevelAccess: false,
+        },
       ],
       regex: [
         {
@@ -33,8 +31,8 @@ const { buildRisum, parseRisum, rpackEncode, rpackDecode } = require('../src/rpa
           type: 'editoutput',
           find: '\\*\\*(.+?)\\*\\*',
           replace: '<b>$1</b>',
-          flag: 'g'
-        }
+          flag: 'g',
+        },
       ],
       lorebook: [
         {
@@ -45,11 +43,11 @@ const { buildRisum, parseRisum, rpackEncode, rpackDecode } = require('../src/rpa
           insertorder: 100,
           alwaysActive: false,
           selective: false,
-          mode: 'normal'
-        }
+          mode: 'normal',
+        },
       ],
-      assets: []
-    }
+      assets: [],
+    },
   };
   const embeddedAssets = [Buffer.from('alpha'), Buffer.from([0, 1, 2, 3, 4])];
 

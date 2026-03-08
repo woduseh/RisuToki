@@ -1,16 +1,14 @@
-'use strict';
-
-const assert = require('node:assert/strict');
-const {
+import assert from 'node:assert/strict';
+import {
   buildTerminalLaunchAttempts,
-  getTerminalLaunchCandidates
-} = require('../src/lib/terminal-shell');
+  getTerminalLaunchCandidates,
+} from '../src/lib/terminal-shell';
 
 (function testWindowsCandidatesIncludeResilientFallbacks() {
   const candidates = getTerminalLaunchCandidates({ platform: 'win32', env: {} });
   assert.deepEqual(
     candidates.map((candidate) => candidate.shell),
-    ['powershell.exe', 'pwsh.exe', 'cmd.exe']
+    ['powershell.exe', 'pwsh.exe', 'cmd.exe'],
   );
 })();
 
@@ -19,7 +17,7 @@ const {
     platform: 'win32',
     env: {},
     cwd: 'C:\\project\\missing',
-    fallbackCwd: 'C:\\project'
+    fallbackCwd: 'C:\\project',
   });
 
   assert.equal(attempts[0].cwd, 'C:\\project\\missing');
@@ -32,7 +30,7 @@ const {
     platform: 'linux',
     env: { SHELL: '/bin/zsh' },
     cwd: '/workspace',
-    fallbackCwd: '/workspace'
+    fallbackCwd: '/workspace',
   });
 
   assert.equal(attempts.filter((attempt) => attempt.cwd === '/workspace').length, 3);

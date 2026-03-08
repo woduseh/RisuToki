@@ -29,7 +29,14 @@
     "src/lib/reference-store.ts",
     "src/lib/refs-popout-data.ts",
     "src/lib/terminal-shell.ts",
-    "toki-mcp-server.ts"
+    "toki-mcp-server.ts",
+    "test/test-rpack.ts",
+    "test/test-charx.ts",
+    "test/test-reference-store.ts",
+    "test/test-refs-popout-data.ts",
+    "test/test-popout-payload-store.ts",
+    "test/test-terminal-shell.ts",
+    "test/test-main-state-store.ts"
   ],
   "exclude": [
     "dist",

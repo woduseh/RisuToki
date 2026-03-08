@@ -1,7 +1,5 @@
-'use strict';
-
-const assert = require('node:assert/strict');
-const { createMainStateStore } = require('../src/lib/main-state-store');
+import assert from 'node:assert/strict';
+import { createMainStateStore } from '../src/lib/main-state-store';
 
 (function testResetCurrentDocumentClearsPath() {
   const store = createMainStateStore();

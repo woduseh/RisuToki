@@ -1,5 +1,11 @@
 'use strict';
-const ENCODE_MAP = new Uint8Array([
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DECODE_MAP = exports.ENCODE_MAP = void 0;
+exports.rpackDecode = rpackDecode;
+exports.rpackEncode = rpackEncode;
+exports.parseRisum = parseRisum;
+exports.buildRisum = buildRisum;
+exports.ENCODE_MAP = new Uint8Array([
     196, 13, 30, 11, 189, 43, 63, 85, 252, 69, 110, 245, 102, 83, 79, 26,
     224, 187, 48, 148, 134, 186, 107, 191, 65, 80, 111, 155, 239, 222, 183, 16,
     97, 23, 32, 223, 50, 137, 168, 157, 109, 171, 201, 144, 0, 12, 93, 175,
@@ -17,7 +23,7 @@ const ENCODE_MAP = new Uint8Array([
     66, 112, 28, 149, 17, 188, 216, 140, 152, 249, 89, 161, 19, 247, 20, 125,
     179, 236, 113, 192, 227, 141, 240, 1, 174, 91, 49, 6, 36, 34, 58, 184
 ]);
-const DECODE_MAP = new Uint8Array([
+exports.DECODE_MAP = new Uint8Array([
     44, 247, 132, 139, 201, 101, 251, 182, 159, 174, 179, 3, 45, 1, 105, 116,
     31, 228, 163, 236, 238, 92, 52, 33, 147, 74, 15, 106, 226, 98, 2, 158,
     34, 156, 253, 60, 252, 113, 199, 198, 173, 89, 103, 5, 112, 109, 138, 68,
@@ -43,7 +49,7 @@ const DECODE_MAP = new Uint8Array([
 function rpackDecode(input) {
     const out = Buffer.alloc(input.length);
     for (let i = 0; i < input.length; i++) {
-        out[i] = DECODE_MAP[input[i]];
+        out[i] = exports.DECODE_MAP[input[i]];
     }
     return out;
 }
@@ -55,7 +61,7 @@ function rpackDecode(input) {
 function rpackEncode(input) {
     const out = Buffer.alloc(input.length);
     for (let i = 0; i < input.length; i++) {
-        out[i] = ENCODE_MAP[input[i]];
+        out[i] = exports.ENCODE_MAP[input[i]];
     }
     return out;
 }
@@ -138,4 +144,3 @@ function buildRisum(moduleJson, assets = []) {
     buf[offset] = 0x00;
     return buf;
 }
-module.exports = { rpackDecode, rpackEncode, parseRisum, buildRisum, DECODE_MAP, ENCODE_MAP };

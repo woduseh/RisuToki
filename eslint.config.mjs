@@ -3,10 +3,6 @@ import globals from 'globals';
 import pluginVue from 'eslint-plugin-vue';
 import tseslint from 'typescript-eslint';
 
-const commonJsFiles = [
-  'test/**/*.js'
-];
-
 const browserJsFiles = [
   'src/app/**/*.js',
   'src/lib/**/*.js'
@@ -18,7 +14,7 @@ const portedRendererFiles = [
   'src/lib/preview-format.ts'
 ];
 
-const tsFiles = ['src/**/*.{ts,vue}', 'main.ts', 'preload.ts', 'popout-preload.ts', 'vite.config.ts', 'vitest.setup.ts', 'toki-mcp-server.ts'];
+const tsFiles = ['src/**/*.{ts,vue}', 'test/**/*.ts', 'main.ts', 'preload.ts', 'popout-preload.ts', 'vite.config.ts', 'vitest.setup.ts', 'toki-mcp-server.ts'];
 
 export default [
   {
@@ -26,25 +22,6 @@ export default [
       'dist/**',
       'node_modules/**'
     ]
-  },
-  {
-    ...js.configs.recommended,
-    files: commonJsFiles,
-    languageOptions: {
-      ...js.configs.recommended.languageOptions,
-      ecmaVersion: 'latest',
-      sourceType: 'commonjs',
-      globals: {
-        ...globals.browser,
-        ...globals.node
-      }
-    },
-    rules: {
-      ...js.configs.recommended.rules,
-      'no-empty': ['error', { allowEmptyCatch: true }],
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
-      'no-console': 'off'
-    }
   },
   {
     ...js.configs.recommended,

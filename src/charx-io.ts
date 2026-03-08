@@ -213,7 +213,7 @@ function cloneTriggerScripts(triggerScripts: unknown): TriggerScript[] {
   return Array.isArray(triggerScripts) ? (JSON.parse(JSON.stringify(triggerScripts)) as TriggerScript[]) : [];
 }
 
-function extractPrimaryLuaFromTriggerScripts(triggerScripts: unknown): string {
+export function extractPrimaryLuaFromTriggerScripts(triggerScripts: unknown): string {
   if (!Array.isArray(triggerScripts)) return '';
 
   for (const trigger of triggerScripts as TriggerScript[]) {
@@ -232,7 +232,7 @@ function extractPrimaryLuaFromTriggerScripts(triggerScripts: unknown): string {
   return '';
 }
 
-function normalizeTriggerScripts(triggerScripts: unknown): TriggerScript[] {
+export function normalizeTriggerScripts(triggerScripts: unknown): TriggerScript[] {
   if (Array.isArray(triggerScripts)) {
     return cloneTriggerScripts(triggerScripts);
   }
@@ -255,7 +255,7 @@ function normalizeTriggerScripts(triggerScripts: unknown): TriggerScript[] {
   return [];
 }
 
-function mergePrimaryLuaIntoTriggerScripts(triggerScripts: unknown, lua: unknown): TriggerScript[] {
+export function mergePrimaryLuaIntoTriggerScripts(triggerScripts: unknown, lua: unknown): TriggerScript[] {
   const scripts = normalizeTriggerScripts(triggerScripts);
   if (typeof lua !== 'string' || !lua) {
     return scripts;
@@ -282,7 +282,7 @@ function mergePrimaryLuaIntoTriggerScripts(triggerScripts: unknown, lua: unknown
   return scripts;
 }
 
-function stringifyTriggerScripts(triggerScripts: unknown): string {
+export function stringifyTriggerScripts(triggerScripts: unknown): string {
   return JSON.stringify(normalizeTriggerScripts(triggerScripts), null, 2);
 }
 
@@ -325,7 +325,7 @@ function openZipEntriesWithPreludeSupport(filePath: string): ZipResult {
 /**
  * Open and parse a .charx file
  */
-function openCharx(filePath: string): CharxData {
+export function openCharx(filePath: string): CharxData {
   const { zip, entries } = openZipEntriesWithPreludeSupport(filePath);
 
   // Parse card.json
@@ -445,7 +445,7 @@ function openCharx(filePath: string): CharxData {
 /**
  * Save data back to .charx file
  */
-function saveCharx(filePath: string, data: CharxData): void {
+export function saveCharx(filePath: string, data: CharxData): void {
   const zip = new AdmZip();
 
   // Build card.json
@@ -556,7 +556,7 @@ function saveCharx(filePath: string, data: CharxData): void {
 /**
  * Open and parse a standalone .risum file
  */
-function openRisum(filePath: string): CharxData {
+export function openRisum(filePath: string): CharxData {
   const buf: Buffer = fs.readFileSync(filePath);
   const parsed = parseRisum(buf);
   const mod = ((parsed.module as Record<string, unknown>)?.module as Record<string, unknown>) || parsed.module || {};
@@ -619,7 +619,7 @@ function openRisum(filePath: string): CharxData {
 /**
  * Save data back to a standalone .risum file
  */
-function saveRisum(filePath: string, data: CharxData): void {
+export function saveRisum(filePath: string, data: CharxData): void {
   const moduleJson: Record<string, unknown> = data._moduleData
     ? JSON.parse(JSON.stringify(data._moduleData))
     : {
@@ -891,7 +891,7 @@ function applyPresetFields(preset: Record<string, unknown>, data: CharxData): vo
  * Open and parse a .risup preset file
  * Format: RPack → zlib inflate → msgpack → AES-GCM decrypt → msgpack → botPreset
  */
-function openRisup(filePath: string): CharxData {
+export function openRisup(filePath: string): CharxData {
   const raw: Buffer = fs.readFileSync(filePath);
 
   // Step 1: RPack decode (byte substitution)
@@ -966,7 +966,7 @@ function openRisup(filePath: string): CharxData {
  * Save data back to a .risup preset file
  * Format: botPreset → msgpack → AES-GCM encrypt → msgpack envelope → zlib deflate → RPack
  */
-function saveRisup(filePath: string, data: CharxData): void {
+export function saveRisup(filePath: string, data: CharxData): void {
   // Start from preserved preset data, or create minimal preset
   const preset: Record<string, unknown> = data._presetData ? JSON.parse(JSON.stringify(data._presetData)) : {};
 
@@ -1009,16 +1009,3 @@ function generateUUID(): string {
     return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
   });
 }
-
-module.exports = {
-  openCharx,
-  saveCharx,
-  openRisum,
-  saveRisum,
-  openRisup,
-  saveRisup,
-  extractPrimaryLuaFromTriggerScripts,
-  mergePrimaryLuaIntoTriggerScripts,
-  normalizeTriggerScripts,
-  stringifyTriggerScripts,
-};
