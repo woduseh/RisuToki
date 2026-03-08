@@ -3,7 +3,6 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const http = require('http');
 const {
   openCharx,
   saveCharx,
@@ -27,12 +26,14 @@ const { createPopoutPayloadStore } = require('./src/lib/popout-payload-store.cjs
 const { createMainStateStore } = require('./src/lib/main-state-store.cjs');
 const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server');
 const { initTerminalManager, killTerminal } = require('./src/lib/terminal-manager');
+const { initMcpConfig, writeCurrentMcpConfig, cleanupJsonMcpConfig, cleanupCodexMcpConfig } = require('./src/lib/mcp-config');
+const { initAgentsMdManager, cleanupAgentsMd } = require('./src/lib/agents-md-manager');
+const { initAssetManager, invalidateAssetsMapCache } = require('./src/lib/asset-manager');
+const { initSyncServer, stopSyncServer } = require('./src/lib/sync-server');
+const { initGuidesManager, getGuidesDir, getGuidesListResult } = require('./src/lib/guides-manager');
 
 let mainWindow;
 let popoutWindows = {}; // { terminal: BrowserWindow, sidebar: BrowserWindow }
-let activeAgentsFilePath = null;
-let activeAgentsOriginalContent = null;
-let activeAgentsHadExistingFile = false;
 const mainState = createMainStateStore();
 const popoutPayloadStore = createPopoutPayloadStore();
 
@@ -80,8 +81,7 @@ let mcpApi = null; // { server, token, invalidateSectionCaches }
 let apiPort = null;
 let apiToken = null;
 
-// Sync server (RisuAI live sync)
-let syncServer = null;
+// Sync hash (incremented on data changes, read by sync server)
 let syncHash = 0;
 
 function getReferenceStatePath() {
@@ -322,9 +322,45 @@ app.whenReady().then(() => {
     getApiPort: () => apiPort,
     getApiToken: () => apiToken,
   });
+
+  // Initialize MCP config management
+  initMcpConfig({
+    getApiPort: () => apiPort,
+    getApiToken: () => apiToken,
+    getDirname: () => __dirname,
+    isPackaged: () => app.isPackaged,
+  });
+
+  // Initialize AGENTS.md management
+  initAgentsMdManager({
+    getCurrentFilePath: () => mainState.currentFilePath,
+    getDirname: () => __dirname,
+    getGuidesDir,
+  });
+
+  // Initialize asset management
+  initAssetManager({
+    getCurrentData: () => mainState.currentData,
+    getMainWindow: () => mainWindow,
+  });
+
+  // Initialize guides management
+  initGuidesManager({
+    getMainWindow: () => mainWindow,
+    getDirname: () => __dirname,
+    broadcastRefsDataChanged,
+  });
+
+  // Initialize RisuAI sync server
+  initSyncServer({
+    getCurrentData: () => mainState.currentData,
+    broadcastToAll,
+    getSyncHash: () => syncHash,
+  });
 });
 app.on('window-all-closed', () => {
   killTerminal();
+  stopSyncServer();
   if (mcpApi) { mcpApi.server.close(); mcpApi = null; }
   cleanupJsonMcpConfig(path.join(os.homedir(), '.mcp.json'));
   cleanupJsonMcpConfig(path.join(os.homedir(), '.copilot', 'mcp-config.json'));
@@ -576,31 +612,6 @@ ipcMain.handle('remove-all-references', () => {
   return true;
 });
 
-// Pick background image (gif/png/jpg)
-ipcMain.handle('pick-bg-image', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    filters: [{ name: 'Images', extensions: ['gif', 'png', 'jpg', 'jpeg', 'webp'] }],
-    properties: ['openFile']
-  });
-  if (result.canceled || !result.filePaths[0]) return null;
-  const filePath = result.filePaths[0];
-  const data = fs.readFileSync(filePath);
-  const ext = path.extname(filePath).replace('.', '').toLowerCase();
-  const mime = ext === 'gif' ? 'image/gif' : ext === 'png' ? 'image/png' :
-               ext === 'webp' ? 'image/webp' : 'image/jpeg';
-  return `data:${mime};base64,${data.toString('base64')}`;
-});
-
-// Pick BGM audio file
-ipcMain.handle('pick-bgm', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    filters: [{ name: 'Audio', extensions: ['mp3', 'ogg', 'wav', 'flac', 'm4a', 'aac'] }],
-    properties: ['openFile']
-  });
-  if (result.canceled || !result.filePaths[0]) return null;
-  return result.filePaths[0];
-});
-
 // Get working directory for terminal
 ipcMain.handle('get-cwd', () => {
   return mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : process.cwd();
@@ -653,456 +664,6 @@ ipcMain.handle('get-mcp-info', () => {
     token: apiToken,
     mcpServerPath: path.join(__dirname, 'toki-mcp-server.js')
   };
-});
-
-function writeCurrentMcpConfig() {
-  const configPath = path.join(os.homedir(), '.mcp.json');
-  const writtenPath = upsertJsonMcpConfig(configPath);
-  if (writtenPath) console.log('[main] MCP config written:', writtenPath);
-  return writtenPath;
-}
-
-function getMcpServerPath() {
-  let serverPath = path.join(__dirname, 'toki-mcp-server.js');
-  if (app.isPackaged) {
-    serverPath = serverPath.replace('app.asar', 'app.asar.unpacked');
-  }
-  return serverPath;
-}
-
-function getRisutokiMcpServerConfig() {
-  if (!apiPort || !apiToken) return null;
-  return {
-    type: 'stdio',
-    command: 'node',
-    args: [getMcpServerPath()],
-    env: {
-      TOKI_PORT: String(apiPort),
-      TOKI_TOKEN: apiToken
-    }
-  };
-}
-
-function upsertJsonMcpConfig(configPath) {
-  const serverConfig = getRisutokiMcpServerConfig();
-  if (!serverConfig) return null;
-
-  let existing = {};
-  try {
-    if (fs.existsSync(configPath)) {
-      existing = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    }
-  } catch (e) {
-    existing = {};
-  }
-
-  if (!existing || typeof existing !== 'object' || Array.isArray(existing)) existing = {};
-  if (!existing.mcpServers || typeof existing.mcpServers !== 'object' || Array.isArray(existing.mcpServers)) {
-    existing.mcpServers = {};
-  }
-
-  existing.mcpServers.risutoki = serverConfig;
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, JSON.stringify(existing, null, 2), 'utf-8');
-  return configPath;
-}
-
-function cleanupJsonMcpConfig(configPath) {
-  try {
-    if (!fs.existsSync(configPath)) return;
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    if (!config.mcpServers || !config.mcpServers.risutoki) return;
-
-    delete config.mcpServers.risutoki;
-    if (Object.keys(config.mcpServers).length === 0) {
-      delete config.mcpServers;
-    }
-
-    if (Object.keys(config).length === 0) {
-      fs.unlinkSync(configPath);
-    } else {
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
-    }
-  } catch (e) { console.warn('[main] MCP config cleanup failed:', e.message); }
-}
-
-function writeCopilotMcpConfig() {
-  const configPath = path.join(os.homedir(), '.copilot', 'mcp-config.json');
-  const writtenPath = upsertJsonMcpConfig(configPath);
-  if (writtenPath) console.log('[main] Copilot MCP config written:', writtenPath);
-  return writtenPath;
-}
-
-ipcMain.handle('write-mcp-config', () => {
-  return writeCurrentMcpConfig();
-});
-
-ipcMain.handle('write-copilot-mcp-config', () => {
-  return writeCopilotMcpConfig();
-});
-
-// --- Codex MCP config (config.toml) ---
-
-function writeCodexMcpConfig() {
-  if (!apiPort || !apiToken) return null;
-
-  const codexDir = path.join(os.homedir(), '.codex');
-  if (!fs.existsSync(codexDir)) fs.mkdirSync(codexDir, { recursive: true });
-  const configPath = path.join(codexDir, 'config.toml');
-
-  let serverPath = getMcpServerPath();
-  // Normalize backslashes for TOML
-  serverPath = serverPath.replace(/\\/g, '/');
-
-  const risutokiBlock = [
-    '',
-    '# --- RisuToki MCP (auto-generated, do not edit) ---',
-    '[mcp_servers.risutoki]',
-    `command = "node"`,
-    `args = ["${serverPath}"]`,
-    '',
-    '[mcp_servers.risutoki.env]',
-    `TOKI_PORT = "${apiPort}"`,
-    `TOKI_TOKEN = "${apiToken}"`,
-    '# --- /RisuToki MCP ---',
-    '',
-  ].join('\n');
-
-  let existing = '';
-  if (fs.existsSync(configPath)) {
-    existing = fs.readFileSync(configPath, 'utf-8');
-    // Remove old risutoki block if present
-    existing = existing.replace(/\n?# --- RisuToki MCP \(auto-generated.*?\n# --- \/RisuToki MCP ---\n?/s, '');
-  }
-
-  fs.writeFileSync(configPath, existing.trimEnd() + '\n' + risutokiBlock, 'utf-8');
-  console.log('[main] Codex MCP config written:', configPath);
-  return configPath;
-}
-
-function cleanupCodexMcpConfig() {
-  try {
-    const configPath = path.join(os.homedir(), '.codex', 'config.toml');
-    if (!fs.existsSync(configPath)) return;
-    let content = fs.readFileSync(configPath, 'utf-8');
-    const cleaned = content.replace(/\n?# --- RisuToki MCP \(auto-generated.*?\n# --- \/RisuToki MCP ---\n?/s, '');
-    fs.writeFileSync(configPath, cleaned, 'utf-8');
-    console.log('[main] Codex MCP config cleaned up');
-  } catch (e) { console.warn('[main] Codex MCP config cleanup failed:', e.message); }
-}
-
-ipcMain.handle('write-codex-mcp-config', () => {
-  return writeCodexMcpConfig();
-});
-
-function cleanupAgentsMd() {
-  try {
-    if (!activeAgentsFilePath) return;
-    if (activeAgentsHadExistingFile) {
-      fs.writeFileSync(activeAgentsFilePath, activeAgentsOriginalContent, 'utf-8');
-    } else if (fs.existsSync(activeAgentsFilePath)) {
-      fs.unlinkSync(activeAgentsFilePath);
-    }
-  } catch (e) { console.warn('[main] Agents.md cleanup failed:', e.message); }
-
-  activeAgentsFilePath = null;
-  activeAgentsOriginalContent = null;
-  activeAgentsHadExistingFile = false;
-}
-
-function readProjectGuideContent(cwd, agentsPath) {
-  if (activeAgentsFilePath === agentsPath && typeof activeAgentsOriginalContent === 'string') {
-    return activeAgentsOriginalContent;
-  }
-
-  if (fs.existsSync(agentsPath)) {
-    return fs.readFileSync(agentsPath, 'utf-8');
-  }
-
-  const claudePath = path.join(cwd, 'CLAUDE.md');
-  if (fs.existsSync(claudePath)) {
-    return fs.readFileSync(claudePath, 'utf-8');
-  }
-
-  const bundledAgentsPath = path.join(__dirname, 'AGENTS.md');
-  if (fs.existsSync(bundledAgentsPath)) {
-    return fs.readFileSync(bundledAgentsPath, 'utf-8');
-  }
-
-  const bundledClaudePath = path.join(__dirname, 'CLAUDE.md');
-  if (fs.existsSync(bundledClaudePath)) {
-    return fs.readFileSync(bundledClaudePath, 'utf-8');
-  }
-
-  const guidesClaudePath = path.join(getGuidesDir(), 'CLAUDE.md');
-  if (fs.existsSync(guidesClaudePath)) {
-    return fs.readFileSync(guidesClaudePath, 'utf-8');
-  }
-
-  return '';
-}
-
-function buildAgentsDocument(sessionContent, projectGuideContent) {
-  const sections = [];
-  const trimmedSessionContent = String(sessionContent || '').trim();
-  const trimmedProjectGuide = String(projectGuideContent || '').trim();
-
-  if (trimmedSessionContent) {
-    sections.push(`# RisuToki Session Context\n\n${trimmedSessionContent}`);
-  }
-
-  if (trimmedProjectGuide) {
-    sections.push(trimmedProjectGuide);
-  }
-
-  return sections.join('\n\n---\n\n');
-}
-
-function writeAgentsMd(content) {
-  const cwd = mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : process.cwd();
-  const agentsPath = path.join(cwd, 'AGENTS.md');
-
-  if (activeAgentsFilePath && activeAgentsFilePath !== agentsPath) {
-    cleanupAgentsMd();
-  }
-
-  if (activeAgentsFilePath !== agentsPath) {
-    activeAgentsHadExistingFile = fs.existsSync(agentsPath);
-    activeAgentsOriginalContent = activeAgentsHadExistingFile
-      ? fs.readFileSync(agentsPath, 'utf-8')
-      : null;
-  }
-
-  const projectGuideContent = readProjectGuideContent(cwd, agentsPath);
-  const finalContent = buildAgentsDocument(content, projectGuideContent);
-  if (!finalContent.trim()) {
-    cleanupAgentsMd();
-    return null;
-  }
-
-  fs.writeFileSync(agentsPath, finalContent, 'utf-8');
-  activeAgentsFilePath = agentsPath;
-  console.log('[main] AGENTS.md written:', agentsPath);
-  return agentsPath;
-}
-
-ipcMain.handle('write-agents-md', (_, content) => {
-  return writeAgentsMd(content);
-});
-
-ipcMain.handle('write-codex-agents-md', (_, content) => {
-  return writeAgentsMd(content);
-});
-
-ipcMain.handle('cleanup-agents-md', () => {
-  cleanupAgentsMd();
-  return true;
-});
-
-// --- Image assets ---
-
-ipcMain.handle('get-asset-list', () => {
-  if (!mainState.currentData) return [];
-  return (mainState.currentData.assets || []).map(a => ({
-    path: a.path,
-    size: a.data.length
-  }));
-});
-
-ipcMain.handle('get-asset-data', (_, assetPath) => {
-  if (!mainState.currentData) return null;
-  const asset = mainState.currentData.assets.find(a => a.path === assetPath);
-  if (!asset) return null;
-  return asset.data.toString('base64');
-});
-
-// Get all assets as name → data URI map (for preview {{raw::name}} / {{asset::name}})
-let _assetsMapCache = null;
-function invalidateAssetsMapCache() { _assetsMapCache = null; }
-ipcMain.handle('get-all-assets-map', () => {
-  if (!mainState.currentData) return { assets: {}, debug: 'no data' };
-  if (_assetsMapCache) return _assetsMapCache;
-  const result = {};
-  const debug = {};
-
-  // 1) risuExt.additionalAssets — [[name, dataUri], ...]
-  const risuExt = mainState.currentData._risuExt || {};
-  const additionalAssets = risuExt.additionalAssets || [];
-  debug.additionalAssets = additionalAssets.length;
-  for (const aa of additionalAssets) {
-    if (Array.isArray(aa) && aa[0]) {
-      result[aa[0]] = aa[1] || '';
-    }
-  }
-
-  // 2) cardAssets (card.json data.assets) — all URI types
-  const cardAssets = mainState.currentData.cardAssets || [];
-  debug.cardAssets = cardAssets.length;
-  let cardResolved = 0, cardFailed = [];
-  for (const ca of cardAssets) {
-    const name = ca.name || '';
-    if (!name || result[name]) continue;
-    let uri = ca.uri || '';
-    if (uri.startsWith('ccdefault:')) {
-      const zipPath = uri.slice('ccdefault:'.length);
-      const asset = mainState.currentData.assets.find(a => a.path === zipPath);
-      if (asset) {
-        const ext = (ca.ext || 'png').toLowerCase();
-        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' :
-                     ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
-        result[name] = `data:${mime};base64,${asset.data.toString('base64')}`;
-        cardResolved++;
-      } else {
-        // ccdefault path not found in zip — try filename match fallback
-        const targetName = zipPath.split('/').pop().replace(/\.[^.]+$/, '');
-        const fallback = mainState.currentData.assets.find(a => {
-          const fn = a.path.split('/').pop().replace(/\.[^.]+$/, '');
-          return fn === targetName;
-        });
-        if (fallback) {
-          const ext = (ca.ext || 'png').toLowerCase();
-          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' :
-                       ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
-          result[name] = `data:${mime};base64,${fallback.data.toString('base64')}`;
-          cardResolved++;
-        } else {
-          cardFailed.push(name);
-        }
-      }
-    } else if (uri.startsWith('embeded://')) {
-      // RisuAI embeded:// scheme — maps to zip assets
-      const zipPath = uri.slice('embeded://'.length);
-      const asset = mainState.currentData.assets.find(a => a.path === zipPath);
-      if (asset) {
-        const ext = (ca.ext || zipPath.split('.').pop() || 'png').toLowerCase();
-        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' :
-                     ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
-        result[name] = `data:${mime};base64,${asset.data.toString('base64')}`;
-        cardResolved++;
-      } else {
-        cardFailed.push(name);
-      }
-    } else if (uri.startsWith('data:')) {
-      // Inline data URI — use directly
-      result[name] = uri;
-      cardResolved++;
-    } else if (uri.startsWith('http://') || uri.startsWith('https://')) {
-      // External URL — pass through
-      result[name] = uri;
-      cardResolved++;
-    } else if (uri) {
-      // Unknown URI scheme — try as-is
-      result[name] = uri;
-      cardResolved++;
-    } else {
-      cardFailed.push(name);
-    }
-  }
-  debug.cardResolved = cardResolved;
-  if (cardFailed.length > 0) debug.cardFailed = cardFailed.slice(0, 20);
-
-  // 3) module.risum assets (risumAssets + module.assets metadata)
-  const modAssets = mainState.currentData._moduleData?.module?.assets || [];
-  const risumBinaries = mainState.currentData.risumAssets || [];
-  debug.modAssets = modAssets.length;
-  debug.risumBinaries = risumBinaries.length;
-  if (modAssets.length > 0) debug.modAssetSample = JSON.stringify(modAssets[0]).substring(0, 300);
-  for (let i = 0; i < modAssets.length; i++) {
-    const ma = modAssets[i];
-    const name = ma.name || (Array.isArray(ma) ? ma[0] : '') || '';
-    if (!name || result[name]) continue;
-    const idx = typeof ma.index === 'number' ? ma.index : i;
-    const bin = risumBinaries[idx];
-    if (bin) {
-      const ext = (ma.ext || (Array.isArray(ma) ? ma[2] : '') || 'png').toLowerCase();
-      const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' :
-                   ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
-      result[name] = `data:${mime};base64,${Buffer.isBuffer(bin) ? bin.toString('base64') : Buffer.from(bin).toString('base64')}`;
-    }
-  }
-
-  // 4) zip assets — filename-based mapping (fallback)
-  debug.zipAssets = (mainState.currentData.assets || []).length;
-  for (const asset of (mainState.currentData.assets || [])) {
-    const fileName = asset.path.split('/').pop();
-    const nameNoExt = fileName.replace(/\.[^.]+$/, '');
-    if (result[nameNoExt]) continue;
-    const ext = fileName.split('.').pop().toLowerCase();
-    const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' :
-                 ext === 'gif' ? 'image/gif' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
-    result[nameNoExt] = `data:${mime};base64,${asset.data.toString('base64')}`;
-  }
-
-  debug.totalResolved = Object.keys(result).length;
-
-  _assetsMapCache = { assets: result, debug };
-  return _assetsMapCache;
-});
-
-// Add asset via file dialog (targetFolder: 'icon' or 'other')
-ipcMain.handle('add-asset', async (_, targetFolder) => {
-  if (!mainState.currentData) return null;
-  invalidateAssetsMapCache();
-  const folder = targetFolder || 'other';
-  const basePath = folder === 'icon' ? 'assets/icon' : 'assets/other/image';
-  const result = await dialog.showOpenDialog(mainWindow, {
-    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
-    properties: ['openFile', 'multiSelections']
-  });
-  if (result.canceled || !result.filePaths.length) return null;
-
-  const added = [];
-  for (const filePath of result.filePaths) {
-    const fileName = path.basename(filePath);
-    const assetPath = `${basePath}/${fileName}`;
-    // Avoid duplicates
-    if (mainState.currentData.assets.find(a => a.path === assetPath)) continue;
-    const data = fs.readFileSync(filePath);
-    mainState.currentData.assets.push({ path: assetPath, data });
-    // Add x_meta
-    const ext = path.extname(fileName).replace('.', '').toUpperCase();
-    const metaName = path.basename(fileName, path.extname(fileName));
-    mainState.currentData.xMeta[metaName] = { type: ext === 'JPG' ? 'JPEG' : ext };
-    added.push({ path: assetPath, size: data.length });
-  }
-  return added;
-});
-
-// Add asset from drag-dropped buffer (targetFolder: 'icon' or 'other')
-ipcMain.handle('add-asset-buffer', (_, fileName, base64Data, targetFolder) => {
-  if (!mainState.currentData) return null;
-  invalidateAssetsMapCache();
-  const folder = targetFolder || 'other';
-  const basePath = folder === 'icon' ? 'assets/icon' : 'assets/other/image';
-  const assetPath = `${basePath}/${fileName}`;
-  if (mainState.currentData.assets.find(a => a.path === assetPath)) return null;
-  const data = Buffer.from(base64Data, 'base64');
-  mainState.currentData.assets.push({ path: assetPath, data });
-  const ext = path.extname(fileName).replace('.', '').toUpperCase();
-  const metaName = path.basename(fileName, path.extname(fileName));
-  mainState.currentData.xMeta[metaName] = { type: ext === 'JPG' ? 'JPEG' : ext };
-  return { path: assetPath, size: data.length };
-});
-
-// Delete asset
-ipcMain.handle('delete-asset', (_, assetPath) => {
-  if (!mainState.currentData) return false;
-  invalidateAssetsMapCache();
-  const idx = mainState.currentData.assets.findIndex(a => a.path === assetPath);
-  if (idx === -1) return false;
-  mainState.currentData.assets.splice(idx, 1);
-  return true;
-});
-
-// Rename asset
-ipcMain.handle('rename-asset', (_, oldPath, newName) => {
-  if (!mainState.currentData) return null;
-  const asset = mainState.currentData.assets.find(a => a.path === oldPath);
-  if (!asset) return null;
-  const dir = oldPath.substring(0, oldPath.lastIndexOf('/') + 1);
-  const newPath = dir + newName;
-  asset.path = newPath;
-  return newPath;
 });
 
 // Import JSON file (for lorebook/regex)
@@ -1200,115 +761,6 @@ ipcMain.handle('write-system-prompt', (_, content) => {
   const tmpFile = path.join(os.tmpdir(), 'toki-system-prompt.txt');
   fs.writeFileSync(tmpFile, content, 'utf-8');
   return { filePath: tmpFile, platform: process.platform };
-});
-
-// --- Guides ---
-// Packaged: extraResources → process.resourcesPath/guides
-// Dev: __dirname/guides
-// Session guides: imported guides stored in memory only (not saved to disk)
-let sessionGuides = []; // [{ filename, content }]
-
-function getGuidesDir() {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'guides')
-    : path.join(__dirname, 'guides');
-}
-
-function getGuidesListResult() {
-  const guidesDir = getGuidesDir();
-  let builtIn = [];
-  try {
-    builtIn = fs.readdirSync(guidesDir).filter(f => f.endsWith('.md')).sort();
-  } catch (e) { console.warn('[main] Failed to read guides dir:', e.message); }
-  return {
-    builtIn,
-    session: sessionGuides.map(g => g.filename)
-  };
-}
-
-ipcMain.handle('list-guides', () => {
-  // Return { builtIn, session } so renderer can distinguish
-  return getGuidesListResult();
-});
-
-ipcMain.handle('read-guide', (_, filename) => {
-  // Check session guides first
-  const sg = sessionGuides.find(g => g.filename === filename);
-  if (sg) return sg.content;
-  // Fall back to disk
-  const filePath = path.join(getGuidesDir(), filename);
-  try {
-    return fs.readFileSync(filePath, 'utf-8');
-  } catch (e) { console.warn('[main] Failed to read guide:', filename, e.message); return null; }
-});
-
-ipcMain.handle('write-guide', (_, filename, content) => {
-  // Check if it's a session guide
-  const sg = sessionGuides.find(g => g.filename === filename);
-  if (sg) { sg.content = content; return true; }
-  // Otherwise write to disk (built-in)
-  const guidesDir = getGuidesDir();
-  const filePath = path.join(guidesDir, filename);
-  const existedBefore = fs.existsSync(filePath);
-  try { fs.mkdirSync(guidesDir, { recursive: true }); } catch (e) { console.warn('[main] mkdir guides failed:', e.message); }
-  try {
-    fs.writeFileSync(filePath, content, 'utf-8');
-    if (!existedBefore) {
-      broadcastRefsDataChanged();
-    }
-    return true;
-  } catch (e) { console.warn('[main] Failed to write guide:', filename, e.message); return false; }
-});
-
-ipcMain.handle('import-guide', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: '가이드 파일 불러오기 (세션 전용)',
-    filters: [{ name: 'Markdown / Text', extensions: ['md', 'txt'] }],
-    properties: ['openFile', 'multiSelections']
-  });
-  if (result.canceled || !result.filePaths.length) return [];
-  const imported = [];
-  // Collect all existing names (built-in + session) for dedup
-  const guidesDir = getGuidesDir();
-  let builtInNames = [];
-  try { builtInNames = fs.readdirSync(guidesDir).filter(f => f.endsWith('.md')); } catch (e) { console.warn('[main] Failed to read guides dir for dedup:', e.message); }
-  for (const fp of result.filePaths) {
-    let name = path.basename(fp);
-    try {
-      const content = fs.readFileSync(fp, 'utf-8');
-      // Auto-rename if name conflicts with built-in or existing session guide
-      const ext = path.extname(name);
-      const base = name.slice(0, -ext.length);
-      let n = 1;
-      while (builtInNames.includes(name) || sessionGuides.some(g => g.filename === name)) {
-        n++;
-        name = `${base} (${n})${ext}`;
-      }
-      sessionGuides.push({ filename: name, content });
-      imported.push(name);
-    } catch (e) { console.warn('[main] Failed to import guide:', fp, e.message); }
-  }
-  if (imported.length > 0) {
-    broadcastRefsDataChanged();
-  }
-  return imported;
-});
-
-ipcMain.handle('delete-guide', (_, filename) => {
-  // Check session guide first
-  const sgIdx = sessionGuides.findIndex(g => g.filename === filename);
-  if (sgIdx >= 0) {
-    sessionGuides.splice(sgIdx, 1);
-    broadcastRefsDataChanged();
-    return true;
-  }
-  // Fall back to disk
-  const filePath = path.join(getGuidesDir(), filename);
-  try {
-    fs.unlinkSync(filePath);
-    broadcastRefsDataChanged();
-    return true;
-  } catch (e) { console.warn('[main] Failed to delete guide:', filename, e.message); return false; }
 });
 
 // --- Popout Windows ---
@@ -1725,102 +1177,4 @@ function applyUpdates(data, fields) {
 }
 
 
-// ==================== RisuAI Sync Server ====================
-function mapCharacterForRisuAI() {
-  if (!mainState.currentData) return null;
-  const lb = (mainState.currentData.lorebook || []).filter(e => e.mode !== 'folder').map(e => ({
-    key: e.key || '',
-    secondkey: e.secondkey || '',
-    insertorder: e.insertorder ?? e.order ?? 100,
-    comment: e.comment || '',
-    content: e.content || '',
-    mode: e.mode || 'normal',
-    alwaysActive: !!e.alwaysActive,
-    selective: !!e.selective,
-    useRegex: !!e.useRegex
-  }));
-  const rx = (mainState.currentData.regex || []).map(e => ({
-    comment: e.comment || '',
-    in: e.find || '',
-    out: e.replace || '',
-    type: e.type || 'editdisplay',
-    flag: e.flag || 'g',
-    ableFlag: e.ableFlag !== false
-  }));
-  return {
-    name: mainState.currentData.name || '',
-    desc: mainState.currentData.description || '',
-    firstMessage: mainState.currentData.firstMessage || '',
-    triggerScripts: mainState.currentData.triggerScripts || [],
-    alternateGreetings: mainState.currentData.alternateGreetings || [],
-    groupOnlyGreetings: mainState.currentData.groupOnlyGreetings || [],
-    notes: mainState.currentData.globalNote || '',
-    backgroundHTML: mainState.currentData.css || '',
-    virtualscript: mainState.currentData.lua || '',
-    defaultVariables: mainState.currentData.defaultVariables || '',
-    globalLore: lb,
-    customscript: rx
-  };
-}
-
-function syncJsonRes(res, data, status) {
-  res.writeHead(status || 200, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
-  });
-  res.end(JSON.stringify(data));
-}
-
-function startSyncServer(port) {
-  if (syncServer) return { ok: true, port };
-  port = port || 4735;
-  syncServer = http.createServer((req, res) => {
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      });
-      return res.end();
-    }
-    const url = new URL(req.url, 'http://127.0.0.1');
-    const p = url.pathname;
-    if (p === '/status') {
-      return syncJsonRes(res, {
-        name: mainState.currentData ? mainState.currentData.name : null,
-        hash: syncHash,
-        hasFile: !!mainState.currentData
-      });
-    }
-    if (p === '/character') {
-      const mapped = mapCharacterForRisuAI();
-      if (!mapped) return syncJsonRes(res, { error: 'No file open' }, 400);
-      return syncJsonRes(res, mapped);
-    }
-    syncJsonRes(res, { error: 'Not found' }, 404);
-  });
-  syncServer.listen(port, '127.0.0.1', () => {
-    console.log(`[main] Sync server on 127.0.0.1:${port}`);
-    broadcastToAll('sync-status', true, port);
-  });
-  syncServer.on('error', (err) => {
-    console.error('[main] Sync server error:', err.message);
-    syncServer = null;
-    broadcastToAll('sync-status', false, 0);
-  });
-  return { ok: true, port };
-}
-
-function stopSyncServer() {
-  if (!syncServer) return;
-  syncServer.close();
-  syncServer = null;
-  console.log('[main] Sync server stopped');
-  broadcastToAll('sync-status', false, 0);
-}
-
-ipcMain.handle('start-sync', (_, port) => startSyncServer(port));
-ipcMain.handle('stop-sync', () => { stopSyncServer(); return { ok: true }; });
 

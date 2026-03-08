@@ -14,6 +14,11 @@
     "src/lorebook-convert.ts",
     "src/rpack.ts",
     "src/lib/mcp-api-server.ts",
+    "src/lib/mcp-config.ts",
+    "src/lib/agents-md-manager.ts",
+    "src/lib/asset-manager.ts",
+    "src/lib/sync-server.ts",
+    "src/lib/guides-manager.ts",
     "src/lib/terminal-manager.ts",
     "toki-mcp-server.ts"
   ],
