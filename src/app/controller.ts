@@ -103,7 +103,6 @@ import {
   isSpinnerNoise,
   stripAnsi,
 } from '../lib/terminal-chat';
-import { buildAssetPromptTemplate } from '../lib/asset-prompt-template';
 import { createBackup, formatBackupTime, getBackups, showBackupMenu } from '../lib/backup-store';
 import { initDragDrop } from '../lib/drag-drop-import';
 import { setStatus } from '../lib/status-bar';
@@ -833,7 +832,6 @@ function buildSidebar(): void {
   const charxOnlyFields = [
     'globalNote',
     'firstMessage',
-    'assetPromptTemplate',
     'alternateGreetings',
     'groupOnlyGreetings',
     'defaultVariables',
@@ -841,18 +839,6 @@ function buildSidebar(): void {
   const singles = [
     { id: 'globalNote', label: '글로벌노트', icon: '📝', lang: 'plaintext', field: 'globalNote' },
     { id: 'firstMessage', label: '첫 메시지', icon: '💬', lang: 'html', field: 'firstMessage' },
-    {
-      id: 'assetPromptTemplate',
-      label: '에셋 프롬프트 템플릿',
-      icon: '🖼️',
-      lang: 'markdown',
-      readonly: true,
-      get: () =>
-        buildAssetPromptTemplate({
-          name: fileData!.name,
-          description: fileData!.description,
-        }),
-    },
     {
       id: 'triggerScripts',
       label: '트리거 스크립트',
@@ -915,15 +901,6 @@ function buildSidebar(): void {
           action: () => {
             navigator.clipboard.writeText(`read_field("${item.field}")`);
             setStatus(`복사됨: read_field("${item.field}")`);
-          },
-        });
-      }
-      if (item.id === 'assetPromptTemplate') {
-        items.push({
-          label: '템플릿 복사',
-          action: () => {
-            navigator.clipboard.writeText(item.get!());
-            setStatus('에셋 프롬프트 템플릿 복사됨');
           },
         });
       }
@@ -2043,16 +2020,6 @@ function openTabById(tabId: string): void {
     string,
     { label: string; lang: string; get: () => unknown; set: ((v: unknown) => void) | null }
   > = {
-    assetPromptTemplate: {
-      label: '에셋 프롬프트 템플릿',
-      lang: 'markdown',
-      get: () =>
-        buildAssetPromptTemplate({
-          name: data.name,
-          description: data.description,
-        }),
-      set: null,
-    },
     lua: {
       label: 'Lua (통합)',
       lang: 'lua',
@@ -2549,18 +2516,6 @@ export async function initMainRenderer(): Promise<void> {
         const pos = editorInstance.getPosition();
         editorInstance.setValue(activeTab?.getValue ? (activeTab.getValue() as string) || '' : (value as string) || '');
         if (pos) editorInstance.setPosition(pos);
-      }
-      if (
-        (field === 'description' || field === 'name') &&
-        tabMgr.activeTabId === 'assetPromptTemplate' &&
-        editorInstance
-      ) {
-        const activeTab = tabMgr.openTabs.find((tab) => tab.id === 'assetPromptTemplate');
-        if (activeTab) {
-          const pos = editorInstance.getPosition();
-          editorInstance.setValue((activeTab.getValue() as string) || '');
-          if (pos) editorInstance.setPosition(pos);
-        }
       }
       if (field === 'lua' && tabMgr.activeTabId?.startsWith('lua_s') && editorInstance) {
         const activeTab = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);

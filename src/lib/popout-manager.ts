@@ -66,13 +66,13 @@ export function initPopoutManager(d: PopoutManagerDeps): void {
     const dirname = deps.getDirname();
     const mainWindow = deps.getMainWindow();
     const popout = new BrowserWindow({
-      width: isPreview ? 420 : (isEditor ? 900 : (isTerminal ? 700 : 320)),
-      height: isPreview ? 700 : (isEditor ? 700 : (isTerminal ? 500 : 650)),
-      minWidth: isPreview ? 320 : (isEditor ? 400 : (isTerminal ? 300 : 200)),
+      width: isPreview ? 420 : isEditor ? 900 : isTerminal ? 700 : 320,
+      height: isPreview ? 700 : isEditor ? 700 : isTerminal ? 500 : 650,
+      minWidth: isPreview ? 320 : isEditor ? 400 : isTerminal ? 300 : 200,
       minHeight: isPreview ? 400 : 200,
       parent: mainWindow!,
       frame: false,
-      title: isEditor ? 'RisuToki' : (isTerminal ? 'TokiTalk' : (isRefs ? '참고자료' : '항목')),
+      title: isEditor ? 'RisuToki' : isTerminal ? 'TokiTalk' : isRefs ? '참고자료' : '항목',
       icon: path.join(dirname, 'assets', 'icon.png'),
       webPreferences: {
         preload: path.join(dirname, 'popout-preload.js'),
@@ -177,7 +177,6 @@ export function initPopoutManager(d: PopoutManagerDeps): void {
     const singles = [
       { id: 'globalNote', label: '글로벌노트', icon: '📝' },
       { id: 'firstMessage', label: '첫 메시지', icon: '💬' },
-      { id: 'assetPromptTemplate', label: '에셋 프롬프트 템플릿', icon: '🖼️' },
       { id: 'triggerScripts', label: '트리거 스크립트', icon: '🪝' },
       { id: 'alternateGreetings', label: '추가 첫 메시지', icon: '💭' },
       { id: 'groupOnlyGreetings', label: '그룹 첫 메시지', icon: '👥' },

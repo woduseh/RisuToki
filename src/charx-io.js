@@ -653,8 +653,8 @@ function openRisup(filePath) {
     const raw = fs.readFileSync(filePath);
     // Step 1: RPack decode (byte substitution)
     const decoded = rpackDecode(raw);
-    // Step 2: Zlib decompress (fflate.compressSync produces zlib format)
-    const decompressed = zlib.inflateSync(decoded);
+    // Step 2: Raw DEFLATE decompress (fflate.compressSync produces raw DEFLATE, not zlib)
+    const decompressed = zlib.inflateRawSync(decoded);
     // Step 3: MessagePack decode outer envelope
     const envelope = unpack(decompressed);
     if (!envelope || envelope.type !== 'preset') {
@@ -720,8 +720,8 @@ function saveRisup(filePath, data) {
         type: 'preset',
         preset: encrypted,
     });
-    // Step 4: Zlib compress
-    const compressed = zlib.deflateSync(envelope);
+    // Step 4: Raw DEFLATE compress (matches fflate.compressSync format)
+    const compressed = zlib.deflateRawSync(envelope);
     // Step 5: RPack encode
     const encoded = rpackEncode(compressed);
     fs.writeFileSync(filePath, encoded);
