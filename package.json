@@ -4,25 +4,55 @@
   "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
   "main": "main.js",
   "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:electron": "npm run build:electron && wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+    "prestart": "npm run build:electron && npm run build:renderer",
     "start": "electron .",
+    "lint": "npx eslint main.js test/test-rpack.js test/test-charx.js test/test-reference-store.js test/test-refs-popout-data.js test/test-popout-payload-store.js test/test-terminal-shell.js test/test-main-state-store.js src/charx-io.ts src/rpack.ts toki-mcp-server.ts src/app/controller.js src/popout/controller.js src/lib/dialog.ts src/lib/context-menu.ts src/lib/editor-activation.ts src/lib/editor-activation.test.ts src/lib/external-text-tab.ts src/lib/external-text-tab.test.ts src/lib/main-state-store.cjs src/lib/preview-engine.ts src/lib/refs-popout-data.cjs src/lib/popout-payload-store.cjs src/lib/terminal-shell.cjs src/lib/app-settings.ts src/lib/app-settings.test.ts src/lib/assistant-launch.ts src/lib/assistant-launch.test.ts src/lib/asset-prompt-template.ts src/lib/asset-prompt-template.test.ts src/lib/asset-runtime.ts src/lib/asset-runtime.test.ts src/lib/chat-session.ts src/lib/chat-session.test.ts src/lib/editor-dirty-fields.ts src/lib/editor-dirty-fields.test.ts src/lib/indexed-tabs.ts src/lib/indexed-tabs.test.ts src/lib/layout-manager.ts src/lib/layout-manager.test.ts src/lib/mcp-data-update.ts src/lib/mcp-data-update.test.ts src/lib/monaco-loader.ts src/lib/popout-state.ts src/lib/popout-state.test.ts src/lib/preview-debug.ts src/lib/preview-debug.test.ts src/lib/preview-format.ts src/lib/preview-format.test.ts src/lib/preview-session.ts src/lib/preview-session.test.ts src/lib/runtime-feedback.ts src/lib/script-loader.ts src/lib/terminal-chat.ts src/lib/terminal-chat.test.ts src/lib/terminal-ui.ts src/lib/terminal-ui.test.ts src/lorebook-convert.ts src/lorebook-convert.test.ts preload.ts popout-preload.ts --max-warnings=0 && npx eslint src/main.ts src/popout.ts src/App.vue src/App.test.ts vite.config.ts vitest.setup.ts --max-warnings=0",
+    "typecheck": "vue-tsc --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.node-libs.json --noEmit",
+    "build:node-libs": "tsc -p tsconfig.node-libs.json",
     "test-rpack": "node test/test-rpack.js",
     "test-charx": "node test/test-charx.js",
-    "dist": "electron-builder",
-    "dist:portable": "electron-builder --win portable",
-    "dist:installer": "electron-builder --win nsis",
-    "dist:all": "electron-builder --win nsis portable"
+    "test:references": "node test/test-reference-store.js && node test/test-refs-popout-data.js && node test/test-popout-payload-store.js && node test/test-terminal-shell.js && node test/test-main-state-store.js",
+    "test:unit": "vitest run",
+    "test": "npm run build:node-libs && npm run test-rpack && npm run test-charx && npm run test:references && npm run test:unit",
+    "build:electron": "npm run build:node-libs && tsc -p tsconfig.electron.json",
+    "build:renderer": "vite build",
+    "build": "npm run lint && npm run typecheck && npm run test && npm run build:electron && npm run build:renderer",
+    "dist": "npm run build:electron && npm run build:renderer && electron-builder",
+    "dist:portable": "npm run build:electron && npm run build:renderer && electron-builder --win portable",
+    "dist:installer": "npm run build:electron && npm run build:renderer && electron-builder --win nsis",
+    "dist:all": "npm run build:electron && npm run build:renderer && electron-builder --win nsis portable"
   },
   "dependencies": {
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "adm-zip": "^0.5.16",
-    "monaco-editor": "^0.52.2",
+    "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
+    "vue": "^3.5.29",
     "wasmoon": "^1.16.0"
   },
   "devDependencies": {
-    "electron": "^33.4.11",
-    "electron-builder": "^25.1.0"
+    "@eslint/js": "^10.0.1",
+    "@vitejs/plugin-vue": "^6.0.4",
+    "@vue/test-utils": "^2.4.6",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^40.8.0",
+    "electron-builder": "^26.8.1",
+    "eslint": "^10.0.3",
+    "eslint-plugin-vue": "^10.8.0",
+    "globals": "^17.4.0",
+    "jsdom": "^28.1.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "vite": "^7.3.1",
+    "vite-plugin-static-copy": "^3.2.0",
+    "vitest": "^4.0.18",
+    "vue-tsc": "^3.2.5",
+    "wait-on": "^9.0.4"
   },
   "author": "toki",
   "build": {
@@ -35,8 +65,7 @@
         "portable"
       ],
       "icon": "assets/icon.ico",
-      "signAndEditExecutable": true,
-      "sign": null
+      "signAndEditExecutable": true
     },
     "nsis": {
       "oneClick": false,
@@ -56,6 +85,7 @@
       "artifactName": "RisuToki-${version}-portable.exe"
     },
     "files": [
+      "dist/**/*",
       "main.js",
       "preload.js",
       "popout-preload.js",
