@@ -95,6 +95,12 @@ import { showHelpPopup } from '../lib/help-popup';
 import { showSettingsPopup as renderSettingsPopup } from '../lib/settings-popup';
 import { createSidebarActions } from '../lib/sidebar-actions';
 import {
+  handleNew as _handleNew,
+  handleOpen as _handleOpen,
+  handleSave as _handleSave,
+  handleSaveAs as _handleSaveAs,
+} from '../lib/file-actions';
+import {
   isSameReferencePath,
   stringifyStringArray,
   addReferenceFile as _addReferenceFile,
@@ -1530,21 +1536,22 @@ async function restartTerminal() {
 }
 
 // ==================== Actions ====================
-async function handleNew() {
-  const data = await window.tokiAPI.newFile();
-  if (!data) return;
-  fileData = data;
-  tabMgr.reset();
-  if (editorInstance) { editorInstance.dispose(); editorInstance = null; }
+/** @type {import('../lib/file-actions').FileActionDeps} */
+const fileActionDeps = {
+  getFileData: () => fileData,
+  setFileData: (d) => { fileData = d; },
+  getEditorInstance: () => editorInstance,
+  setEditorInstance: (v) => { editorInstance = v; },
+  getAutosaveDir: () => autosaveDir,
+  tabMgr,
+  buildSidebar,
+  setStatus,
+};
 
-  document.getElementById('file-label').textContent = 'New Character';
-  document.getElementById('editor-container').innerHTML =
-    '<div class="empty-state">항목을 선택하세요</div>';
-  document.getElementById('editor-tabs').innerHTML = '';
-
-  buildSidebar();
-  setStatus('새 파일 생성됨');
-}
+async function handleNew() { return _handleNew(fileActionDeps); }
+async function handleOpen() { return _handleOpen(fileActionDeps); }
+async function handleSave() { return _handleSave(fileActionDeps); }
+async function handleSaveAs() { return _handleSaveAs(fileActionDeps); }
 
 // ==================== RP Mode ====================
 
@@ -1775,66 +1782,6 @@ async function handleCodexStart() {
   await startAssistantCli('codex');
 }
 
-async function handleOpen() {
-  try {
-    setStatus('파일 열기 중...');
-    const data = await window.tokiAPI.openFile();
-    if (!data) { setStatus('준비'); return; }
-    fileData = data;
-    tabMgr.reset();
-    if (editorInstance) { editorInstance.dispose(); editorInstance = null; }
-
-    document.getElementById('file-label').textContent = `${data.name || 'Untitled'}`;
-    document.getElementById('editor-container').innerHTML =
-      '<div class="empty-state">항목을 선택하세요</div>';
-    document.getElementById('editor-tabs').innerHTML = '';
-
-    buildSidebar();
-    setStatus(`파일 열림: ${data.name}`);
-  } catch (err) {
-    console.error('[renderer] handleOpen error:', err);
-    setStatus(`열기 실패: ${err.message}`);
-  }
-}
-
-async function handleSave() {
-  if (!fileData) return;
-  // Sync current editor content (skip form/image tabs)
-  if (editorInstance && tabMgr.activeTabId) {
-    const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
-    if (curTab && !FORM_TAB_TYPES.has(curTab.language) && curTab.setValue) {
-      curTab.setValue(editorInstance.getValue());
-    }
-  }
-  const result = await window.tokiAPI.saveFile(fileData);
-  if (result.success) {
-    tabMgr.dirtyFields.clear();
-    tabMgr.renderTabs();
-    setStatus('저장 완료');
-    // Cleanup autosave temp file after successful save
-    window.tokiAPI.cleanupAutosave(autosaveDir || undefined);
-  } else {
-    setStatus(`저장 실패: ${result.error}`);
-  }
-}
-
-async function handleSaveAs() {
-  if (!fileData) return;
-  if (editorInstance && tabMgr.activeTabId) {
-    const curTab = tabMgr.openTabs.find(t => t.id === tabMgr.activeTabId);
-    if (curTab && !FORM_TAB_TYPES.has(curTab.language) && curTab.setValue) {
-      curTab.setValue(editorInstance.getValue());
-    }
-  }
-  const result = await window.tokiAPI.saveFileAs(fileData);
-  if (result.success) {
-    tabMgr.dirtyFields.clear();
-    tabMgr.renderTabs();
-    setStatus(`저장 완료: ${result.path}`);
-  } else {
-    setStatus(`저장 취소`);
-  }
-}
 
 // ==================== Terminal Background ====================
 async function handleTerminalBg() {
