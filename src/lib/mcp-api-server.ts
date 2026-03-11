@@ -1890,6 +1890,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (!Array.isArray(mod.assets)) mod.assets = [];
           (mod.assets as unknown[]).push([assetName, '', assetPath || assetName]);
         }
+        // Sync to card.json assets (charx only)
+        const addFileType = currentData._fileType || 'charx';
+        if (addFileType === 'charx' && Array.isArray(currentData.cardAssets)) {
+          const ext = (assetPath || assetName).split('.').pop() || 'png';
+          currentData.cardAssets.push({
+            type: 'module',
+            uri: `embeded://${assetPath || assetName}`,
+            name: assetName,
+            ext,
+          });
+        }
+        if (deps.invalidateAssetsMapCache) deps.invalidateAssetsMapCache();
         deps.broadcastToAll('data-updated', { field: 'risumAssets' });
         return jsonRes(res, { ok: true, index: currentData.risumAssets.length - 1, name: assetName, size: buf.length });
       }
@@ -1933,6 +1945,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (Array.isArray(modAssets) && idx < modAssets.length) {
           modAssets.splice(idx, 1);
         }
+        // Sync removal from card.json assets (charx only)
+        const delFileType = currentData._fileType || 'charx';
+        if (delFileType === 'charx' && Array.isArray(currentData.cardAssets)) {
+          const cardIdx = (currentData.cardAssets as { name?: string }[]).findIndex((ca) => ca.name === deleteName);
+          if (cardIdx >= 0) currentData.cardAssets.splice(cardIdx, 1);
+        }
+        if (deps.invalidateAssetsMapCache) deps.invalidateAssetsMapCache();
         deps.broadcastToAll('data-updated', { field: 'risumAssets' });
         return jsonRes(res, { ok: true, deleted: deleteName });
       }

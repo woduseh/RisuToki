@@ -65,13 +65,21 @@ export function createTreeItem(label: string, icon: string, indent: number): HTM
   return el;
 }
 
+// Persists folder expanded/collapsed state across sidebar rebuilds.
+// Key format is `${indent}:${label}` to handle same-name folders at different levels.
+const _expandedFolders = new Set<string>();
+
 export function createFolderItem(label: string, icon: string, indent: number): FolderItemResult {
   const header = document.createElement('div');
   header.className = `tree-item indent-${indent}`;
 
   const arrow = document.createElement('span');
   arrow.className = 'arrow';
-  arrow.textContent = '▶';
+
+  const folderKey = `${indent}:${label}`;
+  const wasExpanded = _expandedFolders.has(folderKey);
+  arrow.textContent = wasExpanded ? '▼' : '▶';
+
   header.appendChild(arrow);
 
   const iconSpan = document.createElement('span');
@@ -85,11 +93,17 @@ export function createFolderItem(label: string, icon: string, indent: number): F
 
   const children = document.createElement('div');
   children.className = 'tree-children';
+  if (wasExpanded) children.classList.add('expanded');
 
   header.addEventListener('click', (e) => {
     e.stopPropagation();
     const expanded = children.classList.toggle('expanded');
     arrow.textContent = expanded ? '▼' : '▶';
+    if (expanded) {
+      _expandedFolders.add(folderKey);
+    } else {
+      _expandedFolders.delete(folderKey);
+    }
   });
 
   return { header, children };
@@ -97,10 +111,13 @@ export function createFolderItem(label: string, icon: string, indent: number): F
 
 export function updateSidebarActive(activeTabId: string | null, openTabs: TabLike[]): void {
   const items = document.querySelectorAll('.tree-item');
-  const tab = activeTabId ? openTabs.find(t => t.id === activeTabId) : null;
+  const tab = activeTabId ? openTabs.find((t) => t.id === activeTabId) : null;
   const targetLabel = tab ? tab.label : null;
-  items.forEach(el => {
-    (el as HTMLElement).classList.toggle('active', targetLabel !== null && (el as HTMLElement).dataset.label === targetLabel);
+  items.forEach((el) => {
+    (el as HTMLElement).classList.toggle(
+      'active',
+      targetLabel !== null && (el as HTMLElement).dataset.label === targetLabel,
+    );
   });
 }
 
@@ -227,7 +244,8 @@ export async function buildAssetsSidebar(tree: HTMLElement, deps: AssetsSidebarD
     // Right-click on subfolder: add to this folder
     const targetFolder = def.key;
     subFolder.header.addEventListener('contextmenu', (e) => {
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
       deps.showContextMenu(e.clientX, e.clientY, [
         { label: '이미지 추가', action: () => deps.addAssetFromDialog(targetFolder) },
       ]);
@@ -250,17 +268,29 @@ export function createLoreEntryItem(child: LoreEntryChild, indent: number, deps:
   const idx = child.index;
   el.addEventListener('click', () => {
     const fileData = deps.getFileData();
-    deps.openTab(`lore_${idx}`, label, '_loreform',
+    deps.openTab(
+      `lore_${idx}`,
+      label,
+      '_loreform',
       () => fileData.lorebook[idx],
-      (v: unknown) => { Object.assign(fileData.lorebook[idx], v as object); }
+      (v: unknown) => {
+        Object.assign(fileData.lorebook[idx], v as object);
+      },
     );
   });
   // Lorebook entry right-click: rename / copy path / backup / delete
   el.addEventListener('contextmenu', (e) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     const items: ContextMenuItem[] = [
       { label: '이름 변경', action: () => deps.renameLorebook(idx) },
-      { label: 'MCP 경로 복사', action: () => { navigator.clipboard.writeText(`read_lorebook(${idx})`); deps.setStatus(`복사됨: read_lorebook(${idx})`); } },
+      {
+        label: 'MCP 경로 복사',
+        action: () => {
+          navigator.clipboard.writeText(`read_lorebook(${idx})`);
+          deps.setStatus(`복사됨: read_lorebook(${idx})`);
+        },
+      },
     ];
     const store = deps.getBackups(`lore_${idx}`);
     if (store.length > 0) {

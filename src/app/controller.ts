@@ -38,13 +38,7 @@ import { initTokiAvatar as initTokiAvatarUi, setTokiActive } from '../lib/avatar
 import { defineDarkMonacoTheme } from '../lib/dark-mode';
 import { showImageViewer as renderImageViewer } from '../lib/image-viewer';
 import { closeAllMenus } from '../lib/menu-bar';
-import {
-  handleTerminalDataForBgm,
-  isBgmEnabled,
-  pauseBgm,
-  setBgmEnabled,
-  setBgmFilePath,
-} from '../lib/bgm';
+import { handleTerminalDataForBgm, isBgmEnabled, pauseBgm, setBgmEnabled, setBgmFilePath } from '../lib/bgm';
 import { ensureBlueArchiveMonacoTheme, loadMonacoRuntime } from '../lib/monaco-loader';
 import { createBufferedTerminalChatSession } from '../lib/chat-session';
 import { feedBgBuffer, initChatMode as initChatModeUi, isChatMode, onChatData } from '../lib/chat-ui';
@@ -124,10 +118,7 @@ import {
   showSettingsPopup as _showSettingsPopup,
   handleTerminalBg,
 } from './settings-handlers';
-import {
-  tryExtractPrimaryLuaFromTriggerScriptsText,
-  mergeLuaIntoTriggerScriptsText,
-} from './trigger-script-utils';
+import { tryExtractPrimaryLuaFromTriggerScriptsText, mergeLuaIntoTriggerScriptsText } from './trigger-script-utils';
 
 const settingsSnapshot = readAppSettingsSnapshot();
 
@@ -1569,8 +1560,7 @@ function initResizers(): void {
     });
   }
 
-  // Terminal toggle
-  document.getElementById('btn-terminal-toggle')!.addEventListener('click', () => toggleTerminal());
+  // Terminal toggle — handled by Vue @click in App.vue (action 'toggle-terminal')
 }
 
 // ==================== Dark Mode ====================
@@ -1581,7 +1571,9 @@ function getDarkModeDeps() {
     getFormEditors: () => getFormEditors() as Array<{ updateOptions(opts: unknown): void }>,
     getTerminal: () => term as { options: { theme: unknown } } | null,
     getRpMode: () => rpMode,
-    setRpMode: (mode: string) => { rpMode = mode as RpMode; },
+    setRpMode: (mode: string) => {
+      rpMode = mode as RpMode;
+    },
     termThemeDark: TERM_THEME_DARK,
     termThemeLight: TERM_THEME_LIGHT,
   };
@@ -1614,11 +1606,12 @@ function getAutosaveDeps() {
     getAutosaveDir: () => autosaveDir,
     getDirtyFieldCount: () => tabMgr.dirtyFields.size,
     getFileData: () => fileData as Record<string, unknown> | null,
-    collectDirtyFields: () => collectDirtyEditorFields({
-      dirtyFields: tabMgr.dirtyFields,
-      fileData: fileData!,
-      openTabs: tabMgr.openTabs,
-    }),
+    collectDirtyFields: () =>
+      collectDirtyEditorFields({
+        dirtyFields: tabMgr.dirtyFields,
+        fileData: fileData!,
+        openTabs: tabMgr.openTabs,
+      }),
   };
 }
 
@@ -2094,7 +2087,9 @@ export async function initMainRenderer(): Promise<void> {
     handleOpen,
     handleSave,
     handleSaveAs,
-    closeActiveTab: () => { if (tabMgr.activeTabId) tabMgr.closeTab(tabMgr.activeTabId); },
+    closeActiveTab: () => {
+      if (tabMgr.activeTabId) tabMgr.closeTab(tabMgr.activeTabId);
+    },
     toggleSidebar,
     toggleTerminal,
     showPreviewPanel,
