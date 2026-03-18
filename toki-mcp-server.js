@@ -309,6 +309,26 @@ const TOOLS = [
             required: ['index'],
         },
     },
+    {
+        name: 'list_skills',
+        description: 'RisuAI 스킬 문서 목록을 반환합니다. 각 스킬의 name, description, 포함 파일 목록을 확인할 수 있습니다. CBS 문법, Lua 스크립트, 로어북, 정규식, HTML/CSS, 트리거 스크립트, 캐릭터 작성 등의 가이드가 포함되어 있습니다.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+    },
+    {
+        name: 'read_skill',
+        description: '특정 스킬의 문서 파일을 읽습니다. 기본적으로 SKILL.md를 읽으며, file 파라미터로 참조 파일(예: REFERENCE.md, API_REFERENCE.md)도 읽을 수 있습니다.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', description: '스킬 이름 (예: writing-lua-scripts, authoring-characters)' },
+                file: {
+                    type: 'string',
+                    description: '읽을 파일명 (기본: SKILL.md). list_skills에서 확인한 파일명 사용.',
+                },
+            },
+            required: ['name'],
+        },
+    },
 ];
 // ==================== HTTP Client ====================
 async function apiRequest(method, urlPath, body) {
@@ -440,6 +460,13 @@ async function handleToolCall(name, args) {
             });
         case 'delete_risum_asset':
             return await apiRequest('POST', `/risum-asset/${args.index}/delete`);
+        case 'list_skills':
+            return await apiRequest('GET', '/skills');
+        case 'read_skill': {
+            const file = args.file ? encodeURIComponent(args.file) : '';
+            const skillPath = file ? `/skills/${encodeURIComponent(args.name)}/${file}` : `/skills/${encodeURIComponent(args.name)}`;
+            return await apiRequest('GET', skillPath);
+        }
         default:
             throw new Error(`Unknown tool: ${name}`);
     }

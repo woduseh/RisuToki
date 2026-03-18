@@ -139,6 +139,7 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     extractPrimaryLua: (scripts: unknown) => string;
     mergePrimaryLua: (scripts: unknown, lua: string) => unknown;
     stringifyTriggerScripts: (scripts: unknown) => string;
+    getSkillsDir: () => string;
   }) => McpApiServer;
 };
 
@@ -543,6 +544,10 @@ app.whenReady().then(() => {
     extractPrimaryLua: extractPrimaryLuaFromTriggerScripts,
     mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,
     stringifyTriggerScripts,
+    getSkillsDir: () =>
+      app.isPackaged
+        ? path.join(process.resourcesPath!, 'skills')
+        : path.join(__dirname, 'skills'),
   });
   apiToken = mcpApi.token;
 

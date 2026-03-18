@@ -1,5 +1,7 @@
 import * as http from 'http';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -49,6 +51,9 @@ export interface McpApiDeps {
   extractPrimaryLua: (scripts: any) => string;
   mergePrimaryLua: (scripts: any, lua: string) => any;
   stringifyTriggerScripts: (scripts: any) => string;
+
+  // skills directory
+  getSkillsDir: () => string;
 }
 
 export interface McpApiServer {
@@ -80,6 +85,19 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     req.on('end', () => resolve(body));
     req.on('error', reject);
   });
+}
+
+/** Extract name and description from YAML frontmatter (--- delimited). */
+function parseYamlFrontmatter(raw: string): { name: string; description: string } {
+  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!m) return { name: '', description: '' };
+  const block = m[1];
+  const nameMatch = block.match(/^name:\s*"?([^"\n]*)"?\s*$/m);
+  const descMatch = block.match(/^description:\s*"((?:[^"\\]|\\.)*)"\s*$/m) || block.match(/^description:\s*(.+)$/m);
+  return {
+    name: nameMatch ? nameMatch[1].trim() : '',
+    description: descMatch ? descMatch[1].trim() : '',
+  };
 }
 
 function jsonRes(res: http.ServerResponse, data: unknown, status?: number): void {
@@ -1954,6 +1972,57 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (deps.invalidateAssetsMapCache) deps.invalidateAssetsMapCache();
         deps.broadcastToAll('data-updated', { field: 'risumAssets' });
         return jsonRes(res, { ok: true, deleted: deleteName });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /skills — list available skill documents
+      // ----------------------------------------------------------------
+      if (parts[0] === 'skills' && !parts[1] && req.method === 'GET') {
+        const skillsDir = deps.getSkillsDir();
+        try {
+          const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+          const skills: { name: string; description: string; files: string[] }[] = [];
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const skillMdPath = path.join(skillsDir, entry.name, 'SKILL.md');
+            if (!fs.existsSync(skillMdPath)) continue;
+            const raw = fs.readFileSync(skillMdPath, 'utf-8');
+            const fm = parseYamlFrontmatter(raw);
+            const dirFiles = fs.readdirSync(path.join(skillsDir, entry.name)).filter((f) => f.endsWith('.md'));
+            skills.push({
+              name: fm.name || entry.name,
+              description: fm.description || '',
+              files: dirFiles,
+            });
+          }
+          return jsonRes(res, { count: skills.length, skills });
+        } catch {
+          return jsonRes(res, { count: 0, skills: [], error: 'Skills directory not found' });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // GET /skills/:name — read SKILL.md of a specific skill
+      // GET /skills/:name/:file — read a reference file within a skill
+      // ----------------------------------------------------------------
+      if (parts[0] === 'skills' && parts[1] && req.method === 'GET') {
+        const skillName = decodeURIComponent(parts[1]);
+        const fileName = parts[2] ? decodeURIComponent(parts[2]) : 'SKILL.md';
+        if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+          return jsonRes(res, { error: 'Invalid file name' }, 400);
+        }
+        const filePath = path.join(deps.getSkillsDir(), skillName, fileName);
+        try {
+          const content = fs.readFileSync(filePath, 'utf-8');
+          return jsonRes(res, { skill: skillName, file: fileName, content });
+        } catch {
+          return mcpError(res, 404, {
+            action: 'read_skill',
+            message: `Skill file not found: ${skillName}/${fileName}`,
+            suggestion: 'list_skills로 사용 가능한 스킬 목록을 확인하세요.',
+            target: `skills/${skillName}/${fileName}`,
+          });
+        }
       }
 
       // ----------------------------------------------------------------

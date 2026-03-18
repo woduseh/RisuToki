@@ -108,6 +108,7 @@
       "src/**/*",
       "assets/**/*",
       "guides/**/*",
+      "skills/**/*",
       "node_modules/**/*"
     ],
     "asarUnpack": [
@@ -119,6 +120,10 @@
       {
         "from": "guides",
         "to": "guides"
+      },
+      {
+        "from": "skills",
+        "to": "skills"
       }
     ]
   }
