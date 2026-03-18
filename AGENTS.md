@@ -131,6 +131,17 @@ css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
 | `list_references`                    | 로드된 참고 자료 파일 목록 |
 | `read_reference_field(index, field)` | 참고 자료의 특정 필드 읽기 |
 
+### 스킬 문서 (Skills, 읽기 전용)
+
+CBS 문법, Lua API, 로어북, 정규식, HTML/CSS, 트리거, 캐릭터 작성 등의 상세 가이드.
+
+| 도구                      | 설명                                                          |
+| ------------------------- | ------------------------------------------------------------- |
+| `list_skills`             | 사용 가능한 스킬 목록 (name, description, files)              |
+| `read_skill(name, file?)` | 스킬 문서 읽기 (기본: SKILL.md, 참조 파일도 file 파라미터로) |
+
+상세 문법이 필요할 때 `list_skills` → `read_skill`로 on-demand 로딩하세요.
+
 ---
 
 ## 2. 파일 구조
@@ -244,87 +255,24 @@ css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
 
 ---
 
-## 3. CBS 핵심 문법 (Custom Bracket Syntax)
+## 3. 상세 문법 가이드
 
-→ **상세 가이드: [CBS_QUICK_REF.md](guides/CBS_QUICK_REF.md)** (130+ 태그 완전 레퍼런스)
+CBS, Lua, 로어북, 정규식, HTML/CSS, 트리거 스크립트 등의 상세 문법은 `list_skills` → `read_skill` MCP 도구로 on-demand 접근하세요.
 
-### 핵심 태그 요약
-
-```
-{{char}} / {{user}}                  — 캐릭터/유저 이름
-{{getvar::변수명}}                   — 변수 읽기
-{{setvar::변수명::값}}               — 변수 쓰기
-{{addvar::변수명::숫자}}             — 변수에 숫자 더하기
-{{setdefaultvar::변수명::기본값}}     — 없을 때만 설정
-{{getglobalvar::변수명}}             — 전역 변수 읽기
-
-{{#when::값::is::비교값}}...{{:else}}...{{/when}} — 조건문
-{{#each [배열] as item}}{{slot::item}}{{/each}}   — 반복문
-
-{{calc::2+3*4}}                      — 수학 계산
-{{random::A::B::C}}                  — 랜덤 선택
-{{roll::2d6}}                        — 주사위
-{{asset::이름}}                      — 에셋 표시
-{{button::라벨::트리거명}}            — 버튼 (클릭 시 Lua 함수 호출)
-
-{{lastmessage}}                      — 마지막 메시지
-{{description}} / {{personality}}    — 캐릭터 필드 접근
-{{time}} / {{date::YYYY-MM-DD}}      — 현재 시간/날짜
-```
+주요 스킬:
+- **writing-cbs-syntax** — CBS 템플릿 태그 레퍼런스 (130+ 태그)
+- **writing-lua-scripts** — Lua 5.4 이벤트 콜백, 채팅/변수/로어북/LLM/UI API
+- **writing-lorebooks** — 로어북 구조, 키워드 활성화, 데코레이터, 폴더 관리
+- **writing-regex-scripts** — 정규식 type별 용도, 캡처 그룹, 특수 플래그
+- **writing-html-css** — backgroundEmbedding, x-risu- 접두사, CBS 동적 주입
+- **writing-trigger-scripts** — 트리거 이벤트 자동화, V2/Lua/CBS/정규식 통합
+- **writing-asset-prompts** — Anima 모델 이미지 프롬프트 작성
+- **authoring-characters** — 캐릭터 description 작성 (행동 깊이, 말투 시스템)
+- **authoring-lorebook-bots** — 로어북 기반 봇 description 작성
 
 ---
 
-## 4. Lua API 핵심 (RisuAI)
-
-→ **상세 가이드: [문법가이드\_Lua.md](guides/문법가이드_Lua.md)**
-
-### 이벤트 함수
-
-| 함수                         | 실행 시점                                                       |
-| ---------------------------- | --------------------------------------------------------------- |
-| `onInput(id)`                | 유저 전송 시 (프롬프트 생성 후)                                 |
-| `onStart(id)`                | 프롬프트 생성 시 (AI 호출 전)                                   |
-| `onOutput(id)`               | AI 응답 후                                                      |
-| `listenEdit(type, callback)` | 수정 이벤트 감지 (editRequest/editDisplay/editInput/editOutput) |
-
-### 주요 API
-
-```lua
--- 변수
-getChatVar(id, "변수명") / setChatVar(id, "변수명", 값)
-getGlobalVar(id, "변수명")
-getState(id, "이름") / setState(id, "이름", 테이블)
-
--- 채팅
-getChat(id, index) / setChat(id, index, value)
-addChat(id, role, value) / removeChat(id, index)
-getChatLength(id) / getCharacterLastMessage(id) / getUserLastMessage(id)
-
--- 로어북
-getLoreBooks(id, "comment 필터")
-upsertLocalLoreBook(id, "id", "content", { key="키워드", alwaysActive=false })
-
--- AI 모델
-LLM(id, prompt, useMultimodal?)  -- 비동기, :await() 필요
-simpleLLM(id, prompt)            -- 비동기, :await() 필요
-
--- UI
-alertNormal(id, "메시지") / alertError(id, "메시지")
-alertInput(id, "프롬프트")       -- 비동기, :await() 필요
-alertSelect(id, {"옵션1","옵션2"}) / alertConfirm(id, "질문")
-
--- 유틸리티
-sleep(id, 밀리초) / cbs(id, "CBS텍스트") / log(값)
-```
-
-**주의사항:**
-
-- `upsertLocalLoreBook`으로 생성한 로어북은 **다음 턴**에야 AI 프롬프트에 반영됨 (1턴 딜레이).
-- `getChat(id, i)` 인덱스는 **0부터**, `getChatLength(id)`는 **1부터** 카운트.
-
----
-
-## 5. 효과적인 작업 흐름
+## 4. 효과적인 작업 흐름
 
 ### 중요: 읽기 규칙
 
@@ -359,7 +307,7 @@ sleep(id, 밀리초) / cbs(id, "CBS텍스트") / log(값)
 
 ---
 
-## 6. 주의사항
+## 5. 주의사항
 
 - `write_field`와 `write_lorebook`은 **사용자 확인 팝업**이 뜸 (에디터 측)
 - 로어북 `comment`는 Lua `getLoreBooks()` 검색에 사용되므로, **comment 변경 시 Lua 코드의 검색 패턴과 일치하는지 반드시 확인**
@@ -370,27 +318,15 @@ sleep(id, 밀리초) / cbs(id, "CBS텍스트") / log(값)
 
 ---
 
-## 7. 프로젝트별 참고사항
+## 6. 프로젝트별 참고사항
 
 > 아래는 프로젝트 제작자가 작성하는 영역입니다.
 > 프로젝트 고유의 규칙, 구조, 가이드 경로 등을 여기에 추가하세요.
 
 ### 가이드 파일 위치
 
-`guides/` 폴더에 문법 가이드가 포함되어 있습니다. 필요 시 참고하세요.
-
-```
-guides/
-├── CLAUDE.md                          — 이 파일과 동일 (MCP 도구 레퍼런스, 파일 구조)
-├── CBS_QUICK_REF.md                   — CBS 전체 레퍼런스 (130+ 태그)
-├── 문법가이드_Lua.md                   — Lua 5.4 문법 + RisuAI API 상세
-├── 문법가이드_로어북.md                 — 로어북 구조, CBS 문법, 활용 패턴
-├── 문법가이드_정규식.md                 — 정규식 스크립트 type별 용도, 패턴 예시
-├── 문법가이드_HTML_CSS.md              — CSS/HTML UI 제작, backgroundHTML, 에셋 활용
-├── 문법가이드_트리거_스크립트.md         — Lua 트리거 이벤트, callAxModel, 고급 패턴
-├── 문법가이드_에셋_프롬프트.md          — description 기반 이미지 프롬프트 작성 가이드
-└── ...프로젝트별 추가 가이드
-```
+- `skills/` — LLM 최적화 영문 스킬 문서 (`list_skills` / `read_skill` MCP 도구로 접근)
+- `guides/` — 한국어 원본 가이드 (앱 내 가이드 뷰어로 접근)
 
 ### 프로젝트 규칙
 
