@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.0 (2026-03-18)
+
+### 새 기능
+- **Skills MCP 도구** — `list_skills` / `read_skill` MCP 도구 추가로 CBS, Lua, 로어북, 정규식 등 상세 가이드를 on-demand 로딩
+- **스킬 문서 패키징** — `skills/` 폴더를 extraResources로 포함하여 빌드 배포판에서도 스킬 접근 가능
+
+### 변경
+- **AGENTS.md 경량화** — 인라인 CBS/Lua 섹션을 skills 참조로 대체하여 토큰 절감
+- **CLAUDE.md 중복 제거** — AGENTS.md로 리다이렉트하여 시스템 프롬프트 토큰 2배 낭비 해소
+
+---
+
 ## v0.2.2 (2026-02-28)
 
 ### 새 기능
