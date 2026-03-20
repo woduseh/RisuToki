@@ -63,6 +63,7 @@ const tokiAPI: TokiApi = {
     ipcRenderer.invoke('add-asset-buffer', fileName, base64, targetFolder),
   deleteAsset: (assetPath) => ipcRenderer.invoke('delete-asset', assetPath),
   renameAsset: (oldPath, newName) => ipcRenderer.invoke('rename-asset', oldPath, newName),
+  reorderAsset: (fromPath, toIdx) => ipcRenderer.invoke('reorder-asset', fromPath, toIdx),
   importJson: () => ipcRenderer.invoke('import-json'),
   autosaveFile: (updatedFields) => ipcRenderer.invoke('autosave-file', updatedFields),
   cleanupAutosave: (customDir) => ipcRenderer.invoke('cleanup-autosave', customDir),

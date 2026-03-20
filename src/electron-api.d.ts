@@ -156,6 +156,7 @@ interface TokiAPI {
   addAssetBuffer: (fileName: string, base64: string, targetFolder?: string) => Promise<string | null>;
   deleteAsset: (assetPath: string) => Promise<boolean>;
   renameAsset: (oldPath: string, newName: string) => Promise<string | null>;
+  reorderAsset: (fromPath: string, toIdx: number) => Promise<boolean>;
   importJson: () => Promise<unknown[] | null>;
   autosaveFile: (updatedFields: Record<string, unknown>) => Promise<SaveResult>;
   cleanupAutosave: (customDir?: string) => Promise<boolean>;

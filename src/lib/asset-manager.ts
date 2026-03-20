@@ -260,6 +260,44 @@ export function initAssetManager(d: AssetManagerDeps): void {
     return newPath;
   });
 
+  // Reorder asset (move within same folder group)
+  ipcMain.handle('reorder-asset', (_, fromPath: string, toIdx: number) => {
+    const data = deps.getCurrentData();
+    if (!data || !data.assets) return false;
+    const fromIdx = data.assets.findIndex((a: any) => a.path === fromPath);
+    if (fromIdx === -1) return false;
+    // Determine folder group (e.g., "icon" or "other")
+    const fromParts = data.assets[fromIdx].path.split('/');
+    const fromGroup = fromParts[1] === 'icon' ? 'icon' : 'other';
+    // Build group-local indices
+    const groupIndices: number[] = [];
+    for (let i = 0; i < data.assets.length; i++) {
+      const parts = data.assets[i].path.split('/');
+      const group = parts[1] === 'icon' ? 'icon' : 'other';
+      if (group === fromGroup) groupIndices.push(i);
+    }
+    const localFrom = groupIndices.indexOf(fromIdx);
+    if (localFrom === -1 || toIdx < 0 || toIdx >= groupIndices.length) return false;
+    if (localFrom === toIdx) return false;
+    // Perform the move
+    const [item] = data.assets.splice(fromIdx, 1);
+    // Recalculate target absolute index after removal
+    const adjustedGroupIndices: number[] = [];
+    for (let i = 0; i < data.assets.length; i++) {
+      const parts = data.assets[i].path.split('/');
+      const group = parts[1] === 'icon' ? 'icon' : 'other';
+      if (group === fromGroup) adjustedGroupIndices.push(i);
+    }
+    const targetAbsIdx =
+      toIdx < adjustedGroupIndices.length
+        ? adjustedGroupIndices[toIdx]
+        : adjustedGroupIndices.length > 0
+          ? adjustedGroupIndices[adjustedGroupIndices.length - 1] + 1
+          : data.assets.length;
+    data.assets.splice(targetAbsIdx, 0, item);
+    return true;
+  });
+
   // Pick background image
   ipcMain.handle('pick-bg-image', async () => {
     const mainWin = deps.getMainWindow();

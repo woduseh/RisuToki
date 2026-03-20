@@ -2,7 +2,7 @@
 
 > RisuAI .charx / .risum / .risup 파일 전용 에디터 + AI CLI 통합 터미널
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/komodoD/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/komodoD/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -22,6 +22,7 @@ RisuToki는 [RisuAI](https://risuai.net/) 캐릭터 카드(`.charx`), 모듈(`.r
 | 🎭 **프리뷰 모드**    | CBS/Lua 렌더링 + 채팅 시뮬레이션 (F5)                                           |
 | 📚 **참고 자료**      | 다른 .charx/.risum 파일을 읽기 전용으로 로드하여 참고                           |
 | 🐰 **RP 모드**        | 토키/아리스/커스텀 페르소나로 AI CLI 응답 변환                                  |
+| 🔀 **사이드바 DnD**   | 로어북·정규식·Lua/CSS 섹션·에셋 드래그 앤 드롭으로 순서 변경                    |
 | 🖼 **슬롯 레이아웃**  | 패널 드래그 앤 드롭으로 자유 배치 + 팝아웃(외부 창 분리)                        |
 | 💾 **자동 저장/백업** | 설정 가능한 간격의 자동저장 + 항목별 최대 20개 버전 백업                        |
 | 🎵 **MomoTalk UI**    | 모모톡 테마 팝업, NSIS 인스톨러, 아바타 GIF 시스템                              |

@@ -251,10 +251,15 @@ export async function buildAssetsSidebar(tree: HTMLElement, deps: AssetsSidebarD
       ]);
     });
 
+    // Mark container for DnD
+    subFolder.children.dataset.dndAssetContainer = '';
+    subFolder.children.dataset.dndAssetFolder = def.key;
+
     // Add existing assets under this folder
     for (const asset of groups[def.key]) {
       const fileName = asset.path.split('/').pop()!;
       const el = createTreeItem(`${fileName} (${(asset.size / 1024).toFixed(0)}KB)`, '·', 2);
+      el.dataset.dndAssetPath = asset.path;
       el.addEventListener('click', () => deps.openImageTab(asset.path, fileName));
       deps.attachAssetContextMenu(el, asset.path, fileName);
       subFolder.children.appendChild(el);

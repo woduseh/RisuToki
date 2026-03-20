@@ -92,6 +92,7 @@ import { initDragDrop } from '../lib/drag-drop-import';
 import { setStatus } from '../lib/status-bar';
 import { showHelpPopup } from '../lib/help-popup';
 import { createSidebarActions } from '../lib/sidebar-actions';
+import { initSidebarDnD, destroyAllSortables } from '../lib/sidebar-dnd';
 import {
   handleNew as _handleNew,
   handleOpen as _handleOpen,
@@ -643,6 +644,7 @@ function appendBackupItems(items: ContextMenuItem[], backupKey: string, x: numbe
 }
 
 function buildSidebar(): void {
+  destroyAllSortables();
   const tree = document.getElementById('sidebar-tree')!;
   tree.innerHTML = '';
 
@@ -691,9 +693,14 @@ function buildSidebar(): void {
   luaFolder.children.appendChild(luaCombinedEl);
 
   // Individual Lua sections
+  const luaSectionContainer = document.createElement('div');
+  luaSectionContainer.dataset.dndLuaContainer = '';
+  luaFolder.children.appendChild(luaSectionContainer);
+
   for (let i = 0; i < luaSections.length; i++) {
     const section = luaSections[i];
     const sectionEl = createTreeItem(section.name, '·', 1);
+    sectionEl.dataset.dndIdx = String(i);
     const idx = i;
     sectionEl.addEventListener('click', () => {
       tabMgr.openTab(
@@ -719,7 +726,7 @@ function buildSidebar(): void {
       items.push({ label: '삭제', action: () => deleteLuaSection(idx) });
       showContextMenu(e.clientX, e.clientY, items);
     });
-    luaFolder.children.appendChild(sectionEl);
+    luaSectionContainer.appendChild(sectionEl);
   }
 
   // ---- File type check ----
@@ -761,9 +768,14 @@ function buildSidebar(): void {
     cssFolder.children.appendChild(cssCombinedEl);
 
     // Individual CSS sections
+    const cssSectionContainer = document.createElement('div');
+    cssSectionContainer.dataset.dndCssContainer = '';
+    cssFolder.children.appendChild(cssSectionContainer);
+
     for (let i = 0; i < cssSections.length; i++) {
       const section = cssSections[i];
       const sectionEl = createTreeItem(section.name, '·', 1);
+      sectionEl.dataset.dndIdx = String(i);
       const idx = i;
       sectionEl.addEventListener('click', () => {
         tabMgr.openTab(
@@ -789,7 +801,7 @@ function buildSidebar(): void {
         items.push({ label: '삭제', action: () => deleteCssSection(idx) });
         showContextMenu(e.clientX, e.clientY, items);
       });
-      cssFolder.children.appendChild(sectionEl);
+      cssSectionContainer.appendChild(sectionEl);
     }
   } // end if (!isRisum) — CSS folder
 
@@ -954,6 +966,11 @@ function buildSidebar(): void {
     const subFolder = createFolderItem(folder.entry.comment || `folder_${folder.index}`, '📁', 1);
     lbFolder.children.appendChild(subFolder.header);
     lbFolder.children.appendChild(subFolder.children);
+    // Tag for DnD
+    const fEntry = fileData.lorebook[folder.index];
+    const folderKey = `folder:${fEntry.key || fEntry.comment || folder.index}`;
+    subFolder.children.dataset.dndLoreContainer = '';
+    subFolder.children.dataset.dndLoreFolder = folderKey;
 
     // Lorebook folder right-click: rename / add entry / delete contents / delete folder
     const folderIdx = folder.index;
@@ -1079,13 +1096,21 @@ function buildSidebar(): void {
 
     for (const child of folder.children) {
       const entryEl = createLoreEntryItem(child, 2);
+      entryEl.dataset.dndIdx = String(child.index);
       subFolder.children.appendChild(entryEl);
     }
   }
 
+  // Root lorebook entries container (for DnD)
+  const loreRootContainer = document.createElement('div');
+  loreRootContainer.dataset.dndLoreContainer = '';
+  loreRootContainer.dataset.dndLoreFolder = '';
+  lbFolder.children.appendChild(loreRootContainer);
+
   for (const child of rootEntries) {
     const entryEl = createLoreEntryItem(child, 1);
-    lbFolder.children.appendChild(entryEl);
+    entryEl.dataset.dndIdx = String(child.index);
+    loreRootContainer.appendChild(entryEl);
   }
 
   // Regex folder
@@ -1123,10 +1148,16 @@ function buildSidebar(): void {
     showContextMenu(e.clientX, e.clientY, items);
   });
 
+  // Regex items container (for DnD)
+  const regexContainer = document.createElement('div');
+  regexContainer.dataset.dndRegexContainer = '';
+  rxFolder.children.appendChild(regexContainer);
+
   for (let i = 0; i < fileData.regex.length; i++) {
     const rx = fileData.regex[i];
     const label = rx.comment || `regex_${i}`;
     const el = createTreeItem(label, '·', 1);
+    el.dataset.dndIdx = String(i);
     const idx = i;
     el.addEventListener('click', () => {
       tabMgr.openTab(
@@ -1152,15 +1183,17 @@ function buildSidebar(): void {
       items.push({ label: '삭제', action: () => deleteRegex(idx) });
       showContextMenu(e.clientX, e.clientY, items);
     });
-    rxFolder.children.appendChild(el);
+    regexContainer.appendChild(el);
   }
 
-  // Assets (images) folder
-  buildAssetsSidebar(tree);
+  // Assets (images) folder — then initialize drag-and-drop
+  buildAssetsSidebar(tree).then(() => {
+    initSidebarDnD(getDndDeps());
+  });
 }
 
-function buildAssetsSidebar(tree: HTMLElement): void {
-  _buildAssetsSidebar(tree, {
+function buildAssetsSidebar(tree: HTMLElement): Promise<void> {
+  return _buildAssetsSidebar(tree, {
     showContextMenu,
     addAssetFromDialog,
     openImageTab,
@@ -1232,19 +1265,41 @@ const {
   importLorebook,
   deleteLorebook,
   renameLorebook,
+  reorderLorebook,
   addNewRegex,
   importRegex,
   deleteRegex,
   renameRegex,
+  reorderRegex,
   addAssetFromDialog,
   attachAssetContextMenu,
+  reorderAsset,
   addLuaSection,
   renameLuaSection,
   deleteLuaSection,
+  reorderLuaSections,
   addCssSection,
   renameCssSection,
   deleteCssSection,
+  reorderCssSections,
 } = sidebarActions;
+
+// ==================== Drag-and-Drop Dependencies ====================
+
+function getDndDeps() {
+  return {
+    getFileData: () => fileData,
+    getLuaSections: () => luaSections,
+    getCssSections: () => cssSections,
+    getCssStylePrefix: () => _cssStylePrefix,
+    getCssStyleSuffix: () => _cssStyleSuffix,
+    reorderLorebook,
+    reorderRegex,
+    reorderLuaSections,
+    reorderCssSections,
+    reorderAsset,
+  };
+}
 
 // ==================== Backup System ====================
 

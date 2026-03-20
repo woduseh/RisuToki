@@ -33,6 +33,7 @@ const tokiAPI = {
     writeMcpConfig: () => electron_1.ipcRenderer.invoke('write-mcp-config'),
     writeCopilotMcpConfig: () => electron_1.ipcRenderer.invoke('write-copilot-mcp-config'),
     writeCodexMcpConfig: () => electron_1.ipcRenderer.invoke('write-codex-mcp-config'),
+    writeGeminiMcpConfig: () => electron_1.ipcRenderer.invoke('write-gemini-mcp-config'),
     writeAgentsMd: (content) => electron_1.ipcRenderer.invoke('write-agents-md', content),
     cleanupAgentsMd: () => electron_1.ipcRenderer.invoke('cleanup-agents-md'),
     onDataUpdated: (cb) => {
@@ -56,6 +57,7 @@ const tokiAPI = {
     addAssetBuffer: (fileName, base64, targetFolder) => electron_1.ipcRenderer.invoke('add-asset-buffer', fileName, base64, targetFolder),
     deleteAsset: (assetPath) => electron_1.ipcRenderer.invoke('delete-asset', assetPath),
     renameAsset: (oldPath, newName) => electron_1.ipcRenderer.invoke('rename-asset', oldPath, newName),
+    reorderAsset: (fromPath, toIdx) => electron_1.ipcRenderer.invoke('reorder-asset', fromPath, toIdx),
     importJson: () => electron_1.ipcRenderer.invoke('import-json'),
     autosaveFile: (updatedFields) => electron_1.ipcRenderer.invoke('autosave-file', updatedFields),
     cleanupAutosave: (customDir) => electron_1.ipcRenderer.invoke('cleanup-autosave', customDir),
@@ -98,6 +100,6 @@ const tokiAPI = {
         electron_1.ipcRenderer.on('editor-popout-save', () => cb());
     },
     setPreviewPopoutData: (data) => electron_1.ipcRenderer.invoke('set-preview-popout-data', data),
-    getGuidesPath: () => electron_1.ipcRenderer.invoke('get-guides-path')
+    getGuidesPath: () => electron_1.ipcRenderer.invoke('get-guides-path'),
 };
 electron_1.contextBridge.exposeInMainWorld('tokiAPI', tokiAPI);

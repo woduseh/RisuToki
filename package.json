@@ -1,6 +1,6 @@
 {
   "name": "risutoki",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
   "main": "main.js",
   "scripts": {
@@ -42,11 +42,13 @@
     "msgpackr": "^1.11.8",
     "node-pty": "^1.1.0",
     "pinia": "^3.0.4",
+    "sortablejs": "^1.15.7",
     "vue": "^3.5.29",
     "wasmoon": "^1.16.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/sortablejs": "^1.15.9",
     "@vitejs/plugin-vue": "^6.0.4",
     "@vue/test-utils": "^2.4.6",
     "concurrently": "^9.2.1",

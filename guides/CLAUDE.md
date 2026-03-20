@@ -205,11 +205,13 @@ css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
   "secondkey": "",
   "selective": false,
   "useRegex": false,
-  "folder": "folder:uuid",
+  "folder": "folder:<부모 폴더의 key 값>",
   "activationPercent": 100,
   "id": "uuid"
 }
 ```
+
+> **폴더 항목은 별도 구조:** `{ "key": "folder:<UUID v4>", "comment": "폴더이름", "content": "", "mode": "folder" }` — 폴더 식별자는 `key` 필드에 저장됨
 
 **핵심 필드 설명:**
 
@@ -219,16 +221,17 @@ css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
 - `insertorder`: 높을수록 프롬프트 뒤쪽에 배치.
 - `selective` + `secondkey`: 둘 다 설정 시 key와 secondkey가 모두 매칭되어야 활성화.
 - `mode`: `normal` | `constant` | `multiple` | `child` | `folder`
-- `folder`: 폴더 그룹 UUID. `mode: "folder"`인 항목이 폴더 자체.
+- `folder`: 소속 폴더 참조. `"folder:<UUID>"` 형식으로 폴더 항목의 `key` 값과 매칭. `mode: "folder"`인 항목이 폴더 자체.
 - `activationPercent`: 활성화 확률 (0~100). 기본 100.
 - `key=""` + `alwaysActive=false` → **0 토큰** (완전히 스킵됨). DB 저장용으로 활용.
 
 **폴더 관리:**
 
-- 폴더 생성: `add_lorebook({ comment: "폴더이름", mode: "folder", key: "", content: "" })`
-- 아이템을 폴더로 이동: `write_lorebook(index, { folder: "folder:UUID" })` — UUID는 폴더 항목의 `id` 값
+- 폴더 생성: `add_lorebook({ comment: "폴더이름", mode: "folder", key: "folder:<UUID>", content: "" })` — `key` 필드에 `"folder:<UUID v4>"` 형식으로 고유 식별자를 지정해야 함
+- 아이템을 폴더로 이동: `write_lorebook(index, { folder: "folder:<UUID>" })` — 폴더 항목의 `key` 값과 동일한 문자열
 - 폴더에서 꺼내기: `write_lorebook(index, { folder: "" })`
 - `list_lorebook` 결과에서 `mode: "folder"`인 항목이 폴더 자체 (내용 없음)
+- **주의:** 폴더 식별자는 `id` 필드가 아닌 **`key` 필드**에 저장됨. `key: "folder:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"` 형식 필수
 
 ### 정규식 항목 구조
 

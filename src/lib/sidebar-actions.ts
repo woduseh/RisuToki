@@ -29,11 +29,7 @@ export interface SidebarActionDeps {
   ) => void;
   closeTab: (id: string) => void;
   markFieldDirty: (field: string) => void;
-  shiftIndexedTabsAfterRemoval: (
-    prefix: string,
-    removedIndices: number[],
-    buildTabState: TabStateFn,
-  ) => void;
+  shiftIndexedTabsAfterRemoval: (prefix: string, removedIndices: number[], buildTabState: TabStateFn) => void;
   refreshIndexedTabs: (prefix: string, buildTabState: TabStateFn) => void;
 
   buildLorebookTabState: TabStateFn;
@@ -45,7 +41,9 @@ export interface SidebarActionDeps {
 export function createSidebarActions(deps: SidebarActionDeps) {
   // ----- helpers -----
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function fd(): any { return deps.getFileData(); }
+  function fd(): any {
+    return deps.getFileData();
+  }
 
   // ==================== Lorebook ====================
 
@@ -64,15 +62,20 @@ export function createSidebarActions(deps: SidebarActionDeps) {
       secondkey: '',
       constant: false,
       order: fileData.lorebook.length,
-      folder: ''
+      folder: '',
     };
     fileData.lorebook.push(newEntry);
     deps.markFieldDirty('lorebook');
     deps.buildSidebar();
     const idx = fileData.lorebook.length - 1;
-    deps.openTab(`lore_${idx}`, newEntry.comment, '_loreform',
+    deps.openTab(
+      `lore_${idx}`,
+      newEntry.comment,
+      '_loreform',
       () => fd().lorebook[idx],
-      (v: unknown) => { Object.assign(fd().lorebook[idx], v as object); }
+      (v: unknown) => {
+        Object.assign(fd().lorebook[idx], v as object);
+      },
     );
     deps.setStatus('새 로어북 항목 추가됨');
   }
@@ -82,9 +85,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     if (!fileData) return;
     const name = await deps.showPrompt('폴더 이름을 입력하세요', '새 폴더');
     if (!name) return;
-    const folderId = crypto.randomUUID
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const folderId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const newFolder = {
       key: folderId,
       content: '',
@@ -97,7 +98,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
       secondkey: '',
       constant: false,
       order: fileData.lorebook.length,
-      folder: ''
+      folder: '',
     };
     fileData.lorebook.push(newFolder);
     deps.buildSidebar();
@@ -114,7 +115,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     let addedCount = 0;
     for (const raw of imported) {
       const item = raw as { fileName: string; data: Record<string, unknown> };
-      const entries = Array.isArray(item.data) ? item.data : ((item.data.entries as unknown[]) || [item.data]);
+      const entries = Array.isArray(item.data) ? item.data : (item.data.entries as unknown[]) || [item.data];
       for (const entry of entries) {
         fileData.lorebook.push({
           key: entry.key || (entry.keys ? entry.keys.join(', ') : ''),
@@ -128,7 +129,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
           secondkey: entry.secondkey || (entry.secondary_keys ? entry.secondary_keys.join(', ') : ''),
           constant: entry.constant || false,
           order: fileData.lorebook.length,
-          folder: entry.folder || ''
+          folder: entry.folder || '',
         });
         addedCount++;
       }
@@ -143,7 +144,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     const fileData = fd();
     if (!fileData || idx < 0 || idx >= fileData.lorebook.length) return;
     const name = fileData.lorebook[idx].comment || `entry_${idx}`;
-    if (!await deps.showConfirm(`"${name}" 로어북 항목을 삭제하시겠습니까?`)) return;
+    if (!(await deps.showConfirm(`"${name}" 로어북 항목을 삭제하시겠습니까?`))) return;
 
     deps.closeTab(`lore_${idx}`);
     fileData.lorebook.splice(idx, 1);
@@ -178,15 +179,20 @@ export function createSidebarActions(deps: SidebarActionDeps) {
       type: 'editInput',
       ableFlag: true,
       flag: '',
-      replaceOrder: 0
+      replaceOrder: 0,
     };
     fileData.regex.push(newRegex);
     deps.markFieldDirty('regex');
     deps.buildSidebar();
     const idx = fileData.regex.length - 1;
-    deps.openTab(`regex_${idx}`, newRegex.comment, '_regexform',
+    deps.openTab(
+      `regex_${idx}`,
+      newRegex.comment,
+      '_regexform',
       () => fd().regex[idx],
-      (v: unknown) => { Object.assign(fd().regex[idx], v as object); }
+      (v: unknown) => {
+        Object.assign(fd().regex[idx], v as object);
+      },
     );
     deps.setStatus('새 정규식 항목 추가됨');
   }
@@ -200,14 +206,14 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     let addedCount = 0;
     for (const raw of imported) {
       const item = raw as { fileName: string; data: Record<string, unknown> };
-      const entries = Array.isArray(item.data) ? item.data : [item.data] as Record<string, unknown>[];
+      const entries = Array.isArray(item.data) ? item.data : ([item.data] as Record<string, unknown>[]);
       for (const entry of entries) {
         fileData.regex.push({
           comment: entry.comment || entry.name || item.fileName.replace('.json', ''),
           in: entry.in || entry.findRegex || '',
           out: entry.out || entry.replaceString || '',
           type: entry.type || 'editDisplay',
-          ableFlag: entry.ableFlag !== undefined ? entry.ableFlag : true
+          ableFlag: entry.ableFlag !== undefined ? entry.ableFlag : true,
         });
         addedCount++;
       }
@@ -222,7 +228,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     const fileData = fd();
     if (!fileData || idx < 0 || idx >= fileData.regex.length) return;
     const name = fileData.regex[idx].comment || `regex_${idx}`;
-    if (!await deps.showConfirm(`"${name}" 정규식을 삭제하시겠습니까?`)) return;
+    if (!(await deps.showConfirm(`"${name}" 정규식을 삭제하시겠습니까?`))) return;
 
     deps.closeTab(`regex_${idx}`);
     fileData.regex.splice(idx, 1);
@@ -260,25 +266,31 @@ export function createSidebarActions(deps: SidebarActionDeps) {
       e.preventDefault();
       e.stopPropagation();
       deps.showContextMenu(e.clientX, e.clientY, [
-        { label: '이름 변경', action: async () => {
-          const newName = await deps.showPrompt('새 파일명:', fileName);
-          if (!newName || newName === fileName) return;
-          const newPath = await window.tokiAPI.renameAsset(assetPath, newName);
-          if (newPath) {
-            deps.buildSidebar();
-            deps.setStatus(`에셋 이름 변경: ${newName}`);
-          }
-        }},
+        {
+          label: '이름 변경',
+          action: async () => {
+            const newName = await deps.showPrompt('새 파일명:', fileName);
+            if (!newName || newName === fileName) return;
+            const newPath = await window.tokiAPI.renameAsset(assetPath, newName);
+            if (newPath) {
+              deps.buildSidebar();
+              deps.setStatus(`에셋 이름 변경: ${newName}`);
+            }
+          },
+        },
         '---',
-        { label: '삭제', action: async () => {
-          if (!await deps.showConfirm(`"${fileName}" 에셋을 삭제하시겠습니까?`)) return;
-          const ok = await window.tokiAPI.deleteAsset(assetPath);
-          if (ok) {
-            deps.closeTab(`img_${assetPath}`);
-            deps.buildSidebar();
-            deps.setStatus(`에셋 삭제됨: ${fileName}`);
-          }
-        }}
+        {
+          label: '삭제',
+          action: async () => {
+            if (!(await deps.showConfirm(`"${fileName}" 에셋을 삭제하시겠습니까?`))) return;
+            const ok = await window.tokiAPI.deleteAsset(assetPath);
+            if (ok) {
+              deps.closeTab(`img_${assetPath}`);
+              deps.buildSidebar();
+              deps.setStatus(`에셋 삭제됨: ${fileName}`);
+            }
+          },
+        },
       ]);
     });
   }
@@ -298,12 +310,15 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     deps.buildSidebar();
 
     const idx = luaSections.length - 1;
-    deps.openTab(`lua_s${idx}`, name, 'lua',
+    deps.openTab(
+      `lua_s${idx}`,
+      name,
+      'lua',
       () => deps.getLuaSections()[idx].content,
       (v: unknown) => {
         deps.getLuaSections()[idx].content = v as string;
         fd().lua = deps.combineLuaSections(deps.getLuaSections());
-      }
+      },
     );
     deps.setStatus(`Lua 섹션 추가됨: ${name}`);
   }
@@ -327,7 +342,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     const luaSections = deps.getLuaSections();
     if (idx < 0 || idx >= luaSections.length) return;
     const name = luaSections[idx].name;
-    if (!await deps.showConfirm(`"${name}" Lua 섹션을 삭제하시겠습니까?`)) return;
+    if (!(await deps.showConfirm(`"${name}" Lua 섹션을 삭제하시겠습니까?`))) return;
 
     deps.closeTab(`lua_s${idx}`);
     luaSections.splice(idx, 1);
@@ -353,14 +368,15 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     deps.buildSidebar();
 
     const idx = cssSections.length - 1;
-    deps.openTab(`css_s${idx}`, name, 'css',
+    deps.openTab(
+      `css_s${idx}`,
+      name,
+      'css',
       () => deps.getCssSections()[idx].content,
       (v: unknown) => {
         deps.getCssSections()[idx].content = v as string;
-        fd().css = deps.combineCssSections(
-          deps.getCssSections(), deps.getCssStylePrefix(), deps.getCssStyleSuffix()
-        );
-      }
+        fd().css = deps.combineCssSections(deps.getCssSections(), deps.getCssStylePrefix(), deps.getCssStyleSuffix());
+      },
     );
     deps.setStatus(`CSS 섹션 추가됨: ${name}`);
   }
@@ -384,7 +400,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     const cssSections = deps.getCssSections();
     if (idx < 0 || idx >= cssSections.length) return;
     const name = cssSections[idx].name;
-    if (!await deps.showConfirm(`"${name}" CSS 섹션을 삭제하시겠습니까?`)) return;
+    if (!(await deps.showConfirm(`"${name}" CSS 섹션을 삭제하시겠습니까?`))) return;
 
     deps.closeTab(`css_s${idx}`);
     cssSections.splice(idx, 1);
@@ -395,23 +411,145 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     deps.setStatus(`CSS 섹션 삭제됨: ${name}`);
   }
 
+  // ==================== Reorder ====================
+
+  function reorderLorebook(fromIdx: number, toPositionInFolder: number, targetFolder: string): void {
+    const fileData = fd();
+    if (!fileData) return;
+    const lb: unknown[] = fileData.lorebook;
+    if (fromIdx < 0 || fromIdx >= lb.length) return;
+
+    const item = lb[fromIdx] as Record<string, unknown>;
+
+    // Update folder assignment
+    item.folder = targetFolder;
+
+    // Remove from old position
+    lb.splice(fromIdx, 1);
+
+    if (targetFolder === '') {
+      // Moving to root — find insertion point among root entries
+      const rootIndices: number[] = [];
+      for (let i = 0; i < lb.length; i++) {
+        const e = lb[i] as Record<string, unknown>;
+        if (e.mode !== 'folder' && !e.folder) rootIndices.push(i);
+      }
+      const insertAt = toPositionInFolder < rootIndices.length ? rootIndices[toPositionInFolder] : lb.length;
+      lb.splice(insertAt, 0, item);
+    } else {
+      // Moving to a folder — find the folder, then insert after folder + existing children
+      let folderIdx = -1;
+      for (let i = 0; i < lb.length; i++) {
+        const e = lb[i] as Record<string, unknown>;
+        if (e.mode === 'folder') {
+          const k = (e.key as string) || '';
+          const c = (e.comment as string) || '';
+          if (`folder:${k}` === targetFolder || `folder:${c}` === targetFolder || k === targetFolder) {
+            folderIdx = i;
+            break;
+          }
+        }
+      }
+      if (folderIdx === -1) {
+        // Folder not found, append to end
+        lb.push(item);
+      } else {
+        // Count children already in this folder
+        const childrenInFolder: number[] = [];
+        for (let i = 0; i < lb.length; i++) {
+          const e = lb[i] as Record<string, unknown>;
+          if (e.folder === targetFolder) childrenInFolder.push(i);
+        }
+        const insertAt =
+          toPositionInFolder < childrenInFolder.length
+            ? childrenInFolder[toPositionInFolder]
+            : childrenInFolder.length > 0
+              ? childrenInFolder[childrenInFolder.length - 1] + 1
+              : folderIdx + 1;
+        lb.splice(insertAt, 0, item);
+      }
+    }
+
+    deps.markFieldDirty('lorebook');
+    deps.refreshIndexedTabs('lore_', deps.buildLorebookTabState);
+    deps.buildSidebar();
+    deps.setStatus('로어북 항목 이동됨');
+  }
+
+  function reorderRegex(fromIdx: number, toIdx: number): void {
+    const fileData = fd();
+    if (!fileData) return;
+    const arr: unknown[] = fileData.regex;
+    if (fromIdx < 0 || fromIdx >= arr.length) return;
+    const item = arr.splice(fromIdx, 1)[0];
+    const adjustedTo = toIdx > fromIdx ? toIdx : toIdx;
+    arr.splice(Math.min(adjustedTo, arr.length), 0, item);
+    deps.markFieldDirty('regex');
+    deps.refreshIndexedTabs('regex_', deps.buildRegexTabState);
+    deps.buildSidebar();
+    deps.setStatus('정규식 항목 이동됨');
+  }
+
+  function reorderLuaSections(fromIdx: number, toIdx: number): void {
+    const fileData = fd();
+    if (!fileData) return;
+    const sections = deps.getLuaSections();
+    if (fromIdx < 0 || fromIdx >= sections.length) return;
+    const item = sections.splice(fromIdx, 1)[0];
+    const adjustedTo = toIdx > fromIdx ? toIdx : toIdx;
+    sections.splice(Math.min(adjustedTo, sections.length), 0, item);
+    fileData.lua = deps.combineLuaSections(sections);
+    deps.markFieldDirty('lua');
+    deps.refreshIndexedTabs('lua_s', deps.buildLuaSectionTabState);
+    deps.buildSidebar();
+    deps.setStatus('Lua 섹션 이동됨');
+  }
+
+  function reorderCssSections(fromIdx: number, toIdx: number): void {
+    const fileData = fd();
+    if (!fileData) return;
+    const sections = deps.getCssSections();
+    if (fromIdx < 0 || fromIdx >= sections.length) return;
+    const item = sections.splice(fromIdx, 1)[0];
+    const adjustedTo = toIdx > fromIdx ? toIdx : toIdx;
+    sections.splice(Math.min(adjustedTo, sections.length), 0, item);
+    fileData.css = deps.combineCssSections(sections, deps.getCssStylePrefix(), deps.getCssStyleSuffix());
+    deps.markFieldDirty('css');
+    deps.refreshIndexedTabs('css_s', deps.buildCssSectionTabState);
+    deps.buildSidebar();
+    deps.setStatus('CSS 섹션 이동됨');
+  }
+
+  async function reorderAsset(fromPath: string, toIdx: number): Promise<void> {
+    const ok = await window.tokiAPI.reorderAsset(fromPath, toIdx);
+    if (ok) {
+      deps.buildSidebar();
+      deps.setStatus('에셋 위치 변경됨');
+    }
+  }
+
   return {
     addNewLorebook,
     addNewLorebookFolder,
     importLorebook,
     deleteLorebook,
     renameLorebook,
+    reorderLorebook,
     addNewRegex,
     importRegex,
     deleteRegex,
     renameRegex,
+    reorderRegex,
     addAssetFromDialog,
     attachAssetContextMenu,
+    reorderAsset,
     addLuaSection,
     renameLuaSection,
     deleteLuaSection,
+    reorderLuaSections,
     addCssSection,
     renameCssSection,
     deleteCssSection,
+    reorderCssSections,
   };
 }
