@@ -29,6 +29,8 @@ function createMockDeps(overrides: Partial<SidebarActionDeps> = {}): SidebarActi
     buildRegexTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
     buildLuaSectionTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
     buildCssSectionTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
+    buildAltGreetTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
+    buildGrpGreetTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
     ...overrides,
   };
 }
@@ -132,5 +134,65 @@ describe('reorderLorebook', () => {
     actions.reorderLorebook(1, 0, '');
     const movedItem = lorebook.find((e) => e.comment === 'child1');
     expect(movedItem?.folder).toBe('');
+  });
+});
+
+describe('reorderAlternateGreetings', () => {
+  it('should reorder alternate greetings', () => {
+    const alternateGreetings = ['Hello', 'Hi', 'Hey'];
+    const deps = createMockDeps({
+      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', alternateGreetings }),
+    });
+    const actions = createSidebarActions(deps);
+    actions.reorderAlternateGreetings(0, 2);
+    expect(alternateGreetings).toEqual(['Hi', 'Hey', 'Hello']);
+    expect(deps.markFieldDirty).toHaveBeenCalledWith('alternateGreetings');
+  });
+});
+
+describe('reorderGroupOnlyGreetings', () => {
+  it('should reorder group-only greetings', () => {
+    const groupOnlyGreetings = ['G1', 'G2', 'G3'];
+    const deps = createMockDeps({
+      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', groupOnlyGreetings }),
+    });
+    const actions = createSidebarActions(deps);
+    actions.reorderGroupOnlyGreetings(2, 0);
+    expect(groupOnlyGreetings).toEqual(['G3', 'G1', 'G2']);
+    expect(deps.markFieldDirty).toHaveBeenCalledWith('groupOnlyGreetings');
+  });
+});
+
+describe('addAlternateGreeting', () => {
+  it('should add empty greeting and open tab', () => {
+    const alternateGreetings: string[] = ['existing'];
+    const deps = createMockDeps({
+      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', alternateGreetings }),
+    });
+    const actions = createSidebarActions(deps);
+    actions.addAlternateGreeting();
+    expect(alternateGreetings).toEqual(['existing', '']);
+    expect(deps.markFieldDirty).toHaveBeenCalledWith('alternateGreetings');
+    expect(deps.openTab).toHaveBeenCalledWith(
+      'altGreet_1',
+      '인사말 2',
+      'html',
+      expect.any(Function),
+      expect.any(Function),
+    );
+  });
+});
+
+describe('deleteAlternateGreeting', () => {
+  it('should delete greeting at index', async () => {
+    const alternateGreetings = ['A', 'B', 'C'];
+    const deps = createMockDeps({
+      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', alternateGreetings }),
+    });
+    const actions = createSidebarActions(deps);
+    await actions.deleteAlternateGreeting(1);
+    expect(alternateGreetings).toEqual(['A', 'C']);
+    expect(deps.closeTab).toHaveBeenCalledWith('altGreet_1');
+    expect(deps.markFieldDirty).toHaveBeenCalledWith('alternateGreetings');
   });
 });

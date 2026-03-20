@@ -36,6 +36,8 @@ export interface SidebarActionDeps {
   buildRegexTabState: TabStateFn;
   buildLuaSectionTabState: TabStateFn;
   buildCssSectionTabState: TabStateFn;
+  buildAltGreetTabState: TabStateFn;
+  buildGrpGreetTabState: TabStateFn;
 }
 
 export function createSidebarActions(deps: SidebarActionDeps) {
@@ -528,6 +530,104 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     }
   }
 
+  // ==================== Alternate Greetings ====================
+
+  function addAlternateGreeting(): void {
+    const fileData = fd();
+    if (!fileData) return;
+    const arr: string[] = fileData.alternateGreetings;
+    arr.push('');
+    const idx = arr.length - 1;
+    deps.markFieldDirty('alternateGreetings');
+    deps.buildSidebar();
+    deps.openTab(
+      `altGreet_${idx}`,
+      `인사말 ${idx + 1}`,
+      'html',
+      () => fd().alternateGreetings[idx] ?? '',
+      (v: unknown) => {
+        fd().alternateGreetings[idx] = v as string;
+      },
+    );
+    deps.setStatus(`추가 첫 메시지 ${idx + 1} 추가됨`);
+  }
+
+  async function deleteAlternateGreeting(idx: number): Promise<void> {
+    const fileData = fd();
+    if (!fileData) return;
+    const arr: string[] = fileData.alternateGreetings;
+    if (idx < 0 || idx >= arr.length) return;
+    if (!(await deps.showConfirm(`인사말 ${idx + 1}을(를) 삭제하시겠습니까?`))) return;
+    deps.closeTab(`altGreet_${idx}`);
+    arr.splice(idx, 1);
+    deps.markFieldDirty('alternateGreetings');
+    deps.buildSidebar();
+    deps.shiftIndexedTabsAfterRemoval('altGreet_', [idx], deps.buildAltGreetTabState);
+    deps.setStatus(`추가 첫 메시지 ${idx + 1} 삭제됨`);
+  }
+
+  function reorderAlternateGreetings(fromIdx: number, toIdx: number): void {
+    const fileData = fd();
+    if (!fileData) return;
+    const arr: string[] = fileData.alternateGreetings;
+    if (fromIdx < 0 || fromIdx >= arr.length) return;
+    const item = arr.splice(fromIdx, 1)[0];
+    arr.splice(Math.min(toIdx, arr.length), 0, item);
+    deps.markFieldDirty('alternateGreetings');
+    deps.refreshIndexedTabs('altGreet_', deps.buildAltGreetTabState);
+    deps.buildSidebar();
+    deps.setStatus('추가 첫 메시지 이동됨');
+  }
+
+  // ==================== Group Only Greetings ====================
+
+  function addGroupOnlyGreeting(): void {
+    const fileData = fd();
+    if (!fileData) return;
+    const arr: string[] = fileData.groupOnlyGreetings;
+    arr.push('');
+    const idx = arr.length - 1;
+    deps.markFieldDirty('groupOnlyGreetings');
+    deps.buildSidebar();
+    deps.openTab(
+      `grpGreet_${idx}`,
+      `그룹 인사말 ${idx + 1}`,
+      'html',
+      () => fd().groupOnlyGreetings[idx] ?? '',
+      (v: unknown) => {
+        fd().groupOnlyGreetings[idx] = v as string;
+      },
+    );
+    deps.setStatus(`그룹 첫 메시지 ${idx + 1} 추가됨`);
+  }
+
+  async function deleteGroupOnlyGreeting(idx: number): Promise<void> {
+    const fileData = fd();
+    if (!fileData) return;
+    const arr: string[] = fileData.groupOnlyGreetings;
+    if (idx < 0 || idx >= arr.length) return;
+    if (!(await deps.showConfirm(`그룹 인사말 ${idx + 1}을(를) 삭제하시겠습니까?`))) return;
+    deps.closeTab(`grpGreet_${idx}`);
+    arr.splice(idx, 1);
+    deps.markFieldDirty('groupOnlyGreetings');
+    deps.buildSidebar();
+    deps.shiftIndexedTabsAfterRemoval('grpGreet_', [idx], deps.buildGrpGreetTabState);
+    deps.setStatus(`그룹 첫 메시지 ${idx + 1} 삭제됨`);
+  }
+
+  function reorderGroupOnlyGreetings(fromIdx: number, toIdx: number): void {
+    const fileData = fd();
+    if (!fileData) return;
+    const arr: string[] = fileData.groupOnlyGreetings;
+    if (fromIdx < 0 || fromIdx >= arr.length) return;
+    const item = arr.splice(fromIdx, 1)[0];
+    arr.splice(Math.min(toIdx, arr.length), 0, item);
+    deps.markFieldDirty('groupOnlyGreetings');
+    deps.refreshIndexedTabs('grpGreet_', deps.buildGrpGreetTabState);
+    deps.buildSidebar();
+    deps.setStatus('그룹 첫 메시지 이동됨');
+  }
+
   return {
     addNewLorebook,
     addNewLorebookFolder,
@@ -551,5 +651,11 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     renameCssSection,
     deleteCssSection,
     reorderCssSections,
+    addAlternateGreeting,
+    deleteAlternateGreeting,
+    reorderAlternateGreetings,
+    addGroupOnlyGreeting,
+    deleteGroupOnlyGreeting,
+    reorderGroupOnlyGreetings,
   };
 }

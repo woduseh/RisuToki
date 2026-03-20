@@ -27,6 +27,8 @@ export interface DndDeps {
   reorderLuaSections: (fromIdx: number, toIdx: number) => void;
   reorderCssSections: (fromIdx: number, toIdx: number) => void;
   reorderAsset: (fromPath: string, toIdx: number) => void;
+  reorderAlternateGreetings: (fromIdx: number, toIdx: number) => void;
+  reorderGroupOnlyGreetings: (fromIdx: number, toIdx: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +121,12 @@ export function initSidebarDnD(deps: DndDeps): void {
 
   // --- Assets ---
   initAssetDnD(deps);
+
+  // --- Alternate Greetings ---
+  initGreetingDnD('altgreet', deps.reorderAlternateGreetings);
+
+  // --- Group Only Greetings ---
+  initGreetingDnD('grpgreet', deps.reorderGroupOnlyGreetings);
 }
 
 // ---------------------------------------------------------------------------
@@ -235,4 +243,20 @@ function initAssetDnD(deps: DndDeps): void {
       }),
     );
   });
+}
+
+// ---------------------------------------------------------------------------
+// Greeting DnD (flat list — alternateGreetings / groupOnlyGreetings)
+// ---------------------------------------------------------------------------
+
+function initGreetingDnD(type: string, reorder: (fromIdx: number, toIdx: number) => void): void {
+  const container = document.querySelector<HTMLElement>(`[data-dnd-${type}-container]`);
+  if (!container) return;
+
+  track(
+    Sortable.create(container, {
+      ...SHARED_OPTIONS,
+      onEnd: makeFlatOnEnd(reorder),
+    }),
+  );
 }

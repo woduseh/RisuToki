@@ -2,7 +2,7 @@
 
 > RisuAI .charx / .risum / .risup 파일 전용 에디터 + AI CLI 통합 터미널
 
-[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/komodoD/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](https://github.com/komodoD/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
