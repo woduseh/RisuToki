@@ -53,12 +53,7 @@ export interface RefsSidebarDeps {
   closeTab(id: string): void;
 
   // External text editing
-  openExternalTextTab(
-    id: string,
-    label: string,
-    value: string,
-    persist: (val: string) => void | Promise<void>,
-  ): void;
+  openExternalTextTab(id: string, label: string, value: string, persist: (val: string) => void | Promise<void>): void;
 
   // IPC (tokiAPI wrappers)
   openReference(): Promise<unknown>;
@@ -88,10 +83,7 @@ export function stringifyStringArray(value: unknown): string {
 
 // ---- addReferenceFile ----
 
-export async function addReferenceFile(
-  container: HTMLElement,
-  deps: RefsSidebarDeps,
-): Promise<void> {
+export async function addReferenceFile(container: HTMLElement, deps: RefsSidebarDeps): Promise<void> {
   const beforeCount = (await deps.syncReferenceFiles()).length;
   const result = await deps.openReference();
   if (!result) return;
@@ -106,19 +98,25 @@ export async function addReferenceFile(
 
 // ---- buildRefsSidebar ----
 
-export async function buildRefsSidebar(
-  container: HTMLElement,
-  deps: RefsSidebarDeps,
-): Promise<void> {
+let _buildVersion = 0;
+
+/** @internal — exposed for testing only */
+export function _resetBuildVersion(): void {
+  _buildVersion = 0;
+}
+
+export async function buildRefsSidebar(container: HTMLElement, deps: RefsSidebarDeps): Promise<void> {
+  const myVersion = ++_buildVersion;
   container.innerHTML = '';
   await deps.syncReferenceFiles();
+  if (myVersion !== _buildVersion) return;
   const referenceFiles = deps.getReferenceFiles();
 
   // ---- Guides folder ----
   const guideData = await deps.listGuides();
+  if (myVersion !== _buildVersion) return;
   const builtInFiles =
-    (guideData as { builtIn?: string[] })?.builtIn ||
-    (Array.isArray(guideData) ? (guideData as string[]) : []);
+    (guideData as { builtIn?: string[] })?.builtIn || (Array.isArray(guideData) ? (guideData as string[]) : []);
   const sessionFiles = (guideData as { session?: string[] })?.session || [];
   const guideFolder = createFolderItem('가이드', '📖', 0);
   container.appendChild(guideFolder.header);
@@ -132,20 +130,12 @@ export async function buildRefsSidebar(
       {
         label: '새 가이드 작성',
         action: async () => {
-          const name = await deps.showPrompt(
-            '파일 이름 (예: guide.md)',
-            'new_guide.md',
-          );
+          const name = await deps.showPrompt('파일 이름 (예: guide.md)', 'new_guide.md');
           if (!name) return;
           const fn = name.endsWith('.md') ? name : name + '.md';
           await deps.writeGuide(fn, '');
           buildRefsSidebar(container, deps);
-          deps.openExternalTextTab(
-            `guide_${fn}`,
-            `[가이드] ${fn}`,
-            '',
-            (val: string) => deps.writeGuide(fn, val),
-          );
+          deps.openExternalTextTab(`guide_${fn}`, `[가이드] ${fn}`, '', (val: string) => deps.writeGuide(fn, val));
           deps.setStatus(`가이드 생성: ${fn}`);
         },
       },
@@ -178,12 +168,7 @@ export async function buildRefsSidebar(
         deps.setStatus('가이드 파일 읽기 실패');
         return;
       }
-      deps.openExternalTextTab(
-        tabId,
-        `[가이드] ${fileName}`,
-        content,
-        (val: string) => deps.writeGuide(fileName, val),
-      );
+      deps.openExternalTextTab(tabId, `[가이드] ${fileName}`, content, (val: string) => deps.writeGuide(fileName, val));
     });
     el.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
@@ -202,9 +187,7 @@ export async function buildRefsSidebar(
           label: '경로 복사',
           action: async () => {
             const guidesDir = await deps.getGuidesPath();
-            const fullPath = guidesDir
-              ? `${guidesDir.replace(/\\/g, '/')}/${fileName}`
-              : `guides/${fileName}`;
+            const fullPath = guidesDir ? `${guidesDir.replace(/\\/g, '/')}/${fileName}` : `guides/${fileName}`;
             navigator.clipboard.writeText(fullPath);
             deps.setStatus(`복사됨: ${fullPath}`);
           },
@@ -221,11 +204,7 @@ export async function buildRefsSidebar(
           deps.closeTab(`guide_${fileName}`);
           await deps.deleteGuide(fileName);
           buildRefsSidebar(container, deps);
-          deps.setStatus(
-            isSession
-              ? `가이드 제거됨: ${fileName}`
-              : `가이드 삭제됨: ${fileName}`,
-          );
+          deps.setStatus(isSession ? `가이드 제거됨: ${fileName}` : `가이드 삭제됨: ${fileName}`);
         },
       });
       deps.showContextMenu(e.clientX, e.clientY, items);
@@ -236,8 +215,7 @@ export async function buildRefsSidebar(
   for (const fileName of builtInFiles) addGuideItem(fileName, false);
   if (sessionFiles.length > 0) {
     const sep = document.createElement('div');
-    sep.style.cssText =
-      'height:1px;background:var(--border-color);margin:4px 8px;';
+    sep.style.cssText = 'height:1px;background:var(--border-color);margin:4px 8px;';
     guideFolder.children.appendChild(sep);
     for (const fileName of sessionFiles) addGuideItem(fileName, true);
   }
@@ -249,9 +227,7 @@ export async function buildRefsSidebar(
     'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:pointer;text-transform:uppercase;border-top:1px solid var(--border-color);margin-top:8px;';
   refHeader.textContent = '── 참고 파일 ──';
   refHeader.title = '클릭하여 참고 파일 추가';
-  refHeader.addEventListener('click', () =>
-    addReferenceFile(container, deps),
-  );
+  refHeader.addEventListener('click', () => addReferenceFile(container, deps));
   refHeader.addEventListener('contextmenu', (e: MouseEvent) => {
     e.preventDefault();
     deps.showContextMenu(e.clientX, e.clientY, [
@@ -320,9 +296,7 @@ function renderReferenceFile(
     items.push({
       label: '참고 파일 제거',
       action: async () => {
-        await deps.removeReference(
-          referenceFiles[refIdx].filePath || referenceFiles[refIdx].fileName,
-        );
+        await deps.removeReference(referenceFiles[refIdx].filePath || referenceFiles[refIdx].fileName);
         await buildRefsSidebar(container, deps);
       },
     });
@@ -359,21 +333,14 @@ function renderReferenceFile(
     if (Array.isArray(val)) {
       if (val.length === 0) continue;
     } else if (f.id === 'triggerScripts') {
-      if (!ref.data.triggerScripts || ref.data.triggerScripts === '[]')
-        continue;
+      if (!ref.data.triggerScripts || ref.data.triggerScripts === '[]') continue;
     } else if (!val) {
       continue;
     }
     const el = createTreeItem(f.label, '·', 1);
     const tabId = `ref_${refIdx}_${f.id}`;
     el.addEventListener('click', () => {
-      deps.openTab(
-        tabId,
-        `[참고] ${ref.fileName} - ${f.label}`,
-        f.lang,
-        f.get || (() => ref.data[f.id]),
-        null,
-      );
+      deps.openTab(tabId, `[참고] ${ref.fileName} - ${f.label}`, f.lang, f.get || (() => ref.data[f.id]), null);
     });
     el.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
@@ -382,12 +349,8 @@ function renderReferenceFile(
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(
-              `read_reference_field(${refIdx}, "${f.id}")`,
-            );
-            deps.setStatus(
-              `복사됨: read_reference_field(${refIdx}, "${f.id}")`,
-            );
+            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "${f.id}")`);
+            deps.setStatus(`복사됨: read_reference_field(${refIdx}, "${f.id}")`);
           },
         },
       ]);
@@ -413,23 +376,12 @@ function renderReferenceFile(
 
 // ---- Lua sub-tree ----
 
-function renderRefLua(
-  parent: HTMLElement,
-  deps: RefsSidebarDeps,
-  ref: ReferenceFile,
-  refIdx: number,
-): void {
+function renderRefLua(parent: HTMLElement, deps: RefsSidebarDeps, ref: ReferenceFile, refIdx: number): void {
   const refLuaSections = parseLuaSections(ref.data.lua!);
   if (refLuaSections.length <= 1) {
     const el = createTreeItem('Lua', '·', 1);
     el.addEventListener('click', () => {
-      deps.openTab(
-        `ref_${refIdx}_lua`,
-        `[참고] ${ref.fileName} - Lua`,
-        'lua',
-        () => ref.data.lua,
-        null,
-      );
+      deps.openTab(`ref_${refIdx}_lua`, `[참고] ${ref.fileName} - Lua`, 'lua', () => ref.data.lua, null);
     });
     el.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
@@ -438,9 +390,7 @@ function renderRefLua(
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(
-              `read_reference_field(${refIdx}, "lua")`,
-            );
+            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "lua")`);
             deps.setStatus(`복사됨: read_reference_field(${refIdx}, "lua")`);
           },
         },
@@ -454,13 +404,7 @@ function renderRefLua(
     // Combined view
     const combinedEl = createTreeItem('통합 보기', '📋', 2);
     combinedEl.addEventListener('click', () => {
-      deps.openTab(
-        `ref_${refIdx}_lua`,
-        `[참고] ${ref.fileName} - Lua (통합)`,
-        'lua',
-        () => ref.data.lua,
-        null,
-      );
+      deps.openTab(`ref_${refIdx}_lua`, `[참고] ${ref.fileName} - Lua (통합)`, 'lua', () => ref.data.lua, null);
     });
     combinedEl.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
@@ -469,9 +413,7 @@ function renderRefLua(
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(
-              `read_reference_field(${refIdx}, "lua")`,
-            );
+            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "lua")`);
             deps.setStatus(`복사됨: read_reference_field(${refIdx}, "lua")`);
           },
         },
@@ -502,9 +444,7 @@ function renderRefLua(
               navigator.clipboard.writeText(
                 `read_reference_field(${refIdx}, "lua") → 섹션 "${sec.name}" (index ${secIdx})`,
               );
-              deps.setStatus(
-                `복사됨: 참고자료[${refIdx}] Lua 섹션[${secIdx}]`,
-              );
+              deps.setStatus(`복사됨: 참고자료[${refIdx}] Lua 섹션[${secIdx}]`);
             },
           },
         ]);
@@ -516,23 +456,12 @@ function renderRefLua(
 
 // ---- CSS sub-tree ----
 
-function renderRefCss(
-  parent: HTMLElement,
-  deps: RefsSidebarDeps,
-  ref: ReferenceFile,
-  refIdx: number,
-): void {
+function renderRefCss(parent: HTMLElement, deps: RefsSidebarDeps, ref: ReferenceFile, refIdx: number): void {
   const refCssSections = parseCssSections(ref.data.css!).sections;
   if (refCssSections.length <= 1) {
     const el = createTreeItem('CSS', '·', 1);
     el.addEventListener('click', () => {
-      deps.openTab(
-        `ref_${refIdx}_css`,
-        `[참고] ${ref.fileName} - CSS`,
-        'css',
-        () => ref.data.css,
-        null,
-      );
+      deps.openTab(`ref_${refIdx}_css`, `[참고] ${ref.fileName} - CSS`, 'css', () => ref.data.css, null);
     });
     el.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
@@ -541,9 +470,7 @@ function renderRefCss(
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(
-              `read_reference_field(${refIdx}, "css")`,
-            );
+            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "css")`);
             deps.setStatus(`복사됨: read_reference_field(${refIdx}, "css")`);
           },
         },
@@ -556,13 +483,7 @@ function renderRefCss(
     parent.appendChild(cssFolderRef.children);
     const combinedEl = createTreeItem('통합 보기', '📋', 2);
     combinedEl.addEventListener('click', () => {
-      deps.openTab(
-        `ref_${refIdx}_css`,
-        `[참고] ${ref.fileName} - CSS (통합)`,
-        'css',
-        () => ref.data.css,
-        null,
-      );
+      deps.openTab(`ref_${refIdx}_css`, `[참고] ${ref.fileName} - CSS (통합)`, 'css', () => ref.data.css, null);
     });
     combinedEl.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
@@ -571,9 +492,7 @@ function renderRefCss(
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(
-              `read_reference_field(${refIdx}, "css")`,
-            );
+            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "css")`);
             deps.setStatus(`복사됨: read_reference_field(${refIdx}, "css")`);
           },
         },
@@ -603,9 +522,7 @@ function renderRefCss(
               navigator.clipboard.writeText(
                 `read_reference_field(${refIdx}, "css") → 섹션 "${sec.name}" (index ${secIdx})`,
               );
-              deps.setStatus(
-                `복사됨: 참고자료[${refIdx}] CSS 섹션[${secIdx}]`,
-              );
+              deps.setStatus(`복사됨: 참고자료[${refIdx}] CSS 섹션[${secIdx}]`);
             },
           },
         ]);
@@ -617,12 +534,7 @@ function renderRefCss(
 
 // ---- Lorebook sub-tree ----
 
-function renderRefLorebook(
-  parent: HTMLElement,
-  deps: RefsSidebarDeps,
-  ref: ReferenceFile,
-  refIdx: number,
-): void {
+function renderRefLorebook(parent: HTMLElement, deps: RefsSidebarDeps, ref: ReferenceFile, refIdx: number): void {
   const lorebook = ref.data.lorebook!;
   const lbFolder = createFolderItem(`로어북 (${lorebook.length})`, '📚', 1);
   parent.appendChild(lbFolder.header);
@@ -634,10 +546,7 @@ function renderRefLorebook(
     index: number;
     children: { entry: Record<string, unknown>; index: number }[];
   }[] = [];
-  const folderLookup: Record<
-    string,
-    (typeof folderDataList)[number]
-  > = {};
+  const folderLookup: Record<string, (typeof folderDataList)[number]> = {};
   const rootEntries: { entry: Record<string, unknown>; index: number }[] = [];
 
   for (let li = 0; li < lorebook.length; li++) {
@@ -663,9 +572,7 @@ function renderRefLorebook(
     const entry = lorebook[li];
     if (entry.mode === 'folder') continue;
     const folderId = entry.folder as string | undefined;
-    const matched = folderId
-      ? folderLookup[folderId] || folderLookup[String(folderId)]
-      : null;
+    const matched = folderId ? folderLookup[folderId] || folderLookup[String(folderId)] : null;
     if (matched) {
       matched.children.push({ entry, index: li });
     } else {
@@ -673,25 +580,13 @@ function renderRefLorebook(
     }
   }
 
-  function makeRefLoreItem(
-    child: { entry: Record<string, unknown>; index: number },
-    indent: number,
-  ): HTMLDivElement {
-    const lbLabel =
-      (child.entry.comment as string) ||
-      (child.entry.key as string) ||
-      `#${child.index}`;
+  function makeRefLoreItem(child: { entry: Record<string, unknown>; index: number }, indent: number): HTMLDivElement {
+    const lbLabel = (child.entry.comment as string) || (child.entry.key as string) || `#${child.index}`;
     const lbEl = createTreeItem(lbLabel, '·', indent);
     const li = child.index;
     const lbTabId = `ref_${refIdx}_lb_${li}`;
     lbEl.addEventListener('click', () => {
-      const tab = deps.openTab(
-        lbTabId,
-        `[참고] ${ref.fileName} - ${lbLabel}`,
-        '_loreform',
-        () => lorebook[li],
-        null,
-      );
+      const tab = deps.openTab(lbTabId, `[참고] ${ref.fileName} - ${lbLabel}`, '_loreform', () => lorebook[li], null);
       if (tab) tab._refLorebook = lorebook;
     });
     lbEl.addEventListener('contextmenu', (e: MouseEvent) => {
@@ -701,27 +596,21 @@ function renderRefLorebook(
         {
           label: '키 복사',
           action: () => {
-            navigator.clipboard.writeText(
-              (child.entry.key as string) || '',
-            );
+            navigator.clipboard.writeText((child.entry.key as string) || '');
             deps.setStatus(`복사됨: ${child.entry.key}`);
           },
         },
         {
           label: '내용 복사',
           action: () => {
-            navigator.clipboard.writeText(
-              (child.entry.content as string) || '',
-            );
+            navigator.clipboard.writeText((child.entry.content as string) || '');
             deps.setStatus('내용 복사됨');
           },
         },
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(
-              `read_reference_field(${refIdx}, "lorebook") → index ${li}`,
-            );
+            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "lorebook") → index ${li}`);
             deps.setStatus(`복사됨: 참고자료[${refIdx}] 로어북[${li}]`);
           },
         },
@@ -731,11 +620,7 @@ function renderRefLorebook(
   }
 
   for (const folder of folderDataList) {
-    const subFolder = createFolderItem(
-      (folder.entry.comment as string) || `folder_${folder.index}`,
-      '📁',
-      2,
-    );
+    const subFolder = createFolderItem((folder.entry.comment as string) || `folder_${folder.index}`, '📁', 2);
     lbFolder.children.appendChild(subFolder.header);
     lbFolder.children.appendChild(subFolder.children);
     for (const child of folder.children) {
@@ -749,12 +634,7 @@ function renderRefLorebook(
 
 // ---- Regex sub-tree ----
 
-function renderRefRegex(
-  parent: HTMLElement,
-  deps: RefsSidebarDeps,
-  ref: ReferenceFile,
-  refIdx: number,
-): void {
+function renderRefRegex(parent: HTMLElement, deps: RefsSidebarDeps, ref: ReferenceFile, refIdx: number): void {
   const regex = ref.data.regex!;
   const rxFolder = createFolderItem(`정규식 (${regex.length})`, '⚡', 1);
   parent.appendChild(rxFolder.header);
@@ -766,13 +646,7 @@ function renderRefRegex(
     const rxTabId = `ref_${refIdx}_rx_${xi}`;
     const rxIdx = xi;
     rxEl.addEventListener('click', () => {
-      deps.openTab(
-        rxTabId,
-        `[참고] ${ref.fileName} - ${rxLabel}`,
-        '_regexform',
-        () => ref.data.regex![rxIdx],
-        null,
-      );
+      deps.openTab(rxTabId, `[참고] ${ref.fileName} - ${rxLabel}`, '_regexform', () => ref.data.regex![rxIdx], null);
     });
     rxEl.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
@@ -781,9 +655,7 @@ function renderRefRegex(
         {
           label: '패턴 복사',
           action: () => {
-            navigator.clipboard.writeText(
-              (rx.in as string) || (rx.findRegex as string) || '',
-            );
+            navigator.clipboard.writeText((rx.in as string) || (rx.findRegex as string) || '');
             deps.setStatus('패턴 복사됨');
           },
         },
@@ -797,9 +669,7 @@ function renderRefRegex(
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(
-              `read_reference_field(${refIdx}, "regex") → index ${rxIdx}`,
-            );
+            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "regex") → index ${rxIdx}`);
             deps.setStatus(`복사됨: 참고자료[${refIdx}] 정규식[${rxIdx}]`);
           },
         },
@@ -840,37 +710,13 @@ export function openRefTabById(tabId: string, deps: OpenRefTabDeps): void {
   const fieldPart = parts[2];
 
   if (fieldPart === 'lua') {
-    deps.openTab(
-      tabId,
-      `[참고] ${ref.fileName} - Lua`,
-      'lua',
-      () => ref.data.lua,
-      null,
-    );
+    deps.openTab(tabId, `[참고] ${ref.fileName} - Lua`, 'lua', () => ref.data.lua, null);
   } else if (fieldPart === 'css') {
-    deps.openTab(
-      tabId,
-      `[참고] ${ref.fileName} - CSS`,
-      'css',
-      () => ref.data.css,
-      null,
-    );
+    deps.openTab(tabId, `[참고] ${ref.fileName} - CSS`, 'css', () => ref.data.css, null);
   } else if (fieldPart === 'globalNote') {
-    deps.openTab(
-      tabId,
-      `[참고] ${ref.fileName} - 글로벌노트`,
-      'plaintext',
-      () => ref.data.globalNote,
-      null,
-    );
+    deps.openTab(tabId, `[참고] ${ref.fileName} - 글로벌노트`, 'plaintext', () => ref.data.globalNote, null);
   } else if (fieldPart === 'firstMessage') {
-    deps.openTab(
-      tabId,
-      `[참고] ${ref.fileName} - 첫 메시지`,
-      'html',
-      () => ref.data.firstMessage,
-      null,
-    );
+    deps.openTab(tabId, `[참고] ${ref.fileName} - 첫 메시지`, 'html', () => ref.data.firstMessage, null);
   } else if (fieldPart === 'triggerScripts') {
     deps.openTab(
       tabId,
@@ -896,20 +742,11 @@ export function openRefTabById(tabId: string, deps: OpenRefTabDeps): void {
       null,
     );
   } else if (fieldPart === 'description') {
-    deps.openTab(
-      tabId,
-      `[참고] ${ref.fileName} - 설명`,
-      'plaintext',
-      () => ref.data.description,
-      null,
-    );
+    deps.openTab(tabId, `[참고] ${ref.fileName} - 설명`, 'plaintext', () => ref.data.description, null);
   } else if (fieldPart === 'lb' && parts.length >= 4) {
     const li = parseInt(parts[3], 10);
     if (ref.data.lorebook && ref.data.lorebook[li]) {
-      const lbLabel =
-        (ref.data.lorebook[li].comment as string) ||
-        (ref.data.lorebook[li].key as string) ||
-        `#${li}`;
+      const lbLabel = (ref.data.lorebook[li].comment as string) || (ref.data.lorebook[li].key as string) || `#${li}`;
       const tab = deps.openTab(
         tabId,
         `[참고] ${ref.fileName} - ${lbLabel}`,
@@ -923,13 +760,7 @@ export function openRefTabById(tabId: string, deps: OpenRefTabDeps): void {
     const xi = parseInt(parts[3], 10);
     if (ref.data.regex && ref.data.regex[xi]) {
       const rxLabel = (ref.data.regex[xi].comment as string) || `#${xi}`;
-      deps.openTab(
-        tabId,
-        `[참고] ${ref.fileName} - ${rxLabel}`,
-        '_regexform',
-        () => ref.data.regex![xi],
-        null,
-      );
+      deps.openTab(tabId, `[참고] ${ref.fileName} - ${rxLabel}`, '_regexform', () => ref.data.regex![xi], null);
     }
   }
 }
