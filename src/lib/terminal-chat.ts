@@ -1,13 +1,15 @@
 export const AI_AGENT_LABELS = {
   claude: 'Claude Code',
   copilot: 'GitHub Copilot CLI',
-  codex: 'Codex'
+  codex: 'Codex',
+  gemini: 'Gemini CLI',
 } as const;
 
 export interface AiAgentLabels {
   claude: string;
   codex: string;
   copilot: string;
+  gemini: string;
 }
 
 export interface AssistantWelcomeInfo {
@@ -69,7 +71,7 @@ export function isAssistantWelcomeBanner(text: unknown): boolean {
 
 function detectAssistantWelcomeInfo(
   text: unknown,
-  labels: AiAgentLabels = AI_AGENT_LABELS
+  labels: AiAgentLabels = AI_AGENT_LABELS,
 ): AssistantWelcomeInfo | null {
   const source = String(text ?? '');
   if (source.length < 80) return null;
@@ -77,30 +79,43 @@ function detectAssistantWelcomeInfo(
   const pathMatch = source.match(/~[\/\\][^\s│╯╰\n]+|[A-Z]:\\[^\s│╯╰\n]+/);
   const emailMatch = source.match(/[\w.+-]+@[\w.-]+/);
 
-  if ((source.includes('▟█▙') || source.includes('▛▜') || source.includes('█▙') || (source.includes('Welcome') && source.includes('Claude'))) && source.length > 120) {
+  if (
+    (source.includes('▟█▙') ||
+      source.includes('▛▜') ||
+      source.includes('█▙') ||
+      (source.includes('Welcome') && source.includes('Claude'))) &&
+    source.length > 120
+  ) {
     return {
       label: labels.claude,
       model: source.match(/(Opus|Sonnet|Haiku)\s*[\d.]+/i)?.[0] ?? null,
       path: pathMatch?.[0].trim() ?? null,
-      email: emailMatch?.[0] ?? null
+      email: emailMatch?.[0] ?? null,
     };
   }
 
-  if (/(GitHub Copilot CLI|Copilot CLI)/i.test(source) && (/(\/login|\/help|\/mcp|\/model|\/agent|\/tasks|\/theme)/i.test(source) || /What can you do\?/i.test(source))) {
+  if (
+    /(GitHub Copilot CLI|Copilot CLI)/i.test(source) &&
+    (/(\/login|\/help|\/mcp|\/model|\/agent|\/tasks|\/theme)/i.test(source) || /What can you do\?/i.test(source))
+  ) {
     return {
       label: labels.copilot,
-      model: source.match(/(Claude Sonnet 4\.5|Claude Sonnet 4|Claude Opus [\d.]+|GPT-[\w.-]+|Gemini[^\n]+)/i)?.[0] ?? null,
+      model:
+        source.match(/(Claude Sonnet 4\.5|Claude Sonnet 4|Claude Opus [\d.]+|GPT-[\w.-]+|Gemini[^\n]+)/i)?.[0] ?? null,
       path: pathMatch?.[0].trim() ?? null,
-      email: emailMatch?.[0] ?? null
+      email: emailMatch?.[0] ?? null,
     };
   }
 
-  if (/\bCodex\b/i.test(source) && (/\bWelcome\b/i.test(source) || /AGENTS\.md/i.test(source) || /approval/i.test(source) || /cwd/i.test(source))) {
+  if (
+    /\bCodex\b/i.test(source) &&
+    (/\bWelcome\b/i.test(source) || /AGENTS\.md/i.test(source) || /approval/i.test(source) || /cwd/i.test(source))
+  ) {
     return {
       label: labels.codex,
       model: source.match(/\b(?:gpt-[\w.]+|o\d(?:-mini)?|codex[-\w.]*)\b/i)?.[0] ?? null,
       path: pathMatch?.[0].trim() ?? null,
-      email: emailMatch?.[0] ?? null
+      email: emailMatch?.[0] ?? null,
     };
   }
 
@@ -138,7 +153,12 @@ export function cleanTuiOutput(text: unknown, labels: AiAgentLabels = AI_AGENT_L
       if (/^[a-zA-Z]{1,2}$/.test(line)) return false;
       if (/^[a-zA-Z\s]+$/.test(line) && line.replace(/\s/g, '').length <= 5) return false;
       if (/^[a-zA-Z]+(…|\.{2,})\s*>?\s*$/.test(line)) return false;
-      if (/^(Billowing|Thinking|Processing|Warming|Spinning|Bouncing|Crystallizing|Pondering|Meditating|Coalescing|Germinating)[.…]*\s*$/i.test(line)) return false;
+      if (
+        /^(Billowing|Thinking|Processing|Warming|Spinning|Bouncing|Crystallizing|Pondering|Meditating|Coalescing|Germinating)[.…]*\s*$/i.test(
+          line,
+        )
+      )
+        return false;
       if (/ctrl\+[a-z]/i.test(line) && line.length < 80) return false;
       if (/^\?.*shortcuts/i.test(line)) return false;
       if (/for shortcuts/.test(line)) return false;
@@ -245,7 +265,7 @@ export function applySelectedChoice(text: unknown, value: string): ApplySelected
     return {
       applied: false,
       selectedLabel: String(value),
-      text: String(text ?? '')
+      text: String(text ?? ''),
     };
   }
 
@@ -264,7 +284,9 @@ export function applySelectedChoice(text: unknown, value: string): ApplySelected
     selectedLabel: selected ? selected.label : String(value),
     text: filtered
       ? `${filtered}\n\n> ${selected ? selected.label : value}`
-      : (selected ? selected.label : String(value))
+      : selected
+        ? selected.label
+        : String(value),
   };
 }
 
@@ -285,7 +307,10 @@ export function removeCommandEcho(text: unknown, lastSentCommand = ''): string {
   return String(text ?? '')
     .split('\n')
     .filter((line) => {
-      const normalizedLine = line.replace(/^[>❯]\s*/, '').replace(/\s+/g, '').trim();
+      const normalizedLine = line
+        .replace(/^[>❯]\s*/, '')
+        .replace(/\s+/g, '')
+        .trim();
       return normalizedLine !== normalizedCommand;
     })
     .join('\n');

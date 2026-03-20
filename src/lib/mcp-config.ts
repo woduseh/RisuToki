@@ -88,7 +88,9 @@ export function cleanupJsonMcpConfig(configPath: string): void {
     } else {
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
     }
-  } catch (e: any) { console.warn('[main] MCP config cleanup failed:', e.message); }
+  } catch (e: any) {
+    console.warn('[main] MCP config cleanup failed:', e.message);
+  }
 }
 
 export function writeCurrentMcpConfig(): string | null {
@@ -150,7 +152,16 @@ export function cleanupCodexMcpConfig(): void {
     const cleaned = content.replace(/\n?# --- RisuToki MCP \(auto-generated.*?\n# --- \/RisuToki MCP ---\n?/s, '');
     fs.writeFileSync(configPath, cleaned, 'utf-8');
     console.log('[main] Codex MCP config cleaned up');
-  } catch (e: any) { console.warn('[main] Codex MCP config cleanup failed:', e.message); }
+  } catch (e: any) {
+    console.warn('[main] Codex MCP config cleanup failed:', e.message);
+  }
+}
+
+function writeGeminiMcpConfig(): string | null {
+  const configPath = path.join(os.homedir(), '.gemini', 'settings.json');
+  const writtenPath = upsertJsonMcpConfig(configPath);
+  if (writtenPath) console.log('[main] Gemini MCP config written:', writtenPath);
+  return writtenPath;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,5 +181,9 @@ export function initMcpConfig(d: McpConfigDeps): void {
 
   ipcMain.handle('write-codex-mcp-config', () => {
     return writeCodexMcpConfig();
+  });
+
+  ipcMain.handle('write-gemini-mcp-config', () => {
+    return writeGeminiMcpConfig();
   });
 }

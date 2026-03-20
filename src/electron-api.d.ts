@@ -140,6 +140,7 @@ interface TokiAPI {
   writeMcpConfig: () => Promise<string | null>;
   writeCopilotMcpConfig: () => Promise<string | null>;
   writeCodexMcpConfig: () => Promise<string | null>;
+  writeGeminiMcpConfig: () => Promise<string | null>;
   writeAgentsMd: (content: string) => Promise<string>;
   cleanupAgentsMd: () => Promise<boolean>;
   onDataUpdated: (cb: DataUpdatedCallback) => void;

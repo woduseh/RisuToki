@@ -1,20 +1,49 @@
 # Changelog
 
-## v0.3.0 (2026-03-18)
+이 파일은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 따르며,
+[시멘틱 버저닝](https://semver.org/lang/ko/)을 사용합니다.
+
+- **MAJOR (x.0.0)**: 호환성을 깨는 변경
+- **MINOR (0.x.0)**: 새 기능 추가 (하위 호환)
+- **PATCH (0.0.x)**: 버그 수정 (하위 호환)
+
+---
+
+## [0.4.0] - 2026-03-20
 
 ### 새 기능
+
+- **Gemini CLI 연동** — 터미널 메뉴에서 "Gemini 시작"으로 Gemini CLI + MCP 연동
+  - `~/.gemini/settings.json`에 MCP 설정 자동 생성/정리
+  - `AGENTS.md` 자동 생성으로 시스템 프롬프트 전달
+  - 기존 MCP 도구(필드/로어북/정규식/Lua/CSS 섹션) 그대로 사용 가능
+
+### 변경
+
+- **README.md 개선** — 프로젝트 소개, 배지, 주요 기능 테이블 추가
+- **CHANGELOG.md 형식 변경** — Keep a Changelog + 시멘틱 버저닝 형식 적용
+- **AGENTS.md 문서 규칙 추가** — 매 작업마다 자동 문서/버전 관리 규칙 명시
+
+---
+
+## [0.3.0] - 2026-03-18
+
+### 새 기능
+
 - **Skills MCP 도구** — `list_skills` / `read_skill` MCP 도구 추가로 CBS, Lua, 로어북, 정규식 등 상세 가이드를 on-demand 로딩
 - **스킬 문서 패키징** — `skills/` 폴더를 extraResources로 포함하여 빌드 배포판에서도 스킬 접근 가능
 
 ### 변경
+
 - **AGENTS.md 경량화** — 인라인 CBS/Lua 섹션을 skills 참조로 대체하여 토큰 절감
 - **CLAUDE.md 중복 제거** — AGENTS.md로 리다이렉트하여 시스템 프롬프트 토큰 2배 낭비 해소
 
 ---
 
-## v0.2.2 (2026-02-28)
+## [0.2.2] - 2026-02-28
 
 ### 새 기능
+
 - **OpenAI Codex CLI 연동** — 터미널 메뉴에서 "Codex 시작"으로 Codex CLI + MCP 연동
   - `~/.codex/config.toml`에 MCP 설정 자동 생성/정리
   - `AGENTS.md` 자동 생성으로 시스템 프롬프트 전달
@@ -26,18 +55,21 @@
 - **일괄 삭제** — 로어북/정규식 폴더 헤더 우클릭에 전체 삭제 옵션 추가
 
 ### 변경
+
 - **MCP 설정 경로 변경** — `.mcp.json`을 `~/.mcp.json`(홈 디렉토리)에 기록하여 프로젝트 루트 없이도 Claude Code MCP 연결 가능
 - **시스템 프롬프트 강화** — 섹션 단위 읽기 규칙 명시 (read_field 대신 read_lua/read_css 사용 유도)
 
 ### 수정
+
 - 터미널 Ctrl+V 두 번 붙여넣기 버그 수정
 - 터미널 재시작 시 입력 안 되는 버그 수정
 
 ---
 
-## v0.2.0-beta (2026-02-26)
+## [0.2.0-beta] - 2026-02-26
 
 ### 새 기능
+
 - **참고자료 팝아웃** — 참고자료 패널을 별도 외부 창으로 분리 (`↗` 버튼)
 - **프리뷰 엔진** — CBS/Lua 렌더링, 채팅 시뮬레이션 (F5)
 - **CSS 섹션 MCP API** — `list_css`, `read_css`, `write_css`, `replace_in_css`, `insert_in_css`
@@ -45,19 +77,22 @@
 - **MCP 경로 복사** — 사이드바 모든 항목 우클릭 시 MCP 경로 복사 메뉴
 
 ### 변경
+
 - 버튼 아이콘 구분: `↗` = 외부 창 팝아웃, `⧉` = 슬롯 분리
 - 설정에서 RisuAI 동기화 UI 제거
 
 ### 수정
+
 - 아바타 GIF 표시 오류 수정
 - 페르소나 프롬프트 전달 수정
 - 저장 시 데이터 누락 버그 수정
 
 ---
 
-## v0.1.0-beta (2026-02-24)
+## [0.1.0-beta] - 2026-02-24
 
 ### 초기 릴리즈
+
 - .charx 파일 열기/편집/저장
 - Monaco 에디터 (구문 강조, 자동완성)
 - TokiTalk 내장 터미널 (node-pty + xterm.js)

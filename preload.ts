@@ -36,13 +36,16 @@ const tokiAPI: TokiApi = {
   writeMcpConfig: () => ipcRenderer.invoke('write-mcp-config'),
   writeCopilotMcpConfig: () => ipcRenderer.invoke('write-copilot-mcp-config'),
   writeCodexMcpConfig: () => ipcRenderer.invoke('write-codex-mcp-config'),
+  writeGeminiMcpConfig: () => ipcRenderer.invoke('write-gemini-mcp-config'),
   writeAgentsMd: (content) => ipcRenderer.invoke('write-agents-md', content),
   cleanupAgentsMd: () => ipcRenderer.invoke('cleanup-agents-md'),
   onDataUpdated: (cb) => {
     ipcRenderer.on('data-updated', (_event, field: string, value: unknown) => cb(field, value));
   },
   onMcpConfirmRequest: (cb) => {
-    ipcRenderer.on('mcp-confirm-request', (_event, id: number, title: string, message: string) => cb(id, title, message));
+    ipcRenderer.on('mcp-confirm-request', (_event, id: number, title: string, message: string) =>
+      cb(id, title, message),
+    );
   },
   sendMcpConfirmResponse: (id, allowed) => ipcRenderer.send('mcp-confirm-response', id, allowed),
   onMcpStatus: (cb) => {
@@ -56,7 +59,8 @@ const tokiAPI: TokiApi = {
   getAssetData: (assetPath) => ipcRenderer.invoke('get-asset-data', assetPath),
   getAllAssetsMap: () => ipcRenderer.invoke('get-all-assets-map'),
   addAsset: (targetFolder) => ipcRenderer.invoke('add-asset', targetFolder),
-  addAssetBuffer: (fileName, base64, targetFolder) => ipcRenderer.invoke('add-asset-buffer', fileName, base64, targetFolder),
+  addAssetBuffer: (fileName, base64, targetFolder) =>
+    ipcRenderer.invoke('add-asset-buffer', fileName, base64, targetFolder),
   deleteAsset: (assetPath) => ipcRenderer.invoke('delete-asset', assetPath),
   renameAsset: (oldPath, newName) => ipcRenderer.invoke('rename-asset', oldPath, newName),
   importJson: () => ipcRenderer.invoke('import-json'),
@@ -101,7 +105,7 @@ const tokiAPI: TokiApi = {
     ipcRenderer.on('editor-popout-save', () => cb());
   },
   setPreviewPopoutData: (data) => ipcRenderer.invoke('set-preview-popout-data', data),
-  getGuidesPath: () => ipcRenderer.invoke('get-guides-path')
+  getGuidesPath: () => ipcRenderer.invoke('get-guides-path'),
 };
 
 contextBridge.exposeInMainWorld('tokiAPI', tokiAPI);

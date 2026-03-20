@@ -544,10 +544,7 @@ app.whenReady().then(() => {
     extractPrimaryLua: extractPrimaryLuaFromTriggerScripts,
     mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,
     stringifyTriggerScripts,
-    getSkillsDir: () =>
-      app.isPackaged
-        ? path.join(process.resourcesPath!, 'skills')
-        : path.join(__dirname, 'skills'),
+    getSkillsDir: () => (app.isPackaged ? path.join(process.resourcesPath!, 'skills') : path.join(__dirname, 'skills')),
   });
   apiToken = mcpApi.token;
 
@@ -626,6 +623,7 @@ app.on('window-all-closed', () => {
   }
   cleanupJsonMcpConfig(path.join(os.homedir(), '.mcp.json'));
   cleanupJsonMcpConfig(path.join(os.homedir(), '.copilot', 'mcp-config.json'));
+  cleanupJsonMcpConfig(path.join(os.homedir(), '.gemini', 'settings.json'));
   // Cleanup Codex MCP config
   cleanupCodexMcpConfig();
   cleanupAgentsMd();

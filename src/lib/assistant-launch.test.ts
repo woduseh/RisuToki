@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAssistantLaunchCommand,
   buildWindowsAssistantBootstrapCommand,
-  detectRuntimePlatform
+  detectRuntimePlatform,
 } from './assistant-launch';
 
 describe('assistant launch helpers', () => {
@@ -16,44 +16,54 @@ describe('assistant launch helpers', () => {
     expect(buildAssistantLaunchCommand({ agent: 'copilot', platform: 'win32' })).toBe('copilot.ps1\r');
     expect(buildAssistantLaunchCommand({ agent: 'codex', platform: 'win32' })).toBe('codex.cmd\r');
     expect(buildAssistantLaunchCommand({ agent: 'claude', platform: 'win32' })).toBe('claude.cmd\r');
+    expect(buildAssistantLaunchCommand({ agent: 'gemini', platform: 'win32' })).toBe('gemini.cmd\r');
   });
 
   it('builds prompt-appending commands per shell platform', () => {
-    expect(buildAssistantLaunchCommand({
-      agent: 'claude',
-      hasInitPrompt: true,
-      platform: 'win32',
-      systemPromptPath: 'C:\\temp\\prompt.txt'
-    })).toBe("claude.cmd --append-system-prompt (Get-Content -Raw 'C:\\temp\\prompt.txt')\r");
+    expect(
+      buildAssistantLaunchCommand({
+        agent: 'claude',
+        hasInitPrompt: true,
+        platform: 'win32',
+        systemPromptPath: 'C:\\temp\\prompt.txt',
+      }),
+    ).toBe("claude.cmd --append-system-prompt (Get-Content -Raw 'C:\\temp\\prompt.txt')\r");
 
-    expect(buildAssistantLaunchCommand({
-      agent: 'claude',
-      hasInitPrompt: true,
-      platform: 'linux',
-      systemPromptPath: '/tmp/prompt.txt'
-    })).toBe("claude --append-system-prompt \"$(cat '/tmp/prompt.txt')\"\r");
+    expect(
+      buildAssistantLaunchCommand({
+        agent: 'claude',
+        hasInitPrompt: true,
+        platform: 'linux',
+        systemPromptPath: '/tmp/prompt.txt',
+      }),
+    ).toBe('claude --append-system-prompt "$(cat \'/tmp/prompt.txt\')"\r');
   });
 
   it('throws for unsupported agents or missing prompt paths', () => {
-    expect(() => buildAssistantLaunchCommand({
-      agent: 'unknown',
-      platform: 'win32'
-    })).toThrow('Unsupported assistant agent');
+    expect(() =>
+      buildAssistantLaunchCommand({
+        agent: 'unknown',
+        platform: 'win32',
+      }),
+    ).toThrow('Unsupported assistant agent');
 
-    expect(() => buildAssistantLaunchCommand({
-      agent: 'claude',
-      hasInitPrompt: true,
-      platform: 'win32'
-    })).toThrow('systemPromptPath is required');
+    expect(() =>
+      buildAssistantLaunchCommand({
+        agent: 'claude',
+        hasInitPrompt: true,
+        platform: 'win32',
+      }),
+    ).toThrow('systemPromptPath is required');
   });
 
   it('builds a Windows bootstrap command that overrides bare assistant names', () => {
     const command = buildWindowsAssistantBootstrapCommand();
 
-    expect(command).toContain("function global:copilot");
-    expect(command).toContain("copilot.ps1");
-    expect(command).toContain("function global:claude");
-    expect(command).toContain("function global:codex");
+    expect(command).toContain('function global:copilot');
+    expect(command).toContain('copilot.ps1');
+    expect(command).toContain('function global:claude');
+    expect(command).toContain('function global:codex');
+    expect(command).toContain('function global:gemini');
     expect(command.endsWith('\r')).toBe(true);
   });
 });

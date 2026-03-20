@@ -28,6 +28,7 @@ export interface AssistantDeps {
   writeMcpConfig(): Promise<unknown>;
   writeCopilotMcpConfig(): Promise<unknown>;
   writeCodexMcpConfig(): Promise<unknown>;
+  writeGeminiMcpConfig(): Promise<unknown>;
   cleanupAgentsMd(): Promise<void>;
   writeSystemPrompt(content: string): Promise<{ filePath: string; platform?: string }>;
   writeAgentsMd(content: string): Promise<void>;
@@ -48,7 +49,7 @@ export async function loadRpPersona(deps: RpDeps): Promise<string> {
 export async function buildAssistantPrompt(
   promptInfo: PromptInfo | null,
   mcpConnected: boolean,
-  deps: RpDeps
+  deps: RpDeps,
 ): Promise<string> {
   if (!promptInfo) {
     return deps.rpMode !== 'off' ? await loadRpPersona(deps) : '';
@@ -96,10 +97,14 @@ export async function buildAssistantPrompt(
     lines.push(`- add_lorebook(data) / delete_lorebook(index): 로어북 추가/삭제`);
     lines.push(`- list_regex / read_regex(index) / write_regex(index, data): 정규식 관리`);
     lines.push(`- add_regex(data) / delete_regex(index): 정규식 추가/삭제`);
-    lines.push(`- list_lua / read_lua(index) / write_lua(index, content): Lua 섹션별 읽기/쓰기 (-- ===== 섹션명 ===== 구분자 기준)`);
+    lines.push(
+      `- list_lua / read_lua(index) / write_lua(index, content): Lua 섹션별 읽기/쓰기 (-- ===== 섹션명 ===== 구분자 기준)`,
+    );
     lines.push(`- replace_in_lua(index, find, replace, regex?, flags?): Lua 섹션 내 문자열 치환 (서버에서 직접 처리)`);
     lines.push(`- insert_in_lua(index, content, position?, anchor?): Lua 섹션에 코드 삽입 (end/start/after/before)`);
-    lines.push(`- list_css / read_css(index) / write_css(index, content): CSS 섹션별 읽기/쓰기 (/* ===== 섹션명 ===== */ 구분자 기준)`);
+    lines.push(
+      `- list_css / read_css(index) / write_css(index, content): CSS 섹션별 읽기/쓰기 (/* ===== 섹션명 ===== */ 구분자 기준)`,
+    );
     lines.push(`- replace_in_css(index, find, replace, regex?, flags?): CSS 섹션 내 문자열 치환 (서버에서 직접 처리)`);
     lines.push(`- insert_in_css(index, content, position?, anchor?): CSS 섹션에 코드 삽입 (end/start/after/before)`);
     lines.push(`- list_references: 로드된 참고 자료 파일 목록 (읽기 전용)`);
@@ -143,6 +148,8 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
     mcpConnected = !!(await deps.writeCopilotMcpConfig());
   } else if (agent === 'codex') {
     mcpConnected = !!(await deps.writeCodexMcpConfig());
+  } else if (agent === 'gemini') {
+    mcpConnected = !!(await deps.writeGeminiMcpConfig());
   }
 
   const initPrompt = await buildAssistantPrompt(promptInfo, mcpConnected, deps);
@@ -155,7 +162,7 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
         agent,
         hasInitPrompt: true,
         platform: platform || runtimePlatform,
-        systemPromptPath: filePath
+        systemPromptPath: filePath,
       });
     } else {
       cmd = buildAssistantLaunchCommand({ agent, platform: runtimePlatform });
@@ -183,4 +190,8 @@ export async function handleCopilotStart(deps: AssistantDeps): Promise<void> {
 
 export async function handleCodexStart(deps: AssistantDeps): Promise<void> {
   await startAssistantCli('codex', deps);
+}
+
+export async function handleGeminiStart(deps: AssistantDeps): Promise<void> {
+  await startAssistantCli('gemini', deps);
 }

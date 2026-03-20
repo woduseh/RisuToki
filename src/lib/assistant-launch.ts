@@ -1,5 +1,5 @@
 export type RuntimePlatform = 'win32' | 'darwin' | 'linux' | string;
-export type AssistantAgent = 'claude' | 'copilot' | 'codex';
+export type AssistantAgent = 'claude' | 'copilot' | 'codex' | 'gemini';
 
 interface NavigatorLike {
   platform?: string;
@@ -40,11 +40,12 @@ function getCliExecutable(agent: AssistantAgent | string, platform: RuntimePlatf
 export function buildWindowsAssistantBootstrapCommand(): string {
   return [
     "$ErrorActionPreference='SilentlyContinue'",
-    "function global:__TokiInvokeCommand([string]$primary,[string[]]$fallbacks,[object[]]$argv){ foreach ($candidate in @($primary) + $fallbacks) { $resolved = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($resolved) { & $resolved.Source @argv; return } }; & $primary @argv }",
+    'function global:__TokiInvokeCommand([string]$primary,[string[]]$fallbacks,[object[]]$argv){ foreach ($candidate in @($primary) + $fallbacks) { $resolved = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($resolved) { & $resolved.Source @argv; return } }; & $primary @argv }',
     "function global:copilot { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'copilot.ps1' @('copilot.bat', 'copilot.cmd', 'copilot.exe') $argv }",
     "function global:claude { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'claude.cmd' @('claude.exe', 'claude.bat') $argv }",
     "function global:codex { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'codex.cmd' @('codex.exe', 'codex.bat') $argv }",
-    "$ErrorActionPreference='Continue'\r"
+    "function global:gemini { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'gemini.cmd' @('gemini.exe', 'gemini.bat') $argv }",
+    "$ErrorActionPreference='Continue'\r",
   ].join('; ');
 }
 
@@ -52,7 +53,7 @@ export function buildAssistantLaunchCommand({
   agent,
   hasInitPrompt = false,
   platform,
-  systemPromptPath = ''
+  systemPromptPath = '',
 }: AssistantLaunchOptions): string {
   const normalizedPlatform = platform || detectRuntimePlatform();
   const executable = getCliExecutable(agent, normalizedPlatform);
@@ -73,7 +74,7 @@ export function buildAssistantLaunchCommand({
     return `${executable} --append-system-prompt "$(cat '${systemPromptPath}')"\r`;
   }
 
-  if (agent === 'copilot' || agent === 'codex') {
+  if (agent === 'copilot' || agent === 'codex' || agent === 'gemini') {
     return `${executable}\r`;
   }
 

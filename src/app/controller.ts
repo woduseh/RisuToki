@@ -18,6 +18,7 @@ import {
   handleClaudeStart as _handleClaudeStart,
   handleCopilotStart as _handleCopilotStart,
   handleCodexStart as _handleCodexStart,
+  handleGeminiStart as _handleGeminiStart,
 } from '../lib/assistant-prompt';
 import {
   getDefaultRpModeForDarkMode,
@@ -1505,6 +1506,7 @@ function getAssistantDeps() {
     writeMcpConfig: () => window.tokiAPI.writeMcpConfig(),
     writeCopilotMcpConfig: () => window.tokiAPI.writeCopilotMcpConfig(),
     writeCodexMcpConfig: () => window.tokiAPI.writeCodexMcpConfig(),
+    writeGeminiMcpConfig: () => window.tokiAPI.writeGeminiMcpConfig(),
     cleanupAgentsMd: () => window.tokiAPI.cleanupAgentsMd(),
     writeSystemPrompt: (content: string) => window.tokiAPI.writeSystemPrompt(content),
     writeAgentsMd: (content: string) => window.tokiAPI.writeAgentsMd(content),
@@ -1526,6 +1528,10 @@ async function handleCopilotStart(): Promise<void> {
 
 async function handleCodexStart(): Promise<void> {
   await _handleCodexStart(getAssistantDeps() as unknown as Parameters<typeof _handleCodexStart>[0]);
+}
+
+async function handleGeminiStart(): Promise<void> {
+  await _handleGeminiStart(getAssistantDeps() as unknown as Parameters<typeof _handleGeminiStart>[0]);
 }
 
 // ==================== Terminal Background ====================
@@ -2043,6 +2049,7 @@ export async function initMainRenderer(): Promise<void> {
     'claude-start': () => handleClaudeStart(),
     'copilot-start': () => handleCopilotStart(),
     'codex-start': () => handleCodexStart(),
+    'gemini-start': () => handleGeminiStart(),
     'terminal-clear': () => {
       if (term) term.clear();
     },

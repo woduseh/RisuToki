@@ -7,6 +7,7 @@ import {
   handleClaudeStart,
   handleCopilotStart,
   handleCodexStart,
+  handleGeminiStart,
 } from './assistant-prompt';
 
 function createMockDeps(overrides: Partial<AssistantDeps> = {}): AssistantDeps {
@@ -19,6 +20,7 @@ function createMockDeps(overrides: Partial<AssistantDeps> = {}): AssistantDeps {
     writeMcpConfig: vi.fn(async () => 'ok'),
     writeCopilotMcpConfig: vi.fn(async () => 'ok'),
     writeCodexMcpConfig: vi.fn(async () => 'ok'),
+    writeGeminiMcpConfig: vi.fn(async () => 'ok'),
     cleanupAgentsMd: vi.fn(async () => {}),
     writeSystemPrompt: vi.fn(async () => ({ filePath: '/tmp/prompt.txt' })),
     writeAgentsMd: vi.fn(async () => {}),
@@ -37,7 +39,9 @@ describe('loadRpPersona', () => {
   });
 
   it('returns custom text when rpMode is custom', async () => {
-    expect(await loadRpPersona({ rpMode: 'custom', rpCustomText: 'My persona', readPersona: async () => '' })).toBe('My persona');
+    expect(await loadRpPersona({ rpMode: 'custom', rpCustomText: 'My persona', readPersona: async () => '' })).toBe(
+      'My persona',
+    );
   });
 
   it('calls readPersona for named modes like toki', async () => {
@@ -136,6 +140,14 @@ describe('startAssistantCli', () => {
     expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('Codex'));
   });
 
+  it('writes agents.md for gemini', async () => {
+    const deps = createMockDeps();
+    await startAssistantCli('gemini', deps);
+    expect(deps.writeGeminiMcpConfig).toHaveBeenCalled();
+    expect(deps.writeAgentsMd).toHaveBeenCalled();
+    expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('Gemini'));
+  });
+
   it('sends bootstrap command on win32', async () => {
     const deps = createMockDeps({ navigatorLike: { userAgentData: { platform: 'Windows' } } });
     await startAssistantCli('copilot', deps);
@@ -161,5 +173,11 @@ describe('handle* convenience wrappers', () => {
     const deps = createMockDeps();
     await handleCodexStart(deps);
     expect(deps.writeCodexMcpConfig).toHaveBeenCalled();
+  });
+
+  it('handleGeminiStart delegates to startAssistantCli with gemini', async () => {
+    const deps = createMockDeps();
+    await handleGeminiStart(deps);
+    expect(deps.writeGeminiMcpConfig).toHaveBeenCalled();
   });
 });
