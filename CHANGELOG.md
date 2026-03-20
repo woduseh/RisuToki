@@ -9,6 +9,20 @@
 
 ---
 
+## [0.7.0] - 2026-03-20
+
+### 새 기능
+
+- **Danbooru 태그 검증 MCP 도구** — 캐릭터 이미지 프롬프트 작성 시 유효한 Danbooru 태그 검증·검색·참조
+  - `validate_danbooru_tags`: 태그 유효성 검증 + Levenshtein 기반 유사 태그 추천
+  - `search_danbooru_tags`: 키워드/와일드카드 태그 검색 (인기순 정렬)
+  - `get_popular_danbooru_tags`: 인기 태그 조회 (의미별 그룹: hair, eyes, clothing, pose 등)
+  - `danbooru_tag_guide` 프롬프트 템플릿: 태그 규칙 + 카테고리별 인기 태그 예시 자동 제공
+  - 로컬 태그 DB (6,549개) 우선 + Danbooru REST API 온라인 폴백
+  - MCP 프롬프트 기능 추가 (`prompts/list`, `prompts/get`)
+
+---
+
 ## [0.6.1] - 2026-03-20
 
 ### 새 기능

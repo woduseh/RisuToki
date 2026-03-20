@@ -5,12 +5,336 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // Communicates with RisuToki via local HTTP API
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const http = require("http");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const https = require("https");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const fs = require("fs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const path = require("path");
 const TOKI_PORT = process.env.TOKI_PORT;
 const TOKI_TOKEN = process.env.TOKI_TOKEN;
 if (!TOKI_PORT || !TOKI_TOKEN) {
     process.stderr.write('[toki-mcp] ERROR: TOKI_PORT and TOKI_TOKEN env vars required\n');
     process.exit(1);
 }
+// ==================== Danbooru Tag Database ====================
+const CATEGORY_NAMES = {
+    0: 'general', 1: 'artist', 3: 'copyright', 4: 'character', 5: 'meta', 9: 'rating',
+};
+const CATEGORY_IDS = {
+    general: 0, artist: 1, copyright: 3, character: 4, meta: 5, rating: 9,
+};
+const SEMANTIC_GROUPS = {
+    composition: [/^(1girl|1boy|solo|multiple_girls|multiple_boys|2girls|2boys|couple)$/],
+    hair_color: [/_hair$/, /^(blonde|brown|black|red|blue|green|white|silver|pink|purple|grey|orange)_hair$/],
+    hair_style: [/^(long|short|medium)_hair$/, /ponytail/, /twintails/, /braid/, /bob_cut/, /^bangs$/, /side_ponytail/, /hair_bun/],
+    eye_color: [/_eyes$/],
+    expression: [/^(smile|blush|open_mouth|closed_eyes|crying|angry|frown|grin|pout|surprised|nervous)$/, /^looking_at_viewer$/, /^closed_mouth$/],
+    clothing: [/dress/, /skirt/, /^shirt$/, /uniform/, /armor/, /jacket/, /boots/, /thighhighs/, /pantyhose/, /swimsuit/, /bikini/, /kimono/, /leotard/],
+    accessories: [/hair_ornament/, /ribbon/, /^bow$/, /jewelry/, /necklace/, /earrings/, /hat$/, /gloves/, /glasses/, /headband/],
+    pose: [/^(standing|sitting|lying|kneeling|walking|running|from_behind|from_above|from_below)$/],
+    body: [/^(breasts|large_breasts|small_breasts|thighs|navel|midriff|bare_shoulders|collarbone)$/],
+    background: [/background$/, /^(outdoors|indoors)$/, /^(sky|night|sunset|sunrise|rain|snow|water)$/, /^(city|forest|beach|school|bedroom|classroom)$/],
+};
+const tagMap = new Map();
+let tagsByCount = [];
+let tagsLoaded = false;
+const apiCache = new Map();
+function loadTags() {
+    const tagFilePath = path.join(__dirname, 'resources', 'Danbooru Tag.txt');
+    try {
+        const content = fs.readFileSync(tagFilePath, 'utf-8');
+        const lines = content.split('\n');
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line)
+                continue;
+            const parts = line.split(',');
+            if (parts.length < 4)
+                continue;
+            const tag = {
+                id: parseInt(parts[0], 10),
+                name: parts[1],
+                category: parseInt(parts[2], 10),
+                count: parseInt(parts[3], 10),
+            };
+            tagMap.set(tag.name, tag);
+        }
+        tagsByCount = Array.from(tagMap.values()).sort((a, b) => b.count - a.count);
+        tagsLoaded = true;
+        process.stderr.write(`[toki-mcp] Loaded ${tagMap.size} Danbooru tags\n`);
+    }
+    catch (err) {
+        process.stderr.write(`[toki-mcp] Failed to load tags: ${err}\n`);
+    }
+}
+function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++)
+        dp[i][0] = i;
+    for (let j = 0; j <= n; j++)
+        dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+    }
+    return dp[m][n];
+}
+function suggestSimilar(tag, limit = 5) {
+    const scored = [];
+    for (const [name, tagData] of tagMap) {
+        if (Math.abs(name.length - tag.length) > 5)
+            continue;
+        const distance = levenshtein(tag, name);
+        const maxLen = Math.max(tag.length, name.length);
+        const similarity = 1 - distance / maxLen;
+        if (similarity >= 0.4) {
+            const popularityBoost = Math.log10(tagData.count + 1) / 10;
+            scored.push({ name, score: similarity + popularityBoost });
+        }
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit).map((s) => s.name);
+}
+function searchTags(query, category, limit = 20) {
+    const normalized = query.trim().toLowerCase().replace(/\s+/g, '_');
+    const catId = category ? CATEGORY_IDS[category] : undefined;
+    const results = [];
+    const hasWildcard = normalized.includes('*');
+    if (hasWildcard) {
+        const regexStr = normalized.replace(/\*/g, '.*').replace(/\?/g, '.');
+        const regex = new RegExp(`^${regexStr}$`);
+        for (const tag of tagsByCount) {
+            if (catId !== undefined && tag.category !== catId)
+                continue;
+            if (regex.test(tag.name)) {
+                results.push(tag);
+                if (results.length >= limit)
+                    break;
+            }
+        }
+    }
+    else {
+        const exact = tagMap.get(normalized);
+        if (exact && (catId === undefined || exact.category === catId))
+            results.push(exact);
+        for (const tag of tagsByCount) {
+            if (results.length >= limit)
+                break;
+            if (catId !== undefined && tag.category !== catId)
+                continue;
+            if (tag.name === normalized)
+                continue;
+            if (tag.name.startsWith(normalized))
+                results.push(tag);
+        }
+        if (results.length < limit) {
+            for (const tag of tagsByCount) {
+                if (results.length >= limit)
+                    break;
+                if (catId !== undefined && tag.category !== catId)
+                    continue;
+                if (tag.name.startsWith(normalized))
+                    continue;
+                if (tag.name.includes(normalized))
+                    results.push(tag);
+            }
+        }
+    }
+    return results;
+}
+function getPopular(category, limit = 100) {
+    const catId = category ? CATEGORY_IDS[category] : undefined;
+    if (catId === undefined)
+        return tagsByCount.slice(0, limit);
+    const results = [];
+    for (const tag of tagsByCount) {
+        if (tag.category === catId) {
+            results.push(tag);
+            if (results.length >= limit)
+                break;
+        }
+    }
+    return results;
+}
+function getPopularGrouped() {
+    const groups = {};
+    for (const [groupName, patterns] of Object.entries(SEMANTIC_GROUPS)) {
+        const matched = [];
+        for (const tag of tagsByCount) {
+            for (const pattern of patterns) {
+                if (pattern.test(tag.name)) {
+                    matched.push(tag);
+                    break;
+                }
+            }
+        }
+        groups[groupName] = matched.slice(0, 30).map((t) => t.name);
+    }
+    return groups;
+}
+function formatTags(tags) {
+    return tags.map((t) => ({ name: t.name, category: CATEGORY_NAMES[t.category] || 'unknown', post_count: t.count }));
+}
+function danbooruApiValidate(tagName) {
+    const key = `validate:${tagName}`;
+    if (apiCache.has(key))
+        return Promise.resolve(apiCache.get(key));
+    return new Promise((resolve) => {
+        const url = `https://danbooru.donmai.us/tags.json?search%5Bname%5D=${encodeURIComponent(tagName)}&limit=1`;
+        const req = https.get(url, { timeout: 5000 }, (res) => {
+            let data = '';
+            res.on('data', (chunk) => (data += chunk));
+            res.on('end', () => {
+                try {
+                    const results = JSON.parse(data);
+                    const tag = Array.isArray(results) && results.length > 0
+                        ? { id: results[0].id, name: results[0].name, category: results[0].category, count: results[0].post_count }
+                        : null;
+                    if (tag && results[0].is_deprecated) {
+                        apiCache.set(key, null);
+                        resolve(null);
+                    }
+                    else {
+                        apiCache.set(key, tag);
+                        resolve(tag);
+                    }
+                }
+                catch {
+                    apiCache.set(key, null);
+                    resolve(null);
+                }
+            });
+        });
+        req.on('error', () => { resolve(null); });
+        req.on('timeout', () => { req.destroy(); resolve(null); });
+    });
+}
+function danbooruApiSearch(query, limit = 20) {
+    return new Promise((resolve) => {
+        const nameMatch = query.includes('*') ? query : `*${query}*`;
+        const url = `https://danbooru.donmai.us/tags.json?search%5Bname_matches%5D=${encodeURIComponent(nameMatch)}&search%5Border%5D=count&limit=${limit}`;
+        const req = https.get(url, { timeout: 5000 }, (res) => {
+            let data = '';
+            res.on('data', (chunk) => (data += chunk));
+            res.on('end', () => {
+                try {
+                    const results = JSON.parse(data);
+                    if (!Array.isArray(results)) {
+                        resolve([]);
+                        return;
+                    }
+                    const tags = results.map((r) => ({
+                        id: r.id, name: r.name,
+                        category: r.category, count: r.post_count,
+                    }));
+                    for (const tag of tags)
+                        apiCache.set(`validate:${tag.name}`, tag);
+                    resolve(tags);
+                }
+                catch {
+                    resolve([]);
+                }
+            });
+        });
+        req.on('error', () => { resolve([]); });
+        req.on('timeout', () => { req.destroy(); resolve([]); });
+    });
+}
+async function validateTags(tags, onlineFallback = true) {
+    const results = [];
+    for (const tagName of tags) {
+        const normalized = tagName.trim().toLowerCase().replace(/\s+/g, '_');
+        const localTag = tagMap.get(normalized);
+        if (localTag) {
+            results.push({ tag: normalized, valid: true, postCount: localTag.count, category: CATEGORY_NAMES[localTag.category] || 'unknown', source: 'local' });
+            continue;
+        }
+        if (onlineFallback) {
+            const onlineTag = await danbooruApiValidate(normalized);
+            if (onlineTag) {
+                results.push({ tag: normalized, valid: true, postCount: onlineTag.count, category: CATEGORY_NAMES[onlineTag.category] || 'unknown', source: 'online' });
+                continue;
+            }
+        }
+        const suggestions = suggestSimilar(normalized, 5);
+        results.push({ tag: normalized, valid: false, suggestions: suggestions.length > 0 ? suggestions : undefined });
+    }
+    return results;
+}
+async function searchWithOnline(query, category, limit = 20) {
+    const localResults = searchTags(query, category, limit);
+    if (localResults.length >= limit)
+        return localResults;
+    try {
+        const remaining = limit - localResults.length;
+        const onlineResults = await danbooruApiSearch(query, remaining);
+        const localNames = new Set(localResults.map((t) => t.name));
+        for (const online of onlineResults) {
+            if (localNames.has(online.name))
+                continue;
+            if (category && CATEGORY_IDS[category] !== undefined && online.category !== CATEGORY_IDS[category])
+                continue;
+            localResults.push(online);
+            if (localResults.length >= limit)
+                break;
+        }
+    }
+    catch { /* online search failed, return local only */ }
+    return localResults;
+}
+function buildDanbooruGuide(characterDescription) {
+    const groups = tagsLoaded ? getPopularGrouped() : {};
+    let guide = `# Danbooru Tag Prompt Guide
+
+## Tag Format Rules
+- Use **underscores** instead of spaces: \`long_hair\` not \`long hair\`
+- All lowercase: \`blue_eyes\` not \`Blue_Eyes\`
+- Use established compound tags: \`hair_ornament\`, \`looking_at_viewer\`
+- Separate tags with commas: \`1girl, solo, long_hair, blue_eyes\`
+- Do NOT invent new tags — always verify with \`validate_danbooru_tags\` tool
+
+## Tag Categories (Danbooru)
+- **General (0)**: Descriptive tags for appearance, actions, objects (most commonly used)
+- **Artist (1)**: Artist name tags
+- **Copyright (3)**: Series/franchise tags
+- **Character (4)**: Specific character name tags
+- **Meta (5)**: Technical tags (e.g., highres, absurdres)
+
+## Prompt Writing Tips
+1. Start with composition: \`1girl, solo\` or \`2girls, multiple_girls\`
+2. Add hair: color + style (e.g., \`blonde_hair, long_hair, ponytail\`)
+3. Add eyes: \`blue_eyes\`, \`red_eyes\`, etc.
+4. Add expression: \`smile\`, \`blush\`, \`open_mouth\`
+5. Add clothing: \`school_uniform\`, \`dress\`, \`armor\`
+6. Add accessories: \`hair_ribbon\`, \`glasses\`, \`hat\`
+7. Add pose/action: \`standing\`, \`sitting\`, \`looking_at_viewer\`
+8. Add background: \`simple_background\`, \`outdoors\`, \`classroom\`
+
+## ⚠️ IMPORTANT
+- ALWAYS use \`validate_danbooru_tags\` to verify tags before using them in prompts
+- Use \`search_danbooru_tags\` to find the correct tag when unsure
+- Use \`get_popular_danbooru_tags\` with \`group_by_semantic=true\` for reference
+`;
+    if (Object.keys(groups).length > 0) {
+        guide += '\n## Popular Tags by Category\n';
+        for (const [group, tags] of Object.entries(groups)) {
+            if (tags.length > 0) {
+                const displayName = group.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+                guide += `\n### ${displayName}\n\`${tags.slice(0, 20).join(', ')}\`\n`;
+            }
+        }
+    }
+    if (characterDescription) {
+        guide += `\n## Your Character Description\n"${characterDescription}"\n\nPlease use the tags above and the \`search_danbooru_tags\` tool to find appropriate tags for this character. Validate all tags with \`validate_danbooru_tags\` before creating the prompt.\n`;
+    }
+    return guide;
+}
+// Load tags at startup
+loadTags();
 // ==================== MCP Tool Definitions ====================
 const TOOLS = [
     {
@@ -329,6 +653,61 @@ const TOOLS = [
             required: ['name'],
         },
     },
+    // === Danbooru Tag Tools ===
+    {
+        name: 'validate_danbooru_tags',
+        description: 'Validate whether given tags are valid Danbooru tags. Returns validation result for each tag with suggestions for invalid ones. IMPORTANT: Always use this tool to verify your tags before using them in image generation prompts.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                tags: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'List of tags to validate (e.g. ["blue_eyes", "long_hair", "school_uniform"])',
+                },
+                online_fallback: {
+                    type: 'boolean',
+                    description: 'If true, check Danbooru API for tags not found locally (default: true)',
+                },
+            },
+            required: ['tags'],
+        },
+    },
+    {
+        name: 'search_danbooru_tags',
+        description: 'Search for Danbooru tags matching a query. Use this to find the correct tag name for a concept. Supports wildcard (*) patterns. Results are sorted by popularity (post count).',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Search query (e.g. "blue_eye", "long_h*", "school"). Supports * wildcard.' },
+                category: {
+                    type: 'string',
+                    description: 'Filter by tag category: general, artist, copyright, character, meta',
+                },
+                limit: { type: 'number', description: 'Max results (default: 20, max: 50)' },
+            },
+            required: ['query'],
+        },
+    },
+    {
+        name: 'get_popular_danbooru_tags',
+        description: 'Get popular Danbooru tags sorted by usage count. Use group_by_semantic=true to get tags organized by category (hair, eyes, clothing, pose, etc.) — very useful when writing character image prompts.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                category: {
+                    type: 'string',
+                    description: 'Filter by tag category: general, artist, copyright, character, meta',
+                },
+                limit: { type: 'number', description: 'Max results per group or total (default: 100, max: 500)' },
+                group_by_semantic: {
+                    type: 'boolean',
+                    description: 'If true, returns tags grouped by semantic category (hair_color, eye_color, clothing, pose, etc.)',
+                },
+            },
+            required: [],
+        },
+    },
 ];
 // ==================== HTTP Client ====================
 async function apiRequest(method, urlPath, body) {
@@ -467,6 +846,45 @@ async function handleToolCall(name, args) {
             const skillPath = file ? `/skills/${encodeURIComponent(args.name)}/${file}` : `/skills/${encodeURIComponent(args.name)}`;
             return await apiRequest('GET', skillPath);
         }
+        // === Danbooru Tag Tools (handled locally, no API proxy) ===
+        case 'validate_danbooru_tags': {
+            if (!tagsLoaded)
+                throw new Error('Tag database not loaded');
+            const tagList = args.tags;
+            const onlineFallback = args.online_fallback !== false;
+            const results = await validateTags(tagList, onlineFallback);
+            const validCount = results.filter((r) => r.valid).length;
+            const invalidCount = results.filter((r) => !r.valid).length;
+            return {
+                summary: `${validCount}/${tagList.length} tags valid${invalidCount > 0 ? `, ${invalidCount} invalid` : ''}`,
+                results,
+            };
+        }
+        case 'search_danbooru_tags': {
+            if (!tagsLoaded)
+                throw new Error('Tag database not loaded');
+            const query = args.query;
+            const category = args.category;
+            const limit = Math.min(args.limit || 20, 50);
+            const results = await searchWithOnline(query, category, limit);
+            return { query, count: results.length, tags: formatTags(results) };
+        }
+        case 'get_popular_danbooru_tags': {
+            if (!tagsLoaded)
+                throw new Error('Tag database not loaded');
+            const groupBySemantic = args.group_by_semantic;
+            if (groupBySemantic) {
+                const groups = getPopularGrouped();
+                return {
+                    description: 'Popular Danbooru tags grouped by semantic category. Use these as reference when writing prompts.',
+                    groups,
+                };
+            }
+            const category = args.category;
+            const limit = Math.min(args.limit || 100, 500);
+            const results = getPopular(category, limit);
+            return { count: results.length, tags: formatTags(results) };
+        }
         default:
             throw new Error(`Unknown tool: ${name}`);
     }
@@ -490,8 +908,8 @@ async function handleMessage(msg) {
                     id: msg.id,
                     result: {
                         protocolVersion: '2024-11-05',
-                        capabilities: { tools: {} },
-                        serverInfo: { name: 'risutoki', version: '1.0.0' },
+                        capabilities: { tools: {}, prompts: {} },
+                        serverInfo: { name: 'risutoki', version: '1.1.0' },
                     },
                 });
                 break;
@@ -502,6 +920,50 @@ async function handleMessage(msg) {
                     result: { tools: TOOLS },
                 });
                 break;
+            case 'prompts/list':
+                send({
+                    jsonrpc: '2.0',
+                    id: msg.id,
+                    result: {
+                        prompts: [
+                            {
+                                name: 'danbooru_tag_guide',
+                                description: 'Guidelines and reference for writing image generation prompts using Danbooru tags. Call this before creating character image prompts to get the correct tag format and popular tags.',
+                                arguments: [
+                                    {
+                                        name: 'character_description',
+                                        description: 'Optional character description for context-aware guidance',
+                                        required: false,
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                });
+                break;
+            case 'prompts/get': {
+                const promptName = msg.params?.name;
+                if (promptName === 'danbooru_tag_guide') {
+                    const promptArgs = msg.params?.arguments;
+                    const charDesc = promptArgs?.character_description;
+                    const guideText = buildDanbooruGuide(charDesc);
+                    send({
+                        jsonrpc: '2.0',
+                        id: msg.id,
+                        result: {
+                            messages: [{ role: 'user', content: { type: 'text', text: guideText } }],
+                        },
+                    });
+                }
+                else {
+                    send({
+                        jsonrpc: '2.0',
+                        id: msg.id,
+                        error: { code: -32602, message: `Unknown prompt: ${promptName}` },
+                    });
+                }
+                break;
+            }
             case 'tools/call': {
                 const { name, arguments: args } = msg.params || {};
                 process.stderr.write(`[toki-mcp] tool call: ${name}\n`);

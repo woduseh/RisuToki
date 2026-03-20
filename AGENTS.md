@@ -142,6 +142,31 @@ CBS 문법, Lua API, 로어북, 정규식, HTML/CSS, 트리거, 캐릭터 작성
 
 상세 문법이 필요할 때 `list_skills` → `read_skill`로 on-demand 로딩하세요.
 
+### Danbooru 태그 도구 (이미지 프롬프트용)
+
+캐릭터 이미지 생성 프롬프트를 작성할 때 유효한 Danbooru 태그를 검증·검색·참조하는 도구.
+로컬 태그 DB(6,549개) 우선 검증 + Danbooru REST API 온라인 폴백.
+
+| 도구                                            | 설명                                                                   |
+| ----------------------------------------------- | ---------------------------------------------------------------------- |
+| `validate_danbooru_tags(tags)`                  | 태그 목록 유효성 검증 + 무효 태그에 유사 태그 추천                     |
+| `search_danbooru_tags(query, category?)`        | 키워드/와일드카드로 태그 검색 (인기순 정렬)                            |
+| `get_popular_danbooru_tags(group_by_semantic?)` | 인기 태그 조회. `group_by_semantic=true`로 의미별 그룹 (hair, eyes 등) |
+
+**프롬프트 템플릿:**
+
+| 프롬프트             | 설명                                                                       |
+| -------------------- | -------------------------------------------------------------------------- |
+| `danbooru_tag_guide` | Danbooru 태그 작성 규칙 + 카테고리별 인기 태그 예시. 캐릭터 설명 전달 가능 |
+
+**사용 흐름:**
+
+1. `danbooru_tag_guide` 프롬프트로 태그 규칙 확인
+2. 캐릭터 로어북(`read_lorebook`)에서 외형 정보 수집
+3. `search_danbooru_tags`로 적절한 태그 검색
+4. `validate_danbooru_tags`로 사용할 태그 전부 검증
+5. 검증된 태그만으로 이미지 프롬프트 작성
+
 ---
 
 ## 2. 파일 구조
