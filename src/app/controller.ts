@@ -835,8 +835,31 @@ function buildSidebar(): void {
     }
   } // end if (!isRisum) — CSS folder
 
-  // ---- Single items ----
+  // ---- Bot Name (charx only) ----
   const isRisup = fileData._fileType === 'risup';
+  if (!isRisum && !isRisup) {
+    const nameLabel = fileData.name || 'Untitled';
+    const nameEl = createTreeItem(`이름: ${nameLabel}`, '🏷', 0);
+    nameEl.title = `봇 이름: ${nameLabel}`;
+    nameEl.addEventListener('click', async () => {
+      const currentName = (fileData!.name as string) || '';
+      const newName = await showPrompt('봇 이름 변경:', currentName);
+      if (newName === null || newName === currentName) return;
+      fileData!.name = newName;
+      tabMgr.markFieldDirty('name');
+      useAppStore().setFileLabel(newName || 'Untitled');
+      buildSidebar();
+      setStatus(`봇 이름 변경됨: ${newName}`);
+    });
+    nameEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showContextMenu(e.clientX, e.clientY, [createMcpCopyItem('read_field("name")')]);
+    });
+    tree.appendChild(nameEl);
+  }
+
+  // ---- Single items ----
   const charxOnlyFields = ['globalNote', 'firstMessage', 'defaultVariables'];
   const singles = [
     { id: 'globalNote', label: '글로벌노트', icon: '📝', lang: 'plaintext', field: 'globalNote' },
