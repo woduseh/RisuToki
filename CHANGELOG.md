@@ -9,6 +9,26 @@
 
 ---
 
+## [0.7.1] - 2026-03-21
+
+### 새 기능
+
+- **참고 자료 세부 읽기 MCP 도구 6종** — 참고 파일의 로어북/Lua/CSS를 개별 항목·섹션 단위로 읽기
+  - `list_reference_lorebook(index, filter?)`: 참고 파일 로어북 목록 (compact, filter 지원)
+  - `read_reference_lorebook(index, entryIndex)`: 참고 파일 로어북 항목 하나 읽기
+  - `list_reference_lua(index)`: 참고 파일 Lua 섹션 목록
+  - `read_reference_lua(index, sectionIndex)`: 참고 파일 Lua 섹션 하나 읽기
+  - `list_reference_css(index)`: 참고 파일 CSS 섹션 목록
+  - `read_reference_css(index, sectionIndex)`: 참고 파일 CSS 섹션 하나 읽기
+
+### 변경
+
+- `read_reference_field` 도구 설명에 lorebook/lua/css 사용 시 세부 도구 안내 경고 추가
+- `list_lorebook` 도구 설명에 filter 파라미터 사용 권장 안내 추가
+- AGENTS.md에 참고 자료 읽기 규칙 및 로어북 비교 워크플로우 추가
+
+---
+
 ## [0.7.0] - 2026-03-20
 
 ### 새 기능

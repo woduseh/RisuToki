@@ -502,7 +502,8 @@ const TOOLS: MCPTool[] = [
   },
   {
     name: 'list_lorebook',
-    description: '로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태). filter로 comment/key 검색 가능.',
+    description:
+      '로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기). 항목이 수백 개일 수 있으므로 filter 파라미터로 comment/key 검색을 권장합니다.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -722,7 +723,7 @@ const TOOLS: MCPTool[] = [
   {
     name: 'read_reference_field',
     description:
-      '참고 자료 파일의 특정 필드를 읽습니다 (읽기 전용). 사용 가능한 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, description, defaultVariables, name, lorebook, regex',
+      '참고 자료 파일의 특정 필드를 읽습니다 (읽기 전용). ⚠️ lorebook/lua/css는 전체를 한번에 반환하여 컨텍스트를 낭비합니다. 대신 list_reference_lorebook → read_reference_lorebook, list_reference_lua → read_reference_lua, list_reference_css → read_reference_css를 사용하세요. 이 도구는 짧은 필드에만 사용: globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, description, defaultVariables, name, triggerScripts, regex',
     inputSchema: {
       type: 'object',
       properties: {
@@ -730,6 +731,82 @@ const TOOLS: MCPTool[] = [
         field: { type: 'string', description: '필드 이름' },
       },
       required: ['index', 'field'],
+    },
+  },
+  {
+    name: 'list_reference_lorebook',
+    description:
+      '참고 자료 파일의 로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기). filter로 comment/key 검색 가능. read_reference_field("lorebook") 대신 이 도구를 사용하세요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
+        filter: { type: 'string', description: '검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환' },
+      },
+      required: ['index'],
+    },
+  },
+  {
+    name: 'read_reference_lorebook',
+    description:
+      '참고 자료 파일의 특정 로어북 항목 하나를 읽습니다 (읽기 전용). list_reference_lorebook으로 인덱스 확인 후 사용.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: '참고 파일 인덱스' },
+        entryIndex: { type: 'number', description: '로어북 항목 인덱스 (list_reference_lorebook 결과 참조)' },
+      },
+      required: ['index', 'entryIndex'],
+    },
+  },
+  {
+    name: 'list_reference_lua',
+    description:
+      '참고 자료 파일의 Lua 섹션 목록을 확인합니다 (인덱스, 이름, 크기). read_reference_field("lua") 대신 이 도구를 사용하세요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
+      },
+      required: ['index'],
+    },
+  },
+  {
+    name: 'read_reference_lua',
+    description:
+      '참고 자료 파일의 특정 Lua 섹션 하나를 읽습니다 (읽기 전용). list_reference_lua로 인덱스 확인 후 사용.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: '참고 파일 인덱스' },
+        sectionIndex: { type: 'number', description: 'Lua 섹션 인덱스 (list_reference_lua 결과 참조)' },
+      },
+      required: ['index', 'sectionIndex'],
+    },
+  },
+  {
+    name: 'list_reference_css',
+    description:
+      '참고 자료 파일의 CSS 섹션 목록을 확인합니다 (인덱스, 이름, 크기). read_reference_field("css") 대신 이 도구를 사용하세요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
+      },
+      required: ['index'],
+    },
+  },
+  {
+    name: 'read_reference_css',
+    description:
+      '참고 자료 파일의 특정 CSS 섹션 하나를 읽습니다 (읽기 전용). list_reference_css로 인덱스 확인 후 사용.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: '참고 파일 인덱스' },
+        sectionIndex: { type: 'number', description: 'CSS 섹션 인덱스 (list_reference_css 결과 참조)' },
+      },
+      required: ['index', 'sectionIndex'],
     },
   },
   // Risum asset tools
@@ -1003,6 +1080,26 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
     case 'read_reference_field':
       return await apiRequest('GET', `/reference/${args.index}/${encodeURIComponent(args.field as string)}`);
+
+    case 'list_reference_lorebook': {
+      const filter = args.filter ? `?filter=${encodeURIComponent(args.filter as string)}` : '';
+      return await apiRequest('GET', `/reference/${args.index}/lorebook${filter}`);
+    }
+
+    case 'read_reference_lorebook':
+      return await apiRequest('GET', `/reference/${args.index}/lorebook/${args.entryIndex}`);
+
+    case 'list_reference_lua':
+      return await apiRequest('GET', `/reference/${args.index}/lua`);
+
+    case 'read_reference_lua':
+      return await apiRequest('GET', `/reference/${args.index}/lua/${args.sectionIndex}`);
+
+    case 'list_reference_css':
+      return await apiRequest('GET', `/reference/${args.index}/css`);
+
+    case 'read_reference_css':
+      return await apiRequest('GET', `/reference/${args.index}/css/${args.sectionIndex}`);
 
     // Risum asset tools
     case 'list_risum_assets':

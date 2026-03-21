@@ -1603,6 +1603,161 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // GET /reference/:idx/lorebook — list reference lorebook entries (compact)
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'lorebook' && !parts[3] && req.method === 'GET') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const ref = refFiles[idx];
+        const lorebook = ref.data.lorebook || [];
+        let entries = lorebook.map((e: any, i: number) => ({
+          index: i,
+          comment: e.comment || '',
+          key: e.key || '',
+          mode: e.mode || 'normal',
+          alwaysActive: !!e.alwaysActive,
+          contentSize: (e.content || '').length,
+        }));
+        const filterParam = url.searchParams.get('filter');
+        if (filterParam) {
+          const q = filterParam.toLowerCase();
+          entries = entries.filter((e: any) => e.comment.toLowerCase().includes(q) || e.key.toLowerCase().includes(q));
+        }
+        return jsonRes(res, { index: idx, fileName: ref.fileName, count: entries.length, entries });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/lorebook/:entryIdx — read single reference lorebook entry
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'lorebook' && parts[3] && req.method === 'GET') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const ref = refFiles[idx];
+        const lorebook = ref.data.lorebook || [];
+        const entryIdx = parseInt(parts[3], 10);
+        if (entryIdx < 0 || entryIdx >= lorebook.length) {
+          return jsonRes(
+            res,
+            { error: `Lorebook entry index ${entryIdx} out of range (0-${lorebook.length - 1})` },
+            400,
+          );
+        }
+        return jsonRes(res, { refIndex: idx, fileName: ref.fileName, entryIndex: entryIdx, entry: lorebook[entryIdx] });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/lua — list reference Lua sections
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'lua' && !parts[3] && req.method === 'GET') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const ref = refFiles[idx];
+        const luaCode = ref.data.lua || '';
+        if (!luaCode) {
+          return jsonRes(res, { index: idx, fileName: ref.fileName, count: 0, sections: [] });
+        }
+        const sections = deps.parseLuaSections(luaCode);
+        const result = sections.map((s, i) => ({
+          index: i,
+          name: s.name,
+          contentSize: s.content.length,
+        }));
+        return jsonRes(res, { index: idx, fileName: ref.fileName, count: result.length, sections: result });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/lua/:sectionIdx — read single reference Lua section
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'lua' && parts[3] && req.method === 'GET') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const ref = refFiles[idx];
+        const luaCode = ref.data.lua || '';
+        const sections = luaCode ? deps.parseLuaSections(luaCode) : [];
+        const sectionIdx = parseInt(parts[3], 10);
+        if (sectionIdx < 0 || sectionIdx >= sections.length) {
+          return jsonRes(
+            res,
+            { error: `Lua section index ${sectionIdx} out of range (0-${sections.length - 1})` },
+            400,
+          );
+        }
+        return jsonRes(res, {
+          refIndex: idx,
+          fileName: ref.fileName,
+          sectionIndex: sectionIdx,
+          name: sections[sectionIdx].name,
+          content: sections[sectionIdx].content,
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/css — list reference CSS sections
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'css' && !parts[3] && req.method === 'GET') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const ref = refFiles[idx];
+        const cssCode = ref.data.css || '';
+        if (!cssCode) {
+          return jsonRes(res, { index: idx, fileName: ref.fileName, count: 0, sections: [] });
+        }
+        const cssResult = deps.parseCssSections(cssCode);
+        const result = cssResult.sections.map((s, i) => ({
+          index: i,
+          name: s.name,
+          contentSize: s.content.length,
+        }));
+        return jsonRes(res, { index: idx, fileName: ref.fileName, count: result.length, sections: result });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/css/:sectionIdx — read single reference CSS section
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'css' && parts[3] && req.method === 'GET') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const ref = refFiles[idx];
+        const cssCode = ref.data.css || '';
+        const cssResult = cssCode
+          ? deps.parseCssSections(cssCode)
+          : { sections: [] as Section[], prefix: '', suffix: '' };
+        const sectionIdx = parseInt(parts[3], 10);
+        if (sectionIdx < 0 || sectionIdx >= cssResult.sections.length) {
+          return jsonRes(
+            res,
+            { error: `CSS section index ${sectionIdx} out of range (0-${cssResult.sections.length - 1})` },
+            400,
+          );
+        }
+        return jsonRes(res, {
+          refIndex: idx,
+          fileName: ref.fileName,
+          sectionIndex: sectionIdx,
+          name: cssResult.sections[sectionIdx].name,
+          content: cssResult.sections[sectionIdx].content,
+        });
+      }
+
+      // ----------------------------------------------------------------
       // GET /reference/:idx/:field — read a reference file's field
       // ----------------------------------------------------------------
       if (parts[0] === 'reference' && parts[1] && parts[2] && req.method === 'GET') {

@@ -19,22 +19,75 @@ if (!TOKI_PORT || !TOKI_TOKEN) {
 }
 // ==================== Danbooru Tag Database ====================
 const CATEGORY_NAMES = {
-    0: 'general', 1: 'artist', 3: 'copyright', 4: 'character', 5: 'meta', 9: 'rating',
+    0: 'general',
+    1: 'artist',
+    3: 'copyright',
+    4: 'character',
+    5: 'meta',
+    9: 'rating',
 };
 const CATEGORY_IDS = {
-    general: 0, artist: 1, copyright: 3, character: 4, meta: 5, rating: 9,
+    general: 0,
+    artist: 1,
+    copyright: 3,
+    character: 4,
+    meta: 5,
+    rating: 9,
 };
 const SEMANTIC_GROUPS = {
     composition: [/^(1girl|1boy|solo|multiple_girls|multiple_boys|2girls|2boys|couple)$/],
     hair_color: [/_hair$/, /^(blonde|brown|black|red|blue|green|white|silver|pink|purple|grey|orange)_hair$/],
-    hair_style: [/^(long|short|medium)_hair$/, /ponytail/, /twintails/, /braid/, /bob_cut/, /^bangs$/, /side_ponytail/, /hair_bun/],
+    hair_style: [
+        /^(long|short|medium)_hair$/,
+        /ponytail/,
+        /twintails/,
+        /braid/,
+        /bob_cut/,
+        /^bangs$/,
+        /side_ponytail/,
+        /hair_bun/,
+    ],
     eye_color: [/_eyes$/],
-    expression: [/^(smile|blush|open_mouth|closed_eyes|crying|angry|frown|grin|pout|surprised|nervous)$/, /^looking_at_viewer$/, /^closed_mouth$/],
-    clothing: [/dress/, /skirt/, /^shirt$/, /uniform/, /armor/, /jacket/, /boots/, /thighhighs/, /pantyhose/, /swimsuit/, /bikini/, /kimono/, /leotard/],
-    accessories: [/hair_ornament/, /ribbon/, /^bow$/, /jewelry/, /necklace/, /earrings/, /hat$/, /gloves/, /glasses/, /headband/],
+    expression: [
+        /^(smile|blush|open_mouth|closed_eyes|crying|angry|frown|grin|pout|surprised|nervous)$/,
+        /^looking_at_viewer$/,
+        /^closed_mouth$/,
+    ],
+    clothing: [
+        /dress/,
+        /skirt/,
+        /^shirt$/,
+        /uniform/,
+        /armor/,
+        /jacket/,
+        /boots/,
+        /thighhighs/,
+        /pantyhose/,
+        /swimsuit/,
+        /bikini/,
+        /kimono/,
+        /leotard/,
+    ],
+    accessories: [
+        /hair_ornament/,
+        /ribbon/,
+        /^bow$/,
+        /jewelry/,
+        /necklace/,
+        /earrings/,
+        /hat$/,
+        /gloves/,
+        /glasses/,
+        /headband/,
+    ],
     pose: [/^(standing|sitting|lying|kneeling|walking|running|from_behind|from_above|from_below)$/],
     body: [/^(breasts|large_breasts|small_breasts|thighs|navel|midriff|bare_shoulders|collarbone)$/],
-    background: [/background$/, /^(outdoors|indoors)$/, /^(sky|night|sunset|sunrise|rain|snow|water)$/, /^(city|forest|beach|school|bedroom|classroom)$/],
+    background: [
+        /background$/,
+        /^(outdoors|indoors)$/,
+        /^(sky|night|sunset|sunrise|rain|snow|water)$/,
+        /^(city|forest|beach|school|bedroom|classroom)$/,
+    ],
 };
 const tagMap = new Map();
 let tagsByCount = [];
@@ -192,7 +245,12 @@ function danbooruApiValidate(tagName) {
                 try {
                     const results = JSON.parse(data);
                     const tag = Array.isArray(results) && results.length > 0
-                        ? { id: results[0].id, name: results[0].name, category: results[0].category, count: results[0].post_count }
+                        ? {
+                            id: results[0].id,
+                            name: results[0].name,
+                            category: results[0].category,
+                            count: results[0].post_count,
+                        }
                         : null;
                     if (tag && results[0].is_deprecated) {
                         apiCache.set(key, null);
@@ -209,8 +267,13 @@ function danbooruApiValidate(tagName) {
                 }
             });
         });
-        req.on('error', () => { resolve(null); });
-        req.on('timeout', () => { req.destroy(); resolve(null); });
+        req.on('error', () => {
+            resolve(null);
+        });
+        req.on('timeout', () => {
+            req.destroy();
+            resolve(null);
+        });
     });
 }
 function danbooruApiSearch(query, limit = 20) {
@@ -228,8 +291,10 @@ function danbooruApiSearch(query, limit = 20) {
                         return;
                     }
                     const tags = results.map((r) => ({
-                        id: r.id, name: r.name,
-                        category: r.category, count: r.post_count,
+                        id: r.id,
+                        name: r.name,
+                        category: r.category,
+                        count: r.post_count,
                     }));
                     for (const tag of tags)
                         apiCache.set(`validate:${tag.name}`, tag);
@@ -240,8 +305,13 @@ function danbooruApiSearch(query, limit = 20) {
                 }
             });
         });
-        req.on('error', () => { resolve([]); });
-        req.on('timeout', () => { req.destroy(); resolve([]); });
+        req.on('error', () => {
+            resolve([]);
+        });
+        req.on('timeout', () => {
+            req.destroy();
+            resolve([]);
+        });
     });
 }
 async function validateTags(tags, onlineFallback = true) {
@@ -250,13 +320,25 @@ async function validateTags(tags, onlineFallback = true) {
         const normalized = tagName.trim().toLowerCase().replace(/\s+/g, '_');
         const localTag = tagMap.get(normalized);
         if (localTag) {
-            results.push({ tag: normalized, valid: true, postCount: localTag.count, category: CATEGORY_NAMES[localTag.category] || 'unknown', source: 'local' });
+            results.push({
+                tag: normalized,
+                valid: true,
+                postCount: localTag.count,
+                category: CATEGORY_NAMES[localTag.category] || 'unknown',
+                source: 'local',
+            });
             continue;
         }
         if (onlineFallback) {
             const onlineTag = await danbooruApiValidate(normalized);
             if (onlineTag) {
-                results.push({ tag: normalized, valid: true, postCount: onlineTag.count, category: CATEGORY_NAMES[onlineTag.category] || 'unknown', source: 'online' });
+                results.push({
+                    tag: normalized,
+                    valid: true,
+                    postCount: onlineTag.count,
+                    category: CATEGORY_NAMES[onlineTag.category] || 'unknown',
+                    source: 'online',
+                });
                 continue;
             }
         }
@@ -283,7 +365,9 @@ async function searchWithOnline(query, category, limit = 20) {
                 break;
         }
     }
-    catch { /* online search failed, return local only */ }
+    catch {
+        /* online search failed, return local only */
+    }
     return localResults;
 }
 function buildDanbooruGuide(characterDescription) {
@@ -373,7 +457,7 @@ const TOOLS = [
     },
     {
         name: 'list_lorebook',
-        description: '로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태). filter로 comment/key 검색 가능.',
+        description: '로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기). 항목이 수백 개일 수 있으므로 filter 파라미터로 comment/key 검색을 권장합니다.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -586,7 +670,7 @@ const TOOLS = [
     },
     {
         name: 'read_reference_field',
-        description: '참고 자료 파일의 특정 필드를 읽습니다 (읽기 전용). 사용 가능한 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, description, defaultVariables, name, lorebook, regex',
+        description: '참고 자료 파일의 특정 필드를 읽습니다 (읽기 전용). ⚠️ lorebook/lua/css는 전체를 한번에 반환하여 컨텍스트를 낭비합니다. 대신 list_reference_lorebook → read_reference_lorebook, list_reference_lua → read_reference_lua, list_reference_css → read_reference_css를 사용하세요. 이 도구는 짧은 필드에만 사용: globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, description, defaultVariables, name, triggerScripts, regex',
         inputSchema: {
             type: 'object',
             properties: {
@@ -594,6 +678,76 @@ const TOOLS = [
                 field: { type: 'string', description: '필드 이름' },
             },
             required: ['index', 'field'],
+        },
+    },
+    {
+        name: 'list_reference_lorebook',
+        description: '참고 자료 파일의 로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기). filter로 comment/key 검색 가능. read_reference_field("lorebook") 대신 이 도구를 사용하세요.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
+                filter: { type: 'string', description: '검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환' },
+            },
+            required: ['index'],
+        },
+    },
+    {
+        name: 'read_reference_lorebook',
+        description: '참고 자료 파일의 특정 로어북 항목 하나를 읽습니다 (읽기 전용). list_reference_lorebook으로 인덱스 확인 후 사용.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                index: { type: 'number', description: '참고 파일 인덱스' },
+                entryIndex: { type: 'number', description: '로어북 항목 인덱스 (list_reference_lorebook 결과 참조)' },
+            },
+            required: ['index', 'entryIndex'],
+        },
+    },
+    {
+        name: 'list_reference_lua',
+        description: '참고 자료 파일의 Lua 섹션 목록을 확인합니다 (인덱스, 이름, 크기). read_reference_field("lua") 대신 이 도구를 사용하세요.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
+            },
+            required: ['index'],
+        },
+    },
+    {
+        name: 'read_reference_lua',
+        description: '참고 자료 파일의 특정 Lua 섹션 하나를 읽습니다 (읽기 전용). list_reference_lua로 인덱스 확인 후 사용.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                index: { type: 'number', description: '참고 파일 인덱스' },
+                sectionIndex: { type: 'number', description: 'Lua 섹션 인덱스 (list_reference_lua 결과 참조)' },
+            },
+            required: ['index', 'sectionIndex'],
+        },
+    },
+    {
+        name: 'list_reference_css',
+        description: '참고 자료 파일의 CSS 섹션 목록을 확인합니다 (인덱스, 이름, 크기). read_reference_field("css") 대신 이 도구를 사용하세요.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
+            },
+            required: ['index'],
+        },
+    },
+    {
+        name: 'read_reference_css',
+        description: '참고 자료 파일의 특정 CSS 섹션 하나를 읽습니다 (읽기 전용). list_reference_css로 인덱스 확인 후 사용.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                index: { type: 'number', description: '참고 파일 인덱스' },
+                sectionIndex: { type: 'number', description: 'CSS 섹션 인덱스 (list_reference_css 결과 참조)' },
+            },
+            required: ['index', 'sectionIndex'],
         },
     },
     // Risum asset tools
@@ -679,7 +833,10 @@ const TOOLS = [
         inputSchema: {
             type: 'object',
             properties: {
-                query: { type: 'string', description: 'Search query (e.g. "blue_eye", "long_h*", "school"). Supports * wildcard.' },
+                query: {
+                    type: 'string',
+                    description: 'Search query (e.g. "blue_eye", "long_h*", "school"). Supports * wildcard.',
+                },
                 category: {
                     type: 'string',
                     description: 'Filter by tag category: general, artist, copyright, character, meta',
@@ -826,6 +983,20 @@ async function handleToolCall(name, args) {
             return await apiRequest('GET', '/references');
         case 'read_reference_field':
             return await apiRequest('GET', `/reference/${args.index}/${encodeURIComponent(args.field)}`);
+        case 'list_reference_lorebook': {
+            const filter = args.filter ? `?filter=${encodeURIComponent(args.filter)}` : '';
+            return await apiRequest('GET', `/reference/${args.index}/lorebook${filter}`);
+        }
+        case 'read_reference_lorebook':
+            return await apiRequest('GET', `/reference/${args.index}/lorebook/${args.entryIndex}`);
+        case 'list_reference_lua':
+            return await apiRequest('GET', `/reference/${args.index}/lua`);
+        case 'read_reference_lua':
+            return await apiRequest('GET', `/reference/${args.index}/lua/${args.sectionIndex}`);
+        case 'list_reference_css':
+            return await apiRequest('GET', `/reference/${args.index}/css`);
+        case 'read_reference_css':
+            return await apiRequest('GET', `/reference/${args.index}/css/${args.sectionIndex}`);
         // Risum asset tools
         case 'list_risum_assets':
             return await apiRequest('GET', '/risum-assets');
@@ -843,7 +1014,9 @@ async function handleToolCall(name, args) {
             return await apiRequest('GET', '/skills');
         case 'read_skill': {
             const file = args.file ? encodeURIComponent(args.file) : '';
-            const skillPath = file ? `/skills/${encodeURIComponent(args.name)}/${file}` : `/skills/${encodeURIComponent(args.name)}`;
+            const skillPath = file
+                ? `/skills/${encodeURIComponent(args.name)}/${file}`
+                : `/skills/${encodeURIComponent(args.name)}`;
             return await apiRequest('GET', skillPath);
         }
         // === Danbooru Tag Tools (handled locally, no API proxy) ===
