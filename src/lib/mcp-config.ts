@@ -97,6 +97,24 @@ export function writeCurrentMcpConfig(): string | null {
   const configPath = path.join(os.homedir(), '.mcp.json');
   const writtenPath = upsertJsonMcpConfig(configPath);
   if (writtenPath) console.log('[main] MCP config written:', writtenPath);
+
+  // Also write configs for all supported CLI tools
+  try {
+    writeCopilotMcpConfig();
+  } catch (e: any) {
+    console.warn('[main] Copilot MCP config failed:', e.message);
+  }
+  try {
+    writeCodexMcpConfig();
+  } catch (e: any) {
+    console.warn('[main] Codex MCP config failed:', e.message);
+  }
+  try {
+    writeGeminiMcpConfig();
+  } catch (e: any) {
+    console.warn('[main] Gemini MCP config failed:', e.message);
+  }
+
   return writtenPath;
 }
 

@@ -9,6 +9,17 @@
 
 ---
 
+## [0.9.1] - 2026-03-21
+
+### 수정
+
+- **MCP 설정 자동 등록** — 앱 시작 시 `~/.mcp.json`만 생성하던 것을 4개 CLI 설정 파일 모두 자동 생성하도록 수정
+  - `~/.mcp.json` (Claude Code)
+  - `~/.copilot/mcp-config.json` (GitHub Copilot CLI)
+  - `~/.codex/config.toml` (Codex)
+  - `~/.gemini/settings.json` (Gemini CLI)
+  - 앱 종료 시 정리 후 재시작해도 모든 CLI에서 MCP 사용 가능
+
 ## [0.9.0] - 2026-03-22
 
 ### 새 기능
