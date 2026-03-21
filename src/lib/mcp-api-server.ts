@@ -2765,6 +2765,85 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
       }
 
+      // ----------------------------------------------------------------
+      // POST /greeting/:type/batch-delete — batch delete greetings
+      // ----------------------------------------------------------------
+      if (parts[0] === 'greeting' && parts[1] && parts[2] === 'batch-delete' && req.method === 'POST') {
+        const greetingType = parts[1];
+        const fieldName =
+          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: 'batch delete greetings',
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `greeting/${greetingType}/batch-delete`, broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices) || indices.length === 0) {
+          return mcpError(res, 400, {
+            action: 'batch delete greetings',
+            message: 'indices must be a non-empty array of numbers',
+            suggestion: 'indices: [0, 2, 5] 형식으로 삭제할 인사말 인덱스를 전달하세요.',
+            target: `greeting:${greetingType}`,
+          });
+        }
+        const MAX_BATCH = 50;
+        if (indices.length > MAX_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch delete greetings',
+            message: `Maximum ${MAX_BATCH} deletions per batch`,
+            suggestion: `${MAX_BATCH}개 이하로 나누어 호출하세요.`,
+            target: `greeting:${greetingType}`,
+          });
+        }
+        const arr: string[] = currentData[fieldName] || [];
+        const uniqueIndices = [...new Set(indices)].sort((a, b) => b - a); // desc for safe splice
+        for (const idx of uniqueIndices) {
+          if (typeof idx !== 'number' || isNaN(idx) || idx < 0 || idx >= arr.length) {
+            return mcpError(res, 400, {
+              action: 'batch delete greetings',
+              message: `Invalid index: ${idx} (range: 0..${arr.length - 1})`,
+              suggestion: 'list_greetings로 유효한 index를 확인하세요.',
+              target: `greeting:${greetingType}:${idx}`,
+            });
+          }
+        }
+        const label = greetingType === 'alternate' ? '추가 첫 메시지' : '그룹 전용 인사말';
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 삭제 요청',
+          `AI 어시스턴트가 ${label} ${uniqueIndices.length}개 (index: ${uniqueIndices.join(', ')})를 삭제하려 합니다.`,
+        );
+
+        if (allowed) {
+          for (const idx of uniqueIndices) {
+            currentData[fieldName].splice(idx, 1);
+          }
+          logMcpMutation('batch delete greetings', `greeting:${greetingType}`, {
+            count: uniqueIndices.length,
+            indices: uniqueIndices,
+          });
+          deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
+          return jsonRes(res, {
+            success: true,
+            type: greetingType,
+            deletedCount: uniqueIndices.length,
+            deletedIndices: uniqueIndices,
+          });
+        } else {
+          return mcpError(res, 403, {
+            action: 'batch delete greetings',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: `greeting:${greetingType}`,
+          });
+        }
+      }
+
       // ================================================================
       // TRIGGER SCRIPTS
       // ================================================================
@@ -3028,8 +3107,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           sections[idx].content = body.content;
           currentData.lua = deps.combineLuaSections(sections);
+          currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
           logMcpMutation('write lua section', `lua:${idx}`, { sectionName, oldSize, newSize });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
+          deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
           return jsonRes(res, { success: true, index: idx, name: sectionName, size: newSize, warning });
         } else {
           return mcpError(res, 403, {
@@ -3104,8 +3185,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (allowed) {
           sections[idx].content = newContent;
           currentData.lua = deps.combineLuaSections(sections);
+          currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
           logMcpMutation('replace lua section content', `lua:${idx}`, { sectionName, matchCount });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
+          deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
           return jsonRes(res, {
             success: true,
             index: idx,
@@ -3196,6 +3279,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           sections[idx].content = newContent;
           currentData.lua = deps.combineLuaSections(sections);
+          currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
           logMcpMutation('insert lua section content', `lua:${idx}`, {
             sectionName,
             position,
@@ -3203,6 +3287,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newSize: newContent.length,
           });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
+          deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
           return jsonRes(res, {
             success: true,
             index: idx,

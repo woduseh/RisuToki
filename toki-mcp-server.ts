@@ -540,7 +540,7 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
 
 // ==================== MCP Server Setup ====================
 
-const server = new McpServer({ name: 'risutoki', version: '1.2.1' });
+const server = new McpServer({ name: 'risutoki', version: '1.3.0' });
 
 // ===== Field Tools =====
 
@@ -729,10 +729,35 @@ server.tool(
 );
 
 server.tool(
+  'add_lorebook_batch',
+  '여러 로어북 항목을 한 번에 추가합니다. 최대 50개. 단일 확인으로 전부 추가합니다. 사용자 확인 필요.',
+  {
+    entries: z
+      .array(z.record(z.string(), z.unknown()))
+      .describe('로어북 항목 데이터 배열 [{comment, key, content, ...}, ...] (최대 50개)'),
+  },
+  async ({ entries }) =>
+    textResult(
+      await apiRequest('POST', '/lorebook/batch-add', {
+        entries: entries as Array<Record<string, unknown>>,
+      }),
+    ),
+);
+
+server.tool(
   'delete_lorebook',
   '특정 인덱스의 로어북 항목을 삭제합니다. 사용자 확인 필요.',
   { index: z.number().describe('삭제할 로어북 항목 인덱스') },
   async ({ index }) => textResult(await apiRequest('POST', `/lorebook/${index}/delete`)),
+);
+
+server.tool(
+  'batch_delete_lorebook',
+  '여러 로어북 항목을 한 번에 삭제합니다. 인덱스를 내림차순 처리하여 시프트 문제를 방지합니다. 최대 50개. 사용자 확인 필요.',
+  {
+    indices: z.array(z.number()).describe('삭제할 로어북 항목 인덱스 배열 (예: [0, 2, 5])'),
+  },
+  async ({ indices }) => textResult(await apiRequest('POST', '/lorebook/batch-delete', { indices })),
 );
 
 server.tool(
@@ -937,6 +962,16 @@ server.tool(
     index: z.number().describe('삭제할 인사말 인덱스'),
   },
   async ({ type, index }) => textResult(await apiRequest('POST', `/greeting/${type}/${index}/delete`)),
+);
+
+server.tool(
+  'batch_delete_greeting',
+  '여러 인사말을 한 번에 삭제합니다. 인덱스를 내림차순 처리하여 시프트 문제를 방지합니다. 사용자 확인 필요.',
+  {
+    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    indices: z.array(z.number()).describe('삭제할 인사말 인덱스 배열 (예: [0, 2, 5])'),
+  },
+  async ({ type, indices }) => textResult(await apiRequest('POST', `/greeting/${type}/batch-delete`, { indices })),
 );
 
 server.tool(

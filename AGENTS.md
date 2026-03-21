@@ -119,8 +119,10 @@ css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
 | `write_lorebook(index, data)`                                                            | 특정 인덱스의 로어북 항목 수정 (부분 수정 가능)                                                                                                                                                        |
 | `write_lorebook_batch(entries)`                                                          | 여러 로어북 항목을 한 번에 수정. `entries: [{index, data}]` (최대 50개). 변경 요약 후 단일 확인                                                                                                        |
 | `add_lorebook(data)`                                                                     | 새 로어북 항목 추가                                                                                                                                                                                    |
+| `add_lorebook_batch(entries)`                                                            | 여러 로어북 항목을 한 번에 추가 (최대 50개). `entries: [{comment, key, content, ...}]`. 단일 확인으로 전부 추가                                                                                        |
 | `clone_lorebook(index, overrides?)`                                                      | 기존 로어북 항목 복제. `overrides`로 복제본의 필드 변경 가능                                                                                                                                           |
 | `delete_lorebook(index)`                                                                 | 특정 인덱스의 로어북 항목 삭제                                                                                                                                                                         |
+| `batch_delete_lorebook(indices)`                                                         | 여러 로어북 항목을 한 번에 삭제 (최대 50개). 인덱스 내림차순 처리로 시프트 문제 방지                                                                                                                   |
 | `replace_in_lorebook(index, find, replace)`                                              | content 내 문자열 치환 — 대용량 항목도 전체를 읽지 않고 서버에서 직접 처리. `regex: true` + `flags` 옵션으로 정규식 지원                                                                               |
 | `insert_in_lorebook(index, content, position?, anchor?)`                                 | content에 텍스트 삽입. position: `end`(기본), `start`, `after`, `before`. after/before는 `anchor` 문자열 기준                                                                                          |
 | `replace_in_lorebook_batch(replacements)`                                                | 여러 항목의 content를 한 번에 치환 (최대 50개). `replacements: [{index, find, replace, regex?, flags?}]`. 매치 요약 → 단일 확인                                                                        |
@@ -160,6 +162,7 @@ alternateGreetings(추가 첫 메시지)와 groupOnlyGreetings(그룹 전용 인
 | `write_greeting(type, index, content)`           | 특정 인덱스의 인사말 수정 (사용자 확인 필요)                                        |
 | `add_greeting(type, content)`                    | 새 인사말 추가 (사용자 확인 필요)                                                   |
 | `delete_greeting(type, index)`                   | 특정 인덱스의 인사말 삭제 (사용자 확인 필요)                                        |
+| `batch_delete_greeting(type, indices)`           | 여러 인사말을 한 번에 삭제 (최대 50개). 인덱스 내림차순 처리로 시프트 문제 방지     |
 | `batch_write_greeting(type, writes)`             | 여러 인사말을 한 번에 수정. `writes: [{index, content}]` (최대 50개). 단일 확인     |
 | `reorder_greetings(type, order)`                 | 인사말 순서 변경. `order: [2,0,1,3]` (현재 배열과 동일 길이의 순열)                 |
 
@@ -204,6 +207,17 @@ CBS 문법, Lua API, 로어북, 정규식, HTML/CSS, 트리거, 캐릭터 작성
 | `read_skill(name, file?)` | 스킬 문서 읽기 (기본: SKILL.md, 참조 파일도 file 파라미터로) |
 
 상세 문법이 필요할 때 `list_skills` → `read_skill`로 on-demand 로딩하세요.
+
+### charx 에셋 관리 (CharX Assets)
+
+charx 파일의 내장 에셋(이미지 등)을 관리하는 도구. risum 에셋과는 별개.
+
+| 도구                                         | 설명                                                           |
+| -------------------------------------------- | -------------------------------------------------------------- |
+| `list_charx_assets`                          | .charx 파일의 내장 에셋 목록 (인덱스, 경로, 크기)              |
+| `read_charx_asset(index)`                    | 에셋을 base64로 읽기                                           |
+| `add_charx_asset(fileName, base64, folder?)` | 에셋 추가. folder: "icon" 또는 "other"(기본). 사용자 확인 필요 |
+| `delete_charx_asset(index)`                  | 에셋 삭제. 사용자 확인 필요                                    |
 
 ### 에셋 압축 (Asset Compression)
 

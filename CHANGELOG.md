@@ -9,6 +9,25 @@
 
 ---
 
+## [0.16.0] - 2026-03-22
+
+### 수정
+
+- **🔴 Lua 데이터 소실 버그 수정** — `write_lua`, `replace_in_lua`, `insert_in_lua`로 Lua 섹션을 수정한 후 트리거 스크립트 작업(추가/삭제/수정)을 하면 Lua 변경사항이 소실되던 치명적 버그 수정. 근본 원인: Lua 섹션 핸들러가 `triggerScripts`에 변경을 동기화하지 않아서, 이후 `extractPrimaryLua()`가 옛날 데이터로 덮어씀. 3개 핸들러에 `mergePrimaryLua` + `triggerScripts` broadcast 추가
+
+### 새 기능
+
+- **charx 에셋 관리 도구** — `.charx` 파일의 내장 에셋(이미지 등)을 MCP 도구로 관리
+  - `list_charx_assets` — 에셋 목록 (경로, 크기)
+  - `read_charx_asset` — 에셋을 base64로 읽기
+  - `add_charx_asset` — 에셋 추가 (icon/other 폴더)
+  - `delete_charx_asset` — 에셋 삭제
+- **로어북 일괄 추가** (`add_lorebook_batch` MCP 도구) — 최대 50개 로어북 항목을 한 번에 추가. 단일 확인으로 전부 추가
+- **로어북 일괄 삭제** (`batch_delete_lorebook` MCP 도구) — 최대 50개 로어북 항목을 한 번에 삭제. 인덱스 내림차순 처리로 시프트 문제 방지
+- **인사말 일괄 삭제** (`batch_delete_greeting` MCP 도구) — 최대 50개 인사말을 한 번에 삭제. 인덱스 내림차순 처리로 시프트 문제 방지
+
+---
+
 ## [0.15.1] - 2026-03-21
 
 ### 새 기능
