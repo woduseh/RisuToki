@@ -9,6 +9,32 @@
 
 ---
 
+## [0.9.0] - 2026-03-22
+
+### 새 기능
+
+- **MCP 공식 SDK 전환** — `@modelcontextprotocol/sdk` (v1.27.1) + `StdioServerTransport`로 프로토콜 처리 자동화
+  - 수동 JSON-RPC 파싱/직렬화/에러 처리 → SDK 자동 처리
+  - `McpServer` + `server.tool()` 패턴으로 도구 정의·검증·디스패치 1곳 통합
+  - `server.prompt()` 기반 프롬프트 등록 (danbooru_tag_guide)
+- **Zod 입력 검증** — 모든 MCP 도구의 파라미터를 Zod 스키마로 타입 검증
+  - 잘못된 파라미터 타입 전달 시 SDK가 자동으로 명확한 에러 반환
+  - `z.union()` 등으로 `write_field`의 복합 타입(string|array|boolean|number) 검증
+
+### 변경
+
+- **toki-mcp-server.ts 리팩터링** — 1512줄 → 1129줄 (25% 감소)
+  - TOOLS 배열 (~600줄) + switch-case 디스패치 (~250줄) + handleMessage (~130줄) 삭제
+  - `server.tool()` 콜백으로 통합 (정의·검증·디스패치 1곳)
+- **tsconfig.node-libs.json** — `moduleResolution: "Node16"`으로 변경 (SDK exports 맵 지원)
+- 기존 모든 도구 동작은 변경 없음 (stdio transport, Bearer token 인증, HTTP 프록시 유지)
+
+### 기술 정보
+
+- 새 의존성: `@modelcontextprotocol/sdk` ^1.27.1, `zod` ^4.3.6
+- stdio transport 유지 — CLI 설정 파일(~/.mcp.json 등) 변경 불필요
+- mcp-api-server.ts (HTTP 백엔드) 변경 없음
+
 ## [0.8.1] - 2026-03-21
 
 ### 새 기능

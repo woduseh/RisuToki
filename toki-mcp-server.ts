@@ -1,7 +1,7 @@
 'use strict';
 
 // RisuToki MCP Server
-// Standalone JSON-RPC 2.0 over stdio (no SDK dependency)
+// MCP SDK (StdioServerTransport) + Zod validation
 // Communicates with RisuToki via local HTTP API
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -13,37 +13,16 @@ import fs = require('fs');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import path = require('path');
 
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { z } from 'zod';
+
 const TOKI_PORT = process.env.TOKI_PORT;
 const TOKI_TOKEN = process.env.TOKI_TOKEN;
 
 if (!TOKI_PORT || !TOKI_TOKEN) {
   process.stderr.write('[toki-mcp] ERROR: TOKI_PORT and TOKI_TOKEN env vars required\n');
   process.exit(1);
-}
-
-// ==================== TypeScript Interfaces ====================
-
-interface MCPTool {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-}
-
-interface JSONRPCRequest {
-  jsonrpc: string;
-  id?: string | number;
-  method: string;
-  params?: Record<string, unknown>;
-}
-
-interface JSONRPCResponse {
-  jsonrpc: string;
-  id?: string | number;
-  result?: unknown;
-  error?: {
-    code: number;
-    message: string;
-  };
 }
 
 interface DanbooruTag {
@@ -459,603 +438,11 @@ function buildDanbooruGuide(characterDescription?: string): string {
 // Load tags at startup
 loadTags();
 
-// ==================== MCP Tool Definitions ====================
+// ==================== Helper ====================
 
-const TOOLS: MCPTool[] = [
-  {
-    name: 'list_fields',
-    description:
-      '현재 열린 파일(.charx, .risum, .risup)의 편집 가능한 필드 목록과 크기를 확인합니다. 응답에 fileType 포함.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'read_field',
-    description:
-      '필드의 전체 내용을 읽습니다. ⚠️ 주의: alternateGreetings/groupOnlyGreetings는 list_greetings → read_greeting, triggerScripts는 list_triggers → read_trigger, lua는 list_lua → read_lua, css는 list_css → read_css를 사용하세요. 이 도구로 이들을 읽으면 전체 내용이 한번에 반환되어 비효율적입니다. 공통 필드: globalNote, firstMessage, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, creationDate(읽기전용), modificationDate(읽기전용), additionalText, license. risum 전용: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용). risup 전용: mainPrompt, jailbreak, temperature, maxContext, maxResponse, frequencyPenalty, presencePenalty, aiModel, subModel, apiType 등',
-    inputSchema: {
-      type: 'object',
-      properties: { field: { type: 'string', description: '필드 이름' } },
-      required: ['field'],
-    },
-  },
-  {
-    name: 'write_field',
-    description:
-      '필드에 새 내용을 씁니다. 에디터에서 사용자 확인 팝업이 뜹니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, additionalText, license. risum 전용: cjs, lowLevelAccess(boolean), hideIcon(boolean), backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription. risup 전용: mainPrompt, jailbreak, temperature(number), maxContext(number), maxResponse(number), frequencyPenalty(number), presencePenalty(number), aiModel, subModel, apiType, promptPreprocess(boolean), promptTemplate(JSON), presetBias(JSON), formatingOrder(JSON), presetImage, top_p(number), top_k(number), repetition_penalty(number), min_p(number), top_a(number), reasonEffort(number), thinkingTokens(number), thinkingType, adaptiveThinkingEffort, useInstructPrompt(boolean), instructChatTemplate, JinjaTemplate, customPromptTemplateToggle, templateDefaultVariables, moduleIntergration, jsonSchemaEnabled(boolean), jsonSchema, strictJsonSchema(boolean), extractJson, groupTemplate, groupOtherBotRole, autoSuggestPrompt, autoSuggestPrefix, autoSuggestClean(boolean), localStopStrings(JSON), outputImageModal(boolean), verbosity(number), fallbackWhenBlankResponse(boolean), systemContentReplacement, systemRoleReplacement',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        field: { type: 'string', description: '필드 이름' },
-        content: {
-          description:
-            '새로운 내용. alternateGreetings/groupOnlyGreetings/tags/source는 문자열 배열, triggerScripts는 JSON 문자열, boolean 필드는 boolean, number 필드는 number, 나머지는 문자열',
-          oneOf: [
-            { type: 'string' },
-            { type: 'array', items: { type: 'string' } },
-            { type: 'boolean' },
-            { type: 'number' },
-          ],
-        },
-      },
-      required: ['field', 'content'],
-    },
-  },
-  {
-    name: 'list_lorebook',
-    description:
-      '로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기, 폴더). 응답에 폴더 요약(folders)도 포함됩니다. 항목이 수백 개일 수 있으므로 folder 또는 filter 파라미터로 범위를 좁히세요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        filter: { type: 'string', description: '검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환' },
-        folder: { type: 'string', description: '폴더 UUID로 필터 (예: "folder:xxxx" 또는 UUID만). 생략 시 전체 반환' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'read_lorebook',
-    description: '특정 인덱스의 로어북 항목 전체 데이터를 읽습니다.',
-    inputSchema: {
-      type: 'object',
-      properties: { index: { type: 'number', description: '로어북 항목 인덱스' } },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'write_lorebook',
-    description: '특정 인덱스의 로어북 항목을 수정합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: '로어북 항목 인덱스' },
-        data: { type: 'object', description: '수정할 로어북 데이터 (부분 또는 전체)' },
-      },
-      required: ['index', 'data'],
-    },
-  },
-  {
-    name: 'list_regex',
-    description: '정규식 스크립트 항목 목록을 확인합니다 (인덱스, comment, type, findSize, replaceSize).',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'read_regex',
-    description: '특정 인덱스의 정규식 항목을 읽습니다.',
-    inputSchema: {
-      type: 'object',
-      properties: { index: { type: 'number', description: '정규식 항목 인덱스' } },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'write_regex',
-    description: '특정 인덱스의 정규식 항목을 수정합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: '정규식 항목 인덱스' },
-        data: { type: 'object', description: '수정할 정규식 데이터' },
-      },
-      required: ['index', 'data'],
-    },
-  },
-  {
-    name: 'add_lorebook',
-    description: '새 로어북 항목을 추가합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        data: { type: 'object', description: '로어북 항목 데이터 (key, comment, content 등)' },
-      },
-      required: ['data'],
-    },
-  },
-  {
-    name: 'delete_lorebook',
-    description: '특정 인덱스의 로어북 항목을 삭제합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: { index: { type: 'number', description: '삭제할 로어북 항목 인덱스' } },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'add_regex',
-    description: '새 정규식 항목을 추가합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        data: { type: 'object', description: '정규식 항목 데이터 (comment, type, find, replace, flag)' },
-      },
-      required: ['data'],
-    },
-  },
-  {
-    name: 'delete_regex',
-    description: '특정 인덱스의 정규식 항목을 삭제합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: { index: { type: 'number', description: '삭제할 정규식 항목 인덱스' } },
-      required: ['index'],
-    },
-  },
-  // ------- Greetings (alternateGreetings / groupOnlyGreetings) -------
-  {
-    name: 'list_greetings',
-    description:
-      '인사말 목록을 확인합니다 (인덱스, 크기, 미리보기 100자). type="alternate"는 추가 첫 메시지(alternateGreetings), type="group"은 그룹 전용 인사말(groupOnlyGreetings). read_field("alternateGreetings") 대신 이 도구를 사용하세요 — 전체 덤프를 방지합니다.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        type: {
-          type: 'string',
-          description: '"alternate" (추가 첫 메시지) 또는 "group" (그룹 전용 인사말)',
-          enum: ['alternate', 'group'],
-        },
-      },
-      required: ['type'],
-    },
-  },
-  {
-    name: 'read_greeting',
-    description: '특정 인덱스의 인사말 하나를 읽습니다. list_greetings로 목록을 먼저 확인하세요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', description: '"alternate" 또는 "group"', enum: ['alternate', 'group'] },
-        index: { type: 'number', description: '인사말 인덱스 (list_greetings 결과 참조)' },
-      },
-      required: ['type', 'index'],
-    },
-  },
-  {
-    name: 'write_greeting',
-    description: '특정 인덱스의 인사말을 수정합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', description: '"alternate" 또는 "group"', enum: ['alternate', 'group'] },
-        index: { type: 'number', description: '인사말 인덱스' },
-        content: { type: 'string', description: '새로운 인사말 텍스트' },
-      },
-      required: ['type', 'index', 'content'],
-    },
-  },
-  {
-    name: 'add_greeting',
-    description: '새 인사말을 추가합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', description: '"alternate" 또는 "group"', enum: ['alternate', 'group'] },
-        content: { type: 'string', description: '인사말 텍스트' },
-      },
-      required: ['type', 'content'],
-    },
-  },
-  {
-    name: 'delete_greeting',
-    description: '특정 인덱스의 인사말을 삭제합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', description: '"alternate" 또는 "group"', enum: ['alternate', 'group'] },
-        index: { type: 'number', description: '삭제할 인사말 인덱스' },
-      },
-      required: ['type', 'index'],
-    },
-  },
-  // ------- Trigger Scripts -------
-  {
-    name: 'list_triggers',
-    description:
-      '트리거 스크립트 목록을 확인합니다 (인덱스, comment, type, conditionCount, effectCount, lowLevelAccess). read_field("triggerScripts") 대신 이 도구를 사용하세요 — 전체 JSON 덤프를 방지합니다.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'read_trigger',
-    description: '특정 인덱스의 트리거 스크립트를 읽습니다. list_triggers로 목록을 먼저 확인하세요.',
-    inputSchema: {
-      type: 'object',
-      properties: { index: { type: 'number', description: '트리거 인덱스 (list_triggers 결과 참조)' } },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'write_trigger',
-    description:
-      '특정 인덱스의 트리거 스크립트를 수정합니다. 변경할 필드만 전달하면 나머지는 유지됩니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: '트리거 인덱스' },
-        comment: { type: 'string', description: '트리거 이름/설명' },
-        type: { type: 'string', description: '트리거 타입 (start, input, output 등)' },
-        conditions: { type: 'array', description: '조건 배열' },
-        effect: { type: 'array', description: '효과 배열' },
-        lowLevelAccess: { type: 'boolean', description: '저수준 접근 여부' },
-      },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'add_trigger',
-    description: '새 트리거 스크립트를 추가합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        comment: { type: 'string', description: '트리거 이름/설명' },
-        type: { type: 'string', description: '트리거 타입 (기본: "start")' },
-        conditions: { type: 'array', description: '조건 배열' },
-        effect: { type: 'array', description: '효과 배열' },
-        lowLevelAccess: { type: 'boolean', description: '저수준 접근 여부' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'delete_trigger',
-    description: '특정 인덱스의 트리거 스크립트를 삭제합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: { index: { type: 'number', description: '삭제할 트리거 인덱스' } },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'list_lua',
-    description:
-      'Lua 코드의 섹션 목록을 확인합니다 (-- ===== 섹션명 ===== 구분자 기준). 각 섹션의 인덱스, 이름, 크기를 반환합니다.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'read_lua',
-    description: '특정 인덱스의 Lua 섹션 코드를 읽습니다. list_lua로 섹션 목록을 먼저 확인하세요.',
-    inputSchema: {
-      type: 'object',
-      properties: { index: { type: 'number', description: 'Lua 섹션 인덱스 (list_lua 결과 참조)' } },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'write_lua',
-    description: '특정 인덱스의 Lua 섹션 코드를 교체합니다. 사용자 확인 필요. 섹션 전체 코드를 content로 전달하세요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: 'Lua 섹션 인덱스' },
-        content: { type: 'string', description: '새로운 섹션 코드 (전체 교체)' },
-      },
-      required: ['index', 'content'],
-    },
-  },
-  {
-    name: 'replace_in_lua',
-    description:
-      'Lua 섹션 내에서 문자열 치환을 수행합니다. 대용량 섹션을 통째로 읽고 쓸 필요 없이 서버에서 직접 치환합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: 'Lua 섹션 인덱스 (list_lua 결과 참조)' },
-        find: { type: 'string', description: '찾을 문자열 (또는 regex: true일 때 정규식 패턴)' },
-        replace: { type: 'string', description: '바꿀 문자열 (기본: 빈 문자열 = 삭제)' },
-        regex: { type: 'boolean', description: '정규식 모드 여부 (기본: false = 일반 문자열 매칭)' },
-        flags: { type: 'string', description: '정규식 플래그 (기본: "g"). regex: true일 때만 사용' },
-      },
-      required: ['index', 'find'],
-    },
-  },
-  {
-    name: 'insert_in_lua',
-    description:
-      'Lua 섹션에 코드를 삽입합니다. 전체를 읽지 않고 특정 위치에 추가. position: "end"(기본, 끝에 추가), "start"(앞에 추가), "after"(anchor 뒤에 삽입), "before"(anchor 앞에 삽입). 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: 'Lua 섹션 인덱스' },
-        content: { type: 'string', description: '삽입할 코드' },
-        position: { type: 'string', description: '삽입 위치: "end"(기본), "start", "after", "before"' },
-        anchor: { type: 'string', description: 'position이 "after"/"before"일 때 기준 문자열' },
-      },
-      required: ['index', 'content'],
-    },
-  },
-  {
-    name: 'list_css',
-    description:
-      'CSS 코드의 섹션 목록을 확인합니다 (/* ===== 섹션명 ===== */ 구분자 기준). 각 섹션의 인덱스, 이름, 크기를 반환합니다.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'read_css',
-    description: '특정 인덱스의 CSS 섹션 코드를 읽습니다. list_css로 섹션 목록을 먼저 확인하세요.',
-    inputSchema: {
-      type: 'object',
-      properties: { index: { type: 'number', description: 'CSS 섹션 인덱스 (list_css 결과 참조)' } },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'write_css',
-    description: '특정 인덱스의 CSS 섹션 코드를 교체합니다. 사용자 확인 필요. 섹션 전체 코드를 content로 전달하세요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: 'CSS 섹션 인덱스' },
-        content: { type: 'string', description: '새로운 섹션 코드 (전체 교체)' },
-      },
-      required: ['index', 'content'],
-    },
-  },
-  {
-    name: 'replace_in_css',
-    description:
-      'CSS 섹션 내에서 문자열 치환을 수행합니다. 대용량 섹션을 통째로 읽고 쓸 필요 없이 서버에서 직접 치환합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: 'CSS 섹션 인덱스 (list_css 결과 참조)' },
-        find: { type: 'string', description: '찾을 문자열 (또는 regex: true일 때 정규식 패턴)' },
-        replace: { type: 'string', description: '바꿀 문자열 (기본: 빈 문자열 = 삭제)' },
-        regex: { type: 'boolean', description: '정규식 모드 여부 (기본: false = 일반 문자열 매칭)' },
-        flags: { type: 'string', description: '정규식 플래그 (기본: "g"). regex: true일 때만 사용' },
-      },
-      required: ['index', 'find'],
-    },
-  },
-  {
-    name: 'insert_in_css',
-    description:
-      'CSS 섹션에 코드를 삽입합니다. 전체를 읽지 않고 특정 위치에 추가. position: "end"(기본, 끝에 추가), "start"(앞에 추가), "after"(anchor 뒤에 삽입), "before"(anchor 앞에 삽입). 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: 'CSS 섹션 인덱스' },
-        content: { type: 'string', description: '삽입할 코드' },
-        position: { type: 'string', description: '삽입 위치: "end"(기본), "start", "after", "before"' },
-        anchor: { type: 'string', description: 'position이 "after"/"before"일 때 기준 문자열' },
-      },
-      required: ['index', 'content'],
-    },
-  },
-  {
-    name: 'list_references',
-    description: '로드된 참고 자료 파일 목록을 확인합니다 (읽기 전용). 각 파일의 필드와 크기를 포함합니다.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'read_reference_field',
-    description:
-      '참고 자료 파일의 특정 필드를 읽습니다 (읽기 전용). ⚠️ lorebook/lua/css는 전체를 한번에 반환하여 컨텍스트를 낭비합니다. 대신 list_reference_lorebook → read_reference_lorebook, list_reference_lua → read_reference_lua, list_reference_css → read_reference_css를 사용하세요. 이 도구는 짧은 필드에만 사용: globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, description, defaultVariables, name, triggerScripts, regex',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
-        field: { type: 'string', description: '필드 이름' },
-      },
-      required: ['index', 'field'],
-    },
-  },
-  {
-    name: 'list_reference_lorebook',
-    description:
-      '참고 자료 파일의 로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기, 폴더). filter 또는 folder로 범위를 좁히세요. read_reference_field("lorebook") 대신 이 도구를 사용하세요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
-        filter: { type: 'string', description: '검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환' },
-        folder: { type: 'string', description: '폴더 UUID로 필터. 생략 시 전체 반환' },
-      },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'read_reference_lorebook',
-    description:
-      '참고 자료 파일의 특정 로어북 항목 하나를 읽습니다 (읽기 전용). list_reference_lorebook으로 인덱스 확인 후 사용.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: '참고 파일 인덱스' },
-        entryIndex: { type: 'number', description: '로어북 항목 인덱스 (list_reference_lorebook 결과 참조)' },
-      },
-      required: ['index', 'entryIndex'],
-    },
-  },
-  {
-    name: 'list_reference_lua',
-    description:
-      '참고 자료 파일의 Lua 섹션 목록을 확인합니다 (인덱스, 이름, 크기). read_reference_field("lua") 대신 이 도구를 사용하세요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
-      },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'read_reference_lua',
-    description:
-      '참고 자료 파일의 특정 Lua 섹션 하나를 읽습니다 (읽기 전용). list_reference_lua로 인덱스 확인 후 사용.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: '참고 파일 인덱스' },
-        sectionIndex: { type: 'number', description: 'Lua 섹션 인덱스 (list_reference_lua 결과 참조)' },
-      },
-      required: ['index', 'sectionIndex'],
-    },
-  },
-  {
-    name: 'list_reference_css',
-    description:
-      '참고 자료 파일의 CSS 섹션 목록을 확인합니다 (인덱스, 이름, 크기). read_reference_field("css") 대신 이 도구를 사용하세요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
-      },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'read_reference_css',
-    description:
-      '참고 자료 파일의 특정 CSS 섹션 하나를 읽습니다 (읽기 전용). list_reference_css로 인덱스 확인 후 사용.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        index: { type: 'number', description: '참고 파일 인덱스' },
-        sectionIndex: { type: 'number', description: 'CSS 섹션 인덱스 (list_reference_css 결과 참조)' },
-      },
-      required: ['index', 'sectionIndex'],
-    },
-  },
-  // Risum asset tools
-  {
-    name: 'list_risum_assets',
-    description: '.risum 파일의 내장 에셋 목록을 확인합니다 (인덱스, 이름, 경로, 크기).',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'read_risum_asset',
-    description: '.risum 파일의 내장 에셋을 base64로 읽습니다.',
-    inputSchema: {
-      type: 'object',
-      properties: { index: { type: 'number', description: '에셋 인덱스 (list_risum_assets 결과 참조)' } },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'add_risum_asset',
-    description: '.risum 파일에 에셋을 추가합니다. base64로 인코딩된 데이터를 전달. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: '에셋 이름' },
-        path: { type: 'string', description: '에셋 경로 (선택사항)' },
-        base64: { type: 'string', description: 'base64 인코딩된 에셋 데이터' },
-      },
-      required: ['name', 'base64'],
-    },
-  },
-  {
-    name: 'delete_risum_asset',
-    description: '.risum 파일의 내장 에셋을 삭제합니다. 사용자 확인 필요.',
-    inputSchema: {
-      type: 'object',
-      properties: { index: { type: 'number', description: '삭제할 에셋 인덱스' } },
-      required: ['index'],
-    },
-  },
-  {
-    name: 'list_skills',
-    description:
-      'RisuAI 스킬 문서 목록을 반환합니다. 각 스킬의 name, description, 포함 파일 목록을 확인할 수 있습니다. CBS 문법, Lua 스크립트, 로어북, 정규식, HTML/CSS, 트리거 스크립트, 캐릭터 작성 등의 가이드가 포함되어 있습니다.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'read_skill',
-    description:
-      '특정 스킬의 문서 파일을 읽습니다. 기본적으로 SKILL.md를 읽으며, file 파라미터로 참조 파일(예: REFERENCE.md, API_REFERENCE.md)도 읽을 수 있습니다.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: '스킬 이름 (예: writing-lua-scripts, authoring-characters)' },
-        file: {
-          type: 'string',
-          description: '읽을 파일명 (기본: SKILL.md). list_skills에서 확인한 파일명 사용.',
-        },
-      },
-      required: ['name'],
-    },
-  },
-  // === Danbooru Tag Tools ===
-  {
-    name: 'validate_danbooru_tags',
-    description:
-      'Validate whether given tags are valid Danbooru tags. Returns validation result for each tag with suggestions for invalid ones. IMPORTANT: Always use this tool to verify your tags before using them in image generation prompts.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        tags: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'List of tags to validate (e.g. ["blue_eyes", "long_hair", "school_uniform"])',
-        },
-        online_fallback: {
-          type: 'boolean',
-          description: 'If true, check Danbooru API for tags not found locally (default: true)',
-        },
-      },
-      required: ['tags'],
-    },
-  },
-  {
-    name: 'search_danbooru_tags',
-    description:
-      'Search for Danbooru tags matching a query. Use this to find the correct tag name for a concept. Supports wildcard (*) patterns. Results are sorted by popularity (post count).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Search query (e.g. "blue_eye", "long_h*", "school"). Supports * wildcard.',
-        },
-        category: {
-          type: 'string',
-          description: 'Filter by tag category: general, artist, copyright, character, meta',
-        },
-        limit: { type: 'number', description: 'Max results (default: 20, max: 50)' },
-      },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'get_popular_danbooru_tags',
-    description:
-      'Get popular Danbooru tags sorted by usage count. Use group_by_semantic=true to get tags organized by category (hair, eyes, clothing, pose, etc.) — very useful when writing character image prompts.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        category: {
-          type: 'string',
-          description: 'Filter by tag category: general, artist, copyright, character, meta',
-        },
-        limit: { type: 'number', description: 'Max results per group or total (default: 100, max: 500)' },
-        group_by_semantic: {
-          type: 'boolean',
-          description:
-            'If true, returns tags grouped by semantic category (hair_color, eye_color, clothing, pose, etc.)',
-        },
-      },
-      required: [],
-    },
-  },
-];
+function textResult(data: unknown) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+}
 
 // ==================== HTTP Client ====================
 
@@ -1106,406 +493,615 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
   });
 }
 
-// ==================== Tool Call Handler ====================
+// ==================== MCP Server Setup ====================
 
-async function handleToolCall(name: string, args: Record<string, unknown>): Promise<unknown> {
-  switch (name) {
-    case 'list_fields':
-      return await apiRequest('GET', '/fields');
+const server = new McpServer({ name: 'risutoki', version: '1.1.0' });
 
-    case 'read_field':
-      return await apiRequest('GET', `/field/${encodeURIComponent(args.field as string)}`);
+// ===== Field Tools =====
 
-    case 'write_field':
-      return await apiRequest('POST', `/field/${encodeURIComponent(args.field as string)}`, { content: args.content });
+server.tool(
+  'list_fields',
+  '현재 열린 파일(.charx, .risum, .risup)의 편집 가능한 필드 목록과 크기를 확인합니다. 응답에 fileType 포함.',
+  {},
+  async () => textResult(await apiRequest('GET', '/fields')),
+);
 
-    case 'list_lorebook': {
-      const params = new URLSearchParams();
-      if (args.filter) params.set('filter', args.filter as string);
-      if (args.folder) params.set('folder', args.folder as string);
-      const qs = params.toString();
-      return await apiRequest('GET', qs ? `/lorebook?${qs}` : '/lorebook');
-    }
+server.tool(
+  'read_field',
+  '필드의 전체 내용을 읽습니다. ⚠️ 주의: alternateGreetings/groupOnlyGreetings는 list_greetings → read_greeting, triggerScripts는 list_triggers → read_trigger, lua는 list_lua → read_lua, css는 list_css → read_css를 사용하세요. 이 도구로 이들을 읽으면 전체 내용이 한번에 반환되어 비효율적입니다. 공통 필드: globalNote, firstMessage, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, creationDate(읽기전용), modificationDate(읽기전용), additionalText, license. risum 전용: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용). risup 전용: mainPrompt, jailbreak, temperature, maxContext, maxResponse, frequencyPenalty, presencePenalty, aiModel, subModel, apiType 등',
+  { field: z.string().describe('필드 이름') },
+  async ({ field }) => textResult(await apiRequest('GET', `/field/${encodeURIComponent(field)}`)),
+);
 
-    case 'read_lorebook':
-      return await apiRequest('GET', `/lorebook/${args.index}`);
+server.tool(
+  'write_field',
+  '필드에 새 내용을 씁니다. 에디터에서 사용자 확인 팝업이 뜹니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, additionalText, license. risum 전용: cjs, lowLevelAccess(boolean), hideIcon(boolean), backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription. risup 전용: mainPrompt, jailbreak, temperature(number), maxContext(number), maxResponse(number), frequencyPenalty(number), presencePenalty(number), aiModel, subModel, apiType, promptPreprocess(boolean), promptTemplate(JSON), presetBias(JSON), formatingOrder(JSON), presetImage, top_p(number), top_k(number), repetition_penalty(number), min_p(number), top_a(number), reasonEffort(number), thinkingTokens(number), thinkingType, adaptiveThinkingEffort, useInstructPrompt(boolean), instructChatTemplate, JinjaTemplate, customPromptTemplateToggle, templateDefaultVariables, moduleIntergration, jsonSchemaEnabled(boolean), jsonSchema, strictJsonSchema(boolean), extractJson, groupTemplate, groupOtherBotRole, autoSuggestPrompt, autoSuggestPrefix, autoSuggestClean(boolean), localStopStrings(JSON), outputImageModal(boolean), verbosity(number), fallbackWhenBlankResponse(boolean), systemContentReplacement, systemRoleReplacement',
+  {
+    field: z.string().describe('필드 이름'),
+    content: z
+      .union([z.string(), z.array(z.string()), z.boolean(), z.number()])
+      .describe(
+        '새로운 내용. alternateGreetings/groupOnlyGreetings/tags/source는 문자열 배열, triggerScripts는 JSON 문자열, boolean 필드는 boolean, number 필드는 number, 나머지는 문자열',
+      ),
+  },
+  async ({ field, content }) =>
+    textResult(await apiRequest('POST', `/field/${encodeURIComponent(field)}`, { content })),
+);
 
-    case 'write_lorebook':
-      return await apiRequest('POST', `/lorebook/${args.index}`, args.data as Record<string, unknown>);
+// ===== Lorebook Tools =====
 
-    case 'list_regex':
-      return await apiRequest('GET', '/regex');
+server.tool(
+  'list_lorebook',
+  '로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기, 폴더). 응답에 폴더 요약(folders)도 포함됩니다. 항목이 수백 개일 수 있으므로 folder 또는 filter 파라미터로 범위를 좁히세요.',
+  {
+    filter: z.string().optional().describe('검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환'),
+    folder: z.string().optional().describe('폴더 UUID로 필터 (예: "folder:xxxx" 또는 UUID만). 생략 시 전체 반환'),
+  },
+  async ({ filter, folder }) => {
+    const params = new URLSearchParams();
+    if (filter) params.set('filter', filter);
+    if (folder) params.set('folder', folder);
+    const qs = params.toString();
+    return textResult(await apiRequest('GET', qs ? `/lorebook?${qs}` : '/lorebook'));
+  },
+);
 
-    case 'read_regex':
-      return await apiRequest('GET', `/regex/${args.index}`);
+server.tool(
+  'read_lorebook',
+  '특정 인덱스의 로어북 항목 전체 데이터를 읽습니다.',
+  { index: z.number().describe('로어북 항목 인덱스') },
+  async ({ index }) => textResult(await apiRequest('GET', `/lorebook/${index}`)),
+);
 
-    case 'write_regex':
-      return await apiRequest('POST', `/regex/${args.index}`, args.data as Record<string, unknown>);
+server.tool(
+  'write_lorebook',
+  '특정 인덱스의 로어북 항목을 수정합니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('로어북 항목 인덱스'),
+    data: z.record(z.string(), z.unknown()).describe('수정할 로어북 데이터 (부분 또는 전체)'),
+  },
+  async ({ index, data }) =>
+    textResult(await apiRequest('POST', `/lorebook/${index}`, data as Record<string, unknown>)),
+);
 
-    case 'add_lorebook':
-      return await apiRequest('POST', '/lorebook/add', args.data as Record<string, unknown>);
+server.tool(
+  'add_lorebook',
+  '새 로어북 항목을 추가합니다. 사용자 확인 필요.',
+  { data: z.record(z.string(), z.unknown()).describe('로어북 항목 데이터 (key, comment, content 등)') },
+  async ({ data }) => textResult(await apiRequest('POST', '/lorebook/add', data as Record<string, unknown>)),
+);
 
-    case 'delete_lorebook':
-      return await apiRequest('POST', `/lorebook/${args.index}/delete`);
+server.tool(
+  'delete_lorebook',
+  '특정 인덱스의 로어북 항목을 삭제합니다. 사용자 확인 필요.',
+  { index: z.number().describe('삭제할 로어북 항목 인덱스') },
+  async ({ index }) => textResult(await apiRequest('POST', `/lorebook/${index}/delete`)),
+);
 
-    case 'add_regex':
-      return await apiRequest('POST', '/regex/add', args.data as Record<string, unknown>);
+// ===== Regex Tools =====
 
-    case 'delete_regex':
-      return await apiRequest('POST', `/regex/${args.index}/delete`);
+server.tool(
+  'list_regex',
+  '정규식 스크립트 항목 목록을 확인합니다 (인덱스, comment, type, findSize, replaceSize).',
+  {},
+  async () => textResult(await apiRequest('GET', '/regex')),
+);
 
-    // ------- Greetings -------
-    case 'list_greetings':
-      return await apiRequest('GET', `/greetings/${args.type}`);
+server.tool(
+  'read_regex',
+  '특정 인덱스의 정규식 항목을 읽습니다.',
+  { index: z.number().describe('정규식 항목 인덱스') },
+  async ({ index }) => textResult(await apiRequest('GET', `/regex/${index}`)),
+);
 
-    case 'read_greeting':
-      return await apiRequest('GET', `/greeting/${args.type}/${args.index}`);
+server.tool(
+  'write_regex',
+  '특정 인덱스의 정규식 항목을 수정합니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('정규식 항목 인덱스'),
+    data: z.record(z.string(), z.unknown()).describe('수정할 정규식 데이터'),
+  },
+  async ({ index, data }) => textResult(await apiRequest('POST', `/regex/${index}`, data as Record<string, unknown>)),
+);
 
-    case 'write_greeting':
-      return await apiRequest('POST', `/greeting/${args.type}/${args.index}`, { content: args.content });
+server.tool(
+  'add_regex',
+  '새 정규식 항목을 추가합니다. 사용자 확인 필요.',
+  { data: z.record(z.string(), z.unknown()).describe('정규식 항목 데이터 (comment, type, find, replace, flag)') },
+  async ({ data }) => textResult(await apiRequest('POST', '/regex/add', data as Record<string, unknown>)),
+);
 
-    case 'add_greeting':
-      return await apiRequest('POST', `/greeting/${args.type}/add`, { content: args.content });
+server.tool(
+  'delete_regex',
+  '특정 인덱스의 정규식 항목을 삭제합니다. 사용자 확인 필요.',
+  { index: z.number().describe('삭제할 정규식 항목 인덱스') },
+  async ({ index }) => textResult(await apiRequest('POST', `/regex/${index}/delete`)),
+);
 
-    case 'delete_greeting':
-      return await apiRequest('POST', `/greeting/${args.type}/${args.index}/delete`);
+// ===== Greeting Tools =====
 
-    // ------- Triggers -------
-    case 'list_triggers':
-      return await apiRequest('GET', '/triggers');
+server.tool(
+  'list_greetings',
+  '인사말 목록을 확인합니다 (인덱스, 크기, 미리보기 100자). type="alternate"는 추가 첫 메시지(alternateGreetings), type="group"은 그룹 전용 인사말(groupOnlyGreetings). read_field("alternateGreetings") 대신 이 도구를 사용하세요 — 전체 덤프를 방지합니다.',
+  {
+    type: z.enum(['alternate', 'group']).describe('"alternate" (추가 첫 메시지) 또는 "group" (그룹 전용 인사말)'),
+  },
+  async ({ type }) => textResult(await apiRequest('GET', `/greetings/${type}`)),
+);
 
-    case 'read_trigger':
-      return await apiRequest('GET', `/trigger/${args.index}`);
+server.tool(
+  'read_greeting',
+  '특정 인덱스의 인사말 하나를 읽습니다. list_greetings로 목록을 먼저 확인하세요.',
+  {
+    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    index: z.number().describe('인사말 인덱스 (list_greetings 결과 참조)'),
+  },
+  async ({ type, index }) => textResult(await apiRequest('GET', `/greeting/${type}/${index}`)),
+);
 
-    case 'write_trigger': {
-      const triggerBody: Record<string, unknown> = {};
-      if (args.comment !== undefined) triggerBody.comment = args.comment;
-      if (args.type !== undefined) triggerBody.type = args.type;
-      if (args.conditions !== undefined) triggerBody.conditions = args.conditions;
-      if (args.effect !== undefined) triggerBody.effect = args.effect;
-      if (args.lowLevelAccess !== undefined) triggerBody.lowLevelAccess = args.lowLevelAccess;
-      return await apiRequest('POST', `/trigger/${args.index}`, triggerBody);
-    }
+server.tool(
+  'write_greeting',
+  '특정 인덱스의 인사말을 수정합니다. 사용자 확인 필요.',
+  {
+    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    index: z.number().describe('인사말 인덱스'),
+    content: z.string().describe('새로운 인사말 텍스트'),
+  },
+  async ({ type, index, content }) => textResult(await apiRequest('POST', `/greeting/${type}/${index}`, { content })),
+);
 
-    case 'add_trigger': {
-      const addBody: Record<string, unknown> = {};
-      if (args.comment !== undefined) addBody.comment = args.comment;
-      if (args.type !== undefined) addBody.type = args.type;
-      if (args.conditions !== undefined) addBody.conditions = args.conditions;
-      if (args.effect !== undefined) addBody.effect = args.effect;
-      if (args.lowLevelAccess !== undefined) addBody.lowLevelAccess = args.lowLevelAccess;
-      return await apiRequest('POST', '/trigger/add', addBody);
-    }
+server.tool(
+  'add_greeting',
+  '새 인사말을 추가합니다. 사용자 확인 필요.',
+  {
+    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    content: z.string().describe('인사말 텍스트'),
+  },
+  async ({ type, content }) => textResult(await apiRequest('POST', `/greeting/${type}/add`, { content })),
+);
 
-    case 'delete_trigger':
-      return await apiRequest('POST', `/trigger/${args.index}/delete`);
+server.tool(
+  'delete_greeting',
+  '특정 인덱스의 인사말을 삭제합니다. 사용자 확인 필요.',
+  {
+    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    index: z.number().describe('삭제할 인사말 인덱스'),
+  },
+  async ({ type, index }) => textResult(await apiRequest('POST', `/greeting/${type}/${index}/delete`)),
+);
 
-    case 'list_lua':
-      return await apiRequest('GET', '/lua');
+// ===== Trigger Tools =====
 
-    case 'read_lua':
-      return await apiRequest('GET', `/lua/${args.index}`);
+server.tool(
+  'list_triggers',
+  '트리거 스크립트 목록을 확인합니다 (인덱스, comment, type, conditionCount, effectCount, lowLevelAccess). read_field("triggerScripts") 대신 이 도구를 사용하세요 — 전체 JSON 덤프를 방지합니다.',
+  {},
+  async () => textResult(await apiRequest('GET', '/triggers')),
+);
 
-    case 'write_lua':
-      return await apiRequest('POST', `/lua/${args.index}`, { content: args.content });
+server.tool(
+  'read_trigger',
+  '특정 인덱스의 트리거 스크립트를 읽습니다. list_triggers로 목록을 먼저 확인하세요.',
+  { index: z.number().describe('트리거 인덱스 (list_triggers 결과 참조)') },
+  async ({ index }) => textResult(await apiRequest('GET', `/trigger/${index}`)),
+);
 
-    case 'replace_in_lua':
-      return await apiRequest('POST', `/lua/${args.index}/replace`, {
-        find: args.find,
-        replace: args.replace || '',
-        regex: args.regex || false,
-        flags: args.flags || 'g',
-      });
+server.tool(
+  'write_trigger',
+  '특정 인덱스의 트리거 스크립트를 수정합니다. 변경할 필드만 전달하면 나머지는 유지됩니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('트리거 인덱스'),
+    comment: z.string().optional().describe('트리거 이름/설명'),
+    type: z.string().optional().describe('트리거 타입 (start, input, output 등)'),
+    conditions: z.array(z.unknown()).optional().describe('조건 배열'),
+    effect: z.array(z.unknown()).optional().describe('효과 배열'),
+    lowLevelAccess: z.boolean().optional().describe('저수준 접근 여부'),
+  },
+  async ({ index, comment, type, conditions, effect, lowLevelAccess }) => {
+    const body: Record<string, unknown> = {};
+    if (comment !== undefined) body.comment = comment;
+    if (type !== undefined) body.type = type;
+    if (conditions !== undefined) body.conditions = conditions;
+    if (effect !== undefined) body.effect = effect;
+    if (lowLevelAccess !== undefined) body.lowLevelAccess = lowLevelAccess;
+    return textResult(await apiRequest('POST', `/trigger/${index}`, body));
+  },
+);
 
-    case 'insert_in_lua':
-      return await apiRequest('POST', `/lua/${args.index}/insert`, {
-        content: args.content,
-        position: args.position || 'end',
-        anchor: args.anchor || '',
-      });
+server.tool(
+  'add_trigger',
+  '새 트리거 스크립트를 추가합니다. 사용자 확인 필요.',
+  {
+    comment: z.string().optional().describe('트리거 이름/설명'),
+    type: z.string().optional().describe('트리거 타입 (기본: "start")'),
+    conditions: z.array(z.unknown()).optional().describe('조건 배열'),
+    effect: z.array(z.unknown()).optional().describe('효과 배열'),
+    lowLevelAccess: z.boolean().optional().describe('저수준 접근 여부'),
+  },
+  async ({ comment, type, conditions, effect, lowLevelAccess }) => {
+    const body: Record<string, unknown> = {};
+    if (comment !== undefined) body.comment = comment;
+    if (type !== undefined) body.type = type;
+    if (conditions !== undefined) body.conditions = conditions;
+    if (effect !== undefined) body.effect = effect;
+    if (lowLevelAccess !== undefined) body.lowLevelAccess = lowLevelAccess;
+    return textResult(await apiRequest('POST', '/trigger/add', body));
+  },
+);
 
-    case 'list_css':
-      return await apiRequest('GET', '/css-section');
+server.tool(
+  'delete_trigger',
+  '특정 인덱스의 트리거 스크립트를 삭제합니다. 사용자 확인 필요.',
+  { index: z.number().describe('삭제할 트리거 인덱스') },
+  async ({ index }) => textResult(await apiRequest('POST', `/trigger/${index}/delete`)),
+);
 
-    case 'read_css':
-      return await apiRequest('GET', `/css-section/${args.index}`);
+// ===== Lua Tools =====
 
-    case 'write_css':
-      return await apiRequest('POST', `/css-section/${args.index}`, { content: args.content });
+server.tool(
+  'list_lua',
+  'Lua 코드의 섹션 목록을 확인합니다 (-- ===== 섹션명 ===== 구분자 기준). 각 섹션의 인덱스, 이름, 크기를 반환합니다.',
+  {},
+  async () => textResult(await apiRequest('GET', '/lua')),
+);
 
-    case 'replace_in_css':
-      return await apiRequest('POST', `/css-section/${args.index}/replace`, {
-        find: args.find,
-        replace: args.replace || '',
-        regex: args.regex || false,
-        flags: args.flags || 'g',
-      });
+server.tool(
+  'read_lua',
+  '특정 인덱스의 Lua 섹션 코드를 읽습니다. list_lua로 섹션 목록을 먼저 확인하세요.',
+  { index: z.number().describe('Lua 섹션 인덱스 (list_lua 결과 참조)') },
+  async ({ index }) => textResult(await apiRequest('GET', `/lua/${index}`)),
+);
 
-    case 'insert_in_css':
-      return await apiRequest('POST', `/css-section/${args.index}/insert`, {
-        content: args.content,
-        position: args.position || 'end',
-        anchor: args.anchor || '',
-      });
+server.tool(
+  'write_lua',
+  '특정 인덱스의 Lua 섹션 코드를 교체합니다. 사용자 확인 필요. 섹션 전체 코드를 content로 전달하세요.',
+  {
+    index: z.number().describe('Lua 섹션 인덱스'),
+    content: z.string().describe('새로운 섹션 코드 (전체 교체)'),
+  },
+  async ({ index, content }) => textResult(await apiRequest('POST', `/lua/${index}`, { content })),
+);
 
-    case 'list_references':
-      return await apiRequest('GET', '/references');
+server.tool(
+  'replace_in_lua',
+  'Lua 섹션 내에서 문자열 치환을 수행합니다. 대용량 섹션을 통째로 읽고 쓸 필요 없이 서버에서 직접 치환합니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('Lua 섹션 인덱스 (list_lua 결과 참조)'),
+    find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
+    replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false = 일반 문자열 매칭)'),
+    flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+  },
+  async ({ index, find, replace, regex, flags }) =>
+    textResult(
+      await apiRequest('POST', `/lua/${index}/replace`, {
+        find,
+        replace: replace || '',
+        regex: regex || false,
+        flags: flags || 'g',
+      }),
+    ),
+);
 
-    case 'read_reference_field':
-      return await apiRequest('GET', `/reference/${args.index}/${encodeURIComponent(args.field as string)}`);
+server.tool(
+  'insert_in_lua',
+  'Lua 섹션에 코드를 삽입합니다. 전체를 읽지 않고 특정 위치에 추가. position: "end"(기본, 끝에 추가), "start"(앞에 추가), "after"(anchor 뒤에 삽입), "before"(anchor 앞에 삽입). 사용자 확인 필요.',
+  {
+    index: z.number().describe('Lua 섹션 인덱스'),
+    content: z.string().describe('삽입할 코드'),
+    position: z.string().optional().describe('삽입 위치: "end"(기본), "start", "after", "before"'),
+    anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+  },
+  async ({ index, content, position, anchor }) =>
+    textResult(
+      await apiRequest('POST', `/lua/${index}/insert`, {
+        content,
+        position: position || 'end',
+        anchor: anchor || '',
+      }),
+    ),
+);
 
-    case 'list_reference_lorebook': {
-      const refLbParams = new URLSearchParams();
-      if (args.filter) refLbParams.set('filter', args.filter as string);
-      if (args.folder) refLbParams.set('folder', args.folder as string);
-      const refLbQs = refLbParams.toString();
-      return await apiRequest('GET', `/reference/${args.index}/lorebook${refLbQs ? '?' + refLbQs : ''}`);
-    }
+// ===== CSS Tools =====
 
-    case 'read_reference_lorebook':
-      return await apiRequest('GET', `/reference/${args.index}/lorebook/${args.entryIndex}`);
+server.tool(
+  'list_css',
+  'CSS 코드의 섹션 목록을 확인합니다 (/* ===== 섹션명 ===== */ 구분자 기준). 각 섹션의 인덱스, 이름, 크기를 반환합니다.',
+  {},
+  async () => textResult(await apiRequest('GET', '/css-section')),
+);
 
-    case 'list_reference_lua':
-      return await apiRequest('GET', `/reference/${args.index}/lua`);
+server.tool(
+  'read_css',
+  '특정 인덱스의 CSS 섹션 코드를 읽습니다. list_css로 섹션 목록을 먼저 확인하세요.',
+  { index: z.number().describe('CSS 섹션 인덱스 (list_css 결과 참조)') },
+  async ({ index }) => textResult(await apiRequest('GET', `/css-section/${index}`)),
+);
 
-    case 'read_reference_lua':
-      return await apiRequest('GET', `/reference/${args.index}/lua/${args.sectionIndex}`);
+server.tool(
+  'write_css',
+  '특정 인덱스의 CSS 섹션 코드를 교체합니다. 사용자 확인 필요. 섹션 전체 코드를 content로 전달하세요.',
+  {
+    index: z.number().describe('CSS 섹션 인덱스'),
+    content: z.string().describe('새로운 섹션 코드 (전체 교체)'),
+  },
+  async ({ index, content }) => textResult(await apiRequest('POST', `/css-section/${index}`, { content })),
+);
 
-    case 'list_reference_css':
-      return await apiRequest('GET', `/reference/${args.index}/css`);
+server.tool(
+  'replace_in_css',
+  'CSS 섹션 내에서 문자열 치환을 수행합니다. 대용량 섹션을 통째로 읽고 쓸 필요 없이 서버에서 직접 치환합니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('CSS 섹션 인덱스 (list_css 결과 참조)'),
+    find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
+    replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false = 일반 문자열 매칭)'),
+    flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+  },
+  async ({ index, find, replace, regex, flags }) =>
+    textResult(
+      await apiRequest('POST', `/css-section/${index}/replace`, {
+        find,
+        replace: replace || '',
+        regex: regex || false,
+        flags: flags || 'g',
+      }),
+    ),
+);
 
-    case 'read_reference_css':
-      return await apiRequest('GET', `/reference/${args.index}/css/${args.sectionIndex}`);
+server.tool(
+  'insert_in_css',
+  'CSS 섹션에 코드를 삽입합니다. 전체를 읽지 않고 특정 위치에 추가. position: "end"(기본, 끝에 추가), "start"(앞에 추가), "after"(anchor 뒤에 삽입), "before"(anchor 앞에 삽입). 사용자 확인 필요.',
+  {
+    index: z.number().describe('CSS 섹션 인덱스'),
+    content: z.string().describe('삽입할 코드'),
+    position: z.string().optional().describe('삽입 위치: "end"(기본), "start", "after", "before"'),
+    anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+  },
+  async ({ index, content, position, anchor }) =>
+    textResult(
+      await apiRequest('POST', `/css-section/${index}/insert`, {
+        content,
+        position: position || 'end',
+        anchor: anchor || '',
+      }),
+    ),
+);
 
-    // Risum asset tools
-    case 'list_risum_assets':
-      return await apiRequest('GET', '/risum-assets');
+// ===== Reference Tools =====
 
-    case 'read_risum_asset':
-      return await apiRequest('GET', `/risum-asset/${args.index}`);
+server.tool(
+  'list_references',
+  '로드된 참고 자료 파일 목록을 확인합니다 (읽기 전용). 각 파일의 필드와 크기를 포함합니다.',
+  {},
+  async () => textResult(await apiRequest('GET', '/references')),
+);
 
-    case 'add_risum_asset':
-      return await apiRequest('POST', '/risum-asset/add', {
-        name: args.name,
-        path: args.path || '',
-        base64: args.base64,
-      });
+server.tool(
+  'read_reference_field',
+  '참고 자료 파일의 특정 필드를 읽습니다 (읽기 전용). ⚠️ lorebook/lua/css는 전체를 한번에 반환하여 컨텍스트를 낭비합니다. 대신 list_reference_lorebook → read_reference_lorebook, list_reference_lua → read_reference_lua, list_reference_css → read_reference_css를 사용하세요. 이 도구는 짧은 필드에만 사용: globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, description, defaultVariables, name, triggerScripts, regex',
+  {
+    index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+    field: z.string().describe('필드 이름'),
+  },
+  async ({ index, field }) => textResult(await apiRequest('GET', `/reference/${index}/${encodeURIComponent(field)}`)),
+);
 
-    case 'delete_risum_asset':
-      return await apiRequest('POST', `/risum-asset/${args.index}/delete`);
+server.tool(
+  'list_reference_lorebook',
+  '참고 자료 파일의 로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기, 폴더). filter 또는 folder로 범위를 좁히세요. read_reference_field("lorebook") 대신 이 도구를 사용하세요.',
+  {
+    index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+    filter: z.string().optional().describe('검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환'),
+    folder: z.string().optional().describe('폴더 UUID로 필터. 생략 시 전체 반환'),
+  },
+  async ({ index, filter, folder }) => {
+    const params = new URLSearchParams();
+    if (filter) params.set('filter', filter);
+    if (folder) params.set('folder', folder);
+    const qs = params.toString();
+    return textResult(await apiRequest('GET', `/reference/${index}/lorebook${qs ? '?' + qs : ''}`));
+  },
+);
 
-    case 'list_skills':
-      return await apiRequest('GET', '/skills');
+server.tool(
+  'read_reference_lorebook',
+  '참고 자료 파일의 특정 로어북 항목 하나를 읽습니다 (읽기 전용). list_reference_lorebook으로 인덱스 확인 후 사용.',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    entryIndex: z.number().describe('로어북 항목 인덱스 (list_reference_lorebook 결과 참조)'),
+  },
+  async ({ index, entryIndex }) => textResult(await apiRequest('GET', `/reference/${index}/lorebook/${entryIndex}`)),
+);
 
-    case 'read_skill': {
-      const file = args.file ? encodeURIComponent(args.file as string) : '';
-      const skillPath = file
-        ? `/skills/${encodeURIComponent(args.name as string)}/${file}`
-        : `/skills/${encodeURIComponent(args.name as string)}`;
-      return await apiRequest('GET', skillPath);
-    }
+server.tool(
+  'list_reference_lua',
+  '참고 자료 파일의 Lua 섹션 목록을 확인합니다 (인덱스, 이름, 크기). read_reference_field("lua") 대신 이 도구를 사용하세요.',
+  { index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)') },
+  async ({ index }) => textResult(await apiRequest('GET', `/reference/${index}/lua`)),
+);
 
-    // === Danbooru Tag Tools (handled locally, no API proxy) ===
+server.tool(
+  'read_reference_lua',
+  '참고 자료 파일의 특정 Lua 섹션 하나를 읽습니다 (읽기 전용). list_reference_lua로 인덱스 확인 후 사용.',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    sectionIndex: z.number().describe('Lua 섹션 인덱스 (list_reference_lua 결과 참조)'),
+  },
+  async ({ index, sectionIndex }) => textResult(await apiRequest('GET', `/reference/${index}/lua/${sectionIndex}`)),
+);
 
-    case 'validate_danbooru_tags': {
-      if (!tagsLoaded) throw new Error('Tag database not loaded');
-      const tagList = args.tags as string[];
-      const onlineFallback = args.online_fallback !== false;
-      const results = await validateTags(tagList, onlineFallback);
-      const validCount = results.filter((r) => r.valid).length;
-      const invalidCount = results.filter((r) => !r.valid).length;
-      return {
-        summary: `${validCount}/${tagList.length} tags valid${invalidCount > 0 ? `, ${invalidCount} invalid` : ''}`,
-        results,
-      };
-    }
+server.tool(
+  'list_reference_css',
+  '참고 자료 파일의 CSS 섹션 목록을 확인합니다 (인덱스, 이름, 크기). read_reference_field("css") 대신 이 도구를 사용하세요.',
+  { index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)') },
+  async ({ index }) => textResult(await apiRequest('GET', `/reference/${index}/css`)),
+);
 
-    case 'search_danbooru_tags': {
-      if (!tagsLoaded) throw new Error('Tag database not loaded');
-      const query = args.query as string;
-      const category = args.category as string | undefined;
-      const limit = Math.min((args.limit as number) || 20, 50);
-      const results = await searchWithOnline(query, category, limit);
-      return { query, count: results.length, tags: formatTags(results) };
-    }
+server.tool(
+  'read_reference_css',
+  '참고 자료 파일의 특정 CSS 섹션 하나를 읽습니다 (읽기 전용). list_reference_css로 인덱스 확인 후 사용.',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    sectionIndex: z.number().describe('CSS 섹션 인덱스 (list_reference_css 결과 참조)'),
+  },
+  async ({ index, sectionIndex }) => textResult(await apiRequest('GET', `/reference/${index}/css/${sectionIndex}`)),
+);
 
-    case 'get_popular_danbooru_tags': {
-      if (!tagsLoaded) throw new Error('Tag database not loaded');
-      const groupBySemantic = args.group_by_semantic as boolean;
-      if (groupBySemantic) {
-        const groups = getPopularGrouped();
-        return {
-          description:
-            'Popular Danbooru tags grouped by semantic category. Use these as reference when writing prompts.',
-          groups,
-        };
-      }
-      const category = args.category as string | undefined;
-      const limit = Math.min((args.limit as number) || 100, 500);
-      const results = getPopular(category, limit);
-      return { count: results.length, tags: formatTags(results) };
-    }
+// ===== Risum Asset Tools =====
 
-    default:
-      throw new Error(`Unknown tool: ${name}`);
-  }
-}
+server.tool(
+  'list_risum_assets',
+  '.risum 파일의 내장 에셋 목록을 확인합니다 (인덱스, 이름, 경로, 크기).',
+  {},
+  async () => textResult(await apiRequest('GET', '/risum-assets')),
+);
 
-// ==================== JSON-RPC Protocol ====================
+server.tool(
+  'read_risum_asset',
+  '.risum 파일의 내장 에셋을 base64로 읽습니다.',
+  { index: z.number().describe('에셋 인덱스 (list_risum_assets 결과 참조)') },
+  async ({ index }) => textResult(await apiRequest('GET', `/risum-asset/${index}`)),
+);
 
-function send(obj: JSONRPCResponse): void {
-  const json = JSON.stringify(obj);
-  process.stdout.write(json + '\n');
-}
+server.tool(
+  'add_risum_asset',
+  '.risum 파일에 에셋을 추가합니다. base64로 인코딩된 데이터를 전달. 사용자 확인 필요.',
+  {
+    name: z.string().describe('에셋 이름'),
+    path: z.string().optional().describe('에셋 경로 (선택사항)'),
+    base64: z.string().describe('base64 인코딩된 에셋 데이터'),
+  },
+  async ({ name, path: assetPath, base64 }) =>
+    textResult(await apiRequest('POST', '/risum-asset/add', { name, path: assetPath || '', base64 })),
+);
 
-async function handleMessage(msg: JSONRPCRequest): Promise<void> {
-  // Notifications (no id) — no response needed
-  if (!msg.id && msg.id !== 0) {
-    process.stderr.write(`[toki-mcp] notification: ${msg.method}\n`);
-    return;
-  }
+server.tool(
+  'delete_risum_asset',
+  '.risum 파일의 내장 에셋을 삭제합니다. 사용자 확인 필요.',
+  { index: z.number().describe('삭제할 에셋 인덱스') },
+  async ({ index }) => textResult(await apiRequest('POST', `/risum-asset/${index}/delete`)),
+);
 
-  try {
-    switch (msg.method) {
-      case 'initialize':
-        send({
-          jsonrpc: '2.0',
-          id: msg.id,
-          result: {
-            protocolVersion: '2024-11-05',
-            capabilities: { tools: {}, prompts: {} },
-            serverInfo: { name: 'risutoki', version: '1.1.0' },
-          },
-        });
-        break;
+// ===== Skill Tools =====
 
-      case 'tools/list':
-        send({
-          jsonrpc: '2.0',
-          id: msg.id,
-          result: { tools: TOOLS },
-        });
-        break;
+server.tool(
+  'list_skills',
+  'RisuAI 스킬 문서 목록을 반환합니다. 각 스킬의 name, description, 포함 파일 목록을 확인할 수 있습니다. CBS 문법, Lua 스크립트, 로어북, 정규식, HTML/CSS, 트리거 스크립트, 캐릭터 작성 등의 가이드가 포함되어 있습니다.',
+  {},
+  async () => textResult(await apiRequest('GET', '/skills')),
+);
 
-      case 'prompts/list':
-        send({
-          jsonrpc: '2.0',
-          id: msg.id,
-          result: {
-            prompts: [
-              {
-                name: 'danbooru_tag_guide',
-                description:
-                  'Guidelines and reference for writing image generation prompts using Danbooru tags. Call this before creating character image prompts to get the correct tag format and popular tags.',
-                arguments: [
-                  {
-                    name: 'character_description',
-                    description: 'Optional character description for context-aware guidance',
-                    required: false,
-                  },
-                ],
-              },
-            ],
-          },
-        });
-        break;
+server.tool(
+  'read_skill',
+  '특정 스킬의 문서 파일을 읽습니다. 기본적으로 SKILL.md를 읽으며, file 파라미터로 참조 파일(예: REFERENCE.md, API_REFERENCE.md)도 읽을 수 있습니다.',
+  {
+    name: z.string().describe('스킬 이름 (예: writing-lua-scripts, authoring-characters)'),
+    file: z.string().optional().describe('읽을 파일명 (기본: SKILL.md). list_skills에서 확인한 파일명 사용.'),
+  },
+  async ({ name, file }) => {
+    const filePart = file ? encodeURIComponent(file) : '';
+    const skillPath = filePart
+      ? `/skills/${encodeURIComponent(name)}/${filePart}`
+      : `/skills/${encodeURIComponent(name)}`;
+    return textResult(await apiRequest('GET', skillPath));
+  },
+);
 
-      case 'prompts/get': {
-        const promptName = (msg.params as Record<string, unknown>)?.name as string;
-        if (promptName === 'danbooru_tag_guide') {
-          const promptArgs = (msg.params as Record<string, unknown>)?.arguments as Record<string, string> | undefined;
-          const charDesc = promptArgs?.character_description;
-          const guideText = buildDanbooruGuide(charDesc);
-          send({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: {
-              messages: [{ role: 'user', content: { type: 'text', text: guideText } }],
-            },
-          });
-        } else {
-          send({
-            jsonrpc: '2.0',
-            id: msg.id,
-            error: { code: -32602, message: `Unknown prompt: ${promptName}` },
-          });
-        }
-        break;
-      }
+// ===== Danbooru Tools (local — no apiRequest) =====
 
-      case 'tools/call': {
-        const { name, arguments: args } = msg.params || {};
-        process.stderr.write(`[toki-mcp] tool call: ${name}\n`);
-        try {
-          const result = await handleToolCall(name as string, (args || {}) as Record<string, unknown>);
-          send({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: {
-              content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-            },
-          });
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          process.stderr.write(`[toki-mcp] tool error: ${errMsg}\n`);
-          send({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: {
-              content: [{ type: 'text', text: `Error: ${errMsg}` }],
-              isError: true,
-            },
-          });
-        }
-        break;
-      }
-
-      default:
-        // Unknown method
-        send({
-          jsonrpc: '2.0',
-          id: msg.id,
-          error: { code: -32601, message: `Method not found: ${msg.method}` },
-        });
-    }
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[toki-mcp] error: ${errMsg}\n`);
-    send({
-      jsonrpc: '2.0',
-      id: msg.id,
-      error: { code: -32603, message: errMsg },
+server.tool(
+  'validate_danbooru_tags',
+  'Validate whether given tags are valid Danbooru tags. Returns validation result for each tag with suggestions for invalid ones. IMPORTANT: Always use this tool to verify your tags before using them in image generation prompts.',
+  {
+    tags: z.array(z.string()).describe('List of tags to validate (e.g. ["blue_eyes", "long_hair", "school_uniform"])'),
+    online_fallback: z
+      .boolean()
+      .optional()
+      .describe('If true, check Danbooru API for tags not found locally (default: true)'),
+  },
+  async ({ tags, online_fallback }) => {
+    if (!tagsLoaded) throw new Error('Tag database not loaded');
+    const onlineFallback = online_fallback !== false;
+    const results = await validateTags(tags, onlineFallback);
+    const validCount = results.filter((r) => r.valid).length;
+    const invalidCount = results.filter((r) => !r.valid).length;
+    return textResult({
+      summary: `${validCount}/${tags.length} tags valid${invalidCount > 0 ? `, ${invalidCount} invalid` : ''}`,
+      results,
     });
-  }
+  },
+);
+
+server.tool(
+  'search_danbooru_tags',
+  'Search for Danbooru tags matching a query. Use this to find the correct tag name for a concept. Supports wildcard (*) patterns. Results are sorted by popularity (post count).',
+  {
+    query: z.string().describe('Search query (e.g. "blue_eye", "long_h*", "school"). Supports * wildcard.'),
+    category: z.string().optional().describe('Filter by tag category: general, artist, copyright, character, meta'),
+    limit: z.number().optional().describe('Max results (default: 20, max: 50)'),
+  },
+  async ({ query, category, limit }) => {
+    if (!tagsLoaded) throw new Error('Tag database not loaded');
+    const effectiveLimit = Math.min(limit || 20, 50);
+    const results = await searchWithOnline(query, category, effectiveLimit);
+    return textResult({ query, count: results.length, tags: formatTags(results) });
+  },
+);
+
+server.tool(
+  'get_popular_danbooru_tags',
+  'Get popular Danbooru tags sorted by usage count. Use group_by_semantic=true to get tags organized by category (hair, eyes, clothing, pose, etc.) — very useful when writing character image prompts.',
+  {
+    category: z.string().optional().describe('Filter by tag category: general, artist, copyright, character, meta'),
+    limit: z.number().optional().describe('Max results per group or total (default: 100, max: 500)'),
+    group_by_semantic: z
+      .boolean()
+      .optional()
+      .describe('If true, returns tags grouped by semantic category (hair_color, eye_color, clothing, pose, etc.)'),
+  },
+  async ({ category, limit, group_by_semantic }) => {
+    if (!tagsLoaded) throw new Error('Tag database not loaded');
+    if (group_by_semantic) {
+      const groups = getPopularGrouped();
+      return textResult({
+        description: 'Popular Danbooru tags grouped by semantic category. Use these as reference when writing prompts.',
+        groups,
+      });
+    }
+    const effectiveLimit = Math.min(limit || 100, 500);
+    const results = getPopular(category, effectiveLimit);
+    return textResult({ count: results.length, tags: formatTags(results) });
+  },
+);
+
+// ==================== Prompt ====================
+
+server.prompt(
+  'danbooru_tag_guide',
+  'Guidelines and reference for writing image generation prompts using Danbooru tags. Call this before creating character image prompts to get the correct tag format and popular tags.',
+  {
+    character_description: z.string().optional().describe('Optional character description for context-aware guidance'),
+  },
+  async ({ character_description }) => ({
+    messages: [
+      {
+        role: 'user' as const,
+        content: { type: 'text' as const, text: buildDanbooruGuide(character_description) },
+      },
+    ],
+  }),
+);
+
+// ==================== Start ====================
+
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  process.stderr.write(`[toki-mcp] started (SDK), API at 127.0.0.1:${TOKI_PORT}\n`);
 }
 
-// ==================== stdin Reader ====================
-
-let inputBuffer = '';
-
-process.stdin.setEncoding('utf-8');
-process.stdin.on('data', (chunk) => {
-  inputBuffer += chunk;
-
-  let newlineIdx;
-  while ((newlineIdx = inputBuffer.indexOf('\n')) !== -1) {
-    const line = inputBuffer.slice(0, newlineIdx).trim();
-    inputBuffer = inputBuffer.slice(newlineIdx + 1);
-    if (line) {
-      try {
-        const msg = JSON.parse(line) as JSONRPCRequest;
-        handleMessage(msg);
-      } catch (e) {
-        const errMsg = e instanceof Error ? e.message : String(e);
-        process.stderr.write(`[toki-mcp] parse error: ${errMsg}\n`);
-      }
-    }
-  }
+main().catch((err) => {
+  process.stderr.write(`[toki-mcp] fatal: ${err}\n`);
+  process.exit(1);
 });
-
-process.stdin.on('end', () => {
-  process.stderr.write('[toki-mcp] stdin closed, exiting\n');
-  process.exit(0);
-});
-
-process.stderr.write(`[toki-mcp] started, API at 127.0.0.1:${TOKI_PORT}\n`);
