@@ -2,7 +2,7 @@
 
 > RisuAI .charx / .risum / .risup 파일 전용 에디터 + AI CLI 통합 터미널
 
-[![Version](https://img.shields.io/badge/version-0.6.1-blue.svg)](https://github.com/komodoD/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -33,7 +33,7 @@ RisuToki는 [RisuAI](https://risuai.net/) 캐릭터 카드(`.charx`), 모듈(`.r
 
 ### 다운로드 (일반 사용자)
 
-[Releases](https://github.com/komodoD/RisuToki/releases) 페이지에서 최신 버전을 다운로드하세요.
+[Releases](https://github.com/woduseh/RisuToki/releases) 페이지에서 최신 버전을 다운로드하세요.
 
 - **RisuToki Setup x.x.x.exe** — 설치형
 - **RisuToki-x.x.x-portable.exe** — 포터블 (설치 불필요)
@@ -41,7 +41,7 @@ RisuToki는 [RisuAI](https://risuai.net/) 캐릭터 카드(`.charx`), 모듈(`.r
 ### 소스에서 실행 (개발자)
 
 ```bash
-git clone https://github.com/komodoD/RisuToki.git
+git clone https://github.com/woduseh/RisuToki.git
 cd RisuToki
 npm install
 npm run dev
@@ -63,6 +63,7 @@ npm start          # 빌드된 renderer로 Electron 실행
 - `docs/analysis/ARCHITECTURE.md` — 현재 런타임 구조와 데이터 흐름
 - `CONTRIBUTING.md` — 변경 원칙과 검증 절차
 - GitHub Actions `CI` 워크플로우 — lint / typecheck / test / build:renderer 자동 검증
+- GitHub Actions `Release` 워크플로우 — `v*` 태그 push 시 Windows 빌드(NSIS + 포터블) 자동 릴리즈
 
 ---
 
