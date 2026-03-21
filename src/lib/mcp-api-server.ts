@@ -467,7 +467,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // GET/POST /field/:name
       // ----------------------------------------------------------------
-      if (parts[0] === 'field' && parts[1]) {
+      if (parts[0] === 'field' && parts[1] && !parts[2] && parts[1] !== 'batch') {
         const fieldName = decodeURIComponent(parts[1]);
         const allowedFields = [
           'name',
@@ -753,6 +753,443 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /field/batch — read multiple fields at once
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] === 'batch' && !parts[2] && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'field/batch', broadcastStatus);
+        if (!body) return;
+        const fields: string[] = body.fields;
+        if (!Array.isArray(fields) || fields.length === 0) {
+          return jsonRes(res, { error: 'fields must be a non-empty string array' }, 400);
+        }
+        const MAX_BATCH = 20;
+        if (fields.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} fields per batch` }, 400);
+        }
+        const isRisum = (currentData._fileType || 'charx') === 'risum';
+        const isRisup = (currentData._fileType || 'charx') === 'risup';
+        const isCharx = !isRisum && !isRisup;
+        const allowedFields = [
+          'name',
+          'description',
+          'firstMessage',
+          'alternateGreetings',
+          'groupOnlyGreetings',
+          'globalNote',
+          'css',
+          'defaultVariables',
+          'triggerScripts',
+          'lua',
+        ];
+        const charxFields = [
+          'personality',
+          'scenario',
+          'creatorcomment',
+          'tags',
+          'exampleMessage',
+          'systemPrompt',
+          'creator',
+          'characterVersion',
+          'nickname',
+          'source',
+          'additionalText',
+          'license',
+          'creationDate',
+          'modificationDate',
+        ];
+        const risumFieldsBatch = [
+          'cjs',
+          'lowLevelAccess',
+          'hideIcon',
+          'backgroundEmbedding',
+          'moduleNamespace',
+          'customModuleToggle',
+          'mcpUrl',
+          'moduleName',
+          'moduleDescription',
+          'moduleId',
+        ];
+        const risupFieldsBatch = [
+          'mainPrompt',
+          'jailbreak',
+          'temperature',
+          'maxContext',
+          'maxResponse',
+          'frequencyPenalty',
+          'presencePenalty',
+          'aiModel',
+          'subModel',
+          'apiType',
+          'promptPreprocess',
+          'promptTemplate',
+          'presetBias',
+          'formatingOrder',
+          'presetImage',
+          'top_p',
+          'top_k',
+          'repetition_penalty',
+          'min_p',
+          'top_a',
+          'reasonEffort',
+          'thinkingTokens',
+          'thinkingType',
+          'adaptiveThinkingEffort',
+          'useInstructPrompt',
+          'instructChatTemplate',
+          'JinjaTemplate',
+          'customPromptTemplateToggle',
+          'templateDefaultVariables',
+          'moduleIntergration',
+          'jsonSchemaEnabled',
+          'jsonSchema',
+          'strictJsonSchema',
+          'extractJson',
+          'groupTemplate',
+          'groupOtherBotRole',
+          'autoSuggestPrompt',
+          'autoSuggestPrefix',
+          'autoSuggestClean',
+          'localStopStrings',
+          'outputImageModal',
+          'verbosity',
+          'fallbackWhenBlankResponse',
+          'systemContentReplacement',
+          'systemRoleReplacement',
+        ];
+        const allAllowedBatch = [
+          ...allowedFields,
+          ...(isCharx ? charxFields : []),
+          ...(isRisum ? risumFieldsBatch : []),
+          ...(isRisup ? risupFieldsBatch : []),
+        ];
+        const boolFields = [
+          'lowLevelAccess',
+          'hideIcon',
+          'promptPreprocess',
+          'useInstructPrompt',
+          'jsonSchemaEnabled',
+          'strictJsonSchema',
+          'autoSuggestClean',
+          'outputImageModal',
+          'fallbackWhenBlankResponse',
+        ];
+        const numFields = [
+          'temperature',
+          'maxContext',
+          'maxResponse',
+          'frequencyPenalty',
+          'presencePenalty',
+          'top_p',
+          'top_k',
+          'repetition_penalty',
+          'min_p',
+          'top_a',
+          'reasonEffort',
+          'thinkingTokens',
+          'verbosity',
+          'creationDate',
+          'modificationDate',
+        ];
+        const arrayFields = ['alternateGreetings', 'groupOnlyGreetings', 'tags', 'source'];
+
+        const results = fields.map((fieldName: string) => {
+          if (!allAllowedBatch.includes(fieldName)) {
+            return { field: fieldName, error: `Unknown field: ${fieldName}` };
+          }
+          if (fieldName === 'triggerScripts') {
+            return { field: fieldName, content: deps.stringifyTriggerScripts(currentData.triggerScripts) };
+          }
+          if (arrayFields.includes(fieldName)) {
+            return { field: fieldName, content: currentData[fieldName] || [], type: 'array' };
+          }
+          if (boolFields.includes(fieldName)) {
+            return { field: fieldName, content: !!currentData[fieldName], type: 'boolean' };
+          }
+          if (numFields.includes(fieldName)) {
+            return { field: fieldName, content: currentData[fieldName] ?? 0, type: 'number' };
+          }
+          return { field: fieldName, content: currentData[fieldName] || '' };
+        });
+        return jsonRes(res, { count: results.length, fields: results });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /field/:name/replace — replace text in a string field
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] && parts[2] === 'replace' && !parts[3] && req.method === 'POST') {
+        const fieldName = decodeURIComponent(parts[1]);
+        // Reuse field validation from the main field handler
+        const stringFieldsForReplace = [
+          'name',
+          'description',
+          'firstMessage',
+          'globalNote',
+          'css',
+          'defaultVariables',
+          'lua',
+          'personality',
+          'scenario',
+          'creatorcomment',
+          'exampleMessage',
+          'systemPrompt',
+          'creator',
+          'characterVersion',
+          'nickname',
+          'additionalText',
+          'license',
+          'cjs',
+          'backgroundEmbedding',
+          'moduleNamespace',
+          'customModuleToggle',
+          'mcpUrl',
+          'moduleName',
+          'moduleDescription',
+          'mainPrompt',
+          'jailbreak',
+          'aiModel',
+          'subModel',
+          'apiType',
+          'instructChatTemplate',
+          'JinjaTemplate',
+          'templateDefaultVariables',
+          'moduleIntergration',
+          'jsonSchema',
+          'extractJson',
+          'groupTemplate',
+          'groupOtherBotRole',
+          'autoSuggestPrompt',
+          'autoSuggestPrefix',
+          'systemContentReplacement',
+          'systemRoleReplacement',
+        ];
+        const readOnlyFieldsReplace = ['creationDate', 'modificationDate', 'moduleId'];
+        if (readOnlyFieldsReplace.includes(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'replace in field',
+            message: `"${fieldName}" 필드는 읽기 전용입니다.`,
+            suggestion: '이 필드는 수정할 수 없습니다.',
+            target: `field:${fieldName}`,
+          });
+        }
+        if (!stringFieldsForReplace.includes(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'replace in field',
+            message: `"${fieldName}" 필드는 문자열 치환을 지원하지 않습니다.`,
+            suggestion:
+              '문자열 타입 필드에만 사용 가능합니다. 배열/boolean/number/triggerScripts 필드는 write_field를 사용하세요.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `field/${fieldName}/replace`, broadcastStatus);
+        if (!body) return;
+        if (!body.find) {
+          return mcpError(res, 400, {
+            action: 'replace in field',
+            message: 'Missing "find"',
+            suggestion: 'find 문자열 또는 정규식을 포함한 요청 본문을 보내세요.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const content: string = currentData[fieldName] || '';
+        const findStr: string = body.find;
+        const replaceStr: string = body.replace !== undefined ? body.replace : '';
+        const useRegex = !!body.regex;
+        const flags: string = body.flags || 'g';
+        let newContent: string;
+        let matchCount: number;
+        if (useRegex) {
+          const re = new RegExp(findStr, flags);
+          const matches = content.match(re);
+          matchCount = matches ? matches.length : 0;
+          newContent = content.replace(re, replaceStr);
+        } else {
+          matchCount = 0;
+          let searchFrom = 0;
+          while (true) {
+            const pos = content.indexOf(findStr, searchFrom);
+            if (pos === -1) break;
+            matchCount++;
+            searchFrom = pos + findStr.length;
+          }
+          newContent = content.split(findStr).join(replaceStr);
+        }
+        if (matchCount === 0) {
+          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0 });
+        }
+        const allowed = await deps.askRendererConfirm(
+          'MCP 필드 치환 요청',
+          `AI 어시스턴트가 "${fieldName}" 필드에서 ${matchCount}건 치환하려 합니다.\n찾기: ${findStr.substring(0, 80)}${findStr.length > 80 ? '...' : ''}\n바꾸기: ${replaceStr.substring(0, 80)}${replaceStr.length > 80 ? '...' : ''}`,
+        );
+        if (allowed) {
+          currentData[fieldName] = newContent;
+          if (fieldName === 'lua') {
+            currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
+            deps.broadcastToAll(
+              'data-updated',
+              'triggerScripts',
+              deps.stringifyTriggerScripts(currentData.triggerScripts),
+            );
+          }
+          logMcpMutation('replace in field', `field:${fieldName}`, { matchCount });
+          deps.broadcastToAll('data-updated', fieldName, newContent);
+          return jsonRes(res, {
+            success: true,
+            field: fieldName,
+            matchCount,
+            oldSize: content.length,
+            newSize: newContent.length,
+          });
+        } else {
+          return mcpError(res, 403, {
+            action: 'replace in field',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 치환 요청을 허용한 뒤 다시 시도하세요.',
+            target: `field:${fieldName}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /field/:name/insert — insert text into a string field
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] && parts[2] === 'insert' && !parts[3] && req.method === 'POST') {
+        const fieldName = decodeURIComponent(parts[1]);
+        const stringFieldsForInsert = [
+          'name',
+          'description',
+          'firstMessage',
+          'globalNote',
+          'css',
+          'defaultVariables',
+          'lua',
+          'personality',
+          'scenario',
+          'creatorcomment',
+          'exampleMessage',
+          'systemPrompt',
+          'creator',
+          'characterVersion',
+          'nickname',
+          'additionalText',
+          'license',
+          'cjs',
+          'backgroundEmbedding',
+          'moduleNamespace',
+          'customModuleToggle',
+          'mcpUrl',
+          'moduleName',
+          'moduleDescription',
+          'mainPrompt',
+          'jailbreak',
+          'aiModel',
+          'subModel',
+          'apiType',
+          'instructChatTemplate',
+          'JinjaTemplate',
+          'templateDefaultVariables',
+          'moduleIntergration',
+          'jsonSchema',
+          'extractJson',
+          'groupTemplate',
+          'groupOtherBotRole',
+          'autoSuggestPrompt',
+          'autoSuggestPrefix',
+          'systemContentReplacement',
+          'systemRoleReplacement',
+        ];
+        const readOnlyFieldsInsert = ['creationDate', 'modificationDate', 'moduleId'];
+        if (readOnlyFieldsInsert.includes(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'insert in field',
+            message: `"${fieldName}" 필드는 읽기 전용입니다.`,
+            suggestion: '이 필드는 수정할 수 없습니다.',
+            target: `field:${fieldName}`,
+          });
+        }
+        if (!stringFieldsForInsert.includes(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'insert in field',
+            message: `"${fieldName}" 필드는 텍스트 삽입을 지원하지 않습니다.`,
+            suggestion:
+              '문자열 타입 필드에만 사용 가능합니다. 배열/boolean/number/triggerScripts 필드는 write_field를 사용하세요.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `field/${fieldName}/insert`, broadcastStatus);
+        if (!body) return;
+        if (body.content === undefined) {
+          return mcpError(res, 400, {
+            action: 'insert in field',
+            message: 'Missing "content"',
+            suggestion: '삽입할 content를 요청 본문에 포함하세요.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const oldContent: string = currentData[fieldName] || '';
+        let newContent: string;
+        const position: string = body.position || 'end';
+        if (position === 'end') {
+          newContent = oldContent + '\n' + body.content;
+        } else if (position === 'start') {
+          newContent = body.content + '\n' + oldContent;
+        } else if ((position === 'after' || position === 'before') && body.anchor) {
+          const anchorPos = oldContent.indexOf(body.anchor);
+          if (anchorPos === -1) {
+            return jsonRes(res, {
+              success: false,
+              message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+            });
+          }
+          if (position === 'after') {
+            const insertAt = anchorPos + body.anchor.length;
+            newContent = oldContent.slice(0, insertAt) + '\n' + body.content + oldContent.slice(insertAt);
+          } else {
+            newContent = oldContent.slice(0, anchorPos) + body.content + '\n' + oldContent.slice(anchorPos);
+          }
+        } else {
+          return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
+        }
+        const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 필드 삽입 요청',
+          `AI 어시스턴트가 "${fieldName}" 필드에 내용을 삽입하려 합니다.\n위치: ${position}${body.anchor ? ' "' + body.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
+        );
+        if (allowed) {
+          currentData[fieldName] = newContent;
+          if (fieldName === 'lua') {
+            currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
+            deps.broadcastToAll(
+              'data-updated',
+              'triggerScripts',
+              deps.stringifyTriggerScripts(currentData.triggerScripts),
+            );
+          }
+          logMcpMutation('insert in field', `field:${fieldName}`, {
+            position,
+            oldSize: oldContent.length,
+            newSize: newContent.length,
+          });
+          deps.broadcastToAll('data-updated', fieldName, newContent);
+          return jsonRes(res, {
+            success: true,
+            field: fieldName,
+            position,
+            oldSize: oldContent.length,
+            newSize: newContent.length,
+          });
+        } else {
+          return mcpError(res, 403, {
+            action: 'insert in field',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삽입 요청을 허용한 뒤 다시 시도하세요.',
+            target: `field:${fieldName}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
       // GET /lorebook
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && !parts[1] && req.method === 'GET') {
@@ -904,7 +1341,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const lorebook = currentData.lorebook || [];
         // Validate all indices first
-        const invalid = entries.filter((e) => typeof e.index !== 'number' || e.index < 0 || e.index >= lorebook.length);
+        const invalid = entries.filter(
+          (e) => typeof e.index !== 'number' || e.index < 0 || e.index >= lorebook.length || !lorebook[e.index],
+        );
         if (invalid.length > 0) {
           return jsonRes(res, { error: `Invalid indices: ${invalid.map((e) => e.index).join(', ')}` }, 400);
         }
@@ -1139,10 +1578,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && parts[1] && parts[1] !== 'add' && !parts[2] && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.lorebook || []).length) {
+        if (idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
           return mcpError(res, 400, {
             action: 'update lorebook entry',
-            message: `Index ${idx} out of range`,
+            message: `Index ${idx} out of range or entry missing`,
             suggestion: 'list_lorebook 또는 GET /lorebook 으로 유효한 index를 다시 확인하세요.',
             target: `lorebook:${idx}`,
           });
@@ -1243,7 +1682,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const lorebook = currentData.lorebook || [];
         // Validate indices and find strings
         for (const r of replacements) {
-          if (typeof r.index !== 'number' || r.index < 0 || r.index >= lorebook.length) {
+          if (typeof r.index !== 'number' || r.index < 0 || r.index >= lorebook.length || !lorebook[r.index]) {
             return jsonRes(res, { error: `Invalid index: ${r.index}` }, 400);
           }
           if (!r.find) {
@@ -1252,7 +1691,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         // Pre-compute matches for each replacement
         const results = replacements.map((r) => {
-          const content: string = lorebook[r.index].content || '';
+          const entry = lorebook[r.index];
+          const content: string = (entry && entry.content) || '';
           const findStr: string = r.find;
           const replaceStr: string = r.replace !== undefined ? r.replace : '';
           const useRegex = !!r.regex;
@@ -1277,7 +1717,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           return {
             index: r.index,
-            comment: lorebook[r.index].comment || `entry_${r.index}`,
+            comment: (entry && entry.comment) || `entry_${r.index}`,
             matchCount,
             newContent,
             skipped: matchCount === 0,
@@ -1348,7 +1788,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const lorebook = currentData.lorebook || [];
         // Validate
         for (const ins of insertions) {
-          if (typeof ins.index !== 'number' || ins.index < 0 || ins.index >= lorebook.length) {
+          if (typeof ins.index !== 'number' || ins.index < 0 || ins.index >= lorebook.length || !lorebook[ins.index]) {
             return jsonRes(res, { error: `Invalid index: ${ins.index}` }, 400);
           }
           if (ins.content === undefined) {
@@ -1357,7 +1797,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         // Pre-compute new contents
         const results = insertions.map((ins) => {
-          const oldContent: string = lorebook[ins.index].content || '';
+          const entry = lorebook[ins.index];
+          const oldContent: string = (entry && entry.content) || '';
           const position = ins.position || 'end';
           let newContent: string;
           let error: string | undefined;
@@ -1382,7 +1823,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           return {
             index: ins.index,
-            comment: lorebook[ins.index].comment || `entry_${ins.index}`,
+            comment: (entry && entry.comment) || `entry_${ins.index}`,
             position,
             newContent,
             oldSize: oldContent.length,
@@ -1437,10 +1878,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && parts[1] && parts[2] === 'replace' && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.lorebook || []).length) {
+        if (idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
           return mcpError(res, 400, {
             action: 'replace lorebook content',
-            message: `Index ${idx} out of range`,
+            message: `Index ${idx} out of range or entry missing`,
             suggestion: 'list_lorebook 또는 GET /lorebook 으로 유효한 index를 다시 확인하세요.',
             target: `lorebook:${idx}`,
           });
@@ -1518,10 +1959,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && parts[1] && parts[2] === 'insert' && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.lorebook || []).length) {
+        if (idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
           return mcpError(res, 400, {
             action: 'insert lorebook content',
-            message: `Index ${idx} out of range`,
+            message: `Index ${idx} out of range or entry missing`,
             suggestion: 'list_lorebook 또는 GET /lorebook 으로 유효한 index를 다시 확인하세요.',
             target: `lorebook:${idx}`,
           });
@@ -1602,10 +2043,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && parts[2] === 'delete' && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.lorebook || []).length) {
+        if (idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
           return mcpError(res, 400, {
             action: 'delete lorebook entry',
-            message: `Index ${idx} out of range`,
+            message: `Index ${idx} out of range or entry missing`,
             suggestion: 'list_lorebook 또는 GET /lorebook 으로 유효한 index를 다시 확인하세요.',
             target: `lorebook:${idx}`,
           });
@@ -1802,12 +2243,45 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const arr: string[] = currentData[fieldName] || [];
-        const items = arr.map((g: string, i: number) => ({
-          index: i,
-          contentSize: g.length,
-          preview: g.slice(0, 100) + (g.length > 100 ? '…' : ''),
-        }));
-        return jsonRes(res, { type: greetingType, field: fieldName, count: arr.length, items });
+        let items = arr.map((g: string, i: number) => {
+          const entry: Record<string, unknown> = {
+            index: i,
+            contentSize: g.length,
+            preview: g.slice(0, 100) + (g.length > 100 ? '…' : ''),
+          };
+          return entry;
+        });
+        // Filter by keyword in preview/content
+        const filterParam = url.searchParams.get('filter');
+        if (filterParam) {
+          const q = filterParam.toLowerCase();
+          items = items.filter((_e: any) => {
+            const content = (arr[_e.index] || '').toLowerCase();
+            return content.includes(q);
+          });
+        }
+        // Filter by content keyword with match context
+        const contentFilterParam = url.searchParams.get('content_filter');
+        if (contentFilterParam) {
+          const cq = contentFilterParam.toLowerCase();
+          items = items.filter((_e: any) => {
+            const content = (arr[_e.index] || '').toLowerCase();
+            return content.includes(cq);
+          });
+          items = items.map((e: any) => {
+            const content = (arr[e.index] || '').toLowerCase();
+            const matchPos = content.indexOf(cq);
+            if (matchPos >= 0) {
+              const rawContent = arr[e.index] || '';
+              const start = Math.max(0, matchPos - 50);
+              const end = Math.min(rawContent.length, matchPos + cq.length + 50);
+              e.contentMatch =
+                (start > 0 ? '…' : '') + rawContent.slice(start, end) + (end < rawContent.length ? '…' : '');
+            }
+            return e;
+          });
+        }
+        return jsonRes(res, { type: greetingType, field: fieldName, count: items.length, total: arr.length, items });
       }
 
       // ----------------------------------------------------------------

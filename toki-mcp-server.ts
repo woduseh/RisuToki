@@ -540,7 +540,7 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
 
 // ==================== MCP Server Setup ====================
 
-const server = new McpServer({ name: 'risutoki', version: '1.1.0' });
+const server = new McpServer({ name: 'risutoki', version: '1.2.0' });
 
 // ===== Field Tools =====
 
@@ -571,6 +571,50 @@ server.tool(
   },
   async ({ field, content }) =>
     textResult(await apiRequest('POST', `/field/${encodeURIComponent(field)}`, { content })),
+);
+
+server.tool(
+  'read_field_batch',
+  '여러 필드의 내용을 한번에 읽습니다. read_field를 반복 호출하는 대신 이 도구를 사용하세요. 최대 20개 필드. 유효하지 않은 필드는 개별 에러로 반환됩니다 (전체 실패 X).',
+  {
+    fields: z
+      .array(z.string())
+      .max(20)
+      .describe('읽을 필드 이름 배열 (예: ["personality", "scenario", "globalNote", "systemPrompt"])'),
+  },
+  async ({ fields }) => textResult(await apiRequest('POST', '/field/batch', { fields })),
+);
+
+server.tool(
+  'replace_in_field',
+  '필드의 내용에서 문자열 치환을 수행합니다. 대형 필드를 전체 읽지 않고 서버에서 직접 처리합니다. 문자열 타입 필드만 지원 (배열/boolean/number/triggerScripts 제외). regex: true + flags 옵션으로 정규식 지원. 사용자 확인 필요.',
+  {
+    field: z.string().describe('필드 이름 (예: globalNote, description, defaultVariables, lua 등)'),
+    find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
+    replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false)'),
+    flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+  },
+  async ({ field, find, replace, regex, flags }) =>
+    textResult(
+      await apiRequest('POST', `/field/${encodeURIComponent(field)}/replace`, { find, replace, regex, flags }),
+    ),
+);
+
+server.tool(
+  'insert_in_field',
+  '필드의 내용에 텍스트를 삽입합니다. 대형 필드를 전체 읽지 않고 서버에서 직접 처리합니다. 문자열 타입 필드만 지원 (배열/boolean/number/triggerScripts 제외). 사용자 확인 필요.',
+  {
+    field: z.string().describe('필드 이름 (예: defaultVariables, globalNote, description, lua 등)'),
+    content: z.string().describe('삽입할 텍스트'),
+    position: z
+      .enum(['end', 'start', 'after', 'before'])
+      .optional()
+      .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
+    anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+  },
+  async ({ field, content, position, anchor }) =>
+    textResult(await apiRequest('POST', `/field/${encodeURIComponent(field)}/insert`, { content, position, anchor })),
 );
 
 // ===== Lorebook Tools =====
@@ -807,11 +851,19 @@ server.tool(
 
 server.tool(
   'list_greetings',
-  '인사말 목록을 확인합니다 (인덱스, 크기, 미리보기 100자). type="alternate"는 추가 첫 메시지(alternateGreetings), type="group"은 그룹 전용 인사말(groupOnlyGreetings). read_field("alternateGreetings") 대신 이 도구를 사용하세요 — 전체 덤프를 방지합니다.',
+  '인사말 목록을 확인합니다 (인덱스, 크기, 미리보기 100자). type="alternate"는 추가 첫 메시지(alternateGreetings), type="group"은 그룹 전용 인사말(groupOnlyGreetings). read_field("alternateGreetings") 대신 이 도구를 사용하세요 — 전체 덤프를 방지합니다. filter/content_filter로 특정 키워드가 포함된 인사말만 검색 가능.',
   {
     type: z.enum(['alternate', 'group']).describe('"alternate" (추가 첫 메시지) 또는 "group" (그룹 전용 인사말)'),
+    filter: z.string().optional().describe('텍스트 검색 키워드. 대소문자 무시. 인사말 내용에서 검색'),
+    content_filter: z.string().optional().describe('본문 검색 키워드 + 매치 컨텍스트(±50자) 반환. 대소문자 무시'),
   },
-  async ({ type }) => textResult(await apiRequest('GET', `/greetings/${type}`)),
+  async ({ type, filter, content_filter }) => {
+    const params = new URLSearchParams();
+    if (filter) params.set('filter', filter);
+    if (content_filter) params.set('content_filter', content_filter);
+    const qs = params.toString();
+    return textResult(await apiRequest('GET', qs ? `/greetings/${type}?${qs}` : `/greetings/${type}`));
+  },
 );
 
 server.tool(

@@ -9,6 +9,22 @@
 
 ---
 
+## [0.15.0] - 2026-03-22
+
+### 새 기능
+
+- **필드 일괄 읽기** (`read_field_batch` MCP 도구) — 여러 필드를 한번에 읽기 (최대 20개). 개별 `read_field` 반복 호출 불필요
+- **필드 내 문자열 치환** (`replace_in_field` MCP 도구) — 대형 필드를 전체 읽지 않고 서버에서 직접 치환. 정규식 지원
+- **필드 내 텍스트 삽입** (`insert_in_field` MCP 도구) — 대형 필드를 전체 읽지 않고 특정 위치에 삽입 (end/start/after/before)
+- **인사말 필터 검색** (`list_greetings` filter/content_filter 파라미터) — 특정 키워드가 포함된 인사말만 검색 가능
+
+### 수정
+
+- **`replace_in_lorebook_batch` 크래시 수정** — 로어북 배열에 null/undefined 엔트리가 있을 때 `Cannot read properties of undefined (reading 'comment')` 에러 발생하던 버그 수정
+- 로어북 접근하는 모든 엔드포인트(batch-write, batch-replace, batch-insert, replace, insert, delete)에 엔트리 null 체크 추가
+
+---
+
 ## [0.14.0] - 2026-03-22
 
 ### 새 기능
