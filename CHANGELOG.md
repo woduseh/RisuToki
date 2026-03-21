@@ -9,6 +9,17 @@
 
 ---
 
+## [0.9.3] - 2026-03-21
+
+### 변경
+
+- **캐릭터 작성 SKILL 문서 대규모 갱신** — Project Vela, 송하리, 하퍼 가이드의 우수 기법을 반영하여 5개 SKILL 문서 갱신
+  - `authoring-characters/SKILL.md` — Token Budget → Investment Guide (1M+ 컨텍스트 시대 대응), Surface vs Subversion 패턴, Psychological Deep Dive, Gap Moe/Hidden Depth 구조, Layered Dreams, Named Internal Conflicts, 복장 카테고리 확장
+  - `authoring-characters/SPEECH_SYSTEM.md` — 레지스터 4-6개로 확장, Romantic/Flustered 레지스터 추가, 예시 대사 3-5개 권장, 무대 지시(parenthetical) 추가, Consistency Anchors → Character DNA 명칭 변경, 심리적 레지스터 명명 가이드
+  - `authoring-characters/VALIDATION.md` — DNA Anchors/Psychological Depth/Hidden Depths/Layered Desires 체크 추가, Wikipedia Syndrome/Appearance Bloat 제거(토큰 제약 완화), Surface-Only/Register Without Examples 안티패턴 추가
+  - `authoring-lorebook-bots/SKILL.md` — 토큰 예산 제약 완화, DNA 마커 가이드 추가, 유연한 디스크립션 길이 가이드
+  - `authoring-lorebook-bots/LOREBOOK_ARCHITECTURE.md` — 엔트리 사이즈 제약 완화(100-300 → 유연), 멀티캐릭터 봇 대규모 엔트리 가이드 추가
+
 ## [0.9.2] - 2026-03-21
 
 ### 새 기능

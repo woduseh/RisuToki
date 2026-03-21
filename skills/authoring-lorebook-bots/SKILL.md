@@ -1,17 +1,17 @@
 ---
 name: authoring-lorebook-bots
-description: "Writes bot descriptions for lorebook-driven LLM roleplay bots. Produces compact atmospheric descriptions (400-1200 tokens) that serve as persistent tonal fields, character thumbnails, and interpretive lenses for lorebook content. Use when creating bots where detailed world/character information lives in lorebooks and the description provides the framing."
+description: 'Writes bot descriptions for lorebook-driven LLM roleplay bots. Produces atmospheric descriptions that serve as persistent tonal fields, character thumbnails, and interpretive lenses for lorebook content. Use when creating bots where detailed world/character information lives in lorebooks and the description provides the framing.'
 ---
 
 # Bot Description for Lorebook-Driven Bots
 
 ## What a Bot Description Is
 
-A **mood board**, **genre contract**, **character thumbnail**, **narrative compass**, and **interpretive lens** — all in 400–1,200 tokens.
+A **mood board**, **genre contract**, **character thumbnail**, **narrative compass**, and **interpretive lens**.
 
 It is **not** a wiki article, a complete biography, a lorebook entry in the description slot, or a list of rules.
 
-**The litmus test:** Delete all lorebook entries. Can the LLM still produce something that *feels right* with only the description? If yes, the description works.
+**The litmus test:** Delete all lorebook entries. Can the LLM still produce something that _feels right_ with only the description? If yes, the description works.
 
 ---
 
@@ -27,7 +27,7 @@ The description establishes a **persistent tonal field**. A noir bot should make
 
 ### 3. Character Essence, Not Encyclopedia
 
-For a lorebook-driven bot, the character needs: **core identity** (the behavioral engine), **current emotional state** (starting fuel), and **speech DNA** (enough to extrapolate consistent voice). Detailed history, relationships, and lore → lorebook.
+For a lorebook-driven bot, the character needs: **core identity** (the behavioral engine), **current emotional state** (starting fuel), and **speech DNA** (enough to extrapolate consistent voice). Detailed history, relationships, and lore → lorebook. However, the character's psychological depth should be sufficient that the LLM can produce nuanced, consistent behavior even without lorebook entries active.
 
 ### 4. The Description Sets the Style Standard
 
@@ -35,7 +35,7 @@ The LLM mirrors the prose style it sees in context. An atmospheric description p
 
 ### 5. Imply More Than You State
 
-Write as though the narrator already knows the world — drop references without explaining them, use world-specific language casually, treat extraordinary things as mundane. The lorebook provides details when relevant; the description provides the *feeling* that details exist.
+Write as though the narrator already knows the world — drop references without explaining them, use world-specific language casually, treat extraordinary things as mundane. The lorebook provides details when relevant; the description provides the _feeling_ that details exist.
 
 ---
 
@@ -45,11 +45,11 @@ Write as though the narrator already knows the world — drop references without
 
 Answer three questions before writing anything:
 
-| Question | What it determines |
-|---|---|
-| **Genre** — What kind of story is this? | Event expectations, emotional register, narrative patterns |
-| **Texture** — If this bot were a physical space, what would it feel like? | Sensory language, prose temperature ("warm lamplight" vs "fluorescent hum") |
-| **Emotional gravity** — What hangs in the air? | Dominant undercurrent: melancholy, tension, dread, longing, quiet contentment |
+| Question                                                                  | What it determines                                                            |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Genre** — What kind of story is this?                                   | Event expectations, emotional register, narrative patterns                    |
+| **Texture** — If this bot were a physical space, what would it feel like? | Sensory language, prose temperature ("warm lamplight" vs "fluorescent hum")   |
+| **Emotional gravity** — What hangs in the air?                            | Dominant undercurrent: melancholy, tension, dread, longing, quiet contentment |
 
 These don't go into the description directly. They're your compass.
 
@@ -61,6 +61,7 @@ One paragraph to one short section. Like the first page of a novel.
 **Exclude:** History lessons, political systems, geography, faction lists → lorebook.
 
 ❌ **Bad** (information dump):
+
 ```
 The Kingdom of Vaeloria was founded 3,000 years ago by the Dragon Empress Sylith
 after the War of Sundering. It is divided into five provinces: Northern Reach,
@@ -70,6 +71,7 @@ Council of Voices representing each province...
 ```
 
 ✅ **Good** (atmospheric primer):
+
 ```
 Vaeloria is a kingdom that remembers too much. The old magic — the kind that
 reshaped continents — is gone, but its scars are everywhere: in the crystallized
@@ -87,9 +89,10 @@ Compress the character to the **Essential Triad**:
 
 #### Core Identity (2–4 sentences)
 
-Not their résumé — their *nature*.
+Not their résumé — their _nature_.
 
 ❌ **Bad:**
+
 ```
 Kael is a 32-year-old former knight turned mercenary who specializes in
 defensive combat and has a scar across his left eye from the Battle of
@@ -97,6 +100,7 @@ Ashford. He carries a bastard sword named Oathkeeper.
 ```
 
 ✅ **Good:**
+
 ```
 Kael fights like a man who's already decided he doesn't deserve to survive —
 all defense, no self-preservation, throwing his body between harm and whoever
@@ -108,7 +112,7 @@ The good version gives the LLM a **behavioral engine** — it can generate react
 
 #### Current Emotional State (1–3 sentences)
 
-Where the character is *right now* — the RP's starting fuel.
+Where the character is _right now_ — the RP's starting fuel.
 
 ```
 He's three months into a contract that should have been simple, and two days
@@ -120,6 +124,7 @@ Not anymore.
 #### Speech DNA
 
 Enough flavor that the LLM can extrapolate. Provide:
+
 - Default mode (2–3 example lines)
 - One contrasting mode (shift under pressure)
 - 1–2 consistency anchors (verbal tics that persist across moods)
@@ -144,6 +149,7 @@ Anchor: Refers to people by function, not name, until he respects them
 Write the description **in the prose style you want the output to match**. The LLM mirrors what it reads.
 
 If you need to be explicit, briefly define:
+
 - **Prose density** — sparse and punchy, or rich and atmospheric?
 - **Perspective** — internal thoughts, external only, or mixed?
 - **Pacing** — quick cuts or slow immersive passages?
@@ -156,6 +162,7 @@ Signal that information will arrive dynamically.
 **Subtle (preferred):** Write as though the narrator knows the world intimately and doesn't need to explain. The LLM learns to expect details from elsewhere.
 
 **Explicit (when needed):**
+
 ```
 [Detailed world lore, character history, NPC profiles, and location descriptions
 are provided through lorebook entries that activate contextually. The description
@@ -168,56 +175,62 @@ above provides the persistent tone and character core.]
 
 ```markdown
 ### World
-[One paragraph. Atmosphere, core rule, current state, implied depth.]
+
+[One paragraph to one section. Atmosphere, core rule, current state, implied depth.]
 [Write in the narrative voice you want the RP to use.]
 
 ### {{char}}
+
 [Core identity: 2–4 sentences of behavioral essence]
 [Current state: 1–3 sentences of emotional/situational starting point]
 [Relationship to {{user}}: the dynamic, not just the label]
 
 ### Voice
-[Default speech mode + 2–3 example lines]
-[One shift mode + 1–2 example lines]
-[1–2 consistency anchors]
+
+[DNA markers — always-present tics (2–3)]
+[Default speech mode + 3–5 example lines with stage directions]
+[One shift mode + 2–3 example lines]
+[Code-switching rules for multilingual characters]
 [Inner voice: 1–2 sentences if relevant]
 
 ### The Situation
+
 [Where the RP begins. What's happening. What tension exists.]
 [What {{char}} knows / doesn't know / is wrong about right now.]
 ```
 
-### Suggested Section Budget (~800 tokens)
+### Investment Guidance
 
-| Section | Approx. Share | Notes |
-|---|---|---|
-| World | ~20% | Atmosphere and core rule |
-| Character Core | ~25% | Behavioral engine + current state |
-| Voice | ~30–35% | Speech examples, the highest-value tokens |
-| Situation | ~15–20% | Starting tension |
+| Section        | Priority              | Notes                                                                                   |
+| -------------- | --------------------- | --------------------------------------------------------------------------------------- |
+| Voice          | **Highest** — ~30–35% | Speech examples directly shape every turn of output. DNA markers + 2 registers minimum. |
+| Character Core | **High** — ~25%       | Behavioral engine + current state. Include Surface vs. Subversion if space allows.      |
+| World          | **Medium** — ~20%     | Atmosphere and core rule.                                                               |
+| Situation      | **Medium** — ~15–20%  | Starting tension.                                                                       |
 
-Voice gets a large share because it directly shapes every turn of output.
+**Target length is flexible.** A compact bot description might be 400–800 tokens. A richer one might be 1,500–2,500 tokens. With modern LLMs, the description can be longer if the content is high-quality and behavioral. The key constraint is: keep detailed _information_ (history, mechanics, NPC profiles) in lorebook entries, and keep the description focused on _atmosphere, personality, and voice_.
 
-**Total target: 400–1,200 tokens.** If significantly exceeding this, check whether detailed content should move to lorebook entries instead.
+If you find your description exceeding 2,500 tokens, check whether you've drifted from atmospheric framing into detailed information that belongs in lorebook entries.
 
 ---
 
 ## What Goes Where
 
-| Always in Description | Always in Lorebook |
-|---|---|
-| World atmosphere and tone | Detailed backstory events and timeline |
-| Character's behavioral core | NPC profiles and relationship histories |
-| Speech essentials (3–5 examples) | Location descriptions |
+| Always in Description               | Always in Lorebook                      |
+| ----------------------------------- | --------------------------------------- |
+| World atmosphere and tone           | Detailed backstory events and timeline  |
+| Character's behavioral core         | NPC profiles and relationship histories |
+| Speech essentials (3–5 examples)    | Location descriptions                   |
 | Current emotional/situational state | World mechanics (magic, tech, politics) |
-| Relationship dynamic with {{user}} | Faction/organization details |
-| | Detailed abilities/skills |
-| | Secrets and hidden lore |
-| | Extended speech registers |
-| | Situational behavioral rules |
+| Relationship dynamic with {{user}}  | Faction/organization details            |
+|                                     | Detailed abilities/skills               |
+|                                     | Secrets and hidden lore                 |
+|                                     | Extended speech registers               |
+|                                     | Situational behavioral rules            |
 
 **Gray zone decisions:**
-- **Key contradiction** → *existence* in description, *backstory explaining it* in lorebook
+
+- **Key contradiction** → _existence_ in description, _backstory explaining it_ in lorebook
 - **Central NPC** → one-sentence mention in description + full profile in lorebook
 - **Core world mechanic** → the rule in description, how it works in lorebook
 
@@ -230,18 +243,21 @@ Voice gets a large share because it directly shapes every turn of output.
 The opening message brings the world alive beyond the compressed description.
 
 **Do:**
+
 1. Demonstrate the world's texture through sensory detail, not exposition
 2. Show the character's default mode — voice, behavior, presence
 3. Imply depth without explaining (reference things the lorebook will expand)
 4. Create a natural entry point for {{user}} — a reason to respond
 
 **Don't:**
+
 - Explain world history or rules (let {{user}} discover them)
 - Introduce through self-description ("I am X, I do Y")
 - Frontload lorebook information
 - Open so dramatic there's nowhere to go but down
 
 ❌ **Bad:**
+
 ```
 *Welcome to the Kingdom of Vaeloria, a land of ancient magic and political
 intrigue. Kael is a former knight turned mercenary, carrying deep scars
@@ -252,6 +268,7 @@ take jobs for coin. What do you need?"
 ```
 
 ✅ **Good:**
+
 ```
 *The tavern smells like wet wood and regret. The kind of place where the
 candles are more for atmosphere than function, and the barkeep has learned
@@ -277,29 +294,29 @@ if you're buying."
 
 Run every description through these checks:
 
-| Check | Question |
-|---|---|
-| **Atmosphere** | Reading only the description — do I *feel* the world and character? |
-| **Standalone** | Could the LLM run an engaging scene with only the description? |
-| **Redundancy** | Is anything duplicated between description and lorebook? |
-| **Token** | Under 1,200 tokens? If over, what should move to lorebook? |
-| **Voice** | Are there enough speech examples to produce 10 consistent lines? |
-| **Lens** | Does the tone color how the LLM will interpret lorebook entries? |
-| **Implication** | Does the description reference things it doesn't fully explain? |
+| Check           | Question                                                                                  |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| **Atmosphere**  | Reading only the description — do I _feel_ the world and character?                       |
+| **Standalone**  | Could the LLM run an engaging scene with only the description?                            |
+| **Redundancy**  | Is anything duplicated between description and lorebook?                                  |
+| **Voice**       | Are there enough speech examples to produce 10 consistent lines? Are DNA markers defined? |
+| **Lens**        | Does the tone color how the LLM will interpret lorebook entries?                          |
+| **Implication** | Does the description reference things it doesn't fully explain?                           |
+| **Depth**       | Is the character's behavioral engine rich enough to handle unexpected situations?         |
 
 ---
 
 ## Common Mistakes
 
-| Mistake | Why It Hurts | Fix |
-|---|---|---|
-| Whole character in description | Wastes tokens; lorebook entries become redundant | Compress to essence; details → lorebook |
-| All facts, no atmosphere | Flat, wiki-like narration | Rewrite facts as atmosphere; show don't tell |
-| Description and lorebook in different styles | Tonal whiplash in output | Write lorebook in the same voice as description |
-| No speech examples | Inconsistent character voice from the start | Always include 3–5 examples, even compressed |
-| World section is a history lesson | LLM opens with exposition instead of immersion | Write the world as it feels *now*, not as a timeline |
-| No current situation | LLM defaults to generic scenes | Always include emotional state, location, active tension |
-| Lorebook entries too long | Context fills up; important info pushed out | 100–300 tokens per entry; break large ones up |
+| Mistake                                             | Why It Hurts                                                    | Fix                                                                                  |
+| --------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| All facts, no atmosphere                            | Flat, wiki-like narration                                       | Rewrite facts as atmosphere; show don't tell                                         |
+| Description and lorebook in different styles        | Tonal whiplash in output                                        | Write lorebook in the same voice as description                                      |
+| No speech examples                                  | Inconsistent character voice from the start                     | Always include 3–5 examples, even compressed                                         |
+| World section is a history lesson                   | LLM opens with exposition instead of immersion                  | Write the world as it feels _now_, not as a timeline                                 |
+| No current situation                                | LLM defaults to generic scenes                                  | Always include emotional state, location, active tension                             |
+| No DNA markers                                      | Character voice drifts over long conversations                  | Add 2–3 always-present tics per SPEECH_SYSTEM.md                                     |
+| Information in description that belongs in lorebook | Description bloated with content that's only sometimes relevant | Keep description focused on atmosphere, personality, voice; move details to lorebook |
 
 ---
 
@@ -315,7 +332,7 @@ lorebook architecture overview — for the user, not the LLM)
 ---
 
 ## Bot Description
-(400–1,200 tokens. Markdown with ### sections. Ready to paste.)
+(Markdown with ### sections. Ready to paste.)
 
 ---
 

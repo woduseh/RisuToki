@@ -6,7 +6,7 @@ How to design lorebook entries that complement a compact atmospheric bot descrip
 
 ## Core Principle
 
-The bot description is the **persistent tonal lens**. Lorebook entries are **on-demand detail** that the LLM interprets *through* that lens. Every entry should read like a natural extension of the description's voice.
+The bot description is the **persistent tonal lens**. Lorebook entries are **on-demand detail** that the LLM interprets _through_ that lens. Every entry should read like a natural extension of the description's voice.
 
 ---
 
@@ -17,12 +17,14 @@ The bot description is the **persistent tonal lens**. Lorebook entries are **on-
 Each entry activates in isolation. It may be the only lorebook content the LLM sees in a given turn. Never assume other entries are active.
 
 ❌ **Bad** (depends on another entry):
+
 ```
 The Ashplains extend south from the border described in the "Northern Reach"
 entry. See also: "War of Sundering" for historical context.
 ```
 
 ✅ **Good** (stands alone):
+
 ```
 The Ashplains are a scarred expanse of gray soil and crystallized earth where
 the old magic burned itself out. Nothing grows taller than knee-height. The
@@ -35,6 +37,7 @@ one note off. Travelers cross quickly and don't camp if they can help it.
 If the description reads like atmospheric fiction, the lorebook should too. Tonal consistency between description and lorebook is what produces coherent output.
 
 ❌ **Bad** (clinical tone against atmospheric description):
+
 ```
 The Council of Voices consists of five representatives, one from each
 province. They meet quarterly in the capital. Current members: Lord Varos
@@ -42,6 +45,7 @@ province. They meet quarterly in the capital. Current members: Lord Varos
 ```
 
 ✅ **Good** (matches atmospheric voice):
+
 ```
 The Council of Voices hasn't agreed on anything meaningful in three years,
 but they keep meeting — five people who represent provinces that increasingly
@@ -51,9 +55,10 @@ performative. Real decisions happen in hallways afterward.
 
 ### 3. Behavior Over Biography
 
-Every entry should answer: **"How does this change what the LLM writes?"** Don't describe what something *is* — describe what it *does* to the scene.
+Every entry should answer: **"How does this change what the LLM writes?"** Don't describe what something _is_ — describe what it _does_ to the scene.
 
 ❌ **Bad** (biography):
+
 ```
 Captain Maren Dreve, age 45, served in the Royal Guard for 20 years before
 being assigned to the Thornwood garrison. She has brown hair, green eyes,
@@ -61,6 +66,7 @@ and a scar on her right forearm.
 ```
 
 ✅ **Good** (behavioral):
+
 ```
 Captain Dreve runs the Thornwood garrison like someone waiting for an
 inspection that's never coming. Every patrol logged, every weapon counted,
@@ -74,23 +80,23 @@ harder.
 
 Choose words that appear organically in conversation when the information is relevant.
 
-| Strategy | Example |
-|---|---|
-| **Use the thing's common name** | `Ashplains`, `the Council` |
+| Strategy                            | Example                                   |
+| ----------------------------------- | ----------------------------------------- |
+| **Use the thing's common name**     | `Ashplains`, `the Council`                |
 | **Include conversational variants** | `old magic, ancient magic, the Sundering` |
-| **Avoid over-specific triggers** | ❌ `crystallized wasteland phenomenon` |
-| **Avoid over-broad triggers** | ❌ `magic` alone (fires constantly) |
-| **Pair broad + narrow** | `magic` + `old` as selective pair |
+| **Avoid over-specific triggers**    | ❌ `crystallized wasteland phenomenon`    |
+| **Avoid over-broad triggers**       | ❌ `magic` alone (fires constantly)       |
+| **Pair broad + narrow**             | `magic` + `old` as selective pair         |
 
 ### 5. Layer Secrets by Trigger Depth
 
 Hidden information should be triggered by words that only appear when the RP has progressed far enough.
 
-| Layer | Trigger Strategy | Example |
-|---|---|---|
-| **Surface** | Character/place names | `Kael` → general info |
-| **Mid** | Specific topics in conversation | `knighthood, oath, the Order` → backstory |
-| **Deep** | Words that imply trust/discovery | `the scratched name, Oathkeeper, forgive` → secret |
+| Layer       | Trigger Strategy                 | Example                                            |
+| ----------- | -------------------------------- | -------------------------------------------------- |
+| **Surface** | Character/place names            | `Kael` → general info                              |
+| **Mid**     | Specific topics in conversation  | `knighthood, oath, the Order` → backstory          |
+| **Deep**    | Words that imply trust/discovery | `the scratched name, Oathkeeper, forgive` → secret |
 
 A character's deepest secret shouldn't trigger on their name — it should trigger on words that only come up when trust has been built or discovery has occurred.
 
@@ -98,57 +104,68 @@ A character's deepest secret shouldn't trigger on their name — it should trigg
 
 ## What Goes Where: Decision Guide
 
-| Content Type | Description | Lorebook | Rationale |
-|---|---|---|---|
-| World atmosphere | ✅ | | Always needed for tone |
-| World mechanics (detailed) | | ✅ | Only needed when relevant |
-| Core world rule (one sentence) | ✅ | | Frames everything |
-| Character behavioral engine | ✅ | | Drives every response |
-| Character backstory events | | ✅ | Only when referenced |
-| Speech examples (3–5) | ✅ | | Voice must be constant |
-| Extended speech registers | | ✅ | Niche situations only |
-| Current emotional state | ✅ | | Starting fuel |
-| NPC profiles | | ✅ | Only when NPC appears |
-| Central NPC (1 sentence) | ✅ | | If critical to starting situation |
-| Location descriptions | | ✅ | Only when at location |
-| Faction/org details | | ✅ | Only when discussed |
-| Secrets and hidden lore | | ✅ | Gated by trigger depth |
-| Key character contradiction | ✅ (existence) | ✅ (explanation) | Split across both |
-| Relationship with {{user}} | ✅ | | Always in context |
+| Content Type                   | Description    | Lorebook         | Rationale                         |
+| ------------------------------ | -------------- | ---------------- | --------------------------------- |
+| World atmosphere               | ✅             |                  | Always needed for tone            |
+| World mechanics (detailed)     |                | ✅               | Only needed when relevant         |
+| Core world rule (one sentence) | ✅             |                  | Frames everything                 |
+| Character behavioral engine    | ✅             |                  | Drives every response             |
+| Character backstory events     |                | ✅               | Only when referenced              |
+| Speech examples (3–5)          | ✅             |                  | Voice must be constant            |
+| Extended speech registers      |                | ✅               | Niche situations only             |
+| Current emotional state        | ✅             |                  | Starting fuel                     |
+| NPC profiles                   |                | ✅               | Only when NPC appears             |
+| Central NPC (1 sentence)       | ✅             |                  | If critical to starting situation |
+| Location descriptions          |                | ✅               | Only when at location             |
+| Faction/org details            |                | ✅               | Only when discussed               |
+| Secrets and hidden lore        |                | ✅               | Gated by trigger depth            |
+| Key character contradiction    | ✅ (existence) | ✅ (explanation) | Split across both                 |
+| Relationship with {{user}}     | ✅             |                  | Always in context                 |
 
 ---
 
 ## Entry Sizing
 
-**General guideline: 100–300 tokens per entry.** Adjust based on your context window budget and how many entries might be active simultaneously.
+**General guideline:** Size entries based on their content needs, not arbitrary limits. Most entries work well at 100–500 tokens, but don't sacrifice coherence for size constraints.
 
-| Size | When to use |
-|---|---|
-| **~100 tokens** | Simple facts, minor NPCs, small locations |
-| **~200 tokens** | Standard entries: locations, NPCs, mechanics |
-| **~300 tokens** | Complex entries: major NPCs, pivotal lore, detailed mechanics |
-| **>300 tokens** | Consider splitting into multiple entries with separate triggers |
+| Size                | When to use                                                                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **~100 tokens**     | Simple facts, minor NPCs, small locations                                                                                               |
+| **~200–300 tokens** | Standard entries: locations, NPCs, mechanics                                                                                            |
+| **~300–800 tokens** | Complex entries: major NPCs, pivotal lore, detailed mechanics, character profiles                                                       |
+| **800+ tokens**     | Full character profiles in lorebook (for multi-character bots), detailed system entries — perfectly fine if the content is high-quality |
 
-**Why smaller entries generally work better:**
-- Context window is finite — large entries crowd out other active content
-- Multiple small entries give the LLM diverse, specific context per turn
-- Smaller entries have cleaner trigger boundaries
-- However, some entries genuinely need 300+ tokens — don't sacrifice coherence for arbitrary size limits
+**With modern 1M+ context LLMs**, the old anxiety about entry size is largely obsolete. The real question is:
 
-❌ **Bad** (800-token mega-entry):
+- **Does this entry stand alone?** Can it be understood without other entries active?
+- **Does this entry add behavioral value?** Does it change what the LLM writes?
+- **Is the content focused?** A 500-token entry about one character is fine; a 500-token entry covering three unrelated topics should be split.
+
+For **multi-character bots** where each character has a dedicated lorebook entry, entries of 1,000–5,000+ tokens per character are appropriate and produce excellent results. The Project Vela pattern (17K–25K per character as always-active entries) demonstrates the upper range of this approach for dedicated character bots.
+
+❌ **Bad** (unfocused mega-entry):
+
 ```
 Key: Vaeloria
 [Entire history, geography, political system, current events, cultural
 practices, religion, economy, military structure...]
 ```
 
-✅ **Good** (split into focused entries):
+✅ **Good** (focused entries — size matches content):
+
 ```
 Key: Vaeloria, the kingdom    → Current state & atmosphere (150 tokens)
-Key: Council of Voices         → Political body (120 tokens)
-Key: old magic, the Sundering  → Magic system & history (200 tokens)
-Key: Northern Reach            → Region description (150 tokens)
-Key: Ashplains                 → Region description (130 tokens)
+Key: Council of Voices         → Political body + behavioral cues (200 tokens)
+Key: old magic, the Sundering  → Magic system & history (300 tokens)
+Key: Northern Reach            → Region description + social dynamics (200 tokens)
+Key: Ashplains                 → Region description + sensory details (150 tokens)
+```
+
+✅ **Also Good** (rich character entry for multi-character bot):
+
+```
+Key: Captain Dreve, Maren      → Full character profile: personality, speech
+                                  registers, backstory, current state (800 tokens)
 ```
 
 ---
@@ -165,6 +182,7 @@ A well-structured lorebook entry follows this pattern:
 ```
 
 **Example:**
+
 ```
 The Northern Reach is where Vaeloria goes to forget its problems — and its
 people. The province is cold in ways that have nothing to do with weather:
@@ -215,11 +233,11 @@ Lore triggers:
 
 Use selective mode when a broad keyword needs narrowing:
 
-| key | secondkey | Activates when... |
-|---|---|---|
-| `magic` | `history, origin, old` | Magic's history comes up, not every mention of magic |
-| `Kael` | `past, knight, before` | Kael's backstory, not every scene with Kael |
-| `the Council` | `corrupt, secret, truth` | Council's hidden agenda, not general Council talk |
+| key           | secondkey                | Activates when...                                    |
+| ------------- | ------------------------ | ---------------------------------------------------- |
+| `magic`       | `history, origin, old`   | Magic's history comes up, not every mention of magic |
+| `Kael`        | `past, knight, before`   | Kael's backstory, not every scene with Kael          |
+| `the Council` | `corrupt, secret, truth` | Council's hidden agenda, not general Council talk    |
 
 ---
 
@@ -255,13 +273,13 @@ Use `add_lorebook({ comment: "folder name", mode: "folder", key: "", content: ""
 
 ## Common Entry Mistakes
 
-| Mistake | Fix |
-|---|---|
-| Entry depends on other entries being active | Make each entry fully self-contained |
-| Clinical/wiki tone against atmospheric description | Rewrite in the description's voice |
-| Trigger keyword is too broad (fires every turn) | Use selective mode or more specific terms |
-| Trigger keyword is too specific (never fires) | Add conversational variants |
-| Entry is 500+ tokens | Split into 2–3 focused entries |
-| Entry describes what something *is* but not what it *does* | Add behavioral cues and narrative hooks |
-| Secret info triggered by character's name | Use deep trigger words tied to discovery/trust |
-| Duplicate content between description and lorebook | Remove from whichever place it's less essential |
+| Mistake                                                    | Fix                                                        |
+| ---------------------------------------------------------- | ---------------------------------------------------------- |
+| Entry depends on other entries being active                | Make each entry fully self-contained                       |
+| Clinical/wiki tone against atmospheric description         | Rewrite in the description's voice                         |
+| Trigger keyword is too broad (fires every turn)            | Use selective mode or more specific terms                  |
+| Trigger keyword is too specific (never fires)              | Add conversational variants                                |
+| Entry describes what something _is_ but not what it _does_ | Add behavioral cues and narrative hooks                    |
+| Secret info triggered by character's name                  | Use deep trigger words tied to discovery/trust             |
+| Duplicate content between description and lorebook         | Remove from whichever place it's less essential            |
+| Unfocused entry covering multiple unrelated topics         | Split into focused entries, each with appropriate triggers |
