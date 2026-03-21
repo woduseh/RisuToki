@@ -612,6 +612,55 @@ server.tool(
 );
 
 server.tool(
+  'write_lorebook_batch',
+  '여러 로어북 항목을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 사용자 확인 필요.',
+  {
+    entries: z
+      .array(
+        z.object({
+          index: z.number().describe('로어북 항목 인덱스'),
+          data: z.record(z.string(), z.unknown()).describe('수정할 데이터'),
+        }),
+      )
+      .max(50)
+      .describe('수정할 항목 배열 [{index, data}, ...] (최대 50개)'),
+  },
+  async ({ entries }) => textResult(await apiRequest('POST', '/lorebook/batch-write', { entries })),
+);
+
+server.tool(
+  'diff_lorebook',
+  '현재 파일의 로어북 항목과 참고 자료의 로어북 항목을 비교합니다. 필드별 차이점과 content의 라인 단위 변경 사항을 반환합니다.',
+  {
+    index: z.number().describe('현재 파일의 로어북 항목 인덱스'),
+    refIndex: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+    refEntryIndex: z.number().describe('참고 파일의 로어북 항목 인덱스'),
+  },
+  async ({ index, refIndex, refEntryIndex }) =>
+    textResult(await apiRequest('POST', '/lorebook/diff', { index, refIndex, refEntryIndex })),
+);
+
+server.tool(
+  'validate_lorebook_keys',
+  '로어북 키의 일반적인 문제를 검증합니다. 후행 쉼표, 불필요한 공백, 빈 세그먼트, 중복 키 등을 탐지합니다.',
+  {},
+  async () => textResult(await apiRequest('GET', '/lorebook/validate')),
+);
+
+server.tool(
+  'clone_lorebook',
+  '기존 로어북 항목을 복제합니다. overrides로 복제본의 필드를 변경할 수 있습니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('복제할 원본 로어북 항목 인덱스'),
+    overrides: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('복제본에 적용할 필드 오버라이드 (예: {comment: "새이름", key: "새키"})'),
+  },
+  async ({ index, overrides }) => textResult(await apiRequest('POST', '/lorebook/clone', { index, overrides })),
+);
+
+server.tool(
   'write_lorebook',
   '특정 인덱스의 로어북 항목을 수정합니다. 사용자 확인 필요.',
   {
@@ -634,6 +683,36 @@ server.tool(
   '특정 인덱스의 로어북 항목을 삭제합니다. 사용자 확인 필요.',
   { index: z.number().describe('삭제할 로어북 항목 인덱스') },
   async ({ index }) => textResult(await apiRequest('POST', `/lorebook/${index}/delete`)),
+);
+
+server.tool(
+  'replace_in_lorebook',
+  '로어북 항목의 content에서 문자열 치환을 수행합니다. 대용량 항목도 전체를 읽지 않고 서버에서 직접 처리합니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('로어북 항목 인덱스'),
+    find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
+    replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false = 일반 문자열 매칭)'),
+    flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+  },
+  async ({ index, find, replace, regex, flags }) =>
+    textResult(await apiRequest('POST', `/lorebook/${index}/replace`, { find, replace, regex, flags })),
+);
+
+server.tool(
+  'insert_in_lorebook',
+  '로어북 항목의 content에 텍스트를 삽입합니다. 전체를 읽지 않고 특정 위치에 추가. 사용자 확인 필요.',
+  {
+    index: z.number().describe('로어북 항목 인덱스'),
+    content: z.string().describe('삽입할 텍스트'),
+    position: z
+      .enum(['end', 'start', 'after', 'before'])
+      .optional()
+      .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
+    anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+  },
+  async ({ index, content, position, anchor }) =>
+    textResult(await apiRequest('POST', `/lorebook/${index}/insert`, { content, position, anchor })),
 );
 
 // ===== Regex Tools =====
@@ -726,6 +805,34 @@ server.tool(
     index: z.number().describe('삭제할 인사말 인덱스'),
   },
   async ({ type, index }) => textResult(await apiRequest('POST', `/greeting/${type}/${index}/delete`)),
+);
+
+server.tool(
+  'batch_write_greeting',
+  '여러 인사말을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 사용자 확인 필요.',
+  {
+    type: z.enum(['alternate', 'group']).describe('"alternate" (추가 첫 메시지) 또는 "group" (그룹 전용)'),
+    writes: z
+      .array(
+        z.object({
+          index: z.number().describe('인사말 인덱스'),
+          content: z.string().describe('새로운 인사말 텍스트'),
+        }),
+      )
+      .max(50)
+      .describe('수정할 인사말 배열 [{index, content}, ...] (최대 50개)'),
+  },
+  async ({ type, writes }) => textResult(await apiRequest('POST', `/greeting/${type}/batch-write`, { writes })),
+);
+
+server.tool(
+  'reorder_greetings',
+  '인사말의 순서를 변경합니다. 현재 배열 크기와 동일한 길이의 인덱스 배열을 전달하세요. 사용자 확인 필요.',
+  {
+    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    order: z.array(z.number()).describe('새 순서 (예: [2,0,1,3] = 기존 2번을 첫째로, 0번을 둘째로...)'),
+  },
+  async ({ type, order }) => textResult(await apiRequest('POST', `/greeting/${type}/reorder`, { order })),
 );
 
 // ===== Trigger Tools =====
