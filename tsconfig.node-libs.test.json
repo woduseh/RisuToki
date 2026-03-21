@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "noEmit": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/adm-zip.d.ts",
+    "src/charx-io.ts",
+    "src/lorebook-convert.ts",
+    "src/rpack.ts",
+    "src/lib/mcp-api-server.ts",
+    "src/lib/mcp-config.ts",
+    "src/lib/agents-md-manager.ts",
+    "src/lib/asset-manager.ts",
+    "src/lib/sync-server.ts",
+    "src/lib/guides-manager.ts",
+    "src/lib/terminal-manager.ts",
+    "src/lib/ipc-confirm.ts",
+    "src/lib/data-serializer.ts",
+    "src/lib/autosave-manager.ts",
+    "src/lib/popout-manager.ts",
+    "src/lib/main-state-store.ts",
+    "src/lib/popout-payload-store.ts",
+    "src/lib/reference-store.ts",
+    "src/lib/refs-popout-data.ts",
+    "src/lib/terminal-shell.ts",
+    "toki-mcp-server.ts",
+    "test/test-rpack.ts",
+    "test/test-charx.ts",
+    "test/test-reference-store.ts",
+    "test/test-refs-popout-data.ts",
+    "test/test-popout-payload-store.ts",
+    "test/test-terminal-shell.ts",
+    "test/test-main-state-store.ts",
+    "_test_import.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

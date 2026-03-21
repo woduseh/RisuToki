@@ -382,7 +382,7 @@ Deliver these components:
 ---
 
 ## Lorebook Suggestions (Optional)
-(Items cut for token reasons, formatted as lorebook entries with trigger keywords.)
+(Items better served as lorebook entries, formatted with trigger keywords.)
 ```
 
 ---

@@ -1,6 +1,6 @@
 # Lorebook Architecture for Description-Driven Bots
 
-How to design lorebook entries that complement a compact atmospheric bot description.
+How to design lorebook entries that complement an atmospheric bot description.
 
 ---
 
@@ -99,6 +99,45 @@ Hidden information should be triggered by words that only appear when the RP has
 | **Deep**    | Words that imply trust/discovery | `the scratched name, Oathkeeper, forgive` → secret |
 
 A character's deepest secret shouldn't trigger on their name — it should trigger on words that only come up when trust has been built or discovery has occurred.
+
+### 6. Signal Density
+
+With large context windows (200K–1M+), the constraint is no longer **space** — it's **attention**. Every sentence in a lorebook entry competes for the LLM's focus. The question is never "how many tokens?" but **"does every sentence change what the LLM writes?"**
+
+**Rich detail** adds value regardless of length — behavioral nuance, sensory texture, speech patterns, atmospheric prose, reaction patterns, relationship dynamics. A 600-token entry where every sentence is actionable outperforms a 200-token entry padded with filler.
+
+**Signal noise** wastes attention regardless of context size — facts that don't affect behavior, information already present in other active entries, measurements without narrative function, timeline data that doesn't explain current behavior.
+
+❌ **Low signal density** (300 tokens of noise):
+
+```
+Captain Maren Dreve is 45 years old. She was born in the Northern Reach
+town of Korvel to a family of shipbuilders. At 18 she joined the Royal
+Guard, where she served for 20 years. She was promoted to Captain at 34.
+She has brown hair, green eyes, and a scar on her right forearm from
+a training accident in her second year. She was assigned to Thornwood
+garrison three years ago. She has never married.
+```
+
+✅ **High signal density** (300 tokens of rich detail):
+
+```
+Captain Dreve runs the Thornwood garrison like someone waiting for an
+inspection that's never coming. Every patrol logged, every weapon counted,
+every report filed in triplicate — in a posting everyone else treats as
+exile. She doesn't smile at jokes, but she'll fix your armor strap without
+being asked. The kind of officer who makes you feel guilty for not trying
+harder.
+
+Speaks in clipped, complete sentences. Never raises her voice — drops it
+instead. Calls everyone by rank, even off duty. The one crack in her
+composure: when someone mentions the capital, her jaw sets and she changes
+the subject with the precision of someone who's practiced.
+```
+
+Both are ~300 tokens. The first gives the LLM biography it can't use. The second gives behavioral cues, speech patterns, a sensory presence, and a narrative hook — material the LLM can deploy in any scene.
+
+**The Usefulness Test:** For every sentence in an entry, ask: _"If I removed this sentence, would the LLM's output in a typical scene be noticeably different?"_ If removing it changes nothing, it's noise.
 
 ---
 
@@ -273,13 +312,38 @@ Use `add_lorebook({ comment: "folder name", mode: "folder", key: "", content: ""
 
 ## Common Entry Mistakes
 
-| Mistake                                                    | Fix                                                        |
-| ---------------------------------------------------------- | ---------------------------------------------------------- |
-| Entry depends on other entries being active                | Make each entry fully self-contained                       |
-| Clinical/wiki tone against atmospheric description         | Rewrite in the description's voice                         |
-| Trigger keyword is too broad (fires every turn)            | Use selective mode or more specific terms                  |
-| Trigger keyword is too specific (never fires)              | Add conversational variants                                |
-| Entry describes what something _is_ but not what it _does_ | Add behavioral cues and narrative hooks                    |
-| Secret info triggered by character's name                  | Use deep trigger words tied to discovery/trust             |
-| Duplicate content between description and lorebook         | Remove from whichever place it's less essential            |
-| Unfocused entry covering multiple unrelated topics         | Split into focused entries, each with appropriate triggers |
+| Mistake                                                    | Fix                                                                             |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Entry depends on other entries being active                | Make each entry fully self-contained                                            |
+| Clinical/wiki tone against atmospheric description         | Rewrite in the description's voice                                              |
+| Trigger keyword is too broad (fires every turn)            | Use selective mode or more specific terms                                       |
+| Trigger keyword is too specific (never fires)              | Add conversational variants                                                     |
+| Entry describes what something _is_ but not what it _does_ | Add behavioral cues and narrative hooks                                         |
+| Secret info triggered by character's name                  | Use deep trigger words tied to discovery/trust                                  |
+| Duplicate content between description and lorebook         | Remove from whichever place it's less essential                                 |
+| Unfocused entry covering multiple unrelated topics         | Split into focused entries, each with appropriate triggers                      |
+| Low signal density (long entry, mostly biography/stats)    | Apply the Usefulness Test — cut lines that don't change LLM output              |
+| Redundant information across multiple entries              | Single-source each fact; repetition wastes attention                            |
+| Too many alwaysActive entries with low-priority content    | Reserve alwaysActive for core world rules, character lists, system instructions |
+
+---
+
+## AlwaysActive Budget
+
+AlwaysActive entries are **always in context** — they compete for the LLM's attention on every single turn. Even with 1M+ context, attention is finite.
+
+**High-value alwaysActive content:**
+
+- Core world rules and atmosphere
+- Character roster summaries (brief identifiers, not full profiles)
+- System instructions (formatting rules, spoiler prevention, output directives)
+- Probabilistic event systems (CBS conditionals make them near-zero cost when not triggered)
+
+**Move to keyword-triggered:**
+
+- Detailed history and timelines → trigger on specific event names
+- Location descriptions → trigger on place names
+- Organization details → trigger on faction names
+- Character deep-dives → trigger on character names
+
+**Monitoring:** If alwaysActive entries total exceeds ~5,000 tokens, review whether each one truly needs to be always present. Ask: _"If this entry were keyword-triggered instead, would anything break?"_ If the answer is "no, it would just activate when relevant," it shouldn't be alwaysActive.

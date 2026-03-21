@@ -29,6 +29,17 @@ These guides are **toolkits, not rulebooks.** They describe patterns that tend t
 
 The only real test is whether the LLM generates output that feels alive, consistent, and engaging. If skipping the speech register system makes a minimalist character hit harder, skip it. If adding a section the guide never mentions makes the bot sing, add it. These documents exist to help — not to constrain.
 
+### Signal Density over Token Count
+
+With large context windows (200K–1M+), the constraint is no longer **space** — it's **attention**. The LLM can hold everything you give it, but it must still find what matters among everything present.
+
+The question is never "how many tokens?" but **"does every sentence change what the LLM writes next?"**
+
+- **Rich detail** — behavioral nuance, sensory texture, speech examples, reaction patterns, atmospheric prose — makes the world more alive. Add freely.
+- **Signal noise** — facts that don't affect behavior, repeated information, filler text — wastes the LLM's attention no matter how large the context. Cut always.
+
+Token counts in these guides are **reference floors, not ceilings.** A 600-token lorebook entry where every sentence is actionable outperforms a 200-token entry padded with filler. A 3,000-token description that's all signal outperforms a 1,000-token one that cuts behavioral depth for brevity. Size entries and descriptions to their purpose, not to a budget.
+
 ## How to Use
 
 Each skill directory contains:

@@ -227,8 +227,9 @@ If you find your description exceeding 2,500 tokens, check whether you've drifte
 | Relationship dynamic with {{user}}  | Faction/organization details            |
 |                                     | Detailed abilities/skills               |
 |                                     | Secrets and hidden lore                 |
-|                                     | Extended speech registers               |
 |                                     | Situational behavioral rules            |
+
+**With modern large-context LLMs, this boundary is flexible.** Extended speech registers, for instance, can stay in the description if the character's voice is the bot's primary draw. The deciding factor is _narrative role_: content that shapes the overall atmosphere and every-turn output → description. Content that's relevant only when a specific topic arises → lorebook.
 
 **Gray zone decisions:**
 
