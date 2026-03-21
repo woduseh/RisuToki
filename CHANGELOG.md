@@ -9,6 +9,27 @@
 
 ---
 
+## [0.8.1] - 2026-03-21
+
+### 새 기능
+
+- **로어북 폴더 필터** — `list_lorebook(folder?)` 및 `list_reference_lorebook(folder?)` 에 폴더 UUID 필터 추가
+  - 응답에 폴더 요약(`folders` 배열: UUID, name, entryCount) 포함
+  - 각 항목에 `folder` 필드 포함하여 폴더 소속 확인 가능
+  - 120+ 항목이 있는 대형 파일에서 폴더별 탐색으로 컨텍스트 절약
+
+### 변경
+
+- **list_regex** — `findSize`, `replaceSize` 필드 추가 (대형 HTML 치환 식별 용이)
+- **list_triggers** — `conditionCount` 필드 추가 (트리거 복잡도 사전 파악)
+- **list_lorebook** — 각 항목에 `folder` 필드 추가, 응답에 폴더 요약 포함
+
+### 수정
+
+- **list_fields 성능 개선** — `stringifyTriggerScripts()` 이중 호출 제거 (캐시 변수 사용)
+
+---
+
 ## [0.8.0] - 2026-03-21
 
 ### 새 기능

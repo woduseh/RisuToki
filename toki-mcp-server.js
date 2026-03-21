@@ -457,11 +457,12 @@ const TOOLS = [
     },
     {
         name: 'list_lorebook',
-        description: '로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기). 항목이 수백 개일 수 있으므로 filter 파라미터로 comment/key 검색을 권장합니다.',
+        description: '로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기, 폴더). 응답에 폴더 요약(folders)도 포함됩니다. 항목이 수백 개일 수 있으므로 folder 또는 filter 파라미터로 범위를 좁히세요.',
         inputSchema: {
             type: 'object',
             properties: {
                 filter: { type: 'string', description: '검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환' },
+                folder: { type: 'string', description: '폴더 UUID로 필터 (예: "folder:xxxx" 또는 UUID만). 생략 시 전체 반환' },
             },
             required: [],
         },
@@ -489,7 +490,7 @@ const TOOLS = [
     },
     {
         name: 'list_regex',
-        description: '정규식 스크립트 항목 목록을 확인합니다.',
+        description: '정규식 스크립트 항목 목록을 확인합니다 (인덱스, comment, type, findSize, replaceSize).',
         inputSchema: { type: 'object', properties: {}, required: [] },
     },
     {
@@ -621,7 +622,7 @@ const TOOLS = [
     // ------- Trigger Scripts -------
     {
         name: 'list_triggers',
-        description: '트리거 스크립트 목록을 확인합니다 (인덱스, comment, type, effect 수, lowLevelAccess). read_field("triggerScripts") 대신 이 도구를 사용하세요 — 전체 JSON 덤프를 방지합니다.',
+        description: '트리거 스크립트 목록을 확인합니다 (인덱스, comment, type, conditionCount, effectCount, lowLevelAccess). read_field("triggerScripts") 대신 이 도구를 사용하세요 — 전체 JSON 덤프를 방지합니다.',
         inputSchema: { type: 'object', properties: {}, required: [] },
     },
     {
@@ -802,12 +803,13 @@ const TOOLS = [
     },
     {
         name: 'list_reference_lorebook',
-        description: '참고 자료 파일의 로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기). filter로 comment/key 검색 가능. read_reference_field("lorebook") 대신 이 도구를 사용하세요.',
+        description: '참고 자료 파일의 로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기, 폴더). filter 또는 folder로 범위를 좁히세요. read_reference_field("lorebook") 대신 이 도구를 사용하세요.',
         inputSchema: {
             type: 'object',
             properties: {
                 index: { type: 'number', description: '참고 파일 인덱스 (list_references 결과 참조)' },
                 filter: { type: 'string', description: '검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환' },
+                folder: { type: 'string', description: '폴더 UUID로 필터. 생략 시 전체 반환' },
             },
             required: ['index'],
         },
@@ -1041,8 +1043,15 @@ async function handleToolCall(name, args) {
             return await apiRequest('GET', `/field/${encodeURIComponent(args.field)}`);
         case 'write_field':
             return await apiRequest('POST', `/field/${encodeURIComponent(args.field)}`, { content: args.content });
-        case 'list_lorebook':
-            return await apiRequest('GET', args.filter ? `/lorebook?filter=${encodeURIComponent(args.filter)}` : '/lorebook');
+        case 'list_lorebook': {
+            const params = new URLSearchParams();
+            if (args.filter)
+                params.set('filter', args.filter);
+            if (args.folder)
+                params.set('folder', args.folder);
+            const qs = params.toString();
+            return await apiRequest('GET', qs ? `/lorebook?${qs}` : '/lorebook');
+        }
         case 'read_lorebook':
             return await apiRequest('GET', `/lorebook/${args.index}`);
         case 'write_lorebook':
@@ -1150,8 +1159,13 @@ async function handleToolCall(name, args) {
         case 'read_reference_field':
             return await apiRequest('GET', `/reference/${args.index}/${encodeURIComponent(args.field)}`);
         case 'list_reference_lorebook': {
-            const filter = args.filter ? `?filter=${encodeURIComponent(args.filter)}` : '';
-            return await apiRequest('GET', `/reference/${args.index}/lorebook${filter}`);
+            const refLbParams = new URLSearchParams();
+            if (args.filter)
+                refLbParams.set('filter', args.filter);
+            if (args.folder)
+                refLbParams.set('folder', args.folder);
+            const refLbQs = refLbParams.toString();
+            return await apiRequest('GET', `/reference/${args.index}/lorebook${refLbQs ? '?' + refLbQs : ''}`);
         }
         case 'read_reference_lorebook':
             return await apiRequest('GET', `/reference/${args.index}/lorebook/${args.entryIndex}`);

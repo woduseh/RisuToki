@@ -97,8 +97,9 @@ export async function buildAssistantPrompt(
     lines.push(`- read_field(field) / write_field(field, content): 필드 읽기/쓰기`);
     lines.push(``);
     lines.push(`[로어북]`);
-    lines.push(`- list_lorebook(filter?) / read_lorebook(index) / write_lorebook(index, data)`);
+    lines.push(`- list_lorebook(filter?, folder?) / read_lorebook(index) / write_lorebook(index, data)`);
     lines.push(`- add_lorebook(data) / delete_lorebook(index)`);
+    lines.push(`- list_lorebook 응답에 폴더 요약(folders)과 각 항목의 folder 필드 포함`);
     lines.push(``);
     lines.push(`[정규식]`);
     lines.push(`- list_regex / read_regex(index) / write_regex(index, data)`);
@@ -139,11 +140,11 @@ export async function buildAssistantPrompt(
     lines.push(`== 중요: 읽기 규칙 ==`);
     lines.push(`- lua → list_lua → read_lua(index) (섹션 단위)`);
     lines.push(`- css → list_css → read_css(index) (섹션 단위)`);
-    lines.push(`- 로어북 → list_lorebook → read_lorebook(index) (개별)`);
+    lines.push(`- 로어북 → list_lorebook(folder?) → read_lorebook(index) (폴더별 필터 가능)`);
     lines.push(`- 정규식 → list_regex → read_regex(index) (개별)`);
     lines.push(`- 인사말 → list_greetings(type) → read_greeting(type, index) (개별)`);
     lines.push(`- 트리거 → list_triggers → read_trigger(index) (개별)`);
-    lines.push(`- 참고 자료 로어북 → list_reference_lorebook → read_reference_lorebook (개별)`);
+    lines.push(`- 참고 자료 로어북 → list_reference_lorebook(folder?) → read_reference_lorebook (개별)`);
     lines.push(
       `- ⚠️ read_field("lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts")는 전체 덤프 → 사용 금지`,
     );

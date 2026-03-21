@@ -328,18 +328,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'triggerScripts',
           'lua',
         ];
-        const fields: Record<string, unknown>[] = fieldNames.map((f) => ({
-          name: f,
-          size: (f === 'triggerScripts'
-            ? deps.stringifyTriggerScripts(currentData.triggerScripts)
-            : currentData[f] || ''
-          ).length,
-          sizeKB:
-            (
-              (f === 'triggerScripts' ? deps.stringifyTriggerScripts(currentData.triggerScripts) : currentData[f] || '')
-                .length / 1024
-            ).toFixed(1) + 'KB',
-        }));
+        const fields: Record<string, unknown>[] = fieldNames.map((f) => {
+          const val =
+            f === 'triggerScripts' ? deps.stringifyTriggerScripts(currentData.triggerScripts) : currentData[f] || '';
+          const len = typeof val === 'string' ? val.length : String(val).length;
+          return {
+            name: f,
+            size: len,
+            sizeKB: (len / 1024).toFixed(1) + 'KB',
+          };
+        });
         fields.push({
           name: 'alternateGreetings',
           count: (currentData.alternateGreetings || []).length,
@@ -758,20 +756,52 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /lorebook
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && !parts[1] && req.method === 'GET') {
-        let entries = (currentData.lorebook || []).map((e: any, i: number) => ({
+        const rawEntries = currentData.lorebook || [];
+
+        // Build folder summary
+        const folderMap = new Map<string, { name: string; entryCount: number }>();
+        for (const e of rawEntries) {
+          if (e.mode === 'folder') {
+            const folderId = `folder:${e.id || ''}`;
+            folderMap.set(folderId, { name: e.comment || '', entryCount: 0 });
+          }
+        }
+        for (const e of rawEntries) {
+          if (e.mode !== 'folder' && e.folder) {
+            const info = folderMap.get(e.folder);
+            if (info) info.entryCount++;
+          }
+        }
+        const folders = Array.from(folderMap.entries()).map(([id, info]) => ({
+          id,
+          name: info.name,
+          entryCount: info.entryCount,
+        }));
+
+        let entries = rawEntries.map((e: any, i: number) => ({
           index: i,
           comment: e.comment || '',
           key: e.key || '',
           mode: e.mode || 'normal',
           alwaysActive: !!e.alwaysActive,
           contentSize: (e.content || '').length,
+          folder: e.folder || '',
         }));
+
+        // Filter by folder UUID
+        const folderParam = url.searchParams.get('folder');
+        if (folderParam) {
+          const folderId = folderParam.startsWith('folder:') ? folderParam : `folder:${folderParam}`;
+          entries = entries.filter((e: any) => e.folder === folderId);
+        }
+
+        // Filter by keyword (comment/key)
         const filterParam = url.searchParams.get('filter');
         if (filterParam) {
           const q = filterParam.toLowerCase();
           entries = entries.filter((e: any) => e.comment.toLowerCase().includes(q) || e.key.toLowerCase().includes(q));
         }
-        return jsonRes(res, { count: entries.length, entries });
+        return jsonRes(res, { count: entries.length, folders, entries });
       }
 
       // ----------------------------------------------------------------
@@ -915,6 +945,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           index: i,
           comment: e.comment || '',
           type: e.type || '',
+          findSize: (e.find || e.in || '').length,
+          replaceSize: (e.replace || e.out || '').length,
         }));
         return jsonRes(res, { count: entries.length, entries });
       }
@@ -1290,6 +1322,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           index: i,
           comment: t.comment || '',
           type: t.type || '',
+          conditionCount: Array.isArray(t.conditions) ? t.conditions.length : 0,
           effectCount: Array.isArray(t.effect) ? t.effect.length : 0,
           lowLevelAccess: !!t.lowLevelAccess,
         }));
@@ -2017,7 +2050,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           mode: e.mode || 'normal',
           alwaysActive: !!e.alwaysActive,
           contentSize: (e.content || '').length,
+          folder: e.folder || '',
         }));
+        // Filter by folder UUID
+        const folderParam = url.searchParams.get('folder');
+        if (folderParam) {
+          const folderId = folderParam.startsWith('folder:') ? folderParam : `folder:${folderParam}`;
+          entries = entries.filter((e: any) => e.folder === folderId);
+        }
         const filterParam = url.searchParams.get('filter');
         if (filterParam) {
           const q = filterParam.toLowerCase();
