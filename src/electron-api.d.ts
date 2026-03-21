@@ -157,6 +157,10 @@ interface TokiAPI {
   deleteAsset: (assetPath: string) => Promise<boolean>;
   renameAsset: (oldPath: string, newName: string) => Promise<string | null>;
   reorderAsset: (fromPath: string, toIdx: number) => Promise<boolean>;
+  compressAssetsWebp: (opts?: {
+    quality?: number;
+    recompressWebp?: boolean;
+  }) => Promise<{ ok: boolean; stats?: unknown; error?: string }>;
   importJson: () => Promise<unknown[] | null>;
   autosaveFile: (updatedFields: Record<string, unknown>) => Promise<SaveResult>;
   cleanupAutosave: (customDir?: string) => Promise<boolean>;

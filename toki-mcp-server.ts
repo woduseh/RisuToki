@@ -1255,6 +1255,28 @@ server.tool(
   async ({ index }) => textResult(await apiRequest('POST', `/risum-asset/${index}/delete`)),
 );
 
+// ===== Asset Compression =====
+
+server.tool(
+  'compress_assets_webp',
+  '모든 이미지 에셋을 WebP 손실 압축으로 변환합니다. PNG, JPEG, GIF 등을 WebP로 변환하여 파일 크기를 줄입니다. SVG는 건너뛰며, WebP가 원본보다 크면 원본을 유지합니다. 사용자 확인 필요.',
+  {
+    quality: z
+      .number()
+      .min(0)
+      .max(100)
+      .optional()
+      .describe('WebP 품질 (0-100, 기본: 80). 높을수록 화질 좋지만 파일 큼'),
+    recompress_webp: z.boolean().optional().describe('이미 WebP인 파일도 재압축할지 (기본: false)'),
+  },
+  async ({ quality, recompress_webp }) => {
+    const body: Record<string, unknown> = {};
+    if (quality !== undefined) body.quality = quality;
+    if (recompress_webp !== undefined) body.recompressWebp = recompress_webp;
+    return textResult(await apiRequest('POST', '/assets/compress-webp', body));
+  },
+);
+
 // ===== Skill Tools =====
 
 server.tool(

@@ -9,6 +9,26 @@
 
 ---
 
+## [0.13.0] - 2026-03-21
+
+### 새 기능
+
+- **WebP 에셋 압축** (`compress_assets_webp` MCP 도구 + UI IPC) — sharp 라이브러리를 사용하여 charx 파일의 모든 이미지 에셋을 WebP 손실 압축으로 변환
+  - PNG, JPEG, GIF, BMP, TIFF, AVIF → WebP 변환 (SVG 건너뜀)
+  - 애니메이션 GIF → animated WebP 자동 처리
+  - WebP가 원본보다 크면 원본 유지 (데이터 안전)
+  - 품질 조절 가능 (기본: 80, 0-100)
+  - cardAssets, x_meta 경로 참조 자동 업데이트
+  - 사용자 확인 팝업 + 상세 통계 반환
+
+### 추가
+
+- `sharp` 의존성 (v0.34.5) — Node.js 이미지 처리 라이브러리
+- `src/lib/image-compressor.ts` — 이미지 압축 코어 모듈
+- `src/lib/image-compressor.test.ts` — 12개 단위 테스트
+
+---
+
 ## [0.12.0] - 2026-03-21
 
 ### 새 기능

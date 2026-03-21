@@ -298,6 +298,48 @@ export function initAssetManager(d: AssetManagerDeps): void {
     return true;
   });
 
+  // Compress all image assets to WebP
+  ipcMain.handle('compress-assets-webp', async (_, opts?: { quality?: number; recompressWebp?: boolean }) => {
+    const data = deps.getCurrentData();
+    if (!data || !data.assets || data.assets.length === 0) {
+      return { ok: false, error: 'No assets found' };
+    }
+
+    try {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const mod = require('./image-compressor') as typeof import('./image-compressor');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const { compressAssetsToWebP, updateAssetReferences } = mod;
+
+      const result = await compressAssetsToWebP(data.assets, {
+        quality: opts?.quality ?? 80,
+        recompressWebp: opts?.recompressWebp ?? false,
+      });
+
+      // Build path map for reference updates
+      const pathMap = new Map<string, string>();
+      for (const d of result.details) {
+        if (d.status === 'converted' && d.originalPath !== d.newPath) {
+          pathMap.set(d.originalPath, d.newPath);
+        }
+      }
+
+      data.assets = result.assets;
+
+      if (pathMap.size > 0) {
+        updateAssetReferences(pathMap, data.cardAssets || [], data.xMeta || {});
+      }
+
+      invalidateAssetsMapCache();
+      return { ok: true, stats: result.stats };
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
   // Pick background image
   ipcMain.handle('pick-bg-image', async () => {
     const mainWin = deps.getMainWindow();

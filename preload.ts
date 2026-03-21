@@ -64,6 +64,7 @@ const tokiAPI: TokiApi = {
   deleteAsset: (assetPath) => ipcRenderer.invoke('delete-asset', assetPath),
   renameAsset: (oldPath, newName) => ipcRenderer.invoke('rename-asset', oldPath, newName),
   reorderAsset: (fromPath, toIdx) => ipcRenderer.invoke('reorder-asset', fromPath, toIdx),
+  compressAssetsWebp: (opts) => ipcRenderer.invoke('compress-assets-webp', opts),
   importJson: () => ipcRenderer.invoke('import-json'),
   autosaveFile: (updatedFields) => ipcRenderer.invoke('autosave-file', updatedFields),
   cleanupAutosave: (customDir) => ipcRenderer.invoke('cleanup-autosave', customDir),

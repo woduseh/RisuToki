@@ -3422,6 +3422,140 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /assets/compress-webp — compress all assets to WebP
+      // ----------------------------------------------------------------
+      if (parts[0] === 'assets' && parts[1] === 'compress-webp' && req.method === 'POST') {
+        const assets: { path: string; data: Buffer }[] = currentData.assets || [];
+        if (assets.length === 0) {
+          return mcpError(res, 400, {
+            action: 'compress-webp',
+            message: 'No assets found in file.',
+            target: 'assets',
+          });
+        }
+
+        const body = await readJsonBody(req, res, 'assets/compress-webp', broadcastStatus);
+        if (!body) return;
+
+        const quality = typeof body.quality === 'number' ? body.quality : 80;
+        const recompressWebp = body.recompressWebp === true;
+
+        // Lazy-load image compressor
+        let compressAssetsToWebP: typeof import('./image-compressor').compressAssetsToWebP;
+        let updateAssetReferences: typeof import('./image-compressor').updateAssetReferences;
+        let formatBytes: typeof import('./image-compressor').formatBytes;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const mod = require('./image-compressor');
+          compressAssetsToWebP = mod.compressAssetsToWebP;
+          updateAssetReferences = mod.updateAssetReferences;
+          formatBytes = mod.formatBytes;
+        } catch (err: unknown) {
+          return mcpError(res, 500, {
+            action: 'compress-webp',
+            message: `Image compressor module not available: ${err instanceof Error ? err.message : String(err)}`,
+            target: 'assets',
+          });
+        }
+
+        // Pre-compute to show in confirmation
+        const imageExts = new Set(['png', 'jpg', 'jpeg', 'gif', 'bmp', 'tiff', 'tif', 'avif', 'webp']);
+        const convertible = assets.filter((a) => {
+          const ext = a.path.split('.').pop()?.toLowerCase() || '';
+          if (ext === 'svg') return false;
+          if (ext === 'webp' && !recompressWebp) return false;
+          return imageExts.has(ext);
+        });
+
+        if (convertible.length === 0) {
+          return jsonRes(res, {
+            ok: true,
+            message: 'No convertible assets found.',
+            stats: {
+              total: assets.length,
+              converted: 0,
+              skipped: assets.length,
+              failed: 0,
+              larger: 0,
+              originalSize: assets.reduce((s, a) => s + a.data.length, 0),
+              compressedSize: assets.reduce((s, a) => s + a.data.length, 0),
+              savedBytes: 0,
+              savedPercent: 0,
+            },
+          });
+        }
+
+        const totalSize = assets.reduce((s, a) => s + a.data.length, 0);
+        const allowed = await deps.askRendererConfirm(
+          'WebP 에셋 압축',
+          `${convertible.length}개 이미지를 WebP (품질 ${quality})로 변환합니다.\n` +
+            `전체 에셋: ${assets.length}개 (${formatBytes(totalSize)})\n` +
+            `변환 대상: ${convertible.length}개\n\n` +
+            `원본 파일은 교체되며 되돌릴 수 없습니다.`,
+        );
+
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'compress-webp',
+            message: 'User rejected the compression request.',
+            target: 'assets',
+            rejected: true,
+          });
+        }
+
+        try {
+          const result = await compressAssetsToWebP(assets, {
+            quality,
+            recompressWebp,
+          });
+
+          // Build path map for reference updates
+          const pathMap = new Map<string, string>();
+          for (const d of result.details) {
+            if (d.status === 'converted' && d.originalPath !== d.newPath) {
+              pathMap.set(d.originalPath, d.newPath);
+            }
+          }
+
+          // Replace assets in-place
+          currentData.assets = result.assets;
+
+          // Update references if paths changed
+          let refsUpdated = { cardAssetsUpdated: 0, xMetaUpdated: 0 };
+          if (pathMap.size > 0) {
+            refsUpdated = updateAssetReferences(pathMap, currentData.cardAssets || [], currentData.xMeta || {});
+          }
+
+          deps.broadcastToAll('data-updated', { field: 'assets' });
+          logMcpMutation('compress-webp', 'assets', {
+            quality,
+            converted: result.stats.converted,
+            savedBytes: result.stats.savedBytes,
+          });
+
+          return jsonRes(res, {
+            ok: true,
+            stats: result.stats,
+            referencesUpdated: refsUpdated,
+            details: result.details.map((d) => ({
+              originalPath: d.originalPath,
+              newPath: d.newPath,
+              originalSize: d.originalSize,
+              newSize: d.newSize,
+              status: d.status,
+              reason: d.reason,
+            })),
+          });
+        } catch (err: unknown) {
+          return mcpError(res, 500, {
+            action: 'compress-webp',
+            message: `Compression failed: ${err instanceof Error ? err.message : String(err)}`,
+            target: 'assets',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
       // GET /risum-assets — list embedded risum module assets
       // ----------------------------------------------------------------
       if (parts[0] === 'risum-assets' && !parts[1] && req.method === 'GET') {
