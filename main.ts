@@ -276,7 +276,10 @@ function persistReferenceFiles(): void {
   try {
     const statePath = getReferenceStatePath();
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
-    fs.writeFileSync(statePath, JSON.stringify(serializeReferenceManifest(mainState.referenceFiles), null, 2), 'utf8');
+    const data = JSON.stringify(serializeReferenceManifest(mainState.referenceFiles), null, 2);
+    fs.promises.writeFile(statePath, data, 'utf8').catch((error) => {
+      console.error('[main] async persist references failed:', error);
+    });
   } catch (error) {
     console.error('[main] failed to persist references:', error);
   }
@@ -376,11 +379,8 @@ function broadcastToAll(channel: string, ...args: unknown[]): void {
   for (const win of allWindows) {
     if (win && !win.isDestroyed()) {
       win.webContents.send(channel, ...args);
-    }
-  }
-  if (channel === 'data-updated') {
-    for (const win of Object.values(getPopoutWindows())) {
-      if (win && !win.isDestroyed()) {
+      // Send sidebar-data-changed to popout windows in the same loop
+      if (channel === 'data-updated' && win !== mainWindow) {
         win.webContents.send('sidebar-data-changed');
       }
     }
@@ -970,7 +970,7 @@ ipcMain.handle('import-json', async () => {
   const imported: { fileName: string; data: unknown }[] = [];
   for (const filePath of result.filePaths) {
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
+      const content = await fs.promises.readFile(filePath, 'utf-8');
       const json: unknown = JSON.parse(content);
       imported.push({ fileName: path.basename(filePath), data: json });
     } catch (e) {
@@ -985,7 +985,7 @@ function isValidPersonaName(name: unknown): name is string {
   return typeof name === 'string' && /^[a-zA-Z0-9가-힣_\- ]+$/.test(name) && name.length <= 128;
 }
 
-ipcMain.handle('read-persona', (_event, name: string) => {
+ipcMain.handle('read-persona', async (_event, name: string) => {
   if (!isValidPersonaName(name)) {
     console.warn('[main] Invalid persona name:', name);
     return null;
@@ -996,14 +996,14 @@ ipcMain.handle('read-persona', (_event, name: string) => {
     return null;
   }
   try {
-    return fs.readFileSync(filePath, 'utf-8');
+    return await fs.promises.readFile(filePath, 'utf-8');
   } catch (e) {
     console.warn('[main] Failed to read persona:', name, (e as Error).message);
     return null;
   }
 });
 
-ipcMain.handle('write-persona', (_event, name: string, content: string) => {
+ipcMain.handle('write-persona', async (_event, name: string, content: string) => {
   if (!isValidPersonaName(name)) {
     console.warn('[main] Invalid persona name:', name);
     return false;
@@ -1020,7 +1020,7 @@ ipcMain.handle('write-persona', (_event, name: string, content: string) => {
     return false;
   }
   try {
-    fs.writeFileSync(filePath, content, 'utf-8');
+    await fs.promises.writeFile(filePath, content, 'utf-8');
     return true;
   } catch (e) {
     console.warn('[main] Failed to write persona:', name, (e as Error).message);
@@ -1028,13 +1028,11 @@ ipcMain.handle('write-persona', (_event, name: string, content: string) => {
   }
 });
 
-ipcMain.handle('list-personas', () => {
+ipcMain.handle('list-personas', async () => {
   const dir = path.join(__dirname, 'assets', 'persona');
   try {
-    return fs
-      .readdirSync(dir)
-      .filter((f: string) => f.endsWith('.txt'))
-      .map((f: string) => f.replace('.txt', ''));
+    const files = await fs.promises.readdir(dir);
+    return files.filter((f: string) => f.endsWith('.txt')).map((f: string) => f.replace('.txt', ''));
   } catch (e) {
     console.warn('[main] Failed to list personas:', (e as Error).message);
     return [];
@@ -1042,9 +1040,9 @@ ipcMain.handle('list-personas', () => {
 });
 
 // --- System Prompt (temp file for Claude CLI) ---
-ipcMain.handle('write-system-prompt', (_event, content: string) => {
+ipcMain.handle('write-system-prompt', async (_event, content: string) => {
   const tmpFile = path.join(os.tmpdir(), 'toki-system-prompt.txt');
-  fs.writeFileSync(tmpFile, content, 'utf-8');
+  await fs.promises.writeFile(tmpFile, content, 'utf-8');
   return { filePath: tmpFile, platform: process.platform };
 });
 

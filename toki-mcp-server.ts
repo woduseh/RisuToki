@@ -121,6 +121,15 @@ const tagMap = new Map<string, DanbooruTag>();
 let tagsByCount: DanbooruTag[] = [];
 let tagsLoaded = false;
 const apiCache = new Map<string, DanbooruTag | null>();
+const API_CACHE_MAX = 5000;
+
+function apiCacheSet(key: string, value: DanbooruTag | null): void {
+  if (apiCache.size >= API_CACHE_MAX) {
+    const firstKey = apiCache.keys().next().value;
+    if (firstKey !== undefined) apiCache.delete(firstKey);
+  }
+  apiCache.set(key, value);
+}
 
 function loadTags(): void {
   const tagFilePath = path.join(__dirname, 'resources', 'Danbooru Tag.txt');
@@ -148,25 +157,39 @@ function loadTags(): void {
   }
 }
 
+// Two-row DP Levenshtein: O(n) memory instead of O(m×n)
 function levenshtein(a: string, b: string): number {
   const m = a.length,
     n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = new Array<number>(n + 1);
+  let curr = new Array<number>(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
   for (let i = 1; i <= m; i++) {
+    curr[0] = i;
     for (let j = 1; j <= n; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
     }
+    [prev, curr] = [curr, prev];
   }
-  return dp[m][n];
+  return prev[n];
 }
 
+const suggestCache = new Map<string, string[]>();
+const SUGGEST_CACHE_MAX = 500;
+
 function suggestSimilar(tag: string, limit = 5): string[] {
+  const cacheKey = `${tag}:${limit}`;
+  const cached = suggestCache.get(cacheKey);
+  if (cached) return cached;
+
   const scored: Array<{ name: string; score: number }> = [];
+  // Tighter length filter (3 instead of 5) to skip more candidates
+  const maxLenDiff = Math.max(3, Math.floor(tag.length * 0.4));
   for (const [name, tagData] of tagMap) {
-    if (Math.abs(name.length - tag.length) > 5) continue;
+    if (Math.abs(name.length - tag.length) > maxLenDiff) continue;
     const distance = levenshtein(tag, name);
     const maxLen = Math.max(tag.length, name.length);
     const similarity = 1 - distance / maxLen;
@@ -176,7 +199,15 @@ function suggestSimilar(tag: string, limit = 5): string[] {
     }
   }
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit).map((s) => s.name);
+  const result = scored.slice(0, limit).map((s) => s.name);
+
+  // LRU-style eviction for suggestion cache
+  if (suggestCache.size >= SUGGEST_CACHE_MAX) {
+    const firstKey = suggestCache.keys().next().value;
+    if (firstKey !== undefined) suggestCache.delete(firstKey);
+  }
+  suggestCache.set(cacheKey, result);
+  return result;
 }
 
 function searchTags(query: string, category?: string, limit = 20): DanbooruTag[] {
@@ -229,7 +260,11 @@ function getPopular(category?: string, limit = 100): DanbooruTag[] {
   return results;
 }
 
+// Cache for getPopularGrouped (computed once after tag loading)
+let popularGroupedCache: Record<string, string[]> | null = null;
+
 function getPopularGrouped(): Record<string, string[]> {
+  if (popularGroupedCache) return popularGroupedCache;
   const groups: Record<string, string[]> = {};
   for (const [groupName, patterns] of Object.entries(SEMANTIC_GROUPS)) {
     const matched: DanbooruTag[] = [];
@@ -243,6 +278,7 @@ function getPopularGrouped(): Record<string, string[]> {
     }
     groups[groupName] = matched.slice(0, 30).map((t) => t.name);
   }
+  popularGroupedCache = groups;
   return groups;
 }
 
@@ -257,11 +293,11 @@ function danbooruApiValidate(tagName: string): Promise<DanbooruTag | null> {
   return new Promise((resolve) => {
     const url = `https://danbooru.donmai.us/tags.json?search%5Bname%5D=${encodeURIComponent(tagName)}&limit=1`;
     const req = https.get(url, { timeout: 5000 }, (res) => {
-      let data = '';
-      res.on('data', (chunk: string) => (data += chunk));
+      const chunks: string[] = [];
+      res.on('data', (chunk: string) => chunks.push(chunk));
       res.on('end', () => {
         try {
-          const results = JSON.parse(data);
+          const results = JSON.parse(chunks.join(''));
           const tag =
             Array.isArray(results) && results.length > 0
               ? {
@@ -272,14 +308,14 @@ function danbooruApiValidate(tagName: string): Promise<DanbooruTag | null> {
                 }
               : null;
           if (tag && results[0].is_deprecated) {
-            apiCache.set(key, null);
+            apiCacheSet(key, null);
             resolve(null);
           } else {
-            apiCache.set(key, tag);
+            apiCacheSet(key, tag);
             resolve(tag);
           }
         } catch {
-          apiCache.set(key, null);
+          apiCacheSet(key, null);
           resolve(null);
         }
       });
@@ -299,11 +335,11 @@ function danbooruApiSearch(query: string, limit = 20): Promise<DanbooruTag[]> {
     const nameMatch = query.includes('*') ? query : `*${query}*`;
     const url = `https://danbooru.donmai.us/tags.json?search%5Bname_matches%5D=${encodeURIComponent(nameMatch)}&search%5Border%5D=count&limit=${limit}`;
     const req = https.get(url, { timeout: 5000 }, (res) => {
-      let data = '';
-      res.on('data', (chunk: string) => (data += chunk));
+      const chunks: string[] = [];
+      res.on('data', (chunk: string) => chunks.push(chunk));
       res.on('end', () => {
         try {
-          const results = JSON.parse(data);
+          const results = JSON.parse(chunks.join(''));
           if (!Array.isArray(results)) {
             resolve([]);
             return;
@@ -314,7 +350,7 @@ function danbooruApiSearch(query: string, limit = 20): Promise<DanbooruTag[]> {
             category: r.category as number,
             count: r.post_count as number,
           }));
-          for (const tag of tags) apiCache.set(`validate:${tag.name}`, tag);
+          for (const tag of tags) apiCacheSet(`validate:${tag.name}`, tag);
           resolve(tags);
         } catch {
           resolve([]);
@@ -466,9 +502,10 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
     };
 
     const req = http.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => (data += chunk));
+      const chunks: string[] = [];
+      res.on('data', (chunk) => chunks.push(chunk as string));
       res.on('end', () => {
+        const data = chunks.join('');
         try {
           const parsed = JSON.parse(data);
           if (res.statusCode && res.statusCode >= 400) {

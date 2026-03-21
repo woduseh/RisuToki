@@ -407,12 +407,14 @@ function createOrSwitchEditor(tabInfo: Tab): void {
   if (darkMode) defineDarkMonacoTheme();
 
   const isReadOnly = !tabInfo.setValue;
+  const initialValue = tabInfo.getValue() as string;
+  const isLargeFile = initialValue.length > 100000;
   editorInstance = monaco.editor.create(container, {
-    value: tabInfo.getValue(),
+    value: initialValue,
     language: tabInfo.language,
     theme: darkMode ? 'blue-archive-dark' : 'blue-archive',
     fontSize: 14,
-    minimap: { enabled: true },
+    minimap: { enabled: !isLargeFile },
     wordWrap: 'on',
     automaticLayout: true,
     scrollBeyondLastLine: false,
@@ -420,6 +422,7 @@ function createOrSwitchEditor(tabInfo: Tab): void {
     tabSize: 2,
     mouseWheelZoom: true,
     readOnly: isReadOnly,
+    maxTokenizationLineLength: 20000,
   });
 
   editorInstance!.onDidChangeModelContent(() => {

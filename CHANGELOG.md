@@ -9,6 +9,37 @@
 
 ---
 
+## [0.9.7] - 2026-03-21
+
+### 수정
+
+- **MCP Server 성능 최적화** — LLM CLI 사용 시 CPU 스파이크 대폭 감소
+  - `suggestSimilar()` Levenshtein 알고리즘을 2D 매트릭스 → 2행 DP로 개선 (메모리 O(m×n) → O(n)), 결과 캐싱 추가 (최대 500건)
+  - `getPopularGrouped()` 결과를 태그 로딩 시 1회 계산 후 캐싱 (호출당 ~590K 정규식 매칭 제거)
+  - `apiCache`에 LRU 크기 제한 추가 (최대 5,000건, 무한 메모리 누적 방지)
+  - HTTP 응답 처리 시 문자열 연결(`data += chunk`) → `chunks[]` 배열 + `join()` 패턴으로 변경 (GC 압박 감소)
+- **Backup Store 직렬화 개선** — 편집 시 불필요한 CPU/메모리 사용 감소
+  - `JSON.parse(JSON.stringify())` 딥클론 → 네이티브 `structuredClone()` 전환
+  - 중복 검사용 `JSON.stringify()` 이중 호출 → 마지막 항목 문자열 캐시로 1회로 감소
+  - `while + shift()` 배열 정리 → `slice()` 패턴으로 변경
+- **Main Process 동기 I/O → 비동기 전환** — UI 프리징 감소
+  - `persistReferenceFiles`, `import-json`, `read-persona`, `write-persona`, `list-personas`, `write-system-prompt` 핸들러의 `writeFileSync`/`readFileSync` → `fs.promises` 비동기 전환
+  - `broadcastToAll()` 이중 루프 제거 (팝아웃 윈도우에 2회 메시지 → 1회로 통합)
+- **Monaco 에디터 성능 제한 추가** — 대형 파일 편집 시 안정성 향상
+  - `maxTokenizationLineLength: 20000` 설정으로 극단적 긴 줄 토큰화 방지
+  - 100KB 초과 파일에서 미니맵 자동 비활성화
+
+## [0.9.6] - 2026-03-21
+
+### 변경
+
+- **SKILL 가이드 "신호 밀도(Signal Density)" 철학 도입** — 토큰 수 제약 중심에서 신호 밀도 중심으로 패러다임 전환
+  - `skills/README.md` — Philosophy에 "Signal Density over Token Count" 서브섹션 추가: 토큰 수치는 참고 하한선이며 핵심 기준은 "모든 문장이 LLM 출력을 바꾸는가"
+  - `skills/authoring-lorebook-bots/LOREBOOK_ARCHITECTURE.md` — Signal Density 섹션 신설 (Rich Detail vs Signal Noise 구분 + good/bad 예시 + Usefulness Test), AlwaysActive Budget 섹션 신설 (주목 경쟁 관점의 alwaysActive 관리 가이드), Common Entry Mistakes에 low signal density/redundancy/alwaysActive 남발 추가
+  - `skills/authoring-lorebook-bots/SKILL.md` — What Goes Where 테이블에 유연성 주석 추가 (대형 컨텍스트에서 description/lorebook 경계는 유동적), Extended speech registers를 description 유지 가능으로 변경
+  - `skills/writing-lorebooks/SKILL.md` — Best Practice #5를 "100-300 tokens" → 신호 밀도 기준으로 재작성, #8 "alwaysActive budget" 추가
+  - `skills/authoring-characters/SKILL.md` — Lorebook Suggestions 출력 형식의 "토큰 이유로 잘라낸" 표현 제거
+
 ## [0.9.5] - 2026-03-21
 
 ### 변경
