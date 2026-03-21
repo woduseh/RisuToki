@@ -306,29 +306,6 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
     });
   }
 
-  term.attachCustomKeyEventHandler((event) => {
-    if (event.ctrlKey && event.key === 'c' && event.type === 'keydown' && term.hasSelection()) {
-      navigator.clipboard.writeText(term.getSelection());
-      term.clearSelection();
-      return false;
-    }
-    if (event.ctrlKey && event.key === 'v' && event.type === 'keydown') {
-      navigator.clipboard.readText().then((text) => {
-        if (text) options.api.terminalInput(text);
-      });
-      return false;
-    }
-    return true;
-  });
-
-  const contextmenuHandler = (event: Event): void => {
-    event.preventDefault();
-    navigator.clipboard.readText().then((text) => {
-      if (text) options.api.terminalInput(text);
-    });
-  };
-  options.container.addEventListener('contextmenu', contextmenuHandler);
-
   const resizeObserver = new ResizeObserver(() => {
     if (options.container.clientWidth <= 0 || options.container.clientHeight <= 0) {
       return;
@@ -368,7 +345,6 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
     dispose: () => {
       resizeObserver.disconnect();
       options.container.removeEventListener('wheel', wheelHandler as EventListener);
-      options.container.removeEventListener('contextmenu', contextmenuHandler);
       if (activityTimer !== null) window.clearTimeout(activityTimer);
       term.dispose?.();
     },
