@@ -84,7 +84,15 @@ describe('buildAssistantPrompt', () => {
     expect(result).toContain('list_fields');
     expect(result).toContain('replace_in_lua');
     expect(result).toContain('replace_in_css');
+    expect(result).toContain('list_greetings');
+    expect(result).toContain('read_greeting');
+    expect(result).toContain('list_triggers');
+    expect(result).toContain('read_trigger');
+    expect(result).toContain('list_reference_lorebook');
+    expect(result).toContain('read_reference_lorebook');
+    expect(result).toContain('list_skills');
     expect(result).toContain('읽기 규칙');
+    expect(result).toContain('사용 금지');
     expect(result).not.toContain('편집 중인 항목의 내용을 알려주면');
   });
 

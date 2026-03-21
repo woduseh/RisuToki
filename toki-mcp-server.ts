@@ -471,7 +471,7 @@ const TOOLS: MCPTool[] = [
   {
     name: 'read_field',
     description:
-      '필드의 전체 내용을 읽습니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, creationDate(읽기전용), modificationDate(읽기전용), additionalText, license. risum 전용: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용). risup 전용: mainPrompt, jailbreak, temperature, maxContext, maxResponse, frequencyPenalty, presencePenalty, aiModel, subModel, apiType, promptPreprocess, promptTemplate(JSON), presetBias(JSON), formatingOrder(JSON), presetImage, top_p, top_k, repetition_penalty, min_p, top_a, reasonEffort, thinkingTokens, thinkingType, adaptiveThinkingEffort, useInstructPrompt, instructChatTemplate, JinjaTemplate, customPromptTemplateToggle, templateDefaultVariables, moduleIntergration, jsonSchemaEnabled, jsonSchema, strictJsonSchema, extractJson, groupTemplate, groupOtherBotRole, autoSuggestPrompt, autoSuggestPrefix, autoSuggestClean, localStopStrings(JSON), outputImageModal, verbosity, fallbackWhenBlankResponse, systemContentReplacement, systemRoleReplacement',
+      '필드의 전체 내용을 읽습니다. ⚠️ 주의: alternateGreetings/groupOnlyGreetings는 list_greetings → read_greeting, triggerScripts는 list_triggers → read_trigger, lua는 list_lua → read_lua, css는 list_css → read_css를 사용하세요. 이 도구로 이들을 읽으면 전체 내용이 한번에 반환되어 비효율적입니다. 공통 필드: globalNote, firstMessage, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, creationDate(읽기전용), modificationDate(읽기전용), additionalText, license. risum 전용: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용). risup 전용: mainPrompt, jailbreak, temperature, maxContext, maxResponse, frequencyPenalty, presencePenalty, aiModel, subModel, apiType 등',
     inputSchema: {
       type: 'object',
       properties: { field: { type: 'string', description: '필드 이름' } },
@@ -596,6 +596,129 @@ const TOOLS: MCPTool[] = [
     inputSchema: {
       type: 'object',
       properties: { index: { type: 'number', description: '삭제할 정규식 항목 인덱스' } },
+      required: ['index'],
+    },
+  },
+  // ------- Greetings (alternateGreetings / groupOnlyGreetings) -------
+  {
+    name: 'list_greetings',
+    description:
+      '인사말 목록을 확인합니다 (인덱스, 크기, 미리보기 100자). type="alternate"는 추가 첫 메시지(alternateGreetings), type="group"은 그룹 전용 인사말(groupOnlyGreetings). read_field("alternateGreetings") 대신 이 도구를 사용하세요 — 전체 덤프를 방지합니다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          description: '"alternate" (추가 첫 메시지) 또는 "group" (그룹 전용 인사말)',
+          enum: ['alternate', 'group'],
+        },
+      },
+      required: ['type'],
+    },
+  },
+  {
+    name: 'read_greeting',
+    description: '특정 인덱스의 인사말 하나를 읽습니다. list_greetings로 목록을 먼저 확인하세요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', description: '"alternate" 또는 "group"', enum: ['alternate', 'group'] },
+        index: { type: 'number', description: '인사말 인덱스 (list_greetings 결과 참조)' },
+      },
+      required: ['type', 'index'],
+    },
+  },
+  {
+    name: 'write_greeting',
+    description: '특정 인덱스의 인사말을 수정합니다. 사용자 확인 필요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', description: '"alternate" 또는 "group"', enum: ['alternate', 'group'] },
+        index: { type: 'number', description: '인사말 인덱스' },
+        content: { type: 'string', description: '새로운 인사말 텍스트' },
+      },
+      required: ['type', 'index', 'content'],
+    },
+  },
+  {
+    name: 'add_greeting',
+    description: '새 인사말을 추가합니다. 사용자 확인 필요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', description: '"alternate" 또는 "group"', enum: ['alternate', 'group'] },
+        content: { type: 'string', description: '인사말 텍스트' },
+      },
+      required: ['type', 'content'],
+    },
+  },
+  {
+    name: 'delete_greeting',
+    description: '특정 인덱스의 인사말을 삭제합니다. 사용자 확인 필요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', description: '"alternate" 또는 "group"', enum: ['alternate', 'group'] },
+        index: { type: 'number', description: '삭제할 인사말 인덱스' },
+      },
+      required: ['type', 'index'],
+    },
+  },
+  // ------- Trigger Scripts -------
+  {
+    name: 'list_triggers',
+    description:
+      '트리거 스크립트 목록을 확인합니다 (인덱스, comment, type, effect 수, lowLevelAccess). read_field("triggerScripts") 대신 이 도구를 사용하세요 — 전체 JSON 덤프를 방지합니다.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'read_trigger',
+    description: '특정 인덱스의 트리거 스크립트를 읽습니다. list_triggers로 목록을 먼저 확인하세요.',
+    inputSchema: {
+      type: 'object',
+      properties: { index: { type: 'number', description: '트리거 인덱스 (list_triggers 결과 참조)' } },
+      required: ['index'],
+    },
+  },
+  {
+    name: 'write_trigger',
+    description:
+      '특정 인덱스의 트리거 스크립트를 수정합니다. 변경할 필드만 전달하면 나머지는 유지됩니다. 사용자 확인 필요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        index: { type: 'number', description: '트리거 인덱스' },
+        comment: { type: 'string', description: '트리거 이름/설명' },
+        type: { type: 'string', description: '트리거 타입 (start, input, output 등)' },
+        conditions: { type: 'array', description: '조건 배열' },
+        effect: { type: 'array', description: '효과 배열' },
+        lowLevelAccess: { type: 'boolean', description: '저수준 접근 여부' },
+      },
+      required: ['index'],
+    },
+  },
+  {
+    name: 'add_trigger',
+    description: '새 트리거 스크립트를 추가합니다. 사용자 확인 필요.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        comment: { type: 'string', description: '트리거 이름/설명' },
+        type: { type: 'string', description: '트리거 타입 (기본: "start")' },
+        conditions: { type: 'array', description: '조건 배열' },
+        effect: { type: 'array', description: '효과 배열' },
+        lowLevelAccess: { type: 'boolean', description: '저수준 접근 여부' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'delete_trigger',
+    description: '특정 인덱스의 트리거 스크립트를 삭제합니다. 사용자 확인 필요.',
+    inputSchema: {
+      type: 'object',
+      properties: { index: { type: 'number', description: '삭제할 트리거 인덱스' } },
       required: ['index'],
     },
   },
@@ -1026,6 +1149,52 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
     case 'delete_regex':
       return await apiRequest('POST', `/regex/${args.index}/delete`);
+
+    // ------- Greetings -------
+    case 'list_greetings':
+      return await apiRequest('GET', `/greetings/${args.type}`);
+
+    case 'read_greeting':
+      return await apiRequest('GET', `/greeting/${args.type}/${args.index}`);
+
+    case 'write_greeting':
+      return await apiRequest('POST', `/greeting/${args.type}/${args.index}`, { content: args.content });
+
+    case 'add_greeting':
+      return await apiRequest('POST', `/greeting/${args.type}/add`, { content: args.content });
+
+    case 'delete_greeting':
+      return await apiRequest('POST', `/greeting/${args.type}/${args.index}/delete`);
+
+    // ------- Triggers -------
+    case 'list_triggers':
+      return await apiRequest('GET', '/triggers');
+
+    case 'read_trigger':
+      return await apiRequest('GET', `/trigger/${args.index}`);
+
+    case 'write_trigger': {
+      const triggerBody: Record<string, unknown> = {};
+      if (args.comment !== undefined) triggerBody.comment = args.comment;
+      if (args.type !== undefined) triggerBody.type = args.type;
+      if (args.conditions !== undefined) triggerBody.conditions = args.conditions;
+      if (args.effect !== undefined) triggerBody.effect = args.effect;
+      if (args.lowLevelAccess !== undefined) triggerBody.lowLevelAccess = args.lowLevelAccess;
+      return await apiRequest('POST', `/trigger/${args.index}`, triggerBody);
+    }
+
+    case 'add_trigger': {
+      const addBody: Record<string, unknown> = {};
+      if (args.comment !== undefined) addBody.comment = args.comment;
+      if (args.type !== undefined) addBody.type = args.type;
+      if (args.conditions !== undefined) addBody.conditions = args.conditions;
+      if (args.effect !== undefined) addBody.effect = args.effect;
+      if (args.lowLevelAccess !== undefined) addBody.lowLevelAccess = args.lowLevelAccess;
+      return await apiRequest('POST', '/trigger/add', addBody);
+    }
+
+    case 'delete_trigger':
+      return await apiRequest('POST', `/trigger/${args.index}/delete`);
 
     case 'list_lua':
       return await apiRequest('GET', '/lua');

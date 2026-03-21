@@ -91,32 +91,62 @@ export async function buildAssistantPrompt(
     lines.push(``);
     lines.push(`== RisuToki MCP 도구 ==`);
     lines.push(`연결됨. 다음 도구로 에디터 데이터를 직접 읽기/쓰기할 수 있습니다:`);
+    lines.push(``);
+    lines.push(`[필드]`);
     lines.push(`- list_fields: 필드 목록 + 크기 확인`);
     lines.push(`- read_field(field) / write_field(field, content): 필드 읽기/쓰기`);
-    lines.push(`- list_lorebook / read_lorebook(index) / write_lorebook(index, data): 로어북 관리`);
-    lines.push(`- add_lorebook(data) / delete_lorebook(index): 로어북 추가/삭제`);
-    lines.push(`- list_regex / read_regex(index) / write_regex(index, data): 정규식 관리`);
-    lines.push(`- add_regex(data) / delete_regex(index): 정규식 추가/삭제`);
-    lines.push(
-      `- list_lua / read_lua(index) / write_lua(index, content): Lua 섹션별 읽기/쓰기 (-- ===== 섹션명 ===== 구분자 기준)`,
-    );
-    lines.push(`- replace_in_lua(index, find, replace, regex?, flags?): Lua 섹션 내 문자열 치환 (서버에서 직접 처리)`);
-    lines.push(`- insert_in_lua(index, content, position?, anchor?): Lua 섹션에 코드 삽입 (end/start/after/before)`);
-    lines.push(
-      `- list_css / read_css(index) / write_css(index, content): CSS 섹션별 읽기/쓰기 (/* ===== 섹션명 ===== */ 구분자 기준)`,
-    );
-    lines.push(`- replace_in_css(index, find, replace, regex?, flags?): CSS 섹션 내 문자열 치환 (서버에서 직접 처리)`);
-    lines.push(`- insert_in_css(index, content, position?, anchor?): CSS 섹션에 코드 삽입 (end/start/after/before)`);
-    lines.push(`- list_references: 로드된 참고 자료 파일 목록 (읽기 전용)`);
-    lines.push(`- read_reference_field(index, field): 참고 파일의 필드 읽기 (읽기 전용)`);
+    lines.push(``);
+    lines.push(`[로어북]`);
+    lines.push(`- list_lorebook(filter?) / read_lorebook(index) / write_lorebook(index, data)`);
+    lines.push(`- add_lorebook(data) / delete_lorebook(index)`);
+    lines.push(``);
+    lines.push(`[정규식]`);
+    lines.push(`- list_regex / read_regex(index) / write_regex(index, data)`);
+    lines.push(`- add_regex(data) / delete_regex(index)`);
+    lines.push(``);
+    lines.push(`[인사말] ← alternateGreetings/groupOnlyGreetings 세분화 접근`);
+    lines.push(`- list_greetings(type) / read_greeting(type, index) / write_greeting(type, index, content)`);
+    lines.push(`- add_greeting(type, content) / delete_greeting(type, index)`);
+    lines.push(`- type: "alternate" (추가 첫 메시지) 또는 "group" (그룹 전용 인사말)`);
+    lines.push(``);
+    lines.push(`[트리거]`);
+    lines.push(`- list_triggers / read_trigger(index) / write_trigger(index, ...)`);
+    lines.push(`- add_trigger(...) / delete_trigger(index)`);
+    lines.push(``);
+    lines.push(`[Lua 섹션] (-- ===== 섹션명 ===== 구분자 기준)`);
+    lines.push(`- list_lua / read_lua(index) / write_lua(index, content)`);
+    lines.push(`- replace_in_lua(index, find, replace, regex?, flags?)`);
+    lines.push(`- insert_in_lua(index, content, position?, anchor?)`);
+    lines.push(``);
+    lines.push(`[CSS 섹션] (/* ===== 섹션명 ===== */ 구분자 기준)`);
+    lines.push(`- list_css / read_css(index) / write_css(index, content)`);
+    lines.push(`- replace_in_css(index, find, replace, regex?, flags?)`);
+    lines.push(`- insert_in_css(index, content, position?, anchor?)`);
+    lines.push(``);
+    lines.push(`[참고 자료] (읽기 전용)`);
+    lines.push(`- list_references: 참고 자료 파일 목록`);
+    lines.push(`- read_reference_field(index, field): 참고 파일의 필드 읽기`);
+    lines.push(`- list_reference_lorebook(index, filter?) / read_reference_lorebook(index, entryIndex)`);
+    lines.push(`- list_reference_lua(index) / read_reference_lua(index, sectionIndex)`);
+    lines.push(`- list_reference_css(index) / read_reference_css(index, sectionIndex)`);
+    lines.push(``);
+    lines.push(`[스킬 문서]`);
+    lines.push(`- list_skills / read_skill(name, file?): CBS, Lua API, 로어북, 정규식 등 가이드`);
+    lines.push(``);
     lines.push(`write/add/delete 도구 사용 시 에디터에서 사용자 확인 팝업이 뜹니다.`);
     lines.push(`도구를 적극 활용하여 사용자의 요청을 수행하세요.`);
     lines.push(``);
     lines.push(`== 중요: 읽기 규칙 ==`);
-    lines.push(`- lua, css 필드는 반드시 섹션 단위로 읽으세요: list_lua → read_lua(index)`);
-    lines.push(`- read_field("lua")나 read_field("css")는 전체를 한번에 반환하므로 사용하지 마세요`);
-    lines.push(`- 로어북도 list_lorebook → read_lorebook(index) 순서로 개별 읽기`);
-    lines.push(`- 정규식도 list_regex → read_regex(index) 순서로 개별 읽기`);
+    lines.push(`- lua → list_lua → read_lua(index) (섹션 단위)`);
+    lines.push(`- css → list_css → read_css(index) (섹션 단위)`);
+    lines.push(`- 로어북 → list_lorebook → read_lorebook(index) (개별)`);
+    lines.push(`- 정규식 → list_regex → read_regex(index) (개별)`);
+    lines.push(`- 인사말 → list_greetings(type) → read_greeting(type, index) (개별)`);
+    lines.push(`- 트리거 → list_triggers → read_trigger(index) (개별)`);
+    lines.push(`- 참고 자료 로어북 → list_reference_lorebook → read_reference_lorebook (개별)`);
+    lines.push(
+      `- ⚠️ read_field("lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts")는 전체 덤프 → 사용 금지`,
+    );
   } else {
     lines.push(`편집 중인 항목의 내용을 알려주면 수정을 도와드리겠습니다.`);
   }

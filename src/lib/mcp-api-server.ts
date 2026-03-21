@@ -1054,6 +1054,403 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
       }
 
+      // ================================================================
+      // GREETINGS  (alternateGreetings / groupOnlyGreetings)
+      // ================================================================
+
+      // ----------------------------------------------------------------
+      // GET /greetings/:type — list greetings with index, size, preview
+      // ----------------------------------------------------------------
+      if (parts[0] === 'greetings' && parts[1] && !parts[2] && req.method === 'GET') {
+        const greetingType = parts[1]; // "alternate" | "group"
+        const fieldName =
+          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: 'list greetings',
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greetings:${greetingType}`,
+          });
+        }
+        const arr: string[] = currentData[fieldName] || [];
+        const items = arr.map((g: string, i: number) => ({
+          index: i,
+          contentSize: g.length,
+          preview: g.slice(0, 100) + (g.length > 100 ? '…' : ''),
+        }));
+        return jsonRes(res, { type: greetingType, field: fieldName, count: arr.length, items });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /greeting/:type/:idx — read single greeting
+      // ----------------------------------------------------------------
+      if (parts[0] === 'greeting' && parts[1] && parts[2] && !parts[3] && req.method === 'GET') {
+        const greetingType = parts[1];
+        const fieldName =
+          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: 'read greeting',
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}`,
+          });
+        }
+        const arr: string[] = currentData[fieldName] || [];
+        const idx = parseInt(parts[2], 10);
+        if (isNaN(idx) || idx < 0 || idx >= arr.length) {
+          return mcpError(res, 400, {
+            action: 'read greeting',
+            message: `Index ${parts[2]} out of range (0..${arr.length - 1})`,
+            suggestion: `list_greetings로 유효한 index를 확인하세요.`,
+            target: `greeting:${greetingType}:${parts[2]}`,
+          });
+        }
+        return jsonRes(res, { type: greetingType, index: idx, content: arr[idx] });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /greeting/:type/add — add greeting
+      // ----------------------------------------------------------------
+      if (parts[0] === 'greeting' && parts[1] && parts[2] === 'add' && req.method === 'POST') {
+        const greetingType = parts[1];
+        const fieldName =
+          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: 'add greeting',
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}:add`,
+          });
+        }
+        const body = await readJsonBody(req, res, `greeting/${greetingType}/add`, broadcastStatus);
+        if (!body) return;
+        if (typeof body.content !== 'string') {
+          return mcpError(res, 400, {
+            action: 'add greeting',
+            message: 'content 필드(string)가 필요합니다.',
+            suggestion: '{ "content": "인사말 텍스트" } 형식으로 전달하세요.',
+            target: `greeting:${greetingType}:add`,
+          });
+        }
+        const preview = body.content.slice(0, 60) + (body.content.length > 60 ? '…' : '');
+        const label = greetingType === 'alternate' ? '추가 첫 메시지' : '그룹 전용 인사말';
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 추가 요청',
+          `AI 어시스턴트가 새 ${label}을(를) 추가하려 합니다: "${preview}"`,
+        );
+
+        if (allowed) {
+          if (!currentData[fieldName]) currentData[fieldName] = [];
+          currentData[fieldName].push(body.content);
+          const newIdx = currentData[fieldName].length - 1;
+          logMcpMutation('add greeting', `greeting:${greetingType}:add`, { newIndex: newIdx });
+          deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
+          return jsonRes(res, { success: true, type: greetingType, index: newIdx });
+        } else {
+          return mcpError(res, 403, {
+            action: 'add greeting',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
+            target: `greeting:${greetingType}:add`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /greeting/:type/:idx — write single greeting
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'greeting' &&
+        parts[1] &&
+        parts[2] &&
+        parts[2] !== 'add' &&
+        parts[3] !== 'delete' &&
+        req.method === 'POST'
+      ) {
+        const greetingType = parts[1];
+        const fieldName =
+          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: 'write greeting',
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}`,
+          });
+        }
+        const arr: string[] = currentData[fieldName] || [];
+        const idx = parseInt(parts[2], 10);
+        if (isNaN(idx) || idx < 0 || idx >= arr.length) {
+          return mcpError(res, 400, {
+            action: 'write greeting',
+            message: `Index ${parts[2]} out of range (0..${arr.length - 1})`,
+            suggestion: `list_greetings로 유효한 index를 확인하세요.`,
+            target: `greeting:${greetingType}:${parts[2]}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `greeting/${greetingType}/${idx}`, broadcastStatus);
+        if (!body) return;
+        if (typeof body.content !== 'string') {
+          return mcpError(res, 400, {
+            action: 'write greeting',
+            message: 'content 필드(string)가 필요합니다.',
+            suggestion: '{ "content": "수정할 인사말 텍스트" } 형식으로 전달하세요.',
+            target: `greeting:${greetingType}:${idx}`,
+          });
+        }
+        const label = greetingType === 'alternate' ? '추가 첫 메시지' : '그룹 전용 인사말';
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 수정 요청',
+          `AI 어시스턴트가 ${label} #${idx}을(를) 수정하려 합니다.`,
+        );
+
+        if (allowed) {
+          currentData[fieldName][idx] = body.content;
+          logMcpMutation('update greeting', `greeting:${greetingType}:${idx}`, {
+            oldSize: arr[idx]?.length ?? 0,
+            newSize: body.content.length,
+          });
+          deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
+          return jsonRes(res, { success: true, type: greetingType, index: idx, size: body.content.length });
+        } else {
+          return mcpError(res, 403, {
+            action: 'write greeting',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: `greeting:${greetingType}:${idx}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /greeting/:type/:idx/delete — delete greeting
+      // ----------------------------------------------------------------
+      if (parts[0] === 'greeting' && parts[1] && parts[2] && parts[3] === 'delete' && req.method === 'POST') {
+        const greetingType = parts[1];
+        const fieldName =
+          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: 'delete greeting',
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}`,
+          });
+        }
+        const arr: string[] = currentData[fieldName] || [];
+        const idx = parseInt(parts[2], 10);
+        if (isNaN(idx) || idx < 0 || idx >= arr.length) {
+          return mcpError(res, 400, {
+            action: 'delete greeting',
+            message: `Index ${parts[2]} out of range (0..${arr.length - 1})`,
+            suggestion: `list_greetings로 유효한 index를 확인하세요.`,
+            target: `greeting:${greetingType}:${parts[2]}`,
+          });
+        }
+        const label = greetingType === 'alternate' ? '추가 첫 메시지' : '그룹 전용 인사말';
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 삭제 요청',
+          `AI 어시스턴트가 ${label} #${idx}을(를) 삭제하려 합니다.`,
+        );
+
+        if (allowed) {
+          currentData[fieldName].splice(idx, 1);
+          logMcpMutation('delete greeting', `greeting:${greetingType}:${idx}`, {});
+          deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
+          return jsonRes(res, { success: true, type: greetingType, deleted: idx });
+        } else {
+          return mcpError(res, 403, {
+            action: 'delete greeting',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: `greeting:${greetingType}:${idx}`,
+          });
+        }
+      }
+
+      // ================================================================
+      // TRIGGER SCRIPTS
+      // ================================================================
+
+      // ----------------------------------------------------------------
+      // GET /triggers — list trigger scripts
+      // ----------------------------------------------------------------
+      if (parts[0] === 'triggers' && !parts[1] && req.method === 'GET') {
+        const scripts = currentData.triggerScripts || [];
+        const items = scripts.map((t: any, i: number) => ({
+          index: i,
+          comment: t.comment || '',
+          type: t.type || '',
+          effectCount: Array.isArray(t.effect) ? t.effect.length : 0,
+          lowLevelAccess: !!t.lowLevelAccess,
+        }));
+        return jsonRes(res, { count: scripts.length, items });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /trigger/:idx — read single trigger script
+      // ----------------------------------------------------------------
+      if (parts[0] === 'trigger' && parts[1] && !parts[2] && req.method === 'GET') {
+        const scripts = currentData.triggerScripts || [];
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= scripts.length) {
+          return mcpError(res, 400, {
+            action: 'read trigger',
+            message: `Index ${parts[1]} out of range (0..${scripts.length - 1})`,
+            suggestion: 'list_triggers로 유효한 index를 확인하세요.',
+            target: `trigger:${parts[1]}`,
+          });
+        }
+        return jsonRes(res, { index: idx, trigger: scripts[idx] });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /trigger/add — add new trigger script
+      // ----------------------------------------------------------------
+      if (parts[0] === 'trigger' && parts[1] === 'add' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'trigger/add', broadcastStatus);
+        if (!body) return;
+        const name = body.comment || '새 트리거';
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 추가 요청',
+          `AI 어시스턴트가 새 트리거 스크립트 "${name}"을(를) 추가하려 합니다.`,
+        );
+
+        if (allowed) {
+          const trigger = {
+            comment: body.comment || '',
+            type: body.type || 'start',
+            conditions: Array.isArray(body.conditions) ? body.conditions : [],
+            effect: Array.isArray(body.effect) ? body.effect : [],
+            lowLevelAccess: !!body.lowLevelAccess,
+          };
+          if (!currentData.triggerScripts) currentData.triggerScripts = [];
+          currentData.triggerScripts.push(trigger);
+          const newIdx = currentData.triggerScripts.length - 1;
+          currentData.lua = deps.extractPrimaryLua(currentData.triggerScripts);
+          logMcpMutation('add trigger', 'trigger:add', { entryName: name, newIndex: newIdx });
+          deps.broadcastToAll(
+            'data-updated',
+            'triggerScripts',
+            deps.stringifyTriggerScripts(currentData.triggerScripts),
+          );
+          deps.broadcastToAll('data-updated', 'lua', currentData.lua);
+          return jsonRes(res, { success: true, index: newIdx });
+        } else {
+          return mcpError(res, 403, {
+            action: 'add trigger',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'trigger:add',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /trigger/:idx/delete — delete trigger script
+      // ----------------------------------------------------------------
+      if (parts[0] === 'trigger' && parts[1] && parts[2] === 'delete' && req.method === 'POST') {
+        const scripts = currentData.triggerScripts || [];
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= scripts.length) {
+          return mcpError(res, 400, {
+            action: 'delete trigger',
+            message: `Index ${parts[1]} out of range (0..${scripts.length - 1})`,
+            suggestion: 'list_triggers로 유효한 index를 확인하세요.',
+            target: `trigger:${parts[1]}`,
+          });
+        }
+        const name = scripts[idx].comment || `trigger_${idx}`;
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 삭제 요청',
+          `AI 어시스턴트가 트리거 스크립트 "${name}" (index ${idx})을 삭제하려 합니다.`,
+        );
+
+        if (allowed) {
+          currentData.triggerScripts.splice(idx, 1);
+          currentData.lua = deps.extractPrimaryLua(currentData.triggerScripts);
+          logMcpMutation('delete trigger', `trigger:${idx}`, { entryName: name });
+          deps.broadcastToAll(
+            'data-updated',
+            'triggerScripts',
+            deps.stringifyTriggerScripts(currentData.triggerScripts),
+          );
+          deps.broadcastToAll('data-updated', 'lua', currentData.lua);
+          return jsonRes(res, { success: true, deleted: idx });
+        } else {
+          return mcpError(res, 403, {
+            action: 'delete trigger',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: `trigger:${idx}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /trigger/:idx — write single trigger script
+      // ----------------------------------------------------------------
+      if (parts[0] === 'trigger' && parts[1] && !parts[2] && req.method === 'POST') {
+        const scripts = currentData.triggerScripts || [];
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= scripts.length) {
+          return mcpError(res, 400, {
+            action: 'write trigger',
+            message: `Index ${parts[1]} out of range (0..${scripts.length - 1})`,
+            suggestion: 'list_triggers로 유효한 index를 확인하세요.',
+            target: `trigger:${parts[1]}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `trigger/${idx}`, broadcastStatus);
+        if (!body) return;
+        const name = body.comment || scripts[idx].comment || `trigger_${idx}`;
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 수정 요청',
+          `AI 어시스턴트가 트리거 스크립트 "${name}" (index ${idx})을(를) 수정하려 합니다.`,
+        );
+
+        if (allowed) {
+          const updated: Record<string, unknown> = { ...scripts[idx] };
+          if (body.comment !== undefined) updated.comment = body.comment;
+          if (body.type !== undefined) updated.type = body.type;
+          if (body.conditions !== undefined) updated.conditions = body.conditions;
+          if (body.effect !== undefined) updated.effect = body.effect;
+          if (body.lowLevelAccess !== undefined) updated.lowLevelAccess = !!body.lowLevelAccess;
+          currentData.triggerScripts[idx] = updated;
+          currentData.lua = deps.extractPrimaryLua(currentData.triggerScripts);
+          logMcpMutation('update trigger', `trigger:${idx}`, { entryName: name });
+          deps.broadcastToAll(
+            'data-updated',
+            'triggerScripts',
+            deps.stringifyTriggerScripts(currentData.triggerScripts),
+          );
+          deps.broadcastToAll('data-updated', 'lua', currentData.lua);
+          return jsonRes(res, { success: true, index: idx });
+        } else {
+          return mcpError(res, 403, {
+            action: 'write trigger',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: `trigger:${idx}`,
+          });
+        }
+      }
+
       // ----------------------------------------------------------------
       // GET /lua — list Lua sections
       // ----------------------------------------------------------------

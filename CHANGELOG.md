@@ -9,6 +9,31 @@
 
 ---
 
+## [0.8.0] - 2026-03-21
+
+### 새 기능
+
+- **인사말 세분화 MCP 도구 5종** — alternateGreetings/groupOnlyGreetings를 개별 인덱스로 접근
+  - `list_greetings(type)`: 인사말 목록 (index, 크기, 미리보기 100자)
+  - `read_greeting(type, index)`: 인사말 하나 읽기
+  - `write_greeting(type, index, content)`: 인사말 수정
+  - `add_greeting(type, content)`: 인사말 추가
+  - `delete_greeting(type, index)`: 인사말 삭제
+- **트리거 스크립트 세분화 MCP 도구 5종** — triggerScripts 배열을 개별 트리거로 접근
+  - `list_triggers`: 트리거 목록 (index, comment, type, effect 수)
+  - `read_trigger(index)`: 트리거 하나 읽기
+  - `write_trigger(index, ...)`: 트리거 수정 (부분 수정 가능)
+  - `add_trigger(...)`: 트리거 추가
+  - `delete_trigger(index)`: 트리거 삭제
+
+### 변경
+
+- `read_field` 도구 설명에 alternateGreetings/groupOnlyGreetings/triggerScripts/lua/css 사용 시 세부 도구 안내 경고 추가
+- assistant-prompt에 인사말/트리거/참고 자료 세부 도구 + 스킬 도구 전체 반영, 읽기 규칙 강화
+- AGENTS.md에 인사말·트리거 도구 레퍼런스 및 읽기 규칙 업데이트
+
+---
+
 ## [0.7.1] - 2026-03-21
 
 ### 새 기능
