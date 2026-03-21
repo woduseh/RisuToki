@@ -9,6 +9,14 @@
 
 ---
 
+## [0.9.2] - 2026-03-21
+
+### 새 기능
+
+- **자동 릴리즈 빌드** — `v*` 태그 push 시 GitHub Actions에서 자동으로 Windows 빌드(NSIS 설치 프로그램 + 포터블 exe) 후 릴리즈에 업로드
+  - `.github/workflows/release.yml` 워크플로우 추가
+  - 빌드 전 lint/typecheck/test 검증 포함
+
 ## [0.9.1] - 2026-03-21
 
 ### 수정
