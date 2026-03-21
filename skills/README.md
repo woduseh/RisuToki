@@ -4,35 +4,46 @@ Structured skill documents for LLMs working with RisuAI `.charx`, `.risum`, and 
 
 ## Syntax & Tool Skills
 
-| Skill | Description | Files |
-|---|---|---|
-| [writing-cbs-syntax](writing-cbs-syntax/) | CBS template tag reference (130+ tags) | SKILL.md + REFERENCE.md |
-| [writing-lua-scripts](writing-lua-scripts/) | Lua 5.4 scripting API for RisuAI | SKILL.md + API_REFERENCE.md |
-| [writing-lorebooks](writing-lorebooks/) | Lorebook entry structure and patterns | SKILL.md |
-| [writing-regex-scripts](writing-regex-scripts/) | Regex script types and patterns | SKILL.md |
-| [writing-html-css](writing-html-css/) | HTML/CSS with RisuAI constraints | SKILL.md |
-| [writing-trigger-scripts](writing-trigger-scripts/) | Event-driven trigger automation | SKILL.md |
-| [writing-asset-prompts](writing-asset-prompts/) | Anima model image prompt generation | SKILL.md |
+| Skill                                               | Description                            | Files                       |
+| --------------------------------------------------- | -------------------------------------- | --------------------------- |
+| [writing-cbs-syntax](writing-cbs-syntax/)           | CBS template tag reference (130+ tags) | SKILL.md + REFERENCE.md     |
+| [writing-lua-scripts](writing-lua-scripts/)         | Lua 5.4 scripting API for RisuAI       | SKILL.md + API_REFERENCE.md |
+| [writing-lorebooks](writing-lorebooks/)             | Lorebook entry structure and patterns  | SKILL.md                    |
+| [writing-regex-scripts](writing-regex-scripts/)     | Regex script types and patterns        | SKILL.md                    |
+| [writing-html-css](writing-html-css/)               | HTML/CSS with RisuAI constraints       | SKILL.md                    |
+| [writing-trigger-scripts](writing-trigger-scripts/) | Event-driven trigger automation        | SKILL.md                    |
+| [writing-asset-prompts](writing-asset-prompts/)     | Anima model image prompt generation    | SKILL.md                    |
 
 ## Authoring Skills
 
-| Skill | Description | Files |
-|---|---|---|
-| [authoring-characters](authoring-characters/) | Character description writing for LLM RP | SKILL.md + SPEECH_SYSTEM.md + VALIDATION.md |
-| [authoring-lorebook-bots](authoring-lorebook-bots/) | Lorebook-driven bot description writing | SKILL.md + LOREBOOK_ARCHITECTURE.md |
+| Skill                                               | Description                              | Files                                       |
+| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------- |
+| [authoring-characters](authoring-characters/)       | Character description writing for LLM RP | SKILL.md + SPEECH_SYSTEM.md + VALIDATION.md |
+| [authoring-lorebook-bots](authoring-lorebook-bots/) | Lorebook-driven bot description writing  | SKILL.md + LOREBOOK_ARCHITECTURE.md         |
+
+## Philosophy
+
+These guides are **toolkits, not rulebooks.** They describe patterns that tend to produce strong LLM roleplay output — but no pattern is universal. A bot's setting, tone, character count, and target experience should always take priority over any guideline written here.
+
+**Pick what works. Ignore what doesn't. Break any rule that produces a more compelling result.**
+
+The only real test is whether the LLM generates output that feels alive, consistent, and engaging. If skipping the speech register system makes a minimalist character hit harder, skip it. If adding a section the guide never mentions makes the bot sing, add it. These documents exist to help — not to constrain.
 
 ## How to Use
 
 Each skill directory contains:
+
 - **SKILL.md** — Overview with YAML frontmatter (name + description), core concepts, workflows, and examples. Under 500 lines.
 - **Reference files** — Detailed content loaded on demand (API references, validation checklists, etc.)
 
 ### For AI Assistants
+
 1. Read `SKILL.md` when the skill topic is relevant to the user's request
 2. Read reference files only when deeper detail is needed
 3. The `description` field in YAML frontmatter indicates when to use each skill
 
 ### For Humans
+
 Browse individual skills for structured reference material. The `guides/` folder contains the original Korean-language guides for direct human reference.
 
 ## Relationship to `guides/`

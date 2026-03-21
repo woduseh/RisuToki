@@ -9,6 +9,16 @@
 
 ---
 
+## [0.9.4] - 2026-03-21
+
+### 변경
+
+- **SKILL 문서에 유연성 면책 조항 추가** — 가이드를 교조적으로 따르지 않고, 봇/캐릭터 상황에 맞게 취사선택하도록 권장하는 문구 삽입
+  - `skills/README.md` — "Philosophy" 섹션 신설: 가이드는 룰북이 아닌 툴킷, 결과물이 더 매력적이면 어떤 규칙이든 무시 가능
+  - `authoring-characters/SKILL.md` — 도입부에 유연성 노트 추가
+  - `authoring-lorebook-bots/SKILL.md` — 도입부에 유연성 노트 추가
+  - `authoring-characters/VALIDATION.md` — 체크리스트는 진단 도구이지 합불 기준이 아님을 명시
+
 ## [0.9.3] - 2026-03-21
 
 ### 변경

@@ -5,6 +5,8 @@ description: 'Writes bot descriptions for lorebook-driven LLM roleplay bots. Pro
 
 # Bot Description for Lorebook-Driven Bots
 
+> **This guide is a toolkit, not a checklist.** The patterns here tend to produce strong lorebook-driven bots — but every bot has its own needs. If your bot's setting, tone, or structure calls for something different, trust that instinct over any guideline. The only real test is whether the LLM produces output that feels right. Adapt freely.
+
 ## What a Bot Description Is
 
 A **mood board**, **genre contract**, **character thumbnail**, **narrative compass**, and **interpretive lens**.

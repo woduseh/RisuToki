@@ -5,6 +5,8 @@ description: 'Writes and refactors character descriptions for LLM roleplay. Prod
 
 # Character Description Authoring
 
+> **This guide is a toolkit, not a checklist.** Every section below describes patterns that _tend_ to produce strong LLM output — but the only real test is whether your character feels alive in conversation. If a technique doesn't serve your specific character, skip it. If something not covered here makes the character more compelling, use it. Adapt freely; the goal is output quality, not guideline compliance.
+
 ## Core Principles
 
 1. **The description is a performance brief.** Every sentence must answer: "How does this change what the LLM writes next?" If it doesn't shape output, it should either earn its place through atmosphere or be reconsidered.

@@ -2,6 +2,8 @@
 
 Run every finished character description through these checks. **Protagonist-level characters should pass all core checks.** Supporting characters can pass fewer — use judgment based on the character's role.
 
+> **Remember:** These checks are diagnostic tools, not pass/fail gates. A character that "fails" a check but feels alive in practice is better than one that passes every check but reads like a template. Use these to identify potential improvements, not to gatekeep.
+
 ---
 
 ## Core Checks
