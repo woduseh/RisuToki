@@ -9,6 +9,15 @@
 
 ---
 
+## [0.12.0] - 2026-03-21
+
+### 새 기능
+
+- **로어북 일괄 치환** (`replace_in_lorebook_batch`) — 여러 항목의 content를 한 번에 치환. 각 항목별 매치 수 계산 → 전체 요약 → 단일 확인
+- **로어북 일괄 삽입** (`insert_in_lorebook_batch`) — 여러 항목의 content에 한 번에 삽입. 단일 확인
+- **부정 본문 검색** (`list_lorebook` `content_filter_not`) — content에 특정 키워드가 **없는** 항목만 필터. 참조 파일에도 동일 적용
+- **배치 읽기 필드 프로젝션** (`read_lorebook_batch` `fields`) — `fields: ["content"]`로 필요한 필드만 반환하여 출력 크기 절감. 참조 파일에도 동일 적용
+
 ## [0.11.0] - 2026-03-21
 
 ### 새 기능

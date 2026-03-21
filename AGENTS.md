@@ -108,20 +108,22 @@ css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
 
 ### 로어북 (Lorebook)
 
-| 도구                                                                | 설명                                                                                                                                                                                                                          |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_lorebook(filter?, folder?, content_filter?, preview_length?)` | 로어북 항목 목록 (index, comment, key, 폴더, 활성화 상태, contentSize, contentPreview). 폴더 요약 포함. `filter`로 comment/key 검색, `content_filter`로 본문 검색, `preview_length`로 미리보기 길이 조절 (기본 150, 0=비활성) |
-| `read_lorebook(index)`                                              | 특정 인덱스의 로어북 항목 전체 데이터 읽기                                                                                                                                                                                    |
-| `read_lorebook_batch(indices)`                                      | 여러 로어북 항목을 한 번에 읽기 (최대 50개). 유효하지 않은 인덱스는 null 반환                                                                                                                                                 |
-| `write_lorebook(index, data)`                                       | 특정 인덱스의 로어북 항목 수정 (부분 수정 가능)                                                                                                                                                                               |
-| `write_lorebook_batch(entries)`                                     | 여러 로어북 항목을 한 번에 수정. `entries: [{index, data}]` (최대 50개). 변경 요약 후 단일 확인                                                                                                                               |
-| `add_lorebook(data)`                                                | 새 로어북 항목 추가                                                                                                                                                                                                           |
-| `clone_lorebook(index, overrides?)`                                 | 기존 로어북 항목 복제. `overrides`로 복제본의 필드 변경 가능                                                                                                                                                                  |
-| `delete_lorebook(index)`                                            | 특정 인덱스의 로어북 항목 삭제                                                                                                                                                                                                |
-| `replace_in_lorebook(index, find, replace)`                         | content 내 문자열 치환 — 대용량 항목도 전체를 읽지 않고 서버에서 직접 처리. `regex: true` + `flags` 옵션으로 정규식 지원                                                                                                      |
-| `insert_in_lorebook(index, content, position?, anchor?)`            | content에 텍스트 삽입. position: `end`(기본), `start`, `after`, `before`. after/before는 `anchor` 문자열 기준                                                                                                                 |
-| `diff_lorebook(index, refIndex, refEntryIndex)`                     | 현재 파일↔참고 자료 로어북 항목 비교. 필드별 차이점 + content 라인 단위 변경 사항 반환                                                                                                                                        |
-| `validate_lorebook_keys()`                                          | 로어북 키의 일반적 문제 검증: 후행/선행 쉼표, 불필요한 공백, 빈 세그먼트, 중복 키 탐지                                                                                                                                        |
+| 도구                                                                                     | 설명                                                                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `list_lorebook(filter?, folder?, content_filter?, content_filter_not?, preview_length?)` | 로어북 항목 목록. `filter`로 comment/key 검색, `content_filter`로 본문 검색, `content_filter_not`으로 본문에 키워드가 **없는** 항목만 필터. `preview_length`로 미리보기 길이 조절 (기본 150, 0=비활성) |
+| `read_lorebook(index)`                                                                   | 특정 인덱스의 로어북 항목 전체 데이터 읽기                                                                                                                                                             |
+| `read_lorebook_batch(indices, fields?)`                                                  | 여러 로어북 항목을 한 번에 읽기 (최대 50개). `fields: ["content"]`로 필요한 필드만 반환하여 출력 크기 절감. 유효하지 않은 인덱스는 null 반환                                                           |
+| `write_lorebook(index, data)`                                                            | 특정 인덱스의 로어북 항목 수정 (부분 수정 가능)                                                                                                                                                        |
+| `write_lorebook_batch(entries)`                                                          | 여러 로어북 항목을 한 번에 수정. `entries: [{index, data}]` (최대 50개). 변경 요약 후 단일 확인                                                                                                        |
+| `add_lorebook(data)`                                                                     | 새 로어북 항목 추가                                                                                                                                                                                    |
+| `clone_lorebook(index, overrides?)`                                                      | 기존 로어북 항목 복제. `overrides`로 복제본의 필드 변경 가능                                                                                                                                           |
+| `delete_lorebook(index)`                                                                 | 특정 인덱스의 로어북 항목 삭제                                                                                                                                                                         |
+| `replace_in_lorebook(index, find, replace)`                                              | content 내 문자열 치환 — 대용량 항목도 전체를 읽지 않고 서버에서 직접 처리. `regex: true` + `flags` 옵션으로 정규식 지원                                                                               |
+| `insert_in_lorebook(index, content, position?, anchor?)`                                 | content에 텍스트 삽입. position: `end`(기본), `start`, `after`, `before`. after/before는 `anchor` 문자열 기준                                                                                          |
+| `replace_in_lorebook_batch(replacements)`                                                | 여러 항목의 content를 한 번에 치환 (최대 50개). `replacements: [{index, find, replace, regex?, flags?}]`. 매치 요약 → 단일 확인                                                                        |
+| `insert_in_lorebook_batch(insertions)`                                                   | 여러 항목의 content에 한 번에 삽입 (최대 50개). `insertions: [{index, content, position?, anchor?}]`. 단일 확인                                                                                        |
+| `diff_lorebook(index, refIndex, refEntryIndex)`                                          | 현재 파일↔참고 자료 로어북 항목 비교. 필드별 차이점 + content 라인 단위 변경 사항 반환                                                                                                                 |
+| `validate_lorebook_keys()`                                                               | 로어북 키의 일반적 문제 검증: 후행/선행 쉼표, 불필요한 공백, 빈 세그먼트, 중복 키 탐지                                                                                                                 |
 
 ### 정규식 (Regex)
 
@@ -165,19 +167,19 @@ triggerScripts 배열의 개별 트리거에 접근.
 
 ### 참고 자료 (References, 읽기 전용)
 
-| 도구                                                                        | 설명                                                                                         |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `list_references`                                                           | 로드된 참고 자료 파일 목록                                                                   |
-| `read_reference_field(index, field)`                                        | 참고 자료의 특정 필드 읽기. ⚠️ lorebook/lua/css는 전체를 반환하므로 아래 세부 도구 사용 권장 |
-| `list_reference_lorebook(index, filter?, content_filter?, preview_length?)` | 참고 자료의 로어북 항목 목록. `content_filter`로 본문 검색, `preview_length`로 미리보기      |
-| `read_reference_lorebook(index, entryIndex)`                                | 참고 자료의 로어북 항목 하나 읽기                                                            |
-| `read_reference_lorebook_batch(index, indices)`                             | 참고 자료의 여러 로어북 항목을 한 번에 읽기 (최대 50개)                                      |
-| `list_reference_lua(index)`                                                 | 참고 자료의 Lua 섹션 목록 (인덱스, 이름, 크기)                                               |
-| `read_reference_lua(index, sectionIndex)`                                   | 참고 자료의 Lua 섹션 하나 읽기                                                               |
-| `read_reference_lua_batch(index, indices)`                                  | 참고 자료의 여러 Lua 섹션을 한 번에 읽기 (최대 20개)                                         |
-| `list_reference_css(index)`                                                 | 참고 자료의 CSS 섹션 목록 (인덱스, 이름, 크기)                                               |
-| `read_reference_css(index, sectionIndex)`                                   | 참고 자료의 CSS 섹션 하나 읽기                                                               |
-| `read_reference_css_batch(index, indices)`                                  | 참고 자료의 여러 CSS 섹션을 한 번에 읽기 (최대 20개)                                         |
+| 도구                                                                                             | 설명                                                                                                                        |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `list_references`                                                                                | 로드된 참고 자료 파일 목록                                                                                                  |
+| `read_reference_field(index, field)`                                                             | 참고 자료의 특정 필드 읽기. ⚠️ lorebook/lua/css는 전체를 반환하므로 아래 세부 도구 사용 권장                                |
+| `list_reference_lorebook(index, filter?, content_filter?, content_filter_not?, preview_length?)` | 참고 자료의 로어북 항목 목록. `content_filter`로 본문 검색, `content_filter_not`으로 부정 검색, `preview_length`로 미리보기 |
+| `read_reference_lorebook(index, entryIndex)`                                                     | 참고 자료의 로어북 항목 하나 읽기                                                                                           |
+| `read_reference_lorebook_batch(index, indices, fields?)`                                         | 참고 자료의 여러 로어북 항목을 한 번에 읽기 (최대 50개). `fields`로 필드 프로젝션                                           |
+| `list_reference_lua(index)`                                                                      | 참고 자료의 Lua 섹션 목록 (인덱스, 이름, 크기)                                                                              |
+| `read_reference_lua(index, sectionIndex)`                                                        | 참고 자료의 Lua 섹션 하나 읽기                                                                                              |
+| `read_reference_lua_batch(index, indices)`                                                       | 참고 자료의 여러 Lua 섹션을 한 번에 읽기 (최대 20개)                                                                        |
+| `list_reference_css(index)`                                                                      | 참고 자료의 CSS 섹션 목록 (인덱스, 이름, 크기)                                                                              |
+| `read_reference_css(index, sectionIndex)`                                                        | 참고 자료의 CSS 섹션 하나 읽기                                                                                              |
+| `read_reference_css_batch(index, indices)`                                                       | 참고 자료의 여러 CSS 섹션을 한 번에 읽기 (최대 20개)                                                                        |
 
 ### 스킬 문서 (Skills, 읽기 전용)
 

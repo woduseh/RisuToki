@@ -835,6 +835,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return e;
           });
         }
+        // Filter by content NOT containing keyword
+        const contentFilterNotParam = url.searchParams.get('content_filter_not');
+        if (contentFilterNotParam) {
+          const nq = contentFilterNotParam.toLowerCase();
+          entries = entries.filter((_e: any) => {
+            const content = (rawEntries[(_e as any).index]?.content || '').toLowerCase();
+            return !content.includes(nq);
+          });
+        }
         return jsonRes(res, { count: entries.length, folders, entries });
       }
 
@@ -864,8 +873,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
         }
         const lorebook = currentData.lorebook || [];
+        const requestedFields: string[] | undefined = body.fields;
         const entries = indices.map((idx: number) => {
           if (typeof idx !== 'number' || idx < 0 || idx >= lorebook.length) return null;
+          if (requestedFields && Array.isArray(requestedFields)) {
+            const projected: Record<string, unknown> = {};
+            for (const f of requestedFields) {
+              if (f in lorebook[idx]) projected[f] = lorebook[idx][f];
+            }
+            return { index: idx, entry: projected };
+          }
           return { index: idx, entry: lorebook[idx] };
         });
         return jsonRes(res, { count: entries.filter(Boolean).length, total: indices.length, entries });
@@ -1199,6 +1216,218 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             rejected: true,
             suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
             target: 'lorebook:add',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lorebook/batch-replace — batch replace text in multiple entries
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'batch-replace' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lorebook/batch-replace', broadcastStatus);
+        if (!body) return;
+        const replacements: Array<{
+          index: number;
+          find: string;
+          replace?: string;
+          regex?: boolean;
+          flags?: string;
+        }> = body.replacements;
+        if (!Array.isArray(replacements) || replacements.length === 0) {
+          return jsonRes(res, { error: 'replacements must be a non-empty array' }, 400);
+        }
+        const MAX_BATCH = 50;
+        if (replacements.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} replacements per batch` }, 400);
+        }
+        const lorebook = currentData.lorebook || [];
+        // Validate indices and find strings
+        for (const r of replacements) {
+          if (typeof r.index !== 'number' || r.index < 0 || r.index >= lorebook.length) {
+            return jsonRes(res, { error: `Invalid index: ${r.index}` }, 400);
+          }
+          if (!r.find) {
+            return jsonRes(res, { error: `Missing "find" for index ${r.index}` }, 400);
+          }
+        }
+        // Pre-compute matches for each replacement
+        const results = replacements.map((r) => {
+          const content: string = lorebook[r.index].content || '';
+          const findStr: string = r.find;
+          const replaceStr: string = r.replace !== undefined ? r.replace : '';
+          const useRegex = !!r.regex;
+          const flags: string = r.flags || 'g';
+          let matchCount: number;
+          let newContent: string;
+          if (useRegex) {
+            const re = new RegExp(findStr, flags);
+            const matches = content.match(re);
+            matchCount = matches ? matches.length : 0;
+            newContent = content.replace(re, replaceStr);
+          } else {
+            matchCount = 0;
+            let searchFrom = 0;
+            while (true) {
+              const pos = content.indexOf(findStr, searchFrom);
+              if (pos === -1) break;
+              matchCount++;
+              searchFrom = pos + findStr.length;
+            }
+            newContent = content.split(findStr).join(replaceStr);
+          }
+          return {
+            index: r.index,
+            comment: lorebook[r.index].comment || `entry_${r.index}`,
+            matchCount,
+            newContent,
+            skipped: matchCount === 0,
+          };
+        });
+        const activeResults = results.filter((r) => !r.skipped);
+        if (activeResults.length === 0) {
+          return jsonRes(res, {
+            success: false,
+            message: '모든 항목에서 일치하는 내용 없음',
+            results: results.map((r) => ({ index: r.index, comment: r.comment, matchCount: 0, skipped: true })),
+          });
+        }
+        const summary = activeResults.map((r) => `  [${r.index}] "${r.comment}": ${r.matchCount}건`).join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 치환 요청',
+          `AI 어시스턴트가 로어북 ${activeResults.length}개 항목에서 치환하려 합니다.\n\n${summary.substring(0, 500)}${summary.length > 500 ? '\n...' : ''}`,
+        );
+        if (allowed) {
+          for (const r of activeResults) {
+            lorebook[r.index].content = r.newContent;
+          }
+          logMcpMutation('batch replace lorebook', 'lorebook:batch-replace', {
+            count: activeResults.length,
+            totalMatches: activeResults.reduce((s, r) => s + r.matchCount, 0),
+          });
+          deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
+          return jsonRes(res, {
+            success: true,
+            count: activeResults.length,
+            results: results.map((r) => ({
+              index: r.index,
+              comment: r.comment,
+              matchCount: r.matchCount,
+              skipped: r.skipped,
+            })),
+          });
+        } else {
+          return mcpError(res, 403, {
+            action: 'batch replace lorebook',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 일괄 치환 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'lorebook:batch-replace',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lorebook/batch-insert — batch insert text into multiple entries
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'batch-insert' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lorebook/batch-insert', broadcastStatus);
+        if (!body) return;
+        const insertions: Array<{
+          index: number;
+          content: string;
+          position?: string;
+          anchor?: string;
+        }> = body.insertions;
+        if (!Array.isArray(insertions) || insertions.length === 0) {
+          return jsonRes(res, { error: 'insertions must be a non-empty array' }, 400);
+        }
+        const MAX_BATCH = 50;
+        if (insertions.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} insertions per batch` }, 400);
+        }
+        const lorebook = currentData.lorebook || [];
+        // Validate
+        for (const ins of insertions) {
+          if (typeof ins.index !== 'number' || ins.index < 0 || ins.index >= lorebook.length) {
+            return jsonRes(res, { error: `Invalid index: ${ins.index}` }, 400);
+          }
+          if (ins.content === undefined) {
+            return jsonRes(res, { error: `Missing "content" for index ${ins.index}` }, 400);
+          }
+        }
+        // Pre-compute new contents
+        const results = insertions.map((ins) => {
+          const oldContent: string = lorebook[ins.index].content || '';
+          const position = ins.position || 'end';
+          let newContent: string;
+          let error: string | undefined;
+          if (position === 'end') {
+            newContent = oldContent + '\n' + ins.content;
+          } else if (position === 'start') {
+            newContent = ins.content + '\n' + oldContent;
+          } else if ((position === 'after' || position === 'before') && ins.anchor) {
+            const anchorPos = oldContent.indexOf(ins.anchor);
+            if (anchorPos === -1) {
+              error = `앵커를 찾을 수 없음: ${ins.anchor.substring(0, 60)}`;
+              newContent = oldContent;
+            } else if (position === 'after') {
+              const insertAt = anchorPos + ins.anchor.length;
+              newContent = oldContent.slice(0, insertAt) + '\n' + ins.content + oldContent.slice(insertAt);
+            } else {
+              newContent = oldContent.slice(0, anchorPos) + ins.content + '\n' + oldContent.slice(anchorPos);
+            }
+          } else {
+            error = 'position이 "after"/"before"일 때 anchor가 필요합니다';
+            newContent = oldContent;
+          }
+          return {
+            index: ins.index,
+            comment: lorebook[ins.index].comment || `entry_${ins.index}`,
+            position,
+            newContent,
+            oldSize: oldContent.length,
+            newSize: newContent.length,
+            error,
+          };
+        });
+        const errors = results.filter((r) => r.error);
+        if (errors.length > 0) {
+          return jsonRes(res, {
+            success: false,
+            errors: errors.map((r) => ({ index: r.index, error: r.error })),
+          });
+        }
+        const summary = results
+          .map((r) => `  [${r.index}] "${r.comment}": ${r.position}, +${r.newSize - r.oldSize} chars`)
+          .join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 삽입 요청',
+          `AI 어시스턴트가 로어북 ${results.length}개 항목에 내용을 삽입하려 합니다.\n\n${summary.substring(0, 500)}${summary.length > 500 ? '\n...' : ''}`,
+        );
+        if (allowed) {
+          for (const r of results) {
+            lorebook[r.index].content = r.newContent;
+          }
+          logMcpMutation('batch insert lorebook', 'lorebook:batch-insert', { count: results.length });
+          deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
+          return jsonRes(res, {
+            success: true,
+            count: results.length,
+            results: results.map((r) => ({
+              index: r.index,
+              comment: r.comment,
+              position: r.position,
+              oldSize: r.oldSize,
+              newSize: r.newSize,
+            })),
+          });
+        } else {
+          return mcpError(res, 403, {
+            action: 'batch insert lorebook',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 일괄 삽입 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'lorebook:batch-insert',
           });
         }
       }
@@ -2715,6 +2944,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return e;
           });
         }
+        // Filter by content NOT containing keyword
+        const contentFilterNotParam = url.searchParams.get('content_filter_not');
+        if (contentFilterNotParam) {
+          const nq = contentFilterNotParam.toLowerCase();
+          entries = entries.filter((_e: any) => {
+            const content = (lorebook[(_e as any).index]?.content || '').toLowerCase();
+            return !content.includes(nq);
+          });
+        }
         return jsonRes(res, { index: idx, fileName: ref.fileName, count: entries.length, entries });
       }
 
@@ -2744,8 +2982,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
         }
         const lorebook = refFiles[idx].data.lorebook || [];
+        const requestedFields: string[] | undefined = body.fields;
         const entries = indices.map((entryIdx: number) => {
           if (typeof entryIdx !== 'number' || entryIdx < 0 || entryIdx >= lorebook.length) return null;
+          if (requestedFields && Array.isArray(requestedFields)) {
+            const projected: Record<string, unknown> = {};
+            for (const f of requestedFields) {
+              if (f in lorebook[entryIdx]) projected[f] = lorebook[entryIdx][f];
+            }
+            return { index: entryIdx, entry: projected };
+          }
           return { index: entryIdx, entry: lorebook[entryIdx] };
         });
         return jsonRes(res, {

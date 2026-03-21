@@ -582,13 +582,15 @@ server.tool(
     filter: z.string().optional().describe('검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환'),
     folder: z.string().optional().describe('폴더 UUID로 필터 (예: "folder:xxxx" 또는 UUID만). 생략 시 전체 반환'),
     content_filter: z.string().optional().describe('본문(content) 검색 키워드. 대소문자 무시. filter와 AND 결합'),
+    content_filter_not: z.string().optional().describe('본문(content)에 이 키워드가 없는 항목만 필터. 대소문자 무시'),
     preview_length: z.number().optional().describe('content 미리보기 길이 (기본 150, 0=비활성, 최대 500)'),
   },
-  async ({ filter, folder, content_filter, preview_length }) => {
+  async ({ filter, folder, content_filter, content_filter_not, preview_length }) => {
     const params = new URLSearchParams();
     if (filter) params.set('filter', filter);
     if (folder) params.set('folder', folder);
     if (content_filter) params.set('content_filter', content_filter);
+    if (content_filter_not) params.set('content_filter_not', content_filter_not);
     if (preview_length !== undefined) params.set('preview_length', String(preview_length));
     const qs = params.toString();
     return textResult(await apiRequest('GET', qs ? `/lorebook?${qs}` : '/lorebook'));
@@ -607,8 +609,12 @@ server.tool(
   '여러 로어북 항목을 한 번에 읽습니다. read_lorebook을 반복 호출하는 대신 이 도구를 사용하세요.',
   {
     indices: z.array(z.number()).max(50).describe('읽을 로어북 항목 인덱스 배열 (최대 50개)'),
+    fields: z
+      .array(z.string())
+      .optional()
+      .describe('반환할 필드 목록 (예: ["content", "comment"]). 미지정 시 전체 필드 반환'),
   },
-  async ({ indices }) => textResult(await apiRequest('POST', '/lorebook/batch', { indices })),
+  async ({ indices, fields }) => textResult(await apiRequest('POST', '/lorebook/batch', { indices, fields })),
 );
 
 server.tool(
@@ -713,6 +719,48 @@ server.tool(
   },
   async ({ index, content, position, anchor }) =>
     textResult(await apiRequest('POST', `/lorebook/${index}/insert`, { content, position, anchor })),
+);
+
+server.tool(
+  'replace_in_lorebook_batch',
+  '여러 로어북 항목의 content에서 문자열 치환을 일괄 수행합니다. 각 항목별 매치 수를 계산하고 한 번의 확인으로 전부 적용합니다. 사용자 확인 필요.',
+  {
+    replacements: z
+      .array(
+        z.object({
+          index: z.number().describe('로어북 항목 인덱스'),
+          find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
+          replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
+          regex: z.boolean().optional().describe('정규식 모드 여부'),
+          flags: z.string().optional().describe('정규식 플래그 (기본: "g")'),
+        }),
+      )
+      .max(50)
+      .describe('치환 작업 배열 [{index, find, replace, regex?, flags?}] (최대 50개)'),
+  },
+  async ({ replacements }) => textResult(await apiRequest('POST', '/lorebook/batch-replace', { replacements })),
+);
+
+server.tool(
+  'insert_in_lorebook_batch',
+  '여러 로어북 항목의 content에 텍스트를 일괄 삽입합니다. 한 번의 확인으로 전부 적용합니다. 사용자 확인 필요.',
+  {
+    insertions: z
+      .array(
+        z.object({
+          index: z.number().describe('로어북 항목 인덱스'),
+          content: z.string().describe('삽입할 텍스트'),
+          position: z
+            .enum(['end', 'start', 'after', 'before'])
+            .optional()
+            .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
+          anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+        }),
+      )
+      .max(50)
+      .describe('삽입 작업 배열 [{index, content, position?, anchor?}] (최대 50개)'),
+  },
+  async ({ insertions }) => textResult(await apiRequest('POST', '/lorebook/batch-insert', { insertions })),
 );
 
 // ===== Regex Tools =====
@@ -1078,13 +1126,15 @@ server.tool(
     filter: z.string().optional().describe('검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환'),
     folder: z.string().optional().describe('폴더 UUID로 필터. 생략 시 전체 반환'),
     content_filter: z.string().optional().describe('본문(content) 검색 키워드. 대소문자 무시. filter와 AND 결합'),
+    content_filter_not: z.string().optional().describe('본문(content)에 이 키워드가 없는 항목만 필터. 대소문자 무시'),
     preview_length: z.number().optional().describe('content 미리보기 길이 (기본 150, 0=비활성, 최대 500)'),
   },
-  async ({ index, filter, folder, content_filter, preview_length }) => {
+  async ({ index, filter, folder, content_filter, content_filter_not, preview_length }) => {
     const params = new URLSearchParams();
     if (filter) params.set('filter', filter);
     if (folder) params.set('folder', folder);
     if (content_filter) params.set('content_filter', content_filter);
+    if (content_filter_not) params.set('content_filter_not', content_filter_not);
     if (preview_length !== undefined) params.set('preview_length', String(preview_length));
     const qs = params.toString();
     return textResult(await apiRequest('GET', `/reference/${index}/lorebook${qs ? '?' + qs : ''}`));
@@ -1107,8 +1157,13 @@ server.tool(
   {
     index: z.number().describe('참고 파일 인덱스'),
     indices: z.array(z.number()).max(50).describe('읽을 로어북 항목 인덱스 배열 (최대 50개)'),
+    fields: z
+      .array(z.string())
+      .optional()
+      .describe('반환할 필드 목록 (예: ["content", "comment"]). 미지정 시 전체 필드 반환'),
   },
-  async ({ index, indices }) => textResult(await apiRequest('POST', `/reference/${index}/lorebook/batch`, { indices })),
+  async ({ index, indices, fields }) =>
+    textResult(await apiRequest('POST', `/reference/${index}/lorebook/batch`, { indices, fields })),
 );
 
 server.tool(
