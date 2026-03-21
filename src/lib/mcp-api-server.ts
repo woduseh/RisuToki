@@ -3556,6 +3556,346 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /lorebook/export — export lorebook to files
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'export' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lorebook/export', broadcastStatus);
+        if (!body) return;
+
+        const targetDir = typeof body.target_dir === 'string' ? body.target_dir.trim() : '';
+        if (!targetDir) {
+          return mcpError(res, 400, {
+            action: 'export-lorebook',
+            message: 'target_dir is required.',
+            target: 'lorebook',
+          });
+        }
+
+        const format = body.format === 'json' ? 'json' : 'md';
+        const groupByFolder = body.group_by_folder !== false;
+        const filter = typeof body.filter === 'string' ? body.filter : undefined;
+        const folder = typeof body.folder === 'string' ? body.folder : undefined;
+
+        // Filter entries
+        let entries = [...((currentData.lorebook as Record<string, unknown>[]) || [])];
+        if (filter) {
+          const lowerFilter = filter.toLowerCase();
+          entries = entries.filter((e) => {
+            const comment = String(e.comment || '').toLowerCase();
+            const key = String(e.key || '').toLowerCase();
+            return comment.includes(lowerFilter) || key.includes(lowerFilter) || e.mode === 'folder';
+          });
+        }
+        if (folder) {
+          const folderId = folder.startsWith('folder:') ? folder : `folder:${folder}`;
+          entries = entries.filter((e) => e.folder === folderId || e.mode === 'folder');
+        }
+
+        const nonFolderCount = entries.filter((e) => e.mode !== 'folder').length;
+        if (nonFolderCount === 0) {
+          return mcpError(res, 400, {
+            action: 'export-lorebook',
+            message: 'No entries to export.',
+            target: 'lorebook',
+          });
+        }
+
+        // User confirmation
+        const confirmMsg =
+          `AI 어시스턴트가 로어북 ${nonFolderCount}개 항목을 내보내려 합니다.\n\n` +
+          `형식: ${format.toUpperCase()}\n` +
+          `경로: ${targetDir}`;
+        const allowed = await deps.askRendererConfirm('MCP 내보내기 요청', confirmMsg);
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'export-lorebook',
+            message: 'User rejected export.',
+            target: 'lorebook',
+          });
+        }
+
+        try {
+          // Lazy-load lorebook-io
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const lorebookIo = require('./lorebook-io') as typeof import('./lorebook-io');
+
+          const options = {
+            format: format as 'md' | 'json',
+            groupByFolder,
+            includeMetadata: true,
+            sourceName: String((currentData as Record<string, unknown>).name || 'unknown'),
+          };
+
+          const result =
+            format === 'json'
+              ? await lorebookIo.exportToJson(entries, targetDir, options)
+              : await lorebookIo.exportToMarkdown(entries, targetDir, options);
+
+          broadcastStatus({
+            type: 'success',
+            action: 'export-lorebook',
+            message: `Exported ${result.exportedCount} entries to ${format.toUpperCase()}.`,
+          });
+
+          return jsonRes(res, result);
+        } catch (err: unknown) {
+          return mcpError(res, 500, {
+            action: 'export-lorebook',
+            message: `Export failed: ${err instanceof Error ? err.message : String(err)}`,
+            target: 'lorebook',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lorebook/import — import lorebook from files
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'import' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lorebook/import', broadcastStatus);
+        if (!body) return;
+
+        const format = body.format === 'json' ? 'json' : 'md';
+        const sourcePath = typeof body.source_path === 'string' ? body.source_path.trim() : '';
+        const sourceDir = typeof body.source_dir === 'string' ? body.source_dir.trim() : '';
+        const source = format === 'json' ? sourcePath : sourceDir;
+
+        if (!source) {
+          return mcpError(res, 400, {
+            action: 'import-lorebook',
+            message:
+              format === 'json' ? 'source_path is required for JSON format.' : 'source_dir is required for MD format.',
+            target: 'lorebook',
+          });
+        }
+
+        const createFolders = body.create_folders !== false;
+        const conflict = ['skip', 'overwrite', 'rename'].includes(body.conflict)
+          ? (body.conflict as 'skip' | 'overwrite' | 'rename')
+          : 'skip';
+        const dryRun = body.dry_run === true;
+
+        try {
+          // Lazy-load lorebook-io
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const lorebookIo = require('./lorebook-io') as typeof import('./lorebook-io');
+
+          // Parse import entries
+          const importEntries =
+            format === 'json' ? await lorebookIo.importFromJson(source) : await lorebookIo.importFromMarkdown(source);
+
+          if (importEntries.length === 0) {
+            return jsonRes(res, {
+              success: true,
+              totalFound: 0,
+              imported: 0,
+              message: 'No entries found to import.',
+            });
+          }
+
+          // Resolve conflicts
+          const existingEntries = (currentData.lorebook as Record<string, unknown>[]) || [];
+          const existingFolderMap = lorebookIo.buildFolderMap(existingEntries);
+          const resolution = lorebookIo.resolveImportConflicts(importEntries, existingEntries, existingFolderMap, {
+            conflict,
+            createFolders,
+          });
+
+          // Dry run: return preview without changes
+          if (dryRun) {
+            return jsonRes(res, {
+              success: true,
+              dryRun: true,
+              totalFound: importEntries.length,
+              toAdd: resolution.toAdd.length,
+              toOverwrite: resolution.toOverwrite.length,
+              skipped: resolution.skipped.length,
+              renamed: resolution.renamed.length,
+              newFolders: resolution.newFolders,
+              skippedEntries: resolution.skipped,
+              renamedEntries: resolution.renamed,
+            });
+          }
+
+          // User confirmation
+          const summary = [
+            `AI 어시스턴트가 로어북에 항목을 가져오려 합니다.`,
+            ``,
+            `파일 수: ${importEntries.length}개`,
+            `추가: ${resolution.toAdd.length}개`,
+            resolution.toOverwrite.length > 0 ? `덮어쓰기: ${resolution.toOverwrite.length}개` : '',
+            resolution.skipped.length > 0 ? `건너뛰기: ${resolution.skipped.length}개` : '',
+            resolution.renamed.length > 0 ? `이름 변경: ${resolution.renamed.length}개` : '',
+            resolution.newFolders.length > 0 ? `새 폴더: ${resolution.newFolders.join(', ')}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n');
+
+          const allowed = await deps.askRendererConfirm('MCP 가져오기 요청', summary);
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'import-lorebook',
+              message: 'User rejected import.',
+              target: 'lorebook',
+            });
+          }
+
+          // Execute import
+          const errors: string[] = [];
+          let foldersCreated = 0;
+
+          // 1. Create new folders first
+          const newFolderIds = new Map<string, string>(); // folderName → folderId
+          for (const folderName of resolution.newFolders) {
+            const folderEntry: Record<string, unknown> = {
+              comment: folderName,
+              key: '',
+              content: '',
+              mode: 'folder',
+              id: crypto.randomUUID(),
+              insertorder: 100,
+            };
+            (currentData.lorebook as unknown[]).push(folderEntry);
+            newFolderIds.set(folderName, `folder:${folderEntry.id as string}`);
+            foldersCreated++;
+          }
+
+          // Merge new folder IDs with existing
+          const allFolderByName = new Map<string, string>();
+          for (const [id, name] of existingFolderMap) {
+            allFolderByName.set(name, id);
+          }
+          for (const [name, id] of newFolderIds) {
+            allFolderByName.set(name, id);
+          }
+
+          // 2. Add new entries
+          for (const entry of resolution.toAdd) {
+            // Find folder ID from the import entry's folderName
+            const importEntry = importEntries.find((ie) => ie.data === entry || ie.data.comment === entry.comment);
+            if (importEntry?.folderName) {
+              const folderId = allFolderByName.get(importEntry.folderName);
+              if (folderId) {
+                entry.folder = folderId;
+              }
+            }
+            (currentData.lorebook as unknown[]).push(entry);
+          }
+
+          // 3. Overwrite existing entries
+          for (const { index, data } of resolution.toOverwrite) {
+            const existing = (currentData.lorebook as Record<string, unknown>[])[index];
+            if (existing) {
+              for (const [key, value] of Object.entries(data)) {
+                if (LOREBOOK_ALLOWED_FIELDS.has(key)) {
+                  existing[key] = value;
+                }
+              }
+            }
+          }
+
+          // Broadcast update
+          deps.broadcastToAll('data-updated', {
+            lorebook: currentData.lorebook,
+          });
+
+          broadcastStatus({
+            type: 'success',
+            action: 'import-lorebook',
+            message: `Imported ${resolution.toAdd.length + resolution.toOverwrite.length} entries.`,
+          });
+
+          return jsonRes(res, {
+            success: true,
+            totalFound: importEntries.length,
+            imported: resolution.toAdd.length,
+            overwritten: resolution.toOverwrite.length,
+            skipped: resolution.skipped.length,
+            renamed: resolution.renamed.length,
+            foldersCreated,
+            errors,
+          });
+        } catch (err: unknown) {
+          return mcpError(res, 500, {
+            action: 'import-lorebook',
+            message: `Import failed: ${err instanceof Error ? err.message : String(err)}`,
+            target: 'lorebook',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /field/export — export a field to a file
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] === 'export' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'field/export', broadcastStatus);
+        if (!body) return;
+
+        const field = typeof body.field === 'string' ? body.field.trim() : '';
+        const filePath = typeof body.file_path === 'string' ? body.file_path.trim() : '';
+        const format = body.format === 'md' ? 'md' : 'txt';
+
+        if (!field) {
+          return mcpError(res, 400, {
+            action: 'export-field',
+            message: 'field is required.',
+            target: 'field',
+          });
+        }
+        if (!filePath) {
+          return mcpError(res, 400, {
+            action: 'export-field',
+            message: 'file_path is required.',
+            target: 'field',
+          });
+        }
+
+        const value = (currentData as Record<string, unknown>)[field];
+        if (value === undefined || value === null) {
+          return mcpError(res, 404, {
+            action: 'export-field',
+            message: `Field "${field}" not found or empty.`,
+            target: 'field',
+          });
+        }
+
+        const content = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+
+        // User confirmation
+        const confirmMsg =
+          `AI 어시스턴트가 "${field}" 필드를 파일로 내보내려 합니다.\n\n` +
+          `경로: ${filePath}\n` +
+          `크기: ${Buffer.byteLength(content, 'utf-8').toLocaleString()} bytes`;
+        const allowed = await deps.askRendererConfirm('MCP 필드 내보내기', confirmMsg);
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'export-field',
+            message: 'User rejected export.',
+            target: 'field',
+          });
+        }
+
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const lorebookIo = require('./lorebook-io') as typeof import('./lorebook-io');
+          const result = await lorebookIo.exportFieldToFile(field, content, filePath, format);
+
+          broadcastStatus({
+            type: 'success',
+            action: 'export-field',
+            message: `Exported "${field}" to ${filePath}.`,
+          });
+
+          return jsonRes(res, result);
+        } catch (err: unknown) {
+          return mcpError(res, 500, {
+            action: 'export-field',
+            message: `Export failed: ${err instanceof Error ? err.message : String(err)}`,
+            target: 'field',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
       // GET /risum-assets — list embedded risum module assets
       // ----------------------------------------------------------------
       if (parts[0] === 'risum-assets' && !parts[1] && req.method === 'GET') {

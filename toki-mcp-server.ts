@@ -1277,6 +1277,69 @@ server.tool(
   },
 );
 
+// ===== Lorebook Export/Import =====
+
+server.tool(
+  'export_lorebook_to_files',
+  '로어북 항목을 파일 시스템으로 내보냅니다. MD 형식: 항목당 1개 파일 + 폴더 구조를 디렉토리로 매핑. JSON 형식: 단일 lorebook.json 파일. 사용자 확인 필요.',
+  {
+    target_dir: z.string().describe('내보낼 디렉토리 경로 (절대 경로 권장)'),
+    format: z.enum(['md', 'json']).optional().describe('내보내기 형식 (기본: md). md=항목당 개별 파일, json=단일 파일'),
+    group_by_folder: z.boolean().optional().describe('폴더별로 하위 디렉토리 생성 (기본: true, md 형식만 해당)'),
+    filter: z.string().optional().describe('comment/key 검색 필터 (선택)'),
+    folder: z.string().optional().describe('특정 폴더만 내보내기 (folder UUID)'),
+  },
+  async ({ target_dir, format, group_by_folder, filter, folder }) => {
+    const body: Record<string, unknown> = { target_dir };
+    if (format) body.format = format;
+    if (group_by_folder !== undefined) body.group_by_folder = group_by_folder;
+    if (filter) body.filter = filter;
+    if (folder) body.folder = folder;
+    return textResult(await apiRequest('POST', '/lorebook/export', body));
+  },
+);
+
+server.tool(
+  'import_lorebook_from_files',
+  '파일 시스템에서 로어북 항목을 가져옵니다. MD 형식: 디렉토리의 .md 파일에서 YAML frontmatter + content 파싱. JSON 형식: lorebook.json 파일에서 가져오기. dry_run으로 미리보기 가능. 사용자 확인 필요.',
+  {
+    source_dir: z.string().optional().describe('MD 형식 소스 디렉토리 (md 형식일 때 필수)'),
+    source_path: z.string().optional().describe('JSON 파일 경로 (json 형식일 때 필수)'),
+    format: z.enum(['md', 'json']).optional().describe('가져오기 형식 (기본: md)'),
+    create_folders: z.boolean().optional().describe('디렉토리 구조에서 로어북 폴더 자동 생성 (기본: true)'),
+    conflict: z
+      .enum(['skip', 'overwrite', 'rename'])
+      .optional()
+      .describe('동일 comment 충돌 시 처리 (기본: skip). skip=건너뛰기, overwrite=덮어쓰기, rename=이름 변경'),
+    dry_run: z.boolean().optional().describe('미리보기만 (변경 없이 결과 확인, 기본: false)'),
+  },
+  async ({ source_dir, source_path, format, create_folders, conflict, dry_run }) => {
+    const body: Record<string, unknown> = {};
+    if (source_dir) body.source_dir = source_dir;
+    if (source_path) body.source_path = source_path;
+    if (format) body.format = format;
+    if (create_folders !== undefined) body.create_folders = create_folders;
+    if (conflict) body.conflict = conflict;
+    if (dry_run !== undefined) body.dry_run = dry_run;
+    return textResult(await apiRequest('POST', '/lorebook/import', body));
+  },
+);
+
+server.tool(
+  'export_field_to_file',
+  '필드 내용을 파일로 내보냅니다. description, globalNote, firstMessage 등 텍스트 필드를 로컬 파일로 저장합니다. 사용자 확인 필요.',
+  {
+    field: z.string().describe('내보낼 필드 이름 (예: description, globalNote, firstMessage)'),
+    file_path: z.string().describe('저장할 파일 경로 (절대 경로 권장)'),
+    format: z.enum(['md', 'txt']).optional().describe('파일 형식 (기본: txt). md=마크다운 헤더 포함'),
+  },
+  async ({ field, file_path, format }) => {
+    const body: Record<string, unknown> = { field, file_path };
+    if (format) body.format = format;
+    return textResult(await apiRequest('POST', '/field/export', body));
+  },
+);
+
 // ===== Skill Tools =====
 
 server.tool(

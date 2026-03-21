@@ -125,6 +125,14 @@ css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
 | `diff_lorebook(index, refIndex, refEntryIndex)`                                          | 현재 파일↔참고 자료 로어북 항목 비교. 필드별 차이점 + content 라인 단위 변경 사항 반환                                                                                                                 |
 | `validate_lorebook_keys()`                                                               | 로어북 키의 일반적 문제 검증: 후행/선행 쉼표, 불필요한 공백, 빈 세그먼트, 중복 키 탐지                                                                                                                 |
 
+### 로어북 파일 시스템 내보내기/가져오기 (Lorebook Export/Import)
+
+| 도구                                                                                | 설명                                                                                                                                                               |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `export_lorebook_to_files(target_dir, format?, group_by_folder?, filter?, folder?)` | 로어북 항목을 로컬 파일로 내보내기. `format: "md"`(항목당 1파일, YAML frontmatter) 또는 `"json"`(단일 파일). 폴더 구조를 디렉토리로 매핑. 사용자 확인 필요         |
+| `import_lorebook_from_files(source, format?, conflict?, create_folders?, dry_run?)` | 로컬 파일에서 로어북 항목 가져오기. `conflict: "skip"\|"overwrite"\|"rename"`. `dry_run: true`로 미리보기. 디렉토리 구조 → 로어북 폴더 자동 생성. 사용자 확인 필요 |
+| `export_field_to_file(field, file_path, format?)`                                   | 임의 필드(description, globalNote 등)를 로컬 파일로 직접 저장. `format: "md"\|"txt"`. 사용자 확인 필요                                                             |
+
 ### 정규식 (Regex)
 
 | 도구                       | 설명                           |

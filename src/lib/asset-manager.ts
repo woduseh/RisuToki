@@ -1,4 +1,5 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -337,6 +338,168 @@ export function initAssetManager(d: AssetManagerDeps): void {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       };
+    }
+  });
+
+  // Export lorebook to files (UI dialog)
+  ipcMain.handle('export-lorebook', async (_, opts?: { format?: 'md' | 'json'; groupByFolder?: boolean }) => {
+    const data = deps.getCurrentData();
+    if (!data || !data.lorebook) {
+      return { ok: false, error: 'No lorebook data' };
+    }
+
+    const mainWin = deps.getMainWindow();
+    if (!mainWin) return { ok: false, error: 'No window' };
+
+    const result = await dialog.showOpenDialog(mainWin, {
+      title: '로어북 내보내기 폴더 선택',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, error: 'Cancelled' };
+
+    try {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const mod = require('./lorebook-io') as typeof import('./lorebook-io');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const format = opts?.format || 'md';
+      const exportOpts = {
+        format: format as 'md' | 'json',
+        groupByFolder: opts?.groupByFolder !== false,
+        includeMetadata: true,
+        sourceName: String(data.name || 'unknown'),
+      };
+      const exportResult =
+        format === 'json'
+          ? await mod.exportToJson(data.lorebook, result.filePaths[0], exportOpts)
+          : await mod.exportToMarkdown(data.lorebook, result.filePaths[0], exportOpts);
+      return { ok: true, ...exportResult };
+    } catch (err: unknown) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // Import lorebook from files (UI dialog)
+  ipcMain.handle(
+    'import-lorebook',
+    async (
+      _,
+      opts?: { format?: 'md' | 'json'; conflict?: 'skip' | 'overwrite' | 'rename'; createFolders?: boolean },
+    ) => {
+      const data = deps.getCurrentData();
+      if (!data) return { ok: false, error: 'No file open' };
+
+      const mainWin = deps.getMainWindow();
+      if (!mainWin) return { ok: false, error: 'No window' };
+
+      const format = opts?.format || 'md';
+      let sourcePath: string;
+
+      if (format === 'json') {
+        const result = await dialog.showOpenDialog(mainWin, {
+          title: '로어북 JSON 파일 선택',
+          filters: [{ name: 'JSON', extensions: ['json'] }],
+          properties: ['openFile'],
+        });
+        if (result.canceled || !result.filePaths[0]) return { ok: false, error: 'Cancelled' };
+        sourcePath = result.filePaths[0];
+      } else {
+        const result = await dialog.showOpenDialog(mainWin, {
+          title: '로어북 마크다운 폴더 선택',
+          properties: ['openDirectory'],
+        });
+        if (result.canceled || !result.filePaths[0]) return { ok: false, error: 'Cancelled' };
+        sourcePath = result.filePaths[0];
+      }
+
+      try {
+        /* eslint-disable @typescript-eslint/no-require-imports */
+        const mod = require('./lorebook-io') as typeof import('./lorebook-io');
+        /* eslint-enable @typescript-eslint/no-require-imports */
+
+        const importEntries =
+          format === 'json' ? await mod.importFromJson(sourcePath) : await mod.importFromMarkdown(sourcePath);
+
+        if (importEntries.length === 0) return { ok: true, imported: 0, message: 'No entries found' };
+
+        if (!data.lorebook) data.lorebook = [];
+        const existingFolderMap = mod.buildFolderMap(data.lorebook);
+        const resolution = mod.resolveImportConflicts(importEntries, data.lorebook, existingFolderMap, {
+          conflict: opts?.conflict || 'skip',
+          createFolders: opts?.createFolders !== false,
+        });
+
+        // Create new folders
+        const allFolderByName = new Map<string, string>();
+        for (const [id, name] of existingFolderMap) allFolderByName.set(name, id);
+        for (const folderName of resolution.newFolders) {
+          const folderId = crypto.randomUUID();
+          data.lorebook.push({
+            comment: folderName,
+            key: '',
+            content: '',
+            mode: 'folder',
+            id: folderId,
+            insertorder: 100,
+          });
+          allFolderByName.set(folderName, `folder:${folderId}`);
+        }
+
+        // Add entries with folder assignment
+        for (const entry of resolution.toAdd) {
+          const ie = importEntries.find((x) => x.data === entry || x.data.comment === entry.comment);
+          if (ie?.folderName) {
+            const fId = allFolderByName.get(ie.folderName);
+            if (fId) entry.folder = fId;
+          }
+          data.lorebook.push(entry);
+        }
+
+        // Overwrite existing
+        for (const { index, data: newData } of resolution.toOverwrite) {
+          Object.assign(data.lorebook[index], newData);
+        }
+
+        return {
+          ok: true,
+          imported: resolution.toAdd.length,
+          overwritten: resolution.toOverwrite.length,
+          skipped: resolution.skipped.length,
+          foldersCreated: resolution.newFolders.length,
+        };
+      } catch (err: unknown) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  );
+
+  // Export field to file (UI dialog)
+  ipcMain.handle('export-field', async (_, field: string, format?: 'md' | 'txt') => {
+    const data = deps.getCurrentData();
+    if (!data) return { ok: false, error: 'No file open' };
+
+    const value = (data as Record<string, unknown>)[field];
+    if (value === undefined || value === null) return { ok: false, error: `Field "${field}" not found` };
+
+    const mainWin = deps.getMainWindow();
+    if (!mainWin) return { ok: false, error: 'No window' };
+
+    const ext = format === 'md' ? 'md' : 'txt';
+    const result = await dialog.showSaveDialog(mainWin, {
+      title: `"${field}" 필드 내보내기`,
+      defaultPath: `${field}.${ext}`,
+      filters: [{ name: ext === 'md' ? 'Markdown' : 'Text', extensions: [ext] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, error: 'Cancelled' };
+
+    try {
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const mod = require('./lorebook-io') as typeof import('./lorebook-io');
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      const content = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+      const exportResult = await mod.exportFieldToFile(field, content, result.filePath, format || 'txt');
+      return { ok: true, ...exportResult };
+    } catch (err: unknown) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 

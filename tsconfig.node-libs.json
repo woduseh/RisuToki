@@ -22,6 +22,7 @@
     "src/lib/terminal-manager.ts",
     "src/lib/ipc-confirm.ts",
     "src/lib/image-compressor.ts",
+    "src/lib/lorebook-io.ts",
     "src/lib/data-serializer.ts",
     "src/lib/autosave-manager.ts",
     "src/lib/popout-manager.ts",

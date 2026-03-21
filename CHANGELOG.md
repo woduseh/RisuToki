@@ -9,6 +9,25 @@
 
 ---
 
+## [0.14.0] - 2026-03-22
+
+### 새 기능
+
+- **로어북 파일 시스템 내보내기/가져오기** — MCP 도구 + UI IPC로 로어북 데이터를 로컬 파일로 내보내고 다시 가져오기
+  - `export_lorebook_to_files` — MD(항목당 1파일 + 폴더 구조) 또는 JSON(단일 파일) 포맷 지원
+  - `import_lorebook_from_files` — MD/JSON 파일에서 로어북 항목 가져오기, dry_run 모드 + 충돌 해결(skip/overwrite/rename)
+  - `export_field_to_file` — 임의 필드(description, globalNote 등)를 로컬 파일로 직접 저장
+  - YAML frontmatter로 메타데이터(key, mode, insertorder 등) 보존
+  - 폴더 구조를 디렉토리로 매핑/복원 (`_unfiled/` 디렉토리로 미분류 항목)
+  - 경로 순회 차단 + 사용자 확인 팝업으로 보안 확보
+
+### 추가
+
+- `src/lib/lorebook-io.ts` — 로어북 내보내기/가져오기 코어 모듈
+- `src/lib/lorebook-io.test.ts` — 37개 단위 테스트
+
+---
+
 ## [0.13.0] - 2026-03-21
 
 ### 새 기능

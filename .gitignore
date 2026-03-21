@@ -30,6 +30,7 @@ src/lib/sync-server.js
 src/lib/terminal-manager.js
 src/lib/terminal-shell.js
 src/lib/image-compressor.js
+src/lib/lorebook-io.js
 /toki-mcp-server.js
 
 # Compiled test files (generated from .ts sources via tsconfig.node-libs.json)

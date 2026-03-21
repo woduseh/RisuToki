@@ -161,6 +161,16 @@ interface TokiAPI {
     quality?: number;
     recompressWebp?: boolean;
   }) => Promise<{ ok: boolean; stats?: unknown; error?: string }>;
+  exportLorebook: (opts?: {
+    format?: 'md' | 'json';
+    groupByFolder?: boolean;
+  }) => Promise<{ ok: boolean; exportedCount?: number; error?: string }>;
+  importLorebook: (opts?: {
+    format?: 'md' | 'json';
+    conflict?: 'skip' | 'overwrite' | 'rename';
+    createFolders?: boolean;
+  }) => Promise<{ ok: boolean; imported?: number; overwritten?: number; error?: string }>;
+  exportField: (field: string, format?: 'md' | 'txt') => Promise<{ ok: boolean; filePath?: string; error?: string }>;
   importJson: () => Promise<unknown[] | null>;
   autosaveFile: (updatedFields: Record<string, unknown>) => Promise<SaveResult>;
   cleanupAutosave: (customDir?: string) => Promise<boolean>;
