@@ -540,7 +540,7 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
 
 // ==================== MCP Server Setup ====================
 
-const server = new McpServer({ name: 'risutoki', version: '1.2.0' });
+const server = new McpServer({ name: 'risutoki', version: '1.2.1' });
 
 // ===== Field Tools =====
 
@@ -838,6 +838,38 @@ server.tool(
   '새 정규식 항목을 추가합니다. 사용자 확인 필요.',
   { data: z.record(z.string(), z.unknown()).describe('정규식 항목 데이터 (comment, type, find, replace, flag)') },
   async ({ data }) => textResult(await apiRequest('POST', '/regex/add', data as Record<string, unknown>)),
+);
+
+server.tool(
+  'replace_in_regex',
+  '정규식 항목의 find 또는 replace 필드에서 문자열 치환을 수행합니다. 대형 regex 필드를 전체 읽지 않고 서버에서 직접 처리합니다. regex: true + flags 옵션으로 정규식 지원. 사용자 확인 필요.',
+  {
+    index: z.number().describe('정규식 항목 인덱스'),
+    field: z.enum(['find', 'replace']).describe('편집할 필드: "find" (IN 패턴) 또는 "replace" (OUT 치환 텍스트)'),
+    find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
+    replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false)'),
+    flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+  },
+  async ({ index, field, find, replace, regex, flags }) =>
+    textResult(await apiRequest('POST', `/regex/${index}/replace`, { field, find, replace, regex, flags })),
+);
+
+server.tool(
+  'insert_in_regex',
+  '정규식 항목의 find 또는 replace 필드에 텍스트를 삽입합니다. 대형 regex 필드를 전체 읽지 않고 서버에서 직접 처리합니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('정규식 항목 인덱스'),
+    field: z.enum(['find', 'replace']).describe('편집할 필드: "find" (IN 패턴) 또는 "replace" (OUT 치환 텍스트)'),
+    content: z.string().describe('삽입할 텍스트'),
+    position: z
+      .enum(['end', 'start', 'after', 'before'])
+      .optional()
+      .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
+    anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+  },
+  async ({ index, field, content, position, anchor }) =>
+    textResult(await apiRequest('POST', `/regex/${index}/insert`, { field, content, position, anchor })),
 );
 
 server.tool(

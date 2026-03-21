@@ -2188,6 +2188,186 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /regex/:idx/replace — replace text in regex entry field
+      // ----------------------------------------------------------------
+      if (parts[0] === 'regex' && parts[1] && parts[2] === 'replace' && !parts[3] && req.method === 'POST') {
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= (currentData.regex || []).length) {
+          return mcpError(res, 400, {
+            action: 'replace regex field',
+            message: `Index ${idx} out of range`,
+            suggestion: 'list_regex 또는 GET /regex 로 유효한 index를 다시 확인하세요.',
+            target: `regex:${idx}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `regex/${idx}/replace`, broadcastStatus);
+        if (!body) return;
+        const targetField: string = body.field;
+        if (targetField !== 'find' && targetField !== 'replace') {
+          return jsonRes(res, { error: 'field must be "find" or "replace"' }, 400);
+        }
+        if (!body.find) {
+          return jsonRes(res, { error: 'Missing "find" (search string)' }, 400);
+        }
+        const entry = currentData.regex[idx];
+        const entryName: string = entry.comment || `regex_${idx}`;
+        const content: string = (targetField === 'find' ? entry.find || entry.in : entry.replace || entry.out) || '';
+        const findStr: string = body.find;
+        const replaceStr: string = body.replace !== undefined ? body.replace : '';
+        const useRegex = !!body.regex;
+        const flags: string = body.flags || 'g';
+
+        let newContent: string;
+        let matchCount: number;
+        if (useRegex) {
+          const re = new RegExp(findStr, flags);
+          const matches = content.match(re);
+          matchCount = matches ? matches.length : 0;
+          newContent = content.replace(re, replaceStr);
+        } else {
+          matchCount = 0;
+          let searchFrom = 0;
+          while (true) {
+            const pos = content.indexOf(findStr, searchFrom);
+            if (pos === -1) break;
+            matchCount++;
+            searchFrom = pos + findStr.length;
+          }
+          newContent = content.split(findStr).join(replaceStr);
+        }
+
+        if (matchCount === 0) {
+          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0 });
+        }
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 치환 요청',
+          `AI 어시스턴트가 정규식 항목 "${entryName}" (index ${idx})의 ${targetField} 필드에서 ${matchCount}건 치환하려 합니다.\n찾기: ${findStr.substring(0, 80)}${findStr.length > 80 ? '...' : ''}\n바꾸기: ${replaceStr.substring(0, 80)}${replaceStr.length > 80 ? '...' : ''}`,
+        );
+
+        if (allowed) {
+          if (targetField === 'find') {
+            entry.find = newContent;
+            entry.in = newContent;
+          } else {
+            entry.replace = newContent;
+            entry.out = newContent;
+          }
+          logMcpMutation('replace regex field', `regex:${idx}`, { entryName, field: targetField, matchCount });
+          deps.broadcastToAll('data-updated', 'regex', currentData.regex);
+          return jsonRes(res, {
+            success: true,
+            index: idx,
+            comment: entryName,
+            field: targetField,
+            matchCount,
+            oldSize: content.length,
+            newSize: newContent.length,
+          });
+        } else {
+          return mcpError(res, 403, {
+            action: 'replace regex field',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 치환 요청을 허용한 뒤 다시 시도하세요.',
+            target: `regex:${idx}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /regex/:idx/insert — insert text into regex entry field
+      // ----------------------------------------------------------------
+      if (parts[0] === 'regex' && parts[1] && parts[2] === 'insert' && !parts[3] && req.method === 'POST') {
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= (currentData.regex || []).length) {
+          return mcpError(res, 400, {
+            action: 'insert regex field',
+            message: `Index ${idx} out of range`,
+            suggestion: 'list_regex 또는 GET /regex 로 유효한 index를 다시 확인하세요.',
+            target: `regex:${idx}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `regex/${idx}/insert`, broadcastStatus);
+        if (!body) return;
+        const targetField: string = body.field;
+        if (targetField !== 'find' && targetField !== 'replace') {
+          return jsonRes(res, { error: 'field must be "find" or "replace"' }, 400);
+        }
+        if (body.content === undefined) {
+          return jsonRes(res, { error: 'Missing "content"' }, 400);
+        }
+        const entry = currentData.regex[idx];
+        const entryName: string = entry.comment || `regex_${idx}`;
+        const oldContent: string = (targetField === 'find' ? entry.find || entry.in : entry.replace || entry.out) || '';
+        let newContent: string;
+        const position: string = body.position || 'end';
+
+        if (position === 'end') {
+          newContent = oldContent + body.content;
+        } else if (position === 'start') {
+          newContent = body.content + oldContent;
+        } else if ((position === 'after' || position === 'before') && body.anchor) {
+          const anchorPos = oldContent.indexOf(body.anchor);
+          if (anchorPos === -1) {
+            return jsonRes(res, {
+              success: false,
+              message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+            });
+          }
+          if (position === 'after') {
+            const insertAt = anchorPos + body.anchor.length;
+            newContent = oldContent.slice(0, insertAt) + body.content + oldContent.slice(insertAt);
+          } else {
+            newContent = oldContent.slice(0, anchorPos) + body.content + oldContent.slice(anchorPos);
+          }
+        } else {
+          return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
+        }
+
+        const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 삽입 요청',
+          `AI 어시스턴트가 정규식 항목 "${entryName}" (index ${idx})의 ${targetField} 필드에 내용을 삽입하려 합니다.\n위치: ${position}${body.anchor ? ' "' + body.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
+        );
+
+        if (allowed) {
+          if (targetField === 'find') {
+            entry.find = newContent;
+            entry.in = newContent;
+          } else {
+            entry.replace = newContent;
+            entry.out = newContent;
+          }
+          logMcpMutation('insert regex field', `regex:${idx}`, {
+            entryName,
+            field: targetField,
+            position,
+            oldSize: oldContent.length,
+            newSize: newContent.length,
+          });
+          deps.broadcastToAll('data-updated', 'regex', currentData.regex);
+          return jsonRes(res, {
+            success: true,
+            index: idx,
+            comment: entryName,
+            field: targetField,
+            position,
+            oldSize: oldContent.length,
+            newSize: newContent.length,
+          });
+        } else {
+          return mcpError(res, 403, {
+            action: 'insert regex field',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삽입 요청을 허용한 뒤 다시 시도하세요.',
+            target: `regex:${idx}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
       // POST /regex/:idx/delete
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && parts[2] === 'delete' && req.method === 'POST') {

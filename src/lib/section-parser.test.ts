@@ -124,12 +124,26 @@ describe('detectCssSectionInline', () => {
     expect(detectCssSectionInline('/* ===== layout ===== */')).toBe('layout');
   });
 
+  it('detects medium-length equals (10)', () => {
+    expect(detectCssSectionInline('/* ========== theme ========== */')).toBe('theme');
+  });
+
   it('returns null for ordinary comments', () => {
     expect(detectCssSectionInline('/* normal comment */')).toBeNull();
   });
 
   it('returns null for non-comment lines', () => {
     expect(detectCssSectionInline('.class { color: red; }')).toBeNull();
+  });
+
+  it('returns null for decorative comments with long equals (28+)', () => {
+    expect(
+      detectCssSectionInline('/* ============================ Section Title ============================ */'),
+    ).toBeNull();
+  });
+
+  it('returns null for pure decorative separator without name', () => {
+    expect(detectCssSectionInline('/* ======================================== */')).toBeNull();
   });
 });
 
@@ -212,6 +226,21 @@ describe('parseCssSections', () => {
     const result = parseCssSections(css);
     expect(result.prefix).toBe('');
     expect(result.suffix).toBe('');
+  });
+
+  it('does not split on decorative comments with long equals', () => {
+    const css = [
+      '<style>',
+      '/* ===== main ===== */',
+      '.a { color: red; }',
+      '/* ============================ decorative ============================ */',
+      '.b { color: blue; }',
+      '</style>',
+    ].join('\n');
+    const result = parseCssSections(css);
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0].name).toBe('main');
+    expect(result.sections[0].content).toContain('.b { color: blue; }');
   });
 });
 

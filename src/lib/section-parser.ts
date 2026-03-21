@@ -62,13 +62,13 @@ export function parseLuaSections(luaCode: string): Section[] {
 
       if (sectionName === '') {
         // Standalone separator — look at next line for a comment-based name
-        const nextLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+        const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
         const commentMatch = nextLine.match(/^--\s*(.+)$/);
         if (commentMatch && detectLuaSection(nextLine) === null) {
           currentName = commentMatch[1].trim();
           i++; // skip the name line (it becomes part of the section header)
           // Also skip closing separator if present: -- ====\n-- name\n-- ====
-          const closingLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+          const closingLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
           if (detectLuaSection(closingLine) !== null) {
             i++; // skip the closing separator
           }
@@ -78,7 +78,7 @@ export function parseLuaSections(luaCode: string): Section[] {
       } else {
         // Inline name: -- ===== name =====
         // Also skip closing separator if next line is one
-        const nextLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+        const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
         if (nextLine && detectLuaSection(nextLine) === '') {
           i++; // skip redundant closing separator
         }
@@ -115,9 +115,7 @@ export function parseLuaSections(luaCode: string): Section[] {
 }
 
 export function combineLuaSections(sections: Section[]): string {
-  return sections
-    .map(s => `-- ===== ${s.name} =====\n${s.content}`)
-    .join('\n\n');
+  return sections.map((s) => `-- ===== ${s.name} =====\n${s.content}`).join('\n\n');
 }
 
 // --- CSS Sections ---
@@ -132,11 +130,12 @@ export function detectCssSectionInline(line: string): string | null {
   const trimmed = line.trim();
   if (!trimmed.startsWith('/*') || !trimmed.endsWith('*/')) return null;
   const inner = trimmed.slice(2, -2).trim();
-  const eqGroups = inner.match(/={3,}/g);
+  // Each = group must be 3–15 chars to distinguish section markers from decorative comments
+  const eqGroups = inner.match(/={3,15}/g);
   if (!eqGroups) return null;
   const totalEq = eqGroups.reduce((sum, m) => sum + m.length, 0);
-  if (totalEq < 6) return null;
-  const inlineMatch = inner.match(/^={3,}\s+(.+?)\s+={3,}$/);
+  if (totalEq < 6 || totalEq > 30) return null;
+  const inlineMatch = inner.match(/^={3,15}\s+(.+?)\s+={3,15}$/);
   if (inlineMatch) return inlineMatch[1].trim();
   return null;
 }
@@ -238,9 +237,7 @@ export function parseCssSections(cssCode: string): CssParseResult {
 
 export function combineCssSections(sections: Section[], prefix: string, suffix: string): string {
   const eq = '============================================================';
-  const body = sections.map(s =>
-    `/* ${eq}\n   ${s.name}\n   ${eq} */\n${s.content}`
-  ).join('\n\n');
+  const body = sections.map((s) => `/* ${eq}\n   ${s.name}\n   ${eq} */\n${s.content}`).join('\n\n');
   const effectivePrefix = prefix || '<style>\n';
   const effectiveSuffix = suffix || '\n</style>';
   return effectivePrefix + body + effectiveSuffix;
