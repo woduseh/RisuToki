@@ -66,6 +66,7 @@ lua 필드는 `-- ===== 섹션명 =====` 구분자로 여러 섹션으로 분할
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `list_lua`                                          | Lua 섹션 목록 (index, 이름, 크기)                                                                                     |
 | `read_lua(index)`                                   | 특정 인덱스의 Lua 섹션 코드 읽기                                                                                      |
+| `read_lua_batch(indices)`                           | 여러 Lua 섹션을 한 번에 읽기 (최대 20개)                                                                              |
 | `write_lua(index, content)`                         | 특정 인덱스의 Lua 섹션 전체 교체 (사용자 확인 필요)                                                                   |
 | `replace_in_lua(index, find, replace)`              | 섹션 내 문자열 치환 — 대용량 섹션도 전체를 읽지 않고 서버에서 직접 처리. `regex: true` + `flags` 옵션으로 정규식 지원 |
 | `insert_in_lua(index, content, position?, anchor?)` | 섹션에 코드 삽입. position: `end`(기본), `start`, `after`, `before`. after/before는 `anchor` 문자열 기준              |
@@ -100,19 +101,21 @@ css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `list_css`                                          | CSS 섹션 목록 (index, 이름, 크기)                                                                                     |
 | `read_css(index)`                                   | 특정 인덱스의 CSS 섹션 코드 읽기                                                                                      |
+| `read_css_batch(indices)`                           | 여러 CSS 섹션을 한 번에 읽기 (최대 20개)                                                                              |
 | `write_css(index, content)`                         | 특정 인덱스의 CSS 섹션 전체 교체 (사용자 확인 필요)                                                                   |
 | `replace_in_css(index, find, replace)`              | 섹션 내 문자열 치환 — 대용량 섹션도 전체를 읽지 않고 서버에서 직접 처리. `regex: true` + `flags` 옵션으로 정규식 지원 |
 | `insert_in_css(index, content, position?, anchor?)` | 섹션에 코드 삽입. position: `end`(기본), `start`, `after`, `before`. after/before는 `anchor` 문자열 기준              |
 
 ### 로어북 (Lorebook)
 
-| 도구                              | 설명                                                                                                                                        |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_lorebook(filter?, folder?)` | 로어북 항목 목록 (index, comment, key, 폴더, 활성화 상태, contentSize). 폴더 요약 포함. `folder`로 폴더별 필터, `filter`로 comment/key 검색 |
-| `read_lorebook(index)`            | 특정 인덱스의 로어북 항목 전체 데이터 읽기                                                                                                  |
-| `write_lorebook(index, data)`     | 특정 인덱스의 로어북 항목 수정 (부분 수정 가능)                                                                                             |
-| `add_lorebook(data)`              | 새 로어북 항목 추가                                                                                                                         |
-| `delete_lorebook(index)`          | 특정 인덱스의 로어북 항목 삭제                                                                                                              |
+| 도구                                                                | 설명                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_lorebook(filter?, folder?, content_filter?, preview_length?)` | 로어북 항목 목록 (index, comment, key, 폴더, 활성화 상태, contentSize, contentPreview). 폴더 요약 포함. `filter`로 comment/key 검색, `content_filter`로 본문 검색, `preview_length`로 미리보기 길이 조절 (기본 150, 0=비활성) |
+| `read_lorebook(index)`                                              | 특정 인덱스의 로어북 항목 전체 데이터 읽기                                                                                                                                                                                    |
+| `read_lorebook_batch(indices)`                                      | 여러 로어북 항목을 한 번에 읽기 (최대 50개). 유효하지 않은 인덱스는 null 반환                                                                                                                                                 |
+| `write_lorebook(index, data)`                                       | 특정 인덱스의 로어북 항목 수정 (부분 수정 가능)                                                                                                                                                                               |
+| `add_lorebook(data)`                                                | 새 로어북 항목 추가                                                                                                                                                                                                           |
+| `delete_lorebook(index)`                                            | 특정 인덱스의 로어북 항목 삭제                                                                                                                                                                                                |
 
 ### 정규식 (Regex)
 
@@ -154,16 +157,19 @@ triggerScripts 배열의 개별 트리거에 접근.
 
 ### 참고 자료 (References, 읽기 전용)
 
-| 도구                                         | 설명                                                                                                         |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `list_references`                            | 로드된 참고 자료 파일 목록                                                                                   |
-| `read_reference_field(index, field)`         | 참고 자료의 특정 필드 읽기. ⚠️ lorebook/lua/css는 전체를 반환하므로 아래 세부 도구 사용 권장                 |
-| `list_reference_lorebook(index, filter?)`    | 참고 자료의 로어북 항목 목록 (인덱스, 코멘트, 키, 활성화 상태, content 크기). filter로 comment/key 검색 가능 |
-| `read_reference_lorebook(index, entryIndex)` | 참고 자료의 로어북 항목 하나 읽기                                                                            |
-| `list_reference_lua(index)`                  | 참고 자료의 Lua 섹션 목록 (인덱스, 이름, 크기)                                                               |
-| `read_reference_lua(index, sectionIndex)`    | 참고 자료의 Lua 섹션 하나 읽기                                                                               |
-| `list_reference_css(index)`                  | 참고 자료의 CSS 섹션 목록 (인덱스, 이름, 크기)                                                               |
-| `read_reference_css(index, sectionIndex)`    | 참고 자료의 CSS 섹션 하나 읽기                                                                               |
+| 도구                                                                        | 설명                                                                                         |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `list_references`                                                           | 로드된 참고 자료 파일 목록                                                                   |
+| `read_reference_field(index, field)`                                        | 참고 자료의 특정 필드 읽기. ⚠️ lorebook/lua/css는 전체를 반환하므로 아래 세부 도구 사용 권장 |
+| `list_reference_lorebook(index, filter?, content_filter?, preview_length?)` | 참고 자료의 로어북 항목 목록. `content_filter`로 본문 검색, `preview_length`로 미리보기      |
+| `read_reference_lorebook(index, entryIndex)`                                | 참고 자료의 로어북 항목 하나 읽기                                                            |
+| `read_reference_lorebook_batch(index, indices)`                             | 참고 자료의 여러 로어북 항목을 한 번에 읽기 (최대 50개)                                      |
+| `list_reference_lua(index)`                                                 | 참고 자료의 Lua 섹션 목록 (인덱스, 이름, 크기)                                               |
+| `read_reference_lua(index, sectionIndex)`                                   | 참고 자료의 Lua 섹션 하나 읽기                                                               |
+| `read_reference_lua_batch(index, indices)`                                  | 참고 자료의 여러 Lua 섹션을 한 번에 읽기 (최대 20개)                                         |
+| `list_reference_css(index)`                                                 | 참고 자료의 CSS 섹션 목록 (인덱스, 이름, 크기)                                               |
+| `read_reference_css(index, sectionIndex)`                                   | 참고 자료의 CSS 섹션 하나 읽기                                                               |
+| `read_reference_css_batch(index, indices)`                                  | 참고 자료의 여러 CSS 섹션을 한 번에 읽기 (최대 20개)                                         |
 
 ### 스킬 문서 (Skills, 읽기 전용)
 
@@ -183,6 +189,7 @@ CBS 문법, Lua API, 로어북, 정규식, HTML/CSS, 트리거, 캐릭터 작성
 
 | 도구                                            | 설명                                                                   |
 | ----------------------------------------------- | ---------------------------------------------------------------------- |
+| `tag_db_status`                                 | 태그 DB 로딩 상태 진단 (loaded, tagCount, filePath, fileExists)        |
 | `validate_danbooru_tags(tags)`                  | 태그 목록 유효성 검증 + 무효 태그에 유사 태그 추천                     |
 | `search_danbooru_tags(query, category?)`        | 키워드/와일드카드로 태그 검색 (인기순 정렬)                            |
 | `get_popular_danbooru_tags(group_by_semantic?)` | 인기 태그 조회. `group_by_semantic=true`로 의미별 그룹 (hair, eyes 등) |

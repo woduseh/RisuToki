@@ -577,15 +577,19 @@ server.tool(
 
 server.tool(
   'list_lorebook',
-  '로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기, 폴더). 응답에 폴더 요약(folders)도 포함됩니다. 항목이 수백 개일 수 있으므로 folder 또는 filter 파라미터로 범위를 좁히세요.',
+  '로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기, 폴더, 미리보기). 응답에 폴더 요약(folders)도 포함됩니다. 항목이 수백 개일 수 있으므로 folder 또는 filter 파라미터로 범위를 좁히세요.',
   {
     filter: z.string().optional().describe('검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환'),
     folder: z.string().optional().describe('폴더 UUID로 필터 (예: "folder:xxxx" 또는 UUID만). 생략 시 전체 반환'),
+    content_filter: z.string().optional().describe('본문(content) 검색 키워드. 대소문자 무시. filter와 AND 결합'),
+    preview_length: z.number().optional().describe('content 미리보기 길이 (기본 150, 0=비활성, 최대 500)'),
   },
-  async ({ filter, folder }) => {
+  async ({ filter, folder, content_filter, preview_length }) => {
     const params = new URLSearchParams();
     if (filter) params.set('filter', filter);
     if (folder) params.set('folder', folder);
+    if (content_filter) params.set('content_filter', content_filter);
+    if (preview_length !== undefined) params.set('preview_length', String(preview_length));
     const qs = params.toString();
     return textResult(await apiRequest('GET', qs ? `/lorebook?${qs}` : '/lorebook'));
   },
@@ -596,6 +600,15 @@ server.tool(
   '특정 인덱스의 로어북 항목 전체 데이터를 읽습니다.',
   { index: z.number().describe('로어북 항목 인덱스') },
   async ({ index }) => textResult(await apiRequest('GET', `/lorebook/${index}`)),
+);
+
+server.tool(
+  'read_lorebook_batch',
+  '여러 로어북 항목을 한 번에 읽습니다. read_lorebook을 반복 호출하는 대신 이 도구를 사용하세요.',
+  {
+    indices: z.array(z.number()).max(50).describe('읽을 로어북 항목 인덱스 배열 (최대 50개)'),
+  },
+  async ({ indices }) => textResult(await apiRequest('POST', '/lorebook/batch', { indices })),
 );
 
 server.tool(
@@ -798,6 +811,15 @@ server.tool(
 );
 
 server.tool(
+  'read_lua_batch',
+  '여러 Lua 섹션을 한 번에 읽습니다. read_lua를 반복 호출하는 대신 이 도구를 사용하세요.',
+  {
+    indices: z.array(z.number()).max(20).describe('읽을 Lua 섹션 인덱스 배열 (최대 20개)'),
+  },
+  async ({ indices }) => textResult(await apiRequest('POST', '/lua/batch', { indices })),
+);
+
+server.tool(
   'write_lua',
   '특정 인덱스의 Lua 섹션 코드를 교체합니다. 사용자 확인 필요. 섹션 전체 코드를 content로 전달하세요.',
   {
@@ -861,6 +883,15 @@ server.tool(
   '특정 인덱스의 CSS 섹션 코드를 읽습니다. list_css로 섹션 목록을 먼저 확인하세요.',
   { index: z.number().describe('CSS 섹션 인덱스 (list_css 결과 참조)') },
   async ({ index }) => textResult(await apiRequest('GET', `/css-section/${index}`)),
+);
+
+server.tool(
+  'read_css_batch',
+  '여러 CSS 섹션을 한 번에 읽습니다. read_css를 반복 호출하는 대신 이 도구를 사용하세요.',
+  {
+    indices: z.array(z.number()).max(20).describe('읽을 CSS 섹션 인덱스 배열 (최대 20개)'),
+  },
+  async ({ indices }) => textResult(await apiRequest('POST', '/css-section/batch', { indices })),
 );
 
 server.tool(
@@ -934,16 +965,20 @@ server.tool(
 
 server.tool(
   'list_reference_lorebook',
-  '참고 자료 파일의 로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기, 폴더). filter 또는 folder로 범위를 좁히세요. read_reference_field("lorebook") 대신 이 도구를 사용하세요.',
+  '참고 자료 파일의 로어북 항목 목록을 확인합니다 (인덱스, 코멘트, 키, 활성화 상태, content 크기, 폴더, 미리보기). filter, folder, content_filter로 범위를 좁히세요. read_reference_field("lorebook") 대신 이 도구를 사용하세요.',
   {
     index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
     filter: z.string().optional().describe('검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환'),
     folder: z.string().optional().describe('폴더 UUID로 필터. 생략 시 전체 반환'),
+    content_filter: z.string().optional().describe('본문(content) 검색 키워드. 대소문자 무시. filter와 AND 결합'),
+    preview_length: z.number().optional().describe('content 미리보기 길이 (기본 150, 0=비활성, 최대 500)'),
   },
-  async ({ index, filter, folder }) => {
+  async ({ index, filter, folder, content_filter, preview_length }) => {
     const params = new URLSearchParams();
     if (filter) params.set('filter', filter);
     if (folder) params.set('folder', folder);
+    if (content_filter) params.set('content_filter', content_filter);
+    if (preview_length !== undefined) params.set('preview_length', String(preview_length));
     const qs = params.toString();
     return textResult(await apiRequest('GET', `/reference/${index}/lorebook${qs ? '?' + qs : ''}`));
   },
@@ -957,6 +992,16 @@ server.tool(
     entryIndex: z.number().describe('로어북 항목 인덱스 (list_reference_lorebook 결과 참조)'),
   },
   async ({ index, entryIndex }) => textResult(await apiRequest('GET', `/reference/${index}/lorebook/${entryIndex}`)),
+);
+
+server.tool(
+  'read_reference_lorebook_batch',
+  '참고 자료 파일의 여러 로어북 항목을 한 번에 읽습니다 (읽기 전용).',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    indices: z.array(z.number()).max(50).describe('읽을 로어북 항목 인덱스 배열 (최대 50개)'),
+  },
+  async ({ index, indices }) => textResult(await apiRequest('POST', `/reference/${index}/lorebook/batch`, { indices })),
 );
 
 server.tool(
@@ -977,6 +1022,16 @@ server.tool(
 );
 
 server.tool(
+  'read_reference_lua_batch',
+  '참고 자료 파일의 여러 Lua 섹션을 한 번에 읽습니다 (읽기 전용).',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    indices: z.array(z.number()).max(20).describe('읽을 Lua 섹션 인덱스 배열 (최대 20개)'),
+  },
+  async ({ index, indices }) => textResult(await apiRequest('POST', `/reference/${index}/lua/batch`, { indices })),
+);
+
+server.tool(
   'list_reference_css',
   '참고 자료 파일의 CSS 섹션 목록을 확인합니다 (인덱스, 이름, 크기). read_reference_field("css") 대신 이 도구를 사용하세요.',
   { index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)') },
@@ -991,6 +1046,16 @@ server.tool(
     sectionIndex: z.number().describe('CSS 섹션 인덱스 (list_reference_css 결과 참조)'),
   },
   async ({ index, sectionIndex }) => textResult(await apiRequest('GET', `/reference/${index}/css/${sectionIndex}`)),
+);
+
+server.tool(
+  'read_reference_css_batch',
+  '참고 자료 파일의 여러 CSS 섹션을 한 번에 읽습니다 (읽기 전용).',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    indices: z.array(z.number()).max(20).describe('읽을 CSS 섹션 인덱스 배열 (최대 20개)'),
+  },
+  async ({ index, indices }) => textResult(await apiRequest('POST', `/reference/${index}/css/batch`, { indices })),
 );
 
 // ===== Risum Asset Tools =====
@@ -1054,6 +1119,29 @@ server.tool(
 );
 
 // ===== Danbooru Tools (local — no apiRequest) =====
+
+server.tool(
+  'tag_db_status',
+  'Danbooru 태그 DB의 로딩 상태를 확인합니다. 태그 도구 사용 전 DB가 정상 로드되었는지 진단할 때 사용하세요.',
+  {},
+  async () => {
+    const tagFilePath = path.join(__dirname, 'resources', 'Danbooru Tag.txt');
+    const fileExists = fs.existsSync(tagFilePath);
+    return textResult({
+      loaded: tagsLoaded,
+      tagCount: tagMap.size,
+      filePath: tagFilePath,
+      fileExists,
+      ...(tagsLoaded
+        ? {}
+        : {
+            suggestion: fileExists
+              ? 'Tags file found but failed to parse. Check file format.'
+              : 'Tags file not found. Ensure resources/Danbooru Tag.txt is packaged.',
+          }),
+    });
+  },
+);
 
 server.tool(
   'validate_danbooru_tags',

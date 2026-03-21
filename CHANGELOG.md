@@ -9,6 +9,16 @@
 
 ---
 
+## [0.10.0] - 2026-03-21
+
+### 새 기능
+
+- **로어북 배치 읽기** (`read_lorebook_batch`) — 인덱스 배열로 최대 50개 로어북 항목을 한 번에 읽기. 참조 파일용 `read_reference_lorebook_batch`도 추가
+- **로어북 본문 검색** (`list_lorebook` `content_filter`) — 로어북 content 텍스트에서 키워드 검색 (대소문자 무시). 매칭 컨텍스트 ±50자 미리보기 포함. 참조 파일에도 동일 적용
+- **로어북 목록 미리보기** (`list_lorebook` `preview_length`) — 응답에 content 미리보기 포함 (기본 150자, 0~500 조절 가능)
+- **Lua/CSS 배치 읽기** (`read_lua_batch`, `read_css_batch`) — 최대 20개 섹션을 한 번에 읽기. 참조 파일용 `read_reference_lua_batch`, `read_reference_css_batch`도 추가
+- **태그 DB 상태 확인** (`tag_db_status`) — Danbooru 태그 DB 로딩 상태, 태그 수, 파일 경로 진단
+
 ## [0.9.10] - 2026-03-21
 
 ### 수정

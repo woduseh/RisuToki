@@ -778,15 +778,27 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           entryCount: info.entryCount,
         }));
 
-        let entries = rawEntries.map((e: any, i: number) => ({
-          index: i,
-          comment: e.comment || '',
-          key: e.key || '',
-          mode: e.mode || 'normal',
-          alwaysActive: !!e.alwaysActive,
-          contentSize: (e.content || '').length,
-          folder: e.folder || '',
-        }));
+        // Parse preview_length
+        const previewLengthParam = url.searchParams.get('preview_length');
+        const previewLength =
+          previewLengthParam !== null ? Math.min(Math.max(parseInt(previewLengthParam, 10) || 0, 0), 500) : 150;
+
+        let entries = rawEntries.map((e: any, i: number) => {
+          const content = e.content || '';
+          const entry: Record<string, unknown> = {
+            index: i,
+            comment: e.comment || '',
+            key: e.key || '',
+            mode: e.mode || 'normal',
+            alwaysActive: !!e.alwaysActive,
+            contentSize: content.length,
+            folder: e.folder || '',
+          };
+          if (previewLength > 0) {
+            entry.contentPreview = content.slice(0, previewLength) + (content.length > previewLength ? '…' : '');
+          }
+          return entry;
+        });
 
         // Filter by folder UUID
         const folderParam = url.searchParams.get('folder');
@@ -801,6 +813,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const q = filterParam.toLowerCase();
           entries = entries.filter((e: any) => e.comment.toLowerCase().includes(q) || e.key.toLowerCase().includes(q));
         }
+        // Filter by content keyword
+        const contentFilterParam = url.searchParams.get('content_filter');
+        if (contentFilterParam) {
+          const cq = contentFilterParam.toLowerCase();
+          entries = entries.filter((_e: any) => {
+            const content = (rawEntries[(_e as any).index]?.content || '').toLowerCase();
+            return content.includes(cq);
+          });
+          // Add match context preview for content_filter results
+          entries = entries.map((e: any) => {
+            const content = (rawEntries[e.index]?.content || '').toLowerCase();
+            const matchPos = content.indexOf(cq);
+            if (matchPos >= 0) {
+              const rawContent = rawEntries[e.index]?.content || '';
+              const start = Math.max(0, matchPos - 50);
+              const end = Math.min(rawContent.length, matchPos + cq.length + 50);
+              e.contentMatch =
+                (start > 0 ? '…' : '') + rawContent.slice(start, end) + (end < rawContent.length ? '…' : '');
+            }
+            return e;
+          });
+        }
         return jsonRes(res, { count: entries.length, folders, entries });
       }
 
@@ -813,6 +847,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return jsonRes(res, { error: `Index ${idx} out of range` }, 400);
         }
         return jsonRes(res, { index: idx, entry: currentData.lorebook[idx] });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lorebook/batch — batch read multiple entries
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'batch' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lorebook/batch', broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+        }
+        const MAX_BATCH = 50;
+        if (indices.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+        }
+        const lorebook = currentData.lorebook || [];
+        const entries = indices.map((idx: number) => {
+          if (typeof idx !== 'number' || idx < 0 || idx >= lorebook.length) return null;
+          return { index: idx, entry: lorebook[idx] };
+        });
+        return jsonRes(res, { count: entries.filter(Boolean).length, total: indices.length, entries });
       }
 
       // ----------------------------------------------------------------
@@ -1510,6 +1566,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /lua/batch — batch read Lua sections
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lua' && parts[1] === 'batch' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lua/batch', broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+        }
+        const MAX_BATCH = 20;
+        if (indices.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+        }
+        const sections = luaCache.get(currentData.lua);
+        const result = indices.map((idx: number) => {
+          if (typeof idx !== 'number' || idx < 0 || idx >= sections.length) return null;
+          return { index: idx, name: sections[idx].name, content: sections[idx].content };
+        });
+        return jsonRes(res, { count: result.filter(Boolean).length, total: indices.length, sections: result });
+      }
+
+      // ----------------------------------------------------------------
       // POST /lua/:idx — write Lua section
       // ----------------------------------------------------------------
       if (parts[0] === 'lua' && parts[1] && !parts[2] && req.method === 'POST') {
@@ -1768,6 +1846,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return jsonRes(res, { error: `CSS section index ${idx} out of range (0-${sections.length - 1})` }, 400);
         }
         return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /css-section/batch — batch read CSS sections
+      // ----------------------------------------------------------------
+      if (parts[0] === 'css-section' && parts[1] === 'batch' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'css-section/batch', broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+        }
+        const MAX_BATCH = 20;
+        if (indices.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+        }
+        const { sections } = cssCache.get(currentData.css);
+        const result = indices.map((idx: number) => {
+          if (typeof idx !== 'number' || idx < 0 || idx >= sections.length) return null;
+          return { index: idx, name: sections[idx].name, content: sections[idx].content };
+        });
+        return jsonRes(res, { count: result.filter(Boolean).length, total: indices.length, sections: result });
       }
 
       // ----------------------------------------------------------------
@@ -2043,15 +2143,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const ref = refFiles[idx];
         const lorebook = ref.data.lorebook || [];
-        let entries = lorebook.map((e: any, i: number) => ({
-          index: i,
-          comment: e.comment || '',
-          key: e.key || '',
-          mode: e.mode || 'normal',
-          alwaysActive: !!e.alwaysActive,
-          contentSize: (e.content || '').length,
-          folder: e.folder || '',
-        }));
+
+        // Parse preview_length
+        const previewLengthParam = url.searchParams.get('preview_length');
+        const previewLength =
+          previewLengthParam !== null ? Math.min(Math.max(parseInt(previewLengthParam, 10) || 0, 0), 500) : 150;
+
+        let entries = lorebook.map((e: any, i: number) => {
+          const content = e.content || '';
+          const entry: Record<string, unknown> = {
+            index: i,
+            comment: e.comment || '',
+            key: e.key || '',
+            mode: e.mode || 'normal',
+            alwaysActive: !!e.alwaysActive,
+            contentSize: content.length,
+            folder: e.folder || '',
+          };
+          if (previewLength > 0) {
+            entry.contentPreview = content.slice(0, previewLength) + (content.length > previewLength ? '…' : '');
+          }
+          return entry;
+        });
         // Filter by folder UUID
         const folderParam = url.searchParams.get('folder');
         if (folderParam) {
@@ -2063,7 +2176,68 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const q = filterParam.toLowerCase();
           entries = entries.filter((e: any) => e.comment.toLowerCase().includes(q) || e.key.toLowerCase().includes(q));
         }
+        // Filter by content keyword
+        const contentFilterParam = url.searchParams.get('content_filter');
+        if (contentFilterParam) {
+          const cq = contentFilterParam.toLowerCase();
+          entries = entries.filter((_e: any) => {
+            const content = (lorebook[(_e as any).index]?.content || '').toLowerCase();
+            return content.includes(cq);
+          });
+          // Add match context preview for content_filter results
+          entries = entries.map((e: any) => {
+            const content = (lorebook[e.index]?.content || '').toLowerCase();
+            const matchPos = content.indexOf(contentFilterParam.toLowerCase());
+            if (matchPos >= 0) {
+              const rawContent = lorebook[e.index]?.content || '';
+              const start = Math.max(0, matchPos - 50);
+              const end = Math.min(rawContent.length, matchPos + contentFilterParam.length + 50);
+              e.contentMatch =
+                (start > 0 ? '…' : '') + rawContent.slice(start, end) + (end < rawContent.length ? '…' : '');
+            }
+            return e;
+          });
+        }
         return jsonRes(res, { index: idx, fileName: ref.fileName, count: entries.length, entries });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /reference/:idx/lorebook/batch — batch read reference lorebook
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'lorebook' &&
+        parts[3] === 'batch' &&
+        req.method === 'POST'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const body = await readJsonBody(req, res, `reference/${idx}/lorebook/batch`, broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+        }
+        const MAX_BATCH = 50;
+        if (indices.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+        }
+        const lorebook = refFiles[idx].data.lorebook || [];
+        const entries = indices.map((entryIdx: number) => {
+          if (typeof entryIdx !== 'number' || entryIdx < 0 || entryIdx >= lorebook.length) return null;
+          return { index: entryIdx, entry: lorebook[entryIdx] };
+        });
+        return jsonRes(res, {
+          refIndex: idx,
+          fileName: refFiles[idx].fileName,
+          count: entries.filter(Boolean).length,
+          total: indices.length,
+          entries,
+        });
       }
 
       // ----------------------------------------------------------------
@@ -2109,6 +2283,40 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           contentSize: s.content.length,
         }));
         return jsonRes(res, { index: idx, fileName: ref.fileName, count: result.length, sections: result });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /reference/:idx/lua/batch — batch read reference Lua sections
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'lua' && parts[3] === 'batch' && req.method === 'POST') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const body = await readJsonBody(req, res, `reference/${idx}/lua/batch`, broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+        }
+        const MAX_BATCH = 20;
+        if (indices.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+        }
+        const luaCode = refFiles[idx].data.lua || '';
+        const sections = luaCode ? deps.parseLuaSections(luaCode) : [];
+        const result = indices.map((sIdx: number) => {
+          if (typeof sIdx !== 'number' || sIdx < 0 || sIdx >= sections.length) return null;
+          return { index: sIdx, name: sections[sIdx].name, content: sections[sIdx].content };
+        });
+        return jsonRes(res, {
+          refIndex: idx,
+          fileName: refFiles[idx].fileName,
+          count: result.filter(Boolean).length,
+          total: indices.length,
+          sections: result,
+        });
       }
 
       // ----------------------------------------------------------------
@@ -2161,6 +2369,42 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           contentSize: s.content.length,
         }));
         return jsonRes(res, { index: idx, fileName: ref.fileName, count: result.length, sections: result });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /reference/:idx/css/batch — batch read reference CSS sections
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'css' && parts[3] === 'batch' && req.method === 'POST') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const body = await readJsonBody(req, res, `reference/${idx}/css/batch`, broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+        }
+        const MAX_BATCH = 20;
+        if (indices.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+        }
+        const cssCode = refFiles[idx].data.css || '';
+        const cssResult = cssCode
+          ? deps.parseCssSections(cssCode)
+          : { sections: [] as Section[], prefix: '', suffix: '' };
+        const result = indices.map((sIdx: number) => {
+          if (typeof sIdx !== 'number' || sIdx < 0 || sIdx >= cssResult.sections.length) return null;
+          return { index: sIdx, name: cssResult.sections[sIdx].name, content: cssResult.sections[sIdx].content };
+        });
+        return jsonRes(res, {
+          refIndex: idx,
+          fileName: refFiles[idx].fileName,
+          count: result.filter(Boolean).length,
+          total: indices.length,
+          sections: result,
+        });
       }
 
       // ----------------------------------------------------------------
