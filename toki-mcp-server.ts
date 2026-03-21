@@ -157,6 +157,14 @@ function loadTags(): void {
   }
 }
 
+/** Ensure tag DB is loaded, retrying once if the initial startup load failed. */
+function ensureTagsLoaded(): void {
+  if (!tagsLoaded) {
+    loadTags();
+    if (!tagsLoaded) throw new Error('Tag database not loaded');
+  }
+}
+
 // Two-row DP Levenshtein: O(n) memory instead of O(m×n)
 function levenshtein(a: string, b: string): number {
   const m = a.length,
@@ -1058,7 +1066,7 @@ server.tool(
       .describe('If true, check Danbooru API for tags not found locally (default: true)'),
   },
   async ({ tags, online_fallback }) => {
-    if (!tagsLoaded) throw new Error('Tag database not loaded');
+    ensureTagsLoaded();
     const onlineFallback = online_fallback !== false;
     const results = await validateTags(tags, onlineFallback);
     const validCount = results.filter((r) => r.valid).length;
@@ -1079,7 +1087,7 @@ server.tool(
     limit: z.number().optional().describe('Max results (default: 20, max: 50)'),
   },
   async ({ query, category, limit }) => {
-    if (!tagsLoaded) throw new Error('Tag database not loaded');
+    ensureTagsLoaded();
     const effectiveLimit = Math.min(limit || 20, 50);
     const results = await searchWithOnline(query, category, effectiveLimit);
     return textResult({ query, count: results.length, tags: formatTags(results) });
@@ -1098,7 +1106,7 @@ server.tool(
       .describe('If true, returns tags grouped by semantic category (hair_color, eye_color, clothing, pose, etc.)'),
   },
   async ({ category, limit, group_by_semantic }) => {
-    if (!tagsLoaded) throw new Error('Tag database not loaded');
+    ensureTagsLoaded();
     if (group_by_semantic) {
       const groups = getPopularGrouped();
       return textResult({

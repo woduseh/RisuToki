@@ -1,6 +1,6 @@
 {
   "name": "risutoki",
-  "version": "0.9.9",
+  "version": "0.9.10",
   "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
   "main": "main.js",
   "scripts": {
@@ -114,13 +114,15 @@
       "src/**/*",
       "assets/**/*",
       "guides/**/*",
+      "resources/**/*",
       "skills/**/*",
       "node_modules/**/*"
     ],
     "asarUnpack": [
       "toki-mcp-server.js",
       "node_modules/node-pty/**/*",
-      "assets/persona/**/*"
+      "assets/persona/**/*",
+      "resources/**/*"
     ],
     "extraResources": [
       {

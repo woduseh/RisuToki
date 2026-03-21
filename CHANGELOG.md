@@ -9,6 +9,12 @@
 
 ---
 
+## [0.9.10] - 2026-03-21
+
+### 수정
+
+- **Danbooru 태그 DB 로딩 실패 수정** — `resources/Danbooru Tag.txt`가 electron-builder의 `files` 및 `asarUnpack` 설정에 누락되어 패키징된 앱에서 MCP 서버가 태그 DB를 찾지 못하던 문제 수정
+
 ## [0.9.9] - 2026-03-21
 
 ### 수정
