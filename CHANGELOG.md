@@ -9,6 +9,16 @@
 
 ---
 
+## [0.9.8] - 2026-03-21
+
+### 수정
+
+- **탭 닫기 시 메모리 해제** — 닫힌 탭의 클로저(getValue/setValue)와 캐시(\_lastValue)를 즉시 null 처리하여 GC 허용 (탭당 5-10MB 절감)
+- **백업 데이터 정리** — 닫힌 탭의 backup-store 데이터와 문자열 캐시 자동 삭제 (`clearBackups`), 파일 변경 시 전체 백업 초기화 (`clearAllBackups`)
+- **프리뷰 엔진 assetMap 정리** — `resetVars()` 호출 시 base64 에셋 맵도 함께 초기화하여 이미지 데이터 누적 방지
+- **터미널 리소스 정리** — `TerminalUiHandle.dispose()` 추가 (ResizeObserver disconnect, 이벤트 리스너 제거, 터미널 dispose)
+- **터미널 scrollback 축소** — 5,000줄 → 3,000줄 (메모리 ~300KB 절감, 실사용 충분)
+
 ## [0.9.7] - 2026-03-21
 
 ### 수정

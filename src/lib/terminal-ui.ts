@@ -2,21 +2,53 @@ import { ensureXtermAssets, loadScript } from './script-loader';
 import { getXtermFitAddonUrl, getXtermRuntimeUrl } from './asset-runtime';
 
 export const TERM_THEME_DARK = {
-  background: '#141a31', foreground: '#d8dce8', cursor: '#4a90d9', cursorAccent: '#141a31',
-  selectionBackground: '#4a90d944', selectionForeground: '#f0f2f8',
-  black: '#2e3a56', red: '#ef5350', green: '#66bb6a', yellow: '#ffca28',
-  blue: '#4a90d9', magenta: '#ba68c8', cyan: '#4dd0e1', white: '#d8dce8',
-  brightBlack: '#7a8ba5', brightRed: '#fc96ab', brightGreen: '#81c784', brightYellow: '#ffb342',
-  brightBlue: '#6fb3f2', brightMagenta: '#ce93d8', brightCyan: '#80deea', brightWhite: '#f0f2f8'
+  background: '#141a31',
+  foreground: '#d8dce8',
+  cursor: '#4a90d9',
+  cursorAccent: '#141a31',
+  selectionBackground: '#4a90d944',
+  selectionForeground: '#f0f2f8',
+  black: '#2e3a56',
+  red: '#ef5350',
+  green: '#66bb6a',
+  yellow: '#ffca28',
+  blue: '#4a90d9',
+  magenta: '#ba68c8',
+  cyan: '#4dd0e1',
+  white: '#d8dce8',
+  brightBlack: '#7a8ba5',
+  brightRed: '#fc96ab',
+  brightGreen: '#81c784',
+  brightYellow: '#ffb342',
+  brightBlue: '#6fb3f2',
+  brightMagenta: '#ce93d8',
+  brightCyan: '#80deea',
+  brightWhite: '#f0f2f8',
 };
 
 export const TERM_THEME_LIGHT = {
-  background: '#ffffff', foreground: '#2a323e', cursor: '#4a8ac6', cursorAccent: '#ffffff',
-  selectionBackground: '#b3d4fc', selectionForeground: '#1a2740',
-  black: '#4b5a6f', red: '#e53935', green: '#2e7d32', yellow: '#e65100',
-  blue: '#3493f9', magenta: '#8e24aa', cyan: '#00838f', white: '#87929e',
-  brightBlack: '#68788f', brightRed: '#fc96ab', brightGreen: '#66bb6a', brightYellow: '#ffb342',
-  brightBlue: '#4a8ac6', brightMagenta: '#ba68c8', brightCyan: '#4dd0e1', brightWhite: '#ffffff'
+  background: '#ffffff',
+  foreground: '#2a323e',
+  cursor: '#4a8ac6',
+  cursorAccent: '#ffffff',
+  selectionBackground: '#b3d4fc',
+  selectionForeground: '#1a2740',
+  black: '#4b5a6f',
+  red: '#e53935',
+  green: '#2e7d32',
+  yellow: '#e65100',
+  blue: '#3493f9',
+  magenta: '#8e24aa',
+  cyan: '#00838f',
+  white: '#87929e',
+  brightBlack: '#68788f',
+  brightRed: '#fc96ab',
+  brightGreen: '#66bb6a',
+  brightYellow: '#ffb342',
+  brightBlue: '#4a8ac6',
+  brightMagenta: '#ba68c8',
+  brightCyan: '#4dd0e1',
+  brightWhite: '#ffffff',
 };
 
 export interface TerminalTheme {
@@ -46,6 +78,7 @@ interface TerminalLike {
   scrollLines: (amount: number) => void;
   write: (data: string) => void;
   writeln: (data: string) => void;
+  dispose?: () => void;
 }
 
 interface TerminalConstructor {
@@ -103,14 +136,16 @@ export interface TerminalUiOptions {
 export interface TerminalUiHandle {
   fitAddon: FitAddonLike;
   term: TerminalLike;
+  /** Disconnect observers, remove listeners, and dispose the terminal */
+  dispose: () => void;
 }
 
 export function shouldTreatTerminalDataAsActivity(
   lastUserInputTime: number,
   now = Date.now(),
-  echoWindowMs = 300
+  echoWindowMs = 300,
 ): boolean {
-  return (now - lastUserInputTime) >= echoWindowMs;
+  return now - lastUserInputTime >= echoWindowMs;
 }
 
 export function formatTerminalStatusLine(event: TerminalStatusLike): string {
@@ -122,11 +157,11 @@ export function coerceTerminalGeometry(
   cols: number,
   rows: number,
   fallbackCols = 80,
-  fallbackRows = 24
+  fallbackRows = 24,
 ): { cols: number; rows: number } {
   return {
     cols: cols >= 20 ? cols : fallbackCols,
-    rows: rows >= 2 ? rows : fallbackRows
+    rows: rows >= 2 ? rows : fallbackRows,
   };
 }
 
@@ -202,7 +237,7 @@ async function ensureTerminalRuntime(preserveAmdLoader: boolean): Promise<{
 
   return {
     FitAddon: getFitAddonConstructor(runtimeWindow),
-    Terminal: getTerminalConstructor(runtimeWindow)
+    Terminal: getTerminalConstructor(runtimeWindow),
   };
 }
 
@@ -216,9 +251,9 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
     fontSize: 13,
     fontFamily: "'Cascadia Code', 'Consolas', monospace",
     cursorBlink: true,
-    scrollback: 5000,
+    scrollback: 3000,
     rightClickSelectsWord: options.rightClickSelectsWord,
-    allowTransparency: true
+    allowTransparency: true,
   });
   const fitAddon = new FitAddon();
   let activityTimer: number | null = null;
@@ -227,12 +262,11 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
   term.open(options.container);
   forwardViewportPointerEvents(options.container);
 
-  options.container.addEventListener('wheel', (e: WheelEvent) => {
-    const lines = e.deltaMode === WheelEvent.DOM_DELTA_LINE
-      ? e.deltaY
-      : Math.sign(e.deltaY) * 3;
+  const wheelHandler = (e: WheelEvent): void => {
+    const lines = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY : Math.sign(e.deltaY) * 3;
     term.scrollLines(lines);
-  }, { passive: true });
+  };
+  options.container.addEventListener('wheel', wheelHandler, { passive: true });
 
   await new Promise<void>((resolve) => {
     window.setTimeout(resolve, 50);
@@ -287,12 +321,13 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
     return true;
   });
 
-  options.container.addEventListener('contextmenu', (event) => {
+  const contextmenuHandler = (event: Event): void => {
     event.preventDefault();
     navigator.clipboard.readText().then((text) => {
       if (text) options.api.terminalInput(text);
     });
-  });
+  };
+  options.container.addEventListener('contextmenu', contextmenuHandler);
 
   const resizeObserver = new ResizeObserver(() => {
     if (options.container.clientWidth <= 0 || options.container.clientHeight <= 0) {
@@ -327,5 +362,15 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
     options.api.terminalResize(initialGeometry.cols, initialGeometry.rows);
   }
 
-  return { term, fitAddon };
+  return {
+    term,
+    fitAddon,
+    dispose: () => {
+      resizeObserver.disconnect();
+      options.container.removeEventListener('wheel', wheelHandler as EventListener);
+      options.container.removeEventListener('contextmenu', contextmenuHandler);
+      if (activityTimer !== null) window.clearTimeout(activityTimer);
+      term.dispose?.();
+    },
+  };
 }

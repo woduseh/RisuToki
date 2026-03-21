@@ -1,5 +1,6 @@
 import { createRemovalIndexResolver, remapIndexedTabs } from './indexed-tabs';
 import type { IndexedTab } from './indexed-tabs';
+import { clearBackups, clearAllBackups } from './backup-store';
 
 export interface Tab {
   id: string;
@@ -50,7 +51,7 @@ export class TabManager {
     label: string,
     language: string,
     getValue: () => unknown,
-    setValue: ((value: unknown) => void) | null
+    setValue: ((value: unknown) => void) | null,
   ): Tab {
     let tab = this.tabIndex.get(id);
     if (!tab) {
@@ -68,8 +69,16 @@ export class TabManager {
   }
 
   closeTab(id: string): void {
-    const idx = this.openTabs.findIndex(t => t.id === id);
+    const idx = this.openTabs.findIndex((t) => t.id === id);
     if (idx === -1) return;
+    const tab = this.openTabs[idx];
+
+    // Release closures that capture fileData to allow GC
+    tab.getValue = () => null;
+    tab.setValue = null;
+    tab._lastValue = null;
+    clearBackups(id);
+
     this.openTabs.splice(idx, 1);
     this.tabIndex.delete(id);
     this.dirtyFields.delete(id);
@@ -112,7 +121,7 @@ export class TabManager {
   applyIndexedTabRemap(
     prefix: string,
     resolveIndex: (oldIndex: number) => number | null,
-    buildTabState: (index: number, tab: Tab) => Partial<Tab> | null
+    buildTabState: (index: number, tab: Tab) => Partial<Tab> | null,
   ): void {
     const result = remapIndexedTabs({
       tabs: this.openTabs as (Tab & IndexedTab)[],
@@ -120,10 +129,7 @@ export class TabManager {
       activeTabId: this.activeTabId,
       prefix,
       resolveIndex,
-      buildTabState: buildTabState as (
-        index: number,
-        tab: Tab & IndexedTab
-      ) => Partial<Tab & IndexedTab> | null
+      buildTabState: buildTabState as (index: number, tab: Tab & IndexedTab) => Partial<Tab & IndexedTab> | null,
     });
 
     this.openTabs = result.tabs;
@@ -131,14 +137,8 @@ export class TabManager {
     this.activeTabId = result.activeTabId;
     this.rebuildIndex();
 
-    const activeTab = this.activeTabId
-      ? this.tabIndex.get(this.activeTabId)
-      : null;
-    if (
-      activeTab &&
-      activeTab.id.startsWith(prefix) &&
-      this.callbacks.isFormTabType(activeTab.language)
-    ) {
+    const activeTab = this.activeTabId ? this.tabIndex.get(this.activeTabId) : null;
+    if (activeTab && activeTab.id.startsWith(prefix) && this.callbacks.isFormTabType(activeTab.language)) {
       this.callbacks.onActivateTab(activeTab);
       return;
     }
@@ -146,23 +146,16 @@ export class TabManager {
     this.renderTabs();
   }
 
-  refreshIndexedTabs(
-    prefix: string,
-    buildTabState: (index: number, tab: Tab) => Partial<Tab> | null
-  ): void {
+  refreshIndexedTabs(prefix: string, buildTabState: (index: number, tab: Tab) => Partial<Tab> | null): void {
     this.applyIndexedTabRemap(prefix, (index) => index, buildTabState);
   }
 
   shiftIndexedTabsAfterRemoval(
     prefix: string,
     removedIndices: number[],
-    buildTabState: (index: number, tab: Tab) => Partial<Tab> | null
+    buildTabState: (index: number, tab: Tab) => Partial<Tab> | null,
   ): void {
-    this.applyIndexedTabRemap(
-      prefix,
-      createRemovalIndexResolver(removedIndices),
-      buildTabState
-    );
+    this.applyIndexedTabRemap(prefix, createRemovalIndexResolver(removedIndices), buildTabState);
   }
 
   reset(): void {
@@ -171,6 +164,7 @@ export class TabManager {
     this.activeTabId = null;
     this.dirtyFields.clear();
     this.pendingEditorTabId = null;
+    clearAllBackups();
   }
 
   private rebuildIndex(): void {
@@ -186,8 +180,7 @@ export class TabManager {
     for (let i = 0; i < this.openTabs.length; i++) {
       const tab = this.openTabs[i];
       const el = document.createElement('div');
-      el.className =
-        'editor-tab' + (tab.id === this.activeTabId ? ' active' : '');
+      el.className = 'editor-tab' + (tab.id === this.activeTabId ? ' active' : '');
 
       // Drag-and-drop reorder
       el.draggable = true;
@@ -196,23 +189,16 @@ export class TabManager {
         e.dataTransfer!.setData('text/tab-index', String(i));
         el.classList.add('tab-dragging');
       });
-      el.addEventListener('dragend', () =>
-        el.classList.remove('tab-dragging')
-      );
+      el.addEventListener('dragend', () => el.classList.remove('tab-dragging'));
       el.addEventListener('dragover', (e) => {
         e.preventDefault();
         el.classList.add('tab-drag-over');
       });
-      el.addEventListener('dragleave', () =>
-        el.classList.remove('tab-drag-over')
-      );
+      el.addEventListener('dragleave', () => el.classList.remove('tab-drag-over'));
       el.addEventListener('drop', (e) => {
         e.preventDefault();
         el.classList.remove('tab-drag-over');
-        const fromIdx = parseInt(
-          e.dataTransfer!.getData('text/tab-index'),
-          10
-        );
+        const fromIdx = parseInt(e.dataTransfer!.getData('text/tab-index'), 10);
         const toIdx = i;
         if (fromIdx !== toIdx && !isNaN(fromIdx)) {
           const [moved] = this.openTabs.splice(fromIdx, 1);
@@ -242,10 +228,7 @@ export class TabManager {
       el.appendChild(closeBtn);
 
       // Per-tab popout button (text tabs including readonly, not images)
-      if (
-        tab.language !== '_image' &&
-        !this.callbacks.isPanelPoppedOut('editor')
-      ) {
+      if (tab.language !== '_image' && !this.callbacks.isPanelPoppedOut('editor')) {
         const popBtn = document.createElement('span');
         popBtn.className = 'tab-popout-btn';
         popBtn.title = '팝아웃 (분리)';
@@ -257,9 +240,7 @@ export class TabManager {
         el.appendChild(popBtn);
       }
 
-      el.addEventListener('click', () =>
-        this.callbacks.onActivateTab(tab)
-      );
+      el.addEventListener('click', () => this.callbacks.onActivateTab(tab));
       tabBar.appendChild(el);
     }
   }

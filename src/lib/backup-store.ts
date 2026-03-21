@@ -32,6 +32,18 @@ export function getBackups(tabId: string): BackupEntry[] {
   return backupStore[tabId] || [];
 }
 
+/** Release all backup data and caches for a closed tab */
+export function clearBackups(tabId: string): void {
+  delete backupStore[tabId];
+  delete lastStringCache[tabId];
+}
+
+/** Release all backup data across all tabs */
+export function clearAllBackups(): void {
+  for (const key of Object.keys(backupStore)) delete backupStore[key];
+  for (const key of Object.keys(lastStringCache)) delete lastStringCache[key];
+}
+
 export function formatBackupTime(date: Date): string {
   const mon = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');

@@ -447,10 +447,18 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('startswith', (_p1, _arg, args) => ((args[0] || '').startsWith(args[1] || '') ? '1' : '0'));
     reg('endswith', (_p1, _arg, args) => ((args[0] || '').endsWith(args[1] || '') ? '1' : '0'));
     reg('join', (_p1, _arg, args) => {
-      try { return JSON.parse(args[0] || '[]').join(args[1] ?? ','); } catch { return args[0] || ''; }
+      try {
+        return JSON.parse(args[0] || '[]').join(args[1] ?? ',');
+      } catch {
+        return args[0] || '';
+      }
     });
     reg('spread', (_p1, _arg, args) => {
-      try { return JSON.parse(args[0] || '[]').join('::'); } catch { return args[0] || ''; }
+      try {
+        return JSON.parse(args[0] || '[]').join('::');
+      } catch {
+        return args[0] || '';
+      }
     });
 
     // --- Comparison helpers ---
@@ -458,8 +466,14 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('notequal', (_p1, _arg, args) => ((args[0] || '') !== (args[1] || '') ? '1' : '0'));
     reg('greater', (_p1, _arg, args) => (parseFloat(args[0] || '0') > parseFloat(args[1] || '0') ? '1' : '0'));
     reg('less', (_p1, _arg, args) => (parseFloat(args[0] || '0') < parseFloat(args[1] || '0') ? '1' : '0'));
-    reg('greaterorequal', (_p1, _arg, args) => (parseFloat(args[0] || '0') >= parseFloat(args[1] || '0') ? '1' : '0'), ['greaterequal', 'greater_equal']);
-    reg('lessorequal', (_p1, _arg, args) => (parseFloat(args[0] || '0') <= parseFloat(args[1] || '0') ? '1' : '0'), ['lessequal', 'less_equal']);
+    reg('greaterorequal', (_p1, _arg, args) => (parseFloat(args[0] || '0') >= parseFloat(args[1] || '0') ? '1' : '0'), [
+      'greaterequal',
+      'greater_equal',
+    ]);
+    reg('lessorequal', (_p1, _arg, args) => (parseFloat(args[0] || '0') <= parseFloat(args[1] || '0') ? '1' : '0'), [
+      'lessequal',
+      'less_equal',
+    ]);
     reg('and', (_p1, _arg, args) =>
       args[0] && args[0] !== '0' && args[0] !== '' && args[1] && args[1] !== '0' && args[1] !== '' ? '1' : '0',
     );
@@ -498,17 +512,22 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       if (uri) return `<img src="${uri}" alt="${name}" class="cbs-asset cbs-emotion" style="max-width:100%;">`;
       return `[emotion:${name}]`;
     });
-    reg('raw', (_p1, arg, args) => {
-      const name = args[0] || '';
-      const uri = resolveAsset(name, arg);
-      if (uri) return uri;
-      console.warn('[CBS raw] Asset not found:', name);
-      return '';
-    }, ['path']);
+    reg(
+      'raw',
+      (_p1, arg, args) => {
+        const name = args[0] || '';
+        const uri = resolveAsset(name, arg);
+        if (uri) return uri;
+        console.warn('[CBS raw] Asset not found:', name);
+        return '';
+      },
+      ['path'],
+    );
     reg('bg', (_p1, arg, args) => {
       const name = args[0] || '';
       const uri = resolveAsset(name, arg);
-      if (uri) return `<div class="cbs-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background-image:url('${uri}');background-size:cover;background-position:center;z-index:-1;"></div>`;
+      if (uri)
+        return `<div class="cbs-bg" style="position:fixed;top:0;left:0;width:100%;height:100%;background-image:url('${uri}');background-size:cover;background-position:center;z-index:-1;"></div>`;
       return '';
     });
     reg('bgm', (_p1, arg, args) => {
@@ -523,26 +542,44 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       if (uri) return `<video src="${uri}" autoplay muted loop playsinline style="max-width:100%;"></video>`;
       return `[video-img:${name}]`;
     });
-    reg('inlay', (_p1, arg, args) => {
-      const name = args[0] || '';
-      const uri = resolveAsset(name, arg);
-      if (uri) return `<img src="${uri}" alt="${name}" style="max-width:100%;">`;
-      return '';
-    }, ['inlayed', 'inlayeddata']);
+    reg(
+      'inlay',
+      (_p1, arg, args) => {
+        const name = args[0] || '';
+        const uri = resolveAsset(name, arg);
+        if (uri) return `<img src="${uri}" alt="${name}" style="max-width:100%;">`;
+        return '';
+      },
+      ['inlayed', 'inlayeddata'],
+    );
     reg('source', () => '');
     reg('assetlist', () => {
-      try { return JSON.stringify(Object.keys(assetMap)); } catch { return '[]'; }
+      try {
+        return JSON.stringify(Object.keys(assetMap));
+      } catch {
+        return '[]';
+      }
     });
     reg('emotionlist', () => '[]');
     reg('chardisplayasset', () => '[]');
 
     // --- Array/Object operations ---
     const parseArray = (s: string): string[] => {
-      try { const r = JSON.parse(s); return Array.isArray(r) ? r.map(String) : []; } catch { return []; }
+      try {
+        const r = JSON.parse(s);
+        return Array.isArray(r) ? r.map(String) : [];
+      } catch {
+        return [];
+      }
     };
     const makeArray = (arr: string[]): string => JSON.stringify(arr);
     const parseDict = (s: string): Record<string, string> => {
-      try { const r = JSON.parse(s); return typeof r === 'object' && r !== null && !Array.isArray(r) ? r as Record<string, string> : {}; } catch { return {}; }
+      try {
+        const r = JSON.parse(s);
+        return typeof r === 'object' && r !== null && !Array.isArray(r) ? (r as Record<string, string>) : {};
+      } catch {
+        return {};
+      }
     };
     const stringifyValue = (v: unknown): string => {
       if (v === null || v === undefined) return 'null';
@@ -551,15 +588,19 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     };
 
     reg('makearray', (_p1, _arg, args) => makeArray(args), ['array', 'a']);
-    reg('makedict', (_p1, _arg, args) => {
-      const obj: Record<string, string> = {};
-      for (const a of args) {
-        const eqIdx = a.indexOf('=');
-        if (eqIdx <= 0) continue;
-        obj[a.substring(0, eqIdx)] = a.substring(eqIdx + 1);
-      }
-      return JSON.stringify(obj);
-    }, ['dict', 'd', 'makeobject', 'object', 'o']);
+    reg(
+      'makedict',
+      (_p1, _arg, args) => {
+        const obj: Record<string, string> = {};
+        for (const a of args) {
+          const eqIdx = a.indexOf('=');
+          if (eqIdx <= 0) continue;
+          obj[a.substring(0, eqIdx)] = a.substring(eqIdx + 1);
+        }
+        return JSON.stringify(obj);
+      },
+      ['dict', 'd', 'makeobject', 'object', 'o'],
+    );
     reg('arraylength', (_p1, _arg, args) => String(parseArray(args[0] || '[]').length));
     reg('arrayelement', (_p1, _arg, args) => {
       const arr = parseArray(args[0] || '[]');
@@ -567,9 +608,21 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       const val = arr.at(idx);
       return val !== undefined ? val : 'null';
     });
-    reg('arrayshift', (_p1, _arg, args) => { const a = parseArray(args[0] || '[]'); a.shift(); return makeArray(a); });
-    reg('arraypop', (_p1, _arg, args) => { const a = parseArray(args[0] || '[]'); a.pop(); return makeArray(a); });
-    reg('arraypush', (_p1, _arg, args) => { const a = parseArray(args[0] || '[]'); a.push(args[1] || ''); return makeArray(a); });
+    reg('arrayshift', (_p1, _arg, args) => {
+      const a = parseArray(args[0] || '[]');
+      a.shift();
+      return makeArray(a);
+    });
+    reg('arraypop', (_p1, _arg, args) => {
+      const a = parseArray(args[0] || '[]');
+      a.pop();
+      return makeArray(a);
+    });
+    reg('arraypush', (_p1, _arg, args) => {
+      const a = parseArray(args[0] || '[]');
+      a.push(args[1] || '');
+      return makeArray(a);
+    });
     reg('arraysplice', (_p1, _arg, args) => {
       const a = parseArray(args[0] || '[]');
       a.splice(Number(args[1] || '0'), Number(args[2] || '0'), args[3] || '');
@@ -581,44 +634,70 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       if (idx >= a.length) a[idx] = args[2] || '';
       return makeArray(a);
     });
-    reg('dictelement', (_p1, _arg, args) => {
-      const d = parseDict(args[0] || '{}');
-      const v = d[args[1] || ''];
-      return v !== undefined ? stringifyValue(v) : 'null';
-    }, ['objectelement']);
-    reg('objectassert', (_p1, _arg, args) => {
-      const d = parseDict(args[0] || '{}');
-      const key = args[1] || '';
-      if (!(key in d)) d[key] = args[2] || '';
-      return JSON.stringify(d);
-    }, ['dictassert', 'objectassert']);
-    reg('element', (_p1, _arg, args) => {
-      try {
-        let current: unknown = JSON.parse(args[0] || 'null');
-        for (let i = 1; i < args.length; i++) {
-          if (current === null || current === undefined || typeof current !== 'object') return 'null';
-          current = (current as Record<string, unknown>)[args[i]];
+    reg(
+      'dictelement',
+      (_p1, _arg, args) => {
+        const d = parseDict(args[0] || '{}');
+        const v = d[args[1] || ''];
+        return v !== undefined ? stringifyValue(v) : 'null';
+      },
+      ['objectelement'],
+    );
+    reg(
+      'objectassert',
+      (_p1, _arg, args) => {
+        const d = parseDict(args[0] || '{}');
+        const key = args[1] || '';
+        if (!(key in d)) d[key] = args[2] || '';
+        return JSON.stringify(d);
+      },
+      ['dictassert', 'objectassert'],
+    );
+    reg(
+      'element',
+      (_p1, _arg, args) => {
+        try {
+          let current: unknown = JSON.parse(args[0] || 'null');
+          for (let i = 1; i < args.length; i++) {
+            if (current === null || current === undefined || typeof current !== 'object') return 'null';
+            current = (current as Record<string, unknown>)[args[i]];
+          }
+          return stringifyValue(current);
+        } catch {
+          return 'null';
         }
-        return stringifyValue(current);
-      } catch { return 'null'; }
-    }, ['ele']);
+      },
+      ['ele'],
+    );
     reg('filter', (_p1, _arg, args) => {
       const a = parseArray(args[0] || '[]');
       const mode = (args[1] || 'all').toLowerCase();
-      if (mode === 'nonempty') return makeArray(a.filter(v => v !== ''));
+      if (mode === 'nonempty') return makeArray(a.filter((v) => v !== ''));
       if (mode === 'unique') return makeArray(a.filter((v, i, arr) => arr.indexOf(v) === i));
       // 'all' = nonempty + unique
-      return makeArray(a.filter(v => v !== '').filter((v, i, arr) => arr.indexOf(v) === i));
+      return makeArray(a.filter((v) => v !== '').filter((v, i, arr) => arr.indexOf(v) === i));
     });
     reg('range', (_p1, _arg, args) => {
       const params = parseArray(args[0] || '[]').map(Number);
-      let start = 0, end = 0, step = 1;
-      if (params.length === 1) { end = params[0]; }
-      else if (params.length === 2) { start = params[0]; end = params[1]; }
-      else if (params.length >= 3) { start = params[0]; end = params[1]; step = params[2] || 1; }
+      let start = 0,
+        end = 0,
+        step = 1;
+      if (params.length === 1) {
+        end = params[0];
+      } else if (params.length === 2) {
+        start = params[0];
+        end = params[1];
+      } else if (params.length >= 3) {
+        start = params[0];
+        end = params[1];
+        step = params[2] || 1;
+      }
       const result: number[] = [];
-      if (step > 0) { for (let i = start; i < end; i += step) result.push(i); }
-      else if (step < 0) { for (let i = start; i > end; i += step) result.push(i); }
+      if (step > 0) {
+        for (let i = start; i < end; i += step) result.push(i);
+      } else if (step < 0) {
+        for (let i = start; i > end; i += step) result.push(i);
+      }
       return JSON.stringify(result);
     });
 
@@ -632,28 +711,28 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('fixnum', (_p1, _arg, args) => Number(args[0] || '0').toFixed(Number(args[1] || '0')), ['fixnumber']);
     reg('tonumber', (_p1, _arg, args) => (args[0] || '').replace(/[^\d.]/g, ''));
     reg('min', (_p1, _arg, args) => {
-      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map(v => Number(v) || 0);
+      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map((v) => Number(v) || 0);
       return nums.length ? String(Math.min(...nums)) : '0';
     });
     reg('max', (_p1, _arg, args) => {
-      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map(v => Number(v) || 0);
+      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map((v) => Number(v) || 0);
       return nums.length ? String(Math.max(...nums)) : '0';
     });
     reg('sum', (_p1, _arg, args) => {
-      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map(v => Number(v) || 0);
+      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map((v) => Number(v) || 0);
       return String(nums.reduce((a, b) => a + b, 0));
     });
     reg('average', (_p1, _arg, args) => {
-      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map(v => Number(v) || 0);
+      const nums = (args.length > 1 ? args : parseArray(args[0] || '[]')).map((v) => Number(v) || 0);
       return nums.length ? String(nums.reduce((a, b) => a + b, 0) / nums.length) : '0';
     });
     reg('all', (_p1, _arg, args) => {
       const vals = args.length > 1 ? args : parseArray(args[0] || '[]');
-      return vals.every(v => v === '1' || v.toLowerCase() === 'true') ? '1' : '0';
+      return vals.every((v) => v === '1' || v.toLowerCase() === 'true') ? '1' : '0';
     });
     reg('any', (_p1, _arg, args) => {
       const vals = args.length > 1 ? args : parseArray(args[0] || '[]');
-      return vals.some(v => v === '1' || v.toLowerCase() === 'true') ? '1' : '0';
+      return vals.some((v) => v === '1' || v.toLowerCase() === 'true') ? '1' : '0';
     });
     reg('randint', (_p1, _arg, args) => {
       const min = parseInt(args[0] || '0', 10);
@@ -675,21 +754,32 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg(';', () => ';', ['displayescapedsemicolon']);
 
     // --- Formatting ---
-    reg('ruby', (_p1, _arg, args) =>
-      `<ruby>${args[0] || ''}<rp> (</rp><rt>${args[1] || ''}</rt><rp>) </rp></ruby>`,
-    ['furigana']);
+    reg('ruby', (_p1, _arg, args) => `<ruby>${args[0] || ''}<rp> (</rp><rt>${args[1] || ''}</rt><rp>) </rp></ruby>`, [
+      'furigana',
+    ]);
     reg('codeblock', (_p1, _arg, args) => {
       let code: string, lang: string;
-      if (args.length > 1) { lang = args[0] || ''; code = args[1] || ''; }
-      else { lang = ''; code = args[0] || ''; }
+      if (args.length > 1) {
+        lang = args[0] || '';
+        code = args[1] || '';
+      } else {
+        lang = '';
+        code = args[0] || '';
+      }
       const escaped = code.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return lang ? `<pre><code class="language-${lang}">${escaped}</code></pre>` : `<pre><code>${escaped}</code></pre>`;
+      return lang
+        ? `<pre><code class="language-${lang}">${escaped}</code></pre>`
+        : `<pre><code>${escaped}</code></pre>`;
     });
     reg('blank', () => '', ['none']);
-    reg('cbr', (_p1, _arg, args) => {
-      const count = Math.max(1, parseInt(args[0] || '1', 10) || 1);
-      return '\\n'.repeat(count);
-    }, ['cnl', 'cnewline']);
+    reg(
+      'cbr',
+      (_p1, _arg, args) => {
+        const count = Math.max(1, parseInt(args[0] || '1', 10) || 1);
+        return '\\n'.repeat(count);
+      },
+      ['cnl', 'cnewline'],
+    );
     reg('tex', (_p1, _arg, args) => `$$${args[0] || ''}$$`, ['latex', 'katex']);
     reg('iserror', (_p1, _arg, args) => ((args[0] || '').toLowerCase().startsWith('error:') ? '1' : '0'));
     reg('return', (_p1, _arg, _args) => '');
@@ -697,7 +787,9 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('hash', (_p1, _arg, args) => {
       const s = args[0] || '';
       let h = 0;
-      for (let i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+      for (let i = 0; i < s.length; i++) {
+        h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+      }
       return String(Math.abs(h) % 10000000);
     });
 
@@ -970,11 +1062,22 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       if (asIdx >= 0) {
         const arrStr = rawContent.substring(0, asIdx).trim();
         iterVar = rawContent.substring(asIdx + 4).trim();
-        try { const parsed = JSON.parse(arrStr); iterArr = Array.isArray(parsed) ? parsed.map(String) : []; } catch { /* empty */ }
+        try {
+          const parsed = JSON.parse(arrStr);
+          iterArr = Array.isArray(parsed) ? parsed.map(String) : [];
+        } catch {
+          /* empty */
+        }
       }
       return {
-        isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: 'each',
-        _iterArr: iterArr, _iterVar: iterVar,
+        isBlock: true,
+        active: true,
+        content: '',
+        elseContent: '',
+        _inElse: false,
+        type: 'each',
+        _iterArr: iterArr,
+        _iterVar: iterVar,
       } as BlockState;
     }
     if (name === 'pure' || name === 'puredisplay') {
@@ -1101,15 +1204,32 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       } else {
         const cmp = resolveVar(stack.shift()!);
         switch (op) {
-          case 'is': cmpResult = val === cmp; break;
-          case 'isnot': cmpResult = val !== cmp; break;
-          case '>': cmpResult = parseFloat(val) > parseFloat(cmp); break;
-          case '<': cmpResult = parseFloat(val) < parseFloat(cmp); break;
-          case '>=': cmpResult = parseFloat(val) >= parseFloat(cmp); break;
-          case '<=': cmpResult = parseFloat(val) <= parseFloat(cmp); break;
-          case 'and': cmpResult = isTruthy(val) && isTruthy(cmp); break;
-          case 'or': cmpResult = isTruthy(val) || isTruthy(cmp); break;
-          default: cmpResult = false;
+          case 'is':
+            cmpResult = val === cmp;
+            break;
+          case 'isnot':
+            cmpResult = val !== cmp;
+            break;
+          case '>':
+            cmpResult = parseFloat(val) > parseFloat(cmp);
+            break;
+          case '<':
+            cmpResult = parseFloat(val) < parseFloat(cmp);
+            break;
+          case '>=':
+            cmpResult = parseFloat(val) >= parseFloat(cmp);
+            break;
+          case '<=':
+            cmpResult = parseFloat(val) <= parseFloat(cmp);
+            break;
+          case 'and':
+            cmpResult = isTruthy(val) && isTruthy(cmp);
+            break;
+          case 'or':
+            cmpResult = isTruthy(val) || isTruthy(cmp);
+            break;
+          default:
+            cmpResult = false;
         }
       }
 
@@ -1762,6 +1882,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       globalVars = {};
       tempVars = {};
       localLorebooks = {};
+      assetMap = {};
       _reloadDisplayRequested = false;
       luaOutput = [];
     },
