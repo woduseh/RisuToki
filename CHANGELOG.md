@@ -9,6 +9,13 @@
 
 ---
 
+## [0.18.3] - 2026-03-22
+
+### 수정
+
+- **charx 에셋 RisuAI Import 시 미표시** — MCP `add_charx_asset`/`delete_charx_asset`/`rename_charx_asset`가 ZIP 파일만 조작하고 `card.json data.assets` (cardAssets) 배열을 갱신하지 않아 RisuAI에서 에셋을 인식하지 못하던 문제 수정. 에셋 추가/삭제/이름변경 시 cardAssets 자동 동기화 추가. `saveCharx()`에서도 ZIP assets와 cardAssets를 대조하여 누락 엔트리를 자동 보정
+- **정규식 Type이 RisuAI에서 미인식** — MCP가 정규식 type을 camelCase(`editDisplay`, `editOutput`)로 저장했으나 RisuAI는 소문자(`editdisplay`, `editoutput`)만 인식. 정규식 쓰기 시 type을 자동으로 소문자 정규화하는 `normalizeRegexType()` 추가
+
 ## [0.18.2] - 2026-03-22
 
 ### 수정

@@ -163,8 +163,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   saveCharx(sourcePath, data as any);
   const original = fs.readFileSync(sourcePath);
   const fakeJpegPrelude = Buffer.from([
-    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00,
-    0x01,
+    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
   ]);
   fs.writeFileSync(prefixedPath, Buffer.concat([fakeJpegPrelude, original]));
 
@@ -620,15 +619,37 @@ const errorTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-error-'));
   const validPath = path.join(errorTempDir, 'valid-for-truncate.charx');
   const truncatedPath = path.join(errorTempDir, 'truncated.charx');
   const data = {
-    spec: 'chara_card_v3', specVersion: '3.0', name: 'Truncate Test',
-    description: '', personality: '', scenario: '', creatorcomment: '',
-    tags: [], firstMessage: '', alternateGreetings: [], groupOnlyGreetings: [],
-    globalNote: '', css: '', defaultVariables: '', lua: '',
-    triggerScripts: [], lorebook: [], regex: [],
-    moduleId: '', moduleName: '', moduleDescription: '',
-    assets: [], xMeta: {}, risumAssets: [], cardAssets: [],
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'Truncate Test',
+    description: '',
+    personality: '',
+    scenario: '',
+    creatorcomment: '',
+    tags: [],
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    moduleId: '',
+    moduleName: '',
+    moduleDescription: '',
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
     _risuExt: {},
-    _card: { spec: 'chara_card_v3', spec_version: '3.0', data: { extensions: { risuai: {} }, character_book: { entries: [] }, assets: [] } },
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: { extensions: { risuai: {} }, character_book: { entries: [] }, assets: [] },
+    },
     _moduleData: null,
   };
   saveCharx(validPath, data as any);
@@ -644,4 +665,116 @@ const errorTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-error-'));
 
 fs.rmSync(errorTempDir, { recursive: true, force: true });
 
-console.log('test-charx passed (including risup and error cases)');
+// ===== cardAssets reconciliation on save =====
+(function testSaveCharxReconcileCardAssets() {
+  const filePath = path.join(tempDir, 'reconcile-assets.charx');
+  const data = {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'Reconcile Test',
+    description: '',
+    personality: '',
+    scenario: '',
+    creatorcomment: '',
+    tags: [],
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    moduleId: '',
+    moduleName: '',
+    moduleDescription: '',
+    assets: [
+      { path: 'assets/icon/image/main.webp', data: Buffer.from([0x89]) },
+      { path: 'assets/other/image/bg.png', data: Buffer.from([0x90]) },
+      { path: 'assets/other/image/portrait.webp', data: Buffer.from([0x91]) },
+    ],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: { extensions: { risuai: {} }, character_book: { entries: [] }, assets: [] },
+    },
+    _moduleData: null,
+  };
+
+  saveCharx(filePath, data as any);
+  const reopened = openCharx(filePath);
+
+  assert.equal(reopened.cardAssets.length, 3, 'cardAssets should have 3 entries after reconciliation');
+
+  type CardAsset = { type: string; uri: string; name: string; ext: string };
+  const ca = reopened.cardAssets as CardAsset[];
+  const uris = ca.map((a) => a.uri);
+  assert.ok(uris.includes('embeded://assets/icon/image/main.webp'), 'icon asset reconciled');
+  assert.ok(uris.includes('embeded://assets/other/image/bg.png'), 'other asset reconciled');
+  assert.ok(uris.includes('embeded://assets/other/image/portrait.webp'), 'other asset reconciled');
+
+  const iconEntry = ca.find((a) => a.uri.includes('icon'))!;
+  assert.equal(iconEntry.type, 'icon', 'icon folder → type: icon');
+  const otherEntry = ca.find((a) => a.uri.includes('bg.png'))!;
+  assert.equal(otherEntry.type, 'x-risu-asset', 'other folder → type: x-risu-asset');
+  assert.equal(iconEntry.name, 'main', 'icon name extracted');
+  assert.equal(iconEntry.ext, 'webp', 'icon ext extracted');
+  assert.equal(otherEntry.name, 'bg', 'other name extracted');
+  assert.equal(otherEntry.ext, 'png', 'other ext extracted');
+})();
+
+(function testSaveCharxNoDuplicateCardAssets() {
+  const filePath = path.join(tempDir, 'no-dup-assets.charx');
+  const data = {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'NoDup Test',
+    description: '',
+    personality: '',
+    scenario: '',
+    creatorcomment: '',
+    tags: [],
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    moduleId: '',
+    moduleName: '',
+    moduleDescription: '',
+    assets: [
+      { path: 'assets/icon/image/main.webp', data: Buffer.from([0x89]) },
+      { path: 'assets/other/image/bg.png', data: Buffer.from([0x90]) },
+    ],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [{ type: 'icon', uri: 'embeded://assets/icon/image/main.webp', name: 'main', ext: 'webp' }],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: { extensions: { risuai: {} }, character_book: { entries: [] }, assets: [] },
+    },
+    _moduleData: null,
+  };
+
+  saveCharx(filePath, data as any);
+  const reopened = openCharx(filePath);
+
+  assert.equal(reopened.cardAssets.length, 2, 'no duplicate cardAssets');
+  const iconEntries = (reopened.cardAssets as { uri: string }[]).filter((a) => a.uri.includes('icon'));
+  assert.equal(iconEntries.length, 1, 'icon not duplicated');
+})();
+
+console.log('test-charx passed (including risup, error cases, and cardAssets reconciliation)');

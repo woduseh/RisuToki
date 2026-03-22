@@ -25,9 +25,7 @@ function validateFileSize(filePath: string): void {
   const stats = fs.statSync(filePath);
   if (stats.size > MAX_FILE_SIZE) {
     const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
-    throw new Error(
-      `파일이 너무 큽니다 (${sizeMB}MB). 최대 ${MAX_FILE_SIZE / (1024 * 1024)}MB까지 지원합니다.`,
-    );
+    throw new Error(`파일이 너무 큽니다 (${sizeMB}MB). 최대 ${MAX_FILE_SIZE / (1024 * 1024)}MB까지 지원합니다.`);
   }
 }
 
@@ -509,6 +507,19 @@ export function saveCharx(filePath: string, data: CharxData): void {
 
   // Preserve card assets
   cardData.assets = data.cardAssets || [];
+
+  // Reconcile: ensure all ZIP assets have card.json entries (RisuAI reads this)
+  const cardAssetArr = cardData.assets as { type?: string; uri?: string; name?: string; ext?: string }[];
+  const existingUris = new Set(cardAssetArr.map((a) => a.uri));
+  for (const asset of data.assets || []) {
+    const uri = `embeded://${asset.path}`;
+    if (!existingUris.has(uri)) {
+      const ext = path.extname(asset.path).slice(1) || '';
+      const baseName = path.basename(asset.path, ext ? `.${ext}` : '');
+      const isIcon = asset.path.startsWith('assets/icon');
+      cardAssetArr.push({ type: isIcon ? 'icon' : 'x-risu-asset', uri, name: baseName, ext });
+    }
+  }
 
   zip.addFile('card.json', Buffer.from(JSON.stringify(card, null, 2), 'utf-8'));
 

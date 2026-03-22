@@ -227,6 +227,11 @@ function pickAllowedFields(source: Record<string, unknown>, allowed: Set<string>
   return result;
 }
 
+/** RisuAI expects lowercase regex types (editdisplay, editoutput, etc.) */
+function normalizeRegexType(entry: Record<string, unknown>): void {
+  if (typeof entry.type === 'string') entry.type = entry.type.toLowerCase();
+}
+
 // ---------------------------------------------------------------------------
 // Section caching (mirrors the hot-path cache from main.js)
 // ---------------------------------------------------------------------------
@@ -2905,6 +2910,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (body.in !== undefined && body.find === undefined) entry.find = body.in;
           if (body.replace !== undefined && body.out === undefined) entry.out = body.replace;
           if (body.out !== undefined && body.replace === undefined) entry.replace = body.out;
+          normalizeRegexType(entry);
           logMcpMutation('update regex entry', `regex:${idx}`, { entryName, updatedKeys: Object.keys(body) });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
           return jsonRes(res, { success: true, index: idx });
@@ -2945,6 +2951,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (entry.in && !entry.find) entry.find = entry.in;
           if (entry.replace && !entry.out) entry.out = entry.replace;
           if (entry.out && !entry.replace) entry.replace = entry.out;
+          normalizeRegexType(entry);
           if (!currentData.regex) currentData.regex = [];
           currentData.regex.push(entry);
           logMcpMutation('add regex entry', 'regex:add', { entryName: name, newIndex: currentData.regex.length - 1 });
@@ -2998,6 +3005,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             if (entry.in && !entry.find) entry.find = entry.in;
             if (entry.replace && !entry.out) entry.out = entry.replace;
             if (entry.out && !entry.replace) entry.replace = entry.out;
+            normalizeRegexType(entry);
             currentData.regex.push(entry);
             results.push({ index: currentData.regex.length - 1, comment: String(entry.comment || '') });
           }
@@ -3056,6 +3064,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             if (e.data.in !== undefined && e.data.find === undefined) entry.find = e.data.in;
             if (e.data.replace !== undefined && e.data.out === undefined) entry.out = e.data.replace;
             if (e.data.out !== undefined && e.data.replace === undefined) entry.replace = e.data.out;
+            normalizeRegexType(entry);
             results.push({ index: idx, comment: String(entry.comment || ''), updatedKeys: Object.keys(e.data || {}) });
           }
           logMcpMutation('batch write regex entries', 'regex:batch-write', { count: results.length });
@@ -5103,6 +5112,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const buf = Buffer.from(base64Data, 'base64');
         currentData.assets.push({ path: assetPath, data: buf });
+        // Sync cardAssets for RisuAI (charx only)
+        if (Array.isArray(currentData.cardAssets)) {
+          const ext = fileName.includes('.') ? fileName.split('.').pop()! : '';
+          const name = ext ? fileName.slice(0, -(ext.length + 1)) : fileName;
+          currentData.cardAssets.push({
+            type: folder === 'icon' ? 'icon' : 'x-risu-asset',
+            uri: `embeded://${assetPath}`,
+            name,
+            ext,
+          });
+        }
         deps.broadcastToAll('data-updated', { field: 'assets' });
         return jsonRes(res, { ok: true, path: assetPath, size: buf.length });
       }
@@ -5136,6 +5156,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         assets.splice(idx, 1);
+        // Remove from cardAssets
+        if (Array.isArray(currentData.cardAssets)) {
+          const uri = `embeded://${assetToDelete.path}`;
+          const caIdx = (currentData.cardAssets as { uri?: string }[]).findIndex((a) => a.uri === uri);
+          if (caIdx >= 0) currentData.cardAssets.splice(caIdx, 1);
+        }
         deps.broadcastToAll('data-updated', { field: 'assets' });
         return jsonRes(res, { ok: true, deleted: assetToDelete.path });
       }
@@ -5177,6 +5203,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const dir = oldPath.substring(0, oldPath.lastIndexOf('/') + 1);
         const newPath = dir + newName;
         asset.path = newPath;
+        // Update cardAssets
+        if (Array.isArray(currentData.cardAssets)) {
+          const oldUri = `embeded://${oldPath}`;
+          const ca = (currentData.cardAssets as Record<string, unknown>[]).find((a) => a.uri === oldUri);
+          if (ca) {
+            const ext = newName.includes('.') ? newName.split('.').pop()! : '';
+            ca.uri = `embeded://${newPath}`;
+            ca.name = ext ? newName.slice(0, -(ext.length + 1)) : newName;
+            ca.ext = ext;
+          }
+        }
         deps.broadcastToAll('data-updated', { field: 'assets' });
         return jsonRes(res, { ok: true, oldPath, newPath });
       }
