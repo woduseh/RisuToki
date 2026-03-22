@@ -9,6 +9,15 @@
 
 ---
 
+## [0.19.1] - 2026-03-23
+
+### 수정
+
+- **MCP 문서 정확성 개선** — AGENTS.md와 README.md의 MCP 도구 문서가 실제 코드와 정확히 일치하도록 수정
+  - AGENTS.md에 누락된 risum 에셋 관리 도구 4종 (`list_risum_assets`, `read_risum_asset`, `add_risum_asset`, `delete_risum_asset`) 문서 추가
+  - README.md MCP 도구 수를 55+종에서 실제 등록 수인 99종으로 수정
+  - README.md 에셋 도구 목록에서 risum 에셋 도구 전체 나열 (기존 `등` 표기 제거)
+
 ## [0.19.0] - 2026-03-23
 
 ### 새 기능
