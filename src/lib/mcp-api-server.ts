@@ -3549,11 +3549,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // POST /greeting/:type/:idx — write single greeting
       // ----------------------------------------------------------------
+      const greetingReservedPaths = ['add', 'batch-write', 'batch-delete', 'reorder'];
       if (
         parts[0] === 'greeting' &&
         parts[1] &&
         parts[2] &&
-        parts[2] !== 'add' &&
+        !greetingReservedPaths.includes(parts[2]) &&
         parts[3] !== 'delete' &&
         req.method === 'POST'
       ) {

@@ -9,6 +9,12 @@
 
 ---
 
+## [0.19.2] - 2026-03-23
+
+### 수정
+
+- **greeting batch 라우트 충돌 수정** — `batch_delete_greeting`, `batch_write_greeting`, `reorder_greetings` 호출 시 "Index batch-delete out of range" 에러가 발생하던 버그 수정. 단일 인사말 수정 라우트(`POST /greeting/:type/:idx`)가 `batch-write`, `batch-delete`, `reorder` 경로를 인덱스로 잘못 파싱하던 문제
+
 ## [0.19.1] - 2026-03-23
 
 ### 수정
