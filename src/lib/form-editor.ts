@@ -53,6 +53,7 @@ export interface FormEditorDeps {
     openTabs: FormTabInfo[];
     dirtyFields: Set<string>;
     renderTabs: () => void;
+    markDirtyForTabId: (tabId: string) => void;
   };
   createBackup: (id: string, data: unknown) => void;
   showPrompt: (msg: string, defaultVal?: string) => Promise<string | null>;
@@ -63,6 +64,10 @@ export interface FormEditorDeps {
 
 let formEditors: FormEditor[] = [];
 let deps: FormEditorDeps | null = null;
+
+// IME composition guard — skip renderTabs() during CJK composition
+let formComposing = false;
+let formPendingRenderTabs = false;
 
 // ── Public API ──
 
@@ -131,7 +136,7 @@ export function createMiniMonaco(
         if (options && Object.prototype.hasOwnProperty.call(options, 'readOnly')) {
           textarea.readOnly = !!options.readOnly;
         }
-      }
+      },
     };
     formEditors.push(fallbackEditor);
     return fallbackEditor;
@@ -162,6 +167,21 @@ export function createMiniMonaco(
       tabSize: 2,
     });
 
+    // Track IME composition to avoid DOM-heavy side effects during CJK input
+    const domNode = ed.getDomNode?.();
+    if (domNode) {
+      domNode.addEventListener('compositionstart', () => {
+        formComposing = true;
+      });
+      domNode.addEventListener('compositionend', () => {
+        formComposing = false;
+        if (formPendingRenderTabs) {
+          formPendingRenderTabs = false;
+          d.tabMgr.renderTabs();
+        }
+      });
+    }
+
     ed.onDidChangeModelContent(() => {
       if (onChange) onChange(ed.getValue());
     });
@@ -180,7 +200,7 @@ function saveCurrentMonacoState(tabInfo: FormTabInfo): void {
   const d = deps!;
   const editorInstance = d.getEditorInstance();
   if (editorInstance && d.tabMgr.activeTabId !== tabInfo.id) {
-    const curTab = d.tabMgr.openTabs.find(t => t.id === d.tabMgr.activeTabId);
+    const curTab = d.tabMgr.openTabs.find((t) => t.id === d.tabMgr.activeTabId);
     if (curTab && !NON_MONACO_EDITOR_TAB_TYPES.has(curTab.language) && curTab.setValue) {
       curTab._lastValue = editorInstance.getValue();
       curTab.setValue(curTab._lastValue);
@@ -212,8 +232,14 @@ function buildMarkDirty(tabInfo: FormTabInfo, data: Record<string, unknown>): Di
       d.createBackup(tabInfo.id, data);
     }
     tabInfo.setValue!(data);
-    d.tabMgr.dirtyFields.add(tabInfo.id);
-    d.tabMgr.renderTabs();
+    // Mark both tab ID and parent field dirty (e.g. regex_0 + regex)
+    d.tabMgr.markDirtyForTabId(tabInfo.id);
+    // Defer renderTabs during IME composition to prevent double-backspace
+    if (formComposing) {
+      formPendingRenderTabs = true;
+    } else {
+      d.tabMgr.renderTabs();
+    }
   };
 }
 
@@ -263,7 +289,9 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
     input.className = 'form-input';
     input.type = 'text';
     input.value = (data[field] as string) || '';
-    if (readonly) { input.readOnly = true; } else {
+    if (readonly) {
+      input.readOnly = true;
+    } else {
       input.addEventListener('input', () => {
         data[field] = input.value;
         markDirty();
@@ -275,7 +303,13 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
     return input;
   }
 
-  addTextRow('이름', 'comment');
+  const nameInput = addTextRow('이름', 'comment');
+  // Update tab label live when name changes
+  if (!readonly) {
+    nameInput.addEventListener('input', () => {
+      tabInfo.label = nameInput.value || tabInfo.id;
+    });
+  }
 
   // Folder dropdown (show folder names, not UUIDs)
   const folderRow = document.createElement('div');
@@ -291,10 +325,10 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
   // Build folder options from lorebook (use ref source if readonly)
   const refLore = tabInfo._refLorebook;
   const fileData = d.getFileData();
-  const loreSource = (refLore || (fileData ? (fileData as Record<string, unknown>).lorebook as Record<string, unknown>[] : []) || []) as Record<string, unknown>[];
-  const folderEntries = loreSource
-    .map((e, i) => ({ entry: e, index: i }))
-    .filter(f => f.entry.mode === 'folder');
+  const loreSource = (refLore ||
+    (fileData ? ((fileData as Record<string, unknown>).lorebook as Record<string, unknown>[]) : []) ||
+    []) as Record<string, unknown>[];
+  const folderEntries = loreSource.map((e, i) => ({ entry: e, index: i })).filter((f) => f.entry.mode === 'folder');
 
   // "(없음)" = root
   const optNone = document.createElement('option');
@@ -321,14 +355,22 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
   if (data.folder) {
     let matched = false;
     for (const opt of folderSelect.options) {
-      if (opt.value === data.folder) { opt.selected = true; matched = true; break; }
+      if (opt.value === data.folder) {
+        opt.selected = true;
+        matched = true;
+        break;
+      }
     }
     if (!matched) {
       for (const f of folderEntries) {
         const folderId = `folder:${(f.entry.key as string) || f.index}`;
         if (data.folder === folderId || data.folder === f.entry.key || data.folder === f.entry.comment) {
           for (const opt of folderSelect.options) {
-            if (opt.value === folderId) { opt.selected = true; matched = true; break; }
+            if (opt.value === folderId) {
+              opt.selected = true;
+              matched = true;
+              break;
+            }
           }
           if (matched) break;
         }
@@ -346,10 +388,18 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
       }
       const folderId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const newFolder = {
-        key: folderId, content: '', comment: name, mode: 'folder',
-        insertorder: 100, alwaysActive: false, forceActivation: false,
-        selective: false, secondkey: '', constant: false,
-        order: (fileData as Record<string, unknown> & { lorebook: unknown[] }).lorebook.length, folder: ''
+        key: folderId,
+        content: '',
+        comment: name,
+        mode: 'folder',
+        insertorder: 100,
+        alwaysActive: false,
+        forceActivation: false,
+        selective: false,
+        secondkey: '',
+        constant: false,
+        order: (fileData as Record<string, unknown> & { lorebook: unknown[] }).lorebook.length,
+        folder: '',
       };
       ((fileData as Record<string, unknown>).lorebook as unknown[]).push(newFolder);
       // Add new option before the "+ 새 폴더" option
@@ -384,7 +434,9 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
   orderInput.className = 'form-input form-number';
   orderInput.type = 'number';
   orderInput.value = String(data.insertorder ?? 100);
-  if (readonly) { orderInput.readOnly = true; } else {
+  if (readonly) {
+    orderInput.readOnly = true;
+  } else {
     orderInput.addEventListener('input', () => {
       data.insertorder = parseInt(orderInput.value, 10) || 0;
       markDirty();
@@ -404,7 +456,9 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = !!data[field];
-    if (readonly) { cb.disabled = true; } else {
+    if (readonly) {
+      cb.disabled = true;
+    } else {
       cb.addEventListener('change', () => {
         data[field] = cb.checked;
         markDirty();
@@ -437,10 +491,17 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
 
   // Create mini Monaco after DOM insertion
   setTimeout(() => {
-    const ed = createMiniMonaco(monacoContainer, (data.content as string) || '', 'plaintext', readonly ? null : (val) => {
-      data.content = val;
-      markDirty();
-    });
+    const ed = createMiniMonaco(
+      monacoContainer,
+      (data.content as string) || '',
+      'plaintext',
+      readonly
+        ? null
+        : (val) => {
+            data.content = val;
+            markDirty();
+          },
+    );
     if (ed && readonly) ed.updateOptions({ readOnly: true });
   }, 10);
 }
@@ -502,9 +563,12 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
   nameInput.className = 'form-input';
   nameInput.type = 'text';
   nameInput.value = (data.comment as string) || '';
-  if (readonly) { nameInput.readOnly = true; } else {
+  if (readonly) {
+    nameInput.readOnly = true;
+  } else {
     nameInput.addEventListener('input', () => {
       data.comment = nameInput.value;
+      tabInfo.label = nameInput.value || tabInfo.id;
       markDirty();
     });
   }
@@ -533,7 +597,7 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
     const opt = document.createElement('option');
     opt.value = t.value;
     opt.textContent = t.label;
-    if (data.type === t.value) opt.selected = true;
+    if (((data.type as string) || '').toLowerCase() === t.value.toLowerCase()) opt.selected = true;
     typeSelect.appendChild(opt);
   }
   if (!readonly) {
@@ -594,9 +658,12 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
 
   // Track active flags
   const activeFlags = new Set(flagStr.split(''));
-  const knownKeys = new Set([...normalFlags.map(f => f.key), ...specialFlags.map(f => f.key)]);
-  const customChars = flagStr.split('').filter(c => !knownKeys.has(c)).join('');
-  const nonDefaultFlags = [...activeFlags].filter(f => f !== 'g');
+  const knownKeys = new Set([...normalFlags.map((f) => f.key), ...specialFlags.map((f) => f.key)]);
+  const customChars = flagStr
+    .split('')
+    .filter((c) => !knownKeys.has(c))
+    .join('');
+  const nonDefaultFlags = [...activeFlags].filter((f) => f !== 'g');
   const hasAnyFlag = nonDefaultFlags.length > 0 || customChars.length > 0;
 
   // Custom flag text input (declared early for rebuildFlagString)
@@ -609,8 +676,12 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
 
   function rebuildFlagString(): void {
     let result = '';
-    for (const f of normalFlags) { if (activeFlags.has(f.key)) result += f.key; }
-    for (const f of specialFlags) { if (activeFlags.has(f.key)) result += f.key; }
+    for (const f of normalFlags) {
+      if (activeFlags.has(f.key)) result += f.key;
+    }
+    for (const f of specialFlags) {
+      if (activeFlags.has(f.key)) result += f.key;
+    }
     if (customFlagInput.value) result += customFlagInput.value;
     data.flag = result;
     markDirty();
@@ -638,7 +709,9 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
     const btn = document.createElement('button');
     btn.className = 'regex-flag-btn' + (activeFlags.has(f.key) ? ' active' : '');
     btn.textContent = f.label;
-    if (readonly) { btn.disabled = true; } else {
+    if (readonly) {
+      btn.disabled = true;
+    } else {
       btn.addEventListener('click', () => {
         if (activeFlags.has(f.key)) activeFlags.delete(f.key);
         else activeFlags.add(f.key);
@@ -662,7 +735,9 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
     const btn = document.createElement('button');
     btn.className = 'regex-flag-btn' + (activeFlags.has(f.key) ? ' active' : '');
     btn.textContent = f.label;
-    if (readonly) { btn.disabled = true; } else {
+    if (readonly) {
+      btn.disabled = true;
+    } else {
       btn.addEventListener('click', () => {
         if (activeFlags.has(f.key)) activeFlags.delete(f.key);
         else activeFlags.add(f.key);
@@ -685,7 +760,9 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
   orderInput.type = 'number';
   orderInput.value = String(data.replaceOrder ?? 0);
   orderInput.style.width = '100%';
-  if (readonly) { orderInput.readOnly = true; } else {
+  if (readonly) {
+    orderInput.readOnly = true;
+  } else {
     orderInput.addEventListener('input', () => {
       data.replaceOrder = parseInt(orderInput.value, 10) || 0;
       markDirty();
@@ -699,7 +776,9 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
   const customFlagLabel = document.createElement('span');
   customFlagLabel.textContent = 'Custom';
   customFlagLabel.style.cssText = 'font-size:12px;font-weight:600;color:var(--text-primary);';
-  if (readonly) { customFlagInput.readOnly = true; } else {
+  if (readonly) {
+    customFlagInput.readOnly = true;
+  } else {
     customFlagInput.addEventListener('input', () => rebuildFlagString());
   }
   customRow.appendChild(customFlagLabel);
@@ -728,7 +807,11 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
     const dy = e.clientY - startY;
     replaceContainer.style.height = Math.max(40, startH + dy) + 'px';
     for (const fe of formEditors) {
-      if (fe && typeof (fe as MonacoEditor).getDomNode === 'function' && replaceContainer.contains((fe as MonacoEditor).getDomNode())) {
+      if (
+        fe &&
+        typeof (fe as MonacoEditor).getDomNode === 'function' &&
+        replaceContainer.contains((fe as MonacoEditor).getDomNode())
+      ) {
         (fe as MonacoEditor).layout();
       }
     }
@@ -749,14 +832,33 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
 
   // Create mini Monacos after DOM insertion
   setTimeout(() => {
-    const edFind = createMiniMonaco(findContainer, (data.in as string) || '', 'plaintext', readonly ? null : (val) => {
-      data.in = val;
-      markDirty();
-    });
-    const edReplace = createMiniMonaco(replaceContainer, (data.out as string) || '', 'plaintext', readonly ? null : (val) => {
-      data.out = val;
-      markDirty();
-    });
+    // Read from find/replace (V2) or in/out (V1) — find/replace takes priority at runtime
+    const findVal = (data.find as string) || (data.in as string) || '';
+    const replaceVal = (data.replace as string) || (data.out as string) || '';
+    const edFind = createMiniMonaco(
+      findContainer,
+      findVal,
+      'plaintext',
+      readonly
+        ? null
+        : (val) => {
+            data.in = val;
+            data.find = val;
+            markDirty();
+          },
+    );
+    const edReplace = createMiniMonaco(
+      replaceContainer,
+      replaceVal,
+      'plaintext',
+      readonly
+        ? null
+        : (val) => {
+            data.out = val;
+            data.replace = val;
+            markDirty();
+          },
+    );
     if (readonly) {
       if (edFind) edFind.updateOptions({ readOnly: true });
       if (edReplace) edReplace.updateOptions({ readOnly: true });

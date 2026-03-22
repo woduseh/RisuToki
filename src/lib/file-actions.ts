@@ -84,6 +84,7 @@ export async function handleSave(deps: FileActionDeps): Promise<void> {
   if (result.success) {
     deps.tabMgr.dirtyFields.clear();
     deps.tabMgr.renderTabs();
+    deps.buildSidebar();
     deps.setStatus('저장 완료');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).tokiAPI.cleanupAutosave(deps.getAutosaveDir() || undefined);
@@ -101,6 +102,7 @@ export async function handleSaveAs(deps: FileActionDeps): Promise<void> {
   if (result.success) {
     deps.tabMgr.dirtyFields.clear();
     deps.tabMgr.renderTabs();
+    deps.buildSidebar();
     deps.setStatus(`저장 완료: ${result.path}`);
   } else {
     deps.setStatus(`저장 취소`);

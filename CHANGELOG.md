@@ -9,6 +9,15 @@
 
 ---
 
+## [0.18.2] - 2026-03-22
+
+### 수정
+
+- **Backspace 2칸 삭제 버그** — CJK IME 조합 중 `renderTabs()` DOM 리빌드가 composition 상태를 깨뜨려 backspace가 조합 해제 + 문자 삭제 두 번 처리되던 문제 수정. 메인 Monaco와 미니 Monaco 모두 composition 가드 + 지연 렌더링 적용
+- **로어북/정규식 이름 저장 안 됨** — 데이터는 정상 저장되지만 탭 레이블과 사이드바가 갱신되지 않아 저장 실패로 보이던 문제 수정. 이름 변경 시 탭 레이블 즉시 갱신 + 저장 후 사이드바 리빌드 추가. `buildMarkDirty`가 부모 필드(`regex`/`lorebook`)도 dirty로 표시하도록 개선
+- **정규식 Type 편집 미반영** — RisuAI 원본 데이터(`editinput`)와 드롭다운 값(`editInput`)의 대소문자 불일치로 기존 type이 올바르게 선택되지 않던 문제 수정. 대소문자 무시 비교 적용
+- **정규식 find/replace 필드 동기화** — 폼 에디터가 `in`/`out`만 설정하고 `find`/`replace`를 동기화하지 않아, `find`가 우선인 preview-engine에서 편집 내용이 반영되지 않던 문제 수정. 양쪽 필드를 함께 갱신하고 초기값도 `find`/`replace` 우선으로 로드
+
 ## [0.18.1] - 2026-03-22
 
 ### 새 기능

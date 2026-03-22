@@ -1,6 +1,6 @@
 ---
 name: writing-html-css
-description: "Guides writing HTML and CSS for RisuAI charx and risum files. Covers the backgroundEmbedding field for persistent styles, the x-risu- class prefix requirement, empty line restrictions, CBS dynamic class injection, and practical UI patterns like status panels. Use when creating or editing CSS/HTML in backgroundEmbedding, regex OUT fields, or lorebook content."
+description: 'Guides writing HTML and CSS for RisuAI charx and risum files. Covers the backgroundEmbedding field for persistent styles, the x-risu- class prefix requirement, empty line restrictions, CBS dynamic class injection, and practical UI patterns like status panels. Use when creating or editing CSS/HTML in backgroundEmbedding, regex OUT fields, or lorebook content.'
 ---
 
 # Writing HTML & CSS for RisuAI
@@ -9,30 +9,38 @@ RisuAI renders HTML within chat messages and supports CSS styling, but its markd
 
 ## Where to Put CSS
 
-| Location | Result |
-|---|---|
-| **backgroundEmbedding** (recommended) | Loaded once on page load. Efficient and consistent. |
-| Regex script OUT field | Re-injected on every match. Causes duplicate styles and performance issues. |
+| Location                              | Result                                                                      |
+| ------------------------------------- | --------------------------------------------------------------------------- |
+| **backgroundEmbedding** (recommended) | Loaded once on page load. Efficient and consistent.                         |
+| Regex script OUT field                | Re-injected on every match. Causes duplicate styles and performance issues. |
 
 **Always declare `<style>` blocks in backgroundEmbedding**, not in regex scripts.
 
 ## Critical Constraints
 
-### No empty lines between HTML tags
+### No empty lines or newlines between connected HTML/CBS tags
 
-The markdown parser breaks HTML structure when it encounters blank lines between tags:
+RisuAI's markdown parser is aggressive. If it encounters blank lines, or even just regular newlines (`\n`) between inline elements or CBS logic blocks (`{{#when...}}`), it may wrap the elements in unexpected `<p>` tags or insert text nodes (phantom spaces). This completely breaks `flex` or `grid` layouts.
+
+**CRITICAL: Minify your HTML when returning it from Regex or Lorebooks.**
 
 ```html
-<!-- BAD — structure breaks -->
+<!-- BAD — The newline between {{/when}} and {{#when}} will cause layout shifts or <p> wrapping -->
+{{#when::uiLang::vis::en}}
+<button>English</button>
+{{/when}} {{#when::uiLang::vis::kr}}
+<button>한국어</button>
+{{/when}}
+
+<!-- GOOD — Write continuously on a single line (Minified) -->
+{{#when::uiLang::vis::en}}<button>English</button>{{/when}}{{#when::uiLang::vis::kr}}<button>한국어</button>{{/when}}
+```
+
+```html
+<!-- BAD — Empty lines break structure entirely -->
 <div>
   <div>Content 1</div>
 
-  <div>Content 2</div>
-</div>
-
-<!-- GOOD — write continuously -->
-<div>
-  <div>Content 1</div>
   <div>Content 2</div>
 </div>
 ```
@@ -43,13 +51,19 @@ RisuAI automatically prefixes all CSS classes with `x-risu-` at render time. Whe
 
 ```css
 /* BAD — won't match at runtime */
-.status.active { color: green; }
+.status.active {
+  color: green;
+}
 
 /* GOOD — manual prefix for chained selectors */
-.status.x-risu-active { color: green; }
+.status.x-risu-active {
+  color: green;
+}
 
 /* OK — parent-child selectors (space-separated) work normally */
-.parent .child { color: blue; }
+.parent .child {
+  color: blue;
+}
 ```
 
 In HTML, write classes normally: `class="status active"`. The prefix is only needed in CSS selectors.

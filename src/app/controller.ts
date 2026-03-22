@@ -141,6 +141,7 @@ interface MonacoEditorInstance {
   getOption(id: number): unknown;
   getPosition(): { lineNumber: number; column: number } | null;
   setPosition(position: { lineNumber: number; column: number }): void;
+  getDomNode(): HTMLElement | null;
   layout(dimension?: { width: number; height: number }): void;
   [key: string]: unknown;
 }
@@ -149,6 +150,10 @@ let fileData: CharxData | null = null; // Current charx data
 let editorInstance: MonacoEditorInstance | null = null; // Monaco editor instance
 let monacoReady = false;
 let monacoLoadTask: Promise<boolean> | null = null;
+
+// IME composition guard — skip DOM-heavy side-effects during CJK composition
+let isComposing = false;
+let pendingRenderTabs = false;
 
 // Lua section management
 let luaSections: Section[] = []; // [{ name, content }]
@@ -425,6 +430,21 @@ function createOrSwitchEditor(tabInfo: Tab): void {
     maxTokenizationLineLength: 20000,
   });
 
+  // Track IME composition to avoid DOM-heavy side effects during CJK input
+  const edDom = editorInstance!.getDomNode?.();
+  if (edDom) {
+    edDom.addEventListener('compositionstart', () => {
+      isComposing = true;
+    });
+    edDom.addEventListener('compositionend', () => {
+      isComposing = false;
+      if (pendingRenderTabs) {
+        pendingRenderTabs = false;
+        tabMgr.renderTabs();
+      }
+    });
+  }
+
   editorInstance!.onDidChangeModelContent(() => {
     const curTab = tabMgr.openTabs.find((t) => t.id === tabMgr.activeTabId);
     if (curTab && curTab.setValue) {
@@ -434,7 +454,12 @@ function createOrSwitchEditor(tabInfo: Tab): void {
       }
       curTab.setValue(editorInstance!.getValue());
       tabMgr.dirtyFields.add(curTab.id);
-      tabMgr.renderTabs();
+      // Defer renderTabs during IME composition to prevent double-backspace
+      if (isComposing) {
+        pendingRenderTabs = true;
+      } else {
+        tabMgr.renderTabs();
+      }
       setStatus('수정됨');
     }
   });

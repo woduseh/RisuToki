@@ -1,6 +1,6 @@
 ---
 name: writing-regex-scripts
-description: "Guides writing regex scripts for RisuAI charx and risum files. Covers four modification types (editInput, editOutput, editDisplay, editRequest), capture group substitution, special OUT prefixes (@@emo, @@inject, @@move_top/bottom), flag options, and CBS/HTML integration in OUT fields. Use when creating or editing regex entries."
+description: 'Guides writing regex scripts for RisuAI charx and risum files. Covers four modification types (editInput, editOutput, editDisplay, editRequest), capture group substitution, special OUT prefixes (@@emo, @@inject, @@move_top/bottom), flag options, and CBS/HTML integration in OUT fields. Use when creating or editing regex entries.'
 ---
 
 # Writing Regex Scripts
@@ -9,35 +9,35 @@ Regex scripts intercept and transform text at different stages of the chat pipel
 
 ## Script Fields
 
-| Field | Description |
-|---|---|
-| `comment` | Script name for identification |
-| `type` | When the script runs (see Modification Types below) |
-| `find` | JavaScript regex pattern (the IN field) |
-| `replace` | Replacement text (the OUT field). Supports HTML and CBS. |
-| `flag` | Regex flags + special flags |
+| Field      | Description                                                 |
+| ---------- | ----------------------------------------------------------- |
+| `comment`  | Script name for identification                              |
+| `type`     | When the script runs (see Modification Types below)         |
+| `find`     | JavaScript regex pattern (the IN field)                     |
+| `replace`  | Replacement text (the OUT field). Supports HTML and CBS.    |
+| `flag`     | Regex flags + special flags                                 |
 | `ableFlag` | `true` = use custom flags; `false` = default (`g`, order 0) |
 
 ## Modification Types
 
-| Type | When | Use Cases |
-|---|---|---|
-| `editinput` | User input → before sending to server | Command shortcuts, input preprocessing, typo correction |
-| `editoutput` | AI response → before saving to chat | Response post-processing, variable parsing, word filtering |
-| `editdisplay` | During screen rendering | UI elements, status bars, visual effects (doesn't modify data) |
+| Type          | When                                    | Use Cases                                                      |
+| ------------- | --------------------------------------- | -------------------------------------------------------------- |
+| `editinput`   | User input → before sending to server   | Command shortcuts, input preprocessing, typo correction        |
+| `editoutput`  | AI response → before saving to chat     | Response post-processing, variable parsing, word filtering     |
+| `editdisplay` | During screen rendering                 | UI elements, status bars, visual effects (doesn't modify data) |
 | `editrequest` | After prompt assembly → before API call | Prompt injection, token optimization (doesn't modify chat log) |
 
 **Pipeline order:** CBS parse → Trigger scripts → CBS re-parse → Regex scripts (with internal CBS)
 
 ## Regex Flags
 
-| Flag | Description |
-|---|---|
-| `g` | Global — match all occurrences |
-| `i` | Case insensitive |
-| `m` | Multiline — `^`/`$` match line boundaries |
-| `s` | DotAll — `.` matches newlines |
-| `u` | Unicode mode |
+| Flag | Description                               |
+| ---- | ----------------------------------------- |
+| `g`  | Global — match all occurrences            |
+| `i`  | Case insensitive                          |
+| `m`  | Multiline — `^`/`$` match line boundaries |
+| `s`  | DotAll — `.` matches newlines             |
+| `u`  | Unicode mode                              |
 
 ## Special Flags
 
@@ -48,21 +48,39 @@ Regex scripts intercept and transform text at different stages of the chat pipel
 
 ## OUT Field Substitution Tokens
 
-| Token | Description |
-|---|---|
-| `$0` / `$&` | Entire match |
-| `$1` – `$9` | Capture groups |
-| `$<name>` | Named capture group |
-| `$n` | Newline insertion |
+| Token       | Description         |
+| ----------- | ------------------- |
+| `$0` / `$&` | Entire match        |
+| `$1` – `$9` | Capture groups      |
+| `$<name>`   | Named capture group |
+| `$n`        | Newline insertion   |
+
+## Formatting HTML in the OUT Field (`editDisplay`)
+
+When using regex scripts to inject custom UI (like a status panel or buttons) via the `editDisplay` type, **you must minify your HTML and CBS tags**.
+
+If you leave newlines (`\n`) between HTML tags or `{{#when...}}` CBS blocks, the RisuAI markdown parser will aggressively wrap them in `<p>` tags, create text nodes (phantom margins), or incorrectly apply markdown styles (like blockquotes for indented lines, or italics for `_` characters).
+
+**Rule of Thumb:** Compress all injected UI blocks into a single continuous line without any line breaks.
+
+```text
+<!-- BAD: Markdown will break flexbox/grid alignments -->
+{{#when::uiLang::vis::en}}
+<button>English</button>
+{{/when}}
+
+<!-- GOOD: Minified -->
+{{#when::uiLang::vis::en}}<button>English</button>{{/when}}
+```
 
 ## Special OUT Prefixes
 
-| Prefix | Description |
-|---|---|
-| `@@emo emotionName` | Trigger emotion image display |
-| `@@inject` | Inject directly into chat log |
-| `@@move_top` | Move matched text to top of message |
-| `@@move_bottom` | Move matched text to bottom of message |
+| Prefix              | Description                            |
+| ------------------- | -------------------------------------- |
+| `@@emo emotionName` | Trigger emotion image display          |
+| `@@inject`          | Inject directly into chat log          |
+| `@@move_top`        | Move matched text to top of message    |
+| `@@move_bottom`     | Move matched text to bottom of message |
 
 ## Examples
 
