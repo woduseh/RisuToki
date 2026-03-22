@@ -179,7 +179,6 @@ export function initPopoutManager(d: PopoutManagerDeps): void {
       { id: 'firstMessage', label: '첫 메시지', icon: '💬' },
       { id: 'triggerScripts', label: '트리거 스크립트', icon: '🪝' },
       { id: 'alternateGreetings', label: '추가 첫 메시지', icon: '💭' },
-      { id: 'groupOnlyGreetings', label: '그룹 첫 메시지', icon: '👥' },
       { id: 'css', label: 'CSS', icon: '🎨' },
       { id: 'defaultVariables', label: '기본변수', icon: '⚙' },
       { id: 'description', label: '설명', icon: '📄' },

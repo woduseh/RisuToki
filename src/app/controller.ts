@@ -602,21 +602,6 @@ function buildAltGreetTabState(index: number): Record<string, unknown> | null {
   };
 }
 
-function buildGrpGreetTabState(index: number): Record<string, unknown> | null {
-  const arr = fileData?.groupOnlyGreetings as string[] | undefined;
-  if (!arr || index >= arr.length) return null;
-
-  return {
-    id: `grpGreet_${index}`,
-    label: `그룹 인사말 ${index + 1}`,
-    language: 'html',
-    getValue: () => (fileData!.groupOnlyGreetings as string[])[index] ?? '',
-    setValue: (value: unknown) => {
-      (fileData!.groupOnlyGreetings as string[])[index] = value as string;
-    },
-  };
-}
-
 // ==================== Sidebar ====================
 
 // ==================== Sidebar ====================
@@ -985,57 +970,6 @@ function buildSidebar(): void {
         showContextMenu(e.clientX, e.clientY, items);
       });
       altGreetContainer.appendChild(itemEl);
-    }
-  }
-
-  // ---- Group Only Greetings folder (charx only) ----
-  if (!isRisum && !isRisup) {
-    const grpGreetFolder = createFolderItem('그룹 첫 메시지', '👥', 0);
-    tree.appendChild(grpGreetFolder.header);
-    tree.appendChild(grpGreetFolder.children);
-
-    grpGreetFolder.header.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      showContextMenu(e.clientX, e.clientY, [
-        { label: '새 그룹 인사말 추가', action: () => addGroupOnlyGreeting() },
-        '---',
-        createMcpCopyItem('read_field("groupOnlyGreetings")'),
-      ]);
-    });
-
-    const grpGreetContainer = document.createElement('div');
-    grpGreetContainer.dataset.dndGrpgreetContainer = '';
-    grpGreetFolder.children.appendChild(grpGreetContainer);
-
-    const grpArr = (fileData.groupOnlyGreetings as string[]) || [];
-    for (let i = 0; i < grpArr.length; i++) {
-      const idx = i;
-      const preview = grpArr[i].slice(0, 30).replace(/\n/g, ' ') || '(빈 인사말)';
-      const itemEl = createTreeItem(`그룹 인사말 ${idx + 1}`, '·', 1);
-      itemEl.title = preview;
-      itemEl.dataset.dndIdx = String(idx);
-      itemEl.addEventListener('click', () => {
-        tabMgr.openTab(
-          `grpGreet_${idx}`,
-          `그룹 인사말 ${idx + 1}`,
-          'html',
-          () => (fileData!.groupOnlyGreetings as string[])[idx] ?? '',
-          (v: unknown) => {
-            (fileData!.groupOnlyGreetings as string[])[idx] = v as string;
-          },
-        );
-      });
-      itemEl.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const items: ContextMenuItem[] = [createMcpCopyItem(`read_field("groupOnlyGreetings")`)];
-        appendBackupItems(items, `grpGreet_${idx}`, e.clientX, e.clientY);
-        items.push('---');
-        items.push({ label: '삭제', action: () => deleteGroupOnlyGreeting(idx) });
-        showContextMenu(e.clientX, e.clientY, items);
-      });
-      grpGreetContainer.appendChild(itemEl);
     }
   }
 
@@ -1415,7 +1349,6 @@ const sidebarActions = createSidebarActions({
   buildLuaSectionTabState,
   buildCssSectionTabState,
   buildAltGreetTabState,
-  buildGrpGreetTabState,
 });
 
 const {
@@ -1444,9 +1377,6 @@ const {
   addAlternateGreeting,
   deleteAlternateGreeting,
   reorderAlternateGreetings,
-  addGroupOnlyGreeting,
-  deleteGroupOnlyGreeting,
-  reorderGroupOnlyGreetings,
 } = sidebarActions;
 
 // ==================== Drag-and-Drop Dependencies ====================
@@ -1464,7 +1394,6 @@ function getDndDeps() {
     reorderCssSections,
     reorderAsset,
     reorderAlternateGreetings,
-    reorderGroupOnlyGreetings,
   };
 }
 
@@ -2066,12 +1995,6 @@ function openTabById(tabId: string): void {
       label: '추가 첫 메시지',
       lang: 'json',
       get: () => stringifyStringArray(data.alternateGreetings),
-      set: null,
-    },
-    groupOnlyGreetings: {
-      label: '그룹 첫 메시지',
-      lang: 'json',
-      get: () => stringifyStringArray(data.groupOnlyGreetings),
       set: null,
     },
     css: {

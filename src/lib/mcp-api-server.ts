@@ -374,33 +374,33 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           count: (currentData.alternateGreetings || []).length,
           type: 'array',
         });
-        fields.push({
-          name: 'groupOnlyGreetings',
-          count: (currentData.groupOnlyGreetings || []).length,
-          type: 'array',
-        });
         fields.push({ name: 'lorebook', count: (currentData.lorebook || []).length, type: 'array' });
         fields.push({ name: 'regex', count: (currentData.regex || []).length, type: 'array' });
 
         // Charx card.data fields
         if (isCharx) {
-          const charxStringFields = [
-            'personality',
-            'scenario',
-            'creatorcomment',
-            'exampleMessage',
-            'systemPrompt',
-            'creator',
-            'characterVersion',
-            'nickname',
-            'additionalText',
-            'license',
-          ];
+          const charxStringFields = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
           for (const f of charxStringFields) {
             fields.push({ name: f, size: ((currentData[f] as string) || '').length, type: 'string' });
           }
-          fields.push({ name: 'tags', count: (currentData.tags || []).length, type: 'array' });
-          fields.push({ name: 'source', count: (currentData.source || []).length, type: 'array' });
+          // Read-only charx fields (RisuAI deprecated/passthrough — editing disabled, data preserved in file I/O)
+          const charxReadOnlyFields = ['personality', 'scenario', 'nickname', 'additionalText', 'license'];
+          for (const f of charxReadOnlyFields) {
+            const val = (currentData[f] as string) || '';
+            if (val.length > 0) {
+              fields.push({ name: f, size: val.length, type: 'string (read-only)' });
+            }
+          }
+          const readOnlyArrayFields = [
+            { name: 'tags', data: currentData.tags },
+            { name: 'source', data: currentData.source },
+          ];
+          for (const af of readOnlyArrayFields) {
+            const arr = (af.data as string[]) || [];
+            if (arr.length > 0) {
+              fields.push({ name: af.name, count: arr.length, type: 'array (read-only)' });
+            }
+          }
           fields.push({ name: 'creationDate', value: currentData.creationDate ?? 0, type: 'number (read-only)' });
           fields.push({
             name: 'modificationDate',
@@ -506,7 +506,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'description',
           'firstMessage',
           'alternateGreetings',
-          'groupOnlyGreetings',
           'globalNote',
           'css',
           'defaultVariables',
@@ -597,7 +596,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const isRisum = (currentData._fileType || 'charx') === 'risum';
         const isRisup = (currentData._fileType || 'charx') === 'risup';
         const isCharx = !isRisum && !isRisup;
-        const allReadOnly = [...(isRisum ? risumReadOnlyFields : []), ...(isCharx ? charxReadOnlyFields : [])];
+        // Deprecated/passthrough charx fields — readable but not writable
+        const charxDeprecatedFields = [
+          'personality',
+          'scenario',
+          'nickname',
+          'source',
+          'additionalText',
+          'tags',
+          'license',
+          'groupOnlyGreetings',
+        ];
+        const allReadOnly = [
+          ...(isRisum ? risumReadOnlyFields : []),
+          ...(isCharx ? [...charxReadOnlyFields, ...charxDeprecatedFields] : []),
+        ];
         const allAllowed = [
           ...allowedFields,
           ...(isCharx ? [...charxFields, ...charxReadOnlyFields] : []),
@@ -622,7 +635,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
           // Array fields
-          if (['alternateGreetings', 'groupOnlyGreetings', 'tags', 'source'].includes(fieldName)) {
+          if (['alternateGreetings', 'tags', 'source'].includes(fieldName)) {
             return jsonRes(res, { field: fieldName, content: currentData[fieldName] || [] });
           }
           // Boolean fields
@@ -684,8 +697,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${fieldName}`,
             });
           }
-          // Validate content type: must be string or array (for alternateGreetings/groupOnlyGreetings)
-          const arrayFields = ['alternateGreetings', 'groupOnlyGreetings'];
+          // Validate content type: must be string or array (for alternateGreetings)
+          const arrayFields = ['alternateGreetings'];
           if (arrayFields.includes(fieldName)) {
             if (!Array.isArray(body.content)) {
               return mcpError(res, 400, {
@@ -723,7 +736,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
           if (allowed) {
             let content = body.content;
-            if (fieldName === 'alternateGreetings' || fieldName === 'groupOnlyGreetings') {
+            if (fieldName === 'alternateGreetings') {
               content = (content as unknown[]).map((item: unknown) => String(item));
             }
             // Strip <style> wrapper from CSS to prevent nesting
@@ -806,7 +819,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'description',
           'firstMessage',
           'alternateGreetings',
-          'groupOnlyGreetings',
           'globalNote',
           'css',
           'defaultVariables',
@@ -922,7 +934,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'creationDate',
           'modificationDate',
         ];
-        const arrayFields = ['alternateGreetings', 'groupOnlyGreetings', 'tags', 'source'];
+        const arrayFields = ['alternateGreetings', 'tags', 'source'];
 
         const results = fields.map((fieldName: string) => {
           if (!allAllowedBatch.includes(fieldName)) {
@@ -959,16 +971,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'css',
           'defaultVariables',
           'lua',
-          'personality',
-          'scenario',
           'creatorcomment',
           'exampleMessage',
           'systemPrompt',
           'creator',
           'characterVersion',
-          'nickname',
-          'additionalText',
-          'license',
           'cjs',
           'backgroundEmbedding',
           'moduleNamespace',
@@ -1144,16 +1151,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'css',
           'defaultVariables',
           'lua',
-          'personality',
-          'scenario',
           'creatorcomment',
           'exampleMessage',
           'systemPrompt',
           'creator',
           'characterVersion',
-          'nickname',
-          'additionalText',
-          'license',
           'cjs',
           'backgroundEmbedding',
           'moduleNamespace',
@@ -1289,16 +1291,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'css',
           'defaultVariables',
           'lua',
-          'personality',
-          'scenario',
           'creatorcomment',
           'exampleMessage',
           'systemPrompt',
           'creator',
           'characterVersion',
-          'nickname',
-          'additionalText',
-          'license',
           'cjs',
           'backgroundEmbedding',
           'moduleNamespace',
@@ -3309,7 +3306,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ================================================================
-      // GREETINGS  (alternateGreetings / groupOnlyGreetings)
+      // GREETINGS  (alternateGreetings only — groupOnlyGreetings deprecated)
       // ================================================================
 
       // ----------------------------------------------------------------
@@ -3317,13 +3314,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greetings' && parts[1] && !parts[2] && req.method === 'GET') {
         const greetingType = parts[1]; // "alternate" | "group"
-        const fieldName =
-          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'list greetings',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
             target: `greetings:${greetingType}`,
           });
         }
@@ -3374,13 +3370,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] && !parts[3] && req.method === 'GET') {
         const greetingType = parts[1];
-        const fieldName =
-          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'read greeting',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
             target: `greeting:${greetingType}`,
           });
         }
@@ -3402,13 +3397,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] === 'add' && req.method === 'POST') {
         const greetingType = parts[1];
-        const fieldName =
-          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'add greeting',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
             target: `greeting:${greetingType}:add`,
           });
         }
@@ -3453,13 +3447,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] === 'batch-write' && req.method === 'POST') {
         const greetingType = parts[1];
-        const fieldName =
-          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'batch write greetings',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
             target: `greeting:${greetingType}:batch-write`,
           });
         }
@@ -3509,13 +3502,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] === 'reorder' && req.method === 'POST') {
         const greetingType = parts[1];
-        const fieldName =
-          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'reorder greetings',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
             target: `greeting:${greetingType}:reorder`,
           });
         }
@@ -3567,13 +3559,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         req.method === 'POST'
       ) {
         const greetingType = parts[1];
-        const fieldName =
-          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'write greeting',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
             target: `greeting:${greetingType}`,
           });
         }
@@ -3628,13 +3619,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] && parts[3] === 'delete' && req.method === 'POST') {
         const greetingType = parts[1];
-        const fieldName =
-          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'delete greeting',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
             target: `greeting:${greetingType}`,
           });
         }
@@ -3676,13 +3666,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] === 'batch-delete' && req.method === 'POST') {
         const greetingType = parts[1];
-        const fieldName =
-          greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'batch delete greetings',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
             target: `greeting:${greetingType}`,
           });
         }
@@ -4602,8 +4591,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             fields.push({ name: 'triggerScripts', size: r.data.triggerScripts.length });
           if (r.data.alternateGreetings?.length)
             fields.push({ name: 'alternateGreetings', count: r.data.alternateGreetings.length, type: 'array' });
-          if (r.data.groupOnlyGreetings?.length)
-            fields.push({ name: 'groupOnlyGreetings', count: r.data.groupOnlyGreetings.length, type: 'array' });
           if (r.data.lorebook?.length) fields.push({ name: 'lorebook', count: r.data.lorebook.length, type: 'array' });
           if (r.data.regex?.length) fields.push({ name: 'regex', count: r.data.regex.length, type: 'array' });
           return { index: i, fileName: r.fileName, fields };
@@ -5012,7 +4999,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             content: ref.data.triggerScripts || '[]',
           });
         }
-        if (fieldName === 'alternateGreetings' || fieldName === 'groupOnlyGreetings') {
+        if (fieldName === 'alternateGreetings') {
           return jsonRes(res, {
             index: idx,
             fileName: ref.fileName,

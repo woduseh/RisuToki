@@ -65,7 +65,7 @@ export async function buildAssistantPrompt(
     ``,
     `== .charx 파일 구조 ==`,
     `.charx = ZIP 아카이브 (card.json + module.risum + assets/)`,
-    `card.json: V3 캐릭터 카드 스펙 (name, description, firstMessage, personality 등)`,
+    `card.json: V3 캐릭터 카드 스펙 (name, description, firstMessage 등)`,
     `module.risum: RPack 인코딩된 바이너리 (Lua 트리거, 정규식 스크립트, 로어북)`,
     `assets/: 이미지 리소스 (icon/, other/image/)`,
     ``,
@@ -105,10 +105,10 @@ export async function buildAssistantPrompt(
     lines.push(`- list_regex / read_regex(index) / write_regex(index, data)`);
     lines.push(`- add_regex(data) / delete_regex(index)`);
     lines.push(``);
-    lines.push(`[인사말] ← alternateGreetings/groupOnlyGreetings 세분화 접근`);
+    lines.push(`[인사말] ← alternateGreetings 세분화 접근`);
     lines.push(`- list_greetings(type) / read_greeting(type, index) / write_greeting(type, index, content)`);
     lines.push(`- add_greeting(type, content) / delete_greeting(type, index)`);
-    lines.push(`- type: "alternate" (추가 첫 메시지) 또는 "group" (그룹 전용 인사말)`);
+    lines.push(`- type: "alternate" (추가 첫 메시지)`);
     lines.push(``);
     lines.push(`[트리거]`);
     lines.push(`- list_triggers / read_trigger(index) / write_trigger(index, ...)`);
@@ -145,9 +145,7 @@ export async function buildAssistantPrompt(
     lines.push(`- 인사말 → list_greetings(type) → read_greeting(type, index) (개별)`);
     lines.push(`- 트리거 → list_triggers → read_trigger(index) (개별)`);
     lines.push(`- 참고 자료 로어북 → list_reference_lorebook(folder?) → read_reference_lorebook (개별)`);
-    lines.push(
-      `- ⚠️ read_field("lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts")는 전체 덤프 → 사용 금지`,
-    );
+    lines.push(`- ⚠️ read_field("lua/css/alternateGreetings/triggerScripts")는 전체 덤프 → 사용 금지`);
   } else {
     lines.push(`편집 중인 항목의 내용을 알려주면 수정을 도와드리겠습니다.`);
   }

@@ -319,12 +319,6 @@ function renderReferenceFile(
       lang: 'json',
       get: () => stringifyStringArray(ref.data.alternateGreetings),
     },
-    {
-      id: 'groupOnlyGreetings',
-      label: '그룹 첫 메시지',
-      lang: 'json',
-      get: () => stringifyStringArray(ref.data.groupOnlyGreetings),
-    },
     { id: 'description', label: '설명', lang: 'plaintext' },
   ];
 
@@ -731,14 +725,6 @@ export function openRefTabById(tabId: string, deps: OpenRefTabDeps): void {
       `[참고] ${ref.fileName} - 추가 첫 메시지`,
       'json',
       () => stringifyStringArray(ref.data.alternateGreetings),
-      null,
-    );
-  } else if (fieldPart === 'groupOnlyGreetings') {
-    deps.openTab(
-      tabId,
-      `[참고] ${ref.fileName} - 그룹 첫 메시지`,
-      'json',
-      () => stringifyStringArray(ref.data.groupOnlyGreetings),
       null,
     );
   } else if (fieldPart === 'description') {

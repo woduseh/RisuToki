@@ -30,7 +30,6 @@ function createMockDeps(overrides: Partial<SidebarActionDeps> = {}): SidebarActi
     buildLuaSectionTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
     buildCssSectionTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
     buildAltGreetTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
-    buildGrpGreetTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
     ...overrides,
   };
 }
@@ -228,41 +227,6 @@ describe('reorderAlternateGreetings', () => {
   });
 });
 
-describe('reorderGroupOnlyGreetings', () => {
-  it('should reorder group-only greetings forward', () => {
-    const groupOnlyGreetings = ['G1', 'G2', 'G3'];
-    const deps = createMockDeps({
-      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', groupOnlyGreetings }),
-    });
-    const actions = createSidebarActions(deps);
-    actions.reorderGroupOnlyGreetings(0, 2);
-    expect(groupOnlyGreetings).toEqual(['G2', 'G3', 'G1']);
-    expect(deps.markFieldDirty).toHaveBeenCalledWith('groupOnlyGreetings');
-    expect(deps.refreshIndexedTabs).toHaveBeenCalledWith('grpGreet_', deps.buildGrpGreetTabState);
-  });
-
-  it('should reorder group-only greetings backward', () => {
-    const groupOnlyGreetings = ['G1', 'G2', 'G3'];
-    const deps = createMockDeps({
-      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', groupOnlyGreetings }),
-    });
-    const actions = createSidebarActions(deps);
-    actions.reorderGroupOnlyGreetings(2, 0);
-    expect(groupOnlyGreetings).toEqual(['G3', 'G1', 'G2']);
-  });
-
-  it('should no-op with out-of-bounds fromIdx', () => {
-    const groupOnlyGreetings = ['G1'];
-    const deps = createMockDeps({
-      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', groupOnlyGreetings }),
-    });
-    const actions = createSidebarActions(deps);
-    actions.reorderGroupOnlyGreetings(-1, 0);
-    expect(groupOnlyGreetings).toEqual(['G1']);
-    expect(deps.markFieldDirty).not.toHaveBeenCalled();
-  });
-});
-
 describe('addAlternateGreeting', () => {
   it('should add empty greeting and open tab', () => {
     const alternateGreetings: string[] = ['existing'];
@@ -294,44 +258,6 @@ describe('addAlternateGreeting', () => {
     expect(deps.openTab).toHaveBeenCalledWith(
       'altGreet_0',
       '인사말 1',
-      'html',
-      expect.any(Function),
-      expect.any(Function),
-    );
-  });
-});
-
-describe('addGroupOnlyGreeting', () => {
-  it('should add empty group greeting and open tab', () => {
-    const groupOnlyGreetings: string[] = [];
-    const deps = createMockDeps({
-      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', groupOnlyGreetings }),
-    });
-    const actions = createSidebarActions(deps);
-    actions.addGroupOnlyGreeting();
-    expect(groupOnlyGreetings).toEqual(['']);
-    expect(deps.markFieldDirty).toHaveBeenCalledWith('groupOnlyGreetings');
-    expect(deps.openTab).toHaveBeenCalledWith(
-      'grpGreet_0',
-      '그룹 인사말 1',
-      'html',
-      expect.any(Function),
-      expect.any(Function),
-    );
-  });
-
-  it('should append to existing array', () => {
-    const groupOnlyGreetings = ['existing1', 'existing2'];
-    const deps = createMockDeps({
-      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', groupOnlyGreetings }),
-    });
-    const actions = createSidebarActions(deps);
-    actions.addGroupOnlyGreeting();
-    expect(groupOnlyGreetings).toHaveLength(3);
-    expect(groupOnlyGreetings[2]).toBe('');
-    expect(deps.openTab).toHaveBeenCalledWith(
-      'grpGreet_2',
-      '그룹 인사말 3',
       'html',
       expect.any(Function),
       expect.any(Function),
@@ -384,32 +310,5 @@ describe('deleteAlternateGreeting', () => {
     const actions = createSidebarActions(deps);
     await actions.deleteAlternateGreeting(0);
     expect(alternateGreetings).toEqual([]);
-  });
-});
-
-describe('deleteGroupOnlyGreeting', () => {
-  it('should delete group greeting at index', async () => {
-    const groupOnlyGreetings = ['X', 'Y', 'Z'];
-    const deps = createMockDeps({
-      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', groupOnlyGreetings }),
-    });
-    const actions = createSidebarActions(deps);
-    await actions.deleteGroupOnlyGreeting(2);
-    expect(groupOnlyGreetings).toEqual(['X', 'Y']);
-    expect(deps.closeTab).toHaveBeenCalledWith('grpGreet_2');
-    expect(deps.markFieldDirty).toHaveBeenCalledWith('groupOnlyGreetings');
-    expect(deps.shiftIndexedTabsAfterRemoval).toHaveBeenCalledWith('grpGreet_', [2], deps.buildGrpGreetTabState);
-  });
-
-  it('should not delete when user cancels', async () => {
-    const groupOnlyGreetings = ['X'];
-    const deps = createMockDeps({
-      getFileData: () => ({ lorebook: [], regex: [], lua: '', css: '', groupOnlyGreetings }),
-      showConfirm: vi.fn().mockResolvedValue(false),
-    });
-    const actions = createSidebarActions(deps);
-    await actions.deleteGroupOnlyGreeting(0);
-    expect(groupOnlyGreetings).toEqual(['X']);
-    expect(deps.closeTab).not.toHaveBeenCalled();
   });
 });

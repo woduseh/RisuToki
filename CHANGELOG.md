@@ -9,6 +9,23 @@
 
 ---
 
+## [0.20.0] - 2026-03-23
+
+### 변경
+
+- **비권장/미사용 charx 필드 편집 기능 제거** — RisuAI 최신 코드 분석 결과 비권장되거나 실질적으로 사용되지 않는 8개 필드의 쓰기 기능을 제거
+  - **완전 제거 (읽기+쓰기)**: `groupOnlyGreetings` — RisuAI에서 참조 코드 없음, 사이드바 UI 및 MCP 인사말 엔드포인트 전체 제거
+  - **쓰기만 제거 (읽기 유지)**: `personality`, `scenario`, `nickname`, `additionalText`, `source`, `tags`, `license`
+  - 기존 charx 파일에 저장된 데이터는 읽기/저장 시 그대로 보존 (I/O 패스스루)
+  - MCP `list_fields`에서 비권장 필드는 `(read-only)` 표시로 구분
+  - AI 어시스턴트 프롬프트에서 관련 설명 업데이트
+
+### 유지되는 charx 전용 편집 필드
+
+- `systemPrompt`, `exampleMessage`, `creatorcomment`, `creator`, `characterVersion`
+
+---
+
 ## [0.19.3] - 2026-03-23
 
 ### 수정

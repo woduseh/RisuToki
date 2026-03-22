@@ -28,7 +28,6 @@ export interface DndDeps {
   reorderCssSections: (fromIdx: number, toIdx: number) => void;
   reorderAsset: (fromPath: string, toIdx: number) => void;
   reorderAlternateGreetings: (fromIdx: number, toIdx: number) => void;
-  reorderGroupOnlyGreetings: (fromIdx: number, toIdx: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,9 +123,6 @@ export function initSidebarDnD(deps: DndDeps): void {
 
   // --- Alternate Greetings ---
   initGreetingDnD('altgreet', deps.reorderAlternateGreetings);
-
-  // --- Group Only Greetings ---
-  initGreetingDnD('grpgreet', deps.reorderGroupOnlyGreetings);
 }
 
 // ---------------------------------------------------------------------------
