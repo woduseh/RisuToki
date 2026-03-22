@@ -540,7 +540,7 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
 
 // ==================== MCP Server Setup ====================
 
-const server = new McpServer({ name: 'risutoki', version: '1.3.0' });
+const server = new McpServer({ name: 'risutoki', version: '1.4.1' });
 
 // ===== Field Tools =====
 
@@ -553,7 +553,7 @@ server.tool(
 
 server.tool(
   'read_field',
-  '필드의 전체 내용을 읽습니다. ⚠️ 주의: alternateGreetings/groupOnlyGreetings는 list_greetings → read_greeting, triggerScripts는 list_triggers → read_trigger, lua는 list_lua → read_lua, css는 list_css → read_css를 사용하세요. 이 도구로 이들을 읽으면 전체 내용이 한번에 반환되어 비효율적입니다. 공통 필드: globalNote, firstMessage, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, creationDate(읽기전용), modificationDate(읽기전용), additionalText, license. risum 전용: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용). risup 전용: mainPrompt, jailbreak, temperature, maxContext, maxResponse, frequencyPenalty, presencePenalty, aiModel, subModel, apiType 등',
+  '필드의 전체 내용을 읽습니다. ⚠️ 금지: lua → list_lua/read_lua, css → list_css/read_css, alternateGreetings/groupOnlyGreetings → list_greetings/read_greeting, triggerScripts → list_triggers/read_trigger를 반드시 사용하세요. 이 도구로 이들을 읽으면 전체가 한번에 반환되어 컨텍스트를 낭비합니다. 대형 필드(firstMessage 등 수십KB+)는 search_in_field나 read_field_range 사용을 권장합니다. 공통 필드: globalNote, firstMessage, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, creationDate(읽기전용), modificationDate(읽기전용), additionalText, license. risum 전용: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용). risup 전용: mainPrompt, jailbreak, temperature, maxContext, maxResponse, frequencyPenalty, presencePenalty, aiModel, subModel, apiType 등',
   { field: z.string().describe('필드 이름') },
   async ({ field }) => textResult(await apiRequest('GET', `/field/${encodeURIComponent(field)}`)),
 );
@@ -587,7 +587,7 @@ server.tool(
 
 server.tool(
   'replace_in_field',
-  '필드의 내용에서 문자열 치환을 수행합니다. 대형 필드를 전체 읽지 않고 서버에서 직접 처리합니다. 문자열 타입 필드만 지원 (배열/boolean/number/triggerScripts 제외). regex: true + flags 옵션으로 정규식 지원. 사용자 확인 필요.',
+  '필드의 내용에서 문자열 치환을 수행합니다. 대형 필드를 전체 읽지 않고 서버에서 직접 처리합니다. 문자열 타입 필드만 지원 (배열/boolean/number/triggerScripts 제외). regex: true + flags 옵션으로 정규식 지원. ⚠️ 검색만 하려면 search_in_field를 사용하세요 — replace를 생략하면 빈 문자열(=삭제)이 적용됩니다. 사용자 확인 필요.',
   {
     field: z.string().describe('필드 이름 (예: globalNote, description, defaultVariables, lua 등)'),
     find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
@@ -615,6 +615,46 @@ server.tool(
   },
   async ({ field, content, position, anchor }) =>
     textResult(await apiRequest('POST', `/field/${encodeURIComponent(field)}/insert`, { content, position, anchor })),
+);
+
+server.tool(
+  'search_in_field',
+  '필드 내용에서 문자열을 검색하고 주변 컨텍스트와 함께 반환합니다 — 수정 없이 읽기 전용. grep처럼 작동하지만 필드 내용 대상. 정규식도 지원.',
+  {
+    field: z.string().describe('필드 이름 (예: globalNote, firstMessage, description, lua 등)'),
+    query: z.string().describe('검색할 문자열 (또는 regex: true일 때 정규식 패턴)'),
+    context_chars: z.number().optional().describe('매치 전후에 표시할 문자 수 (기본: 100, 최대: 500)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false)'),
+    flags: z.string().optional().describe('정규식 플래그 (기본: "gi"). regex: true일 때만 사용'),
+    max_matches: z.number().optional().describe('최대 반환 매치 수 (기본: 20, 최대: 100)'),
+  },
+  async ({ field, query, context_chars, regex, flags, max_matches }) =>
+    textResult(
+      await apiRequest('POST', `/field/${encodeURIComponent(field)}/search`, {
+        query,
+        context_chars,
+        regex,
+        flags,
+        max_matches,
+      }),
+    ),
+);
+
+server.tool(
+  'read_field_range',
+  '대형 필드의 특정 구간만 읽습니다. 전체를 읽지 않고 문자 오프셋과 길이로 원하는 부분만 반환. search_in_field의 position과 연계하여 사용 가능.',
+  {
+    field: z.string().describe('필드 이름 (예: firstMessage, globalNote, description 등)'),
+    offset: z.number().optional().describe('시작 문자 오프셋 (기본: 0)'),
+    length: z.number().optional().describe('읽을 문자 수 (기본: 2000, 최대: 10000)'),
+  },
+  async ({ field, offset, length }) => {
+    const params = new URLSearchParams();
+    if (offset !== undefined) params.set('offset', String(offset));
+    if (length !== undefined) params.set('length', String(length));
+    const qs = params.toString();
+    return textResult(await apiRequest('GET', `/field/${encodeURIComponent(field)}/range${qs ? `?${qs}` : ''}`));
+  },
 );
 
 // ===== Lorebook Tools =====

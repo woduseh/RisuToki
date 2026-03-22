@@ -467,7 +467,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // GET/POST /field/:name
       // ----------------------------------------------------------------
-      if (parts[0] === 'field' && parts[1] && !parts[2] && parts[1] !== 'batch') {
+      const fieldReservedPaths = ['batch', 'export'];
+      if (parts[0] === 'field' && parts[1] && !parts[2] && !fieldReservedPaths.includes(parts[1])) {
         const fieldName = decodeURIComponent(parts[1]);
         const allowedFields = [
           'name',
@@ -1190,6 +1191,238 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /field/:name/search — search text in a string field (read-only)
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] && parts[2] === 'search' && !parts[3] && req.method === 'POST') {
+        const fieldName = decodeURIComponent(parts[1]);
+        const searchableFields = [
+          'name',
+          'description',
+          'firstMessage',
+          'globalNote',
+          'css',
+          'defaultVariables',
+          'lua',
+          'personality',
+          'scenario',
+          'creatorcomment',
+          'exampleMessage',
+          'systemPrompt',
+          'creator',
+          'characterVersion',
+          'nickname',
+          'additionalText',
+          'license',
+          'cjs',
+          'backgroundEmbedding',
+          'moduleNamespace',
+          'customModuleToggle',
+          'mcpUrl',
+          'moduleName',
+          'moduleDescription',
+          'mainPrompt',
+          'jailbreak',
+          'aiModel',
+          'subModel',
+          'apiType',
+          'instructChatTemplate',
+          'JinjaTemplate',
+          'templateDefaultVariables',
+          'moduleIntergration',
+          'jsonSchema',
+          'extractJson',
+          'groupTemplate',
+          'groupOtherBotRole',
+          'autoSuggestPrompt',
+          'autoSuggestPrefix',
+          'systemContentReplacement',
+          'systemRoleReplacement',
+          // Read-only fields are also searchable
+          'creationDate',
+          'modificationDate',
+          'moduleId',
+        ];
+        if (!searchableFields.includes(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'search in field',
+            message: `"${fieldName}" 필드는 검색을 지원하지 않습니다.`,
+            suggestion: '문자열 타입 필드에만 사용 가능합니다.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `field/${fieldName}/search`, broadcastStatus);
+        if (!body) return;
+        if (!body.query) {
+          return mcpError(res, 400, {
+            action: 'search in field',
+            message: 'Missing "query"',
+            suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const content: string =
+          typeof currentData[fieldName] === 'string' ? currentData[fieldName] : String(currentData[fieldName] ?? '');
+        const queryStr: string = body.query;
+        const contextChars: number = Math.max(0, Math.min(Number(body.context_chars) || 100, 500));
+        const maxMatches: number = Math.max(1, Math.min(Number(body.max_matches) || 20, 100));
+        const useRegex = !!body.regex;
+        const flags: string = body.flags || (useRegex ? 'gi' : '');
+
+        interface SearchMatch {
+          match: string;
+          before: string;
+          after: string;
+          position: number;
+          line: number;
+        }
+        const matches: SearchMatch[] = [];
+
+        try {
+          if (useRegex) {
+            const re = new RegExp(queryStr, flags.includes('g') ? flags : flags + 'g');
+            let m: RegExpExecArray | null;
+            while ((m = re.exec(content)) !== null) {
+              const pos = m.index;
+              const matchText = m[0];
+              const before = content.slice(Math.max(0, pos - contextChars), pos);
+              const after = content.slice(pos + matchText.length, pos + matchText.length + contextChars);
+              const line = content.slice(0, pos).split('\n').length;
+              matches.push({ match: matchText, before, after, position: pos, line });
+              if (matches.length >= maxMatches) break;
+              // Prevent infinite loop on zero-length matches
+              if (matchText.length === 0) re.lastIndex++;
+            }
+          } else {
+            let searchFrom = 0;
+            const queryLower = queryStr.toLowerCase();
+            const contentLower = content.toLowerCase();
+            while (matches.length < maxMatches) {
+              const pos = contentLower.indexOf(queryLower, searchFrom);
+              if (pos === -1) break;
+              const matchText = content.slice(pos, pos + queryStr.length);
+              const before = content.slice(Math.max(0, pos - contextChars), pos);
+              const after = content.slice(pos + queryStr.length, pos + queryStr.length + contextChars);
+              const line = content.slice(0, pos).split('\n').length;
+              matches.push({ match: matchText, before, after, position: pos, line });
+              searchFrom = pos + queryStr.length;
+            }
+          }
+        } catch (err) {
+          return mcpError(res, 400, {
+            action: 'search in field',
+            message: `Invalid regex: ${err instanceof Error ? err.message : String(err)}`,
+            target: `field:${fieldName}`,
+          });
+        }
+
+        // Count total matches (may exceed maxMatches)
+        let totalMatches = matches.length;
+        if (matches.length >= maxMatches) {
+          // Count remaining matches without storing them
+          if (useRegex) {
+            const re = new RegExp(queryStr, flags.includes('g') ? flags : flags + 'g');
+            const allMatches = content.match(re);
+            totalMatches = allMatches ? allMatches.length : matches.length;
+          } else {
+            let searchFrom = 0;
+            const queryLower = queryStr.toLowerCase();
+            const contentLower = content.toLowerCase();
+            totalMatches = 0;
+            while (true) {
+              const pos = contentLower.indexOf(queryLower, searchFrom);
+              if (pos === -1) break;
+              totalMatches++;
+              searchFrom = pos + queryStr.length;
+            }
+          }
+        }
+
+        return jsonRes(res, {
+          field: fieldName,
+          query: queryStr,
+          totalMatches,
+          returnedMatches: matches.length,
+          fieldLength: content.length,
+          matches,
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /field/:name/range — read a substring of a field (read-only)
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] && parts[2] === 'range' && !parts[3] && req.method === 'GET') {
+        const fieldName = decodeURIComponent(parts[1]);
+        const rangeReadableFields = [
+          'name',
+          'description',
+          'firstMessage',
+          'globalNote',
+          'css',
+          'defaultVariables',
+          'lua',
+          'personality',
+          'scenario',
+          'creatorcomment',
+          'exampleMessage',
+          'systemPrompt',
+          'creator',
+          'characterVersion',
+          'nickname',
+          'additionalText',
+          'license',
+          'cjs',
+          'backgroundEmbedding',
+          'moduleNamespace',
+          'customModuleToggle',
+          'mcpUrl',
+          'moduleName',
+          'moduleDescription',
+          'mainPrompt',
+          'jailbreak',
+          'aiModel',
+          'subModel',
+          'apiType',
+          'instructChatTemplate',
+          'JinjaTemplate',
+          'templateDefaultVariables',
+          'moduleIntergration',
+          'jsonSchema',
+          'extractJson',
+          'groupTemplate',
+          'groupOtherBotRole',
+          'autoSuggestPrompt',
+          'autoSuggestPrefix',
+          'systemContentReplacement',
+          'systemRoleReplacement',
+          'creationDate',
+          'modificationDate',
+          'moduleId',
+        ];
+        if (!rangeReadableFields.includes(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'read field range',
+            message: `"${fieldName}" 필드는 범위 읽기를 지원하지 않습니다.`,
+            suggestion: '문자열 타입 필드에만 사용 가능합니다.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const content: string =
+          typeof currentData[fieldName] === 'string' ? currentData[fieldName] : String(currentData[fieldName] ?? '');
+        const MAX_RANGE_LENGTH = 10000;
+        const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+        const length = Math.max(1, Math.min(Number(url.searchParams.get('length')) || 2000, MAX_RANGE_LENGTH));
+        const slice = content.slice(offset, offset + length);
+        return jsonRes(res, {
+          field: fieldName,
+          totalLength: content.length,
+          offset,
+          length: slice.length,
+          hasMore: offset + length < content.length,
+          content: slice,
+        });
+      }
+
+      // ----------------------------------------------------------------
       // GET /lorebook
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && !parts[1] && req.method === 'GET') {
@@ -1287,9 +1520,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // GET /lorebook/:idx
       // ----------------------------------------------------------------
-      if (parts[0] === 'lorebook' && parts[1] && req.method === 'GET') {
+      const lorebookReservedPaths = [
+        'batch',
+        'batch-write',
+        'batch-replace',
+        'batch-insert',
+        'batch-add',
+        'batch-delete',
+        'add',
+        'diff',
+        'validate',
+        'clone',
+        'export',
+        'import',
+      ];
+      if (parts[0] === 'lorebook' && parts[1] && !lorebookReservedPaths.includes(parts[1]) && req.method === 'GET') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.lorebook || []).length) {
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.lorebook || []).length) {
           return jsonRes(res, { error: `Index ${idx} out of range` }, 400);
         }
         return jsonRes(res, { index: idx, entry: currentData.lorebook[idx] });
@@ -1576,9 +1823,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // POST /lorebook/:idx (modify existing)
       // ----------------------------------------------------------------
-      if (parts[0] === 'lorebook' && parts[1] && parts[1] !== 'add' && !parts[2] && req.method === 'POST') {
+      if (
+        parts[0] === 'lorebook' &&
+        parts[1] &&
+        !lorebookReservedPaths.includes(parts[1]) &&
+        !parts[2] &&
+        req.method === 'POST'
+      ) {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
           return mcpError(res, 400, {
             action: 'update lorebook entry',
             message: `Index ${idx} out of range or entry missing`,
@@ -1655,6 +1908,120 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             rejected: true,
             suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
             target: 'lorebook:add',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lorebook/batch-add — batch add multiple entries
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'batch-add' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lorebook/batch-add', broadcastStatus);
+        if (!body) return;
+        const entries: Array<Record<string, unknown>> = body.entries;
+        if (!Array.isArray(entries) || entries.length === 0) {
+          return jsonRes(res, { error: 'entries must be a non-empty array' }, 400);
+        }
+        const MAX_BATCH = 50;
+        if (entries.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} entries per batch` }, 400);
+        }
+
+        const names = entries.map((e, i) => (e.comment as string) || `entry_${i}`);
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 추가 요청',
+          `AI 어시스턴트가 ${entries.length}개의 로어북 항목을 추가하려 합니다:\n${names.map((n, i) => `  ${i + 1}. ${n}`).join('\n')}`,
+        );
+
+        if (allowed) {
+          if (!currentData.lorebook) currentData.lorebook = [];
+          const results: Array<{ index: number; comment: string }> = [];
+          for (const entryData of entries) {
+            const entry = Object.assign(
+              {
+                key: '',
+                secondkey: '',
+                comment: '',
+                content: '',
+                order: 100,
+                priority: 0,
+                selective: false,
+                alwaysActive: false,
+                mode: 'normal',
+                extentions: {},
+              },
+              pickAllowedFields(entryData, LOREBOOK_ALLOWED_FIELDS),
+            );
+            currentData.lorebook.push(entry);
+            const newIndex = currentData.lorebook.length - 1;
+            results.push({ index: newIndex, comment: (entry.comment as string) || `entry_${newIndex}` });
+          }
+          logMcpMutation('batch add lorebook entries', 'lorebook:batch-add', {
+            count: entries.length,
+            entries: results,
+          });
+          deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
+          return jsonRes(res, { success: true, added: results.length, entries: results });
+        } else {
+          return mcpError(res, 403, {
+            action: 'batch add lorebook entries',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'lorebook:batch-add',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lorebook/batch-delete — batch delete multiple entries
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'batch-delete' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lorebook/batch-delete', broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices) || indices.length === 0) {
+          return jsonRes(res, { error: 'indices must be a non-empty array' }, 400);
+        }
+        const MAX_BATCH = 50;
+        if (indices.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} deletions per batch` }, 400);
+        }
+
+        const lorebook = currentData.lorebook || [];
+        for (const idx of indices) {
+          if (typeof idx !== 'number' || idx < 0 || idx >= lorebook.length || !lorebook[idx]) {
+            return jsonRes(res, { error: `Invalid index: ${idx}` }, 400);
+          }
+        }
+
+        const entryNames = indices.map((idx) => `${idx}: ${lorebook[idx].comment || `entry_${idx}`}`);
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 삭제 요청',
+          `AI 어시스턴트가 ${indices.length}개의 로어북 항목을 삭제하려 합니다:\n${entryNames.map((n) => `  - ${n}`).join('\n')}`,
+        );
+
+        if (allowed) {
+          // Sort descending to avoid index shift issues
+          const sorted = [...indices].sort((a, b) => b - a);
+          const deleted: Array<{ index: number; comment: string }> = [];
+          for (const idx of sorted) {
+            deleted.push({ index: idx, comment: lorebook[idx].comment || `entry_${idx}` });
+            currentData.lorebook.splice(idx, 1);
+          }
+          logMcpMutation('batch delete lorebook entries', 'lorebook:batch-delete', {
+            count: indices.length,
+            entries: deleted,
+          });
+          deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
+          return jsonRes(res, { success: true, deleted: deleted.length, entries: deleted });
+        } else {
+          return mcpError(res, 403, {
+            action: 'batch delete lorebook entries',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'lorebook:batch-delete',
           });
         }
       }
@@ -1878,7 +2245,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && parts[1] && parts[2] === 'replace' && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
           return mcpError(res, 400, {
             action: 'replace lorebook content',
             message: `Index ${idx} out of range or entry missing`,
@@ -1959,7 +2326,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && parts[1] && parts[2] === 'insert' && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
           return mcpError(res, 400, {
             action: 'insert lorebook content',
             message: `Index ${idx} out of range or entry missing`,
@@ -2043,7 +2410,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && parts[2] === 'delete' && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
           return mcpError(res, 400, {
             action: 'delete lorebook entry',
             message: `Index ${idx} out of range or entry missing`,
@@ -2093,7 +2460,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && parts[1] && req.method === 'GET') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.regex || []).length) {
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.regex || []).length) {
           return jsonRes(res, { error: `Index ${idx} out of range` }, 400);
         }
         const entry = { ...currentData.regex[idx] };
@@ -2107,7 +2474,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && parts[1] && parts[1] !== 'add' && !parts[2] && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.regex || []).length) {
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.regex || []).length) {
           return mcpError(res, 400, {
             action: 'update regex entry',
             message: `Index ${idx} out of range`,
@@ -2192,7 +2559,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && parts[1] && parts[2] === 'replace' && !parts[3] && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.regex || []).length) {
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.regex || []).length) {
           return mcpError(res, 400, {
             action: 'replace regex field',
             message: `Index ${idx} out of range`,
@@ -2280,7 +2647,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && parts[1] && parts[2] === 'insert' && !parts[3] && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.regex || []).length) {
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.regex || []).length) {
           return mcpError(res, 400, {
             action: 'insert regex field',
             message: `Index ${idx} out of range`,
@@ -2372,7 +2739,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && parts[2] === 'delete' && req.method === 'POST') {
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= (currentData.regex || []).length) {
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.regex || []).length) {
           return mcpError(res, 400, {
             action: 'delete regex entry',
             message: `Index ${idx} out of range`,
@@ -3038,7 +3405,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'lua' && parts[1] && req.method === 'GET') {
         const sections = luaCache.get(currentData.lua);
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= sections.length) {
+        if (isNaN(idx) || idx < 0 || idx >= sections.length) {
           return jsonRes(res, { error: `Lua section index ${idx} out of range (0-${sections.length - 1})` }, 400);
         }
         return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
@@ -3072,7 +3439,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'lua' && parts[1] && !parts[2] && req.method === 'POST') {
         const sections = luaCache.get(currentData.lua);
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= sections.length) {
+        if (isNaN(idx) || idx < 0 || idx >= sections.length) {
           return mcpError(res, 400, {
             action: 'write lua section',
             message: `Lua section index ${idx} out of range (0-${sections.length - 1})`,
@@ -3129,7 +3496,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'lua' && parts[1] && parts[2] === 'replace' && req.method === 'POST') {
         const sections = luaCache.get(currentData.lua);
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= sections.length) {
+        if (isNaN(idx) || idx < 0 || idx >= sections.length) {
           return mcpError(res, 400, {
             action: 'replace lua section content',
             message: `Lua section index ${idx} out of range (0-${sections.length - 1})`,
@@ -3214,7 +3581,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'lua' && parts[1] && parts[2] === 'insert' && req.method === 'POST') {
         const sections = luaCache.get(currentData.lua);
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= sections.length) {
+        if (isNaN(idx) || idx < 0 || idx >= sections.length) {
           return mcpError(res, 400, {
             action: 'insert lua section content',
             message: `Lua section index ${idx} out of range (0-${sections.length - 1})`,
@@ -3327,7 +3694,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'css-section' && parts[1] && !parts[2] && req.method === 'GET') {
         const { sections } = cssCache.get(currentData.css);
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= sections.length) {
+        if (isNaN(idx) || idx < 0 || idx >= sections.length) {
           return jsonRes(res, { error: `CSS section index ${idx} out of range (0-${sections.length - 1})` }, 400);
         }
         return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
@@ -3361,7 +3728,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'css-section' && parts[1] && !parts[2] && req.method === 'POST') {
         const { sections, prefix, suffix } = cssCache.get(currentData.css);
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= sections.length) {
+        if (isNaN(idx) || idx < 0 || idx >= sections.length) {
           return mcpError(res, 400, {
             action: 'write css section',
             message: `CSS section index ${idx} out of range (0-${sections.length - 1})`,
@@ -3411,7 +3778,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'css-section' && parts[1] && parts[2] === 'replace' && req.method === 'POST') {
         const { sections, prefix, suffix } = cssCache.get(currentData.css);
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= sections.length) {
+        if (isNaN(idx) || idx < 0 || idx >= sections.length) {
           return mcpError(res, 400, {
             action: 'replace css section content',
             message: `CSS section index ${idx} out of range (0-${sections.length - 1})`,
@@ -3494,7 +3861,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'css-section' && parts[1] && parts[2] === 'insert' && req.method === 'POST') {
         const { sections, prefix, suffix } = cssCache.get(currentData.css);
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= sections.length) {
+        if (isNaN(idx) || idx < 0 || idx >= sections.length) {
           return mcpError(res, 400, {
             action: 'insert css section content',
             message: `CSS section index ${idx} out of range (0-${sections.length - 1})`,
@@ -3623,7 +3990,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'reference' && parts[1] && parts[2] === 'lorebook' && !parts[3] && req.method === 'GET') {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= refFiles.length) {
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
           return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
         }
         const ref = refFiles[idx];
@@ -3707,7 +4074,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       ) {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= refFiles.length) {
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
           return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
         }
         const body = await readJsonBody(req, res, `reference/${idx}/lorebook/batch`, broadcastStatus);
@@ -3748,13 +4115,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'reference' && parts[1] && parts[2] === 'lorebook' && parts[3] && req.method === 'GET') {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= refFiles.length) {
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
           return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
         }
         const ref = refFiles[idx];
         const lorebook = ref.data.lorebook || [];
         const entryIdx = parseInt(parts[3], 10);
-        if (entryIdx < 0 || entryIdx >= lorebook.length) {
+        if (isNaN(entryIdx) || entryIdx < 0 || entryIdx >= lorebook.length) {
           return jsonRes(
             res,
             { error: `Lorebook entry index ${entryIdx} out of range (0-${lorebook.length - 1})` },
@@ -3770,7 +4137,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'reference' && parts[1] && parts[2] === 'lua' && !parts[3] && req.method === 'GET') {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= refFiles.length) {
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
           return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
         }
         const ref = refFiles[idx];
@@ -3793,7 +4160,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'reference' && parts[1] && parts[2] === 'lua' && parts[3] === 'batch' && req.method === 'POST') {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= refFiles.length) {
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
           return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
         }
         const body = await readJsonBody(req, res, `reference/${idx}/lua/batch`, broadcastStatus);
@@ -3827,14 +4194,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'reference' && parts[1] && parts[2] === 'lua' && parts[3] && req.method === 'GET') {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= refFiles.length) {
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
           return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
         }
         const ref = refFiles[idx];
         const luaCode = ref.data.lua || '';
         const sections = luaCode ? deps.parseLuaSections(luaCode) : [];
         const sectionIdx = parseInt(parts[3], 10);
-        if (sectionIdx < 0 || sectionIdx >= sections.length) {
+        if (isNaN(sectionIdx) || sectionIdx < 0 || sectionIdx >= sections.length) {
           return jsonRes(
             res,
             { error: `Lua section index ${sectionIdx} out of range (0-${sections.length - 1})` },
@@ -3856,7 +4223,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'reference' && parts[1] && parts[2] === 'css' && !parts[3] && req.method === 'GET') {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= refFiles.length) {
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
           return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
         }
         const ref = refFiles[idx];
@@ -3879,7 +4246,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'reference' && parts[1] && parts[2] === 'css' && parts[3] === 'batch' && req.method === 'POST') {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= refFiles.length) {
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
           return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
         }
         const body = await readJsonBody(req, res, `reference/${idx}/css/batch`, broadcastStatus);
@@ -3915,7 +4282,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'reference' && parts[1] && parts[2] === 'css' && parts[3] && req.method === 'GET') {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= refFiles.length) {
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
           return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
         }
         const ref = refFiles[idx];
@@ -3924,7 +4291,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           ? deps.parseCssSections(cssCode)
           : { sections: [] as Section[], prefix: '', suffix: '' };
         const sectionIdx = parseInt(parts[3], 10);
-        if (sectionIdx < 0 || sectionIdx >= cssResult.sections.length) {
+        if (isNaN(sectionIdx) || sectionIdx < 0 || sectionIdx >= cssResult.sections.length) {
           return jsonRes(
             res,
             { error: `CSS section index ${sectionIdx} out of range (0-${cssResult.sections.length - 1})` },
@@ -3947,7 +4314,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         const fieldName = decodeURIComponent(parts[2]);
-        if (idx < 0 || idx >= refFiles.length) {
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
           return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
         }
         const ref = refFiles[idx];
@@ -4019,7 +4386,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'asset' && parts[1] && !parts[2] && req.method === 'GET') {
         const assets = currentData.assets || [];
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= assets.length) {
+        if (isNaN(idx) || idx < 0 || idx >= assets.length) {
           return mcpError(res, 400, {
             action: 'read_asset',
             message: `에셋 index ${idx}이(가) 범위를 벗어났습니다 (0–${assets.length - 1}).`,
@@ -4092,7 +4459,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'asset' && parts[1] && parts[2] === 'delete' && req.method === 'POST') {
         const assets = currentData.assets || [];
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= assets.length) {
+        if (isNaN(idx) || idx < 0 || idx >= assets.length) {
           return mcpError(res, 400, {
             action: 'delete_asset',
             message: `에셋 index ${idx}이(가) 범위를 벗어났습니다 (0–${assets.length - 1}).`,
@@ -4125,7 +4492,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'asset' && parts[1] && parts[2] === 'rename' && req.method === 'POST') {
         const assets = currentData.assets || [];
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= assets.length) {
+        if (isNaN(idx) || idx < 0 || idx >= assets.length) {
           return mcpError(res, 400, {
             action: 'rename_asset',
             message: `에셋 index ${idx}이(가) 범위를 벗어났습니다 (0–${assets.length - 1}).`,
@@ -4662,7 +5029,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'risum-asset' && parts[1] && !parts[2] && req.method === 'GET') {
         const risumAssets: Buffer[] = currentData.risumAssets || [];
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= risumAssets.length) {
+        if (isNaN(idx) || idx < 0 || idx >= risumAssets.length) {
           return mcpError(res, 400, {
             action: 'read_risum_asset',
             message: `리슘 에셋 index ${idx}이(가) 범위를 벗어났습니다 (0–${risumAssets.length - 1}).`,
@@ -4742,7 +5109,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'risum-asset' && parts[1] && parts[2] === 'delete' && req.method === 'POST') {
         const risumAssets: Buffer[] = currentData.risumAssets || [];
         const idx = parseInt(parts[1], 10);
-        if (idx < 0 || idx >= risumAssets.length) {
+        if (isNaN(idx) || idx < 0 || idx >= risumAssets.length) {
           return mcpError(res, 400, {
             action: 'delete_risum_asset',
             message: `리슘 에셋 index ${idx}이(가) 범위를 벗어났습니다 (0–${risumAssets.length - 1}).`,

@@ -9,6 +9,28 @@
 
 ---
 
+## [0.17.1] - 2026-03-22
+
+### 수정
+
+- **로어북 라우트 섀도잉 버그 수정** — `POST /lorebook/:idx` catch-all 핸들러가 `batch-replace`, `batch-insert`, `export`, `import` 등의 명명된 라우트를 가로채서 `parseInt('batch-replace')` → NaN 에러 발생. `lorebookReservedPaths` 배열로 GET/POST catch-all에서 예약된 경로를 제외하도록 수정
+- **`add_lorebook_batch` 라우트 핸들러 누락 수정** — `toki-mcp-server.ts`에서 `/lorebook/batch-add`로 요청하지만 API 서버에 핸들러가 없어 항상 실패하던 문제 해결. 일괄 추가 핸들러 신규 구현
+- **`batch_delete_lorebook` 라우트 핸들러 누락 수정** — `/lorebook/batch-delete` 핸들러가 없어 항상 실패하던 문제 해결. 인덱스 내림차순 삭제로 시프트 문제 방지
+- **URL 파라미터 parseInt NaN 취약점 일괄 수정** — regex/lua/css/reference/asset 등 29개 라우트 핸들러에서 `parseInt(parts[N])` 결과에 `isNaN()` 체크 누락. NaN이 range 체크를 우회하여 "Index NaN out of range" 에러 발생 가능. 모든 인스턴스에 `isNaN(idx) ||` 가드 추가
+
+## [0.17.0] - 2026-03-22
+
+### 새 기능
+
+- **`search_in_field` MCP 도구** — 필드 내용에서 문자열/정규식을 검색하고 주변 컨텍스트(전후 N자)와 함께 반환하는 읽기 전용 도구. 대형 필드(127KB+ firstMessage 등)를 전체 읽지 않고 특정 텍스트 위치를 파악 가능. 파라미터: `query`, `context_chars`(기본 100), `regex`, `flags`, `max_matches`(기본 20)
+- **`read_field_range` MCP 도구** — 대형 필드의 특정 구간만 반환하는 읽기 전용 도구. 문자 오프셋과 길이로 원하는 부분만 읽기 가능 (최대 10000자). `search_in_field`의 `position` 결과와 연계하여 사용
+
+### 수정
+
+- **`export_field_to_file` 라우트 충돌 버그 수정** — `/field/export` 요청이 제네릭 필드 핸들러(`/field/:name`)에 의해 가로채져 "export"라는 필드를 찾으려 하던 버그 수정. 예약어 배열 방식으로 라우트 조건 개선
+
+---
+
 ## [0.16.0] - 2026-03-22
 
 ### 수정
