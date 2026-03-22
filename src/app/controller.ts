@@ -8,6 +8,7 @@ import type { RpMode, CharxData, LorebookEntry, RegexEntry, ReferenceFile } from
 import {
   createTreeItem,
   createFolderItem,
+  createSectionHeader,
   updateSidebarActive as _updateSidebarActive,
   initSidebarSplitResizer as _initSidebarSplitResizer,
   buildAssetsSidebar as _buildAssetsSidebar,
@@ -696,12 +697,10 @@ function buildSidebar(): void {
 
   if (!fileData) return;
 
-  // ---- Lua folder (split/merge system) ----
+  // ---- Parse Lua sections (defer DOM append to 스크립트 section) ----
   luaSections = parseLuaSections(fileData.lua);
 
   const luaFolder = createFolderItem('Lua', '{}', 0);
-  tree.appendChild(luaFolder.header);
-  tree.appendChild(luaFolder.children);
 
   // Right-click on Lua folder: add new section
   luaFolder.header.addEventListener('contextmenu', (e) => {
@@ -772,15 +771,16 @@ function buildSidebar(): void {
     luaSectionContainer.appendChild(sectionEl);
   }
 
-  // ---- File type check ----
+  // ---- File type check (needed early for CSS / section headers) ----
   const isRisum = fileData._fileType === 'risum';
+  const isRisup = fileData._fileType === 'risup';
+  const isCharx = !isRisum && !isRisup;
 
-  // ---- CSS folder (section-based, like Lua) — charx only ----
+  // ---- Parse CSS sections (defer DOM append to 스크립트 section) — charx only ----
   ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(fileData.css));
-  if (!isRisum) {
-    const cssFolder = createFolderItem('CSS', '🎨', 0);
-    tree.appendChild(cssFolder.header);
-    tree.appendChild(cssFolder.children);
+  let cssFolder: ReturnType<typeof createFolderItem> | null = null;
+  if (isCharx) {
+    cssFolder = createFolderItem('CSS', '🎨', 0);
 
     // Right-click on CSS folder: add new section
     cssFolder.header.addEventListener('contextmenu', (e) => {
@@ -848,82 +848,80 @@ function buildSidebar(): void {
     }
   } // end if (!isRisum) — CSS folder
 
-  // ---- Bot Name (charx only) ----
-  const isRisup = fileData._fileType === 'risup';
-  if (!isRisum && !isRisup) {
-    const nameLabel = fileData.name || 'Untitled';
-    const nameEl = createTreeItem(`이름: ${nameLabel}`, '🏷', 0);
-    nameEl.title = `봇 이름: ${nameLabel}`;
-    nameEl.addEventListener('click', async () => {
-      const currentName = (fileData!.name as string) || '';
-      const newName = await showPrompt('봇 이름 변경:', currentName);
-      if (newName === null || newName === currentName) return;
-      fileData!.name = newName;
-      tabMgr.markFieldDirty('name');
-      useAppStore().setFileLabel(newName || 'Untitled');
-      buildSidebar();
-      setStatus(`봇 이름 변경됨: ${newName}`);
-    });
-    nameEl.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      showContextMenu(e.clientX, e.clientY, [createMcpCopyItem('read_field("name")')]);
-    });
-    tree.appendChild(nameEl);
+  // ---- Detect Lua/Trigger mode for mutual exclusivity ----
+  let luaMode = true; // default: Lua active
+  if (isCharx) {
+    const ts = (fileData.triggerScripts as string) || '[]';
+    try {
+      const parsed = JSON.parse(ts);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Has trigger scripts — check if it's embedded Lua or standalone triggers
+        const extractedLua = tryExtractPrimaryLuaFromTriggerScriptsText(ts);
+        luaMode = extractedLua !== null && extractedLua.length > 0;
+      }
+    } catch {
+      /* invalid JSON — default to Lua mode */
+    }
   }
 
-  // ---- Single items ----
-  const charxOnlyFields = ['globalNote', 'firstMessage', 'defaultVariables'];
-  const singles = [
-    { id: 'globalNote', label: '글로벌노트', icon: '📝', lang: 'plaintext', field: 'globalNote' },
-    { id: 'firstMessage', label: '첫 메시지', icon: '💬', lang: 'html', field: 'firstMessage' },
-    {
-      id: 'triggerScripts',
-      label: '트리거 스크립트',
-      icon: '🪝',
-      lang: 'json',
-      field: 'triggerScripts',
-      get: () => fileData!.triggerScripts || '[]',
-      set: (value: unknown) => {
-        fileData!.triggerScripts = value as string;
-        const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(value as string);
-        if (nextLua !== null) fileData!.lua = nextLua;
-      },
-    },
-    { id: 'defaultVariables', label: '기본변수', icon: '⚙', lang: 'plaintext', field: 'defaultVariables' },
-    { id: 'description', label: '설명', icon: '📄', lang: 'plaintext', field: 'description' },
-  ].filter((item) => (!isRisum && !isRisup) || !charxOnlyFields.includes(item.id));
+  // ---- Section: 캐릭터 정보 (charx only) ----
+  if (isCharx) {
+    tree.appendChild(createSectionHeader('캐릭터 정보'));
 
-  for (const item of singles) {
-    const el = createTreeItem(item.label, item.icon, 0);
-    el.addEventListener('click', () => {
+    const charInfoItems = [
+      { id: 'description', label: '설명', icon: '📄', lang: 'plaintext', field: 'description' },
+      { id: 'globalNote', label: '글로벌노트', icon: '📝', lang: 'plaintext', field: 'globalNote' },
+      { id: 'defaultVariables', label: '기본변수', icon: '⚙', lang: 'plaintext', field: 'defaultVariables' },
+    ];
+    for (const item of charInfoItems) {
+      const el = createTreeItem(item.label, item.icon, 0);
+      el.addEventListener('click', () => {
+        tabMgr.openTab(
+          item.id,
+          item.label,
+          item.lang,
+          () => fileData![item.field],
+          (v: unknown) => {
+            fileData![item.field] = v as string;
+          },
+        );
+      });
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const items: ContextMenuItem[] = [createMcpCopyItem(`read_field("${item.field}")`)];
+        appendBackupItems(items, item.id, e.clientX, e.clientY);
+        showContextMenu(e.clientX, e.clientY, items);
+      });
+      tree.appendChild(el);
+    }
+  }
+
+  // ---- Section: 메시지 (charx only) ----
+  if (isCharx) {
+    tree.appendChild(createSectionHeader('메시지'));
+
+    // 첫 메시지
+    const fmEl = createTreeItem('첫 메시지', '💬', 0);
+    fmEl.addEventListener('click', () => {
       tabMgr.openTab(
-        item.id,
-        item.label,
-        item.lang,
-        item.get || (() => fileData![item.field!]),
-        item.set ||
-          ((v: unknown) => {
-            fileData![item.field!] = v;
-          }),
+        'firstMessage',
+        '첫 메시지',
+        'html',
+        () => fileData!.firstMessage,
+        (v: unknown) => {
+          fileData!.firstMessage = v as string;
+        },
       );
     });
-    // Single item right-click: MCP path / backup
-    el.addEventListener('contextmenu', (e) => {
+    fmEl.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const items: ContextMenuItem[] = [];
-      if (item.field) {
-        items.push(createMcpCopyItem(`read_field("${item.field}")`));
-      }
-      appendBackupItems(items, item.id, e.clientX, e.clientY);
+      const items: ContextMenuItem[] = [createMcpCopyItem('read_field("firstMessage")')];
+      appendBackupItems(items, 'firstMessage', e.clientX, e.clientY);
       showContextMenu(e.clientX, e.clientY, items);
     });
-    tree.appendChild(el);
-  }
-
-  // ---- Alternate Greetings folder (charx only) ----
-  if (!isRisum && !isRisup) {
+    tree.appendChild(fmEl);
     const altGreetFolder = createFolderItem('추가 첫 메시지', '💭', 0);
     tree.appendChild(altGreetFolder.header);
     tree.appendChild(altGreetFolder.children);
@@ -972,6 +970,153 @@ function buildSidebar(): void {
       altGreetContainer.appendChild(itemEl);
     }
   }
+
+  // ---- Description for risum/risup (outside category sections) ----
+  if (!isCharx) {
+    const descEl = createTreeItem('설명', '📄', 0);
+    descEl.addEventListener('click', () => {
+      tabMgr.openTab(
+        'description',
+        '설명',
+        'plaintext',
+        () => fileData!.description,
+        (v: unknown) => {
+          fileData!.description = v as string;
+        },
+      );
+    });
+    descEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items: ContextMenuItem[] = [createMcpCopyItem('read_field("description")')];
+      appendBackupItems(items, 'description', e.clientX, e.clientY);
+      showContextMenu(e.clientX, e.clientY, items);
+    });
+    tree.appendChild(descEl);
+  }
+
+  // ==== Section: 스크립트 ====
+  tree.appendChild(createSectionHeader('스크립트'));
+
+  // Lua folder (built above, now appended)
+  if (isCharx && !luaMode) {
+    luaFolder.header.classList.add('inactive');
+    luaFolder.header.title = '현재 트리거 스크립트 모드입니다. Lua는 triggerScripts에 임베디드 시 활성화됩니다.';
+  }
+  tree.appendChild(luaFolder.header);
+  tree.appendChild(luaFolder.children);
+
+  // CSS folder (built above, charx only)
+  if (cssFolder) {
+    tree.appendChild(cssFolder.header);
+    tree.appendChild(cssFolder.children);
+  }
+
+  // Trigger Scripts (single item)
+  if (!isRisup) {
+    const triggerEl = createTreeItem('트리거 스크립트', '🪝', 0);
+    if (isCharx && luaMode) {
+      triggerEl.classList.add('inactive');
+      triggerEl.title = '현재 Lua 모드입니다. triggerScripts에 독립적 트리거가 있으면 활성화됩니다.';
+    }
+    triggerEl.addEventListener('click', () => {
+      tabMgr.openTab(
+        'triggerScripts',
+        '트리거 스크립트',
+        'json',
+        () => fileData!.triggerScripts || '[]',
+        (value: unknown) => {
+          fileData!.triggerScripts = value as string;
+          const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(value as string);
+          if (nextLua !== null) fileData!.lua = nextLua;
+        },
+      );
+    });
+    triggerEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items: ContextMenuItem[] = [createMcpCopyItem('read_field("triggerScripts")')];
+      appendBackupItems(items, 'triggerScripts', e.clientX, e.clientY);
+      showContextMenu(e.clientX, e.clientY, items);
+    });
+    tree.appendChild(triggerEl);
+  }
+
+  // Regex folder
+  const rxFolder = createFolderItem('정규식', '⚡', 0);
+  tree.appendChild(rxFolder.header);
+  tree.appendChild(rxFolder.children);
+
+  // Regex folder right-click: add / import / bulk delete
+  rxFolder.header.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const items: ContextMenuItem[] = [
+      { label: '새 항목 추가', action: () => addNewRegex() },
+      { label: 'JSON 파일 가져오기', action: () => importRegex() },
+    ];
+    if (fileData!.regex.length > 0) {
+      items.push('---');
+      items.push({
+        label: `전체 삭제 (${fileData!.regex.length}개)`,
+        action: async () => {
+          if (
+            !(await showConfirm(
+              `정규식 전체 ${fileData!.regex.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
+            ))
+          )
+            return;
+          for (let i = fileData!.regex.length - 1; i >= 0; i--) tabMgr.closeTab(`regex_${i}`);
+          fileData!.regex = [];
+          tabMgr.markFieldDirty('regex');
+          buildSidebar();
+          setStatus('정규식 전체 삭제됨');
+        },
+      });
+    }
+    showContextMenu(e.clientX, e.clientY, items);
+  });
+
+  // Regex items container (for DnD)
+  const regexContainer = document.createElement('div');
+  regexContainer.dataset.dndRegexContainer = '';
+  rxFolder.children.appendChild(regexContainer);
+
+  for (let i = 0; i < fileData.regex.length; i++) {
+    const rx = fileData.regex[i];
+    const label = rx.comment || `regex_${i}`;
+    const el = createTreeItem(label, '·', 1);
+    el.dataset.dndIdx = String(i);
+    const idx = i;
+    el.addEventListener('click', () => {
+      tabMgr.openTab(
+        `regex_${idx}`,
+        label,
+        '_regexform',
+        () => fileData!.regex[idx],
+        (v) => {
+          Object.assign(fileData!.regex[idx], v);
+        },
+      );
+    });
+    // Regex item right-click: rename / copy path / backup / delete
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items: ContextMenuItem[] = [
+        { label: '이름 변경', action: () => renameRegex(idx) },
+        createMcpCopyItem(`read_regex(${idx})`),
+      ];
+      appendBackupItems(items, `regex_${idx}`, e.clientX, e.clientY);
+      items.push('---');
+      items.push({ label: '삭제', action: () => deleteRegex(idx) });
+      showContextMenu(e.clientX, e.clientY, items);
+    });
+    regexContainer.appendChild(el);
+  }
+
+  // ==== Section: 데이터 ====
+  tree.appendChild(createSectionHeader('데이터'));
 
   // Lorebook folder
   const lbFolder = createFolderItem('로어북', '📚', 0);
@@ -1204,78 +1349,8 @@ function buildSidebar(): void {
     loreRootContainer.appendChild(entryEl);
   }
 
-  // Regex folder
-  const rxFolder = createFolderItem('정규식', '⚡', 0);
-  tree.appendChild(rxFolder.header);
-  tree.appendChild(rxFolder.children);
-
-  // Regex folder right-click: add / import / bulk delete
-  rxFolder.header.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const items: ContextMenuItem[] = [
-      { label: '새 항목 추가', action: () => addNewRegex() },
-      { label: 'JSON 파일 가져오기', action: () => importRegex() },
-    ];
-    if (fileData!.regex.length > 0) {
-      items.push('---');
-      items.push({
-        label: `전체 삭제 (${fileData!.regex.length}개)`,
-        action: async () => {
-          if (
-            !(await showConfirm(
-              `정규식 전체 ${fileData!.regex.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
-            ))
-          )
-            return;
-          for (let i = fileData!.regex.length - 1; i >= 0; i--) tabMgr.closeTab(`regex_${i}`);
-          fileData!.regex = [];
-          tabMgr.markFieldDirty('regex');
-          buildSidebar();
-          setStatus('정규식 전체 삭제됨');
-        },
-      });
-    }
-    showContextMenu(e.clientX, e.clientY, items);
-  });
-
-  // Regex items container (for DnD)
-  const regexContainer = document.createElement('div');
-  regexContainer.dataset.dndRegexContainer = '';
-  rxFolder.children.appendChild(regexContainer);
-
-  for (let i = 0; i < fileData.regex.length; i++) {
-    const rx = fileData.regex[i];
-    const label = rx.comment || `regex_${i}`;
-    const el = createTreeItem(label, '·', 1);
-    el.dataset.dndIdx = String(i);
-    const idx = i;
-    el.addEventListener('click', () => {
-      tabMgr.openTab(
-        `regex_${idx}`,
-        label,
-        '_regexform',
-        () => fileData!.regex[idx],
-        (v) => {
-          Object.assign(fileData!.regex[idx], v);
-        },
-      );
-    });
-    // Regex item right-click: rename / copy path / backup / delete
-    el.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const items: ContextMenuItem[] = [
-        { label: '이름 변경', action: () => renameRegex(idx) },
-        createMcpCopyItem(`read_regex(${idx})`),
-      ];
-      appendBackupItems(items, `regex_${idx}`, e.clientX, e.clientY);
-      items.push('---');
-      items.push({ label: '삭제', action: () => deleteRegex(idx) });
-      showContextMenu(e.clientX, e.clientY, items);
-    });
-    regexContainer.appendChild(el);
-  }
+  // ==== Section: 에셋 ====
+  tree.appendChild(createSectionHeader('에셋'));
 
   // Assets (images) folder — then initialize drag-and-drop
   buildAssetsSidebar(tree).then(() => {
@@ -2260,6 +2335,55 @@ export async function initMainRenderer(): Promise<void> {
     openReferencePath: (path) => window.tokiAPI.openReferencePath(path),
   });
   initEditor();
+
+  // ---- Inline name editing on #file-label double-click ----
+  const fileLabelEl = document.getElementById('file-label');
+  if (fileLabelEl) {
+    fileLabelEl.addEventListener('dblclick', () => {
+      if (!fileData || fileData._fileType === 'risup') return;
+      const currentName = (fileData.name as string) || '';
+      const input = document.createElement('input');
+      input.id = 'file-label-input';
+      input.type = 'text';
+      input.value = currentName;
+      const originalText = fileLabelEl.textContent;
+      fileLabelEl.textContent = '';
+      fileLabelEl.appendChild(input);
+      input.focus();
+      input.select();
+
+      const commit = () => {
+        const newName = input.value.trim();
+        if (input.parentNode) {
+          input.remove();
+          fileLabelEl.textContent = newName || originalText || 'Untitled';
+        }
+        if (newName && newName !== currentName) {
+          fileData!.name = newName;
+          tabMgr.markFieldDirty('name');
+          useAppStore().setFileLabel(newName);
+          setStatus(`봇 이름 변경됨: ${newName}`);
+        }
+      };
+      const cancel = () => {
+        if (input.parentNode) {
+          input.remove();
+          fileLabelEl.textContent = originalText;
+        }
+      };
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commit();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          cancel();
+        }
+      });
+      input.addEventListener('blur', commit);
+    });
+  }
+
   initSidebarSplitResizer();
   initTokiAvatarUi(document.getElementById('toki-avatar-display')!, { darkMode, setStatus });
   refreshDarkModeUi(); // Apply saved dark mode preference

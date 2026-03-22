@@ -48,6 +48,17 @@ export interface LoreEntryItemDeps {
   showBackupMenu: (tabId: string, x: number, y: number) => void;
 }
 
+/**
+ * Creates a non-collapsible section header for sidebar category grouping.
+ * Renders as a thin divider line with a centered label.
+ */
+export function createSectionHeader(label: string): HTMLDivElement {
+  const el = document.createElement('div');
+  el.className = 'sidebar-section-header';
+  el.textContent = label;
+  return el;
+}
+
 export function createTreeItem(label: string, icon: string, indent: number): HTMLDivElement {
   const el = document.createElement('div');
   el.className = `tree-item indent-${indent}`;
