@@ -9,6 +9,25 @@
 
 ---
 
+## [0.18.0] - 2026-03-22
+
+### 새 기능
+
+- **`search_all_fields` MCP 도구** — 모든 텍스트 필드(firstMessage, description, globalNote, alternateGreetings, groupOnlyGreetings, lorebook content 등)에서 한 번에 검색. 잔류 태그 확인 등 전체 스캔에 유용. 필드별 매치 수와 주변 컨텍스트 반환. `include_lorebook`, `include_greetings` 옵션으로 범위 조절 가능
+- **`replace_across_all_lorebook` MCP 도구** — 모든 로어북 항목에서 특정 문자열을 한 번에 치환. `list_lorebook` → `replace_in_lorebook` 반복 호출 3단계를 1회로 축소. `field` 옵션으로 content/comment/key/secondkey 대상 선택 가능. `dry_run`으로 미리보기 지원
+- **`replace_in_field_batch` MCP 도구** — 하나의 필드에 여러 치환을 순차적으로 적용하고 한 번의 확인으로 처리. 128KB firstMessage에서 10명 캐릭터 태그를 각각 바꿀 때 확인 10회→1회. `dry_run` 지원
+- **Charx 에셋 MCP 도구 등록** — 백엔드에 이미 구현된 charx 에셋 관리 엔드포인트를 MCP 도구로 등록: `list_charx_assets`, `read_charx_asset`, `add_charx_asset`, `delete_charx_asset`, `rename_charx_asset`. Node.js 스크립트 우회 불필요
+- **`replace_in_field` dry-run 미리보기** — `dry_run: true` 파라미터 추가. 실제 변경 없이 매치 수, 각 매치의 전후 컨텍스트(60자), 위치를 반환. 대형 필드 regex 작업에서 substring 충돌 등 실수 사전 방지
+
+### 변경
+
+- **`replace_in_lorebook` — comment/key 필드 지원 확장** — 기존 content만 지원하던 치환을 comment, key, secondkey 필드까지 확장. `field` 파라미터로 대상 선택 (기본: "content")
+- **`replace_in_field` / `insert_in_field` — 필드별 뮤텍스 도입** — 동일 필드에 여러 replace/insert가 병렬 호출될 때 마지막 쓰기만 살아남던 데이터 유실 버그 수정. Promise 체인 기반 필드별 뮤텍스로 순차 실행 보장
+
+### 수정
+
+- **`read_regex` find/replace 필드 누락 수정** — 레거시 데이터에서 `in`/`out` 필드만 있고 `find`/`replace`가 없는 경우, GET /regex/:idx가 두 필드를 모두 삭제하여 빈 응답을 반환하던 버그 수정. 삭제 전 `find = find || in`, `replace = replace || out` 정규화 추가
+
 ## [0.17.1] - 2026-03-22
 
 ### 수정

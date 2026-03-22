@@ -587,17 +587,24 @@ server.tool(
 
 server.tool(
   'replace_in_field',
-  '필드의 내용에서 문자열 치환을 수행합니다. 대형 필드를 전체 읽지 않고 서버에서 직접 처리합니다. 문자열 타입 필드만 지원 (배열/boolean/number/triggerScripts 제외). regex: true + flags 옵션으로 정규식 지원. ⚠️ 검색만 하려면 search_in_field를 사용하세요 — replace를 생략하면 빈 문자열(=삭제)이 적용됩니다. 사용자 확인 필요.',
+  '필드의 내용에서 문자열 치환을 수행합니다. 대형 필드를 전체 읽지 않고 서버에서 직접 처리합니다. 문자열 타입 필드만 지원 (배열/boolean/number/triggerScripts 제외). regex: true + flags 옵션으로 정규식 지원. ⚠️ 검색만 하려면 search_in_field를 사용하세요 — replace를 생략하면 빈 문자열(=삭제)이 적용됩니다. dry_run: true로 실제 변경 없이 매치 결과만 미리 확인 가능. 사용자 확인 필요.',
   {
     field: z.string().describe('필드 이름 (예: globalNote, description, defaultVariables, lua 등)'),
     find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
     replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
     regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false)'),
     flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+    dry_run: z.boolean().optional().describe('true이면 실제 변경 없이 매치 수와 전후 컨텍스트만 반환 (기본: false)'),
   },
-  async ({ field, find, replace, regex, flags }) =>
+  async ({ field, find, replace, regex, flags, dry_run }) =>
     textResult(
-      await apiRequest('POST', `/field/${encodeURIComponent(field)}/replace`, { find, replace, regex, flags }),
+      await apiRequest('POST', `/field/${encodeURIComponent(field)}/replace`, {
+        find,
+        replace,
+        regex,
+        flags,
+        dry_run,
+      }),
     ),
 );
 
@@ -615,6 +622,30 @@ server.tool(
   },
   async ({ field, content, position, anchor }) =>
     textResult(await apiRequest('POST', `/field/${encodeURIComponent(field)}/insert`, { content, position, anchor })),
+);
+
+server.tool(
+  'replace_in_field_batch',
+  '하나의 필드에 여러 치환을 순차적으로 적용합니다. 이전 치환 결과 위에 다음 치환이 적용되며, 한 번의 확인으로 모두 처리합니다. 동일 필드에서 10명 캐릭터 태그를 각각 바꾸는 등의 대량 작업에 유용. dry_run으로 미리보기 가능. 사용자 확인 필요.',
+  {
+    field: z.string().describe('필드 이름 (예: firstMessage, globalNote, description 등)'),
+    replacements: z
+      .array(
+        z.object({
+          find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
+          replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
+          regex: z.boolean().optional().describe('정규식 모드 여부'),
+          flags: z.string().optional().describe('정규식 플래그 (기본: "g")'),
+        }),
+      )
+      .max(50)
+      .describe('순차 적용할 치환 배열 [{find, replace, regex?, flags?}] (최대 50개)'),
+    dry_run: z.boolean().optional().describe('true이면 실제 변경 없이 매치 수만 반환 (기본: false)'),
+  },
+  async ({ field, replacements, dry_run }) =>
+    textResult(
+      await apiRequest('POST', `/field/${encodeURIComponent(field)}/batch-replace`, { replacements, dry_run }),
+    ),
 );
 
 server.tool(
@@ -655,6 +686,32 @@ server.tool(
     const qs = params.toString();
     return textResult(await apiRequest('GET', `/field/${encodeURIComponent(field)}/range${qs ? `?${qs}` : ''}`));
   },
+);
+
+server.tool(
+  'search_all_fields',
+  '모든 텍스트 필드(firstMessage, description, globalNote, alternateGreetings, groupOnlyGreetings, lorebook content 등)에서 한 번에 검색합니다. 잔류 태그 확인 등 전체 스캔에 유용. 읽기 전용.',
+  {
+    query: z.string().describe('검색할 문자열 (또는 regex: true일 때 정규식 패턴)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false)'),
+    flags: z.string().optional().describe('정규식 플래그 (기본: "gi"). regex: true일 때만 사용'),
+    include_lorebook: z.boolean().optional().describe('로어북 content도 검색할지 (기본: true)'),
+    include_greetings: z.boolean().optional().describe('alternateGreetings/groupOnlyGreetings도 검색할지 (기본: true)'),
+    context_chars: z.number().optional().describe('매치 전후에 표시할 문자 수 (기본: 60, 최대: 300)'),
+    max_matches_per_field: z.number().optional().describe('필드당 최대 반환 매치 수 (기본: 5, 최대: 20)'),
+  },
+  async ({ query, regex, flags, include_lorebook, include_greetings, context_chars, max_matches_per_field }) =>
+    textResult(
+      await apiRequest('POST', '/search-all', {
+        query,
+        regex,
+        flags,
+        include_lorebook,
+        include_greetings,
+        context_chars,
+        max_matches_per_field,
+      }),
+    ),
 );
 
 // ===== Lorebook Tools =====
@@ -802,16 +859,20 @@ server.tool(
 
 server.tool(
   'replace_in_lorebook',
-  '로어북 항목의 content에서 문자열 치환을 수행합니다. 대용량 항목도 전체를 읽지 않고 서버에서 직접 처리합니다. 사용자 확인 필요.',
+  '로어북 항목의 필드에서 문자열 치환을 수행합니다. 대용량 항목도 전체를 읽지 않고 서버에서 직접 처리합니다. field 파라미터로 content 외에 comment, key, secondkey도 치환 가능. 사용자 확인 필요.',
   {
     index: z.number().describe('로어북 항목 인덱스'),
     find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
     replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
     regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false = 일반 문자열 매칭)'),
     flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+    field: z
+      .enum(['content', 'comment', 'key', 'secondkey'])
+      .optional()
+      .describe('치환 대상 필드 (기본: "content"). comment/key/secondkey도 지원'),
   },
-  async ({ index, find, replace, regex, flags }) =>
-    textResult(await apiRequest('POST', `/lorebook/${index}/replace`, { find, replace, regex, flags })),
+  async ({ index, find, replace, regex, flags, field }) =>
+    textResult(await apiRequest('POST', `/lorebook/${index}/replace`, { find, replace, regex, flags, field })),
 );
 
 server.tool(
@@ -848,6 +909,21 @@ server.tool(
       .describe('치환 작업 배열 [{index, find, replace, regex?, flags?}] (최대 50개)'),
   },
   async ({ replacements }) => textResult(await apiRequest('POST', '/lorebook/batch-replace', { replacements })),
+);
+
+server.tool(
+  'replace_across_all_lorebook',
+  '모든 로어북 항목에서 특정 문자열을 한 번에 치환합니다. list_lorebook → replace_in_lorebook 반복 호출 대신 1회로 처리. field 옵션으로 content/comment/key/secondkey 중 대상 선택 가능. dry_run으로 미리보기 가능. 사용자 확인 필요.',
+  {
+    find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
+    replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false)'),
+    flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+    field: z.enum(['content', 'comment', 'key', 'secondkey']).optional().describe('치환 대상 필드 (기본: "content")'),
+    dry_run: z.boolean().optional().describe('true이면 실제 변경 없이 매치 항목만 반환 (기본: false)'),
+  },
+  async ({ find, replace, regex, flags, field, dry_run }) =>
+    textResult(await apiRequest('POST', '/lorebook/replace-all', { find, replace, regex, flags, field, dry_run })),
 );
 
 server.tool(
@@ -1412,6 +1488,48 @@ server.tool(
   '.risum 파일의 내장 에셋을 삭제합니다. 사용자 확인 필요.',
   { index: z.number().describe('삭제할 에셋 인덱스') },
   async ({ index }) => textResult(await apiRequest('POST', `/risum-asset/${index}/delete`)),
+);
+
+// ===== Charx Asset Tools =====
+
+server.tool('list_charx_assets', '.charx 파일의 내장 에셋 목록을 확인합니다 (인덱스, 경로, 크기).', {}, async () =>
+  textResult(await apiRequest('GET', '/assets')),
+);
+
+server.tool(
+  'read_charx_asset',
+  '.charx 파일의 내장 에셋을 base64로 읽습니다.',
+  { index: z.number().describe('에셋 인덱스 (list_charx_assets 결과 참조)') },
+  async ({ index }) => textResult(await apiRequest('GET', `/asset/${index}`)),
+);
+
+server.tool(
+  'add_charx_asset',
+  '.charx 파일에 에셋을 추가합니다. base64로 인코딩된 데이터를 전달. 사용자 확인 필요.',
+  {
+    fileName: z.string().describe('파일명 (예: character.png)'),
+    base64: z.string().describe('base64 인코딩된 에셋 데이터'),
+    folder: z.enum(['icon', 'other']).optional().describe('폴더: "icon" 또는 "other"(기본)'),
+  },
+  async ({ fileName, base64, folder }) =>
+    textResult(await apiRequest('POST', '/asset/add', { fileName, base64, folder: folder || 'other' })),
+);
+
+server.tool(
+  'delete_charx_asset',
+  '.charx 파일의 내장 에셋을 삭제합니다. 사용자 확인 필요.',
+  { index: z.number().describe('삭제할 에셋 인덱스') },
+  async ({ index }) => textResult(await apiRequest('POST', `/asset/${index}/delete`)),
+);
+
+server.tool(
+  'rename_charx_asset',
+  '.charx 파일의 내장 에셋 이름을 변경합니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('에셋 인덱스 (list_charx_assets 결과 참조)'),
+    newName: z.string().describe('새 파일명 (확장자 포함, 예: new_name.png)'),
+  },
+  async ({ index, newName }) => textResult(await apiRequest('POST', `/asset/${index}/rename`, { newName })),
 );
 
 // ===== Asset Compression =====
