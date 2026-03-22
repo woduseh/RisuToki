@@ -178,7 +178,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
       comment: `new_regex_${fileData.regex.length}`,
       in: '',
       out: '',
-      type: 'editInput',
+      type: 'editinput',
       ableFlag: true,
       flag: '',
       replaceOrder: 0,
@@ -214,7 +214,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
           comment: entry.comment || entry.name || item.fileName.replace('.json', ''),
           in: entry.in || entry.findRegex || '',
           out: entry.out || entry.replaceString || '',
-          type: entry.type || 'editDisplay',
+          type: (entry.type || 'editdisplay').toString().toLowerCase(),
           ableFlag: entry.ableFlag !== undefined ? entry.ableFlag : true,
         });
         addedCount++;

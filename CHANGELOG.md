@@ -9,6 +9,17 @@
 
 ---
 
+## [0.19.3] - 2026-03-23
+
+### 수정
+
+- **정규식 Type 저장 오류 수정** — charx/risum/risup 파일에 정규식 항목을 저장할 때 `type` 값이 RisuAI와 호환되지 않는 형식(camelCase)으로 기록되던 버그 수정
+  - **근본 원인**: Risutoki는 `editInput`, `editOutput`, `editRequest`, `editDisplay` 등 camelCase를 사용했으나, RisuAI는 `editinput`, `editoutput`, `editprocess`, `editdisplay` 등 lowercase로 대소문자 구분 비교
+  - **추가 불일치**: `editRequest`→`editprocess`, `editTranslation`→`edittrans` 이름 자체가 다른 문제도 함께 수정
+  - 파일 저장 시 (`saveCharx`, `saveRisum`, `saveRisup`) type 자동 정규화 추가
+  - 파일 로드 시 (`openCharx`, `openRisum`, `openRisup`) 기존 camelCase 파일 자동 정규화
+  - 폼 에디터, 사이드바, 드래그앤드롭, MCP API 등 모든 정규식 생성 경로에 RisuAI 호환 값 적용
+
 ## [0.19.2] - 2026-03-23
 
 ### 수정

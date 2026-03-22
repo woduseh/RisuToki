@@ -21,6 +21,44 @@ const { risuArrayToCCV3 } = require('./lorebook-convert') as {
 const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_FILE_SIZE: number = 200 * 1024 * 1024; // 200 MB
 
+/**
+ * Mapping from Risutoki legacy/camelCase regex type names to RisuAI-compatible lowercase names.
+ * RisuAI does case-sensitive comparison (`script.type === mode`), so types MUST be lowercase.
+ */
+const REGEX_TYPE_MAP: Record<string, string> = {
+  editinput: 'editinput',
+  editoutput: 'editoutput',
+  editdisplay: 'editdisplay',
+  editprocess: 'editprocess',
+  edittrans: 'edittrans',
+  disabled: 'disabled',
+  // Legacy Risutoki names
+  editrequest: 'editprocess',
+  edittranslation: 'edittrans',
+};
+
+/**
+ * Normalize a single regex entry's `type` field to RisuAI-compatible lowercase value.
+ * Handles camelCase → lowercase and legacy name mapping (editRequest→editprocess, etc.)
+ */
+function normalizeRegexType(entry: Record<string, unknown>): void {
+  if (typeof entry.type === 'string') {
+    const lower = entry.type.toLowerCase();
+    entry.type = REGEX_TYPE_MAP[lower] || lower;
+  }
+}
+
+/**
+ * Normalize all regex entries' type fields in-place.
+ */
+function normalizeRegexArray(regex: unknown[]): void {
+  for (const entry of regex) {
+    if (entry && typeof entry === 'object') {
+      normalizeRegexType(entry as Record<string, unknown>);
+    }
+  }
+}
+
 function validateFileSize(filePath: string): void {
   const stats = fs.statSync(filePath);
   if (stats.size > MAX_FILE_SIZE) {
@@ -423,8 +461,12 @@ export function openCharx(filePath: string): CharxData {
     // Lorebook (use module.risum version as source of truth)
     lorebook: (mod.lorebook as unknown[]) || [],
 
-    // Regex scripts
-    regex: (mod.regex as unknown[]) || [],
+    // Regex scripts (normalize types for RisuAI compatibility)
+    regex: (() => {
+      const r = (mod.regex as unknown[]) || [];
+      normalizeRegexArray(r);
+      return r;
+    })(),
 
     // Module metadata
     moduleId: (mod.id as string) || '',
@@ -546,8 +588,9 @@ export function saveCharx(filePath: string, data: CharxData): void {
     data.lua,
   );
 
-  // Regex
+  // Regex (normalize types for RisuAI compatibility)
   mod.regex = data.regex || [];
+  normalizeRegexArray(mod.regex as unknown[]);
 
   // Lorebook (risu format)
   mod.lorebook = data.lorebook || [];
@@ -602,7 +645,11 @@ export function openRisum(filePath: string): CharxData {
     lua: extractPrimaryLuaFromTriggerScripts((mod.trigger as unknown[]) || []),
     triggerScripts: cloneTriggerScripts((mod.trigger as unknown[]) || []),
     lorebook: (mod.lorebook as unknown[]) || [],
-    regex: (mod.regex as unknown[]) || [],
+    regex: (() => {
+      const r = (mod.regex as unknown[]) || [];
+      normalizeRegexArray(r);
+      return r;
+    })(),
 
     // charx-only fields (empty for risum)
     firstMessage: '',
@@ -673,8 +720,9 @@ export function saveRisum(filePath: string, data: CharxData): void {
     data.lua,
   );
 
-  // Regex & Lorebook
+  // Regex & Lorebook (normalize regex types for RisuAI compatibility)
   mod.regex = data.regex || [];
+  normalizeRegexArray(mod.regex as unknown[]);
   mod.lorebook = data.lorebook || [];
 
   const risumBuf: Buffer = buildRisum(moduleJson, data.risumAssets || []);
@@ -802,8 +850,12 @@ function extractPresetFields(preset: Record<string, unknown>): Partial<CharxData
     systemContentReplacement: (preset.systemContentReplacement as string) || undefined,
     systemRoleReplacement: (preset.systemRoleReplacement as string) || undefined,
 
-    // Regex & image
-    regex: Array.isArray(preset.regex) ? preset.regex : [],
+    // Regex & image (normalize types for RisuAI compatibility)
+    regex: (() => {
+      const r = Array.isArray(preset.regex) ? preset.regex : [];
+      normalizeRegexArray(r);
+      return r;
+    })(),
     presetImage: (preset.image as string) || '',
   };
 }
@@ -906,8 +958,11 @@ function applyPresetFields(preset: Record<string, unknown>, data: CharxData): vo
   if (data.systemContentReplacement !== undefined) preset.systemContentReplacement = data.systemContentReplacement;
   if (data.systemRoleReplacement !== undefined) preset.systemRoleReplacement = data.systemRoleReplacement;
 
-  // Regex & image
-  if (data.regex !== undefined) preset.regex = data.regex;
+  // Regex & image (normalize types for RisuAI compatibility)
+  if (data.regex !== undefined) {
+    preset.regex = data.regex;
+    normalizeRegexArray(preset.regex as unknown[]);
+  }
   if (data.presetImage !== undefined) preset.image = data.presetImage;
 }
 

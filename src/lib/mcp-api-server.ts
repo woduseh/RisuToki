@@ -230,9 +230,17 @@ function pickAllowedFields(source: Record<string, unknown>, allowed: Set<string>
   return result;
 }
 
-/** RisuAI expects lowercase regex types (editdisplay, editoutput, etc.) */
+/** RisuAI expects lowercase regex types (editdisplay, editoutput, etc.) + name mapping */
 function normalizeRegexType(entry: Record<string, unknown>): void {
-  if (typeof entry.type === 'string') entry.type = entry.type.toLowerCase();
+  if (typeof entry.type === 'string') {
+    const lower = entry.type.toLowerCase();
+    // Map legacy Risutoki names to RisuAI names
+    const REGEX_TYPE_MAP: Record<string, string> = {
+      editrequest: 'editprocess',
+      edittranslation: 'edittrans',
+    };
+    entry.type = REGEX_TYPE_MAP[lower] || lower;
+  }
 }
 
 // ---------------------------------------------------------------------------

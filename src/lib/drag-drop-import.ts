@@ -49,7 +49,9 @@ export function initDragDrop(dropTarget: HTMLElement, deps: DragDropDeps): void 
     const files = (e as DragEvent).dataTransfer?.files;
     if (!files || files.length === 0) return;
 
-    let jsonCount = 0, imgCount = 0, charxCount = 0;
+    let jsonCount = 0,
+      imgCount = 0,
+      charxCount = 0;
 
     for (const file of files) {
       const ext = file.name.split('.').pop()!.toLowerCase();
@@ -57,7 +59,7 @@ export function initDragDrop(dropTarget: HTMLElement, deps: DragDropDeps): void 
       // .charx/.risum files → add as reference (works even without main file open)
       if (ext === 'charx' || ext === 'risum') {
         const filePath = (file as File & { path: string }).path;
-        if (deps.referenceFiles.some(r => isSameReferencePath(r.filePath, filePath))) {
+        if (deps.referenceFiles.some((r) => isSameReferencePath(r.filePath, filePath))) {
           deps.setStatus(`이미 로드됨: ${file.name}`);
           continue;
         }
@@ -79,10 +81,12 @@ export function initDragDrop(dropTarget: HTMLElement, deps: DragDropDeps): void 
         try {
           const data = JSON.parse(text);
           const entries: Array<Record<string, unknown>> = Array.isArray(data) ? data : [data];
-          // Detect regex vs lorebook: regex has "in"/"findRegex" or type "editDisplay"/"editInput"
-          const isRegex = entries.some(e =>
-            e.in !== undefined || e.findRegex !== undefined ||
-            e.type === 'editDisplay' || e.type === 'editInput'
+          // Detect regex vs lorebook: regex has "in"/"findRegex" or type containing "edit"
+          const isRegex = entries.some(
+            (e) =>
+              e.in !== undefined ||
+              e.findRegex !== undefined ||
+              (typeof e.type === 'string' && e.type.toLowerCase().startsWith('edit')),
           );
 
           if (isRegex) {
@@ -91,13 +95,13 @@ export function initDragDrop(dropTarget: HTMLElement, deps: DragDropDeps): void 
                 comment: entry.comment || entry.name || file.name.replace('.json', ''),
                 in: entry.in || entry.findRegex || '',
                 out: entry.out || entry.replaceString || '',
-                type: entry.type || 'editDisplay',
-                ableFlag: entry.ableFlag !== undefined ? entry.ableFlag : true
+                type: (entry.type || 'editdisplay').toString().toLowerCase(),
+                ableFlag: entry.ableFlag !== undefined ? entry.ableFlag : true,
               });
             }
           } else {
             const lbEntries: Array<Record<string, unknown>> =
-              (data as Record<string, unknown>).entries as Array<Record<string, unknown>> || entries;
+              ((data as Record<string, unknown>).entries as Array<Record<string, unknown>>) || entries;
             for (const entry of lbEntries) {
               deps.fileData.lorebook.push({
                 key: entry.key || (entry.keys ? (entry.keys as string[]).join(', ') : ''),
@@ -108,10 +112,11 @@ export function initDragDrop(dropTarget: HTMLElement, deps: DragDropDeps): void 
                 alwaysActive: entry.alwaysActive || entry.constant || false,
                 forceActivation: entry.forceActivation || false,
                 selective: entry.selective || false,
-                secondkey: entry.secondkey || (entry.secondary_keys ? (entry.secondary_keys as string[]).join(', ') : ''),
+                secondkey:
+                  entry.secondkey || (entry.secondary_keys ? (entry.secondary_keys as string[]).join(', ') : ''),
                 constant: entry.constant || false,
                 order: deps.fileData.lorebook.length,
-                folder: entry.folder || ''
+                folder: entry.folder || '',
               });
             }
           }

@@ -586,11 +586,11 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
   typeSelect.className = 'form-select';
   if (readonly) typeSelect.disabled = true;
   const types = [
-    { value: 'editInput', label: '입력문 수정' },
-    { value: 'editOutput', label: '출력문 수정' },
-    { value: 'editRequest', label: '리퀘스트 데이터 수정' },
-    { value: 'editDisplay', label: '디스플레이 수정' },
-    { value: 'editTranslation', label: '번역문 수정' },
+    { value: 'editinput', label: '입력문 수정' },
+    { value: 'editoutput', label: '출력문 수정' },
+    { value: 'editprocess', label: '리퀘스트 데이터 수정' },
+    { value: 'editdisplay', label: '디스플레이 수정' },
+    { value: 'edittrans', label: '번역문 수정' },
     { value: 'disabled', label: '비활성화됨' },
   ];
   for (const t of types) {

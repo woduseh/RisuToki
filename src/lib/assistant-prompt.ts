@@ -83,7 +83,7 @@ export async function buildAssistantPrompt(
     `  order: 100, priority: 0, selective: false, alwaysActive: false, mode: "normal" }`,
     ``,
     `== 정규식 스크립트 구조 ==`,
-    `{ comment: "설명", type: "editoutput"|"editinput"|"editdisplay",`,
+    `{ comment: "설명", type: "editoutput"|"editinput"|"editdisplay"|"editprocess"|"edittrans",`,
     `  find: "정규식패턴", replace: "치환문자열", flag: "g"|"gi"|"gm" }`,
   ];
 

@@ -6,9 +6,13 @@ const TABLE_STYLE = 'width:100%;border-collapse:collapse;font-size:11px;';
 const TH_STYLE = 'text-align:left;padding:3px 6px;border-bottom:1px solid #44475a;color:#8be9fd;font-weight:600;';
 const TD_STYLE = 'padding:3px 6px;border-bottom:1px solid #2a2e4a;';
 const ACTIVE_LORE_STYLE = 'background:rgba(76,175,80,0.1);';
-const LUA_BUTTON_STYLE = 'margin-bottom:6px;padding:4px 12px;background:#4a90d9;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;';
+const LUA_BUTTON_STYLE =
+  'margin-bottom:6px;padding:4px 12px;background:#4a90d9;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;';
 
-export function buildPreviewDebugClipboardText(snapshot: PreviewSnapshot, timeText = new Date().toLocaleTimeString()): string {
+export function buildPreviewDebugClipboardText(
+  snapshot: PreviewSnapshot,
+  timeText = new Date().toLocaleTimeString(),
+): string {
   const lines: string[] = [];
   lines.push(`=== 프리뷰 디버그 (${timeText}) ===`);
   lines.push(`\n[Lua] ${snapshot.luaInitialized ? '활성' : '비활성'}`);
@@ -32,7 +36,7 @@ export function buildPreviewDebugClipboardText(snapshot: PreviewSnapshot, timeTe
 export function renderPreviewDebugHtml({
   activeTab,
   snapshot,
-  luaInitButtonId = 'lua-init-btn'
+  luaInitButtonId = 'lua-init-btn',
 }: {
   activeTab: 'variables' | 'lorebook' | 'lua' | 'regex' | string;
   snapshot: PreviewSnapshot;
@@ -72,7 +76,13 @@ export function renderPreviewDebugHtml({
       const active = matchSet.has(index);
       const match = snapshot.loreMatches.find((item) => item.index === index);
       html += `<tr style="${active ? ACTIVE_LORE_STYLE : ''}"><td style="${TD_STYLE}">${index}</td><td style="${TD_STYLE}">${escapePreviewHtml(entry.comment || '')}</td><td style="${TD_STYLE}">${escapePreviewHtml(entry.key || '')}</td><td style="${TD_STYLE}">${
-        entry.alwaysActive ? '🟢 항상' : active ? `🟢 ${escapePreviewHtml(match?.reason || '')}` : entry.key ? '⚫' : '⬜'
+        entry.alwaysActive
+          ? '🟢 항상'
+          : active
+            ? `🟢 ${escapePreviewHtml(match?.reason || '')}`
+            : entry.key
+              ? '⚫'
+              : '⬜'
       }</td></tr>`;
     }
 
@@ -97,7 +107,7 @@ export function renderPreviewDebugHtml({
       return `<div style="${EMPTY_STYLE}">정규식 없음</div>`;
     }
 
-    const types = ['editinput', 'editoutput', 'editdisplay', 'editrequest'];
+    const types = ['editinput', 'editoutput', 'editdisplay', 'editprocess', 'edittrans'];
     let html = '';
 
     for (const type of types) {
