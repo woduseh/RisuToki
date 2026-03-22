@@ -9,6 +9,14 @@
 
 ---
 
+## [0.18.1] - 2026-03-22
+
+### 새 기능
+
+- **`add_lua_section` / `add_css_section` MCP 도구** — 새 Lua/CSS 섹션을 이름과 함께 추가. `insert_in_lua`/`insert_in_css`는 구분자(`-- ===== name =====`, `/* ===== name ===== */`)를 이스케이프하여 새 섹션 생성이 불가능했던 문제 해결. 올바른 구분자와 함께 마지막 섹션 뒤에 생성
+- **`list_reference_regex` / `read_reference_regex` MCP 도구** — 참고 자료의 정규식을 개별 접근. `read_reference_field("regex")`가 전체를 한꺼번에 반환하여 컨텍스트를 낭비하던 문제 해결. 로어북/Lua/CSS와 동일한 `list → read` 패턴
+- **`add_regex_batch` / `write_regex_batch` MCP 도구** — 여러 정규식 항목을 한 번에 추가/수정 (최대 50개). 단일 확인으로 처리. 로어북의 `add_lorebook_batch`/`write_lorebook_batch`와 동일한 패턴
+
 ## [0.18.0] - 2026-03-22
 
 ### 새 기능

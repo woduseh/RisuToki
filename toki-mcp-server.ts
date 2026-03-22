@@ -1020,6 +1020,35 @@ server.tool(
   async ({ index }) => textResult(await apiRequest('POST', `/regex/${index}/delete`)),
 );
 
+server.tool(
+  'add_regex_batch',
+  '여러 정규식 항목을 한 번에 추가합니다. 최대 50개. 단일 확인으로 전부 추가됩니다. 사용자 확인 필요.',
+  {
+    entries: z
+      .array(z.record(z.string(), z.unknown()))
+      .max(50)
+      .describe('정규식 항목 데이터 배열 [{comment, type, find, replace, flag}, ...] (최대 50개)'),
+  },
+  async ({ entries }) => textResult(await apiRequest('POST', '/regex/batch-add', { entries })),
+);
+
+server.tool(
+  'write_regex_batch',
+  '여러 정규식 항목을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 최대 50개. 사용자 확인 필요.',
+  {
+    entries: z
+      .array(
+        z.object({
+          index: z.number().describe('정규식 항목 인덱스'),
+          data: z.record(z.string(), z.unknown()).describe('수정할 정규식 데이터'),
+        }),
+      )
+      .max(50)
+      .describe('수정할 항목 배열 [{index, data}, ...] (최대 50개)'),
+  },
+  async ({ entries }) => textResult(await apiRequest('POST', '/regex/batch-write', { entries })),
+);
+
 // ===== Greeting Tools =====
 
 server.tool(
@@ -1259,6 +1288,16 @@ server.tool(
     ),
 );
 
+server.tool(
+  'add_lua_section',
+  '새 Lua 섹션을 이름과 함께 추가합니다. 기존 마지막 섹션 뒤에 올바른 구분자(-- ===== name =====)와 함께 생성됩니다. insert_in_lua는 구분자를 이스케이프하므로 새 섹션 추가에는 이 도구를 사용하세요. 사용자 확인 필요.',
+  {
+    name: z.string().describe('새 섹션 이름'),
+    content: z.string().optional().describe('섹션 초기 코드 (기본: 빈 문자열)'),
+  },
+  async ({ name, content }) => textResult(await apiRequest('POST', '/lua/add', { name, content: content || '' })),
+);
+
 // ===== CSS Tools =====
 
 server.tool(
@@ -1332,6 +1371,17 @@ server.tool(
         anchor: anchor || '',
       }),
     ),
+);
+
+server.tool(
+  'add_css_section',
+  '새 CSS 섹션을 이름과 함께 추가합니다. 기존 마지막 섹션 뒤에 올바른 구분자와 함께 생성됩니다. insert_in_css는 구분자를 이스케이프하므로 새 섹션 추가에는 이 도구를 사용하세요. 사용자 확인 필요.',
+  {
+    name: z.string().describe('새 섹션 이름'),
+    content: z.string().optional().describe('섹션 초기 코드 (기본: 빈 문자열)'),
+  },
+  async ({ name, content }) =>
+    textResult(await apiRequest('POST', '/css-section/add', { name, content: content || '' })),
 );
 
 // ===== Reference Tools =====
@@ -1453,6 +1503,25 @@ server.tool(
     indices: z.array(z.number()).max(20).describe('읽을 CSS 섹션 인덱스 배열 (최대 20개)'),
   },
   async ({ index, indices }) => textResult(await apiRequest('POST', `/reference/${index}/css/batch`, { indices })),
+);
+
+server.tool(
+  'list_reference_regex',
+  '참고 자료 파일의 정규식 스크립트 항목 목록을 확인합니다 (읽기 전용). 각 항목의 인덱스, comment, type, findSize, replaceSize를 반환합니다. read_reference_field("regex") 대신 이 도구를 사용하세요 — 전체 JSON 덤프를 방지합니다.',
+  {
+    index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+  },
+  async ({ index }) => textResult(await apiRequest('GET', `/reference/${index}/regex`)),
+);
+
+server.tool(
+  'read_reference_regex',
+  '참고 자료 파일의 특정 정규식 항목 하나를 읽습니다 (읽기 전용). list_reference_regex로 인덱스 확인 후 사용.',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    entryIndex: z.number().describe('정규식 항목 인덱스 (list_reference_regex 결과 참조)'),
+  },
+  async ({ index, entryIndex }) => textResult(await apiRequest('GET', `/reference/${index}/regex/${entryIndex}`)),
 );
 
 // ===== Risum Asset Tools =====

@@ -2873,7 +2873,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // POST /regex/:idx (modify existing)
       // ----------------------------------------------------------------
-      if (parts[0] === 'regex' && parts[1] && parts[1] !== 'add' && !parts[2] && req.method === 'POST') {
+      if (
+        parts[0] === 'regex' &&
+        parts[1] &&
+        !['add', 'batch-add', 'batch-write'].includes(parts[1]) &&
+        !parts[2] &&
+        req.method === 'POST'
+      ) {
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= (currentData.regex || []).length) {
           return mcpError(res, 400, {
@@ -2951,6 +2957,117 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             rejected: true,
             suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
             target: 'regex:add',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /regex/batch-add — batch add regex entries
+      // ----------------------------------------------------------------
+      if (parts[0] === 'regex' && parts[1] === 'batch-add' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'regex/batch-add', broadcastStatus);
+        if (!body) return;
+        const entries: Record<string, unknown>[] = body.entries;
+        if (!Array.isArray(entries) || entries.length === 0) {
+          return jsonRes(res, { error: 'entries must be a non-empty array' }, 400);
+        }
+        const MAX_BATCH = 50;
+        if (entries.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} entries per batch` }, 400);
+        }
+
+        const names = entries.map((e, i) => (typeof e.comment === 'string' ? e.comment : `regex_${i}`));
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 추가 요청',
+          `AI 어시스턴트가 정규식 항목 ${entries.length}개를 추가하려 합니다:\n${names.map((n, i) => `  ${i + 1}. ${n}`).join('\n')}`,
+        );
+
+        if (allowed) {
+          if (!currentData.regex) currentData.regex = [];
+          const results: Array<{ index: number; comment: string }> = [];
+          for (const e of entries) {
+            const defaults: Record<string, unknown> = {
+              comment: '',
+              type: 'editoutput',
+              find: '',
+              replace: '',
+              flag: 'g',
+            };
+            const entry = Object.assign(defaults, pickAllowedFields(e, REGEX_ALLOWED_FIELDS));
+            if (entry.find && !entry.in) entry.in = entry.find;
+            if (entry.in && !entry.find) entry.find = entry.in;
+            if (entry.replace && !entry.out) entry.out = entry.replace;
+            if (entry.out && !entry.replace) entry.replace = entry.out;
+            currentData.regex.push(entry);
+            results.push({ index: currentData.regex.length - 1, comment: String(entry.comment || '') });
+          }
+          logMcpMutation('batch add regex entries', 'regex:batch-add', { count: results.length });
+          deps.broadcastToAll('data-updated', 'regex', currentData.regex);
+          return jsonRes(res, { success: true, added: results.length, entries: results });
+        } else {
+          return mcpError(res, 403, {
+            action: 'batch add regex entries',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'regex:batch-add',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /regex/batch-write — batch modify regex entries
+      // ----------------------------------------------------------------
+      if (parts[0] === 'regex' && parts[1] === 'batch-write' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'regex/batch-write', broadcastStatus);
+        if (!body) return;
+        const batchEntries: Array<{ index: number; data: Record<string, unknown> }> = body.entries;
+        if (!Array.isArray(batchEntries) || batchEntries.length === 0) {
+          return jsonRes(res, { error: 'entries must be a non-empty array of {index, data}' }, 400);
+        }
+        const MAX_BATCH = 50;
+        if (batchEntries.length > MAX_BATCH) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH} entries per batch` }, 400);
+        }
+        const regexArr = currentData.regex || [];
+        for (const e of batchEntries) {
+          const idx = Number(e.index);
+          if (isNaN(idx) || idx < 0 || idx >= regexArr.length) {
+            return jsonRes(res, { error: `Index ${e.index} out of range (0-${regexArr.length - 1})` }, 400);
+          }
+        }
+
+        const summaryLines = batchEntries.map((e) => {
+          const name = regexArr[e.index]?.comment || `regex_${e.index}`;
+          return `  [${e.index}] ${name}: ${Object.keys(e.data || {}).join(', ')}`;
+        });
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 수정 요청',
+          `AI 어시스턴트가 정규식 항목 ${batchEntries.length}개를 수정하려 합니다:\n${summaryLines.join('\n')}`,
+        );
+
+        if (allowed) {
+          const results: Array<{ index: number; comment: string; updatedKeys: string[] }> = [];
+          for (const e of batchEntries) {
+            const idx = Number(e.index);
+            Object.assign(regexArr[idx], pickAllowedFields(e.data, REGEX_ALLOWED_FIELDS));
+            const entry = regexArr[idx];
+            if (e.data.find !== undefined && e.data.in === undefined) entry.in = e.data.find;
+            if (e.data.in !== undefined && e.data.find === undefined) entry.find = e.data.in;
+            if (e.data.replace !== undefined && e.data.out === undefined) entry.out = e.data.replace;
+            if (e.data.out !== undefined && e.data.replace === undefined) entry.replace = e.data.out;
+            results.push({ index: idx, comment: String(entry.comment || ''), updatedKeys: Object.keys(e.data || {}) });
+          }
+          logMcpMutation('batch write regex entries', 'regex:batch-write', { count: results.length });
+          deps.broadcastToAll('data-updated', 'regex', currentData.regex);
+          return jsonRes(res, { success: true, modified: results.length, entries: results });
+        } else {
+          return mcpError(res, 403, {
+            action: 'batch write regex entries',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'regex:batch-write',
           });
         }
       }
@@ -3835,6 +3952,51 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /lua/add — add new Lua section
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lua' && parts[1] === 'add' && !parts[2] && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lua/add', broadcastStatus);
+        if (!body) return;
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        if (!name) {
+          return jsonRes(res, { error: 'Missing or empty "name" for new Lua section' }, 400);
+        }
+        const content = typeof body.content === 'string' ? body.content : '';
+        const sections = luaCache.get(currentData.lua);
+        const duplicate = sections.find((s) => s.name === name);
+        if (duplicate) {
+          return jsonRes(
+            res,
+            { error: `Section "${name}" already exists`, existingIndex: sections.indexOf(duplicate) },
+            400,
+          );
+        }
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 추가 요청',
+          `AI 어시스턴트가 새 Lua 섹션 "${name}"을(를) 추가하려 합니다.`,
+        );
+
+        if (allowed) {
+          sections.push({ name, content });
+          currentData.lua = deps.combineLuaSections(sections);
+          currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
+          logMcpMutation('add lua section', `lua:add`, { sectionName: name, newIndex: sections.length - 1 });
+          deps.broadcastToAll('data-updated', 'lua', currentData.lua);
+          deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
+          return jsonRes(res, { success: true, index: sections.length - 1, name, contentSize: content.length });
+        } else {
+          return mcpError(res, 403, {
+            action: 'add lua section',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'lua:add',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
       // POST /lua/:idx — write Lua section
       // ----------------------------------------------------------------
       if (parts[0] === 'lua' && parts[1] && !parts[2] && req.method === 'POST') {
@@ -4121,6 +4283,49 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return { index: idx, name: sections[idx].name, content: sections[idx].content };
         });
         return jsonRes(res, { count: result.filter(Boolean).length, total: indices.length, sections: result });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /css-section/add — add new CSS section
+      // ----------------------------------------------------------------
+      if (parts[0] === 'css-section' && parts[1] === 'add' && !parts[2] && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'css-section/add', broadcastStatus);
+        if (!body) return;
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        if (!name) {
+          return jsonRes(res, { error: 'Missing or empty "name" for new CSS section' }, 400);
+        }
+        const content = typeof body.content === 'string' ? body.content : '';
+        const { sections, prefix, suffix } = cssCache.get(currentData.css);
+        const duplicate = sections.find((s) => s.name === name);
+        if (duplicate) {
+          return jsonRes(
+            res,
+            { error: `Section "${name}" already exists`, existingIndex: sections.indexOf(duplicate) },
+            400,
+          );
+        }
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 추가 요청',
+          `AI 어시스턴트가 새 CSS 섹션 "${name}"을(를) 추가하려 합니다.`,
+        );
+
+        if (allowed) {
+          sections.push({ name, content });
+          currentData.css = deps.combineCssSections(sections, prefix, suffix);
+          logMcpMutation('add css section', `css-section:add`, { sectionName: name, newIndex: sections.length - 1 });
+          deps.broadcastToAll('data-updated', 'css', currentData.css);
+          return jsonRes(res, { success: true, index: sections.length - 1, name, contentSize: content.length });
+        } else {
+          return mcpError(res, 403, {
+            action: 'add css section',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'css-section:add',
+          });
+        }
       }
 
       // ----------------------------------------------------------------
@@ -4530,6 +4735,54 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           );
         }
         return jsonRes(res, { refIndex: idx, fileName: ref.fileName, entryIndex: entryIdx, entry: lorebook[entryIdx] });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/regex — list reference regex entries (compact)
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'regex' && !parts[3] && req.method === 'GET') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const ref = refFiles[idx];
+        const regexArr = ref.data.regex || [];
+        const entries = regexArr.map((e: Record<string, unknown>, i: number) => ({
+          index: i,
+          comment: e.comment || '',
+          type: e.type || '',
+          findSize: typeof e.find === 'string' ? e.find.length : typeof e.in === 'string' ? (e.in as string).length : 0,
+          replaceSize:
+            typeof e.replace === 'string' ? e.replace.length : typeof e.out === 'string' ? (e.out as string).length : 0,
+        }));
+        return jsonRes(res, { refIndex: idx, fileName: ref.fileName, count: entries.length, entries });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/regex/:entryIdx — read single reference regex entry
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'regex' && parts[3] && req.method === 'GET') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+        }
+        const ref = refFiles[idx];
+        const regexArr = ref.data.regex || [];
+        const entryIdx = parseInt(parts[3], 10);
+        if (isNaN(entryIdx) || entryIdx < 0 || entryIdx >= regexArr.length) {
+          return jsonRes(res, { error: `Regex entry index ${entryIdx} out of range (0-${regexArr.length - 1})` }, 400);
+        }
+        const entry = { ...regexArr[entryIdx] };
+        // Normalize legacy in/out → find/replace
+        if (!entry.find && entry.in) entry.find = entry.in;
+        if (!entry.replace && entry.out) entry.replace = entry.out;
+        if (entry.find === undefined) entry.find = '';
+        if (entry.replace === undefined) entry.replace = '';
+        delete entry.in;
+        delete entry.out;
+        return jsonRes(res, { refIndex: idx, fileName: ref.fileName, entryIndex: entryIdx, entry });
       }
 
       // ----------------------------------------------------------------
