@@ -1801,6 +1801,94 @@ server.tool(
   },
 );
 
+// ==================== CBS Validation ====================
+
+server.tool(
+  'validate_cbs',
+  'Validate CBS {{#when}} block nesting and structure. Checks open/close balance for all CBS blocks. Use all_combos to test every toggle combination for resolve errors.',
+  {
+    field: z
+      .string()
+      .optional()
+      .describe('Specific field to validate (e.g., globalNote, description). Omit to scan all fields.'),
+    lorebook_index: z.number().optional().describe('Specific lorebook entry index to validate.'),
+    all_combos: z
+      .boolean()
+      .optional()
+      .describe('Test all toggle combinations for resolve errors (max 1024 combos). Default: false.'),
+  },
+  async ({ field, lorebook_index, all_combos }) => {
+    const params = new URLSearchParams();
+    if (field) params.set('field', field);
+    if (lorebook_index !== undefined) params.set('lorebook_index', String(lorebook_index));
+    if (all_combos) params.set('all_combos', 'true');
+    const qs = params.toString();
+    const result = await apiRequest('GET', `/cbs/validate${qs ? '?' + qs : ''}`);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'list_cbs_toggles',
+  'List all CBS toggles used in the file. Shows toggle names, their conditions (is:0, is:1, etc.), and which fields reference them.',
+  {
+    field: z.string().optional().describe('Specific field to scan. Omit to scan all fields.'),
+    lorebook_index: z.number().optional().describe('Specific lorebook entry index to scan.'),
+  },
+  async ({ field, lorebook_index }) => {
+    const params = new URLSearchParams();
+    if (field) params.set('field', field);
+    if (lorebook_index !== undefined) params.set('lorebook_index', String(lorebook_index));
+    const qs = params.toString();
+    const result = await apiRequest('GET', `/cbs/toggles${qs ? '?' + qs : ''}`);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'simulate_cbs',
+  'Resolve CBS blocks with specific toggle values to preview the resulting text. The toggle_ prefix is auto-added to toggle names. Use all_combos to generate all possible outputs.',
+  {
+    field: z.string().describe('Field to simulate (e.g., globalNote, description). Required.'),
+    lorebook_index: z.number().optional().describe('Lorebook entry index (if field is a lorebook entry).'),
+    toggles: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe(
+        'Toggle values as {name: value} object. toggle_ prefix auto-added. Example: {"Narration": "0", "Claude": "1"}',
+      ),
+    all_combos: z.boolean().optional().describe('Generate all toggle combinations (max 256). Default: false.'),
+    compact: z.boolean().optional().describe('Compress consecutive blank lines. Default: true.'),
+  },
+  async ({ field, lorebook_index, toggles, all_combos, compact }) => {
+    const body: Record<string, unknown> = { field };
+    if (lorebook_index !== undefined) body.lorebook_index = lorebook_index;
+    if (toggles) body.toggles = toggles;
+    if (all_combos !== undefined) body.all_combos = all_combos;
+    if (compact !== undefined) body.compact = compact;
+    const result = await apiRequest('POST', '/cbs/simulate', body);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
+server.tool(
+  'diff_cbs',
+  'Compare CBS output between baseline (all toggles=0) and specified toggle values. Shows added and removed lines.',
+  {
+    field: z.string().describe('Field to compare (e.g., globalNote, description). Required.'),
+    lorebook_index: z.number().optional().describe('Lorebook entry index (if field is a lorebook entry).'),
+    toggles: z
+      .record(z.string(), z.string())
+      .describe('Toggle values to compare against baseline. toggle_ prefix auto-added. Example: {"Narration": "3"}'),
+  },
+  async ({ field, lorebook_index, toggles }) => {
+    const body: Record<string, unknown> = { field, toggles };
+    if (lorebook_index !== undefined) body.lorebook_index = lorebook_index;
+    const result = await apiRequest('POST', '/cbs/diff', body);
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  },
+);
+
 // ==================== Prompt ====================
 
 server.prompt(

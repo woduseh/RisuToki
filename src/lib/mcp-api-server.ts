@@ -2,6 +2,9 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { parse, extractToggles, extractToggleValues, validateNesting, resolveInnerExpressions } from './cbs-parser';
+import { resolve as cbsResolve, generateCombinations } from './cbs-evaluator';
+import type { ToggleMap } from './cbs-parser';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -5842,6 +5845,388 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (deps.invalidateAssetsMapCache) deps.invalidateAssetsMapCache();
         deps.broadcastToAll('data-updated', { field: 'risumAssets' });
         return jsonRes(res, { ok: true, deleted: deleteName });
+      }
+
+      // ================================================================
+      // CBS (Conditional Block Syntax) validation routes
+      // ================================================================
+
+      // Helper: collect CBS-containing text entries from current data
+      function collectCBSEntries(
+        currentData: any,
+        fieldFilter?: string,
+        lorebookIndex?: number,
+      ): { path: string; text: string }[] {
+        const entries: { path: string; text: string }[] = [];
+
+        if (lorebookIndex !== undefined) {
+          const lb = currentData.lorebook || [];
+          if (lorebookIndex < 0 || lorebookIndex >= lb.length) return entries;
+          const content = lb[lorebookIndex].content || '';
+          if (content.includes('{{#when') || content.includes('{{getglobalvar')) {
+            entries.push({ path: `lorebook[${lorebookIndex}].content`, text: content });
+          }
+          return entries;
+        }
+
+        if (fieldFilter) {
+          // Single field
+          let text = '';
+          if (fieldFilter.startsWith('lorebook[')) {
+            const match = fieldFilter.match(/^lorebook\[(\d+)\]\.content$/);
+            if (match) {
+              const idx = parseInt(match[1], 10);
+              const lb = currentData.lorebook || [];
+              if (idx >= 0 && idx < lb.length) text = lb[idx].content || '';
+            }
+          } else {
+            text = typeof currentData[fieldFilter] === 'string' ? currentData[fieldFilter] : '';
+          }
+          if (text && (text.includes('{{#when') || text.includes('{{getglobalvar'))) {
+            entries.push({ path: fieldFilter, text });
+          }
+          return entries;
+        }
+
+        // Scan all text fields
+        const textFields = [
+          'globalNote',
+          'firstMessage',
+          'description',
+          'personality',
+          'scenario',
+          'systemPrompt',
+          'exampleMessage',
+          'additionalText',
+          'mainPrompt',
+          'jailbreak',
+        ];
+        for (const f of textFields) {
+          const val = currentData[f];
+          if (typeof val === 'string' && (val.includes('{{#when') || val.includes('{{getglobalvar'))) {
+            entries.push({ path: f, text: val });
+          }
+        }
+
+        // Scan alternate greetings
+        const altGreetings = currentData.alternateGreetings || [];
+        for (let i = 0; i < altGreetings.length; i++) {
+          const g = altGreetings[i];
+          if (typeof g === 'string' && (g.includes('{{#when') || g.includes('{{getglobalvar'))) {
+            entries.push({ path: `alternateGreetings[${i}]`, text: g });
+          }
+        }
+
+        // Scan lorebook
+        const lb = currentData.lorebook || [];
+        for (let i = 0; i < lb.length; i++) {
+          const content = lb[i].content || '';
+          if (content.includes('{{#when') || content.includes('{{getglobalvar')) {
+            entries.push({ path: `lorebook[${i}].content`, text: content });
+          }
+        }
+
+        return entries;
+      }
+
+      // Helper: normalize toggle keys — add toggle_ prefix if missing
+      function normalizeToggles(toggles: Record<string, string>): ToggleMap {
+        const result: ToggleMap = {};
+        for (const [key, val] of Object.entries(toggles)) {
+          const normalizedKey = key.startsWith('toggle_') ? key : `toggle_${key}`;
+          result[normalizedKey] = String(val);
+        }
+        return result;
+      }
+
+      // ----------------------------------------------------------------
+      // GET /cbs/validate — validate CBS nesting
+      // ----------------------------------------------------------------
+      if (parts[0] === 'cbs' && parts[1] === 'validate' && !parts[2] && req.method === 'GET') {
+        const currentData = deps.getCurrentData();
+        if (!currentData)
+          return mcpError(res, 400, { action: 'cbs/validate', target: 'cbs', message: 'No file loaded' });
+
+        const fieldFilter = url.searchParams.get('field') || undefined;
+        const lbIdxParam = url.searchParams.get('lorebook_index');
+        const lorebookIndex = lbIdxParam !== null ? parseInt(lbIdxParam, 10) : undefined;
+        const allCombos = url.searchParams.get('all_combos') === 'true';
+
+        const cbsEntries = collectCBSEntries(currentData, fieldFilter, lorebookIndex);
+        const MAX_VALIDATE_COMBOS = 1024;
+        const results: any[] = [];
+        let passed = 0;
+        let failed = 0;
+
+        for (const entry of cbsEntries) {
+          const vr = validateNesting(entry.text);
+          const item: any = {
+            path: entry.path,
+            valid: vr.valid,
+            opens: vr.openCount,
+            closes: vr.closeCount,
+          };
+          if (!vr.valid) {
+            item.errors = vr.errors;
+          }
+
+          // Optional: all-combos resolve validation
+          if (allCombos && vr.valid) {
+            const toggles = extractToggles(entry.text);
+            const toggleArr = Array.from(toggles);
+            const valueMap: Record<string, string[]> = {};
+            for (const t of toggleArr) {
+              valueMap[t] = Array.from(extractToggleValues(entry.text, t));
+              if (valueMap[t].length === 0) valueMap[t] = ['0', '1'];
+            }
+            const combos = generateCombinations(toggleArr, valueMap);
+            if (combos.length > MAX_VALIDATE_COMBOS) {
+              item.combo_warning = `${combos.length} combinations exceed limit of ${MAX_VALIDATE_COMBOS}, skipped`;
+            } else {
+              const comboErrors: string[] = [];
+              for (const combo of combos) {
+                try {
+                  const resolved = resolveInnerExpressions(entry.text, combo);
+                  const reParsed = parse(resolved);
+                  cbsResolve(resolved, reParsed.blocks, combo);
+                } catch (e: any) {
+                  comboErrors.push(`combo ${JSON.stringify(combo)}: ${e.message}`);
+                  if (comboErrors.length >= 5) {
+                    comboErrors.push('... (truncated)');
+                    break;
+                  }
+                }
+              }
+              if (comboErrors.length > 0) {
+                item.valid = false;
+                item.combo_errors = comboErrors;
+              }
+              item.combos_tested = Math.min(combos.length, MAX_VALIDATE_COMBOS);
+            }
+          }
+
+          if (item.valid) passed++;
+          else failed++;
+          results.push(item);
+        }
+
+        return jsonRes(res, {
+          valid: failed === 0,
+          entries: results,
+          summary: { total: results.length, passed, failed },
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /cbs/toggles — list CBS toggles
+      // ----------------------------------------------------------------
+      if (parts[0] === 'cbs' && parts[1] === 'toggles' && !parts[2] && req.method === 'GET') {
+        const currentData = deps.getCurrentData();
+        if (!currentData)
+          return mcpError(res, 400, { action: 'cbs/toggles', target: 'cbs', message: 'No file loaded' });
+
+        const fieldFilter = url.searchParams.get('field') || undefined;
+        const lbIdxParam = url.searchParams.get('lorebook_index');
+        const lorebookIndex = lbIdxParam !== null ? parseInt(lbIdxParam, 10) : undefined;
+
+        const cbsEntries = collectCBSEntries(currentData, fieldFilter, lorebookIndex);
+        const toggleMap: Record<string, { conditions: Set<string>; fields: Set<string> }> = {};
+
+        for (const entry of cbsEntries) {
+          const toggleNames = extractToggles(entry.text);
+          for (const name of toggleNames) {
+            if (!toggleMap[name]) {
+              toggleMap[name] = { conditions: new Set(), fields: new Set() };
+            }
+            toggleMap[name].fields.add(entry.path);
+            const values = extractToggleValues(entry.text, name);
+            for (const v of values) {
+              toggleMap[name].conditions.add(v);
+            }
+          }
+        }
+
+        // Convert sets to arrays for JSON serialization
+        const toggles: Record<string, { conditions: string[]; fields: string[] }> = {};
+        for (const [name, data] of Object.entries(toggleMap)) {
+          toggles[name] = {
+            conditions: Array.from(data.conditions).sort(),
+            fields: Array.from(data.fields),
+          };
+        }
+
+        return jsonRes(res, { toggles, count: Object.keys(toggles).length });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /cbs/simulate — resolve CBS with toggles
+      // ----------------------------------------------------------------
+      if (parts[0] === 'cbs' && parts[1] === 'simulate' && !parts[2] && req.method === 'POST') {
+        const currentData = deps.getCurrentData();
+        if (!currentData)
+          return mcpError(res, 400, { action: 'cbs/simulate', target: 'cbs', message: 'No file loaded' });
+
+        const body = await readJsonBody(req, res, 'cbs/simulate', broadcastStatus);
+        if (!body) return;
+
+        const field = body.field;
+        if (!field) return mcpError(res, 400, { action: 'cbs/simulate', target: 'cbs', message: 'field is required' });
+
+        const lorebookIndex = typeof body.lorebook_index === 'number' ? body.lorebook_index : undefined;
+        const userToggles = body.toggles || {};
+        const allCombos = body.all_combos === true;
+        const compact = body.compact !== false; // default true
+        const MAX_SIMULATE_COMBOS = 256;
+
+        const cbsEntries = collectCBSEntries(currentData, field, lorebookIndex);
+        if (cbsEntries.length === 0) {
+          return jsonRes(res, { field, message: 'No CBS content found in specified field' });
+        }
+
+        const entry = cbsEntries[0];
+        const text = entry.text;
+        const normalizedToggles = normalizeToggles(userToggles);
+
+        if (allCombos) {
+          const toggleNames = extractToggles(text);
+          const toggleArr = Array.from(toggleNames);
+          const valueMap: Record<string, string[]> = {};
+          for (const t of toggleNames) {
+            valueMap[t] = Array.from(extractToggleValues(text, t));
+            if (valueMap[t].length === 0) valueMap[t] = ['0', '1'];
+          }
+          const combos = generateCombinations(toggleArr, valueMap);
+          if (combos.length > MAX_SIMULATE_COMBOS) {
+            return mcpError(res, 400, {
+              action: 'cbs/simulate',
+              target: 'cbs',
+              message: `${combos.length} combinations exceed limit of ${MAX_SIMULATE_COMBOS}`,
+            });
+          }
+
+          const results: any[] = [];
+          for (const combo of combos) {
+            try {
+              const resolved = resolveInnerExpressions(text, combo);
+              const parsed = parse(resolved);
+              let result = cbsResolve(resolved, parsed.blocks, combo);
+              if (compact) result = result.replace(/\n{3,}/g, '\n\n').trim();
+              results.push({
+                toggles: combo,
+                resolved_length: result.length,
+                resolved: result,
+              });
+            } catch (e: any) {
+              results.push({ toggles: combo, error: e.message });
+            }
+          }
+
+          return jsonRes(res, {
+            field: entry.path,
+            original_length: text.length,
+            combos: results.length,
+            results,
+          });
+        }
+
+        // Single resolve
+        try {
+          const resolved = resolveInnerExpressions(text, normalizedToggles);
+          const parsed = parse(resolved);
+          let result = cbsResolve(resolved, parsed.blocks, normalizedToggles);
+          if (compact) result = result.replace(/\n{3,}/g, '\n\n').trim();
+
+          return jsonRes(res, {
+            field: entry.path,
+            toggles: normalizedToggles,
+            original_length: text.length,
+            resolved: result,
+            resolved_length: result.length,
+          });
+        } catch (e: any) {
+          return mcpError(res, 400, {
+            action: 'cbs/simulate',
+            target: 'cbs',
+            message: `CBS resolve error: ${e.message}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /cbs/diff — baseline diff
+      // ----------------------------------------------------------------
+      if (parts[0] === 'cbs' && parts[1] === 'diff' && !parts[2] && req.method === 'POST') {
+        const currentData = deps.getCurrentData();
+        if (!currentData) return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: 'No file loaded' });
+
+        const body = await readJsonBody(req, res, 'cbs/diff', broadcastStatus);
+        if (!body) return;
+
+        const field = body.field;
+        if (!field) return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: 'field is required' });
+        const toggles = body.toggles;
+        if (!toggles || Object.keys(toggles).length === 0)
+          return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: 'toggles is required' });
+
+        const lorebookIndex = typeof body.lorebook_index === 'number' ? body.lorebook_index : undefined;
+
+        const cbsEntries = collectCBSEntries(currentData, field, lorebookIndex);
+        if (cbsEntries.length === 0) {
+          return jsonRes(res, { field, changed: false, message: 'No CBS content found in specified field' });
+        }
+
+        const entry = cbsEntries[0];
+        const text = entry.text;
+        const normalizedToggles = normalizeToggles(toggles);
+
+        // Baseline: all toggles set to "0"
+        const toggleNames = extractToggles(text);
+        const baseline: ToggleMap = {};
+        for (const t of toggleNames) {
+          baseline[t] = '0';
+        }
+
+        try {
+          const resolvedBase = resolveInnerExpressions(text, baseline);
+          const parsedBase = parse(resolvedBase);
+          const baseResult = cbsResolve(resolvedBase, parsedBase.blocks, baseline)
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+
+          const resolvedTarget = resolveInnerExpressions(text, normalizedToggles);
+          const parsedTarget = parse(resolvedTarget);
+          const targetResult = cbsResolve(resolvedTarget, parsedTarget.blocks, normalizedToggles)
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+
+          const baseLines = baseResult.split('\n');
+          const targetLines = targetResult.split('\n');
+
+          const added: string[] = [];
+          const removed: string[] = [];
+
+          const baseSet = new Set(baseLines);
+          const targetSet = new Set(targetLines);
+
+          for (const line of targetLines) {
+            if (!baseSet.has(line)) added.push(line);
+          }
+          for (const line of baseLines) {
+            if (!targetSet.has(line)) removed.push(line);
+          }
+
+          return jsonRes(res, {
+            field: entry.path,
+            changed: added.length > 0 || removed.length > 0,
+            toggles: normalizedToggles,
+            baseline_length: baseResult.length,
+            target_length: targetResult.length,
+            added_lines: added,
+            removed_lines: removed,
+          });
+        } catch (e: any) {
+          return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: `CBS diff error: ${e.message}` });
+        }
       }
 
       // ----------------------------------------------------------------
