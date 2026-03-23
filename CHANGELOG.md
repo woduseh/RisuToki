@@ -9,6 +9,16 @@
 
 ---
 
+## [0.22.2] - 2026-03-23
+
+### 변경
+
+- **writing-arca-html 스킬 보강** — 사용자 가이드라인에서 누락된 콘텐츠 병합
+  - 테마 테이블에 "Social Media / Platform" 행 추가 (Discord, Twitter, Instagram 스타일)
+  - "Creative Thinking Examples" 섹션 추가 — 캐릭터 유형별 디자인 영감 (히키코모리, 판타지 기사, AI 캐릭터, 역사 인물, 소셜미디어 페르소나 등)
+  - "Background Patterns with Repeating Divs" 기법 섹션 추가 (줄무늬/체커보드 패턴)
+  - 창작 독려 마무리 문구 추가 ("Don't default to templates")
+
 ## [0.22.1] - 2026-03-23
 
 ### 수정

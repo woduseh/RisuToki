@@ -235,6 +235,26 @@ Since CSS `linear-gradient` doesn't work on content containers, simulate gradien
 <div style="text-align: center; color: #a09480; font-size: 18px; margin: 20px 0;">◆ ◇ ◆</div>
 ```
 
+### Background Patterns with Repeating Divs
+
+Create texture and visual rhythm by repeating styled empty divs:
+
+```html
+<!-- Striped pattern (alternating dark/darker) -->
+<div style="height: 4px; background-color: #1a1a2e;"></div>
+<div style="height: 4px; background-color: #16162a;"></div>
+<div style="height: 4px; background-color: #1a1a2e;"></div>
+<div style="height: 4px; background-color: #16162a;"></div>
+
+<!-- Checkerboard-like accent strip using inline-block -->
+<div style="height: 8px;">
+  <span style="display: inline-block; width: 25%; height: 8px; background-color: #2a1a3e;"></span>
+  <span style="display: inline-block; width: 25%; height: 8px; background-color: #3a2a4e;"></span>
+  <span style="display: inline-block; width: 25%; height: 8px; background-color: #2a1a3e;"></span>
+  <span style="display: inline-block; width: 25%; height: 8px; background-color: #3a2a4e;"></span>
+</div>
+```
+
 ### Tables for Structured Data
 
 Tables work well for stats, attributes, or comparison data:
@@ -265,6 +285,21 @@ Tables work well for stats, attributes, or comparison data:
 | **Minimalist**              | Thin borders, lots of whitespace, subtle gray accents, clean sans-serif                        |
 | **Retro / Vintage**         | Muted earth tones, serif typography, period-appropriate decorative elements                    |
 | **Academy / Institutional** | Navy/gold palette, structured tables, formal typography, shield-like bordered sections         |
+| **Social Media / Platform** | Match platform aesthetics (Twitter, Instagram, Discord UI), platform-specific color schemes    |
+
+### Creative Thinking Examples
+
+Go beyond generic themes — design for the **specific character or concept**:
+
+| Character Type              | Design Approach                                                                                |
+| --------------------------- | ---------------------------------------------------------------------------------------------- |
+| **Hikikomori**              | Dark room aesthetic — dim lighting effects with multiple `text-shadow` and `box-shadow` layers |
+| **Fantasy Knight**          | Shield-shaped sections with metallic-looking thick borders and gold accents                    |
+| **AI / Android**            | Glitch effects using misaligned text (`letter-spacing`), color shifts, monospace fonts         |
+| **Historical Figure**       | Period-appropriate typography (serif fonts, formal spacing), decorative border elements        |
+| **Social Media Persona**    | Authentic platform UI recreation — match real app colors, card layouts, username styles        |
+| **Cyberpunk Hacker**        | Terminal-style monospace blocks with neon `text-shadow` glow on dark backgrounds               |
+| **Studio Ghibli Character** | Soft watercolor-like pastel borders, generous whitespace, warm earth-tone text colors          |
 
 ---
 
@@ -333,3 +368,9 @@ Tables work well for stats, attributes, or comparison data:
   <p style="font-size: 0; margin: 0; padding: 0;">**--End Main Container--**</p>
 </body>
 ```
+
+---
+
+## Remember
+
+These guidelines exist to help you create amazing, unique designs. **Don't default to templates.** Every project should look different because every character and world IS different. Be bold, be creative, and make something memorable.
