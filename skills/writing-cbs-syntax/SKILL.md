@@ -1,6 +1,6 @@
 ---
 name: writing-cbs-syntax
-description: 'Provides the complete reference for RisuAI Custom Bracket Syntax (CBS). Covers 130+ template tags including variables, conditionals, loops, math, arrays, assets, buttons, and character data access. Use when writing or editing CBS expressions in charx description, firstMessage, lorebook content, globalNote, backgroundEmbedding, or any CBS-enabled field.'
+description: 'Provides the complete reference for RisuAI Custom Bracket Syntax (CBS). Covers 170+ template tags including variables, conditionals, loops, math, arrays, assets, buttons, and character data access. Use when writing or editing CBS expressions in charx description, firstMessage, lorebook content, globalNote, backgroundEmbedding, or any CBS-enabled field.'
 ---
 
 # CBS — Custom Bracket Syntax
@@ -11,7 +11,7 @@ CBS is `{{tag::arg1::arg2}}` template syntax evaluated at runtime in RisuAI. Tag
 
 **Evaluation order:** Inner `{{…}}` tags resolve first (inside-out), then outer tags consume the result.
 
-> Full 130+ tag catalog → see **REFERENCE.md** in this directory.
+> Full 170+ tag catalog → see **REFERENCE.md** in this directory.
 
 ---
 
@@ -221,4 +221,4 @@ Remaining HP: {{calc::{{getvar::enemy_hp}}-{{getvar::damage}}}}
 
 7. **Empty string = falsy** in `#when`. `{{#when::}}` is false. `{{#when::0}}` is also false.
 
-> **Complete tag reference** with all 130+ tags, aliases, and descriptions → **REFERENCE.md**
+> **Complete tag reference** with all 170+ tags, aliases, and descriptions → **REFERENCE.md**

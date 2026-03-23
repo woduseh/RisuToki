@@ -1,6 +1,6 @@
 # CBS Complete Tag Reference
 
-Full catalog of 130+ CBS tags organized by category. For quick-start guide, see **SKILL.md**.
+Full catalog of 170+ CBS tags organized by category. For quick-start guide, see **SKILL.md**.
 
 ---
 
@@ -154,11 +154,11 @@ All comparisons return `1` (true) or `0` (false) as strings.
 
 ### Creation
 
-| Tag         | Aliases                    | Syntax                                   | Description                                           |
-| ----------- | -------------------------- | ---------------------------------------- | ----------------------------------------------------- |
-| `makearray` | `array`, `a`               | `{{makearray::a::b::c}}`                 | Create array `["a","b","c"]`                          |
-| `makedict`  | `dict`, `d`, `object`, `o` | `{{makedict::name=John::age=25}}`        | Create object `{"name":"John","age":"25"}`            |
-| `range`     | —                          | `{{range::[5]}}` or `{{range::[2,8,2]}}` | Number range. `[5]`→`[0,1,2,3,4]`, `[start,end,step]` |
+| Tag         | Aliases                                  | Syntax                                   | Description                                           |
+| ----------- | ---------------------------------------- | ---------------------------------------- | ----------------------------------------------------- |
+| `makearray` | `array`, `a`                             | `{{makearray::a::b::c}}`                 | Create array `["a","b","c"]`                          |
+| `makedict`  | `dict`, `d`, `makeobject`, `object`, `o` | `{{makedict::name=John::age=25}}`        | Create object `{"name":"John","age":"25"}`            |
+| `range`     | —                                        | `{{range::[5]}}` or `{{range::[2,8,2]}}` | Number range. `[5]`→`[0,1,2,3,4]`, `[start,end,step]` |
 
 ### Access
 
@@ -185,15 +185,15 @@ All comparisons return `1` (true) or `0` (false) as strings.
 
 ## 13. Random/Dice
 
-| Tag       | Aliases | Syntax                                | Description                               | Determinism                                           |
-| --------- | ------- | ------------------------------------- | ----------------------------------------- | ----------------------------------------------------- |
-| `random`  | —       | `{{random}}` or `{{random::A::B::C}}` | Random float 0–1 or random pick from args | Non-deterministic                                     |
-| `pick`    | —       | `{{pick}}` or `{{pick::A::B::C}}`     | Random pick                               | **Hash-based** (stable per message, survives refresh) |
-| `randint` | —       | `{{randint::min::max}}`               | Random integer in range (inclusive)       | Non-deterministic                                     |
-| `dice`    | —       | `{{dice::2d6}}`                       | XdY dice sum                              | Non-deterministic                                     |
-| `roll`    | —       | `{{roll::2d6}}` or `{{roll::20}}`     | Dice roll (defaults to 1dY)               | Non-deterministic                                     |
-| `rollp`   | —       | `{{rollp::2d6}}`                      | Dice roll                                 | **Hash-based** (stable)                               |
-| `hash`    | —       | `{{hash::string}}`                    | 7-digit hash value                        | **Deterministic**                                     |
+| Tag       | Aliases    | Syntax                                | Description                               | Determinism                                           |
+| --------- | ---------- | ------------------------------------- | ----------------------------------------- | ----------------------------------------------------- |
+| `random`  | —          | `{{random}}` or `{{random::A::B::C}}` | Random float 0–1 or random pick from args | Non-deterministic                                     |
+| `pick`    | —          | `{{pick}}` or `{{pick::A::B::C}}`     | Random pick                               | **Hash-based** (stable per message, survives refresh) |
+| `randint` | —          | `{{randint::min::max}}`               | Random integer in range (inclusive)       | Non-deterministic                                     |
+| `dice`    | —          | `{{dice::2d6}}`                       | XdY dice sum                              | Non-deterministic                                     |
+| `roll`    | —          | `{{roll::2d6}}` or `{{roll::20}}`     | Dice roll (defaults to 1dY)               | Non-deterministic                                     |
+| `rollp`   | `rollpick` | `{{rollp::2d6}}`                      | Dice roll                                 | **Hash-based** (stable)                               |
+| `hash`    | —          | `{{hash::string}}`                    | 7-digit hash value                        | **Deterministic**                                     |
 
 > **Hash-based** means the same message always produces the same result (even on page refresh).
 
@@ -246,24 +246,23 @@ All comparisons return `1` (true) or `0` (false) as strings.
 
 Access via `{{metadata::key}}`:
 
-| Key               | Description              |
-| ----------------- | ------------------------ |
-| `mobile`          | Mobile device flag       |
-| `local`           | Local mode flag          |
-| `node`            | Node.js environment flag |
-| `version`         | RisuAI version string    |
-| `majorversion`    | Major version number     |
-| `language`        | UI language              |
-| `locale`          | Locale string            |
-| `browserlanguage` | Browser language         |
-| `modelshortname`  | Model short name         |
-| `modelname`       | Model full name          |
-| `modelinternalid` | Model internal ID        |
-| `modelformat`     | Model format             |
-| `modelprovider`   | Model provider           |
-| `modeltokenizer`  | Model tokenizer          |
-| `maxcontext`      | Max context length       |
-| `risutype`        | RisuAI client type       |
+| Key               | Alt Keys                       | Description              |
+| ----------------- | ------------------------------ | ------------------------ |
+| `mobile`          | —                              | Mobile device flag       |
+| `local`           | —                              | Local mode flag          |
+| `node`            | —                              | Node.js environment flag |
+| `version`         | —                              | RisuAI version string    |
+| `majorversion`    | `majorver`, `major`            | Major version number     |
+| `language`        | `locale`, `lang`               | UI language              |
+| `browserlanguage` | `browserlocale`, `browserlang` | Browser language         |
+| `modelshortname`  | —                              | Model short name         |
+| `modelname`       | —                              | Model full name          |
+| `modelinternalid` | —                              | Model internal ID        |
+| `modelformat`     | —                              | Model format             |
+| `modelprovider`   | —                              | Model provider           |
+| `modeltokenizer`  | —                              | Model tokenizer          |
+| `maxcontext`      | —                              | Max context length       |
+| `risutype`        | —                              | RisuAI client type       |
 
 ---
 
@@ -271,12 +270,12 @@ Access via `{{metadata::key}}`:
 
 ### List Queries
 
-| Tag                | Aliases | Syntax                           | Description                         | Returns    |
-| ------------------ | ------- | -------------------------------- | ----------------------------------- | ---------- |
-| `assetlist`        | —       | `{{assetlist}}`                  | Additional asset names              | JSON array |
-| `emotionlist`      | —       | `{{emotionlist}}`                | Emotion image names                 | JSON array |
-| `chardisplayasset` | —       | `{{chardisplayasset}}`           | Display assets (excluding filtered) | JSON array |
-| `moduleassetlist`  | —       | `{{moduleassetlist::namespace}}` | Module assets                       | JSON array |
+| Tag                | Aliases            | Syntax                           | Description                         | Returns    |
+| ------------------ | ------------------ | -------------------------------- | ----------------------------------- | ---------- |
+| `assetlist`        | —                  | `{{assetlist}}`                  | Additional asset names              | JSON array |
+| `emotionlist`      | —                  | `{{emotionlist}}`                | Emotion image names                 | JSON array |
+| `chardisplayasset` | —                  | `{{chardisplayasset}}`           | Display assets (excluding filtered) | JSON array |
+| `moduleassetlist`  | `module_assetlist` | `{{moduleassetlist::namespace}}` | Module assets                       | JSON array |
 
 ### Display (display-mode only)
 
@@ -289,7 +288,8 @@ Access via `{{metadata::key}}`:
 | `bgm`         | —       | `{{bgm::name}}`         | Play background music                 |
 | `video`       | —       | `{{video::name}}`       | Display video                         |
 | `video-img`   | —       | `{{video-img::name}}`   | Video as image (poster frame)         |
-| `image`       | `img`   | `{{image::name}}`       | Display image                         |
+| `image`       | —       | `{{image::name}}`       | Display image (styled)                |
+| `img`         | —       | `{{img::name}}`         | Display image (unstyled)              |
 | `path`        | `raw`   | `{{path::name}}`        | Return asset raw path/URL             |
 | `inlay`       | —       | `{{inlay::name}}`       | Inlay display (unstyled)              |
 | `inlayed`     | —       | `{{inlayed::name}}`     | Inlay display (styled)                |
@@ -299,15 +299,17 @@ Access via `{{metadata::key}}`:
 
 ## 18. Encryption/Encoding
 
-| Tag             | Aliases                           | Syntax                                            | Description                          |
-| --------------- | --------------------------------- | ------------------------------------------------- | ------------------------------------ |
-| `xor`           | `xorencrypt`, `xorencode`, `xore` | `{{xor::string}}`                                 | XOR encrypt + base64                 |
-| `xordecrypt`    | `xordecode`, `xord`               | `{{xordecrypt::base64}}`                          | XOR decrypt from base64              |
-| `crypt`         | `crypto`, `caesar`, `encrypt`     | `{{crypt::string}}` or `{{crypt::string::shift}}` | Caesar cipher (default shift: 32768) |
-| `unicodeencode` | `unicode_encode`                  | `{{unicodeencode::A}}`                            | Character → Unicode code point       |
-| `unicodedecode` | `unicode_decode`                  | `{{unicodedecode::65}}`                           | Code point → character               |
-| `fromhex`       | —                                 | `{{fromhex::FF}}`                                 | Hex → decimal                        |
-| `tohex`         | —                                 | `{{tohex::255}}`                                  | Decimal → hex                        |
+| Tag             | Aliases                                  | Syntax                                            | Description                          |
+| --------------- | ---------------------------------------- | ------------------------------------------------- | ------------------------------------ |
+| `xor`           | `xorencrypt`, `xorencode`, `xore`        | `{{xor::string}}`                                 | XOR encrypt + base64                 |
+| `xordecrypt`    | `xordecode`, `xord`                      | `{{xordecrypt::base64}}`                          | XOR decrypt from base64              |
+| `crypt`         | `crypto`, `caesar`, `encrypt`, `decrypt` | `{{crypt::string}}` or `{{crypt::string::shift}}` | Caesar cipher (default shift: 32768) |
+| `unicodeencode` | `unicode_encode`                         | `{{unicodeencode::A}}`                            | Character → Unicode code point       |
+| `unicodedecode` | `unicode_decode`                         | `{{unicodedecode::65}}`                           | Code point → character               |
+| `u`             | `unicodedecodefromhex`                   | `{{u::41}}`                                       | Hex code point → character (`A`)     |
+| `ue`            | `unicodeencodefromhex`                   | `{{ue::41}}`                                      | Hex code point → character (alias)   |
+| `fromhex`       | —                                        | `{{fromhex::FF}}`                                 | Hex → decimal                        |
+| `tohex`         | —                                        | `{{tohex::255}}`                                  | Decimal → hex                        |
 
 ---
 
@@ -332,18 +334,18 @@ Access via `{{metadata::key}}`:
 
 For outputting literal special characters inside CBS expressions.
 
-| Tag         | Aliases                           | Output |
-| ----------- | --------------------------------- | ------ |
-| `{{decbo}}` | `displayescapedcurlybracketopen`  | `{`    |
-| `{{decbc}}` | `displayescapedcurlybracketclose` | `}`    |
-| `{{bo}}`    | `ddecbo`                          | `{{`   |
-| `{{bc}}`    | `ddecbc`                          | `}}`   |
-| `{{(}}`     | `debo`                            | `(`    |
-| `{{)}}`     | `debc`                            | `)`    |
-| `{{<}}`     | `deabo`                           | `<`    |
-| `{{>}}`     | `deabc`                           | `>`    |
-| `{{:}}`     | `dec`                             | `:`    |
-| `{{;}}`     | —                                 | `;`    |
+| Tag         | Aliases                                           | Output |
+| ----------- | ------------------------------------------------- | ------ |
+| `{{decbo}}` | `displayescapedcurlybracketopen`                  | `{`    |
+| `{{decbc}}` | `displayescapedcurlybracketclose`                 | `}`    |
+| `{{bo}}`    | `ddecbo`, `doubledisplayescapedcurlybracketopen`  | `{{`   |
+| `{{bc}}`    | `ddecbc`, `doubledisplayescapedcurlybracketclose` | `}}`   |
+| `{{(}}`     | `debo`, `displayescapedbracketopen`               | `(`    |
+| `{{)}}`     | `debc`, `displayescapedbracketclose`              | `)`    |
+| `{{<}}`     | `deabo`, `displayescapedanglebracketopen`         | `<`    |
+| `{{>}}`     | `deabc`, `displayescapedanglebracketclose`        | `>`    |
+| `{{:}}`     | `dec`, `displayescapedcolon`                      | `:`    |
+| `{{;}}`     | `displayescapedsemicolon`                         | `;`    |
 
 ---
 
@@ -391,13 +393,15 @@ Accept both variadic args and JSON arrays.
 
 #### Advanced Operators
 
-| Operator | Description                    |
-| -------- | ------------------------------ |
-| `keep`   | Preserve whitespace in output  |
-| `legacy` | Use legacy evaluation behavior |
-| `toggle` | Toggle variable comparison     |
-| `tis`    | Toggle equals value            |
-| `tisnot` | Toggle not equals value        |
+| Operator | Syntax                                 | Description                    |
+| -------- | -------------------------------------- | ------------------------------ |
+| `keep`   | `{{#when::keep::cond}}`                | Preserve whitespace in output  |
+| `legacy` | `{{#when::legacy::cond}}`              | Use legacy evaluation behavior |
+| `toggle` | `{{#when::toggle::togglename}}`        | Toggle is enabled              |
+| `tis`    | `{{#when::togglename::tis::value}}`    | Toggle equals value            |
+| `tisnot` | `{{#when::togglename::tisnot::value}}` | Toggle not equals value        |
+
+Operators can be combined: `{{#when::keep::not::condition}}`, `{{#when::keep::cond1::and::cond2}}`.
 
 ### ? Expression (Inline Evaluation)
 
@@ -414,7 +418,7 @@ Accept both variadic args and JSON arrays.
 {{/each}}
 ```
 
-Iterates over a JSON array. `{{slot::item}}` accesses the current element.
+Iterates over a JSON array. `{{slot::item}}` accesses the current element. Add `::keep` to preserve whitespace: `{{#each [array] as item::keep}}`.
 
 ### Escape Blocks
 

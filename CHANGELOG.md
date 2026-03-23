@@ -9,6 +9,23 @@
 
 ---
 
+## [0.22.1] - 2026-03-23
+
+### 수정
+
+- **CBS 스킬 문서 정확도 개선** — RisuAI 소스 코드(cbs.ts, parser.svelte.ts)와 교차 검증하여 다수 오류 수정
+  - `makedict`: 누락된 별칭 `makeobject` 추가
+  - `rollp`: 누락된 별칭 `rollpick` 추가
+  - `moduleassetlist`: 누락된 별칭 `module_assetlist` 추가
+  - `crypt`: 누락된 별칭 `decrypt` 추가
+  - `image`/`img`: `img`가 `image`의 별칭으로 잘못 문서화된 것을 별도 태그로 분리 (styled vs unstyled)
+  - Escape Characters: `bo`/`bc` 전체 별칭, `()`/`<>`/`:`/`;` 전체 별칭 보완
+  - Metadata Keys: `majorver`/`major`/`lang`/`browserlocale`/`browserlang` 등 대체 키 문서화
+  - `u`/`ue` 태그: 미문서화된 hex 유니코드 디코딩 단축 태그 추가
+  - `#when` Advanced Operators: `toggle`/`tis`/`tisnot`에 문법 예시 추가
+  - `#each`: `::keep` 모드 문서화
+  - 태그 총 수를 130+에서 170+로 갱신
+
 ## [0.22.0] - 2026-03-23
 
 ### 새 기능
