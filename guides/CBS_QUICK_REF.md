@@ -1,501 +1,454 @@
-# CBS 퀵 레퍼런스 (Custom Bracket Syntax)
+# CBS Complete Tag Reference
 
-RisuAI에서 사용되는 `{{태그::인자1::인자2}}` 형식의 템플릿 문법입니다.
-로어북, 정규식 OUT, 첫 메시지, 글로벌노트, 백그라운드 임베딩 등에서 사용 가능합니다.
-
-> **원본:** RisuAI `src/ts/cbs.ts` (2500+ 줄, 130+ 태그)
+Full catalog of 170+ CBS tags organized by category. For quick-start guide, see **SKILL.md**.
 
 ---
 
-## 목차
+## 1. Character/User Tokens
 
-1. [캐릭터/유저 토큰](#1-캐릭터유저-토큰)
-2. [채팅 메시지 조회](#2-채팅-메시지-조회)
-3. [캐릭터 필드 접근](#3-캐릭터-필드-접근)
-4. [프롬프트/시스템 정보](#4-프롬프트시스템-정보)
-5. [로어북/히스토리 함수](#5-로어북히스토리-함수)
-6. [영구 변수 (채팅 스코프)](#6-영구-변수-채팅-스코프)
-7. [임시 변수 (스크립트 스코프)](#7-임시-변수-스크립트-스코프)
-8. [수학 연산](#8-수학-연산)
-9. [비교 연산](#9-비교-연산)
-10. [논리 연산](#10-논리-연산)
-11. [문자열 조작](#11-문자열-조작)
-12. [배열/객체 조작](#12-배열객체-조작)
-13. [랜덤/주사위](#13-랜덤주사위)
-14. [날짜/시간](#14-날짜시간)
-15. [채팅 정보](#15-채팅-정보)
-16. [시스템/모델 정보](#16-시스템모델-정보)
-17. [에셋/이모션](#17-에셋이모션)
-18. [암호화/인코딩](#18-암호화인코딩)
-19. [서식/표시](#19-서식표시)
-20. [이스케이프 문자](#20-이스케이프-문자)
-21. [집계 함수](#21-집계-함수)
-22. [제어 흐름](#22-제어-흐름)
-23. [특수 조작](#23-특수-조작)
+| Tag          | Aliases     | Syntax           | Description                                               |
+| ------------ | ----------- | ---------------- | --------------------------------------------------------- |
+| `char`       | `bot`       | `{{char}}`       | Current character name (nickname takes priority)          |
+| `user`       | —           | `{{user}}`       | Current user name                                         |
+| `trigger_id` | `triggerid` | `{{trigger_id}}` | `risu-id` attribute of clicked element (`"null"` if none) |
 
 ---
 
-## 1. 캐릭터/유저 토큰
+## 2. Chat Message Access
 
-| 태그             | 별칭            | 설명                                             |
-| ---------------- | --------------- | ------------------------------------------------ |
-| `{{char}}`       | `{{bot}}`       | 현재 캐릭터 이름 (닉네임 우선)                   |
-| `{{user}}`       | —               | 현재 유저 이름                                   |
-| `{{trigger_id}}` | `{{triggerid}}` | 클릭된 요소의 `risu-id` 속성값 (없으면 `"null"`) |
-
----
-
-## 2. 채팅 메시지 조회
-
-| 태그                   | 별칭                   | 설명                           |
-| ---------------------- | ---------------------- | ------------------------------ |
-| `{{previouscharchat}}` | `{{lastcharmessage}}`  | 마지막 캐릭터 메시지           |
-| `{{previoususerchat}}` | `{{lastusermessage}}`  | 마지막 유저 메시지             |
-| `{{lastmessage}}`      | —                      | 마지막 메시지 (역할 무관)      |
-| `{{lastmessageid}}`    | `{{lastmessageindex}}` | 마지막 메시지 인덱스 (0-based) |
+| Tag                | Aliases            | Syntax                 | Description                  |
+| ------------------ | ------------------ | ---------------------- | ---------------------------- |
+| `previouscharchat` | `lastcharmessage`  | `{{previouscharchat}}` | Last character message       |
+| `previoususerchat` | `lastusermessage`  | `{{previoususerchat}}` | Last user message            |
+| `lastmessage`      | —                  | `{{lastmessage}}`      | Last message (any role)      |
+| `lastmessageid`    | `lastmessageindex` | `{{lastmessageid}}`    | Last message index (0-based) |
 
 ---
 
-## 3. 캐릭터 필드 접근
+## 3. Character Field Access
 
-| 태그                  | 별칭                                         | 설명             |
-| --------------------- | -------------------------------------------- | ---------------- |
-| `{{personality}}`     | `{{charpersona}}`                            | 캐릭터 성격 필드 |
-| `{{description}}`     | `{{chardesc}}`                               | 캐릭터 설명      |
-| `{{scenario}}`        | —                                            | 시나리오 필드    |
-| `{{exampledialogue}}` | `{{examplemessage}}`, `{{example_dialogue}}` | 예시 대화        |
-
----
-
-## 4. 프롬프트/시스템 정보
-
-| 태그             | 별칭                                  | 설명                    |
-| ---------------- | ------------------------------------- | ----------------------- |
-| `{{persona}}`    | `{{userpersona}}`                     | 유저 페르소나 텍스트    |
-| `{{mainprompt}}` | `{{systemprompt}}`, `{{main_prompt}}` | 메인 시스템 프롬프트    |
-| `{{jb}}`         | `{{jailbreak}}`                       | 탈옥 프롬프트           |
-| `{{globalnote}}` | `{{systemnote}}`, `{{ujb}}`           | 글로벌 노트             |
-| `{{authornote}}` | `{{author_note}}`                     | 작성자 노트 (현재 채팅) |
+| Tag               | Aliases                              | Syntax                | Description                 |
+| ----------------- | ------------------------------------ | --------------------- | --------------------------- |
+| `personality`     | `charpersona`                        | `{{personality}}`     | Character personality field |
+| `description`     | `chardesc`                           | `{{description}}`     | Character description field |
+| `scenario`        | —                                    | `{{scenario}}`        | Scenario field              |
+| `exampledialogue` | `examplemessage`, `example_dialogue` | `{{exampledialogue}}` | Example dialogue field      |
 
 ---
 
-## 5. 로어북/히스토리 함수
+## 4. Prompt/System Info
 
-| 태그              | 별칭                                   | 설명                                                     |
-| ----------------- | -------------------------------------- | -------------------------------------------------------- |
-| `{{lorebook}}`    | `{{worldinfo}}`                        | 활성 로어북 항목 (JSON 배열)                             |
-| `{{userhistory}}` | `{{usermessages}}`, `{{user_history}}` | 전체 유저 메시지 (JSON 배열)                             |
-| `{{charhistory}}` | `{{charmessages}}`, `{{char_history}}` | 전체 캐릭터 메시지 (JSON 배열)                           |
-| `{{history}}`     | `{{messages}}`                         | 전체 채팅 (JSON). `{{history::role}}` → 역할 접두사 포함 |
-
----
-
-## 6. 영구 변수 (채팅 스코프)
-
-| 태그                                | 설명                          | runVar 필요 |
-| ----------------------------------- | ----------------------------- | ----------- |
-| `{{getvar::변수명}}`                | 채팅 변수 읽기                | 아니오      |
-| `{{setvar::변수명::값}}`            | 채팅 변수 쓰기                | **예**      |
-| `{{addvar::변수명::숫자}}`          | 숫자 더하기                   | **예**      |
-| `{{setdefaultvar::변수명::기본값}}` | 없을 때만 설정                | **예**      |
-| `{{getglobalvar::변수명}}`          | 전역 변수 읽기 (채팅 간 공유) | 아니오      |
-
-> **runVar**: `setvar`, `addvar`, `setdefaultvar`는 변수 수정 컨텍스트에서만 작동합니다.
+| Tag          | Aliases                       | Syntax           | Description                     |
+| ------------ | ----------------------------- | ---------------- | ------------------------------- |
+| `persona`    | `userpersona`                 | `{{persona}}`    | User persona text               |
+| `mainprompt` | `systemprompt`, `main_prompt` | `{{mainprompt}}` | Main system prompt              |
+| `jb`         | `jailbreak`                   | `{{jb}}`         | Jailbreak prompt                |
+| `globalnote` | `systemnote`, `ujb`           | `{{globalnote}}` | Global note (always sent to AI) |
+| `authornote` | `author_note`                 | `{{authornote}}` | Author note (current chat)      |
 
 ---
 
-## 7. 임시 변수 (스크립트 스코프)
+## 5. Lorebook/History
 
-| 태그                         | 별칭                     | 설명                              |
-| ---------------------------- | ------------------------ | --------------------------------- |
-| `{{tempvar::변수명}}`        | `{{gettempvar::변수명}}` | 임시 변수 읽기 (현재 실행 중에만) |
-| `{{settempvar::변수명::값}}` | —                        | 임시 변수 쓰기                    |
-| `{{return::값}}`             | —                        | 반환값 설정 후 스크립트 종료      |
-
----
-
-## 8. 수학 연산
-
-| 태그      | 문법                       | 설명                         | 예시                              |
-| --------- | -------------------------- | ---------------------------- | --------------------------------- |
-| `calc`    | `{{calc::수식}}`           | 사칙연산 (+, -, \*, /, 괄호) | `{{calc::2+3*4}}` → `14`          |
-| `round`   | `{{round::숫자}}`          | 반올림                       | `{{round::3.7}}` → `4`            |
-| `floor`   | `{{floor::숫자}}`          | 버림                         | `{{floor::3.9}}` → `3`            |
-| `ceil`    | `{{ceil::숫자}}`           | 올림                         | `{{ceil::3.1}}` → `4`             |
-| `abs`     | `{{abs::숫자}}`            | 절대값                       | `{{abs::-5}}` → `5`               |
-| `remaind` | `{{remaind::A::B}}`        | 나머지 (A % B)               | `{{remaind::10::3}}` → `1`        |
-| `pow`     | `{{pow::밑::지수}}`        | 거듭제곱                     | `{{pow::2::3}}` → `8`             |
-| `fixnum`  | `{{fixnum::숫자::자릿수}}` | 소수점 고정                  | `{{fixnum::3.14159::2}}` → `3.14` |
-
-별칭: `fixnum` = `fixnumber`
+| Tag           | Aliases                        | Syntax                               | Description                                                     |
+| ------------- | ------------------------------ | ------------------------------------ | --------------------------------------------------------------- |
+| `lorebook`    | `worldinfo`                    | `{{lorebook}}`                       | Active lorebook entries (JSON array)                            |
+| `userhistory` | `usermessages`, `user_history` | `{{userhistory}}`                    | All user messages (JSON array)                                  |
+| `charhistory` | `charmessages`, `char_history` | `{{charhistory}}`                    | All character messages (JSON array)                             |
+| `history`     | `messages`                     | `{{history}}` or `{{history::role}}` | Full chat (JSON). With `role` arg: adds role prefix per message |
 
 ---
 
-## 9. 비교 연산
+## 6. Persistent Variables (Chat Scope)
 
-모든 비교는 참이면 `1`, 거짓이면 `0`을 반환합니다.
+These variables persist across messages within one chat session.
 
-| 태그           | 문법                     | 설명   |
-| -------------- | ------------------------ | ------ |
-| `equal`        | `{{equal::A::B}}`        | A == B |
-| `notequal`     | `{{notequal::A::B}}`     | A != B |
-| `greater`      | `{{greater::A::B}}`      | A > B  |
-| `less`         | `{{less::A::B}}`         | A < B  |
-| `greaterequal` | `{{greaterequal::A::B}}` | A >= B |
-| `lessequal`    | `{{lessequal::A::B}}`    | A <= B |
+| Tag             | Aliases | Syntax                             | Description                                | Requires runVar |
+| --------------- | ------- | ---------------------------------- | ------------------------------------------ | --------------- |
+| `getvar`        | —       | `{{getvar::name}}`                 | Read chat variable                         | No              |
+| `setvar`        | —       | `{{setvar::name::value}}`          | Write chat variable                        | **Yes**         |
+| `addvar`        | —       | `{{addvar::name::number}}`         | Add number to variable                     | **Yes**         |
+| `setdefaultvar` | —       | `{{setdefaultvar::name::default}}` | Set only if undefined                      | **Yes**         |
+| `getglobalvar`  | —       | `{{getglobalvar::name}}`           | Read global variable (shared across chats) | No              |
 
-별칭: `notequal` = `not_equal`, `greaterequal` = `greater_equal`, `lessequal` = `less_equal`
-
----
-
-## 10. 논리 연산
-
-| 태그  | 문법               | 설명                              |
-| ----- | ------------------ | --------------------------------- |
-| `and` | `{{and::A::B}}`    | 둘 다 `1`이면 `1`                 |
-| `or`  | `{{or::A::B}}`     | 하나라도 `1`이면 `1`              |
-| `not` | `{{not::A}}`       | 반전 (`1`→`0`, 나머지→`1`)        |
-| `all` | `{{all::A::B::C}}` | 모두 `1`이면 `1`. 배열도 가능     |
-| `any` | `{{any::A::B::C}}` | 하나라도 `1`이면 `1`. 배열도 가능 |
+> **runVar context:** Lorebook activation, firstMessage, defaultVariables, editoutput/editinput regex. Silently ignored in display-only contexts.
 
 ---
 
-## 11. 문자열 조작
+## 7. Temporary Variables (Script Scope)
 
-| 태그         | 문법                                | 설명                 |
-| ------------ | ----------------------------------- | -------------------- |
-| `replace`    | `{{replace::문자열::찾기::바꾸기}}` | 모든 일치 항목 치환  |
-| `split`      | `{{split::문자열::구분자}}`         | 분할 → JSON 배열     |
-| `join`       | `{{join::[배열]::구분자}}`          | 배열 합치기          |
-| `spread`     | `{{spread::[배열]}}`                | `::` 구분자로 합치기 |
-| `trim`       | `{{trim::문자열}}`                  | 앞뒤 공백 제거       |
-| `length`     | `{{length::문자열}}`                | 문자 수              |
-| `startswith` | `{{startswith::문자열::접두사}}`    | 시작 여부 (`1`/`0`)  |
-| `endswith`   | `{{endswith::문자열::접미사}}`      | 끝 여부 (`1`/`0`)    |
-| `contains`   | `{{contains::문자열::부분}}`        | 포함 여부 (`1`/`0`)  |
-| `lower`      | `{{lower::문자열}}`                 | 소문자 변환          |
-| `upper`      | `{{upper::문자열}}`                 | 대문자 변환          |
-| `capitalize` | `{{capitalize::문자열}}`            | 첫 글자 대문자       |
-| `tonumber`   | `{{tonumber::문자열}}`              | 숫자 추출            |
-| `reverse`    | `{{reverse::문자열}}`               | 문자열 뒤집기        |
+Exist only during current CBS evaluation pass. Gone afterward.
+
+| Tag          | Aliases      | Syntax                        | Description                      |
+| ------------ | ------------ | ----------------------------- | -------------------------------- |
+| `tempvar`    | `gettempvar` | `{{tempvar::name}}`           | Read temp variable               |
+| `settempvar` | —            | `{{settempvar::name::value}}` | Write temp variable              |
+| `return`     | —            | `{{return::value}}`           | Set return value and stop script |
 
 ---
 
-## 12. 배열/객체 조작
+## 8. Math Operations
 
-### 생성
-
-| 태그        | 별칭                       | 문법                                       | 설명                         |
-| ----------- | -------------------------- | ------------------------------------------ | ---------------------------- |
-| `makearray` | `array`, `a`               | `{{makearray::a::b::c}}`                   | `["a","b","c"]`              |
-| `makedict`  | `dict`, `d`, `object`, `o` | `{{makedict::name=John::age=25}}`          | `{"name":"John","age":"25"}` |
-| `range`     | —                          | `{{range::[5]}}` 또는 `{{range::[2,8,2]}}` | `[0,1,2,3,4]` 또는 `[2,4,6]` |
-
-### 조회
-
-| 태그              | 문법                               | 설명                   |
-| ----------------- | ---------------------------------- | ---------------------- |
-| `arrayelement`    | `{{arrayelement::[배열]::인덱스}}` | 인덱스로 요소 가져오기 |
-| `dictelement`     | `{{dictelement::{객체}::키}}`      | 키로 값 가져오기       |
-| `element` / `ele` | `{{element::{중첩}::경로::경로}}`  | 깊은 중첩 접근         |
-| `arraylength`     | `{{arraylength::[배열]}}`          | 배열 길이              |
-
-별칭: `dictelement` = `objectelement`
-
-### 수정
-
-| 태그           | 문법                                        | 설명                              |
-| -------------- | ------------------------------------------- | --------------------------------- |
-| `arraypush`    | `{{arraypush::[배열]::요소}}`               | 끝에 추가                         |
-| `arraypop`     | `{{arraypop::[배열]}}`                      | 마지막 제거                       |
-| `arrayshift`   | `{{arrayshift::[배열]}}`                    | 첫 번째 제거                      |
-| `arraysplice`  | `{{arraysplice::[배열]::시작::개수::추가}}` | 삭제/삽입                         |
-| `arrayassert`  | `{{arrayassert::[배열]::인덱스::값}}`       | 범위 밖이면 설정                  |
-| `objectassert` | `{{objectassert::{객체}::키::값}}`          | 없으면 설정                       |
-| `filter`       | `{{filter::[배열]::타입}}`                  | 필터: `all`, `nonempty`, `unique` |
-
-별칭: `objectassert` = `dictassert`, `object_assert`
+| Tag       | Aliases     | Syntax                  | Description                           | Example                           |
+| --------- | ----------- | ----------------------- | ------------------------------------- | --------------------------------- |
+| `calc`    | —           | `{{calc::expr}}`        | Arithmetic (+, -, \*, /, parentheses) | `{{calc::2+3*4}}` → `14`          |
+| `round`   | —           | `{{round::n}}`          | Round to nearest integer              | `{{round::3.7}}` → `4`            |
+| `floor`   | —           | `{{floor::n}}`          | Floor (round down)                    | `{{floor::3.9}}` → `3`            |
+| `ceil`    | —           | `{{ceil::n}}`           | Ceiling (round up)                    | `{{ceil::3.1}}` → `4`             |
+| `abs`     | —           | `{{abs::n}}`            | Absolute value                        | `{{abs::-5}}` → `5`               |
+| `remaind` | —           | `{{remaind::A::B}}`     | Modulo (A % B)                        | `{{remaind::10::3}}` → `1`        |
+| `pow`     | —           | `{{pow::base::exp}}`    | Exponentiation                        | `{{pow::2::3}}` → `8`             |
+| `fixnum`  | `fixnumber` | `{{fixnum::n::digits}}` | Fixed decimal places                  | `{{fixnum::3.14159::2}}` → `3.14` |
 
 ---
 
-## 13. 랜덤/주사위
+## 9. Comparison Operations
 
-| 태그      | 문법                                  | 설명               | 결정성                        |
-| --------- | ------------------------------------- | ------------------ | ----------------------------- |
-| `random`  | `{{random}}` 또는 `{{random::A,B,C}}` | 랜덤 선택 또는 0~1 | 비결정                        |
-| `pick`    | `{{pick}}` 또는 `{{pick::A,B,C}}`     | 랜덤 선택          | **해시 기반** (메시지별 일관) |
-| `randint` | `{{randint::최소::최대}}`             | 범위 내 정수       | 비결정                        |
-| `dice`    | `{{dice::2d6}}`                       | XdY 주사위 합      | 비결정                        |
-| `roll`    | `{{roll::2d6}}` 또는 `{{roll::20}}`   | 주사위 (기본 1dY)  | 비결정                        |
-| `rollp`   | `{{rollp::2d6}}`                      | 주사위             | **해시 기반** (일관)          |
-| `hash`    | `{{hash::문자열}}`                    | 7자리 해시         | **결정적**                    |
+All comparisons return `1` (true) or `0` (false) as strings.
 
-> **해시 기반**: 같은 메시지에서는 항상 같은 결과를 반환합니다 (새로고침해도 동일).
-
----
-
-## 14. 날짜/시간
-
-| 태그                   | 별칭                     | 설명                           | 반환 형식                                                |
-| ---------------------- | ------------------------ | ------------------------------ | -------------------------------------------------------- |
-| `time`                 | —                        | 현재 로컬 시간                 | `H:M:S`                                                  |
-| `isotime`              | —                        | 현재 UTC 시간                  | `H:M:S`                                                  |
-| `isodate`              | —                        | 현재 UTC 날짜                  | `YYYY-MM-D`                                              |
-| `unixtime`             | —                        | Unix 타임스탬프 (초)           | 숫자                                                     |
-| `date`                 | `datetimeformat`         | 날짜 포맷                      | `{{date::YYYY-MM-DD}}` 또는 `{{date::형식::타임스탬프}}` |
-| `messagetime`          | `message_time`           | 메시지 전송 시간               | `HH:MM:SS`                                               |
-| `messagedate`          | `message_date`           | 메시지 전송 날짜               | 로케일 형식                                              |
-| `messageidleduration`  | `message_idle_duration`  | 이전 유저 메시지와의 시간 간격 | `HH:MM:SS`                                               |
-| `idleduration`         | `idle_duration`          | 마지막 메시지 이후 경과        | `HH:MM:SS`                                               |
-| `messageunixtimearray` | `message_unixtime_array` | 모든 메시지 타임스탬프         | JSON 배열                                                |
+| Tag            | Aliases         | Syntax                   | Description |
+| -------------- | --------------- | ------------------------ | ----------- |
+| `equal`        | —               | `{{equal::A::B}}`        | A == B      |
+| `notequal`     | `not_equal`     | `{{notequal::A::B}}`     | A != B      |
+| `greater`      | —               | `{{greater::A::B}}`      | A > B       |
+| `less`         | —               | `{{less::A::B}}`         | A < B       |
+| `greaterequal` | `greater_equal` | `{{greaterequal::A::B}}` | A >= B      |
+| `lessequal`    | `less_equal`    | `{{lessequal::A::B}}`    | A <= B      |
 
 ---
 
-## 15. 채팅 정보
+## 10. Logic Operations
 
-| 태그              | 별칭                                   | 설명                                         |
-| ----------------- | -------------------------------------- | -------------------------------------------- |
-| `chatindex`       | `chat_index`                           | 현재 메시지 인덱스                           |
-| `firstmsgindex`   | `firstmessageindex`, `first_msg_index` | 선택된 첫 메시지 인덱스 (-1 = 기본)          |
-| `isfirstmsg`      | `isfirstmessage`                       | 첫 메시지 컨텍스트면 `1`                     |
-| `role`            | —                                      | 현재 메시지 역할 (`user`, `char`, `system`)  |
-| `previouschatlog` | `previous_chat_log`                    | 특정 인덱스 메시지: `{{previouschatlog::5}}` |
-
----
-
-## 16. 시스템/모델 정보
-
-| 태그               | 별칭                           | 설명                                             |
-| ------------------ | ------------------------------ | ------------------------------------------------ |
-| `model`            | —                              | 현재 AI 모델 ID                                  |
-| `axmodel`          | —                              | 보조 모델 ID                                     |
-| `maxcontext`       | —                              | 최대 컨텍스트 길이                               |
-| `jbtoggled`        | —                              | 탈옥 활성화 여부 (`1`/`0`)                       |
-| `prefillsupported` | `prefill_supported`, `prefill` | 프리필 지원 여부 (Claude 등)                     |
-| `iserror`          | `{{iserror::문자열}}`          | "error:"로 시작하면 `1`                          |
-| `moduleenabled`    | `module_enabled`               | 모듈 활성화 여부: `{{moduleenabled::namespace}}` |
-| `screenwidth`      | `screen_width`                 | 뷰포트 너비 (px)                                 |
-| `screenheight`     | `screen_height`                | 뷰포트 높이 (px)                                 |
-
-### metadata 키
-
-`{{metadata::키}}` 형식으로 접근:
-
-`mobile`, `local`, `node`, `version`, `majorversion`, `language`, `locale`, `browserlanguage`, `modelshortname`, `modelname`, `modelinternalid`, `modelformat`, `modelprovider`, `modeltokenizer`, `maxcontext`, `risutype`
+| Tag   | Aliases | Syntax             | Description                            |
+| ----- | ------- | ------------------ | -------------------------------------- |
+| `and` | —       | `{{and::A::B}}`    | `1` if both are `1`                    |
+| `or`  | —       | `{{or::A::B}}`     | `1` if either is `1`                   |
+| `not` | —       | `{{not::A}}`       | Invert (`1`→`0`, anything else→`1`)    |
+| `all` | —       | `{{all::A::B::C}}` | `1` if all are `1`. Also accepts array |
+| `any` | —       | `{{any::A::B::C}}` | `1` if any is `1`. Also accepts array  |
 
 ---
 
-## 17. 에셋/이모션
+## 11. String Manipulation
 
-### 목록 조회
-
-| 태그                             | 설명                  | 반환      |
-| -------------------------------- | --------------------- | --------- |
-| `{{assetlist}}`                  | 추가 에셋 이름        | JSON 배열 |
-| `{{emotionlist}}`                | 이모션 이미지 이름    | JSON 배열 |
-| `{{chardisplayasset}}`           | 표시 에셋 (필터 제외) | JSON 배열 |
-| `{{moduleassetlist::namespace}}` | 모듈 에셋             | JSON 배열 |
-
-### 표시 (디스플레이 모드에서만)
-
-| 태그            | 문법                    | 설명                   |
-| --------------- | ----------------------- | ---------------------- |
-| `asset`         | `{{asset::이름}}`       | 에셋 표시              |
-| `emotion`       | `{{emotion::이름}}`     | 이모션 이미지          |
-| `audio`         | `{{audio::이름}}`       | 오디오 컨트롤          |
-| `bg`            | `{{bg::이름}}`          | 배경 이미지 설정       |
-| `bgm`           | `{{bgm::이름}}`         | 배경음악 재생          |
-| `video`         | `{{video::이름}}`       | 비디오 표시            |
-| `video-img`     | `{{video-img::이름}}`   | 비디오를 이미지로      |
-| `image` / `img` | `{{image::이름}}`       | 이미지 표시            |
-| `path` / `raw`  | `{{path::이름}}`        | 에셋 경로 반환         |
-| `inlay`         | `{{inlay::이름}}`       | 인레이 (비스타일)      |
-| `inlayed`       | `{{inlayed::이름}}`     | 인레이 (스타일 적용)   |
-| `inlayeddata`   | `{{inlayeddata::이름}}` | 인레이 (리퀘스트 포함) |
+| Tag          | Aliases | Syntax                         | Description                      |
+| ------------ | ------- | ------------------------------ | -------------------------------- |
+| `replace`    | —       | `{{replace::str::find::repl}}` | Replace all occurrences          |
+| `split`      | —       | `{{split::str::delim}}`        | Split → JSON array               |
+| `join`       | —       | `{{join::[arr]::delim}}`       | Join array with delimiter        |
+| `spread`     | —       | `{{spread::[arr]}}`            | Join array with `::` separator   |
+| `trim`       | —       | `{{trim::str}}`                | Trim leading/trailing whitespace |
+| `length`     | —       | `{{length::str}}`              | Character count                  |
+| `startswith` | —       | `{{startswith::str::prefix}}`  | `1`/`0` prefix check             |
+| `endswith`   | —       | `{{endswith::str::suffix}}`    | `1`/`0` suffix check             |
+| `contains`   | —       | `{{contains::str::sub}}`       | `1`/`0` substring check          |
+| `lower`      | —       | `{{lower::str}}`               | Lowercase                        |
+| `upper`      | —       | `{{upper::str}}`               | Uppercase                        |
+| `capitalize` | —       | `{{capitalize::str}}`          | Capitalize first letter          |
+| `tonumber`   | —       | `{{tonumber::str}}`            | Extract numeric value            |
+| `reverse`    | —       | `{{reverse::str}}`             | Reverse string                   |
 
 ---
 
-## 18. 암호화/인코딩
+## 12. Array/Object Manipulation
 
-| 태그            | 별칭                              | 문법                                                 | 설명                           |
-| --------------- | --------------------------------- | ---------------------------------------------------- | ------------------------------ |
-| `xor`           | `xorencrypt`, `xorencode`, `xore` | `{{xor::문자열}}`                                    | XOR 암호화 + base64            |
-| `xordecrypt`    | `xordecode`, `xord`               | `{{xordecrypt::base64}}`                             | XOR 복호화                     |
-| `crypt`         | `crypto`, `caesar`, `encrypt`     | `{{crypt::문자열}}` 또는 `{{crypt::문자열::시프트}}` | 시저 암호 (기본 시프트: 32768) |
-| `unicodeencode` | `unicode_encode`                  | `{{unicodeencode::A}}`                               | 유니코드 코드 포인트           |
-| `unicodedecode` | `unicode_decode`                  | `{{unicodedecode::65}}`                              | 코드 → 문자                    |
-| `fromhex`       | —                                 | `{{fromhex::FF}}`                                    | 16진수 → 10진수                |
-| `tohex`         | —                                 | `{{tohex::255}}`                                     | 10진수 → 16진수                |
+### Creation
 
----
+| Tag         | Aliases                                  | Syntax                                   | Description                                           |
+| ----------- | ---------------------------------------- | ---------------------------------------- | ----------------------------------------------------- |
+| `makearray` | `array`, `a`                             | `{{makearray::a::b::c}}`                 | Create array `["a","b","c"]`                          |
+| `makedict`  | `dict`, `d`, `makeobject`, `object`, `o` | `{{makedict::name=John::age=25}}`        | Create object `{"name":"John","age":"25"}`            |
+| `range`     | —                                        | `{{range::[5]}}` or `{{range::[2,8,2]}}` | Number range. `[5]`→`[0,1,2,3,4]`, `[start,end,step]` |
 
-## 19. 서식/표시
+### Access
 
-| 태그          | 별칭             | 설명                                        |
-| ------------- | ---------------- | ------------------------------------------- |
-| `br`          | `newline`        | 줄바꿈                                      |
-| `blank`       | `none`           | 빈 문자열                                   |
-| `cbr` / `cnl` | `cnewline`       | 이스케이프된 `\n`. `{{cbr::3}}` → 3번 반복  |
-| `tex`         | `latex`, `katex` | LaTeX 수식: `{{tex::E=mc^2}}`               |
-| `ruby`        | `furigana`       | 루비 텍스트: `{{ruby::漢字::かんじ}}`       |
-| `codeblock`   | —                | 코드블록: `{{codeblock::언어::코드}}`       |
-| `comment`     | —                | 주석 (디스플레이에서만 표시)                |
-| `button`      | —                | 버튼: `{{button::라벨::트리거명}}`          |
-| `risu`        | —                | RisuAI 로고: `{{risu}}` 또는 `{{risu::60}}` |
-| `file`        | —                | 파일 표시/디코딩                            |
+| Tag            | Aliases         | Syntax                              | Description                                 |
+| -------------- | --------------- | ----------------------------------- | ------------------------------------------- |
+| `arrayelement` | —               | `{{arrayelement::[arr]::index}}`    | Get element by index                        |
+| `dictelement`  | `objectelement` | `{{dictelement::{obj}::key}}`       | Get value by key                            |
+| `element`      | `ele`           | `{{element::{nested}::path::path}}` | Deep nested access (multiple path segments) |
+| `arraylength`  | —               | `{{arraylength::[arr]}}`            | Array length                                |
 
----
+### Modification
 
-## 20. 이스케이프 문자
-
-CBS 내에서 특수 문자를 리터럴로 출력할 때 사용합니다.
-
-| 태그        | 별칭                              | 출력 |
-| ----------- | --------------------------------- | ---- |
-| `{{decbo}}` | `displayescapedcurlybracketopen`  | `{`  |
-| `{{decbc}}` | `displayescapedcurlybracketclose` | `}`  |
-| `{{bo}}`    | `ddecbo`                          | `{{` |
-| `{{bc}}`    | `ddecbc`                          | `}}` |
-| `{{(}}`     | `debo`                            | `(`  |
-| `{{)}}`     | `debc`                            | `)`  |
-| `{{<}}`     | `deabo`                           | `<`  |
-| `{{>}}`     | `deabc`                           | `>`  |
-| `{{:}}`     | `dec`                             | `:`  |
-| `{{;}}`     | —                                 | `;`  |
+| Tag            | Aliases                       | Syntax                                      | Description                         |
+| -------------- | ----------------------------- | ------------------------------------------- | ----------------------------------- |
+| `arraypush`    | —                             | `{{arraypush::[arr]::item}}`                | Append to end                       |
+| `arraypop`     | —                             | `{{arraypop::[arr]}}`                       | Remove last element                 |
+| `arrayshift`   | —                             | `{{arrayshift::[arr]}}`                     | Remove first element                |
+| `arraysplice`  | —                             | `{{arraysplice::[arr]::start::count::add}}` | Splice (delete/insert)              |
+| `arrayassert`  | —                             | `{{arrayassert::[arr]::index::value}}`      | Set if index is out of bounds       |
+| `objectassert` | `dictassert`, `object_assert` | `{{objectassert::{obj}::key::value}}`       | Set if key doesn't exist            |
+| `filter`       | —                             | `{{filter::[arr]::type}}`                   | Filter: `all`, `nonempty`, `unique` |
 
 ---
 
-## 21. 집계 함수
+## 13. Random/Dice
 
-배열 또는 가변 인자 모두 지원합니다.
+| Tag       | Aliases    | Syntax                                | Description                               | Determinism                                           |
+| --------- | ---------- | ------------------------------------- | ----------------------------------------- | ----------------------------------------------------- |
+| `random`  | —          | `{{random}}` or `{{random::A::B::C}}` | Random float 0–1 or random pick from args | Non-deterministic                                     |
+| `pick`    | —          | `{{pick}}` or `{{pick::A::B::C}}`     | Random pick                               | **Hash-based** (stable per message, survives refresh) |
+| `randint` | —          | `{{randint::min::max}}`               | Random integer in range (inclusive)       | Non-deterministic                                     |
+| `dice`    | —          | `{{dice::2d6}}`                       | XdY dice sum                              | Non-deterministic                                     |
+| `roll`    | —          | `{{roll::2d6}}` or `{{roll::20}}`     | Dice roll (defaults to 1dY)               | Non-deterministic                                     |
+| `rollp`   | `rollpick` | `{{rollp::2d6}}`                      | Dice roll                                 | **Hash-based** (stable)                               |
+| `hash`    | —          | `{{hash::string}}`                    | 7-digit hash value                        | **Deterministic**                                     |
 
-| 태그      | 문법                                              | 설명   |
-| --------- | ------------------------------------------------- | ------ |
-| `min`     | `{{min::5::2::8}}` 또는 `{{min::[배열]}}`         | 최솟값 |
-| `max`     | `{{max::5::2::8}}` 또는 `{{max::[배열]}}`         | 최댓값 |
-| `sum`     | `{{sum::1::2::3}}` 또는 `{{sum::[배열]}}`         | 합계   |
-| `average` | `{{average::2::4::6}}` 또는 `{{average::[배열]}}` | 평균   |
+> **Hash-based** means the same message always produces the same result (even on page refresh).
 
 ---
 
-## 22. 제어 흐름
+## 14. Date/Time
 
-### #when 조건문 (권장)
+| Tag                    | Aliases                  | Syntax                                              | Description                                                         | Format               |
+| ---------------------- | ------------------------ | --------------------------------------------------- | ------------------------------------------------------------------- | -------------------- |
+| `time`                 | —                        | `{{time}}`                                          | Current local time                                                  | `H:M:S`              |
+| `isotime`              | —                        | `{{isotime}}`                                       | Current UTC time                                                    | `H:M:S`              |
+| `isodate`              | —                        | `{{isodate}}`                                       | Current UTC date                                                    | `YYYY-MM-D`          |
+| `unixtime`             | —                        | `{{unixtime}}`                                      | Unix timestamp (seconds)                                            | Number               |
+| `date`                 | `datetimeformat`         | `{{date::FORMAT}}` or `{{date::FORMAT::timestamp}}` | Formatted date. Supports `YYYY`, `MM`, `DD`, `HH`, `mm`, `ss`, etc. | Custom format string |
+| `messagetime`          | `message_time`           | `{{messagetime}}`                                   | Message send time                                                   | `HH:MM:SS`           |
+| `messagedate`          | `message_date`           | `{{messagedate}}`                                   | Message send date                                                   | Locale format        |
+| `messageidleduration`  | `message_idle_duration`  | `{{messageidleduration}}`                           | Time gap from previous user message                                 | `HH:MM:SS`           |
+| `idleduration`         | `idle_duration`          | `{{idleduration}}`                                  | Time since last message                                             | `HH:MM:SS`           |
+| `messageunixtimearray` | `message_unixtime_array` | `{{messageunixtimearray}}`                          | All message timestamps                                              | JSON array           |
+
+---
+
+## 15. Chat Info
+
+| Tag               | Aliases                                | Syntax                   | Description                                     |
+| ----------------- | -------------------------------------- | ------------------------ | ----------------------------------------------- |
+| `chatindex`       | `chat_index`                           | `{{chatindex}}`          | Current message index                           |
+| `firstmsgindex`   | `firstmessageindex`, `first_msg_index` | `{{firstmsgindex}}`      | Selected first-message index (-1 = default)     |
+| `isfirstmsg`      | `isfirstmessage`                       | `{{isfirstmsg}}`         | `1` if in first-message context                 |
+| `role`            | —                                      | `{{role}}`               | Current message role (`user`, `char`, `system`) |
+| `previouschatlog` | `previous_chat_log`                    | `{{previouschatlog::5}}` | Message at specific index                       |
+
+---
+
+## 16. System/Model Info
+
+| Tag                | Aliases                        | Syntax                         | Description                              |
+| ------------------ | ------------------------------ | ------------------------------ | ---------------------------------------- |
+| `model`            | —                              | `{{model}}`                    | Current AI model ID                      |
+| `axmodel`          | —                              | `{{axmodel}}`                  | Auxiliary model ID                       |
+| `maxcontext`       | —                              | `{{maxcontext}}`               | Maximum context length                   |
+| `jbtoggled`        | —                              | `{{jbtoggled}}`                | Jailbreak enabled (`1`/`0`)              |
+| `prefillsupported` | `prefill_supported`, `prefill` | `{{prefillsupported}}`         | Prefill support (Claude, etc.) (`1`/`0`) |
+| `iserror`          | —                              | `{{iserror::string}}`          | `1` if string starts with `"error:"`     |
+| `moduleenabled`    | `module_enabled`               | `{{moduleenabled::namespace}}` | Module enabled check (`1`/`0`)           |
+| `screenwidth`      | `screen_width`                 | `{{screenwidth}}`              | Viewport width (px)                      |
+| `screenheight`     | `screen_height`                | `{{screenheight}}`             | Viewport height (px)                     |
+
+### Metadata Keys
+
+Access via `{{metadata::key}}`:
+
+| Key               | Alt Keys                       | Description              |
+| ----------------- | ------------------------------ | ------------------------ |
+| `mobile`          | —                              | Mobile device flag       |
+| `local`           | —                              | Local mode flag          |
+| `node`            | —                              | Node.js environment flag |
+| `version`         | —                              | RisuAI version string    |
+| `majorversion`    | `majorver`, `major`            | Major version number     |
+| `language`        | `locale`, `lang`               | UI language              |
+| `browserlanguage` | `browserlocale`, `browserlang` | Browser language         |
+| `modelshortname`  | —                              | Model short name         |
+| `modelname`       | —                              | Model full name          |
+| `modelinternalid` | —                              | Model internal ID        |
+| `modelformat`     | —                              | Model format             |
+| `modelprovider`   | —                              | Model provider           |
+| `modeltokenizer`  | —                              | Model tokenizer          |
+| `maxcontext`      | —                              | Max context length       |
+| `risutype`        | —                              | RisuAI client type       |
+
+---
+
+## 17. Assets/Emotions
+
+### List Queries
+
+| Tag                | Aliases            | Syntax                           | Description                         | Returns    |
+| ------------------ | ------------------ | -------------------------------- | ----------------------------------- | ---------- |
+| `assetlist`        | —                  | `{{assetlist}}`                  | Additional asset names              | JSON array |
+| `emotionlist`      | —                  | `{{emotionlist}}`                | Emotion image names                 | JSON array |
+| `chardisplayasset` | —                  | `{{chardisplayasset}}`           | Display assets (excluding filtered) | JSON array |
+| `moduleassetlist`  | `module_assetlist` | `{{moduleassetlist::namespace}}` | Module assets                       | JSON array |
+
+### Display (display-mode only)
+
+| Tag           | Aliases | Syntax                  | Description                           |
+| ------------- | ------- | ----------------------- | ------------------------------------- |
+| `asset`       | —       | `{{asset::name}}`       | Display asset                         |
+| `emotion`     | —       | `{{emotion::name}}`     | Emotion image                         |
+| `audio`       | —       | `{{audio::name}}`       | Audio control                         |
+| `bg`          | —       | `{{bg::name}}`          | Set background image                  |
+| `bgm`         | —       | `{{bgm::name}}`         | Play background music                 |
+| `video`       | —       | `{{video::name}}`       | Display video                         |
+| `video-img`   | —       | `{{video-img::name}}`   | Video as image (poster frame)         |
+| `image`       | —       | `{{image::name}}`       | Display image (styled)                |
+| `img`         | —       | `{{img::name}}`         | Display image (unstyled)              |
+| `path`        | `raw`   | `{{path::name}}`        | Return asset raw path/URL             |
+| `inlay`       | —       | `{{inlay::name}}`       | Inlay display (unstyled)              |
+| `inlayed`     | —       | `{{inlayed::name}}`     | Inlay display (styled)                |
+| `inlayeddata` | —       | `{{inlayeddata::name}}` | Inlay display (includes request data) |
+
+---
+
+## 18. Encryption/Encoding
+
+| Tag             | Aliases                                  | Syntax                                            | Description                          |
+| --------------- | ---------------------------------------- | ------------------------------------------------- | ------------------------------------ |
+| `xor`           | `xorencrypt`, `xorencode`, `xore`        | `{{xor::string}}`                                 | XOR encrypt + base64                 |
+| `xordecrypt`    | `xordecode`, `xord`                      | `{{xordecrypt::base64}}`                          | XOR decrypt from base64              |
+| `crypt`         | `crypto`, `caesar`, `encrypt`, `decrypt` | `{{crypt::string}}` or `{{crypt::string::shift}}` | Caesar cipher (default shift: 32768) |
+| `unicodeencode` | `unicode_encode`                         | `{{unicodeencode::A}}`                            | Character → Unicode code point       |
+| `unicodedecode` | `unicode_decode`                         | `{{unicodedecode::65}}`                           | Code point → character               |
+| `u`             | `unicodedecodefromhex`                   | `{{u::41}}`                                       | Hex code point → character (`A`)     |
+| `ue`            | `unicodeencodefromhex`                   | `{{ue::41}}`                                      | Hex code point → character (alias)   |
+| `fromhex`       | —                                        | `{{fromhex::FF}}`                                 | Hex → decimal                        |
+| `tohex`         | —                                        | `{{tohex::255}}`                                  | Decimal → hex                        |
+
+---
+
+## 19. Formatting/Display
+
+| Tag         | Aliases           | Syntax                           | Description                                 |
+| ----------- | ----------------- | -------------------------------- | ------------------------------------------- |
+| `br`        | `newline`         | `{{br}}`                         | Line break                                  |
+| `blank`     | `none`            | `{{blank}}`                      | Empty string                                |
+| `cbr`       | `cnl`, `cnewline` | `{{cbr}}` or `{{cbr::3}}`        | Escaped `\n`. Optional repeat count         |
+| `tex`       | `latex`, `katex`  | `{{tex::E=mc^2}}`                | LaTeX math rendering                        |
+| `ruby`      | `furigana`        | `{{ruby::漢字::かんじ}}`         | Ruby/furigana text annotation               |
+| `codeblock` | —                 | `{{codeblock::lang::code}}`      | Code block with syntax highlighting         |
+| `comment`   | —                 | `{{comment::text}}`              | Comment (visible in display mode only)      |
+| `button`    | —                 | `{{button::Label::triggerName}}` | Clickable button that invokes a Lua trigger |
+| `risu`      | —                 | `{{risu}}` or `{{risu::60}}`     | RisuAI logo (optional size in px)           |
+| `file`      | —                 | `{{file::name}}`                 | File display/decode                         |
+
+---
+
+## 20. Escape Characters
+
+For outputting literal special characters inside CBS expressions.
+
+| Tag         | Aliases                                           | Output |
+| ----------- | ------------------------------------------------- | ------ |
+| `{{decbo}}` | `displayescapedcurlybracketopen`                  | `{`    |
+| `{{decbc}}` | `displayescapedcurlybracketclose`                 | `}`    |
+| `{{bo}}`    | `ddecbo`, `doubledisplayescapedcurlybracketopen`  | `{{`   |
+| `{{bc}}`    | `ddecbc`, `doubledisplayescapedcurlybracketclose` | `}}`   |
+| `{{(}}`     | `debo`, `displayescapedbracketopen`               | `(`    |
+| `{{)}}`     | `debc`, `displayescapedbracketclose`              | `)`    |
+| `{{<}}`     | `deabo`, `displayescapedanglebracketopen`         | `<`    |
+| `{{>}}`     | `deabc`, `displayescapedanglebracketclose`        | `>`    |
+| `{{:}}`     | `dec`, `displayescapedcolon`                      | `:`    |
+| `{{;}}`     | `displayescapedsemicolon`                         | `;`    |
+
+---
+
+## 21. Aggregate Functions
+
+Accept both variadic args and JSON arrays.
+
+| Tag       | Aliases | Syntax                                         | Description   |
+| --------- | ------- | ---------------------------------------------- | ------------- |
+| `min`     | —       | `{{min::5::2::8}}` or `{{min::[arr]}}`         | Minimum value |
+| `max`     | —       | `{{max::5::2::8}}` or `{{max::[arr]}}`         | Maximum value |
+| `sum`     | —       | `{{sum::1::2::3}}` or `{{sum::[arr]}}`         | Sum           |
+| `average` | —       | `{{average::2::4::6}}` or `{{average::[arr]}}` | Average       |
+
+---
+
+## 22. Control Flow
+
+### #when Conditional Block
 
 ```
-{{#when::조건}}
-  참일 때 내용
+{{#when::condition}}
+  true branch
 {{:else}}
-  거짓일 때 내용
+  false branch
 {{/when}}
 ```
 
-**연산자:**
-| 연산자 | 문법 | 설명 |
-|--------|------|------|
-| `is` | `{{#when::값::is::비교값}}` | 같으면 참 |
-| `isnot` | `{{#when::값::isnot::비교값}}` | 다르면 참 |
-| `>` | `{{#when::10::>::5}}` | 크면 참 |
-| `<` | `{{#when::5::<::10}}` | 작으면 참 |
-| `>=` | `{{#when::10::>=::10}}` | 크거나 같으면 참 |
-| `<=` | `{{#when::5::<=::5}}` | 작거나 같으면 참 |
-| `and` | `{{#when::조건1::and::조건2}}` | 둘 다 참 |
-| `or` | `{{#when::조건1::or::조건2}}` | 하나라도 참 |
-| `not` | `{{#when::not::조건}}` | 부정 |
-| `var` | `{{#when::var::변수명}}` | 변수가 존재하면 참 |
-| `vis` | `{{#when::vis::변수명::비교값}}` | 변수 값 비교 |
-| `visnot` | `{{#when::visnot::변수명::비교값}}` | 변수 값이 다르면 참 |
+#### Operators
 
-**고급 연산자:**
+| Operator | Syntax                           | Description                   |
+| -------- | -------------------------------- | ----------------------------- |
+| `is`     | `{{#when::val::is::cmp}}`        | Equal                         |
+| `isnot`  | `{{#when::val::isnot::cmp}}`     | Not equal                     |
+| `>`      | `{{#when::10::>::5}}`            | Greater than                  |
+| `<`      | `{{#when::5::<::10}}`            | Less than                     |
+| `>=`     | `{{#when::10::>=::10}}`          | Greater or equal              |
+| `<=`     | `{{#when::5::<=::5}}`            | Less or equal                 |
+| `and`    | `{{#when::cond1::and::cond2}}`   | Both true                     |
+| `or`     | `{{#when::cond1::or::cond2}}`    | Either true                   |
+| `not`    | `{{#when::not::cond}}`           | Negation                      |
+| `var`    | `{{#when::var::name}}`           | Variable exists               |
+| `vis`    | `{{#when::name::vis::value}}`    | Variable equals value         |
+| `visnot` | `{{#when::name::visnot::value}}` | Variable does not equal value |
 
-- `keep`: 공백 보존
-- `legacy`: 구버전 동작
-- `toggle`, `tis`, `tisnot`: 토글 변수 비교
+#### Advanced Operators
 
-### 조건 표현식 (? 연산자)
+| Operator | Syntax                                 | Description                    |
+| -------- | -------------------------------------- | ------------------------------ |
+| `keep`   | `{{#when::keep::cond}}`                | Preserve whitespace in output  |
+| `legacy` | `{{#when::legacy::cond}}`              | Use legacy evaluation behavior |
+| `toggle` | `{{#when::toggle::togglename}}`        | Toggle is enabled              |
+| `tis`    | `{{#when::togglename::tis::value}}`    | Toggle equals value            |
+| `tisnot` | `{{#when::togglename::tisnot::value}}` | Toggle not equals value        |
+
+Operators can be combined: `{{#when::keep::not::condition}}`, `{{#when::keep::cond1::and::cond2}}`.
+
+### ? Expression (Inline Evaluation)
 
 ```
-{{? 1+2}}         → 3 (수학 표현식)
-{{? hp>10}}       → 1 또는 0
+{{? 1+2}}          → 3
+{{? hp>10}}        → 1 or 0
 ```
 
-### 반복문 (#each)
+### #each Loop
 
 ```
-{{#each [배열] as item}}
+{{#each [array] as item}}
   {{slot::item}}
 {{/each}}
 ```
 
-### 이스케이프 블록
+Iterates over a JSON array. `{{slot::item}}` accesses the current element. Add `::keep` to preserve whitespace: `{{#each [array] as item::keep}}`.
+
+### Escape Blocks
+
+| Tag                                 | Description                         |
+| ----------------------------------- | ----------------------------------- |
+| `{{#escape}}…{{/escape}}`           | Content inside is not parsed by CBS |
+| `{{#puredisplay}}…{{/puredisplay}}` | Raw display without CBS processing  |
+
+### Comments
 
 ```
-{{#escape}}CBS가 파싱되지 않는 영역{{/escape}}
-{{#puredisplay}}CBS 없이 그대로 표시{{/puredisplay}}
+{{// This comment produces no output}}
 ```
 
-### 주석
+### Position Directive
 
 ```
-{{// 이것은 주석입니다 — 출력되지 않음}}
+{{position::personality}}
 ```
 
-### 위치 지정
-
-```
-{{position::personality}}  — 프롬프트 내 위치 지정
-```
+Controls where this content is placed within the prompt structure.
 
 ---
 
-## 23. 특수 조작
+## 23. Special Operations
 
-| 태그                | 설명                                              |
-| ------------------- | ------------------------------------------------- |
-| `{{bkspc}}`         | 마지막 단어 삭제 (백스페이스)                     |
-| `{{erase}}`         | 마지막 문장 삭제                                  |
-| `{{declare::이름}}` | 파서 동작 수정 선언                               |
-| `{{hiddenkey::값}}` | 로어북 활성화용 숨겨진 키 (리퀘스트에 포함 안 됨) |
-| `{{source::user}}`  | 프로필 소스 URL                                   |
-
----
-
-## 실전 활용 예시
-
-### 변수 기반 상태창
-
-```
-HP: {{getvar::hp}}/{{getvar::max_hp}}
-레벨: {{getvar::level}}
-경험치: {{calc::{{getvar::exp}}/{{getvar::max_exp}}*100}}%
-```
-
-### 조건부 텍스트
-
-```
-{{#when::{{getvar::hp}}::<::20}}
-*캐릭터가 심하게 다쳤다.*
-{{:else}}
-*캐릭터는 건강해 보인다.*
-{{/when}}
-```
-
-### 주사위 + 변수
-
-```
-{{setvar::damage::{{roll::2d6}}}}
-공격 데미지: {{getvar::damage}}
-남은 HP: {{calc::{{getvar::hp}}-{{getvar::damage}}}}
-```
-
-### 배열 활용
-
-```
-{{setvar::inventory::{{makearray::검::방패::포션}}}}
-아이템 수: {{arraylength::{{getvar::inventory}}}}
-첫 번째 아이템: {{arrayelement::{{getvar::inventory}}::0}}
-```
-
----
-
-**마지막 업데이트**: 2026년 3월 (RisuAI cbs.ts 기준)
+| Tag         | Aliases | Syntax                 | Description                                                      |
+| ----------- | ------- | ---------------------- | ---------------------------------------------------------------- |
+| `bkspc`     | —       | `{{bkspc}}`            | Delete last word (backspace)                                     |
+| `erase`     | —       | `{{erase}}`            | Delete last sentence                                             |
+| `declare`   | —       | `{{declare::name}}`    | Modify parser behavior declaration                               |
+| `hiddenkey` | —       | `{{hiddenkey::value}}` | Hidden key for lorebook activation (not included in API request) |
+| `source`    | —       | `{{source::user}}`     | Profile source URL                                               |
