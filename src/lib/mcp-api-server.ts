@@ -70,7 +70,22 @@ export interface McpApiServer {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/** Normalize CRLF → LF for consistent matching across all replace/insert/search ops. */
+function normalizeLF(s: string): string {
+  return s.indexOf('\r') >= 0 ? s.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : s;
+}
+
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
+
+// In-memory snapshot storage for field rollback (cleared on file reload)
+interface FieldSnapshot {
+  id: string;
+  field: string;
+  timestamp: string;
+  size: number;
+  content: unknown;
+}
+const fieldSnapshots = new Map<string, FieldSnapshot[]>();
 
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -498,7 +513,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // GET/POST /field/:name
       // ----------------------------------------------------------------
-      const fieldReservedPaths = ['batch', 'export'];
+      const fieldReservedPaths = ['batch', 'batch-write', 'export'];
       if (parts[0] === 'field' && parts[1] && !parts[2] && !fieldReservedPaths.includes(parts[1])) {
         const fieldName = decodeURIComponent(parts[1]);
         const allowedFields = [
@@ -958,6 +973,180 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /field/batch-write — write multiple fields at once (single confirmation)
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] === 'batch-write' && !parts[2] && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'field/batch-write', broadcastStatus);
+        if (!body) return;
+        const entries: Array<{ field: string; content: unknown }> = body.entries;
+        if (!Array.isArray(entries) || entries.length === 0) {
+          return jsonRes(res, { error: 'entries must be a non-empty array of {field, content}' }, 400);
+        }
+        const MAX_BATCH_WRITE = 20;
+        if (entries.length > MAX_BATCH_WRITE) {
+          return jsonRes(res, { error: `Maximum ${MAX_BATCH_WRITE} entries per batch` }, 400);
+        }
+        const readOnlyFields = ['creationDate', 'modificationDate', 'moduleId'];
+        // Exclude complex fields that need special handling
+        const excludedFields = ['triggerScripts', 'alternateGreetings', 'groupOnlyGreetings', 'lorebook'];
+        // Validate all entries before asking for confirmation
+        const validatedEntries: Array<{
+          field: string;
+          content: unknown;
+          oldSize: number;
+          newSize: number;
+          type: string;
+        }> = [];
+        const boolFields = [
+          'lowLevelAccess',
+          'hideIcon',
+          'promptPreprocess',
+          'useInstructPrompt',
+          'jsonSchemaEnabled',
+          'strictJsonSchema',
+          'autoSuggestClean',
+          'outputImageModal',
+          'fallbackWhenBlankResponse',
+        ];
+        const numFields = [
+          'temperature',
+          'maxContext',
+          'maxResponse',
+          'frequencyPenalty',
+          'presencePenalty',
+          'top_p',
+          'top_k',
+          'repetition_penalty',
+          'min_p',
+          'top_a',
+          'reasonEffort',
+          'thinkingTokens',
+          'verbosity',
+        ];
+        const jsonFields = ['promptTemplate', 'presetBias', 'formatingOrder', 'localStopStrings'];
+        const arrayFields = ['tags', 'source'];
+
+        for (const entry of entries) {
+          if (!entry.field || entry.content === undefined) {
+            return mcpError(res, 400, {
+              action: 'batch write field',
+              message: `각 항목에 "field"와 "content"가 필요합니다.`,
+              target: 'field:batch-write',
+            });
+          }
+          if (readOnlyFields.includes(entry.field)) {
+            return mcpError(res, 400, {
+              action: 'batch write field',
+              message: `"${entry.field}" 필드는 읽기 전용입니다.`,
+              target: `field:${entry.field}`,
+            });
+          }
+          if (excludedFields.includes(entry.field)) {
+            return mcpError(res, 400, {
+              action: 'batch write field',
+              message: `"${entry.field}" 필드는 batch-write에서 지원하지 않습니다. write_field를 개별 사용하세요.`,
+              target: `field:${entry.field}`,
+            });
+          }
+          // Type validation
+          let type = 'string';
+          if (boolFields.includes(entry.field)) {
+            type = 'boolean';
+            if (typeof entry.content !== 'boolean') {
+              return mcpError(res, 400, {
+                action: 'batch write field',
+                message: `"${entry.field}"는 boolean 타입이어야 합니다.`,
+                target: `field:${entry.field}`,
+              });
+            }
+          } else if (numFields.includes(entry.field)) {
+            type = 'number';
+            if (typeof entry.content !== 'number') {
+              return mcpError(res, 400, {
+                action: 'batch write field',
+                message: `"${entry.field}"는 number 타입이어야 합니다.`,
+                target: `field:${entry.field}`,
+              });
+            }
+          } else if (arrayFields.includes(entry.field)) {
+            type = 'array';
+            if (!Array.isArray(entry.content)) {
+              return mcpError(res, 400, {
+                action: 'batch write field',
+                message: `"${entry.field}"는 배열 타입이어야 합니다.`,
+                target: `field:${entry.field}`,
+              });
+            }
+          } else if (jsonFields.includes(entry.field)) {
+            type = 'json';
+          } else {
+            if (typeof entry.content !== 'string') {
+              return mcpError(res, 400, {
+                action: 'batch write field',
+                message: `"${entry.field}"는 문자열 타입이어야 합니다.`,
+                target: `field:${entry.field}`,
+              });
+            }
+          }
+          const oldVal = currentData[entry.field];
+          const oldSize =
+            type === 'array'
+              ? (oldVal || []).length
+              : type === 'boolean' || type === 'number'
+                ? String(oldVal ?? '').length
+                : (oldVal || '').length;
+          const newSize =
+            type === 'array'
+              ? (entry.content as unknown[]).length
+              : type === 'boolean' || type === 'number'
+                ? String(entry.content).length
+                : (entry.content as string).length;
+          validatedEntries.push({ field: entry.field, content: entry.content, oldSize, newSize, type });
+        }
+
+        // Build summary for confirmation
+        const summary = validatedEntries.map((e) => `• ${e.field}: ${e.oldSize}→${e.newSize}`).join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 필드 일괄 수정 요청',
+          `AI 어시스턴트가 ${validatedEntries.length}개 필드를 수정하려 합니다:\n${summary}`,
+        );
+        if (allowed) {
+          const results: Array<{ field: string; success: boolean; oldSize: number; newSize: number }> = [];
+          for (const entry of validatedEntries) {
+            let content = entry.content;
+            // Strip <style> wrapper from CSS
+            if (entry.field === 'css' && typeof content === 'string') {
+              content = content.replace(/^\s*<style[^>]*>\s*/i, '').replace(/\s*<\/style>\s*$/i, '');
+            }
+            currentData[entry.field] = content;
+            if (entry.field === 'lua') {
+              currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
+              deps.broadcastToAll(
+                'data-updated',
+                'triggerScripts',
+                deps.stringifyTriggerScripts(currentData.triggerScripts),
+              );
+            }
+            deps.broadcastToAll('data-updated', entry.field, content);
+            results.push({ field: entry.field, success: true, oldSize: entry.oldSize, newSize: entry.newSize });
+          }
+          logMcpMutation('batch write fields', 'field:batch-write', {
+            count: results.length,
+            fields: results.map((r) => r.field),
+          });
+          return jsonRes(res, { success: true, count: results.length, results });
+        } else {
+          return mcpError(res, 403, {
+            action: 'batch write field',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 일괄 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'field:batch-write',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
       // POST /field/:name/replace — replace text in a string field
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'replace' && !parts[3] && req.method === 'POST') {
@@ -1032,9 +1221,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         // Acquire mutex to prevent parallel writes on same field
         const release = await acquireFieldMutex(fieldName);
         try {
-          const content: string = currentData[fieldName] || '';
-          const findStr: string = body.find;
-          const replaceStr: string = body.replace !== undefined ? body.replace : '';
+          const content: string = normalizeLF(currentData[fieldName] || '');
+          const findStr: string = normalizeLF(body.find);
+          const replaceStr: string = body.replace !== undefined ? normalizeLF(body.replace) : '';
           const useRegex = !!body.regex;
           const flags: string = body.flags || 'g';
           const dryRun = !!body.dry_run;
@@ -1139,6 +1328,176 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /field/:name/block-replace — replace a multiline block between two anchors
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] && parts[2] === 'block-replace' && !parts[3] && req.method === 'POST') {
+        const fieldName = decodeURIComponent(parts[1]);
+        const stringFieldsForReplace = [
+          'name',
+          'description',
+          'firstMessage',
+          'globalNote',
+          'css',
+          'defaultVariables',
+          'lua',
+          'creatorcomment',
+          'exampleMessage',
+          'systemPrompt',
+          'creator',
+          'characterVersion',
+          'cjs',
+          'backgroundEmbedding',
+          'moduleNamespace',
+          'customModuleToggle',
+          'mcpUrl',
+          'moduleName',
+          'moduleDescription',
+          'mainPrompt',
+          'jailbreak',
+          'aiModel',
+          'subModel',
+          'apiType',
+          'instructChatTemplate',
+          'JinjaTemplate',
+          'templateDefaultVariables',
+          'moduleIntergration',
+          'jsonSchema',
+          'extractJson',
+          'groupTemplate',
+          'groupOtherBotRole',
+          'autoSuggestPrompt',
+          'autoSuggestPrefix',
+          'systemContentReplacement',
+          'systemRoleReplacement',
+        ];
+        const readOnlyFieldsBR = ['creationDate', 'modificationDate', 'moduleId'];
+        if (readOnlyFieldsBR.includes(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'block replace in field',
+            message: `"${fieldName}" 필드는 읽기 전용입니다.`,
+            suggestion: '이 필드는 수정할 수 없습니다.',
+            target: `field:${fieldName}`,
+          });
+        }
+        if (!stringFieldsForReplace.includes(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'block replace in field',
+            message: `"${fieldName}" 필드는 블록 치환을 지원하지 않습니다.`,
+            suggestion: '문자열 타입 필드에만 사용 가능합니다.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `field/${fieldName}/block-replace`, broadcastStatus);
+        if (!body) return;
+        if (!body.start_anchor || !body.end_anchor) {
+          return mcpError(res, 400, {
+            action: 'block replace in field',
+            message: 'Missing "start_anchor" or "end_anchor"',
+            suggestion: '블록의 시작과 끝을 나타내는 앵커 문자열이 필요합니다.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const release = await acquireFieldMutex(fieldName);
+        try {
+          const content = normalizeLF(currentData[fieldName] || '');
+          const startAnchor = normalizeLF(body.start_anchor);
+          const endAnchor = normalizeLF(body.end_anchor);
+          const newBlock: string = body.content !== undefined ? normalizeLF(body.content) : '';
+          const includeAnchors = body.include_anchors !== false; // default true: anchors are replaced too
+          const dryRun = !!body.dry_run;
+
+          const startPos = content.indexOf(startAnchor);
+          if (startPos === -1) {
+            return jsonRes(res, {
+              success: false,
+              message: `시작 앵커를 찾을 수 없음: ${startAnchor.substring(0, 80)}`,
+            });
+          }
+          const searchAfter = startPos + startAnchor.length;
+          const endPos = content.indexOf(endAnchor, searchAfter);
+          if (endPos === -1) {
+            return jsonRes(res, {
+              success: false,
+              message: `끝 앵커를 찾을 수 없음 (시작 앵커 이후): ${endAnchor.substring(0, 80)}`,
+              startAnchorFoundAt: startPos,
+            });
+          }
+
+          // Determine what range to replace
+          let replaceStart: number, replaceEnd: number;
+          if (includeAnchors) {
+            replaceStart = startPos;
+            replaceEnd = endPos + endAnchor.length;
+          } else {
+            replaceStart = startPos + startAnchor.length;
+            replaceEnd = endPos;
+          }
+          const oldBlock = content.slice(replaceStart, replaceEnd);
+          const newContent = content.slice(0, replaceStart) + newBlock + content.slice(replaceEnd);
+
+          if (dryRun) {
+            return jsonRes(res, {
+              dryRun: true,
+              field: fieldName,
+              startAnchorAt: startPos,
+              endAnchorAt: endPos,
+              includeAnchors,
+              oldBlockSize: oldBlock.length,
+              oldBlockPreview: oldBlock.substring(0, 300) + (oldBlock.length > 300 ? '...' : ''),
+              newBlockSize: newBlock.length,
+              newBlockPreview: newBlock.substring(0, 300) + (newBlock.length > 300 ? '...' : ''),
+              fieldLength: content.length,
+              newFieldLength: newContent.length,
+            });
+          }
+
+          const allowed = await deps.askRendererConfirm(
+            'MCP 블록 치환 요청',
+            `AI 어시스턴트가 "${fieldName}" 필드에서 블록 치환하려 합니다.\n시작: ${startAnchor.substring(0, 60)}\n끝: ${endAnchor.substring(0, 60)}\n블록 크기: ${oldBlock.length}→${newBlock.length}자`,
+          );
+          if (allowed) {
+            currentData[fieldName] = newContent;
+            if (fieldName === 'lua') {
+              currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
+              deps.broadcastToAll(
+                'data-updated',
+                'triggerScripts',
+                deps.stringifyTriggerScripts(currentData.triggerScripts),
+              );
+            }
+            logMcpMutation('block replace in field', `field:${fieldName}`, {
+              startAnchorAt: startPos,
+              endAnchorAt: endPos,
+              oldBlockSize: oldBlock.length,
+              newBlockSize: newBlock.length,
+            });
+            deps.broadcastToAll('data-updated', fieldName, newContent);
+            return jsonRes(res, {
+              success: true,
+              field: fieldName,
+              startAnchorAt: startPos,
+              endAnchorAt: endPos,
+              includeAnchors,
+              oldBlockSize: oldBlock.length,
+              newBlockSize: newBlock.length,
+              oldSize: content.length,
+              newSize: newContent.length,
+            });
+          } else {
+            return mcpError(res, 403, {
+              action: 'block replace in field',
+              message: '사용자가 거부했습니다',
+              rejected: true,
+              suggestion: '앱에서 블록 치환 요청을 허용한 뒤 다시 시도하세요.',
+              target: `field:${fieldName}`,
+            });
+          }
+        } finally {
+          release();
+        }
+      }
+
+      // ----------------------------------------------------------------
       // POST /field/:name/insert — insert text into a string field
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'insert' && !parts[3] && req.method === 'POST') {
@@ -1212,15 +1571,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         // Acquire mutex to prevent parallel writes on same field
         const release = await acquireFieldMutex(fieldName);
         try {
-          const oldContent: string = currentData[fieldName] || '';
+          const oldContent: string = normalizeLF(currentData[fieldName] || '');
           let newContent: string;
           const position: string = body.position || 'end';
+          const insertContent = normalizeLF(body.content);
           if (position === 'end') {
-            newContent = oldContent + '\n' + body.content;
+            newContent = oldContent + '\n' + insertContent;
           } else if (position === 'start') {
-            newContent = body.content + '\n' + oldContent;
+            newContent = insertContent + '\n' + oldContent;
           } else if ((position === 'after' || position === 'before') && body.anchor) {
-            const anchorPos = oldContent.indexOf(body.anchor);
+            const anchorPos = oldContent.indexOf(normalizeLF(body.anchor));
             if (anchorPos === -1) {
               return jsonRes(res, {
                 success: false,
@@ -1228,10 +1588,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               });
             }
             if (position === 'after') {
-              const insertAt = anchorPos + body.anchor.length;
-              newContent = oldContent.slice(0, insertAt) + '\n' + body.content + oldContent.slice(insertAt);
+              const insertAt = anchorPos + normalizeLF(body.anchor).length;
+              newContent = oldContent.slice(0, insertAt) + '\n' + insertContent + oldContent.slice(insertAt);
             } else {
-              newContent = oldContent.slice(0, anchorPos) + body.content + '\n' + oldContent.slice(anchorPos);
+              newContent = oldContent.slice(0, anchorPos) + insertContent + '\n' + oldContent.slice(anchorPos);
             }
           } else {
             return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
@@ -1349,12 +1709,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         // Acquire mutex to prevent parallel writes
         const release = await acquireFieldMutex(fieldName);
         try {
-          let content: string = currentData[fieldName] || '';
+          let content: string = normalizeLF(currentData[fieldName] || '');
           const originalSize = content.length;
           // Apply replacements sequentially, collecting match info
           const results = replacements.map((r) => {
-            const findStr: string = r.find;
-            const replaceStr: string = r.replace !== undefined ? r.replace : '';
+            const findStr: string = normalizeLF(r.find);
+            const replaceStr: string = r.replace !== undefined ? normalizeLF(r.replace) : '';
             const useRegex = !!r.regex;
             const flags: string = r.flags || 'g';
             let matchCount: number;
@@ -1510,9 +1870,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `field:${fieldName}`,
           });
         }
-        const content: string =
-          typeof currentData[fieldName] === 'string' ? currentData[fieldName] : String(currentData[fieldName] ?? '');
-        const queryStr: string = body.query;
+        const content: string = normalizeLF(
+          typeof currentData[fieldName] === 'string' ? currentData[fieldName] : String(currentData[fieldName] ?? ''),
+        );
+        const queryStr: string = normalizeLF(body.query);
         const contextChars: number = Math.max(0, Math.min(Number(body.context_chars) || 100, 500));
         const maxMatches: number = Math.max(1, Math.min(Number(body.max_matches) || 20, 100));
         const useRegex = !!body.regex;
@@ -1669,6 +2030,162 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           length: slice.length,
           hasMore: offset + length < content.length,
           content: slice,
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /field/:name/snapshot — save current field value as a snapshot
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] && parts[2] === 'snapshot' && !parts[3] && req.method === 'POST') {
+        const fieldName = decodeURIComponent(parts[1]);
+        const content = currentData[fieldName];
+        if (content === undefined) {
+          return mcpError(res, 400, {
+            action: 'snapshot field',
+            message: `"${fieldName}" 필드를 찾을 수 없습니다.`,
+            target: `field:${fieldName}`,
+          });
+        }
+        const snapshotId = `snap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const snapshot = {
+          id: snapshotId,
+          field: fieldName,
+          timestamp: new Date().toISOString(),
+          size: typeof content === 'string' ? content.length : JSON.stringify(content).length,
+          content: typeof content === 'string' ? content : JSON.parse(JSON.stringify(content)),
+        };
+        if (!fieldSnapshots.has(fieldName)) fieldSnapshots.set(fieldName, []);
+        const snaps = fieldSnapshots.get(fieldName)!;
+        snaps.push(snapshot);
+        // Keep max 10 snapshots per field
+        if (snaps.length > 10) snaps.shift();
+        return jsonRes(res, {
+          success: true,
+          snapshotId,
+          field: fieldName,
+          size: snapshot.size,
+          timestamp: snapshot.timestamp,
+          totalSnapshots: snaps.length,
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /field/:name/snapshots — list snapshots for a field
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] && parts[2] === 'snapshots' && !parts[3] && req.method === 'GET') {
+        const fieldName = decodeURIComponent(parts[1]);
+        const snaps = fieldSnapshots.get(fieldName) || [];
+        return jsonRes(res, {
+          field: fieldName,
+          count: snaps.length,
+          snapshots: snaps.map((s) => ({ id: s.id, timestamp: s.timestamp, size: s.size })),
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /field/:name/restore — restore a field from a snapshot
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] && parts[2] === 'restore' && !parts[3] && req.method === 'POST') {
+        const fieldName = decodeURIComponent(parts[1]);
+        const body = await readJsonBody(req, res, `field/${fieldName}/restore`, broadcastStatus);
+        if (!body) return;
+        const snapshotId: string = body.snapshot_id;
+        if (!snapshotId) {
+          return mcpError(res, 400, {
+            action: 'restore field',
+            message: 'Missing "snapshot_id"',
+            suggestion: 'list_snapshots로 스냅샷 ID를 확인한 뒤 전달하세요.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const snaps = fieldSnapshots.get(fieldName) || [];
+        const snapshot = snaps.find((s) => s.id === snapshotId);
+        if (!snapshot) {
+          return mcpError(res, 400, {
+            action: 'restore field',
+            message: `스냅샷을 찾을 수 없음: ${snapshotId}`,
+            suggestion: 'list_snapshots로 유효한 스냅샷 ID를 확인하세요.',
+            target: `field:${fieldName}`,
+          });
+        }
+        const currentSize =
+          typeof currentData[fieldName] === 'string'
+            ? currentData[fieldName].length
+            : JSON.stringify(currentData[fieldName] ?? '').length;
+        const allowed = await deps.askRendererConfirm(
+          'MCP 스냅샷 복원 요청',
+          `AI 어시스턴트가 "${fieldName}" 필드를 스냅샷으로 복원하려 합니다.\n스냅샷: ${snapshotId}\n시점: ${snapshot.timestamp}\n현재 크기: ${currentSize}자 → 스냅샷 크기: ${snapshot.size}자`,
+        );
+        if (allowed) {
+          currentData[fieldName] =
+            typeof snapshot.content === 'string' ? snapshot.content : JSON.parse(JSON.stringify(snapshot.content));
+          if (fieldName === 'lua') {
+            currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
+            deps.broadcastToAll(
+              'data-updated',
+              'triggerScripts',
+              deps.stringifyTriggerScripts(currentData.triggerScripts),
+            );
+          }
+          logMcpMutation('restore field snapshot', `field:${fieldName}`, {
+            snapshotId,
+            restoredSize: snapshot.size,
+          });
+          deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
+          return jsonRes(res, {
+            success: true,
+            field: fieldName,
+            snapshotId,
+            restoredSize: snapshot.size,
+            timestamp: snapshot.timestamp,
+          });
+        } else {
+          return mcpError(res, 403, {
+            action: 'restore field',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            target: `field:${fieldName}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // GET /field/:name/stats — get field statistics (read-only)
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] && parts[2] === 'stats' && !parts[3] && req.method === 'GET') {
+        const fieldName = decodeURIComponent(parts[1]);
+        const raw = currentData[fieldName];
+        if (raw === undefined) {
+          return mcpError(res, 400, {
+            action: 'get field stats',
+            message: `"${fieldName}" 필드를 찾을 수 없습니다.`,
+            target: `field:${fieldName}`,
+          });
+        }
+        if (typeof raw !== 'string') {
+          return jsonRes(res, {
+            field: fieldName,
+            type: Array.isArray(raw) ? 'array' : typeof raw,
+            size: JSON.stringify(raw).length,
+          });
+        }
+        const content = raw as string;
+        const lines = content.split('\n');
+        const words = content.split(/\s+/).filter((w) => w.length > 0);
+        // Count CBS tags
+        const cbsTags = (content.match(/\{\{[^}]+\}\}/g) || []).length;
+        // Count HTML tags
+        const htmlTags = (content.match(/<[^>]+>/g) || []).length;
+        return jsonRes(res, {
+          field: fieldName,
+          type: 'string',
+          characters: content.length,
+          lines: lines.length,
+          words: words.length,
+          cbsTags,
+          htmlTags,
+          emptyLines: lines.filter((l) => l.trim() === '').length,
+          longestLine: Math.max(...lines.map((l) => l.length)),
         });
       }
 
@@ -2302,8 +2819,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const lorebook = currentData.lorebook || [];
-        const findStr: string = body.find;
-        const replaceStr: string = body.replace !== undefined ? body.replace : '';
+        const findStr: string = normalizeLF(body.find);
+        const replaceStr: string = body.replace !== undefined ? normalizeLF(body.replace) : '';
         const useRegex = !!body.regex;
         const flags: string = body.flags || 'g';
         const dryRun = !!body.dry_run;
@@ -2319,7 +2836,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         for (let i = 0; i < lorebook.length; i++) {
           const entry = lorebook[i];
           if (!entry || entry.mode === 'folder') continue;
-          const content: string = entry[targetField] || '';
+          const content: string = normalizeLF(entry[targetField] || '');
           if (!content) continue;
 
           let matchCount: number;
@@ -2456,9 +2973,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         // Pre-compute matches for each replacement
         const results = replacements.map((r) => {
           const entry = lorebook[r.index];
-          const content: string = (entry && entry.content) || '';
-          const findStr: string = r.find;
-          const replaceStr: string = r.replace !== undefined ? r.replace : '';
+          const content: string = normalizeLF((entry && entry.content) || '');
+          const findStr: string = normalizeLF(r.find);
+          const replaceStr: string = r.replace !== undefined ? normalizeLF(r.replace) : '';
           const useRegex = !!r.regex;
           const flags: string = r.flags || 'g';
           let matchCount: number;
@@ -2562,24 +3079,26 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         // Pre-compute new contents
         const results = insertions.map((ins) => {
           const entry = lorebook[ins.index];
-          const oldContent: string = (entry && entry.content) || '';
+          const oldContent: string = normalizeLF((entry && entry.content) || '');
           const position = ins.position || 'end';
           let newContent: string;
           let error: string | undefined;
+          const insContent = normalizeLF(ins.content);
           if (position === 'end') {
-            newContent = oldContent + '\n' + ins.content;
+            newContent = oldContent + '\n' + insContent;
           } else if (position === 'start') {
-            newContent = ins.content + '\n' + oldContent;
+            newContent = insContent + '\n' + oldContent;
           } else if ((position === 'after' || position === 'before') && ins.anchor) {
-            const anchorPos = oldContent.indexOf(ins.anchor);
+            const normalizedAnchor = normalizeLF(ins.anchor);
+            const anchorPos = oldContent.indexOf(normalizedAnchor);
             if (anchorPos === -1) {
               error = `앵커를 찾을 수 없음: ${ins.anchor.substring(0, 60)}`;
               newContent = oldContent;
             } else if (position === 'after') {
-              const insertAt = anchorPos + ins.anchor.length;
-              newContent = oldContent.slice(0, insertAt) + '\n' + ins.content + oldContent.slice(insertAt);
+              const insertAt = anchorPos + normalizedAnchor.length;
+              newContent = oldContent.slice(0, insertAt) + '\n' + insContent + oldContent.slice(insertAt);
             } else {
-              newContent = oldContent.slice(0, anchorPos) + ins.content + '\n' + oldContent.slice(anchorPos);
+              newContent = oldContent.slice(0, anchorPos) + insContent + '\n' + oldContent.slice(anchorPos);
             }
           } else {
             error = 'position이 "after"/"before"일 때 anchor가 필요합니다';
@@ -2671,9 +3190,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const entryName: string = currentData.lorebook[idx].comment || `entry_${idx}`;
-        const content: string = currentData.lorebook[idx][targetField] || '';
-        const findStr: string = body.find;
-        const replaceStr: string = body.replace !== undefined ? body.replace : '';
+        const content: string = normalizeLF(currentData.lorebook[idx][targetField] || '');
+        const findStr: string = normalizeLF(body.find);
+        const replaceStr: string = body.replace !== undefined ? normalizeLF(body.replace) : '';
         const useRegex = !!body.regex;
         const flags: string = body.flags || 'g';
 
@@ -2731,6 +3250,128 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /lorebook/:idx/block-replace — replace multiline block between two anchors
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] && parts[2] === 'block-replace' && req.method === 'POST') {
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= (currentData.lorebook || []).length || !currentData.lorebook[idx]) {
+          return mcpError(res, 400, {
+            action: 'block replace lorebook',
+            message: `Index ${idx} out of range or entry missing`,
+            suggestion: 'list_lorebook 또는 GET /lorebook 으로 유효한 index를 다시 확인하세요.',
+            target: `lorebook:${idx}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `lorebook/${idx}/block-replace`, broadcastStatus);
+        if (!body) return;
+        if (!body.start_anchor || !body.end_anchor) {
+          return mcpError(res, 400, {
+            action: 'block replace lorebook',
+            message: 'Missing "start_anchor" or "end_anchor"',
+            suggestion: '블록의 시작과 끝을 나타내는 앵커 문자열이 필요합니다.',
+            target: `lorebook:${idx}`,
+          });
+        }
+        const targetField: string = body.field || 'content';
+        const validFields = ['content', 'comment', 'key', 'secondkey'];
+        if (!validFields.includes(targetField)) {
+          return mcpError(res, 400, {
+            action: 'block replace lorebook',
+            message: `"${targetField}" 필드는 지원하지 않습니다. content/comment/key/secondkey만 가능합니다.`,
+            target: `lorebook:${idx}`,
+          });
+        }
+        const entry = currentData.lorebook[idx];
+        const rawContent: string = (entry[targetField] || '') as string;
+        const content = normalizeLF(rawContent);
+        const startAnchor = normalizeLF(body.start_anchor);
+        const endAnchor = normalizeLF(body.end_anchor);
+        const newBlock: string = body.content !== undefined ? normalizeLF(body.content) : '';
+        const includeAnchors = body.include_anchors !== false;
+        const dryRun = !!body.dry_run;
+
+        const startPos = content.indexOf(startAnchor);
+        if (startPos === -1) {
+          return jsonRes(res, {
+            success: false,
+            message: `시작 앵커를 찾을 수 없음: ${startAnchor.substring(0, 80)}`,
+          });
+        }
+        const searchAfter = startPos + startAnchor.length;
+        const endPos = content.indexOf(endAnchor, searchAfter);
+        if (endPos === -1) {
+          return jsonRes(res, {
+            success: false,
+            message: `끝 앵커를 찾을 수 없음 (시작 앵커 이후): ${endAnchor.substring(0, 80)}`,
+            startAnchorFoundAt: startPos,
+          });
+        }
+
+        let replaceStart: number, replaceEnd: number;
+        if (includeAnchors) {
+          replaceStart = startPos;
+          replaceEnd = endPos + endAnchor.length;
+        } else {
+          replaceStart = startPos + startAnchor.length;
+          replaceEnd = endPos;
+        }
+        const oldBlock = content.slice(replaceStart, replaceEnd);
+        const newContent = content.slice(0, replaceStart) + newBlock + content.slice(replaceEnd);
+
+        if (dryRun) {
+          return jsonRes(res, {
+            dryRun: true,
+            index: idx,
+            field: targetField,
+            startAnchorAt: startPos,
+            endAnchorAt: endPos,
+            includeAnchors,
+            oldBlockSize: oldBlock.length,
+            oldBlockPreview: oldBlock.substring(0, 300) + (oldBlock.length > 300 ? '...' : ''),
+            newBlockSize: newBlock.length,
+            newBlockPreview: newBlock.substring(0, 300) + (newBlock.length > 300 ? '...' : ''),
+            fieldLength: content.length,
+            newFieldLength: newContent.length,
+          });
+        }
+
+        const comment = entry.comment || `#${idx}`;
+        const allowed = await deps.askRendererConfirm(
+          'MCP 로어북 블록 치환',
+          `AI 어시스턴트가 로어북 [${comment}]의 ${targetField}에서 블록 치환하려 합니다.\n시작: ${startAnchor.substring(0, 50)}\n끝: ${endAnchor.substring(0, 50)}\n블록: ${oldBlock.length}→${newBlock.length}자`,
+        );
+        if (allowed) {
+          entry[targetField] = newContent;
+          logMcpMutation('block replace lorebook', `lorebook:${idx}`, {
+            field: targetField,
+            oldBlockSize: oldBlock.length,
+            newBlockSize: newBlock.length,
+          });
+          deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
+          return jsonRes(res, {
+            success: true,
+            index: idx,
+            field: targetField,
+            startAnchorAt: startPos,
+            endAnchorAt: endPos,
+            includeAnchors,
+            oldBlockSize: oldBlock.length,
+            newBlockSize: newBlock.length,
+            oldSize: content.length,
+            newSize: newContent.length,
+          });
+        } else {
+          return mcpError(res, 403, {
+            action: 'block replace lorebook',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 블록 치환 요청을 허용한 뒤 다시 시도하세요.',
+            target: `lorebook:${idx}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
       // POST /lorebook/:idx/insert — insert text into lorebook content
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && parts[1] && parts[2] === 'insert' && req.method === 'POST') {
@@ -2754,16 +3395,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const entryName: string = currentData.lorebook[idx].comment || `entry_${idx}`;
-        const oldContent: string = currentData.lorebook[idx].content || '';
+        const oldContent: string = normalizeLF(currentData.lorebook[idx].content || '');
         let newContent: string;
         const position: string = body.position || 'end';
+        const insContent = normalizeLF(body.content);
 
         if (position === 'end') {
-          newContent = oldContent + '\n' + body.content;
+          newContent = oldContent + '\n' + insContent;
         } else if (position === 'start') {
-          newContent = body.content + '\n' + oldContent;
+          newContent = insContent + '\n' + oldContent;
         } else if ((position === 'after' || position === 'before') && body.anchor) {
-          const anchorPos = oldContent.indexOf(body.anchor);
+          const anchorPos = oldContent.indexOf(normalizeLF(body.anchor));
           if (anchorPos === -1) {
             return jsonRes(res, {
               success: false,
@@ -2771,16 +3413,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
           if (position === 'after') {
-            const insertAt = anchorPos + body.anchor.length;
-            newContent = oldContent.slice(0, insertAt) + '\n' + body.content + oldContent.slice(insertAt);
+            const insertAt = anchorPos + normalizeLF(body.anchor).length;
+            newContent = oldContent.slice(0, insertAt) + '\n' + insContent + oldContent.slice(insertAt);
           } else {
-            newContent = oldContent.slice(0, anchorPos) + body.content + '\n' + oldContent.slice(anchorPos);
+            newContent = oldContent.slice(0, anchorPos) + insContent + '\n' + oldContent.slice(anchorPos);
           }
         } else {
           return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
         }
 
-        const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
+        const preview = insContent.substring(0, 100) + (insContent.length > 100 ? '...' : '');
         const allowed = await deps.askRendererConfirm(
           'MCP 삽입 요청',
           `AI 어시스턴트가 로어북 항목 "${entryName}" (index ${idx})에 내용을 삽입하려 합니다.\n위치: ${position}${body.anchor ? ' "' + body.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
@@ -3113,9 +3755,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const entry = currentData.regex[idx];
         const entryName: string = entry.comment || `regex_${idx}`;
-        const content: string = (targetField === 'find' ? entry.find || entry.in : entry.replace || entry.out) || '';
-        const findStr: string = body.find;
-        const replaceStr: string = body.replace !== undefined ? body.replace : '';
+        const content: string = normalizeLF(
+          (targetField === 'find' ? entry.find || entry.in : entry.replace || entry.out) || '',
+        );
+        const findStr: string = normalizeLF(body.find);
+        const replaceStr: string = normalizeLF(body.replace !== undefined ? body.replace : '');
         const useRegex = !!body.regex;
         const flags: string = body.flags || 'g';
 
@@ -3201,16 +3845,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const entry = currentData.regex[idx];
         const entryName: string = entry.comment || `regex_${idx}`;
-        const oldContent: string = (targetField === 'find' ? entry.find || entry.in : entry.replace || entry.out) || '';
+        const oldContent: string = normalizeLF(
+          (targetField === 'find' ? entry.find || entry.in : entry.replace || entry.out) || '',
+        );
         let newContent: string;
         const position: string = body.position || 'end';
+        const insContent = normalizeLF(body.content);
 
         if (position === 'end') {
-          newContent = oldContent + body.content;
+          newContent = oldContent + insContent;
         } else if (position === 'start') {
-          newContent = body.content + oldContent;
+          newContent = insContent + oldContent;
         } else if ((position === 'after' || position === 'before') && body.anchor) {
-          const anchorPos = oldContent.indexOf(body.anchor);
+          const anchorNorm = normalizeLF(body.anchor);
+          const anchorPos = oldContent.indexOf(anchorNorm);
           if (anchorPos === -1) {
             return jsonRes(res, {
               success: false,
@@ -3218,16 +3866,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
           if (position === 'after') {
-            const insertAt = anchorPos + body.anchor.length;
-            newContent = oldContent.slice(0, insertAt) + body.content + oldContent.slice(insertAt);
+            const insertAt = anchorPos + anchorNorm.length;
+            newContent = oldContent.slice(0, insertAt) + insContent + oldContent.slice(insertAt);
           } else {
-            newContent = oldContent.slice(0, anchorPos) + body.content + oldContent.slice(anchorPos);
+            newContent = oldContent.slice(0, anchorPos) + insContent + oldContent.slice(anchorPos);
           }
         } else {
           return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
         }
 
-        const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
+        const preview = insContent.substring(0, 100) + (insContent.length > 100 ? '...' : '');
         const allowed = await deps.askRendererConfirm(
           'MCP 삽입 요청',
           `AI 어시스턴트가 정규식 항목 "${entryName}" (index ${idx})의 ${targetField} 필드에 내용을 삽입하려 합니다.\n위치: ${position}${body.anchor ? ' "' + body.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
@@ -4088,9 +4736,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const sectionName = sections[idx].name;
-        const content = sections[idx].content;
-        const findStr: string = body.find;
-        const replaceStr: string = body.replace !== undefined ? body.replace : '';
+        const content = normalizeLF(sections[idx].content);
+        const findStr: string = normalizeLF(body.find);
+        const replaceStr: string = normalizeLF(body.replace !== undefined ? body.replace : '');
         const useRegex = !!body.regex;
         const flags: string = body.flags || 'g';
 
@@ -4173,16 +4821,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const sectionName = sections[idx].name;
-        const oldContent = sections[idx].content;
+        const oldContent = normalizeLF(sections[idx].content);
         let newContent: string;
         const position: string = body.position || 'end';
+        const insContent = normalizeLF(body.content);
 
         if (position === 'end') {
-          newContent = oldContent + '\n' + body.content;
+          newContent = oldContent + '\n' + insContent;
         } else if (position === 'start') {
-          newContent = body.content + '\n' + oldContent;
+          newContent = insContent + '\n' + oldContent;
         } else if ((position === 'after' || position === 'before') && body.anchor) {
-          const anchorPos = oldContent.indexOf(body.anchor);
+          const anchorNorm = normalizeLF(body.anchor);
+          const anchorPos = oldContent.indexOf(anchorNorm);
           if (anchorPos === -1) {
             return jsonRes(res, {
               success: false,
@@ -4190,16 +4840,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
           if (position === 'after') {
-            const insertAt = anchorPos + body.anchor.length;
-            newContent = oldContent.slice(0, insertAt) + '\n' + body.content + oldContent.slice(insertAt);
+            const insertAt = anchorPos + anchorNorm.length;
+            newContent = oldContent.slice(0, insertAt) + '\n' + insContent + oldContent.slice(insertAt);
           } else {
-            newContent = oldContent.slice(0, anchorPos) + body.content + '\n' + oldContent.slice(anchorPos);
+            newContent = oldContent.slice(0, anchorPos) + insContent + '\n' + oldContent.slice(anchorPos);
           }
         } else {
           return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
         }
 
-        const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
+        const preview = insContent.substring(0, 100) + (insContent.length > 100 ? '...' : '');
         const allowed = await deps.askRendererConfirm(
           'MCP 삽입 요청',
           `AI 어시스턴트가 Lua 섹션 "${sectionName}" (index ${idx})에 코드를 삽입하려 합니다.\n위치: ${position}${body.anchor ? ' "' + body.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
@@ -4413,9 +5063,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const sectionName = sections[idx].name;
-        const content = sections[idx].content;
-        const findStr: string = body.find;
-        const replaceStr: string = body.replace !== undefined ? body.replace : '';
+        const content = normalizeLF(sections[idx].content);
+        const findStr: string = normalizeLF(body.find);
+        const replaceStr: string = normalizeLF(body.replace !== undefined ? body.replace : '');
         const useRegex = !!body.regex;
         const flags: string = body.flags || 'g';
 
@@ -4496,16 +5146,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const sectionName = sections[idx].name;
-        const oldContent = sections[idx].content;
+        const oldContent = normalizeLF(sections[idx].content);
         let newContent: string;
         const position: string = body.position || 'end';
+        const insContent = normalizeLF(body.content);
 
         if (position === 'end') {
-          newContent = oldContent + '\n' + body.content;
+          newContent = oldContent + '\n' + insContent;
         } else if (position === 'start') {
-          newContent = body.content + '\n' + oldContent;
+          newContent = insContent + '\n' + oldContent;
         } else if ((position === 'after' || position === 'before') && body.anchor) {
-          const anchorPos = oldContent.indexOf(body.anchor);
+          const anchorNorm = normalizeLF(body.anchor);
+          const anchorPos = oldContent.indexOf(anchorNorm);
           if (anchorPos === -1) {
             return jsonRes(res, {
               success: false,
@@ -4513,16 +5165,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
           if (position === 'after') {
-            const insertAt = anchorPos + body.anchor.length;
-            newContent = oldContent.slice(0, insertAt) + '\n' + body.content + oldContent.slice(insertAt);
+            const insertAt = anchorPos + anchorNorm.length;
+            newContent = oldContent.slice(0, insertAt) + '\n' + insContent + oldContent.slice(insertAt);
           } else {
-            newContent = oldContent.slice(0, anchorPos) + body.content + '\n' + oldContent.slice(anchorPos);
+            newContent = oldContent.slice(0, anchorPos) + insContent + '\n' + oldContent.slice(anchorPos);
           }
         } else {
           return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
         }
 
-        const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
+        const preview = insContent.substring(0, 100) + (insContent.length > 100 ? '...' : '');
         const allowed = await deps.askRendererConfirm(
           'MCP 삽입 요청',
           `AI 어시스턴트가 CSS 섹션 "${sectionName}" (index ${idx})에 코드를 삽입하려 합니다.\n위치: ${position}${body.anchor ? ' "' + body.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
@@ -6313,6 +6965,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     invalidateSectionCaches() {
       luaCache.invalidate();
       cssCache.invalidate();
+      fieldSnapshots.clear();
     },
   };
 }

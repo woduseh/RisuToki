@@ -11,6 +11,7 @@ Structured skill documents for LLMs working with RisuAI `.charx`, `.risum`, and 
 | [writing-lorebooks](writing-lorebooks/)             | Lorebook entry structure and patterns  | SKILL.md                    |
 | [writing-regex-scripts](writing-regex-scripts/)     | Regex script types and patterns        | SKILL.md                    |
 | [writing-html-css](writing-html-css/)               | HTML/CSS with RisuAI constraints       | SKILL.md                    |
+| [writing-arca-html](writing-arca-html/)             | HTML for WYSIWYG editors (Arca.live)   | SKILL.md                    |
 | [writing-trigger-scripts](writing-trigger-scripts/) | Event-driven trigger automation        | SKILL.md                    |
 | [writing-asset-prompts](writing-asset-prompts/)     | Anima model image prompt generation    | SKILL.md                    |
 

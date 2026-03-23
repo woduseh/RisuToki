@@ -24,17 +24,20 @@ const mcpConfirmCallbacks: Record<number, (value: boolean | number) => void> = {
 export function askRendererConfirm(title: string, message: string): Promise<boolean> {
   return new Promise((resolve) => {
     const mainWindow = deps.getMainWindow();
-    if (!mainWindow || mainWindow.isDestroyed()) { resolve(false); return; }
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      resolve(false);
+      return;
+    }
     const id = ++mcpConfirmId;
     mcpConfirmCallbacks[id] = resolve as (v: boolean | number) => void;
     mainWindow.webContents.send('mcp-confirm-request', id, title, message);
-    // Timeout fallback (30s)
+    // Timeout fallback (10 min — MCP operations on large files need generous time)
     setTimeout(() => {
       if (mcpConfirmCallbacks[id]) {
         delete mcpConfirmCallbacks[id];
         resolve(false);
       }
-    }, 30000);
+    }, 600000);
   });
 }
 
@@ -42,7 +45,10 @@ export function askRendererConfirm(title: string, message: string): Promise<bool
 export function askRendererCloseConfirm(): Promise<number> {
   return new Promise((resolve) => {
     const mainWindow = deps.getMainWindow();
-    if (!mainWindow || mainWindow.isDestroyed()) { resolve(1); return; }
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      resolve(1);
+      return;
+    }
     const id = ++mcpConfirmId;
     mcpConfirmCallbacks[id] = resolve as (v: boolean | number) => void;
     mainWindow.webContents.send('close-confirm-request', id);

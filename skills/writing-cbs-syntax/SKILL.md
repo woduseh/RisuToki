@@ -1,6 +1,6 @@
 ---
 name: writing-cbs-syntax
-description: "Provides the complete reference for RisuAI Custom Bracket Syntax (CBS). Covers 130+ template tags including variables, conditionals, loops, math, arrays, assets, buttons, and character data access. Use when writing or editing CBS expressions in charx description, firstMessage, lorebook content, globalNote, backgroundEmbedding, or any CBS-enabled field."
+description: 'Provides the complete reference for RisuAI Custom Bracket Syntax (CBS). Covers 130+ template tags including variables, conditionals, loops, math, arrays, assets, buttons, and character data access. Use when writing or editing CBS expressions in charx description, firstMessage, lorebook content, globalNote, backgroundEmbedding, or any CBS-enabled field.'
 ---
 
 # CBS — Custom Bracket Syntax
@@ -17,35 +17,35 @@ CBS is `{{tag::arg1::arg2}}` template syntax evaluated at runtime in RisuAI. Tag
 
 ## Quick Reference — Essential Tags
 
-| Tag | Syntax | Description |
-|-----|--------|-------------|
-| `char` | `{{char}}` | Current character name (nickname preferred) |
-| `user` | `{{user}}` | Current user name |
-| `getvar` | `{{getvar::name}}` | Read chat-scoped variable |
-| `setvar` | `{{setvar::name::val}}` | Write chat-scoped variable (**runVar** context only) |
-| `addvar` | `{{addvar::name::n}}` | Add number to variable (**runVar**) |
-| `setdefaultvar` | `{{setdefaultvar::name::val}}` | Set only if undefined (**runVar**) |
-| `getglobalvar` | `{{getglobalvar::name}}` | Read global variable (shared across chats) |
-| `calc` | `{{calc::2+3*4}}` | Arithmetic expression → `14` |
-| `random` | `{{random::A::B::C}}` | Random pick from args |
-| `roll` | `{{roll::2d6}}` | Dice roll (sum) |
-| `#when` | `{{#when::…}}…{{/when}}` | Conditional block |
-| `#each` | `{{#each [arr] as x}}…{{/each}}` | Loop over array |
-| `makearray` | `{{makearray::a::b::c}}` | Create JSON array |
-| `arrayelement` | `{{arrayelement::[arr]::idx}}` | Get element by index |
-| `arraylength` | `{{arraylength::[arr]}}` | Array length |
-| `asset` | `{{asset::name}}` | Display asset (image/audio) |
-| `button` | `{{button::Label::triggerName}}` | Clickable button → Lua trigger |
-| `equal` | `{{equal::A::B}}` | `1` if equal, else `0` |
-| `replace` | `{{replace::str::find::repl}}` | String replace (all matches) |
-| `contains` | `{{contains::str::sub}}` | `1` if substring found |
-| `lastmessage` | `{{lastmessage}}` | Last chat message (any role) |
-| `description` | `{{description}}` | Character description field |
-| `personality` | `{{personality}}` | Character personality field |
-| `time` | `{{time}}` | Current local time `H:M:S` |
-| `date` | `{{date::YYYY-MM-DD}}` | Formatted date |
-| `br` | `{{br}}` | Newline |
-| `blank` | `{{blank}}` | Empty string |
+| Tag             | Syntax                           | Description                                          |
+| --------------- | -------------------------------- | ---------------------------------------------------- |
+| `char`          | `{{char}}`                       | Current character name (nickname preferred)          |
+| `user`          | `{{user}}`                       | Current user name                                    |
+| `getvar`        | `{{getvar::name}}`               | Read chat-scoped variable                            |
+| `setvar`        | `{{setvar::name::val}}`          | Write chat-scoped variable (**runVar** context only) |
+| `addvar`        | `{{addvar::name::n}}`            | Add number to variable (**runVar**)                  |
+| `setdefaultvar` | `{{setdefaultvar::name::val}}`   | Set only if undefined (**runVar**)                   |
+| `getglobalvar`  | `{{getglobalvar::name}}`         | Read global variable (shared across chats)           |
+| `calc`          | `{{calc::2+3*4}}`                | Arithmetic expression → `14`                         |
+| `random`        | `{{random::A::B::C}}`            | Random pick from args                                |
+| `roll`          | `{{roll::2d6}}`                  | Dice roll (sum)                                      |
+| `#when`         | `{{#when::…}}…{{/when}}`         | Conditional block                                    |
+| `#each`         | `{{#each [arr] as x}}…{{/each}}` | Loop over array                                      |
+| `makearray`     | `{{makearray::a::b::c}}`         | Create JSON array                                    |
+| `arrayelement`  | `{{arrayelement::[arr]::idx}}`   | Get element by index                                 |
+| `arraylength`   | `{{arraylength::[arr]}}`         | Array length                                         |
+| `asset`         | `{{asset::name}}`                | Display asset (image/audio)                          |
+| `button`        | `{{button::Label::triggerName}}` | Clickable button → Lua trigger                       |
+| `equal`         | `{{equal::A::B}}`                | `1` if equal, else `0`                               |
+| `replace`       | `{{replace::str::find::repl}}`   | String replace (all matches)                         |
+| `contains`      | `{{contains::str::sub}}`         | `1` if substring found                               |
+| `lastmessage`   | `{{lastmessage}}`                | Last chat message (any role)                         |
+| `description`   | `{{description}}`                | Character description field                          |
+| `personality`   | `{{personality}}`                | Character personality field                          |
+| `time`          | `{{time}}`                       | Current local time `H:M:S`                           |
+| `date`          | `{{date::YYYY-MM-DD}}`           | Formatted date                                       |
+| `br`            | `{{br}}`                         | Newline                                              |
+| `blank`         | `{{blank}}`                      | Empty string                                         |
 
 ---
 
@@ -102,9 +102,10 @@ They are **silently ignored** in display-only contexts (e.g., `editdisplay` rege
 **Operators:** `is`, `isnot`, `>`, `<`, `>=`, `<=`, `and`, `or`, `not`
 
 **Variable shortcuts:**
+
 - `{{#when::var::hp}}` — true if variable `hp` exists
-- `{{#when::vis::hp::0}}` — true if variable `hp` equals `0`
-- `{{#when::visnot::hp::0}}` — true if variable `hp` does NOT equal `0`
+- `{{#when::hp::vis::0}}` — true if variable `hp` equals `0`
+- `{{#when::hp::visnot::0}}` — true if variable `hp` does NOT equal `0`
 
 ### Inline expression (? operator)
 

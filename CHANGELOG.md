@@ -9,6 +9,33 @@
 
 ---
 
+## [0.22.0] - 2026-03-23
+
+### 새 기능
+
+- **멀티라인 블록 치환** — `replace_block_in_field` / `replace_block_in_lorebook` 신규 MCP 도구
+  - 두 앵커 사이의 여러 줄에 걸친 텍스트 블록을 안전하게 교체
+  - `include_anchors: false`로 앵커는 유지하고 사이 내용만 교체 가능
+  - `dry_run` 지원으로 미리보기 가능
+- **필드 일괄 쓰기** — `write_field_batch` 신규 MCP 도구
+  - 여러 소형 필드를 한 번의 확인으로 동시 업데이트
+  - characterVersion + defaultVariables 같은 조합에 유용
+- **필드 스냅샷/복원** — `snapshot_field` / `list_snapshots` / `restore_snapshot` 신규 MCP 도구
+  - 대형 필드 편집 전 안전망으로 활용
+  - 필드당 최대 10개 스냅샷 보관 (파일 전환 시 초기화)
+- **필드 통계** — `get_field_stats` 신규 MCP 도구
+  - 문자 수, 행 수, 단어 수, CBS/HTML 태그 수, 빈 행 수 등 요약 정보
+
+### 수정
+
+- **CRLF 정규화** — 모든 replace/insert/search MCP 도구에서 CRLF(`\r\n`)→LF(`\n`) 자동 변환
+  - 멀티라인 매칭 실패의 근본 원인 해결
+  - 필드, 로어북, 정규식, Lua, CSS 모든 핸들러에 적용
+- **확인 타임아웃 증가** — MCP 작업 확인 대기시간 30초 → 10분으로 변경
+  - 대형 파일 작업 시 타임아웃으로 인한 작업 실패 방지
+
+---
+
 ## [0.21.0] - 2026-03-23
 
 ### 새 기능

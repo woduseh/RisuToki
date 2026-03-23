@@ -689,6 +689,84 @@ server.tool(
 );
 
 server.tool(
+  'replace_block_in_field',
+  '필드에서 두 앵커 사이의 멀티라인 블록을 교체합니다. start_anchor와 end_anchor 사이의 텍스트를 새 내용으로 치환. 여러 줄에 걸친 블록도 안전하게 교체 가능. include_anchors: false로 앵커 자체는 유지하고 사이 내용만 교체 가능. dry_run 지원. 사용자 확인 필요.',
+  {
+    field: z.string().describe('필드 이름 (예: firstMessage, globalNote, description 등)'),
+    start_anchor: z.string().describe('블록 시작 앵커 문자열 (멀티라인 가능)'),
+    end_anchor: z.string().describe('블록 끝 앵커 문자열 (멀티라인 가능)'),
+    content: z.string().optional().describe('새 블록 내용 (기본: 빈 문자열 = 블록 삭제)'),
+    include_anchors: z.boolean().optional().describe('true(기본): 앵커 포함 전체 교체, false: 앵커 사이 내용만 교체'),
+    dry_run: z.boolean().optional().describe('true이면 실제 변경 없이 미리보기만 반환 (기본: false)'),
+  },
+  async ({ field, start_anchor, end_anchor, content, include_anchors, dry_run }) =>
+    textResult(
+      await apiRequest('POST', `/field/${encodeURIComponent(field)}/block-replace`, {
+        start_anchor,
+        end_anchor,
+        content,
+        include_anchors,
+        dry_run,
+      }),
+    ),
+);
+
+server.tool(
+  'write_field_batch',
+  '여러 필드의 내용을 한 번에 수정합니다. 한 번의 확인으로 모든 필드를 동시에 업데이트. characterVersion + defaultVariables 같이 여러 소형 필드를 동시에 바꿀 때 유용. triggerScripts/alternateGreetings 등 복잡한 필드는 제외. 사용자 확인 필요.',
+  {
+    entries: z
+      .array(
+        z.object({
+          field: z.string().describe('필드 이름'),
+          content: z.any().describe('새로운 내용 (문자열/boolean/number/배열 — 필드 타입에 맞게)'),
+        }),
+      )
+      .max(20)
+      .describe('수정할 필드 배열 [{field, content}, ...] (최대 20개)'),
+  },
+  async ({ entries }) => textResult(await apiRequest('POST', '/field/batch-write', { entries })),
+);
+
+server.tool(
+  'snapshot_field',
+  '필드의 현재 값을 스냅샷으로 저장합니다. 대형 필드 편집 전 안전망으로 사용. 필드당 최대 10개 스냅샷 보관 (초과 시 오래된 것부터 삭제). 파일 새로 로드 시 초기화됩니다.',
+  {
+    field: z.string().describe('스냅샷을 저장할 필드 이름 (예: firstMessage, globalNote 등)'),
+  },
+  async ({ field }) => textResult(await apiRequest('POST', `/field/${encodeURIComponent(field)}/snapshot`)),
+);
+
+server.tool(
+  'list_snapshots',
+  '필드의 저장된 스냅샷 목록을 확인합니다. 각 스냅샷의 ID, 시점, 크기를 반환.',
+  {
+    field: z.string().describe('스냅샷 목록을 확인할 필드 이름'),
+  },
+  async ({ field }) => textResult(await apiRequest('GET', `/field/${encodeURIComponent(field)}/snapshots`)),
+);
+
+server.tool(
+  'restore_snapshot',
+  '스냅샷으로 필드를 복원합니다. list_snapshots로 스냅샷 ID를 확인한 뒤 사용. 사용자 확인 필요.',
+  {
+    field: z.string().describe('복원할 필드 이름'),
+    snapshot_id: z.string().describe('복원할 스냅샷 ID (list_snapshots 결과 참조)'),
+  },
+  async ({ field, snapshot_id }) =>
+    textResult(await apiRequest('POST', `/field/${encodeURIComponent(field)}/restore`, { snapshot_id })),
+);
+
+server.tool(
+  'get_field_stats',
+  '필드의 통계 정보를 반환합니다 (문자 수, 행 수, 단어 수, CBS 태그 수, HTML 태그 수 등). 읽기 전용.',
+  {
+    field: z.string().describe('통계를 확인할 필드 이름'),
+  },
+  async ({ field }) => textResult(await apiRequest('GET', `/field/${encodeURIComponent(field)}/stats`)),
+);
+
+server.tool(
   'search_all_fields',
   '모든 텍스트 필드(firstMessage, description, globalNote, alternateGreetings, groupOnlyGreetings, lorebook content 등)에서 한 번에 검색합니다. 잔류 태그 확인 등 전체 스캔에 유용. 읽기 전용.',
   {
@@ -889,6 +967,31 @@ server.tool(
   },
   async ({ index, content, position, anchor }) =>
     textResult(await apiRequest('POST', `/lorebook/${index}/insert`, { content, position, anchor })),
+);
+
+server.tool(
+  'replace_block_in_lorebook',
+  '로어북 항목에서 두 앵커 사이의 멀티라인 블록을 교체합니다. 여러 줄에 걸친 텍스트 블록도 안전하게 교체 가능. field 옵션으로 content(기본)/comment/key/secondkey 대상 선택. dry_run 지원. 사용자 확인 필요.',
+  {
+    index: z.number().describe('로어북 항목 인덱스'),
+    start_anchor: z.string().describe('블록 시작 앵커 문자열 (멀티라인 가능)'),
+    end_anchor: z.string().describe('블록 끝 앵커 문자열 (멀티라인 가능)'),
+    content: z.string().optional().describe('새 블록 내용 (기본: 빈 문자열 = 블록 삭제)'),
+    include_anchors: z.boolean().optional().describe('true(기본): 앵커 포함 전체 교체, false: 앵커 사이 내용만 교체'),
+    field: z.enum(['content', 'comment', 'key', 'secondkey']).optional().describe('치환 대상 필드 (기본: "content")'),
+    dry_run: z.boolean().optional().describe('true이면 실제 변경 없이 미리보기만 반환 (기본: false)'),
+  },
+  async ({ index, start_anchor, end_anchor, content, include_anchors, field, dry_run }) =>
+    textResult(
+      await apiRequest('POST', `/lorebook/${index}/block-replace`, {
+        start_anchor,
+        end_anchor,
+        content,
+        include_anchors,
+        field,
+        dry_run,
+      }),
+    ),
 );
 
 server.tool(
