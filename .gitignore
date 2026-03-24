@@ -64,6 +64,7 @@ Thumbs.db
 
 # Claude
 .claude/
+.worktrees/
 
 # Bot data
 bot/
