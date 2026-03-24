@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createPreviewSession } from './preview-session';
 import type { CreatePreviewSessionOptions, PreviewEngine, PreviewLorebookEntry, PreviewSnapshot } from './preview-session';
 
@@ -155,6 +155,51 @@ function flushMessages() {
   });
 }
 
+function interceptSessionHtmlWrites(documentRef: Document) {
+  const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML')
+    ?? Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'innerHTML');
+  if (!descriptor?.get || !descriptor.set) {
+    throw new Error('innerHTML descriptor not available');
+  }
+
+  const writes: Array<{ element: Element; value: string }> = [];
+  const patchedElements = new WeakSet<Element>();
+  const originalCreateElement = documentRef.createElement.bind(documentRef);
+
+  function patchElement(element: Element | null) {
+    if (!element || patchedElements.has(element)) {
+      return;
+    }
+    patchedElements.add(element);
+    Object.defineProperty(element, 'innerHTML', {
+      configurable: true,
+      enumerable: descriptor.enumerable ?? false,
+      get() {
+        return descriptor.get!.call(this);
+      },
+      set(value: string) {
+        writes.push({ element: this as Element, value });
+        descriptor.set!.call(this, value);
+      }
+    });
+  }
+
+  documentRef.createElement = ((tagName: string, options?: ElementCreationOptions) => {
+    const element = originalCreateElement(tagName, options);
+    patchElement(element);
+    return element;
+  }) as typeof documentRef.createElement;
+
+  patchElement(documentRef.getElementById('bg-dom'));
+
+  return {
+    writes,
+    restore() {
+      documentRef.createElement = originalCreateElement as typeof documentRef.createElement;
+    }
+  };
+}
+
 describe('preview session', () => {
   it('initializes the frame, engine state, and first message', async () => {
     const engine = createEngine();
@@ -278,5 +323,66 @@ describe('preview session', () => {
     await flushMessages();
 
     expect(session.getSnapshot().variables.choice).toBe('내부');
+  });
+
+  it('documents the secure runtime direction: initialization should not require document.write from the parent session', async () => {
+    const engine = createEngine();
+    const chatFrame = createChatFrame();
+    const windowTarget = createWindowTarget();
+    const writeSpy = vi.spyOn(chatFrame.contentDocument, 'write');
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        description: '',
+        firstMessage: '첫 메시지',
+        defaultVariables: '',
+        css: 'body { color: red; }',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script'
+      },
+      chatFrame,
+      windowTarget
+    });
+
+    await session.initialize();
+
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  it('documents the secure runtime direction: message rendering should not require parent-side innerHTML injection', async () => {
+    const engine = createEngine();
+    const chatFrame = createChatFrame();
+    const windowTarget = createWindowTarget();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        description: '',
+        firstMessage: '첫 메시지 [asset]',
+        defaultVariables: '',
+        css: 'body { color: red; }',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script'
+      },
+      chatFrame,
+      windowTarget,
+      assetMap: { icon: 'data:image/png;base64,AAAA' }
+    });
+    await session.initialize();
+
+    const tracker = interceptSessionHtmlWrites(chatFrame.contentDocument);
+
+    try {
+      const input = document.createElement('textarea');
+      input.value = '안녕';
+      await session.handleSend(input);
+    } finally {
+      tracker.restore();
+    }
+
+    expect(tracker.writes).toHaveLength(0);
   });
 });

@@ -100,6 +100,18 @@ describe('preview-panel', () => {
     dispose();
   });
 
+  it('creates the preview iframe with a sandbox attribute for untrusted preview content', () => {
+    const container = document.createElement('div');
+    const deps = createDeps();
+    const { dispose } = showPreviewPanel(container, deps);
+    try {
+      const iframe = container.querySelector('.preview-chat-frame');
+      expect(iframe?.getAttribute('sandbox')).toBeTruthy();
+    } finally {
+      dispose();
+    }
+  });
+
   it('closes overlay when close button is clicked', () => {
     const container = document.createElement('div');
     const deps = createDeps();
