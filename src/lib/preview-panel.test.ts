@@ -100,13 +100,21 @@ describe('preview-panel', () => {
     dispose();
   });
 
-  it('creates the preview iframe with a sandbox attribute for untrusted preview content', () => {
+  it('creates the preview iframe with a sandbox that withholds dangerous iframe capabilities', () => {
     const container = document.createElement('div');
     const deps = createDeps();
     const { dispose } = showPreviewPanel(container, deps);
     try {
       const iframe = container.querySelector('.preview-chat-frame');
-      expect(iframe?.getAttribute('sandbox')).toBeTruthy();
+      const sandbox = iframe?.getAttribute('sandbox');
+      const sandboxTokens = new Set((sandbox ?? '').split(/\s+/).filter(Boolean));
+
+      expect(sandbox).toBeTruthy();
+      expect(sandboxTokens.has('allow-same-origin')).toBe(false);
+      expect(sandboxTokens.has('allow-top-navigation')).toBe(false);
+      expect(sandboxTokens.has('allow-popups')).toBe(false);
+      expect(sandboxTokens.has('allow-popups-to-escape-sandbox')).toBe(false);
+      expect(sandboxTokens.has('allow-modals')).toBe(false);
     } finally {
       dispose();
     }

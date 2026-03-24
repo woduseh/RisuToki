@@ -3,11 +3,13 @@ import { buildPreviewDocument } from './preview-format';
 
 describe('preview runtime contract', () => {
   it('ships a static iframe shell instead of inlining user css or html payloads into the bootstrap document', () => {
-    const processedPreviewPayload = '<style>body{color:red;}</style><div risu-trigger="wave">lua</div>';
-    const documentHtml = buildPreviewDocument(processedPreviewPayload);
+    const inlineCssFragment = '<style>body{color:red;}</style>';
+    const inlineHtmlFragment = '<div risu-trigger="wave">lua</div>';
+    const documentHtml = buildPreviewDocument(`${inlineCssFragment}${inlineHtmlFragment}`);
 
     expect(documentHtml).toContain('<div class="background-dom" id="bg-dom"></div>');
-    expect(documentHtml).not.toContain(processedPreviewPayload);
+    expect(documentHtml).not.toContain(inlineCssFragment);
+    expect(documentHtml).not.toContain(inlineHtmlFragment);
   });
 
   it('does not require inline runtime scripts or an unsafe-inline script CSP', () => {

@@ -191,6 +191,7 @@ function interceptSessionHtmlWrites(documentRef: Document) {
   }) as typeof documentRef.createElement;
 
   patchElement(documentRef.getElementById('bg-dom'));
+  patchElement(documentRef.getElementById('chat-container'));
 
   return {
     writes,
@@ -351,7 +352,7 @@ describe('preview session', () => {
     expect(writeSpy).not.toHaveBeenCalled();
   });
 
-  it('documents the secure runtime direction: message rendering should not require parent-side innerHTML injection', async () => {
+  it('documents the secure runtime direction: the message send path should not require parent-side innerHTML injection', async () => {
     const engine = createEngine();
     const chatFrame = createChatFrame();
     const windowTarget = createWindowTarget();
