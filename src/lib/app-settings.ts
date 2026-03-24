@@ -1,3 +1,9 @@
+import {
+  parseStoredJson,
+  storedAvatarStateSchema,
+  storedLayoutStateSchema,
+} from './stored-state-validation';
+
 export type RpMode = 'off' | 'toki' | 'aris' | 'custom';
 
 export interface StorageLike {
@@ -69,43 +75,6 @@ function parseInteger(value: string | null, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function isStoredAvatarState(value: unknown): value is StoredAvatarState {
-  return isRecord(value) && typeof value.src === 'string';
-}
-
-function isStoredLayoutState(value: unknown): value is StoredLayoutState {
-  if (!isRecord(value)) return false;
-  if (value.itemsPos != null && typeof value.itemsPos !== 'string') return false;
-  if (value.refsPos != null && typeof value.refsPos !== 'string') return false;
-  if (value.terminalPos != null && typeof value.terminalPos !== 'string') return false;
-  if (value.itemsVisible != null && typeof value.itemsVisible !== 'boolean') return false;
-  if (value.terminalVisible != null && typeof value.terminalVisible !== 'boolean') return false;
-  if (value.avatarVisible != null && typeof value.avatarVisible !== 'boolean') return false;
-  if (value.slotSizes != null) {
-    if (!isRecord(value.slotSizes)) return false;
-    for (const slotSize of Object.values(value.slotSizes)) {
-      if (typeof slotSize !== 'number' || !Number.isFinite(slotSize) || slotSize < 0) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-function parseJson<T>(value: string | null, isValid: (parsed: unknown) => parsed is T): T | null {
-  if (!value) return null;
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return isValid(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 export function getDefaultRpModeForDarkMode(darkMode: boolean): RpMode {
   return darkMode ? 'aris' : 'toki';
 }
@@ -135,14 +104,14 @@ export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnaps
     autosaveEnabled: parseBoolean(target.getItem(STORAGE_KEYS.autosaveEnabled)),
     autosaveInterval: parseInteger(target.getItem(STORAGE_KEYS.autosaveInterval), DEFAULT_AUTOSAVE_INTERVAL),
     autosaveDir: target.getItem(STORAGE_KEYS.autosaveDir) || '',
-    avatarIdle: parseJson(target.getItem(STORAGE_KEYS.avatarIdle), isStoredAvatarState),
-    avatarWorking: parseJson(target.getItem(STORAGE_KEYS.avatarWorking), isStoredAvatarState),
-    layoutState: parseJson(target.getItem(STORAGE_KEYS.layoutState), isStoredLayoutState)
+    avatarIdle: parseStoredJson(target.getItem(STORAGE_KEYS.avatarIdle), storedAvatarStateSchema),
+    avatarWorking: parseStoredJson(target.getItem(STORAGE_KEYS.avatarWorking), storedAvatarStateSchema),
+    layoutState: parseStoredJson(target.getItem(STORAGE_KEYS.layoutState), storedLayoutStateSchema)
   };
 }
 
 export function readStoredLayoutState(storage?: StorageLike): StoredLayoutState | null {
-  return parseJson(getDefaultStorage(storage).getItem(STORAGE_KEYS.layoutState), isStoredLayoutState);
+  return parseStoredJson(getDefaultStorage(storage).getItem(STORAGE_KEYS.layoutState), storedLayoutStateSchema);
 }
 
 export function subscribeToAppSettings(

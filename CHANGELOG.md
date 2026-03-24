@@ -9,6 +9,30 @@
 
 ---
 
+## [0.22.3] - 2026-03-24
+
+### 변경
+
+- **문서화되지 않은 로컬 sync 노출면 제거**
+  - preload/main process에 남아 있던 retired sync server 제어 surface 삭제
+  - 앱이 숨은 localhost HTTP 서버를 열지 않도록 정리
+- **CI 경로 강화**
+  - PR/push CI를 Ubuntu 검증 + Windows Electron/Renderer 빌드로 분리
+  - Dependabot으로 npm / GitHub Actions 의존성 점검 자동화 추가
+
+### 수정
+
+- **프리뷰 격리 강화**
+  - 프리뷰를 sandbox iframe + 인증된 bridge 메시지 경계로 전환
+  - parent-side `document.write` / `innerHTML` 주입 제거
+  - 스크립트/인라인 이벤트 속성 제거 sanitizer 적용
+- **저장 실패 데이터 유실 방지**
+  - 저장 실패 시 창이 닫히지 않도록 close policy 수정
+  - 사용자에게 명시적인 저장 실패 오류 표시 추가
+- **설정/파일 입력 검증 강화**
+  - 손상된 layout/avatar localStorage JSON을 안전하게 fallback 처리
+  - `.charx`, `.risum`, `.risup` 구조 검증과 payload 경계 체크 추가
+
 ## [0.22.2] - 2026-03-23
 
 ### 변경

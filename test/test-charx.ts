@@ -1,11 +1,38 @@
 import assert from 'node:assert/strict';
+import AdmZip from 'adm-zip';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
+import { pack } from 'msgpackr';
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup } from '../src/charx-io';
+import { buildRisum, rpackEncode } from '../src/rpack';
 
 // Test data objects are intentionally partial — cast to any at call sites
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+const RISUP_TEST_KEY = crypto.createHash('sha256').update('risupreset', 'utf8').digest();
+const RISUP_TEST_IV = Buffer.alloc(12);
+
+function writeCharxCard(filePath: string, card: Record<string, unknown>): void {
+  const zip = new AdmZip();
+  zip.addFile('card.json', Buffer.from(JSON.stringify(card), 'utf8'));
+  zip.writeZip(filePath);
+}
+
+function encryptRisupPayload(value: unknown): Buffer {
+  const plaintext = pack(value);
+  const cipher = crypto.createCipheriv('aes-256-gcm', RISUP_TEST_KEY, RISUP_TEST_IV);
+  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  return Buffer.concat([encrypted, cipher.getAuthTag()]);
+}
+
+function writeRisupEnvelope(filePath: string, envelope: Record<string, unknown>): void {
+  const packed = pack(envelope);
+  const compressed = zlib.deflateRawSync(packed);
+  fs.writeFileSync(filePath, rpackEncode(compressed));
+}
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
 
@@ -584,6 +611,27 @@ const errorTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-error-'));
   );
 })();
 
+(function testOpenCharxRejectsUnsupportedSpec() {
+  const filePath = path.join(errorTempDir, 'unsupported-spec.charx');
+  writeCharxCard(filePath, {
+    spec: 'chara_card_v2',
+    spec_version: '2.0',
+    data: {},
+  });
+
+  assert.throws(() => openCharx(filePath), /unsupported charx spec/i);
+})();
+
+(function testOpenCharxRejectsMissingCardData() {
+  const filePath = path.join(errorTempDir, 'missing-card-data.charx');
+  writeCharxCard(filePath, {
+    spec: 'chara_card_v3',
+    spec_version: '3.0',
+  });
+
+  assert.throws(() => openCharx(filePath), /missing required card\.data object/i);
+})();
+
 (function testOpenRisumInvalidMsgpack() {
   const filePath = path.join(errorTempDir, 'invalid.risum');
   fs.writeFileSync(filePath, Buffer.from([0xff, 0xfe, 0xfd, 0x00, 0x01]));
@@ -592,6 +640,33 @@ const errorTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-error-'));
     (err: Error) => err instanceof Error,
     'Opening risum with invalid msgpack should throw',
   );
+})();
+
+(function testOpenRisumRejectsNonObjectMainPayload() {
+  const filePath = path.join(errorTempDir, 'array-module.risum');
+  fs.writeFileSync(filePath, buildRisum(['not', 'an', 'object'] as any));
+  assert.throws(() => openRisum(filePath), /main payload must decode to an object/i);
+})();
+
+(function testOpenRisupRejectsEnvelopeWithoutPresetMarker() {
+  const filePath = path.join(errorTempDir, 'wrong-envelope-type.risup');
+  writeRisupEnvelope(filePath, {
+    type: 'other',
+    preset: encryptRisupPayload({ name: 'Wrong type preset' }),
+  });
+
+  assert.throws(() => openRisup(filePath), /missing type=preset marker/i);
+})();
+
+(function testOpenRisupRejectsNonObjectPresetPayload() {
+  const filePath = path.join(errorTempDir, 'array-preset.risup');
+  writeRisupEnvelope(filePath, {
+    type: 'preset',
+    presetVersion: 2,
+    preset: encryptRisupPayload(['not', 'an', 'object']),
+  });
+
+  assert.throws(() => openRisup(filePath), /preset payload must be an object/i);
 })();
 
 (function testOpenRisupCorruptedData() {

@@ -18,6 +18,7 @@ src/lib/asset-manager.js
 src/lib/autosave-manager.js
 src/lib/close-window-policy.js
 src/lib/data-serializer.js
+src/lib/document-validation.js
 src/lib/guides-manager.js
 src/lib/ipc-confirm.js
 src/lib/main-state-store.js

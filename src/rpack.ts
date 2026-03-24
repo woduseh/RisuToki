@@ -1,5 +1,7 @@
 'use strict';
 
+import { validateRisumModulePayload } from './lib/document-validation';
+
 // RPack: byte substitution cipher used by RisuAI for module.risum encoding
 // Maps sourced from rpack_map.bin (512 bytes: encode[0..255] + decode[256..511])
 
@@ -104,7 +106,7 @@ export function parseRisum(buf: Buffer): RisumModule {
   const mainEncoded = buf.subarray(offset, offset + mainLen);
   offset += mainLen;
   const mainDecoded = rpackDecode(mainEncoded);
-  const mainJson = JSON.parse(mainDecoded.toString('utf-8')) as Record<string, unknown>;
+  const mainJson = validateRisumModulePayload(JSON.parse(mainDecoded.toString('utf-8')) as unknown);
 
   // Read embedded assets
   const assets: Buffer[] = [];

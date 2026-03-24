@@ -74,6 +74,24 @@ describe('app settings', () => {
     expect(readStoredLayoutState(storage)).toBeNull();
   });
 
+  it('normalizes legacy sidebar layout keys instead of dropping stored state', () => {
+    const storage = createStorage();
+    storage.setItem(
+      'toki-layout-state',
+      JSON.stringify({
+        sidebarPos: 'right',
+        sidebarVisible: false,
+        terminalPos: 'bottom',
+      }),
+    );
+
+    expect(readStoredLayoutState(storage)).toEqual({
+      itemsPos: 'right',
+      itemsVisible: false,
+      terminalPos: 'bottom',
+    });
+  });
+
   it('drops avatar state objects that do not contain a string src field', () => {
     const storage = createStorage();
     storage.setItem('toki-avatar-idle', JSON.stringify({ foo: 'bar' }));
