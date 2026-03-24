@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildPreviewDocument } from './preview-format';
+import { createDocumentPreviewRuntime } from './preview-runtime';
 
 describe('preview runtime contract', () => {
   it('ships a static iframe shell instead of inlining user css or html payloads into the bootstrap document', () => {
@@ -17,5 +18,18 @@ describe('preview runtime contract', () => {
 
     expect(documentHtml).not.toContain("script-src 'unsafe-inline'");
     expect(documentHtml).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/i);
+  });
+
+  it('wraps bridge messages with a per-runtime token so forged payloads are rejected', () => {
+    const documentRef = document.implementation.createHTMLDocument('preview');
+    const runtime = createDocumentPreviewRuntime({
+      contentDocument: documentRef,
+      contentWindow: { document: documentRef },
+    });
+
+    const message = { type: 'cbs-button', varName: 'choice', value: 'wave' } as const;
+
+    expect(runtime.parseBridgeMessage(message)).toBeNull();
+    expect(runtime.parseBridgeMessage(runtime.createBridgeMessage(message))).toEqual(message);
   });
 });

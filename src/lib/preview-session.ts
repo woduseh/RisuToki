@@ -291,9 +291,10 @@ export function createPreviewSession({
   }
 
   const onWindowMessage = (event: MessageEvent<unknown>): void => {
-    if (!event.data) return;
     if (chatFrame.contentWindow && event.source !== (chatFrame.contentWindow as unknown as MessageEventSource)) return;
-    void handleBridgeMessage(event.data);
+    const message = runtime.parseBridgeMessage(event.data);
+    if (!message) return;
+    void handleBridgeMessage(message);
   };
 
   function attachMessageBridge(): void {

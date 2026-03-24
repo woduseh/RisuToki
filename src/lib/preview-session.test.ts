@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createDocumentPreviewRuntime } from './preview-runtime';
 import { createPreviewSession } from './preview-session';
 import type { CreatePreviewSessionOptions, PreviewEngine, PreviewLorebookEntry, PreviewSnapshot } from './preview-session';
 
@@ -125,7 +126,10 @@ function createEngine(): PreviewEngine & { state: TestEngineState } {
 
 function createChatFrame() {
   const contentDocument = document.implementation.createHTMLDocument('preview-frame');
-  const contentWindow = { document: contentDocument } as unknown as MessageEventSource & { document: Document };
+  const contentWindow = {
+    document: contentDocument,
+    postMessage() {},
+  } as unknown as MessageEventSource & { document: Document; postMessage: (message: unknown, targetOrigin: string) => void };
   return {
     contentDocument,
     contentWindow
@@ -281,10 +285,11 @@ describe('preview session', () => {
     expect(chatFrame.contentDocument.querySelectorAll('.chat-message-container')).toHaveLength(3);
   });
 
-  it('accepts iframe bridge messages only from the active frame and detaches cleanly', async () => {
+  it('accepts iframe bridge messages only from the active frame and current runtime token, then detaches cleanly', async () => {
     const engine = createEngine();
     const chatFrame = createChatFrame();
     const messageTarget = createWindowTarget();
+    const runtime = createDocumentPreviewRuntime(chatFrame);
     const session = createPreviewSession({
       engine,
       charData: {
@@ -298,7 +303,8 @@ describe('preview session', () => {
         lua: '-- lua script'
       },
       chatFrame,
-      windowTarget: messageTarget
+      windowTarget: messageTarget,
+      runtime
     });
 
     await session.initialize();
@@ -312,7 +318,15 @@ describe('preview session', () => {
     expect(session.getSnapshot().variables.choice).toBeUndefined();
 
     messageTarget.dispatchMessage(new MessageEvent('message', {
-      data: { type: 'cbs-button', varName: 'choice', value: '내부' },
+      data: { type: 'cbs-button', varName: 'choice', value: '위조됨' },
+      source: chatFrame.contentWindow as unknown as MessageEventSource
+    }));
+    await flushMessages();
+
+    expect(session.getSnapshot().variables.choice).toBeUndefined();
+
+    messageTarget.dispatchMessage(new MessageEvent('message', {
+      data: runtime.createBridgeMessage({ type: 'cbs-button', varName: 'choice', value: '내부' }),
       source: chatFrame.contentWindow as unknown as MessageEventSource
     }));
     await flushMessages();
@@ -321,7 +335,7 @@ describe('preview session', () => {
 
     session.dispose();
     messageTarget.dispatchMessage(new MessageEvent('message', {
-      data: { type: 'cbs-button', varName: 'choice', value: '무시됨' },
+      data: runtime.createBridgeMessage({ type: 'cbs-button', varName: 'choice', value: '무시됨' }),
       source: chatFrame.contentWindow as unknown as MessageEventSource
     }));
     await flushMessages();
