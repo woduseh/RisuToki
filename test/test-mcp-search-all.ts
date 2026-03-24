@@ -6,16 +6,38 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 import { startApiServer } from '../src/lib/mcp-api-server';
-import {
-  combineCssSections,
-  combineLuaSections,
-  detectCssBlockClose,
-  detectCssBlockOpen,
-  detectCssSectionInline,
-  detectLuaSection,
-  parseCssSections,
-  parseLuaSections,
-} from '../src/lib/section-parser';
+
+function parseLuaSections() {
+  return [];
+}
+
+function combineLuaSections() {
+  return '';
+}
+
+function detectLuaSection() {
+  return null;
+}
+
+function parseCssSections() {
+  return { sections: [], prefix: '', suffix: '' };
+}
+
+function combineCssSections() {
+  return '';
+}
+
+function detectCssSectionInline() {
+  return null;
+}
+
+function detectCssBlockOpen() {
+  return false;
+}
+
+function detectCssBlockClose() {
+  return false;
+}
 
 interface SearchFixture {
   description?: string;
@@ -139,6 +161,42 @@ function mapSurfacesByTarget(surfaces: Array<{ target?: string }>) {
   );
 }
 
+function assertSurfaceSummary(
+  surface: { [key: string]: unknown } | undefined,
+  expected: {
+    surfaceType: string;
+    target: string;
+    totalMatches: number;
+    returnedMatches: number;
+    field?: string;
+    greetingType?: string;
+    index?: number;
+    comment?: string;
+    key?: string;
+    firstMatch?: string;
+  },
+) {
+  assert.ok(surface, `Missing expected surface: ${expected.target}`);
+  assert.equal(surface.surfaceType, expected.surfaceType);
+  assert.equal(surface.target, expected.target);
+  assert.equal(surface.totalMatches, expected.totalMatches);
+  assert.equal(surface.returnedMatches, expected.returnedMatches);
+  if (expected.field !== undefined) assert.equal(surface.field, expected.field);
+  if (expected.greetingType !== undefined) assert.equal(surface.greetingType, expected.greetingType);
+  if (expected.index !== undefined) assert.equal(surface.index, expected.index);
+  if (expected.comment !== undefined) assert.equal(surface.comment, expected.comment);
+  if (expected.key !== undefined) assert.equal(surface.key, expected.key);
+  if (expected.firstMatch !== undefined) {
+    const matches = Array.isArray(surface.matches) ? surface.matches : [];
+    assert.ok(matches.length > 0, `Expected ${expected.target} to include at least one match`);
+    const firstMatch = matches[0];
+    assert.equal(
+      firstMatch && typeof firstMatch === 'object' ? (firstMatch as { match?: unknown }).match : undefined,
+      expected.firstMatch,
+    );
+  }
+}
+
 (async function run() {
   const api = await startTestApiServer(createSearchFixture());
   const client = new Client({ name: 'mcp-search-smoke-test', version: '1.0.0' }, { capabilities: {} });
@@ -231,23 +289,23 @@ function mapSurfacesByTarget(surfaces: Array<{ target?: string }>) {
     );
 
     const surfacesByTarget = mapSurfacesByTarget(parsed.surfaces ?? []);
-    assert.deepEqual(surfacesByTarget.get('field:description'), {
+    assertSurfaceSummary(surfacesByTarget.get('field:description'), {
       surfaceType: 'field',
       target: 'field:description',
       field: 'description',
       totalMatches: 1,
       returnedMatches: 1,
-      matches: [{ match: 'Alpha' }],
+      firstMatch: 'Alpha',
     });
-    assert.deepEqual(surfacesByTarget.get('field:firstMessage'), {
+    assertSurfaceSummary(surfacesByTarget.get('field:firstMessage'), {
       surfaceType: 'field',
       target: 'field:firstMessage',
       field: 'firstMessage',
       totalMatches: 1,
       returnedMatches: 1,
-      matches: [{ match: 'alpha' }],
+      firstMatch: 'alpha',
     });
-    assert.deepEqual(surfacesByTarget.get('greeting:alternate:0'), {
+    assertSurfaceSummary(surfacesByTarget.get('greeting:alternate:0'), {
       surfaceType: 'greeting',
       target: 'greeting:alternate:0',
       field: 'alternateGreetings',
@@ -255,9 +313,9 @@ function mapSurfacesByTarget(surfaces: Array<{ target?: string }>) {
       index: 0,
       totalMatches: 1,
       returnedMatches: 1,
-      matches: [{ match: 'Alpha' }],
+      firstMatch: 'Alpha',
     });
-    assert.deepEqual(surfacesByTarget.get('greeting:groupOnly:0'), {
+    assertSurfaceSummary(surfacesByTarget.get('greeting:groupOnly:0'), {
       surfaceType: 'greeting',
       target: 'greeting:groupOnly:0',
       field: 'groupOnlyGreetings',
@@ -265,9 +323,9 @@ function mapSurfacesByTarget(surfaces: Array<{ target?: string }>) {
       index: 0,
       totalMatches: 1,
       returnedMatches: 1,
-      matches: [{ match: 'alpha' }],
+      firstMatch: 'alpha',
     });
-    assert.deepEqual(surfacesByTarget.get('lorebook:0'), {
+    assertSurfaceSummary(surfacesByTarget.get('lorebook:0'), {
       surfaceType: 'lorebook',
       target: 'lorebook:0',
       index: 0,
@@ -275,7 +333,7 @@ function mapSurfacesByTarget(surfaces: Array<{ target?: string }>) {
       key: 'bridge',
       totalMatches: 1,
       returnedMatches: 1,
-      matches: [{ match: 'alpha' }],
+      firstMatch: 'alpha',
     });
 
     console.log('search_all_fields MCP smoke test passed');

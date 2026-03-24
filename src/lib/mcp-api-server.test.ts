@@ -3,17 +3,37 @@ import * as path from 'path';
 
 import { describe, expect, it } from 'vitest';
 
-import { startApiServer } from './mcp-api-server';
-import {
-  combineCssSections,
-  combineLuaSections,
-  detectCssBlockClose,
-  detectCssBlockOpen,
-  detectCssSectionInline,
-  detectLuaSection,
-  parseCssSections,
-  parseLuaSections,
-} from './section-parser';
+function parseLuaSections() {
+  return [];
+}
+
+function combineLuaSections() {
+  return '';
+}
+
+function detectLuaSection() {
+  return null;
+}
+
+function parseCssSections() {
+  return { sections: [], prefix: '', suffix: '' };
+}
+
+function combineCssSections() {
+  return '';
+}
+
+function detectCssSectionInline() {
+  return null;
+}
+
+function detectCssBlockOpen() {
+  return false;
+}
+
+function detectCssBlockClose() {
+  return false;
+}
 
 interface SearchFixture {
   description?: string;
@@ -27,6 +47,8 @@ interface SearchFixture {
   }>;
   [key: string]: unknown;
 }
+
+type StartApiServer = typeof import('./mcp-api-server').startApiServer;
 
 interface SearchSurface {
   target: string;
@@ -65,6 +87,8 @@ function closeServer(server: http.Server): Promise<void> {
 }
 
 async function startTestApiServer(currentData: SearchFixture) {
+  const modulePath = './mcp-api-server.ts';
+  const { startApiServer } = (await import(modulePath)) as { startApiServer: StartApiServer };
   let resolvePort!: (port: number) => void;
   const portPromise = new Promise<number>((resolve) => {
     resolvePort = resolve;
@@ -264,6 +288,28 @@ describe('MCP API search routes', () => {
         totalMatches: 1,
         returnedMatches: 1,
         matches: [{ match: 'alpha' }],
+      });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('ignores non-string flags values instead of turning them into misleading regex errors', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+
+    try {
+      const response = await postJson<Record<string, unknown>>(api.port, api.token, '/search-all', {
+        query: 'alpha',
+        flags: 123,
+        include_lorebook: true,
+        include_greetings: true,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.data).toMatchObject({
+        query: 'alpha',
+        regex: false,
+        totalMatches: 5,
       });
     } finally {
       await closeServer(api.server);

@@ -9,6 +9,15 @@
 
 ---
 
+## [0.22.4] - 2026-03-24
+
+### 수정
+
+- **`search_all_fields` MCP 검색 계약 복구**
+  - stdio MCP 서버가 호출하는 `/search-all` backend route를 구현해 `MCP server 'risutoki': Not found` 오탐을 제거
+  - 문자열 필드, `alternateGreetings`, `groupOnlyGreetings`, 로어북 content를 한 번에 검색하는 공통 search helper 추가
+  - API route / MCP smoke test 회귀 검증을 추가해 도구 선언과 backend surface가 다시 어긋나지 않도록 고정
+
 ## [0.22.3] - 2026-03-24
 
 ### 변경
