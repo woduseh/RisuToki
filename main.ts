@@ -183,15 +183,6 @@ const { initAssetManager, invalidateAssetsMapCache } = require('./src/lib/asset-
   invalidateAssetsMapCache: () => void;
 };
 
-const { initSyncServer, stopSyncServer } = require('./src/lib/sync-server') as {
-  initSyncServer: (deps: {
-    getCurrentData: () => CharxData | null;
-    broadcastToAll: (channel: string, ...args: unknown[]) => void;
-    getSyncHash: () => number;
-  }) => void;
-  stopSyncServer: () => void;
-};
-
 const { initGuidesManager, getGuidesDir, getGuidesListResult } = require('./src/lib/guides-manager') as {
   initGuidesManager: (deps: {
     getMainWindow: () => BrowserWindow | null;
@@ -267,9 +258,6 @@ const popoutPayloadStore: PopoutPayloadStore = createPopoutPayloadStore();
 let mcpApi: McpApiServer | null = null;
 let apiPort: number | null = null;
 let apiToken: string | null = null;
-
-// Sync hash (incremented on data changes, read by sync server)
-let syncHash = 0;
 
 // ---------------------------------------------------------------------------
 // Reference file helpers
@@ -381,7 +369,6 @@ function loadPersistedReferenceFiles(): void {
 // ---------------------------------------------------------------------------
 
 function broadcastToAll(channel: string, ...args: unknown[]): void {
-  if (channel === 'data-updated') syncHash++;
   const allWindows = [mainWindow, ...Object.values(getPopoutWindows())];
   for (const win of allWindows) {
     if (win && !win.isDestroyed()) {
@@ -611,13 +598,6 @@ app.whenReady().then(() => {
     broadcastRefsDataChanged,
   });
 
-  // Initialize RisuAI sync server
-  initSyncServer({
-    getCurrentData: () => mainState.currentData,
-    broadcastToAll,
-    getSyncHash: () => syncHash,
-  });
-
   // Initialize autosave management
   initAutosaveManager({
     getCurrentData: () => mainState.currentData,
@@ -643,7 +623,6 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   killTerminal();
-  stopSyncServer();
   if (mcpApi) {
     mcpApi.server.close();
     mcpApi = null;

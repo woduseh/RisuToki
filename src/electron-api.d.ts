@@ -42,10 +42,6 @@ interface AutosaveInfo {
   hasFile: boolean;
 }
 
-interface SyncStatusCallback {
-  (active: boolean, port: number | null): void;
-}
-
 interface McpConfirmCallback {
   (id: number, title: string, message: string): void;
 }
@@ -188,9 +184,6 @@ interface TokiAPI {
   openFolder: (folderPath: string) => Promise<string>;
   getAutosaveInfo: (customDir?: string) => Promise<AutosaveInfo | null>;
   pickAutosaveDir: () => Promise<string | null>;
-  startSync: (port: number) => Promise<{ ok: boolean; port: number }>;
-  stopSync: () => Promise<{ ok: boolean }>;
-  onSyncStatus: (cb: SyncStatusCallback) => void;
   toggleDevTools: () => Promise<void>;
   popoutPanel: (type: string, requestId?: string | null) => Promise<boolean>;
   closePopout: (type: string) => Promise<boolean>;
