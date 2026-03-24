@@ -3,6 +3,7 @@ import {
   DEFAULT_AUTOSAVE_INTERVAL,
   clearAutosaveDir,
   readAppSettingsSnapshot,
+  readStoredLayoutState,
   writeAutosaveDir,
   writeAutosaveEnabled,
   writeAutosaveInterval,
@@ -64,5 +65,23 @@ describe('app settings', () => {
     clearAutosaveDir(storage);
     snapshot = readAppSettingsSnapshot(storage);
     expect(snapshot.autosaveDir).toBe('');
+  });
+
+  it('returns null instead of throwing when stored layout JSON is corrupted', () => {
+    const storage = createStorage();
+    storage.setItem('toki-layout-state', '{broken');
+
+    expect(readStoredLayoutState(storage)).toBeNull();
+  });
+
+  it('drops avatar state objects that do not contain a string src field', () => {
+    const storage = createStorage();
+    storage.setItem('toki-avatar-idle', JSON.stringify({ foo: 'bar' }));
+    storage.setItem('toki-avatar-working', JSON.stringify({ src: 123 }));
+
+    const snapshot = readAppSettingsSnapshot(storage);
+
+    expect(snapshot.avatarIdle).toBeNull();
+    expect(snapshot.avatarWorking).toBeNull();
   });
 });

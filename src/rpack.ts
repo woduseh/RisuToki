@@ -78,6 +78,10 @@ export function rpackEncode(input: Buffer | Uint8Array): Buffer {
  * @returns RisumModule object with parsed module and assets
  */
 export function parseRisum(buf: Buffer): RisumModule {
+  if (buf.length < 6) {
+    throw new Error('Buffer too small to contain a valid risum header');
+  }
+
   let offset = 0;
 
   // Magic byte check
@@ -92,6 +96,9 @@ export function parseRisum(buf: Buffer): RisumModule {
   // Main data length (uint32 LE)
   const mainLen = buf.readUInt32LE(offset);
   offset += 4;
+  if (offset + mainLen > buf.length) {
+    throw new Error('Main payload length exceeds the available buffer');
+  }
 
   // Main payload (RPack encoded JSON)
   const mainEncoded = buf.subarray(offset, offset + mainLen);
@@ -107,8 +114,14 @@ export function parseRisum(buf: Buffer): RisumModule {
     if (marker !== 0x01) {
       throw new Error(`Unexpected asset marker: 0x${marker.toString(16)}`);
     }
+    if (offset + 4 > buf.length) {
+      throw new Error('Asset length header exceeds the available buffer');
+    }
     const assetLen = buf.readUInt32LE(offset);
     offset += 4;
+    if (offset + assetLen > buf.length) {
+      throw new Error('Asset payload length exceeds the available buffer');
+    }
     const assetEncoded = buf.subarray(offset, offset + assetLen);
     offset += assetLen;
     assets.push(rpackDecode(assetEncoded));
