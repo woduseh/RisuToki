@@ -1,6 +1,6 @@
 {
   "name": "risutoki",
-  "version": "0.22.4",
+  "version": "0.22.5",
   "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
   "main": "main.js",
   "scripts": {
@@ -13,13 +13,14 @@
     "typecheck": "vue-tsc --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.node-libs.json --noEmit",
     "build:node-libs": "tsc -p tsconfig.node-libs.json",
     "build:mcp": "esbuild toki-mcp-server.ts --bundle --platform=node --format=cjs --outfile=toki-mcp-server.js --target=node20",
+    "build:preload": "esbuild preload.ts --bundle --platform=node --format=cjs --outfile=preload.js --external:electron --target=node20 && esbuild popout-preload.ts --bundle --platform=node --format=cjs --outfile=popout-preload.js --external:electron --target=node20",
     "test-rpack": "node test/test-rpack.js",
     "test-charx": "node test/test-charx.js",
     "test:references": "node test/test-reference-store.js && node test/test-refs-popout-data.js && node test/test-popout-payload-store.js && node test/test-terminal-shell.js && node test/test-main-state-store.js",
     "test:unit": "vitest run",
     "test:mcp": "npm run build:node-libs && npm run build:mcp && node test/test-mcp-search-all.js",
     "test": "npm run build:node-libs && npm run test-rpack && npm run test-charx && npm run test:references && npm run test:unit && npm run test:mcp",
-    "build:electron": "npm run build:node-libs && npm run build:mcp && tsc -p tsconfig.electron.json",
+    "build:electron": "npm run build:node-libs && npm run build:mcp && tsc -p tsconfig.electron.json && npm run build:preload",
     "build:renderer": "vite build",
     "build": "npm run lint && npm run typecheck && npm run test && npm run build:electron && npm run build:renderer",
     "dist": "npm run build:electron && npm run build:renderer && electron-builder",

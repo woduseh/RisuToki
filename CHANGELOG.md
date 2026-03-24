@@ -9,6 +9,15 @@
 
 ---
 
+## [0.22.5] - 2026-03-24
+
+### 수정
+
+- **preload 스크립트 로드 실패 수정**
+  - v0.22.3에서 `preload.ts`를 `./src/lib/preload-api` 모듈로 리팩토링한 후 Electron sandbox preload의 `require` 제한으로 모듈 resolve 실패
+  - esbuild로 preload 스크립트를 단일 파일로 번들링하여 외부 `require` 의존성 제거
+  - `popout-preload.ts`도 일관성을 위해 동일하게 번들링 적용
+
 ## [0.22.4] - 2026-03-24
 
 ### 수정
