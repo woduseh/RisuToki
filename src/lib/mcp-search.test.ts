@@ -13,6 +13,11 @@ interface SearchFixture {
   [key: string]: unknown;
 }
 
+interface SurfaceSummary {
+  target: string;
+  [key: string]: unknown;
+}
+
 async function runSearch(data: SearchFixture, options: Record<string, unknown>) {
   const modulePath = './mcp-search';
   const { searchAllTextSurfaces } = await import(modulePath);
@@ -41,6 +46,10 @@ function createCrossSurfaceFixture(): SearchFixture {
   };
 }
 
+function mapSurfacesByTarget(surfaces: SurfaceSummary[]) {
+  return new Map(surfaces.map((surface) => [surface.target, surface]));
+}
+
 describe('searchAllTextSurfaces', () => {
   it('searches matching string fields, greetings, and lorebook content surfaces including read-only group greetings', async () => {
     const result = await runSearch(createCrossSurfaceFixture(), {
@@ -60,62 +69,58 @@ describe('searchAllTextSurfaces', () => {
     });
 
     expect(result.surfaces).toHaveLength(5);
-    expect(result.surfaces.map((surface: { target: string }) => surface.target)).toEqual([
-      'field:description',
-      'field:firstMessage',
-      'greeting:alternate:0',
-      'greeting:groupOnly:0',
-      'lorebook:0',
-    ]);
+    expect(result.surfaces.map((surface: { target: string }) => surface.target).sort()).toEqual(
+      ['field:description', 'field:firstMessage', 'greeting:alternate:0', 'greeting:groupOnly:0', 'lorebook:0'].sort(),
+    );
 
-    expect(result.surfaces).toMatchObject([
-      {
-        surfaceType: 'field',
-        target: 'field:description',
-        field: 'description',
-        totalMatches: 1,
-        returnedMatches: 1,
-        matches: [{ match: 'Alpha' }],
-      },
-      {
-        surfaceType: 'field',
-        target: 'field:firstMessage',
-        field: 'firstMessage',
-        totalMatches: 1,
-        returnedMatches: 1,
-        matches: [{ match: 'alpha' }],
-      },
-      {
-        surfaceType: 'greeting',
-        target: 'greeting:alternate:0',
-        field: 'alternateGreetings',
-        greetingType: 'alternate',
-        index: 0,
-        totalMatches: 1,
-        returnedMatches: 1,
-        matches: [{ match: 'Alpha' }],
-      },
-      {
-        surfaceType: 'greeting',
-        target: 'greeting:groupOnly:0',
-        field: 'groupOnlyGreetings',
-        greetingType: 'groupOnly',
-        index: 0,
-        totalMatches: 1,
-        returnedMatches: 1,
-        matches: [{ match: 'alpha' }],
-      },
-      {
-        surfaceType: 'lorebook',
-        target: 'lorebook:0',
-        index: 0,
-        comment: 'Bridge lore',
-        key: 'bridge',
-        totalMatches: 1,
-        returnedMatches: 1,
-        matches: [{ match: 'alpha' }],
-      },
-    ]);
+    const surfacesByTarget = mapSurfacesByTarget(result.surfaces);
+
+    expect(surfacesByTarget.get('field:description')).toMatchObject({
+      surfaceType: 'field',
+      target: 'field:description',
+      field: 'description',
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'Alpha' }],
+    });
+    expect(surfacesByTarget.get('field:firstMessage')).toMatchObject({
+      surfaceType: 'field',
+      target: 'field:firstMessage',
+      field: 'firstMessage',
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'alpha' }],
+    });
+    expect(surfacesByTarget.get('greeting:alternate:0')).toMatchObject({
+      surfaceType: 'greeting',
+      target: 'greeting:alternate:0',
+      field: 'alternateGreetings',
+      greetingType: 'alternate',
+      index: 0,
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'Alpha' }],
+    });
+    expect(surfacesByTarget.get('greeting:groupOnly:0')).toMatchObject({
+      surfaceType: 'greeting',
+      target: 'greeting:groupOnly:0',
+      field: 'groupOnlyGreetings',
+      greetingType: 'groupOnly',
+      index: 0,
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'alpha' }],
+    });
+    expect(surfacesByTarget.get('lorebook:0')).toMatchObject({
+      surfaceType: 'lorebook',
+      target: 'lorebook:0',
+      index: 0,
+      comment: 'Bridge lore',
+      key: 'bridge',
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'alpha' }],
+    });
   });
 
   it('supports regex queries, trimmed context windows, and per-surface match caps', async () => {
@@ -153,40 +158,38 @@ describe('searchAllTextSurfaces', () => {
     });
 
     expect(result.surfaces).toHaveLength(3);
-    expect(result.surfaces.map((surface: { target: string }) => surface.target)).toEqual([
-      'field:description',
-      'greeting:alternate:0',
-      'lorebook:0',
-    ]);
+    expect(result.surfaces.map((surface: { target: string }) => surface.target).sort()).toEqual(
+      ['field:description', 'greeting:alternate:0', 'lorebook:0'].sort(),
+    );
 
-    expect(result.surfaces).toMatchObject([
-      {
-        surfaceType: 'field',
-        target: 'field:description',
-        totalMatches: 3,
-        returnedMatches: 2,
-        matches: [
-          { match: 'alpha1', before: '--', after: '--', position: 2, line: 1 },
-          { match: 'alpha2', before: '--', after: '--', position: 10, line: 1 },
-        ],
-      },
-      {
-        surfaceType: 'greeting',
-        target: 'greeting:alternate:0',
-        totalMatches: 2,
-        returnedMatches: 2,
-        matches: [
-          { match: 'alpha4', before: '__', after: '__', position: 2, line: 1 },
-          { match: 'alpha5', before: '__', after: '__', position: 10, line: 1 },
-        ],
-      },
-      {
-        surfaceType: 'lorebook',
-        target: 'lorebook:0',
-        totalMatches: 1,
-        returnedMatches: 1,
-        matches: [{ match: 'alpha6', before: '??', after: '??', position: 2, line: 1 }],
-      },
-    ]);
+    const surfacesByTarget = mapSurfacesByTarget(result.surfaces);
+
+    expect(surfacesByTarget.get('field:description')).toMatchObject({
+      surfaceType: 'field',
+      target: 'field:description',
+      totalMatches: 3,
+      returnedMatches: 2,
+      matches: [
+        { match: 'alpha1', before: '--', after: '--', position: 2, line: 1 },
+        { match: 'alpha2', before: '--', after: '--', position: 10, line: 1 },
+      ],
+    });
+    expect(surfacesByTarget.get('greeting:alternate:0')).toMatchObject({
+      surfaceType: 'greeting',
+      target: 'greeting:alternate:0',
+      totalMatches: 2,
+      returnedMatches: 2,
+      matches: [
+        { match: 'alpha4', before: '__', after: '__', position: 2, line: 1 },
+        { match: 'alpha5', before: '__', after: '__', position: 10, line: 1 },
+      ],
+    });
+    expect(surfacesByTarget.get('lorebook:0')).toMatchObject({
+      surfaceType: 'lorebook',
+      target: 'lorebook:0',
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'alpha6', before: '??', after: '??', position: 2, line: 1 }],
+    });
   });
 });

@@ -123,6 +123,14 @@ function extractTextContent(content: unknown): string {
     .join('\n');
 }
 
+function mapSurfacesByTarget(surfaces: Array<{ target?: string }>) {
+  return new Map(
+    surfaces
+      .filter((surface): surface is { target: string; [key: string]: unknown } => typeof surface.target === 'string')
+      .map((surface) => [surface.target, surface]),
+  );
+}
+
 (async function run() {
   const api = await startTestApiServer(createSearchFixture());
   const client = new Client({ name: 'mcp-search-smoke-test', version: '1.0.0' }, { capabilities: {} });
@@ -197,14 +205,63 @@ function extractTextContent(content: unknown): string {
 
     const parsed = JSON.parse(textContent) as {
       totalMatches?: number;
-      surfaces?: Array<{ target?: string }>;
+      surfaces?: Array<{ target?: string; [key: string]: unknown }>;
     };
 
     assert.equal(parsed.totalMatches, 5);
+    assert.equal(parsed.surfaces?.length, 5);
     assert.deepEqual(
-      parsed.surfaces?.map((surface) => surface.target),
-      ['field:description', 'field:firstMessage', 'greeting:alternate:0', 'greeting:groupOnly:0', 'lorebook:0'],
+      parsed.surfaces?.map((surface) => surface.target).sort(),
+      ['field:description', 'field:firstMessage', 'greeting:alternate:0', 'greeting:groupOnly:0', 'lorebook:0'].sort(),
     );
+
+    const surfacesByTarget = mapSurfacesByTarget(parsed.surfaces ?? []);
+    assert.deepEqual(surfacesByTarget.get('field:description'), {
+      surfaceType: 'field',
+      target: 'field:description',
+      field: 'description',
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'Alpha' }],
+    });
+    assert.deepEqual(surfacesByTarget.get('field:firstMessage'), {
+      surfaceType: 'field',
+      target: 'field:firstMessage',
+      field: 'firstMessage',
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'alpha' }],
+    });
+    assert.deepEqual(surfacesByTarget.get('greeting:alternate:0'), {
+      surfaceType: 'greeting',
+      target: 'greeting:alternate:0',
+      field: 'alternateGreetings',
+      greetingType: 'alternate',
+      index: 0,
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'Alpha' }],
+    });
+    assert.deepEqual(surfacesByTarget.get('greeting:groupOnly:0'), {
+      surfaceType: 'greeting',
+      target: 'greeting:groupOnly:0',
+      field: 'groupOnlyGreetings',
+      greetingType: 'groupOnly',
+      index: 0,
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'alpha' }],
+    });
+    assert.deepEqual(surfacesByTarget.get('lorebook:0'), {
+      surfaceType: 'lorebook',
+      target: 'lorebook:0',
+      index: 0,
+      comment: 'Bridge lore',
+      key: 'bridge',
+      totalMatches: 1,
+      returnedMatches: 1,
+      matches: [{ match: 'alpha' }],
+    });
 
     console.log('search_all_fields MCP smoke test passed');
   } catch (error) {

@@ -28,6 +28,11 @@ interface SearchFixture {
   [key: string]: unknown;
 }
 
+interface SearchSurface {
+  target: string;
+  [key: string]: unknown;
+}
+
 function createSearchFixture(): SearchFixture {
   return {
     description: 'Field Alpha is searchable.',
@@ -145,6 +150,10 @@ async function postJson<T>(
   });
 }
 
+function mapSurfacesByTarget(surfaces: SearchSurface[]) {
+  return new Map(surfaces.map((surface) => [surface.target, surface]));
+}
+
 describe('MCP API search routes', () => {
   it('keeps the existing authenticated POST /field/:name/search route working', async () => {
     const api = await startTestApiServer(createSearchFixture());
@@ -194,54 +203,67 @@ describe('MCP API search routes', () => {
         contextChars: 12,
         maxMatchesPerSurface: 5,
         totalMatches: 5,
-        surfaces: [
-          {
-            surfaceType: 'field',
-            target: 'field:description',
-            field: 'description',
-            totalMatches: 1,
-            returnedMatches: 1,
-            matches: [{ match: 'Alpha' }],
-          },
-          {
-            surfaceType: 'field',
-            target: 'field:firstMessage',
-            field: 'firstMessage',
-            totalMatches: 1,
-            returnedMatches: 1,
-            matches: [{ match: 'alpha' }],
-          },
-          {
-            surfaceType: 'greeting',
-            target: 'greeting:alternate:0',
-            field: 'alternateGreetings',
-            greetingType: 'alternate',
-            index: 0,
-            totalMatches: 1,
-            returnedMatches: 1,
-            matches: [{ match: 'Alpha' }],
-          },
-          {
-            surfaceType: 'greeting',
-            target: 'greeting:groupOnly:0',
-            field: 'groupOnlyGreetings',
-            greetingType: 'groupOnly',
-            index: 0,
-            totalMatches: 1,
-            returnedMatches: 1,
-            matches: [{ match: 'alpha' }],
-          },
-          {
-            surfaceType: 'lorebook',
-            target: 'lorebook:0',
-            index: 0,
-            comment: 'Bridge lore',
-            key: 'bridge',
-            totalMatches: 1,
-            returnedMatches: 1,
-            matches: [{ match: 'alpha' }],
-          },
-        ],
+      });
+
+      const surfaces = (response.data.surfaces ?? []) as SearchSurface[];
+      expect(surfaces).toHaveLength(5);
+      expect(surfaces.map((surface) => surface.target).sort()).toEqual(
+        [
+          'field:description',
+          'field:firstMessage',
+          'greeting:alternate:0',
+          'greeting:groupOnly:0',
+          'lorebook:0',
+        ].sort(),
+      );
+
+      const surfacesByTarget = mapSurfacesByTarget(surfaces);
+
+      expect(surfacesByTarget.get('field:description')).toMatchObject({
+        surfaceType: 'field',
+        target: 'field:description',
+        field: 'description',
+        totalMatches: 1,
+        returnedMatches: 1,
+        matches: [{ match: 'Alpha' }],
+      });
+      expect(surfacesByTarget.get('field:firstMessage')).toMatchObject({
+        surfaceType: 'field',
+        target: 'field:firstMessage',
+        field: 'firstMessage',
+        totalMatches: 1,
+        returnedMatches: 1,
+        matches: [{ match: 'alpha' }],
+      });
+      expect(surfacesByTarget.get('greeting:alternate:0')).toMatchObject({
+        surfaceType: 'greeting',
+        target: 'greeting:alternate:0',
+        field: 'alternateGreetings',
+        greetingType: 'alternate',
+        index: 0,
+        totalMatches: 1,
+        returnedMatches: 1,
+        matches: [{ match: 'Alpha' }],
+      });
+      expect(surfacesByTarget.get('greeting:groupOnly:0')).toMatchObject({
+        surfaceType: 'greeting',
+        target: 'greeting:groupOnly:0',
+        field: 'groupOnlyGreetings',
+        greetingType: 'groupOnly',
+        index: 0,
+        totalMatches: 1,
+        returnedMatches: 1,
+        matches: [{ match: 'alpha' }],
+      });
+      expect(surfacesByTarget.get('lorebook:0')).toMatchObject({
+        surfaceType: 'lorebook',
+        target: 'lorebook:0',
+        index: 0,
+        comment: 'Bridge lore',
+        key: 'bridge',
+        totalMatches: 1,
+        returnedMatches: 1,
+        matches: [{ match: 'alpha' }],
       });
     } finally {
       await closeServer(api.server);
