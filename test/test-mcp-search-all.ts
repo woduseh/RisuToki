@@ -30,6 +30,13 @@ interface SearchFixture {
   [key: string]: unknown;
 }
 
+interface McpStatusPayload {
+  action?: string;
+  status?: number;
+  target?: string;
+  [key: string]: unknown;
+}
+
 function createSearchFixture(): SearchFixture {
   return {
     description: 'Field Alpha is searchable.',
@@ -66,6 +73,7 @@ async function startTestApiServer(currentData: SearchFixture) {
   const portPromise = new Promise<number>((resolve) => {
     resolvePort = resolve;
   });
+  const mcpStatuses: McpStatusPayload[] = [];
 
   const api = startApiServer({
     getCurrentData: () => currentData,
@@ -76,7 +84,7 @@ async function startTestApiServer(currentData: SearchFixture) {
       void args;
     },
     broadcastMcpStatus: (payload: Record<string, unknown>) => {
-      void payload;
+      mcpStatuses.push(payload);
     },
     onListening: (port) => resolvePort(port),
     parseLuaSections,
@@ -98,7 +106,7 @@ async function startTestApiServer(currentData: SearchFixture) {
   });
 
   const port = await portPromise;
-  return { ...api, port };
+  return { ...api, port, mcpStatuses };
 }
 
 function buildChildEnv(port: number, token: string): Record<string, string> {
@@ -195,12 +203,19 @@ function mapSurfacesByTarget(surfaces: Array<{ target?: string }>) {
 
     const textContent = extractTextContent(result.content);
     if (result.isError) {
-      assert.match(
-        textContent,
-        /Not found|404/i,
-        'Expected the current MCP failure to come from the missing /search-all API route',
+      const searchAllFailure = api.mcpStatuses.find(
+        (payload) => payload.action === 'POST /search-all' || payload.target === '/search-all',
       );
-      throw new Error(`Expected structured search_all_fields JSON, got MCP error: ${textContent}`);
+      assert.ok(
+        searchAllFailure,
+        `Expected broadcastMcpStatus to capture the /search-all route failure: ${textContent}`,
+      );
+      assert.equal(searchAllFailure.action, 'POST /search-all');
+      assert.equal(searchAllFailure.status, 404);
+      assert.equal(searchAllFailure.target, '/search-all');
+      throw new Error(
+        `Expected structured search_all_fields JSON, got MCP error: ${textContent}\nRoute failure: ${JSON.stringify(searchAllFailure)}`,
+      );
     }
 
     const parsed = JSON.parse(textContent) as {
