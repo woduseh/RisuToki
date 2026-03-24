@@ -14,6 +14,7 @@
     "src/lorebook-convert.ts",
     "src/rpack.ts",
     "src/lib/mcp-api-server.ts",
+    "src/lib/mcp-search.ts",
     "src/lib/mcp-config.ts",
     "src/lib/agents-md-manager.ts",
     "src/lib/asset-manager.ts",
@@ -43,7 +44,8 @@
     "test/test-refs-popout-data.ts",
     "test/test-popout-payload-store.ts",
     "test/test-terminal-shell.ts",
-    "test/test-main-state-store.ts"
+    "test/test-main-state-store.ts",
+    "test/test-mcp-search-all.ts"
   ],
   "exclude": ["dist", "node_modules"]
 }

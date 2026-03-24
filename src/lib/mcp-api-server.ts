@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parse, extractToggles, extractToggleValues, validateNesting, resolveInnerExpressions } from './cbs-parser';
 import { resolve as cbsResolve, generateCombinations } from './cbs-evaluator';
+import { SEARCHABLE_TEXT_FIELDS, searchAllTextSurfaces, searchTextBlock } from './mcp-search';
 import type { ToggleMap } from './cbs-parser';
 
 // ---------------------------------------------------------------------------
@@ -1801,58 +1802,48 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /search-all — search across string fields, greetings, lorebook
+      // ----------------------------------------------------------------
+      if (parts[0] === 'search-all' && !parts[1] && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'search-all', broadcastStatus);
+        if (!body) return;
+        if (!body.query) {
+          return mcpError(res, 400, {
+            action: 'search all fields',
+            message: 'Missing "query"',
+            suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
+            target: '/search-all',
+          });
+        }
+
+        try {
+          return jsonRes(
+            res,
+            searchAllTextSurfaces(currentData, {
+              query: normalizeLF(String(body.query)),
+              regex: !!body.regex,
+              flags: typeof body.flags === 'string' ? body.flags : undefined,
+              includeLorebook: body.include_lorebook !== false,
+              includeGreetings: body.include_greetings !== false,
+              contextChars: Math.max(0, Math.min(Number(body.context_chars) || 60, 300)),
+              maxMatchesPerSurface: Math.max(1, Math.min(Number(body.max_matches_per_field) || 5, 20)),
+            }),
+          );
+        } catch (err) {
+          return mcpError(res, 400, {
+            action: 'search all fields',
+            message: `Invalid regex: ${err instanceof Error ? err.message : String(err)}`,
+            target: '/search-all',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
       // POST /field/:name/search — search text in a string field (read-only)
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'search' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const searchableFields = [
-          'name',
-          'description',
-          'firstMessage',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'lua',
-          'personality',
-          'scenario',
-          'creatorcomment',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
-          'nickname',
-          'additionalText',
-          'license',
-          'cjs',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-          'mainPrompt',
-          'jailbreak',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-          // Read-only fields are also searchable
-          'creationDate',
-          'modificationDate',
-          'moduleId',
-        ];
-        if (!searchableFields.includes(fieldName)) {
+        if (!SEARCHABLE_TEXT_FIELDS.includes(fieldName as (typeof SEARCHABLE_TEXT_FIELDS)[number])) {
           return mcpError(res, 400, {
             action: 'search in field',
             message: `"${fieldName}" 필드는 검색을 지원하지 않습니다.`,
@@ -1873,51 +1864,29 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const content: string = normalizeLF(
           typeof currentData[fieldName] === 'string' ? currentData[fieldName] : String(currentData[fieldName] ?? ''),
         );
-        const queryStr: string = normalizeLF(body.query);
+        const queryStr: string = normalizeLF(String(body.query));
         const contextChars: number = Math.max(0, Math.min(Number(body.context_chars) || 100, 500));
         const maxMatches: number = Math.max(1, Math.min(Number(body.max_matches) || 20, 100));
         const useRegex = !!body.regex;
-        const flags: string = body.flags || (useRegex ? 'gi' : '');
-
-        interface SearchMatch {
-          match: string;
-          before: string;
-          after: string;
-          position: number;
-          line: number;
-        }
-        const matches: SearchMatch[] = [];
+        const flags = typeof body.flags === 'string' ? body.flags : useRegex ? 'gi' : undefined;
 
         try {
-          if (useRegex) {
-            const re = new RegExp(queryStr, flags.includes('g') ? flags : flags + 'g');
-            let m: RegExpExecArray | null;
-            while ((m = re.exec(content)) !== null) {
-              const pos = m.index;
-              const matchText = m[0];
-              const before = content.slice(Math.max(0, pos - contextChars), pos);
-              const after = content.slice(pos + matchText.length, pos + matchText.length + contextChars);
-              const line = content.slice(0, pos).split('\n').length;
-              matches.push({ match: matchText, before, after, position: pos, line });
-              if (matches.length >= maxMatches) break;
-              // Prevent infinite loop on zero-length matches
-              if (matchText.length === 0) re.lastIndex++;
-            }
-          } else {
-            let searchFrom = 0;
-            const queryLower = queryStr.toLowerCase();
-            const contentLower = content.toLowerCase();
-            while (matches.length < maxMatches) {
-              const pos = contentLower.indexOf(queryLower, searchFrom);
-              if (pos === -1) break;
-              const matchText = content.slice(pos, pos + queryStr.length);
-              const before = content.slice(Math.max(0, pos - contextChars), pos);
-              const after = content.slice(pos + queryStr.length, pos + queryStr.length + contextChars);
-              const line = content.slice(0, pos).split('\n').length;
-              matches.push({ match: matchText, before, after, position: pos, line });
-              searchFrom = pos + queryStr.length;
-            }
-          }
+          const result = searchTextBlock(content, {
+            query: queryStr,
+            regex: useRegex,
+            flags,
+            contextChars,
+            maxMatches,
+          });
+
+          return jsonRes(res, {
+            field: fieldName,
+            query: result.query,
+            totalMatches: result.totalMatches,
+            returnedMatches: result.returnedMatches,
+            fieldLength: result.contentLength,
+            matches: result.matches,
+          });
         } catch (err) {
           return mcpError(res, 400, {
             action: 'search in field',
@@ -1925,37 +1894,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `field:${fieldName}`,
           });
         }
-
-        // Count total matches (may exceed maxMatches)
-        let totalMatches = matches.length;
-        if (matches.length >= maxMatches) {
-          // Count remaining matches without storing them
-          if (useRegex) {
-            const re = new RegExp(queryStr, flags.includes('g') ? flags : flags + 'g');
-            const allMatches = content.match(re);
-            totalMatches = allMatches ? allMatches.length : matches.length;
-          } else {
-            let searchFrom = 0;
-            const queryLower = queryStr.toLowerCase();
-            const contentLower = content.toLowerCase();
-            totalMatches = 0;
-            while (true) {
-              const pos = contentLower.indexOf(queryLower, searchFrom);
-              if (pos === -1) break;
-              totalMatches++;
-              searchFrom = pos + queryStr.length;
-            }
-          }
-        }
-
-        return jsonRes(res, {
-          field: fieldName,
-          query: queryStr,
-          totalMatches,
-          returnedMatches: matches.length,
-          fieldLength: content.length,
-          matches,
-        });
       }
 
       // ----------------------------------------------------------------
