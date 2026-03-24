@@ -1,4 +1,5 @@
-import { buildPreviewDocument, buildPreviewMessageHtml, simpleMarkdown, wrapCssForPreview, type PreviewParserEngine } from './preview-format';
+import { simpleMarkdown, wrapCssForPreview, type PreviewParserEngine } from './preview-format';
+import { createDocumentPreviewRuntime, type PreviewRuntime } from './preview-runtime';
 
 export interface PreviewMessage {
   role: 'char' | 'user';
@@ -98,6 +99,7 @@ export interface CreatePreviewSessionOptions {
   logPrefix?: string;
   onError?: (message: string, error: unknown) => void;
   onStateChange?: (snapshot: PreviewSnapshot) => void;
+  runtime?: PreviewRuntime;
 }
 
 export interface PreviewSession {
@@ -106,7 +108,7 @@ export interface PreviewSession {
   handleSend(inputElement: HTMLTextAreaElement | HTMLInputElement): Promise<void>;
   initialize(): Promise<void>;
   initializeLua(): Promise<boolean>;
-  refreshBackground(): void;
+  refreshBackground(): Promise<void>;
   reset(): Promise<void>;
 }
 
@@ -123,19 +125,17 @@ export function createPreviewSession({
   wrapPlainCss = true,
   logPrefix = '[Preview]',
   onError,
-  onStateChange = () => {}
+  onStateChange = () => {},
+  runtime: providedRuntime,
 }: CreatePreviewSessionOptions): PreviewSession {
   const lorebook = charData.lorebook || [];
   const scripts = charData.regex || [];
+  const runtime = providedRuntime ?? createDocumentPreviewRuntime(chatFrame);
 
   let previewMessages: PreviewMessage[] = [];
   let msgIndex = 0;
   let luaInitialized = false;
   let messageBridgeAttached = false;
-
-  function getFrameDocument(): Document | null {
-    return chatFrame.contentDocument || chatFrame.contentWindow?.document || null;
-  }
 
   function getSnapshot(): PreviewSnapshot {
     return {
@@ -189,14 +189,6 @@ export function createPreviewSession({
     }
   }
 
-  function buildChatDocument(): string {
-    return buildPreviewDocument(wrapCssForPreview({
-      raw: charData.css || '',
-      engine,
-      wrapInStyleTag: wrapPlainCss
-    }));
-  }
-
   async function transformMessageContent(role: PreviewMessage['role'], rawContent: string): Promise<string> {
     let content = rawContent;
     const cbsOptions = (runVar: boolean) => ({
@@ -224,37 +216,20 @@ export function createPreviewSession({
   }
 
   async function addMessage(role: PreviewMessage['role'], rawContent: string): Promise<void> {
-    const documentRef = getFrameDocument();
-    if (!documentRef) return;
-
-    const container = documentRef.getElementById('chat-container');
-    if (!container) return;
-
     const idx = msgIndex++;
     const content = await transformMessageContent(role, rawContent);
-    const wrapper = documentRef.createElement('div');
-    wrapper.className = 'chat-message-container';
-    wrapper.setAttribute('x-hashed', String(idx));
-    wrapper.innerHTML = buildPreviewMessageHtml({
+    await runtime.appendMessage({
       index: idx,
       name: role === 'char' ? (charData.name || 'Character') : 'User',
       avatarBg: role === 'char' ? 'var(--risu-theme-selected)' : 'var(--risu-theme-borderc)',
       content
     });
-
-    container.appendChild(wrapper);
     previewMessages.push({ role, content: rawContent });
-    documentRef.documentElement.scrollTop = documentRef.documentElement.scrollHeight;
+    runtime.scrollToBottom();
     notifyStateChange();
   }
 
-  function refreshBackground(): void {
-    const documentRef = getFrameDocument();
-    if (!documentRef) return;
-
-    const backgroundDom = documentRef.getElementById('bg-dom');
-    if (!backgroundDom) return;
-
+  async function refreshBackground(): Promise<void> {
     let processed = wrapCssForPreview({
       raw: charData.css || '',
       engine,
@@ -268,19 +243,13 @@ export function createPreviewSession({
       processed += parsedLuaHtml;
     }
 
-    backgroundDom.innerHTML = processed;
+    await runtime.setBackground(processed);
     notifyStateChange();
   }
 
   async function reRenderMessages(): Promise<void> {
-    const documentRef = getFrameDocument();
-    if (!documentRef) return;
-
-    const container = documentRef.getElementById('chat-container');
-    if (!container) return;
-
     const savedMessages = cloneMessages(previewMessages);
-    container.innerHTML = '';
+    await runtime.clearMessages();
     previewMessages = [];
     msgIndex = 0;
 
@@ -288,7 +257,7 @@ export function createPreviewSession({
       await addMessage(message.role, message.content);
     }
 
-    refreshBackground();
+    await refreshBackground();
   }
 
   async function handleBridgeMessage(data: unknown): Promise<void> {
@@ -355,12 +324,7 @@ export function createPreviewSession({
   }
 
   async function initializeFrameDocument(): Promise<void> {
-    const documentRef = getFrameDocument();
-    if (!documentRef) return;
-
-    documentRef.open();
-    documentRef.write(buildChatDocument());
-    documentRef.close();
+    await runtime.resetDocument();
   }
 
   async function initialize(): Promise<void> {
@@ -377,7 +341,7 @@ export function createPreviewSession({
       await addMessage('char', charData.firstMessage);
     }
 
-    refreshBackground();
+    await refreshBackground();
   }
 
   async function reset(): Promise<void> {
@@ -393,7 +357,7 @@ export function createPreviewSession({
       await addMessage('char', charData.firstMessage);
     }
 
-    refreshBackground();
+    await refreshBackground();
   }
 
   async function handleSend(inputElement: HTMLTextAreaElement | HTMLInputElement): Promise<void> {
@@ -412,11 +376,14 @@ export function createPreviewSession({
 
     await runLuaTrigger('output', response);
     await addMessage('char', response);
-    refreshBackground();
+    await refreshBackground();
   }
 
   return {
-    dispose: detachMessageBridge,
+    dispose() {
+      detachMessageBridge();
+      runtime.dispose();
+    },
     getSnapshot,
     handleSend,
     initialize,

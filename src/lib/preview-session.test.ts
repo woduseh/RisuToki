@@ -161,6 +161,9 @@ function interceptSessionHtmlWrites(documentRef: Document) {
   if (!descriptor?.get || !descriptor.set) {
     throw new Error('innerHTML descriptor not available');
   }
+  const innerHtmlEnumerable = descriptor.enumerable ?? false;
+  const innerHtmlGet = descriptor.get;
+  const innerHtmlSet = descriptor.set;
 
   const writes: Array<{ element: Element; value: string }> = [];
   const patchedElements = new WeakSet<Element>();
@@ -173,13 +176,13 @@ function interceptSessionHtmlWrites(documentRef: Document) {
     patchedElements.add(element);
     Object.defineProperty(element, 'innerHTML', {
       configurable: true,
-      enumerable: descriptor.enumerable ?? false,
+      enumerable: innerHtmlEnumerable,
       get() {
-        return descriptor.get!.call(this);
+        return innerHtmlGet.call(this);
       },
       set(value: string) {
         writes.push({ element: this as Element, value });
-        descriptor.set!.call(this, value);
+        innerHtmlSet.call(this, value);
       }
     });
   }
