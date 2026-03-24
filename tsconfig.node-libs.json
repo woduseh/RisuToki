@@ -27,6 +27,7 @@
     "src/lib/cbs-parser.ts",
     "src/lib/cbs-evaluator.ts",
     "src/lib/cbs-extractor.ts",
+    "src/lib/close-window-policy.ts",
     "src/lib/autosave-manager.ts",
     "src/lib/popout-manager.ts",
     "src/lib/main-state-store.ts",
