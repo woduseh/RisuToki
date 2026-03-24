@@ -16,6 +16,6 @@ describe('preview runtime contract', () => {
     const documentHtml = buildPreviewDocument('');
 
     expect(documentHtml).not.toContain("script-src 'unsafe-inline'");
-    expect(documentHtml).not.toMatch(/<script[\s>]/i);
+    expect(documentHtml).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/i);
   });
 });

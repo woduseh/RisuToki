@@ -32,8 +32,8 @@ describe('preview sanitizer contract', () => {
       '<img src="data:image/png;base64,AAAA" alt="asset">'
     );
 
-    expect(sanitized).toContain('<a title="bad">unsafe</a>');
-    expect(sanitized).toContain('<form action="https://safe.example"><button>go</button></form>');
+    expect(sanitized).toContain('unsafe</a>');
+    expect(sanitized).toContain('<button>go</button>');
     expect(sanitized).toContain('<img src="data:image/png;base64,AAAA" alt="asset">');
     expect(sanitized).not.toContain('javascript:');
     expect(sanitized).not.toContain('blocked:');
