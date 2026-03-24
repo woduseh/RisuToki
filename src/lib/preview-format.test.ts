@@ -38,13 +38,12 @@ describe('preview format helpers', () => {
     })).toBe('<style>.box { color: red; }</style>');
   });
 
-  it('builds the preview document shell with a restrictive csp', () => {
-    const documentHtml = buildPreviewDocument('<style>body{color:red;}</style>');
+  it('builds the preview document shell with a restrictive csp and empty scaffold', () => {
+    const documentHtml = buildPreviewDocument('');
 
     expect(documentHtml).toContain("default-src 'none'");
-    expect(documentHtml).toContain('id="bg-dom"');
-    expect(documentHtml).toContain("type: 'cbs-button'");
-    expect(documentHtml).toContain("type: 'risu-trigger'");
+    expect(documentHtml).toContain('<div class="background-dom" id="bg-dom"></div>');
+    expect(documentHtml).toContain('<div class="default-chat-screen" id="chat-container"></div>');
   });
 
   it('builds message html with escaped names while keeping only allowed inline preview markup', () => {
