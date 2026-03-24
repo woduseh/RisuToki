@@ -16,7 +16,9 @@ src/lorebook-convert.js
 src/lib/agents-md-manager.js
 src/lib/asset-manager.js
 src/lib/autosave-manager.js
+src/lib/close-window-policy.js
 src/lib/data-serializer.js
+src/lib/document-validation.js
 src/lib/guides-manager.js
 src/lib/ipc-confirm.js
 src/lib/main-state-store.js
@@ -24,6 +26,7 @@ src/lib/mcp-api-server.js
 src/lib/mcp-config.js
 src/lib/popout-manager.js
 src/lib/popout-payload-store.js
+src/lib/preload-api.js
 src/lib/reference-store.js
 src/lib/refs-popout-data.js
 src/lib/sync-server.js
@@ -64,6 +67,7 @@ Thumbs.db
 
 # Claude
 .claude/
+.worktrees/
 
 # Bot data
 bot/

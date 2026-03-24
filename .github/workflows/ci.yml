@@ -35,3 +35,28 @@ jobs:
 
       - name: Build
         run: npm run build:renderer
+
+  windows-build:
+    runs-on: windows-latest
+    needs: validate
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          HUSKY: '0'
+
+      - name: Build Electron
+        run: npm run build:electron
+
+      - name: Build Renderer
+        run: npm run build:renderer

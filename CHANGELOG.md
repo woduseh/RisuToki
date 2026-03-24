@@ -9,6 +9,40 @@
 
 ---
 
+## [0.22.3] - 2026-03-24
+
+### 변경
+
+- **문서화되지 않은 로컬 sync 노출면 제거**
+  - preload/main process에 남아 있던 retired sync server 제어 surface 삭제
+  - 앱이 숨은 localhost HTTP 서버를 열지 않도록 정리
+- **CI 경로 강화**
+  - PR/push CI를 Ubuntu 검증 + Windows Electron/Renderer 빌드로 분리
+  - Dependabot으로 npm / GitHub Actions 의존성 점검 자동화 추가
+
+### 수정
+
+- **프리뷰 격리 강화**
+  - 프리뷰를 sandbox iframe + 인증된 bridge 메시지 경계로 전환
+  - parent-side `document.write` / `innerHTML` 주입 제거
+  - 스크립트/인라인 이벤트 속성 제거 sanitizer 적용
+- **저장 실패 데이터 유실 방지**
+  - 저장 실패 시 창이 닫히지 않도록 close policy 수정
+  - 사용자에게 명시적인 저장 실패 오류 표시 추가
+- **설정/파일 입력 검증 강화**
+  - 손상된 layout/avatar localStorage JSON을 안전하게 fallback 처리
+  - `.charx`, `.risum`, `.risup` 구조 검증과 payload 경계 체크 추가
+
+## [0.22.2] - 2026-03-23
+
+### 변경
+
+- **writing-arca-html 스킬 보강** — 사용자 가이드라인에서 누락된 콘텐츠 병합
+  - 테마 테이블에 "Social Media / Platform" 행 추가 (Discord, Twitter, Instagram 스타일)
+  - "Creative Thinking Examples" 섹션 추가 — 캐릭터 유형별 디자인 영감 (히키코모리, 판타지 기사, AI 캐릭터, 역사 인물, 소셜미디어 페르소나 등)
+  - "Background Patterns with Repeating Divs" 기법 섹션 추가 (줄무늬/체커보드 패턴)
+  - 창작 독려 마무리 문구 추가 ("Don't default to templates")
+
 ## [0.22.1] - 2026-03-23
 
 ### 수정

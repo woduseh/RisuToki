@@ -58,4 +58,20 @@ import { buildRisum, parseRisum, rpackEncode, rpackDecode } from '../src/rpack';
   assert.deepStrictEqual(parsed.assets, embeddedAssets);
 })();
 
+(function testRisumRejectsTruncatedHeader() {
+  assert.throws(
+    () => parseRisum(Buffer.from([0x6F, 0x00])),
+    /too small to contain a valid risum header/i,
+  );
+})();
+
+(function testRisumRejectsMainPayloadLengthThatExceedsBuffer() {
+  const truncated = Buffer.from([0x6F, 0x00, 0x10, 0x00, 0x00, 0x00, 0x41]);
+
+  assert.throws(
+    () => parseRisum(truncated),
+    /main payload length exceeds the available buffer/i,
+  );
+})();
+
 console.log('test-rpack passed');

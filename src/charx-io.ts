@@ -17,6 +17,26 @@ const { pack, unpack } = require('msgpackr') as {
 const { risuArrayToCCV3 } = require('./lorebook-convert') as {
   risuArrayToCCV3: (entries: unknown[]) => unknown[];
 };
+const {
+  validateCharxCardDocument,
+  validateRisupEnvelope,
+  validateRisupPresetPayload,
+} = require('./lib/document-validation') as {
+  validateCharxCardDocument: (card: unknown) => {
+    spec: 'chara_card_v3';
+    spec_version?: string;
+    data: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+  validateRisupEnvelope: (envelope: unknown) => {
+    type: 'preset';
+    presetVersion?: number;
+    preset?: Uint8Array;
+    pres?: Uint8Array;
+    [key: string]: unknown;
+  };
+  validateRisupPresetPayload: (preset: unknown) => Record<string, unknown>;
+};
 
 const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_FILE_SIZE: number = 200 * 1024 * 1024; // 200 MB
@@ -386,6 +406,7 @@ export function openCharx(filePath: string): CharxData {
   } catch (e) {
     throw new Error(`Invalid card.json: ${e instanceof Error ? e.message : String(e)}`);
   }
+  card = validateCharxCardDocument(card);
 
   // Parse module.risum
   let moduleData: Record<string, unknown> | null = null;
@@ -987,22 +1008,20 @@ export function openRisup(filePath: string): CharxData {
   } catch (e) {
     throw new Error(`Failed to decode .risup envelope: ${e instanceof Error ? e.message : String(e)}`);
   }
-  if (!envelope || envelope.type !== 'preset') {
-    throw new Error('Invalid .risup file: missing type=preset marker');
-  }
+  const validatedEnvelope = validateRisupEnvelope(envelope);
 
   // Step 4: AES-GCM decrypt the preset payload
-  const encryptedPreset = envelope.preset ?? envelope.pres;
-  if (!encryptedPreset) {
-    throw new Error('Invalid .risup file: no encrypted preset data');
-  }
+  const encryptedPreset = validatedEnvelope.preset ?? validatedEnvelope.pres;
   const decryptedBuf = decryptAesGcm(Buffer.from(encryptedPreset as Uint8Array));
 
   // Step 5: MessagePack decode the actual preset
   let preset: Record<string, unknown>;
   try {
-    preset = unpack(decryptedBuf) as Record<string, unknown>;
+    preset = validateRisupPresetPayload(unpack(decryptedBuf));
   } catch (e) {
+    if (e instanceof Error && e.message.includes('Invalid .risup file:')) {
+      throw e;
+    }
     throw new Error(`Failed to decode preset data: ${e instanceof Error ? e.message : String(e)}`);
   }
 

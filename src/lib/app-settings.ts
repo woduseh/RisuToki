@@ -1,3 +1,9 @@
+import {
+  parseStoredJson,
+  storedAvatarStateSchema,
+  storedLayoutStateSchema,
+} from './stored-state-validation';
+
 export type RpMode = 'off' | 'toki' | 'aris' | 'custom';
 
 export interface StorageLike {
@@ -69,15 +75,6 @@ function parseInteger(value: string | null, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function parseJson<T>(value: string | null): T | null {
-  if (!value) return null;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return null;
-  }
-}
-
 export function getDefaultRpModeForDarkMode(darkMode: boolean): RpMode {
   return darkMode ? 'aris' : 'toki';
 }
@@ -107,16 +104,14 @@ export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnaps
     autosaveEnabled: parseBoolean(target.getItem(STORAGE_KEYS.autosaveEnabled)),
     autosaveInterval: parseInteger(target.getItem(STORAGE_KEYS.autosaveInterval), DEFAULT_AUTOSAVE_INTERVAL),
     autosaveDir: target.getItem(STORAGE_KEYS.autosaveDir) || '',
-    avatarIdle: parseJson<StoredAvatarState>(target.getItem(STORAGE_KEYS.avatarIdle)),
-    avatarWorking: parseJson<StoredAvatarState>(target.getItem(STORAGE_KEYS.avatarWorking)),
-    layoutState: parseJson<StoredLayoutState>(target.getItem(STORAGE_KEYS.layoutState))
+    avatarIdle: parseStoredJson(target.getItem(STORAGE_KEYS.avatarIdle), storedAvatarStateSchema),
+    avatarWorking: parseStoredJson(target.getItem(STORAGE_KEYS.avatarWorking), storedAvatarStateSchema),
+    layoutState: parseStoredJson(target.getItem(STORAGE_KEYS.layoutState), storedLayoutStateSchema)
   };
 }
 
 export function readStoredLayoutState(storage?: StorageLike): StoredLayoutState | null {
-  const raw = getDefaultStorage(storage).getItem(STORAGE_KEYS.layoutState);
-  if (!raw) return null;
-  return JSON.parse(raw) as StoredLayoutState;
+  return parseStoredJson(getDefaultStorage(storage).getItem(STORAGE_KEYS.layoutState), storedLayoutStateSchema);
 }
 
 export function subscribeToAppSettings(

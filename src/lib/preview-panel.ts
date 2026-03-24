@@ -1,4 +1,5 @@
 import { buildPreviewDebugClipboardText, renderPreviewDebugHtml } from './preview-debug';
+import { createIframePreviewRuntime } from './preview-runtime';
 import { createPreviewSession } from './preview-session';
 import type { PreviewCharData, PreviewEngine, PreviewSession } from './preview-session';
 import { reportRuntimeError } from './runtime-feedback';
@@ -87,6 +88,7 @@ export function showPreviewPanel(
   // ── Chat iframe ──
   const chatFrame = document.createElement('iframe');
   chatFrame.className = 'preview-chat-frame';
+  chatFrame.setAttribute('sandbox', 'allow-scripts');
 
   // ── Input bar ──
   const inputBar = document.createElement('div');
@@ -263,6 +265,7 @@ export function showPreviewPanel(
     chatFrame,
     windowTarget: window,
     assetMap,
+    runtime: createIframePreviewRuntime(chatFrame, window),
     wrapPlainCss: true,
     logPrefix: '[Preview]',
     onError: (message, error) => {

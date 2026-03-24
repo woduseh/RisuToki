@@ -17,14 +17,13 @@ describe('preview format helpers', () => {
     expect(escapePreviewHtml('<tag>&value>')).toBe('&lt;tag&gt;&amp;value&gt;');
   });
 
-  it('renders lightweight markdown while preserving embedded html', () => {
-    const html = simpleMarkdown('**굵게** _기울임_ `snippet`\n<span>보존</span>');
+  it('renders lightweight markdown for basic text formatting without relying on raw html passthrough', () => {
+    const html = simpleMarkdown('**굵게** _기울임_ `snippet`\n다음 줄');
 
     expect(html).toContain('<strong>굵게</strong>');
     expect(html).toContain('<em>기울임</em>');
     expect(html).toContain('<code>snippet</code>');
     expect(html).toContain('<br>');
-    expect(html).toContain('<span>보존</span>');
   });
 
   it('wraps plain css for preview and preserves explicit style tags', () => {
@@ -39,26 +38,27 @@ describe('preview format helpers', () => {
     })).toBe('<style>.box { color: red; }</style>');
   });
 
-  it('builds the preview document shell with a restrictive csp', () => {
-    const documentHtml = buildPreviewDocument('<style>body{color:red;}</style>');
+  it('builds the preview document shell with a restrictive csp and empty scaffold', () => {
+    const documentHtml = buildPreviewDocument('');
 
     expect(documentHtml).toContain("default-src 'none'");
-    expect(documentHtml).toContain('id="bg-dom"');
-    expect(documentHtml).toContain("type: 'cbs-button'");
-    expect(documentHtml).toContain("type: 'risu-trigger'");
+    expect(documentHtml).toContain('<div class="background-dom" id="bg-dom"></div>');
+    expect(documentHtml).toContain('<div class="default-chat-screen" id="chat-container"></div>');
   });
 
-  it('builds message html with escaped names and provided rich content', () => {
+  it('builds message html with escaped names while keeping only allowed inline preview markup', () => {
     const messageHtml = buildPreviewMessageHtml({
       index: 3,
       name: '<Toki>',
       avatarBg: 'var(--test-color)',
-      content: '<strong>안녕</strong>'
+      content: '<strong>안녕</strong><span risu-trigger="wave">트리거</span><script>alert(1)</script>'
     });
 
     expect(messageHtml).toContain('data-chat-index="3"');
     expect(messageHtml).toContain('&lt;Toki&gt;');
     expect(messageHtml).toContain('<strong>안녕</strong>');
+    expect(messageHtml).toContain('<span risu-trigger="wave">트리거</span>');
+    expect(messageHtml).not.toContain('<script>');
     expect(messageHtml).toContain('background-color:var(--test-color)');
   });
 });

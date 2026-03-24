@@ -1,5 +1,7 @@
 'use strict';
 
+import { validateRisumModulePayload } from './lib/document-validation';
+
 // RPack: byte substitution cipher used by RisuAI for module.risum encoding
 // Maps sourced from rpack_map.bin (512 bytes: encode[0..255] + decode[256..511])
 
@@ -78,6 +80,10 @@ export function rpackEncode(input: Buffer | Uint8Array): Buffer {
  * @returns RisumModule object with parsed module and assets
  */
 export function parseRisum(buf: Buffer): RisumModule {
+  if (buf.length < 6) {
+    throw new Error('Buffer too small to contain a valid risum header');
+  }
+
   let offset = 0;
 
   // Magic byte check
@@ -92,12 +98,15 @@ export function parseRisum(buf: Buffer): RisumModule {
   // Main data length (uint32 LE)
   const mainLen = buf.readUInt32LE(offset);
   offset += 4;
+  if (offset + mainLen > buf.length) {
+    throw new Error('Main payload length exceeds the available buffer');
+  }
 
   // Main payload (RPack encoded JSON)
   const mainEncoded = buf.subarray(offset, offset + mainLen);
   offset += mainLen;
   const mainDecoded = rpackDecode(mainEncoded);
-  const mainJson = JSON.parse(mainDecoded.toString('utf-8')) as Record<string, unknown>;
+  const mainJson = validateRisumModulePayload(JSON.parse(mainDecoded.toString('utf-8')) as unknown);
 
   // Read embedded assets
   const assets: Buffer[] = [];
@@ -107,8 +116,14 @@ export function parseRisum(buf: Buffer): RisumModule {
     if (marker !== 0x01) {
       throw new Error(`Unexpected asset marker: 0x${marker.toString(16)}`);
     }
+    if (offset + 4 > buf.length) {
+      throw new Error('Asset length header exceeds the available buffer');
+    }
     const assetLen = buf.readUInt32LE(offset);
     offset += 4;
+    if (offset + assetLen > buf.length) {
+      throw new Error('Asset payload length exceeds the available buffer');
+    }
     const assetEncoded = buf.subarray(offset, offset + assetLen);
     offset += assetLen;
     assets.push(rpackDecode(assetEncoded));

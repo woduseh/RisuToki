@@ -12,6 +12,7 @@ import { createDirectTerminalChatSession } from '../lib/chat-session';
 import { getTalkTitle, toMediaAsset } from '../lib/asset-runtime';
 import { loadMonacoRuntime } from '../lib/monaco-loader';
 import { buildPreviewDebugClipboardText, renderPreviewDebugHtml } from '../lib/preview-debug';
+import { createIframePreviewRuntime } from '../lib/preview-runtime';
 import { createPreviewSession } from '../lib/preview-session';
 import type { PreviewCharData } from '../lib/preview-session';
 import { reportRuntimeError } from '../lib/runtime-feedback';
@@ -708,6 +709,7 @@ async function buildPreviewPopout(): Promise<void> {
 
   const chatFrame = document.createElement('iframe');
   chatFrame.style.cssText = 'flex:1;width:100%;border:none;background:#282a36;min-height:0;';
+  chatFrame.setAttribute('sandbox', 'allow-scripts');
 
   const inputBar = document.createElement('div');
   inputBar.style.cssText = 'display:flex;gap:6px;padding:8px 12px;background:#21222c;border-top:1px solid #44475a;flex-shrink:0;align-items:flex-end;';
@@ -783,6 +785,7 @@ async function buildPreviewPopout(): Promise<void> {
     chatFrame,
     windowTarget: window,
     assetMap: assetMapForEngine,
+    runtime: createIframePreviewRuntime(chatFrame, window),
     wrapPlainCss: true,
     logPrefix: '[Popout Preview]',
     onError: (message, error) => {

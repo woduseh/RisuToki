@@ -1,3 +1,5 @@
+import { sanitizePreviewHtml } from './preview-sanitizer';
+
 export interface PreviewParserEngine {
   risuChatParser(text: string, options?: Record<string, unknown>): string;
 }
@@ -16,16 +18,7 @@ export function escapePreviewHtml(value: unknown): string {
     .replace(/>/g, '&gt;');
 }
 
-/** Strip dangerous HTML elements and event-handler attributes from chat content. */
-export function sanitizePreviewHtml(html: string): string {
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
-    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '')
-    .replace(/<embed\b[^>]*\/?>/gi, '')
-    .replace(/\bon\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/javascript\s*:/gi, 'blocked:');
-}
+export { sanitizePreviewHtml } from './preview-sanitizer';
 
 export function simpleMarkdown(text: string): string {
   if (!text) return '';
@@ -121,9 +114,9 @@ export function wrapCssForPreview({
   return `<style>\n${processed}\n</style>`;
 }
 
-export function buildPreviewDocument(processedCss: string): string {
+export function buildPreviewDocument(_processedCss: string, runtimeScriptUrl?: string): string {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; img-src * data: blob:; style-src 'unsafe-inline'; font-src * data: blob:; media-src * data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src blob:; img-src * data: blob:; style-src 'unsafe-inline'; font-src * data: blob:; media-src * data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none';">
 <style>
 :root {
   --FontColorStandard: #fafafa;
@@ -277,29 +270,9 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--risu-theme-borderc); }
 </style>
 </head><body>
-<div class="background-dom" id="bg-dom">${processedCss}</div>
+<div class="background-dom" id="bg-dom"></div>
 <div class="default-chat-screen" id="chat-container"></div>
-<script>
-function cbsClick(varName, value) {
-  window.parent.postMessage({ type: 'cbs-button', varName: varName, value: value }, '*');
-}
-document.addEventListener('click', function(event) {
-  var button = event.target.closest('[risu-btn]');
-  if (button) {
-    event.preventDefault();
-    event.stopPropagation();
-    window.parent.postMessage({ type: 'risu-btn', data: button.getAttribute('risu-btn') }, '*');
-    return;
-  }
-
-  var trigger = event.target.closest('[risu-trigger]');
-  if (trigger) {
-    event.preventDefault();
-    event.stopPropagation();
-    window.parent.postMessage({ type: 'risu-trigger', name: trigger.getAttribute('risu-trigger') }, '*');
-  }
-});
-</script>
+${runtimeScriptUrl ? `<script src="${runtimeScriptUrl}"></script>` : ''}
 </body></html>`;
 }
 

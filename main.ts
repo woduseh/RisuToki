@@ -183,15 +183,6 @@ const { initAssetManager, invalidateAssetsMapCache } = require('./src/lib/asset-
   invalidateAssetsMapCache: () => void;
 };
 
-const { initSyncServer, stopSyncServer } = require('./src/lib/sync-server') as {
-  initSyncServer: (deps: {
-    getCurrentData: () => CharxData | null;
-    broadcastToAll: (channel: string, ...args: unknown[]) => void;
-    getSyncHash: () => number;
-  }) => void;
-  stopSyncServer: () => void;
-};
-
 const { initGuidesManager, getGuidesDir, getGuidesListResult } = require('./src/lib/guides-manager') as {
   initGuidesManager: (deps: {
     getMainWindow: () => BrowserWindow | null;
@@ -237,6 +228,13 @@ const { initAutosaveManager } = require('./src/lib/autosave-manager') as {
   }) => void;
 };
 
+const { resolveCloseWindowAction } = require('./src/lib/close-window-policy') as {
+  resolveCloseWindowAction: (input: { choice: number; saveResult?: SaveResult }) => {
+    action: 'save' | 'close' | 'stay';
+    errorMessage: string | null;
+  };
+};
+
 const { initDataSerializer, serializeForRenderer, applyUpdates } = require('./src/lib/data-serializer') as {
   initDataSerializer: (deps: {
     stringifyTriggerScripts: (ts: unknown) => string;
@@ -260,9 +258,6 @@ const popoutPayloadStore: PopoutPayloadStore = createPopoutPayloadStore();
 let mcpApi: McpApiServer | null = null;
 let apiPort: number | null = null;
 let apiToken: string | null = null;
-
-// Sync hash (incremented on data changes, read by sync server)
-let syncHash = 0;
 
 // ---------------------------------------------------------------------------
 // Reference file helpers
@@ -374,7 +369,6 @@ function loadPersistedReferenceFiles(): void {
 // ---------------------------------------------------------------------------
 
 function broadcastToAll(channel: string, ...args: unknown[]): void {
-  if (channel === 'data-updated') syncHash++;
   const allWindows = [mainWindow, ...Object.values(getPopoutWindows())];
   for (const win of allWindows) {
     if (win && !win.isDestroyed()) {
@@ -466,36 +460,56 @@ function createWindow(): void {
 
   // 창 닫기 전 저장 확인 (MomoTalk 스타일)
   let isClosingForReal = false;
+  async function saveDocumentBeforeClose(): Promise<SaveResult> {
+    if (!mainState.currentData) {
+      return { success: false, error: 'No file open' };
+    }
+
+    if (!mainState.currentFilePath) {
+      return saveCurrentFileAs({});
+    }
+
+    try {
+      const fileType = mainState.currentData._fileType;
+      if (fileType === 'risum') {
+        saveRisum(mainState.currentFilePath, mainState.currentData);
+      } else if (fileType === 'risup') {
+        saveRisup(mainState.currentFilePath, mainState.currentData);
+      } else {
+        saveCharx(mainState.currentFilePath, mainState.currentData);
+      }
+      return { success: true, path: mainState.currentFilePath };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
   mainWindow.on('close', (e) => {
     if (mainState.currentData && !isClosingForReal) {
       e.preventDefault();
       askRendererCloseConfirm()
-        .then((choice) => {
-          if (choice === 0) {
-            // 저장하고 닫기
-            if (mainState.currentFilePath) {
-              try {
-                const ft = mainState.currentData!._fileType;
-                if (ft === 'risum') saveRisum(mainState.currentFilePath, mainState.currentData!);
-                else if (ft === 'risup') saveRisup(mainState.currentFilePath, mainState.currentData!);
-                else saveCharx(mainState.currentFilePath, mainState.currentData!);
-              } catch (err) {
-                console.error('[main] Failed to save before close:', err);
-              }
+        .then(async (choice) => {
+          let decision = resolveCloseWindowAction({ choice });
+          if (decision.action === 'save') {
+            const saveResult = await saveDocumentBeforeClose();
+            if (!saveResult.success) {
+              console.error('[main] Failed to save before close:', saveResult.error);
             }
-            isClosingForReal = true;
-            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
-          } else if (choice === 1) {
-            // 저장 안 하고 닫기
+            decision = resolveCloseWindowAction({ choice, saveResult });
+          }
+
+          if (decision.errorMessage) {
+            dialog.showErrorBox('저장 실패', decision.errorMessage);
+          }
+
+          if (decision.action === 'close') {
             isClosingForReal = true;
             if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
           }
-          // choice === 2: 취소 — 아무것도 안 함
         })
         .catch((err) => {
           console.error('[main] Close confirmation failed:', err);
-          isClosingForReal = true;
-          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+          dialog.showErrorBox('종료 확인 실패', '창 닫기 확인 중 오류가 발생해 창을 닫지 않았습니다.');
         });
     }
   });
@@ -584,13 +598,6 @@ app.whenReady().then(() => {
     broadcastRefsDataChanged,
   });
 
-  // Initialize RisuAI sync server
-  initSyncServer({
-    getCurrentData: () => mainState.currentData,
-    broadcastToAll,
-    getSyncHash: () => syncHash,
-  });
-
   // Initialize autosave management
   initAutosaveManager({
     getCurrentData: () => mainState.currentData,
@@ -616,7 +623,6 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   killTerminal();
-  stopSyncServer();
   if (mcpApi) {
     mcpApi.server.close();
     mcpApi = null;
