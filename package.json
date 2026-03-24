@@ -18,7 +18,7 @@
     "test:references": "node test/test-reference-store.js && node test/test-refs-popout-data.js && node test/test-popout-payload-store.js && node test/test-terminal-shell.js && node test/test-main-state-store.js",
     "test:unit": "vitest run",
     "test:mcp": "npm run build:node-libs && npm run build:mcp && node test/test-mcp-search-all.js",
-    "test": "npm run build:node-libs && npm run test-rpack && npm run test-charx && npm run test:references && npm run test:mcp && npm run test:unit",
+    "test": "npm run build:node-libs && npm run test-rpack && npm run test-charx && npm run test:references && npm run test:unit && npm run test:mcp",
     "build:electron": "npm run build:node-libs && npm run build:mcp && tsc -p tsconfig.electron.json",
     "build:renderer": "vite build",
     "build": "npm run lint && npm run typecheck && npm run test && npm run build:electron && npm run build:renderer",
