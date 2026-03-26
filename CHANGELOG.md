@@ -9,6 +9,21 @@
 
 ---
 
+## [0.22.9] - 2026-03-26
+
+### 수정
+
+- **charx 아이콘 에셋 이름 호환성 수정**
+  - RisuAI는 `type='icon'` + `name='main'`인 에셋을 메인 아이콘으로 인식하지만, RisuToki가 새 아이콘 에셋 엔트리를 생성할 때 파일명 기반 이름을 사용하여 RisuAI에서 메인 아이콘을 찾지 못하는 문제 수정
+  - 첫 번째 icon 타입 에셋에 `name='main'`을 자동 부여
+
+### 조사 완료 (RisuToki 외부 이슈)
+
+- **RisuRealm 공유 실패 원인 조사**
+  - "corrupted" 에러는 RisuAI→RisuRealm 공유 단계에서 발생 (RisuAI가 캐릭터를 PNG로 재수출할 때)
+  - RisuToki의 charx 포맷은 완전히 호환됨을 확인: ZIP 호환성(adm-zip↔fflate) ✅, RPack 바이트맵 동일 ✅, card.json 구조 ✅, module.risum 바이너리 ✅
+  - 근본 원인은 RisuAI 내부의 `exportCharacterCard()` 또는 RisuRealm 서버측 검증에 있으며, RisuToki 수정 범위 밖
+
 ## [0.22.8] - 2026-03-26
 
 ### 수정

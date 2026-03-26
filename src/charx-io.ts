@@ -595,13 +595,24 @@ export function saveCharx(filePath: string, data: CharxData): void {
   const existingAssetPaths = new Set(
     cardAssetArr.map((a) => resolveLocalAssetPath(a.uri)).filter((p): p is string => !!p),
   );
+  // RisuAI identifies the primary icon by type='icon' + name='main'.
+  // Use 'main' for the first icon entry that doesn't already exist in the array.
+  const hasMainIcon = cardAssetArr.some((a) => a.type === 'icon' && a.name === 'main');
+  let mainIconAssigned = hasMainIcon;
   for (const asset of data.assets || []) {
     const uri = `embeded://${asset.path}`;
     if (!existingAssetPaths.has(asset.path)) {
       const ext = path.extname(asset.path).slice(1) || '';
       const baseName = path.basename(asset.path, ext ? `.${ext}` : '');
       const isIcon = asset.path.startsWith('assets/icon');
-      cardAssetArr.push({ type: isIcon ? 'icon' : 'x-risu-asset', uri, name: baseName, ext });
+      const isPrimaryIcon = isIcon && !mainIconAssigned;
+      if (isPrimaryIcon) mainIconAssigned = true;
+      cardAssetArr.push({
+        type: isIcon ? 'icon' : 'x-risu-asset',
+        uri,
+        name: isPrimaryIcon ? 'main' : baseName,
+        ext,
+      });
     }
   }
   zip.addFile('card.json', Buffer.from(JSON.stringify(card, null, 2), 'utf-8'));
