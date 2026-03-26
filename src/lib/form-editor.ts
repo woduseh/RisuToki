@@ -1,6 +1,7 @@
 import { ensureBlueArchiveMonacoTheme } from './monaco-loader';
 import { defineDarkMonacoTheme } from './dark-mode';
 import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
+import { getFolderRef, normalizeFolderRef } from './lorebook-folders';
 
 type MonacoWindow = Window & {
   _baDarkThemeDefined?: boolean;
@@ -344,36 +345,21 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
 
   // Existing folders
   for (const f of folderEntries) {
+    const folderId = getFolderRef(f.entry);
+    if (!folderId) continue;
     const opt = document.createElement('option');
-    const folderId = `folder:${(f.entry.key as string) || f.index}`;
     opt.value = folderId;
     opt.textContent = (f.entry.comment as string) || folderId;
     folderSelect.appendChild(opt);
   }
 
   // Select current value (match by ID or find by comment)
-  if (data.folder) {
-    let matched = false;
+  const currentFolder = typeof data.folder === 'string' ? normalizeFolderRef(data.folder) : '';
+  if (currentFolder) {
     for (const opt of folderSelect.options) {
-      if (opt.value === data.folder) {
+      if (opt.value === currentFolder) {
         opt.selected = true;
-        matched = true;
         break;
-      }
-    }
-    if (!matched) {
-      for (const f of folderEntries) {
-        const folderId = `folder:${(f.entry.key as string) || f.index}`;
-        if (data.folder === folderId || data.folder === f.entry.key || data.folder === f.entry.comment) {
-          for (const opt of folderSelect.options) {
-            if (opt.value === folderId) {
-              opt.selected = true;
-              matched = true;
-              break;
-            }
-          }
-          if (matched) break;
-        }
       }
     }
   }
@@ -383,7 +369,7 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
       const name = await d.showPrompt('새 폴더 이름을 입력하세요', '새 폴더');
       if (!name) {
         // Revert to previous selection
-        folderSelect.value = (data.folder as string) || '';
+        folderSelect.value = normalizeFolderRef(data.folder) || '';
         return;
       }
       const folderId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -404,15 +390,16 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
       ((fileData as Record<string, unknown>).lorebook as unknown[]).push(newFolder);
       // Add new option before the "+ 새 폴더" option
       const newOpt = document.createElement('option');
-      newOpt.value = `folder:${folderId}`;
+      const folderRef = normalizeFolderRef(folderId);
+      newOpt.value = folderRef;
       newOpt.textContent = name;
       folderSelect.insertBefore(newOpt, optNew);
-      folderSelect.value = `folder:${folderId}`;
-      data.folder = `folder:${folderId}`;
+      folderSelect.value = folderRef;
+      data.folder = folderRef;
       markDirty();
       d.buildSidebar();
     } else {
-      data.folder = folderSelect.value;
+      data.folder = normalizeFolderRef(folderSelect.value);
       markDirty();
     }
   });

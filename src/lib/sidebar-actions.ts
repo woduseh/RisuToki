@@ -1,6 +1,7 @@
 import type { Section } from './section-parser';
 import type { Tab } from './tab-manager';
 import type { ContextMenuItem } from './context-menu';
+import { getFolderRef, normalizeFolderRef } from './lorebook-folders';
 
 type TabStateFn = (index: number, tab: Tab) => Partial<Tab> | null;
 
@@ -46,6 +47,10 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     return deps.getFileData();
   }
 
+  function createFolderUuid(): string {
+    return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
   // ==================== Lorebook ====================
 
   function addNewLorebook(): void {
@@ -86,7 +91,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     if (!fileData) return;
     const name = await deps.showPrompt('폴더 이름을 입력하세요', '새 폴더');
     if (!name) return;
-    const folderId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const folderId = createFolderUuid();
     const newFolder = {
       key: folderId,
       content: '',
@@ -118,19 +123,31 @@ export function createSidebarActions(deps: SidebarActionDeps) {
       const item = raw as { fileName: string; data: Record<string, unknown> };
       const entries = Array.isArray(item.data) ? item.data : (item.data.entries as unknown[]) || [item.data];
       for (const entry of entries) {
+        const sourceEntry = entry as Record<string, unknown>;
+        const mode = String(sourceEntry.mode || 'normal');
+        const isFolder = mode === 'folder';
+        const canonicalFolderUuid = isFolder
+          ? (typeof sourceEntry.key === 'string' && sourceEntry.key) ||
+            (typeof sourceEntry.id === 'string' && sourceEntry.id) ||
+            createFolderUuid()
+          : '';
+
         fileData.lorebook.push({
-          key: entry.key || (entry.keys ? entry.keys.join(', ') : ''),
-          content: entry.content || '',
-          comment: entry.comment || entry.name || item.fileName.replace('.json', ''),
-          mode: entry.mode || 'normal',
-          insertorder: entry.insertorder || entry.insertion_order || 100,
-          alwaysActive: entry.alwaysActive || entry.constant || false,
-          forceActivation: entry.forceActivation || false,
-          selective: entry.selective || false,
-          secondkey: entry.secondkey || (entry.secondary_keys ? entry.secondary_keys.join(', ') : ''),
-          constant: entry.constant || false,
+          key: canonicalFolderUuid || (typeof sourceEntry.key === 'string' ? sourceEntry.key : ''),
+          content: (sourceEntry.content as string) || '',
+          comment:
+            (sourceEntry.comment as string) || (sourceEntry.name as string) || item.fileName.replace('.json', ''),
+          mode,
+          insertorder: (sourceEntry.insertorder as number) || (sourceEntry.insertion_order as number) || 100,
+          alwaysActive: Boolean(sourceEntry.alwaysActive || sourceEntry.constant),
+          forceActivation: Boolean(sourceEntry.forceActivation),
+          selective: Boolean(sourceEntry.selective),
+          secondkey:
+            (typeof sourceEntry.secondkey === 'string' ? sourceEntry.secondkey : '') ||
+            (Array.isArray(sourceEntry.secondary_keys) ? sourceEntry.secondary_keys.join(', ') : ''),
+          constant: Boolean(sourceEntry.constant),
           order: fileData.lorebook.length,
-          folder: entry.folder || '',
+          folder: isFolder ? '' : normalizeFolderRef(sourceEntry.folder),
         });
         addedCount++;
       }
@@ -421,14 +438,15 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     if (fromIdx < 0 || fromIdx >= lb.length) return;
 
     const item = lb[fromIdx] as Record<string, unknown>;
+    const normalizedTargetFolder = targetFolder ? normalizeFolderRef(targetFolder) : '';
 
     // Update folder assignment
-    item.folder = targetFolder;
+    item.folder = normalizedTargetFolder;
 
     // Remove from old position
     lb.splice(fromIdx, 1);
 
-    if (targetFolder === '') {
+    if (normalizedTargetFolder === '') {
       // Moving to root — find insertion point among root entries
       const rootIndices: number[] = [];
       for (let i = 0; i < lb.length; i++) {
@@ -442,13 +460,9 @@ export function createSidebarActions(deps: SidebarActionDeps) {
       let folderIdx = -1;
       for (let i = 0; i < lb.length; i++) {
         const e = lb[i] as Record<string, unknown>;
-        if (e.mode === 'folder') {
-          const k = (e.key as string) || '';
-          const c = (e.comment as string) || '';
-          if (`folder:${k}` === targetFolder || `folder:${c}` === targetFolder || k === targetFolder) {
-            folderIdx = i;
-            break;
-          }
+        if (getFolderRef(e) === normalizedTargetFolder) {
+          folderIdx = i;
+          break;
         }
       }
       if (folderIdx === -1) {
@@ -459,7 +473,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
         const childrenInFolder: number[] = [];
         for (let i = 0; i < lb.length; i++) {
           const e = lb[i] as Record<string, unknown>;
-          if (e.folder === targetFolder) childrenInFolder.push(i);
+          if (normalizeFolderRef(e.folder) === normalizedTargetFolder) childrenInFolder.push(i);
         }
         const insertAt =
           toPositionInFolder < childrenInFolder.length

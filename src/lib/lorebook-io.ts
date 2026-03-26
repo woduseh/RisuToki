@@ -8,6 +8,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { buildFolderInfoMap, normalizeFolderRef } from './lorebook-folders';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -260,14 +262,9 @@ function resolveFilenameConflict(dir: string, baseName: string, ext: string): st
  * Build a map from folder ID ("folder:uuid") to folder name (comment).
  */
 export function buildFolderMap(entries: LorebookEntry[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const entry of entries) {
-    if (entry.mode === 'folder' && entry.id) {
-      const folderId = `folder:${entry.id}`;
-      map.set(folderId, entry.comment || entry.id);
-    }
-  }
-  return map;
+  return new Map(
+    Array.from(buildFolderInfoMap(entries).entries()).map(([folderId, info]) => [folderId, info.name] as const),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +334,8 @@ export async function exportToMarkdown(
     // Determine target subdirectory
     let subDir = resolvedDir;
     if (groupByFolder && entry.folder) {
-      const folderName = folderMap.get(entry.folder);
+      const folderRef = normalizeFolderRef(entry.folder);
+      const folderName = folderMap.get(folderRef);
       if (folderName) {
         subDir = path.join(resolvedDir, sanitizeFilename(folderName));
       } else {
@@ -598,7 +596,7 @@ export async function importFromJson(sourcePath: string): Promise<ImportEntry[]>
   if (Array.isArray(obj.folders)) {
     for (const f of obj.folders) {
       if (f && typeof f === 'object' && 'id' in f && 'name' in f) {
-        folderNameMap.set(String(f.id), String(f.name));
+        folderNameMap.set(normalizeFolderRef(String(f.id)), String(f.name));
       }
     }
   }
@@ -623,7 +621,8 @@ export async function importFromJson(sourcePath: string): Promise<ImportEntry[]>
     // Resolve folder name
     let folderName: string | undefined;
     if (typeof item.folder === 'string' && item.folder) {
-      folderName = folderNameMap.get(item.folder) || item.folder;
+      const folderRef = normalizeFolderRef(item.folder);
+      folderName = folderNameMap.get(folderRef) || folderRef || undefined;
     }
 
     entries.push({

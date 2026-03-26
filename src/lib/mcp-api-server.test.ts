@@ -44,6 +44,9 @@ interface SearchFixture {
     comment?: string;
     key?: string;
     content?: string;
+    mode?: string;
+    folder?: string;
+    id?: string;
   }>;
   [key: string]: unknown;
 }
@@ -311,6 +314,157 @@ describe('MCP API search routes', () => {
         regex: false,
         totalMatches: 5,
       });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API lorebook folder routes', () => {
+  it('creates canonical key UUIDs for folder entries added through /lorebook/add', async () => {
+    const currentData: SearchFixture = { lorebook: [] };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const response = await postJson<{ success: boolean; index: number }>(api.port, api.token, '/lorebook/add', {
+        comment: 'Folder Alpha',
+        mode: 'folder',
+      });
+
+      expect(response.status).toBe(200);
+      expect(currentData.lorebook).toHaveLength(1);
+      expect(currentData.lorebook?.[0]).toMatchObject({
+        comment: 'Folder Alpha',
+        mode: 'folder',
+        folder: '',
+      });
+      expect(currentData.lorebook?.[0]?.key).toEqual(expect.any(String));
+      expect(currentData.lorebook?.[0]?.key).not.toBe('');
+      expect(currentData.lorebook?.[0]?.id).toBeUndefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('ignores supplied legacy ids when creating folder entries through /lorebook/add', async () => {
+    const currentData: SearchFixture = { lorebook: [] };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const response = await postJson<{ success: boolean; index: number }>(api.port, api.token, '/lorebook/add', {
+        comment: 'Folder Alpha',
+        mode: 'folder',
+        id: 'legacy-folder-id',
+      });
+
+      expect(response.status).toBe(200);
+      expect(currentData.lorebook).toHaveLength(1);
+      expect(currentData.lorebook?.[0]?.key).toEqual(expect.any(String));
+      expect(currentData.lorebook?.[0]?.key).not.toBe('legacy-folder-id');
+      expect(currentData.lorebook?.[0]?.id).toBeUndefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('creates canonical key UUIDs for folder entries added through /lorebook/batch-add', async () => {
+    const currentData: SearchFixture = { lorebook: [] };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const response = await postJson<{ success: boolean; added: number }>(api.port, api.token, '/lorebook/batch-add', {
+        entries: [
+          { comment: 'Folder Alpha', mode: 'folder' },
+          { comment: 'Folder Beta', mode: 'folder' },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      expect(currentData.lorebook).toHaveLength(2);
+      expect(currentData.lorebook?.map((entry) => entry.mode)).toEqual(['folder', 'folder']);
+      expect(currentData.lorebook?.[0]?.key).toEqual(expect.any(String));
+      expect(currentData.lorebook?.[1]?.key).toEqual(expect.any(String));
+      expect(currentData.lorebook?.[0]?.key).not.toBe('');
+      expect(currentData.lorebook?.[1]?.key).not.toBe('');
+      expect(currentData.lorebook?.[0]?.key).not.toBe(currentData.lorebook?.[1]?.key);
+      expect(currentData.lorebook?.[0]?.id).toBeUndefined();
+      expect(currentData.lorebook?.[1]?.id).toBeUndefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('ignores supplied legacy ids when creating folder entries through /lorebook/batch-add', async () => {
+    const currentData: SearchFixture = { lorebook: [] };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const response = await postJson<{ success: boolean; added: number }>(api.port, api.token, '/lorebook/batch-add', {
+        entries: [
+          { comment: 'Folder Alpha', mode: 'folder', id: 'legacy-folder-id-a' },
+          { comment: 'Folder Beta', mode: 'folder', id: 'legacy-folder-id-b' },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      expect(currentData.lorebook).toHaveLength(2);
+      expect(currentData.lorebook?.[0]?.key).not.toBe('legacy-folder-id-a');
+      expect(currentData.lorebook?.[1]?.key).not.toBe('legacy-folder-id-b');
+      expect(currentData.lorebook?.[0]?.id).toBeUndefined();
+      expect(currentData.lorebook?.[1]?.id).toBeUndefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('generates a fresh canonical folder key when /lorebook/:idx converts a normal entry into a folder', async () => {
+    const currentData: SearchFixture = {
+      lorebook: [{ comment: 'Entry Alpha', key: 'trigger-key', content: 'content', mode: 'normal' }],
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const response = await postJson<{ success: boolean; index: number }>(api.port, api.token, '/lorebook/0', {
+        mode: 'folder',
+        id: 'legacy-folder-id',
+      });
+
+      expect(response.status).toBe(200);
+      expect(currentData.lorebook?.[0]?.mode).toBe('folder');
+      expect(currentData.lorebook?.[0]?.folder).toBe('');
+      expect(currentData.lorebook?.[0]?.key).toEqual(expect.any(String));
+      expect(currentData.lorebook?.[0]?.key).not.toBe('trigger-key');
+      expect(currentData.lorebook?.[0]?.key).not.toBe('legacy-folder-id');
+      expect(currentData.lorebook?.[0]?.id).toBeUndefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('migrates legacy id-only folders to canonical keys through /lorebook/batch-write', async () => {
+    const currentData: SearchFixture = {
+      lorebook: [
+        { comment: 'Legacy Folder', key: '', id: 'legacy-folder-id', content: '', mode: 'folder', folder: '' },
+      ],
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const response = await postJson<{ success: boolean; count: number }>(
+        api.port,
+        api.token,
+        '/lorebook/batch-write',
+        {
+          entries: [{ index: 0, data: { comment: 'Renamed Legacy Folder' } }],
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(currentData.lorebook?.[0]?.comment).toBe('Renamed Legacy Folder');
+      expect(currentData.lorebook?.[0]?.mode).toBe('folder');
+      expect(currentData.lorebook?.[0]?.key).toBe('legacy-folder-id');
+      expect(currentData.lorebook?.[0]?.id).toBeUndefined();
+      expect(currentData.lorebook?.[0]?.folder).toBe('');
     } finally {
       await closeServer(api.server);
     }

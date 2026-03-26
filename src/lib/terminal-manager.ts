@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import * as path from 'path';
+import * as os from 'os';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -74,22 +74,15 @@ export function killTerminal(): void {
 }
 
 export function initTerminalManager(deps: TerminalManagerDeps): void {
-  const { broadcastToAll, getCurrentFilePath, getApiPort, getApiToken } = deps;
+  const { broadcastToAll, getApiPort, getApiToken } = deps;
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { buildTerminalLaunchAttempts } = require('./terminal-shell') as {
     buildTerminalLaunchAttempts: (opts: Record<string, unknown>) => LaunchAttempt[];
   };
 
-  function broadcastTerminalStatus(
-    level: string,
-    message: string,
-    detail: string | null = null,
-  ): void {
-    broadcastToAll(
-      'terminal-status',
-      getTerminalStatusMessage(level, message, detail),
-    );
+  function broadcastTerminalStatus(level: string, message: string, detail: string | null = null): void {
+    broadcastToAll('terminal-status', getTerminalStatusMessage(level, message, detail));
   }
 
   // --- terminal-start ---
@@ -111,13 +104,13 @@ export function initTerminalManager(deps: TerminalManagerDeps): void {
       return false;
     }
 
-    const currentFile = getCurrentFilePath();
-    const preferredCwd = currentFile ? path.dirname(currentFile) : process.cwd();
+    const homeDir = os.homedir();
+
     const attempts: LaunchAttempt[] = buildTerminalLaunchAttempts({
       platform: process.platform,
       env: process.env,
-      cwd: preferredCwd,
-      fallbackCwd: process.cwd(),
+      cwd: homeDir,
+      fallbackCwd: homeDir,
     });
 
     // Clean env: remove CLAUDECODE so nested claude sessions work
@@ -165,9 +158,7 @@ export function initTerminalManager(deps: TerminalManagerDeps): void {
         });
 
         if (failures.length > 0) {
-          const recoveryDetail = attempt.isFallbackCwd
-            ? `${attempt.label} / ${attempt.cwd}`
-            : attempt.label;
+          const recoveryDetail = attempt.isFallbackCwd ? `${attempt.label} / ${attempt.cwd}` : attempt.label;
           broadcastTerminalStatus('warn', '터미널을 복구해 다시 연결했습니다.', recoveryDetail);
         }
 
@@ -182,9 +173,7 @@ export function initTerminalManager(deps: TerminalManagerDeps): void {
       }
     }
 
-    const detail = failures
-      .map((failure) => `${failure.label} @ ${failure.cwd}: ${failure.detail}`)
-      .join(' | ');
+    const detail = failures.map((failure) => `${failure.label} @ ${failure.cwd}: ${failure.detail}`).join(' | ');
     broadcastTerminalStatus('error', '터미널 시작에 실패했습니다.', detail);
     return false;
   });

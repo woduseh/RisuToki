@@ -70,6 +70,7 @@ import {
   showRegexEditor,
 } from '../lib/form-editor';
 import type { FormTabInfo } from '../lib/form-editor';
+import { getFolderRef, normalizeFolderRef } from '../lib/lorebook-folders';
 import { showConfirm, resetConfirmAllowAll, showCloseConfirm, showPrompt } from '../lib/dialog';
 import { showContextMenu, hideContextMenu } from '../lib/context-menu';
 import type { ContextMenuItem } from '../lib/context-menu';
@@ -1160,7 +1161,7 @@ function buildSidebar(): void {
   type LoreChild = { entry: LorebookEntry; index: number };
   type LoreFolder = { entry: LorebookEntry; index: number; children: LoreChild[] };
   const folderDataList: LoreFolder[] = []; // { entry, index, children }
-  const folderLookup: Record<string, LoreFolder> = {}; // multiple keys → same folderData
+  const folderLookup: Record<string, LoreFolder> = {};
   const rootEntries: LoreChild[] = [];
   for (let i = 0; i < fileData.lorebook.length; i++) {
     const entry = fileData.lorebook[i];
@@ -1171,26 +1172,17 @@ function buildSidebar(): void {
         children: [],
       };
       folderDataList.push(fd);
-      // Map by all possible IDs a child might reference
-      const k = entry.key || '';
-      const c = entry.comment || '';
-      if (k) {
-        folderLookup[`folder:${k}`] = fd;
-        folderLookup[k] = fd;
+      const folderRef = getFolderRef(entry);
+      if (folderRef) {
+        folderLookup[folderRef] = fd;
       }
-      if (c) {
-        folderLookup[`folder:${c}`] = fd;
-        folderLookup[c] = fd;
-      }
-      folderLookup[`folder:${i}`] = fd;
-      folderLookup[String(i)] = fd;
     }
   }
   for (let i = 0; i < fileData.lorebook.length; i++) {
     const entry = fileData.lorebook[i];
     if (entry.mode === 'folder') continue;
-    const folderId = entry.folder;
-    const matched = folderId ? folderLookup[folderId] || folderLookup[String(folderId)] : null;
+    const folderId = normalizeFolderRef(entry.folder);
+    const matched = folderId ? folderLookup[folderId] : null;
     if (matched) {
       matched.children.push({ entry, index: i });
     } else {
@@ -1204,7 +1196,7 @@ function buildSidebar(): void {
     lbFolder.children.appendChild(subFolder.children);
     // Tag for DnD
     const fEntry = fileData.lorebook[folder.index];
-    const folderKey = `folder:${fEntry.key || fEntry.comment || folder.index}`;
+    const folderKey = getFolderRef(fEntry) || '';
     subFolder.children.dataset.dndLoreContainer = '';
     subFolder.children.dataset.dndLoreFolder = folderKey;
 
@@ -1215,7 +1207,7 @@ function buildSidebar(): void {
       e.preventDefault();
       e.stopPropagation();
       const fEntry = fileData!.lorebook[folderIdx];
-      const folderId = `folder:${fEntry.key || fEntry.comment || folderIdx}`;
+      const folderId = getFolderRef(fEntry) || '';
       showContextMenu(e.clientX, e.clientY, [
         {
           label: '이름 변경',

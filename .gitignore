@@ -69,5 +69,11 @@ Thumbs.db
 .claude/
 .worktrees/
 
+# Gemini
+.gemini/skills
+
+# GitHub Skills
+.github/skills
+
 # Bot data
 bot/

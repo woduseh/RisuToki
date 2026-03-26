@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import {
+// @ts-expect-error Vitest must import the TS source here to avoid the committed JS shadow file.
+import * as lorebookIo from './lorebook-io.ts';
+import type { LorebookEntry } from './lorebook-io';
+
+const {
   parseYamlFrontmatter,
   stringifyYamlFrontmatter,
   sanitizeFilename,
@@ -13,8 +17,7 @@ import {
   importFromMarkdown,
   importFromJson,
   resolveImportConflicts,
-  type LorebookEntry,
-} from './lorebook-io';
+} = lorebookIo;
 
 const TEST_DIR = path.join(__dirname, '..', '..', 'test', '_lorebook-io-tmp');
 
@@ -24,10 +27,9 @@ function makeTestEntries(): LorebookEntry[] {
     // Folder
     {
       comment: 'Characters',
-      key: '',
+      key: 'folder-uuid-1',
       content: '',
       mode: 'folder',
-      id: 'folder-uuid-1',
       insertorder: 100,
     },
     // Entry in folder
@@ -59,6 +61,27 @@ function makeTestEntries(): LorebookEntry[] {
       content: 'A fantasy world with magic.',
       mode: 'normal',
       insertorder: 50,
+    },
+  ];
+}
+
+function makeLegacyFolderEntries(): LorebookEntry[] {
+  return [
+    {
+      comment: 'Legacy Characters',
+      key: '',
+      content: '',
+      mode: 'folder',
+      id: 'legacy-folder-uuid-1',
+      insertorder: 100,
+    },
+    {
+      comment: 'Legacy Alice',
+      key: 'legacy, alice',
+      content: 'Legacy folder child entry.',
+      mode: 'normal',
+      insertorder: 100,
+      folder: 'folder:legacy-folder-uuid-1',
     },
   ];
 }
@@ -189,11 +212,16 @@ describe('sanitizeFilename', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildFolderMap', () => {
-  it('should map folder entries', () => {
+  it('should map canonical folder entries from key-based UUIDs', () => {
     const entries = makeTestEntries();
     const map = buildFolderMap(entries);
     expect(map.size).toBe(1);
     expect(map.get('folder:folder-uuid-1')).toBe('Characters');
+  });
+
+  it('should fall back to legacy folder ids when key is missing', () => {
+    const map = buildFolderMap(makeLegacyFolderEntries());
+    expect(map.get('folder:legacy-folder-uuid-1')).toBe('Legacy Characters');
   });
 
   it('should handle empty entries', () => {
@@ -257,6 +285,7 @@ describe('exportToMarkdown', () => {
     const meta = JSON.parse(metaContent);
     expect(meta.source).toBe('test.charx');
     expect(meta.totalEntries).toBe(3);
+    expect(meta.folders).toEqual([{ id: 'folder:folder-uuid-1', name: 'Characters' }]);
   });
 
   it('should handle filename conflicts', async () => {
@@ -282,6 +311,18 @@ describe('exportToMarkdown', () => {
     expect(fs.existsSync(path.join(dir, 'Alice.md'))).toBe(true);
     expect(fs.existsSync(path.join(dir, 'Bob.md'))).toBe(true);
   });
+
+  it('should normalize raw child folder refs during markdown export', async () => {
+    const dir = path.join(TEST_DIR, 'export-md-legacy-child-ref');
+    const entries = makeTestEntries().map((entry) =>
+      entry.comment === 'Alice' ? { ...entry, folder: 'folder-uuid-1' } : entry,
+    );
+
+    await exportToMarkdown(entries, dir);
+
+    expect(fs.existsSync(path.join(dir, 'Characters', 'Alice.md'))).toBe(true);
+    expect(fs.existsSync(path.join(dir, '_unfiled', 'Alice.md'))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -304,6 +345,7 @@ describe('exportToJson', () => {
     const data = JSON.parse(jsonContent);
     expect(data.exportMeta.count).toBe(3);
     expect(data.folders).toHaveLength(1);
+    expect(data.folders[0].id).toBe('folder:folder-uuid-1');
     expect(data.folders[0].name).toBe('Characters');
     expect(data.entries).toHaveLength(3);
   });

@@ -3,6 +3,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { normalizeFolderRef } from './lorebook-folders';
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -435,13 +437,13 @@ export function initAssetManager(d: AssetManagerDeps): void {
           const folderId = crypto.randomUUID();
           data.lorebook.push({
             comment: folderName,
-            key: '',
+            key: folderId,
             content: '',
             mode: 'folder',
-            id: folderId,
             insertorder: 100,
+            folder: '',
           });
-          allFolderByName.set(folderName, `folder:${folderId}`);
+          allFolderByName.set(folderName, normalizeFolderRef(folderId));
         }
 
         // Add entries with folder assignment
@@ -449,7 +451,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
           const ie = importEntries.find((x) => x.data === entry || x.data.comment === entry.comment);
           if (ie?.folderName) {
             const fId = allFolderByName.get(ie.folderName);
-            if (fId) entry.folder = fId;
+            if (fId) entry.folder = normalizeFolderRef(fId);
           }
           data.lorebook.push(entry);
         }
