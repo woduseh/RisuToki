@@ -17,26 +17,23 @@ const { pack, unpack } = require('msgpackr') as {
 const { risuArrayToCCV3 } = require('./lorebook-convert') as {
   risuArrayToCCV3: (entries: unknown[]) => unknown[];
 };
-const {
-  validateCharxCardDocument,
-  validateRisupEnvelope,
-  validateRisupPresetPayload,
-} = require('./lib/document-validation') as {
-  validateCharxCardDocument: (card: unknown) => {
-    spec: 'chara_card_v3';
-    spec_version?: string;
-    data: Record<string, unknown>;
-    [key: string]: unknown;
+const { validateCharxCardDocument, validateRisupEnvelope, validateRisupPresetPayload } =
+  require('./lib/document-validation') as {
+    validateCharxCardDocument: (card: unknown) => {
+      spec: 'chara_card_v3';
+      spec_version?: string;
+      data: Record<string, unknown>;
+      [key: string]: unknown;
+    };
+    validateRisupEnvelope: (envelope: unknown) => {
+      type: 'preset';
+      presetVersion?: number;
+      preset?: Uint8Array;
+      pres?: Uint8Array;
+      [key: string]: unknown;
+    };
+    validateRisupPresetPayload: (preset: unknown) => Record<string, unknown>;
   };
-  validateRisupEnvelope: (envelope: unknown) => {
-    type: 'preset';
-    presetVersion?: number;
-    preset?: Uint8Array;
-    pres?: Uint8Array;
-    [key: string]: unknown;
-  };
-  validateRisupPresetPayload: (preset: unknown) => Record<string, unknown>;
-};
 
 const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_FILE_SIZE: number = 200 * 1024 * 1024; // 200 MB
@@ -569,21 +566,44 @@ export function saveCharx(filePath: string, data: CharxData): void {
   characterBook.entries = risuArrayToCCV3(data.lorebook);
 
   // Preserve card assets
-  cardData.assets = data.cardAssets || [];
+  const rawCardAssets = (data.cardAssets || []) as { type?: string; uri?: string; name?: string; ext?: string }[];
+  const actualAssetPaths = new Set((data.assets || []).map((a) => a.path));
+  const EMBEDDED_ASSET_URI_PREFIX = 'embeded://';
+
+  function resolveLocalAssetPath(uri?: string): string | null {
+    if (!uri) return null;
+    if (uri.startsWith(EMBEDDED_ASSET_URI_PREFIX)) {
+      return uri.slice(EMBEDDED_ASSET_URI_PREFIX.length);
+    }
+    if (uri.startsWith('assets/')) {
+      return uri;
+    }
+    return null;
+  }
 
   // Reconcile: ensure all ZIP assets have card.json entries (RisuAI reads this)
-  const cardAssetArr = cardData.assets as { type?: string; uri?: string; name?: string; ext?: string }[];
-  const existingUris = new Set(cardAssetArr.map((a) => a.uri));
+  // and remove embedded assets that no longer exist in the ZIP.
+  const cardAssetArr = rawCardAssets.filter((a) => {
+    const localPath = resolveLocalAssetPath(a.uri);
+    if (localPath) {
+      return actualAssetPaths.has(localPath);
+    }
+    return true;
+  });
+  cardData.assets = cardAssetArr;
+
+  const existingAssetPaths = new Set(
+    cardAssetArr.map((a) => resolveLocalAssetPath(a.uri)).filter((p): p is string => !!p),
+  );
   for (const asset of data.assets || []) {
     const uri = `embeded://${asset.path}`;
-    if (!existingUris.has(uri)) {
+    if (!existingAssetPaths.has(asset.path)) {
       const ext = path.extname(asset.path).slice(1) || '';
       const baseName = path.basename(asset.path, ext ? `.${ext}` : '');
       const isIcon = asset.path.startsWith('assets/icon');
       cardAssetArr.push({ type: isIcon ? 'icon' : 'x-risu-asset', uri, name: baseName, ext });
     }
   }
-
   zip.addFile('card.json', Buffer.from(JSON.stringify(card, null, 2), 'utf-8'));
 
   // Build module.risum

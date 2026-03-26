@@ -852,4 +852,51 @@ fs.rmSync(errorTempDir, { recursive: true, force: true });
   assert.equal(iconEntries.length, 1, 'icon not duplicated');
 })();
 
+(function testSaveCharxRemovesStaleEmbeddedCardAssets() {
+  const filePath = path.join(tempDir, 'stale-assets-removed.charx');
+  const data = {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'Stale Asset Test',
+    description: '',
+    personality: '',
+    scenario: '',
+    creatorcomment: '',
+    tags: [],
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    moduleId: '',
+    moduleName: '',
+    moduleDescription: '',
+    assets: [{ path: 'assets/icon/image/main.webp', data: Buffer.from([0x89]) }],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [
+      { type: 'icon', uri: 'embeded://assets/icon/image/main.webp', name: 'main', ext: 'webp' },
+      { type: 'x-risu-asset', uri: 'embeded://assets/other/image/removed.png', name: 'removed', ext: 'png' },
+    ],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: { extensions: { risuai: {} }, character_book: { entries: [] }, assets: [] },
+    },
+    _moduleData: null,
+  };
+
+  saveCharx(filePath, data as any);
+  const reopened = openCharx(filePath);
+
+  const uris = (reopened.cardAssets as { uri: string }[]).map((a) => a.uri);
+  assert.deepStrictEqual(uris, ['embeded://assets/icon/image/main.webp']);
+})();
+
 console.log('test-charx passed (including risup, error cases, and cardAssets reconciliation)');
