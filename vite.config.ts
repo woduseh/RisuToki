@@ -115,6 +115,9 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
+  resolve: {
+    extensions: ['.mts', '.ts', '.mjs', '.js', '.tsx', '.jsx', '.json'],
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
