@@ -8,7 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { buildFolderInfoMap, normalizeFolderRef } from './lorebook-folders';
+import { buildFolderInfoMap, normalizeFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -115,6 +115,14 @@ export interface ImportResult {
   foldersCreated?: number;
   errors?: string[];
 }
+
+interface ResolvedImportMeta {
+  comment: string;
+  folderName?: string;
+  sourcePath: string;
+}
+
+const resolvedImportMeta = new WeakMap<LorebookEntry, ResolvedImportMeta>();
 
 // ---------------------------------------------------------------------------
 // YAML Frontmatter — simple key:value parser (no external dependency)
@@ -262,9 +270,11 @@ function resolveFilenameConflict(dir: string, baseName: string, ext: string): st
  * Build a map from folder ID ("folder:uuid") to folder name (comment).
  */
 export function buildFolderMap(entries: LorebookEntry[]): Map<string, string> {
-  return new Map(
-    Array.from(buildFolderInfoMap(entries).entries()).map(([folderId, info]) => [folderId, info.name] as const),
-  );
+  const map = new Map<string, string>();
+  for (const [folderId, info] of buildFolderInfoMap(entries)) {
+    map.set(folderId, info.name);
+  }
+  return map;
 }
 
 // ---------------------------------------------------------------------------
@@ -334,8 +344,7 @@ export async function exportToMarkdown(
     // Determine target subdirectory
     let subDir = resolvedDir;
     if (groupByFolder && entry.folder) {
-      const folderRef = normalizeFolderRef(entry.folder);
-      const folderName = folderMap.get(folderRef);
+      const folderName = folderMap.get(resolveLorebookFolderRef(entry.folder, entries));
       if (folderName) {
         subDir = path.join(resolvedDir, sanitizeFilename(folderName));
       } else {
@@ -414,6 +423,9 @@ export async function exportToJson(
         if (LOREBOOK_WRITE_FIELDS.has(key) && entry[key] !== undefined) {
           exported[key] = entry[key];
         }
+      }
+      if (typeof exported.folder === 'string') {
+        exported.folder = resolveLorebookFolderRef(exported.folder, entries);
       }
       return exported;
     })
@@ -596,7 +608,10 @@ export async function importFromJson(sourcePath: string): Promise<ImportEntry[]>
   if (Array.isArray(obj.folders)) {
     for (const f of obj.folders) {
       if (f && typeof f === 'object' && 'id' in f && 'name' in f) {
-        folderNameMap.set(normalizeFolderRef(String(f.id)), String(f.name));
+        const folderId = normalizeFolderRef((f as Record<string, unknown>).id);
+        if (folderId) {
+          folderNameMap.set(folderId, String(f.name));
+        }
       }
     }
   }
@@ -621,8 +636,8 @@ export async function importFromJson(sourcePath: string): Promise<ImportEntry[]>
     // Resolve folder name
     let folderName: string | undefined;
     if (typeof item.folder === 'string' && item.folder) {
-      const folderRef = normalizeFolderRef(item.folder);
-      folderName = folderNameMap.get(folderRef) || folderRef || undefined;
+      const folderId = normalizeFolderRef(item.folder);
+      folderName = folderNameMap.get(folderId) || folderId || item.folder;
     }
 
     entries.push({
@@ -634,6 +649,17 @@ export async function importFromJson(sourcePath: string): Promise<ImportEntry[]>
   }
 
   return entries;
+}
+
+export function getResolvedImportMeta(entry: LorebookEntry): ResolvedImportMeta | undefined {
+  return resolvedImportMeta.get(entry);
+}
+
+export function resolveImportedFolderRef(entry: LorebookEntry, folderByName: Map<string, string>): string {
+  const meta = getResolvedImportMeta(entry);
+  if (!meta) return normalizeFolderRef(entry.folder);
+  if (!meta.folderName) return '';
+  return folderByName.get(meta.folderName) || '';
 }
 
 // ---------------------------------------------------------------------------
@@ -699,6 +725,11 @@ export function resolveImportConflicts(
 
   for (const entry of importEntries) {
     const data = { ...entry.data };
+    resolvedImportMeta.set(data, {
+      comment: entry.comment,
+      folderName: entry.folderName,
+      sourcePath: entry.sourcePath,
+    });
     const existingIdx = existingByComment.get(entry.comment);
 
     if (existingIdx !== undefined) {
