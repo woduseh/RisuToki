@@ -39,15 +39,14 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Claude
-.claude/
+# Claude (except skills symlink)
+.claude/*
+!.claude/skills
 .worktrees/
 
-# Gemini
-.gemini/skills
-
-# GitHub Skills
-.github/skills
+# Gemini (except skills symlink)
+.gemini/*
+!.gemini/skills
 
 # Bot data
 bot/

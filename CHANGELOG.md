@@ -9,6 +9,20 @@
 
 ---
 
+## [0.22.7] - 2026-03-26
+
+### 수정
+
+- **skills 폴더 SSOT (Single Source of Truth) 통합**
+  - `.claude/skills`, `.gemini/skills`, `.github/skills`를 프로젝트 루트 `skills/` 폴더를 가리키는 심볼릭 링크로 변환
+  - 기존 중복 복사본을 제거하여 루트 `skills/` 하나만 수정하면 모든 LLM CLI에 반영
+  - `.gitignore` 업데이트: 심볼릭 링크 경로는 추적 허용
+
+- **Vite/Rollup 빌드 실패 수정**
+  - git에 tracked된 stale CJS `.js` 파일들이 `.ts` 소스를 가려서 발생한 빌드 오류 해결
+  - `vite.config.ts`에 `resolve.extensions` 추가하여 `.ts`를 `.js`보다 우선 resolve
+  - `lorebook-folders.ts`를 `tsconfig.node-libs.json`에 추가하여 CJS 출력 자동 생성
+
 ## [0.22.6] - 2026-03-26
 
 ### 수정
