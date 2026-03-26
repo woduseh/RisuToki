@@ -1,7 +1,7 @@
 import { ensureBlueArchiveMonacoTheme } from './monaco-loader';
 import { defineDarkMonacoTheme } from './dark-mode';
 import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
-import { getFolderRef, normalizeFolderRef } from './lorebook-folders';
+import { getFolderRef, normalizeFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
 
 type MonacoWindow = Window & {
   _baDarkThemeDefined?: boolean;
@@ -353,11 +353,11 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
     folderSelect.appendChild(opt);
   }
 
-  // Select current value (match by ID or find by comment)
-  const currentFolder = typeof data.folder === 'string' ? normalizeFolderRef(data.folder) : '';
-  if (currentFolder) {
+  // Select current value
+  const selectedFolder = resolveLorebookFolderRef(data.folder, loreSource);
+  if (selectedFolder) {
     for (const opt of folderSelect.options) {
-      if (opt.value === currentFolder) {
+      if (opt.value === selectedFolder) {
         opt.selected = true;
         break;
       }
@@ -369,7 +369,7 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
       const name = await d.showPrompt('새 폴더 이름을 입력하세요', '새 폴더');
       if (!name) {
         // Revert to previous selection
-        folderSelect.value = normalizeFolderRef(data.folder) || '';
+        folderSelect.value = resolveLorebookFolderRef(data.folder, loreSource);
         return;
       }
       const folderId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -390,12 +390,11 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
       ((fileData as Record<string, unknown>).lorebook as unknown[]).push(newFolder);
       // Add new option before the "+ 새 폴더" option
       const newOpt = document.createElement('option');
-      const folderRef = normalizeFolderRef(folderId);
-      newOpt.value = folderRef;
+      newOpt.value = normalizeFolderRef(folderId);
       newOpt.textContent = name;
       folderSelect.insertBefore(newOpt, optNew);
-      folderSelect.value = folderRef;
-      data.folder = folderRef;
+      folderSelect.value = normalizeFolderRef(folderId);
+      data.folder = normalizeFolderRef(folderId);
       markDirty();
       d.buildSidebar();
     } else {

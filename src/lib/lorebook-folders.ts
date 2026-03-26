@@ -1,45 +1,107 @@
-interface LorebookFolderLike {
+export interface LorebookFolderEntryLike {
+  mode?: unknown;
   key?: unknown;
   id?: unknown;
   comment?: unknown;
-  mode?: unknown;
+  folder?: unknown;
+  [key: string]: unknown;
 }
 
-function getNonEmptyString(value: unknown): string | null {
+export interface LorebookFolderInfo {
+  entry: LorebookFolderEntryLike;
+  legacyRef: string | null;
+  index: number;
+  name: string;
+  ref: string;
+  uuid: string;
+}
+
+function toNonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const normalized = value.trim();
-  return normalized ? normalized : null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
-export function getFolderUuid(entry: LorebookFolderLike | null | undefined): string | null {
+function stripFolderPrefix(value: unknown): string | null {
+  let raw = toNonEmptyString(value);
+  while (raw?.startsWith('folder:')) {
+    raw = toNonEmptyString(raw.slice('folder:'.length));
+  }
+  return raw;
+}
+
+export function getFolderUuid(entry: LorebookFolderEntryLike | null | undefined): string | null {
   if (!entry || entry.mode !== 'folder') return null;
-  return getNonEmptyString(entry.key) ?? getNonEmptyString(entry.id);
+  return stripFolderPrefix(entry.key) ?? stripFolderPrefix(entry.id);
 }
 
 export function normalizeFolderRef(folder: unknown): string {
-  const raw = getNonEmptyString(folder);
-  if (!raw) return '';
-  const folderUuid = raw.startsWith('folder:') ? raw.slice('folder:'.length) : raw;
-  const normalizedUuid = getNonEmptyString(folderUuid);
-  return normalizedUuid ? `folder:${normalizedUuid}` : '';
+  const uuid = stripFolderPrefix(folder);
+  return uuid ? `folder:${uuid}` : '';
 }
 
-export const toFolderRef = normalizeFolderRef;
-
-export function getFolderRef(entry: LorebookFolderLike | null | undefined): string | null {
-  const folderUuid = getFolderUuid(entry);
-  return folderUuid ? normalizeFolderRef(folderUuid) : null;
+export function getFolderRef(entry: LorebookFolderEntryLike | null | undefined): string | null {
+  const uuid = getFolderUuid(entry);
+  return uuid ? `folder:${uuid}` : null;
 }
 
-export function buildFolderInfoMap(entries: LorebookFolderLike[]): Map<string, { name: string }> {
-  const folderMap = new Map<string, { name: string }>();
-  for (const entry of entries) {
-    const folderRef = getFolderRef(entry);
-    if (!folderRef) continue;
-    const folderUuid = getFolderUuid(entry) ?? folderRef.slice('folder:'.length);
-    folderMap.set(folderRef, {
-      name: getNonEmptyString(entry.comment) ?? folderUuid,
+function getLegacyFolderRef(entry: LorebookFolderEntryLike | null | undefined): string | null {
+  const legacyUuid = stripFolderPrefix(entry?.id);
+  return legacyUuid ? `folder:${legacyUuid}` : null;
+}
+
+export function buildFolderInfoMap(entries: LorebookFolderEntryLike[]): Map<string, LorebookFolderInfo> {
+  const map = new Map<string, LorebookFolderInfo>();
+  entries.forEach((entry, index) => {
+    const ref = getFolderRef(entry);
+    if (!ref) return;
+    const uuid = ref.slice('folder:'.length);
+    map.set(ref, {
+      entry,
+      index,
+      legacyRef: getLegacyFolderRef(entry),
+      name: toNonEmptyString(entry.comment) ?? uuid,
+      ref,
+      uuid,
     });
+  });
+  return map;
+}
+
+function buildFolderRefAliasMap(entries: LorebookFolderEntryLike[]): Map<string, string> {
+  const aliases = new Map<string, string>();
+  for (const info of buildFolderInfoMap(entries).values()) {
+    aliases.set(info.ref, info.ref);
+    if (info.legacyRef) {
+      aliases.set(info.legacyRef, info.ref);
+    }
   }
-  return folderMap;
+  return aliases;
+}
+
+export function resolveLorebookFolderRef(
+  folder: unknown,
+  entriesOrAliases: LorebookFolderEntryLike[] | Map<string, string>,
+): string {
+  const normalized = normalizeFolderRef(folder);
+  if (!normalized) return '';
+  const aliases = entriesOrAliases instanceof Map ? entriesOrAliases : buildFolderRefAliasMap(entriesOrAliases);
+  return aliases.get(normalized) ?? normalized;
+}
+
+export function canonicalizeLorebookFolderRefs<T extends LorebookFolderEntryLike>(entries: T[]): T[] {
+  const aliases = buildFolderRefAliasMap(entries);
+  for (const entry of entries) {
+    if (entry.mode === 'folder') {
+      const uuid = getFolderUuid(entry);
+      if (uuid) {
+        entry.key = uuid;
+      }
+      entry.folder = '';
+      continue;
+    }
+
+    entry.folder = resolveLorebookFolderRef(entry.folder, aliases);
+  }
+  return entries;
 }

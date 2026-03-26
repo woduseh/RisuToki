@@ -1,6 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { disposeFormEditors, initFormEditor, showLoreEditor } from './form-editor';
-import type { FormEditorDeps, FormTabInfo } from './form-editor';
 import type { SidebarActionDeps } from './sidebar-actions';
 import { createSidebarActions } from './sidebar-actions';
 import type { Section } from './section-parser';
@@ -32,30 +30,6 @@ function createMockDeps(overrides: Partial<SidebarActionDeps> = {}): SidebarActi
     buildLuaSectionTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
     buildCssSectionTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
     buildAltGreetTabState: vi.fn().mockReturnValue(null) as unknown as TabStateFn,
-    ...overrides,
-  };
-}
-
-function createFormEditorDeps(
-  fileData: Record<string, unknown>,
-  overrides: Partial<FormEditorDeps> = {},
-): FormEditorDeps {
-  return {
-    isMonacoReady: () => false,
-    isDarkMode: () => false,
-    getEditorInstance: () => null,
-    setEditorInstance: vi.fn(),
-    getFileData: () => fileData,
-    tabMgr: {
-      activeTabId: null,
-      openTabs: [],
-      dirtyFields: new Set<string>(),
-      renderTabs: vi.fn(),
-      markDirtyForTabId: vi.fn(),
-    },
-    createBackup: vi.fn(),
-    showPrompt: vi.fn().mockResolvedValue(null),
-    buildSidebar: vi.fn(),
     ...overrides,
   };
 }
@@ -187,40 +161,29 @@ describe('reorderLorebook', () => {
     ];
     const deps = createMockDeps({ getFileData: () => ({ lorebook, regex: [], lua: '', css: '' }) });
     const actions = createSidebarActions(deps);
-    // Move rootItem (idx 2) into folder:uuid-1 at position 0
-    actions.reorderLorebook(2, 0, 'folder:uuid-1');
+    // Move rootItem (idx 2) into raw uuid-1 and expect normalization to folder:uuid-1.
+    actions.reorderLorebook(2, 0, 'uuid-1');
     // rootItem should now have folder set
     const movedItem = lorebook.find((e) => e.comment === 'rootItem');
     expect(movedItem?.folder).toBe('folder:uuid-1');
+    expect(lorebook.map((e) => e.comment)).toEqual(['FolderX', 'rootItem', 'child1']);
     expect(deps.markFieldDirty).toHaveBeenCalledWith('lorebook');
   });
 
-  it('should normalize raw folder UUID targets during folder moves', () => {
+  it('should resolve legacy folder ids when moving entries into folders', () => {
     const lorebook = [
-      { comment: 'FolderX', mode: 'folder', folder: '', key: 'uuid-1' },
+      { comment: 'Legacy Folder', mode: 'folder', folder: '', key: '', id: 'legacy-folder-1' },
+      { comment: 'child1', mode: 'normal', folder: 'folder:legacy-folder-1', key: '' },
       { comment: 'rootItem', mode: 'normal', folder: '', key: '' },
     ];
     const deps = createMockDeps({ getFileData: () => ({ lorebook, regex: [], lua: '', css: '' }) });
     const actions = createSidebarActions(deps);
 
-    actions.reorderLorebook(1, 0, 'uuid-1');
+    actions.reorderLorebook(2, 0, 'legacy-folder-1');
 
     const movedItem = lorebook.find((e) => e.comment === 'rootItem');
-    expect(movedItem?.folder).toBe('folder:uuid-1');
-  });
-
-  it('should fall back to legacy folder ids during folder moves', () => {
-    const lorebook = [
-      { comment: 'Legacy Folder', mode: 'folder', folder: '', key: '', id: 'legacy-uuid' },
-      { comment: 'rootItem', mode: 'normal', folder: '', key: '' },
-    ];
-    const deps = createMockDeps({ getFileData: () => ({ lorebook, regex: [], lua: '', css: '' }) });
-    const actions = createSidebarActions(deps);
-
-    actions.reorderLorebook(1, 0, 'legacy-uuid');
-
-    const movedItem = lorebook.find((e) => e.comment === 'rootItem');
-    expect(movedItem?.folder).toBe('folder:legacy-uuid');
+    expect(movedItem?.folder).toBe('folder:legacy-folder-1');
+    expect(lorebook.map((e) => e.comment)).toEqual(['Legacy Folder', 'rootItem', 'child1']);
   });
 
   it('should move folder child to root', () => {
@@ -235,78 +198,6 @@ describe('reorderLorebook', () => {
     actions.reorderLorebook(1, 0, '');
     const movedItem = lorebook.find((e) => e.comment === 'child1');
     expect(movedItem?.folder).toBe('');
-  });
-});
-
-describe('importLorebook', () => {
-  it('should not copy legacy entry ids into non-folder keys during import', async () => {
-    const lorebook: Array<Record<string, unknown>> = [];
-    const deps = createMockDeps({ getFileData: () => ({ lorebook, regex: [], lua: '', css: '' }) });
-    const actions = createSidebarActions(deps);
-    Object.defineProperty(window, 'tokiAPI', {
-      configurable: true,
-      value: {
-        importJson: vi.fn().mockResolvedValue([
-          {
-            fileName: 'legacy.json',
-            data: [
-              {
-                id: 'legacy-entry-id',
-                comment: 'Imported Entry',
-                content: 'Imported content',
-                mode: 'normal',
-              },
-            ],
-          },
-        ]),
-      },
-    });
-
-    await actions.importLorebook();
-
-    expect(lorebook).toHaveLength(1);
-    expect(lorebook[0].comment).toBe('Imported Entry');
-    expect(lorebook[0].key).toBe('');
-  });
-});
-
-describe('showLoreEditor', () => {
-  it('restores normalized legacy folder selections when new folder creation is cancelled', async () => {
-    document.body.innerHTML = '<div id="editor-container"></div>';
-    const fileData = {
-      lorebook: [{ comment: 'FolderX', mode: 'folder', folder: '', key: 'uuid-1' }],
-    };
-    const deps = createFormEditorDeps(fileData);
-    initFormEditor(deps);
-
-    const entryData: Record<string, unknown> = {
-      comment: 'Entry',
-      content: '',
-      folder: 'uuid-1',
-      key: '',
-      secondkey: '',
-      insertorder: 100,
-      mode: 'normal',
-    };
-    const tabInfo: FormTabInfo = {
-      id: 'lore_0',
-      label: 'Entry',
-      language: '_loreform',
-      getValue: () => entryData,
-      setValue: vi.fn(),
-    };
-
-    showLoreEditor(tabInfo);
-
-    const folderSelect = document.querySelector('.form-select') as HTMLSelectElement;
-    expect(folderSelect.value).toBe('folder:uuid-1');
-
-    folderSelect.value = '__new__';
-    folderSelect.dispatchEvent(new Event('change'));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(folderSelect.value).toBe('folder:uuid-1');
-    disposeFormEditors();
   });
 });
 

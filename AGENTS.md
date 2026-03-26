@@ -384,20 +384,20 @@ CBS(Conditional Block Syntax) `{{#when}}` 블록의 구조 검증, 토글 목록
 
 **핵심 필드 설명:**
 
-- `key`: 대화에 이 키워드가 등장하면 content가 프롬프트에 삽입됨. 빈 문자열이면 키워드 비활성.
+- `key`: 대화에 이 키워드가 등장하면 content가 프롬프트에 삽입됨. 빈 문자열이면 키워드 비활성. 단, `mode: "folder"` 항목에서는 `key`가 폴더 UUID의 canonical source입니다.
 - `comment`: 관리용 이름. Lua `getLoreBooks(triggerId, commentFilter)`에서 검색 필터로도 쓰임.
 - `alwaysActive`: true면 키워드 매칭 없이 항상 삽입.
 - `insertorder`: 높을수록 프롬프트 뒤쪽에 배치.
 - `selective` + `secondkey`: 둘 다 설정 시 key와 secondkey가 모두 매칭되어야 활성화.
 - `mode`: `normal` | `constant` | `multiple` | `child` | `folder`
-- `folder`: 폴더 그룹 UUID. `mode: "folder"`인 항목이 폴더 자체.
+- `folder`: 폴더 그룹 참조. 자식 항목에는 항상 `folder:UUID` 형식으로 저장되며, `mode: "folder"`인 항목이 폴더 자체입니다.
 - `activationPercent`: 활성화 확률 (0~100). 기본 100.
 - `key=""` + `alwaysActive=false` → **0 토큰** (완전히 스킵됨). DB 저장용으로 활용.
 
 **폴더 관리:**
 
-- 폴더 생성: `add_lorebook({ comment: "폴더이름", mode: "folder", key: "", content: "" })`
-- 아이템을 폴더로 이동: `write_lorebook(index, { folder: "folder:UUID" })` — UUID는 폴더 항목의 `id` 값
+- 폴더 생성: `add_lorebook({ comment: "폴더이름", mode: "folder", key: "UUID", content: "" })` — `key`가 canonical 폴더 UUID입니다.
+- 아이템을 폴더로 이동: `write_lorebook(index, { folder: "folder:UUID" })` — UUID는 폴더 항목의 `key` 값이며, 예전 `id` 전용 폴더는 읽기 시 fallback으로만 사용됩니다.
 - 폴더에서 꺼내기: `write_lorebook(index, { folder: "" })`
 - `list_lorebook` 결과에서 `mode: "folder"`인 항목이 폴더 자체 (내용 없음)
 

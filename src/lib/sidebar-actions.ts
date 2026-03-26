@@ -1,7 +1,13 @@
 import type { Section } from './section-parser';
 import type { Tab } from './tab-manager';
 import type { ContextMenuItem } from './context-menu';
-import { getFolderRef, normalizeFolderRef } from './lorebook-folders';
+import {
+  canonicalizeLorebookFolderRefs,
+  getFolderRef,
+  getFolderUuid,
+  normalizeFolderRef,
+  resolveLorebookFolderRef,
+} from './lorebook-folders';
 
 type TabStateFn = (index: number, tab: Tab) => Partial<Tab> | null;
 
@@ -123,35 +129,28 @@ export function createSidebarActions(deps: SidebarActionDeps) {
       const item = raw as { fileName: string; data: Record<string, unknown> };
       const entries = Array.isArray(item.data) ? item.data : (item.data.entries as unknown[]) || [item.data];
       for (const entry of entries) {
-        const sourceEntry = entry as Record<string, unknown>;
-        const mode = String(sourceEntry.mode || 'normal');
-        const isFolder = mode === 'folder';
-        const canonicalFolderUuid = isFolder
-          ? (typeof sourceEntry.key === 'string' && sourceEntry.key) ||
-            (typeof sourceEntry.id === 'string' && sourceEntry.id) ||
-            createFolderUuid()
-          : '';
-
+        const mode = entry.mode || 'normal';
+        const folderUuid =
+          mode === 'folder' ? getFolderUuid(entry as Record<string, unknown>) || createFolderUuid() : null;
         fileData.lorebook.push({
-          key: canonicalFolderUuid || (typeof sourceEntry.key === 'string' ? sourceEntry.key : ''),
-          content: (sourceEntry.content as string) || '',
-          comment:
-            (sourceEntry.comment as string) || (sourceEntry.name as string) || item.fileName.replace('.json', ''),
+          key: mode === 'folder' ? folderUuid : entry.key || (entry.keys ? entry.keys.join(', ') : ''),
+          content: entry.content || '',
+          comment: entry.comment || entry.name || item.fileName.replace('.json', ''),
           mode,
-          insertorder: (sourceEntry.insertorder as number) || (sourceEntry.insertion_order as number) || 100,
-          alwaysActive: Boolean(sourceEntry.alwaysActive || sourceEntry.constant),
-          forceActivation: Boolean(sourceEntry.forceActivation),
-          selective: Boolean(sourceEntry.selective),
-          secondkey:
-            (typeof sourceEntry.secondkey === 'string' ? sourceEntry.secondkey : '') ||
-            (Array.isArray(sourceEntry.secondary_keys) ? sourceEntry.secondary_keys.join(', ') : ''),
-          constant: Boolean(sourceEntry.constant),
+          insertorder: entry.insertorder || entry.insertion_order || 100,
+          alwaysActive: entry.alwaysActive || entry.constant || false,
+          forceActivation: entry.forceActivation || false,
+          selective: entry.selective || false,
+          secondkey: entry.secondkey || (entry.secondary_keys ? entry.secondary_keys.join(', ') : ''),
+          constant: entry.constant || false,
           order: fileData.lorebook.length,
-          folder: isFolder ? '' : normalizeFolderRef(sourceEntry.folder),
+          folder: mode === 'folder' ? '' : normalizeFolderRef(entry.folder),
         });
         addedCount++;
       }
     }
+
+    canonicalizeLorebookFolderRefs(fileData.lorebook);
 
     deps.markFieldDirty('lorebook');
     deps.buildSidebar();
@@ -438,10 +437,10 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     if (fromIdx < 0 || fromIdx >= lb.length) return;
 
     const item = lb[fromIdx] as Record<string, unknown>;
-    const normalizedTargetFolder = targetFolder ? normalizeFolderRef(targetFolder) : '';
+    const normalizedTargetFolder = resolveLorebookFolderRef(targetFolder, lb as Record<string, unknown>[]);
 
     // Update folder assignment
-    item.folder = normalizedTargetFolder;
+    item.folder = item.mode === 'folder' ? '' : normalizedTargetFolder;
 
     // Remove from old position
     lb.splice(fromIdx, 1);
@@ -473,7 +472,9 @@ export function createSidebarActions(deps: SidebarActionDeps) {
         const childrenInFolder: number[] = [];
         for (let i = 0; i < lb.length; i++) {
           const e = lb[i] as Record<string, unknown>;
-          if (normalizeFolderRef(e.folder) === normalizedTargetFolder) childrenInFolder.push(i);
+          if (resolveLorebookFolderRef(e.folder, lb as Record<string, unknown>[]) === normalizedTargetFolder) {
+            childrenInFolder.push(i);
+          }
         }
         const insertAt =
           toPositionInFolder < childrenInFolder.length
@@ -485,6 +486,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
       }
     }
 
+    canonicalizeLorebookFolderRefs(lb as Record<string, unknown>[]);
     deps.markFieldDirty('lorebook');
     deps.refreshIndexedTabs('lore_', deps.buildLorebookTabState);
     deps.buildSidebar();

@@ -4,8 +4,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parse, extractToggles, extractToggleValues, validateNesting, resolveInnerExpressions } from './cbs-parser';
 import { resolve as cbsResolve, generateCombinations } from './cbs-evaluator';
+import {
+  buildFolderInfoMap,
+  canonicalizeLorebookFolderRefs,
+  getFolderRef,
+  getFolderUuid,
+  normalizeFolderRef,
+  resolveLorebookFolderRef,
+} from './lorebook-folders';
 import { SEARCHABLE_TEXT_FIELDS, searchAllTextSurfaces, searchTextBlock } from './mcp-search';
-import { buildFolderInfoMap, getFolderUuid, normalizeFolderRef } from './lorebook-folders';
 import type { ToggleMap } from './cbs-parser';
 
 // ---------------------------------------------------------------------------
@@ -247,23 +254,49 @@ function pickAllowedFields(source: Record<string, unknown>, allowed: Set<string>
   return result;
 }
 
-function createLorebookFolderUuid(): string {
-  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function normalizeLorebookEntryFolderIdentity(entry: Record<string, unknown>): void {
+  if (entry.mode === 'folder') {
+    const folderUuid = getFolderUuid(entry) || crypto.randomUUID();
+    entry.key = folderUuid;
+    entry.folder = '';
+    return;
+  }
+
+  entry.folder = normalizeFolderRef(entry.folder);
 }
 
-function normalizeLorebookEntryState(
+function normalizeLorebookEntryForResponse(
   entry: Record<string, unknown>,
-  existingEntry?: Record<string, unknown> | null,
+  lorebook: Record<string, unknown>[],
 ): Record<string, unknown> {
-  if (entry.mode === 'folder') {
-    const existingFolderUuid = existingEntry && existingEntry.mode === 'folder' ? getFolderUuid(existingEntry) : null;
-    entry.key = existingFolderUuid || createLorebookFolderUuid();
-    entry.folder = '';
-    delete entry.id;
-  } else if ('folder' in entry) {
-    entry.folder = normalizeFolderRef(entry.folder);
+  const normalized = { ...entry };
+  if (normalized.mode === 'folder') {
+    normalized.key = getFolderUuid(normalized) || '';
+    normalized.folder = '';
+    return normalized;
   }
-  return entry;
+
+  normalized.folder = resolveLorebookFolderRef(normalized.folder, lorebook);
+  return normalized;
+}
+
+function projectLorebookEntryForResponse(
+  entry: Record<string, unknown>,
+  lorebook: Record<string, unknown>[],
+  requestedFields?: string[],
+): Record<string, unknown> {
+  const normalized = normalizeLorebookEntryForResponse(entry, lorebook);
+  if (!requestedFields || !Array.isArray(requestedFields)) {
+    return normalized;
+  }
+
+  const projected: Record<string, unknown> = {};
+  for (const field of requestedFields) {
+    if (field in normalized) {
+      projected[field] = normalized[field];
+    }
+  }
+  return projected;
 }
 
 /** RisuAI expects lowercase regex types (editdisplay, editoutput, etc.) + name mapping */
@@ -2154,15 +2187,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const rawEntries = currentData.lorebook || [];
 
         // Build folder summary
-        const folderMap = new Map(
-          Array.from(buildFolderInfoMap(rawEntries).entries()).map(([id, info]) => [
-            id,
-            { name: info.name, entryCount: 0 },
-          ]),
-        );
+        const folderMap = new Map<string, { name: string; entryCount: number }>();
+        for (const [folderId, info] of buildFolderInfoMap(rawEntries)) {
+          folderMap.set(folderId, { name: info.name, entryCount: 0 });
+        }
         for (const e of rawEntries) {
-          if (e.mode !== 'folder') {
-            const info = folderMap.get(normalizeFolderRef(e.folder));
+          if (e.mode !== 'folder' && e.folder) {
+            const info = folderMap.get(resolveLorebookFolderRef(e.folder, rawEntries));
             if (info) info.entryCount++;
           }
         }
@@ -2179,14 +2210,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
         let entries = rawEntries.map((e: any, i: number) => {
           const content = e.content || '';
+          const normalized = normalizeLorebookEntryForResponse(e, rawEntries);
           const entry: Record<string, unknown> = {
             index: i,
-            comment: e.comment || '',
-            key: e.key || '',
-            mode: e.mode || 'normal',
-            alwaysActive: !!e.alwaysActive,
+            comment: normalized.comment || '',
+            key: normalized.key || '',
+            mode: normalized.mode || 'normal',
+            alwaysActive: !!normalized.alwaysActive,
             contentSize: content.length,
-            folder: e.mode === 'folder' ? '' : normalizeFolderRef(e.folder),
+            folder: normalized.folder || '',
           };
           if (previewLength > 0) {
             entry.contentPreview = content.slice(0, previewLength) + (content.length > previewLength ? '…' : '');
@@ -2197,7 +2229,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         // Filter by folder UUID
         const folderParam = url.searchParams.get('folder');
         if (folderParam) {
-          const folderId = normalizeFolderRef(folderParam);
+          const folderId = resolveLorebookFolderRef(folderParam, rawEntries);
           entries = entries.filter((e: any) => e.folder === folderId);
         }
 
@@ -2264,7 +2296,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (isNaN(idx) || idx < 0 || idx >= (currentData.lorebook || []).length) {
           return jsonRes(res, { error: `Index ${idx} out of range` }, 400);
         }
-        return jsonRes(res, { index: idx, entry: currentData.lorebook[idx] });
+        return jsonRes(res, {
+          index: idx,
+          entry: normalizeLorebookEntryForResponse(currentData.lorebook[idx], currentData.lorebook || []),
+        });
       }
 
       // ----------------------------------------------------------------
@@ -2285,14 +2320,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const requestedFields: string[] | undefined = body.fields;
         const entries = indices.map((idx: number) => {
           if (typeof idx !== 'number' || idx < 0 || idx >= lorebook.length) return null;
-          if (requestedFields && Array.isArray(requestedFields)) {
-            const projected: Record<string, unknown> = {};
-            for (const f of requestedFields) {
-              if (f in lorebook[idx]) projected[f] = lorebook[idx][f];
-            }
-            return { index: idx, entry: projected };
-          }
-          return { index: idx, entry: lorebook[idx] };
+          return { index: idx, entry: projectLorebookEntryForResponse(lorebook[idx], lorebook, requestedFields) };
         });
         return jsonRes(res, { count: entries.filter(Boolean).length, total: indices.length, entries });
       }
@@ -2332,18 +2360,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
         if (allowed) {
           const results = entries.map((e) => {
-            const updatedEntry = Object.assign(
-              {},
-              lorebook[e.index],
-              pickAllowedFields(e.data, LOREBOOK_ALLOWED_FIELDS),
-            ) as Record<string, unknown>;
-            normalizeLorebookEntryState(updatedEntry, lorebook[e.index] as Record<string, unknown>);
-            Object.assign(lorebook[e.index], updatedEntry);
-            if ((lorebook[e.index] as Record<string, unknown>).mode === 'folder') {
-              delete (lorebook[e.index] as Record<string, unknown>).id;
-            }
+            Object.assign(lorebook[e.index], pickAllowedFields(e.data, LOREBOOK_ALLOWED_FIELDS));
+            normalizeLorebookEntryFolderIdentity(lorebook[e.index]);
             return { index: e.index, success: true };
           });
+          canonicalizeLorebookFolderRefs(lorebook);
           logMcpMutation('batch write lorebook', 'lorebook:batch-write', { count: entries.length });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
           return jsonRes(res, { success: true, count: results.length, results });
@@ -2537,14 +2558,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             Object.assign(clone, pickAllowedFields(body.overrides, LOREBOOK_ALLOWED_FIELDS));
           }
           if (clone.mode === 'folder') {
-            clone.key = createLorebookFolderUuid();
+            clone.key = crypto.randomUUID();
             clone.folder = '';
             delete clone.id;
           } else {
+            // Generate new ID to avoid conflicts
             clone.id = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-            clone.folder = normalizeFolderRef(clone.folder);
+            normalizeLorebookEntryFolderIdentity(clone);
           }
           currentData.lorebook.push(clone);
+          canonicalizeLorebookFolderRefs(currentData.lorebook);
           const newIndex = currentData.lorebook.length - 1;
           logMcpMutation('clone lorebook entry', `lorebook:clone`, { sourceIdx, sourceName, newIndex });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
@@ -2589,16 +2612,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
 
         if (allowed) {
-          const updatedEntry = Object.assign(
-            {},
-            currentData.lorebook[idx],
-            pickAllowedFields(body, LOREBOOK_ALLOWED_FIELDS),
-          ) as Record<string, unknown>;
-          normalizeLorebookEntryState(updatedEntry, currentData.lorebook[idx] as Record<string, unknown>);
-          Object.assign(currentData.lorebook[idx], updatedEntry);
-          if ((currentData.lorebook[idx] as Record<string, unknown>).mode === 'folder') {
-            delete (currentData.lorebook[idx] as Record<string, unknown>).id;
-          }
+          Object.assign(currentData.lorebook[idx], pickAllowedFields(body, LOREBOOK_ALLOWED_FIELDS));
+          normalizeLorebookEntryFolderIdentity(currentData.lorebook[idx]);
+          canonicalizeLorebookFolderRefs(currentData.lorebook);
           logMcpMutation('update lorebook entry', `lorebook:${idx}`, { entryName, updatedKeys: Object.keys(body) });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
           return jsonRes(res, { success: true, index: idx });
@@ -2633,25 +2649,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               secondkey: '',
               comment: '',
               content: '',
+              folder: '',
               order: 100,
               priority: 0,
               selective: false,
               alwaysActive: false,
               mode: 'normal',
               extentions: {},
-              folder: '',
             },
             pickAllowedFields(body, LOREBOOK_ALLOWED_FIELDS),
-          ) as Record<string, unknown>;
-          if (entry.mode === 'folder') {
-            entry.key = createLorebookFolderUuid();
-            entry.folder = '';
-            delete entry.id;
-          } else {
-            normalizeLorebookEntryState(entry);
-          }
+          );
+          normalizeLorebookEntryFolderIdentity(entry);
           if (!currentData.lorebook) currentData.lorebook = [];
           currentData.lorebook.push(entry);
+          canonicalizeLorebookFolderRefs(currentData.lorebook);
           logMcpMutation('add lorebook entry', 'lorebook:add', {
             entryName: name,
             newIndex: currentData.lorebook.length - 1,
@@ -2700,27 +2711,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
                 secondkey: '',
                 comment: '',
                 content: '',
+                folder: '',
                 order: 100,
                 priority: 0,
                 selective: false,
                 alwaysActive: false,
                 mode: 'normal',
                 extentions: {},
-                folder: '',
               },
               pickAllowedFields(entryData, LOREBOOK_ALLOWED_FIELDS),
-            ) as Record<string, unknown>;
-            if (entry.mode === 'folder') {
-              entry.key = createLorebookFolderUuid();
-              entry.folder = '';
-              delete entry.id;
-            } else {
-              normalizeLorebookEntryState(entry);
-            }
+            );
+            normalizeLorebookEntryFolderIdentity(entry);
             currentData.lorebook.push(entry);
             const newIndex = currentData.lorebook.length - 1;
             results.push({ index: newIndex, comment: (entry.comment as string) || `entry_${newIndex}` });
           }
+          canonicalizeLorebookFolderRefs(currentData.lorebook);
           logMcpMutation('batch add lorebook entries', 'lorebook:batch-add', {
             count: entries.length,
             entries: results,
@@ -5266,14 +5272,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
         let entries = lorebook.map((e: any, i: number) => {
           const content = e.content || '';
+          const normalized = normalizeLorebookEntryForResponse(e, lorebook);
           const entry: Record<string, unknown> = {
             index: i,
-            comment: e.comment || '',
-            key: e.key || '',
-            mode: e.mode || 'normal',
-            alwaysActive: !!e.alwaysActive,
+            comment: normalized.comment || '',
+            key: normalized.key || '',
+            mode: normalized.mode || 'normal',
+            alwaysActive: !!normalized.alwaysActive,
             contentSize: content.length,
-            folder: e.mode === 'folder' ? '' : normalizeFolderRef(e.folder),
+            folder: normalized.folder || '',
           };
           if (previewLength > 0) {
             entry.contentPreview = content.slice(0, previewLength) + (content.length > previewLength ? '…' : '');
@@ -5283,7 +5290,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         // Filter by folder UUID
         const folderParam = url.searchParams.get('folder');
         if (folderParam) {
-          const folderId = normalizeFolderRef(folderParam);
+          const folderId = resolveLorebookFolderRef(folderParam, lorebook);
           entries = entries.filter((e: any) => e.folder === folderId);
         }
         const filterParam = url.searchParams.get('filter');
@@ -5354,14 +5361,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const requestedFields: string[] | undefined = body.fields;
         const entries = indices.map((entryIdx: number) => {
           if (typeof entryIdx !== 'number' || entryIdx < 0 || entryIdx >= lorebook.length) return null;
-          if (requestedFields && Array.isArray(requestedFields)) {
-            const projected: Record<string, unknown> = {};
-            for (const f of requestedFields) {
-              if (f in lorebook[entryIdx]) projected[f] = lorebook[entryIdx][f];
-            }
-            return { index: entryIdx, entry: projected };
-          }
-          return { index: entryIdx, entry: lorebook[entryIdx] };
+          return {
+            index: entryIdx,
+            entry: projectLorebookEntryForResponse(lorebook[entryIdx], lorebook, requestedFields),
+          };
         });
         return jsonRes(res, {
           refIndex: idx,
@@ -5391,7 +5394,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             400,
           );
         }
-        return jsonRes(res, { refIndex: idx, fileName: ref.fileName, entryIndex: entryIdx, entry: lorebook[entryIdx] });
+        return jsonRes(res, {
+          refIndex: idx,
+          fileName: ref.fileName,
+          entryIndex: entryIdx,
+          entry: normalizeLorebookEntryForResponse(lorebook[entryIdx], lorebook),
+        });
       }
 
       // ----------------------------------------------------------------
@@ -5634,7 +5642,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             index: idx,
             fileName: ref.fileName,
             field: 'lorebook',
-            content: ref.data.lorebook || [],
+            content: (ref.data.lorebook || []).map((entry: Record<string, unknown>) =>
+              normalizeLorebookEntryForResponse(entry, ref.data.lorebook || []),
+            ),
           });
         }
         if (fieldName === 'regex') {
@@ -6032,8 +6042,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         if (folder) {
-          const folderId = normalizeFolderRef(folder);
-          entries = entries.filter((e) => normalizeFolderRef(e.folder) === folderId || e.mode === 'folder');
+          const folderId = resolveLorebookFolderRef(folder, entries);
+          entries = entries.filter(
+            (e) => resolveLorebookFolderRef(e.folder, entries) === folderId || e.mode === 'folder',
+          );
         }
 
         const nonFolderCount = entries.filter((e) => e.mode !== 'folder').length;
@@ -6191,17 +6203,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           // 1. Create new folders first
           const newFolderIds = new Map<string, string>(); // folderName → folderId
           for (const folderName of resolution.newFolders) {
-            const folderUuid = createLorebookFolderUuid();
             const folderEntry: Record<string, unknown> = {
               comment: folderName,
-              key: folderUuid,
+              key: crypto.randomUUID(),
               content: '',
               mode: 'folder',
-              insertorder: 100,
               folder: '',
+              insertorder: 100,
             };
             (currentData.lorebook as unknown[]).push(folderEntry);
-            newFolderIds.set(folderName, normalizeFolderRef(folderUuid));
+            const folderRef = getFolderRef(folderEntry);
+            if (folderRef) {
+              newFolderIds.set(folderName, folderRef);
+            }
             foldersCreated++;
           }
 
@@ -6216,15 +6230,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
           // 2. Add new entries
           for (const entry of resolution.toAdd) {
-            // Find folder ID from the import entry's folderName
-            const importEntry = importEntries.find((ie) => ie.data === entry || ie.data.comment === entry.comment);
-            if (importEntry?.folderName) {
-              const folderId = allFolderByName.get(importEntry.folderName);
-              if (folderId) {
-                entry.folder = normalizeFolderRef(folderId);
-              }
-            }
-            normalizeLorebookEntryState(entry);
+            entry.folder = lorebookIo.resolveImportedFolderRef(entry, allFolderByName);
+            normalizeLorebookEntryFolderIdentity(entry);
             (currentData.lorebook as unknown[]).push(entry);
           }
 
@@ -6232,17 +6239,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           for (const { index, data } of resolution.toOverwrite) {
             const existing = (currentData.lorebook as Record<string, unknown>[])[index];
             if (existing) {
-              normalizeLorebookEntryState(data, existing);
               for (const [key, value] of Object.entries(data)) {
                 if (LOREBOOK_ALLOWED_FIELDS.has(key)) {
                   existing[key] = value;
                 }
               }
-              if (existing.mode === 'folder') {
-                delete existing.id;
-              }
+              existing.folder = lorebookIo.resolveImportedFolderRef(data, allFolderByName);
+              normalizeLorebookEntryFolderIdentity(existing);
             }
           }
+
+          canonicalizeLorebookFolderRefs((currentData.lorebook as Record<string, unknown>[]) || []);
 
           // Broadcast update
           deps.broadcastToAll('data-updated', {

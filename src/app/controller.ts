@@ -47,6 +47,7 @@ import { feedBgBuffer, initChatMode as initChatModeUi, isChatMode, onChatData } 
 import { NON_MONACO_EDITOR_TAB_TYPES, requiresMonacoEditor, resolvePendingEditorTab } from '../lib/editor-activation';
 import { createExternalTextTabState } from '../lib/external-text-tab';
 import { collectDirtyEditorFields } from '../lib/editor-dirty-fields';
+import { getFolderRef, resolveLorebookFolderRef } from '../lib/lorebook-folders';
 import { TabManager } from '../lib/tab-manager';
 import { applyStoredLayoutState, createDefaultLayoutState, createLayoutManager, V_SLOTS } from '../lib/layout-manager';
 import { planMcpDataUpdate } from '../lib/mcp-data-update';
@@ -70,7 +71,6 @@ import {
   showRegexEditor,
 } from '../lib/form-editor';
 import type { FormTabInfo } from '../lib/form-editor';
-import { getFolderRef, normalizeFolderRef } from '../lib/lorebook-folders';
 import { showConfirm, resetConfirmAllowAll, showCloseConfirm, showPrompt } from '../lib/dialog';
 import { showContextMenu, hideContextMenu } from '../lib/context-menu';
 import type { ContextMenuItem } from '../lib/context-menu';
@@ -1157,11 +1157,11 @@ function buildSidebar(): void {
     showContextMenu(e.clientX, e.clientY, items);
   });
 
-  // Group lorebook by folder (robust multi-key matching)
+  // Group lorebook by folder using normalized folder refs.
   type LoreChild = { entry: LorebookEntry; index: number };
   type LoreFolder = { entry: LorebookEntry; index: number; children: LoreChild[] };
   const folderDataList: LoreFolder[] = []; // { entry, index, children }
-  const folderLookup: Record<string, LoreFolder> = {};
+  const folderLookup: Record<string, LoreFolder> = {}; // multiple keys → same folderData
   const rootEntries: LoreChild[] = [];
   for (let i = 0; i < fileData.lorebook.length; i++) {
     const entry = fileData.lorebook[i];
@@ -1181,7 +1181,7 @@ function buildSidebar(): void {
   for (let i = 0; i < fileData.lorebook.length; i++) {
     const entry = fileData.lorebook[i];
     if (entry.mode === 'folder') continue;
-    const folderId = normalizeFolderRef(entry.folder);
+    const folderId = resolveLorebookFolderRef(entry.folder, fileData.lorebook);
     const matched = folderId ? folderLookup[folderId] : null;
     if (matched) {
       matched.children.push({ entry, index: i });
@@ -1207,7 +1207,7 @@ function buildSidebar(): void {
       e.preventDefault();
       e.stopPropagation();
       const fEntry = fileData!.lorebook[folderIdx];
-      const folderId = getFolderRef(fEntry) || '';
+      const normalizedFolderId = getFolderRef(fEntry) || '';
       showContextMenu(e.clientX, e.clientY, [
         {
           label: '이름 변경',
@@ -1238,7 +1238,7 @@ function buildSidebar(): void {
               priority: 0,
               useRegex: false,
               extentions: {},
-              folder: folderId,
+              folder: normalizedFolderId,
             };
             fileData!.lorebook.push(newEntry);
             tabMgr.markFieldDirty('lorebook');
