@@ -9,6 +9,16 @@
 
 ---
 
+## [0.22.10] - 2026-03-26
+
+### 수정
+
+- **프로젝트 skills 링크 자동 복구**
+  - Windows에서 git이 `.claude/skills`, `.gemini/skills`, `.github/skills` 심볼릭 링크를 `../skills` 일반 파일로 체크아웃해 각 LLM CLI가 스킬 디렉터리를 읽지 못하던 문제 수정
+  - `src/lib/skill-link-sync.ts`와 `npm run sync:skills`를 추가해 세 경로를 루트 `skills/`로 다시 연결하도록 보강
+  - Windows에서는 실제 symlink를 우선 생성해 `git status`가 불필요하게 더럽혀지지 않도록 하고, symlink 권한이 없을 때만 junction으로 폴백
+  - `npm install`의 `prepare` 단계에서 자동 복구되며, 필요하면 수동으로 `npm run sync:skills`를 실행할 수 있음
+
 ## [0.22.9] - 2026-03-26
 
 ### 수정

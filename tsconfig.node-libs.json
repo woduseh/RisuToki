@@ -17,6 +17,7 @@
     "src/lib/mcp-search.ts",
     "src/lib/mcp-config.ts",
     "src/lib/agents-md-manager.ts",
+    "src/lib/skill-link-sync.ts",
     "src/lib/asset-manager.ts",
     "src/lib/sync-server.ts",
     "src/lib/guides-manager.ts",
