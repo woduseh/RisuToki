@@ -40,6 +40,7 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     writeGeminiMcpConfig: () => ipcRenderer.invoke('write-gemini-mcp-config'),
     writeAgentsMd: (content) => ipcRenderer.invoke('write-agents-md', content),
     cleanupAgentsMd: () => ipcRenderer.invoke('cleanup-agents-md'),
+    syncCopilotAgentProfiles: (category) => ipcRenderer.invoke('sync-copilot-agent-profiles', category),
     onDataUpdated: (cb) => {
       ipcRenderer.on('data-updated', (_event, field: string, value: unknown) => cb(field, value));
     },
