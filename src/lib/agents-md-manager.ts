@@ -11,6 +11,7 @@ import { CHATBOT_CATEGORIES, type ChatbotCategory } from './pluni-persona';
 
 export interface AgentsMdDeps {
   getCurrentFilePath: () => string | null;
+  getTerminalCwd: () => string | null;
   getDirname: () => string;
   getGuidesDir: () => string;
 }
@@ -37,6 +38,26 @@ function isUnderProjectRoot(filePath: string, projectRoot: string): boolean {
   if (filePath.length === projectRoot.length) return true;
   const ch = filePath[projectRoot.length];
   return ch === '/' || ch === '\\';
+}
+
+/**
+ * Resolve project root with priority (each candidate must be an absolute path):
+ *
+ * 1. explicit override (if non-empty and absolute)
+ * 2. tracked terminal cwd (if absolute)
+ * 3. dirname of currently-open file
+ * 4. process.cwd()
+ */
+function resolveProjectRoot(explicitRoot?: string | null): string {
+  if (explicitRoot && path.isAbsolute(explicitRoot)) return explicitRoot;
+
+  const termCwd = deps.getTerminalCwd();
+  if (termCwd && path.isAbsolute(termCwd)) return termCwd;
+
+  const filePath = deps.getCurrentFilePath();
+  if (filePath) return path.dirname(filePath);
+
+  return process.cwd();
 }
 
 export function cleanupAgentsMd(): void {
@@ -122,9 +143,8 @@ function buildAgentsDocument(sessionContent: string | null, projectGuideContent:
   return sections.join('\n\n---\n\n');
 }
 
-function writeAgentsMd(content: string): string | null {
-  const filePath = deps.getCurrentFilePath();
-  const cwd = filePath ? path.dirname(filePath) : process.cwd();
+function writeAgentsMd(content: string, projectRoot?: string | null): string | null {
+  const cwd = resolveProjectRoot(projectRoot);
   const agentsPath = path.join(cwd, 'AGENTS.md');
 
   if (activeAgentsFilePath && activeAgentsFilePath !== agentsPath) {
@@ -169,9 +189,8 @@ export function setActiveAgentProfileState(state: AgentProfileState | null): voi
  * Preserves previous-state backups on re-sync in the same project root.
  * Cleans old profile state first if switching project roots.
  */
-export function syncCopilotProfiles(category: ChatbotCategory): void {
-  const filePath = deps.getCurrentFilePath();
-  const cwd = filePath ? path.dirname(filePath) : process.cwd();
+export function syncCopilotProfiles(category: ChatbotCategory, projectRoot?: string | null): void {
+  const cwd = resolveProjectRoot(projectRoot);
 
   // If we already have state from a different project root, clean it up first
   if (activeAgentProfileState) {
@@ -219,12 +238,12 @@ export function _setDepsForTesting(d: AgentsMdDeps): void {
 export function initAgentsMdManager(d: AgentsMdDeps): void {
   deps = d;
 
-  ipcMain.handle('write-agents-md', (_, content: string) => {
-    return writeAgentsMd(content);
+  ipcMain.handle('write-agents-md', (_, content: string, projectRoot?: string) => {
+    return writeAgentsMd(content, projectRoot);
   });
 
-  ipcMain.handle('write-codex-agents-md', (_, content: string) => {
-    return writeAgentsMd(content);
+  ipcMain.handle('write-codex-agents-md', (_, content: string, projectRoot?: string) => {
+    return writeAgentsMd(content, projectRoot);
   });
 
   ipcMain.handle('cleanup-agents-md', () => {
@@ -232,11 +251,11 @@ export function initAgentsMdManager(d: AgentsMdDeps): void {
     return true;
   });
 
-  ipcMain.handle('sync-copilot-agent-profiles', (_, category: string) => {
+  ipcMain.handle('sync-copilot-agent-profiles', (_, category: string, projectRoot?: string) => {
     const valid: ChatbotCategory = (CHATBOT_CATEGORIES as readonly string[]).includes(category)
       ? (category as ChatbotCategory)
       : 'solo';
-    syncCopilotProfiles(valid);
+    syncCopilotProfiles(valid, projectRoot);
     return true;
   });
 }

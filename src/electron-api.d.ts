@@ -123,6 +123,7 @@ interface TokiAPI {
   saveFileAs: (updatedFields: Record<string, unknown>) => Promise<SaveResult>;
   getFilePath: () => Promise<string | null>;
   getCwd: () => Promise<string>;
+  setTerminalCwd: (cwd: string | null) => Promise<boolean>;
   terminalStart: (cols?: number, rows?: number) => Promise<boolean>;
   terminalIsRunning: () => Promise<boolean>;
   terminalInput: (data: string) => void;
@@ -137,9 +138,9 @@ interface TokiAPI {
   writeCopilotMcpConfig: () => Promise<string | null>;
   writeCodexMcpConfig: () => Promise<string | null>;
   writeGeminiMcpConfig: () => Promise<string | null>;
-  writeAgentsMd: (content: string) => Promise<string>;
+  writeAgentsMd: (content: string, projectRoot?: string | null) => Promise<string>;
   cleanupAgentsMd: () => Promise<boolean>;
-  syncCopilotAgentProfiles: (category: string) => Promise<boolean>;
+  syncCopilotAgentProfiles: (category: string, projectRoot?: string | null) => Promise<boolean>;
   onDataUpdated: (cb: DataUpdatedCallback) => void;
   onMcpConfirmRequest: (cb: McpConfirmCallback) => void;
   sendMcpConfirmResponse: (id: number, allowed: boolean) => void;

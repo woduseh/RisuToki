@@ -7,21 +7,27 @@ const { mockCleanupProfiles, mockSyncProfiles } = vi.hoisted(() => ({
     entries: [
       {
         advisorId: 'pluni',
-        filePath: `${projectRoot}/.github/agents/pluni.md`,
+        filePath: `${projectRoot}/.github/agents/pluni.agent.md`,
         hadExistingFile: false,
         originalContent: null,
+        legacyFilePath: null,
+        legacyOriginalContent: null,
       },
       {
         advisorId: 'kotone',
-        filePath: `${projectRoot}/.github/agents/kotone.md`,
+        filePath: `${projectRoot}/.github/agents/kotone.agent.md`,
         hadExistingFile: false,
         originalContent: null,
+        legacyFilePath: null,
+        legacyOriginalContent: null,
       },
       {
         advisorId: 'sophia',
-        filePath: `${projectRoot}/.github/agents/sophia.md`,
+        filePath: `${projectRoot}/.github/agents/sophia.agent.md`,
         hadExistingFile: false,
         originalContent: null,
+        legacyFilePath: null,
+        legacyOriginalContent: null,
       },
     ],
   })),
@@ -65,9 +71,11 @@ describe('cleanupAgentsMd', () => {
       entries: [
         {
           advisorId: 'pluni',
-          filePath: '/fake/.github/agents/pluni.md',
+          filePath: '/fake/.github/agents/pluni.agent.md',
           hadExistingFile: false,
           originalContent: null,
+          legacyFilePath: null,
+          legacyOriginalContent: null,
         },
       ],
     };
@@ -89,9 +97,11 @@ describe('cleanupAgentsMd', () => {
       entries: [
         {
           advisorId: 'pluni',
-          filePath: '/fake/.github/agents/pluni.md',
+          filePath: '/fake/.github/agents/pluni.agent.md',
           hadExistingFile: false,
           originalContent: null,
+          legacyFilePath: null,
+          legacyOriginalContent: null,
         },
       ],
     };
@@ -113,9 +123,11 @@ describe('cleanupAgentsMd', () => {
         entries: [
           {
             advisorId: 'pluni',
-            filePath: '/fake/.github/agents/pluni.md',
+            filePath: '/fake/.github/agents/pluni.agent.md',
             hadExistingFile: false,
             originalContent: null,
+            legacyFilePath: null,
+            legacyOriginalContent: null,
           },
         ],
       };
@@ -163,18 +175,20 @@ describe('syncCopilotProfiles', () => {
   it('calls syncAgentProfiles with the current working directory and category', () => {
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/project/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/app',
       getGuidesDir: () => '/fake/guides',
     });
 
     syncCopilotProfiles('solo');
 
-    expect(mockSyncProfiles).toHaveBeenCalledWith(expect.stringContaining('project'), 'solo', undefined);
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/fake/project', 'solo', undefined);
   });
 
   it('passes previous state on re-sync within the same project', () => {
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/project/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/app',
       getGuidesDir: () => '/fake/guides',
     });
@@ -186,13 +200,14 @@ describe('syncCopilotProfiles', () => {
 
     // Second call should pass the previous state for backup preservation
     expect(mockSyncProfiles).toHaveBeenCalledTimes(2);
-    expect(mockSyncProfiles).toHaveBeenLastCalledWith(expect.stringContaining('project'), 'world-sim', firstState);
+    expect(mockSyncProfiles).toHaveBeenLastCalledWith('/fake/project', 'world-sim', firstState);
   });
 
   it('cleans old state when switching between similarly-prefixed project roots', () => {
     // First sync in /fake/app-beta
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/app-beta/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/electron',
       getGuidesDir: () => '/fake/guides',
     });
@@ -207,6 +222,7 @@ describe('syncCopilotProfiles', () => {
     // would be TRUE, so cleanup would be SKIPPED (leaving stale files).
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/app/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/electron',
       getGuidesDir: () => '/fake/guides',
     });
@@ -224,6 +240,7 @@ describe('syncCopilotProfiles', () => {
   it('cleans up old state when cleanup is called after sync', () => {
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/project/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/app',
       getGuidesDir: () => '/fake/guides',
     });
@@ -239,6 +256,7 @@ describe('syncCopilotProfiles', () => {
   it('normalises an invalid category to "solo"', () => {
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/project/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/app',
       getGuidesDir: () => '/fake/guides',
     });
@@ -251,6 +269,103 @@ describe('syncCopilotProfiles', () => {
     const validated = (CHATBOT_CATEGORIES as readonly string[]).includes(bogus) ? (bogus as 'solo') : 'solo';
     syncCopilotProfiles(validated);
 
-    expect(mockSyncProfiles).toHaveBeenCalledWith(expect.stringContaining('project'), 'solo', undefined);
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/fake/project', 'solo', undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Root resolution priority: explicit > terminalCwd > currentFilePath > cwd
+// ---------------------------------------------------------------------------
+describe('root resolution priority', () => {
+  it('prefers explicit projectRoot over terminal cwd and currentFilePath', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => '/terminal-based/project',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo', '/explicit/project');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/explicit/project', 'solo', undefined);
+  });
+
+  it('uses terminal cwd when no explicit root is provided', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => '/terminal-based/project',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/terminal-based/project', 'solo', undefined);
+  });
+
+  it('falls back to currentFilePath dir when no terminal cwd', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => null,
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/file-based/project', 'solo', undefined);
+  });
+
+  it('falls back to process.cwd() when no root sources are available', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => null,
+      getTerminalCwd: () => null,
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo');
+
+    // Should use process.cwd() as the root
+    expect(mockSyncProfiles).toHaveBeenCalledWith(process.cwd(), 'solo', undefined);
+  });
+
+  it('ignores empty-string explicit root and falls back to terminal cwd', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => '/terminal-based/project',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo', '');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/terminal-based/project', 'solo', undefined);
+  });
+
+  it('ignores relative explicit root and falls through to terminal cwd', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => '/terminal-based/project',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo', 'relative/path');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/terminal-based/project', 'solo', undefined);
+  });
+
+  it('ignores relative terminal cwd and falls through to currentFilePath', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => 'relative/garbage',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/file-based/project', 'solo', undefined);
   });
 });

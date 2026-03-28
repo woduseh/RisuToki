@@ -9,6 +9,28 @@
 
 ---
 
+## [0.26.2] - 2026-03-28
+
+### 수정
+
+- **플루니 부트스트랩이 터미널의 현재 작업 디렉터리(cwd)를 따르도록 수정**
+  - `AGENTS.md` 및 `.github/agents/` 자문 에이전트 파일이 내장 터미널의 cwd 기준으로 생성됨
+  - 터미널에서 프로젝트 루트를 결정할 때 절대 경로 검증을 추가하여 잘못된 경로 사용을 방지
+- **내장 터미널에서 수동 `copilot` 명령 실행 지원**
+  - 메뉴 액션뿐 아니라 터미널에 직접 `copilot`을 입력해도 플루니 모드 부트스트랩이 적용됨
+- **Copilot custom agent 파일명을 `.agent.md`로 변경하고 YAML frontmatter 적용**
+  - `pluni.md` → `pluni.agent.md`, `kotone.md` → `kotone.agent.md`, `sophia.md` → `sophia.agent.md`
+  - 파일 상단에 YAML frontmatter(`---\nname: ...\n---`) 추가
+- **레거시 `.md` 런타임 산출물의 정리/복원 분리**
+  - canonical `.agent.md` 정리와 레거시 `.md` 복원을 별도 try/catch로 분리하여 한쪽 실패가 다른 쪽에 영향을 주지 않음
+- **입력 디스패처의 queueDepth 감소를 try/finally로 보호**
+  - 핸들러 예외 시에도 큐 카운터가 정확히 감소하도록 수정
+- **자문 에이전트 프로필 강화 및 compact 요약 예산 조정**
+  - 자문 패널의 strengths 요약이 일관되게 표시되도록 수정
+- **비어 있거나 누락된 `skills/` 디렉터리를 허용하도록 프로젝트 스킬 동기화 경로 보강**
+  - `npm run sync:skills`와 `npm install`의 `prepare` 단계가 루트 `skills/` 폴더가 없을 때 실패하지 않고 건너뜀
+  - 번들 프로젝트 스킬 문서를 제거한 브랜치에서도 CI와 릴리즈 패키징이 계속 동작하도록 정리
+
 ## [0.26.1] - 2026-03-28
 
 ### 수정

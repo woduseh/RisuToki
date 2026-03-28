@@ -124,7 +124,7 @@ export interface TerminalUiOptions {
   container: HTMLElement;
   onActivity?: () => void;
   onTerminalData?: (data: string) => void;
-  onUserInput?: () => void;
+  onUserInput?: (data: string) => void | Promise<void>;
   preserveAmdLoader?: boolean;
   rightClickSelectsWord?: boolean;
   setActive?: (active: boolean) => void;
@@ -162,6 +162,49 @@ export function coerceTerminalGeometry(
   return {
     cols: cols >= 20 ? cols : fallbackCols,
     rows: rows >= 2 ? rows : fallbackRows,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Async input dispatcher — allows an async gate (e.g. Copilot prep) to hold
+// the Enter key while keeping subsequent keystrokes in order.
+// ---------------------------------------------------------------------------
+
+export interface InputDispatcher {
+  /**
+   * Forward `data` to the PTY.  If `gate` is provided, hold this data (and
+   * all subsequent dispatches) until the gate settles.  If a previous gate
+   * is still pending, queue behind it even without a new gate.
+   */
+  dispatch(data: string, gate?: Promise<void>): void;
+}
+
+export function createInputDispatcher(forward: (data: string) => void): InputDispatcher {
+  let queueDepth = 0;
+  let chain: Promise<void> = Promise.resolve();
+
+  return {
+    dispatch(data: string, gate?: Promise<void>): void {
+      if (gate != null || queueDepth > 0) {
+        queueDepth++;
+        chain = chain.then(async () => {
+          if (gate != null) {
+            try {
+              await gate;
+            } catch {
+              /* prep failed — still forward the keystroke */
+            }
+          }
+          try {
+            forward(data);
+          } finally {
+            queueDepth--;
+          }
+        });
+      } else {
+        forward(data);
+      }
+    },
   };
 }
 
@@ -273,9 +316,15 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
   });
   fitAddon.fit();
 
+  const dispatcher = createInputDispatcher((data) => options.api.terminalInput(data));
+
   term.onData((data) => {
-    options.onUserInput?.();
-    options.api.terminalInput(data);
+    const maybePromise = options.onUserInput?.(data);
+    const gate =
+      maybePromise != null && typeof (maybePromise as Promise<void>).then === 'function'
+        ? (maybePromise as Promise<void>)
+        : undefined;
+    dispatcher.dispatch(data, gate);
   });
 
   options.api.onTerminalData((data) => {

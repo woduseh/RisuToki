@@ -21,6 +21,17 @@ function makeProjectRoot() {
   return root;
 }
 
+function makeProjectRootWithoutSkills() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-skill-links-missing-'));
+  tempRoots.push(root);
+
+  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+  fs.mkdirSync(path.join(root, '.gemini'), { recursive: true });
+  fs.mkdirSync(path.join(root, '.github'), { recursive: true });
+
+  return root;
+}
+
 function createDirectoryLink(linkPath: string, sourcePath: string, platform: NodeJS.Platform | string) {
   const relativeTarget = path.relative(path.dirname(linkPath), sourcePath);
 
@@ -72,6 +83,12 @@ afterEach(() => {
 const windowsSymlinkIt = canCreateWindowsDirectorySymlink() ? it : it.skip;
 
 describe('skill link sync', () => {
+  it('skips link creation when the root skills directory is missing', () => {
+    const root = makeProjectRootWithoutSkills();
+
+    expect(ensureProjectSkillLinks(root, { platform: process.platform })).toEqual([]);
+  });
+
   it('replaces git placeholder files with real directory links', () => {
     const root = makeProjectRoot();
     const specs = getProjectSkillLinkSpecs(root);

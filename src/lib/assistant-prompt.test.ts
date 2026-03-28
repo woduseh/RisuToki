@@ -4,6 +4,7 @@ import {
   loadRpPersona,
   buildAssistantPrompt,
   startAssistantCli,
+  prepareCopilotSession,
   handleClaudeStart,
   handleCopilotStart,
   handleCodexStart,
@@ -255,8 +256,42 @@ describe('startAssistantCli', () => {
     });
     await startAssistantCli('copilot', deps);
 
-    expect(syncFn).toHaveBeenCalledWith('solo');
+    expect(syncFn).toHaveBeenCalledWith('solo', undefined);
     expect(deps.writeAgentsMd).toHaveBeenCalled();
+  });
+
+  it('forwards projectRoot to writeAgentsMd when set in deps', async () => {
+    const writeAgentsMd = vi.fn(async () => {});
+    const deps = createMockDeps({
+      projectRoot: '/my/terminal/cwd',
+      writeAgentsMd,
+    });
+    await startAssistantCli('copilot', deps);
+
+    // writeAgentsMd should receive the projectRoot as second argument
+    expect(writeAgentsMd).toHaveBeenCalledWith(expect.any(String), '/my/terminal/cwd');
+  });
+
+  it('forwards projectRoot to syncCopilotAgentProfiles when set in deps', async () => {
+    const syncFn = vi.fn(async () => {});
+    const deps = createMockDeps({
+      rpMode: 'pluni',
+      pluniCategory: 'solo',
+      syncCopilotAgentProfiles: syncFn,
+      projectRoot: '/my/terminal/cwd',
+    });
+    await startAssistantCli('copilot', deps);
+
+    expect(syncFn).toHaveBeenCalledWith('solo', '/my/terminal/cwd');
+  });
+
+  it('passes undefined projectRoot when not set in deps', async () => {
+    const writeAgentsMd = vi.fn(async () => {});
+    const deps = createMockDeps({ writeAgentsMd });
+    // projectRoot is not set (undefined)
+    await startAssistantCli('copilot', deps);
+
+    expect(writeAgentsMd).toHaveBeenCalledWith(expect.any(String), undefined);
   });
 
   it('sets status mentioning 플루니 연구소 when copilot + pluni', async () => {
@@ -297,6 +332,86 @@ describe('startAssistantCli', () => {
     await startAssistantCli('copilot', deps);
 
     expect(deps.cleanupAgentsMd).toHaveBeenCalled();
+  });
+});
+
+describe('prepareCopilotSession', () => {
+  it('writes MCP config and AGENTS.md without sending terminal commands', async () => {
+    const deps = createMockDeps({ rpMode: 'pluni' });
+    await prepareCopilotSession(deps);
+
+    expect(deps.writeCopilotMcpConfig).toHaveBeenCalled();
+    expect(deps.cleanupAgentsMd).toHaveBeenCalled();
+    expect(deps.writeAgentsMd).toHaveBeenCalled();
+    expect(deps.terminalInput).not.toHaveBeenCalled();
+  });
+
+  it('syncs copilot agent profiles in pluni mode', async () => {
+    const syncFn = vi.fn(async () => {});
+    const deps = createMockDeps({
+      rpMode: 'pluni',
+      pluniCategory: 'solo',
+      syncCopilotAgentProfiles: syncFn,
+    });
+    await prepareCopilotSession(deps);
+
+    expect(syncFn).toHaveBeenCalledWith('solo', undefined);
+  });
+
+  it('does not sync agent profiles for non-pluni mode', async () => {
+    const syncFn = vi.fn(async () => {});
+    const deps = createMockDeps({
+      rpMode: 'toki',
+      syncCopilotAgentProfiles: syncFn,
+    });
+    await prepareCopilotSession(deps);
+
+    expect(syncFn).not.toHaveBeenCalled();
+  });
+
+  it('forwards projectRoot to writeAgentsMd', async () => {
+    const writeAgentsMd = vi.fn(async () => {});
+    const deps = createMockDeps({
+      rpMode: 'pluni',
+      projectRoot: 'C:\\my\\project',
+      writeAgentsMd,
+    });
+    await prepareCopilotSession(deps);
+
+    expect(writeAgentsMd).toHaveBeenCalledWith(expect.any(String), 'C:\\my\\project');
+  });
+
+  it('does not inject bootstrap command even on Windows', async () => {
+    const deps = createMockDeps({
+      rpMode: 'pluni',
+      navigatorLike: { userAgentData: { platform: 'Windows' } },
+    });
+    await prepareCopilotSession(deps);
+
+    expect(deps.terminalInput).not.toHaveBeenCalled();
+  });
+
+  it('produces the same AGENTS.md content as startAssistantCli', async () => {
+    // Both paths should write the same prompt content
+    const writeAgentsMd1 = vi.fn(async () => {});
+    const deps1 = createMockDeps({
+      rpMode: 'pluni',
+      pluniCategory: 'solo',
+      writeAgentsMd: writeAgentsMd1,
+    });
+    await prepareCopilotSession(deps1);
+
+    const writeAgentsMd2 = vi.fn(async () => {});
+    const deps2 = createMockDeps({
+      rpMode: 'pluni',
+      pluniCategory: 'solo',
+      writeAgentsMd: writeAgentsMd2,
+    });
+    await startAssistantCli('copilot', deps2);
+
+    const content1 = (writeAgentsMd1.mock.calls as unknown[][])[0]?.[0];
+    const content2 = (writeAgentsMd2.mock.calls as unknown[][])[0]?.[0];
+    expect(content1).toBe(content2);
   });
 });
 

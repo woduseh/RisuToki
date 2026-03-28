@@ -47,7 +47,7 @@ describe('buildAgentProfileMarkdown', () => {
 
   it('includes the advisor role', () => {
     const md = buildAgentProfileMarkdown('pluni', 'solo');
-    expect(md.toLowerCase()).toMatch(/creat|imagin|ideation/);
+    expect(md.toLowerCase()).toMatch(/emotion|resonan|archetyp/);
   });
 
   it('includes category-specific focus', () => {
@@ -72,14 +72,128 @@ describe('buildAgentProfileMarkdown', () => {
       expect(() => buildAgentProfileMarkdown(id, cat)).not.toThrow();
     }
   });
+
+  // ── Enriched markdown content tests ──────────────────────────────
+
+  it('contains a Tone section for each advisor', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md).toMatch(/##\s*Tone/);
+    }
+  });
+
+  it('contains an Analytical Toolkit section for each advisor', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md).toMatch(/##\s*Analytical Toolkit/);
+    }
+  });
+
+  it('contains a Method section for each advisor', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md).toMatch(/##\s*Method/);
+    }
+  });
+
+  it('contains an Expected Deliverables section for each advisor', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md).toMatch(/##\s*Expected Deliverables/);
+    }
+  });
+
+  it('contains a Lens Selection Rule section for each advisor', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md).toMatch(/##\s*Lens Selection/);
+    }
+  });
+
+  it('Pluni markdown references emotional/psychological concepts', () => {
+    const md = buildAgentProfileMarkdown('pluni', 'solo');
+    const lower = md.toLowerCase();
+    expect(lower).toMatch(/emotion|empathy|archetype/);
+    expect(lower).toMatch(/warm|disappoint/);
+  });
+
+  it('Sophia markdown references structural/systems concepts', () => {
+    const md = buildAgentProfileMarkdown('sophia', 'solo');
+    const lower = md.toLowerCase();
+    expect(lower).toMatch(/narrat|structur|system/);
+    expect(lower).toMatch(/solution|fix/);
+  });
+
+  it('Kotone markdown references aesthetic/deconstructive concepts', () => {
+    const md = buildAgentProfileMarkdown('kotone', 'solo');
+    const lower = md.toLowerCase();
+    expect(lower).toMatch(/aesthetic|deconstruct|postmodern/);
+    expect(lower).toMatch(/rigorous|rigor/);
+  });
+
+  it('markdown adapts focus content per category', () => {
+    const solo = buildAgentProfileMarkdown('pluni', 'solo');
+    const worldSim = buildAgentProfileMarkdown('pluni', 'world-sim');
+    const multiChar = buildAgentProfileMarkdown('pluni', 'multi-char');
+    // all three should be distinct
+    expect(new Set([solo, worldSim, multiChar]).size).toBe(3);
+  });
+});
+
+// ── Frontmatter validation ─────────────────────────────────────────
+
+describe('buildAgentProfileMarkdown — frontmatter', () => {
+  it('starts with YAML frontmatter delimiters', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md.startsWith('---\n')).toBe(true);
+      // closing delimiter exists
+      expect(md.indexOf('\n---\n', 4)).toBeGreaterThan(0);
+    }
+  });
+
+  it('includes a name field in frontmatter', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      const fmEnd = md.indexOf('\n---\n', 4);
+      const frontmatter = md.slice(0, fmEnd);
+      expect(frontmatter).toMatch(/^name:\s/m);
+    }
+  });
+
+  it('includes a description field in frontmatter', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      const fmEnd = md.indexOf('\n---\n', 4);
+      const frontmatter = md.slice(0, fmEnd);
+      expect(frontmatter).toMatch(/^description:\s/m);
+    }
+  });
+
+  it('includes tools in frontmatter', () => {
+    const md = buildAgentProfileMarkdown('pluni', 'solo');
+    const fmEnd = md.indexOf('\n---\n', 4);
+    const frontmatter = md.slice(0, fmEnd);
+    expect(frontmatter).toContain('tools:');
+  });
+
+  it('markdown body follows the closing frontmatter delimiter', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      const fmEnd = md.indexOf('\n---\n', 4);
+      const body = md.slice(fmEnd + 5); // skip \n---\n
+      expect(body.trim().length).toBeGreaterThan(0);
+      expect(body).toContain('# '); // has markdown headings
+    }
+  });
 });
 
 // ── File path generation ───────────────────────────────────────────
 
 describe('getAgentFileName', () => {
-  it.each([...ADVISOR_IDS])('returns a .md filename for advisor "%s"', (id) => {
+  it.each([...ADVISOR_IDS])('returns a .agent.md filename for advisor "%s"', (id) => {
     const name = getAgentFileName(id);
-    expect(name).toMatch(/\.md$/);
+    expect(name).toMatch(/\.agent\.md$/);
   });
 
   it('filenames are unique per advisor', () => {
@@ -265,7 +379,7 @@ describe('cleanupAgentProfiles — null originalContent guard', () => {
     const agentsDir = path.join(root, '.github', 'agents');
     fs.mkdirSync(agentsDir, { recursive: true });
 
-    const filePath = path.join(agentsDir, 'pluni.md');
+    const filePath = path.join(agentsDir, 'pluni.agent.md');
     fs.writeFileSync(filePath, 'current content', 'utf-8');
 
     // Simulate corrupted state: hadExistingFile=true but originalContent=null
@@ -276,6 +390,8 @@ describe('cleanupAgentProfiles — null originalContent guard', () => {
           filePath,
           hadExistingFile: true,
           originalContent: null, // inconsistent with hadExistingFile
+          legacyFilePath: null,
+          legacyOriginalContent: null,
         },
       ],
     };
@@ -316,5 +432,126 @@ describe('syncAgentProfiles — stale file tracking', () => {
 
     expect(fs.readFileSync(path.join(agentsDir, pluniFile), 'utf-8')).toBe(originalContent);
     expect(fs.existsSync(path.join(agentsDir, getAgentFileName('kotone')))).toBe(false);
+  });
+});
+
+// ── Legacy file migration ──────────────────────────────────────────
+
+describe('syncAgentProfiles — legacy migration', () => {
+  it('removes legacy .md files during sync', () => {
+    const root = makeTempRoot();
+    const agentsDir = path.join(root, '.github', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+
+    // Create legacy files
+    for (const id of ADVISOR_IDS) {
+      fs.writeFileSync(path.join(agentsDir, `${id}.md`), `# Legacy ${id}`, 'utf-8');
+    }
+
+    syncAgentProfiles(root, 'solo');
+
+    for (const id of ADVISOR_IDS) {
+      // Legacy file should be removed
+      expect(fs.existsSync(path.join(agentsDir, `${id}.md`))).toBe(false);
+      // Canonical file should exist
+      expect(fs.existsSync(path.join(agentsDir, getAgentFileName(id)))).toBe(true);
+    }
+  });
+
+  it('restores legacy .md files on cleanup if they preexisted', () => {
+    const root = makeTempRoot();
+    const agentsDir = path.join(root, '.github', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+
+    const legacyContent = '# User legacy pluni';
+    const legacyPath = path.join(agentsDir, 'pluni.md');
+    fs.writeFileSync(legacyPath, legacyContent, 'utf-8');
+
+    const state = syncAgentProfiles(root, 'solo');
+    cleanupAgentProfiles(state);
+
+    // Legacy file should be restored
+    expect(fs.readFileSync(legacyPath, 'utf-8')).toBe(legacyContent);
+    // Canonical file should be deleted (was created fresh)
+    expect(fs.existsSync(path.join(agentsDir, getAgentFileName('pluni')))).toBe(false);
+  });
+
+  it('no stale legacy files for fresh sessions', () => {
+    const root = makeTempRoot();
+    syncAgentProfiles(root, 'solo');
+
+    for (const id of ADVISOR_IDS) {
+      expect(fs.existsSync(path.join(root, '.github', 'agents', `${id}.md`))).toBe(false);
+    }
+  });
+
+  it('re-sync preserves legacy backups from first sync', () => {
+    const root = makeTempRoot();
+    const agentsDir = path.join(root, '.github', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+
+    const legacyContent = '# User legacy kotone';
+    fs.writeFileSync(path.join(agentsDir, 'kotone.md'), legacyContent, 'utf-8');
+
+    const state1 = syncAgentProfiles(root, 'solo');
+    const state2 = syncAgentProfiles(root, 'world-sim', state1);
+
+    cleanupAgentProfiles(state2);
+
+    // Legacy file should still be restored after re-sync + cleanup
+    expect(fs.readFileSync(path.join(agentsDir, 'kotone.md'), 'utf-8')).toBe(legacyContent);
+    // Canonical file should be deleted
+    expect(fs.existsSync(path.join(agentsDir, getAgentFileName('kotone')))).toBe(false);
+  });
+
+  it('restores legacy file even when canonical cleanup throws', () => {
+    const root = makeTempRoot();
+    const agentsDir = path.join(root, '.github', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+
+    const legacyContent = '# User legacy pluni';
+    fs.writeFileSync(path.join(agentsDir, 'pluni.md'), legacyContent, 'utf-8');
+
+    const state = syncAgentProfiles(root, 'solo');
+
+    // Replace the canonical file with a non-empty directory so that
+    // unlinkSync naturally throws EPERM/EISDIR — no module-level mocks needed.
+    const pluniEntry = state.entries.find((e) => e.advisorId === 'pluni')!;
+    fs.unlinkSync(pluniEntry.filePath);
+    fs.mkdirSync(pluniEntry.filePath);
+    fs.writeFileSync(path.join(pluniEntry.filePath, 'blocker.txt'), 'x', 'utf-8');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    cleanupAgentProfiles(state);
+
+    // Legacy file must still be restored despite canonical cleanup failure
+    expect(fs.readFileSync(path.join(agentsDir, 'pluni.md'), 'utf-8')).toBe(legacyContent);
+
+    // A warning should have been logged for the canonical failure
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Canonical cleanup failed'), expect.any(String));
+
+    warnSpy.mockRestore();
+
+    // Cleanup the blocker directory so afterEach rmSync succeeds
+    fs.rmSync(pluniEntry.filePath, { recursive: true, force: true });
+  });
+
+  it('handles both canonical and legacy pre-existing files', () => {
+    const root = makeTempRoot();
+    const agentsDir = path.join(root, '.github', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+
+    const canonicalContent = '# User canonical pluni';
+    const legacyContent = '# User legacy pluni';
+    fs.writeFileSync(path.join(agentsDir, getAgentFileName('pluni')), canonicalContent, 'utf-8');
+    fs.writeFileSync(path.join(agentsDir, 'pluni.md'), legacyContent, 'utf-8');
+
+    const state = syncAgentProfiles(root, 'solo');
+    cleanupAgentProfiles(state);
+
+    // Both should be restored
+    expect(fs.readFileSync(path.join(agentsDir, getAgentFileName('pluni')), 'utf-8')).toBe(canonicalContent);
+    expect(fs.readFileSync(path.join(agentsDir, 'pluni.md'), 'utf-8')).toBe(legacyContent);
   });
 });

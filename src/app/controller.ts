@@ -20,6 +20,7 @@ import {
   handleCopilotStart as _handleCopilotStart,
   handleCodexStart as _handleCodexStart,
   handleGeminiStart as _handleGeminiStart,
+  prepareCopilotSession as _prepareCopilotSession,
 } from '../lib/assistant-prompt';
 import {
   getDefaultRpModeForDarkMode,
@@ -85,6 +86,7 @@ import {
   TERM_THEME_DARK,
   TERM_THEME_LIGHT,
 } from '../lib/terminal-ui';
+import { TerminalSessionContext, isCopilotLaunchCommand } from '../lib/terminal-session-context';
 import {
   applySelectedChoice,
   cleanTuiOutput,
@@ -1743,8 +1745,26 @@ async function initTerminal(): Promise<void> {
       if (isChatMode()) onChatData(data);
       feedBgBuffer(data);
     },
-    onUserInput: () => {
+    onUserInput: (data) => {
       lastUserInputTime = Date.now();
+      const prevCwd = terminalSession.cwd;
+      const prevCount = terminalSession.completedCommands.length;
+      terminalSession.feedInput(data);
+      // Sync tracked terminal cwd to main process when it changes
+      if (terminalSession.cwd !== prevCwd) {
+        window.tokiAPI.setTerminalCwd(terminalSession.cwd);
+      }
+
+      // Detect manually-typed copilot launch (Pluni mode only).
+      // Menu-driven starts go through startAssistantCli → terminalInput and
+      // never pass through this onUserInput path, so there is no double-trigger.
+      if (rpMode === 'pluni' && terminalSession.completedCommands.length > prevCount) {
+        const lastCmd = terminalSession.completedCommands[terminalSession.completedCommands.length - 1];
+        if (isCopilotLaunchCommand(lastCmd.line)) {
+          // Gate: hold Enter until prep completes, then release it to the PTY
+          return _prepareCopilotSession(getAssistantDeps() as unknown as Parameters<typeof _prepareCopilotSession>[0]);
+        }
+      }
     },
     preserveAmdLoader: true,
     rightClickSelectsWord: true,
@@ -1846,6 +1866,7 @@ async function restartTerminal(): Promise<void> {
   // Wait for pty to fully terminate before starting a new one
   await new Promise((r) => setTimeout(r, 200));
   term.clear();
+  terminalSession.reset();
   const restarted = await window.tokiAPI.terminalStart(term.cols, term.rows);
   setStatus(restarted ? '터미널 재시작됨' : '터미널 재시작 실패');
 }
@@ -1899,11 +1920,13 @@ function getAssistantDeps() {
     writeGeminiMcpConfig: () => window.tokiAPI.writeGeminiMcpConfig(),
     cleanupAgentsMd: () => window.tokiAPI.cleanupAgentsMd(),
     writeSystemPrompt: (content: string) => window.tokiAPI.writeSystemPrompt(content),
-    writeAgentsMd: (content: string) => window.tokiAPI.writeAgentsMd(content),
-    syncCopilotAgentProfiles: (category: string) => window.tokiAPI.syncCopilotAgentProfiles(category),
+    writeAgentsMd: (content: string, projectRoot?: string | null) => window.tokiAPI.writeAgentsMd(content, projectRoot),
+    syncCopilotAgentProfiles: (category: string, projectRoot?: string | null) =>
+      window.tokiAPI.syncCopilotAgentProfiles(category, projectRoot),
     terminalInput: (text: string) => window.tokiAPI.terminalInput(text),
     setStatus,
     navigatorLike: window.navigator,
+    projectRoot: terminalSession.cwd,
   };
 }
 
@@ -1990,6 +2013,9 @@ function refreshDarkModeUi(): void {
 
 // Echo filter: ignore terminal data within 300ms of user input
 let lastUserInputTime = 0;
+
+// Terminal session context — tracks cwd, line buffer, and command history
+const terminalSession = new TerminalSessionContext();
 
 // Help popup and syntax reference are now in '../lib/help-popup'
 

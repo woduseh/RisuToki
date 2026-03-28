@@ -36,10 +36,12 @@ interface MainStateStore {
   currentData: CharxData | null;
   referenceFiles: ReferenceRecord[];
   referenceManifestStatus: ReferenceManifestStatus | null;
+  terminalCwd: string | null;
   resetCurrentDocument(data: CharxData): void;
   setCurrentDocument(filePath: string, data: CharxData): void;
   setReferenceFiles(files: ReferenceRecord[]): void;
   setReferenceManifestStatus(status: ReferenceManifestStatus | null): void;
+  setTerminalCwd(cwd: string | null): void;
 }
 
 interface PopoutPayloadStore {
@@ -169,6 +171,7 @@ const { initMcpConfig, writeCurrentMcpConfig, cleanupJsonMcpConfig, cleanupCodex
 const { initAgentsMdManager, cleanupAgentsMd } = require('./src/lib/agents-md-manager') as {
   initAgentsMdManager: (deps: {
     getCurrentFilePath: () => string | null;
+    getTerminalCwd: () => string | null;
     getDirname: () => string;
     getGuidesDir: () => string;
   }) => void;
@@ -581,6 +584,7 @@ app.whenReady().then(() => {
   // Initialize AGENTS.md management
   initAgentsMdManager({
     getCurrentFilePath: () => mainState.currentFilePath,
+    getTerminalCwd: () => mainState.terminalCwd,
     getDirname: () => __dirname,
     getGuidesDir,
   });
@@ -910,9 +914,24 @@ ipcMain.handle('remove-all-references', () => {
   return true;
 });
 
-// Get working directory for terminal
+// Get working directory for terminal (prefers tracked terminal cwd)
 ipcMain.handle('get-cwd', () => {
-  return mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : process.cwd();
+  const cwd = mainState.terminalCwd;
+  return (
+    (cwd && path.isAbsolute(cwd) ? cwd : null) ||
+    (mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : null) ||
+    process.cwd()
+  );
+});
+
+// Sync tracked terminal cwd from renderer-side heuristic parser
+ipcMain.handle('set-terminal-cwd', (_event, cwd: string | null) => {
+  if (cwd !== null && (typeof cwd !== 'string' || !path.isAbsolute(cwd))) {
+    console.warn('[main] set-terminal-cwd: ignoring non-absolute value:', cwd);
+    return false;
+  }
+  mainState.setTerminalCwd(cwd);
+  return true;
 });
 
 // --- DevTools ---

@@ -18,6 +18,7 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     saveFileAs: (updatedFields) => ipcRenderer.invoke('save-file-as', updatedFields),
     getFilePath: () => ipcRenderer.invoke('get-file-path'),
     getCwd: () => ipcRenderer.invoke('get-cwd'),
+    setTerminalCwd: (cwd) => ipcRenderer.invoke('set-terminal-cwd', cwd),
     terminalStart: (cols, rows) => ipcRenderer.invoke('terminal-start', cols, rows),
     terminalIsRunning: () => ipcRenderer.invoke('terminal-is-running'),
     terminalInput: (data) => ipcRenderer.send('terminal-input', data),
@@ -38,9 +39,10 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     writeCopilotMcpConfig: () => ipcRenderer.invoke('write-copilot-mcp-config'),
     writeCodexMcpConfig: () => ipcRenderer.invoke('write-codex-mcp-config'),
     writeGeminiMcpConfig: () => ipcRenderer.invoke('write-gemini-mcp-config'),
-    writeAgentsMd: (content) => ipcRenderer.invoke('write-agents-md', content),
+    writeAgentsMd: (content, projectRoot) => ipcRenderer.invoke('write-agents-md', content, projectRoot),
     cleanupAgentsMd: () => ipcRenderer.invoke('cleanup-agents-md'),
-    syncCopilotAgentProfiles: (category) => ipcRenderer.invoke('sync-copilot-agent-profiles', category),
+    syncCopilotAgentProfiles: (category, projectRoot) =>
+      ipcRenderer.invoke('sync-copilot-agent-profiles', category, projectRoot),
     onDataUpdated: (cb) => {
       ipcRenderer.on('data-updated', (_event, field: string, value: unknown) => cb(field, value));
     },

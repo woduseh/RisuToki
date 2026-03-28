@@ -22,8 +22,9 @@ import {
   type AdvisorId,
   type ChatbotCategory,
   ADVISOR_IDS,
+  LENS_SELECTION_RULE,
   getAdvisorProfile,
-  buildAdvisorSummary,
+  getInterpretation,
   buildModelSeatHint,
 } from './pluni-persona';
 
@@ -34,6 +35,10 @@ export interface AgentProfileEntry {
   readonly filePath: string;
   readonly hadExistingFile: boolean;
   readonly originalContent: string | null;
+  /** Path to a pre-existing legacy `${id}.md` file that was removed during sync. */
+  readonly legacyFilePath: string | null;
+  /** Original content of the legacy file, for cleanup restoration. */
+  readonly legacyOriginalContent: string | null;
 }
 
 export interface AgentProfileState {
@@ -48,10 +53,22 @@ export const AGENT_PROFILE_DIR = path.join('.github', 'agents');
 // ── Markdown generation ────────────────────────────────────────────
 
 /**
- * Returns the expected file name for an advisor's agent profile.
+ * Returns the canonical file name for an advisor's agent profile.
+ * GitHub requires the `.agent.md` extension for custom agents.
  */
 export function getAgentFileName(id: AdvisorId): string {
+  return `${id}.agent.md`;
+}
+
+/** Pre-canonical filename used before the `.agent.md` convention. */
+function getLegacyAgentFileName(id: AdvisorId): string {
   return `${id}.md`;
+}
+
+/** Escape a string for use as a YAML double-quoted scalar. */
+function yamlQuote(value: string): string {
+  const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+  return `"${escaped}"`;
 }
 
 /**
@@ -62,15 +79,55 @@ export function getAgentFileName(id: AdvisorId): string {
  */
 export function buildAgentProfileMarkdown(advisor: AdvisorId, category: ChatbotCategory): string {
   const profile = getAdvisorProfile(advisor);
-  const summary = buildAdvisorSummary(advisor, category);
+  const interp = getInterpretation(advisor, category);
   const seatHint = buildModelSeatHint();
 
+  const toolkitList = profile.toolkit.map((t) => `- ${t}`).join('\n');
+  const deliverablesList = profile.deliverables.map((d) => `- ${d}`).join('\n');
+  const strengthsList = profile.strengths.map((s) => `- ${s}`).join('\n');
+
   const sections: string[] = [
+    // YAML frontmatter required by GitHub custom-agent spec
+    '---',
+    `name: ${yamlQuote(profile.name)}`,
+    `description: ${yamlQuote(profile.role)}`,
+    'tools:',
+    '  - "*"',
+    '---',
+    '',
     `# ${profile.name}`,
     '',
     `> Copilot custom agent — ${category} advisory mode`,
     '',
-    summary,
+    `**Role:** ${profile.role}`,
+    '',
+    `## Tone`,
+    '',
+    profile.tone,
+    '',
+    `## Analytical Toolkit`,
+    '',
+    toolkitList,
+    '',
+    `## Method`,
+    '',
+    profile.method,
+    '',
+    `## Lens Selection Rule`,
+    '',
+    LENS_SELECTION_RULE,
+    '',
+    `## Focus (${category})`,
+    '',
+    interp.focus,
+    '',
+    `## Expected Deliverables`,
+    '',
+    deliverablesList,
+    '',
+    `## Core Strengths`,
+    '',
+    strengthsList,
     '',
     `Model-seat allocation: ${seatHint.label}`,
   ];
@@ -116,20 +173,41 @@ export function syncAgentProfiles(
     const prev = previousByAdvisor.get(id);
     let hadExistingFile: boolean;
     let originalContent: string | null;
+    let legacyFilePath: string | null;
+    let legacyOriginalContent: string | null;
 
     if (prev) {
       // Re-sync: preserve the original pre-session backup
       hadExistingFile = prev.hadExistingFile;
       originalContent = prev.originalContent;
+      legacyFilePath = prev.legacyFilePath;
+      legacyOriginalContent = prev.legacyOriginalContent;
     } else {
       // First sync: check what's on disk
       hadExistingFile = fs.existsSync(filePath);
       originalContent = hadExistingFile ? fs.readFileSync(filePath, 'utf-8') : null;
+
+      // Detect and remove legacy files (e.g. pluni.md → pluni.agent.md)
+      const legacyFileName = getLegacyAgentFileName(id);
+      if (legacyFileName !== fileName) {
+        const legacyPath = path.join(agentsDir, legacyFileName);
+        if (fs.existsSync(legacyPath)) {
+          legacyFilePath = legacyPath;
+          legacyOriginalContent = fs.readFileSync(legacyPath, 'utf-8');
+          fs.unlinkSync(legacyPath);
+        } else {
+          legacyFilePath = null;
+          legacyOriginalContent = null;
+        }
+      } else {
+        legacyFilePath = null;
+        legacyOriginalContent = null;
+      }
     }
 
     fs.writeFileSync(filePath, content, 'utf-8');
 
-    entries.push({ advisorId: id, filePath, hadExistingFile, originalContent });
+    entries.push({ advisorId: id, filePath, hadExistingFile, originalContent, legacyFilePath, legacyOriginalContent });
   }
 
   return { entries };
@@ -145,6 +223,8 @@ export function syncAgentProfiles(
  */
 export function cleanupAgentProfiles(state: AgentProfileState): void {
   for (const entry of state.entries) {
+    // Canonical cleanup and legacy restore use separate try/catch blocks
+    // so a failure in one does not skip the other.
     try {
       if (entry.hadExistingFile) {
         if (entry.originalContent != null) {
@@ -156,7 +236,17 @@ export function cleanupAgentProfiles(state: AgentProfileState): void {
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`[copilot-agent-profile] Cleanup failed for ${entry.filePath}:`, msg);
+      console.warn(`[copilot-agent-profile] Canonical cleanup failed for ${entry.filePath}:`, msg);
+    }
+
+    // Restore legacy file if it was backed up during migration
+    try {
+      if (entry.legacyFilePath && entry.legacyOriginalContent != null) {
+        fs.writeFileSync(entry.legacyFilePath, entry.legacyOriginalContent, 'utf-8');
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`[copilot-agent-profile] Legacy restore failed for ${entry.legacyFilePath}:`, msg);
     }
   }
 }
