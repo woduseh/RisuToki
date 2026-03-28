@@ -3,12 +3,19 @@ export interface MainStateStore {
   currentData: Record<string, unknown> | null;
   referenceFiles: Record<string, unknown>[];
   referenceManifestStatus: Record<string, unknown> | null;
-  /** Best-effort terminal cwd tracked from renderer-side input parsing. */
+  /**
+   * Best-effort terminal cwd tracked from renderer-side input parsing.
+   *
+   * Scaffolding: the field and setter are defined here so the store shape is
+   * stable, but actual IPC wiring (renderer ↔ main process) is deferred to a
+   * later task.
+   */
   terminalCwd: string | null;
   resetCurrentDocument(data: Record<string, unknown>): void;
   setCurrentDocument(filePath: string, data: Record<string, unknown>): void;
   setReferenceFiles(files: Record<string, unknown>[]): void;
   setReferenceManifestStatus(status: Record<string, unknown> | null): void;
+  /** @see {@link terminalCwd} — IPC wiring deferred to a later task. */
   setTerminalCwd(cwd: string | null): void;
 }
 

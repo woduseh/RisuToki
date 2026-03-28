@@ -11,7 +11,54 @@
  * scripts that change directories internally.
  */
 
-import { resolve, normalize } from 'path';
+// ---------------------------------------------------------------------------
+// Browser-safe Windows-path helpers (replaces Node `path.normalize / resolve`
+// which Vite externalises from renderer builds).
+// Only supports the subset this tracker actually uses: backslash-normalised
+// Windows absolute / relative paths with `.` and `..` segments.
+// ---------------------------------------------------------------------------
+
+/** Normalise a Windows path: forward-slash → backslash, collapse `.`/`..`. */
+function normalizeWin(p: string): string {
+  const slashed = p.replace(/\//g, '\\');
+
+  // Preserve UNC prefix (\\server\share) or drive letter (C:\)
+  let prefix = '';
+  let rest = slashed;
+  if (rest.startsWith('\\\\')) {
+    prefix = '\\\\';
+    rest = rest.slice(2);
+  } else if (/^[A-Za-z]:\\/.test(rest)) {
+    prefix = rest.slice(0, 3); // e.g. "C:\"
+    rest = rest.slice(3);
+  }
+
+  const parts = rest.split('\\').filter(Boolean);
+  const resolved: string[] = [];
+  for (const seg of parts) {
+    if (seg === '.') continue;
+    if (seg === '..') {
+      resolved.pop();
+    } else {
+      resolved.push(seg);
+    }
+  }
+  const joined = resolved.join('\\');
+  return prefix ? prefix + joined : joined;
+}
+
+/**
+ * Resolve `rel` against `base` (both expected to be Windows paths).
+ * If `rel` is already absolute it is normalised and returned as-is.
+ */
+function resolveWin(base: string, rel: string): string {
+  const norm = rel.replace(/\//g, '\\');
+  // Already absolute?
+  if (/^[A-Za-z]:[\\/]/.test(norm) || norm.startsWith('\\\\')) {
+    return normalizeWin(norm);
+  }
+  return normalizeWin(base + '\\' + norm);
+}
 
 /** A record of a completed terminal command line. */
 export interface CompletedCommand {
@@ -205,10 +252,10 @@ export class TerminalSessionContext {
 
     // Absolute path (e.g. C:\..., \\server\...)
     if (/^[A-Za-z]:[\\/]/.test(normalized) || normalized.startsWith('\\\\')) {
-      this._cwd = normalize(normalized);
+      this._cwd = normalizeWin(normalized);
     } else if (this._cwd) {
       // Relative path — resolve against current cwd
-      this._cwd = resolve(this._cwd, normalized);
+      this._cwd = resolveWin(this._cwd, normalized);
     }
     // If cwd is null and path is relative, we can't resolve — leave null
   }
