@@ -223,6 +223,8 @@ export function syncAgentProfiles(
  */
 export function cleanupAgentProfiles(state: AgentProfileState): void {
   for (const entry of state.entries) {
+    // Canonical cleanup and legacy restore use separate try/catch blocks
+    // so a failure in one does not skip the other.
     try {
       if (entry.hadExistingFile) {
         if (entry.originalContent != null) {
@@ -232,14 +234,19 @@ export function cleanupAgentProfiles(state: AgentProfileState): void {
       } else if (fs.existsSync(entry.filePath)) {
         fs.unlinkSync(entry.filePath);
       }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`[copilot-agent-profile] Canonical cleanup failed for ${entry.filePath}:`, msg);
+    }
 
-      // Restore legacy file if it was backed up during migration
+    // Restore legacy file if it was backed up during migration
+    try {
       if (entry.legacyFilePath && entry.legacyOriginalContent != null) {
         fs.writeFileSync(entry.legacyFilePath, entry.legacyOriginalContent, 'utf-8');
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`[copilot-agent-profile] Cleanup failed for ${entry.filePath}:`, msg);
+      console.warn(`[copilot-agent-profile] Legacy restore failed for ${entry.legacyFilePath}:`, msg);
     }
   }
 }

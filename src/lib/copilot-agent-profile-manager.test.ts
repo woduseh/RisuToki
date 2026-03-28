@@ -504,6 +504,39 @@ describe('syncAgentProfiles — legacy migration', () => {
     expect(fs.existsSync(path.join(agentsDir, getAgentFileName('kotone')))).toBe(false);
   });
 
+  it('restores legacy file even when canonical cleanup throws', () => {
+    const root = makeTempRoot();
+    const agentsDir = path.join(root, '.github', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+
+    const legacyContent = '# User legacy pluni';
+    fs.writeFileSync(path.join(agentsDir, 'pluni.md'), legacyContent, 'utf-8');
+
+    const state = syncAgentProfiles(root, 'solo');
+
+    // Replace the canonical file with a non-empty directory so that
+    // unlinkSync naturally throws EPERM/EISDIR — no module-level mocks needed.
+    const pluniEntry = state.entries.find((e) => e.advisorId === 'pluni')!;
+    fs.unlinkSync(pluniEntry.filePath);
+    fs.mkdirSync(pluniEntry.filePath);
+    fs.writeFileSync(path.join(pluniEntry.filePath, 'blocker.txt'), 'x', 'utf-8');
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    cleanupAgentProfiles(state);
+
+    // Legacy file must still be restored despite canonical cleanup failure
+    expect(fs.readFileSync(path.join(agentsDir, 'pluni.md'), 'utf-8')).toBe(legacyContent);
+
+    // A warning should have been logged for the canonical failure
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Canonical cleanup failed'), expect.any(String));
+
+    warnSpy.mockRestore();
+
+    // Cleanup the blocker directory so afterEach rmSync succeeds
+    fs.rmSync(pluniEntry.filePath, { recursive: true, force: true });
+  });
+
   it('handles both canonical and legacy pre-existing files', () => {
     const root = makeTempRoot();
     const agentsDir = path.join(root, '.github', 'agents');
