@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TerminalSessionContext } from './terminal-session-context';
+import { TerminalSessionContext, isCopilotLaunchCommand } from './terminal-session-context';
 
 describe('TerminalSessionContext', () => {
   describe('cwd tracking', () => {
@@ -268,6 +268,59 @@ describe('TerminalSessionContext', () => {
       // After reset, typing should work normally (not consumed as ESC seq)
       ctx.feedInput('hello');
       expect(ctx.lineBuffer).toBe('hello');
+    });
+  });
+
+  describe('isCopilotLaunchCommand', () => {
+    it('matches bare "copilot"', () => {
+      expect(isCopilotLaunchCommand('copilot')).toBe(true);
+    });
+
+    it('matches "copilot --experimental"', () => {
+      expect(isCopilotLaunchCommand('copilot --experimental')).toBe(true);
+    });
+
+    it('matches "copilot.ps1"', () => {
+      expect(isCopilotLaunchCommand('copilot.ps1')).toBe(true);
+    });
+
+    it('matches "copilot.cmd"', () => {
+      expect(isCopilotLaunchCommand('copilot.cmd')).toBe(true);
+    });
+
+    it('matches with arbitrary flags', () => {
+      expect(isCopilotLaunchCommand('copilot.ps1 --experimental --verbose')).toBe(true);
+    });
+
+    it('matches with leading/trailing whitespace', () => {
+      expect(isCopilotLaunchCommand('  copilot  ')).toBe(true);
+    });
+
+    it('is case-insensitive', () => {
+      expect(isCopilotLaunchCommand('COPILOT')).toBe(true);
+      expect(isCopilotLaunchCommand('Copilot.PS1')).toBe(true);
+      expect(isCopilotLaunchCommand('COPILOT.CMD')).toBe(true);
+    });
+
+    it('does not match copilot-other-tool', () => {
+      expect(isCopilotLaunchCommand('copilot-setup')).toBe(false);
+    });
+
+    it('does not match commands containing copilot as substring', () => {
+      expect(isCopilotLaunchCommand('npm run copilot')).toBe(false);
+    });
+
+    it('does not match empty string', () => {
+      expect(isCopilotLaunchCommand('')).toBe(false);
+    });
+
+    it('does not match whitespace only', () => {
+      expect(isCopilotLaunchCommand('   ')).toBe(false);
+    });
+
+    it('does not match copilot.exe or other extensions', () => {
+      expect(isCopilotLaunchCommand('copilot.exe')).toBe(false);
+      expect(isCopilotLaunchCommand('copilot.bat')).toBe(false);
     });
   });
 });

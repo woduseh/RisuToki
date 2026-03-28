@@ -260,3 +260,17 @@ export class TerminalSessionContext {
     // If cwd is null and path is relative, we can't resolve — leave null
   }
 }
+
+/**
+ * Returns true if the trimmed command line text would launch GitHub Copilot CLI.
+ *
+ * Matches: copilot, copilot.ps1, copilot.cmd — optionally followed by
+ * whitespace and arguments (e.g. `copilot --experimental`).
+ * Case-insensitive.  Does NOT match other extensions (.exe, .bat) or
+ * hyphenated tool names (copilot-setup).
+ */
+export function isCopilotLaunchCommand(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length === 0) return false;
+  return /^copilot(?:\.(?:ps1|cmd))?(?:\s|$)/i.test(trimmed);
+}

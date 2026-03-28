@@ -20,6 +20,7 @@ import {
   handleCopilotStart as _handleCopilotStart,
   handleCodexStart as _handleCodexStart,
   handleGeminiStart as _handleGeminiStart,
+  prepareCopilotSession as _prepareCopilotSession,
 } from '../lib/assistant-prompt';
 import {
   getDefaultRpModeForDarkMode,
@@ -85,7 +86,7 @@ import {
   TERM_THEME_DARK,
   TERM_THEME_LIGHT,
 } from '../lib/terminal-ui';
-import { TerminalSessionContext } from '../lib/terminal-session-context';
+import { TerminalSessionContext, isCopilotLaunchCommand } from '../lib/terminal-session-context';
 import {
   applySelectedChoice,
   cleanTuiOutput,
@@ -1747,10 +1748,22 @@ async function initTerminal(): Promise<void> {
     onUserInput: (data) => {
       lastUserInputTime = Date.now();
       const prevCwd = terminalSession.cwd;
+      const prevCount = terminalSession.completedCommands.length;
       terminalSession.feedInput(data);
       // Sync tracked terminal cwd to main process when it changes
       if (terminalSession.cwd !== prevCwd) {
         window.tokiAPI.setTerminalCwd(terminalSession.cwd);
+      }
+
+      // Detect manually-typed copilot launch (Pluni mode only).
+      // Menu-driven starts go through startAssistantCli → terminalInput and
+      // never pass through this onUserInput path, so there is no double-trigger.
+      if (rpMode === 'pluni' && terminalSession.completedCommands.length > prevCount) {
+        const lastCmd = terminalSession.completedCommands[terminalSession.completedCommands.length - 1];
+        if (isCopilotLaunchCommand(lastCmd.line)) {
+          // Gate: hold Enter until prep completes, then release it to the PTY
+          return _prepareCopilotSession(getAssistantDeps() as unknown as Parameters<typeof _prepareCopilotSession>[0]);
+        }
       }
     },
     preserveAmdLoader: true,

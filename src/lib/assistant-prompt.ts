@@ -209,23 +209,34 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
     return;
   }
 
-  const promptInfo = await deps.getClaudePrompt();
   const runtimePlatform = detectRuntimePlatform(deps.navigatorLike);
-  let mcpConnected = false;
   const isPluni = deps.rpMode === 'pluni';
   const pluniCategory = (deps.pluniCategory as ChatbotCategory) || 'solo';
+
+  if (agent === 'copilot') {
+    // Shared prep (also used by manual copilot-launch detection)
+    await prepareCopilotSession(deps);
+
+    // Send commands (menu-driven path only)
+    if (runtimePlatform === 'win32') {
+      deps.terminalInput(buildWindowsAssistantBootstrapCommand());
+    }
+    deps.terminalInput(buildAssistantLaunchCommand({ agent, platform: runtimePlatform }));
+
+    if (isPluni) {
+      deps.setStatus(`${AI_AGENT_LABELS[agent]} 시작 중... (플루니 연구소 / ${CATEGORY_LABELS[pluniCategory]})`);
+    } else {
+      deps.setStatus(`${AI_AGENT_LABELS[agent]} 시작 중...`);
+    }
+    return;
+  }
+
+  const promptInfo = await deps.getClaudePrompt();
+  let mcpConnected = false;
 
   if (agent === 'claude') {
     mcpConnected = !!(await deps.writeMcpConfig());
     await deps.cleanupAgentsMd();
-  } else if (agent === 'copilot') {
-    mcpConnected = !!(await deps.writeCopilotMcpConfig());
-    // Clean up stale agent profile state from previous sessions
-    await deps.cleanupAgentsMd();
-    // Sync Copilot custom-agent profiles for Pluni advisors
-    if (isPluni && deps.syncCopilotAgentProfiles) {
-      await deps.syncCopilotAgentProfiles(pluniCategory, deps.projectRoot);
-    }
   } else if (agent === 'codex') {
     mcpConnected = !!(await deps.writeCodexMcpConfig());
     await deps.cleanupAgentsMd();
@@ -260,11 +271,28 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
 
   deps.terminalInput(cmd);
 
-  if (isPluni && agent === 'copilot') {
-    deps.setStatus(`${AI_AGENT_LABELS[agent]} 시작 중... (플루니 연구소 / ${CATEGORY_LABELS[pluniCategory]})`);
-  } else {
-    deps.setStatus(`${AI_AGENT_LABELS[agent]} 시작 중...`);
+  deps.setStatus(`${AI_AGENT_LABELS[agent]} 시작 중...`);
+}
+
+/**
+ * Prepare Copilot session files (MCP config, AGENTS.md, agent profiles)
+ * without sending any terminal commands.  Used by both menu-driven starts
+ * (via startAssistantCli) and manual copilot-launch detection.
+ */
+export async function prepareCopilotSession(deps: AssistantDeps): Promise<void> {
+  const mcpConnected = !!(await deps.writeCopilotMcpConfig());
+  await deps.cleanupAgentsMd();
+
+  const isPluni = deps.rpMode === 'pluni';
+  const pluniCategory = (deps.pluniCategory as ChatbotCategory) || 'solo';
+
+  if (isPluni && deps.syncCopilotAgentProfiles) {
+    await deps.syncCopilotAgentProfiles(pluniCategory, deps.projectRoot);
   }
+
+  const promptInfo = await deps.getClaudePrompt();
+  const initPrompt = await buildAssistantPrompt(promptInfo, mcpConnected, deps);
+  await deps.writeAgentsMd(initPrompt || '', deps.projectRoot);
 }
 
 export async function handleClaudeStart(deps: AssistantDeps): Promise<void> {
