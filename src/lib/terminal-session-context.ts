@@ -250,6 +250,12 @@ export class TerminalSessionContext {
     if (!rawPath) return;
     const normalized = rawPath.replace(/\//g, '\\');
 
+    // Shell-specific home expansion (`~`) is intentionally unsupported here.
+    // Ignore it rather than resolving to a bogus `current\~` path.
+    if (/^~(?:\\|$)/.test(normalized)) {
+      return;
+    }
+
     // Absolute path (e.g. C:\..., \\server\...)
     if (/^[A-Za-z]:[\\/]/.test(normalized) || normalized.startsWith('\\\\')) {
       this._cwd = normalizeWin(normalized);

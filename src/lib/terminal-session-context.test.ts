@@ -119,6 +119,14 @@ describe('TerminalSessionContext', () => {
       ctx.feedInput('cd\r');
       expect(ctx.cwd).toBe('C:\\Users');
     });
+
+    it('ignores unsupported home shortcut paths to avoid bogus cwd state', () => {
+      const ctx = new TerminalSessionContext('C:\\Users\\dev');
+      ctx.feedInput('cd ~\\projects\r');
+      expect(ctx.cwd).toBe('C:\\Users\\dev');
+      ctx.feedInput('Set-Location ~\r');
+      expect(ctx.cwd).toBe('C:\\Users\\dev');
+    });
   });
 
   describe('line buffer', () => {
