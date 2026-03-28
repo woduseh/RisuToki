@@ -47,7 +47,7 @@ describe('buildAgentProfileMarkdown', () => {
 
   it('includes the advisor role', () => {
     const md = buildAgentProfileMarkdown('pluni', 'solo');
-    expect(md.toLowerCase()).toMatch(/creat|imagin|ideation/);
+    expect(md.toLowerCase()).toMatch(/emotion|resonan|archetyp/);
   });
 
   it('includes category-specific focus', () => {
@@ -71,6 +71,72 @@ describe('buildAgentProfileMarkdown', () => {
     for (const id of ADVISOR_IDS) {
       expect(() => buildAgentProfileMarkdown(id, cat)).not.toThrow();
     }
+  });
+
+  // ── Enriched markdown content tests ──────────────────────────────
+
+  it('contains a Tone section for each advisor', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md).toMatch(/##\s*Tone/);
+    }
+  });
+
+  it('contains an Analytical Toolkit section for each advisor', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md).toMatch(/##\s*Analytical Toolkit/);
+    }
+  });
+
+  it('contains a Method section for each advisor', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md).toMatch(/##\s*Method/);
+    }
+  });
+
+  it('contains an Expected Deliverables section for each advisor', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md).toMatch(/##\s*Expected Deliverables/);
+    }
+  });
+
+  it('contains a Lens Selection Rule section for each advisor', () => {
+    for (const id of ADVISOR_IDS) {
+      const md = buildAgentProfileMarkdown(id, 'solo');
+      expect(md).toMatch(/##\s*Lens Selection/);
+    }
+  });
+
+  it('Pluni markdown references emotional/psychological concepts', () => {
+    const md = buildAgentProfileMarkdown('pluni', 'solo');
+    const lower = md.toLowerCase();
+    expect(lower).toMatch(/emotion|empathy|archetype/);
+    expect(lower).toMatch(/warm|disappoint/);
+  });
+
+  it('Sophia markdown references structural/systems concepts', () => {
+    const md = buildAgentProfileMarkdown('sophia', 'solo');
+    const lower = md.toLowerCase();
+    expect(lower).toMatch(/narrat|structur|system/);
+    expect(lower).toMatch(/solution|fix/);
+  });
+
+  it('Kotone markdown references aesthetic/deconstructive concepts', () => {
+    const md = buildAgentProfileMarkdown('kotone', 'solo');
+    const lower = md.toLowerCase();
+    expect(lower).toMatch(/aesthetic|deconstruct|postmodern/);
+    expect(lower).toMatch(/rigorous|rigor/);
+  });
+
+  it('markdown adapts focus content per category', () => {
+    const solo = buildAgentProfileMarkdown('pluni', 'solo');
+    const worldSim = buildAgentProfileMarkdown('pluni', 'world-sim');
+    const multiChar = buildAgentProfileMarkdown('pluni', 'multi-char');
+    // all three should be distinct
+    expect(new Set([solo, worldSim, multiChar]).size).toBe(3);
   });
 });
 

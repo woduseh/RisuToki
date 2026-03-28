@@ -22,8 +22,9 @@ import {
   type AdvisorId,
   type ChatbotCategory,
   ADVISOR_IDS,
+  LENS_SELECTION_RULE,
   getAdvisorProfile,
-  buildAdvisorSummary,
+  getInterpretation,
   buildModelSeatHint,
 } from './pluni-persona';
 
@@ -62,15 +63,47 @@ export function getAgentFileName(id: AdvisorId): string {
  */
 export function buildAgentProfileMarkdown(advisor: AdvisorId, category: ChatbotCategory): string {
   const profile = getAdvisorProfile(advisor);
-  const summary = buildAdvisorSummary(advisor, category);
+  const interp = getInterpretation(advisor, category);
   const seatHint = buildModelSeatHint();
+
+  const toolkitList = profile.toolkit.map((t) => `- ${t}`).join('\n');
+  const deliverablesList = profile.deliverables.map((d) => `- ${d}`).join('\n');
+  const strengthsList = profile.strengths.map((s) => `- ${s}`).join('\n');
 
   const sections: string[] = [
     `# ${profile.name}`,
     '',
     `> Copilot custom agent — ${category} advisory mode`,
     '',
-    summary,
+    `**Role:** ${profile.role}`,
+    '',
+    `## Tone`,
+    '',
+    profile.tone,
+    '',
+    `## Analytical Toolkit`,
+    '',
+    toolkitList,
+    '',
+    `## Method`,
+    '',
+    profile.method,
+    '',
+    `## Lens Selection Rule`,
+    '',
+    LENS_SELECTION_RULE,
+    '',
+    `## Focus (${category})`,
+    '',
+    interp.focus,
+    '',
+    `## Expected Deliverables`,
+    '',
+    deliverablesList,
+    '',
+    `## Core Strengths`,
+    '',
+    strengthsList,
     '',
     `Model-seat allocation: ${seatHint.label}`,
   ];
