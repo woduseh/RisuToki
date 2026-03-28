@@ -5,7 +5,7 @@ import {
   readAppSettingsSnapshot,
   subscribeToAppSettings,
   syncBodyDarkMode,
-  writeRpMode
+  writeRpMode,
 } from '../lib/app-settings';
 import type { AppSettingsSnapshot } from '../lib/app-settings';
 import { createDirectTerminalChatSession } from '../lib/chat-session';
@@ -26,7 +26,7 @@ import {
   filterDisplayChatMessages,
   isSpinnerNoise,
   removeCommandEcho,
-  stripAnsi
+  stripAnsi,
 } from '../lib/terminal-chat';
 
 declare const monaco: typeof import('monaco-editor');
@@ -54,7 +54,6 @@ export async function initPopoutRenderer(): Promise<void> {
     await buildRefsPopout();
   }
 }
-
 
 // ==================== Terminal Popout (full TokiTalk UI) ====================
 
@@ -129,7 +128,7 @@ const popoutChatSession = createDirectTerminalChatSession({
     if (popoutChatMode) renderPopoutChat();
   },
   removeCommandEcho,
-  stripAnsi
+  stripAnsi,
 });
 
 async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): Promise<void> {
@@ -141,7 +140,7 @@ async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): P
       terminalInput: (data) => window.popoutAPI.terminalInput(data),
       terminalIsRunning: () => window.popoutAPI.terminalIsRunning(),
       terminalResize: (cols, rows) => window.popoutAPI.terminalResize(cols, rows),
-      terminalStart: (cols, rows) => window.popoutAPI.terminalStart(cols, rows)
+      terminalStart: (cols, rows) => window.popoutAPI.terminalStart(cols, rows),
     },
     container,
     onTerminalData: (data) => {
@@ -151,7 +150,7 @@ async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): P
     setActive: setPopoutActive,
     shouldActivateOnData: () => true,
     theme: TERM_THEME_LIGHT,
-    writeStatusToTerminal: true
+    writeStatusToTerminal: true,
   });
   popoutTerm = terminalUi.term;
   popoutFitAddon = terminalUi.fitAddon;
@@ -183,9 +182,7 @@ function initPopoutRpMode(): void {
 
   btn.addEventListener('click', () => {
     snapshot = readAppSettingsSnapshot();
-    const nextMode = snapshot.rpMode === 'off'
-      ? getDefaultRpModeForDarkMode(snapshot.darkMode)
-      : 'off';
+    const nextMode = snapshot.rpMode === 'off' ? getDefaultRpModeForDarkMode(snapshot.darkMode) : 'off';
     writeRpMode(nextMode);
     updatePopoutRpStyle(btn, nextMode !== 'off');
   });
@@ -202,7 +199,8 @@ function initPopoutRpMode(): void {
 }
 
 function updatePopoutRpStyle(btn: HTMLElement, active: boolean, rpMode = readAppSettingsSnapshot().rpMode): void {
-  const label = rpMode === 'aris' ? '아리스' : rpMode === 'custom' ? '커스텀' : '토키';
+  const label =
+    rpMode === 'aris' ? '아리스' : rpMode === 'custom' ? '커스텀' : rpMode === 'pluni' ? '플루니 연구소' : '토키';
   btn.style.background = active ? 'rgba(255,255,255,0.5)' : '';
   btn.title = active ? `RP 모드 ON (${label})` : 'RP 모드 OFF';
 }
@@ -213,7 +211,10 @@ const IDLE_IMG = toMediaAsset('icon.png');
 const DANCING_IMG = toMediaAsset('Dancing_toki.gif');
 
 let _popoutIsActive = false;
-let _poImg: HTMLImageElement | null, _poStatus: HTMLElement | null, _poIcon: HTMLElement | null, _poText: HTMLElement | null;
+let _poImg: HTMLImageElement | null,
+  _poStatus: HTMLElement | null,
+  _poIcon: HTMLElement | null,
+  _poText: HTMLElement | null;
 function setPopoutActive(active: boolean): void {
   if (_popoutIsActive === active) return;
   if (!_poImg) {
@@ -398,7 +399,8 @@ async function buildSidebarPopout(): Promise<void> {
 
     const data = await window.popoutAPI.getSidebarData();
     if (!data || !data.items || data.items.length === 0) {
-      content.innerHTML = '<div style="padding:16px;color:var(--text-secondary);font-size:13px;">파일을 먼저 열어주세요</div>';
+      content.innerHTML =
+        '<div style="padding:16px;color:var(--text-secondary);font-size:13px;">파일을 먼저 열어주세요</div>';
       return;
     }
 
@@ -407,7 +409,8 @@ async function buildSidebarPopout(): Promise<void> {
       el.className = `tree-item${item.indent ? ' indent-' + item.indent : ''}`;
 
       if (item.isHeader) {
-        el.style.cssText = 'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;';
+        el.style.cssText =
+          'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;';
       }
 
       if (item.icon) {
@@ -425,7 +428,7 @@ async function buildSidebarPopout(): Promise<void> {
         el.style.cursor = 'pointer';
         el.addEventListener('click', () => {
           window.popoutAPI.sidebarClick(item.id!);
-          content.querySelectorAll('.tree-item').forEach(x => x.classList.remove('active'));
+          content.querySelectorAll('.tree-item').forEach((x) => x.classList.remove('active'));
           el.classList.add('active');
         });
       }
@@ -440,7 +443,7 @@ async function buildSidebarPopout(): Promise<void> {
       reportRuntimeError({
         context: '팝아웃 항목 목록 새로고침 실패',
         error,
-        logPrefix: '[Popout Sidebar]'
+        logPrefix: '[Popout Sidebar]',
       });
     });
   });
@@ -475,7 +478,8 @@ async function buildRefsPopout(): Promise<void> {
 
     const data = await window.popoutAPI.getRefsData();
     if (!data) {
-      content.innerHTML = '<div style="padding:16px;color:var(--text-secondary);font-size:13px;">데이터를 불러올 수 없습니다</div>';
+      content.innerHTML =
+        '<div style="padding:16px;color:var(--text-secondary);font-size:13px;">데이터를 불러올 수 없습니다</div>';
       return;
     }
 
@@ -484,7 +488,8 @@ async function buildRefsPopout(): Promise<void> {
     if (builtInGuides.length > 0 || sessionGuides.length > 0) {
       const guideHeader = document.createElement('div');
       guideHeader.className = 'tree-item';
-      guideHeader.style.cssText = 'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;';
+      guideHeader.style.cssText =
+        'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;';
       guideHeader.innerHTML = '<span class="icon">📖</span><span>가이드</span>';
       content.appendChild(guideHeader);
 
@@ -495,7 +500,7 @@ async function buildRefsPopout(): Promise<void> {
         el.innerHTML = `<span class="icon">·</span><span>${isSession ? '⏳ ' : ''}${escapePreviewHtml(fileName)}</span>`;
         el.addEventListener('click', () => {
           window.popoutAPI.refsItemClick(`guide_${fileName}`);
-          content.querySelectorAll('.tree-item').forEach(x => x.classList.remove('active'));
+          content.querySelectorAll('.tree-item').forEach((x) => x.classList.remove('active'));
           el.classList.add('active');
         });
         content.appendChild(el);
@@ -513,7 +518,8 @@ async function buildRefsPopout(): Promise<void> {
     if (data.refs && data.refs.length > 0) {
       const refSep = document.createElement('div');
       refSep.className = 'tree-item';
-      refSep.style.cssText = 'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;border-top:1px solid var(--border-color);margin-top:8px;';
+      refSep.style.cssText =
+        'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;border-top:1px solid var(--border-color);margin-top:8px;';
       refSep.textContent = '── 참고 파일 ──';
       content.appendChild(refSep);
 
@@ -522,7 +528,8 @@ async function buildRefsPopout(): Promise<void> {
         el.className = `tree-item${item.indent ? ' indent-' + item.indent : ''}`;
 
         if (item.isHeader) {
-          el.style.cssText = 'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;';
+          el.style.cssText =
+            'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;';
         } else if (item.isFolder) {
           el.style.cssText = 'font-weight:600;padding-top:8px;padding-bottom:4px;cursor:default;';
         }
@@ -542,7 +549,7 @@ async function buildRefsPopout(): Promise<void> {
           el.style.cursor = 'pointer';
           el.addEventListener('click', () => {
             window.popoutAPI.refsItemClick(item.id!);
-            content.querySelectorAll('.tree-item').forEach(x => x.classList.remove('active'));
+            content.querySelectorAll('.tree-item').forEach((x) => x.classList.remove('active'));
             el.classList.add('active');
           });
         }
@@ -552,7 +559,8 @@ async function buildRefsPopout(): Promise<void> {
     }
 
     if (builtInGuides.length === 0 && sessionGuides.length === 0 && (!data.refs || data.refs.length === 0)) {
-      content.innerHTML = '<div style="padding:16px;color:var(--text-secondary);font-size:13px;">참고자료가 없습니다</div>';
+      content.innerHTML =
+        '<div style="padding:16px;color:var(--text-secondary);font-size:13px;">참고자료가 없습니다</div>';
     }
   };
 
@@ -562,7 +570,7 @@ async function buildRefsPopout(): Promise<void> {
       reportRuntimeError({
         context: '참고자료 팝아웃 새로고침 실패',
         error,
-        fallbackMessage: '참고자료 팝아웃을 새로고침하지 못했습니다.'
+        fallbackMessage: '참고자료 팝아웃을 새로고침하지 못했습니다.',
       });
     });
   });
@@ -574,7 +582,8 @@ async function buildEditorPopout(): Promise<void> {
   // Header (draggable)
   const header = document.createElement('div');
   header.id = 'popout-editor-header';
-  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;height:38px;padding:0 14px;background:linear-gradient(135deg,#4a90d9 0%,#6fb3f2 100%);color:#fff;font-size:13px;font-weight:600;-webkit-app-region:drag;flex-shrink:0;';
+  header.style.cssText =
+    'display:flex;align-items:center;justify-content:space-between;height:38px;padding:0 14px;background:linear-gradient(135deg,#4a90d9 0%,#6fb3f2 100%);color:#fff;font-size:13px;font-weight:600;-webkit-app-region:drag;flex-shrink:0;';
   header.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;">
       <span style="font-size:16px;">✏️</span>
@@ -602,7 +611,8 @@ async function buildEditorPopout(): Promise<void> {
   // Get tab data from main process
   const data = await window.popoutAPI.getEditorData(window.popoutAPI.getRequestId());
   if (!data) {
-    editorContainer.innerHTML = '<div style="padding:16px;color:#888;font-size:13px;">탭 데이터를 불러올 수 없습니다</div>';
+    editorContainer.innerHTML =
+      '<div style="padding:16px;color:#888;font-size:13px;">탭 데이터를 불러올 수 없습니다</div>';
     return;
   }
 
@@ -623,7 +633,7 @@ async function buildEditorPopout(): Promise<void> {
     renderWhitespace: 'selection',
     tabSize: 2,
     mouseWheelZoom: true,
-    readOnly: !!data.readOnly
+    readOnly: !!data.readOnly,
   });
 
   // Sync changes back to main window
@@ -646,7 +656,7 @@ async function buildEditorPopout(): Promise<void> {
 // ==================== Preview Popout ====================
 
 async function buildPreviewPopout(): Promise<void> {
-  const charData = await window.popoutAPI.getPreviewData(window.popoutAPI.getRequestId()) as PreviewCharData | null;
+  const charData = (await window.popoutAPI.getPreviewData(window.popoutAPI.getRequestId())) as PreviewCharData | null;
   if (!charData) {
     root.innerHTML = '<div style="padding:24px;color:#888;">프리뷰 데이터를 불러올 수 없습니다</div>';
     return;
@@ -659,7 +669,7 @@ async function buildPreviewPopout(): Promise<void> {
     reportRuntimeError({
       context: '팝아웃 프리뷰 에셋 불러오기 실패',
       error,
-      logPrefix: '[Popout Preview]'
+      logPrefix: '[Popout Preview]',
     });
   }
 
@@ -670,7 +680,8 @@ async function buildPreviewPopout(): Promise<void> {
 
   // ── Build UI ──
   const header = document.createElement('div');
-  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#21222c;color:#f5f5f5;font-weight:600;font-size:13px;flex-shrink:0;border-bottom:1px solid #44475a;-webkit-app-region:drag;';
+  header.style.cssText =
+    'display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#21222c;color:#f5f5f5;font-weight:600;font-size:13px;flex-shrink:0;border-bottom:1px solid #44475a;-webkit-app-region:drag;';
   const headerLeft = document.createElement('span');
   headerLeft.textContent = `${charData.name ?? ''} — 프리뷰`;
   headerLeft.style.cssText = '-webkit-app-region:drag;';
@@ -680,7 +691,8 @@ async function buildPreviewPopout(): Promise<void> {
   const resetBtn = document.createElement('button');
   resetBtn.textContent = '↻';
   resetBtn.title = '초기화';
-  resetBtn.style.cssText = 'background:rgba(255,255,255,0.1);border:none;color:#f5f5f5;font-size:14px;cursor:pointer;border-radius:4px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;';
+  resetBtn.style.cssText =
+    'background:rgba(255,255,255,0.1);border:none;color:#f5f5f5;font-size:14px;cursor:pointer;border-radius:4px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;';
 
   // Debug toggle button
   const debugBtn = document.createElement('button');
@@ -712,39 +724,51 @@ async function buildPreviewPopout(): Promise<void> {
   chatFrame.setAttribute('sandbox', 'allow-scripts');
 
   const inputBar = document.createElement('div');
-  inputBar.style.cssText = 'display:flex;gap:6px;padding:8px 12px;background:#21222c;border-top:1px solid #44475a;flex-shrink:0;align-items:flex-end;';
+  inputBar.style.cssText =
+    'display:flex;gap:6px;padding:8px 12px;background:#21222c;border-top:1px solid #44475a;flex-shrink:0;align-items:flex-end;';
   const chatInput = document.createElement('textarea');
   chatInput.placeholder = '메시지를 입력하세요...';
   chatInput.rows = 1;
-  chatInput.style.cssText = 'flex:1;padding:8px 12px;border:1px solid #44475a;border-radius:8px;background:#282a36;color:#f5f5f5;font-size:13px;resize:none;outline:none;max-height:120px;font-family:inherit;';
-  chatInput.addEventListener('input', () => { chatInput.style.height = 'auto'; chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px'; });
+  chatInput.style.cssText =
+    'flex:1;padding:8px 12px;border:1px solid #44475a;border-radius:8px;background:#282a36;color:#f5f5f5;font-size:13px;resize:none;outline:none;max-height:120px;font-family:inherit;';
+  chatInput.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+  });
   const sendBtn = document.createElement('button');
   sendBtn.textContent = '전송';
-  sendBtn.style.cssText = 'padding:8px 16px;background:#4a90d9;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;white-space:nowrap;';
+  sendBtn.style.cssText =
+    'padding:8px 16px;background:#4a90d9;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;white-space:nowrap;';
   inputBar.appendChild(chatInput);
   inputBar.appendChild(sendBtn);
 
   // ── Debug drawer ──
   const debugDrawer = document.createElement('div');
-  debugDrawer.style.cssText = 'border-top:1px solid #44475a;background:#1c2340;height:220px;display:none;flex-direction:column;flex-shrink:0;overflow:hidden;';
+  debugDrawer.style.cssText =
+    'border-top:1px solid #44475a;background:#1c2340;height:220px;display:none;flex-direction:column;flex-shrink:0;overflow:hidden;';
 
   const debugTabs = document.createElement('div');
-  debugTabs.style.cssText = 'display:flex;gap:2px;padding:4px 8px;background:#161b33;border-bottom:1px solid #44475a;flex-shrink:0;align-items:center;';
+  debugTabs.style.cssText =
+    'display:flex;gap:2px;padding:4px 8px;background:#161b33;border-bottom:1px solid #44475a;flex-shrink:0;align-items:center;';
   const tabDefs = [
     { id: 'variables', label: '변수' },
     { id: 'lorebook', label: '로어북' },
     { id: 'lua', label: 'Lua' },
     { id: 'regex', label: '정규식' },
   ];
-  const tabBtnStyle = 'padding:3px 10px;border:none;border-radius:4px;font-size:11px;cursor:pointer;color:#aaa;background:transparent;';
-  const tabBtnActiveStyle = 'padding:3px 10px;border:none;border-radius:4px;font-size:11px;cursor:pointer;color:#fff;background:#44475a;';
+  const tabBtnStyle =
+    'padding:3px 10px;border:none;border-radius:4px;font-size:11px;cursor:pointer;color:#aaa;background:transparent;';
+  const tabBtnActiveStyle =
+    'padding:3px 10px;border:none;border-radius:4px;font-size:11px;cursor:pointer;color:#fff;background:#44475a;';
   for (const td of tabDefs) {
     const tab = document.createElement('button');
     tab.style.cssText = td.id === activeDebugTab ? tabBtnActiveStyle : tabBtnStyle;
     tab.textContent = td.label;
     tab.addEventListener('click', () => {
       activeDebugTab = td.id;
-      debugTabs.querySelectorAll<HTMLButtonElement>('button').forEach(t => { if (t.dataset.debugTab) t.style.cssText = tabBtnStyle; });
+      debugTabs.querySelectorAll<HTMLButtonElement>('button').forEach((t) => {
+        if (t.dataset.debugTab) t.style.cssText = tabBtnStyle;
+      });
       tab.style.cssText = tabBtnActiveStyle;
       updateDebugContent();
     });
@@ -768,7 +792,10 @@ async function buildPreviewPopout(): Promise<void> {
       const delta = startY - ev.clientY;
       debugDrawer.style.height = Math.max(80, startH + delta) + 'px';
     };
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
@@ -776,7 +803,8 @@ async function buildPreviewPopout(): Promise<void> {
   const debugCopyBtn = document.createElement('button');
   debugCopyBtn.textContent = '📋 복사';
   debugCopyBtn.title = '디버그 정보 전체 복사';
-  debugCopyBtn.style.cssText = 'margin-left:auto;padding:3px 8px;border:none;border-radius:4px;font-size:11px;cursor:pointer;color:#fff;background:#2a335a;';
+  debugCopyBtn.style.cssText =
+    'margin-left:auto;padding:3px 8px;border:none;border-radius:4px;font-size:11px;cursor:pointer;color:#fff;background:#2a335a;';
   debugTabs.appendChild(debugCopyBtn);
 
   const session = createPreviewSession({
@@ -792,12 +820,12 @@ async function buildPreviewPopout(): Promise<void> {
       reportRuntimeError({
         context: message,
         error,
-        logPrefix: '[Popout Preview]'
+        logPrefix: '[Popout Preview]',
       });
     },
     onStateChange: () => {
       if (debugOpen) updateDebugContent();
-    }
+    },
   });
 
   function updateDebugContent(): void {
@@ -805,7 +833,7 @@ async function buildPreviewPopout(): Promise<void> {
     debugContentEl.innerHTML = renderPreviewDebugHtml({
       activeTab: activeDebugTab,
       snapshot,
-      luaInitButtonId: 'popout-preview-lua-init'
+      luaInitButtonId: 'popout-preview-lua-init',
     });
 
     if (!snapshot.luaInitialized) {
@@ -854,9 +882,13 @@ async function buildPreviewPopout(): Promise<void> {
     });
   });
 
-  window.addEventListener('beforeunload', () => {
-    session.dispose();
-  }, { once: true });
+  window.addEventListener(
+    'beforeunload',
+    () => {
+      session.dispose();
+    },
+    { once: true },
+  );
 
   root.style.cssText = 'display:flex;flex-direction:column;height:100%;background:#282a36;';
   root.appendChild(header);

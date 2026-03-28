@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { cleanupAgentProfiles, syncAgentProfiles, type AgentProfileState } from './copilot-agent-profile-manager';
-import type { ChatbotCategory } from './pluni-persona';
+import { CHATBOT_CATEGORIES, type ChatbotCategory } from './pluni-persona';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -30,6 +30,14 @@ let activeAgentProfileState: AgentProfileState | null = null;
 // ---------------------------------------------------------------------------
 // Core helpers
 // ---------------------------------------------------------------------------
+
+/** Path-safe check: does `filePath` reside under `projectRoot`? */
+function isUnderProjectRoot(filePath: string, projectRoot: string): boolean {
+  if (!filePath.startsWith(projectRoot)) return false;
+  if (filePath.length === projectRoot.length) return true;
+  const ch = filePath[projectRoot.length];
+  return ch === '/' || ch === '\\';
+}
 
 export function cleanupAgentsMd(): void {
   try {
@@ -115,7 +123,8 @@ function buildAgentsDocument(sessionContent: string | null, projectGuideContent:
 }
 
 function writeAgentsMd(content: string): string | null {
-  const cwd = deps.getCurrentFilePath() ? path.dirname(deps.getCurrentFilePath()!) : process.cwd();
+  const filePath = deps.getCurrentFilePath();
+  const cwd = filePath ? path.dirname(filePath) : process.cwd();
   const agentsPath = path.join(cwd, 'AGENTS.md');
 
   if (activeAgentsFilePath && activeAgentsFilePath !== agentsPath) {
@@ -141,7 +150,7 @@ function writeAgentsMd(content: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Copilot agent-profile state setter (for later integration)
+// Copilot agent-profile state
 // ---------------------------------------------------------------------------
 
 /**
@@ -161,12 +170,13 @@ export function setActiveAgentProfileState(state: AgentProfileState | null): voi
  * Cleans old profile state first if switching project roots.
  */
 export function syncCopilotProfiles(category: ChatbotCategory): void {
-  const cwd = deps.getCurrentFilePath() ? path.dirname(deps.getCurrentFilePath()!) : process.cwd();
+  const filePath = deps.getCurrentFilePath();
+  const cwd = filePath ? path.dirname(filePath) : process.cwd();
 
   // If we already have state from a different project root, clean it up first
   if (activeAgentProfileState) {
     const existingRoot = activeAgentProfileState.entries[0]?.filePath;
-    if (existingRoot && !existingRoot.startsWith(cwd)) {
+    if (existingRoot && !isUnderProjectRoot(existingRoot, cwd)) {
       try {
         cleanupAgentProfiles(activeAgentProfileState);
       } catch (e: unknown) {
@@ -223,7 +233,10 @@ export function initAgentsMdManager(d: AgentsMdDeps): void {
   });
 
   ipcMain.handle('sync-copilot-agent-profiles', (_, category: string) => {
-    syncCopilotProfiles(category as ChatbotCategory);
+    const valid: ChatbotCategory = (CHATBOT_CATEGORIES as readonly string[]).includes(category)
+      ? (category as ChatbotCategory)
+      : 'solo';
+    syncCopilotProfiles(valid);
     return true;
   });
 }

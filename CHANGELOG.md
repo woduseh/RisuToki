@@ -9,6 +9,25 @@
 
 ---
 
+## [0.26.0] - 2026-03-28
+
+### 새 기능
+
+- **GitHub Copilot CLI용 `플루니 연구소` RP 모드 추가**
+  - `Pluni`, `Kotone`, `Sophia`의 3인 자문 패널을 기반으로 챗봇 설계를 논의
+  - `1:1 챗봇`, `월드 시뮬레이터`, `멀티 캐릭터 월드 시뮬레이터` 3개 카테고리를 설정에서 선택 가능
+
+### 변경
+
+- **Copilot 시작 시 플루니 자문 에이전트 프로필 자동 준비**
+  - `rpMode=pluni` + GitHub Copilot CLI 시작 시 세션 `AGENTS.md`와 함께 임시 `.github/agents/pluni.md`, `kotone.md`, `sophia.md`를 생성
+  - Claude Code / Codex / Gemini CLI에서는 같은 자문 구조를 단일 세션 합성 프롬프트로 폴백
+
+### 수정
+
+- **Copilot 전용 임시 에이전트 파일 정리 경로 보강**
+  - 플루니 Copilot 모드가 아닌 다음 실행 경로에서도 기존 `.github/agents/*.md` 파일을 안전하게 복원하거나 삭제
+
 ## [0.25.0] - 2026-03-28
 
 ### 새 기능

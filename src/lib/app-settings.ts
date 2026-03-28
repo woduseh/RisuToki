@@ -1,10 +1,8 @@
-import {
-  parseStoredJson,
-  storedAvatarStateSchema,
-  storedLayoutStateSchema,
-} from './stored-state-validation';
+import type { ChatbotCategory } from './pluni-persona';
+import { CHATBOT_CATEGORIES } from './pluni-persona';
+import { parseStoredJson, storedAvatarStateSchema, storedLayoutStateSchema } from './stored-state-validation';
 
-export type RpMode = 'off' | 'toki' | 'aris' | 'custom';
+export type RpMode = 'off' | 'toki' | 'aris' | 'custom' | 'pluni';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -30,6 +28,7 @@ export interface AppSettingsSnapshot {
   darkMode: boolean;
   rpMode: RpMode;
   rpCustomText: string;
+  pluniCategory: ChatbotCategory;
   bgmEnabled: boolean;
   bgmPath: string;
   autosaveEnabled: boolean;
@@ -55,8 +54,9 @@ export const STORAGE_KEYS = {
   bgmPath: 'toki-bgm-path',
   darkMode: 'toki-dark-mode',
   layoutState: 'toki-layout-state',
+  pluniCategory: 'toki-pluni-category',
   rpCustom: 'toki-rp-custom',
-  rpMode: 'toki-rp-mode'
+  rpMode: 'toki-rp-mode',
 } as const;
 
 export const DEFAULT_AUTOSAVE_INTERVAL = 60_000;
@@ -84,11 +84,18 @@ export function normalizeRpMode(value: string | null, darkMode: boolean): RpMode
     return getDefaultRpModeForDarkMode(darkMode);
   }
 
-  if (value === 'toki' || value === 'aris' || value === 'custom') {
+  if (value === 'toki' || value === 'aris' || value === 'custom' || value === 'pluni') {
     return value;
   }
 
   return 'off';
+}
+
+function normalizePluniCategory(value: string | null): ChatbotCategory {
+  if (value && (CHATBOT_CATEGORIES as readonly string[]).includes(value)) {
+    return value as ChatbotCategory;
+  }
+  return 'solo';
 }
 
 export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnapshot {
@@ -99,6 +106,7 @@ export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnaps
     darkMode,
     rpMode: normalizeRpMode(target.getItem(STORAGE_KEYS.rpMode), darkMode),
     rpCustomText: target.getItem(STORAGE_KEYS.rpCustom) || '',
+    pluniCategory: normalizePluniCategory(target.getItem(STORAGE_KEYS.pluniCategory)),
     bgmEnabled: parseBoolean(target.getItem(STORAGE_KEYS.bgmEnabled)),
     bgmPath: target.getItem(STORAGE_KEYS.bgmPath) || '',
     autosaveEnabled: parseBoolean(target.getItem(STORAGE_KEYS.autosaveEnabled)),
@@ -106,7 +114,7 @@ export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnaps
     autosaveDir: target.getItem(STORAGE_KEYS.autosaveDir) || '',
     avatarIdle: parseStoredJson(target.getItem(STORAGE_KEYS.avatarIdle), storedAvatarStateSchema),
     avatarWorking: parseStoredJson(target.getItem(STORAGE_KEYS.avatarWorking), storedAvatarStateSchema),
-    layoutState: parseStoredJson(target.getItem(STORAGE_KEYS.layoutState), storedLayoutStateSchema)
+    layoutState: parseStoredJson(target.getItem(STORAGE_KEYS.layoutState), storedLayoutStateSchema),
   };
 }
 
@@ -116,7 +124,7 @@ export function readStoredLayoutState(storage?: StorageLike): StoredLayoutState 
 
 export function subscribeToAppSettings(
   listener: (snapshot: AppSettingsSnapshot) => void,
-  options?: { storage?: StorageLike; eventTarget?: SettingsEventTarget | null }
+  options?: { storage?: StorageLike; eventTarget?: SettingsEventTarget | null },
 ): () => void {
   const target = options?.eventTarget ?? window;
   const storage = options?.storage;
@@ -144,6 +152,10 @@ export function writeRpMode(rpMode: RpMode, storage?: StorageLike): void {
 
 export function writeRpCustomText(text: string, storage?: StorageLike): void {
   getDefaultStorage(storage).setItem(STORAGE_KEYS.rpCustom, text);
+}
+
+export function writePluniCategory(category: ChatbotCategory, storage?: StorageLike): void {
+  getDefaultStorage(storage).setItem(STORAGE_KEYS.pluniCategory, category);
 }
 
 export function writeBgmEnabled(enabled: boolean, storage?: StorageLike): void {

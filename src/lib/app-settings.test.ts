@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_AUTOSAVE_INTERVAL,
   clearAutosaveDir,
+  normalizeRpMode,
   readAppSettingsSnapshot,
   readStoredLayoutState,
   writeAutosaveDir,
@@ -9,7 +10,8 @@ import {
   writeAutosaveInterval,
   writeDarkMode,
   writeLayoutState,
-  writeRpMode
+  writePluniCategory,
+  writeRpMode,
 } from './app-settings';
 
 function createStorage() {
@@ -23,7 +25,7 @@ function createStorage() {
     },
     setItem(key: string, value: string) {
       map.set(key, value);
-    }
+    },
   };
 }
 
@@ -101,5 +103,43 @@ describe('app settings', () => {
 
     expect(snapshot.avatarIdle).toBeNull();
     expect(snapshot.avatarWorking).toBeNull();
+  });
+
+  // ── pluni mode ──
+
+  it('normalizeRpMode accepts "pluni" as a valid mode', () => {
+    expect(normalizeRpMode('pluni', false)).toBe('pluni');
+    expect(normalizeRpMode('pluni', true)).toBe('pluni');
+  });
+
+  it('normalizeRpMode still rejects unknown values', () => {
+    expect(normalizeRpMode('invalid', false)).toBe('off');
+    expect(normalizeRpMode(null, false)).toBe('off');
+  });
+
+  it('snapshot defaults pluniCategory to "solo"', () => {
+    const snapshot = readAppSettingsSnapshot(createStorage());
+    expect(snapshot.pluniCategory).toBe('solo');
+  });
+
+  it('persists and reads pluniCategory through helpers', () => {
+    const storage = createStorage();
+    writePluniCategory('world-sim', storage);
+    expect(readAppSettingsSnapshot(storage).pluniCategory).toBe('world-sim');
+
+    writePluniCategory('multi-char', storage);
+    expect(readAppSettingsSnapshot(storage).pluniCategory).toBe('multi-char');
+  });
+
+  it('falls back to "solo" for invalid pluniCategory values', () => {
+    const storage = createStorage();
+    storage.setItem('toki-pluni-category', 'garbage');
+    expect(readAppSettingsSnapshot(storage).pluniCategory).toBe('solo');
+  });
+
+  it('round-trips pluni mode through write/read', () => {
+    const storage = createStorage();
+    writeRpMode('pluni', storage);
+    expect(readAppSettingsSnapshot(storage).rpMode).toBe('pluni');
   });
 });

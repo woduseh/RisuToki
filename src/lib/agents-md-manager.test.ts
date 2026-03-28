@@ -44,6 +44,7 @@ import {
   _setAgentsMdRestoreStateForTesting,
   _setDepsForTesting,
 } from './agents-md-manager';
+import { CHATBOT_CATEGORIES } from './pluni-persona';
 
 // Fake deps for syncCopilotProfiles (needs a deps object set via initAgentsMdManager-like path)
 // Since the module uses a module-scoped `deps` variable, we set it through the test-only helpers.
@@ -188,6 +189,38 @@ describe('syncCopilotProfiles', () => {
     expect(mockSyncProfiles).toHaveBeenLastCalledWith(expect.stringContaining('project'), 'world-sim', firstState);
   });
 
+  it('cleans old state when switching between similarly-prefixed project roots', () => {
+    // First sync in /fake/app-beta
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/fake/app-beta/test.charx',
+      getDirname: () => '/fake/electron',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo');
+    const betaState = mockSyncProfiles.mock.results[0].value;
+    expect(mockCleanupProfiles).not.toHaveBeenCalled();
+
+    // Switch to /fake/app — a strict prefix of /fake/app-beta.
+    // With the old startsWith check, the existing entry path
+    // "/fake/app-beta/.github/agents/pluni.md".startsWith("/fake/app")
+    // would be TRUE, so cleanup would be SKIPPED (leaving stale files).
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/fake/app/test.charx',
+      getDirname: () => '/fake/electron',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('world-sim');
+
+    // Old state MUST have been cleaned up before syncing the new root
+    expect(mockCleanupProfiles).toHaveBeenCalledOnce();
+    expect(mockCleanupProfiles).toHaveBeenCalledWith(betaState);
+
+    // New sync should use undefined (no previous state) since we switched roots
+    expect(mockSyncProfiles).toHaveBeenLastCalledWith(expect.any(String), 'world-sim', undefined);
+  });
+
   it('cleans up old state when cleanup is called after sync', () => {
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/project/test.charx',
@@ -201,5 +234,23 @@ describe('syncCopilotProfiles', () => {
     cleanupAgentsMd();
 
     expect(mockCleanupProfiles).toHaveBeenCalledWith(syncState);
+  });
+
+  it('normalises an invalid category to "solo"', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/fake/project/test.charx',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    // Simulate the IPC handler's validation: an unknown string must
+    // fall back to 'solo' instead of being blindly cast.
+    const bogus = 'not-a-real-category';
+    expect((CHATBOT_CATEGORIES as readonly string[]).includes(bogus)).toBe(false);
+
+    const validated = (CHATBOT_CATEGORIES as readonly string[]).includes(bogus) ? (bogus as 'solo') : 'solo';
+    syncCopilotProfiles(validated);
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith(expect.stringContaining('project'), 'solo', undefined);
   });
 });

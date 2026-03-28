@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { Section } from '../lib/section-parser';
+import type { ChatbotCategory } from '../lib/pluni-persona';
 // Layout types available for future use via '../lib/layout-manager'
 
 // CharxData represents the loaded .charx file data
@@ -147,7 +148,7 @@ export interface ReferenceFile {
   data: Record<string, unknown>;
 }
 
-export type RpMode = 'off' | 'toki' | 'aris' | 'custom';
+export type RpMode = 'off' | 'toki' | 'aris' | 'custom' | 'pluni';
 
 export const useAppStore = defineStore('app', () => {
   // === File data ===
@@ -166,6 +167,7 @@ export const useAppStore = defineStore('app', () => {
   const darkMode = ref(false);
   const rpMode = ref<RpMode>('off');
   const rpCustomText = ref('');
+  const pluniCategory = ref<ChatbotCategory>('solo');
   const bgmEnabled = ref(false);
   const bgmPath = ref('');
   const statusText = ref('');
@@ -190,6 +192,7 @@ export const useAppStore = defineStore('app', () => {
     if (rpMode.value === 'toki') return '토키';
     if (rpMode.value === 'aris') return '아리스';
     if (rpMode.value === 'custom') return '커스텀';
+    if (rpMode.value === 'pluni') return '플루니 연구소';
     return 'OFF';
   });
 
@@ -212,6 +215,10 @@ export const useAppStore = defineStore('app', () => {
 
   function setRpMode(mode: RpMode) {
     rpMode.value = mode;
+  }
+
+  function setPluniCategory(category: ChatbotCategory) {
+    pluniCategory.value = category;
   }
 
   function setMonacoReady(ready: boolean) {
@@ -249,6 +256,7 @@ export const useAppStore = defineStore('app', () => {
     darkMode,
     rpMode,
     rpCustomText,
+    pluniCategory,
     bgmEnabled,
     bgmPath,
     statusText,
@@ -270,6 +278,7 @@ export const useAppStore = defineStore('app', () => {
     setFileLabel,
     setDarkMode,
     setRpMode,
+    setPluniCategory,
     setMonacoReady,
     setActiveTabId,
     setLuaSections,

@@ -14,6 +14,7 @@ export interface SettingsState {
   bgmEnabled: boolean;
   rpMode: string;
   rpCustomText: string;
+  pluniCategory: string;
 }
 
 export interface SettingsCallbacks {
@@ -27,6 +28,7 @@ export interface SettingsCallbacks {
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
   onOpenPersonaTab(name: string): Promise<void>;
+  onPluniCategoryChange(category: string): void;
 }
 
 function createToggle(isOn: boolean): HTMLButtonElement {
@@ -38,7 +40,10 @@ function createToggle(isOn: boolean): HTMLButtonElement {
 
 export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallbacks): void {
   const existing = document.querySelector('.help-popup-overlay.settings-overlay');
-  if (existing) { existing.remove(); return; }
+  if (existing) {
+    existing.remove();
+    return;
+  }
 
   const overlay = document.createElement('div');
   overlay.className = 'help-popup-overlay settings-overlay';
@@ -62,7 +67,8 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   const autoRow = document.createElement('div');
   autoRow.className = 'settings-row';
   const autoLeft = document.createElement('div');
-  autoLeft.innerHTML = '<div class="settings-label">자동 저장</div><div class="settings-desc">일정 간격으로 임시 파일에 저장</div>';
+  autoLeft.innerHTML =
+    '<div class="settings-label">자동 저장</div><div class="settings-desc">일정 간격으로 임시 파일에 저장</div>';
   const autoToggle = createToggle(state.autosaveEnabled);
   autoToggle.addEventListener('click', () => {
     callbacks.onAutosaveToggle(autoToggle.classList.contains('on'));
@@ -75,7 +81,8 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   const intervalRow = document.createElement('div');
   intervalRow.className = 'settings-row';
   const intervalLeft = document.createElement('div');
-  intervalLeft.innerHTML = '<div class="settings-label">저장 간격</div><div class="settings-desc">자동 저장 실행 주기</div>';
+  intervalLeft.innerHTML =
+    '<div class="settings-label">저장 간격</div><div class="settings-desc">자동 저장 실행 주기</div>';
   const intervalSelect = document.createElement('select');
   intervalSelect.className = 'settings-select';
   const intervals = [
@@ -104,9 +111,11 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   autoPathRow.className = 'settings-row';
   autoPathRow.style.cssText = 'flex-direction:column;align-items:stretch;gap:4px;';
   const autoPathLabel = document.createElement('div');
-  autoPathLabel.innerHTML = '<div class="settings-label">저장 위치</div><div class="settings-desc">비어있으면 파일과 같은 폴더에 저장</div>';
+  autoPathLabel.innerHTML =
+    '<div class="settings-label">저장 위치</div><div class="settings-desc">비어있으면 파일과 같은 폴더에 저장</div>';
   const autoPathDisplay = document.createElement('div');
-  autoPathDisplay.style.cssText = 'font-size:11px;color:var(--text-secondary);word-break:break-all;padding:4px 6px;background:var(--bg-tertiary);border-radius:4px;min-height:18px;';
+  autoPathDisplay.style.cssText =
+    'font-size:11px;color:var(--text-secondary);word-break:break-all;padding:4px 6px;background:var(--bg-tertiary);border-radius:4px;min-height:18px;';
   autoPathDisplay.textContent = state.autosaveDir || '(파일과 같은 폴더)';
   const autoPathBtns = document.createElement('div');
   autoPathBtns.style.cssText = 'display:flex;gap:6px;margin-top:2px;';
@@ -155,7 +164,8 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   const bgmRow = document.createElement('div');
   bgmRow.className = 'settings-row';
   const bgmLeft = document.createElement('div');
-  bgmLeft.innerHTML = '<div class="settings-label">BGM</div><div class="settings-desc">터미널 응답 시 배경음악 재생</div>';
+  bgmLeft.innerHTML =
+    '<div class="settings-label">BGM</div><div class="settings-desc">터미널 응답 시 배경음악 재생</div>';
   const bgmToggle = createToggle(state.bgmEnabled);
   bgmToggle.addEventListener('click', () => {
     callbacks.onBgmToggle(bgmToggle.classList.contains('on'));
@@ -176,10 +186,12 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
     { value: 'toki', label: '토키 (라이트)' },
     { value: 'aris', label: '아리스 (다크)' },
     { value: 'custom', label: '커스텀' },
+    { value: 'pluni', label: '플루니 연구소' },
   ];
   for (const opt of rpOptions) {
     const o = document.createElement('option');
-    o.value = opt.value; o.textContent = opt.label;
+    o.value = opt.value;
+    o.textContent = opt.label;
     if (opt.value === state.rpMode) o.selected = true;
     rpSelect.appendChild(o);
   }
@@ -203,17 +215,48 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   rpCustomRow.appendChild(rpCustomArea);
   body.appendChild(rpCustomRow);
 
-  // Preview/edit built-in persona button
+  // Pluni category selector (shown only when 'pluni' selected)
+  const pluniCategoryRow = document.createElement('div');
+  pluniCategoryRow.className = 'settings-row';
+  pluniCategoryRow.setAttribute('data-testid', 'pluni-category-row');
+  if (state.rpMode !== 'pluni') pluniCategoryRow.style.display = 'none';
+  const pluniCatLeft = document.createElement('div');
+  pluniCatLeft.innerHTML =
+    '<div class="settings-label">챗봇 카테고리</div><div class="settings-desc">분석 대상 챗봇 유형 선택</div>';
+  const pluniCatSelect = document.createElement('select');
+  pluniCatSelect.className = 'settings-select';
+  pluniCatSelect.setAttribute('data-testid', 'pluni-category-select');
+  const categoryOptions = [
+    { value: 'solo', label: '1:1 챗봇' },
+    { value: 'world-sim', label: '월드 시뮬레이터' },
+    { value: 'multi-char', label: '멀티 캐릭터 월드 시뮬레이터' },
+  ];
+  for (const opt of categoryOptions) {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    if (opt.value === state.pluniCategory) o.selected = true;
+    pluniCatSelect.appendChild(o);
+  }
+  pluniCatSelect.addEventListener('change', () => {
+    callbacks.onPluniCategoryChange(pluniCatSelect.value);
+  });
+  pluniCategoryRow.appendChild(pluniCatLeft);
+  pluniCategoryRow.appendChild(pluniCatSelect);
+  body.appendChild(pluniCategoryRow);
+
+  // Preview/edit built-in persona button (hidden for 'off', 'custom', 'pluni')
   const rpEditRow = document.createElement('div');
   rpEditRow.className = 'settings-row';
   rpEditRow.style.cssText = 'justify-content:flex-end;';
-  if (state.rpMode === 'off' || state.rpMode === 'custom') rpEditRow.style.display = 'none';
+  const shouldShowEdit = state.rpMode === 'toki' || state.rpMode === 'aris';
+  if (!shouldShowEdit) rpEditRow.style.display = 'none';
   const rpEditBtn = document.createElement('button');
   rpEditBtn.className = 'settings-btn';
   rpEditBtn.textContent = '페르소나 파일 편집';
   rpEditBtn.addEventListener('click', async () => {
     const name = rpSelect.value;
-    if (name === 'off' || name === 'custom') return;
+    if (name === 'off' || name === 'custom' || name === 'pluni') return;
     await callbacks.onOpenPersonaTab(name);
     overlay.remove();
   });
@@ -223,7 +266,9 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   rpSelect.addEventListener('change', () => {
     callbacks.onRpModeChange(rpSelect.value);
     rpCustomRow.style.display = rpSelect.value === 'custom' ? '' : 'none';
-    rpEditRow.style.display = (rpSelect.value !== 'off' && rpSelect.value !== 'custom') ? '' : 'none';
+    pluniCategoryRow.style.display = rpSelect.value === 'pluni' ? '' : 'none';
+    const showEdit = rpSelect.value === 'toki' || rpSelect.value === 'aris';
+    rpEditRow.style.display = showEdit ? '' : 'none';
   });
   rpCustomArea.addEventListener('input', () => {
     callbacks.onRpCustomTextChange(rpCustomArea.value);
@@ -233,5 +278,7 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   popup.appendChild(body);
   overlay.appendChild(popup);
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
 }

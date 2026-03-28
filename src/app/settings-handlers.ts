@@ -1,5 +1,11 @@
 import type { RpMode } from '../stores/app-store';
-import { getDefaultRpModeForDarkMode, writeBgmEnabled, writeBgmPath, writeDarkMode, writeRpMode } from '../lib/app-settings';
+import {
+  getDefaultRpModeForDarkMode,
+  writeBgmEnabled,
+  writeBgmPath,
+  writeDarkMode,
+  writeRpMode,
+} from '../lib/app-settings';
 import { applyDarkMode } from '../lib/dark-mode';
 import { refreshAvatarForDarkMode } from '../lib/avatar-ui';
 import { isBgmEnabled, initBgm as initBgmModule, pauseBgm, setBgmEnabled, setBgmFilePath } from '../lib/bgm';
@@ -15,6 +21,7 @@ export function getRpLabel(rpMode: string): string {
   if (rpMode === 'toki') return '토키';
   if (rpMode === 'aris') return '아리스';
   if (rpMode === 'custom') return '커스텀';
+  if (rpMode === 'pluni') return '플루니 연구소';
   return 'OFF';
 }
 
@@ -187,6 +194,7 @@ export interface SettingsPopupDeps {
     bgmEnabled: boolean;
     rpMode: string;
     rpCustomText: string;
+    pluniCategory: string;
   };
   onAutosaveToggle(enabled: boolean): void;
   onAutosaveIntervalChange(interval: number): void;
@@ -198,25 +206,24 @@ export interface SettingsPopupDeps {
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
   onOpenPersonaTab(name: string): Promise<void>;
+  onPluniCategoryChange(category: string): void;
 }
 
 export function showSettingsPopup(deps: SettingsPopupDeps): void {
   const state = deps.getState();
-  renderSettingsPopup(
-    state,
-    {
-      onAutosaveToggle: deps.onAutosaveToggle,
-      onAutosaveIntervalChange: deps.onAutosaveIntervalChange,
-      onPickAutosaveDir: deps.onPickAutosaveDir,
-      onResetAutosaveDir: deps.onResetAutosaveDir,
-      onOpenAutosaveDir: deps.onOpenAutosaveDir,
-      onDarkModeToggle: deps.onDarkModeToggle,
-      onBgmToggle: deps.onBgmToggle,
-      onRpModeChange: deps.onRpModeChange,
-      onRpCustomTextChange: deps.onRpCustomTextChange,
-      onOpenPersonaTab: deps.onOpenPersonaTab,
-    } as Parameters<typeof renderSettingsPopup>[1],
-  );
+  renderSettingsPopup(state, {
+    onAutosaveToggle: deps.onAutosaveToggle,
+    onAutosaveIntervalChange: deps.onAutosaveIntervalChange,
+    onPickAutosaveDir: deps.onPickAutosaveDir,
+    onResetAutosaveDir: deps.onResetAutosaveDir,
+    onOpenAutosaveDir: deps.onOpenAutosaveDir,
+    onDarkModeToggle: deps.onDarkModeToggle,
+    onBgmToggle: deps.onBgmToggle,
+    onRpModeChange: deps.onRpModeChange,
+    onRpCustomTextChange: deps.onRpCustomTextChange,
+    onOpenPersonaTab: deps.onOpenPersonaTab,
+    onPluniCategoryChange: deps.onPluniCategoryChange,
+  } as Parameters<typeof renderSettingsPopup>[1]);
 }
 
 // ---------------------------------------------------------------------------
