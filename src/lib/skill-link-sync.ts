@@ -82,10 +82,8 @@ function createDirectoryLink(
   fs.symlinkSync(relativeTarget, linkPath, 'dir');
 }
 
-function ensureSkillDirectoryExists(sourcePath: string) {
-  if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isDirectory()) {
-    throw new Error(`Root skills directory not found: ${sourcePath}`);
-  }
+function hasSkillDirectory(sourcePath: string) {
+  return fs.existsSync(sourcePath) && fs.statSync(sourcePath).isDirectory();
 }
 
 function repairProjectSkillLink(spec: ProjectSkillLinkSpec, platform: NodeJS.Platform | string): SkillLinkStatus {
@@ -148,7 +146,9 @@ export function ensureProjectSkillLinks(
     return [];
   }
 
-  ensureSkillDirectoryExists(specs[0].sourcePath);
+  if (!hasSkillDirectory(specs[0].sourcePath)) {
+    return [];
+  }
 
   return specs.map((spec) => ({
     ...spec,
