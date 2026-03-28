@@ -85,6 +85,7 @@ import {
   TERM_THEME_DARK,
   TERM_THEME_LIGHT,
 } from '../lib/terminal-ui';
+import { TerminalSessionContext } from '../lib/terminal-session-context';
 import {
   applySelectedChoice,
   cleanTuiOutput,
@@ -1743,8 +1744,9 @@ async function initTerminal(): Promise<void> {
       if (isChatMode()) onChatData(data);
       feedBgBuffer(data);
     },
-    onUserInput: () => {
+    onUserInput: (data) => {
       lastUserInputTime = Date.now();
+      terminalSession.feedInput(data);
     },
     preserveAmdLoader: true,
     rightClickSelectsWord: true,
@@ -1990,6 +1992,9 @@ function refreshDarkModeUi(): void {
 
 // Echo filter: ignore terminal data within 300ms of user input
 let lastUserInputTime = 0;
+
+// Terminal session context — tracks cwd, line buffer, and command history
+const terminalSession = new TerminalSessionContext();
 
 // Help popup and syntax reference are now in '../lib/help-popup'
 

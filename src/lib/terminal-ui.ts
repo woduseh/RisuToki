@@ -124,7 +124,7 @@ export interface TerminalUiOptions {
   container: HTMLElement;
   onActivity?: () => void;
   onTerminalData?: (data: string) => void;
-  onUserInput?: () => void;
+  onUserInput?: (data: string) => void;
   preserveAmdLoader?: boolean;
   rightClickSelectsWord?: boolean;
   setActive?: (active: boolean) => void;
@@ -274,7 +274,7 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
   fitAddon.fit();
 
   term.onData((data) => {
-    options.onUserInput?.();
+    options.onUserInput?.(data);
     options.api.terminalInput(data);
   });
 

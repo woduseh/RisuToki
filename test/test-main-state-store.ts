@@ -23,4 +23,17 @@ import { createMainStateStore } from '../src/lib/main-state-store';
   assert.deepEqual(store.referenceManifestStatus, { level: 'warn', message: 'warn' });
 })();
 
+(function testTerminalCwdDefaultsToNull() {
+  const store = createMainStateStore();
+  assert.equal(store.terminalCwd, null);
+})();
+
+(function testSetTerminalCwd() {
+  const store = createMainStateStore();
+  store.setTerminalCwd('C:\\repo');
+  assert.equal(store.terminalCwd, 'C:\\repo');
+  store.setTerminalCwd(null);
+  assert.equal(store.terminalCwd, null);
+})();
+
 console.log('Main state store tests passed');
