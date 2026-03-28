@@ -20,7 +20,7 @@ const MAX_LENS_LENGTH = 80;
 const MAX_STRENGTHS = 5;
 const MAX_TOOLKIT_ITEMS = 8;
 const MAX_DELIVERABLES = 6;
-const MAX_SUMMARY_LENGTH = 1200;
+const MAX_SUMMARY_LENGTH = 600;
 
 // ── Advisor profiles ───────────────────────────────────────────────
 
@@ -342,7 +342,7 @@ describe('buildAdvisorSummary', () => {
     for (const id of ADVISOR_IDS) {
       const summary = buildAdvisorSummary(id, 'solo');
       const lower = summary.toLowerCase();
-      expect(lower).toMatch(/toolkit|deliverable|output/i);
+      expect(lower).toMatch(/strengths|strength/i);
     }
   });
 
