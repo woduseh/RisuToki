@@ -6,16 +6,15 @@ export interface MainStateStore {
   /**
    * Best-effort terminal cwd tracked from renderer-side input parsing.
    *
-   * Scaffolding: the field and setter are defined here so the store shape is
-   * stable, but actual IPC wiring (renderer ↔ main process) is deferred to a
-   * later task.
+   * Synced from the renderer via `set-terminal-cwd` IPC and read back by
+   * `get-cwd` / `resolveProjectRoot()`.
    */
   terminalCwd: string | null;
   resetCurrentDocument(data: Record<string, unknown>): void;
   setCurrentDocument(filePath: string, data: Record<string, unknown>): void;
   setReferenceFiles(files: Record<string, unknown>[]): void;
   setReferenceManifestStatus(status: Record<string, unknown> | null): void;
-  /** @see {@link terminalCwd} — IPC wiring deferred to a later task. */
+  /** Update the tracked terminal cwd. @see {@link terminalCwd} */
   setTerminalCwd(cwd: string | null): void;
 }
 

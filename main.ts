@@ -916,8 +916,9 @@ ipcMain.handle('remove-all-references', () => {
 
 // Get working directory for terminal (prefers tracked terminal cwd)
 ipcMain.handle('get-cwd', () => {
+  const cwd = mainState.terminalCwd;
   return (
-    mainState.terminalCwd ||
+    (cwd && path.isAbsolute(cwd) ? cwd : null) ||
     (mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : null) ||
     process.cwd()
   );
