@@ -170,7 +170,7 @@ describe('syncCopilotProfiles', () => {
 
     syncCopilotProfiles('solo');
 
-    expect(mockSyncProfiles).toHaveBeenCalledWith(expect.stringContaining('project'), 'solo', undefined);
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/fake/project', 'solo', undefined);
   });
 
   it('passes previous state on re-sync within the same project', () => {
@@ -188,7 +188,7 @@ describe('syncCopilotProfiles', () => {
 
     // Second call should pass the previous state for backup preservation
     expect(mockSyncProfiles).toHaveBeenCalledTimes(2);
-    expect(mockSyncProfiles).toHaveBeenLastCalledWith(expect.stringContaining('project'), 'world-sim', firstState);
+    expect(mockSyncProfiles).toHaveBeenLastCalledWith('/fake/project', 'world-sim', firstState);
   });
 
   it('cleans old state when switching between similarly-prefixed project roots', () => {
@@ -257,7 +257,7 @@ describe('syncCopilotProfiles', () => {
     const validated = (CHATBOT_CATEGORIES as readonly string[]).includes(bogus) ? (bogus as 'solo') : 'solo';
     syncCopilotProfiles(validated);
 
-    expect(mockSyncProfiles).toHaveBeenCalledWith(expect.stringContaining('project'), 'solo', undefined);
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/fake/project', 'solo', undefined);
   });
 });
 
@@ -301,7 +301,7 @@ describe('root resolution priority', () => {
 
     syncCopilotProfiles('solo');
 
-    expect(mockSyncProfiles).toHaveBeenCalledWith(expect.stringContaining('project'), 'solo', undefined);
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/file-based/project', 'solo', undefined);
   });
 
   it('falls back to process.cwd() when no root sources are available', () => {
@@ -329,5 +329,31 @@ describe('root resolution priority', () => {
     syncCopilotProfiles('solo', '');
 
     expect(mockSyncProfiles).toHaveBeenCalledWith('/terminal-based/project', 'solo', undefined);
+  });
+
+  it('ignores relative explicit root and falls through to terminal cwd', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => '/terminal-based/project',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo', 'relative/path');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/terminal-based/project', 'solo', undefined);
+  });
+
+  it('ignores relative terminal cwd and falls through to currentFilePath', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => 'relative/garbage',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/file-based/project', 'solo', undefined);
   });
 });

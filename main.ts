@@ -925,6 +925,10 @@ ipcMain.handle('get-cwd', () => {
 
 // Sync tracked terminal cwd from renderer-side heuristic parser
 ipcMain.handle('set-terminal-cwd', (_event, cwd: string | null) => {
+  if (cwd !== null && (typeof cwd !== 'string' || !path.isAbsolute(cwd))) {
+    console.warn('[main] set-terminal-cwd: ignoring non-absolute value:', cwd);
+    return false;
+  }
   mainState.setTerminalCwd(cwd);
   return true;
 });

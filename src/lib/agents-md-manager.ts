@@ -41,17 +41,18 @@ function isUnderProjectRoot(filePath: string, projectRoot: string): boolean {
 }
 
 /**
- * Resolve project root with priority:
- *   1. explicit override (if non-empty)
- *   2. tracked terminal cwd
- *   3. dirname of currently-open file
- *   4. process.cwd()
+ * Resolve project root with priority (each candidate must be an absolute path):
+ *
+ * 1. explicit override (if non-empty and absolute)
+ * 2. tracked terminal cwd (if absolute)
+ * 3. dirname of currently-open file
+ * 4. process.cwd()
  */
 function resolveProjectRoot(explicitRoot?: string | null): string {
-  if (explicitRoot) return explicitRoot;
+  if (explicitRoot && path.isAbsolute(explicitRoot)) return explicitRoot;
 
   const termCwd = deps.getTerminalCwd();
-  if (termCwd) return termCwd;
+  if (termCwd && path.isAbsolute(termCwd)) return termCwd;
 
   const filePath = deps.getCurrentFilePath();
   if (filePath) return path.dirname(filePath);
