@@ -39,7 +39,21 @@ const POPD_RE = /^popd\s*$/i;
 
 /** Extract the first non-undefined capture group from a regex match. */
 function extractPath(match: RegExpMatchArray): string {
-  return (match[1] ?? match[2] ?? match[3] ?? '').replace(/\//g, '\\');
+  return match[1] ?? match[2] ?? match[3] ?? '';
+}
+
+/** Maximum number of completed commands to retain in history. */
+const MAX_COMPLETED_COMMANDS = 200;
+
+/** Escape-sequence parser states for feedInput. */
+const enum EscState {
+  Normal = 0,
+  /** Just saw ESC (\x1b), waiting for next byte. */
+  Escape = 1,
+  /** Inside a CSI sequence (ESC [); consuming until final byte 0x40-0x7E. */
+  Csi = 2,
+  /** Inside an SS3 sequence (ESC O); consume one more byte. */
+  Ss3 = 3,
 }
 
 export class TerminalSessionContext {
@@ -47,6 +61,7 @@ export class TerminalSessionContext {
   private _lineBuffer = '';
   private _completedCommands: CompletedCommand[] = [];
   private _dirStack: string[] = [];
+  private _escState: EscState = EscState.Normal;
 
   constructor(initialCwd?: string) {
     this._cwd = initialCwd ?? null;
@@ -69,22 +84,57 @@ export class TerminalSessionContext {
 
   /**
    * Feed raw terminal input data (from xterm onData).
-   * Handles printable characters, backspace (\x7f), and Enter (\r).
+   * Handles printable characters, backspace (\x7f), Enter (\r),
+   * and filters common ANSI escape sequences (CSI / SS3) so they
+   * don't corrupt the line buffer.
    */
   feedInput(data: string): void {
     for (const ch of data) {
-      if (ch === '\r' || ch === '\n') {
+      const code = ch.charCodeAt(0);
+
+      switch (this._escState) {
+        case EscState.Escape:
+          if (ch === '[') {
+            this._escState = EscState.Csi;
+          } else if (ch === 'O') {
+            this._escState = EscState.Ss3;
+          } else {
+            // ESC + single char (e.g. ESC b for Alt+b) — consume and done
+            this._escState = EscState.Normal;
+          }
+          continue;
+
+        case EscState.Csi:
+          // CSI sequence: parameter bytes 0x30-0x3F, intermediate 0x20-0x2F,
+          // final byte 0x40-0x7E terminates the sequence.
+          if (code >= 0x40 && code <= 0x7e) {
+            this._escState = EscState.Normal;
+          }
+          // else: still consuming CSI parameter/intermediate bytes
+          continue;
+
+        case EscState.Ss3:
+          // SS3 sequence: ESC O + one final byte
+          this._escState = EscState.Normal;
+          continue;
+
+        default: // Normal
+          break;
+      }
+
+      // Normal state processing
+      if (code === 0x1b) {
+        this._escState = EscState.Escape;
+      } else if (ch === '\r' || ch === '\n') {
         this._commitLine();
       } else if (ch === '\x7f' || ch === '\b') {
-        // Backspace
         if (this._lineBuffer.length > 0) {
           this._lineBuffer = this._lineBuffer.slice(0, -1);
         }
-      } else if (ch.charCodeAt(0) >= 32) {
-        // Printable character
+      } else if (code >= 32) {
         this._lineBuffer += ch;
       }
-      // Ignore other control characters (arrows, escape sequences, etc.)
+      // Other control characters (< 32) silently ignored
     }
   }
 
@@ -94,6 +144,7 @@ export class TerminalSessionContext {
     this._lineBuffer = '';
     this._completedCommands = [];
     this._dirStack = [];
+    this._escState = EscState.Normal;
   }
 
   // ---- private ----
@@ -105,6 +156,9 @@ export class TerminalSessionContext {
     if (line.length === 0) return;
 
     this._completedCommands.push({ line, timestamp: Date.now() });
+    if (this._completedCommands.length > MAX_COMPLETED_COMMANDS) {
+      this._completedCommands = this._completedCommands.slice(-MAX_COMPLETED_COMMANDS);
+    }
     this._tryUpdateCwd(line);
   }
 

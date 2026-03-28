@@ -1848,6 +1848,7 @@ async function restartTerminal(): Promise<void> {
   // Wait for pty to fully terminate before starting a new one
   await new Promise((r) => setTimeout(r, 200));
   term.clear();
+  terminalSession.reset();
   const restarted = await window.tokiAPI.terminalStart(term.cols, term.rows);
   setStatus(restarted ? '터미널 재시작됨' : '터미널 재시작 실패');
 }

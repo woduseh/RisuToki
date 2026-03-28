@@ -96,6 +96,18 @@ describe('TerminalSessionContext', () => {
       expect(ctx.cwd).toBe('C:\\Users\\dev\\projects');
     });
 
+    it('resolves cd .. to parent directory', () => {
+      const ctx = new TerminalSessionContext('C:\\Users\\dev\\projects');
+      ctx.feedInput('cd ..\r');
+      expect(ctx.cwd).toBe('C:\\Users\\dev');
+    });
+
+    it('resolves chained cd ../.. correctly', () => {
+      const ctx = new TerminalSessionContext('C:\\Users\\dev\\projects');
+      ctx.feedInput('cd ../..\r');
+      expect(ctx.cwd).toBe('C:\\Users');
+    });
+
     it('handles cd with forward slashes', () => {
       const ctx = new TerminalSessionContext('C:\\');
       ctx.feedInput('cd C:/Users/dev\r');
@@ -134,6 +146,55 @@ describe('TerminalSessionContext', () => {
       ctx.feedInput('\x7f');
       expect(ctx.lineBuffer).toBe('');
     });
+
+    it('filters arrow-key escape sequences from line buffer', () => {
+      const ctx = new TerminalSessionContext();
+      ctx.feedInput('hello');
+      // Up arrow: ESC [ A
+      ctx.feedInput('\x1b[A');
+      expect(ctx.lineBuffer).toBe('hello');
+    });
+
+    it('filters down/left/right arrow sequences', () => {
+      const ctx = new TerminalSessionContext();
+      ctx.feedInput('abc');
+      ctx.feedInput('\x1b[B'); // down
+      ctx.feedInput('\x1b[C'); // right
+      ctx.feedInput('\x1b[D'); // left
+      expect(ctx.lineBuffer).toBe('abc');
+    });
+
+    it('filters CSI sequences with parameters (e.g. cursor movement)', () => {
+      const ctx = new TerminalSessionContext();
+      ctx.feedInput('hi');
+      // CSI 3 ~ = Delete key
+      ctx.feedInput('\x1b[3~');
+      expect(ctx.lineBuffer).toBe('hi');
+    });
+
+    it('filters SS3 sequences (ESC O)', () => {
+      const ctx = new TerminalSessionContext();
+      ctx.feedInput('test');
+      // SS3 P = F1 in some terminals
+      ctx.feedInput('\x1bOP');
+      expect(ctx.lineBuffer).toBe('test');
+    });
+
+    it('filters ESC + single char (Alt-key sequences)', () => {
+      const ctx = new TerminalSessionContext();
+      ctx.feedInput('word');
+      // Alt+b = ESC b (backward-word in many shells)
+      ctx.feedInput('\x1bb');
+      expect(ctx.lineBuffer).toBe('word');
+    });
+
+    it('still works normally after escape sequence ends', () => {
+      const ctx = new TerminalSessionContext();
+      ctx.feedInput('ab');
+      ctx.feedInput('\x1b[A'); // up arrow
+      ctx.feedInput('cd');
+      expect(ctx.lineBuffer).toBe('abcd');
+    });
   });
 
   describe('command records', () => {
@@ -169,6 +230,19 @@ describe('TerminalSessionContext', () => {
     });
   });
 
+  describe('command history cap', () => {
+    it('caps completed commands at 200 entries', () => {
+      const ctx = new TerminalSessionContext();
+      for (let i = 0; i < 210; i++) {
+        ctx.feedInput(`cmd${i}\r`);
+      }
+      expect(ctx.completedCommands).toHaveLength(200);
+      // The oldest 10 should have been evicted
+      expect(ctx.completedCommands[0].line).toBe('cmd10');
+      expect(ctx.completedCommands[199].line).toBe('cmd209');
+    });
+  });
+
   describe('reset', () => {
     it('clears all state', () => {
       const ctx = new TerminalSessionContext('C:\\Users');
@@ -185,6 +259,15 @@ describe('TerminalSessionContext', () => {
       ctx.feedInput('cd C:\\temp\r');
       ctx.reset('C:\\new');
       expect(ctx.cwd).toBe('C:\\new');
+    });
+    it('reset clears in-progress escape state', () => {
+      const ctx = new TerminalSessionContext('C:\\Users');
+      // Start an ESC sequence but don't finish it
+      ctx.feedInput('\x1b');
+      ctx.reset('C:\\new');
+      // After reset, typing should work normally (not consumed as ESC seq)
+      ctx.feedInput('hello');
+      expect(ctx.lineBuffer).toBe('hello');
     });
   });
 });
