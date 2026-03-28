@@ -7,7 +7,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { pack } from 'msgpackr';
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup } from '../src/charx-io';
-import { buildRisum, rpackEncode } from '../src/rpack';
+import { buildRisum, rpackDecode, rpackEncode } from '../src/rpack';
 
 // Test data objects are intentionally partial — cast to any at call sites
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -46,6 +46,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
     personality: 'Calm',
     scenario: 'Classroom',
     creatorcomment: 'Created for tests',
+    characterVersion: '1.2.3',
     tags: ['test', 'charx'],
     firstMessage: '안녕하세요.',
     alternateGreetings: ['안녕하세요. 두 번째 인사입니다.', '세 번째 인사입니다.'],
@@ -116,6 +117,8 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
 
   assert.equal(reopened.name, data.name);
   assert.equal(reopened.description, data.description);
+  assert.equal(reopened.creatorcomment, data.creatorcomment);
+  assert.equal(reopened.characterVersion, data.characterVersion);
   assert.equal(reopened.firstMessage, data.firstMessage);
   assert.deepStrictEqual(reopened.alternateGreetings, data.alternateGreetings);
   assert.deepStrictEqual(reopened.groupOnlyGreetings, data.groupOnlyGreetings);
@@ -674,7 +677,7 @@ const errorTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-error-'));
   fs.writeFileSync(filePath, Buffer.from('not-encrypted-data'));
   assert.throws(
     () => openRisup(filePath),
-    (err: Error) => err instanceof Error,
+    /Failed to decompress \.risup file/i,
     'Opening corrupted risup file should throw',
   );
 })();
@@ -898,5 +901,223 @@ fs.rmSync(errorTempDir, { recursive: true, force: true });
   const uris = (reopened.cardAssets as { uri: string }[]).map((a) => a.uri);
   assert.deepStrictEqual(uris, ['embeded://assets/icon/image/main.webp']);
 })();
+
+// ---- .risup compression compatibility tests ----
+const risupCompatTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-compat-'));
+
+function writeRisupEnvelopeCompressed(
+  filePath: string,
+  envelope: Record<string, unknown>,
+  compress: (buf: Buffer) => Buffer,
+): void {
+  const packed = pack(envelope);
+  const compressed = compress(packed);
+  fs.writeFileSync(filePath, rpackEncode(compressed));
+}
+
+(function testRisupOpenGzipCompressed() {
+  const filePath = path.join(risupCompatTempDir, 'gzip.risup');
+  writeRisupEnvelopeCompressed(
+    filePath,
+    {
+      type: 'preset',
+      presetVersion: 2,
+      preset: encryptRisupPayload({ name: 'Gzip Preset', mainPrompt: 'gzip test' }),
+    },
+    (buf) => zlib.gzipSync(buf),
+  );
+
+  const data = openRisup(filePath);
+  assert.equal(data._fileType, 'risup');
+  assert.equal(data.name, 'Gzip Preset');
+  assert.equal(data.mainPrompt, 'gzip test');
+  assert.equal(data._compressionMode, 'gzip', 'gzip-compressed file should be detected as gzip');
+})();
+
+(function testRisupOpenZlibCompressed() {
+  const filePath = path.join(risupCompatTempDir, 'zlib.risup');
+  writeRisupEnvelopeCompressed(
+    filePath,
+    {
+      type: 'preset',
+      presetVersion: 2,
+      preset: encryptRisupPayload({ name: 'Zlib Preset', mainPrompt: 'zlib test' }),
+    },
+    (buf) => zlib.deflateSync(buf),
+  );
+
+  const data = openRisup(filePath);
+  assert.equal(data._fileType, 'risup');
+  assert.equal(data.name, 'Zlib Preset');
+  assert.equal(data.mainPrompt, 'zlib test');
+  assert.equal(data._compressionMode, 'zlib', 'zlib-compressed file should be detected as zlib');
+})();
+
+(function testRisupOpenRawDeflateCompressed() {
+  const filePath = path.join(risupCompatTempDir, 'raw.risup');
+  writeRisupEnvelopeCompressed(
+    filePath,
+    {
+      type: 'preset',
+      presetVersion: 2,
+      preset: encryptRisupPayload({ name: 'Raw Preset', mainPrompt: 'raw test' }),
+    },
+    (buf) => zlib.deflateRawSync(buf),
+  );
+
+  const data = openRisup(filePath);
+  assert.equal(data._fileType, 'risup');
+  assert.equal(data.name, 'Raw Preset');
+  assert.equal(data.mainPrompt, 'raw test');
+  assert.equal(data._compressionMode, 'raw', 'raw-deflate file should be detected as raw');
+})();
+
+(function testRisupSavePreservesGzipMode() {
+  const srcPath = path.join(risupCompatTempDir, 'gzip-preserve-src.risup');
+  const dstPath = path.join(risupCompatTempDir, 'gzip-preserve-dst.risup');
+  writeRisupEnvelopeCompressed(
+    srcPath,
+    {
+      type: 'preset',
+      presetVersion: 2,
+      preset: encryptRisupPayload({ name: 'Preserve Gzip', mainPrompt: 'preserve gzip' }),
+    },
+    (buf) => zlib.gzipSync(buf),
+  );
+
+  const opened = openRisup(srcPath);
+  assert.equal(opened._compressionMode, 'gzip');
+
+  saveRisup(dstPath, opened);
+
+  const savedDecoded = rpackDecode(fs.readFileSync(dstPath));
+  assert.equal(savedDecoded[0], 0x1f, 'saved file should start with gzip magic byte 0x1f');
+  assert.equal(savedDecoded[1], 0x8b, 'saved file should have gzip magic byte 0x8b');
+
+  const reopened = openRisup(dstPath);
+  assert.equal(reopened.name, 'Preserve Gzip');
+  assert.equal(reopened._compressionMode, 'gzip');
+})();
+
+(function testRisupSavePreservesZlibMode() {
+  const srcPath = path.join(risupCompatTempDir, 'zlib-preserve-src.risup');
+  const dstPath = path.join(risupCompatTempDir, 'zlib-preserve-dst.risup');
+  writeRisupEnvelopeCompressed(
+    srcPath,
+    {
+      type: 'preset',
+      presetVersion: 2,
+      preset: encryptRisupPayload({ name: 'Preserve Zlib', mainPrompt: 'preserve zlib' }),
+    },
+    (buf) => zlib.deflateSync(buf),
+  );
+
+  const opened = openRisup(srcPath);
+  assert.equal(opened._compressionMode, 'zlib');
+
+  saveRisup(dstPath, opened);
+
+  const savedDecoded = rpackDecode(fs.readFileSync(dstPath));
+  assert.equal(savedDecoded[0], 0x78, 'saved file should start with zlib magic byte 0x78');
+
+  const reopened = openRisup(dstPath);
+  assert.equal(reopened.name, 'Preserve Zlib');
+  assert.equal(reopened._compressionMode, 'zlib');
+})();
+
+(function testRisupSavePreservesRawMode() {
+  const srcPath = path.join(risupCompatTempDir, 'raw-preserve-src.risup');
+  const dstPath = path.join(risupCompatTempDir, 'raw-preserve-dst.risup');
+  writeRisupEnvelopeCompressed(
+    srcPath,
+    {
+      type: 'preset',
+      presetVersion: 2,
+      preset: encryptRisupPayload({ name: 'Preserve Raw', mainPrompt: 'preserve raw' }),
+    },
+    (buf) => zlib.deflateRawSync(buf),
+  );
+
+  const opened = openRisup(srcPath);
+  assert.equal(opened._compressionMode, 'raw');
+
+  saveRisup(dstPath, opened);
+
+  const savedDecoded = rpackDecode(fs.readFileSync(dstPath));
+  // Raw DEFLATE has no magic header; verify it is NOT gzip (0x1f 0x8b) and NOT zlib (0x78 with valid CMF/FLG)
+  assert.notEqual(
+    savedDecoded[0] === 0x1f && savedDecoded[1] === 0x8b,
+    true,
+    'saved raw file must not have gzip magic bytes',
+  );
+  assert.notEqual(
+    savedDecoded[0] === 0x78 && (savedDecoded[0] * 256 + savedDecoded[1]) % 31 === 0,
+    true,
+    'saved raw file must not have zlib magic bytes',
+  );
+
+  const reopened = openRisup(dstPath);
+  assert.equal(reopened.name, 'Preserve Raw');
+  assert.equal(reopened._compressionMode, 'raw', 'round-tripped raw file should still be detected as raw');
+})();
+
+(function testRisupNewPresetDefaultsToGzip() {
+  const filePath = path.join(risupCompatTempDir, 'new-default.risup');
+  const data: any = {
+    _fileType: 'risup',
+    name: 'New Default Preset',
+    description: '',
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    moduleId: '',
+    moduleName: '',
+    moduleDescription: '',
+    mainPrompt: 'default mode test',
+    jailbreak: '',
+    temperature: 80,
+    maxContext: 4000,
+    maxResponse: 300,
+    frequencyPenalty: 70,
+    presencePenalty: 70,
+    aiModel: '',
+    subModel: '',
+    apiType: '',
+    promptPreprocess: false,
+    promptTemplate: '[]',
+    presetBias: '[]',
+    formatingOrder: '[]',
+    presetImage: '',
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {},
+    _moduleData: null,
+    _presetData: null,
+    // No _compressionMode set — should default to gzip
+  };
+
+  saveRisup(filePath, data);
+
+  const decoded = rpackDecode(fs.readFileSync(filePath));
+  assert.equal(decoded[0], 0x1f, 'new preset should default to gzip (0x1f magic byte)');
+  assert.equal(decoded[1], 0x8b, 'new preset should default to gzip (0x8b magic byte)');
+
+  const reopened = openRisup(filePath);
+  assert.equal(reopened.name, 'New Default Preset');
+  assert.equal(reopened.mainPrompt, 'default mode test');
+  assert.equal(reopened._compressionMode, 'gzip');
+})();
+
+fs.rmSync(risupCompatTempDir, { recursive: true, force: true });
 
 console.log('test-charx passed (including risup, error cases, and cardAssets reconciliation)');

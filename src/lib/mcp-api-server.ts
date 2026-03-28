@@ -14,6 +14,12 @@ import {
 } from './lorebook-folders';
 import { SEARCHABLE_TEXT_FIELDS, searchAllTextSurfaces, searchTextBlock } from './mcp-search';
 import type { ToggleMap } from './cbs-parser';
+import {
+  parsePromptTemplate,
+  serializePromptTemplate,
+  parseFormatingOrder,
+  type PromptItemModel,
+} from './risup-prompt-model';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -134,6 +140,58 @@ function jsonRes(res: http.ServerResponse, data: unknown, status?: number): void
 
 function logMcpMutation(action: string, target: string, details: Record<string, unknown>): void {
   console.log(`[main][mcp] ${action}:`, { target, ...details });
+}
+
+function promptItemPreview(item: PromptItemModel): string {
+  if (!item.supported) {
+    return `[unsupported: ${item.type ?? 'unknown'}]`;
+  }
+  switch (item.type) {
+    case 'plain':
+    case 'jailbreak':
+    case 'cot':
+    case 'chatML': {
+      const t = item.text || '';
+      return t.slice(0, 80) + (t.length > 80 ? '…' : '');
+    }
+    case 'persona':
+    case 'description':
+    case 'lorebook':
+    case 'postEverything':
+    case 'memory':
+      return item.innerFormat ? `[innerFormat: ${item.innerFormat.slice(0, 60)}]` : `[${item.type}]`;
+    case 'authornote': {
+      const dt = item.defaultText;
+      const inf = item.innerFormat;
+      return dt
+        ? dt.slice(0, 80) + (dt.length > 80 ? '…' : '')
+        : inf
+          ? `[innerFormat: ${inf.slice(0, 60)}]`
+          : '[authornote]';
+    }
+    case 'chat':
+      return `[range: ${item.rangeStart}–${item.rangeEnd}]`;
+    case 'cache':
+      return `[cache: ${item.name}, depth ${item.depth}, role ${item.role}]`;
+  }
+}
+
+/**
+ * Validate a raw item object as a supported prompt item.
+ * Returns the parsed model on success, or an error string on failure.
+ */
+function validatePromptItemInput(item: unknown): { model: PromptItemModel } | { error: string } {
+  const testModel = parsePromptTemplate(JSON.stringify([item]));
+  if (testModel.state === 'invalid' || testModel.items.length === 0) {
+    return { error: testModel.parseError || 'Invalid item structure.' };
+  }
+  const parsed = testModel.items[0];
+  if (!parsed.supported) {
+    return {
+      error: `Unsupported item type: "${parsed.type ?? 'unknown'}". Use write_field("promptTemplate") for raw/unsupported structures.`,
+    };
+  }
+  return { model: parsed };
 }
 
 interface McpErrorInfo {
@@ -6884,6 +6942,462 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         } catch (e: any) {
           return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: `CBS diff error: ${e.message}` });
+        }
+      }
+
+      // ================================================================
+      // RISUP: Prompt Items & Formating Order
+      // ================================================================
+
+      // ----------------------------------------------------------------
+      // GET /risup/prompt-items — list all prompt items
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risup' && parts[1] === 'prompt-items' && !parts[2] && req.method === 'GET') {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'list risup prompt items',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'list risup prompt items',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 promptTemplate을 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: model.parseError },
+          });
+        }
+        const items = model.items.map((item, i) => {
+          const entry: Record<string, unknown> = {
+            index: i,
+            type: item.type ?? null,
+            supported: item.supported,
+            preview: promptItemPreview(item),
+          };
+          if (item.supported && item.name !== undefined) {
+            entry.name = item.name;
+          }
+          return entry;
+        });
+        return jsonRes(res, {
+          count: model.items.length,
+          state: model.state,
+          hasUnsupportedContent: model.hasUnsupportedContent,
+          items,
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item/add — add new prompt item
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] === 'add' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'add risup prompt item',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'add risup prompt item',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: model.parseError },
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-item/add', broadcastStatus);
+        if (!body) return;
+        const validation = validatePromptItemInput(body.item);
+        if ('error' in validation) {
+          return mcpError(res, 400, {
+            action: 'add risup prompt item',
+            message: validation.error,
+            suggestion:
+              'Supported types: plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache. For unsupported shapes use write_field("promptTemplate").',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const newItems = [...model.items, validation.model];
+        const newText = serializePromptTemplate({ items: newItems });
+        const newIdx = newItems.length - 1;
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 추가 요청',
+          `AI 어시스턴트가 promptTemplate에 새 항목(type: ${validation.model.type})을 추가하려 합니다.`,
+        );
+        if (allowed) {
+          currentData.promptTemplate = newText;
+          logMcpMutation('add risup prompt item', 'risup:promptTemplate', {
+            type: validation.model.type,
+            newIndex: newIdx,
+          });
+          deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+          return jsonRes(res, { success: true, index: newIdx });
+        } else {
+          return mcpError(res, 403, {
+            action: 'add risup prompt item',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 추가 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item/reorder — reorder prompt items
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] === 'reorder' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'reorder risup prompt items',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'reorder risup prompt items',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-item/reorder', broadcastStatus);
+        if (!body) return;
+        const newOrder: number[] = body.order;
+        if (!Array.isArray(newOrder) || newOrder.length !== model.items.length) {
+          return jsonRes(
+            res,
+            { error: `order must be an array of length ${model.items.length} (current item count)` },
+            400,
+          );
+        }
+        const sorted = [...newOrder].sort((a, b) => a - b);
+        const expected = Array.from({ length: model.items.length }, (_, i) => i);
+        if (JSON.stringify(sorted) !== JSON.stringify(expected)) {
+          return jsonRes(res, { error: 'order must be a permutation of [0, 1, ..., n-1]' }, 400);
+        }
+
+        const reordered = newOrder.map((i) => model.items[i]);
+        const newText = serializePromptTemplate({ items: reordered });
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 순서 변경 요청',
+          `AI 어시스턴트가 promptTemplate 항목 ${model.items.length}개의 순서를 변경하려 합니다.`,
+        );
+        if (allowed) {
+          currentData.promptTemplate = newText;
+          logMcpMutation('reorder risup prompt items', 'risup:promptTemplate', { count: model.items.length });
+          deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+          return jsonRes(res, { success: true, order: newOrder });
+        } else {
+          return mcpError(res, 403, {
+            action: 'reorder risup prompt items',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 순서 변경 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // GET /risup/prompt-item/:idx — read single prompt item
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] &&
+        !parts[3] &&
+        !['add', 'reorder'].includes(parts[2]) &&
+        req.method === 'GET'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'read risup prompt item',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'read risup prompt item',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const idx = parseInt(parts[2], 10);
+        if (isNaN(idx) || idx < 0 || idx >= model.items.length) {
+          return mcpError(res, 400, {
+            action: 'read risup prompt item',
+            message: `Index ${parts[2]} out of range (0–${model.items.length - 1})`,
+            suggestion: 'list_risup_prompt_items로 유효한 index를 확인하세요.',
+            target: `risup:promptTemplate:${parts[2]}`,
+          });
+        }
+        const item = model.items[idx];
+        return jsonRes(res, {
+          index: idx,
+          item: item.rawValue,
+          supported: item.supported,
+          type: item.type,
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item/:idx/delete — delete prompt item
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] &&
+        parts[3] === 'delete' &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'delete risup prompt item',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'delete risup prompt item',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const idx = parseInt(parts[2], 10);
+        if (isNaN(idx) || idx < 0 || idx >= model.items.length) {
+          return mcpError(res, 400, {
+            action: 'delete risup prompt item',
+            message: `Index ${parts[2]} out of range (0–${model.items.length - 1})`,
+            suggestion: 'list_risup_prompt_items로 유효한 index를 확인하세요.',
+            target: `risup:promptTemplate:${parts[2]}`,
+          });
+        }
+        const deletedType = model.items[idx].type ?? 'unknown';
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 삭제 요청',
+          `AI 어시스턴트가 promptTemplate의 항목 #${idx} (type: ${deletedType})을(를) 삭제하려 합니다.`,
+        );
+        if (allowed) {
+          const newItems = model.items.filter((_, i) => i !== idx);
+          const newText = serializePromptTemplate({ items: newItems });
+          currentData.promptTemplate = newText;
+          logMcpMutation('delete risup prompt item', 'risup:promptTemplate', { idx, deletedType });
+          deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+          return jsonRes(res, { success: true, deleted: idx });
+        } else {
+          return mcpError(res, 403, {
+            action: 'delete risup prompt item',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: `risup:promptTemplate:${idx}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item/:idx — write/update prompt item
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] &&
+        !parts[3] &&
+        !['add', 'reorder'].includes(parts[2]) &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'write risup prompt item',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'write risup prompt item',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const idx = parseInt(parts[2], 10);
+        if (isNaN(idx) || idx < 0 || idx >= model.items.length) {
+          return mcpError(res, 400, {
+            action: 'write risup prompt item',
+            message: `Index ${parts[2]} out of range (0–${model.items.length - 1})`,
+            suggestion: 'list_risup_prompt_items로 유효한 index를 확인하세요.',
+            target: `risup:promptTemplate:${parts[2]}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `risup/prompt-item/${idx}`, broadcastStatus);
+        if (!body) return;
+        const validation = validatePromptItemInput(body.item);
+        if ('error' in validation) {
+          return mcpError(res, 400, {
+            action: 'write risup prompt item',
+            message: validation.error,
+            suggestion:
+              'Supported types: plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache. For unsupported shapes use write_field("promptTemplate").',
+            target: `risup:promptTemplate:${idx}`,
+          });
+        }
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 수정 요청',
+          `AI 어시스턴트가 promptTemplate의 항목 #${idx} (type: ${validation.model.type})을(를) 수정하려 합니다.`,
+        );
+        if (allowed) {
+          const newItems = model.items.map((item, i) => (i === idx ? validation.model : item));
+          const newText = serializePromptTemplate({ items: newItems });
+          currentData.promptTemplate = newText;
+          logMcpMutation('write risup prompt item', `risup:promptTemplate:${idx}`, { type: validation.model.type });
+          deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+          return jsonRes(res, { success: true, index: idx });
+        } else {
+          return mcpError(res, 403, {
+            action: 'write risup prompt item',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: `risup:promptTemplate:${idx}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // GET /risup/formating-order — read formating order
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risup' && parts[1] === 'formating-order' && !parts[2] && req.method === 'GET') {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'read risup formating order',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:formatingOrder',
+          });
+        }
+        const rawText = typeof currentData.formatingOrder === 'string' ? currentData.formatingOrder : '';
+        const model = parseFormatingOrder(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'read risup formating order',
+            message: `Invalid formatingOrder: ${model.parseError}`,
+            suggestion: 'write_field("formatingOrder")로 수정하거나 초기화하세요.',
+            target: 'risup:formatingOrder',
+            details: { parseError: model.parseError },
+          });
+        }
+        const items = model.items.map((item, i) => ({ index: i, token: item.token, known: item.known }));
+        return jsonRes(res, { state: model.state, items });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/formating-order — write formating order
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risup' && parts[1] === 'formating-order' && !parts[2] && req.method === 'POST') {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'write risup formating order',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:formatingOrder',
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/formating-order', broadcastStatus);
+        if (!body) return;
+        const itemsRaw: unknown = body.items;
+        if (!Array.isArray(itemsRaw)) {
+          return jsonRes(res, { error: 'items must be an array of {token: string}' }, 400);
+        }
+        for (let i = 0; i < itemsRaw.length; i++) {
+          const it = itemsRaw[i];
+          if (!it || typeof it !== 'object' || typeof (it as Record<string, unknown>).token !== 'string') {
+            return mcpError(res, 400, {
+              action: 'write risup formating order',
+              message: `Item at index ${i} must have a string "token" field.`,
+              suggestion: '{ items: [{ token: "main" }, { token: "chats" }] } 형식으로 전달하세요.',
+              target: 'risup:formatingOrder',
+              details: { invalidIndex: i },
+            });
+          }
+        }
+        const newTokens = (itemsRaw as Array<{ token: string }>).map((it) => it.token);
+        const newValue = JSON.stringify(newTokens, null, 2);
+        const oldValue = typeof currentData.formatingOrder === 'string' ? currentData.formatingOrder : '';
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 수정 요청',
+          `AI 어시스턴트가 formatingOrder를 ${newTokens.length}개 토큰으로 수정하려 합니다.`,
+        );
+        if (allowed) {
+          currentData.formatingOrder = newValue;
+          logMcpMutation('write risup formating order', 'risup:formatingOrder', {
+            oldSize: oldValue.length,
+            newSize: newValue.length,
+            count: newTokens.length,
+          });
+          deps.broadcastToAll('data-updated', 'formatingOrder', newValue);
+          return jsonRes(res, { success: true, count: newTokens.length });
+        } else {
+          return mcpError(res, 403, {
+            action: 'write risup formating order',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'risup:formatingOrder',
+          });
         }
       }
 

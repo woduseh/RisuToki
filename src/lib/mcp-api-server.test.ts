@@ -603,6 +603,337 @@ describe('MCP API lorebook folder mutations', () => {
   });
 });
 
+describe('MCP API risup prompt-item routes', () => {
+  function createRisupFixture(): SearchFixture {
+    return {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'Hello world', role: 'system' },
+        { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+        { type: 'lorebook' },
+      ]),
+      formatingOrder: JSON.stringify(['main', 'description', 'chats']),
+    };
+  }
+
+  it('lists prompt items with type/supported/preview metadata', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await getJson<{
+        count: number;
+        state: string;
+        hasUnsupportedContent: boolean;
+        items: Array<{ index: number; type: string; supported: boolean; preview: string }>;
+      }>(api.port, api.token, '/risup/prompt-items');
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBe(3);
+      expect(res.data.state).toBe('valid');
+      expect(res.data.hasUnsupportedContent).toBe(false);
+      expect(res.data.items).toHaveLength(3);
+      expect(res.data.items[0]).toMatchObject({ index: 0, type: 'plain', supported: true });
+      expect(res.data.items[1]).toMatchObject({ index: 1, type: 'chat', supported: true });
+      expect(res.data.items[2]).toMatchObject({ index: 2, type: 'lorebook', supported: true });
+      expect(typeof res.data.items[0].preview).toBe('string');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('exposes unsupported items with metadata in list', async () => {
+    const data: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { type: 'unknowntype', foo: 'bar' },
+        { type: 'plain', type2: 'normal', text: 'Hello', role: 'system' },
+      ]),
+      formatingOrder: '[]',
+    };
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<{
+        hasUnsupportedContent: boolean;
+        items: Array<{ supported: boolean; type: string | null }>;
+      }>(api.port, api.token, '/risup/prompt-items');
+      expect(res.status).toBe(200);
+      expect(res.data.hasUnsupportedContent).toBe(true);
+      expect(res.data.items[0].supported).toBe(false);
+      expect(res.data.items[0].type).toBe('unknowntype');
+      expect(res.data.items[1].supported).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('reads one prompt item by index', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await getJson<{
+        index: number;
+        item: Record<string, unknown>;
+        supported: boolean;
+        type: string;
+      }>(api.port, api.token, '/risup/prompt-item/0');
+      expect(res.status).toBe(200);
+      expect(res.data.index).toBe(0);
+      expect(res.data.supported).toBe(true);
+      expect(res.data.type).toBe('plain');
+      expect(res.data.item).toMatchObject({ type: 'plain', text: 'Hello world' });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('writes one prompt item and mutates currentData.promptTemplate', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    try {
+      const newItem = { type: 'plain', type2: 'normal', text: 'Updated text', role: 'user' };
+      const res = await postJson<{ success: boolean; index: number }>(api.port, api.token, '/risup/prompt-item/0', {
+        item: newItem,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.index).toBe(0);
+      const parsed = JSON.parse(currentData.promptTemplate as string) as Array<Record<string, unknown>>;
+      expect(parsed[0].text).toBe('Updated text');
+      expect(parsed[0].role).toBe('user');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('adds a new prompt item', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    try {
+      const newItem = { type: 'jailbreak', type2: 'normal', text: 'New jailbreak', role: 'system' };
+      const res = await postJson<{ success: boolean; index: number }>(api.port, api.token, '/risup/prompt-item/add', {
+        item: newItem,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.index).toBe(3);
+      const parsed = JSON.parse(currentData.promptTemplate as string) as Array<Record<string, unknown>>;
+      expect(parsed).toHaveLength(4);
+      expect(parsed[3].type).toBe('jailbreak');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('deletes a prompt item', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    try {
+      const res = await postJson<{ success: boolean; deleted: number }>(
+        api.port,
+        api.token,
+        '/risup/prompt-item/1/delete',
+        {},
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.deleted).toBe(1);
+      const parsed = JSON.parse(currentData.promptTemplate as string) as Array<Record<string, unknown>>;
+      expect(parsed).toHaveLength(2);
+      expect(parsed[0].type).toBe('plain');
+      expect(parsed[1].type).toBe('lorebook');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('reorders prompt items', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    try {
+      const res = await postJson<{ success: boolean; order: number[] }>(
+        api.port,
+        api.token,
+        '/risup/prompt-item/reorder',
+        { order: [2, 0, 1] },
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.order).toEqual([2, 0, 1]);
+      const parsed = JSON.parse(currentData.promptTemplate as string) as Array<Record<string, unknown>>;
+      expect(parsed[0].type).toBe('lorebook'); // was index 2
+      expect(parsed[1].type).toBe('plain'); // was index 0
+      expect(parsed[2].type).toBe('chat'); // was index 1
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('reads the formating order', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await getJson<{
+        state: string;
+        items: Array<{ index: number; token: string; known: boolean }>;
+      }>(api.port, api.token, '/risup/formating-order');
+      expect(res.status).toBe(200);
+      expect(res.data.state).toBe('valid');
+      expect(res.data.items).toHaveLength(3);
+      expect(res.data.items[0]).toMatchObject({ index: 0, token: 'main', known: true });
+      expect(res.data.items[1]).toMatchObject({ index: 1, token: 'description', known: true });
+      expect(res.data.items[2]).toMatchObject({ index: 2, token: 'chats', known: true });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('writes the formating order', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    try {
+      const res = await postJson<{ success: boolean; count: number }>(api.port, api.token, '/risup/formating-order', {
+        items: [{ token: 'chats' }, { token: 'main' }, { token: 'lorebook' }],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.count).toBe(3);
+      const parsed = JSON.parse(currentData.formatingOrder as string) as string[];
+      expect(parsed).toEqual(['chats', 'main', 'lorebook']);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('accepts unknown string tokens in formating-order write', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    try {
+      const res = await postJson<{ success: boolean; count: number }>(api.port, api.token, '/risup/formating-order', {
+        items: [{ token: 'main' }, { token: 'customUnknownToken' }],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      const parsed = JSON.parse(currentData.formatingOrder as string) as string[];
+      expect(parsed).toContain('customUnknownToken');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns 400 for invalid prompt item index (GET)', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await getJson<{ error: string }>(api.port, api.token, '/risup/prompt-item/99');
+      expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns 400 for invalid prompt item index (POST write)', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/risup/prompt-item/99', {
+        item: { type: 'plain', type2: 'normal', text: 'x', role: 'system' },
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns 400 when writing unsupported item type', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/risup/prompt-item/0', {
+        item: { type: 'unknowntype', foo: 'bar' },
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns 400 when adding unsupported item type', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/risup/prompt-item/add', {
+        item: { type: 'unknowntype', foo: 'bar' },
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns 400 when current promptTemplate is invalid JSON', async () => {
+    const data: SearchFixture = { _fileType: 'risup', promptTemplate: 'NOT_VALID_JSON', formatingOrder: '[]' };
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<{ error: string; details?: { parseError: string } }>(
+        api.port,
+        api.token,
+        '/risup/prompt-items',
+      );
+      expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns 400 when current formatingOrder is invalid JSON', async () => {
+    const data: SearchFixture = { _fileType: 'risup', promptTemplate: '[]', formatingOrder: 'NOT_VALID_JSON' };
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<{ error: string }>(api.port, api.token, '/risup/formating-order');
+      expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns 400 when current formatingOrder contains mixed-type entries', async () => {
+    const data: SearchFixture = { _fileType: 'risup', promptTemplate: '[]', formatingOrder: '["main", 42, "chats"]' };
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<{ error: string }>(api.port, api.token, '/risup/formating-order');
+      expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns 400 for non-risup file type', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await getJson<{ error: string }>(api.port, api.token, '/risup/prompt-items');
+      expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns 400 when formating-order items contain non-string tokens', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/risup/formating-order', {
+        items: [{ token: 'main' }, { token: 123 }],
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns 400 for invalid reorder (wrong length)', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/risup/prompt-item/reorder', {
+        order: [0, 1], // only 2, but there are 3 items
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
 describe('MCP API lorebook folder reads', () => {
   it('returns canonical folder identity from lorebook read endpoints', async () => {
     const currentData: SearchFixture = {

@@ -1992,6 +1992,97 @@ server.tool(
   },
 );
 
+// ===== Risup Prompt Item Tools =====
+
+server.tool(
+  'list_risup_prompt_items',
+  'Lists all items in the risup preset promptTemplate with type, supported flag, and a concise preview. The current file must be a .risup preset. Returns 400 if the file is not risup or if promptTemplate JSON is invalid.',
+  {},
+  async () => textResult(await apiRequest('GET', '/risup/prompt-items')),
+);
+
+server.tool(
+  'read_risup_prompt_item',
+  'Reads a single prompt item from the risup promptTemplate by index. Returns the raw item object plus supported/type metadata. The current file must be a .risup preset.',
+  {
+    index: z
+      .number()
+      .describe('Zero-based index of the prompt item. Use list_risup_prompt_items to find valid indices.'),
+  },
+  async ({ index }) => textResult(await apiRequest('GET', `/risup/prompt-item/${index}`)),
+);
+
+server.tool(
+  'write_risup_prompt_item',
+  'Replaces a single prompt item in the risup promptTemplate by index. Only supported item types are accepted (plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache). For unsupported/raw structures use write_field("promptTemplate"). Requires user confirmation.',
+  {
+    index: z
+      .number()
+      .describe('Zero-based index of the prompt item to replace. Use list_risup_prompt_items to find valid indices.'),
+    item: z
+      .record(z.string(), z.unknown())
+      .describe(
+        'Replacement item object. Must be a supported type. Example: { "type": "plain", "type2": "normal", "text": "...", "role": "system" }',
+      ),
+  },
+  async ({ index, item }) => textResult(await apiRequest('POST', `/risup/prompt-item/${index}`, { item })),
+);
+
+server.tool(
+  'add_risup_prompt_item',
+  'Appends a new prompt item to the risup promptTemplate. Only supported item types are accepted (plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache). For unsupported/raw structures use write_field("promptTemplate"). Requires user confirmation.',
+  {
+    item: z
+      .record(z.string(), z.unknown())
+      .describe(
+        'Item object to add. Must be a supported type. Example: { "type": "jailbreak", "type2": "normal", "text": "...", "role": "system" }',
+      ),
+  },
+  async ({ item }) => textResult(await apiRequest('POST', '/risup/prompt-item/add', { item })),
+);
+
+server.tool(
+  'delete_risup_prompt_item',
+  'Deletes a single prompt item from the risup promptTemplate by index. Requires user confirmation.',
+  {
+    index: z
+      .number()
+      .describe('Zero-based index of the prompt item to delete. Use list_risup_prompt_items to find valid indices.'),
+  },
+  async ({ index }) => textResult(await apiRequest('POST', `/risup/prompt-item/${index}/delete`, {})),
+);
+
+server.tool(
+  'reorder_risup_prompt_items',
+  'Reorders all prompt items in the risup promptTemplate. The order array must be a full permutation of [0, 1, ..., n-1] where n is the current item count. Requires user confirmation.',
+  {
+    order: z
+      .array(z.number())
+      .describe('New order as a permutation of [0, 1, ..., n-1]. Example: [2, 0, 1] moves item 2 to position 0.'),
+  },
+  async ({ order }) => textResult(await apiRequest('POST', '/risup/prompt-item/reorder', { order })),
+);
+
+server.tool(
+  'read_risup_formating_order',
+  'Reads the risup formatingOrder as a list of tokens with known/unknown flags. The current file must be a .risup preset. Returns 400 if formatingOrder JSON is invalid.',
+  {},
+  async () => textResult(await apiRequest('GET', '/risup/formating-order')),
+);
+
+server.tool(
+  'write_risup_formating_order',
+  'Writes the risup formatingOrder. All tokens must be strings; unknown tokens are preserved as-is. Non-string tokens are rejected with 400. Requires user confirmation.',
+  {
+    items: z
+      .array(z.object({ token: z.string().describe('Formating order token (e.g. "main", "chats", "lorebook")') }))
+      .describe(
+        'Ordered list of token objects. Known tokens: main, jailbreak, chats, lorebook, globalNote, authorNote, lastChat, description, postEverything, personaPrompt. Unknown string tokens are accepted.',
+      ),
+  },
+  async ({ items }) => textResult(await apiRequest('POST', '/risup/formating-order', { items })),
+);
+
 // ==================== Prompt ====================
 
 server.prompt(

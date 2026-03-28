@@ -50,3 +50,9 @@ Thumbs.db
 
 # Bot data
 bot/
+
+# Prompt data
+prompts/
+
+# Preset data
+presets/

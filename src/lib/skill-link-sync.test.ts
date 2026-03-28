@@ -25,7 +25,17 @@ function createDirectoryLink(linkPath: string, sourcePath: string, platform: Nod
   const relativeTarget = path.relative(path.dirname(linkPath), sourcePath);
 
   if (platform === 'win32') {
-    fs.symlinkSync(relativeTarget, linkPath, 'dir');
+    try {
+      fs.symlinkSync(relativeTarget, linkPath, 'dir');
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'EACCES' && code !== 'EPERM' && code !== 'UNKNOWN') {
+        throw error;
+      }
+    }
+
+    fs.symlinkSync(sourcePath, linkPath, 'junction');
     return;
   }
 

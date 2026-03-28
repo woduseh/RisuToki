@@ -68,9 +68,12 @@ import {
   getFormEditors,
   initFormEditor,
   showLoreEditor,
+  showTriggerEditor,
+  showRisupEditor,
   showRegexEditor,
 } from '../lib/form-editor';
 import type { FormTabInfo } from '../lib/form-editor';
+import type { RisupFormTabInfo } from '../lib/risup-form-editor';
 import { showConfirm, resetConfirmAllowAll, showCloseConfirm, showPrompt } from '../lib/dialog';
 import { showContextMenu, hideContextMenu } from '../lib/context-menu';
 import type { ContextMenuItem } from '../lib/context-menu';
@@ -108,6 +111,14 @@ import {
   buildRefsSidebar as _buildRefsSidebar,
   openRefTabById as _openRefTabById,
 } from '../lib/sidebar-refs';
+import {
+  RISUP_FIELD_GROUPS,
+  getVisibleRisupFieldGroups,
+  getRisupFieldGroup,
+  type RisupFieldGroupId,
+} from '../lib/risup-fields';
+import { getCharxInfoItems } from '../lib/charx-sidebar-fields';
+import { isTriggerScriptsLuaMode } from '../lib/trigger-script-model';
 import { initKeyboard } from './keyboard-shortcuts';
 import {
   getRpLabel,
@@ -122,7 +133,21 @@ import {
   showSettingsPopup as _showSettingsPopup,
   handleTerminalBg,
 } from './settings-handlers';
-import { tryExtractPrimaryLuaFromTriggerScriptsText, mergeLuaIntoTriggerScriptsText } from './trigger-script-utils';
+import {
+  activateTriggerScriptsFormTab,
+  applyTriggerScriptsControllerMcpUpdate,
+  backupActiveTriggerScriptsRestoreDraft,
+  openTriggerScriptsControllerTab,
+  restoreTriggerScriptsControllerBackup,
+} from './trigger-scripts-controller';
+import { mergeLuaIntoTriggerScriptsText } from './trigger-script-utils';
+import {
+  backupActiveRisupRestoreDraft,
+  findActiveRisupTab,
+  getRisupSidebarBackupTargets,
+  getRisupSidebarExtraItems,
+  restoreRisupTabsControllerBackup,
+} from './risup-tabs-controller';
 
 const settingsSnapshot = readAppSettingsSnapshot();
 
@@ -377,11 +402,28 @@ function createOrSwitchEditor(tabInfo: Tab): void {
     return;
   }
 
+  if (tabInfo.language === '_risupform') {
+    tabMgr.activeTabId = tabInfo.id;
+    showRisupEditor(tabInfo as RisupFormTabInfo);
+    tabMgr.renderTabs();
+    updateSidebarActive();
+    return;
+  }
+
   if (tabInfo.language === '_regexform') {
     tabMgr.activeTabId = tabInfo.id;
     showRegexEditor(tabInfo as FormTabInfo);
     tabMgr.renderTabs();
     updateSidebarActive();
+    return;
+  }
+
+  if (
+    activateTriggerScriptsFormTab(tabInfo, tabMgr, {
+      showTriggerEditor: (triggerTab) => showTriggerEditor(triggerTab),
+      updateSidebarActive,
+    })
+  ) {
     return;
   }
 
@@ -604,6 +646,47 @@ function buildAltGreetTabState(index: number): Record<string, unknown> | null {
   };
 }
 
+function buildRisupTabState(groupId: string, _tab: Tab): Record<string, unknown> | null {
+  const group = getRisupFieldGroup(groupId);
+  if (!fileData || !group) return null;
+
+  return {
+    id: `risup_${group.id}`,
+    label: group.label,
+    language: '_risupform',
+    _risupGroupId: group.id,
+    getValue: () => fileData!,
+    setValue: (value: unknown) => {
+      Object.assign(fileData!, value as Record<string, unknown>);
+      if (value && typeof value === 'object' && 'name' in (value as Record<string, unknown>)) {
+        useAppStore().setFileLabel((fileData!.name as string) || 'Untitled');
+      }
+    },
+  };
+}
+
+function openRisupGroupTab(groupId: RisupFieldGroupId): void {
+  const group = getRisupFieldGroup(groupId);
+  if (!group) return;
+  const tabState = buildRisupTabState(groupId, {
+    id: `risup_${groupId}`,
+    label: group.label,
+    language: '_risupform',
+    getValue: () => fileData!,
+    setValue: null,
+    _lastValue: null,
+  });
+  if (!tabState) return;
+  const tab = tabMgr.openTab(
+    tabState.id as string,
+    tabState.label as string,
+    tabState.language as string,
+    tabState.getValue as () => unknown,
+    tabState.setValue as ((value: unknown) => void) | null,
+  );
+  tab._risupGroupId = groupId;
+}
+
 // ==================== Sidebar ====================
 
 // ==================== Sidebar ====================
@@ -680,12 +763,141 @@ function createMcpCopyItem(mcpPath: string): ContextMenuItem {
 function appendBackupItems(items: ContextMenuItem[], backupKey: string, x: number, y: number): void {
   const store = getBackups(backupKey);
   if (store.length > 0) {
-    items.push('---');
-    items.push({
-      label: '백업 불러오기',
-      action: () => showBackupMenu(backupKey, x, y, backupMenuCallbacks),
-    });
+    if (items.length > 0) {
+      items.push('---');
+    }
+    items.push({ label: '백업 불러오기', action: () => showBackupMenu(backupKey, x, y, backupMenuCallbacks) });
   }
+}
+
+function buildRegexSidebar(tree: HTMLElement): void {
+  const rxFolder = createFolderItem('정규식', '⚡', 0);
+  tree.appendChild(rxFolder.header);
+  tree.appendChild(rxFolder.children);
+
+  rxFolder.header.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const items: ContextMenuItem[] = [
+      { label: '새 항목 추가', action: () => addNewRegex() },
+      { label: 'JSON 파일 가져오기', action: () => importRegex() },
+    ];
+    if (fileData!.regex.length > 0) {
+      items.push('---');
+      items.push({
+        label: `전체 삭제 (${fileData!.regex.length}개)`,
+        action: async () => {
+          if (
+            !(await showConfirm(
+              `정규식 전체 ${fileData!.regex.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
+            ))
+          ) {
+            return;
+          }
+          for (let i = fileData!.regex.length - 1; i >= 0; i--) tabMgr.closeTab(`regex_${i}`);
+          fileData!.regex = [];
+          tabMgr.markFieldDirty('regex');
+          buildSidebar();
+          setStatus('정규식 전체 삭제됨');
+        },
+      });
+    }
+    showContextMenu(e.clientX, e.clientY, items);
+  });
+
+  const regexContainer = document.createElement('div');
+  regexContainer.dataset.dndRegexContainer = '';
+  rxFolder.children.appendChild(regexContainer);
+
+  for (let i = 0; i < fileData!.regex.length; i++) {
+    const rx = fileData!.regex[i];
+    const label = rx.comment || `regex_${i}`;
+    const el = createTreeItem(label, '·', 1);
+    el.dataset.dndIdx = String(i);
+    const idx = i;
+    el.addEventListener('click', () => {
+      tabMgr.openTab(
+        `regex_${idx}`,
+        label,
+        '_regexform',
+        () => fileData!.regex[idx],
+        (v) => {
+          Object.assign(fileData!.regex[idx], v);
+        },
+      );
+    });
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items: ContextMenuItem[] = [
+        { label: '이름 변경', action: () => renameRegex(idx) },
+        createMcpCopyItem(`read_regex(${idx})`),
+      ];
+      appendBackupItems(items, `regex_${idx}`, e.clientX, e.clientY);
+      items.push('---');
+      items.push({ label: '삭제', action: () => deleteRegex(idx) });
+      showContextMenu(e.clientX, e.clientY, items);
+    });
+    regexContainer.appendChild(el);
+  }
+}
+
+function buildRisupSidebar(tree: HTMLElement): void {
+  tree.appendChild(createSectionHeader('프리셋'));
+
+  for (const group of getVisibleRisupFieldGroups()) {
+    const el = createTreeItem(group.label, group.icon, 0);
+    el.addEventListener('click', () => openRisupGroupTab(group.id));
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items: ContextMenuItem[] = [];
+      for (const target of getRisupSidebarBackupTargets(
+        group.id,
+        RISUP_FIELD_GROUPS,
+        (backupKey) => getBackups(backupKey).length > 0,
+      )) {
+        if (items.length > 0) {
+          items.push('---');
+        }
+        items.push({
+          label: target.label,
+          action: () => showBackupMenu(target.backupKey, e.clientX, e.clientY, backupMenuCallbacks),
+        });
+      }
+      if (items.length > 0) {
+        showContextMenu(e.clientX, e.clientY, items);
+      }
+    });
+    tree.appendChild(el);
+  }
+
+  for (const item of getRisupSidebarExtraItems()) {
+    const el = createTreeItem(item.label, item.icon, 0);
+    el.addEventListener('click', () => {
+      tabMgr.openTab(
+        item.id,
+        item.label,
+        item.language,
+        () => fileData![item.field],
+        (v: unknown) => {
+          fileData![item.field] = v as string;
+        },
+      );
+    });
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const items: ContextMenuItem[] = [createMcpCopyItem(`read_field("${item.field}")`)];
+      appendBackupItems(items, item.id, e.clientX, e.clientY);
+      showContextMenu(e.clientX, e.clientY, items);
+    });
+    tree.appendChild(el);
+  }
+
+  tree.appendChild(createSectionHeader('스크립트'));
+  buildRegexSidebar(tree);
+  initSidebarDnD(getDndDeps());
 }
 
 function buildSidebar(): void {
@@ -697,6 +909,15 @@ function buildSidebar(): void {
   buildRefsSidebar();
 
   if (!fileData) return;
+
+  const isRisum = fileData._fileType === 'risum';
+  const isRisup = fileData._fileType === 'risup';
+  const isCharx = !isRisum && !isRisup;
+
+  if (isRisup) {
+    buildRisupSidebar(tree);
+    return;
+  }
 
   // ---- Parse Lua sections (defer DOM append to 스크립트 section) ----
   luaSections = parseLuaSections(fileData.lua);
@@ -772,11 +993,6 @@ function buildSidebar(): void {
     luaSectionContainer.appendChild(sectionEl);
   }
 
-  // ---- File type check (needed early for CSS / section headers) ----
-  const isRisum = fileData._fileType === 'risum';
-  const isRisup = fileData._fileType === 'risup';
-  const isCharx = !isRisum && !isRisup;
-
   // ---- Parse CSS sections (defer DOM append to 스크립트 section) — charx only ----
   ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(fileData.css));
   let cssFolder: ReturnType<typeof createFolderItem> | null = null;
@@ -851,29 +1067,15 @@ function buildSidebar(): void {
 
   // ---- Detect Lua/Trigger mode for mutual exclusivity ----
   let luaMode = true; // default: Lua active
-  if (isCharx) {
-    const ts = (fileData.triggerScripts as string) || '[]';
-    try {
-      const parsed = JSON.parse(ts);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        // Has trigger scripts — check if it's embedded Lua or standalone triggers
-        const extractedLua = tryExtractPrimaryLuaFromTriggerScriptsText(ts);
-        luaMode = extractedLua !== null && extractedLua.length > 0;
-      }
-    } catch {
-      /* invalid JSON — default to Lua mode */
-    }
+  if (isCharx || isRisum) {
+    luaMode = isTriggerScriptsLuaMode(fileData.triggerScripts);
   }
 
   // ---- Section: 캐릭터 정보 (charx only) ----
   if (isCharx) {
     tree.appendChild(createSectionHeader('캐릭터 정보'));
 
-    const charInfoItems = [
-      { id: 'description', label: '설명', icon: '📄', lang: 'plaintext', field: 'description' },
-      { id: 'globalNote', label: '글로벌노트', icon: '📝', lang: 'plaintext', field: 'globalNote' },
-      { id: 'defaultVariables', label: '기본변수', icon: '⚙', lang: 'plaintext', field: 'defaultVariables' },
-    ];
+    const charInfoItems = getCharxInfoItems();
     for (const item of charInfoItems) {
       const el = createTreeItem(item.label, item.icon, 0);
       el.addEventListener('click', () => {
@@ -1000,7 +1202,7 @@ function buildSidebar(): void {
   tree.appendChild(createSectionHeader('스크립트'));
 
   // Lua folder (built above, now appended)
-  if (isCharx && !luaMode) {
+  if ((isCharx || isRisum) && !luaMode) {
     luaFolder.header.classList.add('inactive');
     luaFolder.header.title = '현재 트리거 스크립트 모드입니다. Lua는 triggerScripts에 임베디드 시 활성화됩니다.';
   }
@@ -1016,22 +1218,12 @@ function buildSidebar(): void {
   // Trigger Scripts (single item)
   if (!isRisup) {
     const triggerEl = createTreeItem('트리거 스크립트', '🪝', 0);
-    if (isCharx && luaMode) {
+    if ((isCharx || isRisum) && luaMode) {
       triggerEl.classList.add('inactive');
       triggerEl.title = '현재 Lua 모드입니다. triggerScripts에 독립적 트리거가 있으면 활성화됩니다.';
     }
     triggerEl.addEventListener('click', () => {
-      tabMgr.openTab(
-        'triggerScripts',
-        '트리거 스크립트',
-        'json',
-        () => fileData!.triggerScripts || '[]',
-        (value: unknown) => {
-          fileData!.triggerScripts = value as string;
-          const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(value as string);
-          if (nextLua !== null) fileData!.lua = nextLua;
-        },
-      );
+      openTriggerScriptsControllerTab(tabMgr, fileData);
     });
     triggerEl.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -1043,78 +1235,7 @@ function buildSidebar(): void {
     tree.appendChild(triggerEl);
   }
 
-  // Regex folder
-  const rxFolder = createFolderItem('정규식', '⚡', 0);
-  tree.appendChild(rxFolder.header);
-  tree.appendChild(rxFolder.children);
-
-  // Regex folder right-click: add / import / bulk delete
-  rxFolder.header.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const items: ContextMenuItem[] = [
-      { label: '새 항목 추가', action: () => addNewRegex() },
-      { label: 'JSON 파일 가져오기', action: () => importRegex() },
-    ];
-    if (fileData!.regex.length > 0) {
-      items.push('---');
-      items.push({
-        label: `전체 삭제 (${fileData!.regex.length}개)`,
-        action: async () => {
-          if (
-            !(await showConfirm(
-              `정규식 전체 ${fileData!.regex.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
-            ))
-          )
-            return;
-          for (let i = fileData!.regex.length - 1; i >= 0; i--) tabMgr.closeTab(`regex_${i}`);
-          fileData!.regex = [];
-          tabMgr.markFieldDirty('regex');
-          buildSidebar();
-          setStatus('정규식 전체 삭제됨');
-        },
-      });
-    }
-    showContextMenu(e.clientX, e.clientY, items);
-  });
-
-  // Regex items container (for DnD)
-  const regexContainer = document.createElement('div');
-  regexContainer.dataset.dndRegexContainer = '';
-  rxFolder.children.appendChild(regexContainer);
-
-  for (let i = 0; i < fileData.regex.length; i++) {
-    const rx = fileData.regex[i];
-    const label = rx.comment || `regex_${i}`;
-    const el = createTreeItem(label, '·', 1);
-    el.dataset.dndIdx = String(i);
-    const idx = i;
-    el.addEventListener('click', () => {
-      tabMgr.openTab(
-        `regex_${idx}`,
-        label,
-        '_regexform',
-        () => fileData!.regex[idx],
-        (v) => {
-          Object.assign(fileData!.regex[idx], v);
-        },
-      );
-    });
-    // Regex item right-click: rename / copy path / backup / delete
-    el.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const items: ContextMenuItem[] = [
-        { label: '이름 변경', action: () => renameRegex(idx) },
-        createMcpCopyItem(`read_regex(${idx})`),
-      ];
-      appendBackupItems(items, `regex_${idx}`, e.clientX, e.clientY);
-      items.push('---');
-      items.push({ label: '삭제', action: () => deleteRegex(idx) });
-      showContextMenu(e.clientX, e.clientY, items);
-    });
-    regexContainer.appendChild(el);
-  }
+  buildRegexSidebar(tree);
 
   // ==== Section: 데이터 ====
   tree.appendChild(createSectionHeader('데이터'));
@@ -1476,6 +1597,53 @@ function restoreBackup(tabId: string, backupIdx: number): void {
 
   // Find the matching tab or open it
   const tab = tabMgr.openTabs.find((t) => t.id === tabId);
+  if (tabId === 'triggerScripts') {
+    backupActiveTriggerScriptsRestoreDraft({
+      activeTabId: tabMgr.activeTabId,
+      createBackup,
+      tab,
+    });
+    const restored = restoreTriggerScriptsControllerBackup({
+      activeTabId: tabMgr.activeTabId,
+      activateTab: (restoreTab) => createOrSwitchEditor(restoreTab as Tab),
+      backupContent: backup.content,
+      fileData,
+      tab,
+    });
+    if (!restored) return;
+    tabMgr.markDirtyForTabId(tabId);
+    return;
+  }
+  if (tabId.startsWith('risup_')) {
+    const activeRisupTab = findActiveRisupTab({
+      activeTabId: tabMgr.activeTabId,
+      openTabs: tabMgr.openTabs,
+    });
+    backupActiveRisupRestoreDraft({
+      activeTabId: tabMgr.activeTabId,
+      activeTab: activeRisupTab,
+      createBackup,
+    });
+    const restored = restoreRisupTabsControllerBackup({
+      activeTabId: tabMgr.activeTabId,
+      activeTab: activeRisupTab,
+      activateTab: (restoreTab) => createOrSwitchEditor(restoreTab as Tab),
+      backupContent: backup.content,
+      fileData,
+      setFileLabel: (name) => useAppStore().setFileLabel(name),
+      tab,
+    });
+    if (!restored) {
+      setStatus('백업 복원 실패: 형식이 올바르지 않습니다');
+      return;
+    }
+    tabMgr.markDirtyForTabId(tabId);
+    if (activeRisupTab && activeRisupTab.id !== tabId) {
+      tabMgr.markDirtyForTabId(activeRisupTab.id);
+    }
+    setStatus(`백업 v${backupIdx + 1} 복원됨 (${formatBackupTime(backup.time)})`);
+    return;
+  }
   if (tab) {
     // Backup current content before restoring
     if (editorInstance && tabMgr.activeTabId === tabId) {
@@ -2018,6 +2186,11 @@ function openTabById(tabId: string): void {
   if (!fileData) return;
   const data = fileData;
 
+  if (tabId === 'triggerScripts') {
+    openTriggerScriptsControllerTab(tabMgr, fileData);
+    return;
+  }
+
   const tabMap: Record<
     string,
     { label: string; lang: string; get: () => unknown; set: ((v: unknown) => void) | null }
@@ -2048,16 +2221,6 @@ function openTabById(tabId: string): void {
         data.firstMessage = v as string;
       },
     },
-    triggerScripts: {
-      label: '트리거 스크립트',
-      lang: 'json',
-      get: () => data.triggerScripts || '[]',
-      set: (v: unknown) => {
-        data.triggerScripts = v as string;
-        const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(v as string);
-        if (nextLua !== null) data.lua = nextLua;
-      },
-    },
     alternateGreetings: {
       label: '추가 첫 메시지',
       lang: 'json',
@@ -2073,28 +2236,32 @@ function openTabById(tabId: string): void {
         ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(v as string));
       },
     },
-    defaultVariables: {
-      label: '기본변수',
-      lang: 'plaintext',
-      get: () => data.defaultVariables,
-      set: (v: unknown) => {
-        data.defaultVariables = v as string;
-      },
-    },
-    description: {
-      label: '설명',
-      lang: 'plaintext',
-      get: () => data.description,
-      set: (v: unknown) => {
-        data.description = v as string;
-      },
-    },
   };
+
+  for (const item of getCharxInfoItems()) {
+    const field = item.field;
+    tabMap[item.id] = {
+      label: item.label,
+      lang: item.lang,
+      get: () => data[field] ?? '',
+      set: (v: unknown) => {
+        data[field] = v as string;
+      },
+    };
+  }
 
   if (tabMap[tabId]) {
     const t = tabMap[tabId];
     if (tabId === 'lua') data.lua = combineLuaSections(luaSections);
     tabMgr.openTab(tabId, t.label, t.lang, t.get, t.set);
+    return;
+  }
+
+  if (tabId.startsWith('risup_')) {
+    const groupId = tabId.replace('risup_', '') as RisupFieldGroupId;
+    if (getRisupFieldGroup(groupId)) {
+      openRisupGroupTab(groupId);
+    }
     return;
   }
 
@@ -2332,7 +2499,7 @@ export async function initMainRenderer(): Promise<void> {
   const fileLabelEl = document.getElementById('file-label');
   if (fileLabelEl) {
     fileLabelEl.addEventListener('dblclick', () => {
-      if (!fileData || fileData._fileType === 'risup') return;
+      if (!fileData) return;
       const currentName = (fileData.name as string) || '';
       const input = document.createElement('input');
       input.id = 'file-label-input';
@@ -2482,11 +2649,22 @@ export async function initMainRenderer(): Promise<void> {
     if (!fileData) return;
     // (debug log removed)
 
-    const updatePlan = planMcpDataUpdate(field, tabMgr.openTabs);
-    for (const tabId of updatePlan.backupTabIds) {
-      const tab = tabMgr.openTabs.find((entry) => entry.id === tabId);
-      if (tab?.getValue) {
-        createBackup(tab.id, tab.getValue());
+    const updatePlan =
+      field === 'triggerScripts'
+        ? applyTriggerScriptsControllerMcpUpdate({
+            tabMgr,
+            fileData,
+            value,
+            createBackup,
+            activateTab: (tab) => createOrSwitchEditor(tab),
+          })
+        : planMcpDataUpdate(field, tabMgr.openTabs);
+    if (field !== 'triggerScripts') {
+      for (const tabId of updatePlan.backupTabIds) {
+        const tab = tabMgr.openTabs.find((entry) => entry.id === tabId);
+        if (tab?.getValue) {
+          createBackup(tab.id, tab.getValue());
+        }
       }
     }
 
@@ -2515,10 +2693,8 @@ export async function initMainRenderer(): Promise<void> {
         if (pos) editorInstance.setPosition(pos);
       }
     } else {
-      fileData[field] = value;
-      if (field === 'triggerScripts') {
-        const nextLua = tryExtractPrimaryLuaFromTriggerScriptsText(value as string);
-        if (nextLua !== null) fileData.lua = nextLua;
+      if (field !== 'triggerScripts') {
+        fileData[field] = value;
       }
       if (field === 'lua') {
         fileData.triggerScripts = mergeLuaIntoTriggerScriptsText(fileData.triggerScripts, value as string);
@@ -2541,6 +2717,8 @@ export async function initMainRenderer(): Promise<void> {
           tabMgr.refreshIndexedTabs(prefix, buildLuaSectionTabState);
         } else if (prefix === 'css_s') {
           tabMgr.refreshIndexedTabs(prefix, buildCssSectionTabState);
+        } else if (prefix === 'risup_') {
+          tabMgr.refreshIndexedTabs(prefix, (index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
         }
       }
       if (field === tabMgr.activeTabId && editorInstance) {

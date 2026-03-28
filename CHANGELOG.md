@@ -9,6 +9,89 @@
 
 ---
 
+## [0.25.0] - 2026-03-28
+
+### 새 기능
+
+- **`.risup` 프롬프트 편집을 template-first surface로 승격**
+  - visible `프롬프트` 그룹이 `mainPrompt` / `jailbreak` 중심이 아니라 구조화 `promptTemplate` / `formatingOrder` / `customPromptTemplateToggle` / 템플릿 변수 중심으로 동작
+  - `.risup`의 top-level `description`도 다시 별도 항목으로 편집 가능
+
+### 변경
+
+- **실제 RisuAI 흐름에 맞게 legacy 프롬프트를 호환성 데이터로 격하**
+  - `mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`는 파일에 보존되지만 주요 프롬프트 UI에서는 내려감
+  - `customPromptTemplateToggle`를 멀티라인 textarea로 바꾸고, structured prompt editor를 앱 기본 폼 스타일과 어울리는 카드/셀렉트/버튼 UI로 재정렬
+
+### 수정
+
+- **`.risup` 백업 복원 / 자동 저장 경로 보강**
+  - 다른 risup 폼 탭이 활성화된 상태에서 백업을 복원해도 현재 보이는 form UI가 함께 refresh되도록 수정
+  - hidden legacy `risup_prompts` 백업을 visible `프롬프트` 메뉴에서 다시 불러올 수 있도록 복원 경로 추가
+  - risup 복원 후 autosave payload가 구조화 프롬프트 필드와 top-level `description`까지 함께 반영되도록 보강
+
+## [0.24.0] - 2026-03-28
+
+### 새 기능
+
+- **실제 RisuAI `.risup` 편집 호환성 추가**
+  - gzip / zlib / raw-deflate 변형으로 내보낸 실제 `.risup` 프리셋을 열고 저장할 수 있도록 복구
+  - 열 때 감지한 압축 모드를 저장 시 최대한 보존하고, 새 프리셋은 RisuAI 호환성이 높은 모드로 저장
+
+- **구조화된 risup 프롬프트 템플릿 편집기 추가**
+  - `promptTemplate`를 raw JSON textarea 대신 항목 목록 + 상세 편집기로 노출
+  - `type`, `type2`, `role`, `text`, `rangeStart` / `rangeEnd`, `chatAsOriginalOnSystem`, `innerFormat`, `defaultText`, cache `depth` / `role`를 직접 편집 가능
+  - `formatingOrder`를 재정렬 가능한 토큰 목록으로 노출해 known / unknown token을 함께 유지
+
+- **risup promptTemplate / formatingOrder 전용 MCP 도구 추가**
+  - `list_risup_prompt_items`, `read_risup_prompt_item`, `write_risup_prompt_item`, `add_risup_prompt_item`, `delete_risup_prompt_item`, `reorder_risup_prompt_items`
+  - `read_risup_formating_order`, `write_risup_formating_order`
+
+### 변경
+
+- **`.risup` 저장 검증 강화**
+  - `presetBias`, `localStopStrings`뿐 아니라 구조화 프롬프트 필드의 invalid 상태도 저장 전에 차단
+  - 손상된 `promptTemplate` / `formatingOrder`는 UI에서 복구용 raw editor를 표시하고, MCP에서는 명시적 parse error를 반환
+
+### 수정
+
+- **지원하지 않는 risup 프롬프트 item 처리 보강**
+  - 구조화 UI와 MCP list/read에서는 unsupported item metadata를 숨기지 않고 노출
+  - item-level write/add 경로는 unsupported shape를 명시적으로 거부하고 raw `write_field("promptTemplate")` fallback을 안내
+
+## [0.23.0] - 2026-03-27
+
+### 새 기능
+
+- **구조화된 트리거 스크립트 편집기 추가**
+  - `.charx` / `.risum`의 `triggerScripts`가 더 이상 raw JSON 탭으로 열리지 않고, 트리거 목록·조건·효과를 직접 편집하는 전용 폼 에디터로 열림
+  - 지원하지 않는 trigger/effect/condition은 조용히 유실하지 않고 저장을 차단해 데이터 손실을 방지
+
+- **charx 메타데이터 필드 UI 노출**
+  - 기존 `캐릭터 정보` 흐름 안에서 `creatorcomment`와 `characterVersion`을 직접 편집 가능
+
+### 수정
+
+- **charx / risum Lua-트리거 모드 판정 정리**
+  - 빈 `triggerScripts`, invalid JSON, 단독 `triggerlua` wrapper를 모두 Lua 모드로 취급하고, 독립 트리거 목록이 있을 때만 트리거 모드로 전환
+  - `.risum`도 `.charx`와 동일하게 Lua 모드일 때 트리거 항목이 비활성처럼 보이고, 트리거 모드일 때 Lua 폴더가 비활성처럼 보이도록 정렬
+
+- **트리거 스크립트 백업 복원 경로 보강**
+  - `_triggerform` 탭 백업이 draft object를 저장하더라도 restore 시 안전하게 trigger text로 되돌리고, 활성 탭 UI까지 함께 refresh되도록 보강
+
+## [0.22.11] - 2026-03-27
+
+### 수정
+
+- **`.risup` 편집 사이드바 복구**
+  - `.risup` 파일을 열면 더 이상 빈 공용 항목만 보이지 않고, 프리셋 전용 그룹 탭(기본, 프롬프트, 모델/API, 기본 파라미터, 샘플링, 추론, 템플릿, JSON 스키마, 기타)이 좌측 사이드바에 표시됨
+  - `regex[]`는 기존 전용 폼 에디터를 그대로 유지하고, `.risup`에서 의미 없는 Lua / 로어북 / 에셋 / 설명 항목은 숨김
+  - `name` 편집이 다시 가능하며 file label도 함께 갱신됨
+- **`.risup` 저장 전 JSON 검증 추가**
+  - `promptTemplate`, `presetBias`, `formatingOrder`, `localStopStrings`에 잘못된 JSON이 남아 있으면 저장/다른 이름으로 저장을 차단하고 문제 필드를 상태바에 표시
+- **`.risup` 탭 갱신 경로 보강**
+  - AI/MCP가 risup 필드를 수정했을 때 열려 있는 risup 그룹 탭이 함께 새 값으로 refresh되도록 보강
+
 ## [0.22.10] - 2026-03-26
 
 ### 수정

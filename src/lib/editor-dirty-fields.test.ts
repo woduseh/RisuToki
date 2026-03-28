@@ -9,19 +9,19 @@ describe('editor dirty field helpers', () => {
         lua: '-- combined lua',
         css: '<style>.a { color: red; }</style>',
         lorebook: [{ comment: 'Lore' }],
-        regex: [{ comment: 'cleanup' }]
+        regex: [{ comment: 'cleanup' }],
       },
       openTabs: [
         { id: 'lua_s0', getValue: () => '-- section override' },
         { id: 'regex_2', getValue: () => 'pattern' },
-        { id: 'name', getValue: () => 'Toki' }
-      ]
+        { id: 'name', getValue: () => 'Toki' },
+      ],
     });
 
     expect(fields).toEqual({
       lua: '-- combined lua',
       name: 'Toki',
-      regex: [{ comment: 'cleanup' }]
+      regex: [{ comment: 'cleanup' }],
     });
   });
 
@@ -31,19 +31,51 @@ describe('editor dirty field helpers', () => {
       dirtyFields,
       fileData: {
         css: '<style>.persisted { color: blue; }</style>',
-        lorebook: [{ comment: 'entry' }]
+        lorebook: [{ comment: 'entry' }],
       },
       openTabs: [
         { id: 'css', getValue: () => '.next { color: pink; }' },
-        { id: 'description', getValue: () => 'Desc' }
-      ]
+        { id: 'description', getValue: () => 'Desc' },
+      ],
     });
 
     expect(hasDirtyTabWithPrefix(dirtyFields, 'lore_')).toBe(true);
     expect(fields).toEqual({
       css: '<style>.persisted { color: blue; }</style>',
       description: 'Desc',
-      lorebook: [{ comment: 'entry' }]
+      lorebook: [{ comment: 'entry' }],
+    });
+  });
+
+  it('collects the full risup payload when a risup form tab is dirty even if no risup tab is open', () => {
+    const fields = collectDirtyEditorFields({
+      dirtyFields: new Set(['risup_prompts']),
+      fileData: {
+        name: 'Preset',
+        description: 'Preset description',
+        mainPrompt: 'legacy prompt',
+        jailbreak: 'legacy jailbreak',
+        promptTemplate: '[{"role":"system","text":"hello"}]',
+        formatingOrder: '["main"]',
+        customPromptTemplateToggle: 'line 1\nline 2',
+        templateDefaultVariables: '{"mood":"calm"}',
+        aiModel: 'gemini',
+        temperature: 0.7,
+      },
+      openTabs: [],
+    });
+
+    expect(fields).toMatchObject({
+      name: 'Preset',
+      description: 'Preset description',
+      mainPrompt: 'legacy prompt',
+      jailbreak: 'legacy jailbreak',
+      promptTemplate: '[{"role":"system","text":"hello"}]',
+      formatingOrder: '["main"]',
+      customPromptTemplateToggle: 'line 1\nline 2',
+      templateDefaultVariables: '{"mood":"calm"}',
+      aiModel: 'gemini',
+      temperature: 0.7,
     });
   });
 });

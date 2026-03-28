@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { handleNew, handleOpen, handleSave, handleSaveAs } from './file-actions';
 import type { FileActionDeps } from './file-actions';
 import { TabManager } from './tab-manager';
+import { parseTriggerScriptsText } from './trigger-script-model';
 import { useAppStore } from '../stores/app-store';
 
 function makeDeps(overrides: Partial<FileActionDeps> = {}): FileActionDeps {
@@ -135,6 +136,90 @@ describe('file-actions', () => {
 
       expect(deps.setStatus).toHaveBeenCalledWith('저장 실패: perm denied');
     });
+
+    it('blocks saving risup files with invalid json-backed preset fields', async () => {
+      const saveFile = vi.fn();
+      installTokiAPI({
+        saveFile,
+        cleanupAutosave: vi.fn(),
+      });
+      const deps = makeDeps({
+        getFileData: vi.fn(() => ({
+          _fileType: 'risup',
+          name: 'Preset',
+          // promptTemplate and formatingOrder now use structured editors — no longer JSON-validated here
+          promptTemplate: '{',
+          presetBias: '{', // presetBias is still a 'json' field — invalid JSON should block save
+          formatingOrder: '["main"]',
+          localStopStrings: '[]',
+        })),
+      });
+
+      await handleSave(deps);
+
+      expect(saveFile).not.toHaveBeenCalled();
+      expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('프리셋 바이어스'));
+    });
+
+    it('blocks saving risup files with invalid structured prompt fields', async () => {
+      const saveFile = vi.fn();
+      installTokiAPI({
+        saveFile,
+        cleanupAutosave: vi.fn(),
+      });
+      const deps = makeDeps({
+        getFileData: vi.fn(() => ({
+          _fileType: 'risup',
+          name: 'Preset',
+          promptTemplate: '{',
+          presetBias: '{}',
+          formatingOrder: '["main"]',
+          localStopStrings: '[]',
+        })),
+      });
+
+      await handleSave(deps);
+
+      expect(saveFile).not.toHaveBeenCalled();
+      expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('프롬프트 템플릿'));
+    });
+
+    it('blocks saving when an edited trigger form draft still contains unsupported content', async () => {
+      const saveFile = vi.fn();
+      installTokiAPI({
+        saveFile,
+        cleanupAutosave: vi.fn(),
+      });
+      const deps = makeDeps({
+        getFileData: vi.fn(() => ({
+          _fileType: 'charx',
+          name: 'Trigger Card',
+          triggerScripts: '[]',
+        })),
+      });
+      const draft = parseTriggerScriptsText(
+        JSON.stringify(
+          [
+            {
+              comment: 'unsupported',
+              type: 'manual',
+              conditions: [{ type: 'timer', seconds: 5 }],
+              effect: [{ type: 'triggerlua', code: 'print("blocked")' }],
+              lowLevelAccess: false,
+            },
+          ],
+          null,
+          2,
+        ),
+      );
+      deps.tabMgr.openTab('triggerScripts', '트리거 스크립트', '_triggerform', () => draft, vi.fn());
+      deps.tabMgr.dirtyFields.add('triggerScripts');
+
+      await handleSave(deps);
+
+      expect(saveFile).not.toHaveBeenCalled();
+      expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('지원되지 않는 트리거 조건/효과'));
+    });
   });
 
   describe('handleSaveAs', () => {
@@ -160,6 +245,64 @@ describe('file-actions', () => {
       await handleSaveAs(deps);
 
       expect(deps.setStatus).toHaveBeenCalledWith('저장 취소');
+    });
+
+    it('blocks save-as for risup files with invalid json-backed preset fields', async () => {
+      const saveFileAs = vi.fn();
+      installTokiAPI({
+        saveFileAs,
+      });
+      const deps = makeDeps({
+        getFileData: vi.fn(() => ({
+          _fileType: 'risup',
+          name: 'Preset',
+          promptTemplate: '[]',
+          presetBias: '[[',
+          formatingOrder: '["main"]',
+          localStopStrings: '[]',
+        })),
+      });
+
+      await handleSaveAs(deps);
+
+      expect(saveFileAs).not.toHaveBeenCalled();
+      expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('프리셋 바이어스'));
+    });
+
+    it('blocks save-as when an edited trigger form draft still contains unsupported content', async () => {
+      const saveFileAs = vi.fn();
+      installTokiAPI({
+        saveFileAs,
+      });
+      const deps = makeDeps({
+        getFileData: vi.fn(() => ({
+          _fileType: 'charx',
+          name: 'Trigger Card',
+          triggerScripts: '[]',
+        })),
+      });
+      const draft = parseTriggerScriptsText(
+        JSON.stringify(
+          [
+            {
+              comment: 'unsupported',
+              type: 'manual',
+              conditions: [{ type: 'timer', seconds: 5 }],
+              effect: [{ type: 'triggerlua', code: 'print("blocked")' }],
+              lowLevelAccess: false,
+            },
+          ],
+          null,
+          2,
+        ),
+      );
+      deps.tabMgr.openTab('triggerScripts', '트리거 스크립트', '_triggerform', () => draft, vi.fn());
+      deps.tabMgr.dirtyFields.add('triggerScripts');
+
+      await handleSaveAs(deps);
+
+      expect(saveFileAs).not.toHaveBeenCalled();
+      expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('지원되지 않는 트리거 조건/효과'));
     });
   });
 });

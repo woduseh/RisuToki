@@ -1,3 +1,5 @@
+import { RISUP_FIELD_GROUPS } from './risup-fields';
+
 export interface DirtyTabLike {
   getValue?: () => unknown;
   id: string;
@@ -11,13 +13,12 @@ export interface DirtyFileDataLike {
   regex?: unknown;
 }
 
-const DIRECT_VALUE_FIELDS = new Set([
-  'globalNote',
-  'firstMessage',
-  'defaultVariables',
-  'description',
-  'name'
-]);
+const DIRECT_VALUE_FIELDS = new Set(['globalNote', 'firstMessage', 'defaultVariables', 'description', 'name']);
+
+const RISUP_EDITABLE_FIELD_IDS = [
+  ...new Set(RISUP_FIELD_GROUPS.flatMap((group) => group.fields.map((field) => field.id))),
+];
+const RISUP_EXTRA_AUTOSAVE_FIELDS = ['description'];
 
 export function hasDirtyTabWithPrefix(dirtyFields: Iterable<string>, prefix: string): boolean {
   for (const field of dirtyFields) {
@@ -75,6 +76,18 @@ export function collectDirtyEditorFields(options: {
   }
   if (dirtyFields.has('regex') || hasDirtyTabWithPrefix(dirtyFields, 'regex_')) {
     fields.regex = fileData.regex;
+  }
+  if (hasDirtyTabWithPrefix(dirtyFields, 'risup_')) {
+    for (const fieldId of RISUP_EDITABLE_FIELD_IDS) {
+      if (fileData[fieldId] !== undefined) {
+        fields[fieldId] = fileData[fieldId];
+      }
+    }
+    for (const fieldId of RISUP_EXTRA_AUTOSAVE_FIELDS) {
+      if (fileData[fieldId] !== undefined) {
+        fields[fieldId] = fileData[fieldId];
+      }
+    }
   }
 
   return fields;

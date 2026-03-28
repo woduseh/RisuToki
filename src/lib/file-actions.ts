@@ -1,5 +1,8 @@
 import type { TabManager } from './tab-manager';
 import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
+import { getRisupValidationMessage } from './risup-form-editor';
+import { getTriggerFormValidationMessage } from './trigger-form-editor';
+import type { TriggerScriptModel } from './trigger-script-model';
 import { useAppStore } from '../stores/app-store';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,6 +41,30 @@ function resetEditorUI(deps: FileActionDeps): void {
 
   document.getElementById('editor-container')!.innerHTML = '<div class="empty-state">항목을 선택하세요</div>';
   document.getElementById('editor-tabs')!.innerHTML = '';
+}
+
+function getTriggerDraftValidationMessage(tabMgr: TabManager): string | null {
+  const triggerTab = tabMgr.openTabs.find(
+    (tab) =>
+      tab.id === 'triggerScripts' &&
+      tab.language === '_triggerform' &&
+      !!tab.getValue &&
+      !!tab.setValue &&
+      tabMgr.dirtyFields.has(tab.id),
+  );
+  if (!triggerTab) return null;
+  return getTriggerFormValidationMessage(triggerTab.getValue() as TriggerScriptModel | null | undefined);
+}
+
+function getSaveValidationMessage(fileData: Record<string, unknown>, tabMgr: TabManager): string | null {
+  if (fileData._fileType === 'risup') {
+    const risupValidationMessage = getRisupValidationMessage(fileData);
+    if (risupValidationMessage) {
+      return risupValidationMessage;
+    }
+  }
+
+  return getTriggerDraftValidationMessage(tabMgr);
 }
 
 export async function handleNew(deps: FileActionDeps): Promise<void> {
@@ -79,6 +106,11 @@ export async function handleSave(deps: FileActionDeps): Promise<void> {
   const fileData = deps.getFileData();
   if (!fileData) return;
   syncEditorToActiveTab(deps);
+  const validationMessage = getSaveValidationMessage(fileData, deps.tabMgr);
+  if (validationMessage) {
+    deps.setStatus(validationMessage);
+    return;
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await (window as any).tokiAPI.saveFile(fileData);
   if (result.success) {
@@ -97,6 +129,11 @@ export async function handleSaveAs(deps: FileActionDeps): Promise<void> {
   const fileData = deps.getFileData();
   if (!fileData) return;
   syncEditorToActiveTab(deps);
+  const validationMessage = getSaveValidationMessage(fileData, deps.tabMgr);
+  if (validationMessage) {
+    deps.setStatus(validationMessage);
+    return;
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await (window as any).tokiAPI.saveFileAs(fileData);
   if (result.success) {

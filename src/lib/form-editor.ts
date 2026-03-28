@@ -2,6 +2,18 @@ import { ensureBlueArchiveMonacoTheme } from './monaco-loader';
 import { defineDarkMonacoTheme } from './dark-mode';
 import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
 import { getFolderRef, normalizeFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
+import { getRisupFieldGroup } from './risup-fields';
+import { coerceRisupInputValue, validateRisupDraftFields, type RisupFormTabInfo } from './risup-form-editor';
+import { createFormatingOrderEditor, createPromptTemplateEditor } from './risup-prompt-editor';
+import {
+  coerceTriggerFormInputValue,
+  getTriggerFormValidationMessage,
+  resolveTriggerDetailState,
+  updateTriggerFormLuaEffectCode,
+  updateTriggerFormScalarField,
+  type TriggerFormTabInfo,
+} from './trigger-form-editor';
+import { parseTriggerScriptsText, serializeTriggerScriptModel, type TriggerScriptModel } from './trigger-script-model';
 
 type MonacoWindow = Window & {
   _baDarkThemeDefined?: boolean;
@@ -39,6 +51,62 @@ export interface FormTabInfo {
   setValue?: ((data: unknown) => void) | null;
   _lastValue?: string | null;
   _refLorebook?: Record<string, unknown>[];
+}
+
+export interface TriggerScriptsFormTabOptions {
+  getText: () => string;
+  id?: string;
+  label?: string;
+  selectedIndex?: number;
+  setText?: ((text: string) => void) | null;
+}
+
+export interface TriggerScriptsFormTabManagerLike {
+  openTabs: Array<Pick<TriggerFormTabInfo, 'id'> & Partial<TriggerFormTabInfo>>;
+  openTab: (
+    id: string,
+    label: string,
+    language: string,
+    getValue: () => unknown,
+    setValue: ((value: unknown) => void) | null,
+  ) => TriggerFormTabInfo;
+}
+
+export function createTriggerScriptsFormTab(options: TriggerScriptsFormTabOptions): TriggerFormTabInfo {
+  return {
+    id: options.id || 'triggerScripts',
+    label: options.label || '트리거 스크립트',
+    language: '_triggerform',
+    getValue: () => parseTriggerScriptsText(options.getText() || '[]'),
+    setValue: options.setText
+      ? (data: unknown) => {
+          options.setText!(serializeTriggerScriptModel(data as Pick<TriggerScriptModel, 'triggers'>));
+        }
+      : null,
+    _triggerSelectedIndex: options.selectedIndex,
+  };
+}
+
+export function openTriggerScriptsFormTab(
+  tabMgr: TriggerScriptsFormTabManagerLike,
+  options: Omit<TriggerScriptsFormTabOptions, 'selectedIndex'>,
+): TriggerFormTabInfo {
+  const tabId = options.id || 'triggerScripts';
+  const existingTab = tabMgr.openTabs.find((tab) => tab.id === tabId);
+  const tabState = createTriggerScriptsFormTab({
+    ...options,
+    selectedIndex:
+      typeof existingTab?._triggerSelectedIndex === 'number' ? existingTab._triggerSelectedIndex : undefined,
+  });
+  const tab = tabMgr.openTab(
+    tabState.id,
+    tabState.label,
+    tabState.language,
+    tabState.getValue,
+    tabState.setValue ?? null,
+  );
+  tab._triggerSelectedIndex = tabState._triggerSelectedIndex;
+  return tab;
 }
 
 // ── Dependency-injection interface ──
@@ -490,6 +558,480 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
     );
     if (ed && readonly) ed.updateOptions({ readOnly: true });
   }, 10);
+}
+
+// ── Risup form editor ──
+
+export function showRisupEditor(tabInfo: RisupFormTabInfo): void {
+  saveCurrentMonacoState(tabInfo);
+  const container = clearEditorContainer();
+
+  const rawData = tabInfo.getValue();
+  const groupId =
+    tabInfo._risupGroupId || (tabInfo.id.startsWith('risup_') ? tabInfo.id.replace('risup_', '') : undefined);
+  const group = groupId ? getRisupFieldGroup(groupId) : null;
+  if (!rawData || !group) return;
+  const data = rawData as Record<string, unknown>;
+  const groupFields = group.fields;
+
+  const readonly = !tabInfo.setValue;
+  const markDirty = buildMarkDirty(tabInfo, data);
+
+  const form = document.createElement('div');
+  form.className = 'form-editor';
+
+  const header = document.createElement('div');
+  header.className = 'form-editor-header';
+  const headerTitle = document.createElement('span');
+  headerTitle.textContent = `${group.icon} 프리셋: ${group.label}`;
+  header.appendChild(headerTitle);
+  if (readonly) {
+    const badge = document.createElement('span');
+    badge.style.cssText = 'font-size:10px;color:var(--accent);margin-left:8px;';
+    badge.textContent = '[읽기 전용]';
+    headerTitle.appendChild(badge);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'form-editor-body';
+
+  const validationBox = document.createElement('div');
+  validationBox.style.cssText =
+    'display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #d97706;border-radius:6px;background:rgba(217,119,6,0.08);color:#b45309;font-size:12px;white-space:pre-wrap;';
+  body.appendChild(validationBox);
+
+  function updateValidation(): void {
+    const groupFieldIds = new Set(groupFields.map((field) => field.id));
+    const errors = validateRisupDraftFields(data).filter((error) => groupFieldIds.has(error.field));
+    if (errors.length === 0) {
+      validationBox.style.display = 'none';
+      validationBox.textContent = '';
+      return;
+    }
+    validationBox.style.display = '';
+    validationBox.textContent = errors.map((error) => error.message).join('\n');
+  }
+
+  function applyFieldChange(fieldId: string, nextValue: unknown): void {
+    data[fieldId] = nextValue;
+    markDirty();
+    updateValidation();
+  }
+
+  for (const field of groupFields) {
+    if (field.editor === 'prompt-template') {
+      const label = document.createElement('div');
+      label.className = 'form-section-label';
+      label.textContent = field.label;
+      body.appendChild(label);
+      const editorContainer = document.createElement('div');
+      editorContainer.className = 'form-embedded-editor prompt-template-editor-container';
+      body.appendChild(editorContainer);
+      createPromptTemplateEditor(
+        editorContainer,
+        typeof data[field.id] === 'string' ? (data[field.id] as string) : '',
+        readonly
+          ? null
+          : (value) => {
+              applyFieldChange(field.id, value);
+            },
+      );
+      continue;
+    }
+
+    if (field.editor === 'formating-order') {
+      const label = document.createElement('div');
+      label.className = 'form-section-label';
+      label.textContent = field.label;
+      body.appendChild(label);
+      const editorContainer = document.createElement('div');
+      editorContainer.className = 'form-embedded-editor formating-order-editor-container';
+      body.appendChild(editorContainer);
+      createFormatingOrderEditor(
+        editorContainer,
+        typeof data[field.id] === 'string' ? (data[field.id] as string) : '',
+        readonly
+          ? null
+          : (value) => {
+              applyFieldChange(field.id, value);
+            },
+      );
+      continue;
+    }
+
+    if (field.editor === 'textarea' || field.editor === 'json') {
+      const label = document.createElement('div');
+      label.className = 'form-section-label';
+      label.textContent = field.label;
+      body.appendChild(label);
+
+      const textarea = document.createElement('textarea');
+      textarea.className = 'settings-textarea form-monaco-fallback';
+      textarea.value = typeof data[field.id] === 'string' ? (data[field.id] as string) : '';
+      textarea.readOnly = readonly;
+      textarea.rows = field.rows || 6;
+      textarea.style.width = '100%';
+      textarea.style.minHeight = `${Math.max(140, textarea.rows * 18)}px`;
+      textarea.style.marginBottom = '10px';
+      textarea.spellcheck = false;
+      if (!readonly) {
+        textarea.addEventListener('input', () => {
+          applyFieldChange(field.id, textarea.value);
+        });
+      }
+      body.appendChild(textarea);
+      continue;
+    }
+
+    if (field.editor === 'checkbox') {
+      const row = document.createElement('label');
+      row.className = 'form-check-item';
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:10px;';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = !!data[field.id];
+      input.disabled = readonly;
+      if (!readonly) {
+        input.addEventListener('change', () => {
+          applyFieldChange(field.id, coerceRisupInputValue(field.editor, input.checked));
+        });
+      }
+      row.appendChild(input);
+      row.appendChild(document.createTextNode(field.label));
+      body.appendChild(row);
+      continue;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'form-row';
+    const label = document.createElement('span');
+    label.className = 'form-label';
+    label.textContent = field.label;
+    const input = document.createElement('input');
+    input.className = 'form-input' + (field.editor === 'number' ? ' form-number' : '');
+    input.type = field.editor === 'number' ? 'number' : 'text';
+    input.value =
+      field.editor === 'number'
+        ? data[field.id] == null
+          ? ''
+          : String(data[field.id])
+        : typeof data[field.id] === 'string'
+          ? (data[field.id] as string)
+          : '';
+    if (field.step) input.step = field.step;
+    if (field.placeholder) input.placeholder = field.placeholder;
+    if (readonly) {
+      input.readOnly = true;
+    } else {
+      input.addEventListener('input', () => {
+        if (field.editor === 'number') {
+          if (!input.value.trim()) {
+            delete data[field.id];
+            markDirty();
+            updateValidation();
+            return;
+          }
+          const nextValue = coerceRisupInputValue(field.editor, input.value);
+          if (nextValue !== undefined) {
+            applyFieldChange(field.id, nextValue);
+          }
+          return;
+        }
+        applyFieldChange(field.id, coerceRisupInputValue(field.editor, input.value));
+      });
+    }
+    row.appendChild(label);
+    row.appendChild(input);
+    body.appendChild(row);
+  }
+
+  updateValidation();
+
+  form.appendChild(header);
+  form.appendChild(body);
+  container.appendChild(form);
+}
+
+const TRIGGER_TYPE_OPTIONS = [
+  { value: '', label: '(비어 있음)' },
+  { value: 'start', label: '시작 (start)' },
+  { value: 'input', label: '입력 (input)' },
+  { value: 'output', label: '출력 (output)' },
+  { value: 'display', label: '표시 (display)' },
+  { value: 'request', label: '요청 (request)' },
+  { value: 'manual', label: '수동 (manual)' },
+];
+
+export function showTriggerEditor(tabInfo: TriggerFormTabInfo): void {
+  saveCurrentMonacoState(tabInfo);
+  const container = clearEditorContainer();
+
+  const rawData = tabInfo.getValue();
+  if (!rawData) return;
+  const data = rawData as TriggerScriptModel;
+
+  const readonly = !tabInfo.setValue;
+  const markDirty = buildMarkDirty(tabInfo, data as unknown as Record<string, unknown>);
+
+  const form = document.createElement('div');
+  form.className = 'form-editor';
+
+  const header = document.createElement('div');
+  header.className = 'form-editor-header';
+  const headerTitle = document.createElement('span');
+  headerTitle.textContent = `🧩 트리거: ${data.triggers.length}개`;
+  header.appendChild(headerTitle);
+  if (readonly) {
+    const badge = document.createElement('span');
+    badge.style.cssText = 'font-size:10px;color:var(--accent);margin-left:8px;';
+    badge.textContent = '[읽기 전용]';
+    headerTitle.appendChild(badge);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'form-editor-body';
+
+  const validationBox = document.createElement('div');
+  validationBox.style.cssText =
+    'display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #d97706;border-radius:6px;background:rgba(217,119,6,0.08);color:#b45309;font-size:12px;white-space:pre-wrap;';
+  body.appendChild(validationBox);
+
+  const layout = document.createElement('div');
+  layout.style.cssText =
+    'display:grid;grid-template-columns:minmax(220px,260px) minmax(0,1fr);gap:12px;align-items:start;';
+
+  const listPanel = document.createElement('div');
+  listPanel.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
+  const detailPanel = document.createElement('div');
+  detailPanel.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
+
+  function updateValidation(): void {
+    const message = getTriggerFormValidationMessage(data);
+    if (!message) {
+      validationBox.style.display = 'none';
+      validationBox.textContent = '';
+      return;
+    }
+    validationBox.style.display = '';
+    validationBox.textContent = message;
+  }
+
+  function notifyChange(): void {
+    markDirty();
+    updateValidation();
+  }
+
+  function renderTriggerList(selectedIndex: number): void {
+    const detailState = resolveTriggerDetailState(data, selectedIndex);
+    listPanel.innerHTML = '';
+
+    const listLabel = document.createElement('div');
+    listLabel.className = 'form-section-label';
+    listLabel.textContent = '트리거 목록';
+    listPanel.appendChild(listLabel);
+
+    if (detailState.items.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText =
+        'padding:12px;border:1px dashed rgba(255,255,255,0.15);border-radius:8px;color:var(--text-soft);font-size:12px;';
+      empty.textContent = '편집할 트리거가 없습니다.';
+      listPanel.appendChild(empty);
+      return;
+    }
+
+    detailState.items.forEach((item) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'regex-flags-toggle-btn';
+      button.style.cssText =
+        'display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;text-align:left;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.02);';
+      if (item.index === detailState.selectedIndex) {
+        button.style.borderColor = 'var(--accent)';
+        button.style.background = 'rgba(78,161,255,0.12)';
+      }
+      const title = document.createElement('strong');
+      title.textContent = item.label;
+      const meta = document.createElement('span');
+      meta.style.cssText = 'font-size:11px;color:var(--text-soft);';
+      meta.textContent = `${item.type || '(type 없음)'} · 조건 ${item.conditionCount}개 · 효과 ${item.effectCount}개`;
+      button.appendChild(title);
+      button.appendChild(meta);
+      if (!item.supported) {
+        const unsupported = document.createElement('span');
+        unsupported.style.cssText = 'font-size:11px;color:#f59e0b;';
+        unsupported.textContent = '지원되지 않는 항목 포함';
+        button.appendChild(unsupported);
+      }
+      button.addEventListener('click', () => {
+        tabInfo._triggerSelectedIndex = item.index;
+        renderTriggerDetail();
+      });
+      listPanel.appendChild(button);
+    });
+  }
+
+  function renderTextRow(
+    parent: HTMLElement,
+    labelText: string,
+    value: string,
+    readonlyField: boolean,
+    onChange: ((nextValue: string) => void) | null,
+  ): HTMLInputElement {
+    const row = document.createElement('div');
+    row.className = 'form-row';
+    const label = document.createElement('span');
+    label.className = 'form-label';
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.className = 'form-input';
+    input.type = 'text';
+    input.value = value;
+    input.readOnly = readonlyField;
+    if (!readonlyField && onChange) {
+      input.addEventListener('input', () => {
+        onChange(String(coerceTriggerFormInputValue('text', input.value)));
+      });
+    }
+    row.appendChild(label);
+    row.appendChild(input);
+    parent.appendChild(row);
+    return input;
+  }
+
+  function renderTriggerDetail(): void {
+    const detailState = resolveTriggerDetailState(data, tabInfo._triggerSelectedIndex);
+    tabInfo._triggerSelectedIndex = detailState.selectedIndex;
+    renderTriggerList(detailState.selectedIndex);
+
+    detailPanel.innerHTML = '';
+
+    const detailLabel = document.createElement('div');
+    detailLabel.className = 'form-section-label';
+    detailLabel.textContent = '트리거 상세';
+    detailPanel.appendChild(detailLabel);
+
+    if (!detailState.selectedTrigger) {
+      const empty = document.createElement('div');
+      empty.style.cssText =
+        'padding:12px;border:1px dashed rgba(255,255,255,0.15);border-radius:8px;color:var(--text-soft);font-size:12px;';
+      empty.textContent = '선택된 트리거가 없습니다.';
+      detailPanel.appendChild(empty);
+      return;
+    }
+
+    const trigger = detailState.selectedTrigger;
+
+    renderTextRow(detailPanel, '이름', trigger.comment, readonly, (nextValue) => {
+      updateTriggerFormScalarField(trigger, 'comment', nextValue);
+      renderTriggerList(tabInfo._triggerSelectedIndex ?? 0);
+      notifyChange();
+    });
+
+    const typeRow = document.createElement('div');
+    typeRow.className = 'form-row';
+    const typeLabel = document.createElement('span');
+    typeLabel.className = 'form-label';
+    typeLabel.textContent = '타입';
+    const typeSelect = document.createElement('select');
+    typeSelect.className = 'form-select';
+    typeSelect.disabled = readonly;
+    const knownTypeValues = new Set(TRIGGER_TYPE_OPTIONS.map((option) => option.value));
+    const typeOptions =
+      trigger.type && !knownTypeValues.has(trigger.type)
+        ? [{ value: trigger.type, label: `${trigger.type} (custom)` }, ...TRIGGER_TYPE_OPTIONS]
+        : TRIGGER_TYPE_OPTIONS;
+    typeOptions.forEach((option) => {
+      const element = document.createElement('option');
+      element.value = option.value;
+      element.textContent = option.label;
+      element.selected = option.value === trigger.type;
+      typeSelect.appendChild(element);
+    });
+    if (!readonly) {
+      typeSelect.addEventListener('change', () => {
+        const nextValue = coerceTriggerFormInputValue('select', typeSelect.value);
+        if (typeof nextValue === 'string') {
+          updateTriggerFormScalarField(trigger, 'type', nextValue);
+          renderTriggerList(tabInfo._triggerSelectedIndex ?? 0);
+          notifyChange();
+        }
+      });
+    }
+    typeRow.appendChild(typeLabel);
+    typeRow.appendChild(typeSelect);
+    detailPanel.appendChild(typeRow);
+
+    const accessRow = document.createElement('label');
+    accessRow.className = 'form-check-item';
+    accessRow.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    const accessCheckbox = document.createElement('input');
+    accessCheckbox.type = 'checkbox';
+    accessCheckbox.checked = trigger.lowLevelAccess;
+    accessCheckbox.disabled = readonly;
+    if (!readonly) {
+      accessCheckbox.addEventListener('change', () => {
+        updateTriggerFormScalarField(
+          trigger,
+          'lowLevelAccess',
+          Boolean(coerceTriggerFormInputValue('checkbox', accessCheckbox.checked)),
+        );
+        notifyChange();
+      });
+    }
+    accessRow.appendChild(accessCheckbox);
+    accessRow.appendChild(document.createTextNode('저수준 접근 활성화'));
+    detailPanel.appendChild(accessRow);
+
+    const stats = document.createElement('div');
+    stats.style.cssText = 'font-size:12px;color:var(--text-soft);';
+    stats.textContent = `조건 ${trigger.conditions.length}개 · 효과 ${trigger.effects.length}개`;
+    detailPanel.appendChild(stats);
+
+    const luaEffect = trigger.effects.find((effect) => effect.supported && effect.type === 'triggerlua');
+    if (luaEffect) {
+      const codeLabel = document.createElement('div');
+      codeLabel.className = 'form-section-label';
+      codeLabel.textContent = 'Lua 코드';
+      detailPanel.appendChild(codeLabel);
+
+      const codeInput = document.createElement('textarea');
+      codeInput.className = 'settings-textarea form-monaco-fallback';
+      codeInput.value = luaEffect.code || '';
+      codeInput.readOnly = readonly;
+      codeInput.rows = 10;
+      codeInput.style.width = '100%';
+      codeInput.style.minHeight = '200px';
+      codeInput.spellcheck = false;
+      if (!readonly) {
+        codeInput.addEventListener('input', () => {
+          updateTriggerFormLuaEffectCode(
+            trigger,
+            luaEffect,
+            String(coerceTriggerFormInputValue('text', codeInput.value)),
+          );
+          notifyChange();
+        });
+      }
+      detailPanel.appendChild(codeInput);
+    } else {
+      const info = document.createElement('div');
+      info.style.cssText =
+        'padding:10px;border:1px dashed rgba(255,255,255,0.15);border-radius:8px;color:var(--text-soft);font-size:12px;';
+      info.textContent = '이 트리거에는 폼에서 직접 편집 가능한 triggerlua 효과가 없습니다.';
+      detailPanel.appendChild(info);
+    }
+  }
+
+  updateValidation();
+  renderTriggerDetail();
+
+  layout.appendChild(listPanel);
+  layout.appendChild(detailPanel);
+  body.appendChild(layout);
+
+  form.appendChild(header);
+  form.appendChild(body);
+  container.appendChild(form);
 }
 
 // ── Regex form editor ──

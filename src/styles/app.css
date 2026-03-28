@@ -1606,6 +1606,137 @@ body {
   letter-spacing: 0.5px;
 }
 
+.form-embedded-editor {
+  margin-bottom: 10px;
+}
+
+.prompt-editor-shell,
+.prompt-order-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.prompt-editor-list,
+.prompt-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.prompt-editor-card,
+.prompt-order-token {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  padding: 10px 12px;
+}
+
+.prompt-editor-card-header,
+.prompt-order-token {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prompt-editor-card-header {
+  margin-bottom: 10px;
+}
+
+.prompt-editor-type-label,
+.prompt-order-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.prompt-item-type.prompt-editor-select {
+  flex: 1;
+  min-width: 150px;
+}
+
+.prompt-editor-actions,
+.prompt-order-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.prompt-editor-action,
+.prompt-order-action,
+.prompt-editor-add {
+  min-width: 34px;
+  padding: 3px 10px;
+}
+
+.prompt-editor-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prompt-field-label {
+  margin-top: 2px;
+  color: var(--text-secondary);
+}
+
+.prompt-editor-input,
+.prompt-editor-select,
+.prompt-editor-textarea {
+  width: 100%;
+}
+
+.prompt-editor-textarea {
+  min-height: 84px;
+}
+
+.prompt-editor-number {
+  max-width: 120px;
+}
+
+.prompt-editor-message {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.prompt-editor-warning,
+.prompt-editor-error,
+.formating-order-error,
+.formating-order-empty,
+.prompt-item-unsupported {
+  border-left: 3px solid var(--accent);
+}
+
+.prompt-editor-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.prompt-editor-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.prompt-editor-checkbox-row input {
+  margin: 0;
+}
+
+.prompt-order-token {
+  justify-content: space-between;
+}
+
+.order-token-unknown {
+  border-style: dashed;
+}
+
 /* Regex Flags Panel */
 .regex-flags-panel {
   border: 1px solid var(--border-color);

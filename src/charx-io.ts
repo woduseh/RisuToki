@@ -232,6 +232,9 @@ export interface CharxData {
   _card: Record<string, unknown>;
   _moduleData: Record<string, unknown> | null;
   _presetData: Record<string, unknown> | null;
+
+  // Compression format detected when opening a .risup file (used on save to preserve compatibility)
+  _compressionMode?: 'gzip' | 'zlib' | 'raw';
 }
 
 // ---------------------------------------------------------------------------
@@ -1018,9 +1021,34 @@ function applyPresetFields(preset: Record<string, unknown>, data: CharxData): vo
   if (data.presetImage !== undefined) preset.image = data.presetImage;
 }
 
+type RisupCompressionMode = 'gzip' | 'zlib' | 'raw';
+
+/**
+ * Detect compression format by header bytes and decompress accordingly.
+ * - gzip: 0x1f 0x8b magic
+ * - zlib: 0x78 with valid CMF/FLG check byte (CMF*256+FLG % 31 === 0)
+ * - raw: everything else (no header)
+ */
+function risupDecompress(data: Buffer): { decompressed: Buffer; mode: RisupCompressionMode } {
+  if (data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b) {
+    return { decompressed: zlib.gunzipSync(data), mode: 'gzip' };
+  }
+  if (data.length >= 2 && data[0] === 0x78 && (data[0] * 256 + data[1]) % 31 === 0) {
+    return { decompressed: zlib.inflateSync(data), mode: 'zlib' };
+  }
+  return { decompressed: zlib.inflateRawSync(data), mode: 'raw' };
+}
+
+/** Compress with the given mode. */
+function risupCompress(data: Buffer, mode: RisupCompressionMode): Buffer {
+  if (mode === 'gzip') return zlib.gzipSync(data);
+  if (mode === 'zlib') return zlib.deflateSync(data);
+  return zlib.deflateRawSync(data);
+}
+
 /**
  * Open and parse a .risup preset file
- * Format: RPack → zlib inflate → msgpack → AES-GCM decrypt → msgpack → botPreset
+ * Format: RPack → decompress (gzip/zlib/raw) → msgpack → AES-GCM decrypt → msgpack → botPreset
  */
 export function openRisup(filePath: string): CharxData {
   validateFileSize(filePath);
@@ -1029,8 +1057,18 @@ export function openRisup(filePath: string): CharxData {
   // Step 1: RPack decode (byte substitution)
   const decoded = rpackDecode(raw);
 
-  // Step 2: Raw DEFLATE decompress (fflate.compressSync produces raw DEFLATE, not zlib)
-  const decompressed = zlib.inflateRawSync(decoded);
+  // Step 2: Decompress — detect format by header (gzip/zlib/raw DEFLATE)
+  let decompressed: Buffer;
+  let compressionMode: RisupCompressionMode;
+  try {
+    ({ decompressed, mode: compressionMode } = risupDecompress(decoded));
+  } catch (e) {
+    throw new Error(
+      `Failed to decompress .risup file. The file may be corrupted or use an unsupported compression format: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
+  }
 
   // Step 3: MessagePack decode outer envelope
   let envelope: Record<string, unknown>;
@@ -1089,6 +1127,7 @@ export function openRisup(filePath: string): CharxData {
     _card: {},
     _moduleData: null,
     _presetData: sanitized,
+    _compressionMode: compressionMode,
   };
 }
 
@@ -1120,8 +1159,9 @@ export function saveRisup(filePath: string, data: CharxData): void {
     preset: encrypted,
   });
 
-  // Step 4: Raw DEFLATE compress (matches fflate.compressSync format)
-  const compressed = zlib.deflateRawSync(envelope);
+  // Step 4: Compress — preserve detected format, or default to gzip (most RisuAI-compatible)
+  const compressionMode: RisupCompressionMode = (data._compressionMode as RisupCompressionMode) ?? 'gzip';
+  const compressed = risupCompress(envelope, compressionMode);
 
   // Step 5: RPack encode
   const encoded = rpackEncode(compressed);

@@ -3,7 +3,7 @@ export interface EditorActivationTabLike {
   language: string;
 }
 
-export const NON_MONACO_EDITOR_TAB_TYPES = new Set(['_image', '_loreform', '_regexform']);
+export const NON_MONACO_EDITOR_TAB_TYPES = new Set(['_image', '_loreform', '_regexform', '_risupform', '_triggerform']);
 
 export function requiresMonacoEditor(language: string): boolean {
   return !NON_MONACO_EDITOR_TAB_TYPES.has(language);
@@ -12,7 +12,7 @@ export function requiresMonacoEditor(language: string): boolean {
 export function resolvePendingEditorTab<T extends EditorActivationTabLike>(
   openTabs: readonly T[],
   pendingTabId: string | null,
-  activeTabId: string | null
+  activeTabId: string | null,
 ): T | null {
   const requestedIds = [pendingTabId, activeTabId].filter((value, index, items): value is string => {
     return typeof value === 'string' && items.indexOf(value) === index;
