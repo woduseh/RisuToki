@@ -338,7 +338,7 @@ describe('buildAdvisorSummary', () => {
     }
   });
 
-  it('includes toolkit or deliverables keywords', () => {
+  it('includes strengths keywords', () => {
     for (const id of ADVISOR_IDS) {
       const summary = buildAdvisorSummary(id, 'solo');
       const lower = summary.toLowerCase();
