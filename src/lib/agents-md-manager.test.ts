@@ -7,21 +7,27 @@ const { mockCleanupProfiles, mockSyncProfiles } = vi.hoisted(() => ({
     entries: [
       {
         advisorId: 'pluni',
-        filePath: `${projectRoot}/.github/agents/pluni.md`,
+        filePath: `${projectRoot}/.github/agents/pluni.agent.md`,
         hadExistingFile: false,
         originalContent: null,
+        legacyFilePath: null,
+        legacyOriginalContent: null,
       },
       {
         advisorId: 'kotone',
-        filePath: `${projectRoot}/.github/agents/kotone.md`,
+        filePath: `${projectRoot}/.github/agents/kotone.agent.md`,
         hadExistingFile: false,
         originalContent: null,
+        legacyFilePath: null,
+        legacyOriginalContent: null,
       },
       {
         advisorId: 'sophia',
-        filePath: `${projectRoot}/.github/agents/sophia.md`,
+        filePath: `${projectRoot}/.github/agents/sophia.agent.md`,
         hadExistingFile: false,
         originalContent: null,
+        legacyFilePath: null,
+        legacyOriginalContent: null,
       },
     ],
   })),
@@ -65,9 +71,11 @@ describe('cleanupAgentsMd', () => {
       entries: [
         {
           advisorId: 'pluni',
-          filePath: '/fake/.github/agents/pluni.md',
+          filePath: '/fake/.github/agents/pluni.agent.md',
           hadExistingFile: false,
           originalContent: null,
+          legacyFilePath: null,
+          legacyOriginalContent: null,
         },
       ],
     };
@@ -89,9 +97,11 @@ describe('cleanupAgentsMd', () => {
       entries: [
         {
           advisorId: 'pluni',
-          filePath: '/fake/.github/agents/pluni.md',
+          filePath: '/fake/.github/agents/pluni.agent.md',
           hadExistingFile: false,
           originalContent: null,
+          legacyFilePath: null,
+          legacyOriginalContent: null,
         },
       ],
     };
@@ -113,9 +123,11 @@ describe('cleanupAgentsMd', () => {
         entries: [
           {
             advisorId: 'pluni',
-            filePath: '/fake/.github/agents/pluni.md',
+            filePath: '/fake/.github/agents/pluni.agent.md',
             hadExistingFile: false,
             originalContent: null,
+            legacyFilePath: null,
+            legacyOriginalContent: null,
           },
         ],
       };
