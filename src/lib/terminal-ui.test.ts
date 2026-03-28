@@ -119,8 +119,8 @@ describe('createInputDispatcher', () => {
 
     resolve1();
     await flush();
-    // 'a' forwarded, but 'b' is still gated
-    expect(forwarded).toContain('a');
+    // only 'a' forwarded; 'b' is still gated behind gate2
+    expect(forwarded).toEqual(['a']);
 
     resolve2();
     await flush();

@@ -195,8 +195,11 @@ export function createInputDispatcher(forward: (data: string) => void): InputDis
               /* prep failed — still forward the keystroke */
             }
           }
-          forward(data);
-          queueDepth--;
+          try {
+            forward(data);
+          } finally {
+            queueDepth--;
+          }
         });
       } else {
         forward(data);
