@@ -1746,7 +1746,12 @@ async function initTerminal(): Promise<void> {
     },
     onUserInput: (data) => {
       lastUserInputTime = Date.now();
+      const prevCwd = terminalSession.cwd;
       terminalSession.feedInput(data);
+      // Sync tracked terminal cwd to main process when it changes
+      if (terminalSession.cwd !== prevCwd) {
+        window.tokiAPI.setTerminalCwd(terminalSession.cwd);
+      }
     },
     preserveAmdLoader: true,
     rightClickSelectsWord: true,
@@ -1902,11 +1907,13 @@ function getAssistantDeps() {
     writeGeminiMcpConfig: () => window.tokiAPI.writeGeminiMcpConfig(),
     cleanupAgentsMd: () => window.tokiAPI.cleanupAgentsMd(),
     writeSystemPrompt: (content: string) => window.tokiAPI.writeSystemPrompt(content),
-    writeAgentsMd: (content: string) => window.tokiAPI.writeAgentsMd(content),
-    syncCopilotAgentProfiles: (category: string) => window.tokiAPI.syncCopilotAgentProfiles(category),
+    writeAgentsMd: (content: string, projectRoot?: string | null) => window.tokiAPI.writeAgentsMd(content, projectRoot),
+    syncCopilotAgentProfiles: (category: string, projectRoot?: string | null) =>
+      window.tokiAPI.syncCopilotAgentProfiles(category, projectRoot),
     terminalInput: (text: string) => window.tokiAPI.terminalInput(text),
     setStatus,
     navigatorLike: window.navigator,
+    projectRoot: terminalSession.cwd,
   };
 }
 

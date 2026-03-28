@@ -255,8 +255,42 @@ describe('startAssistantCli', () => {
     });
     await startAssistantCli('copilot', deps);
 
-    expect(syncFn).toHaveBeenCalledWith('solo');
+    expect(syncFn).toHaveBeenCalledWith('solo', undefined);
     expect(deps.writeAgentsMd).toHaveBeenCalled();
+  });
+
+  it('forwards projectRoot to writeAgentsMd when set in deps', async () => {
+    const writeAgentsMd = vi.fn(async () => {});
+    const deps = createMockDeps({
+      projectRoot: '/my/terminal/cwd',
+      writeAgentsMd,
+    });
+    await startAssistantCli('copilot', deps);
+
+    // writeAgentsMd should receive the projectRoot as second argument
+    expect(writeAgentsMd).toHaveBeenCalledWith(expect.any(String), '/my/terminal/cwd');
+  });
+
+  it('forwards projectRoot to syncCopilotAgentProfiles when set in deps', async () => {
+    const syncFn = vi.fn(async () => {});
+    const deps = createMockDeps({
+      rpMode: 'pluni',
+      pluniCategory: 'solo',
+      syncCopilotAgentProfiles: syncFn,
+      projectRoot: '/my/terminal/cwd',
+    });
+    await startAssistantCli('copilot', deps);
+
+    expect(syncFn).toHaveBeenCalledWith('solo', '/my/terminal/cwd');
+  });
+
+  it('passes undefined projectRoot when not set in deps', async () => {
+    const writeAgentsMd = vi.fn(async () => {});
+    const deps = createMockDeps({ writeAgentsMd });
+    // projectRoot is not set (undefined)
+    await startAssistantCli('copilot', deps);
+
+    expect(writeAgentsMd).toHaveBeenCalledWith(expect.any(String), undefined);
   });
 
   it('sets status mentioning 플루니 연구소 when copilot + pluni', async () => {

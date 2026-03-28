@@ -39,14 +39,16 @@ export interface AssistantDeps {
   writeGeminiMcpConfig(): Promise<unknown>;
   cleanupAgentsMd(): Promise<void>;
   writeSystemPrompt(content: string): Promise<{ filePath: string; platform?: string }>;
-  writeAgentsMd(content: string): Promise<void>;
+  writeAgentsMd(content: string, projectRoot?: string | null): Promise<void>;
   terminalInput(text: string): void;
   setStatus(msg: string): void;
   navigatorLike?: NavigatorLike;
   /** Chatbot category for Pluni Institute mode. Defaults to 'solo'. */
   pluniCategory?: string;
   /** Sync Copilot custom-agent profiles for Pluni advisors. */
-  syncCopilotAgentProfiles?(category: string): Promise<void>;
+  syncCopilotAgentProfiles?(category: string, projectRoot?: string | null): Promise<void>;
+  /** Explicit project root for AGENTS.md / profile placement (typically terminal cwd). */
+  projectRoot?: string | null;
 }
 
 type RpDeps = Pick<AssistantDeps, 'rpMode' | 'rpCustomText' | 'readPersona' | 'pluniCategory'>;
@@ -222,7 +224,7 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
     await deps.cleanupAgentsMd();
     // Sync Copilot custom-agent profiles for Pluni advisors
     if (isPluni && deps.syncCopilotAgentProfiles) {
-      await deps.syncCopilotAgentProfiles(pluniCategory);
+      await deps.syncCopilotAgentProfiles(pluniCategory, deps.projectRoot);
     }
   } else if (agent === 'codex') {
     mcpConnected = !!(await deps.writeCodexMcpConfig());
@@ -248,7 +250,7 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
       cmd = buildAssistantLaunchCommand({ agent, platform: runtimePlatform });
     }
   } else {
-    await deps.writeAgentsMd(initPrompt || '');
+    await deps.writeAgentsMd(initPrompt || '', deps.projectRoot);
     cmd = buildAssistantLaunchCommand({ agent, platform: runtimePlatform });
   }
 

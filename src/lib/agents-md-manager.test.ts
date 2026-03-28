@@ -163,6 +163,7 @@ describe('syncCopilotProfiles', () => {
   it('calls syncAgentProfiles with the current working directory and category', () => {
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/project/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/app',
       getGuidesDir: () => '/fake/guides',
     });
@@ -175,6 +176,7 @@ describe('syncCopilotProfiles', () => {
   it('passes previous state on re-sync within the same project', () => {
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/project/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/app',
       getGuidesDir: () => '/fake/guides',
     });
@@ -193,6 +195,7 @@ describe('syncCopilotProfiles', () => {
     // First sync in /fake/app-beta
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/app-beta/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/electron',
       getGuidesDir: () => '/fake/guides',
     });
@@ -207,6 +210,7 @@ describe('syncCopilotProfiles', () => {
     // would be TRUE, so cleanup would be SKIPPED (leaving stale files).
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/app/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/electron',
       getGuidesDir: () => '/fake/guides',
     });
@@ -224,6 +228,7 @@ describe('syncCopilotProfiles', () => {
   it('cleans up old state when cleanup is called after sync', () => {
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/project/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/app',
       getGuidesDir: () => '/fake/guides',
     });
@@ -239,6 +244,7 @@ describe('syncCopilotProfiles', () => {
   it('normalises an invalid category to "solo"', () => {
     _setDepsForTesting({
       getCurrentFilePath: () => '/fake/project/test.charx',
+      getTerminalCwd: () => null,
       getDirname: () => '/fake/app',
       getGuidesDir: () => '/fake/guides',
     });
@@ -252,5 +258,76 @@ describe('syncCopilotProfiles', () => {
     syncCopilotProfiles(validated);
 
     expect(mockSyncProfiles).toHaveBeenCalledWith(expect.stringContaining('project'), 'solo', undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Root resolution priority: explicit > terminalCwd > currentFilePath > cwd
+// ---------------------------------------------------------------------------
+describe('root resolution priority', () => {
+  it('prefers explicit projectRoot over terminal cwd and currentFilePath', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => '/terminal-based/project',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo', '/explicit/project');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/explicit/project', 'solo', undefined);
+  });
+
+  it('uses terminal cwd when no explicit root is provided', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => '/terminal-based/project',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/terminal-based/project', 'solo', undefined);
+  });
+
+  it('falls back to currentFilePath dir when no terminal cwd', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => null,
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith(expect.stringContaining('project'), 'solo', undefined);
+  });
+
+  it('falls back to process.cwd() when no root sources are available', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => null,
+      getTerminalCwd: () => null,
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo');
+
+    // Should use process.cwd() as the root
+    expect(mockSyncProfiles).toHaveBeenCalledWith(process.cwd(), 'solo', undefined);
+  });
+
+  it('ignores empty-string explicit root and falls back to terminal cwd', () => {
+    _setDepsForTesting({
+      getCurrentFilePath: () => '/file-based/project/test.charx',
+      getTerminalCwd: () => '/terminal-based/project',
+      getDirname: () => '/fake/app',
+      getGuidesDir: () => '/fake/guides',
+    });
+
+    syncCopilotProfiles('solo', '');
+
+    expect(mockSyncProfiles).toHaveBeenCalledWith('/terminal-based/project', 'solo', undefined);
   });
 });
