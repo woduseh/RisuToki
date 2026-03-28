@@ -72,7 +72,7 @@ describe('resolveLorebookFolderRef', () => {
 });
 
 describe('canonicalizeLorebookFolderRefs', () => {
-  it('rewrites legacy child refs to the canonical key-based folder ref', () => {
+  it('rewrites folder keys and legacy child refs to the canonical folder:uuid form', () => {
     const entries: LorebookEntry[] = [
       { comment: 'Characters', key: 'canonical-uuid', id: 'legacy-id', mode: 'folder', content: '' },
       { comment: 'Alice', key: 'alice', mode: 'normal', folder: 'folder:legacy-id', content: 'hero' },
@@ -80,7 +80,7 @@ describe('canonicalizeLorebookFolderRefs', () => {
 
     canonicalizeLorebookFolderRefs(entries);
 
-    expect(entries[0].key).toBe('canonical-uuid');
+    expect(entries[0].key).toBe('folder:canonical-uuid');
     expect(entries[1].folder).toBe('folder:canonical-uuid');
   });
 });

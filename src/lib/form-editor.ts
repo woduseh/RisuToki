@@ -442,7 +442,7 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
       }
       const folderId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const newFolder = {
-        key: folderId,
+        key: normalizeFolderRef(folderId),
         content: '',
         comment: name,
         mode: 'folder',

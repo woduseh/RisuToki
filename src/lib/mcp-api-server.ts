@@ -315,7 +315,7 @@ function pickAllowedFields(source: Record<string, unknown>, allowed: Set<string>
 function normalizeLorebookEntryFolderIdentity(entry: Record<string, unknown>): void {
   if (entry.mode === 'folder') {
     const folderUuid = getFolderUuid(entry) || crypto.randomUUID();
-    entry.key = folderUuid;
+    entry.key = normalizeFolderRef(folderUuid);
     entry.folder = '';
     return;
   }
@@ -329,7 +329,7 @@ function normalizeLorebookEntryForResponse(
 ): Record<string, unknown> {
   const normalized = { ...entry };
   if (normalized.mode === 'folder') {
-    normalized.key = getFolderUuid(normalized) || '';
+    normalized.key = getFolderRef(normalized) || '';
     normalized.folder = '';
     return normalized;
   }

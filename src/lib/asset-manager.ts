@@ -437,7 +437,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
           const folderId = crypto.randomUUID();
           data.lorebook.push({
             comment: folderName,
-            key: folderId,
+            key: normalizeFolderRef(folderId),
             content: '',
             mode: 'folder',
             insertorder: 100,

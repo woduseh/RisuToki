@@ -222,7 +222,7 @@ function mapSurfacesByTarget(surfaces: SearchSurface[]) {
   return new Map(surfaces.map((surface) => [surface.target, surface]));
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const FOLDER_UUID_RE = /^folder:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TEST_DIR = path.join(__dirname, '..', '..', 'test', '_mcp-api-server-tmp');
 
 beforeAll(async () => {
@@ -373,7 +373,7 @@ describe('MCP API search routes', () => {
 });
 
 describe('MCP API lorebook folder mutations', () => {
-  it('creates canonical key uuids for folder entries added through /lorebook/add', async () => {
+  it('creates canonical folder:uuid keys for folder entries added through /lorebook/add', async () => {
     const currentData: SearchFixture = { lorebook: [] };
     const api = await startTestApiServer(currentData);
 
@@ -390,13 +390,13 @@ describe('MCP API lorebook folder mutations', () => {
         mode: 'folder',
         folder: '',
       });
-      expect(currentData.lorebook?.[0]?.key).toMatch(UUID_RE);
+      expect(currentData.lorebook?.[0]?.key).toMatch(FOLDER_UUID_RE);
     } finally {
       await closeServer(api.server);
     }
   });
 
-  it('creates canonical key uuids for folder entries added through /lorebook/batch-add', async () => {
+  it('creates canonical folder:uuid keys for folder entries added through /lorebook/batch-add', async () => {
     const currentData: SearchFixture = { lorebook: [] };
     const api = await startTestApiServer(currentData);
 
@@ -412,9 +412,9 @@ describe('MCP API lorebook folder mutations', () => {
       expect(response.status).toBe(200);
       expect(response.data.added).toBe(3);
       expect(currentData.lorebook).toHaveLength(3);
-      expect(currentData.lorebook?.[0]?.key).toMatch(UUID_RE);
+      expect(currentData.lorebook?.[0]?.key).toMatch(FOLDER_UUID_RE);
       expect(currentData.lorebook?.[1]?.key).toBe('');
-      expect(currentData.lorebook?.[2]?.key).toMatch(UUID_RE);
+      expect(currentData.lorebook?.[2]?.key).toMatch(FOLDER_UUID_RE);
       expect(currentData.lorebook?.[0]?.key).not.toBe(currentData.lorebook?.[2]?.key);
     } finally {
       await closeServer(api.server);
@@ -436,7 +436,7 @@ describe('MCP API lorebook folder mutations', () => {
       expect(currentData.lorebook?.[0]).toMatchObject({
         comment: 'Renamed Legacy Folder',
         mode: 'folder',
-        key: 'legacy-folder-uuid',
+        key: 'folder:legacy-folder-uuid',
         folder: '',
       });
     } finally {
@@ -470,7 +470,7 @@ describe('MCP API lorebook folder mutations', () => {
 
   it('assigns a new canonical folder key when cloning folder entries', async () => {
     const currentData: SearchFixture = {
-      lorebook: [{ comment: 'Folder A', mode: 'folder', key: 'folder-uuid-1', content: '', folder: '' }],
+      lorebook: [{ comment: 'Folder A', mode: 'folder', key: 'folder:folder-uuid-1', content: '', folder: '' }],
     };
     const api = await startTestApiServer(currentData);
 
@@ -486,8 +486,8 @@ describe('MCP API lorebook folder mutations', () => {
         mode: 'folder',
         folder: '',
       });
-      expect(currentData.lorebook?.[1]?.key).toMatch(UUID_RE);
-      expect(currentData.lorebook?.[1]?.key).not.toBe('folder-uuid-1');
+      expect(currentData.lorebook?.[1]?.key).toMatch(FOLDER_UUID_RE);
+      expect(currentData.lorebook?.[1]?.key).not.toBe('folder:folder-uuid-1');
     } finally {
       await closeServer(api.server);
     }
@@ -939,7 +939,13 @@ describe('MCP API lorebook folder reads', () => {
     const currentData: SearchFixture = {
       lorebook: [
         { comment: 'Folder A', mode: 'folder', key: '', id: 'legacy-folder-id', content: '' },
-        { comment: 'Folder B', mode: 'folder', key: 'canonical-folder-uuid', id: 'legacy-folder-id-b', content: '' },
+        {
+          comment: 'Folder B',
+          mode: 'folder',
+          key: 'folder:canonical-folder-uuid',
+          id: 'legacy-folder-id-b',
+          content: '',
+        },
         { comment: 'Child B', mode: 'normal', key: '', folder: 'folder:legacy-folder-id-b', content: 'child' },
       ],
     };
@@ -948,7 +954,7 @@ describe('MCP API lorebook folder reads', () => {
     try {
       const single = await getJson<{ entry: { key: string; folder?: string } }>(api.port, api.token, '/lorebook/0');
       expect(single.status).toBe(200);
-      expect(single.data.entry.key).toBe('legacy-folder-id');
+      expect(single.data.entry.key).toBe('folder:legacy-folder-id');
 
       const batch = await postJson<{ entries: Array<{ entry: { folder: string } }> }>(
         api.port,
@@ -972,7 +978,13 @@ describe('MCP API lorebook folder reads', () => {
         fileName: 'ref.charx',
         data: {
           lorebook: [
-            { comment: 'Folder A', mode: 'folder', key: 'canonical-folder-uuid', id: 'legacy-folder-id', content: '' },
+            {
+              comment: 'Folder A',
+              mode: 'folder',
+              key: 'folder:canonical-folder-uuid',
+              id: 'legacy-folder-id',
+              content: '',
+            },
             { comment: 'Child A', mode: 'normal', key: '', folder: 'folder:legacy-folder-id', content: 'child' },
           ],
         },
@@ -983,7 +995,7 @@ describe('MCP API lorebook folder reads', () => {
     try {
       const single = await getJson<{ entry: { key: string } }>(api.port, api.token, '/reference/0/lorebook/0');
       expect(single.status).toBe(200);
-      expect(single.data.entry.key).toBe('canonical-folder-uuid');
+      expect(single.data.entry.key).toBe('folder:canonical-folder-uuid');
 
       const batch = await postJson<{ entries: Array<{ entry: { folder: string } }> }>(
         api.port,

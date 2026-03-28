@@ -57,5 +57,8 @@ prompts/
 # Preset data
 presets/
 
+# Module data
+modules/
+
 # Docs
 docs/

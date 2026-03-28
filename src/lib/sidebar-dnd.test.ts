@@ -201,6 +201,103 @@ describe('reorderLorebook', () => {
   });
 });
 
+describe('addNewLorebookFolder', () => {
+  it('should create folders with canonical folder:uuid keys', async () => {
+    const lorebook: Array<Record<string, unknown>> = [];
+    const deps = createMockDeps({
+      getFileData: () => ({ lorebook, regex: [], lua: '', css: '', assets: [] }),
+      showPrompt: vi.fn().mockResolvedValue('World'),
+    });
+    (window as unknown as Record<string, unknown>).tokiAPI = {};
+    const actions = createSidebarActions(deps);
+
+    await actions.addNewLorebookFolder();
+
+    expect(lorebook).toHaveLength(1);
+    expect(lorebook[0]).toMatchObject({
+      comment: 'World',
+      mode: 'folder',
+      folder: '',
+    });
+    expect(lorebook[0]?.key).toEqual(expect.stringMatching(/^folder:/));
+  });
+});
+
+describe('importLorebook', () => {
+  it('should preserve canonical folder keys for imported folder entries', async () => {
+    const lorebook: Array<Record<string, unknown>> = [];
+    const deps = createMockDeps({
+      getFileData: () => ({ lorebook, regex: [], lua: '', css: '', assets: [] }),
+    });
+    (window as unknown as Record<string, unknown>).tokiAPI = {
+      importJson: vi.fn().mockResolvedValue([
+        {
+          fileName: 'import.json',
+          data: [
+            { comment: 'Imported Folder', mode: 'folder', key: 'import-folder-uuid', content: '' },
+            { comment: 'Imported Child', mode: 'normal', key: 'child', folder: 'import-folder-uuid', content: 'child' },
+          ],
+        },
+      ]),
+    };
+    const actions = createSidebarActions(deps);
+
+    await actions.importLorebook();
+
+    expect(lorebook).toHaveLength(2);
+    expect(lorebook[0]).toMatchObject({
+      comment: 'Imported Folder',
+      mode: 'folder',
+      key: 'folder:import-folder-uuid',
+      folder: '',
+    });
+    expect(lorebook[1]?.folder).toBe('folder:import-folder-uuid');
+  });
+
+  it('should preserve legacy folder aliases while canonicalizing imported folder keys', async () => {
+    const lorebook: Array<Record<string, unknown>> = [];
+    const deps = createMockDeps({
+      getFileData: () => ({ lorebook, regex: [], lua: '', css: '', assets: [] }),
+    });
+    (window as unknown as Record<string, unknown>).tokiAPI = {
+      importJson: vi.fn().mockResolvedValue([
+        {
+          fileName: 'import.json',
+          data: [
+            {
+              comment: 'Imported Folder',
+              mode: 'folder',
+              key: 'canonical-folder-uuid',
+              id: 'legacy-folder-id',
+              content: '',
+            },
+            {
+              comment: 'Imported Child',
+              mode: 'normal',
+              key: 'child',
+              folder: 'folder:legacy-folder-id',
+              content: 'child',
+            },
+          ],
+        },
+      ]),
+    };
+    const actions = createSidebarActions(deps);
+
+    await actions.importLorebook();
+
+    expect(lorebook).toHaveLength(2);
+    expect(lorebook[0]).toMatchObject({
+      comment: 'Imported Folder',
+      mode: 'folder',
+      key: 'folder:canonical-folder-uuid',
+      id: 'legacy-folder-id',
+      folder: '',
+    });
+    expect(lorebook[1]?.folder).toBe('folder:canonical-folder-uuid');
+  });
+});
+
 describe('reorderAlternateGreetings', () => {
   it('should reorder alternate greetings forward', () => {
     const alternateGreetings = ['Hello', 'Hi', 'Hey'];

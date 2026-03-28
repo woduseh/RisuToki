@@ -95,7 +95,7 @@ export function canonicalizeLorebookFolderRefs<T extends LorebookFolderEntryLike
     if (entry.mode === 'folder') {
       const uuid = getFolderUuid(entry);
       if (uuid) {
-        entry.key = uuid;
+        entry.key = normalizeFolderRef(uuid);
       }
       entry.folder = '';
       continue;

@@ -99,7 +99,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     if (!name) return;
     const folderId = createFolderUuid();
     const newFolder = {
-      key: folderId,
+      key: normalizeFolderRef(folderId),
       content: '',
       comment: name,
       mode: 'folder',
@@ -132,8 +132,9 @@ export function createSidebarActions(deps: SidebarActionDeps) {
         const mode = entry.mode || 'normal';
         const folderUuid =
           mode === 'folder' ? getFolderUuid(entry as Record<string, unknown>) || createFolderUuid() : null;
-        fileData.lorebook.push({
-          key: mode === 'folder' ? folderUuid : entry.key || (entry.keys ? entry.keys.join(', ') : ''),
+        const importedEntry: Record<string, unknown> = {
+          key:
+            mode === 'folder' ? normalizeFolderRef(folderUuid) : entry.key || (entry.keys ? entry.keys.join(', ') : ''),
           content: entry.content || '',
           comment: entry.comment || entry.name || item.fileName.replace('.json', ''),
           mode,
@@ -145,7 +146,11 @@ export function createSidebarActions(deps: SidebarActionDeps) {
           constant: entry.constant || false,
           order: fileData.lorebook.length,
           folder: mode === 'folder' ? '' : normalizeFolderRef(entry.folder),
-        });
+        };
+        if (typeof entry.id === 'string' && entry.id.trim()) {
+          importedEntry.id = entry.id;
+        }
+        fileData.lorebook.push(importedEntry);
         addedCount++;
       }
     }
