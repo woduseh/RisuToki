@@ -17,9 +17,18 @@ describe('app.css – popout theme coherence', () => {
     expect(css).toMatch(/\.popout-action-btn\b/);
   });
 
+  it('defines extracted tree section header and popout empty-state rules', () => {
+    expect(css).toMatch(/\.tree-section-header\b/);
+    expect(css).toMatch(/\.popout-empty-state\b/);
+  });
+
   it('defines dark-mode overrides for terminal chat surfaces', () => {
     expect(css).toMatch(/body\.dark-mode\s+#chat-view\b/);
     expect(css).toMatch(/body\.dark-mode\s+#chat-input-area\b/);
     expect(css).toMatch(/body\.dark-mode\s+\.chat-choice-btn\b/);
+  });
+
+  it('keeps terminal area theme-driven in dark mode', () => {
+    expect(css).toMatch(/body\.dark-mode\s+#terminal-area\b/);
   });
 });

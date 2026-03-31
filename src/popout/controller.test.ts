@@ -53,6 +53,7 @@ const mockInitializeTerminalUi = vi.fn(async () => ({
   term: {
     focus: vi.fn(),
     clear: vi.fn(),
+    options: { theme: {} },
   },
   fitAddon: {
     fit: vi.fn(),
@@ -397,6 +398,20 @@ describe('popout controller renderer', () => {
     expect(buttons.every((button) => button.classList.contains('popout-action-btn'))).toBe(true);
   });
 
+  it('unsubscribes sidebar refresh listener on beforeunload', async () => {
+    const unsubscribe = vi.fn();
+    (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'sidebar');
+    (
+      window as unknown as { popoutAPI: { onSidebarDataChanged: ReturnType<typeof vi.fn> } }
+    ).popoutAPI.onSidebarDataChanged = vi.fn(() => unsubscribe);
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    window.dispatchEvent(new Event('beforeunload'));
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the dark Monaco theme for editor popouts when dark mode is enabled', async () => {
     mockReadAppSettingsSnapshot.mockImplementation(() => createSettingsSnapshot({ darkMode: true }));
     (
@@ -430,6 +445,19 @@ describe('popout controller renderer', () => {
     expect(chatButton?.style.background).toBe('');
   });
 
+  it('reuses shared terminal layout ids in terminal popout', async () => {
+    (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'terminal');
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    expect(document.getElementById('bottom-area')).not.toBeNull();
+    expect(document.getElementById('terminal-area')).not.toBeNull();
+    expect(document.getElementById('toki-avatar')).not.toBeNull();
+    expect(document.getElementById('toki-avatar-display')).not.toBeNull();
+    expect(document.getElementById('toki-status')).not.toBeNull();
+  });
+
   it('uses shared popout button styling hooks in preview popout headers', async () => {
     (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'preview');
 
@@ -439,5 +467,105 @@ describe('popout controller renderer', () => {
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.preview-header button'));
     expect(buttons).toHaveLength(4);
     expect(buttons.every((button) => button.classList.contains('popout-action-btn'))).toBe(true);
+  });
+
+  it('shows fallback UI and reports error when terminal init fails', async () => {
+    mockInitializeTerminalUi.mockRejectedValueOnce(new Error('xterm load failed'));
+    (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'terminal');
+
+    const mod = await import('./controller');
+    await expect(mod.initPopoutRenderer()).resolves.toBeUndefined();
+
+    const fallback = document.querySelector('.terminal-init-error');
+    expect(fallback).not.toBeNull();
+    expect(fallback?.textContent).toContain('터미널 팝아웃');
+    expect(mockReportRuntimeError).toHaveBeenCalledWith(
+      expect.objectContaining({ context: '터미널 팝아웃 초기화 실패' }),
+    );
+  });
+
+  it('disposes terminal UI on beforeunload', async () => {
+    const disposeFn = vi.fn();
+    mockInitializeTerminalUi.mockResolvedValueOnce({
+      term: { focus: vi.fn(), clear: vi.fn(), options: { theme: {} } },
+      fitAddon: { fit: vi.fn() },
+      dispose: disposeFn,
+    });
+    (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'terminal');
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    window.dispatchEvent(new Event('beforeunload'));
+    expect(disposeFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('unsubscribes settings listener on beforeunload', async () => {
+    const unsubscribe = vi.fn();
+    mockSubscribeToAppSettings.mockReturnValueOnce(unsubscribe);
+    (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'terminal');
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    window.dispatchEvent(new Event('beforeunload'));
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes rp-mode click listener on beforeunload', async () => {
+    (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'terminal');
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    const rpButton = document.getElementById('btn-rp-mode') as HTMLButtonElement | null;
+    expect(rpButton).not.toBeNull();
+
+    window.dispatchEvent(new Event('beforeunload'));
+    rpButton?.click();
+
+    expect(mockWriteRpMode).not.toHaveBeenCalled();
+  });
+
+  it('renders refs empty state with the shared popout-empty-state class', async () => {
+    (
+      window as unknown as { popoutAPI: { getType: () => string; getRefsData: () => Promise<unknown> } }
+    ).popoutAPI.getType = vi.fn(() => 'refs');
+    (window as unknown as { popoutAPI: { getRefsData: () => Promise<unknown> } }).popoutAPI.getRefsData = vi.fn(
+      async () => ({ guides: [], sessionGuides: [], refs: [] }),
+    );
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    const empty = document.querySelector('#popout-sidebar-content .popout-empty-state');
+    expect(empty?.textContent).toContain('참고자료가 없습니다');
+  });
+
+  it('renders refs guide headers with the extracted tree section header class', async () => {
+    (
+      window as unknown as { popoutAPI: { getType: () => string; getRefsData: () => Promise<unknown> } }
+    ).popoutAPI.getType = vi.fn(() => 'refs');
+    (window as unknown as { popoutAPI: { getRefsData: () => Promise<unknown> } }).popoutAPI.getRefsData = vi.fn(
+      async () => ({ guides: ['guide.md'], sessionGuides: [], refs: [] }),
+    );
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    expect(document.querySelectorAll('.tree-section-header').length).toBeGreaterThan(0);
+  });
+
+  it('unsubscribes refs refresh listener on beforeunload', async () => {
+    const unsubscribe = vi.fn();
+    (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'refs');
+    (window as unknown as { popoutAPI: { onRefsDataChanged: ReturnType<typeof vi.fn> } }).popoutAPI.onRefsDataChanged =
+      vi.fn(() => unsubscribe);
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    window.dispatchEvent(new Event('beforeunload'));
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 });

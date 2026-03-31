@@ -207,11 +207,11 @@ interface PopoutAPI {
   terminalStart: (cols?: number, rows?: number) => Promise<boolean>;
   terminalInput: (data: string) => void;
   terminalResize: (cols: number, rows: number) => void;
-  onTerminalData: (cb: TerminalDataCallback) => void;
-  onTerminalExit: (cb: VoidCallback) => void;
-  onTerminalStatus: (cb: (event: TerminalStatusEvent) => void) => void;
+  onTerminalData: (cb: TerminalDataCallback) => VoidCallback;
+  onTerminalExit: (cb: VoidCallback) => VoidCallback;
+  onTerminalStatus: (cb: (event: TerminalStatusEvent) => void) => VoidCallback;
   getSidebarData: () => Promise<PopoutSidebarData>;
-  onSidebarDataChanged: (cb: VoidCallback) => void;
+  onSidebarDataChanged: (cb: VoidCallback) => VoidCallback;
   sidebarClick: (itemId: string) => void;
   getEditorData: (requestId?: string | null) => Promise<EditorPopoutData | null>;
   editorChange: (tabId: string, content: string) => void;
@@ -220,7 +220,7 @@ interface PopoutAPI {
   getAllAssetsMap: () => Promise<AssetsMapResult>;
   getRefsData: () => Promise<PopoutRefsData>;
   refsItemClick: (tabId: string) => void;
-  onRefsDataChanged: (cb: VoidCallback) => void;
+  onRefsDataChanged: (cb: VoidCallback) => VoidCallback;
 }
 
 declare global {

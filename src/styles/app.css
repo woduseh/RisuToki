@@ -516,6 +516,21 @@ body {
   padding-left: 48px;
 }
 
+.tree-section-header {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  padding: 10px 8px 4px;
+  cursor: default;
+  text-transform: uppercase;
+}
+
+.tree-section-header--bordered {
+  border-top: 1px solid var(--border-color);
+  margin-top: 8px;
+}
+
 /* Section header — lightweight divider between sidebar categories */
 .sidebar-section-header {
   display: flex;
@@ -670,6 +685,12 @@ body {
 #editor-container .empty-state-hint {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.popout-empty-state {
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 /* ===== Bottom Area (Terminal Panel) ===== */
@@ -827,7 +848,7 @@ body {
 /* ===== Terminal area (TokiTalk) ===== */
 #terminal-area {
   flex: 1;
-  background: #ffffff;
+  background: var(--bg-secondary);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -2314,6 +2335,10 @@ body.dark-mode .sidebar-header {
 
 body.dark-mode #terminal-header {
   background: linear-gradient(135deg, #f06292, #ec407a);
+}
+
+body.dark-mode #terminal-area {
+  background: var(--bg-secondary);
 }
 
 body.dark-mode .popout-action-btn {

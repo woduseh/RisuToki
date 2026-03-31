@@ -12,18 +12,26 @@ const popoutAPI: PopoutBridge = {
   terminalInput: (data) => ipcRenderer.send('terminal-input', data),
   terminalResize: (cols, rows) => ipcRenderer.send('terminal-resize', cols, rows),
   onTerminalData: (cb) => {
-    ipcRenderer.on('terminal-data', (_event, data: string) => cb(data));
+    const listener = (_event: Electron.IpcRendererEvent, data: string) => cb(data);
+    ipcRenderer.on('terminal-data', listener);
+    return () => ipcRenderer.removeListener('terminal-data', listener);
   },
   onTerminalExit: (cb) => {
-    ipcRenderer.on('terminal-exit', () => cb());
+    const listener = () => cb();
+    ipcRenderer.on('terminal-exit', listener);
+    return () => ipcRenderer.removeListener('terminal-exit', listener);
   },
   onTerminalStatus: (cb) => {
-    ipcRenderer.on('terminal-status', (_event, event: PopoutTerminalStatus) => cb(event));
+    const listener = (_event: Electron.IpcRendererEvent, event: PopoutTerminalStatus) => cb(event);
+    ipcRenderer.on('terminal-status', listener);
+    return () => ipcRenderer.removeListener('terminal-status', listener);
   },
   getSidebarData: () => ipcRenderer.invoke('popout-sidebar-data'),
   sidebarClick: (itemId) => ipcRenderer.send('popout-sidebar-click', itemId),
   onSidebarDataChanged: (cb) => {
-    ipcRenderer.on('sidebar-data-changed', () => cb());
+    const listener = () => cb();
+    ipcRenderer.on('sidebar-data-changed', listener);
+    return () => ipcRenderer.removeListener('sidebar-data-changed', listener);
   },
   getEditorData: (requestId) => ipcRenderer.invoke('get-editor-popout-data', requestId),
   editorChange: (tabId, content) => ipcRenderer.send('editor-popout-change', tabId, content),
@@ -33,8 +41,10 @@ const popoutAPI: PopoutBridge = {
   getRefsData: () => ipcRenderer.invoke('popout-refs-data'),
   refsItemClick: (tabId) => ipcRenderer.send('popout-refs-click', tabId),
   onRefsDataChanged: (cb) => {
-    ipcRenderer.on('refs-data-changed', () => cb());
-  }
+    const listener = () => cb();
+    ipcRenderer.on('refs-data-changed', listener);
+    return () => ipcRenderer.removeListener('refs-data-changed', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('popoutAPI', popoutAPI);

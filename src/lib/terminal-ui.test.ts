@@ -1,10 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   coerceTerminalGeometry,
   createInputDispatcher,
+  fitTerminalSafely,
   formatTerminalStatusLine,
+  initializeTerminalUi,
   shouldTreatTerminalDataAsActivity,
 } from './terminal-ui';
+
+vi.mock('./script-loader', () => ({
+  ensureXtermAssets: vi.fn(),
+  loadScript: vi.fn(async () => {}),
+}));
+
+vi.mock('./asset-runtime', () => ({
+  getXtermFitAddonUrl: vi.fn(() => 'fit.js'),
+  getXtermRuntimeUrl: vi.fn(() => 'xterm.js'),
+}));
 
 describe('terminal-ui helpers', () => {
   it('filters terminal echo activity using the configured window', () => {
@@ -125,5 +137,109 @@ describe('createInputDispatcher', () => {
     resolve2();
     await flush();
     expect(forwarded).toEqual(['a', 'b']);
+  });
+});
+
+describe('fitTerminalSafely', () => {
+  it('returns true when fit succeeds', () => {
+    const fitAddon = { fit: () => undefined };
+    expect(fitTerminalSafely(fitAddon)).toBe(true);
+  });
+
+  it('returns false and reports when fit throws', () => {
+    const onError = vi.fn();
+    const fitAddon = {
+      fit: () => {
+        throw new Error('fit failed');
+      },
+    };
+
+    expect(fitTerminalSafely(fitAddon, onError)).toBe(false);
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('initializeTerminalUi disposal', () => {
+  const originalTerminal = (window as Window & { Terminal?: unknown }).Terminal;
+  const originalFitAddon = (window as Window & { FitAddon?: unknown }).FitAddon;
+  const originalResizeObserver = globalThis.ResizeObserver;
+
+  afterEach(() => {
+    (window as Window & { Terminal?: unknown }).Terminal = originalTerminal;
+    (window as Window & { FitAddon?: unknown }).FitAddon = originalFitAddon;
+    globalThis.ResizeObserver = originalResizeObserver;
+  });
+
+  it('disposes terminal onData subscription when UI is disposed', async () => {
+    const disposeOnData = vi.fn();
+    const termDispose = vi.fn();
+
+    class MockTerminal {
+      cols = 80;
+      rows = 24;
+      options = { theme: {} };
+      attachCustomKeyEventHandler = vi.fn();
+      clear = vi.fn();
+      clearSelection = vi.fn();
+      getSelection = vi.fn(() => '');
+      hasSelection = vi.fn(() => false);
+      loadAddon = vi.fn();
+      onData = vi.fn(() => ({ dispose: disposeOnData }));
+      open = vi.fn((container: HTMLElement) => {
+        const viewport = document.createElement('div');
+        viewport.className = 'xterm-viewport';
+        container.appendChild(viewport);
+      });
+      resize = vi.fn();
+      scrollLines = vi.fn();
+      write = vi.fn();
+      writeln = vi.fn();
+      dispose = termDispose;
+
+      constructor(options: unknown) {
+        void options;
+      }
+    }
+
+    class MockFitAddon {
+      fit = vi.fn();
+    }
+
+    class MockResizeObserver {
+      observe = vi.fn();
+      disconnect = vi.fn();
+
+      constructor(callback: ResizeObserverCallback) {
+        void callback;
+      }
+    }
+
+    (window as Window & { Terminal?: unknown }).Terminal = MockTerminal;
+    (window as Window & { FitAddon?: unknown }).FitAddon = MockFitAddon;
+    globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+
+    const container = document.createElement('div');
+    Object.defineProperty(container, 'clientWidth', { configurable: true, value: 800 });
+    Object.defineProperty(container, 'clientHeight', { configurable: true, value: 600 });
+
+    const handle = await initializeTerminalUi({
+      api: {
+        onTerminalData: vi.fn(() => () => {}),
+        onTerminalExit: vi.fn(() => () => {}),
+        onTerminalStatus: vi.fn(() => () => {}),
+        terminalInput: vi.fn(),
+        terminalIsRunning: vi.fn(async () => true),
+        terminalResize: vi.fn(),
+        terminalStart: vi.fn(async () => true),
+      },
+      container,
+      theme: {},
+      writeStatusToTerminal: true,
+    });
+
+    handle.dispose();
+
+    expect(disposeOnData).toHaveBeenCalledTimes(1);
+    expect(termDispose).toHaveBeenCalledTimes(1);
   });
 });

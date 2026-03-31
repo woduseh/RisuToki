@@ -60,6 +60,10 @@ interface TerminalStatusLike {
   message: string;
 }
 
+interface DisposableLike {
+  dispose: () => void;
+}
+
 interface TerminalLike {
   cols: number;
   rows: number;
@@ -72,7 +76,7 @@ interface TerminalLike {
   getSelection: () => string;
   hasSelection: () => boolean;
   loadAddon: (addon: FitAddonLike) => void;
-  onData: (handler: (data: string) => void) => void;
+  onData: (handler: (data: string) => void) => DisposableLike;
   open: (container: HTMLElement) => void;
   resize: (cols: number, rows: number) => void;
   scrollLines: (amount: number) => void;
@@ -109,9 +113,9 @@ interface RuntimeWindow extends Window {
 }
 
 export interface TerminalUiApi {
-  onTerminalData: (callback: (data: string) => void) => void;
-  onTerminalExit: (callback: () => void) => void;
-  onTerminalStatus?: (callback: (event: TerminalStatusLike) => void) => void;
+  onTerminalData: (callback: (data: string) => void) => (() => void) | void;
+  onTerminalExit: (callback: () => void) => (() => void) | void;
+  onTerminalStatus?: (callback: (event: TerminalStatusLike) => void) => (() => void) | void;
   terminalInput: (data: string) => void;
   terminalIsRunning?: () => Promise<boolean>;
   terminalResize: (cols: number, rows: number) => void;
@@ -230,12 +234,13 @@ function getFitAddonConstructor(runtimeWindow: RuntimeWindow): FitAddonConstruct
   throw new Error('FitAddon runtime is not available.');
 }
 
-function forwardViewportPointerEvents(container: HTMLElement): void {
+function forwardViewportPointerEvents(container: HTMLElement): () => void {
   const viewport = container.querySelector<HTMLElement>('.xterm-viewport');
-  if (!viewport) return;
+  if (!viewport) return () => {};
 
-  ['mousedown', 'dblclick', 'contextmenu', 'auxclick'].forEach((eventName) => {
-    viewport.addEventListener(eventName, (event) => {
+  const eventNames = ['mousedown', 'dblclick', 'contextmenu', 'auxclick'] as const;
+  const listeners = eventNames.map((eventName) => {
+    const listener = (event: Event) => {
       if (!(event instanceof MouseEvent)) return;
       const scrollbarWidth = viewport.offsetWidth - viewport.clientWidth;
       const rect = viewport.getBoundingClientRect();
@@ -249,8 +254,26 @@ function forwardViewportPointerEvents(container: HTMLElement): void {
       if (target) {
         target.dispatchEvent(new MouseEvent(eventName, event));
       }
-    });
+    };
+    viewport.addEventListener(eventName, listener);
+    return [eventName, listener] as const;
   });
+
+  return () => {
+    for (const [eventName, listener] of listeners) {
+      viewport.removeEventListener(eventName, listener);
+    }
+  };
+}
+
+export function fitTerminalSafely(fitAddon: FitAddonLike, onError?: (error: unknown) => void): boolean {
+  try {
+    fitAddon.fit();
+    return true;
+  } catch (error) {
+    onError?.(error);
+    return false;
+  }
 }
 
 async function ensureTerminalRuntime(preserveAmdLoader: boolean): Promise<{
@@ -303,7 +326,7 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
 
   term.loadAddon(fitAddon);
   term.open(options.container);
-  forwardViewportPointerEvents(options.container);
+  const cleanupViewportPointerEvents = forwardViewportPointerEvents(options.container);
 
   const wheelHandler = (e: WheelEvent): void => {
     const lines = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY : Math.sign(e.deltaY) * 3;
@@ -314,11 +337,11 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
   await new Promise<void>((resolve) => {
     window.setTimeout(resolve, 50);
   });
-  fitAddon.fit();
+  fitTerminalSafely(fitAddon);
 
   const dispatcher = createInputDispatcher((data) => options.api.terminalInput(data));
 
-  term.onData((data) => {
+  const disposeOnData = term.onData((data) => {
     const maybePromise = options.onUserInput?.(data);
     const gate =
       maybePromise != null && typeof (maybePromise as Promise<void>).then === 'function'
@@ -327,7 +350,7 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
     dispatcher.dispatch(data, gate);
   });
 
-  options.api.onTerminalData((data) => {
+  const disposeTerminalData = options.api.onTerminalData((data) => {
     term.write(data);
     options.onTerminalData?.(data);
 
@@ -345,12 +368,13 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
     }, options.activityIdleMs ?? 1500);
   });
 
-  options.api.onTerminalExit(() => {
+  const disposeTerminalExit = options.api.onTerminalExit(() => {
     term.writeln('\r\n[프로세스 종료]');
   });
 
+  let disposeTerminalStatus: (() => void) | void;
   if (options.writeStatusToTerminal && options.api.onTerminalStatus) {
-    options.api.onTerminalStatus((event) => {
+    disposeTerminalStatus = options.api.onTerminalStatus((event) => {
       term.writeln(formatTerminalStatusLine(event));
     });
   }
@@ -359,7 +383,9 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
     if (options.container.clientWidth <= 0 || options.container.clientHeight <= 0) {
       return;
     }
-    fitAddon.fit();
+    if (!fitTerminalSafely(fitAddon)) {
+      return;
+    }
     options.api.terminalResize(term.cols, term.rows);
   });
   resizeObserver.observe(options.container);
@@ -369,7 +395,7 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
       window.setTimeout(resolve, 100);
     });
     if (options.container.clientWidth > 0 && options.container.clientHeight > 0) {
-      fitAddon.fit();
+      fitTerminalSafely(fitAddon);
     }
   }
 
@@ -393,7 +419,12 @@ export async function initializeTerminalUi(options: TerminalUiOptions): Promise<
     fitAddon,
     dispose: () => {
       resizeObserver.disconnect();
+      cleanupViewportPointerEvents();
       options.container.removeEventListener('wheel', wheelHandler as EventListener);
+      disposeOnData?.dispose?.();
+      disposeTerminalData?.();
+      disposeTerminalExit?.();
+      disposeTerminalStatus?.();
       if (activityTimer !== null) window.clearTimeout(activityTimer);
       term.dispose?.();
     },

@@ -129,25 +129,26 @@ async function buildTerminalPopout(): Promise<void> {
 
   // --- Body (avatar + terminal) ---
   const body = document.createElement('div');
-  body.id = 'popout-body';
+  body.id = 'bottom-area';
+  body.className = 'panel-in-h';
 
   // Avatar panel
   const avatar = document.createElement('div');
-  avatar.id = 'popout-avatar';
+  avatar.id = 'toki-avatar';
   avatar.innerHTML = `
-    <div id="popout-avatar-display">
-      <img id="popout-avatar-img" src="${toMediaAsset('icon.png')}">
+    <div id="toki-avatar-display">
+      <img id="toki-avatar-img" src="${toMediaAsset('icon.png')}">
     </div>
-    <div class="popout-status" id="popout-status">
-      <span id="popout-status-icon">💤</span>
-      <span id="popout-status-text">대기중~</span>
+    <div class="popout-status" id="toki-status">
+      <span id="toki-status-icon">💤</span>
+      <span id="toki-status-text">대기중~</span>
     </div>
   `;
   body.appendChild(avatar);
 
   // Terminal wrap (terminal + chat overlay)
   const termWrap = document.createElement('div');
-  termWrap.id = 'popout-terminal-wrap';
+  termWrap.id = 'terminal-area';
 
   const termContainer = document.createElement('div');
   termContainer.id = 'terminal-container';
@@ -161,7 +162,20 @@ async function buildTerminalPopout(): Promise<void> {
   header.querySelector('.btn-close-popout')!.addEventListener('click', () => window.close());
 
   // --- Init terminal ---
-  await initPopoutXterm(termContainer, termWrap);
+  try {
+    const disposeTerminalPopout = await initPopoutXterm(termContainer, termWrap);
+    window.addEventListener('beforeunload', disposeTerminalPopout, { once: true });
+  } catch (error) {
+    termWrap.replaceChildren(
+      createPopoutEmptyState('터미널 팝아웃을 초기화하지 못했습니다. 다시 시도해주세요.', 'terminal-init-error'),
+    );
+    reportRuntimeError({
+      context: '터미널 팝아웃 초기화 실패',
+      error,
+      fallbackMessage: '터미널 팝아웃을 초기화하지 못했습니다.',
+      logPrefix: '[Popout Terminal]',
+    });
+  }
 }
 
 // ==================== Xterm + Chat Mode ====================
@@ -181,63 +195,88 @@ const popoutChatSession = createDirectTerminalChatSession({
   stripAnsi,
 });
 
-async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): Promise<void> {
-  const terminalUi = await initializeTerminalUi({
-    api: {
-      onTerminalData: (callback) => window.popoutAPI.onTerminalData(callback),
-      onTerminalExit: (callback) => window.popoutAPI.onTerminalExit(callback),
-      onTerminalStatus: (callback) => window.popoutAPI.onTerminalStatus(callback),
-      terminalInput: (data) => window.popoutAPI.terminalInput(data),
-      terminalIsRunning: () => window.popoutAPI.terminalIsRunning(),
-      terminalResize: (cols, rows) => window.popoutAPI.terminalResize(cols, rows),
-      terminalStart: (cols, rows) => window.popoutAPI.terminalStart(cols, rows),
-    },
-    container,
-    onTerminalData: (data) => {
-      if (popoutChatMode) popoutChatSession.handleTerminalData(data);
-    },
-    rightClickSelectsWord: false,
-    setActive: setPopoutActive,
-    shouldActivateOnData: () => true,
-    theme: getPopoutTerminalTheme(),
-    writeStatusToTerminal: true,
-  });
-  popoutTerm = terminalUi.term;
-  popoutFitAddon = terminalUi.fitAddon;
+async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): Promise<() => void> {
+  let terminalUi: TerminalUiHandle | null = null;
+  let disposeRpModeSubscription: (() => void) | null = null;
 
-  // --- Build chat view (overlay inside termWrap) ---
-  buildPopoutChatView(termWrap);
-
-  // --- Wire RP mode button ---
-  initPopoutRpMode();
-
-  // --- Wire chat mode button ---
-  document.getElementById('btn-chat-mode')!.addEventListener('click', togglePopoutChatMode);
-
-  // --- Wire background button ---
-  document.getElementById('btn-terminal-bg')!.addEventListener('click', async () => {
-    // Simple: prompt-style isn't available; just toggle a subtle bg
+  const chatModeButton = document.getElementById('btn-chat-mode');
+  const backgroundButton = document.getElementById('btn-terminal-bg');
+  const handleChatModeClick = () => togglePopoutChatMode();
+  const handleBackgroundClick = () => {
     container.classList.toggle('has-bg');
-  });
+  };
+
+  try {
+    terminalUi = await initializeTerminalUi({
+      api: {
+        onTerminalData: (callback) => window.popoutAPI.onTerminalData(callback),
+        onTerminalExit: (callback) => window.popoutAPI.onTerminalExit(callback),
+        onTerminalStatus: (callback) => window.popoutAPI.onTerminalStatus(callback),
+        terminalInput: (data) => window.popoutAPI.terminalInput(data),
+        terminalIsRunning: () => window.popoutAPI.terminalIsRunning(),
+        terminalResize: (cols, rows) => window.popoutAPI.terminalResize(cols, rows),
+        terminalStart: (cols, rows) => window.popoutAPI.terminalStart(cols, rows),
+      },
+      container,
+      onTerminalData: (data) => {
+        if (popoutChatMode) popoutChatSession.handleTerminalData(data);
+      },
+      rightClickSelectsWord: false,
+      setActive: setPopoutActive,
+      shouldActivateOnData: () => true,
+      theme: getPopoutTerminalTheme(),
+      writeStatusToTerminal: true,
+    });
+    popoutTerm = terminalUi.term;
+    popoutFitAddon = terminalUi.fitAddon;
+
+    // --- Build chat view (overlay inside termWrap) ---
+    buildPopoutChatView(termWrap);
+
+    // --- Wire RP mode button ---
+    disposeRpModeSubscription = initPopoutRpMode();
+
+    // --- Wire chat mode button ---
+    chatModeButton?.addEventListener('click', handleChatModeClick);
+
+    // --- Wire background button ---
+    backgroundButton?.addEventListener('click', handleBackgroundClick);
+
+    return () => {
+      chatModeButton?.removeEventListener('click', handleChatModeClick);
+      backgroundButton?.removeEventListener('click', handleBackgroundClick);
+      disposeRpModeSubscription?.();
+      terminalUi?.dispose();
+      popoutTerm = null;
+      popoutFitAddon = null;
+    };
+  } catch (error) {
+    disposeRpModeSubscription?.();
+    terminalUi?.dispose();
+    popoutTerm = null;
+    popoutFitAddon = null;
+    throw error;
+  }
 }
 
 // ==================== RP Mode (shared via localStorage) ====================
 
-function initPopoutRpMode(): void {
+function initPopoutRpMode(): () => void {
   const btn = document.getElementById('btn-rp-mode');
-  if (!btn) return;
+  if (!btn) return () => {};
 
   let snapshot = readAppSettingsSnapshot();
   updatePopoutRpStyle(btn, snapshot.rpMode !== 'off');
 
-  btn.addEventListener('click', () => {
+  const handleClick = () => {
     snapshot = readAppSettingsSnapshot();
     const nextMode = snapshot.rpMode === 'off' ? getDefaultRpModeForDarkMode(snapshot.darkMode) : 'off';
     writeRpMode(nextMode);
     updatePopoutRpStyle(btn, nextMode !== 'off');
-  });
+  };
+  btn.addEventListener('click', handleClick);
 
-  subscribeToAppSettings((nextSnapshot: AppSettingsSnapshot) => {
+  const disposeSettingsSubscription = subscribeToAppSettings((nextSnapshot: AppSettingsSnapshot) => {
     snapshot = nextSnapshot;
     currentSettingsSnapshot = nextSnapshot;
     applyPopoutDarkMode(snapshot);
@@ -250,6 +289,11 @@ function initPopoutRpMode(): void {
     }
     updatePopoutRpStyle(btn, snapshot.rpMode !== 'off');
   });
+
+  return () => {
+    btn.removeEventListener('click', handleClick);
+    disposeSettingsSubscription();
+  };
 }
 
 function updatePopoutRpStyle(btn: HTMLElement, active: boolean, rpMode = readAppSettingsSnapshot().rpMode): void {
@@ -272,10 +316,10 @@ let _poImg: HTMLImageElement | null,
 function setPopoutActive(active: boolean): void {
   if (_popoutIsActive === active) return;
   if (!_poImg) {
-    _poImg = document.getElementById('popout-avatar-img') as HTMLImageElement | null;
-    _poStatus = document.getElementById('popout-status');
-    _poIcon = document.getElementById('popout-status-icon');
-    _poText = document.getElementById('popout-status-text');
+    _poImg = document.getElementById('toki-avatar-img') as HTMLImageElement | null;
+    _poStatus = document.getElementById('toki-status');
+    _poIcon = document.getElementById('toki-status-icon');
+    _poText = document.getElementById('toki-status-text');
   }
   if (!_poImg || !_poStatus || !_poIcon || !_poText) return;
   _popoutIsActive = active;
@@ -464,8 +508,7 @@ async function buildSidebarPopout(): Promise<void> {
 
     const data = await window.popoutAPI.getSidebarData();
     if (!data || !data.items || data.items.length === 0) {
-      content.innerHTML =
-        '<div style="padding:16px;color:var(--text-secondary);font-size:13px;">파일을 먼저 열어주세요</div>';
+      content.replaceChildren(createPopoutEmptyState('파일을 먼저 열어주세요'));
       return;
     }
 
@@ -474,8 +517,7 @@ async function buildSidebarPopout(): Promise<void> {
       el.className = `tree-item${item.indent ? ' indent-' + item.indent : ''}`;
 
       if (item.isHeader) {
-        el.style.cssText =
-          'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;';
+        el.classList.add('tree-section-header');
       }
 
       if (item.icon) {
@@ -507,7 +549,7 @@ async function buildSidebarPopout(): Promise<void> {
   };
 
   await renderSidebarPopout();
-  window.popoutAPI.onSidebarDataChanged(() => {
+  const disposeSidebarRefresh = window.popoutAPI.onSidebarDataChanged(() => {
     renderSidebarPopout().catch((error: unknown) => {
       reportRuntimeError({
         context: '팝아웃 항목 목록 새로고침 실패',
@@ -516,6 +558,13 @@ async function buildSidebarPopout(): Promise<void> {
       });
     });
   });
+  window.addEventListener(
+    'beforeunload',
+    () => {
+      disposeSidebarRefresh?.();
+    },
+    { once: true },
+  );
 }
 
 // ==================== Refs Popout ====================
@@ -558,19 +607,14 @@ async function buildRefsPopout(): Promise<void> {
 
     const data = await window.popoutAPI.getRefsData();
     if (!data) {
-      content.innerHTML =
-        '<div style="padding:16px;color:var(--text-secondary);font-size:13px;">데이터를 불러올 수 없습니다</div>';
+      content.replaceChildren(createPopoutEmptyState('데이터를 불러올 수 없습니다'));
       return;
     }
 
     const builtInGuides = Array.isArray(data.guides) ? data.guides : [];
     const sessionGuides = Array.isArray(data.sessionGuides) ? data.sessionGuides : [];
     if (builtInGuides.length > 0 || sessionGuides.length > 0) {
-      const guideHeader = document.createElement('div');
-      guideHeader.className = 'tree-item';
-      guideHeader.style.cssText =
-        'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;';
-      guideHeader.innerHTML = '<span class="icon">📖</span><span>가이드</span>';
+      const guideHeader = createTreeSectionHeader('가이드', { icon: '📖' });
       content.appendChild(guideHeader);
 
       const appendGuideItem = (fileName: string, isSession: boolean): void => {
@@ -600,11 +644,7 @@ async function buildRefsPopout(): Promise<void> {
     }
 
     if (data.refs && data.refs.length > 0) {
-      const refSep = document.createElement('div');
-      refSep.className = 'tree-item';
-      refSep.style.cssText =
-        'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;border-top:1px solid var(--border-color);margin-top:8px;';
-      refSep.textContent = '── 참고 파일 ──';
+      const refSep = createTreeSectionHeader('── 참고 파일 ──', { bordered: true });
       content.appendChild(refSep);
 
       for (const item of data.refs) {
@@ -612,8 +652,7 @@ async function buildRefsPopout(): Promise<void> {
         el.className = `tree-item${item.indent ? ' indent-' + item.indent : ''}`;
 
         if (item.isHeader) {
-          el.style.cssText =
-            'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:default;text-transform:uppercase;';
+          el.classList.add('tree-section-header');
         } else if (item.isFolder) {
           el.style.cssText = 'font-weight:600;padding-top:8px;padding-bottom:4px;cursor:default;';
         }
@@ -647,13 +686,12 @@ async function buildRefsPopout(): Promise<void> {
     }
 
     if (builtInGuides.length === 0 && sessionGuides.length === 0 && (!data.refs || data.refs.length === 0)) {
-      content.innerHTML =
-        '<div style="padding:16px;color:var(--text-secondary);font-size:13px;">참고자료가 없습니다</div>';
+      content.replaceChildren(createPopoutEmptyState('참고자료가 없습니다'));
     }
   };
 
   await renderRefsPopout();
-  window.popoutAPI.onRefsDataChanged(() => {
+  const disposeRefsRefresh = window.popoutAPI.onRefsDataChanged(() => {
     renderRefsPopout().catch((error: unknown) => {
       reportRuntimeError({
         context: '참고자료 팝아웃 새로고침 실패',
@@ -662,6 +700,13 @@ async function buildRefsPopout(): Promise<void> {
       });
     });
   });
+  window.addEventListener(
+    'beforeunload',
+    () => {
+      disposeRefsRefresh?.();
+    },
+    { once: true },
+  );
 }
 
 // ==================== Editor Popout ====================
@@ -1007,3 +1052,33 @@ async function buildPreviewPopout(): Promise<void> {
 }
 
 // ==================== Shared Helpers ====================
+
+function createPopoutEmptyState(message: string, extraClassName?: string): HTMLDivElement {
+  const empty = document.createElement('div');
+  empty.className = ['popout-empty-state', extraClassName].filter(Boolean).join(' ');
+  empty.textContent = message;
+  return empty;
+}
+
+function createTreeSectionHeader(
+  label: string,
+  options?: {
+    bordered?: boolean;
+    icon?: string;
+  },
+): HTMLDivElement {
+  const header = document.createElement('div');
+  header.className = ['tree-item', 'tree-section-header', options?.bordered ? 'tree-section-header--bordered' : '']
+    .filter(Boolean)
+    .join(' ');
+  if (options?.icon) {
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.textContent = options.icon;
+    header.appendChild(icon);
+  }
+  const text = document.createElement('span');
+  text.textContent = label;
+  header.appendChild(text);
+  return header;
+}

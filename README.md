@@ -2,7 +2,7 @@
 
 > RisuAI .charx / .risum / .risup 파일 전용 에디터 + AI CLI 통합 터미널
 
-[![Version](https://img.shields.io/badge/version-0.27.7-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.28.2-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -250,6 +250,9 @@ VS Code와 동일한 Monaco 편집 엔진을 사용합니다.
 | 🖼   | 터미널 배경 이미지 설정                   |
 | ⚙    | 설정 패널 열기                            |
 | ━    | 터미널 패널 접기/펼치기                   |
+
+- 터미널 팝아웃은 메인 창과 같은 레이아웃/아바타/터미널 표면 스타일을 재사용해 라이트·다크 모드 모두 톤이 더 자연스럽게 맞춰집니다.
+- 터미널 팝아웃에서 xterm 초기화에 실패하면 빈 화면 대신 안내 메시지를 표시하고, 창을 닫을 때 terminal UI와 설정 구독을 함께 정리해 재오픈 시 상태가 누적되지 않도록 보강되었습니다.
 
 ---
 
