@@ -32,3 +32,17 @@ describe('app.css – popout theme coherence', () => {
     expect(css).toMatch(/body\.dark-mode\s+#terminal-area\b/);
   });
 });
+
+describe('app.css – preview layout', () => {
+  it('defines the fixed overlay shell needed to surface the preview above the app', () => {
+    expect(css).toMatch(
+      /\.preview-overlay\s*\{[^}]*position:\s*fixed;[^}]*display:\s*flex;[^}]*z-index:\s*3000;[^}]*\}/s,
+    );
+  });
+
+  it('defines the preview panel as a sized flex column container', () => {
+    expect(css).toMatch(
+      /\.preview-panel\s*\{[^}]*width:\s*720px;[^}]*height:\s*85vh;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*\}/s,
+    );
+  });
+});

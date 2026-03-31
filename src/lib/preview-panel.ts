@@ -59,27 +59,33 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   // ── Header ──
   const header = document.createElement('div');
   header.className = 'preview-header';
+  header.classList.add('popout-header-main');
   const headerLeft = document.createElement('span');
+  headerLeft.className = 'preview-header-title';
   headerLeft.textContent = `${charData.name} — 프리뷰`;
   const headerBtns = document.createElement('div');
-  headerBtns.style.cssText = 'display:flex;gap:4px;align-items:center;';
+  headerBtns.className = 'popout-header-actions';
 
   const popoutPreviewBtn = document.createElement('button');
+  popoutPreviewBtn.className = 'popout-action-btn';
   popoutPreviewBtn.textContent = '↗';
   popoutPreviewBtn.title = '팝아웃 (별도 창)';
   popoutPreviewBtn.setAttribute('aria-label', '팝아웃 (별도 창)');
 
   const resetBtn = document.createElement('button');
+  resetBtn.className = 'popout-action-btn';
   resetBtn.textContent = '↻';
   resetBtn.title = '초기화';
   resetBtn.setAttribute('aria-label', '초기화');
 
   const debugBtn = document.createElement('button');
+  debugBtn.className = 'popout-action-btn';
   debugBtn.textContent = '🔧';
   debugBtn.title = '디버그 패널';
   debugBtn.setAttribute('aria-label', '디버그 패널');
 
   const closeBtn = document.createElement('button');
+  closeBtn.className = 'popout-action-btn btn-close-popout';
   closeBtn.textContent = '✕';
   closeBtn.title = '닫기';
   closeBtn.setAttribute('aria-label', '닫기');

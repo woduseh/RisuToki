@@ -132,6 +132,26 @@ describe('preview-panel', () => {
     dispose();
   });
 
+  it('uses shared popout header styling hooks for docked preview controls', () => {
+    const container = document.createElement('div');
+    const deps = createDeps();
+    const { dispose } = showPreviewPanel(container, deps);
+
+    const header = container.querySelector('.preview-header') as HTMLElement | null;
+    expect(header?.classList.contains('popout-header-main')).toBe(true);
+
+    const title = header?.querySelector('.preview-header-title');
+    expect(title?.textContent).toContain('Toki');
+
+    const actions = header?.querySelector('.popout-header-actions');
+    const buttons = Array.from(actions?.querySelectorAll('button') ?? []);
+    expect(buttons).toHaveLength(4);
+    expect(buttons.every((button) => button.classList.contains('popout-action-btn'))).toBe(true);
+    expect(buttons.at(-1)?.classList.contains('btn-close-popout')).toBe(true);
+
+    dispose();
+  });
+
   it('creates the preview iframe with a sandbox that withholds dangerous iframe capabilities', () => {
     const container = document.createElement('div');
     const deps = createDeps();
