@@ -1189,6 +1189,50 @@ description: 'Minimal frontmatter'
     }
   });
 
+  it('parses YAML flow arrays that use single-quoted strings', async () => {
+    const skillsDir = path.join(TEST_DIR, 'skills-yaml-flow');
+    await fs.promises.rm(skillsDir, { recursive: true, force: true });
+    await writeSkillFixture(skillsDir, 'yaml-flow-skill', {
+      'SKILL.md': `---
+name: yaml-flow-skill
+description: 'Parses YAML flow arrays'
+tags: ['workflow', 'metadata']
+related_tools: ['search_all_fields', 'write_field_batch']
+---
+
+# YAML Flow Skill
+`,
+    });
+
+    const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
+
+    try {
+      const response = await getJson<{
+        count: number;
+        skills: Array<{
+          name: string;
+          description: string;
+          tags: string[];
+          relatedTools: string[];
+          files: string[];
+        }>;
+      }>(api.port, api.token, '/skills');
+
+      expect(response.status).toBe(200);
+      expect(response.data.skills).toEqual([
+        {
+          name: 'yaml-flow-skill',
+          description: 'Parses YAML flow arrays',
+          tags: ['workflow', 'metadata'],
+          relatedTools: ['search_all_fields', 'write_field_batch'],
+          files: ['SKILL.md'],
+        },
+      ]);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('discovers the extracted built-in reference skills', async () => {
     const api = await startTestApiServer(createSearchFixture());
 

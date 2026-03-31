@@ -9,6 +9,13 @@
 
 ---
 
+## [0.29.1] - 2026-04-01
+
+### 수정
+
+- **스킬 메타데이터 YAML flow-array 파싱 복구**: `prettier`가 frontmatter 배열을 `['a', 'b']` 형태로 정리해도 MCP `list_skills`가 `tags` / `relatedTools`를 계속 올바르게 읽도록 보강
+- **스킬 인덱스 회귀 테스트 추가**: 임시 skill fixture와 실제 번들 skill 디렉터리를 함께 검증해, `list_skills` 메타데이터 노출과 새 reference skill 발견이 다시 깨지지 않도록 고정
+
 ## [0.29.0] - 2026-04-01
 
 ### 새 기능

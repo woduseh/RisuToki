@@ -178,11 +178,18 @@ function parseFrontmatterString(block: string, key: string): string {
 function parseInlineStringArray(block: string, key: string): string[] {
   const match = block.match(new RegExp(`^${key}:\\s*(\\[[^\\n]*\\])\\s*$`, 'm'));
   if (!match) return [];
+  const rawArray = match[1].trim();
   try {
-    const parsed = JSON.parse(match[1]) as unknown;
+    const parsed = JSON.parse(rawArray) as unknown;
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
   } catch {
-    return [];
+    if (!(rawArray.startsWith('[') && rawArray.endsWith(']'))) return [];
+    const inner = rawArray.slice(1, -1).trim();
+    if (!inner) return [];
+    return inner
+      .split(',')
+      .map((item) => parseFrontmatterScalar(item))
+      .filter((item) => item.length > 0);
   }
 }
 
