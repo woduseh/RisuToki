@@ -1,6 +1,8 @@
 ---
 name: writing-html-css
 description: 'Guides writing HTML and CSS for RisuAI charx and risum files. Covers the backgroundEmbedding field for persistent styles, the x-risu- class prefix requirement, empty line restrictions, CBS dynamic class injection, and practical UI patterns like status panels. Use when creating or editing CSS/HTML in backgroundEmbedding, regex OUT fields, or lorebook content.'
+tags: ['html', 'css', 'ui']
+related_tools: ['list_css', 'read_css', 'write_css', 'insert_in_css']
 ---
 
 # Writing HTML & CSS for RisuAI

@@ -9,6 +9,19 @@
 
 ---
 
+## [0.29.0] - 2026-04-01
+
+### 새 기능
+
+- **스킬 메타데이터 노출 확장**: MCP `list_skills`가 이제 `tags`와 `relatedTools`를 함께 반환해, AI가 필요한 가이드를 더 짧고 정확하게 고를 수 있도록 개선
+- **워크플로/구조 참조 스킬 추가**: `using-mcp-tools`, `file-structure-reference`, `writing-danbooru-tags`를 추가해 MCP 도구 선택, 파일 구조, Danbooru 태그 워크플로를 on-demand 문서로 분리
+
+### 변경
+
+- **`AGENTS.md` 대폭 슬림화**: 항상 필요한 읽기 규칙·워크플로·프로젝트 규칙만 남기고, 무거운 레퍼런스는 `skills/`로 이동해 세션 시작 컨텍스트를 줄임
+- **기존 스킬 frontmatter 보강**: 주요 스킬에 `tags` / `related_tools`를 추가해 `list_skills` 인덱스 품질을 개선
+- **skills 인덱스 문서 갱신**: `skills/README.md`에 새 스킬 구조와 frontmatter schema를 반영
+
 ## [0.28.3] - 2026-04-01
 
 ### 수정

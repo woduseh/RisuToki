@@ -1,6 +1,8 @@
 ---
 name: writing-arca-html
 description: 'Guides writing HTML for limited WYSIWYG editors like Arca.live (아카라이브). Covers strict technical constraints (no CSS/JS, inline-only styling, no positioning/flexbox/grid/animations), creative design techniques within those limits, background wrapping strategies, and comment syntax. Use when creating introduction pages, character profiles, or any rich HTML content destined for paste into a WYSIWYG editor that strips advanced CSS.'
+tags: ['html', 'wysiwyg', 'arca']
+related_tools: ['write_field', 'replace_in_field', 'insert_in_field']
 ---
 
 # Writing HTML for Limited WYSIWYG Editors

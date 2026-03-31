@@ -1,6 +1,8 @@
 ---
 name: authoring-characters
 description: 'Writes and refactors character descriptions for LLM roleplay. Produces performance-ready descriptions with behavioral depth, speech register systems, contrast pairs, and reaction patterns. Handles any input from keywords to full bios. Use when a user asks to create, improve, or analyze a character description for any LLM roleplay frontend.'
+tags: ['authoring', 'character', 'roleplay']
+related_tools: ['read_field', 'write_field', 'read_lorebook']
 ---
 
 # Character Description Authoring

@@ -148,16 +148,54 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
-/** Extract name and description from YAML frontmatter (--- delimited). */
-function parseYamlFrontmatter(raw: string): { name: string; description: string } {
+interface SkillFrontmatter {
+  name: string;
+  description: string;
+  tags: string[];
+  relatedTools: string[];
+}
+
+function parseFrontmatterScalar(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      return JSON.parse(trimmed) as string;
+    } catch {
+      return trimmed.slice(1, -1).trim();
+    }
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function parseFrontmatterString(block: string, key: string): string {
+  const match = block.match(new RegExp(`^${key}:\\s*(.+)\\s*$`, 'm'));
+  return match ? parseFrontmatterScalar(match[1]) : '';
+}
+
+function parseInlineStringArray(block: string, key: string): string[] {
+  const match = block.match(new RegExp(`^${key}:\\s*(\\[[^\\n]*\\])\\s*$`, 'm'));
+  if (!match) return [];
+  try {
+    const parsed = JSON.parse(match[1]) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Extract supported skill metadata fields from YAML frontmatter (--- delimited). */
+function parseYamlFrontmatter(raw: string): SkillFrontmatter {
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!m) return { name: '', description: '' };
+  if (!m) return { name: '', description: '', tags: [], relatedTools: [] };
   const block = m[1];
-  const nameMatch = block.match(/^name:\s*"?([^"\n]*)"?\s*$/m);
-  const descMatch = block.match(/^description:\s*"((?:[^"\\]|\\.)*)"\s*$/m) || block.match(/^description:\s*(.+)$/m);
   return {
-    name: nameMatch ? nameMatch[1].trim() : '',
-    description: descMatch ? descMatch[1].trim() : '',
+    name: parseFrontmatterString(block, 'name'),
+    description: parseFrontmatterString(block, 'description'),
+    tags: parseInlineStringArray(block, 'tags'),
+    relatedTools: parseInlineStringArray(block, 'related_tools'),
   };
 }
 
@@ -7428,20 +7466,32 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const skillsDir = deps.getSkillsDir();
         try {
           const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
-          const skills: { name: string; description: string; files: string[] }[] = [];
+          const skills: Array<{
+            name: string;
+            description: string;
+            tags: string[];
+            relatedTools: string[];
+            files: string[];
+          }> = [];
           for (const entry of entries) {
             if (!entry.isDirectory()) continue;
             const skillMdPath = path.join(skillsDir, entry.name, 'SKILL.md');
             if (!fs.existsSync(skillMdPath)) continue;
             const raw = fs.readFileSync(skillMdPath, 'utf-8');
             const fm = parseYamlFrontmatter(raw);
-            const dirFiles = fs.readdirSync(path.join(skillsDir, entry.name)).filter((f) => f.endsWith('.md'));
+            const dirFiles = fs
+              .readdirSync(path.join(skillsDir, entry.name))
+              .filter((f) => f.endsWith('.md'))
+              .sort((a, b) => a.localeCompare(b));
             skills.push({
               name: fm.name || entry.name,
               description: fm.description || '',
+              tags: fm.tags,
+              relatedTools: fm.relatedTools,
               files: dirFiles,
             });
           }
+          skills.sort((a, b) => a.name.localeCompare(b.name));
           return jsonRes(res, { count: skills.length, skills });
         } catch {
           return jsonRes(res, { count: 0, skills: [], error: 'Skills directory not found' });

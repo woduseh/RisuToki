@@ -175,7 +175,9 @@ export async function buildAssistantPrompt(
     lines.push(`- list_reference_css(index) / read_reference_css(index, sectionIndex)`);
     lines.push(``);
     lines.push(`[스킬 문서]`);
-    lines.push(`- list_skills / read_skill(name, file?): CBS, Lua API, 로어북, 정규식 등 가이드`);
+    lines.push(
+      `- list_skills / read_skill(name, file?): MCP 워크플로, 파일 구조, CBS, Lua API, 로어북, 정규식, Danbooru 태그 등 가이드`,
+    );
     lines.push(``);
     lines.push(`write/add/delete 도구 사용 시 에디터에서 사용자 확인 팝업이 뜹니다.`);
     lines.push(`도구를 적극 활용하여 사용자의 요청을 수행하세요.`);

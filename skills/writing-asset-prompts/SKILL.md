@@ -1,6 +1,8 @@
 ---
 name: writing-asset-prompts
 description: 'Guides writing image generation prompts for character standing illustrations optimized for the Anima model. Covers the 6-step prompt pipeline (base framing, expression/pose, attire, props/effects, lighting/background, natural language summary), minimalist background strategy, and output format. Use when a user needs a standing image prompt from a character description.'
+tags: ['assets', 'image-prompts', 'character-art']
+related_tools: ['search_danbooru_tags', 'validate_danbooru_tags', 'read_lorebook']
 ---
 
 # Writing Asset Prompts (Anima Model)

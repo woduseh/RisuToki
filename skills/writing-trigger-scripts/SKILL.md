@@ -1,6 +1,8 @@
 ---
 name: writing-trigger-scripts
 description: 'Guides writing trigger scripts for RisuAI charx and risum files. Covers all trigger types (start, input, output, display, request, manual/button), execution order in the processing pipeline, listenEdit event listeners, and the relationship between V2 GUI triggers, Lua triggers, CBS, and regex scripts. Use when planning or debugging trigger-based automation.'
+tags: ['triggers', 'workflow', 'automation']
+related_tools: ['list_triggers', 'read_trigger', 'write_trigger', 'add_trigger']
 ---
 
 # Writing Trigger Scripts

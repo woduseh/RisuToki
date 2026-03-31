@@ -1,6 +1,8 @@
 ---
 name: writing-cbs-syntax
 description: 'Provides the complete reference for RisuAI Custom Bracket Syntax (CBS). Covers 170+ template tags including variables, conditionals, loops, math, arrays, assets, buttons, and character data access. Use when writing or editing CBS expressions in charx description, firstMessage, lorebook content, globalNote, backgroundEmbedding, or any CBS-enabled field.'
+tags: ['cbs', 'syntax', 'prompting']
+related_tools: ['validate_cbs', 'list_cbs_toggles', 'simulate_cbs', 'diff_cbs']
 ---
 
 # CBS — Custom Bracket Syntax

@@ -1,6 +1,8 @@
 ---
 name: writing-lorebooks
 description: 'Guides writing and structuring lorebook entries for RisuAI charx and risum files. Covers keyword activation, insertion order, decorator syntax (@@depth, @@role, @@position, etc.), folder organization, CBS integration, and conditional activation. Use when creating, editing, or organizing lorebook entries.'
+tags: ['lorebook', 'reference', 'worldbuilding']
+related_tools: ['list_lorebook', 'read_lorebook', 'write_lorebook', 'validate_lorebook_keys']
 ---
 
 # Writing Lorebook Entries

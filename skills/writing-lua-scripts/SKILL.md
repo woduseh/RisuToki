@@ -1,6 +1,8 @@
 ---
 name: writing-lua-scripts
 description: 'Guides writing Lua 5.4 trigger scripts for RisuAI charx and risum files. Covers event callbacks (onInput, onStart, onOutput, listenEdit), chat manipulation, variables, LLM calls, UI alerts, lorebook access, and async patterns. Use when creating or editing Lua code in the lua field of charx or risum files.'
+tags: ['lua', 'triggers', 'scripting']
+related_tools: ['list_lua', 'read_lua', 'write_lua', 'add_lua_section']
 ---
 
 # Writing Lua Scripts for RisuAI

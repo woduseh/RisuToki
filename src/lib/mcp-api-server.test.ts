@@ -94,6 +94,7 @@ function closeServer(server: http.Server): Promise<void> {
 async function startTestApiServer(
   currentData: SearchFixture,
   referenceFiles: Array<{ fileName: string; data: SearchFixture }> = [],
+  skillsDir?: string,
 ) {
   const modulePath = './mcp-api-server.ts';
   const { startApiServer } = (await import(modulePath)) as { startApiServer: StartApiServer };
@@ -129,7 +130,7 @@ async function startTestApiServer(
       return scripts;
     },
     stringifyTriggerScripts: (scripts: unknown) => JSON.stringify(scripts),
-    getSkillsDir: () => path.join(__dirname, '..', '..', 'skills'),
+    getSkillsDir: () => skillsDir ?? path.join(__dirname, '..', '..', 'skills'),
   });
 
   const port = await portPromise;
@@ -221,6 +222,16 @@ async function getJson<T>(port: number, token: string, urlPath: string): Promise
 
 function mapSurfacesByTarget(surfaces: SearchSurface[]) {
   return new Map(surfaces.map((surface) => [surface.target, surface]));
+}
+
+async function writeSkillFixture(rootDir: string, skillName: string, files: Record<string, string>): Promise<void> {
+  const skillDir = path.join(rootDir, skillName);
+  await fs.promises.mkdir(skillDir, { recursive: true });
+  await Promise.all(
+    Object.entries(files).map(([fileName, content]) =>
+      fs.promises.writeFile(path.join(skillDir, fileName), content, 'utf-8'),
+    ),
+  );
 }
 
 const FOLDER_UUID_RE = /^folder:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -1083,6 +1094,177 @@ describe('MCP API lorebook folder reads', () => {
       );
       expect(batch.status).toBe(200);
       expect(batch.data.entries[0]?.entry.folder).toBe('folder:canonical-folder-uuid');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API skills routes', () => {
+  it('lists custom skills with parsed additive metadata', async () => {
+    const skillsDir = path.join(TEST_DIR, 'skills-metadata');
+    await fs.promises.rm(skillsDir, { recursive: true, force: true });
+    await writeSkillFixture(skillsDir, 'reference-skill', {
+      'SKILL.md': `---
+name: reference-skill
+description: 'Reference skill for tests'
+tags: ["reference", "metadata"]
+related_tools: ["list_lorebook", "read_lorebook"]
+---
+
+# Reference Skill
+`,
+      'REFERENCE.md': '# More detail\n',
+    });
+
+    const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
+
+    try {
+      const response = await getJson<{
+        count: number;
+        skills: Array<{
+          name: string;
+          description: string;
+          tags: string[];
+          relatedTools: string[];
+          files: string[];
+        }>;
+      }>(api.port, api.token, '/skills');
+
+      expect(response.status).toBe(200);
+      expect(response.data.count).toBe(1);
+      expect(response.data.skills).toEqual([
+        {
+          name: 'reference-skill',
+          description: 'Reference skill for tests',
+          tags: ['reference', 'metadata'],
+          relatedTools: ['list_lorebook', 'read_lorebook'],
+          files: ['REFERENCE.md', 'SKILL.md'],
+        },
+      ]);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('defaults missing additive metadata to empty arrays', async () => {
+    const skillsDir = path.join(TEST_DIR, 'skills-defaults');
+    await fs.promises.rm(skillsDir, { recursive: true, force: true });
+    await writeSkillFixture(skillsDir, 'minimal-skill', {
+      'SKILL.md': `---
+name: minimal-skill
+description: 'Minimal frontmatter'
+---
+
+# Minimal Skill
+`,
+    });
+
+    const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
+
+    try {
+      const response = await getJson<{
+        count: number;
+        skills: Array<{
+          name: string;
+          description: string;
+          tags: string[];
+          relatedTools: string[];
+          files: string[];
+        }>;
+      }>(api.port, api.token, '/skills');
+
+      expect(response.status).toBe(200);
+      expect(response.data.skills).toEqual([
+        {
+          name: 'minimal-skill',
+          description: 'Minimal frontmatter',
+          tags: [],
+          relatedTools: [],
+          files: ['SKILL.md'],
+        },
+      ]);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('discovers the extracted built-in reference skills', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+
+    try {
+      const response = await getJson<{
+        count: number;
+        skills: Array<{
+          name: string;
+          tags: string[];
+          relatedTools: string[];
+        }>;
+      }>(api.port, api.token, '/skills');
+
+      expect(response.status).toBe(200);
+      expect(response.data.count).toBeGreaterThan(0);
+      expect(response.data.skills).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'file-structure-reference',
+            tags: expect.arrayContaining(['reference', 'charx']),
+            relatedTools: expect.arrayContaining(['list_fields', 'read_field']),
+          }),
+          expect.objectContaining({
+            name: 'using-mcp-tools',
+            tags: expect.arrayContaining(['workflow', 'mcp']),
+            relatedTools: expect.arrayContaining(['search_all_fields', 'write_field_batch']),
+          }),
+          expect.objectContaining({
+            name: 'writing-danbooru-tags',
+            tags: expect.arrayContaining(['danbooru', 'assets']),
+            relatedTools: expect.arrayContaining(['validate_danbooru_tags', 'search_danbooru_tags']),
+          }),
+        ]),
+      );
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('reads specific skill files and blocks path traversal', async () => {
+    const skillsDir = path.join(TEST_DIR, 'skills-read');
+    await fs.promises.rm(skillsDir, { recursive: true, force: true });
+    await writeSkillFixture(skillsDir, 'reference-skill', {
+      'SKILL.md': `---
+name: reference-skill
+description: 'Reference skill for file reads'
+---
+
+# Reference Skill
+`,
+      'REFERENCE.md': '# Reference appendix\n',
+    });
+
+    const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
+
+    try {
+      const detail = await getJson<{
+        skill: string;
+        file: string;
+        content: string;
+      }>(api.port, api.token, '/skills/reference-skill/REFERENCE.md');
+
+      expect(detail.status).toBe(200);
+      expect(detail.data).toMatchObject({
+        skill: 'reference-skill',
+        file: 'REFERENCE.md',
+      });
+      expect(detail.data.content).toContain('# Reference appendix');
+
+      const blocked = await getJson<{ error: string }>(
+        api.port,
+        api.token,
+        '/skills/reference-skill/..%2F..%2Fpackage.json',
+      );
+
+      expect(blocked.status).toBe(400);
     } finally {
       await closeServer(api.server);
     }

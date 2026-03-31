@@ -1,6 +1,8 @@
 ---
 name: authoring-lorebook-bots
 description: 'Writes bot descriptions for lorebook-driven LLM roleplay bots. Produces atmospheric descriptions that serve as persistent tonal fields, character thumbnails, and interpretive lenses for lorebook content. Use when creating bots where detailed world/character information lives in lorebooks and the description provides the framing.'
+tags: ['authoring', 'lorebook', 'roleplay']
+related_tools: ['list_lorebook', 'read_lorebook', 'write_lorebook']
 ---
 
 # Bot Description for Lorebook-Driven Bots
