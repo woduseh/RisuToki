@@ -59,10 +59,16 @@ function buildMessageContainerHtml(input: PreviewMessageHtmlInput): string {
 }
 
 function getFrameDocument(chatFrame: PreviewRuntimeFrame): Document | null {
-  return chatFrame.contentDocument || chatFrame.contentWindow?.document || null;
+  // The real preview iframe is sandboxed without allow-same-origin, so parent-side
+  // access must rely on contentDocument returning null rather than probing
+  // contentWindow.document, which throws on cross-origin frames under dev.
+  return chatFrame.contentDocument || null;
 }
 
-function createBridgeEnvelope(token: string, message: PreviewBridgeMessage): {
+function createBridgeEnvelope(
+  token: string,
+  message: PreviewBridgeMessage,
+): {
   type: typeof PREVIEW_RUNTIME_BRIDGE;
   token: string;
   payload: PreviewBridgeMessage;
@@ -102,6 +108,49 @@ function parseBridgeEnvelope(token: string, data: unknown): PreviewBridgeMessage
 
 export function createDocumentPreviewRuntime(chatFrame: PreviewRuntimeFrame): PreviewRuntime {
   const bridgeToken = createPreviewBridgeToken();
+  let bridgeClickHandler: ((event: Event) => void) | null = null;
+
+  function postBridgeMessage(documentRef: Document, payload: PreviewBridgeMessage): void {
+    documentRef.dispatchEvent(
+      new CustomEvent('preview-runtime-bridge', {
+        detail: payload,
+      }),
+    );
+  }
+
+  function attachBridge(documentRef: Document): void {
+    if (bridgeClickHandler) {
+      documentRef.removeEventListener('click', bridgeClickHandler);
+    }
+
+    bridgeClickHandler = (event: Event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+
+      const button = target.closest('[risu-btn]');
+      if (button) {
+        event.preventDefault();
+        event.stopPropagation();
+        postBridgeMessage(documentRef, {
+          type: 'risu-btn',
+          data: button.getAttribute('risu-btn') || '',
+        });
+        return;
+      }
+
+      const trigger = target.closest('[risu-trigger]');
+      if (trigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        postBridgeMessage(documentRef, {
+          type: 'risu-trigger',
+          name: trigger.getAttribute('risu-trigger') || '',
+        });
+      }
+    };
+
+    documentRef.addEventListener('click', bridgeClickHandler);
+  }
 
   return {
     async appendMessage(input) {
@@ -120,7 +169,13 @@ export function createDocumentPreviewRuntime(chatFrame: PreviewRuntimeFrame): Pr
       return createBridgeEnvelope(bridgeToken, message);
     },
 
-    dispose() {},
+    dispose() {
+      const documentRef = getFrameDocument(chatFrame);
+      if (documentRef && bridgeClickHandler) {
+        documentRef.removeEventListener('click', bridgeClickHandler);
+      }
+      bridgeClickHandler = null;
+    },
 
     parseBridgeMessage(data) {
       return parseBridgeEnvelope(bridgeToken, data);
@@ -132,8 +187,13 @@ export function createDocumentPreviewRuntime(chatFrame: PreviewRuntimeFrame): Pr
       const parser = getDomParser(documentRef);
       const parsed = parser.parseFromString(buildPreviewDocument(''), 'text/html');
 
-      documentRef.head.replaceChildren(...Array.from(parsed.head.childNodes).map((node) => documentRef.importNode(node, true)));
-      documentRef.body.replaceChildren(...Array.from(parsed.body.childNodes).map((node) => documentRef.importNode(node, true)));
+      documentRef.head.replaceChildren(
+        ...Array.from(parsed.head.childNodes).map((node) => documentRef.importNode(node, true)),
+      );
+      documentRef.body.replaceChildren(
+        ...Array.from(parsed.body.childNodes).map((node) => documentRef.importNode(node, true)),
+      );
+      attachBridge(documentRef);
     },
 
     scrollToBottom() {
@@ -236,9 +296,7 @@ export function createIframePreviewRuntime(
   const bridgeToken = createPreviewBridgeToken();
   let readyResolve: (() => void) | null = null;
   let readyPromise: Promise<void> = Promise.resolve();
-  const scriptUrl = URL.createObjectURL(
-    new Blob([buildPreviewRuntimeScriptSource(bridgeToken)], { type: 'text/javascript' }),
-  );
+  const scriptSource = buildPreviewRuntimeScriptSource(bridgeToken);
 
   const onWindowMessage = (event: MessageEvent<unknown>): void => {
     if (chatFrame.contentWindow && event.source !== chatFrame.contentWindow) return;
@@ -275,7 +333,6 @@ export function createIframePreviewRuntime(
 
     dispose() {
       windowTarget.removeEventListener('message', onWindowMessage);
-      URL.revokeObjectURL(scriptUrl);
     },
 
     parseBridgeMessage(data) {
@@ -287,7 +344,7 @@ export function createIframePreviewRuntime(
       readyPromise = new Promise<void>((resolve) => {
         readyResolve = resolve;
       });
-      chatFrame.srcdoc = buildPreviewDocument('', scriptUrl);
+      chatFrame.srcdoc = buildPreviewDocument('', scriptSource);
       await readyPromise;
     },
 

@@ -66,6 +66,7 @@ Add `@@decorator` lines at the **top of the content field** to control entry beh
 | `@@scan_depth N`          | Keyword search depth override                         | `@@scan_depth 10`               |
 | `@@additional_keys A,B`   | Require additional keywords to activate               | `@@additional_keys magic,spell` |
 | `@@exclude_keys A,B`      | Deactivate if these keywords present                  | `@@exclude_keys safe,peaceful`  |
+| `@@match_full_word`       | Match plain keywords as whole words only              |                                 |
 | `@@probability N`         | N% chance of activation                               | `@@probability 50`              |
 | `@@activate`              | Force activate unconditionally                        |                                 |
 | `@@dont_activate`         | Force deactivate unconditionally                      |                                 |
@@ -81,6 +82,16 @@ Add `@@decorator` lines at the **top of the content field** to control entry beh
 
 The actual content starts here...
 ```
+
+## Preview Support in RisuToki
+
+RisuToki's F5 preview currently models the core lorebook decorator subset:
+
+- `@@depth`, `@@position`, `@@role`, `@@scan_depth`
+- `@@probability`, `@@activate`, `@@dont_activate`
+- `@@match_full_word`, `@@additional_keys`, `@@exclude_keys`
+
+Preview uses a deterministic simulated roll for `@@probability` so repeated renders and debug output stay reproducible. The preview debug panel exposes matched keys, checked exclude keys, decorator tags, probability outcomes, and warnings for the supported subset.
 
 ## CBS in Lorebook Content
 

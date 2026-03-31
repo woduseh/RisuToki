@@ -48,6 +48,7 @@ interface SearchFixture {
     mode?: string;
     folder?: string;
     id?: string;
+    activationPercent?: number;
   }>;
   [key: string]: unknown;
 }
@@ -597,6 +598,80 @@ describe('MCP API lorebook folder mutations', () => {
         folder: '',
         content: 'Imported Alice',
       });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API lorebook compatibility fields', () => {
+  it('updates activationPercent through /lorebook/:idx', async () => {
+    const currentData: SearchFixture = {
+      lorebook: [
+        {
+          comment: 'Chance Entry',
+          mode: 'normal',
+          key: 'chance',
+          content: 'content',
+          activationPercent: 25,
+        },
+      ],
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const response = await postJson<{ success: boolean; index: number }>(api.port, api.token, '/lorebook/0', {
+        activationPercent: 80,
+      });
+
+      expect(response.status).toBe(200);
+      expect(currentData.lorebook?.[0]).toMatchObject({
+        activationPercent: 80,
+      });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API risum asset compatibility', () => {
+  it('stores risum asset metadata with ext semantics and x-risu-asset card type on add', async () => {
+    const currentData: SearchFixture = {
+      _fileType: 'charx',
+      risumAssets: [],
+      cardAssets: [],
+      _moduleData: {
+        module: {
+          assets: [],
+        },
+      },
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const response = await postJson<{ ok: boolean; index: number; name: string; size: number }>(
+        api.port,
+        api.token,
+        '/risum-asset/add',
+        {
+          name: 'themeAudio',
+          path: 'assets/audio/theme.mp3',
+          base64: Buffer.from('fake-audio').toString('base64'),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect((currentData._moduleData as { module: { assets: string[][] } }).module.assets).toEqual([
+        ['themeAudio', '', 'mp3'],
+      ]);
+      expect(currentData.cardAssets).toEqual([
+        {
+          type: 'x-risu-asset',
+          uri: 'embeded://assets/audio/theme.mp3',
+          name: 'themeAudio',
+          ext: 'mp3',
+        },
+      ]);
     } finally {
       await closeServer(api.server);
     }

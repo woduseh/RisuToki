@@ -1,3 +1,4 @@
+import type { PreviewLoreDecorators } from './lorebook-decorators';
 import { simpleMarkdown, wrapCssForPreview, type PreviewParserEngine } from './preview-format';
 import { createDocumentPreviewRuntime, type PreviewRuntime } from './preview-runtime';
 
@@ -17,6 +18,20 @@ export interface PreviewLorebookEntry {
 export interface PreviewLoreMatch {
   index: number;
   reason: string;
+  /** Present (1–99) when the entry uses probabilistic activation. */
+  activationPercent?: number;
+  /** Parsed decorator metadata from leading @@lines, if any. */
+  decorators?: PreviewLoreDecorators;
+  /** Keys that triggered activation. */
+  matchedKeys?: string[];
+  /** Keys that suppressed activation (from @@exclude_keys). */
+  excludedKeys?: string[];
+  /** Effective scan depth used for this entry. */
+  effectiveScanDepth?: number;
+  /** The random roll (0–100) used for probabilistic activation. */
+  probabilityRoll?: number;
+  /** Parser warnings (decorator parse errors, clamped values, etc.). */
+  warnings?: string[];
 }
 
 export interface PreviewRegexScript {
@@ -50,6 +65,7 @@ export interface PreviewCharData {
   lorebook?: PreviewLorebookEntry[];
   regex?: PreviewRegexScript[];
   lua?: string;
+  triggerScripts?: unknown;
 }
 
 export interface PreviewEngine extends PreviewParserEngine {
@@ -72,7 +88,7 @@ export interface PreviewEngine extends PreviewParserEngine {
   getLuaOutputHTML(): string;
   getVariables(): Record<string, unknown>;
   setChatVar(name: string, value: unknown): void;
-  matchLorebook(messages: PreviewMessage[], lorebook: PreviewLorebookEntry[]): PreviewLoreMatch[];
+  matchLorebook(messages: PreviewMessage[], lorebook: PreviewLorebookEntry[], scanDepth?: number): PreviewLoreMatch[];
 }
 
 interface PreviewWindowLike {
@@ -136,6 +152,30 @@ export function createPreviewSession({
   let msgIndex = 0;
   let luaInitialized = false;
   let messageBridgeAttached = false;
+  let documentBridgeAttached = false;
+
+  function buildEffectiveLuaCode(): string | undefined {
+    if (Array.isArray(charData.triggerScripts) && charData.triggerScripts.length > 0) {
+      const codeBlocks = charData.triggerScripts.flatMap((trigger) => {
+        if (!trigger || typeof trigger !== 'object') return [];
+        const record = trigger as { effect?: unknown[] };
+        const effects = Array.isArray(record.effect) ? record.effect : [];
+        return effects.flatMap((effect) => {
+          if (!effect || typeof effect !== 'object') return [];
+          const entry = effect as { type?: unknown; code?: unknown };
+          const code = typeof entry.code === 'string' ? entry.code : null;
+          const isTriggerLua = entry.type === 'triggerlua' || (entry.type === undefined && code !== null);
+          return code !== null && isTriggerLua && code.trim().length > 0 ? [code] : [];
+        });
+      });
+
+      if (codeBlocks.length > 0) {
+        return codeBlocks.join('\n\n');
+      }
+    }
+
+    return charData.lua;
+  }
 
   function getSnapshot(): PreviewSnapshot {
     return {
@@ -146,7 +186,7 @@ export function createPreviewSession({
       loreMatches: previewMessages.length > 0 ? engine.matchLorebook(previewMessages, lorebook) : [],
       scripts,
       defaultVariables: charData.defaultVariables || '',
-      luaOutput: engine.getLuaOutput()
+      luaOutput: engine.getLuaOutput(),
     };
   }
 
@@ -189,12 +229,16 @@ export function createPreviewSession({
     }
   }
 
-  async function transformMessageContent(role: PreviewMessage['role'], rawContent: string): Promise<string> {
+  async function transformMessageContent(
+    role: PreviewMessage['role'],
+    rawContent: string,
+    chatID: number,
+  ): Promise<string> {
     let content = rawContent;
     const cbsOptions = (runVar: boolean) => ({
       runVar,
-      chatID: msgIndex,
-      messageCount: previewMessages.length + 1
+      chatID,
+      messageCount: previewMessages.length + 1,
     });
 
     if (role === 'char') {
@@ -215,17 +259,23 @@ export function createPreviewSession({
     return engine.resolveAssetImages(content);
   }
 
-  async function addMessage(role: PreviewMessage['role'], rawContent: string): Promise<void> {
+  async function addMessage(
+    role: PreviewMessage['role'],
+    rawContent: string,
+    options?: { scrollToBottom?: boolean },
+  ): Promise<void> {
     const idx = msgIndex++;
-    const content = await transformMessageContent(role, rawContent);
+    const content = await transformMessageContent(role, rawContent, idx);
     await runtime.appendMessage({
       index: idx,
-      name: role === 'char' ? (charData.name || 'Character') : 'User',
+      name: role === 'char' ? charData.name || 'Character' : 'User',
       avatarBg: role === 'char' ? 'var(--risu-theme-selected)' : 'var(--risu-theme-borderc)',
-      content
+      content,
     });
     previewMessages.push({ role, content: rawContent });
-    runtime.scrollToBottom();
+    if (options?.scrollToBottom !== false) {
+      runtime.scrollToBottom();
+    }
     notifyStateChange();
   }
 
@@ -233,7 +283,7 @@ export function createPreviewSession({
     let processed = wrapCssForPreview({
       raw: charData.css || '',
       engine,
-      wrapInStyleTag: wrapPlainCss
+      wrapInStyleTag: wrapPlainCss,
     });
 
     const luaHtml = engine.getLuaOutputHTML();
@@ -297,6 +347,12 @@ export function createPreviewSession({
     void handleBridgeMessage(message);
   };
 
+  const onDocumentBridgeMessage = (event: Event): void => {
+    const customEvent = event as CustomEvent<unknown>;
+    if (!customEvent.detail) return;
+    void handleBridgeMessage(customEvent.detail);
+  };
+
   function attachMessageBridge(): void {
     if (messageBridgeAttached) return;
     windowTarget.addEventListener('message', onWindowMessage);
@@ -309,14 +365,29 @@ export function createPreviewSession({
     messageBridgeAttached = false;
   }
 
+  function attachDocumentBridge(): void {
+    const documentRef = chatFrame.contentDocument;
+    if (!documentRef || documentBridgeAttached) return;
+    documentRef.addEventListener('preview-runtime-bridge', onDocumentBridgeMessage as EventListener);
+    documentBridgeAttached = true;
+  }
+
+  function detachDocumentBridge(): void {
+    const documentRef = chatFrame.contentDocument;
+    if (!documentRef || !documentBridgeAttached) return;
+    documentRef.removeEventListener('preview-runtime-bridge', onDocumentBridgeMessage as EventListener);
+    documentBridgeAttached = false;
+  }
+
   async function initializeLua(runStartTrigger = true): Promise<boolean> {
-    if (!charData.lua) {
+    const effectiveLuaCode = buildEffectiveLuaCode();
+    if (effectiveLuaCode == null || effectiveLuaCode.trim() === '') {
       luaInitialized = false;
       notifyStateChange();
       return luaInitialized;
     }
 
-    luaInitialized = await engine.initLua(charData.lua);
+    luaInitialized = await engine.initLua(effectiveLuaCode);
     if (luaInitialized && runStartTrigger) {
       await runLuaTrigger('start', null);
     }
@@ -336,10 +407,11 @@ export function createPreviewSession({
     resetEngineState();
     attachMessageBridge();
     await initializeFrameDocument();
+    attachDocumentBridge();
     await initializeLua(true);
 
     if (charData.firstMessage) {
-      await addMessage('char', charData.firstMessage);
+      await addMessage('char', charData.firstMessage, { scrollToBottom: false });
     }
 
     await refreshBackground();
@@ -352,10 +424,11 @@ export function createPreviewSession({
 
     resetEngineState();
     await initializeFrameDocument();
+    attachDocumentBridge();
     await initializeLua(true);
 
     if (charData.firstMessage) {
-      await addMessage('char', charData.firstMessage);
+      await addMessage('char', charData.firstMessage, { scrollToBottom: false });
     }
 
     await refreshBackground();
@@ -371,9 +444,10 @@ export function createPreviewSession({
     await addMessage('user', text);
     await runLuaTrigger('input', text);
 
-    const response = charData.firstMessage && previewMessages.length <= 2
-      ? charData.firstMessage
-      : `${charData.name || 'Character'}: "${text}"에 대한 응답입니다.`;
+    const response =
+      charData.firstMessage && previewMessages.length <= 2
+        ? charData.firstMessage
+        : `${charData.name || 'Character'}: "${text}"에 대한 응답입니다.`;
 
     await runLuaTrigger('output', response);
     await addMessage('char', response);
@@ -382,6 +456,7 @@ export function createPreviewSession({
 
   return {
     dispose() {
+      detachDocumentBridge();
       detachMessageBridge();
       runtime.dispose();
     },
@@ -390,6 +465,6 @@ export function createPreviewSession({
     initialize,
     initializeLua: () => initializeLua(false),
     refreshBackground,
-    reset
+    reset,
   };
 }

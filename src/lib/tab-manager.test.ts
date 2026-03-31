@@ -10,7 +10,7 @@ function makeCallbacks(overrides: Partial<TabManagerCallbacks> = {}): TabManager
     isPanelPoppedOut: vi.fn(() => false),
     onPopOutTab: vi.fn(),
     isFormTabType: vi.fn(() => false),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -21,7 +21,7 @@ function makeTab(id: string, label?: string): Tab {
     language: 'plaintext',
     getValue: () => '',
     setValue: vi.fn(),
-    _lastValue: null
+    _lastValue: null,
   };
 }
 
@@ -111,6 +111,58 @@ describe('TabManager', () => {
     });
   });
 
+  describe('requestCloseTab', () => {
+    it('closes a clean tab without confirmation', async () => {
+      mgr.openTabs = [makeTab('a')];
+      mgr.activeTabId = 'a';
+
+      await mgr.requestCloseTab('a');
+
+      expect(mgr.openTabs).toHaveLength(0);
+    });
+
+    it('asks for confirmation before closing a dirty tab', async () => {
+      const onConfirmCloseTab = vi.fn(async () => true);
+      mgr = new TabManager('editor-tabs', makeCallbacks(), onConfirmCloseTab);
+      mgr.openTabs = [makeTab('a')];
+      mgr.activeTabId = 'a';
+      mgr.dirtyFields.add('a');
+
+      await mgr.requestCloseTab('a');
+
+      expect(onConfirmCloseTab).toHaveBeenCalledWith('a');
+      expect(mgr.openTabs).toHaveLength(0);
+    });
+
+    it('keeps a dirty tab open when confirmation rejects the close', async () => {
+      const onConfirmCloseTab = vi.fn(async () => false);
+      mgr = new TabManager('editor-tabs', makeCallbacks(), onConfirmCloseTab);
+      mgr.openTabs = [makeTab('a')];
+      mgr.activeTabId = 'a';
+      mgr.dirtyFields.add('a');
+
+      await mgr.requestCloseTab('a');
+
+      expect(onConfirmCloseTab).toHaveBeenCalledWith('a');
+      expect(mgr.openTabs).toHaveLength(1);
+      expect(mgr.openTabs[0].id).toBe('a');
+    });
+
+    it('keeps document dirty tracking when a dirty tab is closed without saving', async () => {
+      const onConfirmCloseTab = vi.fn(async () => true);
+      mgr = new TabManager('editor-tabs', makeCallbacks(), onConfirmCloseTab);
+      mgr.openTabs = [makeTab('description')];
+      mgr.activeTabId = 'description';
+      mgr.dirtyFields.add('description');
+
+      await mgr.requestCloseTab('description');
+
+      expect(onConfirmCloseTab).toHaveBeenCalledWith('description');
+      expect(mgr.openTabs).toHaveLength(0);
+      expect(mgr.dirtyFields.has('description')).toBe(true);
+    });
+  });
+
   describe('markDirtyForTabId', () => {
     it('propagates lua section dirty to lua collection', () => {
       mgr.markDirtyForTabId('lua_s2');
@@ -169,7 +221,10 @@ describe('TabManager', () => {
       mgr.activeTabId = 'a';
       mgr.renderTabs();
 
-      expect(tabBar.querySelector('.tab-popout-btn')).not.toBeNull();
+      const popoutBtn = tabBar.querySelector('.tab-popout-btn');
+      expect(popoutBtn).not.toBeNull();
+      expect(popoutBtn?.tagName).toBe('BUTTON');
+      expect(popoutBtn?.getAttribute('aria-label')).toBe('탭 팝아웃');
     });
 
     it('hides popout button when panel is already popped out', () => {
@@ -204,21 +259,17 @@ describe('TabManager', () => {
         makeTab('lore_0', 'zero'),
         makeTab('lore_1', 'one'),
         makeTab('lore_2', 'two'),
-        makeTab('name', 'name')
+        makeTab('name', 'name'),
       ];
       mgr.activeTabId = 'lore_2';
       mgr.dirtyFields.add('lore_0');
 
       mgr.shiftIndexedTabsAfterRemoval('lore_', [1], (index) => ({
         id: `lore_${index}`,
-        label: `entry-${index}`
+        label: `entry-${index}`,
       }));
 
-      expect(mgr.openTabs.map(t => t.id)).toEqual([
-        'lore_0',
-        'lore_1',
-        'name'
-      ]);
+      expect(mgr.openTabs.map((t) => t.id)).toEqual(['lore_0', 'lore_1', 'name']);
       expect(mgr.activeTabId).toBe('lore_1');
       expect(mgr.dirtyFields.has('lore_0')).toBe(true);
     });
@@ -233,7 +284,7 @@ describe('TabManager', () => {
       mgr.refreshIndexedTabs('lore_', (index, tab) => ({
         id: `lore_${index}`,
         label: `refreshed-${index}`,
-        language: tab.language
+        language: tab.language,
       }));
 
       expect(cbs.onActivateTab).toHaveBeenCalled();

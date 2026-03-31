@@ -38,6 +38,7 @@ function makeTestEntries(): LorebookEntry[] {
       mode: 'normal',
       insertorder: 100,
       alwaysActive: false,
+      activationPercent: 75,
       selective: false,
       useRegex: false,
       folder: 'folder:folder-uuid-1',
@@ -545,6 +546,7 @@ describe('MD roundtrip', () => {
     expect(alice.data.key).toBe(origAlice.key);
     expect(alice.data.insertorder).toBe(origAlice.insertorder);
     expect(alice.data.alwaysActive).toBe(origAlice.alwaysActive);
+    expect(alice.data.activationPercent).toBe(origAlice.activationPercent);
     expect(alice.data.content).toBe(origAlice.content);
     expect(alice.folderName).toBe('Characters');
   });
@@ -569,6 +571,9 @@ describe('JSON roundtrip', () => {
     expect(bob.data.key).toBe(origBob.key);
     expect(bob.data.alwaysActive).toBe(origBob.alwaysActive);
     expect(bob.data.insertorder).toBe(origBob.insertorder);
+    expect(imported.find((e) => e.comment === 'Alice')!.data.activationPercent).toBe(
+      entries.find((e) => e.comment === 'Alice')!.activationPercent,
+    );
     expect(bob.folderName).toBe('Characters');
   });
 });

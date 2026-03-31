@@ -338,7 +338,7 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
   header.appendChild(headerTitle);
   if (readonly) {
     const badge = document.createElement('span');
-    badge.style.cssText = 'font-size:10px;color:var(--accent);margin-left:8px;';
+    badge.className = 'readonly-badge';
     badge.textContent = '[읽기 전용]';
     headerTitle.appendChild(badge);
   }
@@ -587,7 +587,7 @@ export function showRisupEditor(tabInfo: RisupFormTabInfo): void {
   header.appendChild(headerTitle);
   if (readonly) {
     const badge = document.createElement('span');
-    badge.style.cssText = 'font-size:10px;color:var(--accent);margin-left:8px;';
+    badge.className = 'readonly-badge';
     badge.textContent = '[읽기 전용]';
     headerTitle.appendChild(badge);
   }
@@ -783,7 +783,7 @@ export function showTriggerEditor(tabInfo: TriggerFormTabInfo): void {
   header.appendChild(headerTitle);
   if (readonly) {
     const badge = document.createElement('span');
-    badge.style.cssText = 'font-size:10px;color:var(--accent);margin-left:8px;';
+    badge.className = 'readonly-badge';
     badge.textContent = '[읽기 전용]';
     headerTitle.appendChild(badge);
   }
@@ -1059,7 +1059,7 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
   header.appendChild(headerTitle);
   if (readonly) {
     const badge = document.createElement('span');
-    badge.style.cssText = 'font-size:10px;color:var(--accent);margin-left:8px;';
+    badge.className = 'readonly-badge';
     badge.textContent = '[읽기 전용]';
     headerTitle.appendChild(badge);
   }

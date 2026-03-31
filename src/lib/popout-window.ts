@@ -70,11 +70,7 @@ export function removePoppedOut(panelId: string): void {
   poppedOutPanels.delete(panelId);
 }
 
-export async function popOutPanel(
-  panelId: string,
-  deps: PopoutDeps,
-  requestId: string | null = null,
-): Promise<void> {
+export async function popOutPanel(panelId: string, deps: PopoutDeps, requestId: string | null = null): Promise<void> {
   if (isPanelPoppedOut(panelId)) return;
 
   await window.tokiAPI.popoutPanel(panelId, requestId);
@@ -87,16 +83,13 @@ export async function popOutPanel(
   deps.setStatus(`${labelFor(panelId)} 팝아웃됨 (외부 창)`);
 }
 
-export async function popOutEditorPanel(
-  tabId: string | null,
-  deps: PopoutDeps,
-): Promise<void> {
+export async function popOutEditorPanel(tabId: string | null, deps: PopoutDeps): Promise<void> {
   if (isPanelPoppedOut('editor')) return;
 
   const targetId = tabId || deps.tabMgr.activeTabId;
   if (!targetId) return;
 
-  const curTab = deps.tabMgr.openTabs.find(t => t.id === targetId);
+  const curTab = deps.tabMgr.openTabs.find((t) => t.id === targetId);
   if (!curTab || curTab.language === '_image') return;
 
   // Switch to target tab first if not active
@@ -134,8 +127,15 @@ export async function popOutEditorPanel(
     ed.dispose();
     deps.setEditorInstance(null);
   }
+  const readOnly = !curTab.setValue;
   if (container) {
-    container.innerHTML = '<div class="empty-state">편집중 (팝아웃 창)</div>';
+    container.innerHTML = [
+      '<div class="empty-state">',
+      '<span style="font-size:28px;">↗</span>',
+      `<span>${readOnly ? '열람중' : '편집중'} — 팝아웃 창에서 작업 중</span>`,
+      '<span class="empty-state-hint">📌 도킹하면 여기로 복원됩니다</span>',
+      '</div>',
+    ].join('');
   }
 
   deps.tabMgr.renderTabs();
@@ -150,9 +150,7 @@ export function dockPanel(panelId: string, deps: PopoutDeps): void {
 
   if (panelId === 'editor') {
     if (deps.tabMgr.activeTabId) {
-      const curTab = deps.tabMgr.openTabs.find(
-        t => t.id === deps.tabMgr.activeTabId,
-      );
+      const curTab = deps.tabMgr.openTabs.find((t) => t.id === deps.tabMgr.activeTabId);
       if (curTab) deps.createOrSwitchEditor(curTab);
     }
   } else {
@@ -170,14 +168,16 @@ export function dockPanel(panelId: string, deps: PopoutDeps): void {
 }
 
 export function updatePopoutButtons(): void {
-  document.querySelectorAll<HTMLElement>('[data-popout-panel]').forEach(btn => {
+  document.querySelectorAll<HTMLElement>('[data-popout-panel]').forEach((btn) => {
     const panel = btn.dataset.popoutPanel;
     if (panel && poppedOutPanels.has(panel)) {
       btn.textContent = '📌';
       btn.title = '도킹 (복원)';
+      btn.setAttribute('aria-label', '도킹 (복원)');
     } else {
       btn.textContent = '↗';
       btn.title = '팝아웃 (분리)';
+      btn.setAttribute('aria-label', '팝아웃 (분리)');
     }
   });
 }

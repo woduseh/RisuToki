@@ -55,13 +55,13 @@ describe('reportRuntimeError', () => {
     spy.mockRestore();
   });
 
-  it('calls setStatus with a composed message by default', () => {
+  it('calls setStatus with a sticky error status by default', () => {
     const setStatus = vi.fn();
     reportRuntimeError({ context: 'load', error: new Error('404'), setStatus });
-    expect(setStatus).toHaveBeenCalledWith('load: 404');
+    expect(setStatus).toHaveBeenCalledWith('load: 404', { kind: 'error', sticky: true });
   });
 
-  it('calls setStatus with the custom statusMessage when provided', () => {
+  it('calls setStatus with the custom statusMessage and sticky error options when provided', () => {
     const setStatus = vi.fn();
     reportRuntimeError({
       context: 'load',
@@ -69,7 +69,7 @@ describe('reportRuntimeError', () => {
       setStatus,
       statusMessage: 'custom msg',
     });
-    expect(setStatus).toHaveBeenCalledWith('custom msg');
+    expect(setStatus).toHaveBeenCalledWith('custom msg', { kind: 'error', sticky: true });
   });
 
   it('does not throw when setStatus is null', () => {

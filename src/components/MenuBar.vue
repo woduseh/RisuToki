@@ -69,7 +69,7 @@ const menus: { id: string; label: string; items: MenuEntry[] }[] = [
     id: 'view',
     label: '보기',
     items: [
-      { label: '항목 토글', shortcut: 'Ctrl+B', action: 'toggle-sidebar' },
+      { label: '사이드바 토글', shortcut: 'Ctrl+B', action: 'toggle-sidebar' },
       { label: '터미널 토글', shortcut: 'Ctrl+`', action: 'toggle-terminal' },
       { label: '아바타 토글', action: 'toggle-avatar' },
       { separator: true },
@@ -116,7 +116,7 @@ const menus: { id: string; label: string; items: MenuEntry[] }[] = [
       { separator: true },
       { label: '다크 모드 토글', action: 'toggle-dark' },
       { separator: true },
-      { label: '프리뷰 테스트', shortcut: 'F5', action: 'preview-test' },
+      { label: '프리뷰', shortcut: 'F5', action: 'preview-test' },
       { separator: true },
       { label: '개발자 도구', shortcut: 'F12', action: 'devtools' },
     ],

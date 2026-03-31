@@ -90,6 +90,34 @@ function normalizeLF(s: string): string {
   return s.indexOf('\r') >= 0 ? s.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : s;
 }
 
+const MIME_MAP: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+  avif: 'image/avif',
+  mp3: 'audio/mpeg',
+  ogg: 'audio/ogg',
+  wav: 'audio/wav',
+  flac: 'audio/flac',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  woff: 'font/woff',
+  woff2: 'font/woff2',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+  css: 'text/css',
+};
+
+function extToMime(ext: string): string {
+  return MIME_MAP[ext.toLowerCase()] || 'application/octet-stream';
+}
+
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
 
 // In-memory snapshot storage for field rollback (cleared on file reload)
@@ -292,6 +320,7 @@ const LOREBOOK_ALLOWED_FIELDS = new Set([
   'insertorder',
   'order',
   'priority',
+  'activationPercent',
   'alwaysActive',
   'forceActivation',
   'selective',
@@ -5775,16 +5804,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const asset = assets[idx];
         const ext = (asset.path.split('.').pop() || 'png').toLowerCase();
-        const mime =
-          ext === 'png'
-            ? 'image/png'
-            : ext === 'webp'
-              ? 'image/webp'
-              : ext === 'gif'
-                ? 'image/gif'
-                : ext === 'svg'
-                  ? 'image/svg+xml'
-                  : 'image/jpeg';
+        const mime = extToMime(ext);
         return jsonRes(res, {
           index: idx,
           path: asset.path,
@@ -6471,6 +6491,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const assetName: string = body.name || '';
         const assetPath: string = body.path || '';
         const base64Data: string = body.base64 || '';
+        const assetExt = ((assetPath || assetName).split('.').pop() || 'png').toLowerCase();
         if (!assetName || !base64Data) {
           return jsonRes(res, { error: 'name과 base64 데이터가 필요합니다.' }, 400);
         }
@@ -6495,17 +6516,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (modData) {
           const mod = (modData.module as Record<string, unknown>) || modData;
           if (!Array.isArray(mod.assets)) mod.assets = [];
-          (mod.assets as unknown[]).push([assetName, '', assetPath || assetName]);
+          (mod.assets as unknown[]).push([assetName, '', assetExt]);
         }
         // Sync to card.json assets (charx only)
         const addFileType = currentData._fileType || 'charx';
         if (addFileType === 'charx' && Array.isArray(currentData.cardAssets)) {
-          const ext = (assetPath || assetName).split('.').pop() || 'png';
           currentData.cardAssets.push({
-            type: 'module',
+            type: 'x-risu-asset',
             uri: `embeded://${assetPath || assetName}`,
             name: assetName,
-            ext,
+            ext: assetExt,
           });
         }
         if (deps.invalidateAssetsMapCache) deps.invalidateAssetsMapCache();

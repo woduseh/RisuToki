@@ -5,7 +5,7 @@ import type { PreviewCharData, PreviewEngine, PreviewSession } from './preview-s
 import { reportRuntimeError } from './runtime-feedback';
 
 export interface PreviewPanelDeps {
-  fileData: PreviewCharData & { globalNote?: string };
+  fileData: PreviewCharData & { globalNote?: string; triggerScripts?: unknown };
   darkMode?: boolean;
   /** Loaded asset map (name → data URI). When null, skipped. */
   assetMap: Record<string, string> | null;
@@ -27,10 +27,7 @@ interface DebugDragState {
  *
  * Returns a `dispose` function that tears down the panel and listeners.
  */
-export function showPreviewPanel(
-  container: HTMLElement,
-  deps: PreviewPanelDeps
-): { dispose: () => void } {
+export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps): { dispose: () => void } {
   const { engine, fileData, assetMap, setStatus, popoutPreview } = deps;
 
   const charData: PreviewCharData = {
@@ -40,6 +37,7 @@ export function showPreviewPanel(
     css: fileData.css || '',
     defaultVariables: fileData.defaultVariables || '',
     lua: fileData.lua || '',
+    triggerScripts: fileData.triggerScripts || [],
     lorebook: fileData.lorebook || [],
     regex: fileData.regex || [],
   };
@@ -54,6 +52,9 @@ export function showPreviewPanel(
 
   const panel = document.createElement('div');
   panel.className = 'preview-panel';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+  panel.setAttribute('aria-label', `${charData.name} 프리뷰`);
 
   // ── Header ──
   const header = document.createElement('div');
@@ -66,17 +67,22 @@ export function showPreviewPanel(
   const popoutPreviewBtn = document.createElement('button');
   popoutPreviewBtn.textContent = '↗';
   popoutPreviewBtn.title = '팝아웃 (별도 창)';
+  popoutPreviewBtn.setAttribute('aria-label', '팝아웃 (별도 창)');
 
   const resetBtn = document.createElement('button');
   resetBtn.textContent = '↻';
   resetBtn.title = '초기화';
+  resetBtn.setAttribute('aria-label', '초기화');
 
   const debugBtn = document.createElement('button');
   debugBtn.textContent = '🔧';
   debugBtn.title = '디버그 패널';
+  debugBtn.setAttribute('aria-label', '디버그 패널');
 
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '✕';
+  closeBtn.title = '닫기';
+  closeBtn.setAttribute('aria-label', '닫기');
 
   headerBtns.appendChild(popoutPreviewBtn);
   headerBtns.appendChild(resetBtn);
@@ -155,8 +161,8 @@ export function showPreviewPanel(
   debugTabs.appendChild(debugDetachBtn);
 
   function onDebugDragMove(e: MouseEvent): void {
-    debugDrawer.style.left = (e.clientX - debugDragOffset.x) + 'px';
-    debugDrawer.style.top = (e.clientY - debugDragOffset.y) + 'px';
+    debugDrawer.style.left = e.clientX - debugDragOffset.x + 'px';
+    debugDrawer.style.top = e.clientY - debugDragOffset.y + 'px';
   }
 
   function onDebugDragEnd(): void {
@@ -243,7 +249,7 @@ export function showPreviewPanel(
     debugContent.innerHTML = renderPreviewDebugHtml({
       activeTab: activeDebugTab,
       snapshot,
-      luaInitButtonId: 'main-preview-lua-init'
+      luaInitButtonId: 'main-preview-lua-init',
     });
 
     if (!snapshot.luaInitialized) {
@@ -273,12 +279,12 @@ export function showPreviewPanel(
         context: message,
         error,
         logPrefix: '[Preview]',
-        setStatus
+        setStatus,
       });
     },
     onStateChange: () => {
       if (debugOpen) updateDebugPanel();
-    }
+    },
   });
 
   function closePreview(): void {
@@ -296,16 +302,18 @@ export function showPreviewPanel(
         firstMessage: charData.firstMessage,
         defaultVariables: charData.defaultVariables,
         lua: charData.lua,
+        triggerScripts: charData.triggerScripts,
         css: charData.css,
         lorebook: charData.lorebook,
         regex: charData.regex,
-        assets: null
+        assets: null,
       });
     }
     closePreview();
   });
 
   resetBtn.addEventListener('click', async () => {
+    chatInput.style.height = 'auto';
     await session.reset();
     if (debugOpen) updateDebugPanel();
   });
@@ -316,7 +324,7 @@ export function showPreviewPanel(
     void session.handleSend(chatInput);
   });
   chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       void session.handleSend(chatInput);
     }
@@ -325,7 +333,9 @@ export function showPreviewPanel(
   debugCopyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(buildPreviewDebugClipboardText(session.getSnapshot())).then(() => {
       debugCopyBtn.textContent = '✅ 복사됨';
-      setTimeout(() => { debugCopyBtn.textContent = '📋 복사'; }, 1500);
+      setTimeout(() => {
+        debugCopyBtn.textContent = '📋 복사';
+      }, 1500);
     });
   });
 
@@ -333,6 +343,7 @@ export function showPreviewPanel(
     debugOpen = !debugOpen;
     debugDrawer.style.display = debugOpen ? 'flex' : 'none';
     debugResizer.style.display = debugOpen ? '' : 'none';
+    debugBtn.classList.toggle('active', debugOpen);
     if (debugOpen) updateDebugPanel();
   });
 

@@ -78,4 +78,36 @@ describe('editor dirty field helpers', () => {
       temperature: 0.7,
     });
   });
+
+  it('keeps direct field values autosave-visible even after their tabs are closed', () => {
+    const fields = collectDirtyEditorFields({
+      dirtyFields: new Set(['firstMessage', 'creatorcomment', 'triggerScripts']),
+      fileData: {
+        firstMessage: '<p>Hello</p>',
+        creatorcomment: 'note',
+        triggerScripts: '[{"comment":"start"}]',
+      },
+      openTabs: [],
+    });
+
+    expect(fields).toEqual({
+      firstMessage: '<p>Hello</p>',
+      creatorcomment: 'note',
+      triggerScripts: '[{"comment":"start"}]',
+    });
+  });
+
+  it('keeps alternate greetings autosave-visible when an edited greeting tab closes', () => {
+    const fields = collectDirtyEditorFields({
+      dirtyFields: new Set(['altGreet_0']),
+      fileData: {
+        alternateGreetings: ['hello there'],
+      },
+      openTabs: [],
+    });
+
+    expect(fields).toEqual({
+      alternateGreetings: ['hello there'],
+    });
+  });
 });

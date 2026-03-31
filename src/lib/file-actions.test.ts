@@ -4,9 +4,20 @@ import { handleNew, handleOpen, handleSave, handleSaveAs } from './file-actions'
 import type { FileActionDeps } from './file-actions';
 import { TabManager } from './tab-manager';
 import { parseTriggerScriptsText } from './trigger-script-model';
+import {
+  CLOSE_CHOICE_CANCEL,
+  CLOSE_CHOICE_CLOSE_WITHOUT_SAVE,
+  CLOSE_CHOICE_SAVE_AND_CLOSE,
+} from './close-window-policy';
 import { useAppStore } from '../stores/app-store';
 
-function makeDeps(overrides: Partial<FileActionDeps> = {}): FileActionDeps {
+type FileActionTestDeps = FileActionDeps & {
+  hasUnsavedChanges: () => boolean;
+  requestDocumentReplacement: (targetLabel: string) => Promise<number>;
+  saveCurrentDocument: () => Promise<void>;
+};
+
+function makeDeps(overrides: Partial<FileActionTestDeps> = {}): FileActionTestDeps {
   const tabMgr = new TabManager('editor-tabs', {
     onActivateTab: vi.fn(),
     onDisposeFormEditors: vi.fn(),
@@ -23,6 +34,9 @@ function makeDeps(overrides: Partial<FileActionDeps> = {}): FileActionDeps {
     getAutosaveDir: vi.fn(() => ''),
     tabMgr,
     buildSidebar: vi.fn(),
+    hasUnsavedChanges: vi.fn(() => false),
+    requestDocumentReplacement: vi.fn(async () => CLOSE_CHOICE_CANCEL),
+    saveCurrentDocument: vi.fn(async () => {}),
     setStatus: vi.fn(),
     ...overrides,
   };
@@ -66,6 +80,73 @@ describe('file-actions', () => {
       expect(deps.setFileData).not.toHaveBeenCalled();
       expect(deps.buildSidebar).not.toHaveBeenCalled();
     });
+
+    it('does not replace the current document when unsaved changes prompt is cancelled', async () => {
+      const newFile = vi.fn();
+      installTokiAPI({ newFile });
+      const deps = makeDeps({
+        hasUnsavedChanges: vi.fn(() => true),
+        requestDocumentReplacement: vi.fn(async () => CLOSE_CHOICE_CANCEL),
+      });
+
+      await handleNew(deps);
+
+      expect(deps.requestDocumentReplacement).toHaveBeenCalledWith('새 파일');
+      expect(newFile).not.toHaveBeenCalled();
+      expect(deps.setFileData).not.toHaveBeenCalled();
+    });
+
+    it('replaces the current document after explicit discard of unsaved changes', async () => {
+      const newData = { name: 'Fresh' };
+      const newFile = vi.fn().mockResolvedValue(newData);
+      installTokiAPI({ newFile });
+      const deps = makeDeps({
+        hasUnsavedChanges: vi.fn(() => true),
+        requestDocumentReplacement: vi.fn(async () => CLOSE_CHOICE_CLOSE_WITHOUT_SAVE),
+      });
+
+      await handleNew(deps);
+
+      expect(deps.requestDocumentReplacement).toHaveBeenCalledWith('새 파일');
+      expect(newFile).toHaveBeenCalledTimes(1);
+      expect(deps.setFileData).toHaveBeenCalledWith(newData);
+    });
+
+    it('saves the current document before creating a new file when requested', async () => {
+      const newData = { name: 'Fresh' };
+      const newFile = vi.fn().mockResolvedValue(newData);
+      installTokiAPI({ newFile });
+      const deps = makeDeps({
+        hasUnsavedChanges: vi.fn(() => true),
+        requestDocumentReplacement: vi.fn(async () => CLOSE_CHOICE_SAVE_AND_CLOSE),
+        saveCurrentDocument: vi.fn(async () => {
+          deps.tabMgr.dirtyFields.clear();
+        }),
+      });
+      deps.tabMgr.dirtyFields.add('description');
+
+      await handleNew(deps);
+
+      expect(deps.saveCurrentDocument).toHaveBeenCalledTimes(1);
+      expect(newFile).toHaveBeenCalledTimes(1);
+      expect(deps.setFileData).toHaveBeenCalledWith(newData);
+    });
+
+    it('does not create a new file when save-before-replace leaves unsaved changes', async () => {
+      const newFile = vi.fn();
+      installTokiAPI({ newFile });
+      const deps = makeDeps({
+        hasUnsavedChanges: vi.fn(() => deps.tabMgr.dirtyFields.size > 0),
+        requestDocumentReplacement: vi.fn(async () => CLOSE_CHOICE_SAVE_AND_CLOSE),
+        saveCurrentDocument: vi.fn(async () => {}),
+      });
+      deps.tabMgr.dirtyFields.add('description');
+
+      await handleNew(deps);
+
+      expect(deps.saveCurrentDocument).toHaveBeenCalledTimes(1);
+      expect(newFile).not.toHaveBeenCalled();
+    });
   });
 
   describe('handleOpen', () => {
@@ -98,6 +179,41 @@ describe('file-actions', () => {
       await handleOpen(deps);
 
       expect(deps.setStatus).toHaveBeenCalledWith('열기 실패: disk fail');
+    });
+
+    it('does not replace the current document when unsaved changes prompt is cancelled', async () => {
+      const openFile = vi.fn();
+      installTokiAPI({ openFile });
+      const deps = makeDeps({
+        hasUnsavedChanges: vi.fn(() => true),
+        requestDocumentReplacement: vi.fn(async () => CLOSE_CHOICE_CANCEL),
+      });
+
+      await handleOpen(deps);
+
+      expect(deps.requestDocumentReplacement).toHaveBeenCalledWith('파일 열기');
+      expect(openFile).not.toHaveBeenCalled();
+      expect(deps.setFileData).not.toHaveBeenCalled();
+    });
+
+    it('saves the current document before opening another file when requested', async () => {
+      const fileData = { name: 'Opened' };
+      const openFile = vi.fn().mockResolvedValue(fileData);
+      installTokiAPI({ openFile });
+      const deps = makeDeps({
+        hasUnsavedChanges: vi.fn(() => deps.tabMgr.dirtyFields.size > 0),
+        requestDocumentReplacement: vi.fn(async () => CLOSE_CHOICE_SAVE_AND_CLOSE),
+        saveCurrentDocument: vi.fn(async () => {
+          deps.tabMgr.dirtyFields.clear();
+        }),
+      });
+      deps.tabMgr.dirtyFields.add('description');
+
+      await handleOpen(deps);
+
+      expect(deps.saveCurrentDocument).toHaveBeenCalledTimes(1);
+      expect(openFile).toHaveBeenCalledTimes(1);
+      expect(deps.setFileData).toHaveBeenCalledWith(fileData);
     });
   });
 

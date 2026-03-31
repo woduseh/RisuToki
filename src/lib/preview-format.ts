@@ -59,14 +59,20 @@ export function simpleMarkdown(text: string): string {
     const rows: string[][] = [];
     let headerCount = 0;
     for (const tl of tableLines) {
-      if (isSepLine(tl)) { if (rows.length > 0) headerCount = rows.length; continue; }
-      const cells = tl.split('|').slice(1, -1).map(c => c.trim());
+      if (isSepLine(tl)) {
+        if (rows.length > 0) headerCount = rows.length;
+        continue;
+      }
+      const cells = tl
+        .split('|')
+        .slice(1, -1)
+        .map((c) => c.trim());
       rows.push(cells);
     }
     let html = '<table>';
     for (let r = 0; r < rows.length; r++) {
       const tag = r < headerCount ? 'th' : 'td';
-      html += '<tr>' + rows[r].map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+      html += '<tr>' + rows[r].map((c) => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
     }
     html += '</table>';
     lines.splice(block.start, block.end - block.start, html);
@@ -84,8 +90,14 @@ export function simpleMarkdown(text: string): string {
   rendered = rendered.replace(/__(.+?)__/g, '<strong>$1</strong>');
   rendered = rendered.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
   rendered = rendered.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>');
-  rendered = rendered.replace(/\u201C([^\u201D]+)\u201D/g, '<span style="color:var(--FontColorQuote2)">\u201C$1\u201D</span>');
-  rendered = rendered.replace(/(?:^|(?<=[\s\n(]))"([^"]+?)"(?=[\s\n).,!?;:]|$)/gm, '<span style="color:var(--FontColorQuote2)">\u201C$1\u201D</span>');
+  rendered = rendered.replace(
+    /\u201C([^\u201D]+)\u201D/g,
+    '<span style="color:var(--FontColorQuote2)">\u201C$1\u201D</span>',
+  );
+  rendered = rendered.replace(
+    /(?:^|(?<=[\s\n(]))"([^"]+?)"(?=[\s\n).,!?;:]|$)/gm,
+    '<span style="color:var(--FontColorQuote2)">\u201C$1\u201D</span>',
+  );
   rendered = rendered.replace(/`([^`]+)`/g, '<code>$1</code>');
   rendered = rendered.replace(/\n/g, '<br>');
   rendered = rendered.replace(/\x00HTAG(\d+)\x00/g, (_, index: string) => htmlTags[Number.parseInt(index, 10)]);
@@ -96,7 +108,7 @@ export function simpleMarkdown(text: string): string {
 export function wrapCssForPreview({
   raw,
   engine,
-  wrapInStyleTag = true
+  wrapInStyleTag = true,
 }: {
   raw: string;
   engine: PreviewParserEngine;
@@ -114,9 +126,15 @@ export function wrapCssForPreview({
   return `<style>\n${processed}\n</style>`;
 }
 
-export function buildPreviewDocument(_processedCss: string, runtimeScriptUrl?: string): string {
+function generateScriptNonce(): string {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
+export function buildPreviewDocument(_processedCss: string, runtimeScriptSource?: string): string {
+  const nonce = runtimeScriptSource ? generateScriptNonce() : undefined;
+  const scriptCsp = nonce ? `'nonce-${nonce}'` : "'none'";
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src blob:; img-src * data: blob:; style-src 'unsafe-inline'; font-src * data: blob:; media-src * data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${scriptCsp}; img-src * data: blob:; style-src 'unsafe-inline'; font-src * data: blob:; media-src * data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none';">
 <style>
 :root {
   --FontColorStandard: #fafafa;
@@ -162,7 +180,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding: 8px 0 80px;
+  padding: 8px 0 8px;
 }
 .risu-chat {
   display: flex;
@@ -272,7 +290,7 @@ body {
 </head><body>
 <div class="background-dom" id="bg-dom"></div>
 <div class="default-chat-screen" id="chat-container"></div>
-${runtimeScriptUrl ? `<script src="${runtimeScriptUrl}"></script>` : ''}
+${runtimeScriptSource ? `<script nonce="${nonce}">${runtimeScriptSource}</script>` : ''}
 </body></html>`;
 }
 

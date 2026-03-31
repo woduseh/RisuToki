@@ -13,7 +13,15 @@ export interface DirtyFileDataLike {
   regex?: unknown;
 }
 
-const DIRECT_VALUE_FIELDS = new Set(['globalNote', 'firstMessage', 'defaultVariables', 'description', 'name']);
+const DIRECT_VALUE_FIELDS = new Set([
+  'globalNote',
+  'firstMessage',
+  'defaultVariables',
+  'description',
+  'name',
+  'creatorcomment',
+  'characterVersion',
+]);
 
 const RISUP_EDITABLE_FIELD_IDS = [
   ...new Set(RISUP_FIELD_GROUPS.flatMap((group) => group.fields.map((field) => field.id))),
@@ -76,6 +84,20 @@ export function collectDirtyEditorFields(options: {
   }
   if (dirtyFields.has('regex') || hasDirtyTabWithPrefix(dirtyFields, 'regex_')) {
     fields.regex = fileData.regex;
+  }
+  for (const fieldId of DIRECT_VALUE_FIELDS) {
+    if (dirtyFields.has(fieldId) && fileData[fieldId] !== undefined) {
+      fields[fieldId] = fileData[fieldId];
+    }
+  }
+  if (dirtyFields.has('triggerScripts') && fileData.triggerScripts !== undefined) {
+    fields.triggerScripts = fileData.triggerScripts;
+  }
+  if (
+    (dirtyFields.has('alternateGreetings') || hasDirtyTabWithPrefix(dirtyFields, 'altGreet_')) &&
+    fileData.alternateGreetings !== undefined
+  ) {
+    fields.alternateGreetings = fileData.alternateGreetings;
   }
   if (hasDirtyTabWithPrefix(dirtyFields, 'risup_')) {
     for (const fieldId of RISUP_EDITABLE_FIELD_IDS) {

@@ -10,6 +10,7 @@ import type {
   PreviewMessage,
   PreviewRegexScript,
 } from './preview-session';
+import { parseLorebookDecorators, type PreviewLoreDecorators } from './lorebook-decorators';
 
 // ==================== Wasmoon Types (broad, minimal surface) ====================
 interface WasmoonGlobal {
@@ -38,6 +39,9 @@ interface BlockState {
   elseContent: string;
   _inElse: boolean;
   type: string;
+  mode?: string;
+  _pureMode?: boolean;
+  _pureNestLevel?: number;
 }
 interface LocalLorebookEntry {
   content: string;
@@ -378,13 +382,52 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('calc', (_p1, _arg, args) => String(calcString(args.join('::'))));
 
     // --- Random ---
-    reg('random', (_p1, _arg, args) => {
-      if (!args.length) return '';
-      return args[Math.floor(Math.random() * args.length)];
-    });
+    const randomPickImpl = (_p1: string, args: string[], rand: number): string => {
+      if (args.length === 0) return rand.toString();
+      let arr: unknown[];
+      if (args.length === 1) {
+        if (args[0].startsWith('[') && args[0].endsWith(']')) {
+          try {
+            const parsed = JSON.parse(args[0]);
+            arr = Array.isArray(parsed) ? parsed : [args[0]];
+          } catch {
+            arr = [args[0]];
+          }
+        } else {
+          arr = args[0].replace(/\\,/g, '§X').split(/[:|,]/g);
+        }
+      } else {
+        arr = args;
+      }
+      const index = Math.floor(rand * arr.length);
+      const element = arr[index];
+      return typeof element === 'string' ? element.replace(/§X/g, ',') : (JSON.stringify(element) ?? '');
+    };
+    reg('random', (_p1, _arg, args) => randomPickImpl(_p1, args, Math.random()));
     reg('roll', (_p1, _arg, args) => {
-      const max = parseInt(args[0] || '0', 10) || 6;
-      return String(Math.floor(Math.random() * max) + 1);
+      if (args.length === 0) return '1';
+      const notation = args[0].split('d');
+      let num = 1;
+      let sides = 6;
+      if (notation.length === 2) {
+        num = Number(notation[0] || 1);
+        sides = Number(notation[1] || 6);
+      } else if (notation.length === 1) {
+        sides = Number(notation[0]);
+      }
+      if (isNaN(num) || isNaN(sides) || num < 1 || sides < 1) return 'NaN';
+      let total = 0;
+      for (let i = 0; i < num; i++) total += Math.floor(Math.random() * sides) + 1;
+      return total.toString();
+    });
+    reg('dice', (_p1, _arg, args) => {
+      const notation = (args[0] || '').split('d');
+      const num = Number(notation[0]);
+      const sides = Number(notation[1]);
+      if (isNaN(num) || isNaN(sides)) return 'NaN';
+      let total = 0;
+      for (let i = 0; i < num; i++) total += Math.floor(Math.random() * sides) + 1;
+      return total.toString();
     });
     reg('pick', (_p1, _arg, args) => {
       const n = parseInt(args[0] || '0', 10) || 1;
@@ -418,6 +461,10 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('date', () => new Date().toLocaleDateString('ko-KR'));
     reg('time', () => new Date().toLocaleTimeString('ko-KR'));
     reg('isotime', () => new Date().toISOString());
+    reg('isodate', () => {
+      const now = new Date();
+      return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+    });
     reg('unixtime', () => String(Math.floor(Date.now() / 1000)));
 
     // --- String ops ---
@@ -434,8 +481,11 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     });
     reg('split', (_p1, _arg, args) => {
       const parts = (args[0] || '').split(args[1] || ',');
-      const idx = parseInt(args[2] || '0', 10) || 0;
-      return parts[idx] || '';
+      if (args[2] != null && args[2] !== '') {
+        const index = Number.parseInt(args[2], 10);
+        return Number.isNaN(index) ? '' : (parts[index] ?? '');
+      }
+      return JSON.stringify(parts);
     });
     reg('reverse', (_p1, _arg, args) => (args[0] || '').split('').reverse().join(''));
     reg('contains', (_p1, _arg, args) => ((args[0] || '').includes(args[1] || '') ? '1' : '0'));
@@ -776,7 +826,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       'cbr',
       (_p1, _arg, args) => {
         const count = Math.max(1, parseInt(args[0] || '1', 10) || 1);
-        return '\\n'.repeat(count);
+        return '\n'.repeat(count);
       },
       ['cnl', 'cnewline'],
     );
@@ -792,6 +842,82 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       }
       return String(Math.abs(h) % 10000000);
     });
+
+    // --- Unicode encode/decode ---
+    reg(
+      'unicodeencode',
+      (_p1, _arg, args) => {
+        return (args[0] || '').charCodeAt(args[1] ? Number(args[1]) : 0).toString();
+      },
+      ['unicode_encode'],
+    );
+    reg(
+      'unicodedecode',
+      (_p1, _arg, args) => {
+        return String.fromCharCode(Number(args[0]));
+      },
+      ['unicode_decode'],
+    );
+    reg(
+      'ue',
+      (_p1, _arg, args) => {
+        return String.fromCharCode(parseInt(args[0] || '0', 16));
+      },
+      ['unicodedecodefromhex', 'unicodeencodefromhex'],
+    );
+
+    // --- Hex conversion ---
+    reg('fromhex', (_p1, _arg, args) => Number.parseInt(args[0] || '0', 16).toString());
+    reg('tohex', (_p1, _arg, args) => Number.parseInt(args[0] || '0').toString(16));
+
+    // --- Encryption ---
+    reg(
+      'crypt',
+      (_p1, _arg, args) => {
+        let shift = args[1] ? Number(args[1]) : 32768;
+        if (isNaN(shift)) shift = 32768;
+        let result = '';
+        const text = args[0] || '';
+        for (let i = 0; i < text.length; i++) {
+          const charCode = text.charCodeAt(i);
+          if (charCode > 65535) {
+            result += text[i];
+            continue;
+          }
+          let shiftedCode = charCode + shift;
+          if (shiftedCode > 65535) shiftedCode -= 65536;
+          result += String.fromCharCode(shiftedCode);
+        }
+        return result;
+      },
+      ['crypto', 'caesar', 'encrypt', 'decrypt'],
+    );
+    reg(
+      'xor',
+      (_p1, _arg, args) => {
+        const buf = new TextEncoder().encode(args[0] || '');
+        const xored = new Uint8Array(buf.length);
+        for (let i = 0; i < buf.length; i++) xored[i] = buf[i] ^ 0xff;
+        let binary = '';
+        for (let i = 0; i < xored.length; i++) binary += String.fromCharCode(xored[i]);
+        return btoa(binary);
+      },
+      ['xorencrypt', 'xorencode', 'xore'],
+    );
+    reg(
+      'xordecrypt',
+      (_p1, _arg, args) => {
+        try {
+          const binary = atob(args[0] || '');
+          const buf = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) buf[i] = binary.charCodeAt(i) ^ 0xff;
+          return new TextDecoder().decode(buf);
+        } catch {
+          return '';
+        }
+      },
+      ['xordecode', 'xord'],
+    );
 
     // --- Misc ---
     reg('idle', () => '');
@@ -850,7 +976,10 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('messageidleduration', () => '0', ['message_idle_duration']);
     reg('risu', (_p1, _arg, args) => `<img src="" alt="risu" style="width:${args[0] || '2em'};">`);
     reg('file', (_p1, _arg, args) => `<div class="risu-file">${args[0] || ''}</div>`);
-    reg('declare', () => '');
+    reg('declare', (_p1, arg, args) => {
+      if (arg.runVar) setChatVar(`__declared_${args[0] || ''}__`, '1');
+      return '';
+    });
     reg('position', () => '');
   }
 
@@ -860,7 +989,111 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     const resolvedArg: CBSArg = arg ?? {};
     resolvedArg.runVar = resolvedArg.runVar !== false;
     const maxDepth = 20;
+    const maxCallStack = 20;
     let depth = 0;
+    let callStack = 0;
+    const functions = new Map<string, { data: string; params: string[] }>();
+
+    function resolveBlockEnd(blockData: BlockState): string {
+      if (blockData.type === 'func') {
+        const funcBlock = blockData as BlockState & { _funcName?: string; _funcParams?: string[] };
+        if (funcBlock._funcName) {
+          functions.set(funcBlock._funcName, {
+            data: funcBlock.content,
+            params: funcBlock._funcParams || [],
+          });
+        }
+        return '';
+      }
+      if (blockData.type === 'each') {
+        const iterArr = (blockData as BlockState & { _iterArr?: unknown[] })._iterArr || [];
+        const iterVar = (blockData as BlockState & { _iterVar?: string })._iterVar || 'item';
+        const keepMode = blockData.mode === 'keep';
+        const template = keepMode ? blockData.content : trimLines(blockData.content.trim());
+        const parts: string[] = [];
+        for (const item of iterArr) {
+          const replacement = typeof item === 'string' ? item : JSON.stringify(item);
+          parts.push(template.replaceAll(`{{slot::${iterVar}}}`, replacement));
+        }
+        const added = parts.join('');
+        const raw = keepMode ? added : added.trim();
+        // Re-parse to resolve nested blocks (e.g., nested #each)
+        return parse(raw);
+      }
+      if (blockData.type === 'puredisplay') {
+        return blockData.content;
+      }
+      if (blockData.type === 'escape') {
+        return risuEscape(blockData.mode === 'keep' ? blockData.content : blockData.content.trim());
+      }
+      if (blockData.type === 'normalize') {
+        return normalizeBlockContent(blockData.content);
+      }
+      // #when / #if: trim leading/trailing empty lines (upstream parity)
+      // 'keep' mode suppresses trimming (upstream: type2='keep')
+      // 'legacy' mode applies trimLines (upstream: type='parse' → trimLines(p1Trimmed))
+      let text = blockData.active ? blockData.content : blockData.elseContent || '';
+      if ((blockData.type === 'when' || blockData.type === 'if') && blockData.mode !== 'keep') {
+        if (blockData.mode === 'legacy') {
+          text = trimLines(text.trim());
+        } else {
+          const lines = text.split('\n');
+          while (lines.length > 0 && lines[0].trim() === '') lines.shift();
+          while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
+          text = lines.join('\n');
+        }
+      }
+      return text;
+    }
+
+    // Append block output to the appropriate target (respects _inElse)
+    function appendBlockOutput(output: string, stack: BlockState[], result: { value: string }): void {
+      const parentBlock = stack.length > 0 ? stack[stack.length - 1] : null;
+      if (parentBlock && parentBlock.isBlock) {
+        if (parentBlock._pureMode) {
+          parentBlock.content += output;
+        } else if (parentBlock._inElse) {
+          if (!parentBlock.active) parentBlock.elseContent = (parentBlock.elseContent || '') + output;
+        } else {
+          if (parentBlock.active) parentBlock.content += output;
+        }
+      } else {
+        result.value += output;
+      }
+    }
+
+    // {{bkspc}} helper: remove last word from accumulated output (upstream parity)
+    function applyBkspc(root: string): string {
+      if (!root) return '';
+      root = root.trimEnd();
+      let trimPointer = root.length - 1;
+      for (; trimPointer >= 0; trimPointer--) {
+        const char = root[trimPointer];
+        if (trimPointer === 0) break;
+        if (char === ' ' || char === '\n' || char === '\t') break;
+      }
+      if (trimPointer === -1) trimPointer = 0;
+      return root.substring(0, trimPointer).trimEnd();
+    }
+
+    // {{erase}} helper: remove last sentence from accumulated output (upstream parity)
+    function applyErase(root: string): string {
+      if (!root) return '';
+      root = root.trimEnd();
+      let trimPointer = root.length - 1;
+      let sentenceEndFound = false;
+      for (; trimPointer >= 0; trimPointer--) {
+        const char = root[trimPointer];
+        if (char === '.' || char === '!' || char === '?' || char === '\n') {
+          sentenceEndFound = true;
+          break;
+        }
+        if (trimPointer === 0) break;
+      }
+      if (trimPointer === -1) trimPointer = 0;
+      else if (sentenceEndFound) trimPointer += 1;
+      return root.substring(0, trimPointer).trimEnd();
+    }
 
     function parse(input: string): string {
       if (depth++ > maxDepth) return input;
@@ -895,6 +1128,35 @@ export const PreviewEngine: PreviewEngineModule = (() => {
             i++;
           }
 
+          // Pure-mode blocks (each, escape, code, pure): collect raw text
+          const topBlock = stack.length > 0 ? stack[stack.length - 1] : null;
+          if (topBlock && topBlock._pureMode) {
+            const trimmedInner = inner.trimStart();
+            if (trimmedInner.startsWith('#')) {
+              // Nested block start — track nesting depth
+              topBlock._pureNestLevel = (topBlock._pureNestLevel || 0) + 1;
+              topBlock.content += '{{' + inner + '}}';
+              continue;
+            }
+            if (trimmedInner.startsWith('/') && !trimmedInner.startsWith('//')) {
+              if ((topBlock._pureNestLevel || 0) > 0) {
+                topBlock._pureNestLevel!--;
+                topBlock.content += '{{' + inner + '}}';
+                continue;
+              }
+              // Close this pure-mode block
+              const blockData = stack.pop()!;
+              const output = resolveBlockEnd(blockData);
+              const resultRef = { value: result };
+              appendBlockOutput(output, stack, resultRef);
+              result = resultRef.value;
+              continue;
+            }
+            // Regular tag inside pure block — keep as raw text
+            topBlock.content += '{{' + inner + '}}';
+            continue;
+          }
+
           const parsed = parse(inner);
 
           // Block start (#)
@@ -913,28 +1175,10 @@ export const PreviewEngine: PreviewEngineModule = (() => {
               }
             }
             if (blockData) {
-              let output: string;
-              if (blockData.type === 'each') {
-                // #each iteration: repeat content for each array element
-                const iterArr = (blockData as BlockState & { _iterArr?: string[] })._iterArr || [];
-                const iterVar = (blockData as BlockState & { _iterVar?: string })._iterVar || 'item';
-                const template = blockData.content;
-                const parts: string[] = [];
-                for (const item of iterArr) {
-                  parts.push(template.replace(new RegExp(`\\{\\{slot::${iterVar}\\}\\}`, 'gi'), item));
-                }
-                output = parts.join('');
-              } else if (blockData.type === 'puredisplay' || blockData.type === 'escape') {
-                output = blockData.content;
-              } else {
-                output = blockData.active ? blockData.content : blockData.elseContent || '';
-              }
-              const activeBlock = stack.length > 0 ? stack[stack.length - 1] : null;
-              if (activeBlock && activeBlock.isBlock) {
-                if (activeBlock.active) activeBlock.content += output;
-              } else {
-                result += output;
-              }
+              const output = resolveBlockEnd(blockData);
+              const resultRef = { value: result };
+              appendBlockOutput(output, stack, resultRef);
+              result = resultRef.value;
             }
             continue;
           }
@@ -946,6 +1190,69 @@ export const PreviewEngine: PreviewEngineModule = (() => {
               activeBlock._inElse = true;
               // Swap: content so far goes to the "if-true" side
               // From now on, content accumulates in elseContent
+            }
+            continue;
+          }
+
+          // {{call::funcName::val1::val2}} — invoke stored function
+          if (parsed.toLowerCase().startsWith('call::')) {
+            let callResult = '';
+            if (callStack > maxCallStack) {
+              callResult = 'ERROR: Call stack limit reached';
+            } else {
+              const callParts = parsed.split('::').slice(1);
+              const funcName = callParts[0];
+              const func = functions.get(funcName);
+              if (func) {
+                let body = func.data;
+                // Upstream: argData[0]=funcName, argData[1..]=user args
+                // replaceAll {{arg::0}} → funcName, {{arg::1}} → callParts[1], etc.
+                for (let ai = 0; ai < callParts.length; ai++) {
+                  body = body.replaceAll(`{{arg::${ai}}}`, callParts[ai]);
+                }
+                callStack++;
+                // Reset depth for called body (upstream: each risuChatParser call has own depth)
+                const savedDepth = depth;
+                depth = 0;
+                callResult = parse(body);
+                depth = savedDepth;
+                callStack--;
+              }
+            }
+            const activeBlockCall = stack.length > 0 ? stack[stack.length - 1] : null;
+            if (activeBlockCall && activeBlockCall.isBlock) {
+              if (activeBlockCall._inElse) {
+                if (!activeBlockCall.active)
+                  activeBlockCall.elseContent = (activeBlockCall.elseContent || '') + callResult;
+              } else {
+                if (activeBlockCall.active) activeBlockCall.content += callResult;
+              }
+            } else {
+              result += callResult;
+            }
+            continue;
+          }
+
+          // {{bkspc}} — remove last word from accumulated output (upstream parity)
+          if (parsed.toLowerCase().replace(/[\s_-]/g, '') === 'bkspc') {
+            const activeBlockBk = stack.length > 0 ? stack[stack.length - 1] : null;
+            if (activeBlockBk && activeBlockBk.isBlock) {
+              const target = activeBlockBk._inElse ? 'elseContent' : 'content';
+              activeBlockBk[target] = applyBkspc(String(activeBlockBk[target] || ''));
+            } else {
+              result = applyBkspc(result);
+            }
+            continue;
+          }
+
+          // {{erase}} — remove last sentence from accumulated output (upstream parity)
+          if (parsed.toLowerCase().replace(/[\s_-]/g, '') === 'erase') {
+            const activeBlockEr = stack.length > 0 ? stack[stack.length - 1] : null;
+            if (activeBlockEr && activeBlockEr.isBlock) {
+              const target = activeBlockEr._inElse ? 'elseContent' : 'content';
+              activeBlockEr[target] = applyErase(String(activeBlockEr[target] || ''));
+            } else {
+              result = applyErase(result);
             }
             continue;
           }
@@ -1019,6 +1326,71 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     return null;
   }
 
+  function normalizeBlockContent(content: string): string {
+    return content
+      .trim()
+      .replaceAll('\n', '')
+      .replaceAll('\t', '')
+      .replace(/\\u([0-9A-Fa-f]{4})/g, (_match, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+      .replace(/\\(.)/g, (_match, escaped: string) => {
+        switch (escaped) {
+          case 'n':
+            return '\n';
+          case 'r':
+            return '\r';
+          case 't':
+            return '\t';
+          case 'b':
+            return '\b';
+          case 'f':
+            return '\f';
+          case 'v':
+            return '\v';
+          case 'a':
+            return '\x07';
+          case 'x':
+            return '\x00';
+          default:
+            return escaped;
+        }
+      });
+  }
+
+  function trimLines(text: string): string {
+    return text
+      .split('\n')
+      .map((v) => v.trimStart())
+      .join('\n')
+      .trim();
+  }
+
+  function parseArrayForEach(s: string): unknown[] {
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return parsed;
+      return s.split('§');
+    } catch {
+      return s.split('§');
+    }
+  }
+
+  function risuEscape(text: string): string {
+    return text.replace(/[{}()]/g, (char) => {
+      switch (char) {
+        case '{':
+          return '\uE9B8';
+        case '}':
+          return '\uE9B9';
+        case '(':
+          return '\uE9BA';
+        case ')':
+          return '\uE9BB';
+        default:
+          return char;
+      }
+    });
+  }
+
   // FIX: Handle both {{#if::condition}} and {{#if condition}} syntax
   function handleBlockStart(content: string, _arg: CBSArg): BlockState {
     // Try :: split first
@@ -1050,25 +1422,48 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       return { isBlock: true, active: cond, content: '', elseContent: '', _inElse: false, type: 'if' };
     }
     if (name === 'when') {
-      const active = evaluateWhen(args);
-      return { isBlock: true, active, content: '', elseContent: '', _inElse: false, type: 'when' };
+      const whenResult = evaluateWhen(args);
+      return {
+        isBlock: true,
+        active: whenResult.active,
+        content: '',
+        elseContent: '',
+        _inElse: false,
+        type: 'when',
+        mode: whenResult.mode,
+      };
     }
     if (name === 'each') {
-      // Parse: {{#each arrayJSON as varName}} or {{#each::arrayJSON::as::varName}}
-      const rawContent = args.join('::');
-      const asIdx = rawContent.toLowerCase().indexOf(' as ');
-      let iterArr: string[] = [];
+      // Parse: {{#each [1,2,3] as n}} or {{#each::keep [1,2,3] as n}}
+      let rawContent = args.join('::');
+      let mode: string | undefined;
+
+      // Handle ::keep mode — 'keep' lands as args[0] from :: split
+      if (rawContent.startsWith('keep ') || rawContent.startsWith('keep::')) {
+        mode = 'keep';
+        rawContent = rawContent.substring(rawContent.startsWith('keep ') ? 5 : 6);
+      } else if (rawContent === 'keep') {
+        mode = 'keep';
+        rawContent = '';
+      }
+
+      const asIdx = rawContent.lastIndexOf(' as ');
+      let iterArr: unknown[] = [];
       let iterVar = 'item';
+
       if (asIdx >= 0) {
         const arrStr = rawContent.substring(0, asIdx).trim();
         iterVar = rawContent.substring(asIdx + 4).trim();
-        try {
-          const parsed = JSON.parse(arrStr);
-          iterArr = Array.isArray(parsed) ? parsed.map(String) : [];
-        } catch {
-          /* empty */
+        iterArr = parseArrayForEach(arrStr);
+      } else {
+        // Compatibility mode: last space separates array from var name
+        const spaceIdx = rawContent.lastIndexOf(' ');
+        if (spaceIdx >= 0) {
+          iterVar = rawContent.substring(spaceIdx + 1).trim();
+          iterArr = parseArrayForEach(rawContent.substring(0, spaceIdx).trim());
         }
       }
+
       return {
         isBlock: true,
         active: true,
@@ -1076,15 +1471,67 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         elseContent: '',
         _inElse: false,
         type: 'each',
+        mode,
+        _pureMode: true,
         _iterArr: iterArr,
         _iterVar: iterVar,
       } as BlockState;
     }
     if (name === 'pure' || name === 'puredisplay') {
-      return { isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: 'puredisplay' };
+      return {
+        isBlock: true,
+        active: true,
+        content: '',
+        elseContent: '',
+        _inElse: false,
+        type: 'puredisplay',
+        _pureMode: true,
+      };
+    }
+    if (name === 'code') {
+      return {
+        isBlock: true,
+        active: true,
+        content: '',
+        elseContent: '',
+        _inElse: false,
+        type: 'normalize',
+        _pureMode: true,
+      };
     }
     if (name === 'escape') {
-      return { isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: 'escape' };
+      const mode = args[0]?.trim().toLowerCase() === 'keep' ? 'keep' : undefined;
+      return {
+        isBlock: true,
+        active: true,
+        content: '',
+        elseContent: '',
+        _inElse: false,
+        type: 'escape',
+        mode,
+        _pureMode: true,
+      };
+    }
+    if (name === 'func') {
+      // Upstream: {{#func name param1 param2 ...}}
+      // args[0] contains "name param1 param2 ..." from space-split in handleBlockStart
+      const funcParts = (args[0] || '').trim().split(/\s+/);
+      const funcName = funcParts[0] || '';
+      const funcParams = funcParts.slice(1);
+      if (!funcName) {
+        return { isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: name };
+      }
+      return {
+        isBlock: true,
+        active: true,
+        content: '',
+        elseContent: '',
+        _inElse: false,
+        type: 'func',
+        _pureMode: true,
+        _funcName: funcName,
+        _funcParams: funcParams,
+      } as BlockState;
     }
     return { isBlock: true, active: true, content: '', elseContent: '', _inElse: false, type: name };
   }
@@ -1122,129 +1569,125 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     return result !== 0;
   }
 
-  // FIX: Correct or/and chain logic in when — extended with RisuAI operators
-  function evaluateWhen(args: string[]): boolean {
-    if (!args.length) return false;
-    const stack = [...args];
+  // Upstream-parity stack-based #when evaluator (right-to-left / reverse Polish)
+  function evaluateWhen(args: string[]): { active: boolean; mode: 'normal' | 'keep' | 'legacy' } {
+    const falsy = (mode: 'normal' | 'keep' | 'legacy' = 'normal') => ({ active: false, mode });
 
-    function resolveVar(val: string): string {
-      if (/^[a-zA-Z_]\w*$/.test(val)) {
-        const v = getChatVar(val);
-        if (v !== 'null') return v;
-      }
-      if (val.startsWith('$')) {
-        const v = getChatVar(val.slice(1));
-        if (v !== 'null') return v;
-      }
-      return val;
+    if (!args.length) return falsy();
+
+    const statement = [...args];
+
+    // Single value → literal truthiness check (upstream lines 1145-1148)
+    if (statement.length === 1) {
+      const state = statement[0];
+      return { active: state === 'true' || state === '1', mode: 'normal' };
     }
 
-    function isTruthy(v: string): boolean {
-      return v === '1' || v.toLowerCase() === 'true';
-    }
+    let mode: 'normal' | 'keep' | 'legacy' = 'normal';
 
-    // Process modifiers first (keep, legacy, not at the start)
-    let negate = false;
-    while (stack.length > 0) {
-      const first = stack[0].toLowerCase();
-      if (first === 'keep' || first === 'legacy') {
-        stack.shift();
-        continue;
-      }
-      if (first === 'not') {
-        negate = !negate;
-        stack.shift();
-        continue;
-      }
-      break;
-    }
+    const isTruthy = (s: string): boolean => {
+      return s === 'true' || s === '1';
+    };
 
-    // Single value check
-    if (stack.length === 0) return negate;
-    if (stack.length === 1) {
-      const v = resolveVar(stack[0]);
-      const result = isTruthy(v);
-      return negate ? !result : result;
-    }
-
-    // Check for special two-arg operators
-    if (stack.length === 2) {
-      const op = stack[0].toLowerCase();
-      if (op === 'var') {
-        const result = isTruthy(getChatVar(stack[1]));
-        return negate ? !result : result;
-      }
-      if (op === 'toggle') {
-        const result = isTruthy(getGlobalChatVar('toggle_' + stack[1]));
-        return negate ? !result : result;
-      }
-    }
-
-    // Standard comparison chain: val op cmp [and/or val2 op2 cmp2 ...]
-    let val = resolveVar(stack.shift() ?? '');
-    let result: boolean | null = null;
-    let pendingLogic = 'and';
-
-    while (stack.length >= 2) {
-      const op = stack.shift()!.toLowerCase();
-      let cmpResult: boolean;
-
-      if (op === 'vis') {
-        const cmpVal = stack.shift() || '';
-        cmpResult = getChatVar(val) === cmpVal;
-      } else if (op === 'visnot') {
-        const cmpVal = stack.shift() || '';
-        cmpResult = getChatVar(val) !== cmpVal;
-      } else if (op === 'tis') {
-        const cmpVal = stack.shift() || '';
-        cmpResult = getGlobalChatVar('toggle_' + val) === cmpVal;
-      } else if (op === 'tisnot') {
-        const cmpVal = stack.shift() || '';
-        cmpResult = getGlobalChatVar('toggle_' + val) !== cmpVal;
-      } else {
-        const cmp = resolveVar(stack.shift()!);
-        switch (op) {
-          case 'is':
-            cmpResult = val === cmp;
-            break;
-          case 'isnot':
-            cmpResult = val !== cmp;
-            break;
-          case '>':
-            cmpResult = parseFloat(val) > parseFloat(cmp);
-            break;
-          case '<':
-            cmpResult = parseFloat(val) < parseFloat(cmp);
-            break;
-          case '>=':
-            cmpResult = parseFloat(val) >= parseFloat(cmp);
-            break;
-          case '<=':
-            cmpResult = parseFloat(val) <= parseFloat(cmp);
-            break;
-          case 'and':
-            cmpResult = isTruthy(val) && isTruthy(cmp);
-            break;
-          case 'or':
-            cmpResult = isTruthy(val) || isTruthy(cmp);
-            break;
-          default:
-            cmpResult = false;
+    // Stack-based evaluation: pop from end (upstream lines 1154-1327)
+    while (statement.length > 1) {
+      const condition = statement.pop()!;
+      const operator = statement.pop()!;
+      switch (operator) {
+        case 'not': {
+          statement.push(isTruthy(condition) ? '0' : '1');
+          break;
+        }
+        case 'keep': {
+          mode = 'keep';
+          statement.push(condition);
+          break;
+        }
+        case 'legacy': {
+          mode = 'legacy';
+          statement.push(condition);
+          break;
+        }
+        case 'and': {
+          const condition2 = statement.pop() ?? '';
+          statement.push(isTruthy(condition) && isTruthy(condition2) ? '1' : '0');
+          break;
+        }
+        case 'or': {
+          const condition2 = statement.pop() ?? '';
+          statement.push(isTruthy(condition) || isTruthy(condition2) ? '1' : '0');
+          break;
+        }
+        case 'is': {
+          const condition2 = statement.pop() ?? '';
+          statement.push(condition === condition2 ? '1' : '0');
+          break;
+        }
+        case 'isnot': {
+          const condition2 = statement.pop() ?? '';
+          statement.push(condition !== condition2 ? '1' : '0');
+          break;
+        }
+        case 'var': {
+          const variable = getChatVar(condition);
+          statement.push(isTruthy(variable) ? '1' : '0');
+          break;
+        }
+        case 'toggle': {
+          const variable = getGlobalChatVar('toggle_' + condition);
+          statement.push(isTruthy(variable) ? '1' : '0');
+          break;
+        }
+        case 'vis': {
+          const variable = getChatVar(statement.pop() ?? '');
+          statement.push(variable === condition ? '1' : '0');
+          break;
+        }
+        case 'visnot': {
+          const variable = getChatVar(statement.pop() ?? '');
+          statement.push(variable !== condition ? '1' : '0');
+          break;
+        }
+        case 'tis': {
+          const variable = getGlobalChatVar('toggle_' + (statement.pop() ?? ''));
+          statement.push(variable === condition ? '1' : '0');
+          break;
+        }
+        case 'tisnot': {
+          const variable = getGlobalChatVar('toggle_' + (statement.pop() ?? ''));
+          statement.push(variable !== condition ? '1' : '0');
+          break;
+        }
+        case '>': {
+          const condition2 = statement.pop() ?? '';
+          statement.push(parseFloat(condition2) > parseFloat(condition) ? '1' : '0');
+          break;
+        }
+        case '<': {
+          const condition2 = statement.pop() ?? '';
+          statement.push(parseFloat(condition2) < parseFloat(condition) ? '1' : '0');
+          break;
+        }
+        case '>=': {
+          const condition2 = statement.pop() ?? '';
+          statement.push(parseFloat(condition2) >= parseFloat(condition) ? '1' : '0');
+          break;
+        }
+        case '<=': {
+          const condition2 = statement.pop() ?? '';
+          statement.push(parseFloat(condition2) <= parseFloat(condition) ? '1' : '0');
+          break;
+        }
+        default: {
+          // Unknown operator → truthiness check of condition (upstream lines 1317-1325)
+          statement.push(isTruthy(condition) ? '1' : '0');
+          break;
         }
       }
-
-      if (result === null) result = cmpResult;
-      else if (pendingLogic === 'and') result = result && cmpResult;
-      else if (pendingLogic === 'or') result = result || cmpResult;
-
-      if (stack.length >= 3) {
-        pendingLogic = stack.shift()!.toLowerCase() === 'or' ? 'or' : 'and';
-        val = resolveVar(stack.shift()!);
-      }
     }
 
-    const finalResult = result ?? isTruthy(resolveVar(val));
-    return negate ? !finalResult : finalResult;
+    const finalCondition = statement[0] ?? '';
+    return { active: isTruthy(finalCondition), mode };
   }
 
   // ==================== Regex Script Pipeline ====================
@@ -1285,74 +1728,187 @@ export const PreviewEngine: PreviewEngineModule = (() => {
   }
 
   // ==================== Lorebook Matching ====================
+
+  /** Build search text from messages (lowercased, space-joined). */
+  function buildSearchText(messages: PreviewMessage[], depth: number): string {
+    if (depth <= 0) return '';
+    return messages
+      .slice(-depth)
+      .map((m) => m.content)
+      .join(' ')
+      .toLowerCase();
+  }
+
+  /** Test whether `key` matches in `searchText` using plain or regex matching. */
+  function testKeyMatch(key: string, searchText: string, useRegex: boolean, fullWord: boolean): boolean {
+    if (useRegex) {
+      try {
+        return new RegExp(key, 'i').test(searchText);
+      } catch (e) {
+        console.warn('[preview] Invalid regex in lorebook key:', key, (e as Error).message);
+        notifyError('로어북 키 정규식 오류', e);
+        return false;
+      }
+    }
+    const lk = key.toLowerCase();
+    if (fullWord) {
+      // Whole-word boundary match (case-insensitive)
+      return new RegExp(`\\b${lk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(searchText);
+    }
+    return searchText.includes(lk);
+  }
+
+  /** Find all matching keys from a key list. Returns matched key strings. */
+  function findMatchingKeys(keys: string[], searchText: string, useRegex: boolean, fullWord: boolean): string[] {
+    const matched: string[] = [];
+    for (const key of keys) {
+      if (testKeyMatch(key, searchText, useRegex, fullWord)) {
+        matched.push(key);
+      }
+    }
+    return matched;
+  }
+
+  /**
+   * Deterministic probability roll based on entry index.
+   * Returns a number 0–100 that is stable per entry index within a session.
+   */
+  function deterministicRoll(entryIndex: number): number {
+    // Simple deterministic hash: multiply by prime, mod 101 gives 0-100.
+    // Note: index 0 always yields 0, which is acceptable for preview diagnostics.
+    return ((entryIndex * 2654435761) >>> 0) % 101;
+  }
+
   function matchLorebook(
     messages: PreviewMessage[],
     lorebook: PreviewLorebookEntry[],
     scanDepth = 10,
   ): PreviewLoreMatch[] {
     if (!lorebook || !lorebook.length) return [];
-    const recentMsgs = messages.slice(-scanDepth);
-    const searchText = recentMsgs
-      .map((m) => m.content)
-      .join(' ')
-      .toLowerCase();
+
+    // Build default search text once
+    const defaultSearchText = buildSearchText(messages, scanDepth);
     const activated: LoreMatchWithEntry[] = [];
 
     for (let i = 0; i < lorebook.length; i++) {
       const entry = lorebook[i];
       if (entry.mode === 'folder') continue;
 
-      if (entry.alwaysActive) {
-        activated.push({ index: i, entry, reason: 'alwaysActive' });
+      // Parse decorators from entry content
+      const contentStr = String(entry.content || '');
+      const parsed = contentStr ? parseLorebookDecorators(contentStr) : null;
+      const dec = parsed?.decorators;
+      const warnings = parsed?.warnings;
+      const hasDecorators = dec != null && Object.keys(dec).length > 0;
+
+      // --- Force state: @@dont_activate / @@activate ---
+      if (dec?.dontActivate) continue;
+
+      // --- Effective probability ---
+      const entryPct = entry['activationPercent'] as number | undefined | null;
+      const effectivePct = dec?.probability !== undefined ? dec.probability : entryPct;
+
+      // activationPercent/@@probability 0 prevents activation entirely
+      if (effectivePct === 0) continue;
+
+      // --- Per-entry scan depth ---
+      const entryScanDepth = dec?.scanDepth ?? scanDepth;
+      const searchText = entryScanDepth !== scanDepth ? buildSearchText(messages, entryScanDepth) : defaultSearchText;
+
+      const useRegex = (entry['useRegex'] as boolean) ?? false;
+      const fullWord = dec?.matchFullWord ?? false;
+
+      // --- @@activate: force-activate bypass ---
+      if (dec?.activate) {
+        // @@exclude_keys veto still applies to forced activation
+        if (dec.excludeKeys?.length) {
+          const excludeMatched = findMatchingKeys(dec.excludeKeys, searchText, false, false);
+          if (excludeMatched.length > 0) continue;
+        }
+        const match: LoreMatchWithEntry = { index: i, entry, reason: '@@activate' };
+        if (dec.excludeKeys?.length) {
+          match.excludedKeys = dec.excludeKeys;
+        }
+        attachMetadata(match, dec, hasDecorators, warnings, effectivePct, entryScanDepth, scanDepth, i);
+        activated.push(match);
         continue;
       }
 
+      if (effectivePct != null && effectivePct > 0 && effectivePct < 100) {
+        const roll = deterministicRoll(i);
+        if (roll > effectivePct) continue;
+      }
+
+      // --- alwaysActive ---
+      if (entry.alwaysActive) {
+        // @@exclude_keys veto
+        if (dec?.excludeKeys?.length) {
+          const excludeMatched = findMatchingKeys(dec.excludeKeys, searchText, false, false);
+          if (excludeMatched.length > 0) continue;
+        }
+        // @@additional_keys gate
+        if (dec?.additionalKeys?.length) {
+          const addMatched = findMatchingKeys(dec.additionalKeys, searchText, false, fullWord);
+          if (addMatched.length < dec.additionalKeys.length) continue;
+        }
+        const match: LoreMatchWithEntry = { index: i, entry, reason: 'alwaysActive' };
+        if (dec?.excludeKeys?.length) {
+          match.excludedKeys = dec.excludeKeys;
+        }
+        attachMetadata(match, dec, hasDecorators, warnings, effectivePct, entryScanDepth, scanDepth, i);
+        activated.push(match);
+        continue;
+      }
+
+      // --- Key matching ---
       const keys = (entry.key || '')
         .split(',')
         .map((k) => k.trim())
         .filter(Boolean);
       if (!keys.length) continue;
 
-      let keyMatch = false;
-      for (const key of keys) {
-        if (entry['useRegex'] as boolean | undefined) {
-          try {
-            if (new RegExp(key, 'i').test(searchText)) {
-              keyMatch = true;
-              break;
-            }
-          } catch (e) {
-            console.warn('[preview] Invalid regex in lorebook key:', key, (e as Error).message);
-            notifyError('로어북 키 정규식 오류', e);
-          }
-        } else {
-          if (searchText.includes(key.toLowerCase())) {
-            keyMatch = true;
-            break;
-          }
-        }
-      }
+      const matchedKeys = findMatchingKeys(keys, searchText, useRegex, fullWord);
+      const keyMatch = matchedKeys.length > 0;
 
+      // --- selective + secondkey gate ---
       const selective = entry['selective'] as boolean | undefined;
       const secondkey = entry['secondkey'] as string | undefined;
+      let reason: string;
+
       if (selective && secondkey) {
         if (!keyMatch) continue;
         const secondKeys = secondkey
           .split(',')
           .map((k) => k.trim())
           .filter(Boolean);
-        let secondMatch = false;
-        for (const sk of secondKeys) {
-          if (searchText.includes(sk.toLowerCase())) {
-            secondMatch = true;
-            break;
-          }
-        }
-        if (!secondMatch) continue;
-        activated.push({ index: i, entry, reason: 'key+secondkey' });
+        const secondMatched = findMatchingKeys(secondKeys, searchText, false, fullWord);
+        if (secondMatched.length === 0) continue;
+        reason = 'key+secondkey';
       } else if (keyMatch) {
-        activated.push({ index: i, entry, reason: `key: ${keys.find((k) => searchText.includes(k.toLowerCase()))}` });
+        reason = `key: ${matchedKeys[0]}`;
+      } else {
+        continue;
       }
+
+      // --- @@additional_keys gate ---
+      if (dec?.additionalKeys?.length) {
+        const addMatched = findMatchingKeys(dec.additionalKeys, searchText, false, fullWord);
+        if (addMatched.length < dec.additionalKeys.length) continue;
+      }
+
+      // --- @@exclude_keys veto ---
+      if (dec?.excludeKeys?.length) {
+        const excludeMatched = findMatchingKeys(dec.excludeKeys, searchText, false, false);
+        if (excludeMatched.length > 0) continue;
+      }
+
+      const match: LoreMatchWithEntry = { index: i, entry, reason };
+      match.matchedKeys = matchedKeys;
+      if (dec?.excludeKeys?.length) {
+        match.excludedKeys = dec.excludeKeys;
+      }
+      attachMetadata(match, dec, hasDecorators, warnings, effectivePct, entryScanDepth, scanDepth, i);
+      activated.push(match);
     }
 
     activated.sort(
@@ -1361,6 +1917,33 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         ((b.entry['insertorder'] as number | undefined) || (b.entry['order'] as number | undefined) || 100),
     );
     return activated;
+  }
+
+  /** Attach decorator metadata fields to a match result. */
+  function attachMetadata(
+    match: LoreMatchWithEntry,
+    dec: PreviewLoreDecorators | undefined,
+    hasDecorators: boolean,
+    warnings: string[] | undefined,
+    effectivePct: number | undefined | null,
+    entryScanDepth: number,
+    globalScanDepth: number,
+    entryIndex: number,
+  ): void {
+    if (hasDecorators && dec) {
+      match.decorators = dec;
+    }
+    if (entryScanDepth !== globalScanDepth) {
+      match.effectiveScanDepth = entryScanDepth;
+    }
+    if (warnings?.length) {
+      match.warnings = warnings;
+    }
+    // Probability annotation
+    if (effectivePct != null && effectivePct > 0 && effectivePct < 100) {
+      match.activationPercent = effectivePct;
+      match.probabilityRoll = deterministicRoll(entryIndex);
+    }
   }
 
   // ==================== Lua Runtime ====================
@@ -1827,9 +2410,6 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         await luaEngine.doString(`callOutputListeners("preview", _jsContent)`);
         return _readCallResult(data ?? '');
       }
-      if (mode === 'editOutput') {
-        await luaEngine.doString(`if onOutput then onOutput("preview") end`);
-      }
       // editDisplay, editOutput, editInput, editRequest → callListenMain
       const content = typeof data === 'string' ? data : JSON.stringify(data);
       luaEngine.global.set('_jsContent', content);
@@ -1948,7 +2528,10 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       try {
         luaEngine.global.set('_trigName', String(name));
         await luaEngine.doString(`
-          if _triggers and _triggers[_trigName] then
+          local _directFn = _G[_trigName]
+          if type(_directFn) == "function" then
+            _directFn("preview")
+          elseif _triggers and _triggers[_trigName] then
             _triggers[_trigName]()
           end
         `);

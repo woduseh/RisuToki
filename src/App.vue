@@ -54,7 +54,8 @@ function handleAction(action: string) {
             <button
               id="btn-sidebar-collapse"
               class="panel-collapse-btn"
-              title="접기"
+              title="사이드바 접기"
+              aria-label="사이드바 접기"
               @click="handleAction('toggle-sidebar')"
             >
               ◀
@@ -107,8 +108,10 @@ function handleAction(action: string) {
       <div id="toki-avatar">
         <button
           id="btn-avatar-collapse"
+          type="button"
           class="panel-collapse-btn avatar-collapse"
           title="아바타 접기"
+          aria-label="아바타 접기"
           @click="handleAction('toggle-avatar')"
         >
           ✕
@@ -118,7 +121,9 @@ function handleAction(action: string) {
           <span id="toki-status-icon">💤</span>
           <span id="toki-status-text"></span>
         </div>
-        <div id="toki-help-btn" @click="handleAction('help')">❓ 도움말</div>
+        <button id="toki-help-btn" type="button" aria-label="도움말 열기" @click="handleAction('help')">
+          ❓ 도움말
+        </button>
       </div>
       <div id="avatar-resizer" class="resizer resizer-h" style="display: none"></div>
       <div id="terminal-area">
@@ -131,6 +136,8 @@ function handleAction(action: string) {
             <button
               id="btn-rp-mode"
               :title="store.rpMode !== 'off' ? `RP: ${store.rpLabel} (클릭: OFF)` : 'RP 모드 OFF (클릭: ON)'"
+              :aria-label="store.rpMode !== 'off' ? `RP 모드: ${store.rpLabel}` : 'RP 모드 OFF'"
+              :aria-pressed="store.rpMode !== 'off'"
               :style="{ background: store.rpMode !== 'off' ? 'rgba(255,255,255,0.5)' : '' }"
               @click="handleAction('rp-toggle')"
             >
@@ -139,6 +146,8 @@ function handleAction(action: string) {
             <button
               id="btn-bgm"
               :title="store.bgmEnabled ? 'BGM ON (우클릭: 파일 변경)' : 'BGM OFF (우클릭: 파일 변경)'"
+              :aria-label="store.bgmEnabled ? 'BGM 켜짐' : 'BGM 꺼짐'"
+              :aria-pressed="store.bgmEnabled"
               :style="{ background: store.bgmEnabled ? 'rgba(255,255,255,0.5)' : '' }"
               @click="handleAction('bgm-toggle')"
               @contextmenu.prevent="handleAction('bgm-pick')"
@@ -148,15 +157,37 @@ function handleAction(action: string) {
             <button id="btn-chat-mode" title="채팅 모드" style="display: none" @click="handleAction('chat-mode')">
               💭
             </button>
-            <button id="btn-terminal-bg" title="배경 이미지 설정" @click="handleAction('terminal-bg')">🖼</button>
-            <button id="btn-terminal-toggle" title="터미널 토글" @click="handleAction('toggle-terminal')">━</button>
+            <button
+              id="btn-terminal-bg"
+              title="배경 이미지 설정"
+              aria-label="배경 이미지 설정"
+              @click="handleAction('terminal-bg')"
+            >
+              🖼
+            </button>
+            <button
+              id="btn-terminal-toggle"
+              title="터미널 토글"
+              aria-label="터미널 토글"
+              @click="handleAction('toggle-terminal')"
+            >
+              ━
+            </button>
           </div>
         </div>
         <div id="terminal-container"></div>
       </div>
     </div>
 
-    <div id="sidebar-expand" title="사이드바 열기" style="display: none" @click="handleAction('sidebar-expand')">▶</div>
+    <div
+      id="sidebar-expand"
+      title="사이드바 열기"
+      aria-label="사이드바 열기"
+      style="display: none"
+      @click="handleAction('sidebar-expand')"
+    >
+      ▶
+    </div>
   </div>
 
   <StatusBar />

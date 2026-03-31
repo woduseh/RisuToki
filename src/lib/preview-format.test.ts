@@ -4,12 +4,12 @@ import {
   buildPreviewMessageHtml,
   escapePreviewHtml,
   simpleMarkdown,
-  wrapCssForPreview
+  wrapCssForPreview,
 } from './preview-format';
 import type { PreviewParserEngine } from './preview-format';
 
 const engine: PreviewParserEngine = {
-  risuChatParser: (text: string) => text.replace('{{color}}', 'royalblue')
+  risuChatParser: (text: string) => text.replace('{{color}}', 'royalblue'),
 };
 
 describe('preview format helpers', () => {
@@ -27,15 +27,19 @@ describe('preview format helpers', () => {
   });
 
   it('wraps plain css for preview and preserves explicit style tags', () => {
-    expect(wrapCssForPreview({
-      raw: 'body { color: {{color}}; }',
-      engine
-    })).toContain('<style>\nbody { color: royalblue; }\n</style>');
+    expect(
+      wrapCssForPreview({
+        raw: 'body { color: {{color}}; }',
+        engine,
+      }),
+    ).toContain('<style>\nbody { color: royalblue; }\n</style>');
 
-    expect(wrapCssForPreview({
-      raw: '<style>.box { color: red; }</style>',
-      engine
-    })).toBe('<style>.box { color: red; }</style>');
+    expect(
+      wrapCssForPreview({
+        raw: '<style>.box { color: red; }</style>',
+        engine,
+      }),
+    ).toBe('<style>.box { color: red; }</style>');
   });
 
   it('builds the preview document shell with a restrictive csp and empty scaffold', () => {
@@ -46,12 +50,19 @@ describe('preview format helpers', () => {
     expect(documentHtml).toContain('<div class="default-chat-screen" id="chat-container"></div>');
   });
 
+  it('uses compact bottom padding because the preview input bar lives outside the iframe', () => {
+    const documentHtml = buildPreviewDocument('');
+
+    expect(documentHtml).toContain('padding: 8px 0 8px;');
+    expect(documentHtml).not.toContain('padding: 8px 0 80px;');
+  });
+
   it('builds message html with escaped names while keeping only allowed inline preview markup', () => {
     const messageHtml = buildPreviewMessageHtml({
       index: 3,
       name: '<Toki>',
       avatarBg: 'var(--test-color)',
-      content: '<strong>안녕</strong><span risu-trigger="wave">트리거</span><script>alert(1)</script>'
+      content: '<strong>안녕</strong><span risu-trigger="wave">트리거</span><script>alert(1)</script>',
     });
 
     expect(messageHtml).toContain('data-chat-index="3"');

@@ -1,11 +1,17 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, beforeEach } from 'vitest';
+import { nextTick } from 'vue';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import App from './App.vue';
+import { useAppStore } from './stores/app-store';
 
 describe('App shell', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders the terminal launch menu entries', async () => {
@@ -28,5 +34,60 @@ describe('App shell', () => {
 
     // Default darkMode is false → TokiTalk
     expect(wrapper.find('.momo-title').text()).toBe('TokiTalk');
+  });
+
+  it('uses clearer wording for the sidebar and preview actions in the view menu', async () => {
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } });
+    const menuItems = wrapper.findAll('.menu-item');
+    const viewMenu = menuItems.find((m) => m.text().includes('보기'));
+    expect(viewMenu).toBeTruthy();
+
+    await viewMenu!.trigger('click');
+
+    expect(wrapper.text()).toContain('사이드바 토글');
+    expect(wrapper.text()).toContain('프리뷰');
+    expect(wrapper.text()).not.toContain('프리뷰 테스트');
+  });
+
+  it('adds aria labels to icon-only shell controls', () => {
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } });
+
+    expect(wrapper.get('#btn-sidebar-collapse').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-rp-mode').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-bgm').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-terminal-bg').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-terminal-toggle').attributes('aria-label')).toBeTruthy();
+  });
+
+  it('renders the help affordance as a real button with an accessible label', () => {
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } });
+    const helpBtn = wrapper.get('#toki-help-btn');
+
+    expect(helpBtn.element.tagName).toBe('BUTTON');
+    expect(helpBtn.attributes('aria-label')).toBe('도움말 열기');
+  });
+
+  it('keeps sticky error statuses visible with accessible live-region semantics', async () => {
+    vi.useFakeTimers();
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore() as ReturnType<typeof useAppStore> & {
+      clearStatus(): void;
+      setStatus(text: string, options?: { kind?: 'info' | 'error'; sticky?: boolean }): void;
+    };
+
+    store.setStatus('저장 실패', { kind: 'error', sticky: true });
+    await nextTick();
+
+    const bar = wrapper.get('#statusbar');
+    expect(bar.attributes('role')).toBe('status');
+    expect(bar.attributes('aria-live')).toBe('polite');
+    expect(bar.classes()).toContain('visible');
+    expect(bar.classes()).toContain('status-error');
+    expect(bar.classes()).toContain('sticky');
+
+    vi.advanceTimersByTime(5000);
+    await nextTick();
+    expect(bar.classes()).toContain('visible');
   });
 });

@@ -187,4 +187,25 @@ describe('settings popup', () => {
     const catSelect = overlay.querySelector<HTMLSelectElement>('[data-testid="pluni-category-select"]');
     expect(catSelect!.value).toBe('multi-char');
   });
+
+  it('renders the popup as a modal dialog and focuses the close button', () => {
+    showSettingsPopup(makeState(), makeCallbacks());
+
+    const overlay = getOverlay()!;
+    const dialog = overlay.querySelector('.settings-popup') as HTMLElement | null;
+    const closeBtn = overlay.querySelector('.help-popup-header button') as HTMLButtonElement | null;
+
+    expect(dialog?.getAttribute('role')).toBe('dialog');
+    expect(dialog?.getAttribute('aria-modal')).toBe('true');
+    expect(document.activeElement).toBe(closeBtn);
+  });
+
+  it('closes on Escape', () => {
+    showSettingsPopup(makeState(), makeCallbacks());
+    expect(getOverlay()).not.toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(getOverlay()).toBeNull();
+  });
 });

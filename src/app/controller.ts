@@ -49,6 +49,7 @@ import { feedBgBuffer, initChatMode as initChatModeUi, isChatMode, onChatData } 
 import { NON_MONACO_EDITOR_TAB_TYPES, requiresMonacoEditor, resolvePendingEditorTab } from '../lib/editor-activation';
 import { createExternalTextTabState } from '../lib/external-text-tab';
 import { collectDirtyEditorFields } from '../lib/editor-dirty-fields';
+import { resolveCloseWindowAction } from '../lib/close-window-policy';
 import { getFolderRef, resolveLorebookFolderRef } from '../lib/lorebook-folders';
 import { TabManager } from '../lib/tab-manager';
 import { applyStoredLayoutState, createDefaultLayoutState, createLayoutManager, V_SLOTS } from '../lib/layout-manager';
@@ -234,17 +235,33 @@ const chatSession = createBufferedTerminalChatSession({
 // Form tab types that use special editors (not Monaco)
 const FORM_TAB_TYPES = NON_MONACO_EDITOR_TAB_TYPES;
 
-const tabMgr = new TabManager('editor-tabs', {
-  onActivateTab: (tab) => createOrSwitchEditor(tab),
-  onDisposeFormEditors: () => disposeFormEditors(),
-  onClearEditor: () => {
-    document.getElementById('editor-container')!.innerHTML = '<div class="empty-state">항목을 선택하세요</div>';
-    editorInstance = null;
+async function confirmDirtyTabClose(): Promise<boolean> {
+  const decision = resolveCloseWindowAction({ choice: await showCloseConfirm() });
+  if (decision.action === 'stay') {
+    return false;
+  }
+  if (decision.action === 'save') {
+    await handleSave();
+    return tabMgr.dirtyFields.size === 0;
+  }
+  return true;
+}
+
+const tabMgr = new TabManager(
+  'editor-tabs',
+  {
+    onActivateTab: (tab) => createOrSwitchEditor(tab),
+    onDisposeFormEditors: () => disposeFormEditors(),
+    onClearEditor: () => {
+      document.getElementById('editor-container')!.innerHTML = '<div class="empty-state">항목을 선택하세요</div>';
+      editorInstance = null;
+    },
+    isPanelPoppedOut: (panelId) => isPanelPoppedOut(panelId),
+    onPopOutTab: (tabId) => popOutEditorPanel(tabId),
+    isFormTabType: (language) => FORM_TAB_TYPES.has(language),
   },
-  isPanelPoppedOut: (panelId) => isPanelPoppedOut(panelId),
-  onPopOutTab: (tabId) => popOutEditorPanel(tabId),
-  isFormTabType: (language) => FORM_TAB_TYPES.has(language),
-});
+  confirmDirtyTabClose,
+);
 
 initFormEditor({
   isMonacoReady: () => monacoReady,
@@ -1883,6 +1900,9 @@ const fileActionDeps: FileActionDeps = {
     editorInstance = v;
   },
   getAutosaveDir: () => autosaveDir,
+  hasUnsavedChanges: () => tabMgr.dirtyFields.size > 0,
+  requestDocumentReplacement: async (_targetLabel) => showCloseConfirm(),
+  saveCurrentDocument: async () => handleSave(),
   tabMgr,
   buildSidebar,
   setStatus,
@@ -2392,7 +2412,7 @@ export async function initMainRenderer(): Promise<void> {
     save: () => handleSave(),
     'save-as': () => handleSaveAs(),
     'close-tab': () => {
-      if (tabMgr.activeTabId) tabMgr.closeTab(tabMgr.activeTabId);
+      if (tabMgr.activeTabId) void tabMgr.requestCloseTab(tabMgr.activeTabId);
     },
 
     // Edit (Monaco editor commands)
@@ -2512,11 +2532,12 @@ export async function initMainRenderer(): Promise<void> {
     handleSave,
     handleSaveAs,
     closeActiveTab: () => {
-      if (tabMgr.activeTabId) tabMgr.closeTab(tabMgr.activeTabId);
+      if (tabMgr.activeTabId) void tabMgr.requestCloseTab(tabMgr.activeTabId);
     },
     toggleSidebar,
     toggleTerminal,
     showPreviewPanel,
+    showSettingsPopup,
   });
   initDragDrop(document.getElementById('sidebar')!, {
     get fileData() {

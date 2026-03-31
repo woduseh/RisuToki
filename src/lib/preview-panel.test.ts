@@ -29,7 +29,7 @@ function createEngine(): PreviewEngine & { state: TestEngineState } {
     luaHtml: '',
     luaOutput: [],
     userName: '',
-    variables: {}
+    variables: {},
   };
 
   return {
@@ -38,30 +38,62 @@ function createEngine(): PreviewEngine & { state: TestEngineState } {
       state.luaCode = code;
       return true;
     },
-    matchLorebook() { return []; },
+    matchLorebook() {
+      return [];
+    },
     onReloadDisplay() {},
-    processRegex(content: string) { return content; },
+    processRegex(content: string) {
+      return content;
+    },
     resetVars() {
       state.variables = {};
       state.luaOutput = [];
       state.luaHtml = '';
     },
-    resolveAssetImages(content: string) { return content; },
-    risuChatParser(content: string) { return content; },
+    resolveAssetImages(content: string) {
+      return content;
+    },
+    risuChatParser(content: string) {
+      return content;
+    },
     async runLuaButtonClick() {},
-    async runLuaTrigger(_name: string, payload: string | null) { return payload; },
+    async runLuaTrigger(_name: string, payload: string | null) {
+      return payload;
+    },
     async runLuaTriggerByName() {},
-    setAssets(assets: Record<string, string>) { state.assets = assets; },
-    setCharDescription(d: string) { state.description = d; },
-    setCharFirstMessage(m: string) { state.firstMessage = m; },
-    setCharName(n: string) { state.charName = n; },
-    setChatVar(name: string, value: unknown) { state.variables[name] = value; },
-    setDefaultVars(dv: string) { state.defaultVariables = dv; },
-    setLorebook(lb: PreviewLorebookEntry[]) { state.lorebook = lb; },
-    setUserName(n: string) { state.userName = n; },
-    getLuaOutput() { return [...state.luaOutput]; },
-    getLuaOutputHTML() { return state.luaHtml; },
-    getVariables() { return { ...state.variables }; }
+    setAssets(assets: Record<string, string>) {
+      state.assets = assets;
+    },
+    setCharDescription(d: string) {
+      state.description = d;
+    },
+    setCharFirstMessage(m: string) {
+      state.firstMessage = m;
+    },
+    setCharName(n: string) {
+      state.charName = n;
+    },
+    setChatVar(name: string, value: unknown) {
+      state.variables[name] = value;
+    },
+    setDefaultVars(dv: string) {
+      state.defaultVariables = dv;
+    },
+    setLorebook(lb: PreviewLorebookEntry[]) {
+      state.lorebook = lb;
+    },
+    setUserName(n: string) {
+      state.userName = n;
+    },
+    getLuaOutput() {
+      return [...state.luaOutput];
+    },
+    getLuaOutputHTML() {
+      return state.luaHtml;
+    },
+    getVariables() {
+      return { ...state.variables };
+    },
   };
 }
 
@@ -75,11 +107,11 @@ function createDeps(overrides: Partial<PreviewPanelDeps> = {}): PreviewPanelDeps
       css: '',
       lorebook: [],
       regex: [],
-      lua: ''
+      lua: '',
     },
     assetMap: null,
     engine: createEngine(),
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -150,6 +182,7 @@ describe('preview-panel', () => {
     const callArg = popoutPreview.mock.calls[0][0];
     expect(callArg.name).toBe('Toki');
     expect(callArg.assets).toBeNull();
+    expect(callArg.triggerScripts).toEqual([]);
   });
 
   it('dispose removes the overlay', () => {
@@ -179,6 +212,102 @@ describe('preview-panel', () => {
 
     debugBtn.click();
     expect(debugDrawer.style.display).toBe('none');
+
+    dispose();
+  });
+
+  it('does not send on Enter while IME composition is active', () => {
+    const container = document.createElement('div');
+    const deps = createDeps();
+    const { dispose } = showPreviewPanel(container, deps);
+
+    const chatInput = container.querySelector('.preview-input-textarea') as HTMLTextAreaElement;
+
+    // Composing Enter should NOT call preventDefault (send not triggered)
+    const composingEvent = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    Object.defineProperty(composingEvent, 'isComposing', { value: true });
+    chatInput.dispatchEvent(composingEvent);
+
+    expect(composingEvent.defaultPrevented).toBe(false);
+
+    dispose();
+  });
+
+  it('sends on plain Enter when not composing', () => {
+    const container = document.createElement('div');
+    const deps = createDeps();
+    const { dispose } = showPreviewPanel(container, deps);
+
+    const chatInput = container.querySelector('.preview-input-textarea') as HTMLTextAreaElement;
+    chatInput.value = '테스트 메시지';
+
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'isComposing', { value: false });
+    chatInput.dispatchEvent(event);
+
+    // The event should have been prevented (send triggered)
+    expect(event.defaultPrevented).toBe(true);
+
+    dispose();
+  });
+
+  it('resets textarea height to auto after session reset', async () => {
+    const container = document.createElement('div');
+    const deps = createDeps();
+    const { dispose } = showPreviewPanel(container, deps);
+
+    const chatInput = container.querySelector('.preview-input-textarea') as HTMLTextAreaElement;
+    // Simulate user typing that grew the textarea
+    chatInput.style.height = '80px';
+
+    // Click reset button
+    const resetBtn = container.querySelectorAll('.preview-header button')[1] as HTMLButtonElement;
+    expect(resetBtn.getAttribute('aria-label')).toBe('초기화');
+    resetBtn.click();
+
+    // After reset, the textarea height should be restored to 'auto'
+    await vi.waitFor(() => {
+      expect(chatInput.style.height).toBe('auto');
+    });
+
+    dispose();
+  });
+
+  it('toggles active class on debug button when opening/closing drawer', () => {
+    const container = document.createElement('div');
+    const deps = createDeps();
+    const { dispose } = showPreviewPanel(container, deps);
+
+    const buttons = container.querySelectorAll('.preview-header button');
+    const debugBtn = buttons[2] as HTMLButtonElement;
+    expect(debugBtn.getAttribute('aria-label')).toBe('디버그 패널');
+
+    // Initially not active
+    expect(debugBtn.classList.contains('active')).toBe(false);
+
+    // Open debug drawer — button should gain 'active' class
+    debugBtn.click();
+    expect(debugBtn.classList.contains('active')).toBe(true);
+
+    // Close debug drawer — button should lose 'active' class
+    debugBtn.click();
+    expect(debugBtn.classList.contains('active')).toBe(false);
+
+    dispose();
+  });
+
+  it('adds accessible labels to icon-only preview header buttons', () => {
+    const container = document.createElement('div');
+    const deps = createDeps();
+    const { dispose } = showPreviewPanel(container, deps);
+
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('.preview-header button'));
+    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      '팝아웃 (별도 창)',
+      '초기화',
+      '디버그 패널',
+      '닫기',
+    ]);
 
     dispose();
   });

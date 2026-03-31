@@ -9,6 +9,7 @@ export interface KeyboardDeps {
   toggleSidebar(): void;
   toggleTerminal(): void;
   showPreviewPanel(): void;
+  showSettingsPopup(): void;
 }
 
 export function initKeyboard(deps: KeyboardDeps): void {
@@ -34,6 +35,9 @@ export function initKeyboard(deps: KeyboardDeps): void {
     } else if (e.ctrlKey && e.key === '`') {
       e.preventDefault();
       deps.toggleTerminal();
+    } else if (e.ctrlKey && e.key === ',') {
+      e.preventDefault();
+      deps.showSettingsPopup();
     } else if (e.key === 'F5') {
       e.preventDefault();
       deps.showPreviewPanel();

@@ -31,6 +31,8 @@ export interface SettingsCallbacks {
   onPluniCategoryChange(category: string): void;
 }
 
+let closeSettingsOverlay: (() => void) | null = null;
+
 function createToggle(isOn: boolean): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.className = 'settings-toggle' + (isOn ? ' on' : '');
@@ -40,23 +42,34 @@ function createToggle(isOn: boolean): HTMLButtonElement {
 
 export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallbacks): void {
   const existing = document.querySelector('.help-popup-overlay.settings-overlay');
-  if (existing) {
-    existing.remove();
+  if (existing && closeSettingsOverlay) {
+    closeSettingsOverlay();
     return;
   }
+  if (!existing) {
+    closeSettingsOverlay = null;
+  }
+
+  const previousActive = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
   const overlay = document.createElement('div');
   overlay.className = 'help-popup-overlay settings-overlay';
+  overlay.dataset.overlay = 'settings';
 
   const popup = document.createElement('div');
   popup.className = 'settings-popup';
+  popup.setAttribute('role', 'dialog');
+  popup.setAttribute('aria-modal', 'true');
+  popup.setAttribute('aria-label', '설정');
 
   const header = document.createElement('div');
   header.className = 'help-popup-header';
-  header.innerHTML = '<span>⚙ 설정</span>';
+  const title = document.createElement('span');
+  title.textContent = '⚙ 설정';
+  header.appendChild(title);
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', () => overlay.remove());
+  closeBtn.setAttribute('aria-label', '닫기');
   header.appendChild(closeBtn);
 
   const body = document.createElement('div');
@@ -258,7 +271,7 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
     const name = rpSelect.value;
     if (name === 'off' || name === 'custom' || name === 'pluni') return;
     await callbacks.onOpenPersonaTab(name);
-    overlay.remove();
+    close();
   });
   rpEditRow.appendChild(rpEditBtn);
   body.appendChild(rpEditRow);
@@ -278,7 +291,29 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   popup.appendChild(body);
   overlay.appendChild(popup);
   document.body.appendChild(overlay);
+
+  let closed = false;
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape') return;
+    if (document.body.lastElementChild !== overlay) return;
+    e.preventDefault();
+    close();
+  };
+  const close = (): void => {
+    if (closed) return;
+    closed = true;
+    closeSettingsOverlay = null;
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    if (previousActive?.isConnected) {
+      previousActive.focus();
+    }
+  };
+  closeSettingsOverlay = close;
+  closeBtn.addEventListener('click', close);
+  closeBtn.focus();
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.remove();
+    if (e.target === overlay) close();
   });
+  document.addEventListener('keydown', onKey);
 }

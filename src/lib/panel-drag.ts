@@ -44,6 +44,7 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
     const popoutBtn = document.createElement('button');
     popoutBtn.className = 'panel-collapse-btn';
     popoutBtn.title = '팝아웃 (분리)';
+    popoutBtn.setAttribute('aria-label', '팝아웃 (분리)');
     popoutBtn.textContent = '↗';
     popoutBtn.dataset.popoutPanel = item.panel;
     popoutBtn.addEventListener('click', (e) => {
@@ -59,6 +60,7 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
     const closeBtn = document.createElement('button');
     closeBtn.className = 'panel-collapse-btn';
     closeBtn.title = '닫기';
+    closeBtn.setAttribute('aria-label', '닫기');
     closeBtn.textContent = '✕';
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -137,8 +139,7 @@ function startPanelDrag(e: MouseEvent, panelId: string, deps: PanelDragDeps): vo
     if (dragging) {
       for (const zone of dropZones) {
         const r = zone._rect;
-        if (ev.clientX >= r.left && ev.clientX <= r.right &&
-            ev.clientY >= r.top && ev.clientY <= r.bottom) {
+        if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
           zone.el.classList.add('hover');
         } else {
           zone.el.classList.remove('hover');
@@ -157,8 +158,7 @@ function startPanelDrag(e: MouseEvent, panelId: string, deps: PanelDragDeps): vo
     let dropped: DropZone | null = null;
     for (const zone of dropZones) {
       const r = zone._rect;
-      if (ev.clientX >= r.left && ev.clientX <= r.right &&
-          ev.clientY >= r.top && ev.clientY <= r.bottom) {
+      if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
         dropped = zone;
       }
       zone.el.remove();
@@ -184,11 +184,46 @@ function createDropZones(): DropZone[] {
 
   const positions = [
     { position: 'far-left', label: '좌끝', x: rect.left, y: rect.top, w: rect.width * e, h: rect.height },
-    { position: 'left', label: '좌측', x: rect.left + rect.width * e, y: rect.top + rect.height * 0.15, w: rect.width * (s - e), h: rect.height * 0.7 },
-    { position: 'top', label: '상단', x: rect.left + rect.width * e, y: rect.top, w: rect.width * (1 - 2 * e), h: rect.height * 0.15 },
-    { position: 'bottom', label: '하단', x: rect.left + rect.width * e, y: rect.bottom - rect.height * 0.15, w: rect.width * (1 - 2 * e), h: rect.height * 0.15 },
-    { position: 'right', label: '우측', x: rect.right - rect.width * s, y: rect.top + rect.height * 0.15, w: rect.width * (s - e), h: rect.height * 0.7 },
-    { position: 'far-right', label: '우끝', x: rect.right - rect.width * e, y: rect.top, w: rect.width * e, h: rect.height },
+    {
+      position: 'left',
+      label: '좌측',
+      x: rect.left + rect.width * e,
+      y: rect.top + rect.height * 0.15,
+      w: rect.width * (s - e),
+      h: rect.height * 0.7,
+    },
+    {
+      position: 'top',
+      label: '상단',
+      x: rect.left + rect.width * e,
+      y: rect.top,
+      w: rect.width * (1 - 2 * e),
+      h: rect.height * 0.15,
+    },
+    {
+      position: 'bottom',
+      label: '하단',
+      x: rect.left + rect.width * e,
+      y: rect.bottom - rect.height * 0.15,
+      w: rect.width * (1 - 2 * e),
+      h: rect.height * 0.15,
+    },
+    {
+      position: 'right',
+      label: '우측',
+      x: rect.right - rect.width * s,
+      y: rect.top + rect.height * 0.15,
+      w: rect.width * (s - e),
+      h: rect.height * 0.7,
+    },
+    {
+      position: 'far-right',
+      label: '우끝',
+      x: rect.right - rect.width * e,
+      y: rect.top,
+      w: rect.width * e,
+      h: rect.height,
+    },
   ];
 
   for (const pos of positions) {

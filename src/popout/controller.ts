@@ -268,7 +268,7 @@ function buildPopoutChatView(termWrap: HTMLElement): void {
 
   chatSendBtn.addEventListener('click', popoutChatSend);
   chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       popoutChatSend();
     }
@@ -373,19 +373,22 @@ function sendPopoutChoice(value: string): void {
 // ==================== Sidebar Popout (MomoTalk style) ====================
 
 async function buildSidebarPopout(): Promise<void> {
+  let selectedItemId: string | null = null;
+
   const renderSidebarPopout = async (): Promise<void> => {
     root.innerHTML = '';
 
     const header = document.createElement('div');
     header.id = 'popout-sidebar-header';
+    header.className = 'sidebar-header';
     header.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:18px;">📁</span>
         <span style="font-size:15px;font-weight:700;">항목</span>
       </div>
       <div class="sidebar-header-btns">
-        <button id="btn-popout-dock" title="도킹 (복원)">📌</button>
-        <button class="btn-close-popout" title="닫기">✕</button>
+        <button id="btn-popout-dock" title="도킹 (복원)" aria-label="도킹 (복원)">📌</button>
+        <button class="btn-close-popout" title="닫기" aria-label="닫기">✕</button>
       </div>
     `;
     root.appendChild(header);
@@ -427,10 +430,14 @@ async function buildSidebarPopout(): Promise<void> {
       if (item.id) {
         el.style.cursor = 'pointer';
         el.addEventListener('click', () => {
+          selectedItemId = item.id!;
           window.popoutAPI.sidebarClick(item.id!);
           content.querySelectorAll('.tree-item').forEach((x) => x.classList.remove('active'));
           el.classList.add('active');
         });
+        if (selectedItemId === item.id) {
+          el.classList.add('active');
+        }
       }
 
       content.appendChild(el);
@@ -452,19 +459,22 @@ async function buildSidebarPopout(): Promise<void> {
 // ==================== Refs Popout ====================
 
 async function buildRefsPopout(): Promise<void> {
+  let selectedItemId: string | null = null;
+
   const renderRefsPopout = async (): Promise<void> => {
     root.innerHTML = '';
 
     const header = document.createElement('div');
     header.id = 'popout-sidebar-header';
+    header.className = 'sidebar-header';
     header.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:18px;">📄</span>
         <span style="font-size:15px;font-weight:700;">참고자료</span>
       </div>
       <div class="sidebar-header-btns">
-        <button id="btn-popout-dock" title="도킹 (복원)">📌</button>
-        <button class="btn-close-popout" title="닫기">✕</button>
+        <button id="btn-popout-dock" title="도킹 (복원)" aria-label="도킹 (복원)">📌</button>
+        <button class="btn-close-popout" title="닫기" aria-label="닫기">✕</button>
       </div>
     `;
     root.appendChild(header);
@@ -499,10 +509,14 @@ async function buildRefsPopout(): Promise<void> {
         el.style.cursor = 'pointer';
         el.innerHTML = `<span class="icon">·</span><span>${isSession ? '⏳ ' : ''}${escapePreviewHtml(fileName)}</span>`;
         el.addEventListener('click', () => {
+          selectedItemId = `guide_${fileName}`;
           window.popoutAPI.refsItemClick(`guide_${fileName}`);
           content.querySelectorAll('.tree-item').forEach((x) => x.classList.remove('active'));
           el.classList.add('active');
         });
+        if (selectedItemId === `guide_${fileName}`) {
+          el.classList.add('active');
+        }
         content.appendChild(el);
       };
 
@@ -548,10 +562,14 @@ async function buildRefsPopout(): Promise<void> {
         if (item.id) {
           el.style.cursor = 'pointer';
           el.addEventListener('click', () => {
+            selectedItemId = item.id!;
             window.popoutAPI.refsItemClick(item.id!);
             content.querySelectorAll('.tree-item').forEach((x) => x.classList.remove('active'));
             el.classList.add('active');
           });
+          if (selectedItemId === item.id) {
+            el.classList.add('active');
+          }
         }
 
         content.appendChild(el);
@@ -591,8 +609,8 @@ async function buildEditorPopout(): Promise<void> {
     </div>
     <div style="display:flex;gap:6px;-webkit-app-region:no-drag;">
       <button id="btn-editor-save" title="저장 (Ctrl+S)" style="-webkit-app-region:no-drag;background:rgba(255,255,255,0.2);border:none;color:#fff;cursor:pointer;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;">💾</button>
-      <button id="btn-popout-dock" title="도킹 (복원)" style="-webkit-app-region:no-drag;background:rgba(255,255,255,0.2);border:none;color:#fff;cursor:pointer;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;">📌</button>
-      <button class="btn-close-popout" title="닫기" style="-webkit-app-region:no-drag;background:rgba(255,255,255,0.2);border:none;color:#fff;cursor:pointer;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;">✕</button>
+      <button id="btn-popout-dock" title="도킹 (복원)" aria-label="도킹 (복원)" style="-webkit-app-region:no-drag;background:rgba(255,255,255,0.2);border:none;color:#fff;cursor:pointer;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;">📌</button>
+      <button class="btn-close-popout" title="닫기" aria-label="닫기" style="-webkit-app-region:no-drag;background:rgba(255,255,255,0.2);border:none;color:#fff;cursor:pointer;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;">✕</button>
     </div>
   `;
   root.appendChild(header);
@@ -606,7 +624,6 @@ async function buildEditorPopout(): Promise<void> {
   // Wire buttons
   header.querySelector('#btn-popout-dock')!.addEventListener('click', () => window.popoutAPI.dock());
   header.querySelector('.btn-close-popout')!.addEventListener('click', () => window.close());
-  header.querySelector('#btn-editor-save')!.addEventListener('click', () => window.popoutAPI.editorSave());
 
   // Get tab data from main process
   const data = await window.popoutAPI.getEditorData(window.popoutAPI.getRequestId());
@@ -617,7 +634,30 @@ async function buildEditorPopout(): Promise<void> {
   }
 
   const titleEl = document.getElementById('popout-editor-title');
-  if (titleEl) titleEl.textContent = data.label || '에디터';
+  if (titleEl) {
+    titleEl.textContent = data.label || '에디터';
+    if (data.readOnly) {
+      const badge = document.createElement('span');
+      badge.className = 'readonly-badge';
+      badge.textContent = '읽기전용';
+      titleEl.appendChild(badge);
+    }
+  }
+
+  const saveBtn = header.querySelector('#btn-editor-save') as HTMLButtonElement | null;
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      if (data.readOnly) return;
+      window.popoutAPI.editorSave();
+    });
+    if (data.readOnly) {
+      saveBtn.disabled = true;
+      saveBtn.setAttribute('aria-label', '저장 (읽기전용)');
+      saveBtn.title = '읽기전용 탭';
+    } else {
+      saveBtn.setAttribute('aria-label', '저장 (Ctrl+S)');
+    }
+  }
 
   await loadMonacoRuntime();
 
@@ -645,8 +685,9 @@ async function buildEditorPopout(): Promise<void> {
     }, 300);
   });
 
-  // Ctrl+S → save
+  // Ctrl+S → save (skip for read-only tabs)
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+    if (data.readOnly) return;
     // Send latest content first, then trigger save
     window.popoutAPI.editorChange(data.tabId, editor.getValue());
     window.popoutAPI.editorSave();
@@ -680,6 +721,7 @@ async function buildPreviewPopout(): Promise<void> {
 
   // ── Build UI ──
   const header = document.createElement('div');
+  header.className = 'preview-header';
   header.style.cssText =
     'display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#21222c;color:#f5f5f5;font-weight:600;font-size:13px;flex-shrink:0;border-bottom:1px solid #44475a;-webkit-app-region:drag;';
   const headerLeft = document.createElement('span');
@@ -691,6 +733,7 @@ async function buildPreviewPopout(): Promise<void> {
   const resetBtn = document.createElement('button');
   resetBtn.textContent = '↻';
   resetBtn.title = '초기화';
+  resetBtn.setAttribute('aria-label', '초기화');
   resetBtn.style.cssText =
     'background:rgba(255,255,255,0.1);border:none;color:#f5f5f5;font-size:14px;cursor:pointer;border-radius:4px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;';
 
@@ -698,17 +741,21 @@ async function buildPreviewPopout(): Promise<void> {
   const debugBtn = document.createElement('button');
   debugBtn.textContent = '🔧';
   debugBtn.title = '디버그 패널';
+  debugBtn.setAttribute('aria-label', '디버그 패널');
   debugBtn.style.cssText = resetBtn.style.cssText;
 
   const dockBtn = document.createElement('button');
   dockBtn.textContent = '📌';
   dockBtn.title = '메인 창으로 도킹';
+  dockBtn.setAttribute('aria-label', '메인 창으로 도킹');
   dockBtn.style.cssText = resetBtn.style.cssText;
   dockBtn.addEventListener('click', () => window.popoutAPI.dock());
 
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '✕';
   closeBtn.title = '닫기';
+  closeBtn.setAttribute('aria-label', '닫기');
+  closeBtn.className = 'btn-close-popout';
   closeBtn.style.cssText = resetBtn.style.cssText;
   closeBtn.addEventListener('click', () => window.close());
 
@@ -853,6 +900,7 @@ async function buildPreviewPopout(): Promise<void> {
     debugOpen = !debugOpen;
     debugDrawer.style.display = debugOpen ? 'flex' : 'none';
     debugResizer.style.display = debugOpen ? '' : 'none';
+    debugBtn.classList.toggle('active', debugOpen);
     if (debugOpen) updateDebugContent();
   });
 
@@ -863,7 +911,7 @@ async function buildPreviewPopout(): Promise<void> {
   });
 
   chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       void session.handleSend(chatInput);
     }

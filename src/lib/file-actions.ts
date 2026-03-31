@@ -1,5 +1,6 @@
 import type { TabManager } from './tab-manager';
 import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
+import { resolveCloseWindowAction } from './close-window-policy';
 import { getRisupValidationMessage } from './risup-form-editor';
 import { getTriggerFormValidationMessage } from './trigger-form-editor';
 import type { TriggerScriptModel } from './trigger-script-model';
@@ -14,6 +15,9 @@ export interface FileActionDeps {
   getEditorInstance: () => MonacoEditor | null;
   setEditorInstance: (instance: null) => void;
   getAutosaveDir: () => string;
+  hasUnsavedChanges: () => boolean;
+  requestDocumentReplacement: (targetLabel: string) => Promise<number>;
+  saveCurrentDocument: () => Promise<void>;
 
   tabMgr: TabManager;
   buildSidebar: () => void;
@@ -67,7 +71,31 @@ function getSaveValidationMessage(fileData: Record<string, unknown>, tabMgr: Tab
   return getTriggerDraftValidationMessage(tabMgr);
 }
 
+async function confirmDocumentReplacement(deps: FileActionDeps, targetLabel: string): Promise<boolean> {
+  if (!deps.hasUnsavedChanges()) {
+    return true;
+  }
+
+  const decision = resolveCloseWindowAction({
+    choice: await deps.requestDocumentReplacement(targetLabel),
+  });
+  if (decision.action === 'stay') {
+    return false;
+  }
+  if (decision.action === 'save') {
+    try {
+      await deps.saveCurrentDocument();
+    } catch {
+      return false;
+    }
+    return deps.tabMgr.dirtyFields.size === 0;
+  }
+
+  return true;
+}
+
 export async function handleNew(deps: FileActionDeps): Promise<void> {
+  if (!(await confirmDocumentReplacement(deps, '새 파일'))) return;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = await (window as any).tokiAPI.newFile();
   if (!data) return;
@@ -82,6 +110,7 @@ export async function handleNew(deps: FileActionDeps): Promise<void> {
 
 export async function handleOpen(deps: FileActionDeps): Promise<void> {
   try {
+    if (!(await confirmDocumentReplacement(deps, '파일 열기'))) return;
     deps.setStatus('파일 열기 중...');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await (window as any).tokiAPI.openFile();

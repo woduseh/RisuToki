@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // The module caches DOM element refs. We must reset the module between tests
 // so each test gets a fresh lookup against the newly-created DOM elements.
+let clearStatus: typeof import('./status-bar').clearStatus;
 let setStatus: typeof import('./status-bar').setStatus;
 
 beforeEach(async () => {
@@ -17,6 +18,7 @@ beforeEach(async () => {
   document.body.appendChild(bar);
 
   const mod = await import('./status-bar');
+  clearStatus = mod.clearStatus;
   setStatus = mod.setStatus;
 });
 
@@ -62,5 +64,20 @@ describe('setStatus', () => {
     setStatus('b');
     setStatus('c');
     expect(document.getElementById('status-text')!.textContent).toBe('c');
+  });
+
+  it('keeps sticky error statuses visible until explicitly cleared', () => {
+    setStatus('저장 실패', { kind: 'error', sticky: true });
+    const bar = document.getElementById('statusbar')!;
+
+    expect(bar.classList.contains('visible')).toBe(true);
+    expect(bar.classList.contains('status-error')).toBe(true);
+    expect(bar.classList.contains('sticky')).toBe(true);
+
+    vi.advanceTimersByTime(10000);
+    expect(bar.classList.contains('visible')).toBe(true);
+
+    clearStatus();
+    expect(bar.classList.contains('visible')).toBe(false);
   });
 });

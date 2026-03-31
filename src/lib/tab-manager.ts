@@ -27,6 +27,8 @@ export interface TabManagerCallbacks {
   isFormTabType(language: string): boolean;
 }
 
+type CloseTabConfirmationHandler = (tabId: string) => boolean | Promise<boolean>;
+
 export class TabManager {
   openTabs: Tab[] = [];
   activeTabId: string | null = null;
@@ -36,10 +38,12 @@ export class TabManager {
   private tabBarId: string;
   private callbacks: TabManagerCallbacks;
   private tabIndex = new Map<string, Tab>();
+  private onConfirmCloseTab?: CloseTabConfirmationHandler;
 
-  constructor(tabBarId: string, callbacks: TabManagerCallbacks) {
+  constructor(tabBarId: string, callbacks: TabManagerCallbacks, onConfirmCloseTab?: CloseTabConfirmationHandler) {
     this.tabBarId = tabBarId;
     this.callbacks = callbacks;
+    this.onConfirmCloseTab = onConfirmCloseTab;
   }
 
   findTab(id: string): Tab | undefined {
@@ -69,19 +73,38 @@ export class TabManager {
   }
 
   closeTab(id: string): void {
+    this.removeTab(id);
+  }
+
+  async requestCloseTab(id: string): Promise<void> {
+    if (this.dirtyFields.has(id) && this.onConfirmCloseTab) {
+      const confirmed = await this.onConfirmCloseTab(id);
+      if (!confirmed) {
+        return;
+      }
+    }
+    this.removeTab(id, { preserveDirty: this.dirtyFields.has(id) });
+  }
+
+  private removeTab(id: string, options?: { preserveDirty?: boolean }): void {
     const idx = this.openTabs.findIndex((t) => t.id === id);
     if (idx === -1) return;
     const tab = this.openTabs[idx];
+    const preserveDirty = options?.preserveDirty === true;
 
     // Release closures that capture fileData to allow GC
     tab.getValue = () => null;
     tab.setValue = null;
     tab._lastValue = null;
-    clearBackups(id);
+    if (!preserveDirty) {
+      clearBackups(id);
+    }
 
     this.openTabs.splice(idx, 1);
     this.tabIndex.delete(id);
-    this.dirtyFields.delete(id);
+    if (!preserveDirty) {
+      this.dirtyFields.delete(id);
+    }
     if (this.pendingEditorTabId === id) this.pendingEditorTabId = null;
 
     if (this.activeTabId === id) {
@@ -223,15 +246,17 @@ export class TabManager {
       closeBtn.textContent = '×';
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.closeTab(tab.id);
+        void this.requestCloseTab(tab.id);
       });
       el.appendChild(closeBtn);
 
       // Per-tab popout button (text tabs including readonly, not images)
       if (tab.language !== '_image' && !this.callbacks.isPanelPoppedOut('editor')) {
-        const popBtn = document.createElement('span');
+        const popBtn = document.createElement('button');
         popBtn.className = 'tab-popout-btn';
         popBtn.title = '팝아웃 (분리)';
+        popBtn.setAttribute('aria-label', '탭 팝아웃');
+        popBtn.type = 'button';
         popBtn.textContent = '↗';
         popBtn.addEventListener('click', (e) => {
           e.stopPropagation();

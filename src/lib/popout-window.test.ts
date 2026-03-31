@@ -132,6 +132,34 @@ describe('popOutEditorPanel', () => {
     expect(deps.setEditorInstance).toHaveBeenCalledWith(null);
   });
 
+  it('shows a richer placeholder hint after editor popout', async () => {
+    const container = document.createElement('div');
+    container.id = 'editor-container';
+    document.body.appendChild(container);
+    const mockEditor = { getValue: () => 'hello', dispose: vi.fn() };
+    const mockTab = {
+      id: 'tab-1',
+      label: 'main.lua',
+      language: 'lua',
+      getValue: () => 'hello',
+      setValue: vi.fn(),
+    };
+    const deps = makeDeps({
+      getEditorInstance: () => mockEditor,
+      tabMgr: {
+        activeTabId: 'tab-1',
+        openTabs: [mockTab],
+        renderTabs: vi.fn(),
+      },
+    });
+
+    await popOutEditorPanel(null, deps);
+
+    expect(container.innerHTML).toContain('empty-state-hint');
+    expect(container.textContent).toContain('팝아웃 창에서 작업 중');
+    expect(container.textContent).toContain('도킹하면 여기로 복원됩니다');
+  });
+
   it('skips image tabs', async () => {
     const deps = makeDeps({
       tabMgr: {
@@ -147,8 +175,12 @@ describe('popOutEditorPanel', () => {
 });
 
 describe('dockPanel', () => {
-  beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it('closes popout and restores layout for non-editor panels', async () => {
     const deps = makeDeps();
     await popOutPanel('terminal', deps);
@@ -213,11 +245,13 @@ describe('updatePopoutButtons', () => {
     const btn = document.querySelector('[data-popout-panel="sidebar"]') as HTMLElement;
     expect(btn.textContent).toBe('📌');
     expect(btn.title).toBe('도킹 (복원)');
+    expect(btn.getAttribute('aria-label')).toBe('도킹 (복원)');
 
     dockPanel('sidebar', deps);
     updatePopoutButtons();
 
     expect(btn.textContent).toBe('↗');
     expect(btn.title).toBe('팝아웃 (분리)');
+    expect(btn.getAttribute('aria-label')).toBe('팝아웃 (분리)');
   });
 });

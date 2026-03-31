@@ -149,6 +149,12 @@ export interface ReferenceFile {
 }
 
 export type RpMode = 'off' | 'toki' | 'aris' | 'custom' | 'pluni';
+export type StatusKind = 'info' | 'error';
+
+export interface StatusOptions {
+  kind?: StatusKind;
+  sticky?: boolean;
+}
 
 export const useAppStore = defineStore('app', () => {
   // === File data ===
@@ -171,6 +177,8 @@ export const useAppStore = defineStore('app', () => {
   const bgmEnabled = ref(false);
   const bgmPath = ref('');
   const statusText = ref('');
+  const statusKind = ref<StatusKind>('info');
+  const statusSticky = ref(false);
   const fileLabel = ref('');
 
   // === Autosave ===
@@ -201,8 +209,16 @@ export const useAppStore = defineStore('app', () => {
     fileData.value = data;
   }
 
-  function setStatus(text: string) {
+  function setStatus(text: string, options: StatusOptions = {}) {
     statusText.value = text;
+    statusKind.value = options.kind ?? 'info';
+    statusSticky.value = options.sticky ?? false;
+  }
+
+  function clearStatus() {
+    statusText.value = '';
+    statusKind.value = 'info';
+    statusSticky.value = false;
   }
 
   function setFileLabel(label: string) {
@@ -260,6 +276,8 @@ export const useAppStore = defineStore('app', () => {
     bgmEnabled,
     bgmPath,
     statusText,
+    statusKind,
+    statusSticky,
     fileLabel,
     autosaveEnabled,
     autosaveInterval,
@@ -275,6 +293,7 @@ export const useAppStore = defineStore('app', () => {
     // Actions
     setFileData,
     setStatus,
+    clearStatus,
     setFileLabel,
     setDarkMode,
     setRpMode,

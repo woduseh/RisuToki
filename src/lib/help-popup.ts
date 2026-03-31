@@ -7,23 +7,47 @@
 
 // ==================== Help Popup ====================
 
+let closeHelpOverlay: (() => void) | null = null;
+let closeSyntaxReferenceOverlay: (() => void) | null = null;
+
+function restoreFocus(element: HTMLElement | null): void {
+  if (element?.isConnected) {
+    element.focus();
+  }
+}
+
+function getOverlayByType(type: string): HTMLElement | null {
+  return document.querySelector(`.help-popup-overlay[data-overlay="${type}"]`);
+}
+
 export function showHelpPopup(): void {
-  // Remove existing popup if any
-  const existing = document.querySelector('.help-popup-overlay');
-  if (existing) { existing.remove(); return; }
+  const existing = getOverlayByType('help');
+  if (existing && closeHelpOverlay) {
+    closeHelpOverlay();
+    return;
+  }
+  if (!existing) {
+    closeHelpOverlay = null;
+  }
+
+  const previousActive = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
   const overlay = document.createElement('div');
   overlay.className = 'help-popup-overlay';
+  overlay.dataset.overlay = 'help';
 
   const popup = document.createElement('div');
   popup.className = 'help-popup';
+  popup.setAttribute('role', 'dialog');
+  popup.setAttribute('aria-modal', 'true');
+  popup.setAttribute('aria-label', 'RisuToki 도움말');
 
   const header = document.createElement('div');
   header.className = 'help-popup-header';
   header.innerHTML = '<span>💬 RisuToki 도움말</span>';
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', () => overlay.remove());
+  closeBtn.setAttribute('aria-label', '닫기');
   header.appendChild(closeBtn);
 
   const body = document.createElement('div');
@@ -43,6 +67,8 @@ export function showHelpPopup(): void {
     <h3>👁️ 보기</h3>
     <div class="help-shortcut"><span>사이드바 토글</span><kbd>Ctrl+B</kbd></div>
     <div class="help-shortcut"><span>터미널 토글</span><kbd>Ctrl+\`</kbd></div>
+    <div class="help-shortcut"><span>설정</span><kbd>Ctrl+,</kbd></div>
+    <div class="help-shortcut"><span>프리뷰</span><kbd>F5</kbd></div>
     <div class="help-shortcut"><span>확대 / 축소 / 기본</span><kbd>Ctrl++ / Ctrl+- / Ctrl+0</kbd></div>
 
     <h3>💬 TokiTalk 터미널</h3>
@@ -90,35 +116,74 @@ export function showHelpPopup(): void {
   // Syntax reference button
   setTimeout(() => {
     const syntaxBtn = popup.querySelector('#btn-syntax-ref');
-    if (syntaxBtn) syntaxBtn.addEventListener('click', () => { overlay.remove(); showSyntaxReference(); });
+    if (syntaxBtn) {
+      syntaxBtn.addEventListener('click', () => {
+        close();
+        showSyntaxReference();
+      });
+    }
   }, 0);
+
+  let closed = false;
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape') return;
+    if (document.body.lastElementChild !== overlay) return;
+    e.preventDefault();
+    close();
+  };
+  const close = (): void => {
+    if (closed) return;
+    closed = true;
+    closeHelpOverlay = null;
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    restoreFocus(previousActive);
+  };
+  closeHelpOverlay = close;
+  closeBtn.addEventListener('click', close);
 
   popup.appendChild(header);
   popup.appendChild(body);
   overlay.appendChild(popup);
   document.body.appendChild(overlay);
+  closeBtn.focus();
 
   // Click overlay background to close
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.remove();
+    if (e.target === overlay) close();
   });
+  document.addEventListener('keydown', onKey);
 }
 
 // ==================== Syntax Reference Popout ====================
 
 function showSyntaxReference(): void {
+  const existing = getOverlayByType('syntax-reference');
+  if (existing && closeSyntaxReferenceOverlay) {
+    closeSyntaxReferenceOverlay();
+    return;
+  }
+  if (!existing) {
+    closeSyntaxReferenceOverlay = null;
+  }
+
+  const previousActive = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const overlay = document.createElement('div');
   overlay.className = 'help-popup-overlay';
+  overlay.dataset.overlay = 'syntax-reference';
 
   const popup = document.createElement('div');
   popup.className = 'syntax-ref-popup';
+  popup.setAttribute('role', 'dialog');
+  popup.setAttribute('aria-modal', 'true');
+  popup.setAttribute('aria-label', '문법 레퍼런스');
 
   const header = document.createElement('div');
   header.className = 'help-popup-header';
   header.innerHTML = '<span>📖 문법 레퍼런스</span>';
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', () => overlay.remove());
+  closeBtn.setAttribute('aria-label', '닫기');
   header.appendChild(closeBtn);
 
   // Navigation tabs
@@ -157,7 +222,29 @@ function showSyntaxReference(): void {
   popup.appendChild(body);
   overlay.appendChild(popup);
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  closeBtn.focus();
+
+  let closed = false;
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape') return;
+    if (document.body.lastElementChild !== overlay) return;
+    e.preventDefault();
+    close();
+  };
+  const close = (): void => {
+    if (closed) return;
+    closed = true;
+    closeSyntaxReferenceOverlay = null;
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    restoreFocus(previousActive);
+  };
+  closeSyntaxReferenceOverlay = close;
+  closeBtn.addEventListener('click', close);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+  document.addEventListener('keydown', onKey);
 
   showSection('cbs');
 }
@@ -357,13 +444,18 @@ upsertLocalLoreBook(id, {        -- 추가/수정
 </table>
 
 <h3>데코레이터 (content 첫 줄에 작성)</h3>
-<div class="syn-code">@@depth 0              삽입 깊이 (0=최하단)
-@@role system          역할 (system/user/assistant)
-@@activate_only_after 5   5턴 이후부터 활성화
-@@activate_only_every 3   3턴마다 활성화
-@@probability 50       50% 확률로 활성화
-@@exclude_keys A,B     A 또는 B 존재 시 비활성화
-@@dont_activate        수동 활성화 전용 (Lua로 제어)</div>
+<div class="syn-code">@@depth 0               삽입 깊이 (0=최하단)
+@@position personality 삽입 위치 지정
+@@role system           역할 (system/user/assistant)
+@@scan_depth 5          최근 5개 메시지만 검색
+@@additional_keys A,B   A와 B도 함께 매칭되어야 활성화
+@@exclude_keys A,B      A 또는 B 존재 시 비활성화
+@@match_full_word       부분문자열 대신 단어 단위 매칭
+@@activate              키 매칭 없이 강제 활성화
+@@dont_activate         수동 활성화 전용 (Lua로 제어)
+@@probability 50        50% 확률로 활성화
+@@activate_only_after 5 5턴 이후부터 활성화
+@@activate_only_every 3 3턴마다 활성화</div>
 
 <h3>역할 지정 데코레이터</h3>
 <table class="syn-table">
@@ -373,6 +465,7 @@ upsertLocalLoreBook(id, {        -- 추가/수정
   <tr><td><code>@@@end</code></td><td>프롬프트 최하단에 강제 배치</td></tr>
 </table>
 <p class="syn-tip">💡 <code>@@@end</code>는 @@depth 0보다 더 아래. 최종 지시문에 사용</p>
+<p class="syn-tip">💡 프리뷰(F5)는 핵심 로어북 데코레이터를 반영하며, 디버그 패널에서 매칭 키 · 제외 키 · 확률 결과 · 경고를 함께 확인할 수 있습니다.</p>
 
 <h3>CBS 사용</h3>
 <p class="syn-tip">💡 로어북 content 안에서 CBS 매크로 전부 사용 가능</p>
@@ -560,5 +653,5 @@ end</div>
   <tr><td><code>print()</code></td><td>Lua 콘솔 출력 (개발자 도구)</td></tr>
   <tr><td>정규식 테스트</td><td>디스플레이 수정 타입으로 먼저 테스트</td></tr>
 </table>
-  `
+  `,
 };
