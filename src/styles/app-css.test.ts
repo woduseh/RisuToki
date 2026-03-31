@@ -5,9 +5,21 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(resolve(__dirname, 'app.css'), 'utf-8');
 
 describe('app.css – preview-header', () => {
-  it('defines a visual rule for .preview-header button.active', () => {
-    // JS toggles the "active" class on preview-header buttons
-    // (see preview-panel.ts and controller.ts), so CSS must style it.
-    expect(css).toMatch(/\.preview-header\s+button\.active\b/);
+  it('defines a visual rule for shared popout action buttons in the active state', () => {
+    // JS toggles the "active" class on shared popout action buttons
+    // (see preview-panel.ts and popout/controller.ts), so CSS must style it.
+    expect(css).toMatch(/\.popout-action-btn\.active\b/);
+  });
+});
+
+describe('app.css – popout theme coherence', () => {
+  it('defines a shared popout action button rule', () => {
+    expect(css).toMatch(/\.popout-action-btn\b/);
+  });
+
+  it('defines dark-mode overrides for terminal chat surfaces', () => {
+    expect(css).toMatch(/body\.dark-mode\s+#chat-view\b/);
+    expect(css).toMatch(/body\.dark-mode\s+#chat-input-area\b/);
+    expect(css).toMatch(/body\.dark-mode\s+\.chat-choice-btn\b/);
   });
 });

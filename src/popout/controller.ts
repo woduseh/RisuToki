@@ -17,7 +17,7 @@ import { createPreviewSession } from '../lib/preview-session';
 import type { PreviewCharData } from '../lib/preview-session';
 import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
-import { initializeTerminalUi, TERM_THEME_LIGHT } from '../lib/terminal-ui';
+import { initializeTerminalUi, TERM_THEME_DARK, TERM_THEME_LIGHT } from '../lib/terminal-ui';
 import type { TerminalUiHandle } from '../lib/terminal-ui';
 import {
   applySelectedChoice,
@@ -38,9 +38,51 @@ if (!root) {
 
 const talkTitle = getTalkTitle();
 const initialPopoutSettings = readAppSettingsSnapshot();
+let currentSettingsSnapshot = initialPopoutSettings;
+
+function isDarkModeEnabled(): boolean {
+  return currentSettingsSnapshot.darkMode;
+}
+
+function getPopoutTerminalTheme() {
+  return isDarkModeEnabled() ? TERM_THEME_DARK : TERM_THEME_LIGHT;
+}
+
+function getPopoutMonacoTheme(): 'blue-archive' | 'blue-archive-dark' {
+  return isDarkModeEnabled() ? 'blue-archive-dark' : 'blue-archive';
+}
+
+function createPopoutActionButton(
+  text: string,
+  options: {
+    id?: string;
+    title: string;
+    ariaLabel?: string;
+    extraClassName?: string;
+  },
+): HTMLButtonElement {
+  const button = document.createElement('button');
+  if (options.id) button.id = options.id;
+  button.type = 'button';
+  button.textContent = text;
+  button.title = options.title;
+  button.setAttribute('aria-label', options.ariaLabel ?? options.title);
+  button.className = ['popout-action-btn', options.extraClassName].filter(Boolean).join(' ');
+  return button;
+}
+
+function setPopoutButtonActive(button: HTMLElement | null, active: boolean): void {
+  if (!button) return;
+  button.classList.toggle('active', active);
+}
+
+function applyPopoutDarkMode(snapshot: AppSettingsSnapshot): void {
+  currentSettingsSnapshot = snapshot;
+  syncBodyDarkMode(document.body, snapshot.darkMode);
+}
 
 export async function initPopoutRenderer(): Promise<void> {
-  syncBodyDarkMode(document.body, initialPopoutSettings.darkMode);
+  applyPopoutDarkMode(initialPopoutSettings);
   const panelType = window.popoutAPI.getType();
   if (panelType === 'terminal') {
     await buildTerminalPopout();
@@ -67,15 +109,23 @@ async function buildTerminalPopout(): Promise<void> {
       <span class="momo-icon">💬</span>
       <span class="momo-title">${talkTitle}</span>
     </div>
-    <div class="momo-header-right">
-      <button id="btn-rp-mode" title="RP 모드 (토키 말투)">🐰</button>
-      <button id="btn-chat-mode" title="채팅 모드">💭</button>
-      <button id="btn-terminal-bg" title="배경 이미지">🖼</button>
-      <button id="btn-popout-dock" title="도킹 (복원)">📌</button>
-      <button class="btn-close-popout" title="닫기">✕</button>
-    </div>
+    <div class="momo-header-right"></div>
   `;
   root.appendChild(header);
+  const actions = header.querySelector('.momo-header-right');
+  actions?.appendChild(createPopoutActionButton('🐰', { id: 'btn-rp-mode', title: 'RP 모드 (토키 말투)' }));
+  actions?.appendChild(createPopoutActionButton('💭', { id: 'btn-chat-mode', title: '채팅 모드' }));
+  actions?.appendChild(createPopoutActionButton('🖼', { id: 'btn-terminal-bg', title: '배경 이미지' }));
+  actions?.appendChild(
+    createPopoutActionButton('📌', { id: 'btn-popout-dock', title: '도킹 (복원)', ariaLabel: '도킹 (복원)' }),
+  );
+  actions?.appendChild(
+    createPopoutActionButton('✕', {
+      title: '닫기',
+      ariaLabel: '닫기',
+      extraClassName: 'btn-close-popout',
+    }),
+  );
 
   // --- Body (avatar + terminal) ---
   const body = document.createElement('div');
@@ -149,7 +199,7 @@ async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): P
     rightClickSelectsWord: false,
     setActive: setPopoutActive,
     shouldActivateOnData: () => true,
-    theme: TERM_THEME_LIGHT,
+    theme: getPopoutTerminalTheme(),
     writeStatusToTerminal: true,
   });
   popoutTerm = terminalUi.term;
@@ -189,10 +239,14 @@ function initPopoutRpMode(): void {
 
   subscribeToAppSettings((nextSnapshot: AppSettingsSnapshot) => {
     snapshot = nextSnapshot;
-    syncBodyDarkMode(document.body, snapshot.darkMode);
+    currentSettingsSnapshot = nextSnapshot;
+    applyPopoutDarkMode(snapshot);
     const titleEl = document.querySelector('.momo-title');
     if (titleEl) {
       titleEl.textContent = snapshot.darkMode ? 'ArisTalk' : 'TokiTalk';
+    }
+    if (popoutTerm) {
+      popoutTerm.options.theme = getPopoutTerminalTheme();
     }
     updatePopoutRpStyle(btn, snapshot.rpMode !== 'off');
   });
@@ -201,7 +255,7 @@ function initPopoutRpMode(): void {
 function updatePopoutRpStyle(btn: HTMLElement, active: boolean, rpMode = readAppSettingsSnapshot().rpMode): void {
   const label =
     rpMode === 'aris' ? '아리스' : rpMode === 'custom' ? '커스텀' : rpMode === 'pluni' ? '플루니 연구소' : '토키';
-  btn.style.background = active ? 'rgba(255,255,255,0.5)' : '';
+  setPopoutButtonActive(btn, active);
   btn.title = active ? `RP 모드 ON (${label})` : 'RP 모드 OFF';
 }
 
@@ -287,13 +341,13 @@ function togglePopoutChatMode(): void {
 
     termContainer.style.display = 'none';
     chatView.classList.add('active');
-    btn.style.background = 'rgba(255,255,255,0.5)';
+    setPopoutButtonActive(btn, true);
     (document.getElementById('chat-input') as HTMLInputElement | null)?.focus();
   } else {
     popoutChatSession.setActive(false);
     termContainer.style.display = '';
     chatView.classList.remove('active');
-    btn.style.background = '';
+    setPopoutButtonActive(btn, false);
     if (popoutFitAddon && popoutTerm) setTimeout(() => popoutFitAddon!.fit(), 20);
   }
 }
@@ -386,12 +440,20 @@ async function buildSidebarPopout(): Promise<void> {
         <span style="font-size:18px;">📁</span>
         <span style="font-size:15px;font-weight:700;">항목</span>
       </div>
-      <div class="sidebar-header-btns">
-        <button id="btn-popout-dock" title="도킹 (복원)" aria-label="도킹 (복원)">📌</button>
-        <button class="btn-close-popout" title="닫기" aria-label="닫기">✕</button>
-      </div>
+      <div class="sidebar-header-btns"></div>
     `;
     root.appendChild(header);
+    const buttons = header.querySelector('.sidebar-header-btns');
+    buttons?.appendChild(
+      createPopoutActionButton('📌', { id: 'btn-popout-dock', title: '도킹 (복원)', ariaLabel: '도킹 (복원)' }),
+    );
+    buttons?.appendChild(
+      createPopoutActionButton('✕', {
+        title: '닫기',
+        ariaLabel: '닫기',
+        extraClassName: 'btn-close-popout',
+      }),
+    );
 
     header.querySelector('#btn-popout-dock')!.addEventListener('click', () => window.popoutAPI.dock());
     header.querySelector('.btn-close-popout')!.addEventListener('click', () => window.close());
@@ -472,12 +534,20 @@ async function buildRefsPopout(): Promise<void> {
         <span style="font-size:18px;">📄</span>
         <span style="font-size:15px;font-weight:700;">참고자료</span>
       </div>
-      <div class="sidebar-header-btns">
-        <button id="btn-popout-dock" title="도킹 (복원)" aria-label="도킹 (복원)">📌</button>
-        <button class="btn-close-popout" title="닫기" aria-label="닫기">✕</button>
-      </div>
+      <div class="sidebar-header-btns"></div>
     `;
     root.appendChild(header);
+    const buttons = header.querySelector('.sidebar-header-btns');
+    buttons?.appendChild(
+      createPopoutActionButton('📌', { id: 'btn-popout-dock', title: '도킹 (복원)', ariaLabel: '도킹 (복원)' }),
+    );
+    buttons?.appendChild(
+      createPopoutActionButton('✕', {
+        title: '닫기',
+        ariaLabel: '닫기',
+        extraClassName: 'btn-close-popout',
+      }),
+    );
 
     header.querySelector('#btn-popout-dock')!.addEventListener('click', () => window.popoutAPI.dock());
     header.querySelector('.btn-close-popout')!.addEventListener('click', () => window.close());
@@ -600,25 +670,32 @@ async function buildEditorPopout(): Promise<void> {
   // Header (draggable)
   const header = document.createElement('div');
   header.id = 'popout-editor-header';
-  header.style.cssText =
-    'display:flex;align-items:center;justify-content:space-between;height:38px;padding:0 14px;background:linear-gradient(135deg,#4a90d9 0%,#6fb3f2 100%);color:#fff;font-size:13px;font-weight:600;-webkit-app-region:drag;flex-shrink:0;';
+  header.className = 'popout-header-main popout-header-main--editor popout-editor-header';
   header.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;">
+    <div class="popout-header-title">
       <span style="font-size:16px;">✏️</span>
-      <span id="popout-editor-title">에디터</span>
+      <span id="popout-editor-title" class="popout-header-title-text">에디터</span>
     </div>
-    <div style="display:flex;gap:6px;-webkit-app-region:no-drag;">
-      <button id="btn-editor-save" title="저장 (Ctrl+S)" style="-webkit-app-region:no-drag;background:rgba(255,255,255,0.2);border:none;color:#fff;cursor:pointer;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;">💾</button>
-      <button id="btn-popout-dock" title="도킹 (복원)" aria-label="도킹 (복원)" style="-webkit-app-region:no-drag;background:rgba(255,255,255,0.2);border:none;color:#fff;cursor:pointer;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;">📌</button>
-      <button class="btn-close-popout" title="닫기" aria-label="닫기" style="-webkit-app-region:no-drag;background:rgba(255,255,255,0.2);border:none;color:#fff;cursor:pointer;font-size:12px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;">✕</button>
-    </div>
+    <div class="popout-header-actions"></div>
   `;
   root.appendChild(header);
+  const headerActions = header.querySelector('.popout-header-actions');
+  headerActions?.appendChild(createPopoutActionButton('💾', { id: 'btn-editor-save', title: '저장 (Ctrl+S)' }));
+  headerActions?.appendChild(
+    createPopoutActionButton('📌', { id: 'btn-popout-dock', title: '도킹 (복원)', ariaLabel: '도킹 (복원)' }),
+  );
+  headerActions?.appendChild(
+    createPopoutActionButton('✕', {
+      title: '닫기',
+      ariaLabel: '닫기',
+      extraClassName: 'btn-close-popout',
+    }),
+  );
 
   // Editor container
   const editorContainer = document.createElement('div');
   editorContainer.id = 'popout-editor-container';
-  editorContainer.style.cssText = 'flex:1;overflow:hidden;';
+  editorContainer.className = 'popout-editor-container';
   root.appendChild(editorContainer);
 
   // Wire buttons
@@ -664,7 +741,7 @@ async function buildEditorPopout(): Promise<void> {
   const editor = monaco.editor.create(editorContainer, {
     value: data.content || '',
     language: data.language || 'plaintext',
-    theme: 'blue-archive',
+    theme: getPopoutMonacoTheme(),
     fontSize: 14,
     minimap: { enabled: true },
     wordWrap: 'on',
@@ -722,41 +799,26 @@ async function buildPreviewPopout(): Promise<void> {
   // ── Build UI ──
   const header = document.createElement('div');
   header.className = 'preview-header';
-  header.style.cssText =
-    'display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#21222c;color:#f5f5f5;font-weight:600;font-size:13px;flex-shrink:0;border-bottom:1px solid #44475a;-webkit-app-region:drag;';
+  header.classList.add('popout-header-main');
   const headerLeft = document.createElement('span');
+  headerLeft.className = 'preview-header-title';
   headerLeft.textContent = `${charData.name ?? ''} — 프리뷰`;
-  headerLeft.style.cssText = '-webkit-app-region:drag;';
   const headerBtns = document.createElement('div');
-  headerBtns.style.cssText = 'display:flex;gap:4px;align-items:center;-webkit-app-region:no-drag;';
+  headerBtns.className = 'popout-header-actions';
 
-  const resetBtn = document.createElement('button');
-  resetBtn.textContent = '↻';
-  resetBtn.title = '초기화';
-  resetBtn.setAttribute('aria-label', '초기화');
-  resetBtn.style.cssText =
-    'background:rgba(255,255,255,0.1);border:none;color:#f5f5f5;font-size:14px;cursor:pointer;border-radius:4px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;';
+  const resetBtn = createPopoutActionButton('↻', { title: '초기화', ariaLabel: '초기화' });
 
   // Debug toggle button
-  const debugBtn = document.createElement('button');
-  debugBtn.textContent = '🔧';
-  debugBtn.title = '디버그 패널';
-  debugBtn.setAttribute('aria-label', '디버그 패널');
-  debugBtn.style.cssText = resetBtn.style.cssText;
+  const debugBtn = createPopoutActionButton('🔧', { title: '디버그 패널', ariaLabel: '디버그 패널' });
 
-  const dockBtn = document.createElement('button');
-  dockBtn.textContent = '📌';
-  dockBtn.title = '메인 창으로 도킹';
-  dockBtn.setAttribute('aria-label', '메인 창으로 도킹');
-  dockBtn.style.cssText = resetBtn.style.cssText;
+  const dockBtn = createPopoutActionButton('📌', { title: '메인 창으로 도킹', ariaLabel: '메인 창으로 도킹' });
   dockBtn.addEventListener('click', () => window.popoutAPI.dock());
 
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = '✕';
-  closeBtn.title = '닫기';
-  closeBtn.setAttribute('aria-label', '닫기');
-  closeBtn.className = 'btn-close-popout';
-  closeBtn.style.cssText = resetBtn.style.cssText;
+  const closeBtn = createPopoutActionButton('✕', {
+    title: '닫기',
+    ariaLabel: '닫기',
+    extraClassName: 'btn-close-popout',
+  });
   closeBtn.addEventListener('click', () => window.close());
 
   headerBtns.appendChild(resetBtn);
@@ -767,56 +829,49 @@ async function buildPreviewPopout(): Promise<void> {
   header.appendChild(headerBtns);
 
   const chatFrame = document.createElement('iframe');
-  chatFrame.style.cssText = 'flex:1;width:100%;border:none;background:#282a36;min-height:0;';
+  chatFrame.className = 'preview-chat-frame';
   chatFrame.setAttribute('sandbox', 'allow-scripts');
 
   const inputBar = document.createElement('div');
-  inputBar.style.cssText =
-    'display:flex;gap:6px;padding:8px 12px;background:#21222c;border-top:1px solid #44475a;flex-shrink:0;align-items:flex-end;';
+  inputBar.className = 'preview-input-bar';
   const chatInput = document.createElement('textarea');
+  chatInput.className = 'preview-input-textarea';
   chatInput.placeholder = '메시지를 입력하세요...';
   chatInput.rows = 1;
-  chatInput.style.cssText =
-    'flex:1;padding:8px 12px;border:1px solid #44475a;border-radius:8px;background:#282a36;color:#f5f5f5;font-size:13px;resize:none;outline:none;max-height:120px;font-family:inherit;';
   chatInput.addEventListener('input', () => {
     chatInput.style.height = 'auto';
     chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
   });
   const sendBtn = document.createElement('button');
+  sendBtn.className = 'preview-send-btn';
   sendBtn.textContent = '전송';
-  sendBtn.style.cssText =
-    'padding:8px 16px;background:#4a90d9;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;white-space:nowrap;';
   inputBar.appendChild(chatInput);
   inputBar.appendChild(sendBtn);
 
   // ── Debug drawer ──
   const debugDrawer = document.createElement('div');
-  debugDrawer.style.cssText =
-    'border-top:1px solid #44475a;background:#1c2340;height:220px;display:none;flex-direction:column;flex-shrink:0;overflow:hidden;';
+  debugDrawer.className = 'preview-debug-drawer';
+  debugDrawer.style.display = 'none';
 
   const debugTabs = document.createElement('div');
-  debugTabs.style.cssText =
-    'display:flex;gap:2px;padding:4px 8px;background:#161b33;border-bottom:1px solid #44475a;flex-shrink:0;align-items:center;';
+  debugTabs.className = 'preview-debug-tabs';
   const tabDefs = [
     { id: 'variables', label: '변수' },
     { id: 'lorebook', label: '로어북' },
     { id: 'lua', label: 'Lua' },
     { id: 'regex', label: '정규식' },
   ];
-  const tabBtnStyle =
-    'padding:3px 10px;border:none;border-radius:4px;font-size:11px;cursor:pointer;color:#aaa;background:transparent;';
-  const tabBtnActiveStyle =
-    'padding:3px 10px;border:none;border-radius:4px;font-size:11px;cursor:pointer;color:#fff;background:#44475a;';
   for (const td of tabDefs) {
     const tab = document.createElement('button');
-    tab.style.cssText = td.id === activeDebugTab ? tabBtnActiveStyle : tabBtnStyle;
+    tab.className = 'preview-debug-tab';
+    if (td.id === activeDebugTab) tab.classList.add('active');
     tab.textContent = td.label;
     tab.addEventListener('click', () => {
       activeDebugTab = td.id;
       debugTabs.querySelectorAll<HTMLButtonElement>('button').forEach((t) => {
-        if (t.dataset.debugTab) t.style.cssText = tabBtnStyle;
+        if (t.dataset.debugTab) t.classList.remove('active');
       });
-      tab.style.cssText = tabBtnActiveStyle;
+      tab.classList.add('active');
       updateDebugContent();
     });
     tab.dataset.debugTab = td.id;
@@ -824,13 +879,14 @@ async function buildPreviewPopout(): Promise<void> {
   }
 
   const debugContentEl = document.createElement('div');
-  debugContentEl.style.cssText = 'flex:1;overflow-y:auto;padding:6px 10px;font-size:11px;color:#ccc;';
+  debugContentEl.className = 'preview-debug-content';
   debugDrawer.appendChild(debugTabs);
   debugDrawer.appendChild(debugContentEl);
 
   // ── Debug resizer ──
   const debugResizer = document.createElement('div');
-  debugResizer.style.cssText = 'height:4px;background:#44475a;cursor:ns-resize;flex-shrink:0;display:none;';
+  debugResizer.className = 'preview-debug-resizer';
+  debugResizer.style.display = 'none';
   debugResizer.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const startY = e.clientY;
@@ -848,10 +904,9 @@ async function buildPreviewPopout(): Promise<void> {
   });
 
   const debugCopyBtn = document.createElement('button');
+  debugCopyBtn.className = 'preview-debug-copy-btn';
   debugCopyBtn.textContent = '📋 복사';
   debugCopyBtn.title = '디버그 정보 전체 복사';
-  debugCopyBtn.style.cssText =
-    'margin-left:auto;padding:3px 8px;border:none;border-radius:4px;font-size:11px;cursor:pointer;color:#fff;background:#2a335a;';
   debugTabs.appendChild(debugCopyBtn);
 
   const session = createPreviewSession({

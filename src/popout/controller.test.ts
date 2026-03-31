@@ -1,20 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PreviewSnapshot } from '../lib/preview-session';
 
-const mockReadAppSettingsSnapshot = vi.fn(() => ({
-  darkMode: false,
-  rpMode: 'off',
-  rpCustomText: '',
-  pluniCategory: 'solo',
-  bgmEnabled: false,
-  bgmPath: '',
-  autosaveEnabled: false,
-  autosaveInterval: 60000,
-  autosaveDir: '',
-  avatarIdle: null,
-  avatarWorking: null,
-  layoutState: null,
-}));
+function createSettingsSnapshot(overrides: Partial<ReturnType<typeof baseSettingsSnapshot>> = {}) {
+  return {
+    ...baseSettingsSnapshot(),
+    ...overrides,
+  };
+}
+
+function baseSettingsSnapshot() {
+  return {
+    darkMode: false,
+    rpMode: 'off',
+    rpCustomText: '',
+    pluniCategory: 'solo',
+    bgmEnabled: false,
+    bgmPath: '',
+    autosaveEnabled: false,
+    autosaveInterval: 60000,
+    autosaveDir: '',
+    avatarIdle: null,
+    avatarWorking: null,
+    layoutState: null,
+  };
+}
+
+const mockReadAppSettingsSnapshot = vi.fn(() => createSettingsSnapshot());
 const mockSyncBodyDarkMode = vi.fn();
 const mockSubscribeToAppSettings = vi.fn(() => () => {});
 const mockWriteRpMode = vi.fn();
@@ -36,6 +47,8 @@ const mockRenderPreviewDebugHtml = vi.fn(() => '<div>debug</div>');
 const mockCreateIframePreviewRuntime = vi.fn(() => ({}));
 const mockEnsureWasmoon = vi.fn(async () => {});
 const mockReportRuntimeError = vi.fn();
+const mockTermThemeLight = { background: '#ffffff' };
+const mockTermThemeDark = { background: '#141a31' };
 const mockInitializeTerminalUi = vi.fn(async () => ({
   term: {
     focus: vi.fn(),
@@ -91,7 +104,8 @@ vi.mock('../lib/script-loader', () => ({
 }));
 
 vi.mock('../lib/terminal-ui', () => ({
-  TERM_THEME_LIGHT: {},
+  TERM_THEME_DARK: mockTermThemeDark,
+  TERM_THEME_LIGHT: mockTermThemeLight,
   initializeTerminalUi: mockInitializeTerminalUi,
 }));
 
@@ -121,6 +135,8 @@ function createSnapshot(overrides: Partial<PreviewSnapshot> = {}): PreviewSnapsh
 
 beforeEach(() => {
   vi.resetModules();
+  mockReadAppSettingsSnapshot.mockImplementation(() => createSettingsSnapshot());
+  mockInitializeTerminalUi.mockClear();
   document.body.innerHTML = '<div id="popout-root"></div>';
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
@@ -184,6 +200,7 @@ beforeEach(() => {
         onDidChangeModelContent: vi.fn(),
         addCommand: vi.fn(),
       })),
+      setTheme: vi.fn(),
     },
     KeyMod: { CtrlCmd: 1 },
     KeyCode: { KeyS: 49 },
@@ -367,5 +384,60 @@ describe('popout controller renderer', () => {
 
     const active = document.querySelector('.tree-item.active') as HTMLElement | null;
     expect(active?.textContent).toContain('설명');
+  });
+
+  it('styles sidebar popout header actions with the shared popout button class', async () => {
+    (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'sidebar');
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#popout-sidebar-header button'));
+    expect(buttons).toHaveLength(2);
+    expect(buttons.every((button) => button.classList.contains('popout-action-btn'))).toBe(true);
+  });
+
+  it('uses the dark Monaco theme for editor popouts when dark mode is enabled', async () => {
+    mockReadAppSettingsSnapshot.mockImplementation(() => createSettingsSnapshot({ darkMode: true }));
+    (
+      window as unknown as { popoutAPI: { getType: () => string; getEditorData: () => Promise<unknown> } }
+    ).popoutAPI.getType = vi.fn(() => 'editor');
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    expect(
+      (globalThis as unknown as { monaco: { editor: { create: ReturnType<typeof vi.fn> } } }).monaco.editor.create,
+    ).toHaveBeenCalledWith(expect.any(HTMLElement), expect.objectContaining({ theme: 'blue-archive-dark' }));
+  });
+
+  it('uses dark terminal theme and class-based active buttons in terminal popout dark mode', async () => {
+    mockReadAppSettingsSnapshot.mockImplementation(() => createSettingsSnapshot({ darkMode: true, rpMode: 'aris' }));
+    (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'terminal');
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    expect(mockInitializeTerminalUi).toHaveBeenCalledWith(expect.objectContaining({ theme: mockTermThemeDark }));
+
+    const rpButton = document.getElementById('btn-rp-mode') as HTMLButtonElement | null;
+    const chatButton = document.getElementById('btn-chat-mode') as HTMLButtonElement | null;
+    expect(rpButton?.classList.contains('active')).toBe(true);
+    expect(rpButton?.style.background).toBe('');
+
+    chatButton?.click();
+    expect(chatButton?.classList.contains('active')).toBe(true);
+    expect(chatButton?.style.background).toBe('');
+  });
+
+  it('uses shared popout button styling hooks in preview popout headers', async () => {
+    (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'preview');
+
+    const mod = await import('./controller');
+    await mod.initPopoutRenderer();
+
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.preview-header button'));
+    expect(buttons).toHaveLength(4);
+    expect(buttons.every((button) => button.classList.contains('popout-action-btn'))).toBe(true);
   });
 });
