@@ -844,4 +844,96 @@ describe('preview session', () => {
 
     expect(session.getSnapshot().runtimeError).toBeNull();
   });
+
+  it('sets error state when initializeLua fails after loading has started', async () => {
+    const engine = createEngine();
+    engine.initLua = vi.fn().mockRejectedValue(new Error('lua boom'));
+    const snapshots: PreviewSnapshot[] = [];
+    const onError = vi.fn();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        description: '',
+        firstMessage: '첫 메시지',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script',
+      },
+      chatFrame: createChatFrame(),
+      windowTarget: createWindowTarget(),
+      runtime: createNoopRuntime(),
+      onStateChange: (snapshot) => snapshots.push(snapshot),
+      onError,
+    });
+
+    await expect(session.initialize()).rejects.toThrow('lua boom');
+    expect(session.getSnapshot().initState).toBe('error');
+    expect(session.getSnapshot().initError).toContain('lua boom');
+    expect(onError).toHaveBeenCalled();
+    expect(snapshots.at(-1)?.initState).toBe('error');
+  });
+
+  it('sets error state when refreshBackground fails during initialize', async () => {
+    const runtime = {
+      ...createNoopRuntime(),
+      setBackground: vi.fn().mockRejectedValue(new Error('bg fail')),
+    };
+    const onError = vi.fn();
+    const session = createPreviewSession({
+      engine: createEngine(),
+      charData: {
+        name: 'Toki',
+        description: '',
+        firstMessage: '',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+      },
+      chatFrame: createChatFrame(),
+      windowTarget: createWindowTarget(),
+      runtime,
+      onError,
+    });
+
+    await expect(session.initialize()).rejects.toThrow('bg fail');
+    expect(session.getSnapshot().initState).toBe('error');
+    expect(session.getSnapshot().initError).toContain('bg fail');
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it('sets error state when initializeLua fails during reset', async () => {
+    const engine = createEngine();
+    const onError = vi.fn();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        description: '',
+        firstMessage: '첫 메시지',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script',
+      },
+      chatFrame: createChatFrame(),
+      windowTarget: createWindowTarget(),
+      runtime: createNoopRuntime(),
+      onError,
+    });
+
+    await session.initialize();
+    expect(session.getSnapshot().initState).toBe('ready');
+
+    engine.initLua = vi.fn().mockRejectedValue(new Error('reset lua boom'));
+
+    await expect(session.reset()).rejects.toThrow('reset lua boom');
+    expect(session.getSnapshot().initState).toBe('error');
+    expect(session.getSnapshot().initError).toContain('reset lua boom');
+    expect(onError).toHaveBeenCalled();
+  });
 });

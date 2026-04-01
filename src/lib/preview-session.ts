@@ -437,6 +437,14 @@ export function createPreviewSession({
 
     try {
       await initializeFrameDocument();
+      attachDocumentBridge();
+      await initializeLua(true);
+
+      if (charData.firstMessage) {
+        await addMessage('char', charData.firstMessage, { scrollToBottom: false });
+      }
+
+      await refreshBackground();
     } catch (error) {
       initState = 'error';
       initError = formatInitError(error);
@@ -444,15 +452,6 @@ export function createPreviewSession({
       onError?.('Preview initialization failed', error);
       throw error;
     }
-
-    attachDocumentBridge();
-    await initializeLua(true);
-
-    if (charData.firstMessage) {
-      await addMessage('char', charData.firstMessage, { scrollToBottom: false });
-    }
-
-    await refreshBackground();
 
     initState = 'ready';
     notifyStateChange();
@@ -471,6 +470,14 @@ export function createPreviewSession({
 
     try {
       await initializeFrameDocument();
+      attachDocumentBridge();
+      await initializeLua(true);
+
+      if (charData.firstMessage) {
+        await addMessage('char', charData.firstMessage, { scrollToBottom: false });
+      }
+
+      await refreshBackground();
     } catch (error) {
       initState = 'error';
       initError = formatInitError(error);
@@ -478,15 +485,6 @@ export function createPreviewSession({
       onError?.('Preview reset failed', error);
       throw error;
     }
-
-    attachDocumentBridge();
-    await initializeLua(true);
-
-    if (charData.firstMessage) {
-      await addMessage('char', charData.firstMessage, { scrollToBottom: false });
-    }
-
-    await refreshBackground();
 
     initState = 'ready';
     notifyStateChange();
