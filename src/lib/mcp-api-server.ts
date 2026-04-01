@@ -864,7 +864,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             : isRisup
               ? '(risup 프리셋 필드 포함)'
               : '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
-          return jsonRes(res, { error: `Unknown field: ${fieldName} ${hint}` }, 400);
+          const action = req.method === 'GET' ? 'read field' : 'update field';
+          return mcpError(res, 400, {
+            action,
+            message: `Unknown field: ${fieldName} ${hint}`,
+            suggestion: 'list_fields 또는 GET /field/batch 로 허용된 필드를 다시 확인하세요.',
+            target: `field:${fieldName}`,
+          });
         }
 
         if (req.method === 'GET') {
@@ -1055,11 +1061,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const fields: string[] = body.fields;
         if (!Array.isArray(fields) || fields.length === 0) {
-          return jsonRes(res, { error: 'fields must be a non-empty string array' }, 400);
+          return mcpError(res, 400, {
+            action: 'read field batch',
+            message: 'fields must be a non-empty string array',
+            target: 'field:batch',
+          });
         }
         const MAX_BATCH = 20;
         if (fields.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} fields per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'read field batch',
+            message: `Maximum ${MAX_BATCH} fields per batch`,
+            target: 'field:batch',
+          });
         }
         const isRisum = (currentData._fileType || 'charx') === 'risum';
         const isRisup = (currentData._fileType || 'charx') === 'risup';
@@ -1215,11 +1229,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const entries: Array<{ field: string; content: unknown }> = body.entries;
         if (!Array.isArray(entries) || entries.length === 0) {
-          return jsonRes(res, { error: 'entries must be a non-empty array of {field, content}' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch write field',
+            message: 'entries must be a non-empty array of {field, content}',
+            target: 'field:batch-write',
+          });
         }
         const MAX_BATCH_WRITE = 20;
         if (entries.length > MAX_BATCH_WRITE) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH_WRITE} entries per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch write field',
+            message: `Maximum ${MAX_BATCH_WRITE} entries per batch`,
+            target: 'field:batch-write',
+          });
         }
         const readOnlyFields = ['creationDate', 'modificationDate', 'moduleId'];
         // Exclude complex fields that need special handling
@@ -1846,7 +1868,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               newContent = oldContent.slice(0, anchorPos) + insertContent + '\n' + oldContent.slice(anchorPos);
             }
           } else {
-            return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
+            return mcpError(res, 400, {
+              action: 'insert in field',
+              message: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다',
+              target: `field:${fieldName}`,
+            });
           }
           const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
           const allowed = await deps.askRendererConfirm(
@@ -1946,15 +1972,27 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const replacements: Array<{ find: string; replace?: string; regex?: boolean; flags?: string }> =
           body.replacements;
         if (!Array.isArray(replacements) || replacements.length === 0) {
-          return jsonRes(res, { error: 'replacements must be a non-empty array' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch replace in field',
+            message: 'replacements must be a non-empty array',
+            target: `field:${fieldName}`,
+          });
         }
         const MAX_BATCH = 50;
         if (replacements.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} replacements per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch replace in field',
+            message: `Maximum ${MAX_BATCH} replacements per batch`,
+            target: `field:${fieldName}`,
+          });
         }
         for (const r of replacements) {
           if (!r.find) {
-            return jsonRes(res, { error: 'Each replacement must include "find"' }, 400);
+            return mcpError(res, 400, {
+              action: 'batch replace in field',
+              message: 'Each replacement must include "find"',
+              target: `field:${fieldName}`,
+            });
           }
         }
         const dryRun = !!body.dry_run;

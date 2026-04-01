@@ -2063,3 +2063,156 @@ describe('MCP API structured error envelopes — css-section routes', () => {
     }
   });
 });
+
+describe('MCP API structured error envelopes — field routes', () => {
+  it('returns a structured error envelope for GET /field/not-a-real-field', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/field/not-a-real-field');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:not-a-real-field');
+      expect(res.data.error).toContain('Unknown field');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch with fields: not-an-array', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch', {
+        fields: 'not-an-array',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read field batch');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:batch');
+      expect(res.data.error).toContain('non-empty');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch with 21 fields', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const fields = Array.from({ length: 21 }, (_, i) => `field${i}`);
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch', { fields });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read field batch');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:batch');
+      expect(res.data.error).toContain('Maximum');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch-write with entries: []', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:batch-write');
+      expect(res.data.error).toContain('non-empty');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch-write with 21 entries', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const entries = Array.from({ length: 21 }, (_, i) => ({ field: `f${i}`, content: 'x' }));
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', { entries });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:batch-write');
+      expect(res.data.error).toContain('Maximum');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/description/insert with position after and no anchor', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/description/insert', {
+        content: 'hello',
+        position: 'after',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'insert in field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:description');
+      expect(res.data.error).toContain('anchor');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/description/batch-replace with replacements: []', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/description/batch-replace', {
+        replacements: [],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch replace in field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:description');
+      expect(res.data.error).toContain('non-empty');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/description/batch-replace with 51 replacements', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const replacements = Array.from({ length: 51 }, (_, i) => ({ find: `f${i}`, replace: `r${i}` }));
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/description/batch-replace', {
+        replacements,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch replace in field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:description');
+      expect(res.data.error).toContain('Maximum');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/description/batch-replace with one replacement missing find', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/description/batch-replace', {
+        replacements: [{ replace: 'bar' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch replace in field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:description');
+      expect(res.data.error).toContain('find');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
