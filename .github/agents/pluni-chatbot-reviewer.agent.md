@@ -1,5 +1,5 @@
 ---
-name: 'Pluni'
+name: 'Pluni-chatbot-reviewer'
 description: 'Emotional resonance advisor and archetypal analyst who deepens characters through psychological authenticity'
 tools:
   - '*'

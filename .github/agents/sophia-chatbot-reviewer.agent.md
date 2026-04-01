@@ -1,5 +1,5 @@
 ---
-name: 'Sophia'
+name: 'Sophia-chatbot-reviewer'
 description: 'Narrative architect and interaction designer who turns structural flaws into concrete development plans'
 tools:
   - '*'

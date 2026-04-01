@@ -1,5 +1,5 @@
 ---
-name: 'Kotone'
+name: 'Kotone-chatbot-reviewer'
 description: 'Postmodern aesthetic critic and character deconstructionist with uncompromising analytical standards'
 tools:
   - '*'
