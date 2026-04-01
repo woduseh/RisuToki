@@ -96,3 +96,38 @@ describe('app-store pluniCategory', () => {
     expect(store.statusSticky).toBe(false);
   });
 });
+
+describe('app-store previewability', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('returns false when no file is open', () => {
+    const store = useAppStore();
+    expect(store.canPreviewCurrentFile).toBe(false);
+  });
+
+  it('treats missing _fileType as charx for previewability', () => {
+    const store = useAppStore();
+    store.setFileData({ name: 'Character' } as never);
+    expect(store.canPreviewCurrentFile).toBe(true);
+  });
+
+  it('treats explicit charx as previewable', () => {
+    const store = useAppStore();
+    store.setFileData({ _fileType: 'charx', name: 'Character' } as never);
+    expect(store.canPreviewCurrentFile).toBe(true);
+  });
+
+  it('treats risum as non-previewable', () => {
+    const store = useAppStore();
+    store.setFileData({ _fileType: 'risum', name: 'Module' } as never);
+    expect(store.canPreviewCurrentFile).toBe(false);
+  });
+
+  it('treats risup as non-previewable', () => {
+    const store = useAppStore();
+    store.setFileData({ _fileType: 'risup', name: 'Preset' } as never);
+    expect(store.canPreviewCurrentFile).toBe(false);
+  });
+});

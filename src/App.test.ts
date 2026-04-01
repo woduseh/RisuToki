@@ -60,7 +60,7 @@ describe('App shell', () => {
     const wrapper = mount(App, { global: { plugins: [pinia] } });
     const store = useAppStore();
 
-    store.setFileData({ name: 'Character' } as never);
+    store.setFileData({ _fileType: 'charx', name: 'Character' } as never);
     await nextTick();
 
     const menuItems = wrapper.findAll('.menu-item');

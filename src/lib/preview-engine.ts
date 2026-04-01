@@ -969,7 +969,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('authornote', () => '', ['author_note']);
     reg('userpersona', () => userName, ['persona_desc']);
     reg('chardesc', () => charDescription);
-    reg('charpersona', () => charDescription);
+    reg('charpersona', () => charPersonality);
     reg('exampledialogue', () => '', ['examplemessage', 'example_dialogue']);
     reg('lorebook', () => '[]', ['worldinfo']);
     reg('messagetime', () => new Date().toLocaleTimeString('ko-KR'), ['message_time']);

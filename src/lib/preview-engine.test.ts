@@ -226,6 +226,7 @@ describe('PreviewEngine Lua field setters', () => {
     setter('preview', 'new personality');
 
     expect(PreviewEngine.risuChatParser('{{personality}}')).toBe('new personality');
+    expect(PreviewEngine.risuChatParser('{{charpersona}}')).toBe('new personality');
   });
 
   it('setScenario updates {{scenario}} in preview-local state', async () => {
@@ -246,6 +247,22 @@ describe('PreviewEngine Lua field setters', () => {
     setter('preview', 'new first message');
 
     expect(PreviewEngine.risuChatParser('{{firstmessage}}')).toBe('new first message');
+  });
+
+  it('{{charpersona}} resolves to personality, not description', () => {
+    PreviewEngine.resetVars();
+    PreviewEngine.setCharDescription('tall elf');
+    PreviewEngine.setCharPersonality('brave');
+
+    expect(PreviewEngine.risuChatParser('{{charpersona}}')).toBe('brave');
+  });
+
+  it('{{chardesc}} remains mapped to description', () => {
+    PreviewEngine.resetVars();
+    PreviewEngine.setCharDescription('tall elf');
+    PreviewEngine.setCharPersonality('brave');
+
+    expect(PreviewEngine.risuChatParser('{{chardesc}}')).toBe('tall elf');
   });
 });
 

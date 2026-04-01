@@ -2186,7 +2186,9 @@ async function showPreviewPanel(): Promise<void> {
     return;
   }
 
-  if (fileData._fileType) {
+  const previewFileType = fileData._fileType || 'charx';
+
+  if (previewFileType !== 'charx') {
     setStatus('프리뷰는 .charx 파일에서만 사용할 수 있습니다');
     return;
   }
