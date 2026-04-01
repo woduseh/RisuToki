@@ -4864,7 +4864,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= sections.length) {
           return mcpError(res, 400, {
-            action: 'get lua section',
+            action: 'read lua section',
             message: `Lua section index ${idx} out of range (0-${sections.length - 1})`,
             suggestion: 'list_lua 또는 GET /lua 로 유효한 section index를 확인하세요.',
             target: `lua:${idx}`,
@@ -5227,7 +5227,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= sections.length) {
           return mcpError(res, 400, {
-            action: 'get css section',
+            action: 'read css section',
             message: `CSS section index ${idx} out of range (0-${sections.length - 1})`,
             suggestion: 'list_css 또는 GET /css-section 으로 유효한 section index를 확인하세요.',
             target: `css-section:${idx}`,

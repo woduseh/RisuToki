@@ -1796,10 +1796,9 @@ describe('MCP API structured error envelopes — lua-section routes', () => {
     try {
       const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/lua/999');
       expect(res.status).toBe(400);
-      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('action', 'read lua section');
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target');
-      expect(typeof res.data.action).toBe('string');
       expect(typeof res.data.target).toBe('string');
       expect(res.data.error).toContain('out of range');
     } finally {
@@ -1946,10 +1945,9 @@ describe('MCP API structured error envelopes — css-section routes', () => {
     try {
       const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/css-section/999');
       expect(res.status).toBe(400);
-      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('action', 'read css section');
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target');
-      expect(typeof res.data.action).toBe('string');
       expect(typeof res.data.target).toBe('string');
       expect(res.data.error).toContain('out of range');
     } finally {
