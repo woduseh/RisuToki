@@ -1292,6 +1292,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return mcpError(res, 400, {
               action: 'batch write field',
               message: `각 항목에 "field"와 "content"가 필요합니다.`,
+              suggestion: '각 항목을 { "field": "<필드명>", "content": <값> } 형태로 전달하세요.',
               target: 'field:batch-write',
             });
           }
@@ -1299,6 +1300,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return mcpError(res, 400, {
               action: 'batch write field',
               message: `"${entry.field}" 필드는 읽기 전용입니다.`,
+              suggestion: `"${entry.field}" 항목을 entries 배열에서 제거하세요. 이 필드는 시스템이 자동 관리합니다.`,
               target: `field:${entry.field}`,
             });
           }
@@ -1306,6 +1308,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return mcpError(res, 400, {
               action: 'batch write field',
               message: `"${entry.field}" 필드는 batch-write에서 지원하지 않습니다. write_field를 개별 사용하세요.`,
+              suggestion: `"${entry.field}" 항목을 entries에서 제거하고 POST /field/${entry.field} 로 개별 호출하세요.`,
               target: `field:${entry.field}`,
             });
           }
@@ -1317,6 +1320,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               return mcpError(res, 400, {
                 action: 'batch write field',
                 message: `"${entry.field}"는 boolean 타입이어야 합니다.`,
+                suggestion: `"${entry.field}" 값을 true 또는 false 로 전달하세요. (현재: ${typeof entry.content})`,
                 target: `field:${entry.field}`,
               });
             }
@@ -1326,6 +1330,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               return mcpError(res, 400, {
                 action: 'batch write field',
                 message: `"${entry.field}"는 number 타입이어야 합니다.`,
+                suggestion: `"${entry.field}" 값을 숫자로 전달하세요. (현재: ${typeof entry.content})`,
                 target: `field:${entry.field}`,
               });
             }
@@ -1335,6 +1340,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               return mcpError(res, 400, {
                 action: 'batch write field',
                 message: `"${entry.field}"는 배열 타입이어야 합니다.`,
+                suggestion: `"${entry.field}" 값을 배열로 전달하세요. 예: ["항목1", "항목2"] (현재: ${typeof entry.content})`,
                 target: `field:${entry.field}`,
               });
             }
@@ -1344,6 +1350,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               return mcpError(res, 400, {
                 action: 'batch write field',
                 message: `"${entry.field}"는 문자열 타입이어야 합니다.`,
+                suggestion: `"${entry.field}" 값을 JSON 문자열로 전달하세요. (현재: ${typeof entry.content})`,
                 target: `field:${entry.field}`,
               });
             }
@@ -1362,6 +1369,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               return mcpError(res, 400, {
                 action: 'batch write field',
                 message: `"${entry.field}"는 문자열 타입이어야 합니다.`,
+                suggestion: `"${entry.field}" 값을 문자열로 전달하세요. (현재: ${typeof entry.content})`,
                 target: `field:${entry.field}`,
               });
             }

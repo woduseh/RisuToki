@@ -2169,6 +2169,108 @@ describe('MCP API structured error envelopes — field routes', () => {
     }
   });
 
+  it('returns a structured error envelope for POST /field/batch-write with missing field/content', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ content: 'hello' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:batch-write');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch-write with read-only field', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'creationDate', content: '2024-01-01' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:creationDate');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch-write with unsupported field', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'lorebook', content: '{}' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:lorebook');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch-write with boolean type mismatch', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'hideIcon', content: 'yes' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:hideIcon');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch-write with array type mismatch', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'tags', content: 'not-an-array' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:tags');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch-write with string type mismatch', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'name', content: 12345 }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:name');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('returns a structured error envelope for POST /field/description/insert with position after and no anchor', async () => {
     const fixture: SearchFixture = createSearchFixture();
     const api = await startTestApiServer(fixture);
