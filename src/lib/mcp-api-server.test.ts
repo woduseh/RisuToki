@@ -3145,3 +3145,117 @@ describe('MCP API structured error envelopes — lorebook mutation routes', () =
     }
   });
 });
+
+describe('MCP API structured error envelopes — asset routes', () => {
+  it('returns a structured error envelope for missing fileName in POST /asset/add', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      assets: [],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/asset/add', {
+        base64: Buffer.from('asset-bytes').toString('base64'),
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'add_asset');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'asset:add');
+      expect(res.data).toHaveProperty('error', 'fileName과 base64 데이터가 필요합니다.');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for invalid file name characters in POST /asset/add', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      assets: [],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/asset/add', {
+        fileName: 'bad/name.png',
+        base64: Buffer.from('asset-bytes').toString('base64'),
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'add_asset');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'asset:add');
+      expect(res.data).toHaveProperty('error', '파일명에 허용되지 않는 문자가 포함되어 있습니다.');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for duplicate asset paths in POST /asset/add', async () => {
+    const assetPath = 'assets/other/image/duplicate.png';
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      assets: [{ path: assetPath, data: Buffer.from('existing-asset') }],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/asset/add', {
+        fileName: 'duplicate.png',
+        base64: Buffer.from('new-asset').toString('base64'),
+      });
+      expect(res.status).toBe(409);
+      expect(res.data).toHaveProperty('action', 'add_asset');
+      expect(res.data).toHaveProperty('status', 409);
+      expect(res.data).toHaveProperty('target', `asset:${assetPath}`);
+      expect(res.data).toHaveProperty('error', `에셋 경로 "${assetPath}"가 이미 존재합니다.`);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for invalid newName in POST /asset/:idx/rename', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      assets: [{ path: 'assets/other/image/original.png', data: Buffer.from('asset-bytes') }],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/asset/0/rename', {
+        newName: 'bad/name.png',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'rename_asset');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'asset:0');
+      expect(res.data).toHaveProperty('error', '유효한 newName이 필요합니다.');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API structured error envelopes — risum-asset routes', () => {
+  it('returns a structured error envelope for missing name in POST /risum-asset/add', async () => {
+    const fixture: SearchFixture = {
+      _fileType: 'charx',
+      risumAssets: [],
+      cardAssets: [],
+      _moduleData: {
+        module: {
+          assets: [],
+        },
+      },
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/risum-asset/add', {
+        path: 'assets/audio/theme.mp3',
+        base64: Buffer.from('fake-audio').toString('base64'),
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'add_risum_asset');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'risum-asset:add');
+      expect(res.data).toHaveProperty('error', 'name과 base64 데이터가 필요합니다.');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});

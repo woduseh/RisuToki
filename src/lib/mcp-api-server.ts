@@ -6395,10 +6395,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const base64Data: string = body.base64 || '';
         const folder: string = body.folder || 'other';
         if (!fileName || !base64Data) {
-          return jsonRes(res, { error: 'fileName과 base64 데이터가 필요합니다.' }, 400);
+          return mcpError(res, 400, {
+            action: 'add_asset',
+            message: 'fileName과 base64 데이터가 필요합니다.',
+            target: 'asset:add',
+          });
         }
         if (!/^[a-zA-Z0-9가-힣._\- ]+$/.test(fileName)) {
-          return jsonRes(res, { error: '파일명에 허용되지 않는 문자가 포함되어 있습니다.' }, 400);
+          return mcpError(res, 400, {
+            action: 'add_asset',
+            message: '파일명에 허용되지 않는 문자가 포함되어 있습니다.',
+            target: 'asset:add',
+          });
         }
         const allowed = await deps.askRendererConfirm(
           'MCP 에셋 추가 요청',
@@ -6416,7 +6424,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const basePath = folder === 'icon' ? 'assets/icon' : 'assets/other/image';
         const assetPath = `${basePath}/${fileName}`;
         if (currentData.assets.find((a: any) => a.path === assetPath)) {
-          return jsonRes(res, { error: `에셋 경로 "${assetPath}"가 이미 존재합니다.` }, 409);
+          return mcpError(res, 409, {
+            action: 'add_asset',
+            message: `에셋 경로 "${assetPath}"가 이미 존재합니다.`,
+            target: `asset:${assetPath}`,
+          });
         }
         const buf = Buffer.from(base64Data, 'base64');
         currentData.assets.push({ path: assetPath, data: buf });
@@ -6491,7 +6503,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const body = JSON.parse(await readBody(req));
         const newName: string = body.newName || '';
         if (!newName || !/^[a-zA-Z0-9가-힣._\- ]+$/.test(newName)) {
-          return jsonRes(res, { error: '유효한 newName이 필요합니다.' }, 400);
+          return mcpError(res, 400, {
+            action: 'rename_asset',
+            message: '유효한 newName이 필요합니다.',
+            target: `asset:${idx}`,
+          });
         }
         const asset = assets[idx];
         const oldPath = asset.path;
@@ -7065,7 +7081,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const base64Data: string = body.base64 || '';
         const assetExt = ((assetPath || assetName).split('.').pop() || 'png').toLowerCase();
         if (!assetName || !base64Data) {
-          return jsonRes(res, { error: 'name과 base64 데이터가 필요합니다.' }, 400);
+          return mcpError(res, 400, {
+            action: 'add_risum_asset',
+            message: 'name과 base64 데이터가 필요합니다.',
+            target: 'risum-asset:add',
+          });
         }
         const allowed = await deps.askRendererConfirm(
           'MCP 리슘 에셋 추가 요청',
