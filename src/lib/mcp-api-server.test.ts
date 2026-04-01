@@ -2344,4 +2344,57 @@ describe('MCP API structured error envelopes — field routes', () => {
       await closeServer(api.server);
     }
   });
+
+  it('returns a structured error envelope for POST /field/batch-write with number type mismatch', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'temperature', content: 'not-a-number' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:temperature');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch-write with JSON-field non-string rejection', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'promptTemplate', content: 12345 }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:promptTemplate');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/batch-write with JSON parse/shape validation failure', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'formatingOrder', content: '{not valid json' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:formatingOrder');
+      expect(res.data.suggestion).toBeDefined();
+      expect(res.data.details).toBeDefined();
+      expect(res.data.details).toHaveProperty('parseError');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
 });
