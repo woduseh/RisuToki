@@ -36,6 +36,44 @@ describe('App shell', () => {
     expect(wrapper.find('.momo-title').text()).toBe('TokiTalk');
   });
 
+  it('disables the preview action when the active file is non-charx', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+
+    store.setFileData({ _fileType: 'risup', name: 'Preset' } as never);
+    await nextTick();
+
+    const menuItems = wrapper.findAll('.menu-item');
+    const viewMenu = menuItems.find((m) => m.text().includes('보기'));
+    expect(viewMenu).toBeTruthy();
+    await viewMenu!.trigger('click');
+
+    const actions = wrapper.findAll('.menu-action');
+    const previewAction = actions.find((a) => a.text().includes('프리뷰'));
+    expect(previewAction).toBeTruthy();
+    expect(previewAction!.classes()).toContain('disabled');
+  });
+
+  it('enables the preview action when the active file is charx', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+
+    store.setFileData({ name: 'Character' } as never);
+    await nextTick();
+
+    const menuItems = wrapper.findAll('.menu-item');
+    const viewMenu = menuItems.find((m) => m.text().includes('보기'));
+    expect(viewMenu).toBeTruthy();
+    await viewMenu!.trigger('click');
+
+    const actions = wrapper.findAll('.menu-action');
+    const previewAction = actions.find((a) => a.text().includes('프리뷰'));
+    expect(previewAction).toBeTruthy();
+    expect(previewAction!.classes()).not.toContain('disabled');
+  });
+
   it('uses clearer wording for the sidebar and preview actions in the view menu', async () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } });
     const menuItems = wrapper.findAll('.menu-item');
