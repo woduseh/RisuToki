@@ -1365,6 +1365,23 @@ body {
   background: var(--accent-hover);
 }
 
+.preview-status-banner,
+.preview-error-banner {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+}
+
+.preview-status-banner {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-primary));
+  color: var(--text-primary);
+}
+
+.preview-error-banner {
+  background: color-mix(in srgb, #ff5f56 12%, var(--bg-primary));
+  color: var(--text-primary);
+}
+
 .preview-debug-drawer {
   border-top: 1px solid var(--border-color);
   background: var(--bg-secondary);
