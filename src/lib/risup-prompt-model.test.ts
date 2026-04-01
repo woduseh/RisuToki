@@ -13,6 +13,8 @@ import {
   defaultPromptItemTyped,
   defaultPromptItemAuthorNote,
   defaultFormatingOrder,
+  normalizePromptTemplateForStorage,
+  collectFormatingOrderWarnings,
 } from './risup-prompt-model';
 
 // ---------------------------------------------------------------------------
@@ -293,6 +295,47 @@ describe('parsePromptTemplate', () => {
       expect((item.rawValue as Record<string, unknown>)['customExtraField']).toBe('keep me');
     }
   });
+
+  it('assigns deterministic ids to supported prompt items that lack them', () => {
+    const model = parsePromptTemplate(
+      JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'hello', role: 'system' },
+        { type: 'plain', type2: 'normal', text: 'hello', role: 'system' },
+      ]),
+    );
+
+    expect(model.state).toBe('valid');
+    expect(model.items[0].supported && model.items[0].id).toBeTruthy();
+    expect(model.items[1].supported && model.items[1].id).toBeTruthy();
+    expect(model.items[0].supported && model.items[1].supported && model.items[0].id).not.toBe(model.items[1].id);
+  });
+
+  it('preserves an existing id through parse and serialize', () => {
+    const raw = [{ id: 'prompt-plain-1', type: 'plain', type2: 'normal', text: 'hello', role: 'system' }];
+    const parsed = parsePromptTemplate(JSON.stringify(raw));
+    const roundTrip = JSON.parse(serializePromptTemplate(parsed));
+    expect(roundTrip[0].id).toBe('prompt-plain-1');
+  });
+
+  it('exposes top-level id on unsupported items when rawValue already contains one', () => {
+    const parsed = parsePromptTemplate(JSON.stringify([{ id: 'legacy-unknown-1', type: 'futureType', foo: 'bar' }]));
+    expect(parsed.items[0].supported).toBe(false);
+    expect(parsed.items[0]).toMatchObject({ id: 'legacy-unknown-1', type: 'futureType' });
+  });
+
+  it('generates deterministic ids that are stable across re-parses', () => {
+    const input = stringify([PLAIN, CHAT_END]);
+    const m1 = parsePromptTemplate(input);
+    const m2 = parsePromptTemplate(input);
+    expect(m1.items[0].supported && m1.items[0].id).toBe(m2.items[0].supported && m2.items[0].id);
+    expect(m1.items[1].supported && m1.items[1].id).toBe(m2.items[1].supported && m2.items[1].id);
+  });
+
+  it('does not expose id on unsupported items without id in raw', () => {
+    const parsed = parsePromptTemplate(JSON.stringify([{ type: 'futureType', foo: 'bar' }]));
+    expect(parsed.items[0].supported).toBe(false);
+    expect(parsed.items[0].id).toBeUndefined();
+  });
 });
 
 describe('validatePromptTemplateText', () => {
@@ -319,42 +362,58 @@ describe('serializePromptTemplate', () => {
     const original = stringify([PLAIN]);
     const m = parsePromptTemplate(original);
     const result = serializePromptTemplate(m);
-    expect(JSON.parse(result)).toEqual([PLAIN]);
+    const parsed = JSON.parse(result) as Record<string, unknown>[];
+    expect(parsed[0]).toMatchObject(PLAIN);
+    expect(parsed[0]['id']).toBeTruthy();
   });
 
   it('round-trips a jailbreak item', () => {
     const original = stringify([JAILBREAK]);
     const m = parsePromptTemplate(original);
     const result = serializePromptTemplate(m);
-    expect(JSON.parse(result)).toEqual([JAILBREAK]);
+    const parsed = JSON.parse(result) as Record<string, unknown>[];
+    expect(parsed[0]).toMatchObject(JAILBREAK);
+    expect(parsed[0]['id']).toBeTruthy();
   });
 
   it('round-trips a chat item with rangeEnd: "end"', () => {
     const original = stringify([CHAT_END]);
     const m = parsePromptTemplate(original);
     const result = serializePromptTemplate(m);
-    expect(JSON.parse(result)).toEqual([CHAT_END]);
+    const parsed = JSON.parse(result) as Record<string, unknown>[];
+    expect(parsed[0]).toMatchObject(CHAT_END);
+    expect(parsed[0]['id']).toBeTruthy();
   });
 
   it('round-trips typed items', () => {
     const original = stringify([PERSONA, DESCRIPTION_FMT]);
     const m = parsePromptTemplate(original);
     const result = serializePromptTemplate(m);
-    expect(JSON.parse(result)).toEqual([PERSONA, DESCRIPTION_FMT]);
+    const parsed = JSON.parse(result) as Record<string, unknown>[];
+    expect(parsed[0]).toMatchObject(PERSONA);
+    expect(parsed[1]).toMatchObject(DESCRIPTION_FMT);
+    expect(parsed[0]['id']).toBeTruthy();
+    expect(parsed[1]['id']).toBeTruthy();
   });
 
   it('round-trips authornote with defaultText', () => {
     const original = stringify([AUTHORNOTE_DEFAULT]);
     const m = parsePromptTemplate(original);
     const result = serializePromptTemplate(m);
-    expect(JSON.parse(result)).toEqual([AUTHORNOTE_DEFAULT]);
+    const parsed = JSON.parse(result) as Record<string, unknown>[];
+    expect(parsed[0]).toMatchObject(AUTHORNOTE_DEFAULT);
+    expect(parsed[0]['id']).toBeTruthy();
   });
 
   it('round-trips cache items', () => {
     const original = stringify([CACHE, CACHE_ALL]);
     const m = parsePromptTemplate(original);
     const result = serializePromptTemplate(m);
-    expect(JSON.parse(result)).toEqual([CACHE, CACHE_ALL]);
+    const parsed = JSON.parse(result) as Record<string, unknown>[];
+    expect(parsed[0]).toMatchObject(CACHE);
+    expect(parsed[1]).toMatchObject(CACHE_ALL);
+    expect(parsed[0]['id']).toBeTruthy();
+    expect(parsed[1]['id']).toBeTruthy();
   });
 
   it('serializes unknown items from rawValue (no data loss)', () => {
@@ -376,7 +435,10 @@ describe('serializePromptTemplate', () => {
     const items = [PLAIN, UNKNOWN, CHAT_END];
     const m = parsePromptTemplate(stringify(items));
     const result = serializePromptTemplate(m);
-    expect(JSON.parse(result)).toEqual(items);
+    const parsed = JSON.parse(result) as Record<string, unknown>[];
+    expect(parsed[0]).toMatchObject(PLAIN);
+    expect(parsed[1]).toMatchObject(UNKNOWN);
+    expect(parsed[2]).toMatchObject(CHAT_END);
   });
 });
 
@@ -561,5 +623,111 @@ describe('default factories', () => {
     const m2 = parseFormatingOrder(text);
     expect(m2.state).toBe('valid');
     expect(m2.items.map((i) => i.token)).toEqual(m.items.map((i) => i.token));
+  });
+
+  it('default factory items have non-empty ids', () => {
+    expect(defaultPromptItemPlain().id).toBeTruthy();
+    expect(defaultPromptItemChat().id).toBeTruthy();
+    expect(defaultPromptItemTyped('persona').id).toBeTruthy();
+    expect(defaultPromptItemAuthorNote().id).toBeTruthy();
+  });
+
+  it('default factory items have unique ids', () => {
+    const ids = [defaultPromptItemPlain().id, defaultPromptItemPlain().id, defaultPromptItemChat().id];
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizePromptTemplateForStorage
+// ---------------------------------------------------------------------------
+
+describe('normalizePromptTemplateForStorage', () => {
+  it('normalizes a JSON string', () => {
+    const m = normalizePromptTemplateForStorage(stringify([PLAIN]));
+    expect(m.state).toBe('valid');
+    expect(m.items).toHaveLength(1);
+    expect(m.items[0].supported && m.items[0].id).toBeTruthy();
+  });
+
+  it('normalizes an array value', () => {
+    const m = normalizePromptTemplateForStorage([PLAIN, CHAT_END]);
+    expect(m.state).toBe('valid');
+    expect(m.items).toHaveLength(2);
+  });
+
+  it('returns empty for null or undefined', () => {
+    expect(normalizePromptTemplateForStorage(null).state).toBe('empty');
+    expect(normalizePromptTemplateForStorage(undefined).state).toBe('empty');
+  });
+
+  it('returns invalid for non-array objects', () => {
+    const m = normalizePromptTemplateForStorage({ type: 'plain' });
+    expect(m.state).toBe('invalid');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// collectFormatingOrderWarnings
+// ---------------------------------------------------------------------------
+
+describe('collectFormatingOrderWarnings', () => {
+  it('produces warnings for duplicate formatingOrder tokens', () => {
+    const prompt = parsePromptTemplate(
+      stringify([PLAIN, { type: 'jailbreak', type2: 'normal', text: '', role: 'user' }]),
+    );
+    const order = parseFormatingOrder(JSON.stringify(['main', 'jailbreak', 'main']));
+    const warnings = collectFormatingOrderWarnings(prompt, order);
+    expect(warnings.some((w) => w.includes('Duplicate') && w.includes('main'))).toBe(true);
+  });
+
+  it('produces warnings for dangling formatingOrder tokens', () => {
+    // Prompt has only a plain item, no lorebook or description
+    const prompt = parsePromptTemplate(stringify([PLAIN]));
+    const order = parseFormatingOrder(JSON.stringify(['main', 'lorebook', 'description']));
+    const warnings = collectFormatingOrderWarnings(prompt, order);
+    expect(warnings.some((w) => w.includes('Dangling') && w.includes('lorebook'))).toBe(true);
+    expect(warnings.some((w) => w.includes('Dangling') && w.includes('description'))).toBe(true);
+  });
+
+  it('produces no warnings for a valid formatting order', () => {
+    const prompt = parsePromptTemplate(
+      stringify([
+        { type: 'jailbreak', type2: 'normal', text: '', role: 'user' },
+        { type: 'lorebook' },
+        { type: 'description' },
+        { type: 'persona' },
+        { type: 'authornote' },
+        { type: 'postEverything' },
+      ]),
+    );
+    const order = parseFormatingOrder(
+      JSON.stringify([
+        'main',
+        'jailbreak',
+        'chats',
+        'lorebook',
+        'description',
+        'personaPrompt',
+        'authorNote',
+        'postEverything',
+        'lastChat',
+        'globalNote',
+      ]),
+    );
+    const warnings = collectFormatingOrderWarnings(prompt, order);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('warnings do not flip parse state from valid to invalid', () => {
+    const prompt = parsePromptTemplate(stringify([PLAIN]));
+    const order = parseFormatingOrder(JSON.stringify(['main', 'lorebook', 'main']));
+    expect(prompt.state).toBe('valid');
+    expect(order.state).toBe('valid');
+    const warnings = collectFormatingOrderWarnings(prompt, order);
+    expect(warnings.length).toBeGreaterThan(0);
+    // Parse state is unchanged
+    expect(prompt.state).toBe('valid');
+    expect(order.state).toBe('valid');
   });
 });

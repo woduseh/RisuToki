@@ -52,7 +52,11 @@ export type PromptItemType2 = (typeof TYPE2_VALUES)[number];
 export type FormatingOrderToken = (typeof FORMATTING_ORDER_TOKENS)[number];
 export type SupportedPromptItemType = (typeof SUPPORTED_PROMPT_ITEM_TYPES)[number];
 
-export interface PromptItemPlainModel {
+export interface PromptItemBaseModel {
+  id: string;
+}
+
+export interface PromptItemPlainModel extends PromptItemBaseModel {
   type: PromptItemPlainKind;
   type2: PromptItemType2;
   text: string;
@@ -62,7 +66,7 @@ export interface PromptItemPlainModel {
   rawValue: JsonRecord;
 }
 
-export interface PromptItemChatMLModel {
+export interface PromptItemChatMLModel extends PromptItemBaseModel {
   type: 'chatML';
   text: string;
   name: string | undefined;
@@ -70,7 +74,7 @@ export interface PromptItemChatMLModel {
   rawValue: JsonRecord;
 }
 
-export interface PromptItemTypedModel {
+export interface PromptItemTypedModel extends PromptItemBaseModel {
   type: PromptItemTypedKind;
   innerFormat: string | undefined;
   name: string | undefined;
@@ -78,7 +82,7 @@ export interface PromptItemTypedModel {
   rawValue: JsonRecord;
 }
 
-export interface PromptItemAuthorNoteModel {
+export interface PromptItemAuthorNoteModel extends PromptItemBaseModel {
   type: 'authornote';
   innerFormat: string | undefined;
   defaultText: string | undefined;
@@ -87,7 +91,7 @@ export interface PromptItemAuthorNoteModel {
   rawValue: JsonRecord;
 }
 
-export interface PromptItemChatModel {
+export interface PromptItemChatModel extends PromptItemBaseModel {
   type: 'chat';
   rangeStart: number;
   rangeEnd: number | 'end';
@@ -97,7 +101,7 @@ export interface PromptItemChatModel {
   rawValue: JsonRecord;
 }
 
-export interface PromptItemCacheModel {
+export interface PromptItemCacheModel extends PromptItemBaseModel {
   type: 'cache';
   name: string;
   depth: number;
@@ -107,6 +111,7 @@ export interface PromptItemCacheModel {
 }
 
 export interface PromptItemUnknownModel {
+  id: string | undefined;
   type: string | null;
   supported: false;
   rawValue: unknown;
@@ -191,6 +196,19 @@ function optionalString(v: unknown): string | undefined {
   return typeof v === 'string' ? v : undefined;
 }
 
+function djb2Hash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function generateItemId(type: string, signature: string, occurrenceIndex: number): string {
+  const hash = djb2Hash(signature);
+  return `prompt-${type}-${hash}-${occurrenceIndex}`;
+}
+
 // ---------------------------------------------------------------------------
 // Item parsers
 // ---------------------------------------------------------------------------
@@ -198,6 +216,7 @@ function optionalString(v: unknown): string | undefined {
 function parsePlainItem(raw: JsonRecord): PromptItemPlainModel {
   const type = raw['type'] as PromptItemPlainKind;
   return {
+    id: '',
     type,
     type2: isType2(raw['type2']) ? raw['type2'] : 'normal',
     text: typeof raw['text'] === 'string' ? raw['text'] : '',
@@ -210,6 +229,7 @@ function parsePlainItem(raw: JsonRecord): PromptItemPlainModel {
 
 function parseChatMLItem(raw: JsonRecord): PromptItemChatMLModel {
   return {
+    id: '',
     type: 'chatML',
     text: typeof raw['text'] === 'string' ? raw['text'] : '',
     name: optionalString(raw['name']),
@@ -220,6 +240,7 @@ function parseChatMLItem(raw: JsonRecord): PromptItemChatMLModel {
 
 function parseTypedItem(raw: JsonRecord): PromptItemTypedModel {
   return {
+    id: '',
     type: raw['type'] as PromptItemTypedKind,
     innerFormat: optionalString(raw['innerFormat']),
     name: optionalString(raw['name']),
@@ -230,6 +251,7 @@ function parseTypedItem(raw: JsonRecord): PromptItemTypedModel {
 
 function parseAuthorNoteItem(raw: JsonRecord): PromptItemAuthorNoteModel {
   return {
+    id: '',
     type: 'authornote',
     innerFormat: optionalString(raw['innerFormat']),
     defaultText: optionalString(raw['defaultText']),
@@ -244,6 +266,7 @@ function parseChatItem(raw: JsonRecord): PromptItemChatModel {
   const rangeEnd: number | 'end' =
     rangeEndRaw === 'end' ? 'end' : typeof rangeEndRaw === 'number' ? rangeEndRaw : 'end';
   return {
+    id: '',
     type: 'chat',
     rangeStart: typeof raw['rangeStart'] === 'number' ? raw['rangeStart'] : 0,
     rangeEnd,
@@ -257,6 +280,7 @@ function parseChatItem(raw: JsonRecord): PromptItemChatModel {
 
 function parseCacheItem(raw: JsonRecord): PromptItemCacheModel {
   return {
+    id: '',
     type: 'cache',
     name: typeof raw['name'] === 'string' ? raw['name'] : '',
     depth: typeof raw['depth'] === 'number' ? raw['depth'] : 0,
@@ -269,6 +293,7 @@ function parseCacheItem(raw: JsonRecord): PromptItemCacheModel {
 function parsePromptItem(value: unknown): PromptItemModel {
   if (!isRecord(value)) {
     return {
+      id: undefined,
       type: null,
       supported: false,
       rawValue: cloneValue(value),
@@ -285,7 +310,9 @@ function parsePromptItem(value: unknown): PromptItemModel {
   if (type === 'chat') return parseChatItem(raw);
   if (type === 'cache') return parseCacheItem(raw);
 
+  const rawId = raw['id'];
   return {
+    id: typeof rawId === 'string' ? rawId : undefined,
     type: typeof type === 'string' ? type : null,
     supported: false,
     rawValue: cloneValue(value),
@@ -298,6 +325,7 @@ function parsePromptItem(value: unknown): PromptItemModel {
 
 function serializePlainItem(item: PromptItemPlainModel): unknown {
   const out = cloneRecord(item.rawValue);
+  out['id'] = item.id;
   out['type'] = item.type;
   out['type2'] = item.type2;
   out['text'] = item.text;
@@ -312,6 +340,7 @@ function serializePlainItem(item: PromptItemPlainModel): unknown {
 
 function serializeChatMLItem(item: PromptItemChatMLModel): unknown {
   const out = cloneRecord(item.rawValue);
+  out['id'] = item.id;
   out['type'] = 'chatML';
   out['text'] = item.text;
   if (item.name !== undefined) {
@@ -324,6 +353,7 @@ function serializeChatMLItem(item: PromptItemChatMLModel): unknown {
 
 function serializeTypedItem(item: PromptItemTypedModel): unknown {
   const out = cloneRecord(item.rawValue);
+  out['id'] = item.id;
   out['type'] = item.type;
   if (item.innerFormat !== undefined) {
     out['innerFormat'] = item.innerFormat;
@@ -340,6 +370,7 @@ function serializeTypedItem(item: PromptItemTypedModel): unknown {
 
 function serializeAuthorNoteItem(item: PromptItemAuthorNoteModel): unknown {
   const out = cloneRecord(item.rawValue);
+  out['id'] = item.id;
   out['type'] = 'authornote';
   if (item.innerFormat !== undefined) {
     out['innerFormat'] = item.innerFormat;
@@ -361,6 +392,7 @@ function serializeAuthorNoteItem(item: PromptItemAuthorNoteModel): unknown {
 
 function serializeChatItem(item: PromptItemChatModel): unknown {
   const out = cloneRecord(item.rawValue);
+  out['id'] = item.id;
   out['type'] = 'chat';
   out['rangeStart'] = item.rangeStart;
   out['rangeEnd'] = item.rangeEnd;
@@ -379,6 +411,7 @@ function serializeChatItem(item: PromptItemChatModel): unknown {
 
 function serializeCacheItem(item: PromptItemCacheModel): unknown {
   const out = cloneRecord(item.rawValue);
+  out['id'] = item.id;
   out['type'] = 'cache';
   out['name'] = item.name;
   out['depth'] = item.depth;
@@ -442,6 +475,23 @@ export function parsePromptTemplate(text: string): PromptTemplateModel {
   }
 
   const items = parsed.map(parsePromptItem);
+
+  // Assign stable IDs to supported items
+  const signatureCounts = new Map<string, number>();
+  for (const item of items) {
+    if (item.supported) {
+      const rawId = item.rawValue['id'];
+      if (typeof rawId === 'string' && rawId) {
+        item.id = rawId;
+      } else {
+        const signature = JSON.stringify(item.rawValue);
+        const count = signatureCounts.get(signature) ?? 0;
+        signatureCounts.set(signature, count + 1);
+        item.id = generateItemId(item.type, signature, count);
+      }
+    }
+  }
+
   const hasUnsupportedContent = items.some((item) => !item.supported);
 
   return {
@@ -482,6 +532,19 @@ export function serializePromptTemplate(model: Pick<PromptTemplateModel, 'items'
     return '[]';
   }
   return JSON.stringify(model.items.map(serializePromptItem), null, 2);
+}
+
+export function normalizePromptTemplateForStorage(value: unknown): PromptTemplateModel {
+  if (typeof value === 'string') {
+    return parsePromptTemplate(value);
+  }
+  if (Array.isArray(value)) {
+    return parsePromptTemplate(JSON.stringify(value));
+  }
+  if (value === null || value === undefined) {
+    return parsePromptTemplate('');
+  }
+  return parsePromptTemplate(JSON.stringify(value));
 }
 
 // ---------------------------------------------------------------------------
@@ -555,13 +618,56 @@ export function serializeFormatingOrder(model: Pick<FormatingOrderModel, 'items'
   );
 }
 
+// Mapping from formatingOrder tokens to prompt item types they reference.
+// Tokens not in this map are structural (always valid regardless of prompt items).
+const TOKEN_TO_PROMPT_TYPES: Partial<Record<FormatingOrderToken, string[]>> = {
+  jailbreak: ['jailbreak'],
+  lorebook: ['lorebook'],
+  description: ['description'],
+  postEverything: ['postEverything'],
+  personaPrompt: ['persona'],
+  authorNote: ['authornote'],
+};
+
+export function collectFormatingOrderWarnings(prompt: PromptTemplateModel, order: FormatingOrderModel): string[] {
+  const warnings: string[] = [];
+
+  // Duplicate token check
+  const seen = new Set<string>();
+  for (const item of order.items) {
+    if (seen.has(item.token)) {
+      warnings.push(`Duplicate formatingOrder token: "${item.token}"`);
+    }
+    seen.add(item.token);
+  }
+
+  // Dangling reference check: token references a prompt type not present in the prompt
+  const promptTypes: Set<string> = new Set(prompt.items.filter((i) => i.supported).map((i) => i.type));
+  for (const item of order.items) {
+    const requiredTypes = TOKEN_TO_PROMPT_TYPES[item.token as FormatingOrderToken];
+    if (requiredTypes && !requiredTypes.some((t) => promptTypes.has(t))) {
+      warnings.push(`Dangling formatingOrder token: "${item.token}" has no matching prompt item`);
+    }
+  }
+
+  return warnings;
+}
+
 // ---------------------------------------------------------------------------
 // Default factories
 // ---------------------------------------------------------------------------
 
+// New in-editor items only need local uniqueness; legacy determinism is handled during parse normalization.
+let defaultIdCounter = 0;
+
+function nextDefaultId(type: string): string {
+  return `prompt-${type}-new-${++defaultIdCounter}`;
+}
+
 export function defaultPromptItemPlain(type: PromptItemPlainKind = 'plain'): PromptItemPlainModel {
   const raw: JsonRecord = { type, type2: 'normal', text: '', role: 'system' };
   return {
+    id: nextDefaultId(type),
     type,
     type2: 'normal',
     text: '',
@@ -575,6 +681,7 @@ export function defaultPromptItemPlain(type: PromptItemPlainKind = 'plain'): Pro
 export function defaultPromptItemChat(): PromptItemChatModel {
   const raw: JsonRecord = { type: 'chat', rangeStart: 0, rangeEnd: 'end' };
   return {
+    id: nextDefaultId('chat'),
     type: 'chat',
     rangeStart: 0,
     rangeEnd: 'end',
@@ -588,6 +695,7 @@ export function defaultPromptItemChat(): PromptItemChatModel {
 export function defaultPromptItemTyped(type: PromptItemTypedKind): PromptItemTypedModel {
   const raw: JsonRecord = { type };
   return {
+    id: nextDefaultId(type),
     type,
     innerFormat: undefined,
     name: undefined,
@@ -599,6 +707,7 @@ export function defaultPromptItemTyped(type: PromptItemTypedKind): PromptItemTyp
 export function defaultPromptItemAuthorNote(): PromptItemAuthorNoteModel {
   const raw: JsonRecord = { type: 'authornote' };
   return {
+    id: nextDefaultId('authornote'),
     type: 'authornote',
     innerFormat: undefined,
     defaultText: undefined,
@@ -611,6 +720,7 @@ export function defaultPromptItemAuthorNote(): PromptItemAuthorNoteModel {
 export function defaultPromptItemChatML(): PromptItemChatMLModel {
   const raw: JsonRecord = { type: 'chatML', text: '' };
   return {
+    id: nextDefaultId('chatML'),
     type: 'chatML',
     text: '',
     name: undefined,
@@ -622,6 +732,7 @@ export function defaultPromptItemChatML(): PromptItemChatMLModel {
 export function defaultPromptItemCache(): PromptItemCacheModel {
   const raw: JsonRecord = { type: 'cache', name: '', depth: 0, role: 'user' };
   return {
+    id: nextDefaultId('cache'),
     type: 'cache',
     name: '',
     depth: 0,
