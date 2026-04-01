@@ -4863,7 +4863,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const sections = luaCache.get(currentData.lua);
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= sections.length) {
-          return jsonRes(res, { error: `Lua section index ${idx} out of range (0-${sections.length - 1})` }, 400);
+          return mcpError(res, 400, {
+            action: 'get lua section',
+            message: `Lua section index ${idx} out of range (0-${sections.length - 1})`,
+            suggestion: 'list_lua 또는 GET /lua 로 유효한 section index를 확인하세요.',
+            target: `lua:${idx}`,
+          });
         }
         return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
       }
@@ -4876,11 +4881,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const indices: number[] = body.indices;
         if (!Array.isArray(indices)) {
-          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read lua sections',
+            message: 'indices must be an array of numbers',
+            suggestion: '{ "indices": [0, 1, 2] } 형식으로 전송하세요.',
+            target: 'lua:batch',
+          });
         }
         const MAX_BATCH = 20;
         if (indices.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read lua sections',
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+            suggestion: `인덱스를 ${MAX_BATCH}개 이하로 나누어 전송하세요.`,
+            target: 'lua:batch',
+          });
         }
         const sections = luaCache.get(currentData.lua);
         const result = indices.map((idx: number) => {
@@ -4898,17 +4913,24 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const name = typeof body.name === 'string' ? body.name.trim() : '';
         if (!name) {
-          return jsonRes(res, { error: 'Missing or empty "name" for new Lua section' }, 400);
+          return mcpError(res, 400, {
+            action: 'add lua section',
+            message: 'Missing or empty "name" for new Lua section',
+            suggestion: '새 섹션의 name을 요청 본문에 포함하세요.',
+            target: 'lua:add',
+          });
         }
         const content = typeof body.content === 'string' ? body.content : '';
         const sections = luaCache.get(currentData.lua);
         const duplicate = sections.find((s) => s.name === name);
         if (duplicate) {
-          return jsonRes(
-            res,
-            { error: `Section "${name}" already exists`, existingIndex: sections.indexOf(duplicate) },
-            400,
-          );
+          return mcpError(res, 400, {
+            action: 'add lua section',
+            details: { existingIndex: sections.indexOf(duplicate) },
+            message: `Section "${name}" already exists`,
+            suggestion: '기존 섹션을 수정하거나 다른 이름을 사용하세요.',
+            target: 'lua:add',
+          });
         }
 
         const allowed = await deps.askRendererConfirm(
@@ -5127,7 +5149,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newContent = oldContent.slice(0, anchorPos) + insContent + '\n' + oldContent.slice(anchorPos);
           }
         } else {
-          return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
+          return mcpError(res, 400, {
+            action: 'insert lua section content',
+            message: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다',
+            suggestion: '{ "position": "after", "anchor": "기준 문자열" } 형식으로 anchor를 포함하세요.',
+            target: `lua:${idx}`,
+          });
         }
 
         const preview = insContent.substring(0, 100) + (insContent.length > 100 ? '...' : '');
@@ -5199,7 +5226,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const { sections } = cssCache.get(currentData.css);
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= sections.length) {
-          return jsonRes(res, { error: `CSS section index ${idx} out of range (0-${sections.length - 1})` }, 400);
+          return mcpError(res, 400, {
+            action: 'get css section',
+            message: `CSS section index ${idx} out of range (0-${sections.length - 1})`,
+            suggestion: 'list_css 또는 GET /css-section 으로 유효한 section index를 확인하세요.',
+            target: `css-section:${idx}`,
+          });
         }
         return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
       }
@@ -5212,11 +5244,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const indices: number[] = body.indices;
         if (!Array.isArray(indices)) {
-          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read css sections',
+            message: 'indices must be an array of numbers',
+            suggestion: '{ "indices": [0, 1, 2] } 형식으로 전송하세요.',
+            target: 'css-section:batch',
+          });
         }
         const MAX_BATCH = 20;
         if (indices.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read css sections',
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+            suggestion: `인덱스를 ${MAX_BATCH}개 이하로 나누어 전송하세요.`,
+            target: 'css-section:batch',
+          });
         }
         const { sections } = cssCache.get(currentData.css);
         const result = indices.map((idx: number) => {
@@ -5234,17 +5276,24 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const name = typeof body.name === 'string' ? body.name.trim() : '';
         if (!name) {
-          return jsonRes(res, { error: 'Missing or empty "name" for new CSS section' }, 400);
+          return mcpError(res, 400, {
+            action: 'add css section',
+            message: 'Missing or empty "name" for new CSS section',
+            suggestion: '새 섹션의 name을 요청 본문에 포함하세요.',
+            target: 'css-section:add',
+          });
         }
         const content = typeof body.content === 'string' ? body.content : '';
         const { sections, prefix, suffix } = cssCache.get(currentData.css);
         const duplicate = sections.find((s) => s.name === name);
         if (duplicate) {
-          return jsonRes(
-            res,
-            { error: `Section "${name}" already exists`, existingIndex: sections.indexOf(duplicate) },
-            400,
-          );
+          return mcpError(res, 400, {
+            action: 'add css section',
+            details: { existingIndex: sections.indexOf(duplicate) },
+            message: `Section "${name}" already exists`,
+            suggestion: '기존 섹션을 수정하거나 다른 이름을 사용하세요.',
+            target: 'css-section:add',
+          });
         }
 
         const allowed = await deps.askRendererConfirm(
@@ -5452,7 +5501,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newContent = oldContent.slice(0, anchorPos) + insContent + '\n' + oldContent.slice(anchorPos);
           }
         } else {
-          return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
+          return mcpError(res, 400, {
+            action: 'insert css section content',
+            message: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다',
+            suggestion: '{ "position": "before", "anchor": "기준 문자열" } 형식으로 anchor를 포함하세요.',
+            target: `css-section:${idx}`,
+          });
         }
 
         const preview = insContent.substring(0, 100) + (insContent.length > 100 ? '...' : '');

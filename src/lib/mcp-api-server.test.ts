@@ -91,10 +91,16 @@ function closeServer(server: http.Server): Promise<void> {
   });
 }
 
+interface TestDepsOverrides {
+  parseLuaSections?: () => Array<{ name: string; content: string }>;
+  parseCssSections?: () => { sections: Array<{ name: string; content: string }>; prefix: string; suffix: string };
+}
+
 async function startTestApiServer(
   currentData: SearchFixture,
   referenceFiles: Array<{ fileName: string; data: SearchFixture }> = [],
   skillsDir?: string,
+  overrides?: TestDepsOverrides,
 ) {
   const modulePath = './mcp-api-server.ts';
   const { startApiServer } = (await import(modulePath)) as { startApiServer: StartApiServer };
@@ -115,10 +121,10 @@ async function startTestApiServer(
       void payload;
     },
     onListening: (port) => resolvePort(port),
-    parseLuaSections,
+    parseLuaSections: overrides?.parseLuaSections ?? parseLuaSections,
     combineLuaSections,
     detectLuaSection,
-    parseCssSections,
+    parseCssSections: overrides?.parseCssSections ?? parseCssSections,
     combineCssSections,
     detectCssSectionInline,
     detectCssBlockOpen,
@@ -1781,6 +1787,26 @@ describe('MCP API structured error envelopes — greeting routes', () => {
 });
 
 describe('MCP API structured error envelopes — lua-section routes', () => {
+  it('returns a structured error envelope for invalid index in GET /lua/:idx', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      lua: '',
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/lua/999');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(res.data.error).toContain('out of range');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('returns a structured error envelope for non-array indices in POST /lua/batch', async () => {
     const fixture: SearchFixture = {
       ...createSearchFixture(),
@@ -1798,6 +1824,92 @@ describe('MCP API structured error envelopes — lua-section routes', () => {
       expect(typeof res.data.action).toBe('string');
       expect(typeof res.data.target).toBe('string');
       expect(res.data.error).toContain('indices must be an array');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for exceeding max batch size in POST /lua/batch', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      lua: '',
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const indices = Array.from({ length: 21 }, (_, i) => i);
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lua/batch', { indices });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(res.data.error).toContain('Maximum');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for missing name in POST /lua/add', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      lua: '',
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lua/add', {
+        content: 'some code',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(res.data.error).toContain('Missing');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns details.existingIndex for duplicate section name in POST /lua/add', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      lua: 'has-section',
+    };
+    const api = await startTestApiServer(fixture, [], undefined, {
+      parseLuaSections: () => [{ name: 'TestSection', content: 'code here' }],
+    });
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lua/add', {
+        name: 'TestSection',
+        content: 'new code',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(res.data.error).toContain('already exists');
+      expect(res.data.details).toEqual({ existingIndex: 0 });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for anchor-required in POST /lua/:idx/insert', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      lua: 'has-section',
+    };
+    const api = await startTestApiServer(fixture, [], undefined, {
+      parseLuaSections: () => [{ name: 'TestSection', content: 'code here' }],
+    });
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lua/0/insert', {
+        content: 'new code',
+        position: 'after',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(res.data.error).toContain('anchor');
     } finally {
       await closeServer(api.server);
     }
@@ -1825,6 +1937,26 @@ describe('MCP API insert-regex-field action consistency', () => {
 });
 
 describe('MCP API structured error envelopes — css-section routes', () => {
+  it('returns a structured error envelope for invalid index in GET /css-section/:idx', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      css: '',
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/css-section/999');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(res.data.error).toContain('out of range');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('returns a structured error envelope for non-array indices in POST /css-section/batch', async () => {
     const fixture: SearchFixture = {
       ...createSearchFixture(),
@@ -1842,6 +1974,92 @@ describe('MCP API structured error envelopes — css-section routes', () => {
       expect(typeof res.data.action).toBe('string');
       expect(typeof res.data.target).toBe('string');
       expect(res.data.error).toContain('indices must be an array');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for exceeding max batch size in POST /css-section/batch', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      css: '',
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const indices = Array.from({ length: 21 }, (_, i) => i);
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/css-section/batch', { indices });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(res.data.error).toContain('Maximum');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for missing name in POST /css-section/add', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      css: '',
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/css-section/add', {
+        content: 'some css',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(res.data.error).toContain('Missing');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns details.existingIndex for duplicate section name in POST /css-section/add', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      css: 'has-section',
+    };
+    const api = await startTestApiServer(fixture, [], undefined, {
+      parseCssSections: () => ({ sections: [{ name: 'TestSection', content: 'css here' }], prefix: '', suffix: '' }),
+    });
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/css-section/add', {
+        name: 'TestSection',
+        content: 'new css',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(res.data.error).toContain('already exists');
+      expect(res.data.details).toEqual({ existingIndex: 0 });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for anchor-required in POST /css-section/:idx/insert', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      css: 'has-section',
+    };
+    const api = await startTestApiServer(fixture, [], undefined, {
+      parseCssSections: () => ({ sections: [{ name: 'TestSection', content: 'css here' }], prefix: '', suffix: '' }),
+    });
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/css-section/0/insert', {
+        content: 'new css',
+        position: 'before',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(res.data.error).toContain('anchor');
     } finally {
       await closeServer(api.server);
     }
