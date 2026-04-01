@@ -5839,7 +5839,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference lorebook',
+            target: `reference:${idx}:lorebook`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const ref = refFiles[idx];
         const lorebook = ref.data.lorebook || [];
@@ -5924,17 +5928,29 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read reference lorebook',
+            target: `reference:${idx}:lorebook:batch`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const body = await readJsonBody(req, res, `reference/${idx}/lorebook/batch`, broadcastStatus);
         if (!body) return;
         const indices: number[] = body.indices;
         if (!Array.isArray(indices)) {
-          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read reference lorebook',
+            target: `reference:${idx}:lorebook:batch`,
+            message: 'indices must be an array of numbers',
+          });
         }
         const MAX_BATCH = 50;
         if (indices.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read reference lorebook',
+            target: `reference:${idx}:lorebook:batch`,
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+          });
         }
         const lorebook = refFiles[idx].data.lorebook || [];
         const requestedFields: string[] | undefined = body.fields;
@@ -5961,17 +5977,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference lorebook',
+            target: `reference:${idx}:lorebook:${parts[3]}`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const ref = refFiles[idx];
         const lorebook = ref.data.lorebook || [];
         const entryIdx = parseInt(parts[3], 10);
         if (isNaN(entryIdx) || entryIdx < 0 || entryIdx >= lorebook.length) {
-          return jsonRes(
-            res,
-            { error: `Lorebook entry index ${entryIdx} out of range (0-${lorebook.length - 1})` },
-            400,
-          );
+          return mcpError(res, 400, {
+            action: 'read reference lorebook',
+            target: `reference:${idx}:lorebook:${entryIdx}`,
+            message: `Lorebook entry index ${entryIdx} out of range (0-${lorebook.length - 1})`,
+          });
         }
         return jsonRes(res, {
           refIndex: idx,
@@ -5988,7 +6008,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference regex',
+            target: `reference:${idx}:regex`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const ref = refFiles[idx];
         const regexArr = ref.data.regex || [];
@@ -6010,13 +6034,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference regex',
+            target: `reference:${idx}:regex:${parts[3]}`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const ref = refFiles[idx];
         const regexArr = ref.data.regex || [];
         const entryIdx = parseInt(parts[3], 10);
         if (isNaN(entryIdx) || entryIdx < 0 || entryIdx >= regexArr.length) {
-          return jsonRes(res, { error: `Regex entry index ${entryIdx} out of range (0-${regexArr.length - 1})` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference regex',
+            target: `reference:${idx}:regex:${entryIdx}`,
+            message: `Regex entry index ${entryIdx} out of range (0-${regexArr.length - 1})`,
+          });
         }
         const entry = { ...regexArr[entryIdx] };
         // Normalize legacy in/out → find/replace
@@ -6036,7 +6068,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference lua',
+            target: `reference:${idx}:lua`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const ref = refFiles[idx];
         const luaCode = ref.data.lua || '';
@@ -6059,17 +6095,29 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read reference lua',
+            target: `reference:${idx}:lua:batch`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const body = await readJsonBody(req, res, `reference/${idx}/lua/batch`, broadcastStatus);
         if (!body) return;
         const indices: number[] = body.indices;
         if (!Array.isArray(indices)) {
-          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read reference lua',
+            target: `reference:${idx}:lua:batch`,
+            message: 'indices must be an array of numbers',
+          });
         }
         const MAX_BATCH = 20;
         if (indices.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read reference lua',
+            target: `reference:${idx}:lua:batch`,
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+          });
         }
         const luaCode = refFiles[idx].data.lua || '';
         const sections = luaCode ? deps.parseLuaSections(luaCode) : [];
@@ -6093,18 +6141,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference lua',
+            target: `reference:${idx}:lua:${parts[3]}`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const ref = refFiles[idx];
         const luaCode = ref.data.lua || '';
         const sections = luaCode ? deps.parseLuaSections(luaCode) : [];
         const sectionIdx = parseInt(parts[3], 10);
         if (isNaN(sectionIdx) || sectionIdx < 0 || sectionIdx >= sections.length) {
-          return jsonRes(
-            res,
-            { error: `Lua section index ${sectionIdx} out of range (0-${sections.length - 1})` },
-            400,
-          );
+          return mcpError(res, 400, {
+            action: 'read reference lua',
+            target: `reference:${idx}:lua:${sectionIdx}`,
+            message: `Lua section index ${sectionIdx} out of range (0-${sections.length - 1})`,
+          });
         }
         return jsonRes(res, {
           refIndex: idx,
@@ -6122,7 +6174,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference css',
+            target: `reference:${idx}:css`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const ref = refFiles[idx];
         const cssCode = ref.data.css || '';
@@ -6145,17 +6201,29 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read reference css',
+            target: `reference:${idx}:css:batch`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const body = await readJsonBody(req, res, `reference/${idx}/css/batch`, broadcastStatus);
         if (!body) return;
         const indices: number[] = body.indices;
         if (!Array.isArray(indices)) {
-          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read reference css',
+            target: `reference:${idx}:css:batch`,
+            message: 'indices must be an array of numbers',
+          });
         }
         const MAX_BATCH = 20;
         if (indices.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read reference css',
+            target: `reference:${idx}:css:batch`,
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+          });
         }
         const cssCode = refFiles[idx].data.css || '';
         const cssResult = cssCode
@@ -6181,7 +6249,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference css',
+            target: `reference:${idx}:css:${parts[3]}`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const ref = refFiles[idx];
         const cssCode = ref.data.css || '';
@@ -6190,11 +6262,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           : { sections: [] as Section[], prefix: '', suffix: '' };
         const sectionIdx = parseInt(parts[3], 10);
         if (isNaN(sectionIdx) || sectionIdx < 0 || sectionIdx >= cssResult.sections.length) {
-          return jsonRes(
-            res,
-            { error: `CSS section index ${sectionIdx} out of range (0-${cssResult.sections.length - 1})` },
-            400,
-          );
+          return mcpError(res, 400, {
+            action: 'read reference css',
+            target: `reference:${idx}:css:${sectionIdx}`,
+            message: `CSS section index ${sectionIdx} out of range (0-${cssResult.sections.length - 1})`,
+          });
         }
         return jsonRes(res, {
           refIndex: idx,
@@ -6213,14 +6285,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const idx = parseInt(parts[1], 10);
         const fieldName = decodeURIComponent(parts[2]);
         if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
-          return jsonRes(res, { error: `Reference index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference field',
+            target: `reference:${idx}:${fieldName}`,
+            message: `Reference index ${idx} out of range`,
+          });
         }
         const ref = refFiles[idx];
         if (fieldName === 'lorebook') {
           return jsonRes(res, {
-            index: idx,
-            fileName: ref.fileName,
-            field: 'lorebook',
             content: (ref.data.lorebook || []).map((entry: Record<string, unknown>) =>
               normalizeLorebookEntryForResponse(entry, ref.data.lorebook || []),
             ),
@@ -6255,7 +6328,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'name',
         ];
         if (!allowedRefFields.includes(fieldName)) {
-          return jsonRes(res, { error: `Unknown field: ${fieldName}` }, 400);
+          return mcpError(res, 400, {
+            action: 'read reference field',
+            target: `reference:${idx}:${fieldName}`,
+            message: `Unknown field: ${fieldName}`,
+          });
         }
         return jsonRes(res, {
           index: idx,

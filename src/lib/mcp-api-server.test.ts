@@ -2510,6 +2510,151 @@ describe('MCP API structured error envelopes — field routes', () => {
   });
 });
 
+describe('MCP API structured error envelopes — reference routes', () => {
+  const referenceFiles = [
+    {
+      fileName: 'ref.charx',
+      data: {
+        lorebook: [{ comment: 'Entry A', key: 'a', content: 'content-a' }],
+        regex: [{ comment: 'test-regex', type: 'editoutput', find: 'foo', replace: 'bar' }],
+        lua: '',
+        css: '',
+      },
+    },
+  ];
+
+  it('returns a structured error envelope for GET /reference/99/lorebook (out-of-range ref index)', async () => {
+    const api = await startTestApiServer(createSearchFixture(), referenceFiles);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/reference/99/lorebook');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read reference lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'reference:99:lorebook');
+      expect(res.data.error).toContain('out of range');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /reference/0/lorebook/batch with invalid indices', async () => {
+    const api = await startTestApiServer(createSearchFixture(), referenceFiles);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/reference/0/lorebook/batch', {
+        indices: 'not-an-array',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch read reference lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'reference:0:lorebook:batch');
+      expect(res.data.error).toContain('indices must be an array');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for GET /reference/0/lorebook/999 (invalid entry index)', async () => {
+    const api = await startTestApiServer(createSearchFixture(), referenceFiles);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/reference/0/lorebook/999');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read reference lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'reference:0:lorebook:999');
+      expect(res.data.error).toContain('out of range');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for GET /reference/0/regex/999 (invalid entry index)', async () => {
+    const api = await startTestApiServer(createSearchFixture(), referenceFiles);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/reference/0/regex/999');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read reference regex');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'reference:0:regex:999');
+      expect(res.data.error).toContain('out of range');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /reference/0/lua/batch with oversized indices', async () => {
+    const api = await startTestApiServer(createSearchFixture(), referenceFiles);
+    try {
+      const indices = Array.from({ length: 21 }, (_, i) => i);
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/reference/0/lua/batch', { indices });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch read reference lua');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'reference:0:lua:batch');
+      expect(res.data.error).toContain('Maximum');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for GET /reference/0/lua/999 (invalid section index)', async () => {
+    const api = await startTestApiServer(createSearchFixture(), referenceFiles);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/reference/0/lua/999');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read reference lua');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'reference:0:lua:999');
+      expect(res.data.error).toContain('out of range');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /reference/0/css/batch with invalid indices', async () => {
+    const api = await startTestApiServer(createSearchFixture(), referenceFiles);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/reference/0/css/batch', {
+        indices: 'not-an-array',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch read reference css');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'reference:0:css:batch');
+      expect(res.data.error).toContain('indices must be an array');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for GET /reference/0/css/999 (invalid section index)', async () => {
+    const api = await startTestApiServer(createSearchFixture(), referenceFiles);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/reference/0/css/999');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read reference css');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'reference:0:css:999');
+      expect(res.data.error).toContain('out of range');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for GET /reference/0/badfield (unknown field)', async () => {
+    const api = await startTestApiServer(createSearchFixture(), referenceFiles);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/reference/0/badfield');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read reference field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'reference:0:badfield');
+      expect(res.data.error).toContain('Unknown field');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
 describe('MCP API structured error envelopes — lorebook read and diff routes', () => {
   it('returns a structured error envelope for GET /lorebook/999', async () => {
     const fixture: SearchFixture = createSearchFixture();
