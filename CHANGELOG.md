@@ -9,6 +9,19 @@
 
 ---
 
+## [0.31.0] - 2026-04-01
+
+### 새 기능
+
+- **세션 복구 시작 플로우**: 비정상 종료 뒤 재시작 시 최근 자동 저장을 감지해 `자동 저장 복원` / `원본 열기` / `무시` 중 하나를 고를 수 있는 recovery 대화상자를 추가
+- **파일 타입별 autosave + provenance sidecar**: `.charx`, `.risum`, `.risup` 문서를 각자 원래 형식으로 자동 저장하고, `.toki-recovery.json` sidecar에 원본 경로, 파일 타입, 저장 시각, dirty 필드, 앱 버전을 함께 기록
+- **복원 provenance UI**: 자동 저장에서 복원한 문서에 `[자동복원]` 파일 라벨과 고정 status를 표시하고, 저장 / 다른 이름 저장 / 열기 / 새 파일 성공 시 자동으로 해제
+
+### 수정
+
+- **recovery save lifecycle 정합성 보강**: 첫 저장과 다른 이름 저장 뒤에도 recovery record가 새 경로와 파일 타입을 다시 시드하도록 고쳐, interrupted-session record와 provenance sidecar가 서로 어긋나 복구 후보가 무효화되던 문제를 수정
+- **session recovery 회귀 테스트 보강**: startup recovery와 file-action 경로에 restore / open-original / ignore / cancel / save failure 회귀 테스트를 추가해 복원 provenance 상태가 성공 경로에서만 바뀌도록 고정
+
 ## [0.30.0] - 2026-04-01
 
 ### 변경

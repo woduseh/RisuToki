@@ -158,6 +158,7 @@
 - `.risup`는 gzip / zlib / raw-deflate 변형까지 호환되며 저장 시 감지한 압축 모드를 최대한 유지합니다.
 - `promptTemplate` / `formatingOrder`는 구조화 UI와 전용 MCP 도구가 우선 surface입니다. unsupported raw shape를 직접 만져야 할 때만 `write_field` fallback을 사용하세요.
 - risup fallback write surface도 무제한 passthrough가 아닙니다. `write_field`, `write_field_batch`, autosave는 `promptTemplate`, `formatingOrder`, `presetBias`, `localStopStrings`에 대해 UI 저장과 같은 validation boundary를 적용하며, malformed JSON/shape는 400 또는 autosave failure로 즉시 거부됩니다.
+- 비정상 종료 뒤 재시작 시 자동 저장 복원 프롬프트가 뜰 수 있습니다. 복원하면 파일 라벨에 `[자동복원]`이 붙고 상태바에 provenance가 표시되며, autosave 옆에는 `.toki-recovery.json` sidecar가 함께 기록됩니다.
 
 ---
 
