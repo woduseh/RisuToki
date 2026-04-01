@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { coerceRisupInputValue, getRisupValidationMessage, validateRisupDraftFields } from './risup-form-editor';
+import {
+  coerceRisupInputValue,
+  getRisupValidationMessage,
+  isDuplicateWarning,
+  validateRisupDraftFields,
+} from './risup-form-editor';
 import { RISUP_JSON_FIELD_IDS } from './risup-fields';
 
 describe('risup form editor helpers', () => {
@@ -112,5 +117,23 @@ describe('risup form editor helpers', () => {
     for (const e of errors) {
       expect(e.severity).toBe('error');
     }
+  });
+
+  describe('isDuplicateWarning', () => {
+    it('returns true for messages starting with "Duplicate "', () => {
+      expect(isDuplicateWarning('Duplicate formatingOrder token: "main"')).toBe(true);
+    });
+
+    it('returns false for dangling-reference warnings', () => {
+      expect(isDuplicateWarning('Dangling formatingOrder token: "chats" has no matching prompt item')).toBe(false);
+    });
+
+    it('returns false when "Duplicate" appears mid-string but not at the start', () => {
+      expect(isDuplicateWarning('Token "Duplicate" is dangling')).toBe(false);
+    });
+
+    it('returns false for empty strings', () => {
+      expect(isDuplicateWarning('')).toBe(false);
+    });
   });
 });

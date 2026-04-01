@@ -9,6 +9,17 @@
 
 ---
 
+## [0.32.0] - 2026-04-01
+
+### 새 기능
+
+- **안정적 prompt-item ID**: `.risup` `promptTemplate`의 지원 항목에 결정론적 `id`를 부여해, 같은 파일을 다시 열거나 항목을 재정렬해도 안정적으로 추적할 수 있도록 개선
+- **레거시 prompt ID 정규화**: 기존 `.risup` 파일을 열 때 `id`가 없는 prompt item에 콘텐츠 기반 결정론적 ID를 자동 생성해, 저장·자동저장·재열기 경로에서도 같은 항목 정체성을 유지
+- **prompt editor ID 보존**: 프롬프트 항목 타입 변경·순서 변경 시 기존 `id`를 유지하고, 새 항목 추가 시에만 fresh `id`를 발급
+- **warning-only formatingOrder 진단**: 중복 토큰과 대응 없는 토큰을 advisory warning으로 표시하고, 저장 차단 오류와 분리해 surface하도록 보강
+- **MCP additive prompt metadata**: `list_risup_prompt_items`, `read_risup_prompt_item`에 additive `id`를, `read_risup_formating_order`에 `warnings` 배열을 추가
+- **raw promptTemplate ID round-trip**: raw `write_field("promptTemplate")`로 전달한 명시적 `id`를 그대로 보존해 unsupported/raw shape fallback과 구조화 surface가 충돌하지 않도록 정리
+
 ## [0.31.0] - 2026-04-01
 
 ### 새 기능

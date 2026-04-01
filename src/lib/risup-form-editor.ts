@@ -38,6 +38,15 @@ export function coerceRisupInputValue(
   return String(value);
 }
 
+/**
+ * Classify a raw warning message from collectFormatingOrderWarnings as
+ * a duplicate-token warning.  Uses startsWith to avoid false positives
+ * when "Duplicate" appears inside a token name.
+ */
+export function isDuplicateWarning(msg: string): boolean {
+  return msg.startsWith('Duplicate ');
+}
+
 export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftValidationError[] {
   const errors: RisupDraftValidationError[] = [];
 
@@ -134,7 +143,7 @@ export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftVa
         field: 'formatingOrder',
         label,
         severity: 'warning',
-        message: msg.includes('Duplicate') ? `${label} 중복 토큰: ${msg}` : `${label} 참조 경고: ${msg}`,
+        message: isDuplicateWarning(msg) ? `${label} 중복 토큰: ${msg}` : `${label} 참조 경고: ${msg}`,
       });
     }
   }

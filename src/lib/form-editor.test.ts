@@ -3,10 +3,12 @@ import {
   initFormEditor,
   showLoreEditor,
   showRegexEditor,
+  showRisupEditor,
   disposeFormEditors,
   type FormTabInfo,
   type FormEditorDeps,
 } from './form-editor';
+import type { RisupFormTabInfo } from './risup-form-editor';
 
 vi.mock('./monaco-loader', () => ({
   ensureBlueArchiveMonacoTheme: vi.fn(),
@@ -168,5 +170,124 @@ describe('form-editor read-only badge', () => {
     expect(badge).not.toBeNull();
     // The badge should use a CSS class, NOT inline styles for its appearance
     expect(badge?.getAttribute('style')).toBeFalsy();
+  });
+});
+
+describe('showRisupEditor validation boxes', () => {
+  function makeRisupTab(overrides?: Partial<RisupFormTabInfo>): RisupFormTabInfo {
+    return {
+      id: 'risup_gen',
+      label: '생성',
+      language: '_risupform',
+      getValue: () => ({ name: 'test-preset' }),
+      setValue: (v: unknown) => v,
+      _risupGroupId: 'templates',
+      ...overrides,
+    };
+  }
+
+  it('renders a separate warning box when warnings are present', async () => {
+    const { validateRisupDraftFields: mockValidate } = await import('./risup-form-editor');
+    const { getRisupFieldGroup: mockGetGroup } = await import('./risup-fields');
+    vi.mocked(mockGetGroup).mockReturnValue({
+      id: 'templates',
+      label: '생성',
+      icon: '⚙️',
+      fields: [{ id: 'formatingOrder', label: '포매팅 순서', editor: 'textarea' }],
+    });
+    vi.mocked(mockValidate).mockReturnValue([
+      { field: 'formatingOrder', label: '포매팅 순서', severity: 'warning', message: '중복 토큰 경고' },
+    ]);
+
+    const deps = createDeps();
+    initFormEditor(deps);
+    showRisupEditor(makeRisupTab());
+
+    const container = document.getElementById('editor-container')!;
+    const warningBox = container.querySelector('.risup-validation-warnings') as HTMLElement;
+    expect(warningBox).not.toBeNull();
+    expect(warningBox.style.display).not.toBe('none');
+    expect(warningBox.textContent).toContain('중복 토큰 경고');
+
+    const errorBox = container.querySelector('.risup-validation-errors') as HTMLElement;
+    expect(errorBox.style.display).toBe('none');
+  });
+
+  it('renders a separate error box when errors are present', async () => {
+    const { validateRisupDraftFields: mockValidate } = await import('./risup-form-editor');
+    const { getRisupFieldGroup: mockGetGroup } = await import('./risup-fields');
+    vi.mocked(mockGetGroup).mockReturnValue({
+      id: 'templates',
+      label: '생성',
+      icon: '⚙️',
+      fields: [{ id: 'formatingOrder', label: '포매팅 순서', editor: 'textarea' }],
+    });
+    vi.mocked(mockValidate).mockReturnValue([
+      { field: 'formatingOrder', label: '포매팅 순서', severity: 'error', message: 'JSON 파싱 실패' },
+    ]);
+
+    const deps = createDeps();
+    initFormEditor(deps);
+    showRisupEditor(makeRisupTab());
+
+    const container = document.getElementById('editor-container')!;
+    const errorBox = container.querySelector('.risup-validation-errors') as HTMLElement;
+    expect(errorBox).not.toBeNull();
+    expect(errorBox.style.display).not.toBe('none');
+    expect(errorBox.textContent).toContain('JSON 파싱 실패');
+
+    const warningBox = container.querySelector('.risup-validation-warnings') as HTMLElement;
+    expect(warningBox.style.display).toBe('none');
+  });
+
+  it('renders both error and warning boxes when both severities are present', async () => {
+    const { validateRisupDraftFields: mockValidate } = await import('./risup-form-editor');
+    const { getRisupFieldGroup: mockGetGroup } = await import('./risup-fields');
+    vi.mocked(mockGetGroup).mockReturnValue({
+      id: 'templates',
+      label: '생성',
+      icon: '⚙️',
+      fields: [{ id: 'formatingOrder', label: '포매팅 순서', editor: 'textarea' }],
+    });
+    vi.mocked(mockValidate).mockReturnValue([
+      { field: 'formatingOrder', label: '포매팅 순서', severity: 'error', message: 'JSON 파싱 실패' },
+      { field: 'formatingOrder', label: '포매팅 순서', severity: 'warning', message: '중복 토큰 경고' },
+    ]);
+
+    const deps = createDeps();
+    initFormEditor(deps);
+    showRisupEditor(makeRisupTab());
+
+    const container = document.getElementById('editor-container')!;
+    const errorBox = container.querySelector('.risup-validation-errors') as HTMLElement;
+    const warningBox = container.querySelector('.risup-validation-warnings') as HTMLElement;
+    expect(errorBox).not.toBeNull();
+    expect(warningBox).not.toBeNull();
+    expect(errorBox.style.display).not.toBe('none');
+    expect(warningBox.style.display).not.toBe('none');
+    expect(errorBox.textContent).toContain('JSON 파싱 실패');
+    expect(warningBox.textContent).toContain('중복 토큰 경고');
+  });
+
+  it('hides both boxes when no diagnostics are present', async () => {
+    const { validateRisupDraftFields: mockValidate } = await import('./risup-form-editor');
+    const { getRisupFieldGroup: mockGetGroup } = await import('./risup-fields');
+    vi.mocked(mockGetGroup).mockReturnValue({
+      id: 'templates',
+      label: '생성',
+      icon: '⚙️',
+      fields: [{ id: 'formatingOrder', label: '포매팅 순서', editor: 'textarea' }],
+    });
+    vi.mocked(mockValidate).mockReturnValue([]);
+
+    const deps = createDeps();
+    initFormEditor(deps);
+    showRisupEditor(makeRisupTab());
+
+    const container = document.getElementById('editor-container')!;
+    const errorBox = container.querySelector('.risup-validation-errors') as HTMLElement;
+    const warningBox = container.querySelector('.risup-validation-warnings') as HTMLElement;
+    expect(errorBox.style.display).toBe('none');
+    expect(warningBox.style.display).toBe('none');
   });
 });

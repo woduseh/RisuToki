@@ -595,21 +595,39 @@ export function showRisupEditor(tabInfo: RisupFormTabInfo): void {
   const body = document.createElement('div');
   body.className = 'form-editor-body';
 
-  const validationBox = document.createElement('div');
-  validationBox.style.cssText =
+  const errorBox = document.createElement('div');
+  errorBox.className = 'risup-validation-errors';
+  errorBox.style.cssText =
     'display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #d97706;border-radius:6px;background:rgba(217,119,6,0.08);color:#b45309;font-size:12px;white-space:pre-wrap;';
-  body.appendChild(validationBox);
+  body.appendChild(errorBox);
+
+  const warningBox = document.createElement('div');
+  warningBox.className = 'risup-validation-warnings';
+  warningBox.style.cssText =
+    'display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #ca8a04;border-radius:6px;background:rgba(202,138,4,0.06);color:#a16207;font-size:12px;white-space:pre-wrap;';
+  body.appendChild(warningBox);
 
   function updateValidation(): void {
     const groupFieldIds = new Set(groupFields.map((field) => field.id));
-    const errors = validateRisupDraftFields(data).filter((error) => groupFieldIds.has(error.field));
+    const all = validateRisupDraftFields(data).filter((error) => groupFieldIds.has(error.field));
+    const errors = all.filter((e) => e.severity === 'error');
+    const warnings = all.filter((e) => e.severity === 'warning');
+
     if (errors.length === 0) {
-      validationBox.style.display = 'none';
-      validationBox.textContent = '';
-      return;
+      errorBox.style.display = 'none';
+      errorBox.textContent = '';
+    } else {
+      errorBox.style.display = '';
+      errorBox.textContent = errors.map((e) => e.message).join('\n');
     }
-    validationBox.style.display = '';
-    validationBox.textContent = errors.map((error) => error.message).join('\n');
+
+    if (warnings.length === 0) {
+      warningBox.style.display = 'none';
+      warningBox.textContent = '';
+    } else {
+      warningBox.style.display = '';
+      warningBox.textContent = warnings.map((e) => e.message).join('\n');
+    }
   }
 
   function applyFieldChange(fieldId: string, nextValue: unknown): void {

@@ -524,6 +524,7 @@ export function createPromptTemplateEditor(
               i,
               (old) => {
                 const fresh = defaultPromptItem(value as SupportedPromptItemType);
+                if (!old.supported) return fresh;
                 return { ...fresh, id: old.id };
               },
               true,
