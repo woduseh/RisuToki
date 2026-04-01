@@ -1,6 +1,25 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildPreviewDocument } from './preview-format';
-import { createDocumentPreviewRuntime } from './preview-runtime';
+import {
+  createDocumentPreviewRuntime,
+  createIframePreviewRuntime,
+  PreviewRuntimeTimeoutError,
+} from './preview-runtime';
+
+function createWindowTarget() {
+  const listeners = new Set<(event: MessageEvent<unknown>) => void>();
+  return {
+    addEventListener(_type: string, listener: (event: MessageEvent<unknown>) => void) {
+      listeners.add(listener);
+    },
+    removeEventListener(_type: string, listener: (event: MessageEvent<unknown>) => void) {
+      listeners.delete(listener);
+    },
+    dispatchMessage(event: MessageEvent<unknown>) {
+      for (const listener of listeners) listener(event);
+    },
+  };
+}
 
 describe('preview runtime contract', () => {
   it('ships a static iframe shell instead of inlining user css or html payloads into the bootstrap document', () => {
@@ -96,6 +115,10 @@ describe('preview runtime contract', () => {
     expect(onBridge).toHaveBeenCalledWith({ type: 'risu-btn', data: 'advance' });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('tolerates blocked contentWindow.document access when no same-origin contentDocument is available', async () => {
     const contentWindow = {} as { document?: Document | null };
     Object.defineProperty(contentWindow, 'document', {
@@ -115,5 +138,49 @@ describe('preview runtime contract', () => {
 
     await expect(runtime.resetDocument()).resolves.toBeUndefined();
     expect(() => runtime.dispose()).not.toThrow();
+  });
+
+  it('rejects resetDocument when the iframe ready handshake never arrives', async () => {
+    vi.useFakeTimers();
+
+    const frame = {
+      contentWindow: { postMessage() {} },
+      setAttribute() {},
+      srcdoc: '',
+    } as unknown as HTMLIFrameElement;
+    const windowTarget = createWindowTarget();
+    const runtime = createIframePreviewRuntime(frame, windowTarget as unknown as Window);
+
+    const resetPromise = runtime.resetDocument();
+
+    const assertion = expect(resetPromise).rejects.toBeInstanceOf(PreviewRuntimeTimeoutError);
+
+    await vi.advanceTimersByTimeAsync(5000);
+
+    await assertion;
+  });
+
+  it('resolves resetDocument only after the matching iframe ready handshake arrives', async () => {
+    vi.useFakeTimers();
+
+    const frame = {
+      contentWindow: { postMessage() {} },
+      setAttribute() {},
+      srcdoc: '',
+    } as unknown as HTMLIFrameElement;
+    const windowTarget = createWindowTarget();
+    const runtime = createIframePreviewRuntime(frame, windowTarget as unknown as Window);
+
+    const resetPromise = runtime.resetDocument();
+    const token = frame.srcdoc.match(/const TOKEN = '([^']+)'/)?.[1];
+
+    windowTarget.dispatchMessage(
+      new MessageEvent('message', {
+        source: frame.contentWindow as unknown as MessageEventSource,
+        data: { type: 'preview-runtime:ready', token },
+      }),
+    );
+
+    await expect(resetPromise).resolves.toBeUndefined();
   });
 });
