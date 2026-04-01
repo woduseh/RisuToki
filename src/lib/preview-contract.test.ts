@@ -124,6 +124,8 @@ function createRecordingEngine() {
 
     setAssets() {},
     setCharDescription() {},
+    setCharPersonality() {},
+    setCharScenario() {},
     setCharFirstMessage() {},
     setCharName(name: string) {
       charName = name;

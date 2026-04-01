@@ -64,6 +64,8 @@ export interface PreviewSnapshot {
 export interface PreviewCharData {
   name?: string;
   description?: string;
+  personality?: string;
+  scenario?: string;
   firstMessage?: string;
   defaultVariables?: string;
   css?: string;
@@ -79,6 +81,8 @@ export interface PreviewEngine extends PreviewParserEngine {
   setUserName(name: string): void;
   setDefaultVars(defaultVariables: string): void;
   setCharDescription(description: string): void;
+  setCharPersonality(personality: string): void;
+  setCharScenario(scenario: string): void;
   setCharFirstMessage(message: string): void;
   setAssets(assets: Record<string, string>): void;
   setLorebook(lorebook: PreviewLorebookEntry[]): void;
@@ -211,6 +215,8 @@ export function createPreviewSession({
     engine.setUserName('User');
     engine.setDefaultVars(charData.defaultVariables || '');
     engine.setCharDescription(charData.description || '');
+    engine.setCharPersonality(charData.personality || '');
+    engine.setCharScenario(charData.scenario || '');
     engine.setCharFirstMessage(charData.firstMessage || '');
     engine.setAssets(assetMap || {});
     engine.setLorebook(lorebook);

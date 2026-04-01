@@ -13,6 +13,8 @@ interface TestEngineState {
   charName: string;
   defaultVariables: string;
   description: string;
+  personality: string;
+  scenario: string;
   firstMessage: string;
   lorebook: PreviewLorebookEntry[];
   luaCode: string;
@@ -28,6 +30,8 @@ function createEngine(): PreviewEngine & { state: TestEngineState } {
     charName: '',
     defaultVariables: '',
     description: '',
+    personality: '',
+    scenario: '',
     firstMessage: '',
     lorebook: [],
     luaCode: '',
@@ -71,6 +75,12 @@ function createEngine(): PreviewEngine & { state: TestEngineState } {
     },
     setCharDescription(d: string) {
       state.description = d;
+    },
+    setCharPersonality(p: string) {
+      state.personality = p;
+    },
+    setCharScenario(s: string) {
+      state.scenario = s;
     },
     setCharFirstMessage(m: string) {
       state.firstMessage = m;

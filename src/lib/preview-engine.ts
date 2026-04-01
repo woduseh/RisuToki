@@ -2451,6 +2451,12 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     setCharDescription: (s: string): void => {
       charDescription = s;
     },
+    setCharPersonality: (s: string): void => {
+      charPersonality = s;
+    },
+    setCharScenario: (s: string): void => {
+      charScenario = s;
+    },
     setCharFirstMessage: (s: string): void => {
       charFirstMessage = s;
     },

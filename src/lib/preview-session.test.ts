@@ -14,6 +14,8 @@ interface TestEngineState {
   charName: string;
   defaultVariables: string;
   description: string;
+  personality: string;
+  scenario: string;
   firstMessage: string;
   lorebook: PreviewLorebookEntry[];
   luaCode: string;
@@ -31,6 +33,8 @@ function createEngine(): PreviewEngine & { state: TestEngineState } {
     charName: '',
     defaultVariables: '',
     description: '',
+    personality: '',
+    scenario: '',
     firstMessage: '',
     lorebook: [],
     luaCode: '',
@@ -114,6 +118,12 @@ function createEngine(): PreviewEngine & { state: TestEngineState } {
     },
     setCharDescription(description: string) {
       state.description = description;
+    },
+    setCharPersonality(personality: string) {
+      state.personality = personality;
+    },
+    setCharScenario(scenario: string) {
+      state.scenario = scenario;
     },
     setCharFirstMessage(firstMessage: string) {
       state.firstMessage = firstMessage;
@@ -311,6 +321,82 @@ describe('preview session', () => {
     expect(backgroundHtml).toContain('lua-started');
     expect(engine.state.assets).toEqual({ icon: 'data:image/png;base64,AAAA' });
     expect(stateSnapshots.length).toBeGreaterThan(0);
+  });
+
+  it('hydrates personality and scenario into the engine during initialization', async () => {
+    const engine = createEngine();
+    const chatFrame = createChatFrame();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        description: 'desc',
+        personality: 'cheerful and curious',
+        scenario: 'a rainy afternoon',
+        firstMessage: '안녕',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+      },
+      chatFrame,
+      windowTarget: createWindowTarget(),
+      runtime: createNoopRuntime(),
+    });
+
+    await session.initialize();
+
+    expect(engine.state.personality).toBe('cheerful and curious');
+    expect(engine.state.scenario).toBe('a rainy afternoon');
+  });
+
+  it('defaults personality and scenario to empty string when omitted from charData', async () => {
+    const engine = createEngine();
+    const chatFrame = createChatFrame();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        description: 'desc',
+        firstMessage: '안녕',
+      },
+      chatFrame,
+      windowTarget: createWindowTarget(),
+      runtime: createNoopRuntime(),
+    });
+
+    await session.initialize();
+
+    expect(engine.state.personality).toBe('');
+    expect(engine.state.scenario).toBe('');
+  });
+
+  it('re-hydrates personality and scenario on reset', async () => {
+    const engine = createEngine();
+    const chatFrame = createChatFrame();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        personality: 'bold',
+        scenario: 'dungeon',
+        firstMessage: '안녕',
+      },
+      chatFrame,
+      windowTarget: createWindowTarget(),
+      runtime: createNoopRuntime(),
+    });
+
+    await session.initialize();
+
+    // Simulate engine state being cleared externally
+    engine.state.personality = '';
+    engine.state.scenario = '';
+
+    await session.reset();
+
+    expect(engine.state.personality).toBe('bold');
+    expect(engine.state.scenario).toBe('dungeon');
   });
 
   it('handles user sends and records lua-triggered state', async () => {
