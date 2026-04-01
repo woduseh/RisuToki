@@ -6,6 +6,7 @@ interface MenuItem {
   shortcut?: string;
   action: string;
   separator?: false;
+  disabled?: boolean;
 }
 
 interface MenuSeparator {
@@ -18,6 +19,10 @@ interface SubMenu {
 }
 
 type MenuEntry = MenuItem | MenuSeparator | SubMenu;
+
+const props = defineProps<{
+  canPreviewCurrentFile?: boolean;
+}>();
 
 const emit = defineEmits<{
   action: [action: string];
@@ -147,7 +152,13 @@ function onMenuEnter(menuId: string) {
   hoveringMenu.value = true;
 }
 
-function handleAction(action: string) {
+function isItemDisabled(item: MenuItem): boolean {
+  if (item.action === 'preview-test' && !props.canPreviewCurrentFile) return true;
+  return item.disabled === true;
+}
+
+function handleAction(action: string, item?: MenuItem) {
+  if (item && isItemDisabled(item)) return;
   openMenu.value = null;
   emit('action', action);
 }
@@ -208,7 +219,7 @@ defineExpose({ closeMenus });
               </template>
             </div>
           </div>
-          <div v-else class="menu-action" @click="handleAction(item.action)">
+          <div v-else class="menu-action" :class="{ disabled: isItemDisabled(item) }" @click="handleAction(item.action, item)">
             {{ item.label }}
             <span v-if="item.shortcut" class="menu-shortcut">{{ item.shortcut }}</span>
           </div>
