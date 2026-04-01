@@ -1286,6 +1286,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         ];
         const jsonFields = ['promptTemplate', 'presetBias', 'formatingOrder', 'localStopStrings'];
         const arrayFields = ['tags', 'source'];
+        const stringFields = [
+          'name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'lua',
+          'personality', 'scenario', 'creatorcomment', 'exampleMessage', 'systemPrompt',
+          'creator', 'characterVersion', 'nickname', 'additionalText', 'license',
+          'cjs', 'backgroundEmbedding', 'moduleNamespace', 'customModuleToggle', 'mcpUrl',
+          'moduleName', 'moduleDescription',
+          'mainPrompt', 'jailbreak', 'aiModel', 'subModel', 'apiType', 'presetImage',
+          'thinkingType', 'adaptiveThinkingEffort', 'instructChatTemplate', 'JinjaTemplate',
+          'customPromptTemplateToggle', 'templateDefaultVariables', 'moduleIntergration',
+          'jsonSchema', 'extractJson', 'groupTemplate', 'groupOtherBotRole',
+          'autoSuggestPrompt', 'autoSuggestPrefix', 'systemContentReplacement', 'systemRoleReplacement',
+        ];
+        const allKnownWritable = new Set([
+          ...boolFields, ...numFields, ...jsonFields, ...arrayFields, ...stringFields,
+        ]);
 
         for (const entry of entries) {
           if (!entry.field || entry.content === undefined) {
@@ -1309,6 +1324,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               action: 'batch write field',
               message: `"${entry.field}" 필드는 batch-write에서 지원하지 않습니다. write_field를 개별 사용하세요.`,
               suggestion: `"${entry.field}" 항목을 entries에서 제거하고 POST /field/${entry.field} 로 개별 호출하세요.`,
+              target: `field:${entry.field}`,
+            });
+          }
+          if (!allKnownWritable.has(entry.field)) {
+            return mcpError(res, 400, {
+              action: 'batch write field',
+              message: `Unknown field: ${entry.field}`,
+              suggestion: 'list_fields 또는 GET /field/batch 로 허용된 필드를 다시 확인하세요.',
               target: `field:${entry.field}`,
             });
           }

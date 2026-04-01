@@ -2220,6 +2220,24 @@ describe('MCP API structured error envelopes — field routes', () => {
     }
   });
 
+  it('returns a structured error envelope for POST /field/batch-write with unknown field', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'not-a-real-field', content: 'x' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:not-a-real-field');
+      expect(res.data.error).toContain('Unknown field');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('returns a structured error envelope for POST /field/batch-write with boolean type mismatch', async () => {
     const fixture: SearchFixture = createSearchFixture();
     const api = await startTestApiServer(fixture);
