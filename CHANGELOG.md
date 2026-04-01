@@ -9,6 +9,17 @@
 
 ---
 
+## [0.34.0] - 2026-07-20
+
+### 변경
+
+- **MCP 구조화 에러 응답 (bounded contract)**: regex, greetings, lua 섹션, css 섹션 라우트의 4xx 에러를 `mcpError()` 엔벨로프로 통일. `action`, `target`, `status`, `suggestion` 등 additive 필드가 포함되어 AI CLI가 에러 원인을 구조적으로 파악 가능. 최상위 `error` 필드는 MCP 브릿지 호환을 위해 유지
+
+### 수정
+
+- **regex insert 액션 라벨 정합성**: `insert-regex-field` 등 regex 라우트의 action label을 canonical string으로 통일
+- **lua/css read 액션 동사 정합성**: lua/css 단일 항목 에러 엔벨로프의 action verb를 `read`로 통일
+
 ## [0.33.0] - 2026-04-01
 
 ### 새 기능

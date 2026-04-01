@@ -20,6 +20,29 @@
 - **CBS validation** — `validate_cbs`, `list_cbs_toggles`, `simulate_cbs`, `diff_cbs`
 - **Skills** — `list_skills`, `read_skill`
 
+## Structured Error Response Contract (v0.34.0)
+
+The following route families return structured `mcpError()` envelopes on 4xx errors:
+
+- **Regex** — `read_regex`, `write_regex`, `add_regex`, `replace_in_regex`, `insert_in_regex`, `delete_regex`, `add_regex_batch`, `write_regex_batch`
+- **Greetings** — `read_greeting`, `write_greeting`, `add_greeting`, `delete_greeting`, `batch_delete_greeting`, `batch_write_greeting`, `reorder_greetings`
+- **Lua sections** — `read_lua`, `write_lua`, `replace_in_lua`, `insert_in_lua`, `add_lua_section`
+- **CSS sections** — `read_css`, `write_css`, `replace_in_css`, `insert_in_css`, `add_css_section`
+
+Additive fields on 4xx errors in these routes:
+
+| Field        | Description                                      |
+| ------------ | ------------------------------------------------ |
+| `action`     | The operation that failed (e.g. `read`, `write`) |
+| `target`     | The resource target (e.g. `regex`, `lua`)        |
+| `status`     | HTTP-style status code (e.g. `404`, `400`)       |
+| `suggestion` | Actionable hint for recovery                     |
+| `details`    | (sometimes) Additional context object            |
+
+The top-level `error` field remains present for MCP bridge compatibility.
+
+> **Note**: This contract currently covers only the four route families listed above. Other MCP routes have not yet been standardized.
+
 ## Important Anti-Patterns
 
 - Never use `replace_in_field` as a search tool. A missing replacement can become deletion.
