@@ -180,6 +180,8 @@ export const useAppStore = defineStore('app', () => {
   const statusKind = ref<StatusKind>('info');
   const statusSticky = ref(false);
   const fileLabel = ref('');
+  const restoredSessionLabel = ref('');
+  const restoredSessionStatusText = ref('');
 
   // === Autosave ===
   const autosaveEnabled = ref(false);
@@ -203,6 +205,9 @@ export const useAppStore = defineStore('app', () => {
     if (rpMode.value === 'pluni') return '플루니 연구소';
     return 'OFF';
   });
+  const displayFileLabel = computed(() =>
+    restoredSessionLabel.value ? `${fileLabel.value} [${restoredSessionLabel.value}]` : fileLabel.value,
+  );
 
   // === Actions ===
   function setFileData(data: CharxData | null) {
@@ -223,6 +228,23 @@ export const useAppStore = defineStore('app', () => {
 
   function setFileLabel(label: string) {
     fileLabel.value = label;
+  }
+
+  function setRestoredSessionLabel(label: string) {
+    restoredSessionLabel.value = label;
+  }
+
+  function showRestoredSessionStatus(text: string) {
+    restoredSessionStatusText.value = text;
+    setStatus(text, { kind: 'info', sticky: true });
+  }
+
+  function clearRestoredSessionState() {
+    restoredSessionLabel.value = '';
+    if (restoredSessionStatusText.value && statusText.value === restoredSessionStatusText.value && statusSticky.value) {
+      clearStatus();
+    }
+    restoredSessionStatusText.value = '';
   }
 
   function setDarkMode(value: boolean) {
@@ -279,6 +301,7 @@ export const useAppStore = defineStore('app', () => {
     statusKind,
     statusSticky,
     fileLabel,
+    restoredSessionLabel,
     autosaveEnabled,
     autosaveInterval,
     autosaveDir,
@@ -290,11 +313,15 @@ export const useAppStore = defineStore('app', () => {
     isRisum,
     talkTitle,
     rpLabel,
+    displayFileLabel,
     // Actions
     setFileData,
     setStatus,
     clearStatus,
     setFileLabel,
+    setRestoredSessionLabel,
+    showRestoredSessionStatus,
+    clearRestoredSessionState,
     setDarkMode,
     setRpMode,
     setPluniCategory,

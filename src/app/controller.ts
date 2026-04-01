@@ -77,7 +77,13 @@ import {
 } from '../lib/form-editor';
 import type { FormTabInfo } from '../lib/form-editor';
 import type { RisupFormTabInfo } from '../lib/risup-form-editor';
-import { showConfirm, resetConfirmAllowAll, showCloseConfirm, showPrompt } from '../lib/dialog';
+import {
+  showConfirm,
+  resetConfirmAllowAll,
+  showCloseConfirm,
+  showPrompt,
+  showSessionRecoveryDialog,
+} from '../lib/dialog';
 import { showContextMenu, hideContextMenu } from '../lib/context-menu';
 import type { ContextMenuItem } from '../lib/context-menu';
 import { initPanelDragDrop as _initPanelDragDrop } from '../lib/panel-drag';
@@ -109,6 +115,7 @@ import {
   handleSaveAs as _handleSaveAs,
 } from '../lib/file-actions';
 import type { FileActionDeps } from '../lib/file-actions';
+import { runStartupSessionRecovery } from './session-recovery-controller';
 import {
   stringifyStringArray,
   addReferenceFile as _addReferenceFile,
@@ -1889,11 +1896,34 @@ async function restartTerminal(): Promise<void> {
 }
 
 // ==================== Actions ====================
+function setCurrentFileData(data: CharxData | null): void {
+  fileData = data;
+  useAppStore().setFileData(data);
+}
+
+function resetDocumentWorkspace(): void {
+  tabMgr.reset();
+  if (editorInstance) {
+    editorInstance.dispose();
+    editorInstance = null;
+  }
+  document.getElementById('editor-container')!.innerHTML = '<div class="empty-state">항목을 선택하세요</div>';
+  document.getElementById('editor-tabs')!.innerHTML = '';
+}
+
+function applyLoadedDocument(data: Record<string, unknown>): void {
+  const nextData = data as CharxData;
+  setCurrentFileData(nextData);
+  resetDocumentWorkspace();
+  useAppStore().setFileLabel((nextData.name as string) || 'Untitled');
+  buildSidebar();
+}
+
 /** @type {import('../lib/file-actions').FileActionDeps} */
 const fileActionDeps: FileActionDeps = {
   getFileData: () => fileData,
   setFileData: (d) => {
-    fileData = d as CharxData;
+    setCurrentFileData(d as CharxData);
   },
   getEditorInstance: () => editorInstance,
   setEditorInstance: (v) => {
@@ -2553,6 +2583,25 @@ export async function initMainRenderer(): Promise<void> {
     openReferencePath: (path) => window.tokiAPI.openReferencePath(path),
   });
   initEditor();
+  try {
+    await runStartupSessionRecovery({
+      api: {
+        getPendingSessionRecovery: () => window.tokiAPI.getPendingSessionRecovery(),
+        resolvePendingSessionRecovery: (action) => window.tokiAPI.resolvePendingSessionRecovery(action),
+      },
+      showRecoveryDialog: showSessionRecoveryDialog,
+      applyRecoveredDocument: applyLoadedDocument,
+      setRestoredSessionLabel: (label) => useAppStore().setRestoredSessionLabel(label),
+      showRestoredSessionStatus: (text) => useAppStore().showRestoredSessionStatus(text),
+    });
+  } catch (error) {
+    reportRuntimeError({
+      context: '자동 저장 복원 초기화 실패',
+      error,
+      logPrefix: '[Recovery]',
+      setStatus,
+    });
+  }
 
   // ---- Inline name editing on #file-label double-click ----
   const fileLabelEl = document.getElementById('file-label');

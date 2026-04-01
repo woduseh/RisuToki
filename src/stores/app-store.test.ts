@@ -32,4 +32,67 @@ describe('app-store pluniCategory', () => {
     expect(store.rpMode).toBe('pluni');
     expect(store.pluniCategory).toBe('world-sim');
   });
+
+  it('tracks restored-session provenance in reactive store state', () => {
+    const store = useAppStore() as ReturnType<typeof useAppStore> & {
+      displayFileLabel?: string;
+      restoredSessionLabel?: string;
+      setRestoredSessionLabel?: (label: string) => void;
+    };
+
+    store.setFileLabel('Character');
+
+    expect(typeof store.setRestoredSessionLabel).toBe('function');
+
+    store.setRestoredSessionLabel!('자동복원');
+
+    expect(store.fileLabel).toBe('Character');
+    expect(store.restoredSessionLabel).toBe('자동복원');
+    expect(store.displayFileLabel).toBe('Character [자동복원]');
+  });
+
+  it('clearing restored-session provenance does not wipe unrelated UI state', () => {
+    const store = useAppStore() as ReturnType<typeof useAppStore> & {
+      displayFileLabel?: string;
+      clearRestoredSessionState?: () => void;
+      setRestoredSessionLabel?: (label: string) => void;
+    };
+
+    store.setDarkMode(true);
+    store.setStatus('일반 상태', { sticky: true });
+    store.setFileLabel('Character');
+
+    expect(typeof store.setRestoredSessionLabel).toBe('function');
+    expect(typeof store.clearRestoredSessionState).toBe('function');
+
+    store.setRestoredSessionLabel!('자동복원');
+    store.clearRestoredSessionState!();
+
+    expect(store.darkMode).toBe(true);
+    expect(store.statusText).toBe('일반 상태');
+    expect(store.statusSticky).toBe(true);
+    expect(store.fileLabel).toBe('Character');
+    expect(store.displayFileLabel).toBe('Character');
+  });
+
+  it('stores a sticky recovery status that clears with restored-session state', () => {
+    const store = useAppStore() as ReturnType<typeof useAppStore> & {
+      clearRestoredSessionState?: () => void;
+      showRestoredSessionStatus?: (text: string) => void;
+    };
+
+    expect(typeof store.showRestoredSessionStatus).toBe('function');
+    expect(typeof store.clearRestoredSessionState).toBe('function');
+
+    store.showRestoredSessionStatus!('자동 저장에서 복원됨: Character.charx (04/01 09:41:20)');
+
+    expect(store.statusText).toBe('자동 저장에서 복원됨: Character.charx (04/01 09:41:20)');
+    expect(store.statusKind).toBe('info');
+    expect(store.statusSticky).toBe(true);
+
+    store.clearRestoredSessionState!();
+
+    expect(store.statusText).toBe('');
+    expect(store.statusSticky).toBe(false);
+  });
 });

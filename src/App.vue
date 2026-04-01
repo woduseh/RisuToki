@@ -14,7 +14,7 @@ function handleAction(action: string) {
 <template>
   <MenuBar @action="handleAction">
     <template #file-label>
-      <span id="file-label">{{ store.fileLabel }}</span>
+      <span id="file-label">{{ store.displayFileLabel }}</span>
     </template>
   </MenuBar>
 

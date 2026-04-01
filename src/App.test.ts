@@ -90,4 +90,19 @@ describe('App shell', () => {
     await nextTick();
     expect(bar.classes()).toContain('visible');
   });
+
+  it('renders an additive restored-session badge in the file label', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore() as ReturnType<typeof useAppStore> & {
+      setRestoredSessionLabel?: (label: string) => void;
+    };
+
+    store.setFileLabel('Character');
+    expect(typeof store.setRestoredSessionLabel).toBe('function');
+    store.setRestoredSessionLabel!('자동복원');
+    await nextTick();
+
+    expect(wrapper.get('#file-label').text()).toBe('Character [자동복원]');
+  });
 });
