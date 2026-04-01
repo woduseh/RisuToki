@@ -1363,6 +1363,27 @@ describe('MCP API risup prompt stable IDs and warnings', () => {
     }
   });
 
+  it('GET /risup/formating-order returns empty warnings when promptTemplate is invalid JSON', async () => {
+    const data: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: 'NOT_VALID_JSON',
+      formatingOrder: JSON.stringify(['main', 'chats']),
+    };
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<{
+        state: string;
+        items: Array<{ token: string }>;
+        warnings: string[];
+      }>(api.port, api.token, '/risup/formating-order');
+      expect(res.status).toBe(200);
+      expect(res.data).toHaveProperty('warnings');
+      expect(res.data.warnings).toEqual([]);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('raw write_field("promptTemplate") round-trips explicit ids', async () => {
     const explicitId = 'user-provided-id-42';
     const templateWithId = JSON.stringify([
