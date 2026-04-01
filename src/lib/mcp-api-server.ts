@@ -6294,6 +6294,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const ref = refFiles[idx];
         if (fieldName === 'lorebook') {
           return jsonRes(res, {
+            index: idx,
+            fileName: ref.fileName,
+            field: 'lorebook',
             content: (ref.data.lorebook || []).map((entry: Record<string, unknown>) =>
               normalizeLorebookEntryForResponse(entry, ref.data.lorebook || []),
             ),
