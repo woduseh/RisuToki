@@ -114,6 +114,8 @@ export const PreviewEngine: PreviewEngineModule = (() => {
   let userName = 'User';
   let charName = 'Character';
   let charDescription = '';
+  let charPersonality = '';
+  let charScenario = '';
   let charFirstMessage = '';
   let assetMap: Record<string, string> = {}; // name → data URI
   let lorebookEntries: PreviewLorebookRuntimeEntry[] = []; // for getLoreBooks search
@@ -373,8 +375,9 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('char', () => charName, ['charname', 'bot']);
 
     // --- Character Info ---
-    reg('personality', () => charDescription, ['description', 'char_personality']);
-    reg('scenario', () => '', ['world']);
+    reg('personality', () => charPersonality, ['char_personality']);
+    reg('description', () => charDescription);
+    reg('scenario', () => charScenario, ['world']);
     reg('firstmessage', () => charFirstMessage, ['first_message']);
     reg('mesexamples', () => '', ['mes_example', 'example_dialogue']);
 
@@ -2275,17 +2278,17 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       _safeBind('getLastMessage', () => charFirstMessage || '');
       _safeBind('getCurrentChatId', () => 'preview');
       _safeBind('getCharacterId', () => 'preview');
-      luaEngine.global.set('setDescription', (_id: unknown, _desc: unknown) => {
-        /* stub */
+      luaEngine.global.set('setDescription', (_id: unknown, desc: unknown) => {
+        charDescription = String(desc ?? '');
       });
-      luaEngine.global.set('setPersonality', (_id: unknown, _p: unknown) => {
-        /* stub */
+      luaEngine.global.set('setPersonality', (_id: unknown, p: unknown) => {
+        charPersonality = String(p ?? '');
       });
-      luaEngine.global.set('setScenario', (_id: unknown, _s: unknown) => {
-        /* stub */
+      luaEngine.global.set('setScenario', (_id: unknown, s: unknown) => {
+        charScenario = String(s ?? '');
       });
-      luaEngine.global.set('setFirstMessage', (_id: unknown, _m: unknown) => {
-        /* stub */
+      luaEngine.global.set('setFirstMessage', (_id: unknown, m: unknown) => {
+        charFirstMessage = String(m ?? '');
       });
       luaEngine.global.set('addChat', (_id: unknown, _role: unknown, _content: unknown) => {
         /* stub */
@@ -2448,6 +2451,12 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     setCharDescription: (s: string): void => {
       charDescription = s;
     },
+    setCharPersonality: (s: string): void => {
+      charPersonality = s;
+    },
+    setCharScenario: (s: string): void => {
+      charScenario = s;
+    },
     setCharFirstMessage: (s: string): void => {
       charFirstMessage = s;
     },
@@ -2463,8 +2472,17 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       tempVars = {};
       localLorebooks = {};
       assetMap = {};
+      charDescription = '';
+      charPersonality = '';
+      charScenario = '';
+      charFirstMessage = '';
       _reloadDisplayRequested = false;
       luaOutput = [];
+      if (luaEngine) {
+        luaEngine.global.close();
+        luaEngine = null;
+      }
+      luaFactory = null;
     },
     clearTempVars: (): void => {
       tempVars = {};

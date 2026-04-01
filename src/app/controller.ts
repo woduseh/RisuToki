@@ -2186,6 +2186,11 @@ async function showPreviewPanel(): Promise<void> {
     return;
   }
 
+  if (fileData._fileType) {
+    setStatus('프리뷰는 .charx 파일에서만 사용할 수 있습니다');
+    return;
+  }
+
   // Remove existing
   const existing = document.querySelector('.preview-overlay');
   if (existing) existing.remove();

@@ -12,7 +12,7 @@ function handleAction(action: string) {
 </script>
 
 <template>
-  <MenuBar @action="handleAction">
+  <MenuBar :can-preview-current-file="store.canPreviewCurrentFile" @action="handleAction">
     <template #file-label>
       <span id="file-label">{{ store.displayFileLabel }}</span>
     </template>

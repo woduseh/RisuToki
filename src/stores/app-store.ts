@@ -196,6 +196,7 @@ export const useAppStore = defineStore('app', () => {
   // === Computed ===
   const hasFile = computed(() => fileData.value !== null);
   const isRisum = computed(() => fileData.value?._fileType === 'risum');
+  const canPreviewCurrentFile = computed(() => Boolean(fileData.value) && !fileData.value?._fileType);
   const talkTitle = computed(() => (darkMode.value ? 'ArisTalk' : 'TokiTalk'));
   const rpLabel = computed(() => {
     if (rpMode.value === 'off') return 'OFF';
@@ -311,6 +312,7 @@ export const useAppStore = defineStore('app', () => {
     // Computed
     hasFile,
     isRisum,
+    canPreviewCurrentFile,
     talkTitle,
     rpLabel,
     displayFileLabel,
