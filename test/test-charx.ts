@@ -612,6 +612,8 @@ const roundTripPath = path.join(risupMigrationDir, 'roundtrip-ids.risup');
   assert.equal(second[0].id, first[0].id);
 })();
 
+fs.rmSync(risupMigrationDir, { recursive: true, force: true });
+
 // ---- Error case tests ----
 const errorTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-error-'));
 

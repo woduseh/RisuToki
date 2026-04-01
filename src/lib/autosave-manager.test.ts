@@ -367,10 +367,14 @@ describe('autosave-manager', () => {
       initAutosaveManager(d);
       const handler = getRegisteredHandler('autosave-file');
 
+      // Update a *different* field (name) so the autosave round-trip exercises
+      // applyUpdates without touching promptTemplate.  The assertion below
+      // proves the passthrough does not strip the migration-assigned IDs.
       await handler({}, { name: 'UpdatedPreset' });
 
       expect(saveRisup).toHaveBeenCalledTimes(1);
       const savedData = saveRisup.mock.calls[0][1];
+      expect(savedData.name).toBe('UpdatedPreset');
       expect(savedData.promptTemplate).toBe(idBearingTemplate);
     });
 
