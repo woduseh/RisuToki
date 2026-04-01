@@ -170,6 +170,85 @@ describe('PreviewEngine Lua output hooks', () => {
   });
 });
 
+// ── Lua field setter activation ──────────────────────────────────────
+
+describe('PreviewEngine Lua field setters', () => {
+  const windowWithWasmoon = window as Window & typeof globalThis & { wasmoon?: unknown };
+
+  afterEach(() => {
+    delete windowWithWasmoon.wasmoon;
+    PreviewEngine.resetVars();
+  });
+
+  function makeFakeWasmoon() {
+    const globalStore = new Map<string, unknown>();
+    globalStore.set('_callResult_modified', '0');
+
+    const fakeEngine = {
+      global: {
+        set(key: string, value: unknown) {
+          globalStore.set(key, value);
+        },
+        get(key: string) {
+          return globalStore.get(key);
+        },
+        close() {},
+      },
+      async doString(_code: string) {},
+    };
+
+    windowWithWasmoon.wasmoon = {
+      LuaFactory: class {
+        async createEngine() {
+          return fakeEngine;
+        }
+      },
+    };
+
+    return globalStore;
+  }
+
+  it('setDescription updates {{description}} in preview-local state', async () => {
+    const globalStore = makeFakeWasmoon();
+    await PreviewEngine.initLua('');
+
+    const setter = globalStore.get('setDescription') as (id: unknown, val: unknown) => void;
+    setter('preview', 'new description');
+
+    expect(PreviewEngine.risuChatParser('{{description}}')).toBe('new description');
+  });
+
+  it('setPersonality updates {{personality}} in preview-local state', async () => {
+    const globalStore = makeFakeWasmoon();
+    await PreviewEngine.initLua('');
+
+    const setter = globalStore.get('setPersonality') as (id: unknown, val: unknown) => void;
+    setter('preview', 'new personality');
+
+    expect(PreviewEngine.risuChatParser('{{personality}}')).toBe('new personality');
+  });
+
+  it('setScenario updates {{scenario}} in preview-local state', async () => {
+    const globalStore = makeFakeWasmoon();
+    await PreviewEngine.initLua('');
+
+    const setter = globalStore.get('setScenario') as (id: unknown, val: unknown) => void;
+    setter('preview', 'new scenario');
+
+    expect(PreviewEngine.risuChatParser('{{scenario}}')).toBe('new scenario');
+  });
+
+  it('setFirstMessage updates {{firstmessage}} in preview-local state', async () => {
+    const globalStore = makeFakeWasmoon();
+    await PreviewEngine.initLua('');
+
+    const setter = globalStore.get('setFirstMessage') as (id: unknown, val: unknown) => void;
+    setter('preview', 'new first message');
+
+    expect(PreviewEngine.risuChatParser('{{firstmessage}}')).toBe('new first message');
+  });
+});
+
 // ── Lorebook matching parity ─────────────────────────────────────────
 
 describe('PreviewEngine lorebook: activationPercent', () => {
