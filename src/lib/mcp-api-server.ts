@@ -3713,7 +3713,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'regex' && parts[1] && req.method === 'GET') {
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= (currentData.regex || []).length) {
-          return jsonRes(res, { error: `Index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'get regex entry',
+            message: `Index ${idx} out of range`,
+            suggestion: 'GET /regex 로 유효한 index 목록을 확인하세요.',
+            target: `regex:${idx}`,
+          });
         }
         const entry = { ...currentData.regex[idx] };
         // Normalize legacy in/out → find/replace before removing duplicates
@@ -3827,11 +3832,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const entries: Record<string, unknown>[] = body.entries;
         if (!Array.isArray(entries) || entries.length === 0) {
-          return jsonRes(res, { error: 'entries must be a non-empty array' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch add regex entries',
+            message: 'entries must be a non-empty array',
+            suggestion: '{ "entries": [ { "find": "...", "replace": "..." } ] } 형식으로 전송하세요.',
+            target: 'regex:batch-add',
+          });
         }
         const MAX_BATCH = 50;
         if (entries.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} entries per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch add regex entries',
+            message: `Maximum ${MAX_BATCH} entries per batch`,
+            suggestion: `항목을 ${MAX_BATCH}개 이하로 나누어 전송하세요.`,
+            target: 'regex:batch-add',
+          });
         }
 
         const names = entries.map((e, i) => (typeof e.comment === 'string' ? e.comment : `regex_${i}`));
@@ -3882,17 +3897,32 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const batchEntries: Array<{ index: number; data: Record<string, unknown> }> = body.entries;
         if (!Array.isArray(batchEntries) || batchEntries.length === 0) {
-          return jsonRes(res, { error: 'entries must be a non-empty array of {index, data}' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch write regex entries',
+            message: 'entries must be a non-empty array of {index, data}',
+            suggestion: '{ "entries": [ { "index": 0, "data": { ... } } ] } 형식으로 전송하세요.',
+            target: 'regex:batch-write',
+          });
         }
         const MAX_BATCH = 50;
         if (batchEntries.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} entries per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch write regex entries',
+            message: `Maximum ${MAX_BATCH} entries per batch`,
+            suggestion: `항목을 ${MAX_BATCH}개 이하로 나누어 전송하세요.`,
+            target: 'regex:batch-write',
+          });
         }
         const regexArr = currentData.regex || [];
         for (const e of batchEntries) {
           const idx = Number(e.index);
           if (isNaN(idx) || idx < 0 || idx >= regexArr.length) {
-            return jsonRes(res, { error: `Index ${e.index} out of range (0-${regexArr.length - 1})` }, 400);
+            return mcpError(res, 400, {
+              action: 'batch write regex entries',
+              message: `Index ${e.index} out of range (0-${regexArr.length - 1})`,
+              suggestion: 'GET /regex 로 유효한 index 목록을 확인하세요.',
+              target: `regex:batch-write`,
+            });
           }
         }
 
@@ -3949,10 +3979,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const targetField: string = body.field;
         if (targetField !== 'find' && targetField !== 'replace') {
-          return jsonRes(res, { error: 'field must be "find" or "replace"' }, 400);
+          return mcpError(res, 400, {
+            action: 'replace regex field',
+            message: 'field must be "find" or "replace"',
+            suggestion: '"field" 값은 "find" 또는 "replace"만 허용됩니다.',
+            target: `regex:${idx}:replace`,
+          });
         }
         if (!body.find) {
-          return jsonRes(res, { error: 'Missing "find" (search string)' }, 400);
+          return mcpError(res, 400, {
+            action: 'replace regex field',
+            message: 'Missing "find" (search string)',
+            suggestion: '"find" 필드에 검색할 문자열을 지정하세요.',
+            target: `regex:${idx}:replace`,
+          });
         }
         const entry = currentData.regex[idx];
         const entryName: string = entry.comment || `regex_${idx}`;
@@ -4039,10 +4079,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const targetField: string = body.field;
         if (targetField !== 'find' && targetField !== 'replace') {
-          return jsonRes(res, { error: 'field must be "find" or "replace"' }, 400);
+          return mcpError(res, 400, {
+            action: 'insert into regex field',
+            message: 'field must be "find" or "replace"',
+            suggestion: '"field" 값은 "find" 또는 "replace"만 허용됩니다.',
+            target: `regex:${idx}:insert`,
+          });
         }
         if (body.content === undefined) {
-          return jsonRes(res, { error: 'Missing "content"' }, 400);
+          return mcpError(res, 400, {
+            action: 'insert into regex field',
+            message: 'Missing "content"',
+            suggestion: '"content" 필드에 삽입할 내용을 지정하세요.',
+            target: `regex:${idx}:insert`,
+          });
         }
         const entry = currentData.regex[idx];
         const entryName: string = entry.comment || `regex_${idx}`;
@@ -4073,7 +4123,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newContent = oldContent.slice(0, anchorPos) + insContent + oldContent.slice(anchorPos);
           }
         } else {
-          return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
+          return mcpError(res, 400, {
+            action: 'insert into regex field',
+            message: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다',
+            suggestion: '"anchor" 필드에 기준 문자열을 지정하세요.',
+            target: `regex:${idx}:insert`,
+          });
         }
 
         const preview = insContent.substring(0, 100) + (insContent.length > 100 ? '...' : '');
@@ -4309,16 +4364,31 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const writes: Array<{ index: number; content: string }> = body.writes;
         if (!Array.isArray(writes) || writes.length === 0) {
-          return jsonRes(res, { error: 'writes must be a non-empty array of {index, content}' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch write greetings',
+            message: 'writes must be a non-empty array of {index, content}',
+            suggestion: '{ "writes": [ { "index": 0, "content": "..." } ] } 형식으로 전송하세요.',
+            target: `greeting:${greetingType}:batch-write`,
+          });
         }
         const MAX_BATCH = 50;
         if (writes.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} writes per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch write greetings',
+            message: `Maximum ${MAX_BATCH} writes per batch`,
+            suggestion: `항목을 ${MAX_BATCH}개 이하로 나누어 전송하세요.`,
+            target: `greeting:${greetingType}:batch-write`,
+          });
         }
         const arr: string[] = currentData[fieldName] || [];
         const invalid = writes.filter((w) => typeof w.index !== 'number' || w.index < 0 || w.index >= arr.length);
         if (invalid.length > 0) {
-          return jsonRes(res, { error: `Invalid indices: ${invalid.map((w) => w.index).join(', ')}` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch write greetings',
+            message: `Invalid indices: ${invalid.map((w) => w.index).join(', ')}`,
+            suggestion: `유효한 index 범위는 0-${arr.length - 1}입니다.`,
+            target: `greeting:${greetingType}:batch-write`,
+          });
         }
         const summary = writes
           .map((w) => `  [${w.index}]: ${w.content.substring(0, 60)}${w.content.length > 60 ? '...' : ''}`)
@@ -4365,13 +4435,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const newOrder: number[] = body.order;
         const arr: string[] = currentData[fieldName] || [];
         if (!Array.isArray(newOrder) || newOrder.length !== arr.length) {
-          return jsonRes(res, { error: `order must be an array of length ${arr.length} (current count)` }, 400);
+          return mcpError(res, 400, {
+            action: 'reorder greetings',
+            message: `order must be an array of length ${arr.length} (current count)`,
+            suggestion: `"order"는 길이 ${arr.length}인 배열이어야 합니다.`,
+            target: `greeting:${greetingType}:reorder`,
+          });
         }
         // Validate: must be a permutation of 0..n-1
         const sorted = [...newOrder].sort((a, b) => a - b);
         const expected = Array.from({ length: arr.length }, (_, i) => i);
         if (JSON.stringify(sorted) !== JSON.stringify(expected)) {
-          return jsonRes(res, { error: 'order must be a permutation of [0, 1, ..., n-1]' }, 400);
+          return mcpError(res, 400, {
+            action: 'reorder greetings',
+            message: 'order must be a permutation of [0, 1, ..., n-1]',
+            suggestion: '"order" 배열은 0부터 n-1까지의 순열이어야 합니다.',
+            target: `greeting:${greetingType}:reorder`,
+          });
         }
         const preview = newOrder.slice(0, 10).join(', ') + (newOrder.length > 10 ? '...' : '');
         const allowed = await deps.askRendererConfirm(
