@@ -42,6 +42,33 @@ interface AutosaveInfo {
   hasFile: boolean;
 }
 
+interface PendingRecoveryCandidateIpc {
+  sourceFilePath: string;
+  autosavePath: string;
+  provenance: {
+    sourceFilePath: string | null;
+    sourceFileType: 'charx' | 'risum' | 'risup';
+    autosavePath: string;
+    savedAt: string;
+    dirtyFields: string[];
+    appVersion: string;
+  };
+  staleWarning: string | null;
+  originalMtimeMs: number | null;
+  autosaveMtimeMs: number | null;
+}
+
+type SessionRecoveryAction = 'restore' | 'open-original' | 'ignore';
+
+interface SessionRecoveryResolveResult {
+  action: 'restore' | 'open-original';
+  data: Record<string, unknown>;
+  recovery?: {
+    autosavePath: string;
+    provenance: PendingRecoveryCandidateIpc['provenance'];
+  };
+}
+
 interface McpConfirmCallback {
   (id: number, title: string, message: string): void;
 }
@@ -186,6 +213,8 @@ interface TokiAPI {
   openFolder: (folderPath: string) => Promise<string>;
   getAutosaveInfo: (customDir?: string) => Promise<AutosaveInfo | null>;
   pickAutosaveDir: () => Promise<string | null>;
+  getPendingSessionRecovery: () => Promise<PendingRecoveryCandidateIpc | null>;
+  resolvePendingSessionRecovery: (action: SessionRecoveryAction) => Promise<SessionRecoveryResolveResult | null>;
   toggleDevTools: () => Promise<void>;
   popoutPanel: (type: string, requestId?: string | null) => Promise<boolean>;
   closePopout: (type: string) => Promise<boolean>;

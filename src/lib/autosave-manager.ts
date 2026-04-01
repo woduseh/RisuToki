@@ -26,6 +26,7 @@ export interface AutosaveManagerDeps {
   readdirSync: (dirPath: string) => string[];
   unlinkSync: (filePath: string) => void;
   applyUpdates: (data: any, fields: any) => void;
+  onAutosaveSuccess?: (autosavePath: string, sidecarPath: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +140,8 @@ export function initAutosaveManager(d: AutosaveManagerDeps): void {
         dirtyFields,
       });
       deps.writeFileSync(sidecarPath, JSON.stringify(provenance, null, 2));
+
+      if (deps.onAutosaveSuccess) deps.onAutosaveSuccess(autosavePath, sidecarPath);
 
       return { success: true, path: autosavePath };
     } catch (err: unknown) {

@@ -227,7 +227,14 @@ const { initAutosaveManager } = require('./src/lib/autosave-manager') as {
     getCurrentFilePath: () => string | null;
     getMainWindow: () => BrowserWindow | null;
     saveCharx: (filePath: string, data: CharxData) => void;
+    saveRisum: (filePath: string, data: CharxData) => void;
+    saveRisup: (filePath: string, data: CharxData) => void;
+    writeFileSync: (filePath: string, data: string) => void;
+    mkdirSync: (dirPath: string, options?: { recursive: boolean }) => void;
+    readdirSync: (dirPath: string) => string[];
+    unlinkSync: (filePath: string) => void;
     applyUpdates: (data: CharxData, fields: Record<string, unknown>) => void;
+    onAutosaveSuccess?: (autosavePath: string, sidecarPath: string) => void;
   }) => void;
 };
 
@@ -236,6 +243,19 @@ const { resolveCloseWindowAction } = require('./src/lib/close-window-policy') as
     action: 'save' | 'close' | 'stay';
     errorMessage: string | null;
   };
+};
+
+const { createSessionRecoveryManager } = require('./src/lib/session-recovery-manager') as {
+  createSessionRecoveryManager: (deps: {
+    readFileSync: (path: string, encoding: BufferEncoding) => string;
+    writeFileSync: (path: string, data: string) => void;
+    existsSync: (path: string) => boolean;
+    statSync: (path: string) => { mtimeMs: number };
+    unlinkSync: (path: string) => void;
+    userDataPath: string;
+    openDocument: (filePath: string) => Record<string, unknown>;
+    setCurrentDocument: (filePath: string, data: Record<string, unknown>) => void;
+  }) => import('./src/lib/session-recovery-manager').SessionRecoveryManager;
 };
 
 const { initDataSerializer, serializeForRenderer, applyUpdates } = require('./src/lib/data-serializer') as {
@@ -261,6 +281,25 @@ const popoutPayloadStore: PopoutPayloadStore = createPopoutPayloadStore();
 let mcpApi: McpApiServer | null = null;
 let apiPort: number | null = null;
 let apiToken: string | null = null;
+
+// Session recovery
+let recoveryManager: ReturnType<typeof createSessionRecoveryManager> | null = null;
+
+// ---------------------------------------------------------------------------
+// Document open helper (shared by open-file and recovery)
+// ---------------------------------------------------------------------------
+
+function openDocumentByPath(filePath: string): CharxData {
+  if (filePath.endsWith('.risum')) return openRisum(filePath);
+  if (filePath.endsWith('.risup')) return openRisup(filePath);
+  return openCharx(filePath);
+}
+
+function getRecoveryFileType(filePath: string): 'charx' | 'risum' | 'risup' {
+  if (filePath.endsWith('.risum')) return 'risum';
+  if (filePath.endsWith('.risup')) return 'risup';
+  return 'charx';
+}
 
 // ---------------------------------------------------------------------------
 // Reference file helpers
@@ -608,7 +647,32 @@ app.whenReady().then(() => {
     getCurrentFilePath: () => mainState.currentFilePath,
     getMainWindow: () => mainWindow,
     saveCharx,
+    saveRisum,
+    saveRisup,
+    writeFileSync: (filePath, data) => fs.writeFileSync(filePath, data),
+    mkdirSync: (dirPath, options) => fs.mkdirSync(dirPath, options),
+    readdirSync: (dirPath) => fs.readdirSync(dirPath),
+    unlinkSync: (filePath) => fs.unlinkSync(filePath),
     applyUpdates,
+    onAutosaveSuccess: (autosavePath, sidecarPath) => {
+      if (recoveryManager) {
+        recoveryManager
+          .updateAutosavePaths(autosavePath, sidecarPath)
+          .catch((e) => console.warn('[main] recovery updateAutosavePaths error:', e));
+      }
+    },
+  });
+
+  // Initialize session recovery manager (after autosave so the callback can reference it)
+  recoveryManager = createSessionRecoveryManager({
+    readFileSync: (p, enc) => fs.readFileSync(p, enc),
+    writeFileSync: (p, data) => fs.writeFileSync(p, data),
+    existsSync: (p) => fs.existsSync(p),
+    statSync: (p) => fs.statSync(p),
+    unlinkSync: (p) => fs.unlinkSync(p),
+    userDataPath: app.getPath('userData'),
+    openDocument: (filePath) => openDocumentByPath(filePath) as unknown as Record<string, unknown>,
+    setCurrentDocument: (filePath, data) => mainState.setCurrentDocument(filePath, data as CharxData),
   });
 
   // Initialize popout window management
@@ -626,6 +690,14 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  // Mark clean exit for session recovery
+  if (recoveryManager) {
+    try {
+      recoveryManager.markCleanExit();
+    } catch (e) {
+      console.warn('[main] Failed to mark clean exit:', (e as Error).message);
+    }
+  }
   killTerminal();
   if (mcpApi) {
     mcpApi.server.close();
@@ -637,17 +709,6 @@ app.on('window-all-closed', () => {
   // Cleanup Codex MCP config
   cleanupCodexMcpConfig();
   cleanupAgentsMd();
-  // Cleanup autosave file
-  if (mainState.currentFilePath) {
-    try {
-      const dir = path.dirname(mainState.currentFilePath);
-      const base = path.basename(mainState.currentFilePath);
-      const autosavePath = path.join(dir, `.${base}.autosave.charx`);
-      if (fs.existsSync(autosavePath)) fs.unlinkSync(autosavePath);
-    } catch (e) {
-      console.warn('[main] Failed to cleanup autosave:', (e as Error).message);
-    }
-  }
   app.quit();
 });
 
@@ -743,14 +804,7 @@ ipcMain.handle('open-file', async () => {
 
     const nextFilePath = result.filePaths[0];
     console.log('[main] Opening:', nextFilePath);
-    let nextData: CharxData;
-    if (nextFilePath.endsWith('.risum')) {
-      nextData = openRisum(nextFilePath);
-    } else if (nextFilePath.endsWith('.risup')) {
-      nextData = openRisup(nextFilePath);
-    } else {
-      nextData = openCharx(nextFilePath);
-    }
+    const nextData = openDocumentByPath(nextFilePath);
     mainState.setCurrentDocument(nextFilePath, nextData);
     console.log(
       '[main] Parsed OK, name:',
@@ -764,6 +818,12 @@ ipcMain.handle('open-file', async () => {
     // Refresh Claude MCP config so Claude Code can find it
     if (apiPort) writeCurrentMcpConfig();
     broadcastSidebarDataChanged();
+    // Mark document active for session recovery
+    if (recoveryManager) {
+      recoveryManager
+        .markDocumentActive(nextFilePath, getRecoveryFileType(nextFilePath))
+        .catch((e) => console.warn('[main] recovery markDocumentActive error:', e));
+    }
     return serializeForRenderer(mainState.currentData!);
   } catch (err) {
     console.error('[main] open-file error:', err);
@@ -828,6 +888,8 @@ ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown
     } else {
       saveCharx(mainState.currentFilePath, mainState.currentData);
     }
+    // After explicit save, clear stale autosave paths from recovery record
+    if (recoveryManager) recoveryManager.clearAutosavePaths();
     return { success: true, path: mainState.currentFilePath };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -837,7 +899,10 @@ ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown
 // Save As
 ipcMain.handle('save-file-as', async (_event, updatedFields: Record<string, unknown>) => {
   if (!mainState.currentData) return { success: false, error: 'No file open' };
-  return saveCurrentFileAs(updatedFields);
+  const result = await saveCurrentFileAs(updatedFields);
+  // After explicit save-as, clear stale autosave paths from recovery record
+  if (result.success && recoveryManager) recoveryManager.clearAutosavePaths();
+  return result;
 });
 
 // Get current file path (for terminal context)
@@ -952,6 +1017,50 @@ ipcMain.handle('get-autosave-info', (_event, customDir?: string) => {
     ? path.basename(mainState.currentFilePath, path.extname(mainState.currentFilePath))
     : '';
   return { dir, prefix: base ? `${base}_autosave_` : '', hasFile: !!mainState.currentFilePath };
+});
+
+// --- Session recovery IPC ---
+ipcMain.handle('get-pending-session-recovery', async () => {
+  if (!recoveryManager) return null;
+  return recoveryManager.getPendingRecovery();
+});
+
+ipcMain.handle('resolve-pending-session-recovery', async (_event, action: 'restore' | 'open-original' | 'ignore') => {
+  if (!recoveryManager) return null;
+  const candidate = await recoveryManager.getPendingRecovery();
+  if (!candidate) return null;
+
+  if (action === 'restore') {
+    await recoveryManager.restoreFromRecovery(candidate);
+    invalidateAssetsMapCache();
+    if (mcpApi) mcpApi.invalidateSectionCaches();
+    mainWindow!.setTitle(`RisuToki - ${path.basename(mainState.currentFilePath!)}`);
+    broadcastSidebarDataChanged();
+    return {
+      action: 'restore' as const,
+      data: serializeForRenderer(mainState.currentData!),
+      recovery: {
+        autosavePath: candidate.autosavePath,
+        provenance: candidate.provenance,
+      },
+    };
+  }
+
+  if (action === 'open-original') {
+    await recoveryManager.openOriginal(candidate);
+    invalidateAssetsMapCache();
+    if (mcpApi) mcpApi.invalidateSectionCaches();
+    mainWindow!.setTitle(`RisuToki - ${path.basename(mainState.currentFilePath!)}`);
+    broadcastSidebarDataChanged();
+    return {
+      action: 'open-original' as const,
+      data: serializeForRenderer(mainState.currentData!),
+    };
+  }
+
+  // action === 'ignore'
+  recoveryManager.ignoreRecovery();
+  return null;
 });
 
 // --- Assistant prompt info ---

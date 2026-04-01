@@ -89,6 +89,8 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
     getAutosaveInfo: (customDir) => ipcRenderer.invoke('get-autosave-info', customDir),
     pickAutosaveDir: () => ipcRenderer.invoke('pick-autosave-dir'),
+    getPendingSessionRecovery: () => ipcRenderer.invoke('get-pending-session-recovery'),
+    resolvePendingSessionRecovery: (action) => ipcRenderer.invoke('resolve-pending-session-recovery', action),
     toggleDevTools: () => ipcRenderer.invoke('toggle-devtools'),
     popoutPanel: (type, requestId) => ipcRenderer.invoke('popout-create', type, requestId),
     closePopout: (type) => ipcRenderer.invoke('popout-close', type),
