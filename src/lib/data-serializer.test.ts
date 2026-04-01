@@ -278,6 +278,35 @@ describe('applyUpdates', () => {
       }),
     ).not.toThrow();
   });
+
+  it('does not throw for valid formatingOrder JSON that only has duplicate tokens (warning-only)', () => {
+    const data: Record<string, unknown> = {
+      _fileType: 'risup',
+      name: 'Test',
+      formatingOrder: '["main"]',
+    };
+    // Duplicate tokens are a warning condition, not structural invalidity
+    expect(() =>
+      applyUpdates(data, {
+        formatingOrder: '["main","main","lorebook"]',
+      }),
+    ).not.toThrow();
+    expect(data.formatingOrder).toBe('["main","main","lorebook"]');
+  });
+
+  it('still throws for malformed formatingOrder JSON even when duplicates would be the only semantic issue', () => {
+    const data: Record<string, unknown> = {
+      _fileType: 'risup',
+      name: 'Original',
+      formatingOrder: '["main"]',
+    };
+    expect(() =>
+      applyUpdates(data, {
+        formatingOrder: '[not valid json',
+      }),
+    ).toThrow(/formatingOrder/i);
+    expect(data.formatingOrder).toBe('["main"]');
+  });
 });
 
 // ── serializeForRenderer risum support ──────────────────────────────────────

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coerceRisupInputValue, validateRisupDraftFields } from './risup-form-editor';
+import { coerceRisupInputValue, getRisupValidationMessage, validateRisupDraftFields } from './risup-form-editor';
 import { RISUP_JSON_FIELD_IDS } from './risup-fields';
 
 describe('risup form editor helpers', () => {
@@ -22,9 +22,9 @@ describe('risup form editor helpers', () => {
 
     expect(errors).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ field: 'promptTemplate', label: '프롬프트 템플릿' }),
-        expect.objectContaining({ field: 'formatingOrder', label: '포매팅 순서' }),
-        expect.objectContaining({ field: 'localStopStrings', label: '로컬 중단 문자열' }),
+        expect.objectContaining({ field: 'promptTemplate', label: '프롬프트 템플릿', severity: 'error' }),
+        expect.objectContaining({ field: 'formatingOrder', label: '포매팅 순서', severity: 'error' }),
+        expect.objectContaining({ field: 'localStopStrings', label: '로컬 중단 문자열', severity: 'error' }),
       ]),
     );
   });
@@ -35,12 +35,82 @@ describe('risup form editor helpers', () => {
     });
 
     expect(errors).toEqual(
-      expect.arrayContaining([expect.objectContaining({ field: 'formatingOrder', label: '포매팅 순서' })]),
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'formatingOrder', label: '포매팅 순서', severity: 'error' }),
+      ]),
     );
   });
 
   it('excludes promptTemplate and formatingOrder from the JSON-validated field IDs', () => {
     expect(RISUP_JSON_FIELD_IDS).not.toContain('promptTemplate');
     expect(RISUP_JSON_FIELD_IDS).not.toContain('formatingOrder');
+  });
+
+  it('reports warning-level formatting-order diagnostics without blocking valid promptTemplate JSON', () => {
+    const errors = validateRisupDraftFields({
+      promptTemplate: JSON.stringify([
+        { id: 'prompt-plain-1', type: 'plain', type2: 'normal', text: 'hello', role: 'system' },
+      ]),
+      formatingOrder: JSON.stringify(['main', 'main', 'lorebook']),
+    });
+
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        field: 'formatingOrder',
+        message: expect.stringContaining('중복'),
+      }),
+    );
+  });
+
+  it('assigns severity "warning" to duplicate formatingOrder entries', () => {
+    const errors = validateRisupDraftFields({
+      promptTemplate: JSON.stringify([{ id: 'p1', type: 'plain', type2: 'normal', text: 'hi', role: 'system' }]),
+      formatingOrder: JSON.stringify(['main', 'main']),
+    });
+
+    const warnings = errors.filter((e) => e.severity === 'warning');
+    expect(warnings.length).toBeGreaterThanOrEqual(1);
+    expect(warnings[0].field).toBe('formatingOrder');
+  });
+
+  it('malformed formatingOrder JSON still produces blocking errors', () => {
+    const errors = validateRisupDraftFields({
+      formatingOrder: '{not json',
+    });
+
+    const blocking = errors.filter((e) => e.severity === 'error');
+    expect(blocking.length).toBeGreaterThanOrEqual(1);
+    expect(blocking[0].field).toBe('formatingOrder');
+  });
+
+  it('warning-only formatting-order mismatches do not block getRisupValidationMessage', () => {
+    const msg = getRisupValidationMessage({
+      promptTemplate: JSON.stringify([{ id: 'p1', type: 'plain', type2: 'normal', text: 'hi', role: 'system' }]),
+      formatingOrder: JSON.stringify(['main', 'main', 'lorebook']),
+    });
+
+    // Only warnings exist — save should not be blocked
+    expect(msg).toBeNull();
+  });
+
+  it('getRisupValidationMessage still blocks when there are real errors', () => {
+    const msg = getRisupValidationMessage({
+      promptTemplate: '{broken',
+      formatingOrder: JSON.stringify(['main']),
+    });
+
+    expect(msg).not.toBeNull();
+    expect(msg).toContain('저장할 수 없습니다');
+  });
+
+  it('existing error entries include severity "error"', () => {
+    const errors = validateRisupDraftFields({
+      promptTemplate: '{',
+    });
+
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    for (const e of errors) {
+      expect(e.severity).toBe('error');
+    }
   });
 });

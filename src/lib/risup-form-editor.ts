@@ -6,7 +6,7 @@ import {
   type RisupFieldGroupId,
   type RisupFieldId,
 } from './risup-fields';
-import { parseFormatingOrder, parsePromptTemplate } from './risup-prompt-model';
+import { collectFormatingOrderWarnings, parseFormatingOrder, parsePromptTemplate } from './risup-prompt-model';
 
 export interface RisupFormTabInfo {
   id: string;
@@ -21,6 +21,7 @@ export interface RisupDraftValidationError {
   field: RisupFieldId;
   label: string;
   message: string;
+  severity: 'error' | 'warning';
 }
 
 export function coerceRisupInputValue(
@@ -48,6 +49,7 @@ export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftVa
       errors.push({
         field: fieldId,
         label,
+        severity: 'error',
         message: `${label} 값은 JSON 문자열이어야 합니다.`,
       });
       continue;
@@ -56,6 +58,7 @@ export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftVa
       errors.push({
         field: fieldId,
         label,
+        severity: 'error',
         message: `${label} 값이 비어 있습니다.`,
       });
       continue;
@@ -66,11 +69,13 @@ export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftVa
       errors.push({
         field: fieldId,
         label,
+        severity: 'error',
         message: `${label} JSON 파싱 실패: ${(error as Error).message}`,
       });
     }
   }
 
+  let promptModel: ReturnType<typeof parsePromptTemplate> | undefined;
   const promptTemplateValue = data.promptTemplate;
   if (promptTemplateValue !== undefined && promptTemplateValue !== null) {
     const label = getRisupFieldDefinition('promptTemplate')?.label || 'promptTemplate';
@@ -78,20 +83,24 @@ export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftVa
       errors.push({
         field: 'promptTemplate',
         label,
+        severity: 'error',
         message: `${label} 값은 JSON 문자열이어야 합니다.`,
       });
     } else {
-      const model = parsePromptTemplate(promptTemplateValue);
-      if (model.state === 'invalid') {
+      promptModel = parsePromptTemplate(promptTemplateValue);
+      if (promptModel.state === 'invalid') {
         errors.push({
           field: 'promptTemplate',
           label,
-          message: `${label} JSON 파싱 실패: ${model.parseError ?? '알 수 없는 오류'}`,
+          severity: 'error',
+          message: `${label} JSON 파싱 실패: ${promptModel.parseError ?? '알 수 없는 오류'}`,
         });
+        promptModel = undefined;
       }
     }
   }
 
+  let orderModel: ReturnType<typeof parseFormatingOrder> | undefined;
   const formatingOrderValue = data.formatingOrder;
   if (formatingOrderValue !== undefined && formatingOrderValue !== null) {
     const label = getRisupFieldDefinition('formatingOrder')?.label || 'formatingOrder';
@@ -99,17 +108,34 @@ export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftVa
       errors.push({
         field: 'formatingOrder',
         label,
+        severity: 'error',
         message: `${label} 값은 JSON 문자열이어야 합니다.`,
       });
     } else {
-      const model = parseFormatingOrder(formatingOrderValue);
-      if (model.state === 'invalid') {
+      orderModel = parseFormatingOrder(formatingOrderValue);
+      if (orderModel.state === 'invalid') {
         errors.push({
           field: 'formatingOrder',
           label,
-          message: `${label} JSON 파싱 실패: ${model.parseError ?? '알 수 없는 오류'}`,
+          severity: 'error',
+          message: `${label} JSON 파싱 실패: ${orderModel.parseError ?? '알 수 없는 오류'}`,
         });
+        orderModel = undefined;
       }
+    }
+  }
+
+  // Surface formatting-order warnings (duplicate/dangling) as advisory diagnostics
+  if (promptModel && orderModel) {
+    const label = getRisupFieldDefinition('formatingOrder')?.label || 'formatingOrder';
+    const warnings = collectFormatingOrderWarnings(promptModel, orderModel);
+    for (const msg of warnings) {
+      errors.push({
+        field: 'formatingOrder',
+        label,
+        severity: 'warning',
+        message: msg.includes('Duplicate') ? `${label} 중복 토큰: ${msg}` : `${label} 참조 경고: ${msg}`,
+      });
     }
   }
 
@@ -117,7 +143,8 @@ export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftVa
 }
 
 export function getRisupValidationMessage(data: Partial<CharxData>): string | null {
-  const errors = validateRisupDraftFields(data);
+  const all = validateRisupDraftFields(data);
+  const errors = all.filter((e) => e.severity === 'error');
   if (errors.length === 0) return null;
 
   const labels = [...new Set(errors.map((error) => error.label))];
