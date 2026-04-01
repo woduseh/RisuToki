@@ -160,6 +160,7 @@
 - `list_risup_prompt_items` / `read_risup_prompt_item` 응답에는 additive `id` 필드가, `read_risup_formating_order` 응답에는 advisory `warnings` 배열이 포함됩니다. 라우팅은 아직 index 기반이 기본이며, raw `write_field("promptTemplate")`로 명시적 `id`를 쓰면 그대로 round-trip됩니다.
 - risup fallback write surface도 무제한 passthrough가 아닙니다. `write_field`, `write_field_batch`, autosave는 `promptTemplate`, `formatingOrder`, `presetBias`, `localStopStrings`에 대해 UI 저장과 같은 validation boundary를 적용하며, malformed JSON/shape는 400 또는 autosave failure로 즉시 거부됩니다.
 - 비정상 종료 뒤 재시작 시 자동 저장 복원 프롬프트가 뜰 수 있습니다. 복원하면 파일 라벨에 `[자동복원]`이 붙고 상태바에 provenance가 표시되며, autosave 옆에는 `.toki-recovery.json` sidecar가 함께 기록됩니다.
+- 프리뷰 패널은 초기화·런타임 진단을 인라인 배너로 표시합니다. iframe이 5 초 안에 준비되지 않으면 타임아웃 에러를, Lua 트리거 실패 등 런타임 에러가 발생하면 해당 메시지를 패널 안에서 바로 볼 수 있습니다. 컨트롤러 레벨의 Wasmoon preflight(`ensureWasmoon()`)는 프리뷰 패널 밖에서 처리되며 이 배너에 포함되지 않습니다.
 
 ---
 

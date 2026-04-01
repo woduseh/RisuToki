@@ -130,6 +130,9 @@ function createSnapshot(overrides: Partial<PreviewSnapshot> = {}): PreviewSnapsh
     scripts: [],
     defaultVariables: '',
     luaOutput: [],
+    initState: 'ready',
+    initError: null,
+    runtimeError: null,
     ...overrides,
   };
 }
