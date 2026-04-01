@@ -9,6 +9,17 @@
 
 ---
 
+## [0.36.0] - 2026-04-01
+
+### 변경
+
+- **MCP 구조화 에러 응답 범위 확장**: field와 lorebook validation guard의 4xx 에러를 `mcpError()` 엔벨로프로 통일해 `action`, `target`, `status`, `suggestion` 같은 additive 필드를 일관되게 제공합니다. field batch read/write/insert/replace와 lorebook read/diff/clone/batch mutation 경로를 포함합니다
+
+### 수정
+
+- **field validation 정합성 복구**: field batch-write가 single-field write와 같은 file-surface/read-only 제약을 적용하고, malformed batch-read payload(`fields` 비문자 멤버)도 structured 400으로 즉시 거부하도록 수정
+- **lorebook malformed batch payload crash 방지**: lorebook batch-write가 `data` 객체가 없는 malformed entry를 generic 500으로 흘리지 않고 structured 400으로 거부하도록 보강
+
 ## [0.35.1] - 2026-04-01
 
 ### 수정

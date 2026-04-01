@@ -1306,18 +1306,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'verbosity',
         ];
         const jsonFields = ['promptTemplate', 'presetBias', 'formatingOrder', 'localStopStrings'];
-        const stringFields = [
-          'name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'lua',
-          'personality', 'scenario', 'creatorcomment', 'exampleMessage', 'systemPrompt',
-          'creator', 'characterVersion', 'nickname', 'additionalText', 'license',
-          'cjs', 'backgroundEmbedding', 'moduleNamespace', 'customModuleToggle', 'mcpUrl',
-          'moduleName', 'moduleDescription',
-          'mainPrompt', 'jailbreak', 'aiModel', 'subModel', 'apiType', 'presetImage',
-          'thinkingType', 'adaptiveThinkingEffort', 'instructChatTemplate', 'JinjaTemplate',
-          'customPromptTemplateToggle', 'templateDefaultVariables', 'moduleIntergration',
-          'jsonSchema', 'extractJson', 'groupTemplate', 'groupOtherBotRole',
-          'autoSuggestPrompt', 'autoSuggestPrefix', 'systemContentReplacement', 'systemRoleReplacement',
-        ];
         // Surface-aware writable set — only fields valid on the current _fileType
         const baseWritable = ['name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'lua'];
         const charxOnlyWritable = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
