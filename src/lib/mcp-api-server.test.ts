@@ -2257,7 +2257,7 @@ describe('MCP API structured error envelopes — field routes', () => {
   });
 
   it('returns a structured error envelope for POST /field/batch-write with boolean type mismatch', async () => {
-    const fixture: SearchFixture = createSearchFixture();
+    const fixture: SearchFixture = { _fileType: 'risum' };
     const api = await startTestApiServer(fixture);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
@@ -2267,6 +2267,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('action', 'batch write field');
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:hideIcon');
+      expect(res.data.error).toContain('boolean');
       expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
@@ -2382,7 +2383,7 @@ describe('MCP API structured error envelopes — field routes', () => {
   });
 
   it('returns a structured error envelope for POST /field/batch-write with number type mismatch', async () => {
-    const fixture: SearchFixture = createSearchFixture();
+    const fixture: SearchFixture = { _fileType: 'risup' };
     const api = await startTestApiServer(fixture);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
@@ -2392,6 +2393,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('action', 'batch write field');
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:temperature');
+      expect(res.data.error).toContain('number');
       expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
@@ -2399,7 +2401,7 @@ describe('MCP API structured error envelopes — field routes', () => {
   });
 
   it('returns a structured error envelope for POST /field/batch-write with JSON-field non-string rejection', async () => {
-    const fixture: SearchFixture = createSearchFixture();
+    const fixture: SearchFixture = { _fileType: 'risup', promptTemplate: '[]' };
     const api = await startTestApiServer(fixture);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
@@ -2409,6 +2411,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('action', 'batch write field');
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:promptTemplate');
+      expect(res.data.error).toContain('문자열');
       expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
@@ -2446,6 +2449,42 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:personality');
       expect(res.data.error).toContain('읽기 전용');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns unknown-field envelope for POST /field/batch-write with moduleId on charx', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'moduleId', content: 'mod-123' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:moduleId');
+      expect(res.data.error).toContain('Unknown field');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns unknown-field envelope for POST /field/batch-write with creationDate on risup', async () => {
+    const fixture: SearchFixture = { _fileType: 'risup' };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/batch-write', {
+        entries: [{ field: 'creationDate', content: '2026-04-01T00:00:00.000Z' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:creationDate');
+      expect(res.data.error).toContain('Unknown field');
       expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);

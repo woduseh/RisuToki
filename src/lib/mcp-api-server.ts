@@ -1259,7 +1259,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const isRisum = (currentData._fileType || 'charx') === 'risum';
         const isRisup = (currentData._fileType || 'charx') === 'risup';
         const isCharx = !isRisum && !isRisup;
-        const readOnlyFields = ['creationDate', 'modificationDate', 'moduleId'];
+        const charxReadOnlyFields = ['creationDate', 'modificationDate'];
+        const risumReadOnlyFields = ['moduleId'];
+        const readOnlyFields = [
+          ...(isCharx ? charxReadOnlyFields : []),
+          ...(isRisum ? risumReadOnlyFields : []),
+        ];
         const charxDeprecatedFields = [
           'personality', 'scenario', 'nickname', 'source',
           'additionalText', 'tags', 'license', 'groupOnlyGreetings',
@@ -1301,7 +1306,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'verbosity',
         ];
         const jsonFields = ['promptTemplate', 'presetBias', 'formatingOrder', 'localStopStrings'];
-        const arrayFields = ['tags', 'source'];
         const stringFields = [
           'name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'lua',
           'personality', 'scenario', 'creatorcomment', 'exampleMessage', 'systemPrompt',
@@ -1314,9 +1318,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'jsonSchema', 'extractJson', 'groupTemplate', 'groupOtherBotRole',
           'autoSuggestPrompt', 'autoSuggestPrefix', 'systemContentReplacement', 'systemRoleReplacement',
         ];
-        const allKnownWritable = new Set([
-          ...boolFields, ...numFields, ...jsonFields, ...arrayFields, ...stringFields,
-        ]);
         // Surface-aware writable set — only fields valid on the current _fileType
         const baseWritable = ['name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'lua'];
         const charxOnlyWritable = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
@@ -1413,16 +1414,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
                 target: `field:${entry.field}`,
               });
             }
-          } else if (arrayFields.includes(entry.field)) {
-            type = 'array';
-            if (!Array.isArray(entry.content)) {
-              return mcpError(res, 400, {
-                action: 'batch write field',
-                message: `"${entry.field}"는 배열 타입이어야 합니다.`,
-                suggestion: `"${entry.field}" 값을 배열로 전달하세요. 예: ["항목1", "항목2"] (현재: ${typeof entry.content})`,
-                target: `field:${entry.field}`,
-              });
-            }
           } else if (jsonFields.includes(entry.field)) {
             type = 'json';
             if (typeof entry.content !== 'string') {
@@ -1455,17 +1446,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           const oldVal = currentData[entry.field];
           const oldSize =
-            type === 'array'
-              ? (oldVal || []).length
-              : type === 'boolean' || type === 'number'
-                ? String(oldVal ?? '').length
-                : (oldVal || '').length;
+            type === 'boolean' || type === 'number'
+              ? String(oldVal ?? '').length
+              : (oldVal || '').length;
           const newSize =
-            type === 'array'
-              ? (entry.content as unknown[]).length
-              : type === 'boolean' || type === 'number'
-                ? String(entry.content).length
-                : (entry.content as string).length;
+            type === 'boolean' || type === 'number'
+              ? String(entry.content).length
+              : (entry.content as string).length;
           validatedEntries.push({ field: entry.field, content: entry.content, oldSize, newSize, type });
         }
 
