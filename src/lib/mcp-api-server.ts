@@ -8091,7 +8091,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             action: 'read_skill',
             message: `Skill file not found: ${skillName}/${fileName}`,
             suggestion: 'list_skills로 사용 가능한 스킬 목록을 확인하세요.',
-            target: `skills/${skillName}/${fileName}`,
+            target: `skills:${skillName}:${fileName}`,
           });
         }
       }

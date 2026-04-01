@@ -164,7 +164,7 @@
 - 프리뷰는 현재 `.charx` 파일에서만 열립니다. `.risum` / `.risup`가 열려 있으면 보기 메뉴의 프리뷰 항목과 `F5` 경로가 모두 차단됩니다. 내부적으로는 `_fileType` 누락과 명시적 `_fileType: 'charx'`를 모두 charx로 취급해야 합니다.
 - 프리뷰 Lua의 `setDescription`, `setPersonality`, `setScenario`, `setFirstMessage`는 preview-local 상태를 즉시 갱신하므로, 카드 필드 변경 트리거를 프리뷰 안에서 검증할 수 있습니다.
 - 프리뷰 매크로는 `{{charpersona}}`와 `{{chardesc}}`를 서로 다른 필드로 유지해야 합니다. `{{charpersona}}`는 personality, `{{chardesc}}`는 description을 읽습니다.
-- **MCP 구조화 에러 응답 (v0.36.0 bounded contract)**: regex, greetings, lua 섹션, css 섹션에 더해 field/lorebook validation 라우트의 4xx 에러도 구조화된 `mcpError()` 엔벨로프를 반환합니다. 응답에는 `action`, `target`, `status`, `suggestion` 등의 additive 필드가 포함되며, MCP 브릿지 호환을 위해 최상위 `error` 필드도 그대로 유지됩니다. 아직 reference 라우트, 글로벌 guard, HTTP-200 `success: false` no-op 응답까지 모두 전환된 것은 아닙니다.
+- **MCP 구조화 에러 응답 (v0.37.0 route-local contract)**: regex, greetings, lua/css 섹션, field/lorebook, reference, charx/risum asset, risup reorder/formating-order, skills file-read validation 라우트의 route-local `4xx/409` 에러는 구조화된 `mcpError()` 엔벨로프를 반환합니다. 응답에는 `action`, `target`, `status`, `suggestion` 등의 additive 필드가 포함되며, MCP 브릿지 호환을 위해 최상위 `error` 필드도 그대로 유지됩니다. 아직 글로벌 `Unauthorized` / `No file open` guard와 HTTP-200 `success: false` no-op 응답은 이 contract 밖에 남아 있습니다.
 
 ---
 

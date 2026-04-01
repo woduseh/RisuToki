@@ -1,11 +1,19 @@
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig, type Plugin } from 'vitest/config';
+import { normalizePath } from 'vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url));
+const require = createRequire(import.meta.url);
+
+function resolveInstalledAssetPath(packageName: string, assetPath: string): string {
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  return resolve(dirname(packageJsonPath), assetPath);
+}
 
 /**
  * Wraps Monaco AMD JS files in IIFEs to prevent global variable pollution.
@@ -21,7 +29,7 @@ const rootDir = fileURLToPath(new URL('.', import.meta.url));
  */
 function monacoIifePlugin(): Plugin {
   const MONACO_PREFIX = '/vendor/monaco-editor/min/vs/';
-  const monacoRoot = resolve(rootDir, 'node_modules/monaco-editor/min/vs');
+  const monacoRoot = resolveInstalledAssetPath('monaco-editor', 'min/vs');
 
   function wrapDir(dir: string): void {
     for (const entry of readdirSync(dir)) {
@@ -82,25 +90,25 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         {
-          src: 'node_modules/monaco-editor/min/vs/**/*',
+          src: `${normalizePath(resolveInstalledAssetPath('monaco-editor', 'min/vs'))}/**/*`,
           dest: 'vendor/monaco-editor/min/vs',
           // @ts-expect-error Missing in vite-plugin-static-copy typings.
           structured: true,
         },
         {
-          src: 'node_modules/@xterm/xterm/css/xterm.css',
+          src: normalizePath(resolveInstalledAssetPath('@xterm/xterm', 'css/xterm.css')),
           dest: 'vendor/@xterm/xterm/css',
         },
         {
-          src: 'node_modules/@xterm/xterm/lib/xterm.js',
+          src: normalizePath(resolveInstalledAssetPath('@xterm/xterm', 'lib/xterm.js')),
           dest: 'vendor/@xterm/xterm/lib',
         },
         {
-          src: 'node_modules/@xterm/addon-fit/lib/addon-fit.js',
+          src: normalizePath(resolveInstalledAssetPath('@xterm/addon-fit', 'lib/addon-fit.js')),
           dest: 'vendor/@xterm/addon-fit/lib',
         },
         {
-          src: 'node_modules/wasmoon/dist/index.js',
+          src: normalizePath(resolveInstalledAssetPath('wasmoon', 'dist/index.js')),
           dest: 'vendor/wasmoon/dist',
         },
         {

@@ -3374,4 +3374,28 @@ describe('MCP API structured error envelopes — skills routes', () => {
       await closeServer(api.server);
     }
   });
+
+  it('returns a colon-delimited target for missing files in GET /skills/:name/:file', async () => {
+    const skillsDir = path.join(TEST_DIR, 'skills-missing-envelope');
+    await fs.promises.rm(skillsDir, { recursive: true, force: true });
+    await writeSkillFixture(skillsDir, 'my-skill', {
+      'SKILL.md': `---\nname: my-skill\ndescription: 'test'\n---\n# Skill\n`,
+    });
+
+    const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
+    try {
+      const res = await getJson<McpErrorEnvelope>(
+        api.port,
+        api.token,
+        '/skills/my-skill/MISSING.md',
+      );
+      expect(res.status).toBe(404);
+      expect(res.data).toHaveProperty('action', 'read_skill');
+      expect(res.data).toHaveProperty('status', 404);
+      expect(res.data).toHaveProperty('target', 'skills:my-skill:MISSING.md');
+      expect(res.data.error).toContain('Skill file not found: my-skill/MISSING.md');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
 });

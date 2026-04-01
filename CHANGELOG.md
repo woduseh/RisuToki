@@ -9,6 +9,17 @@
 
 ---
 
+## [0.37.0] - 2026-04-01
+
+### 변경
+
+- **MCP 구조화 에러 응답 route-local 범위 완성**: reference, charx/risum asset, risup reorder/formating-order, skills file-read validation 라우트의 남은 route-local `4xx/409` 에러를 `mcpError()` 엔벨로프로 통일했습니다. 이제 regex, greetings, lua/css section, field/lorebook, reference, asset, risup, skills의 route-local validation surface가 같은 `action`, `target`, `status`, `suggestion` contract를 공유합니다
+
+### 수정
+
+- **중복 asset conflict 가이드 보강**: `add_charx_asset`의 duplicate-path `409` 응답에 후속 행동을 안내하는 `suggestion` 필드를 추가해 AI CLI가 자동 복구 힌트를 더 안정적으로 받을 수 있게 했습니다
+- **워크트리 renderer build 경로 정합성**: `vite-plugin-static-copy` vendor asset 복사를 설치된 패키지 경로 기반으로 정리해, Windows git worktree에서도 `npm run build:renderer`와 전체 릴리즈 검증이 같은 방식으로 통과하도록 수정했습니다
+
 ## [0.36.0] - 2026-04-01
 
 ### 변경
