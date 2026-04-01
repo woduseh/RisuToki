@@ -1709,3 +1709,121 @@ description: 'Reference skill for file reads'
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Structured error-envelope regression tests for array-CRUD route families.
+//
+// These tests verify that validation guards in regex, greetings, lua-section,
+// and css-section routes return the structured mcpError() envelope (with
+// `action`, `error`, `status`, `target`) instead of the bare
+// `jsonRes({ error })` shape.
+//
+// Per strict TDD: written to fail against the current bare-error production
+// code so that subsequent production changes can be validated.
+// ---------------------------------------------------------------------------
+
+interface McpErrorEnvelope {
+  action: string;
+  error: string;
+  status: number;
+  target: string;
+  rejected?: boolean;
+  suggestion?: string;
+  details?: unknown;
+}
+
+describe('MCP API structured error envelopes — regex routes', () => {
+  it('returns a structured error envelope for out-of-range index in POST /regex/batch-write', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      regex: [{ comment: 'test-regex', type: 'editoutput', find: 'foo', replace: 'bar' }],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/regex/batch-write', {
+        entries: [{ index: 999, data: { find: 'x', replace: 'y' } }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(res.data.error).toContain('out of range');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API structured error envelopes — greeting routes', () => {
+  it('returns a structured error envelope for invalid permutation in POST /greeting/alternate/reorder', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      alternateGreetings: ['Hello', 'Hi', 'Hey'],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/greeting/alternate/reorder', {
+        order: [0, 0, 0],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(res.data.error).toContain('permutation');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API structured error envelopes — lua-section routes', () => {
+  it('returns a structured error envelope for non-array indices in POST /lua/batch', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      lua: '',
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lua/batch', {
+        indices: 'not-an-array',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(res.data.error).toContain('indices must be an array');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API structured error envelopes — css-section routes', () => {
+  it('returns a structured error envelope for non-array indices in POST /css-section/batch', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      css: '',
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/css-section/batch', {
+        indices: 'not-an-array',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(res.data.error).toContain('indices must be an array');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
