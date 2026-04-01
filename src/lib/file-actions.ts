@@ -95,6 +95,7 @@ async function confirmDocumentReplacement(deps: FileActionDeps, targetLabel: str
 }
 
 export async function handleNew(deps: FileActionDeps): Promise<void> {
+  const store = useAppStore();
   if (!(await confirmDocumentReplacement(deps, '새 파일'))) return;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = await (window as any).tokiAPI.newFile();
@@ -102,13 +103,15 @@ export async function handleNew(deps: FileActionDeps): Promise<void> {
   deps.setFileData(data);
   resetEditorUI(deps);
 
-  useAppStore().setFileLabel('New Character');
+  store.clearRestoredSessionState();
+  store.setFileLabel('New Character');
 
   deps.buildSidebar();
   deps.setStatus('새 파일 생성됨');
 }
 
 export async function handleOpen(deps: FileActionDeps): Promise<void> {
+  const store = useAppStore();
   try {
     if (!(await confirmDocumentReplacement(deps, '파일 열기'))) return;
     deps.setStatus('파일 열기 중...');
@@ -121,7 +124,8 @@ export async function handleOpen(deps: FileActionDeps): Promise<void> {
     deps.setFileData(data);
     resetEditorUI(deps);
 
-    useAppStore().setFileLabel(`${(data as Record<string, unknown>).name || 'Untitled'}`);
+    store.clearRestoredSessionState();
+    store.setFileLabel(`${(data as Record<string, unknown>).name || 'Untitled'}`);
 
     deps.buildSidebar();
     deps.setStatus(`파일 열림: ${(data as Record<string, unknown>).name}`);
@@ -132,6 +136,7 @@ export async function handleOpen(deps: FileActionDeps): Promise<void> {
 }
 
 export async function handleSave(deps: FileActionDeps): Promise<void> {
+  const store = useAppStore();
   const fileData = deps.getFileData();
   if (!fileData) return;
   syncEditorToActiveTab(deps);
@@ -146,6 +151,7 @@ export async function handleSave(deps: FileActionDeps): Promise<void> {
     deps.tabMgr.dirtyFields.clear();
     deps.tabMgr.renderTabs();
     deps.buildSidebar();
+    store.clearRestoredSessionState();
     deps.setStatus('저장 완료');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).tokiAPI.cleanupAutosave(deps.getAutosaveDir() || undefined);
@@ -155,6 +161,7 @@ export async function handleSave(deps: FileActionDeps): Promise<void> {
 }
 
 export async function handleSaveAs(deps: FileActionDeps): Promise<void> {
+  const store = useAppStore();
   const fileData = deps.getFileData();
   if (!fileData) return;
   syncEditorToActiveTab(deps);
@@ -169,6 +176,7 @@ export async function handleSaveAs(deps: FileActionDeps): Promise<void> {
     deps.tabMgr.dirtyFields.clear();
     deps.tabMgr.renderTabs();
     deps.buildSidebar();
+    store.clearRestoredSessionState();
     deps.setStatus(`저장 완료: ${result.path}`);
   } else {
     deps.setStatus(`저장 취소`);

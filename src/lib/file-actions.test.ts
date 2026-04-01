@@ -26,6 +26,9 @@ function makeDeps(overrides: Partial<FileActionTestDeps> = {}): FileActionTestDe
     onPopOutTab: vi.fn(),
     isFormTabType: () => false,
   });
+  const setStatus = vi.fn((message: string) => {
+    useAppStore().setStatus(message);
+  });
   return {
     getFileData: vi.fn(() => ({ name: 'Test' })),
     setFileData: vi.fn(),
@@ -37,7 +40,7 @@ function makeDeps(overrides: Partial<FileActionTestDeps> = {}): FileActionTestDe
     hasUnsavedChanges: vi.fn(() => false),
     requestDocumentReplacement: vi.fn(async () => CLOSE_CHOICE_CANCEL),
     saveCurrentDocument: vi.fn(async () => {}),
-    setStatus: vi.fn(),
+    setStatus,
     ...overrides,
   };
 }
@@ -147,6 +150,33 @@ describe('file-actions', () => {
       expect(deps.saveCurrentDocument).toHaveBeenCalledTimes(1);
       expect(newFile).not.toHaveBeenCalled();
     });
+
+    it('clears restored-session provenance after successful new-file creation', async () => {
+      const store = useAppStore();
+      store.setRestoredSessionLabel('자동복원');
+      store.showRestoredSessionStatus('자동 저장에서 복원됨');
+      const newData = { name: 'Fresh' };
+      installTokiAPI({ newFile: vi.fn().mockResolvedValue(newData) });
+      const deps = makeDeps();
+
+      await handleNew(deps);
+
+      expect(store.restoredSessionLabel).toBe('');
+      expect(store.statusText).toBe('새 파일 생성됨');
+    });
+
+    it('preserves restored-session provenance when new-file creation is cancelled', async () => {
+      const store = useAppStore();
+      store.setRestoredSessionLabel('자동복원');
+      store.showRestoredSessionStatus('자동 저장에서 복원됨');
+      installTokiAPI({ newFile: vi.fn().mockResolvedValue(null) });
+      const deps = makeDeps();
+
+      await handleNew(deps);
+
+      expect(store.restoredSessionLabel).toBe('자동복원');
+      expect(store.statusText).toBe('자동 저장에서 복원됨');
+    });
   });
 
   describe('handleOpen', () => {
@@ -214,6 +244,32 @@ describe('file-actions', () => {
       expect(deps.saveCurrentDocument).toHaveBeenCalledTimes(1);
       expect(openFile).toHaveBeenCalledTimes(1);
       expect(deps.setFileData).toHaveBeenCalledWith(fileData);
+    });
+
+    it('clears restored-session provenance when opening a different file successfully', async () => {
+      const store = useAppStore();
+      store.setRestoredSessionLabel('자동복원');
+      store.showRestoredSessionStatus('자동 저장에서 복원됨');
+      const fileData = { name: 'Opened' };
+      installTokiAPI({ openFile: vi.fn().mockResolvedValue(fileData) });
+      const deps = makeDeps();
+
+      await handleOpen(deps);
+
+      expect(store.restoredSessionLabel).toBe('');
+      expect(store.statusText).toBe('파일 열림: Opened');
+    });
+
+    it('preserves restored-session provenance when opening is cancelled', async () => {
+      const store = useAppStore();
+      store.setRestoredSessionLabel('자동복원');
+      store.showRestoredSessionStatus('자동 저장에서 복원됨');
+      installTokiAPI({ openFile: vi.fn().mockResolvedValue(null) });
+      const deps = makeDeps();
+
+      await handleOpen(deps);
+
+      expect(store.restoredSessionLabel).toBe('자동복원');
     });
   });
 
@@ -336,6 +392,36 @@ describe('file-actions', () => {
       expect(saveFile).not.toHaveBeenCalled();
       expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('지원되지 않는 트리거 조건/효과'));
     });
+
+    it('clears restored-session provenance after successful save', async () => {
+      const store = useAppStore();
+      store.setRestoredSessionLabel('자동복원');
+      store.showRestoredSessionStatus('자동 저장에서 복원됨');
+      installTokiAPI({
+        saveFile: vi.fn().mockResolvedValue({ success: true }),
+        cleanupAutosave: vi.fn(),
+      });
+      const deps = makeDeps();
+
+      await handleSave(deps);
+
+      expect(store.restoredSessionLabel).toBe('');
+      expect(store.statusText).toBe('저장 완료');
+    });
+
+    it('preserves restored-session provenance after failed save', async () => {
+      const store = useAppStore();
+      store.setRestoredSessionLabel('자동복원');
+      store.showRestoredSessionStatus('자동 저장에서 복원됨');
+      installTokiAPI({
+        saveFile: vi.fn().mockResolvedValue({ success: false, error: 'perm denied' }),
+      });
+      const deps = makeDeps();
+
+      await handleSave(deps);
+
+      expect(store.restoredSessionLabel).toBe('자동복원');
+    });
   });
 
   describe('handleSaveAs', () => {
@@ -419,6 +505,35 @@ describe('file-actions', () => {
 
       expect(saveFileAs).not.toHaveBeenCalled();
       expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('지원되지 않는 트리거 조건/효과'));
+    });
+
+    it('clears restored-session provenance after successful save-as', async () => {
+      const store = useAppStore();
+      store.setRestoredSessionLabel('자동복원');
+      store.showRestoredSessionStatus('자동 저장에서 복원됨');
+      installTokiAPI({
+        saveFileAs: vi.fn().mockResolvedValue({ success: true, path: '/new/path.charx' }),
+      });
+      const deps = makeDeps();
+
+      await handleSaveAs(deps);
+
+      expect(store.restoredSessionLabel).toBe('');
+      expect(store.statusText).toBe('저장 완료: /new/path.charx');
+    });
+
+    it('preserves restored-session provenance when save-as is cancelled', async () => {
+      const store = useAppStore();
+      store.setRestoredSessionLabel('자동복원');
+      store.showRestoredSessionStatus('자동 저장에서 복원됨');
+      installTokiAPI({
+        saveFileAs: vi.fn().mockResolvedValue({ success: false }),
+      });
+      const deps = makeDeps();
+
+      await handleSaveAs(deps);
+
+      expect(store.restoredSessionLabel).toBe('자동복원');
     });
   });
 });
