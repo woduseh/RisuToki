@@ -109,6 +109,43 @@ describe('SessionRecoveryManager', () => {
       expect(parsed.latestAutosaveMetaPath).toBe(SIDECAR_PATH);
       expect(parsed.cleanExit).toBe(false);
     });
+
+    it('does not write to disk when no document is active', async () => {
+      const manager = createSessionRecoveryManager(deps);
+
+      await manager.updateAutosavePaths(AUTOSAVE_PATH, SIDECAR_PATH);
+
+      expect(deps.writeFileSync).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── clearAutosavePaths ─────────────────────────────────────────────
+
+  describe('clearAutosavePaths', () => {
+    it('clears autosave paths while keeping the active source document dirty', async () => {
+      const manager = createSessionRecoveryManager(deps);
+      await manager.markDocumentActive(SOURCE_PATH, 'charx');
+      await manager.updateAutosavePaths(AUTOSAVE_PATH, SIDECAR_PATH);
+      (deps.writeFileSync as ReturnType<typeof vi.fn>).mockClear();
+
+      manager.clearAutosavePaths();
+
+      const writtenData = (deps.writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      const parsed = JSON.parse(writtenData) as SessionRecoveryRecord;
+      expect(parsed.sourceFilePath).toBe(SOURCE_PATH);
+      expect(parsed.sourceFileType).toBe('charx');
+      expect(parsed.latestAutosavePath).toBeNull();
+      expect(parsed.latestAutosaveMetaPath).toBeNull();
+      expect(parsed.cleanExit).toBe(false);
+    });
+
+    it('does not write to disk when there is no active record', () => {
+      const manager = createSessionRecoveryManager(deps);
+
+      manager.clearAutosavePaths();
+
+      expect(deps.writeFileSync).not.toHaveBeenCalled();
+    });
   });
 
   // ── markCleanExit ─────────────────────────────────────────────────
@@ -141,7 +178,7 @@ describe('SessionRecoveryManager', () => {
 
   describe('getPendingRecovery', () => {
     it('returns a pending recovery candidate when the previous session was interrupted and files still exist', async () => {
-      const record = makeRecord();
+      const record = makeRecord({ latestAutosaveMetaPath: null });
       const provenance = makeProvenance();
 
       deps = makeDeps({
@@ -298,6 +335,25 @@ describe('SessionRecoveryManager', () => {
       expect(candidate).toBeNull();
     });
 
+    it('returns null when the sidecar file type disagrees with the record', async () => {
+      const record = makeRecord({ sourceFileType: 'charx' });
+      const provenance = makeProvenance({ sourceFileType: 'risum' });
+
+      deps = makeDeps({
+        readFileSync: vi.fn((p: string) => {
+          if (p === RECORD_PATH) return JSON.stringify(record);
+          if (p === SIDECAR_PATH) return JSON.stringify(provenance);
+          return '{}';
+        }),
+        existsSync: vi.fn(() => true),
+      });
+
+      const manager = createSessionRecoveryManager(deps);
+      const candidate = await manager.getPendingRecovery();
+
+      expect(candidate).toBeNull();
+    });
+
     it('returns null when the record has no autosave path', async () => {
       const record = makeRecord({ latestAutosavePath: null });
 
@@ -430,6 +486,35 @@ describe('SessionRecoveryManager', () => {
       expect(deps.setCurrentDocument).toHaveBeenCalledWith(SOURCE_PATH, autosaveData);
     });
 
+    it('re-seeds the in-memory record for follow-up autosave tracking', async () => {
+      deps = makeDeps({
+        openDocument: vi.fn(() => ({ name: 'Hero' })),
+      });
+
+      const candidate = {
+        sourceFilePath: SOURCE_PATH,
+        autosavePath: AUTOSAVE_PATH,
+        provenance: makeProvenance(),
+        staleWarning: null,
+        originalMtimeMs: 2000,
+        autosaveMtimeMs: 1000,
+      };
+
+      const manager = createSessionRecoveryManager(deps);
+      await manager.restoreFromRecovery(candidate);
+      (deps.writeFileSync as ReturnType<typeof vi.fn>).mockClear();
+
+      await manager.updateAutosavePaths(
+        'C:\\cards\\hero_autosave_20260402.charx',
+        'C:\\cards\\hero_autosave_20260402.charx.toki-recovery.json',
+      );
+
+      const writtenData = (deps.writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0][1];
+      const parsed = JSON.parse(writtenData) as SessionRecoveryRecord;
+      expect(parsed.sourceFilePath).toBe(SOURCE_PATH);
+      expect(parsed.latestAutosavePath).toBe('C:\\cards\\hero_autosave_20260402.charx');
+    });
+
     it('clears the pending candidate after restore', async () => {
       deps = makeDeps({
         openDocument: vi.fn(() => ({ name: 'Hero' })),
@@ -538,6 +623,29 @@ describe('SessionRecoveryManager', () => {
       await manager.openOriginal(candidate);
 
       expect(manager.getLastRestoredProvenance()).toBeNull();
+    });
+
+    it('clears autosave paths when opening the original file', async () => {
+      deps = makeDeps({
+        openDocument: vi.fn(() => ({ name: 'Hero' })),
+      });
+
+      const candidate = {
+        sourceFilePath: SOURCE_PATH,
+        autosavePath: AUTOSAVE_PATH,
+        provenance: makeProvenance(),
+        staleWarning: null,
+        originalMtimeMs: 2000,
+        autosaveMtimeMs: 1000,
+      };
+
+      const manager = createSessionRecoveryManager(deps);
+      await manager.openOriginal(candidate);
+
+      const writtenData = (deps.writeFileSync as ReturnType<typeof vi.fn>).mock.calls.at(-1)![1];
+      const parsed = JSON.parse(writtenData) as SessionRecoveryRecord;
+      expect(parsed.latestAutosavePath).toBeNull();
+      expect(parsed.latestAutosaveMetaPath).toBeNull();
     });
   });
 

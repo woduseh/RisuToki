@@ -39,6 +39,7 @@ export interface SessionRecoveryManagerDeps {
 export interface SessionRecoveryManager {
   markDocumentActive(filePath: string, fileType: RecoveryFileType): Promise<void>;
   updateAutosavePaths(autosavePath: string, sidecarPath: string): Promise<void>;
+  clearAutosavePaths(): void;
   markCleanExit(): void;
   getPendingRecovery(): Promise<PendingRecoveryCandidate | null>;
   restoreFromRecovery(candidate: PendingRecoveryCandidate): Promise<void>;
@@ -57,6 +58,23 @@ export function createSessionRecoveryManager(deps: SessionRecoveryManagerDeps): 
   let lastRestoredProvenance: AutosaveProvenance | null = null;
 
   // ── Internal helpers ──────────────────────────────────────────────
+
+  function createRecord(
+    sourceFilePath: string | null,
+    sourceFileType: RecoveryFileType | null,
+    latestAutosavePath: string | null,
+    latestAutosaveMetaPath: string | null,
+    cleanExit: boolean,
+  ): SessionRecoveryRecord {
+    return {
+      sourceFilePath,
+      sourceFileType,
+      latestAutosavePath,
+      latestAutosaveMetaPath,
+      cleanExit,
+      updatedAt: new Date().toISOString(),
+    };
+  }
 
   function writeRecord(record: SessionRecoveryRecord): void {
     deps.writeFileSync(recordPath, JSON.stringify(record));
@@ -94,38 +112,31 @@ export function createSessionRecoveryManager(deps: SessionRecoveryManagerDeps): 
 
   return {
     async markDocumentActive(filePath, fileType) {
-      const record: SessionRecoveryRecord = {
-        sourceFilePath: filePath,
-        sourceFileType: fileType,
-        latestAutosavePath: currentRecord?.latestAutosavePath ?? null,
-        latestAutosaveMetaPath: currentRecord?.latestAutosaveMetaPath ?? null,
-        cleanExit: false,
-        updatedAt: new Date().toISOString(),
-      };
-      writeRecord(record);
+      writeRecord(createRecord(filePath, fileType, null, null, false));
     },
 
     async updateAutosavePaths(autosavePath, sidecarPath) {
       if (!currentRecord) return;
-      const updated: SessionRecoveryRecord = {
-        ...currentRecord,
-        latestAutosavePath: autosavePath,
-        latestAutosaveMetaPath: sidecarPath,
-        updatedAt: new Date().toISOString(),
-      };
-      writeRecord(updated);
+      writeRecord(
+        createRecord(currentRecord.sourceFilePath, currentRecord.sourceFileType, autosavePath, sidecarPath, false),
+      );
+    },
+
+    clearAutosavePaths() {
+      if (!currentRecord) return;
+      writeRecord(createRecord(currentRecord.sourceFilePath, currentRecord.sourceFileType, null, null, false));
     },
 
     markCleanExit() {
-      const record: SessionRecoveryRecord = {
-        sourceFilePath: currentRecord?.sourceFilePath ?? null,
-        sourceFileType: currentRecord?.sourceFileType ?? null,
-        latestAutosavePath: currentRecord?.latestAutosavePath ?? null,
-        latestAutosaveMetaPath: currentRecord?.latestAutosaveMetaPath ?? null,
-        cleanExit: true,
-        updatedAt: new Date().toISOString(),
-      };
-      writeRecord(record);
+      writeRecord(
+        createRecord(
+          currentRecord?.sourceFilePath ?? null,
+          currentRecord?.sourceFileType ?? null,
+          currentRecord?.latestAutosavePath ?? null,
+          currentRecord?.latestAutosaveMetaPath ?? null,
+          true,
+        ),
+      );
     },
 
     async getPendingRecovery() {
@@ -149,6 +160,7 @@ export function createSessionRecoveryManager(deps: SessionRecoveryManagerDeps): 
       if (!provenance) return null;
       if (provenance.sourceFilePath !== record.sourceFilePath) return null;
       if (provenance.autosavePath !== record.latestAutosavePath) return null;
+      if (record.sourceFileType && provenance.sourceFileType !== record.sourceFileType) return null;
 
       // Gather staleness metadata
       const originalMtimeMs = safeMtimeMs(record.sourceFilePath);
@@ -175,6 +187,15 @@ export function createSessionRecoveryManager(deps: SessionRecoveryManagerDeps): 
     async restoreFromRecovery(candidate) {
       const data = deps.openDocument(candidate.autosavePath);
       deps.setCurrentDocument(candidate.sourceFilePath, data);
+      writeRecord(
+        createRecord(
+          candidate.sourceFilePath,
+          candidate.provenance.sourceFileType,
+          candidate.autosavePath,
+          getAutosaveSidecarPath(candidate.autosavePath),
+          false,
+        ),
+      );
       lastRestoredProvenance = candidate.provenance;
       dismissed = true;
     },
@@ -182,6 +203,7 @@ export function createSessionRecoveryManager(deps: SessionRecoveryManagerDeps): 
     async openOriginal(candidate) {
       const data = deps.openDocument(candidate.sourceFilePath);
       deps.setCurrentDocument(candidate.sourceFilePath, data);
+      writeRecord(createRecord(candidate.sourceFilePath, candidate.provenance.sourceFileType, null, null, false));
       lastRestoredProvenance = null;
       dismissed = true;
     },
