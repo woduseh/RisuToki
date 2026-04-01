@@ -520,7 +520,14 @@ export function createPromptTemplateEditor(
           item.type,
           readonly,
           (value) => {
-            updateItem(i, () => defaultPromptItem(value as SupportedPromptItemType), true);
+            updateItem(
+              i,
+              (old) => {
+                const fresh = defaultPromptItem(value as SupportedPromptItemType);
+                return { ...fresh, id: old.id };
+              },
+              true,
+            );
           },
           'type',
         );

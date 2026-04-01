@@ -151,6 +151,61 @@ describe('createPromptTemplateEditor', () => {
     handle.dispose();
   });
 
+  it('preserves the same id when an item type changes', () => {
+    const container = document.createElement('div');
+    const template = JSON.stringify([
+      { id: 'prompt-1', type: 'plain', type2: 'normal', text: 'Hello', role: 'system' },
+    ]);
+    const onChange = vi.fn();
+    const handle = createPromptTemplateEditor(container, template, onChange);
+
+    const typeSelect = container.querySelector<HTMLSelectElement>('[data-field="type"]');
+    expect(typeSelect).toBeTruthy();
+    typeSelect!.value = 'chat';
+    typeSelect!.dispatchEvent(new Event('change'));
+
+    expect(onChange).toHaveBeenCalled();
+    const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as { id: string; type: string }[];
+    expect(newValue[0].type).toBe('chat');
+    expect(newValue[0].id).toBe('prompt-1');
+    handle.dispose();
+  });
+
+  it('preserves ids when items are reordered', () => {
+    const container = document.createElement('div');
+    const template = JSON.stringify([
+      { id: 'prompt-a', type: 'plain', type2: 'normal', text: 'A', role: 'system' },
+      { id: 'prompt-b', type: 'plain', type2: 'normal', text: 'B', role: 'system' },
+    ]);
+    const onChange = vi.fn();
+    const handle = createPromptTemplateEditor(container, template, onChange);
+
+    const moveUpButtons = container.querySelectorAll<HTMLButtonElement>('[data-action="move-up"]');
+    moveUpButtons[1].click();
+
+    const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as { id: string; text: string }[];
+    expect(newValue[0].text).toBe('B');
+    expect(newValue[0].id).toBe('prompt-b');
+    expect(newValue[1].text).toBe('A');
+    expect(newValue[1].id).toBe('prompt-a');
+    handle.dispose();
+  });
+
+  it('creates a fresh id when a new item is added', () => {
+    const container = document.createElement('div');
+    const onChange = vi.fn();
+    const handle = createPromptTemplateEditor(container, '[]', onChange);
+
+    const addButton = container.querySelector<HTMLButtonElement>('[data-action="add-item"]');
+    addButton!.click();
+
+    const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as { id: string }[];
+    expect(newValue.length).toBe(1);
+    expect(typeof newValue[0].id).toBe('string');
+    expect(newValue[0].id.length).toBeGreaterThan(0);
+    handle.dispose();
+  });
+
   it('renders detail fields for all supported item types', () => {
     const template = JSON.stringify([
       { type: 'plain', type2: 'normal', text: 'p', role: 'system' },
