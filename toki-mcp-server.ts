@@ -1996,14 +1996,14 @@ server.tool(
 
 server.tool(
   'list_risup_prompt_items',
-  'Lists all items in the risup preset promptTemplate with type, supported flag, and a concise preview. The current file must be a .risup preset. Returns 400 if the file is not risup or if promptTemplate JSON is invalid.',
+  'Lists all items in the risup preset promptTemplate with type, supported flag, stable id, and a concise preview. Each item includes an additive "id" field for stable identification (null for unsupported items). The current file must be a .risup preset. Returns 400 if the file is not risup or if promptTemplate JSON is invalid.',
   {},
   async () => textResult(await apiRequest('GET', '/risup/prompt-items')),
 );
 
 server.tool(
   'read_risup_prompt_item',
-  'Reads a single prompt item from the risup promptTemplate by index. Returns the raw item object plus supported/type metadata. The current file must be a .risup preset.',
+  'Reads a single prompt item from the risup promptTemplate by index. Returns the raw item object plus supported/type metadata and an additive "id" field for stable identification. The current file must be a .risup preset.',
   {
     index: z
       .number()
@@ -2065,7 +2065,7 @@ server.tool(
 
 server.tool(
   'read_risup_formating_order',
-  'Reads the risup formatingOrder as a list of tokens with known/unknown flags. The current file must be a .risup preset. Returns 400 if formatingOrder JSON is invalid.',
+  'Reads the risup formatingOrder as a list of tokens with known/unknown flags. Includes an additive "warnings" array with informational diagnostics for duplicate or dangling token references. The current file must be a .risup preset. Returns 400 if formatingOrder JSON is invalid.',
   {},
   async () => textResult(await apiRequest('GET', '/risup/formating-order')),
 );

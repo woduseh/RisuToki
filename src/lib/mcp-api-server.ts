@@ -18,6 +18,7 @@ import {
   parsePromptTemplate,
   serializePromptTemplate,
   parseFormatingOrder,
+  collectFormatingOrderWarnings,
   validateLocalStopStringsText,
   validatePresetBiasText,
   validatePromptTemplateText,
@@ -7106,6 +7107,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const items = model.items.map((item, i) => {
           const entry: Record<string, unknown> = {
             index: i,
+            id: item.id ?? null,
             type: item.type ?? null,
             supported: item.supported,
             preview: promptItemPreview(item),
@@ -7302,6 +7304,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const item = model.items[idx];
         return jsonRes(res, {
           index: idx,
+          id: item.id ?? null,
           item: item.rawValue,
           supported: item.supported,
           type: item.type,
@@ -7469,7 +7472,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const items = model.items.map((item, i) => ({ index: i, token: item.token, known: item.known }));
-        return jsonRes(res, { state: model.state, items });
+        const promptRaw = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const promptModel = parsePromptTemplate(promptRaw);
+        const warnings = promptModel.state !== 'invalid' ? collectFormatingOrderWarnings(promptModel, model) : [];
+        return jsonRes(res, { state: model.state, items, warnings });
       }
 
       // ----------------------------------------------------------------

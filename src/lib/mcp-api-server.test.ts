@@ -1170,6 +1170,230 @@ describe('MCP API risup prompt-item routes', () => {
   });
 });
 
+describe('MCP API risup prompt stable IDs and warnings', () => {
+  function createRisupFixture(): SearchFixture {
+    return {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'Hello world', role: 'system' },
+        { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+        { type: 'lorebook' },
+      ]),
+      formatingOrder: JSON.stringify(['main', 'description', 'chats']),
+    };
+  }
+
+  it('GET /risup/prompt-items includes id on each item', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await getJson<{
+        items: Array<{ index: number; id: string | null; type: string; supported: boolean }>;
+      }>(api.port, api.token, '/risup/prompt-items');
+      expect(res.status).toBe(200);
+      for (const item of res.data.items) {
+        expect(item).toHaveProperty('id');
+        if (item.supported) {
+          expect(typeof item.id).toBe('string');
+          expect(item.id!.length).toBeGreaterThan(0);
+        }
+      }
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('unsupported items expose id as null without breaking shape', async () => {
+    const data: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { type: 'unknowntype', foo: 'bar' },
+        { type: 'plain', type2: 'normal', text: 'Hello', role: 'system' },
+      ]),
+      formatingOrder: '[]',
+    };
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<{
+        items: Array<{ index: number; id: string | null; type: string | null; supported: boolean }>;
+      }>(api.port, api.token, '/risup/prompt-items');
+      expect(res.status).toBe(200);
+      expect(res.data.items[0].supported).toBe(false);
+      expect(res.data.items[0].id).toBeNull();
+      expect(res.data.items[0]).toHaveProperty('type');
+      expect(res.data.items[0]).toHaveProperty('preview');
+      expect(res.data.items[1].supported).toBe(true);
+      expect(typeof res.data.items[1].id).toBe('string');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('GET /risup/prompt-item/:idx includes id', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await getJson<{
+        index: number;
+        id: string | null;
+        item: Record<string, unknown>;
+        supported: boolean;
+        type: string;
+      }>(api.port, api.token, '/risup/prompt-item/0');
+      expect(res.status).toBe(200);
+      expect(res.data).toHaveProperty('id');
+      expect(typeof res.data.id).toBe('string');
+      expect(res.data.id!.length).toBeGreaterThan(0);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('add route generates id through parse/serialize flow', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    try {
+      const newItem = { type: 'jailbreak', type2: 'normal', text: 'JB text', role: 'system' };
+      const res = await postJson<{ success: boolean; index: number }>(api.port, api.token, '/risup/prompt-item/add', {
+        item: newItem,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+
+      // Re-read — the serialized promptTemplate should contain id via parse→serialize flow
+      const listRes = await getJson<{
+        items: Array<{ index: number; id: string | null }>;
+      }>(api.port, api.token, '/risup/prompt-items');
+      expect(listRes.status).toBe(200);
+      const addedItem = listRes.data.items[res.data.index];
+      expect(typeof addedItem.id).toBe('string');
+      expect(addedItem.id!.length).toBeGreaterThan(0);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write route preserves provided id through parse/serialize flow', async () => {
+    const currentData: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { id: 'my-custom-id', type: 'plain', type2: 'normal', text: 'Original', role: 'system' },
+      ]),
+      formatingOrder: '[]',
+    };
+    const api = await startTestApiServer(currentData);
+    try {
+      const res = await postJson<{ success: boolean; index: number }>(api.port, api.token, '/risup/prompt-item/0', {
+        item: { id: 'my-custom-id', type: 'plain', type2: 'normal', text: 'Updated', role: 'system' },
+      });
+      expect(res.status).toBe(200);
+
+      const readRes = await getJson<{
+        id: string | null;
+        item: Record<string, unknown>;
+      }>(api.port, api.token, '/risup/prompt-item/0');
+      expect(readRes.status).toBe(200);
+      expect(readRes.data.id).toBe('my-custom-id');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('GET /risup/formating-order includes empty warnings for clean fixtures', async () => {
+    const data: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'Hello world', role: 'system' },
+        { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+        { type: 'lorebook' },
+        { type: 'description' },
+      ]),
+      formatingOrder: JSON.stringify(['main', 'description', 'chats', 'lorebook']),
+    };
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<{
+        state: string;
+        items: Array<{ token: string }>;
+        warnings: string[];
+      }>(api.port, api.token, '/risup/formating-order');
+      expect(res.status).toBe(200);
+      expect(res.data).toHaveProperty('warnings');
+      expect(Array.isArray(res.data.warnings)).toBe(true);
+      expect(res.data.warnings).toHaveLength(0);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('GET /risup/formating-order includes warnings for duplicate tokens', async () => {
+    const data: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([{ type: 'plain', type2: 'normal', text: 'Hello', role: 'system' }]),
+      formatingOrder: JSON.stringify(['main', 'main', 'chats']),
+    };
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<{
+        state: string;
+        warnings: string[];
+      }>(api.port, api.token, '/risup/formating-order');
+      expect(res.status).toBe(200);
+      expect(res.data.warnings.length).toBeGreaterThan(0);
+      expect(res.data.warnings.some((w: string) => w.includes('Duplicate'))).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('GET /risup/formating-order includes warnings for dangling references', async () => {
+    const data: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([{ type: 'plain', type2: 'normal', text: 'Hello', role: 'system' }]),
+      formatingOrder: JSON.stringify(['main', 'lorebook']),
+    };
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<{
+        state: string;
+        warnings: string[];
+      }>(api.port, api.token, '/risup/formating-order');
+      expect(res.status).toBe(200);
+      expect(res.data.warnings.some((w: string) => w.includes('Dangling'))).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('raw write_field("promptTemplate") round-trips explicit ids', async () => {
+    const explicitId = 'user-provided-id-42';
+    const templateWithId = JSON.stringify([
+      { id: explicitId, type: 'plain', type2: 'normal', text: 'With ID', role: 'system' },
+    ]);
+    const currentData: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: templateWithId,
+      formatingOrder: '[]',
+    };
+    const api = await startTestApiServer(currentData);
+    try {
+      // Write via raw field write
+      const writeRes = await postJson<{ success: boolean }>(api.port, api.token, '/field/promptTemplate', {
+        content: templateWithId,
+      });
+      expect(writeRes.status).toBe(200);
+
+      // Re-read via MCP prompt-item route
+      const readRes = await getJson<{
+        id: string | null;
+        item: Record<string, unknown>;
+      }>(api.port, api.token, '/risup/prompt-item/0');
+      expect(readRes.status).toBe(200);
+      expect(readRes.data.id).toBe(explicitId);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
 describe('MCP API lorebook folder reads', () => {
   it('returns canonical folder identity from lorebook read endpoints', async () => {
     const currentData: SearchFixture = {
