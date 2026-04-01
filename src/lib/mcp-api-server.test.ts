@@ -2509,3 +2509,167 @@ describe('MCP API structured error envelopes — field routes', () => {
     }
   });
 });
+
+describe('MCP API structured error envelopes — lorebook read and diff routes', () => {
+  it('returns a structured error envelope for GET /lorebook/999', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/999');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read lorebook entry');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:999');
+      expect(res.data.error).toContain('out of range');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /lorebook/batch with indices: not-an-array', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch', {
+        indices: 'not-an-array',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch read lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch');
+      expect(res.data.error).toContain('array');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /lorebook/batch with 51 indices', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch', {
+        indices: Array.from({ length: 51 }, (_, i) => i),
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch read lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch');
+      expect(res.data.error).toContain('Maximum');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /lorebook/diff with missing index', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {});
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'diff lorebook entry');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:diff');
+      expect(res.data.error).toContain('index');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /lorebook/diff with missing reference indices', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', { index: 0 });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'diff lorebook entry');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:diff');
+      expect(res.data.error).toContain('refIndex');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /lorebook/diff with current entry out of range', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {
+        index: 999,
+        refIndex: 0,
+        refEntryIndex: 0,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'diff lorebook entry');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:diff');
+      expect(res.data.error).toContain('out of range');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /lorebook/diff with reference file out of range', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {
+        index: 0,
+        refIndex: 999,
+        refEntryIndex: 0,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'diff lorebook entry');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:diff');
+      expect(res.data.error).toContain('out of range');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /lorebook/diff with reference entry out of range', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {
+        index: 0,
+        refIndex: 0,
+        refEntryIndex: 999,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'diff lorebook entry');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:diff');
+      expect(res.data.error).toContain('out of range');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /lorebook/clone with source index out of range', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/clone', {
+        index: 999,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'clone lorebook entry');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:clone:999');
+      expect(res.data.error).toContain('out of range');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});

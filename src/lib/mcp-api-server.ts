@@ -2612,7 +2612,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'lorebook' && parts[1] && !lorebookReservedPaths.includes(parts[1]) && req.method === 'GET') {
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= (currentData.lorebook || []).length) {
-          return jsonRes(res, { error: `Index ${idx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'read lorebook entry',
+            message: `Index ${idx} out of range`,
+            suggestion: 'list_lorebook 또는 GET /lorebook 으로 유효한 index를 다시 확인하세요.',
+            target: `lorebook:${idx}`,
+          });
         }
         return jsonRes(res, {
           index: idx,
@@ -2628,11 +2633,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const indices: number[] = body.indices;
         if (!Array.isArray(indices)) {
-          return jsonRes(res, { error: 'indices must be an array of numbers' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read lorebook',
+            message: 'indices must be an array of numbers',
+            suggestion: 'indices를 숫자 index 배열로 전달하세요. 예: { "indices": [0, 1] }',
+            target: 'lorebook:batch',
+          });
         }
         const MAX_BATCH = 50;
         if (indices.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} indices per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch read lorebook',
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+            suggestion: `요청을 ${MAX_BATCH}개 이하의 index로 나누어 여러 번 호출하세요.`,
+            target: 'lorebook:batch',
+          });
         }
         const lorebook = currentData.lorebook || [];
         const requestedFields: string[] | undefined = body.fields;
@@ -2705,22 +2720,47 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const { index, refIndex, refEntryIndex } = body;
         if (typeof index !== 'number') {
-          return jsonRes(res, { error: 'index (current lorebook entry index) is required' }, 400);
+          return mcpError(res, 400, {
+            action: 'diff lorebook entry',
+            message: 'index (current lorebook entry index) is required',
+            suggestion: '비교할 현재 로어북 항목의 index를 요청 본문에 포함하세요.',
+            target: 'lorebook:diff',
+          });
         }
         if (typeof refIndex !== 'number' || typeof refEntryIndex !== 'number') {
-          return jsonRes(res, { error: 'refIndex and refEntryIndex are required' }, 400);
+          return mcpError(res, 400, {
+            action: 'diff lorebook entry',
+            message: 'refIndex and refEntryIndex are required',
+            suggestion: '비교 대상 reference 파일 index와 lorebook entry index를 함께 전달하세요.',
+            target: 'lorebook:diff',
+          });
         }
         const lorebook = currentData.lorebook || [];
         if (index < 0 || index >= lorebook.length) {
-          return jsonRes(res, { error: `Current entry index ${index} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'diff lorebook entry',
+            message: `Current entry index ${index} out of range`,
+            suggestion: 'GET /lorebook 또는 list_lorebook 으로 유효한 현재 entry index를 다시 확인하세요.',
+            target: 'lorebook:diff',
+          });
         }
         const refFiles = deps.getReferenceFiles();
         if (refIndex < 0 || refIndex >= refFiles.length) {
-          return jsonRes(res, { error: `Reference file index ${refIndex} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'diff lorebook entry',
+            message: `Reference file index ${refIndex} out of range`,
+            suggestion: 'GET /reference 로 유효한 reference file index를 확인한 뒤 다시 시도하세요.',
+            target: 'lorebook:diff',
+          });
         }
         const refLorebook = refFiles[refIndex].data.lorebook || [];
         if (refEntryIndex < 0 || refEntryIndex >= refLorebook.length) {
-          return jsonRes(res, { error: `Reference entry index ${refEntryIndex} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'diff lorebook entry',
+            message: `Reference entry index ${refEntryIndex} out of range`,
+            suggestion: '선택한 reference 파일의 lorebook entry index를 다시 확인하세요.',
+            target: 'lorebook:diff',
+          });
         }
         const current = lorebook[index];
         const reference = refLorebook[refEntryIndex];
@@ -2859,7 +2899,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const sourceIdx = body.index;
         if (typeof sourceIdx !== 'number' || sourceIdx < 0 || sourceIdx >= (currentData.lorebook || []).length) {
-          return jsonRes(res, { error: `Source index ${sourceIdx} out of range` }, 400);
+          return mcpError(res, 400, {
+            action: 'clone lorebook entry',
+            message: `Source index ${sourceIdx} out of range`,
+            suggestion: '복제할 원본 lorebook index를 GET /lorebook 또는 list_lorebook 으로 다시 확인하세요.',
+            target: `lorebook:clone:${sourceIdx}`,
+          });
         }
         const source = currentData.lorebook[sourceIdx];
         const sourceName = source.comment || `entry_${sourceIdx}`;
