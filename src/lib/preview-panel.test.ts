@@ -113,24 +113,47 @@ function createEngine(): PreviewEngine & { state: TestEngineState } {
 }
 
 function createDeps(overrides: Partial<PreviewPanelDeps> = {}): PreviewPanelDeps {
+  const { fileData: fileDataOverride, ...restOverrides } = overrides;
+  const defaultFileData: PreviewPanelDeps['fileData'] = {
+    name: 'Toki',
+    description: 'desc',
+    personality: '',
+    scenario: '',
+    firstMessage: '안녕하세요',
+    defaultVariables: '',
+    css: '',
+    lorebook: [],
+    regex: [],
+    lua: '',
+  };
+
   return {
     fileData: {
-      name: 'Toki',
-      description: 'desc',
-      firstMessage: '안녕하세요',
-      defaultVariables: '',
-      css: '',
-      lorebook: [],
-      regex: [],
-      lua: '',
+      ...defaultFileData,
+      ...fileDataOverride,
     },
     assetMap: null,
     engine: createEngine(),
-    ...overrides,
+    ...restOverrides,
   };
 }
 
 describe('preview-panel', () => {
+  it('merges partial fileData overrides with preview defaults', () => {
+    const deps = createDeps({
+      fileData: {
+        personality: 'cheerful and curious',
+        scenario: 'a rainy afternoon',
+      },
+    });
+
+    expect(deps.fileData.name).toBe('Toki');
+    expect(deps.fileData.description).toBe('desc');
+    expect(deps.fileData.personality).toBe('cheerful and curious');
+    expect(deps.fileData.scenario).toBe('a rainy afternoon');
+    expect(deps.fileData.firstMessage).toBe('안녕하세요');
+  });
+
   it('creates the overlay inside the given container', () => {
     const container = document.createElement('div');
     const deps = createDeps();
@@ -202,7 +225,21 @@ describe('preview-panel', () => {
   it('calls popoutPreview callback on popout button click', async () => {
     const container = document.createElement('div');
     const popoutPreview = vi.fn().mockResolvedValue(undefined);
-    const deps = createDeps({ popoutPreview });
+    const deps = createDeps({
+      popoutPreview,
+      fileData: {
+        name: 'Toki',
+        description: 'desc',
+        personality: 'cheerful and curious',
+        scenario: 'a rainy afternoon',
+        firstMessage: '안녕하세요',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '',
+      },
+    });
     showPreviewPanel(container, deps);
 
     const buttons = container.querySelectorAll('.preview-header button');
@@ -216,8 +253,59 @@ describe('preview-panel', () => {
 
     const callArg = popoutPreview.mock.calls[0][0];
     expect(callArg.name).toBe('Toki');
+    expect(callArg.personality).toBe('cheerful and curious');
+    expect(callArg.scenario).toBe('a rainy afternoon');
     expect(callArg.assets).toBeNull();
     expect(callArg.triggerScripts).toEqual([]);
+  });
+
+  it('passes personality and scenario into the preview session charData', () => {
+    const container = document.createElement('div');
+    const createSession = vi.fn((_options: CreatePreviewSessionOptions) => ({
+      dispose() {},
+      getSnapshot: () => ({
+        messages: [],
+        luaInitialized: false,
+        variables: {},
+        lorebook: [],
+        loreMatches: [],
+        scripts: [],
+        defaultVariables: '',
+        luaOutput: [],
+        initState: 'idle' as const,
+        initError: null,
+        runtimeError: null,
+      }),
+      handleSend: vi.fn().mockResolvedValue(undefined),
+      initialize: vi.fn().mockResolvedValue(undefined),
+      initializeLua: vi.fn().mockResolvedValue(false),
+      refreshBackground: vi.fn().mockResolvedValue(undefined),
+      reset: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    showPreviewPanel(
+      container,
+      createDeps({
+        createSession,
+        fileData: {
+          name: 'Toki',
+          description: 'desc',
+          personality: 'steady and kind',
+          scenario: 'at the harbor',
+          firstMessage: '안녕하세요',
+          defaultVariables: '',
+          css: '',
+          lorebook: [],
+          regex: [],
+          lua: '',
+        },
+      }),
+    );
+
+    expect(createSession).toHaveBeenCalledTimes(1);
+    const options = createSession.mock.calls[0][0];
+    expect(options.charData.personality).toBe('steady and kind');
+    expect(options.charData.scenario).toBe('at the harbor');
   });
 
   it('dispose removes the overlay', () => {

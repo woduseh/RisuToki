@@ -42,6 +42,8 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   const charData: PreviewCharData = {
     name: fileData.name || 'Character',
     description: fileData.description || '',
+    personality: fileData.personality || '',
+    scenario: fileData.scenario || '',
     firstMessage: fileData.firstMessage || '',
     css: fileData.css || '',
     defaultVariables: fileData.defaultVariables || '',
@@ -339,6 +341,8 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
       await popoutPreview({
         name: charData.name,
         description: charData.description,
+        personality: charData.personality,
+        scenario: charData.scenario,
         firstMessage: charData.firstMessage,
         defaultVariables: charData.defaultVariables,
         lua: charData.lua,
