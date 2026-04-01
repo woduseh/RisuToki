@@ -635,6 +635,9 @@ describe('preview pipeline contract: debug snapshot rendering', () => {
       scripts: [],
       defaultVariables: '',
       luaOutput: [],
+      initState: 'ready',
+      initError: null,
+      runtimeError: null,
     };
 
     const text = buildPreviewDebugClipboardText(snapshot, '00:00:00');
@@ -659,6 +662,9 @@ describe('preview pipeline contract: debug snapshot rendering', () => {
       scripts: [],
       defaultVariables: '',
       luaOutput: [],
+      initState: 'ready',
+      initError: null,
+      runtimeError: null,
     };
 
     const html = renderPreviewDebugHtml({ activeTab: 'lorebook', snapshot });
@@ -682,6 +688,9 @@ describe('preview pipeline contract: debug snapshot rendering', () => {
       ],
       defaultVariables: '',
       luaOutput: [],
+      initState: 'ready',
+      initError: null,
+      runtimeError: null,
     };
 
     const html = renderPreviewDebugHtml({ activeTab: 'regex', snapshot });
@@ -706,6 +715,9 @@ describe('preview pipeline contract: debug snapshot rendering', () => {
       scripts: [],
       defaultVariables: 'hp=100\nmp=50',
       luaOutput: [],
+      initState: 'ready',
+      initError: null,
+      runtimeError: null,
     };
 
     const html = renderPreviewDebugHtml({ activeTab: 'variables', snapshot });
@@ -729,6 +741,9 @@ describe('preview pipeline contract: debug snapshot rendering', () => {
       scripts: [],
       defaultVariables: '',
       luaOutput: [],
+      initState: 'ready',
+      initError: null,
+      runtimeError: null,
     };
 
     const html = renderPreviewDebugHtml({ activeTab: 'lorebook', snapshot });
@@ -806,6 +821,9 @@ describe('preview pipeline contract: PreviewLoreMatch extended shape', () => {
       scripts: [],
       defaultVariables: '',
       luaOutput: [],
+      initState: 'ready',
+      initError: null,
+      runtimeError: null,
     };
 
     const match = snapshot.loreMatches[0];

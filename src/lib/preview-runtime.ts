@@ -30,6 +30,15 @@ const PREVIEW_RUNTIME_READY = 'preview-runtime:ready';
 const PREVIEW_RUNTIME_BRIDGE = 'preview-runtime:bridge';
 const PREVIEW_RUNTIME_COMMAND = 'preview-runtime:command';
 
+const IFRAME_READY_TIMEOUT_MS = 5000;
+
+export class PreviewRuntimeTimeoutError extends Error {
+  constructor(message = '프리뷰 iframe 초기화 시간이 초과되었습니다.') {
+    super(message);
+    this.name = 'PreviewRuntimeTimeoutError';
+  }
+}
+
 function createPreviewBridgeToken(): string {
   return `preview-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
@@ -295,14 +304,23 @@ export function createIframePreviewRuntime(
 ): PreviewRuntime {
   const bridgeToken = createPreviewBridgeToken();
   let readyResolve: (() => void) | null = null;
+  let readyTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
   let readyPromise: Promise<void> = Promise.resolve();
   const scriptSource = buildPreviewRuntimeScriptSource(bridgeToken);
+
+  function clearReadyTimeout(): void {
+    if (readyTimeoutHandle !== null) {
+      clearTimeout(readyTimeoutHandle);
+      readyTimeoutHandle = null;
+    }
+  }
 
   const onWindowMessage = (event: MessageEvent<unknown>): void => {
     if (chatFrame.contentWindow && event.source !== chatFrame.contentWindow) return;
     if (!event.data || typeof event.data !== 'object') return;
     const message = event.data as { type?: string; token?: string };
     if (message.type === PREVIEW_RUNTIME_READY && message.token === bridgeToken) {
+      clearReadyTimeout();
       readyResolve?.();
       readyResolve = null;
     }
@@ -332,6 +350,8 @@ export function createIframePreviewRuntime(
     },
 
     dispose() {
+      clearReadyTimeout();
+      readyResolve = null;
       windowTarget.removeEventListener('message', onWindowMessage);
     },
 
@@ -341,8 +361,13 @@ export function createIframePreviewRuntime(
 
     async resetDocument() {
       chatFrame.setAttribute('sandbox', 'allow-scripts');
-      readyPromise = new Promise<void>((resolve) => {
+      readyPromise = new Promise<void>((resolve, reject) => {
         readyResolve = resolve;
+        readyTimeoutHandle = setTimeout(() => {
+          readyTimeoutHandle = null;
+          readyResolve = null;
+          reject(new PreviewRuntimeTimeoutError());
+        }, IFRAME_READY_TIMEOUT_MS);
       });
       chatFrame.srcdoc = buildPreviewDocument('', scriptSource);
       await readyPromise;

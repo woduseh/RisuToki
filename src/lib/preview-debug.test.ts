@@ -19,6 +19,9 @@ const snapshot: PreviewSnapshot = {
   variables: {
     affinity: 12,
   },
+  initState: 'ready',
+  initError: null,
+  runtimeError: null,
 };
 
 describe('preview debug helpers', () => {

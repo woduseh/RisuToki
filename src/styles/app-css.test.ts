@@ -33,6 +33,16 @@ describe('app.css – popout theme coherence', () => {
   });
 });
 
+describe('app.css – preview diagnostics', () => {
+  it('defines a visible status banner rule for preview initialization', () => {
+    expect(css).toMatch(/\.preview-status-banner\b/);
+  });
+
+  it('defines a visible error banner rule for preview failures', () => {
+    expect(css).toMatch(/\.preview-error-banner\b/);
+  });
+});
+
 describe('app.css – preview layout', () => {
   it('defines the fixed overlay shell needed to surface the preview above the app', () => {
     expect(css).toMatch(
