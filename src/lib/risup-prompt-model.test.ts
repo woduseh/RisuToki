@@ -4,6 +4,10 @@ import {
   serializePromptTemplate,
   parseFormatingOrder,
   serializeFormatingOrder,
+  validatePromptTemplateText,
+  validateFormatingOrderText,
+  validatePresetBiasText,
+  validateLocalStopStringsText,
   defaultPromptItemPlain,
   defaultPromptItemChat,
   defaultPromptItemTyped,
@@ -291,6 +295,16 @@ describe('parsePromptTemplate', () => {
   });
 });
 
+describe('validatePromptTemplateText', () => {
+  it('returns null for valid promptTemplate arrays', () => {
+    expect(validatePromptTemplateText(stringify([PLAIN]))).toBeNull();
+  });
+
+  it('returns a parse error for non-array promptTemplate JSON', () => {
+    expect(validatePromptTemplateText('{"type":"plain"}')).toMatch(/promptTemplate must be a JSON array/i);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // serializePromptTemplate
 // ---------------------------------------------------------------------------
@@ -428,6 +442,36 @@ describe('parseFormatingOrder', () => {
     const m = parseFormatingOrder('[1,2,3]');
     expect(m.state).toBe('invalid');
     expect(m.parseError).toBeTruthy();
+  });
+});
+
+describe('validateFormatingOrderText', () => {
+  it('returns null for valid string-token arrays', () => {
+    expect(validateFormatingOrderText(JSON.stringify(['main', 'description']))).toBeNull();
+  });
+
+  it('returns a parse error for mixed-type formatingOrder arrays', () => {
+    expect(validateFormatingOrderText('["main", 42]')).toMatch(/only string entries/i);
+  });
+});
+
+describe('validatePresetBiasText', () => {
+  it('returns null for valid [string, number][] JSON', () => {
+    expect(validatePresetBiasText('[["hello", 5], ["bye", -1]]')).toBeNull();
+  });
+
+  it('returns an error for non-pair presetBias entries', () => {
+    expect(validatePresetBiasText('[["hello"], ["bye", 1]]')).toMatch(/pairs of \[string, number\]/i);
+  });
+});
+
+describe('validateLocalStopStringsText', () => {
+  it('returns null for valid string arrays', () => {
+    expect(validateLocalStopStringsText('["END", "STOP"]')).toBeNull();
+  });
+
+  it('returns an error when any localStopStrings entry is not a string', () => {
+    expect(validateLocalStopStringsText('["END", 42]')).toMatch(/only string entries/i);
   });
 });
 

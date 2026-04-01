@@ -9,6 +9,17 @@
 
 ---
 
+## [0.30.0] - 2026-04-01
+
+### 변경
+
+- **risup mutation boundary 강화**: generic MCP `write_field` / `write_field_batch`와 autosave가 이제 `promptTemplate`, `formatingOrder`, `presetBias`, `localStopStrings`를 같은 validation boundary로 검사해, malformed JSON이나 잘못된 shape를 메모리/자동저장 파일에 조용히 남기지 않고 즉시 거부
+
+### 수정
+
+- **`applyUpdates()` partial-mutation 방지**: `.risup` 업데이트에서 구조화/JSON-backed 필드를 먼저 검증한 뒤에만 mutation을 적용하도록 바꿔, invalid preset write가 다른 필드를 반쯤 바꾼 상태로 남지 않도록 보강
+- **risup integrity regression 테스트 추가**: generic field write, batch-write, serializer, autosave 경로에 대한 회귀 테스트를 추가해 invalid `promptTemplate` / `formatingOrder` / `presetBias` / `localStopStrings`가 다시 통과하지 않도록 고정
+
 ## [0.29.1] - 2026-04-01
 
 ### 수정

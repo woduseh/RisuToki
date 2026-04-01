@@ -157,6 +157,7 @@
 - risup의 복잡한 중첩 객체(`ooba`, `NAISettings`, `customFlags` 등)는 보존되지만 개별 폼으로는 다루지 않습니다.
 - `.risup`는 gzip / zlib / raw-deflate 변형까지 호환되며 저장 시 감지한 압축 모드를 최대한 유지합니다.
 - `promptTemplate` / `formatingOrder`는 구조화 UI와 전용 MCP 도구가 우선 surface입니다. unsupported raw shape를 직접 만져야 할 때만 `write_field` fallback을 사용하세요.
+- risup fallback write surface도 무제한 passthrough가 아닙니다. `write_field`, `write_field_batch`, autosave는 `promptTemplate`, `formatingOrder`, `presetBias`, `localStopStrings`에 대해 UI 저장과 같은 validation boundary를 적용하며, malformed JSON/shape는 400 또는 autosave failure로 즉시 거부됩니다.
 
 ---
 

@@ -699,6 +699,8 @@ describe('MCP API risup prompt-item routes', () => {
         { type: 'lorebook' },
       ]),
       formatingOrder: JSON.stringify(['main', 'description', 'chats']),
+      presetBias: '[["hello",5]]',
+      localStopStrings: '["END"]',
     };
   }
 
@@ -1014,6 +1016,154 @@ describe('MCP API risup prompt-item routes', () => {
         order: [0, 1], // only 2, but there are 3 items
       });
       expect(res.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects generic field writes with invalid promptTemplate JSON shape', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/field/promptTemplate', {
+        content: '{"broken":true}',
+      });
+
+      expect(res.status).toBe(400);
+      expect(currentData.promptTemplate).toBe(createRisupFixture().promptTemplate);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects generic field writes with mixed-type formatingOrder arrays', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/field/formatingOrder', {
+        content: '["main", 42]',
+      });
+
+      expect(res.status).toBe(400);
+      expect(currentData.formatingOrder).toBe(createRisupFixture().formatingOrder);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects batch field writes when promptTemplate is not a valid JSON array', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/field/batch-write', {
+        entries: [
+          {
+            field: 'promptTemplate',
+            content: '{"broken":true}',
+          },
+        ],
+      });
+
+      expect(res.status).toBe(400);
+      expect(currentData.promptTemplate).toBe(createRisupFixture().promptTemplate);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects batch field writes when formatingOrder is not a string JSON array', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/field/batch-write', {
+        entries: [
+          {
+            field: 'formatingOrder',
+            content: ['main', 'description'],
+          },
+        ],
+      });
+
+      expect(res.status).toBe(400);
+      expect(currentData.formatingOrder).toBe(createRisupFixture().formatingOrder);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects generic field writes with invalid presetBias pair shapes', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/field/presetBias', {
+        content: '[["hello"]]',
+      });
+
+      expect(res.status).toBe(400);
+      expect(currentData.presetBias).toBe(createRisupFixture().presetBias);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects generic field writes with non-string localStopStrings entries', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/field/localStopStrings', {
+        content: '["END", 42]',
+      });
+
+      expect(res.status).toBe(400);
+      expect(currentData.localStopStrings).toBe(createRisupFixture().localStopStrings);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects batch field writes when presetBias entries are not [string, number] pairs', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/field/batch-write', {
+        entries: [
+          {
+            field: 'presetBias',
+            content: '[["hello"]]',
+          },
+        ],
+      });
+
+      expect(res.status).toBe(400);
+      expect(currentData.presetBias).toBe(createRisupFixture().presetBias);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects batch field writes when localStopStrings contains non-string entries', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/field/batch-write', {
+        entries: [
+          {
+            field: 'localStopStrings',
+            content: '["END", 42]',
+          },
+        ],
+      });
+
+      expect(res.status).toBe(400);
+      expect(currentData.localStopStrings).toBe(createRisupFixture().localStopStrings);
     } finally {
       await closeServer(api.server);
     }

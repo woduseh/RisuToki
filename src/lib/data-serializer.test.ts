@@ -199,6 +199,74 @@ describe('applyUpdates', () => {
     expect(data.formatingOrder).toBe('["main","jailbreak"]');
     expect(data.presetImage).toBe('data:image/png;base64,abc');
   });
+
+  it('throws for invalid promptTemplate updates so callers do not persist malformed JSON', () => {
+    const data: Record<string, unknown> = {
+      _fileType: 'risup',
+      name: 'Original',
+      promptTemplate: '[{"type":"plain","type2":"normal","text":"ok","role":"system"}]',
+    };
+
+    expect(() =>
+      applyUpdates(data, {
+        name: 'Mutated',
+        promptTemplate: '{"broken":true}',
+      }),
+    ).toThrow(/promptTemplate/i);
+    expect(data.name).toBe('Original');
+    expect(data.promptTemplate).toBe('[{"type":"plain","type2":"normal","text":"ok","role":"system"}]');
+  });
+
+  it('throws for invalid formatingOrder updates so mixed-type arrays are rejected early', () => {
+    const data: Record<string, unknown> = {
+      _fileType: 'risup',
+      name: 'Original',
+      formatingOrder: '["main","description"]',
+    };
+
+    expect(() =>
+      applyUpdates(data, {
+        name: 'Mutated',
+        formatingOrder: '["main", 42]',
+      }),
+    ).toThrow(/formatingOrder/i);
+    expect(data.name).toBe('Original');
+    expect(data.formatingOrder).toBe('["main","description"]');
+  });
+
+  it('throws for invalid presetBias updates so malformed bias pairs are rejected early', () => {
+    const data: Record<string, unknown> = {
+      _fileType: 'risup',
+      name: 'Original',
+      presetBias: '[["hello",5]]',
+    };
+
+    expect(() =>
+      applyUpdates(data, {
+        name: 'Mutated',
+        presetBias: '[["hello"]]',
+      }),
+    ).toThrow(/presetBias/i);
+    expect(data.name).toBe('Original');
+    expect(data.presetBias).toBe('[["hello",5]]');
+  });
+
+  it('throws for invalid localStopStrings updates so non-string entries are rejected early', () => {
+    const data: Record<string, unknown> = {
+      _fileType: 'risup',
+      name: 'Original',
+      localStopStrings: '["END"]',
+    };
+
+    expect(() =>
+      applyUpdates(data, {
+        name: 'Mutated',
+        localStopStrings: '["END", 42]',
+      }),
+    ).toThrow(/localStopStrings/i);
+    expect(data.name).toBe('Original');
+    expect(data.localStopStrings).toBe('["END"]');
+  });
 });
 
 // ── serializeForRenderer risum support ──────────────────────────────────────

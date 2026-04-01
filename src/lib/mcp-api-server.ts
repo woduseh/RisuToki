@@ -18,6 +18,10 @@ import {
   parsePromptTemplate,
   serializePromptTemplate,
   parseFormatingOrder,
+  validateLocalStopStringsText,
+  validatePresetBiasText,
+  validatePromptTemplateText,
+  validateFormatingOrderText,
   type PromptItemModel,
 } from './risup-prompt-model';
 
@@ -265,6 +269,40 @@ function validatePromptItemInput(item: unknown): { model: PromptItemModel } | { 
     };
   }
   return { model: parsed };
+}
+
+function getRisupStructuredFieldError(fieldName: string, content: unknown): string | null {
+  if (
+    fieldName !== 'promptTemplate' &&
+    fieldName !== 'formatingOrder' &&
+    fieldName !== 'presetBias' &&
+    fieldName !== 'localStopStrings'
+  ) {
+    return null;
+  }
+  if (typeof content !== 'string') {
+    return `"${fieldName}" must be a string`;
+  }
+  if (fieldName === 'promptTemplate') {
+    return validatePromptTemplateText(content);
+  }
+  if (fieldName === 'formatingOrder') {
+    return validateFormatingOrderText(content);
+  }
+  if (fieldName === 'presetBias') {
+    return validatePresetBiasText(content);
+  }
+  return validateLocalStopStringsText(content);
+}
+
+function getRisupStructuredFieldSuggestion(fieldName: string): string {
+  return fieldName === 'promptTemplate'
+    ? 'promptTemplate은 JSON 배열 문자열이어야 합니다.'
+    : fieldName === 'formatingOrder'
+      ? 'formatingOrder는 문자열 토큰만 포함한 JSON 배열 문자열이어야 합니다.'
+      : fieldName === 'presetBias'
+        ? 'presetBias는 [string, number] 쌍만 포함한 JSON 배열 문자열이어야 합니다.'
+        : 'localStopStrings는 문자열만 포함한 JSON 배열 문자열이어야 합니다.';
 }
 
 interface McpErrorInfo {
@@ -917,6 +955,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${fieldName}`,
             });
           }
+          const risupStructuredFieldError = getRisupStructuredFieldError(fieldName, body.content);
+          if (risupStructuredFieldError) {
+            return mcpError(res, 400, {
+              action: 'update field',
+              message: `Invalid ${fieldName}: ${risupStructuredFieldError}`,
+              suggestion: getRisupStructuredFieldSuggestion(fieldName),
+              target: `field:${fieldName}`,
+              details: { parseError: risupStructuredFieldError },
+            });
+          }
           const oldSize =
             fieldName === 'triggerScripts'
               ? deps.stringifyTriggerScripts(currentData.triggerScripts).length
@@ -1265,6 +1313,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             }
           } else if (jsonFields.includes(entry.field)) {
             type = 'json';
+            if (typeof entry.content !== 'string') {
+              return mcpError(res, 400, {
+                action: 'batch write field',
+                message: `"${entry.field}"는 문자열 타입이어야 합니다.`,
+                target: `field:${entry.field}`,
+              });
+            }
+            const structuredError = getRisupStructuredFieldError(entry.field, entry.content);
+            if (structuredError) {
+              return mcpError(res, 400, {
+                action: 'batch write field',
+                message: `Invalid ${entry.field}: ${structuredError}`,
+                suggestion: getRisupStructuredFieldSuggestion(entry.field),
+                target: `field:${entry.field}`,
+                details: { parseError: structuredError },
+              });
+            }
           } else {
             if (typeof entry.content !== 'string') {
               return mcpError(res, 400, {

@@ -1,3 +1,10 @@
+import {
+  validateFormatingOrderText,
+  validateLocalStopStringsText,
+  validatePresetBiasText,
+  validatePromptTemplateText,
+} from './risup-prompt-model';
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -16,6 +23,27 @@ export interface DataSerializerDeps {
 // ---------------------------------------------------------------------------
 
 let deps: DataSerializerDeps;
+
+function validateRisupStructuredField(key: string, value: unknown): void {
+  if (typeof value !== 'string') {
+    throw new Error(`${key} must be a JSON string.`);
+  }
+
+  let parseError: string | null = null;
+  if (key === 'promptTemplate') {
+    parseError = validatePromptTemplateText(value);
+  } else if (key === 'formatingOrder') {
+    parseError = validateFormatingOrderText(value);
+  } else if (key === 'presetBias') {
+    parseError = validatePresetBiasText(value);
+  } else if (key === 'localStopStrings') {
+    parseError = validateLocalStopStringsText(value);
+  }
+
+  if (parseError) {
+    throw new Error(`Invalid ${key}: ${parseError}`);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Initialization
@@ -241,6 +269,18 @@ export function applyUpdates(data: any, fields: any): void {
     'systemContentReplacement',
     'systemRoleReplacement',
   ];
+  if (fields.promptTemplate !== undefined) {
+    validateRisupStructuredField('promptTemplate', fields.promptTemplate);
+  }
+  if (fields.formatingOrder !== undefined) {
+    validateRisupStructuredField('formatingOrder', fields.formatingOrder);
+  }
+  if (fields.presetBias !== undefined) {
+    validateRisupStructuredField('presetBias', fields.presetBias);
+  }
+  if (fields.localStopStrings !== undefined) {
+    validateRisupStructuredField('localStopStrings', fields.localStopStrings);
+  }
   for (const key of allowed) {
     if (fields[key] !== undefined) {
       if (key === 'triggerScripts') {

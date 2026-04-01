@@ -2,7 +2,7 @@
 
 > RisuAI .charx / .risum / .risup 파일 전용 에디터 + AI CLI 통합 터미널
 
-[![Version](https://img.shields.io/badge/version-0.29.1-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.30.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -175,6 +175,7 @@ RisuToki 실행 파일(.exe)을 더블클릭하면 됩니다.
 - legacy `mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`는 파일에 그대로 보존되지만 **주요 프롬프트 UI에서는 내려가며**, 호환성 데이터로 유지됩니다.
 - 실제 RisuAI가 내보낸 `.risup`는 gzip / zlib / raw-deflate 변형까지 열 수 있고, 저장 시 감지한 압축 모드를 최대한 보존합니다.
 - JSON 기반 프리셋 필드(`presetBias`, `localStopStrings`)와 구조화 프롬프트 필드(`promptTemplate`, `formatingOrder`)가 잘못된 형식이면 저장이 차단되고 상태바에 문제 필드가 표시됩니다.
+- MCP generic `write_field` / `write_field_batch`와 autosave도 동일한 risup 검증 경계를 사용하므로, malformed JSON/shape는 메모리나 autosave 파일에 조용히 남지 않고 즉시 거부됩니다.
 - `.charx`의 **캐릭터 정보**에는 `description`, `globalNote`, `defaultVariables`와 함께 `creatorcomment`, `characterVersion`도 포함됩니다.
 - `triggerScripts`는 raw JSON 대신 **구조화된 트리거 폼 에디터**로 열리며, 지원하지 않는 trigger/effect/condition이 남아 있으면 저장이 차단됩니다.
 - `.charx` / `.risum`은 빈 `triggerScripts` 또는 단독 `triggerlua` wrapper를 **Lua 모드**로 취급합니다. 이때 트리거 항목은 비활성처럼 보이고, 독립 트리거가 있을 때는 반대로 Lua 폴더가 비활성처럼 보입니다.

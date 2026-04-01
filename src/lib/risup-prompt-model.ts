@@ -452,6 +452,31 @@ export function parsePromptTemplate(text: string): PromptTemplateModel {
   };
 }
 
+export function validatePromptTemplateText(text: string): string | null {
+  const model = parsePromptTemplate(text);
+  return model.state === 'invalid' ? (model.parseError ?? 'Invalid promptTemplate') : null;
+}
+
+export function validatePresetBiasText(text: string): string | null {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!Array.isArray(parsed)) {
+      return 'presetBias must be a JSON array.';
+    }
+    const isValid = parsed.every(
+      (entry) =>
+        Array.isArray(entry) &&
+        entry.length === 2 &&
+        typeof entry[0] === 'string' &&
+        typeof entry[1] === 'number' &&
+        Number.isFinite(entry[1]),
+    );
+    return isValid ? null : 'presetBias must contain only pairs of [string, number].';
+  } catch (error) {
+    return (error as Error).message;
+  }
+}
+
 export function serializePromptTemplate(model: Pick<PromptTemplateModel, 'items'>): string {
   if (!model || !Array.isArray(model.items) || model.items.length === 0) {
     return '[]';
@@ -498,6 +523,25 @@ export function parseFormatingOrder(text: string): FormatingOrderModel {
   }
 
   return { state: 'valid', items, rawText };
+}
+
+export function validateFormatingOrderText(text: string): string | null {
+  const model = parseFormatingOrder(text);
+  return model.state === 'invalid' ? (model.parseError ?? 'Invalid formatingOrder') : null;
+}
+
+export function validateLocalStopStringsText(text: string): string | null {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!Array.isArray(parsed)) {
+      return 'localStopStrings must be a JSON array.';
+    }
+    return parsed.every((entry) => typeof entry === 'string')
+      ? null
+      : 'localStopStrings must contain only string entries.';
+  } catch (error) {
+    return (error as Error).message;
+  }
 }
 
 export function serializeFormatingOrder(model: Pick<FormatingOrderModel, 'items'>): string {
