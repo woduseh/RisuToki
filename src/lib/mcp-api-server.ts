@@ -1064,6 +1064,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return mcpError(res, 400, {
             action: 'read field batch',
             message: 'fields must be a non-empty string array',
+            suggestion: 'fields 를 문자열 배열로 전달하세요. 예: { "fields": ["name", "description"] }',
             target: 'field:batch',
           });
         }
@@ -1072,6 +1073,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return mcpError(res, 400, {
             action: 'read field batch',
             message: `Maximum ${MAX_BATCH} fields per batch`,
+            suggestion: `요청을 ${MAX_BATCH}개 이하의 필드로 나누어 여러 번 호출하세요.`,
             target: 'field:batch',
           });
         }
@@ -1232,6 +1234,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return mcpError(res, 400, {
             action: 'batch write field',
             message: 'entries must be a non-empty array of {field, content}',
+            suggestion: 'entries 를 { field, content } 객체 배열로 전달하세요. 예: { "entries": [{ "field": "name", "content": "새 이름" }] }',
             target: 'field:batch-write',
           });
         }
@@ -1240,6 +1243,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return mcpError(res, 400, {
             action: 'batch write field',
             message: `Maximum ${MAX_BATCH_WRITE} entries per batch`,
+            suggestion: `요청을 ${MAX_BATCH_WRITE}개 이하의 항목으로 나누어 여러 번 호출하세요.`,
             target: 'field:batch-write',
           });
         }
@@ -1871,6 +1875,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return mcpError(res, 400, {
               action: 'insert in field',
               message: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다',
+              suggestion: 'anchor 에 삽입 위치를 지정하는 텍스트를 전달하세요. 예: { "position": "after", "anchor": "기준 텍스트" }',
               target: `field:${fieldName}`,
             });
           }
@@ -1975,6 +1980,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return mcpError(res, 400, {
             action: 'batch replace in field',
             message: 'replacements must be a non-empty array',
+            suggestion: 'replacements 를 { find, replace } 객체 배열로 전달하세요. 예: { "replacements": [{ "find": "old", "replace": "new" }] }',
             target: `field:${fieldName}`,
           });
         }
@@ -1983,6 +1989,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return mcpError(res, 400, {
             action: 'batch replace in field',
             message: `Maximum ${MAX_BATCH} replacements per batch`,
+            suggestion: `요청을 ${MAX_BATCH}개 이하의 치환으로 나누어 여러 번 호출하세요.`,
             target: `field:${fieldName}`,
           });
         }
@@ -1991,6 +1998,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return mcpError(res, 400, {
               action: 'batch replace in field',
               message: 'Each replacement must include "find"',
+              suggestion: '모든 치환 항목에 find 키를 포함하세요. 예: { "find": "검색어", "replace": "대체어" }',
               target: `field:${fieldName}`,
             });
           }

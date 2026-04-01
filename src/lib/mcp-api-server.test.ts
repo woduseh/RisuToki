@@ -2075,6 +2075,25 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:not-a-real-field');
       expect(res.data.error).toContain('Unknown field');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for POST /field/not-a-real-field (method-aware)', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/not-a-real-field', {
+        content: 'x',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'update field');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'field:not-a-real-field');
+      expect(res.data.error).toContain('Unknown field');
+      expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
     }
@@ -2092,6 +2111,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:batch');
       expect(res.data.error).toContain('non-empty');
+      expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
     }
@@ -2108,6 +2128,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:batch');
       expect(res.data.error).toContain('Maximum');
+      expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
     }
@@ -2125,6 +2146,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:batch-write');
       expect(res.data.error).toContain('non-empty');
+      expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
     }
@@ -2141,6 +2163,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:batch-write');
       expect(res.data.error).toContain('Maximum');
+      expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
     }
@@ -2159,6 +2182,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:description');
       expect(res.data.error).toContain('anchor');
+      expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
     }
@@ -2176,6 +2200,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:description');
       expect(res.data.error).toContain('non-empty');
+      expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
     }
@@ -2194,6 +2219,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:description');
       expect(res.data.error).toContain('Maximum');
+      expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
     }
@@ -2211,6 +2237,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:description');
       expect(res.data.error).toContain('find');
+      expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
     }
