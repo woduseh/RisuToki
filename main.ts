@@ -8,6 +8,7 @@ import * as os from 'os';
 // Type-only imports from local TypeScript modules (erased at compile time)
 import type { CharxData } from './src/charx-io';
 import type { McpApiServer, Section, CssCacheEntry } from './src/lib/mcp-api-server';
+import { markRecoveryDocumentActiveForPath, syncRecoveryAfterExplicitSave } from './src/lib/session-recovery-main';
 
 // ---------------------------------------------------------------------------
 // Interfaces for .cjs modules and local types
@@ -253,8 +254,8 @@ const { createSessionRecoveryManager } = require('./src/lib/session-recovery-man
     statSync: (path: string) => { mtimeMs: number };
     unlinkSync: (path: string) => void;
     userDataPath: string;
-    openDocument: (filePath: string) => Record<string, unknown>;
-    setCurrentDocument: (filePath: string, data: Record<string, unknown>) => void;
+    openDocument: (filePath: string) => CharxData;
+    setCurrentDocument: (filePath: string, data: CharxData) => void;
   }) => import('./src/lib/session-recovery-manager').SessionRecoveryManager;
 };
 
@@ -293,12 +294,6 @@ function openDocumentByPath(filePath: string): CharxData {
   if (filePath.endsWith('.risum')) return openRisum(filePath);
   if (filePath.endsWith('.risup')) return openRisup(filePath);
   return openCharx(filePath);
-}
-
-function getRecoveryFileType(filePath: string): 'charx' | 'risum' | 'risup' {
-  if (filePath.endsWith('.risum')) return 'risum';
-  if (filePath.endsWith('.risup')) return 'risup';
-  return 'charx';
 }
 
 // ---------------------------------------------------------------------------
@@ -671,8 +666,8 @@ app.whenReady().then(() => {
     statSync: (p) => fs.statSync(p),
     unlinkSync: (p) => fs.unlinkSync(p),
     userDataPath: app.getPath('userData'),
-    openDocument: (filePath) => openDocumentByPath(filePath) as unknown as Record<string, unknown>,
-    setCurrentDocument: (filePath, data) => mainState.setCurrentDocument(filePath, data as CharxData),
+    openDocument: (filePath) => openDocumentByPath(filePath),
+    setCurrentDocument: (filePath, data) => mainState.setCurrentDocument(filePath, data),
   });
 
   // Initialize popout window management
@@ -819,11 +814,9 @@ ipcMain.handle('open-file', async () => {
     if (apiPort) writeCurrentMcpConfig();
     broadcastSidebarDataChanged();
     // Mark document active for session recovery
-    if (recoveryManager) {
-      recoveryManager
-        .markDocumentActive(nextFilePath, getRecoveryFileType(nextFilePath))
-        .catch((e) => console.warn('[main] recovery markDocumentActive error:', e));
-    }
+    markRecoveryDocumentActiveForPath(recoveryManager, nextFilePath).catch((e) =>
+      console.warn('[main] recovery markDocumentActive error:', e),
+    );
     return serializeForRenderer(mainState.currentData!);
   } catch (err) {
     console.error('[main] open-file error:', err);
@@ -879,7 +872,11 @@ ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown
     if (mcpApi) mcpApi.invalidateSectionCaches();
 
     if (!mainState.currentFilePath) {
-      return saveCurrentFileAs(updatedFields);
+      const result = await saveCurrentFileAs(updatedFields);
+      syncRecoveryAfterExplicitSave(recoveryManager, result).catch((e) =>
+        console.warn('[main] recovery sync after save error:', e),
+      );
+      return result;
     }
     if (mainState.currentData._fileType === 'risum') {
       saveRisum(mainState.currentFilePath, mainState.currentData);
@@ -900,8 +897,9 @@ ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown
 ipcMain.handle('save-file-as', async (_event, updatedFields: Record<string, unknown>) => {
   if (!mainState.currentData) return { success: false, error: 'No file open' };
   const result = await saveCurrentFileAs(updatedFields);
-  // After explicit save-as, clear stale autosave paths from recovery record
-  if (result.success && recoveryManager) recoveryManager.clearAutosavePaths();
+  syncRecoveryAfterExplicitSave(recoveryManager, result).catch((e) =>
+    console.warn('[main] recovery sync after save error:', e),
+  );
   return result;
 });
 

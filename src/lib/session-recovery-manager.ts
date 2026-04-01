@@ -23,15 +23,15 @@ import {
 
 // ── Dependency interface ──────────────────────────────────────────────
 
-export interface SessionRecoveryManagerDeps {
+export interface SessionRecoveryManagerDeps<TDocument extends Record<string, unknown> = Record<string, unknown>> {
   readFileSync(path: string, encoding: BufferEncoding): string;
   writeFileSync(path: string, data: string): void;
   existsSync(path: string): boolean;
   statSync(path: string): { mtimeMs: number };
   unlinkSync(path: string): void;
   userDataPath: string;
-  openDocument(filePath: string): Record<string, unknown>;
-  setCurrentDocument(filePath: string, data: Record<string, unknown>): void;
+  openDocument(filePath: string): TDocument;
+  setCurrentDocument(filePath: string, data: TDocument): void;
 }
 
 // ── Manager interface ─────────────────────────────────────────────────
@@ -50,7 +50,9 @@ export interface SessionRecoveryManager {
 
 // ── Factory ───────────────────────────────────────────────────────────
 
-export function createSessionRecoveryManager(deps: SessionRecoveryManagerDeps): SessionRecoveryManager {
+export function createSessionRecoveryManager<TDocument extends Record<string, unknown>>(
+  deps: SessionRecoveryManagerDeps<TDocument>,
+): SessionRecoveryManager {
   const recordPath = getSessionRecoveryRecordPath(deps.userDataPath);
 
   let currentRecord: SessionRecoveryRecord | null = null;
