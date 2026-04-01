@@ -1,7 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { showPreviewPanel } from './preview-panel';
 import type { PreviewPanelDeps } from './preview-panel';
-import type { PreviewEngine, PreviewLorebookEntry } from './preview-session';
+import type {
+  CreatePreviewSessionOptions,
+  PreviewEngine,
+  PreviewLorebookEntry,
+  PreviewSnapshot,
+} from './preview-session';
 
 interface TestEngineState {
   assets: Record<string, string> | null;
@@ -330,5 +335,160 @@ describe('preview-panel', () => {
     ]);
 
     dispose();
+  });
+
+  // ── Diagnostics banner tests ──
+
+  describe('diagnostics banner', () => {
+    let onStateChange: ((snapshot: PreviewSnapshot) => void) | undefined;
+    let currentSnapshot: PreviewSnapshot = {
+      messages: [],
+      luaInitialized: false,
+      variables: {},
+      lorebook: [],
+      loreMatches: [],
+      scripts: [],
+      defaultVariables: '',
+      luaOutput: [],
+      initState: 'idle',
+      initError: null,
+      runtimeError: null,
+    };
+
+    const emitSnapshot = (patch: Partial<PreviewSnapshot>) => {
+      currentSnapshot = { ...currentSnapshot, ...patch };
+      onStateChange?.(currentSnapshot);
+    };
+
+    const createSession = vi.fn((options: CreatePreviewSessionOptions) => {
+      onStateChange = options.onStateChange;
+      return {
+        dispose() {},
+        getSnapshot: () => currentSnapshot,
+        handleSend: vi.fn().mockResolvedValue(undefined),
+        initialize: vi.fn(async () => {
+          emitSnapshot({ initState: 'loading' });
+          return new Promise<void>(() => {});
+        }),
+        initializeLua: vi.fn().mockResolvedValue(false),
+        refreshBackground: vi.fn().mockResolvedValue(undefined),
+        reset: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    beforeEach(() => {
+      currentSnapshot = {
+        messages: [],
+        luaInitialized: false,
+        variables: {},
+        lorebook: [],
+        loreMatches: [],
+        scripts: [],
+        defaultVariables: '',
+        luaOutput: [],
+        initState: 'idle',
+        initError: null,
+        runtimeError: null,
+      };
+      onStateChange = undefined;
+      createSession.mockClear();
+    });
+
+    it('shows a loading banner and disables reset/send controls while initialization is in flight', async () => {
+      vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+
+      const container = document.createElement('div');
+      showPreviewPanel(container, createDeps({ createSession }));
+
+      expect(container.querySelector('.preview-status-banner')?.textContent).toContain('초기화');
+      expect((container.querySelector('.preview-send-btn') as HTMLButtonElement).disabled).toBe(true);
+      expect((container.querySelectorAll('.preview-header button')[1] as HTMLButtonElement).disabled).toBe(true);
+
+      vi.unstubAllGlobals();
+    });
+
+    it('shows a persistent error banner when runtimeError is present after startup', async () => {
+      const initialize = vi.fn(async () => {
+        emitSnapshot({ initState: 'ready', runtimeError: 'Lua named trigger "onAttack" failed: boom' });
+      });
+
+      vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+
+      const localCreateSession = vi.fn((options: CreatePreviewSessionOptions) => {
+        onStateChange = options.onStateChange;
+        return {
+          dispose() {},
+          getSnapshot: () => currentSnapshot,
+          handleSend: vi.fn().mockResolvedValue(undefined),
+          initialize,
+          initializeLua: vi.fn().mockResolvedValue(false),
+          refreshBackground: vi.fn().mockResolvedValue(undefined),
+          reset: vi.fn().mockResolvedValue(undefined),
+        };
+      });
+
+      const container = document.createElement('div');
+      showPreviewPanel(container, createDeps({ createSession: localCreateSession }));
+
+      await vi.waitFor(() => {
+        expect(initialize).toHaveBeenCalledTimes(1);
+      });
+
+      const errorBanner = container.querySelector('.preview-error-banner') as HTMLElement;
+      expect(errorBanner).not.toBeNull();
+      expect(errorBanner.hidden).toBe(false);
+      expect(errorBanner.textContent).toContain('Lua named trigger "onAttack" failed: boom');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('catches initialize rejection so startup errors do not disappear as unhandled rejections', async () => {
+      const initialize = vi.fn(async () => {
+        emitSnapshot({ initState: 'error', initError: '프리뷰 초기화에 실패했습니다.' });
+        throw new Error('startup boom');
+      });
+
+      vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+
+      const localCreateSession = vi.fn((options: CreatePreviewSessionOptions) => {
+        onStateChange = options.onStateChange;
+        return {
+          dispose() {},
+          getSnapshot: () => currentSnapshot,
+          handleSend: vi.fn().mockResolvedValue(undefined),
+          initialize,
+          initializeLua: vi.fn().mockResolvedValue(false),
+          refreshBackground: vi.fn().mockResolvedValue(undefined),
+          reset: vi.fn().mockResolvedValue(undefined),
+        };
+      });
+
+      const container = document.createElement('div');
+      showPreviewPanel(container, createDeps({ createSession: localCreateSession }));
+
+      await vi.waitFor(() => {
+        expect(initialize).toHaveBeenCalledTimes(1);
+      });
+
+      const errorBanner = container.querySelector('.preview-error-banner') as HTMLElement;
+      expect(errorBanner).not.toBeNull();
+      expect(errorBanner.hidden).toBe(false);
+      expect(errorBanner.textContent).toContain('프리뷰 초기화에 실패했습니다.');
+
+      // Status banner should not show loading state after error
+      const statusBanner = container.querySelector('.preview-status-banner') as HTMLElement;
+      expect(statusBanner.hidden).toBe(true);
+
+      vi.unstubAllGlobals();
+    });
   });
 });

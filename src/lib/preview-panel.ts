@@ -1,7 +1,13 @@
 import { buildPreviewDebugClipboardText, renderPreviewDebugHtml } from './preview-debug';
 import { createIframePreviewRuntime } from './preview-runtime';
 import { createPreviewSession } from './preview-session';
-import type { PreviewCharData, PreviewEngine, PreviewSession } from './preview-session';
+import type {
+  CreatePreviewSessionOptions,
+  PreviewCharData,
+  PreviewEngine,
+  PreviewSession,
+  PreviewSnapshot,
+} from './preview-session';
 import { reportRuntimeError } from './runtime-feedback';
 
 export interface PreviewPanelDeps {
@@ -15,6 +21,8 @@ export interface PreviewPanelDeps {
   setStatus?: (message: string) => void;
   /** Open a pop-out panel. Returns a cleanup function or void. */
   popoutPreview?: (charData: PreviewCharData & { assets: null }) => Promise<void>;
+  /** Optional factory for testing — defaults to the real `createPreviewSession`. */
+  createSession?: (options: CreatePreviewSessionOptions) => PreviewSession;
 }
 
 interface DebugDragState {
@@ -28,7 +36,8 @@ interface DebugDragState {
  * Returns a `dispose` function that tears down the panel and listeners.
  */
 export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps): { dispose: () => void } {
-  const { engine, fileData, assetMap, setStatus, popoutPreview } = deps;
+  const { engine, fileData, assetMap, setStatus, popoutPreview, createSession: sessionFactory } = deps;
+  const makeSession = sessionFactory ?? createPreviewSession;
 
   const charData: PreviewCharData = {
     name: fileData.name || 'Character',
@@ -101,6 +110,15 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   const chatFrame = document.createElement('iframe');
   chatFrame.className = 'preview-chat-frame';
   chatFrame.setAttribute('sandbox', 'allow-scripts');
+
+  // ── Diagnostics banners ──
+  const statusBanner = document.createElement('div');
+  statusBanner.className = 'preview-status-banner';
+  statusBanner.hidden = true;
+
+  const errorBanner = document.createElement('div');
+  errorBanner.className = 'preview-error-banner';
+  errorBanner.hidden = true;
 
   // ── Input bar ──
   const inputBar = document.createElement('div');
@@ -271,7 +289,22 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     }
   }
 
-  session = createPreviewSession({
+  function applySnapshot(snapshot: PreviewSnapshot): void {
+    const loading = snapshot.initState === 'loading';
+    const errorMessage = snapshot.initState === 'error' ? snapshot.initError : snapshot.runtimeError;
+
+    statusBanner.hidden = !loading;
+    statusBanner.textContent = loading ? '프리뷰 초기화 중...' : '';
+
+    errorBanner.hidden = !errorMessage;
+    errorBanner.textContent = errorMessage ?? '';
+
+    chatInput.disabled = loading;
+    sendBtn.disabled = loading;
+    resetBtn.disabled = loading;
+  }
+
+  session = makeSession({
     engine,
     charData,
     chatFrame,
@@ -288,7 +321,8 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
         setStatus,
       });
     },
-    onStateChange: () => {
+    onStateChange: (snapshot) => {
+      applySnapshot(snapshot);
       if (debugOpen) updateDebugPanel();
     },
   });
@@ -355,6 +389,8 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
 
   // ── Assemble ──
   panel.appendChild(header);
+  panel.appendChild(statusBanner);
+  panel.appendChild(errorBanner);
   panel.appendChild(chatFrame);
   panel.appendChild(inputBar);
   panel.appendChild(debugResizer);
@@ -364,7 +400,12 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
 
   // Initialize iframe after it's in the DOM
   requestAnimationFrame(async () => {
-    await session.initialize();
+    try {
+      await session.initialize();
+    } catch {
+      // Startup errors are surfaced via initState/initError in the snapshot;
+      // catching here prevents unhandled promise rejections.
+    }
   });
 
   // Escape to close
