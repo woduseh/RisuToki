@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { showPreviewPanel } from './preview-panel';
 import type { PreviewPanelDeps } from './preview-panel';
 import type {
@@ -286,8 +286,8 @@ describe('preview-panel', () => {
     chatInput.style.height = '80px';
 
     // Click reset button
-    const resetBtn = container.querySelectorAll('.preview-header button')[1] as HTMLButtonElement;
-    expect(resetBtn.getAttribute('aria-label')).toBe('초기화');
+    const resetBtn = container.querySelector('button[aria-label="초기화"]') as HTMLButtonElement;
+    expect(resetBtn).not.toBeNull();
     resetBtn.click();
 
     // After reset, the textarea height should be restored to 'auto'
@@ -376,6 +376,10 @@ describe('preview-panel', () => {
       };
     });
 
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
     beforeEach(() => {
       currentSnapshot = {
         messages: [],
@@ -405,9 +409,8 @@ describe('preview-panel', () => {
 
       expect(container.querySelector('.preview-status-banner')?.textContent).toContain('초기화');
       expect((container.querySelector('.preview-send-btn') as HTMLButtonElement).disabled).toBe(true);
-      expect((container.querySelectorAll('.preview-header button')[1] as HTMLButtonElement).disabled).toBe(true);
-
-      vi.unstubAllGlobals();
+      expect((container.querySelector('button[aria-label="초기화"]') as HTMLButtonElement).disabled).toBe(true);
+      expect((container.querySelector('.preview-input-textarea') as HTMLTextAreaElement).disabled).toBe(true);
     });
 
     it('shows a persistent error banner when runtimeError is present after startup', async () => {
@@ -444,8 +447,6 @@ describe('preview-panel', () => {
       expect(errorBanner).not.toBeNull();
       expect(errorBanner.hidden).toBe(false);
       expect(errorBanner.textContent).toContain('Lua named trigger "onAttack" failed: boom');
-
-      vi.unstubAllGlobals();
     });
 
     it('catches initialize rejection so startup errors do not disappear as unhandled rejections', async () => {
@@ -487,8 +488,6 @@ describe('preview-panel', () => {
       // Status banner should not show loading state after error
       const statusBanner = container.querySelector('.preview-status-banner') as HTMLElement;
       expect(statusBanner.hidden).toBe(true);
-
-      vi.unstubAllGlobals();
     });
   });
 });
