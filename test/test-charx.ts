@@ -500,7 +500,13 @@ const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
   assert.equal(reopened.subModel, data.subModel);
   assert.equal(reopened.apiType, data.apiType);
   assert.equal(reopened.promptPreprocess, data.promptPreprocess);
-  assert.equal(reopened.promptTemplate, data.promptTemplate);
+  // promptTemplate gains stable IDs on open; verify content round-trips correctly
+  const reopenedPt = JSON.parse(reopened.promptTemplate!);
+  const origPt = JSON.parse(data.promptTemplate);
+  assert.equal(reopenedPt.length, origPt.length, 'promptTemplate should have the same number of items');
+  assert.equal(reopenedPt[0].type, origPt[0].type);
+  assert.equal(reopenedPt[0].text, origPt[0].text);
+  assert.equal(typeof reopenedPt[0].id, 'string', 'promptTemplate items should gain stable ids on open');
   assert.equal(reopened.presetBias, data.presetBias);
   assert.equal(reopened.formatingOrder, data.formatingOrder);
   assert.deepStrictEqual(reopened.regex, data.regex);
@@ -566,6 +572,45 @@ const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
 })();
 
 fs.rmSync(risupTempDir, { recursive: true, force: true });
+
+// ---- .risup legacy promptTemplate migration tests ----
+const risupMigrationDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-migration-'));
+
+const legacyPresetWithoutIds = {
+  name: 'Legacy Preset',
+  mainPrompt: 'Be helpful.',
+  promptTemplate: [
+    { type: 'plain', type2: 'normal', text: 'System prompt', role: 'system' },
+    { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+  ],
+  formatingOrder: ['main', 'jailbreak'],
+  bias: [['hello', 5]],
+};
+
+const filePathWithoutIds = path.join(risupMigrationDir, 'legacy-no-ids.risup');
+writeRisupEnvelope(filePathWithoutIds, {
+  type: 'preset',
+  presetVersion: 2,
+  preset: encryptRisupPayload(legacyPresetWithoutIds),
+});
+
+const roundTripPath = path.join(risupMigrationDir, 'roundtrip-ids.risup');
+
+(function testRisupPromptTemplateGetsIdsOnOpen() {
+  const reopened = openRisup(filePathWithoutIds);
+  const promptTemplate = JSON.parse(reopened.promptTemplate!);
+  assert.equal(typeof promptTemplate[0].id, 'string');
+  assert.equal(typeof promptTemplate[1].id, 'string');
+})();
+
+(function testRisupPromptTemplateIdsPersistOnSave() {
+  const reopened = openRisup(filePathWithoutIds);
+  saveRisup(roundTripPath, reopened);
+  const reopenedAgain = openRisup(roundTripPath);
+  const first = JSON.parse(reopened.promptTemplate!);
+  const second = JSON.parse(reopenedAgain.promptTemplate!);
+  assert.equal(second[0].id, first[0].id);
+})();
 
 // ---- Error case tests ----
 const errorTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-error-'));

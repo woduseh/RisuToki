@@ -349,6 +349,31 @@ describe('autosave-manager', () => {
   // ── Invalid risup updates ──────────────────────────────────────────
 
   describe('invalid risup updates', () => {
+    it('preserves migrated promptTemplate ids in risup autosave writes', async () => {
+      const idBearingTemplate = JSON.stringify([
+        { id: 'prompt-plain-abc-0', type: 'plain', type2: 'normal', text: 'test', role: 'system' },
+      ]);
+      const saveRisup = vi.fn();
+      const d = makeDeps({
+        getCurrentData: () => ({
+          _fileType: 'risup',
+          name: 'Preset',
+          promptTemplate: idBearingTemplate,
+        }),
+        getCurrentFilePath: () => 'C:\\data\\preset.risup',
+        saveRisup,
+        applyUpdates,
+      });
+      initAutosaveManager(d);
+      const handler = getRegisteredHandler('autosave-file');
+
+      await handler({}, { name: 'UpdatedPreset' });
+
+      expect(saveRisup).toHaveBeenCalledTimes(1);
+      const savedData = saveRisup.mock.calls[0][1];
+      expect(savedData.promptTemplate).toBe(idBearingTemplate);
+    });
+
     it('returns failure and does not write when risup structured updates are invalid', async () => {
       const currentData = {
         _fileType: 'risup',

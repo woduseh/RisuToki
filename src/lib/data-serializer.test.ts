@@ -267,6 +267,17 @@ describe('applyUpdates', () => {
     expect(data.name).toBe('Original');
     expect(data.localStopStrings).toBe('["END"]');
   });
+
+  it('accepts promptTemplate JSON strings that include stable ids', () => {
+    const data: Record<string, unknown> = { _fileType: 'risup', name: 'Test' };
+    expect(() =>
+      applyUpdates(data, {
+        promptTemplate: JSON.stringify([
+          { id: 'prompt-1', type: 'plain', type2: 'normal', text: 'ok', role: 'system' },
+        ]),
+      }),
+    ).not.toThrow();
+  });
 });
 
 // ── serializeForRenderer risum support ──────────────────────────────────────

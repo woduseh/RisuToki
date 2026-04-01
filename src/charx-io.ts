@@ -34,6 +34,10 @@ const { validateCharxCardDocument, validateRisupEnvelope, validateRisupPresetPay
     };
     validateRisupPresetPayload: (preset: unknown) => Record<string, unknown>;
   };
+const { normalizePromptTemplateForStorage, serializePromptTemplate } = require('./lib/risup-prompt-model') as {
+  normalizePromptTemplateForStorage: (value: unknown) => { items: unknown[] };
+  serializePromptTemplate: (model: { items: unknown[] }) => string;
+};
 
 const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_FILE_SIZE: number = 200 * 1024 * 1024; // 200 MB
@@ -869,7 +873,7 @@ function extractPresetFields(preset: Record<string, unknown>): Partial<CharxData
     promptPreprocess: !!preset.promptPreprocess,
 
     // Templates & formatting
-    promptTemplate: preset.promptTemplate ? JSON.stringify(preset.promptTemplate) : '[]',
+    promptTemplate: serializePromptTemplate(normalizePromptTemplateForStorage(preset.promptTemplate ?? [])),
     presetBias: preset.bias ? JSON.stringify(preset.bias) : '[]',
     formatingOrder: preset.formatingOrder ? JSON.stringify(preset.formatingOrder) : '[]',
     useInstructPrompt: preset.useInstructPrompt != null ? !!preset.useInstructPrompt : undefined,
