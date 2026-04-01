@@ -1,6 +1,14 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
-import * as fs from 'fs';
 import * as path from 'path';
+import type { RecoveryFileType, AutosaveProvenance } from './session-recovery';
+import { getAutosaveExtension, getAutosaveSidecarPath } from './session-recovery';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const AUTOSAVE_EXTENSIONS = new Set(['.charx', '.risum', '.risup']);
+const SIDECAR_SUFFIX = '.toki-recovery.json';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -13,7 +21,75 @@ export interface AutosaveManagerDeps {
   getCurrentFilePath: () => string | null;
   getMainWindow: () => BrowserWindow | null;
   saveCharx: (filePath: string, data: any) => void;
+  saveRisum: (filePath: string, data: any) => void;
+  saveRisup: (filePath: string, data: any) => void;
+  writeFileSync: (filePath: string, data: string) => void;
+  mkdirSync: (dirPath: string, options?: { recursive: boolean }) => void;
+  readdirSync: (dirPath: string) => string[];
+  unlinkSync: (filePath: string) => void;
   applyUpdates: (data: any, fields: any) => void;
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+const VALID_FILE_TYPES: ReadonlySet<string> = new Set(['charx', 'risum', 'risup']);
+const INTERNAL_FIELD_PREFIX = '_';
+
+function normalizeRecoveryFileType(raw: unknown): RecoveryFileType {
+  if (typeof raw === 'string' && VALID_FILE_TYPES.has(raw)) {
+    return raw as RecoveryFileType;
+  }
+  return 'charx';
+}
+
+function getWriterForType(fileType: RecoveryFileType, d: AutosaveManagerDeps): (filePath: string, data: any) => void {
+  switch (fileType) {
+    case 'risum':
+      return d.saveRisum;
+    case 'risup':
+      return d.saveRisup;
+    default:
+      return d.saveCharx;
+  }
+}
+
+function extractDirtyFields(updatedFields: Record<string, unknown>): string[] {
+  return Object.keys(updatedFields).filter((k) => !k.startsWith(INTERNAL_FIELD_PREFIX));
+}
+
+function buildProvenance(params: {
+  sourceFilePath: string | null;
+  sourceFileType: RecoveryFileType;
+  autosavePath: string;
+  dirtyFields: string[];
+}): AutosaveProvenance {
+  return {
+    sourceFilePath: params.sourceFilePath,
+    sourceFileType: params.sourceFileType,
+    autosavePath: params.autosavePath,
+    savedAt: new Date().toISOString(),
+    dirtyFields: params.dirtyFields,
+    appVersion:
+      typeof process !== 'undefined' && process.env?.npm_package_version ? process.env.npm_package_version : 'unknown',
+  };
+}
+
+/**
+ * Matches autosave artifact files: `{base}_autosave_{timestamp}.{ext}`
+ * and their sidecar files: `{base}_autosave_{timestamp}.{ext}.toki-recovery.json`
+ */
+function isAutosaveArtifact(fileName: string, basePrefix: string): boolean {
+  if (!fileName.startsWith(basePrefix)) return false;
+  const rest = fileName.slice(basePrefix.length);
+  // Must be an artifact (.charx/.risum/.risup) or a sidecar of one
+  for (const ext of AUTOSAVE_EXTENSIONS) {
+    if (rest.endsWith(ext) || rest.endsWith(ext + SIDECAR_SUFFIX)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -37,15 +113,31 @@ export function initAutosaveManager(d: AutosaveManagerDeps): void {
     if (!currentFilePath && !customDir) return { success: false, error: 'No file path and no autosave dir' };
     try {
       deps.applyUpdates(currentData, updatedFields);
+
+      const fileType = normalizeRecoveryFileType(currentData._fileType);
+      const extension = getAutosaveExtension(fileType);
       const dir = customDir || path.dirname(currentFilePath!);
       const base = currentFilePath
         ? path.basename(currentFilePath, path.extname(currentFilePath))
-        : (currentData.name || 'untitled');
+        : currentData.name || 'untitled';
       const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
-      const autosaveName = `${base}_autosave_${ts}.charx`;
-      const autosavePath = path.join(dir, autosaveName);
-      fs.mkdirSync(dir, { recursive: true });
-      deps.saveCharx(autosavePath, currentData);
+      const autosavePath = path.join(dir, `${base}_autosave_${ts}${extension}`);
+      const sidecarPath = getAutosaveSidecarPath(autosavePath);
+
+      deps.mkdirSync(dir, { recursive: true });
+
+      const writer = getWriterForType(fileType, deps);
+      writer(autosavePath, currentData);
+
+      const dirtyFields = extractDirtyFields(updatedFields);
+      const provenance = buildProvenance({
+        sourceFilePath: currentFilePath,
+        sourceFileType: fileType,
+        autosavePath,
+        dirtyFields,
+      });
+      deps.writeFileSync(sidecarPath, JSON.stringify(provenance, null, 2));
+
       return { success: true, path: autosavePath };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -61,11 +153,13 @@ export function initAutosaveManager(d: AutosaveManagerDeps): void {
     const base = path.basename(currentFilePath, path.extname(currentFilePath));
     const prefix = `${base}_autosave_`;
     try {
-      const files = fs.readdirSync(dir)
-        .filter((f: string) => f.startsWith(prefix) && f.endsWith('.charx'))
-        .sort().reverse();
+      const files = deps
+        .readdirSync(dir)
+        .filter((f: string) => isAutosaveArtifact(f, prefix))
+        .sort()
+        .reverse();
       for (const f of files) {
-        fs.unlinkSync(path.join(dir, f));
+        deps.unlinkSync(path.join(dir, f));
         console.log('[main] Autosave cleaned:', f);
       }
       return true;
