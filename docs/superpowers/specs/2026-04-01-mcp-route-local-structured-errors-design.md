@@ -18,7 +18,7 @@ instead of the structured MCP envelope.
 
 As of `main` at `a771c39`, the remaining route-local bare error responses are:
 
-- **20** call sites in the read-only **reference** route family
+- **23** call sites in the read-only **reference** route family
 - **9** call sites across the remaining non-reference route-local families:
   - asset add and rename
   - risum-asset add
@@ -81,7 +81,7 @@ Convert only the 9 non-reference route-local outliers:
 
 ### Option B: Reference routes only
 
-Convert only the 20 remaining bare reference-route errors.
+Convert only the 23 remaining bare reference-route errors.
 
 **Pros**
 
@@ -97,7 +97,7 @@ Convert only the 20 remaining bare reference-route errors.
 
 Convert all remaining **route-local** bare 4xx/409 responses in one release:
 
-- 20 reference-route call sites
+- 23 reference-route call sites
 - 9 non-reference route-local call sites
 
 Then explicitly defer only:
@@ -156,7 +156,7 @@ Error classes to convert:
 - reference index out of range
 - batch `indices` shape invalid
 - batch size over limit
-- sub-entry index out of range
+- sub-entry or sub-section index out of range
 - unknown field name
 
 ### 2. Asset route family
@@ -247,10 +247,10 @@ Each converted response must:
 
 ### Asset routes
 
-Use human-readable action names that match existing MCP verbs:
+Reuse the existing action naming already present in neighboring `mcpError()` calls:
 
-- `add asset`
-- `rename asset`
+- `add_asset`
+- `rename_asset`
 
 Target formats:
 
@@ -264,7 +264,7 @@ The duplicate-path case must keep HTTP `409` and move onto `mcpError(res, 409, .
 
 Action:
 
-- `add risum asset`
+- `add_risum_asset`
 
 Target:
 
@@ -288,7 +288,7 @@ These routes already use `mcpError()` for neighboring validation and rejection p
 
 Action:
 
-- `read skill file`
+- `read_skill`
 
 Target:
 
