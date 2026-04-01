@@ -7709,16 +7709,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const newOrder: number[] = body.order;
         if (!Array.isArray(newOrder) || newOrder.length !== model.items.length) {
-          return jsonRes(
-            res,
-            { error: `order must be an array of length ${model.items.length} (current item count)` },
-            400,
-          );
+          return mcpError(res, 400, {
+            action: 'reorder risup prompt items',
+            message: `order must be an array of length ${model.items.length} (current item count)`,
+            target: 'risup:promptTemplate',
+          });
         }
         const sorted = [...newOrder].sort((a, b) => a - b);
         const expected = Array.from({ length: model.items.length }, (_, i) => i);
         if (JSON.stringify(sorted) !== JSON.stringify(expected)) {
-          return jsonRes(res, { error: 'order must be a permutation of [0, 1, ..., n-1]' }, 400);
+          return mcpError(res, 400, {
+            action: 'reorder risup prompt items',
+            message: 'order must be a permutation of [0, 1, ..., n-1]',
+            target: 'risup:promptTemplate',
+          });
         }
 
         const reordered = newOrder.map((i) => model.items[i]);
@@ -7977,7 +7981,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const itemsRaw: unknown = body.items;
         if (!Array.isArray(itemsRaw)) {
-          return jsonRes(res, { error: 'items must be an array of {token: string}' }, 400);
+          return mcpError(res, 400, {
+            action: 'write risup formating order',
+            message: 'items must be an array of {token: string}',
+            suggestion: '{ items: [{ token: "main" }, { token: "chats" }] } 형식으로 전달하세요.',
+            target: 'risup:formatingOrder',
+          });
         }
         for (let i = 0; i < itemsRaw.length; i++) {
           const it = itemsRaw[i];
@@ -8066,7 +8075,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const skillName = decodeURIComponent(parts[1]);
         const fileName = parts[2] ? decodeURIComponent(parts[2]) : 'SKILL.md';
         if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
-          return jsonRes(res, { error: 'Invalid file name' }, 400);
+          return mcpError(res, 400, {
+            action: 'read_skill',
+            message: 'Invalid file name',
+            suggestion: 'File name must not contain path separators or "..".',
+            target: `skills:${skillName}:${fileName}`,
+          });
         }
         const filePath = path.join(deps.getSkillsDir(), skillName, fileName);
         try {

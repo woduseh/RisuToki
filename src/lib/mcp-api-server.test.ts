@@ -3260,3 +3260,118 @@ describe('MCP API structured error envelopes — risum-asset routes', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Structured error-envelope tests — risup reorder / formating-order / skills
+//
+// Task 3: Verify that remaining bare jsonRes({ error }) guards return the
+// structured mcpError() envelope (action, error, status, target).
+// ---------------------------------------------------------------------------
+
+describe('MCP API structured error envelopes — risup reorder routes', () => {
+  function createRisupFixture(): SearchFixture {
+    return {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'Hello world', role: 'system' },
+        { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+        { type: 'lorebook' },
+      ]),
+      formatingOrder: JSON.stringify(['main', 'description', 'chats']),
+      presetBias: '[["hello",5]]',
+      localStopStrings: '["END"]',
+    };
+  }
+
+  it('returns a structured error envelope for wrong-length order in POST /risup/prompt-item/reorder', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      // Fixture has 3 prompt items; send only 2 indices.
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/risup/prompt-item/reorder', {
+        order: [0, 1],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'reorder risup prompt items');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'risup:promptTemplate');
+      expect(res.data.error).toContain('order must be an array of length');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope for non-permutation order in POST /risup/prompt-item/reorder', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      // Fixture has 3 prompt items; send correct length but invalid permutation.
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/risup/prompt-item/reorder', {
+        order: [0, 0, 0],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'reorder risup prompt items');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'risup:promptTemplate');
+      expect(res.data.error).toContain('permutation');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API structured error envelopes — risup formating-order routes', () => {
+  function createRisupFixture(): SearchFixture {
+    return {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'Hello world', role: 'system' },
+        { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+        { type: 'lorebook' },
+      ]),
+      formatingOrder: JSON.stringify(['main', 'description', 'chats']),
+      presetBias: '[["hello",5]]',
+      localStopStrings: '["END"]',
+    };
+  }
+
+  it('returns a structured error envelope for non-array items in POST /risup/formating-order', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/risup/formating-order', {
+        items: 'not-an-array',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'write risup formating order');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'risup:formatingOrder');
+      expect(res.data.error).toContain('items must be an array');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API structured error envelopes — skills routes', () => {
+  it('returns a structured error envelope for traversal-shaped file name in GET /skills/:name/:file', async () => {
+    const skillsDir = path.join(TEST_DIR, 'skills-traversal-envelope');
+    await fs.promises.rm(skillsDir, { recursive: true, force: true });
+    await writeSkillFixture(skillsDir, 'my-skill', {
+      'SKILL.md': `---\nname: my-skill\ndescription: 'test'\n---\n# Skill\n`,
+    });
+
+    const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
+    try {
+      const res = await getJson<McpErrorEnvelope>(
+        api.port,
+        api.token,
+        '/skills/my-skill/..%2F..%2Fpackage.json',
+      );
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read_skill');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'skills:my-skill:../../package.json');
+      expect(res.data.error).toContain('Invalid file name');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
