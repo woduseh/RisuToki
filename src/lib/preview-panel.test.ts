@@ -261,7 +261,9 @@ describe('preview-panel', () => {
 
   it('passes personality and scenario into the preview session charData', () => {
     const container = document.createElement('div');
-    const createSession = vi.fn((_options: CreatePreviewSessionOptions) => ({
+    const createSession = vi.fn((options: CreatePreviewSessionOptions) => {
+      void options;
+      return {
       dispose() {},
       getSnapshot: () => ({
         messages: [],
@@ -281,7 +283,8 @@ describe('preview-panel', () => {
       initializeLua: vi.fn().mockResolvedValue(false),
       refreshBackground: vi.fn().mockResolvedValue(undefined),
       reset: vi.fn().mockResolvedValue(undefined),
-    }));
+      };
+    });
 
     showPreviewPanel(
       container,

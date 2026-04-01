@@ -194,7 +194,7 @@ describe('PreviewEngine Lua field setters', () => {
         },
         close() {},
       },
-      async doString(_code: string) {},
+      async doString() {},
     };
 
     windowWithWasmoon.wasmoon = {

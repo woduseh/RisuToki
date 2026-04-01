@@ -161,6 +161,8 @@
 - risup fallback write surface도 무제한 passthrough가 아닙니다. `write_field`, `write_field_batch`, autosave는 `promptTemplate`, `formatingOrder`, `presetBias`, `localStopStrings`에 대해 UI 저장과 같은 validation boundary를 적용하며, malformed JSON/shape는 400 또는 autosave failure로 즉시 거부됩니다.
 - 비정상 종료 뒤 재시작 시 자동 저장 복원 프롬프트가 뜰 수 있습니다. 복원하면 파일 라벨에 `[자동복원]`이 붙고 상태바에 provenance가 표시되며, autosave 옆에는 `.toki-recovery.json` sidecar가 함께 기록됩니다.
 - 프리뷰 패널은 초기화·런타임 진단을 인라인 배너로 표시합니다. iframe이 5 초 안에 준비되지 않으면 타임아웃 에러를, Lua 트리거 실패 등 런타임 에러가 발생하면 해당 메시지를 패널 안에서 바로 볼 수 있습니다. 컨트롤러 레벨의 Wasmoon preflight(`ensureWasmoon()`)는 프리뷰 패널 밖에서 처리되며 이 배너에 포함되지 않습니다.
+- 프리뷰는 현재 `.charx` 파일에서만 열립니다. `.risum` / `.risup`가 열려 있으면 보기 메뉴의 프리뷰 항목과 `F5` 경로가 모두 차단됩니다.
+- 프리뷰 Lua의 `setDescription`, `setPersonality`, `setScenario`, `setFirstMessage`는 preview-local 상태를 즉시 갱신하므로, 카드 필드 변경 트리거를 프리뷰 안에서 검증할 수 있습니다.
 - **MCP 구조화 에러 응답 (v0.34.0 bounded contract)**: regex, greetings, lua 섹션, css 섹션 라우트의 4xx 에러는 구조화된 `mcpError()` 엔벨로프를 반환합니다. 응답에는 `action`, `target`, `status`, `suggestion` 등의 additive 필드가 포함되며, MCP 브릿지 호환을 위해 최상위 `error` 필드도 그대로 유지됩니다. 아직 **모든** MCP 라우트가 이 계약으로 전환된 것은 아닙니다.
 
 ---
