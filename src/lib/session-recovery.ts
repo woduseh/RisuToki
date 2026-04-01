@@ -13,7 +13,7 @@ const AUTOSAVE_EXTENSION_MAP: Record<RecoveryFileType, string> = {
   risup: '.risup',
 };
 
-const SIDECAR_SUFFIX = '.toki-recovery.json';
+export const SIDECAR_SUFFIX = '.toki-recovery.json';
 export const SESSION_RECOVERY_RECORD_FILENAME = 'session-recovery.json';
 
 /** If the autosave is more than 24 hours older than the original, it is stale. */

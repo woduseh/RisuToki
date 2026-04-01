@@ -1,15 +1,13 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as path from 'path';
 import type { RecoveryFileType, AutosaveProvenance } from './session-recovery';
-import { getAutosaveExtension, getAutosaveSidecarPath } from './session-recovery';
+import { SIDECAR_SUFFIX, getAutosaveExtension, getAutosaveSidecarPath } from './session-recovery';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const AUTOSAVE_EXTENSIONS = new Set(['.charx', '.risum', '.risup']);
-const SIDECAR_SUFFIX = '.toki-recovery.json';
-
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -111,6 +109,9 @@ export function initAutosaveManager(d: AutosaveManagerDeps): void {
     const customDir: string | undefined = updatedFields._autosaveDir;
     const currentFilePath = deps.getCurrentFilePath();
     if (!currentFilePath && !customDir) return { success: false, error: 'No file path and no autosave dir' };
+    let autosavePath: string | null = null;
+    let sidecarPath: string | null = null;
+    let shouldCleanupArtifact = false;
     try {
       deps.applyUpdates(currentData, updatedFields);
 
@@ -120,13 +121,14 @@ export function initAutosaveManager(d: AutosaveManagerDeps): void {
       const base = currentFilePath
         ? path.basename(currentFilePath, path.extname(currentFilePath))
         : currentData.name || 'untitled';
-      const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
-      const autosavePath = path.join(dir, `${base}_autosave_${ts}${extension}`);
-      const sidecarPath = getAutosaveSidecarPath(autosavePath);
+      const ts = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+      autosavePath = path.join(dir, `${base}_autosave_${ts}${extension}`);
+      sidecarPath = getAutosaveSidecarPath(autosavePath);
 
       deps.mkdirSync(dir, { recursive: true });
 
       const writer = getWriterForType(fileType, deps);
+      shouldCleanupArtifact = true;
       writer(autosavePath, currentData);
 
       const dirtyFields = extractDirtyFields(updatedFields);
@@ -140,6 +142,16 @@ export function initAutosaveManager(d: AutosaveManagerDeps): void {
 
       return { success: true, path: autosavePath };
     } catch (err: unknown) {
+      try {
+        if (shouldCleanupArtifact && autosavePath) {
+          deps.unlinkSync(autosavePath);
+        }
+        if (sidecarPath) {
+          deps.unlinkSync(sidecarPath);
+        }
+      } catch {
+        // Ignore cleanup failures here; the original autosave error remains primary.
+      }
       const message = err instanceof Error ? err.message : String(err);
       console.error('[main] autosave error:', err);
       return { success: false, error: message };

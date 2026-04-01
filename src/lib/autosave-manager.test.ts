@@ -18,7 +18,7 @@ import { initAutosaveManager, type AutosaveManagerDeps } from './autosave-manage
 import { applyUpdates, initDataSerializer } from './data-serializer';
 
 function getRegisteredHandler(name: string) {
-  const call = ipcHandle.mock.calls.find(([channel]: [string]) => channel === name);
+  const call = ipcHandle.mock.calls.find((args: unknown[]) => args[0] === name);
   if (!call) {
     throw new Error(`Handler "${name}" was not registered`);
   }
@@ -122,6 +122,23 @@ describe('autosave-manager', () => {
 
       expect(saveCharx).toHaveBeenCalledWith(expect.stringMatching(/_autosave_.*\.charx$/), expect.anything());
     });
+
+    it('uses a canonical timestamp without introducing a double dot before the extension', async () => {
+      const saveCharx = vi.fn();
+      const d = makeDeps({
+        getCurrentData: () => ({ _fileType: 'charx', name: 'MyChar' }),
+        getCurrentFilePath: () => 'C:\\data\\char.charx',
+        saveCharx,
+      });
+      initAutosaveManager(d);
+      const handler = getRegisteredHandler('autosave-file');
+
+      await handler({}, { description: 'updated' });
+
+      const autosavePath = saveCharx.mock.calls[0][0] as string;
+      expect(autosavePath).toMatch(/_autosave_\d{14}\.charx$/);
+      expect(autosavePath).not.toContain('..charx');
+    });
   });
 
   // ── Provenance sidecar ──────────────────────────────────────────────
@@ -208,9 +225,11 @@ describe('autosave-manager', () => {
 
     it('excludes internal fields from dirtyFields', async () => {
       const localWriteFileSync = vi.fn();
+      const saveCharx = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'charx', name: 'C' }),
         getCurrentFilePath: () => 'C:\\data\\test.charx',
+        saveCharx,
         writeFileSync: localWriteFileSync,
       });
       initAutosaveManager(d);
@@ -221,6 +240,7 @@ describe('autosave-manager', () => {
       const sidecarJson = JSON.parse(localWriteFileSync.mock.calls[0][1] as string);
       expect(sidecarJson.dirtyFields).not.toContain('_autosaveDir');
       expect(sidecarJson.dirtyFields).toContain('name');
+      expect(saveCharx).toHaveBeenCalledWith(expect.stringMatching(/^C:\\custom\\/), expect.anything());
     });
   });
 
@@ -412,6 +432,37 @@ describe('autosave-manager', () => {
         expect(localWriteFileSync).not.toHaveBeenCalled();
         expect(currentData.name).toBe('Preset');
         expect(currentData.localStopStrings).toBe('["END"]');
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+
+    it('cleans up the autosave artifact when sidecar writing fails', async () => {
+      const unlinkSync = vi.fn();
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        const d = makeDeps({
+          getCurrentData: () => ({ _fileType: 'charx', name: 'MyChar' }),
+          getCurrentFilePath: () => 'C:\\data\\char.charx',
+          writeFileSync: vi.fn(() => {
+            throw new Error('disk full');
+          }),
+          unlinkSync,
+        });
+        initAutosaveManager(d);
+        const handler = getRegisteredHandler('autosave-file');
+
+        const result = await handler({}, { description: 'updated' });
+
+        expect(result).toEqual(
+          expect.objectContaining({
+            success: false,
+            error: expect.stringMatching(/disk full/i),
+          }),
+        );
+        expect(unlinkSync).toHaveBeenCalledWith(expect.stringMatching(/_autosave_.*\.charx$/));
+        expect(unlinkSync).toHaveBeenCalledWith(expect.stringContaining('.toki-recovery.json'));
       } finally {
         errorSpy.mockRestore();
       }
