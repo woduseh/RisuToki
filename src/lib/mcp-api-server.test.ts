@@ -1804,6 +1804,26 @@ describe('MCP API structured error envelopes — lua-section routes', () => {
   });
 });
 
+describe('MCP API insert-regex-field action consistency', () => {
+  it('uses canonical action "insert regex field" when field is invalid', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      regex: [{ comment: 'test-regex', type: 'editoutput', find: 'foo', replace: 'bar' }],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/regex/0/insert', {
+        field: 'invalid_field',
+        content: 'hello',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.action).toBe('insert regex field');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
 describe('MCP API structured error envelopes — css-section routes', () => {
   it('returns a structured error envelope for non-array indices in POST /css-section/batch', async () => {
     const fixture: SearchFixture = {

@@ -4080,7 +4080,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const targetField: string = body.field;
         if (targetField !== 'find' && targetField !== 'replace') {
           return mcpError(res, 400, {
-            action: 'insert into regex field',
+            action: 'insert regex field',
             message: 'field must be "find" or "replace"',
             suggestion: '"field" 값은 "find" 또는 "replace"만 허용됩니다.',
             target: `regex:${idx}:insert`,
@@ -4088,7 +4088,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         if (body.content === undefined) {
           return mcpError(res, 400, {
-            action: 'insert into regex field',
+            action: 'insert regex field',
             message: 'Missing "content"',
             suggestion: '"content" 필드에 삽입할 내용을 지정하세요.',
             target: `regex:${idx}:insert`,
@@ -4124,7 +4124,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
         } else {
           return mcpError(res, 400, {
-            action: 'insert into regex field',
+            action: 'insert regex field',
             message: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다',
             suggestion: '"anchor" 필드에 기준 문자열을 지정하세요.',
             target: `regex:${idx}:insert`,
