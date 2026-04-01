@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createDocumentPreviewRuntime } from './preview-runtime';
+import { createDocumentPreviewRuntime, PreviewRuntimeTimeoutError } from './preview-runtime';
 import { createPreviewSession } from './preview-session';
 import type {
   CreatePreviewSessionOptions,
@@ -748,5 +748,100 @@ describe('preview session', () => {
     await session.initialize();
 
     expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it('reports idle -> loading -> ready across initialize', async () => {
+    const snapshots: PreviewSnapshot[] = [];
+    const session = createPreviewSession({
+      engine: createEngine(),
+      charData: {
+        name: 'Toki',
+        description: '',
+        firstMessage: '첫 메시지',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script',
+      },
+      chatFrame: createChatFrame(),
+      windowTarget: createWindowTarget(),
+      runtime: createNoopRuntime(),
+      onStateChange: (snapshot) => snapshots.push(snapshot),
+    });
+
+    expect(session.getSnapshot().initState).toBe('idle');
+
+    await session.initialize();
+
+    expect(snapshots.map((snapshot) => snapshot.initState)).toContain('loading');
+    expect(session.getSnapshot()).toMatchObject({
+      initState: 'ready',
+      initError: null,
+      runtimeError: null,
+    });
+  });
+
+  it('captures initError when resetDocument rejects with PreviewRuntimeTimeoutError', async () => {
+    const onError = vi.fn();
+    const runtime = {
+      ...createNoopRuntime(),
+      resetDocument: vi.fn().mockRejectedValue(new PreviewRuntimeTimeoutError()),
+    };
+    const session = createPreviewSession({
+      engine: createEngine(),
+      charData: {
+        name: 'Toki',
+        description: '',
+        firstMessage: '첫 메시지',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script',
+      },
+      chatFrame: createChatFrame(),
+      windowTarget: createWindowTarget(),
+      runtime,
+      onError,
+    });
+
+    await expect(session.initialize()).rejects.toBeInstanceOf(PreviewRuntimeTimeoutError);
+    expect(session.getSnapshot().initState).toBe('error');
+    expect(session.getSnapshot().initError).toContain('iframe');
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it('stores runtimeError after a post-ready trigger failure and clears it on reset', async () => {
+    const engine = createEngine();
+    engine.runLuaTriggerByName = vi.fn().mockRejectedValue(new Error('boom'));
+    const chatFrame = createChatFrame();
+    const windowTarget = createWindowTarget();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        description: '',
+        firstMessage: '<button risu-trigger="onAttack">공격</button>',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script',
+      },
+      chatFrame,
+      windowTarget,
+    });
+
+    await session.initialize();
+    const button = chatFrame.contentDocument.querySelector('button[risu-trigger="onAttack"]') as HTMLButtonElement;
+    button.click();
+    await flushMessages();
+
+    expect(session.getSnapshot().runtimeError).toContain('onAttack');
+
+    await session.reset();
+
+    expect(session.getSnapshot().runtimeError).toBeNull();
   });
 });

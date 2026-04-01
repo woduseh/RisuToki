@@ -1,6 +1,6 @@
 import type { PreviewLoreDecorators } from './lorebook-decorators';
 import { simpleMarkdown, wrapCssForPreview, type PreviewParserEngine } from './preview-format';
-import { createDocumentPreviewRuntime, type PreviewRuntime } from './preview-runtime';
+import { createDocumentPreviewRuntime, PreviewRuntimeTimeoutError, type PreviewRuntime } from './preview-runtime';
 
 export interface PreviewMessage {
   role: 'char' | 'user';
@@ -45,6 +45,8 @@ export interface PreviewRegexScript {
   [key: string]: unknown;
 }
 
+export type PreviewInitState = 'idle' | 'loading' | 'ready' | 'error';
+
 export interface PreviewSnapshot {
   messages: PreviewMessage[];
   luaInitialized: boolean;
@@ -54,6 +56,9 @@ export interface PreviewSnapshot {
   scripts: PreviewRegexScript[];
   defaultVariables: string;
   luaOutput: string[];
+  initState: PreviewInitState;
+  initError: string | null;
+  runtimeError: string | null;
 }
 
 export interface PreviewCharData {
@@ -153,6 +158,9 @@ export function createPreviewSession({
   let luaInitialized = false;
   let messageBridgeAttached = false;
   let documentBridgeAttached = false;
+  let initState: PreviewInitState = 'idle';
+  let initError: string | null = null;
+  let runtimeError: string | null = null;
 
   function buildEffectiveLuaCode(): string | undefined {
     if (Array.isArray(charData.triggerScripts) && charData.triggerScripts.length > 0) {
@@ -187,6 +195,9 @@ export function createPreviewSession({
       scripts,
       defaultVariables: charData.defaultVariables || '',
       luaOutput: engine.getLuaOutput(),
+      initState,
+      initError,
+      runtimeError,
     };
   }
 
@@ -212,6 +223,8 @@ export function createPreviewSession({
     try {
       return await engine.runLuaTrigger(triggerName, payload);
     } catch (error) {
+      runtimeError = `Lua trigger "${triggerName}" failed: ${error instanceof Error ? error.message : String(error)}`;
+      notifyStateChange();
       onError?.(`Lua trigger "${triggerName}" failed`, error);
       console.warn(`${logPrefix} Lua trigger "${triggerName}" failed:`, error);
       return payload;
@@ -224,6 +237,8 @@ export function createPreviewSession({
     try {
       await engine.runLuaTriggerByName(triggerName);
     } catch (error) {
+      runtimeError = `Lua named trigger "${triggerName}" failed: ${error instanceof Error ? error.message : String(error)}`;
+      notifyStateChange();
       onError?.(`Lua named trigger "${triggerName}" failed`, error);
       console.warn(`${logPrefix} Lua named trigger "${triggerName}" failed:`, error);
     }
@@ -326,6 +341,8 @@ export function createPreviewSession({
         try {
           await engine.runLuaButtonClick(chatId, message.data);
         } catch (error) {
+          runtimeError = `Lua button "${message.data}" failed: ${error instanceof Error ? error.message : String(error)}`;
+          notifyStateChange();
           onError?.(`Lua button "${message.data}" failed`, error);
           console.warn(`${logPrefix} Lua button "${message.data}" failed:`, error);
         }
@@ -399,14 +416,35 @@ export function createPreviewSession({
     await runtime.resetDocument();
   }
 
+  function formatInitError(error: unknown): string {
+    if (error instanceof PreviewRuntimeTimeoutError) {
+      return 'Preview iframe failed to initialize within the timeout period.';
+    }
+    return error instanceof Error ? error.message : String(error);
+  }
+
   async function initialize(): Promise<void> {
     previewMessages = [];
     msgIndex = 0;
     luaInitialized = false;
+    initState = 'loading';
+    initError = null;
+    runtimeError = null;
+    notifyStateChange();
 
     resetEngineState();
     attachMessageBridge();
-    await initializeFrameDocument();
+
+    try {
+      await initializeFrameDocument();
+    } catch (error) {
+      initState = 'error';
+      initError = formatInitError(error);
+      notifyStateChange();
+      onError?.('Preview initialization failed', error);
+      throw error;
+    }
+
     attachDocumentBridge();
     await initializeLua(true);
 
@@ -415,15 +453,32 @@ export function createPreviewSession({
     }
 
     await refreshBackground();
+
+    initState = 'ready';
+    notifyStateChange();
   }
 
   async function reset(): Promise<void> {
     previewMessages = [];
     msgIndex = 0;
     luaInitialized = false;
+    initState = 'loading';
+    initError = null;
+    runtimeError = null;
+    notifyStateChange();
 
     resetEngineState();
-    await initializeFrameDocument();
+
+    try {
+      await initializeFrameDocument();
+    } catch (error) {
+      initState = 'error';
+      initError = formatInitError(error);
+      notifyStateChange();
+      onError?.('Preview reset failed', error);
+      throw error;
+    }
+
     attachDocumentBridge();
     await initializeLua(true);
 
@@ -432,6 +487,9 @@ export function createPreviewSession({
     }
 
     await refreshBackground();
+
+    initState = 'ready';
+    notifyStateChange();
   }
 
   async function handleSend(inputElement: HTMLTextAreaElement | HTMLInputElement): Promise<void> {
