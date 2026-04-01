@@ -2666,11 +2666,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const entries: Array<{ index: number; data: Record<string, unknown> }> = body.entries;
         if (!Array.isArray(entries) || entries.length === 0) {
-          return jsonRes(res, { error: 'entries must be a non-empty array of {index, data}' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch write lorebook',
+            target: 'lorebook:batch-write',
+            message: 'entries must be a non-empty array of {index, data}',
+            suggestion: 'entries 배열에 {index, data} 객체를 하나 이상 포함하세요.',
+          });
         }
         const MAX_BATCH = 50;
         if (entries.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} entries per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch write lorebook',
+            target: 'lorebook:batch-write',
+            message: `Maximum ${MAX_BATCH} entries per batch`,
+            suggestion: `한 번에 최대 ${MAX_BATCH}개까지만 전송할 수 있습니다. 요청을 분할하세요.`,
+          });
         }
         const lorebook = currentData.lorebook || [];
         // Validate all indices first
@@ -2678,7 +2688,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           (e) => typeof e.index !== 'number' || e.index < 0 || e.index >= lorebook.length || !lorebook[e.index],
         );
         if (invalid.length > 0) {
-          return jsonRes(res, { error: `Invalid indices: ${invalid.map((e) => e.index).join(', ')}` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch write lorebook',
+            target: 'lorebook:batch-write',
+            message: `Invalid indices: ${invalid.map((e) => e.index).join(', ')}`,
+            suggestion: 'GET /lorebook 으로 유효한 index 범위를 확인하세요.',
+          });
         }
         // Build summary for confirmation
         const summary = entries
@@ -3051,11 +3066,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const entries: Array<Record<string, unknown>> = body.entries;
         if (!Array.isArray(entries) || entries.length === 0) {
-          return jsonRes(res, { error: 'entries must be a non-empty array' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch add lorebook entries',
+            target: 'lorebook:batch-add',
+            message: 'entries must be a non-empty array',
+            suggestion: 'entries 배열에 추가할 항목 객체를 하나 이상 포함하세요.',
+          });
         }
         const MAX_BATCH = 50;
         if (entries.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} entries per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch add lorebook entries',
+            target: 'lorebook:batch-add',
+            message: `Maximum ${MAX_BATCH} entries per batch`,
+            suggestion: `한 번에 최대 ${MAX_BATCH}개까지만 추가할 수 있습니다. 요청을 분할하세요.`,
+          });
         }
 
         const names = entries.map((e, i) => (e.comment as string) || `entry_${i}`);
@@ -3115,17 +3140,32 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!body) return;
         const indices: number[] = body.indices;
         if (!Array.isArray(indices) || indices.length === 0) {
-          return jsonRes(res, { error: 'indices must be a non-empty array' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch delete lorebook entries',
+            target: 'lorebook:batch-delete',
+            message: 'indices must be a non-empty array',
+            suggestion: 'indices 배열에 삭제할 index를 하나 이상 포함하세요.',
+          });
         }
         const MAX_BATCH = 50;
         if (indices.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} deletions per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch delete lorebook entries',
+            target: 'lorebook:batch-delete',
+            message: `Maximum ${MAX_BATCH} deletions per batch`,
+            suggestion: `한 번에 최대 ${MAX_BATCH}개까지만 삭제할 수 있습니다. 요청을 분할하세요.`,
+          });
         }
 
         const lorebook = currentData.lorebook || [];
         for (const idx of indices) {
           if (typeof idx !== 'number' || idx < 0 || idx >= lorebook.length || !lorebook[idx]) {
-            return jsonRes(res, { error: `Invalid index: ${idx}` }, 400);
+            return mcpError(res, 400, {
+              action: 'batch delete lorebook entries',
+              target: 'lorebook:batch-delete',
+              message: `Invalid index: ${idx}`,
+              suggestion: 'GET /lorebook 으로 유효한 index 범위를 확인하세요.',
+            });
           }
         }
 
@@ -3320,20 +3360,40 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           flags?: string;
         }> = body.replacements;
         if (!Array.isArray(replacements) || replacements.length === 0) {
-          return jsonRes(res, { error: 'replacements must be a non-empty array' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch replace lorebook',
+            target: 'lorebook:batch-replace',
+            message: 'replacements must be a non-empty array',
+            suggestion: 'replacements 배열에 {index, find, replace} 객체를 하나 이상 포함하세요.',
+          });
         }
         const MAX_BATCH = 50;
         if (replacements.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} replacements per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch replace lorebook',
+            target: 'lorebook:batch-replace',
+            message: `Maximum ${MAX_BATCH} replacements per batch`,
+            suggestion: `한 번에 최대 ${MAX_BATCH}개까지만 치환할 수 있습니다. 요청을 분할하세요.`,
+          });
         }
         const lorebook = currentData.lorebook || [];
         // Validate indices and find strings
         for (const r of replacements) {
           if (typeof r.index !== 'number' || r.index < 0 || r.index >= lorebook.length || !lorebook[r.index]) {
-            return jsonRes(res, { error: `Invalid index: ${r.index}` }, 400);
+            return mcpError(res, 400, {
+              action: 'batch replace lorebook',
+              target: 'lorebook:batch-replace',
+              message: `Invalid index: ${r.index}`,
+              suggestion: 'GET /lorebook 으로 유효한 index 범위를 확인하세요.',
+            });
           }
           if (!r.find) {
-            return jsonRes(res, { error: `Missing "find" for index ${r.index}` }, 400);
+            return mcpError(res, 400, {
+              action: 'batch replace lorebook',
+              target: 'lorebook:batch-replace',
+              message: `Missing "find" for index ${r.index}`,
+              suggestion: '각 replacement 객체에 검색할 find 문자열을 포함하세요.',
+            });
           }
         }
         // Pre-compute matches for each replacement
@@ -3426,20 +3486,40 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           anchor?: string;
         }> = body.insertions;
         if (!Array.isArray(insertions) || insertions.length === 0) {
-          return jsonRes(res, { error: 'insertions must be a non-empty array' }, 400);
+          return mcpError(res, 400, {
+            action: 'batch insert lorebook',
+            target: 'lorebook:batch-insert',
+            message: 'insertions must be a non-empty array',
+            suggestion: 'insertions 배열에 {index, content} 객체를 하나 이상 포함하세요.',
+          });
         }
         const MAX_BATCH = 50;
         if (insertions.length > MAX_BATCH) {
-          return jsonRes(res, { error: `Maximum ${MAX_BATCH} insertions per batch` }, 400);
+          return mcpError(res, 400, {
+            action: 'batch insert lorebook',
+            target: 'lorebook:batch-insert',
+            message: `Maximum ${MAX_BATCH} insertions per batch`,
+            suggestion: `한 번에 최대 ${MAX_BATCH}개까지만 삽입할 수 있습니다. 요청을 분할하세요.`,
+          });
         }
         const lorebook = currentData.lorebook || [];
         // Validate
         for (const ins of insertions) {
           if (typeof ins.index !== 'number' || ins.index < 0 || ins.index >= lorebook.length || !lorebook[ins.index]) {
-            return jsonRes(res, { error: `Invalid index: ${ins.index}` }, 400);
+            return mcpError(res, 400, {
+              action: 'batch insert lorebook',
+              target: 'lorebook:batch-insert',
+              message: `Invalid index: ${ins.index}`,
+              suggestion: 'GET /lorebook 으로 유효한 index 범위를 확인하세요.',
+            });
           }
           if (ins.content === undefined) {
-            return jsonRes(res, { error: `Missing "content" for index ${ins.index}` }, 400);
+            return mcpError(res, 400, {
+              action: 'batch insert lorebook',
+              target: 'lorebook:batch-insert',
+              message: `Missing "content" for index ${ins.index}`,
+              suggestion: '각 insertion 객체에 삽입할 content 문자열을 포함하세요.',
+            });
           }
         }
         // Pre-compute new contents
@@ -3785,7 +3865,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newContent = oldContent.slice(0, anchorPos) + insContent + '\n' + oldContent.slice(anchorPos);
           }
         } else {
-          return jsonRes(res, { error: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다' }, 400);
+          return mcpError(res, 400, {
+            action: 'insert lorebook content',
+            target: `lorebook:${idx}`,
+            message: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다',
+            suggestion: '{ "position": "after", "anchor": "기준 문자열" } 형식으로 anchor를 포함하세요.',
+          });
         }
 
         const preview = insContent.substring(0, 100) + (insContent.length > 100 ? '...' : '');

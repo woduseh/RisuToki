@@ -2673,3 +2673,313 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
     }
   });
 });
+
+describe('MCP API structured error envelopes — lorebook mutation routes', () => {
+  // ── POST /lorebook/batch-write ─────────────────────────────────────
+  it('batch-write: entries not array → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-write', {
+        entries: 'not-an-array',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-write');
+      expect(res.data.error).toContain('non-empty array');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-write: empty entries → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-write', {
+        entries: [],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-write');
+      expect(res.data.error).toContain('non-empty array');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-write: exceeds max batch size → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const entries = Array.from({ length: 51 }, (_, i) => ({ index: 0, data: { content: `x${i}` } }));
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-write', { entries });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-write');
+      expect(res.data.error).toContain('50');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-write: invalid index → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-write', {
+        entries: [{ index: 999, data: { content: 'x' } }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-write');
+      expect(res.data.error).toContain('Invalid');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── POST /lorebook/batch-add ───────────────────────────────────────
+  it('batch-add: entries not array → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-add', {
+        entries: 42,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch add lorebook entries');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-add');
+      expect(res.data.error).toContain('non-empty array');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-add: exceeds max batch size → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const entries = Array.from({ length: 51 }, () => ({ content: 'x' }));
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-add', { entries });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch add lorebook entries');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-add');
+      expect(res.data.error).toContain('50');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── POST /lorebook/batch-delete ────────────────────────────────────
+  it('batch-delete: indices not array → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-delete', {
+        indices: 'bad',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch delete lorebook entries');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-delete');
+      expect(res.data.error).toContain('non-empty array');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-delete: exceeds max batch size → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const indices = Array.from({ length: 51 }, (_, i) => i);
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-delete', { indices });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch delete lorebook entries');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-delete');
+      expect(res.data.error).toContain('50');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-delete: invalid index → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-delete', {
+        indices: [999],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch delete lorebook entries');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-delete');
+      expect(res.data.error).toContain('Invalid');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── POST /lorebook/batch-replace ───────────────────────────────────
+  it('batch-replace: replacements not array → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-replace', {
+        replacements: null,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch replace lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-replace');
+      expect(res.data.error).toContain('non-empty array');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-replace: exceeds max batch size → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const replacements = Array.from({ length: 51 }, () => ({ index: 0, find: 'x', replace: 'y' }));
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-replace', { replacements });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch replace lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-replace');
+      expect(res.data.error).toContain('50');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-replace: invalid index → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-replace', {
+        replacements: [{ index: 999, find: 'x', replace: 'y' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch replace lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-replace');
+      expect(res.data.error).toContain('Invalid');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-replace: missing find → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-replace', {
+        replacements: [{ index: 0, replace: 'y' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch replace lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-replace');
+      expect(res.data.error).toContain('find');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── POST /lorebook/batch-insert ────────────────────────────────────
+  it('batch-insert: insertions not array → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-insert', {
+        insertions: 'oops',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch insert lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-insert');
+      expect(res.data.error).toContain('non-empty array');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-insert: exceeds max batch size → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const insertions = Array.from({ length: 51 }, () => ({ index: 0, content: 'x' }));
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-insert', { insertions });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch insert lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-insert');
+      expect(res.data.error).toContain('50');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-insert: invalid index → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-insert', {
+        insertions: [{ index: 999, content: 'x' }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch insert lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-insert');
+      expect(res.data.error).toContain('Invalid');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-insert: missing content → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-insert', {
+        insertions: [{ index: 0 }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch insert lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-insert');
+      expect(res.data.error).toContain('content');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── POST /lorebook/:idx/insert — anchor required ──────────────────
+  it('insert: anchor required for after/before position → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/0/insert', {
+        content: 'new text',
+        position: 'after',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'insert lorebook content');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:0');
+      expect(res.data.error).toContain('anchor');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
