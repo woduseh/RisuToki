@@ -2743,6 +2743,23 @@ describe('MCP API structured error envelopes — lorebook mutation routes', () =
     }
   });
 
+  it('batch-write: missing data object → 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-write', {
+        entries: [{ index: 0 }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'batch write lorebook');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-write');
+      expect(res.data.error).toContain('data');
+      expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   // ── POST /lorebook/batch-add ───────────────────────────────────────
   it('batch-add: entries not array → 400 envelope', async () => {
     const api = await startTestApiServer(createSearchFixture());

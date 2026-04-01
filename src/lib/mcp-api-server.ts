@@ -2695,6 +2695,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             suggestion: 'GET /lorebook 으로 유효한 index 범위를 확인하세요.',
           });
         }
+        const missingData = entries.filter((e) => !e.data || typeof e.data !== 'object' || Array.isArray(e.data));
+        if (missingData.length > 0) {
+          return mcpError(res, 400, {
+            action: 'batch write lorebook',
+            target: 'lorebook:batch-write',
+            message: `Missing "data" object for indices: ${missingData.map((e) => e.index).join(', ')}`,
+            suggestion: '각 entries 항목에 수정할 필드 값을 담은 data 객체를 포함하세요. 예: { "index": 0, "data": { "content": "..." } }',
+          });
+        }
         // Build summary for confirmation
         const summary = entries
           .map(
