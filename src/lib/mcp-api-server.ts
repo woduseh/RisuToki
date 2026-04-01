@@ -6427,6 +6427,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return mcpError(res, 409, {
             action: 'add_asset',
             message: `에셋 경로 "${assetPath}"가 이미 존재합니다.`,
+            suggestion: '다른 파일명이나 폴더를 사용하세요.',
             target: `asset:${assetPath}`,
           });
         }

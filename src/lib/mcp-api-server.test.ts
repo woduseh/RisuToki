@@ -3205,6 +3205,7 @@ describe('MCP API structured error envelopes — asset routes', () => {
       expect(res.data).toHaveProperty('status', 409);
       expect(res.data).toHaveProperty('target', `asset:${assetPath}`);
       expect(res.data).toHaveProperty('error', `에셋 경로 "${assetPath}"가 이미 존재합니다.`);
+      expect(res.data).toHaveProperty('suggestion', '다른 파일명이나 폴더를 사용하세요.');
     } finally {
       await closeServer(api.server);
     }
