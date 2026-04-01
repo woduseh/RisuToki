@@ -1068,6 +1068,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: 'field:batch',
           });
         }
+        if (!fields.every((f: unknown) => typeof f === 'string')) {
+          return mcpError(res, 400, {
+            action: 'read field batch',
+            message: 'fields must be a non-empty string array — every element must be a string',
+            suggestion: 'fields 배열의 모든 항목이 문자열인지 확인하세요. 예: { "fields": ["name", "description"] }',
+            target: 'field:batch',
+          });
+        }
         const MAX_BATCH = 20;
         if (fields.length > MAX_BATCH) {
           return mcpError(res, 400, {
@@ -1247,9 +1255,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: 'field:batch-write',
           });
         }
+        // Surface-aware validation (mirrors single-field POST /field/:name)
+        const isRisum = (currentData._fileType || 'charx') === 'risum';
+        const isRisup = (currentData._fileType || 'charx') === 'risup';
+        const isCharx = !isRisum && !isRisup;
         const readOnlyFields = ['creationDate', 'modificationDate', 'moduleId'];
+        const charxDeprecatedFields = [
+          'personality', 'scenario', 'nickname', 'source',
+          'additionalText', 'tags', 'license', 'groupOnlyGreetings',
+        ];
         // Exclude complex fields that need special handling
-        const excludedFields = ['triggerScripts', 'alternateGreetings', 'groupOnlyGreetings', 'lorebook'];
+        const excludedFields = ['triggerScripts', 'alternateGreetings', 'lorebook'];
         // Validate all entries before asking for confirmation
         const validatedEntries: Array<{
           field: string;
@@ -1301,6 +1317,33 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const allKnownWritable = new Set([
           ...boolFields, ...numFields, ...jsonFields, ...arrayFields, ...stringFields,
         ]);
+        // Surface-aware writable set — only fields valid on the current _fileType
+        const baseWritable = ['name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'lua'];
+        const charxOnlyWritable = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
+        const risumOnlyWritable = [
+          'cjs', 'lowLevelAccess', 'hideIcon', 'backgroundEmbedding', 'moduleNamespace',
+          'customModuleToggle', 'mcpUrl', 'moduleName', 'moduleDescription',
+        ];
+        const risupOnlyWritable = [
+          'mainPrompt', 'jailbreak', 'temperature', 'maxContext', 'maxResponse',
+          'frequencyPenalty', 'presencePenalty', 'aiModel', 'subModel', 'apiType',
+          'promptPreprocess', 'promptTemplate', 'presetBias', 'formatingOrder', 'presetImage',
+          'top_p', 'top_k', 'repetition_penalty', 'min_p', 'top_a',
+          'reasonEffort', 'thinkingTokens', 'thinkingType', 'adaptiveThinkingEffort',
+          'useInstructPrompt', 'instructChatTemplate', 'JinjaTemplate',
+          'customPromptTemplateToggle', 'templateDefaultVariables', 'moduleIntergration',
+          'jsonSchemaEnabled', 'jsonSchema', 'strictJsonSchema', 'extractJson',
+          'groupTemplate', 'groupOtherBotRole',
+          'autoSuggestPrompt', 'autoSuggestPrefix', 'autoSuggestClean',
+          'localStopStrings', 'outputImageModal', 'verbosity', 'fallbackWhenBlankResponse',
+          'systemContentReplacement', 'systemRoleReplacement',
+        ];
+        const surfaceWritable = new Set([
+          ...baseWritable,
+          ...(isCharx ? charxOnlyWritable : []),
+          ...(isRisum ? risumOnlyWritable : []),
+          ...(isRisup ? risupOnlyWritable : []),
+        ]);
 
         for (const entry of entries) {
           if (!entry.field || entry.content === undefined) {
@@ -1319,6 +1362,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${entry.field}`,
             });
           }
+          if (isCharx && charxDeprecatedFields.includes(entry.field)) {
+            return mcpError(res, 400, {
+              action: 'batch write field',
+              message: `"${entry.field}" 필드는 charx에서 읽기 전용(deprecated)입니다.`,
+              suggestion: `이 필드는 수정할 수 없습니다. entries 배열에서 "${entry.field}" 항목을 제거하세요.`,
+              target: `field:${entry.field}`,
+            });
+          }
           if (excludedFields.includes(entry.field)) {
             return mcpError(res, 400, {
               action: 'batch write field',
@@ -1327,10 +1378,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${entry.field}`,
             });
           }
-          if (!allKnownWritable.has(entry.field)) {
+          if (!surfaceWritable.has(entry.field)) {
+            const hint = isRisum
+              ? '(risum 필드 포함)'
+              : isRisup
+                ? '(risup 프리셋 필드 포함)'
+                : '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
             return mcpError(res, 400, {
               action: 'batch write field',
-              message: `Unknown field: ${entry.field}`,
+              message: `Unknown field: ${entry.field} ${hint}`,
               suggestion: 'list_fields 또는 GET /field/batch 로 허용된 필드를 다시 확인하세요.',
               target: `field:${entry.field}`,
             });
