@@ -60,5 +60,8 @@ presets/
 # Module data
 modules/
 
+# RisuAI Resources
+risu/
+
 # Docs
 docs/
