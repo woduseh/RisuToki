@@ -63,6 +63,24 @@ interface SaveResult {
   error?: string;
 }
 
+interface RendererOpenFileRequest {
+  filePath: string;
+  fileType: 'charx' | 'risum' | 'risup';
+  saveCurrent: boolean;
+  targetLabel: string;
+}
+
+interface RendererOpenFileResponse {
+  success: boolean;
+  alreadyOpen?: boolean;
+  canceled?: boolean;
+  error?: string;
+  filePath?: string;
+  fileType?: 'charx' | 'risum' | 'risup';
+  name?: string;
+  suggestion?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Runtime imports (typed require — compiled by tsconfig.node-libs.json)
 // ---------------------------------------------------------------------------
@@ -127,6 +145,7 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     getCurrentData: () => CharxData | null;
     getReferenceFiles: () => ReferenceRecord[];
     askRendererConfirm: (title: string, message: string) => Promise<boolean>;
+    requestRendererOpenFile: (request: RendererOpenFileRequest) => Promise<RendererOpenFileResponse>;
     broadcastToAll: (channel: string, ...args: unknown[]) => void;
     broadcastMcpStatus: (payload: Record<string, unknown>) => void;
     onListening: (port: number) => void;
@@ -138,6 +157,7 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     detectCssSectionInline: (line: string) => string | null;
     detectCssBlockOpen: (line: string) => boolean;
     detectCssBlockClose: (line: string) => boolean;
+    openExternalDocument: (filePath: string) => CharxData;
     normalizeTriggerScripts: (data: unknown) => unknown;
     extractPrimaryLua: (scripts: unknown) => string;
     mergePrimaryLua: (scripts: unknown, lua: string) => unknown;
@@ -285,6 +305,9 @@ let apiToken: string | null = null;
 
 // Session recovery
 let recoveryManager: ReturnType<typeof createSessionRecoveryManager> | null = null;
+let rendererOpenRequestId = 0;
+const rendererOpenCallbacks: Record<number, (response: RendererOpenFileResponse) => void> = {};
+const RENDERER_OPEN_TIMEOUT_MS = 60000;
 
 // ---------------------------------------------------------------------------
 // Document open helper (shared by open-file and recovery)
@@ -295,6 +318,103 @@ function openDocumentByPath(filePath: string): CharxData {
   if (filePath.endsWith('.risup')) return openRisup(filePath);
   return openCharx(filePath);
 }
+
+function getDocumentFileType(data: CharxData): 'charx' | 'risum' | 'risup' {
+  if (data._fileType === 'risum' || data._fileType === 'risup') return data._fileType;
+  return 'charx';
+}
+
+function sameDocumentPath(a: string, b: string): boolean {
+  const normalizedA = path.normalize(a);
+  const normalizedB = path.normalize(b);
+  if (process.platform === 'win32') {
+    return normalizedA.toLowerCase() === normalizedB.toLowerCase();
+  }
+  return normalizedA === normalizedB;
+}
+
+function activateOpenedDocument(filePath: string, nextData: CharxData): Record<string, unknown> {
+  mainState.setCurrentDocument(filePath, nextData);
+  invalidateAssetsMapCache();
+  if (mcpApi) mcpApi.invalidateSectionCaches();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setTitle(`RisuToki - ${path.basename(mainState.currentFilePath!)}`);
+  }
+  if (apiPort) writeCurrentMcpConfig();
+  broadcastSidebarDataChanged();
+  markRecoveryDocumentActiveForPath(recoveryManager, filePath).catch((e) =>
+    console.warn('[main] recovery markDocumentActive error:', e),
+  );
+  return serializeForRenderer(mainState.currentData!);
+}
+
+function openDocumentIntoWorkspace(filePath: string): Record<string, unknown> {
+  const normalizedPath = path.normalize(filePath);
+  console.log('[main] Opening:', normalizedPath);
+  const nextData = openDocumentByPath(normalizedPath);
+  const serialized = activateOpenedDocument(normalizedPath, nextData);
+  console.log(
+    '[main] Parsed OK, name:',
+    mainState.currentData!.name,
+    'type:',
+    getDocumentFileType(mainState.currentData!),
+  );
+  return serialized;
+}
+
+function requestRendererOpenFile(request: RendererOpenFileRequest): Promise<RendererOpenFileResponse> {
+  const normalizedPath = path.normalize(request.filePath);
+  if (
+    mainState.currentFilePath &&
+    mainState.currentData &&
+    sameDocumentPath(mainState.currentFilePath, normalizedPath)
+  ) {
+    return Promise.resolve({
+      success: true,
+      alreadyOpen: true,
+      filePath: mainState.currentFilePath,
+      fileType: getDocumentFileType(mainState.currentData),
+      name: String(mainState.currentData.name || path.basename(mainState.currentFilePath)),
+    });
+  }
+
+  const targetWindow = mainWindow;
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    return Promise.resolve({
+      success: false,
+      error: 'Main renderer window is not available.',
+      suggestion: 'RisuToki 메인 창이 열린 상태에서 다시 시도하세요.',
+    });
+  }
+
+  const id = ++rendererOpenRequestId;
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      if (!rendererOpenCallbacks[id]) return;
+      delete rendererOpenCallbacks[id];
+      resolve({
+        success: false,
+        error: 'Timed out waiting for renderer response.',
+        suggestion: '열기 확인 팝업이나 저장 대화상자가 열려 있지 않은지 확인하세요.',
+      });
+    }, RENDERER_OPEN_TIMEOUT_MS);
+
+    rendererOpenCallbacks[id] = (response) => {
+      clearTimeout(timeout);
+      resolve(response);
+    };
+    targetWindow.webContents.send('mcp-open-file-request', id, {
+      ...request,
+      filePath: normalizedPath,
+    });
+  });
+}
+
+ipcMain.on('mcp-open-file-response', (_event, id: number, response: RendererOpenFileResponse) => {
+  if (!rendererOpenCallbacks[id]) return;
+  rendererOpenCallbacks[id](response);
+  delete rendererOpenCallbacks[id];
+});
 
 // ---------------------------------------------------------------------------
 // Reference file helpers
@@ -577,6 +697,7 @@ app.whenReady().then(() => {
     getCurrentData: () => mainState.currentData,
     getReferenceFiles: () => mainState.referenceFiles,
     askRendererConfirm,
+    requestRendererOpenFile,
     broadcastToAll,
     broadcastMcpStatus,
     onListening(port: number) {
@@ -591,6 +712,7 @@ app.whenReady().then(() => {
     detectCssSectionInline,
     detectCssBlockOpen,
     detectCssBlockClose,
+    openExternalDocument: openDocumentByPath,
     normalizeTriggerScripts,
     extractPrimaryLua: extractPrimaryLuaFromTriggerScripts,
     mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,
@@ -796,31 +918,22 @@ ipcMain.handle('open-file', async () => {
       properties: ['openFile'],
     });
     if (result.canceled || !result.filePaths[0]) return null;
-
-    const nextFilePath = result.filePaths[0];
-    console.log('[main] Opening:', nextFilePath);
-    const nextData = openDocumentByPath(nextFilePath);
-    mainState.setCurrentDocument(nextFilePath, nextData);
-    console.log(
-      '[main] Parsed OK, name:',
-      mainState.currentData!.name,
-      'type:',
-      mainState.currentData!._fileType || 'charx',
-    );
-    invalidateAssetsMapCache();
-    if (mcpApi) mcpApi.invalidateSectionCaches();
-    mainWindow!.setTitle(`RisuToki - ${path.basename(mainState.currentFilePath!)}`);
-    // Refresh Claude MCP config so Claude Code can find it
-    if (apiPort) writeCurrentMcpConfig();
-    broadcastSidebarDataChanged();
-    // Mark document active for session recovery
-    markRecoveryDocumentActiveForPath(recoveryManager, nextFilePath).catch((e) =>
-      console.warn('[main] recovery markDocumentActive error:', e),
-    );
-    return serializeForRenderer(mainState.currentData!);
+    return openDocumentIntoWorkspace(result.filePaths[0]);
   } catch (err) {
     console.error('[main] open-file error:', err);
     return null;
+  }
+});
+
+ipcMain.handle('open-file-path', async (_event, filePath: string) => {
+  try {
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      throw new Error('Missing file path');
+    }
+    return openDocumentIntoWorkspace(filePath.trim());
+  } catch (err) {
+    console.error('[main] open-file-path error:', err);
+    throw err;
   }
 });
 

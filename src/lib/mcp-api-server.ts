@@ -50,6 +50,8 @@ export interface McpApiDeps {
   getReferenceFiles: () => any[];
   /** Show a confirmation dialog in the renderer and resolve with the user's choice. */
   askRendererConfirm: (title: string, message: string) => Promise<boolean>;
+  /** Ask the renderer to switch the active document to a specific external file path. */
+  requestRendererOpenFile: (request: RendererOpenFileRequest) => Promise<RendererOpenFileResponse>;
   /** Broadcast an IPC message to all windows (main + popouts). */
   broadcastToAll: (channel: string, ...args: any[]) => void;
   /** Broadcast an MCP status event to the renderer. */
@@ -70,6 +72,7 @@ export interface McpApiDeps {
   detectCssBlockClose: (line: string) => boolean;
 
   // charx-io helpers
+  openExternalDocument: (filePath: string) => any;
   normalizeTriggerScripts: (data: any) => any;
   extractPrimaryLua: (scripts: any) => string;
   mergePrimaryLua: (scripts: any, lua: string) => any;
@@ -124,6 +127,161 @@ function extToMime(ext: string): string {
 }
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
+
+type SupportedFileType = 'charx' | 'risum' | 'risup';
+
+export interface RendererOpenFileRequest {
+  filePath: string;
+  fileType: SupportedFileType;
+  saveCurrent: boolean;
+  targetLabel: string;
+}
+
+export interface RendererOpenFileResponse {
+  success: boolean;
+  alreadyOpen?: boolean;
+  canceled?: boolean;
+  error?: string;
+  filePath?: string;
+  fileType?: SupportedFileType;
+  name?: string;
+  suggestion?: string;
+}
+
+const CORE_FIELD_NAMES = [
+  'name',
+  'description',
+  'firstMessage',
+  'alternateGreetings',
+  'globalNote',
+  'css',
+  'defaultVariables',
+  'triggerScripts',
+  'lua',
+];
+
+const CHARX_FIELD_NAMES = [
+  'personality',
+  'scenario',
+  'creatorcomment',
+  'tags',
+  'exampleMessage',
+  'systemPrompt',
+  'creator',
+  'characterVersion',
+  'nickname',
+  'source',
+  'additionalText',
+  'license',
+];
+
+const CHARX_READ_ONLY_FIELD_NAMES = ['creationDate', 'modificationDate'];
+
+const CHARX_DEPRECATED_FIELD_NAMES = [
+  'personality',
+  'scenario',
+  'nickname',
+  'source',
+  'additionalText',
+  'tags',
+  'license',
+  'groupOnlyGreetings',
+];
+
+const RISUM_FIELD_NAMES = [
+  'cjs',
+  'lowLevelAccess',
+  'hideIcon',
+  'backgroundEmbedding',
+  'moduleNamespace',
+  'customModuleToggle',
+  'mcpUrl',
+  'moduleName',
+  'moduleDescription',
+];
+
+const RISUM_READ_ONLY_FIELD_NAMES = ['moduleId'];
+
+const RISUP_FIELD_NAMES = [
+  'mainPrompt',
+  'jailbreak',
+  'temperature',
+  'maxContext',
+  'maxResponse',
+  'frequencyPenalty',
+  'presencePenalty',
+  'aiModel',
+  'subModel',
+  'apiType',
+  'promptPreprocess',
+  'promptTemplate',
+  'presetBias',
+  'formatingOrder',
+  'presetImage',
+  'top_p',
+  'top_k',
+  'repetition_penalty',
+  'min_p',
+  'top_a',
+  'reasonEffort',
+  'thinkingTokens',
+  'thinkingType',
+  'adaptiveThinkingEffort',
+  'useInstructPrompt',
+  'instructChatTemplate',
+  'JinjaTemplate',
+  'customPromptTemplateToggle',
+  'templateDefaultVariables',
+  'moduleIntergration',
+  'jsonSchemaEnabled',
+  'jsonSchema',
+  'strictJsonSchema',
+  'extractJson',
+  'groupTemplate',
+  'groupOtherBotRole',
+  'autoSuggestPrompt',
+  'autoSuggestPrefix',
+  'autoSuggestClean',
+  'localStopStrings',
+  'outputImageModal',
+  'verbosity',
+  'fallbackWhenBlankResponse',
+  'systemContentReplacement',
+  'systemRoleReplacement',
+];
+
+const ARRAY_FIELD_NAMES = ['alternateGreetings', 'tags', 'source'];
+const BOOLEAN_FIELD_NAMES = [
+  'lowLevelAccess',
+  'hideIcon',
+  'promptPreprocess',
+  'useInstructPrompt',
+  'jsonSchemaEnabled',
+  'strictJsonSchema',
+  'autoSuggestClean',
+  'outputImageModal',
+  'fallbackWhenBlankResponse',
+];
+const NUMBER_FIELD_NAMES = [
+  'temperature',
+  'maxContext',
+  'maxResponse',
+  'frequencyPenalty',
+  'presencePenalty',
+  'top_p',
+  'top_k',
+  'repetition_penalty',
+  'min_p',
+  'top_a',
+  'reasonEffort',
+  'thinkingTokens',
+  'verbosity',
+  'creationDate',
+  'modificationDate',
+];
+const FIELD_RESERVED_PATHS = ['batch', 'batch-write', 'export'];
+const MAX_FIELD_BATCH = 20;
+const SUPPORTED_EXTERNAL_FILE_TYPES = new Set<SupportedFileType>(['charx', 'risum', 'risup']);
 
 // In-memory snapshot storage for field rollback (cleared on file reload)
 interface FieldSnapshot {
@@ -470,6 +628,213 @@ function projectLorebookEntryForResponse(
   return projected;
 }
 
+interface DocumentTypeFlags {
+  fileType: SupportedFileType;
+  isCharx: boolean;
+  isRisum: boolean;
+  isRisup: boolean;
+}
+
+interface FieldAccessRules extends DocumentTypeFlags {
+  allowedFields: string[];
+  readOnlyFields: string[];
+}
+
+function getDocumentTypeFlags(currentData: Record<string, unknown>): DocumentTypeFlags {
+  const rawFileType = currentData._fileType;
+  const fileType: SupportedFileType = rawFileType === 'risum' || rawFileType === 'risup' ? rawFileType : 'charx';
+  return {
+    fileType,
+    isCharx: fileType === 'charx',
+    isRisum: fileType === 'risum',
+    isRisup: fileType === 'risup',
+  };
+}
+
+function getFieldAccessRules(currentData: Record<string, unknown>): FieldAccessRules {
+  const flags = getDocumentTypeFlags(currentData);
+  return {
+    ...flags,
+    allowedFields: [
+      ...CORE_FIELD_NAMES,
+      ...(flags.isCharx ? [...CHARX_FIELD_NAMES, ...CHARX_READ_ONLY_FIELD_NAMES] : []),
+      ...(flags.isRisum ? [...RISUM_FIELD_NAMES, ...RISUM_READ_ONLY_FIELD_NAMES] : []),
+      ...(flags.isRisup ? RISUP_FIELD_NAMES : []),
+    ],
+    readOnlyFields: [
+      ...(flags.isRisum ? RISUM_READ_ONLY_FIELD_NAMES : []),
+      ...(flags.isCharx ? [...CHARX_READ_ONLY_FIELD_NAMES, ...CHARX_DEPRECATED_FIELD_NAMES] : []),
+    ],
+  };
+}
+
+function getUnknownFieldHint(rules: Pick<FieldAccessRules, 'isRisum' | 'isRisup'>): string {
+  if (rules.isRisum) return '(risum 필드 포함)';
+  if (rules.isRisup) return '(risup 프리셋 필드 포함)';
+  return '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
+}
+
+function buildFieldReadResponsePayload(
+  currentData: Record<string, unknown>,
+  fieldName: string,
+  deps: Pick<McpApiDeps, 'stringifyTriggerScripts'>,
+): Record<string, unknown> {
+  if (fieldName === 'triggerScripts') {
+    return {
+      field: fieldName,
+      content: deps.stringifyTriggerScripts(currentData.triggerScripts),
+    };
+  }
+  if (ARRAY_FIELD_NAMES.includes(fieldName)) {
+    return { field: fieldName, content: currentData[fieldName] || [], type: 'array' };
+  }
+  if (BOOLEAN_FIELD_NAMES.includes(fieldName)) {
+    return { field: fieldName, content: !!currentData[fieldName], type: 'boolean' };
+  }
+  if (NUMBER_FIELD_NAMES.includes(fieldName)) {
+    return { field: fieldName, content: currentData[fieldName] ?? 0, type: 'number' };
+  }
+  return { field: fieldName, content: currentData[fieldName] || '' };
+}
+
+function buildFieldBatchReadResults(
+  currentData: Record<string, unknown>,
+  fields: string[],
+  deps: Pick<McpApiDeps, 'stringifyTriggerScripts'>,
+): Record<string, unknown>[] {
+  const rules = getFieldAccessRules(currentData);
+  return fields.map((fieldName) => {
+    if (!rules.allowedFields.includes(fieldName)) {
+      return { field: fieldName, error: `Unknown field: ${fieldName}` };
+    }
+    return buildFieldReadResponsePayload(currentData, fieldName, deps);
+  });
+}
+
+function buildLorebookListResponse(rawEntries: Record<string, unknown>[], url: URL): Record<string, unknown> {
+  const folderMap = new Map<string, { name: string; entryCount: number }>();
+  for (const [folderId, info] of buildFolderInfoMap(rawEntries)) {
+    folderMap.set(folderId, { name: info.name, entryCount: 0 });
+  }
+  for (const entry of rawEntries) {
+    if (entry.mode !== 'folder' && entry.folder) {
+      const info = folderMap.get(resolveLorebookFolderRef(entry.folder, rawEntries));
+      if (info) info.entryCount++;
+    }
+  }
+  const folders = Array.from(folderMap.entries()).map(([id, info]) => ({
+    id,
+    name: info.name,
+    entryCount: info.entryCount,
+  }));
+
+  const previewLengthParam = url.searchParams.get('preview_length');
+  const previewLength =
+    previewLengthParam !== null ? Math.min(Math.max(parseInt(previewLengthParam, 10) || 0, 0), 500) : 150;
+
+  let entries = rawEntries.map((entry, index) => {
+    const content = (entry.content as string) || '';
+    const normalized = normalizeLorebookEntryForResponse(entry, rawEntries);
+    const responseEntry: Record<string, unknown> = {
+      index,
+      comment: normalized.comment || '',
+      key: normalized.key || '',
+      mode: normalized.mode || 'normal',
+      alwaysActive: !!normalized.alwaysActive,
+      contentSize: content.length,
+      folder: normalized.folder || '',
+    };
+    if (previewLength > 0) {
+      responseEntry.contentPreview = content.slice(0, previewLength) + (content.length > previewLength ? '…' : '');
+    }
+    return responseEntry;
+  });
+
+  const folderParam = url.searchParams.get('folder');
+  if (folderParam) {
+    const folderId = resolveLorebookFolderRef(folderParam, rawEntries);
+    entries = entries.filter((entry) => entry.folder === folderId);
+  }
+
+  const filterParam = url.searchParams.get('filter');
+  if (filterParam) {
+    const q = filterParam.toLowerCase();
+    entries = entries.filter(
+      (entry) =>
+        String(entry.comment || '')
+          .toLowerCase()
+          .includes(q) ||
+        String(entry.key || '')
+          .toLowerCase()
+          .includes(q),
+    );
+  }
+
+  const contentFilterParam = url.searchParams.get('content_filter');
+  if (contentFilterParam) {
+    const q = contentFilterParam.toLowerCase();
+    entries = entries.filter((entry) => {
+      const content = ((rawEntries[Number(entry.index)]?.content as string) || '').toLowerCase();
+      return content.includes(q);
+    });
+    entries = entries.map((entry) => {
+      const rawContent = (rawEntries[Number(entry.index)]?.content as string) || '';
+      const lower = rawContent.toLowerCase();
+      const matchPos = lower.indexOf(q);
+      if (matchPos >= 0) {
+        const start = Math.max(0, matchPos - 50);
+        const end = Math.min(rawContent.length, matchPos + q.length + 50);
+        entry.contentMatch =
+          (start > 0 ? '…' : '') + rawContent.slice(start, end) + (end < rawContent.length ? '…' : '');
+      }
+      return entry;
+    });
+  }
+
+  const contentFilterNotParam = url.searchParams.get('content_filter_not');
+  if (contentFilterNotParam) {
+    const q = contentFilterNotParam.toLowerCase();
+    entries = entries.filter((entry) => {
+      const content = ((rawEntries[Number(entry.index)]?.content as string) || '').toLowerCase();
+      return !content.includes(q);
+    });
+  }
+
+  return { count: entries.length, folders, entries };
+}
+
+function buildRegexListResponse(regexEntries: Record<string, unknown>[]): Record<string, unknown> {
+  const entries = regexEntries.map((entry, index) => ({
+    index,
+    comment: entry.comment || '',
+    type: entry.type || '',
+    findSize: String(entry.find || entry.in || '').length,
+    replaceSize: String(entry.replace || entry.out || '').length,
+  }));
+  return { count: entries.length, entries };
+}
+
+function buildLuaListResponse(luaCode: string, parseLuaSections: (lua: string) => Section[]): Record<string, unknown> {
+  const sections = parseLuaSections(luaCode);
+  return {
+    count: sections.length,
+    sections: sections.map((section, index) => ({
+      index,
+      name: section.name,
+      contentSize: section.content.length,
+    })),
+  };
+}
+
+function hasTraversalSegments(rawPath: string): boolean {
+  return rawPath.split(/[\\/]+/).some((segment) => segment === '..');
+}
+
+function getExternalFileType(filePath: string): SupportedFileType | null {
+  const ext = path.extname(filePath).toLowerCase().replace(/^\./, '');
+  return SUPPORTED_EXTERNAL_FILE_TYPES.has(ext as SupportedFileType) ? (ext as SupportedFileType) : null;
+}
+
 /** RisuAI expects lowercase regex types (editdisplay, editoutput, etc.) + name mapping */
 function normalizeRegexType(entry: Record<string, unknown>): void {
   if (typeof entry.type === 'string') {
@@ -543,6 +908,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
   const token = crypto.randomBytes(32).toString('hex');
   const luaCache = createLuaCache(deps.parseLuaSections);
   const cssCache = createCssCache(deps.parseCssSections);
+  let openFileRequestInFlight = false;
 
   const broadcastStatus = deps.broadcastMcpStatus;
 
@@ -566,20 +932,310 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     jsonMcpError(res, status, info, broadcastStatus, error);
   }
 
+  async function resolveExternalDocumentRequest<TBody extends Record<string, any> = Record<string, any>>(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    routePath: string,
+    action: string,
+    target: string,
+  ): Promise<{ body: TBody; filePath: string; fileType: SupportedFileType } | null> {
+    const body = await readJsonBody(req, res, routePath, broadcastStatus);
+    if (!body) return null;
+    const rawPath = typeof body.file_path === 'string' ? body.file_path.trim() : '';
+    if (!rawPath) {
+      mcpError(res, 400, {
+        action,
+        target,
+        message: 'Missing "file_path"',
+        suggestion: '절대 경로의 file_path를 요청 본문에 포함하세요.',
+      });
+      return null;
+    }
+    if (hasTraversalSegments(rawPath)) {
+      mcpError(res, 400, {
+        action,
+        target,
+        message: 'file_path must not include ".." path traversal segments',
+        suggestion: '정규화된 절대 경로를 사용하고 ".." 세그먼트는 제거하세요.',
+      });
+      return null;
+    }
+    if (!path.isAbsolute(rawPath)) {
+      mcpError(res, 400, {
+        action,
+        target,
+        message: 'file_path must be an absolute path',
+        suggestion: '예: C:\\path\\to\\file.charx 형식의 절대 경로를 사용하세요.',
+      });
+      return null;
+    }
+
+    const filePath = path.normalize(rawPath);
+    const fileType = getExternalFileType(filePath);
+    if (!fileType) {
+      mcpError(res, 400, {
+        action,
+        target,
+        message: `Unsupported file extension: ${path.extname(filePath) || '(none)'}`,
+        suggestion: '지원되는 확장자는 .charx, .risum, .risup 입니다.',
+      });
+      return null;
+    }
+
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+    } catch (error) {
+      mcpError(
+        res,
+        400,
+        {
+          action,
+          target,
+          message: `External file not found: ${filePath}`,
+          suggestion: 'file_path가 실제 존재하는 카드/모듈/프리셋 파일을 가리키는지 확인하세요.',
+        },
+        error,
+      );
+      return null;
+    }
+    if (!stat.isFile()) {
+      mcpError(res, 400, {
+        action,
+        target,
+        message: `file_path must point to a file: ${filePath}`,
+        suggestion: '디렉터리가 아니라 실제 .charx/.risum/.risup 파일 경로를 사용하세요.',
+      });
+      return null;
+    }
+
+    return {
+      body: body as TBody,
+      filePath,
+      fileType,
+    };
+  }
+
+  async function readProbeDocumentRequest<TBody extends Record<string, any> = Record<string, any>>(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    routePath: string,
+    action: string,
+    target: string,
+  ): Promise<{ body: TBody; data: Record<string, unknown>; filePath: string; fileType: SupportedFileType } | null> {
+    const request = await resolveExternalDocumentRequest<TBody>(req, res, routePath, action, target);
+    if (!request) return null;
+
+    try {
+      return {
+        ...request,
+        data: deps.openExternalDocument(request.filePath),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      mcpError(
+        res,
+        400,
+        {
+          action,
+          target,
+          message: `Failed to open ${request.fileType} file: ${message}`,
+          suggestion: '손상되지 않은 유효한 .charx/.risum/.risup 파일인지 확인하세요.',
+        },
+        error,
+      );
+      return null;
+    }
+  }
+
   const server = http.createServer(async (req, res) => {
     // Auth check
     if (req.headers.authorization !== `Bearer ${token}`) {
       return jsonRes(res, { error: 'Unauthorized' }, 401);
     }
-    const currentData = deps.getCurrentData();
-    if (!currentData) {
-      return jsonRes(res, { error: 'No file open' }, 400);
-    }
-
     const url = new URL(req.url!, 'http://127.0.0.1');
     const parts = url.pathname.split('/').filter(Boolean);
 
     try {
+      // ----------------------------------------------------------------
+      // POST /probe/field/:name — read a field from an unopened file
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'probe' &&
+        parts[1] === 'field' &&
+        parts[2] &&
+        !parts[3] &&
+        parts[2] !== 'batch' &&
+        req.method === 'POST'
+      ) {
+        const fieldName = decodeURIComponent(parts[2]);
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          `probe/field/${fieldName}`,
+          'probe field',
+          `probe:field:${fieldName}`,
+        );
+        if (!probe) return;
+        const rules = getFieldAccessRules(probe.data);
+        if (!rules.allowedFields.includes(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'probe field',
+            message: `Unknown field: ${fieldName} ${getUnknownFieldHint(rules)}`,
+            suggestion: 'probe_field_batch 또는 list_fields 로 허용된 필드를 다시 확인하세요.',
+            target: `probe:field:${fieldName}`,
+          });
+        }
+        return jsonRes(res, buildFieldReadResponsePayload(probe.data, fieldName, deps));
+      }
+
+      // ----------------------------------------------------------------
+      // POST /probe/field/batch — read multiple fields from an unopened file
+      // ----------------------------------------------------------------
+      if (parts[0] === 'probe' && parts[1] === 'field' && parts[2] === 'batch' && !parts[3] && req.method === 'POST') {
+        const probe = await readProbeDocumentRequest<{ file_path?: string; fields?: unknown }>(
+          req,
+          res,
+          'probe/field/batch',
+          'probe field batch',
+          'probe:field:batch',
+        );
+        if (!probe) return;
+        const fields = probe.body.fields;
+        if (!Array.isArray(fields) || fields.length === 0) {
+          return mcpError(res, 400, {
+            action: 'probe field batch',
+            message: 'fields must be a non-empty string array',
+            suggestion:
+              'fields 를 문자열 배열로 전달하세요. 예: { "file_path": "...", "fields": ["name", "description"] }',
+            target: 'probe:field:batch',
+          });
+        }
+        if (!fields.every((field): field is string => typeof field === 'string')) {
+          return mcpError(res, 400, {
+            action: 'probe field batch',
+            message: 'fields must be a non-empty string array — every element must be a string',
+            suggestion: 'fields 배열의 모든 항목이 문자열인지 확인하세요.',
+            target: 'probe:field:batch',
+          });
+        }
+        if (fields.length > MAX_FIELD_BATCH) {
+          return mcpError(res, 400, {
+            action: 'probe field batch',
+            message: `Maximum ${MAX_FIELD_BATCH} fields per batch`,
+            suggestion: `요청을 ${MAX_FIELD_BATCH}개 이하의 필드로 나누어 여러 번 호출하세요.`,
+            target: 'probe:field:batch',
+          });
+        }
+        const results = buildFieldBatchReadResults(probe.data, fields, deps);
+        return jsonRes(res, { count: results.length, fields: results });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /probe/lorebook — list lorebook entries from an unopened file
+      // ----------------------------------------------------------------
+      if (parts[0] === 'probe' && parts[1] === 'lorebook' && !parts[2] && req.method === 'POST') {
+        const probe = await readProbeDocumentRequest(req, res, 'probe/lorebook', 'probe lorebook', 'probe:lorebook');
+        if (!probe) return;
+        return jsonRes(res, buildLorebookListResponse((probe.data.lorebook as Record<string, unknown>[]) || [], url));
+      }
+
+      // ----------------------------------------------------------------
+      // POST /probe/regex — list regex entries from an unopened file
+      // ----------------------------------------------------------------
+      if (parts[0] === 'probe' && parts[1] === 'regex' && !parts[2] && req.method === 'POST') {
+        const probe = await readProbeDocumentRequest(req, res, 'probe/regex', 'probe regex', 'probe:regex');
+        if (!probe) return;
+        return jsonRes(res, buildRegexListResponse((probe.data.regex as Record<string, unknown>[]) || []));
+      }
+
+      // ----------------------------------------------------------------
+      // POST /probe/lua — list Lua sections from an unopened file
+      // ----------------------------------------------------------------
+      if (parts[0] === 'probe' && parts[1] === 'lua' && !parts[2] && req.method === 'POST') {
+        const probe = await readProbeDocumentRequest(req, res, 'probe/lua', 'probe lua', 'probe:lua');
+        if (!probe) return;
+        return jsonRes(res, buildLuaListResponse(String(probe.data.lua || ''), deps.parseLuaSections));
+      }
+
+      if (req.method === 'POST' && url.pathname === '/open-file') {
+        const request = await resolveExternalDocumentRequest<{ file_path?: string; save_current?: unknown }>(
+          req,
+          res,
+          'open-file',
+          'open file',
+          'open:file',
+        );
+        if (!request) return;
+
+        if (request.body.save_current !== undefined && typeof request.body.save_current !== 'boolean') {
+          return mcpError(res, 400, {
+            action: 'open file',
+            message: 'save_current must be a boolean when provided',
+            suggestion: 'save_current는 true 또는 false 로만 전달하세요.',
+            target: 'open:file',
+          });
+        }
+
+        if (openFileRequestInFlight) {
+          return mcpError(res, 409, {
+            action: 'open file',
+            message: 'Another open_file request is already in progress',
+            suggestion: '현재 문서 전환이 끝난 뒤 다시 시도하세요.',
+            target: 'open:file',
+          });
+        }
+
+        openFileRequestInFlight = true;
+        try {
+          const response = await deps.requestRendererOpenFile({
+            filePath: request.filePath,
+            fileType: request.fileType,
+            saveCurrent: request.body.save_current === true,
+            targetLabel: path.basename(request.filePath),
+          });
+          if (!response.success) {
+            return mcpError(res, response.canceled ? 409 : 500, {
+              action: 'open file',
+              message: response.error || 'Renderer could not open the requested file.',
+              suggestion:
+                response.suggestion ||
+                (response.canceled
+                  ? '현재 문서의 저장/교체를 마친 뒤 다시 시도하세요.'
+                  : 'RisuToki 메인 창과 renderer가 정상 동작 중인지 확인하세요.'),
+              target: 'open:file',
+            });
+          }
+          return jsonRes(res, {
+            file_path: response.filePath || request.filePath,
+            file_type: response.fileType || request.fileType,
+            name: response.name || path.basename(request.filePath),
+            already_open: response.alreadyOpen === true,
+            switched: response.alreadyOpen !== true,
+            save_current: request.body.save_current === true,
+          });
+        } catch (error) {
+          return mcpError(
+            res,
+            500,
+            {
+              action: 'open file',
+              message: error instanceof Error ? error.message : String(error),
+              suggestion: 'RisuToki 메인 창과 renderer 상태를 확인한 뒤 다시 시도하세요.',
+              target: 'open:file',
+            },
+            error,
+          );
+        } finally {
+          openFileRequestInFlight = false;
+        }
+      }
+
+      const currentData = deps.getCurrentData();
+      if (!currentData) {
+        return jsonRes(res, { error: 'No file open' }, 400);
+      }
+
       // ----------------------------------------------------------------
       // GET /fields
       // ----------------------------------------------------------------
@@ -738,194 +1394,27 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // GET/POST /field/:name
       // ----------------------------------------------------------------
-      const fieldReservedPaths = ['batch', 'batch-write', 'export'];
-      if (parts[0] === 'field' && parts[1] && !parts[2] && !fieldReservedPaths.includes(parts[1])) {
+      if (parts[0] === 'field' && parts[1] && !parts[2] && !FIELD_RESERVED_PATHS.includes(parts[1])) {
         const fieldName = decodeURIComponent(parts[1]);
-        const allowedFields = [
-          'name',
-          'description',
-          'firstMessage',
-          'alternateGreetings',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'triggerScripts',
-          'lua',
-        ];
-        // Charx card.data fields (additional character metadata)
-        const charxFields = [
-          'personality',
-          'scenario',
-          'creatorcomment',
-          'tags',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
-          'nickname',
-          'source',
-          'additionalText',
-          'license',
-        ];
-        const charxReadOnlyFields = ['creationDate', 'modificationDate'];
-        const risumFields = [
-          'cjs',
-          'lowLevelAccess',
-          'hideIcon',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-        ];
-        const risumReadOnlyFields = ['moduleId'];
-        const risupFields = [
-          // Basic
-          'mainPrompt',
-          'jailbreak',
-          'temperature',
-          'maxContext',
-          'maxResponse',
-          'frequencyPenalty',
-          'presencePenalty',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'promptPreprocess',
-          'promptTemplate',
-          'presetBias',
-          'formatingOrder',
-          'presetImage',
-          // Sampling
-          'top_p',
-          'top_k',
-          'repetition_penalty',
-          'min_p',
-          'top_a',
-          // Thinking / reasoning
-          'reasonEffort',
-          'thinkingTokens',
-          'thinkingType',
-          'adaptiveThinkingEffort',
-          // Templates & formatting
-          'useInstructPrompt',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'customPromptTemplateToggle',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          // JSON schema
-          'jsonSchemaEnabled',
-          'jsonSchema',
-          'strictJsonSchema',
-          'extractJson',
-          // Group & misc
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'autoSuggestClean',
-          'localStopStrings',
-          'outputImageModal',
-          'verbosity',
-          'fallbackWhenBlankResponse',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        const isRisum = (currentData._fileType || 'charx') === 'risum';
-        const isRisup = (currentData._fileType || 'charx') === 'risup';
-        const isCharx = !isRisum && !isRisup;
-        // Deprecated/passthrough charx fields — readable but not writable
-        const charxDeprecatedFields = [
-          'personality',
-          'scenario',
-          'nickname',
-          'source',
-          'additionalText',
-          'tags',
-          'license',
-          'groupOnlyGreetings',
-        ];
-        const allReadOnly = [
-          ...(isRisum ? risumReadOnlyFields : []),
-          ...(isCharx ? [...charxReadOnlyFields, ...charxDeprecatedFields] : []),
-        ];
-        const allAllowed = [
-          ...allowedFields,
-          ...(isCharx ? [...charxFields, ...charxReadOnlyFields] : []),
-          ...(isRisum ? [...risumFields, ...risumReadOnlyFields] : []),
-          ...(isRisup ? risupFields : []),
-        ];
+        const rules = getFieldAccessRules(currentData);
 
-        if (!allAllowed.includes(fieldName)) {
-          const hint = isRisum
-            ? '(risum 필드 포함)'
-            : isRisup
-              ? '(risup 프리셋 필드 포함)'
-              : '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
+        if (!rules.allowedFields.includes(fieldName)) {
           const action = req.method === 'GET' ? 'read field' : 'update field';
           return mcpError(res, 400, {
             action,
-            message: `Unknown field: ${fieldName} ${hint}`,
+            message: `Unknown field: ${fieldName} ${getUnknownFieldHint(rules)}`,
             suggestion: 'list_fields 또는 GET /field/batch 로 허용된 필드를 다시 확인하세요.',
             target: `field:${fieldName}`,
           });
         }
 
         if (req.method === 'GET') {
-          if (fieldName === 'triggerScripts') {
-            return jsonRes(res, {
-              field: fieldName,
-              content: deps.stringifyTriggerScripts(currentData.triggerScripts),
-            });
-          }
-          // Array fields
-          if (['alternateGreetings', 'tags', 'source'].includes(fieldName)) {
-            return jsonRes(res, { field: fieldName, content: currentData[fieldName] || [] });
-          }
-          // Boolean fields
-          const boolFields = [
-            'lowLevelAccess',
-            'hideIcon',
-            'promptPreprocess',
-            'useInstructPrompt',
-            'jsonSchemaEnabled',
-            'strictJsonSchema',
-            'autoSuggestClean',
-            'outputImageModal',
-            'fallbackWhenBlankResponse',
-          ];
-          if (boolFields.includes(fieldName)) {
-            return jsonRes(res, { field: fieldName, content: !!currentData[fieldName], type: 'boolean' });
-          }
-          // Number fields
-          const numFields = [
-            'temperature',
-            'maxContext',
-            'maxResponse',
-            'frequencyPenalty',
-            'presencePenalty',
-            'top_p',
-            'top_k',
-            'repetition_penalty',
-            'min_p',
-            'top_a',
-            'reasonEffort',
-            'thinkingTokens',
-            'verbosity',
-            'creationDate',
-            'modificationDate',
-          ];
-          if (numFields.includes(fieldName)) {
-            return jsonRes(res, { field: fieldName, content: currentData[fieldName] ?? 0, type: 'number' });
-          }
-          return jsonRes(res, { field: fieldName, content: currentData[fieldName] || '' });
+          return jsonRes(res, buildFieldReadResponsePayload(currentData, fieldName, deps));
         }
 
         if (req.method === 'POST') {
           // Read-only fields check
-          if (allReadOnly.includes(fieldName)) {
+          if (rules.readOnlyFields.includes(fieldName)) {
             return mcpError(res, 400, {
               action: 'update field',
               message: `"${fieldName}" 필드는 읽기 전용입니다.`,
@@ -1076,46 +1565,101 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: 'field:batch',
           });
         }
-        const MAX_BATCH = 20;
-        if (fields.length > MAX_BATCH) {
+        if (fields.length > MAX_FIELD_BATCH) {
           return mcpError(res, 400, {
             action: 'read field batch',
-            message: `Maximum ${MAX_BATCH} fields per batch`,
-            suggestion: `요청을 ${MAX_BATCH}개 이하의 필드로 나누어 여러 번 호출하세요.`,
+            message: `Maximum ${MAX_FIELD_BATCH} fields per batch`,
+            suggestion: `요청을 ${MAX_FIELD_BATCH}개 이하의 필드로 나누어 여러 번 호출하세요.`,
             target: 'field:batch',
           });
         }
+        const results = buildFieldBatchReadResults(currentData, fields, deps);
+        return jsonRes(res, { count: results.length, fields: results });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /field/batch-write — write multiple fields at once (single confirmation)
+      // ----------------------------------------------------------------
+      if (parts[0] === 'field' && parts[1] === 'batch-write' && !parts[2] && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'field/batch-write', broadcastStatus);
+        if (!body) return;
+        const entries: Array<{ field: string; content: unknown }> = body.entries;
+        if (!Array.isArray(entries) || entries.length === 0) {
+          return mcpError(res, 400, {
+            action: 'batch write field',
+            message: 'entries must be a non-empty array of {field, content}',
+            suggestion:
+              'entries 를 { field, content } 객체 배열로 전달하세요. 예: { "entries": [{ "field": "name", "content": "새 이름" }] }',
+            target: 'field:batch-write',
+          });
+        }
+        const MAX_BATCH_WRITE = 20;
+        if (entries.length > MAX_BATCH_WRITE) {
+          return mcpError(res, 400, {
+            action: 'batch write field',
+            message: `Maximum ${MAX_BATCH_WRITE} entries per batch`,
+            suggestion: `요청을 ${MAX_BATCH_WRITE}개 이하의 항목으로 나누어 여러 번 호출하세요.`,
+            target: 'field:batch-write',
+          });
+        }
+        // Surface-aware validation (mirrors single-field POST /field/:name)
         const isRisum = (currentData._fileType || 'charx') === 'risum';
         const isRisup = (currentData._fileType || 'charx') === 'risup';
         const isCharx = !isRisum && !isRisup;
-        const allowedFields = [
-          'name',
-          'description',
-          'firstMessage',
-          'alternateGreetings',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'triggerScripts',
-          'lua',
-        ];
-        const charxFields = [
+        const charxReadOnlyFields = ['creationDate', 'modificationDate'];
+        const risumReadOnlyFields = ['moduleId'];
+        const readOnlyFields = [...(isCharx ? charxReadOnlyFields : []), ...(isRisum ? risumReadOnlyFields : [])];
+        const charxDeprecatedFields = [
           'personality',
           'scenario',
-          'creatorcomment',
-          'tags',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
           'nickname',
           'source',
           'additionalText',
+          'tags',
           'license',
-          'creationDate',
-          'modificationDate',
+          'groupOnlyGreetings',
         ];
-        const risumFieldsBatch = [
+        // Exclude complex fields that need special handling
+        const excludedFields = ['triggerScripts', 'alternateGreetings', 'lorebook'];
+        // Validate all entries before asking for confirmation
+        const validatedEntries: Array<{
+          field: string;
+          content: unknown;
+          oldSize: number;
+          newSize: number;
+          type: string;
+        }> = [];
+        const boolFields = [
+          'lowLevelAccess',
+          'hideIcon',
+          'promptPreprocess',
+          'useInstructPrompt',
+          'jsonSchemaEnabled',
+          'strictJsonSchema',
+          'autoSuggestClean',
+          'outputImageModal',
+          'fallbackWhenBlankResponse',
+        ];
+        const numFields = [
+          'temperature',
+          'maxContext',
+          'maxResponse',
+          'frequencyPenalty',
+          'presencePenalty',
+          'top_p',
+          'top_k',
+          'repetition_penalty',
+          'min_p',
+          'top_a',
+          'reasonEffort',
+          'thinkingTokens',
+          'verbosity',
+        ];
+        const jsonFields = ['promptTemplate', 'presetBias', 'formatingOrder', 'localStopStrings'];
+        // Surface-aware writable set — only fields valid on the current _fileType
+        const baseWritable = ['name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'lua'];
+        const charxOnlyWritable = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
+        const risumOnlyWritable = [
           'cjs',
           'lowLevelAccess',
           'hideIcon',
@@ -1125,9 +1669,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'mcpUrl',
           'moduleName',
           'moduleDescription',
-          'moduleId',
         ];
-        const risupFieldsBatch = [
+        const risupOnlyWritable = [
           'mainPrompt',
           'jailbreak',
           'temperature',
@@ -1173,159 +1716,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           'fallbackWhenBlankResponse',
           'systemContentReplacement',
           'systemRoleReplacement',
-        ];
-        const allAllowedBatch = [
-          ...allowedFields,
-          ...(isCharx ? charxFields : []),
-          ...(isRisum ? risumFieldsBatch : []),
-          ...(isRisup ? risupFieldsBatch : []),
-        ];
-        const boolFields = [
-          'lowLevelAccess',
-          'hideIcon',
-          'promptPreprocess',
-          'useInstructPrompt',
-          'jsonSchemaEnabled',
-          'strictJsonSchema',
-          'autoSuggestClean',
-          'outputImageModal',
-          'fallbackWhenBlankResponse',
-        ];
-        const numFields = [
-          'temperature',
-          'maxContext',
-          'maxResponse',
-          'frequencyPenalty',
-          'presencePenalty',
-          'top_p',
-          'top_k',
-          'repetition_penalty',
-          'min_p',
-          'top_a',
-          'reasonEffort',
-          'thinkingTokens',
-          'verbosity',
-          'creationDate',
-          'modificationDate',
-        ];
-        const arrayFields = ['alternateGreetings', 'tags', 'source'];
-
-        const results = fields.map((fieldName: string) => {
-          if (!allAllowedBatch.includes(fieldName)) {
-            return { field: fieldName, error: `Unknown field: ${fieldName}` };
-          }
-          if (fieldName === 'triggerScripts') {
-            return { field: fieldName, content: deps.stringifyTriggerScripts(currentData.triggerScripts) };
-          }
-          if (arrayFields.includes(fieldName)) {
-            return { field: fieldName, content: currentData[fieldName] || [], type: 'array' };
-          }
-          if (boolFields.includes(fieldName)) {
-            return { field: fieldName, content: !!currentData[fieldName], type: 'boolean' };
-          }
-          if (numFields.includes(fieldName)) {
-            return { field: fieldName, content: currentData[fieldName] ?? 0, type: 'number' };
-          }
-          return { field: fieldName, content: currentData[fieldName] || '' };
-        });
-        return jsonRes(res, { count: results.length, fields: results });
-      }
-
-      // ----------------------------------------------------------------
-      // POST /field/batch-write — write multiple fields at once (single confirmation)
-      // ----------------------------------------------------------------
-      if (parts[0] === 'field' && parts[1] === 'batch-write' && !parts[2] && req.method === 'POST') {
-        const body = await readJsonBody(req, res, 'field/batch-write', broadcastStatus);
-        if (!body) return;
-        const entries: Array<{ field: string; content: unknown }> = body.entries;
-        if (!Array.isArray(entries) || entries.length === 0) {
-          return mcpError(res, 400, {
-            action: 'batch write field',
-            message: 'entries must be a non-empty array of {field, content}',
-            suggestion: 'entries 를 { field, content } 객체 배열로 전달하세요. 예: { "entries": [{ "field": "name", "content": "새 이름" }] }',
-            target: 'field:batch-write',
-          });
-        }
-        const MAX_BATCH_WRITE = 20;
-        if (entries.length > MAX_BATCH_WRITE) {
-          return mcpError(res, 400, {
-            action: 'batch write field',
-            message: `Maximum ${MAX_BATCH_WRITE} entries per batch`,
-            suggestion: `요청을 ${MAX_BATCH_WRITE}개 이하의 항목으로 나누어 여러 번 호출하세요.`,
-            target: 'field:batch-write',
-          });
-        }
-        // Surface-aware validation (mirrors single-field POST /field/:name)
-        const isRisum = (currentData._fileType || 'charx') === 'risum';
-        const isRisup = (currentData._fileType || 'charx') === 'risup';
-        const isCharx = !isRisum && !isRisup;
-        const charxReadOnlyFields = ['creationDate', 'modificationDate'];
-        const risumReadOnlyFields = ['moduleId'];
-        const readOnlyFields = [
-          ...(isCharx ? charxReadOnlyFields : []),
-          ...(isRisum ? risumReadOnlyFields : []),
-        ];
-        const charxDeprecatedFields = [
-          'personality', 'scenario', 'nickname', 'source',
-          'additionalText', 'tags', 'license', 'groupOnlyGreetings',
-        ];
-        // Exclude complex fields that need special handling
-        const excludedFields = ['triggerScripts', 'alternateGreetings', 'lorebook'];
-        // Validate all entries before asking for confirmation
-        const validatedEntries: Array<{
-          field: string;
-          content: unknown;
-          oldSize: number;
-          newSize: number;
-          type: string;
-        }> = [];
-        const boolFields = [
-          'lowLevelAccess',
-          'hideIcon',
-          'promptPreprocess',
-          'useInstructPrompt',
-          'jsonSchemaEnabled',
-          'strictJsonSchema',
-          'autoSuggestClean',
-          'outputImageModal',
-          'fallbackWhenBlankResponse',
-        ];
-        const numFields = [
-          'temperature',
-          'maxContext',
-          'maxResponse',
-          'frequencyPenalty',
-          'presencePenalty',
-          'top_p',
-          'top_k',
-          'repetition_penalty',
-          'min_p',
-          'top_a',
-          'reasonEffort',
-          'thinkingTokens',
-          'verbosity',
-        ];
-        const jsonFields = ['promptTemplate', 'presetBias', 'formatingOrder', 'localStopStrings'];
-        // Surface-aware writable set — only fields valid on the current _fileType
-        const baseWritable = ['name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'lua'];
-        const charxOnlyWritable = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
-        const risumOnlyWritable = [
-          'cjs', 'lowLevelAccess', 'hideIcon', 'backgroundEmbedding', 'moduleNamespace',
-          'customModuleToggle', 'mcpUrl', 'moduleName', 'moduleDescription',
-        ];
-        const risupOnlyWritable = [
-          'mainPrompt', 'jailbreak', 'temperature', 'maxContext', 'maxResponse',
-          'frequencyPenalty', 'presencePenalty', 'aiModel', 'subModel', 'apiType',
-          'promptPreprocess', 'promptTemplate', 'presetBias', 'formatingOrder', 'presetImage',
-          'top_p', 'top_k', 'repetition_penalty', 'min_p', 'top_a',
-          'reasonEffort', 'thinkingTokens', 'thinkingType', 'adaptiveThinkingEffort',
-          'useInstructPrompt', 'instructChatTemplate', 'JinjaTemplate',
-          'customPromptTemplateToggle', 'templateDefaultVariables', 'moduleIntergration',
-          'jsonSchemaEnabled', 'jsonSchema', 'strictJsonSchema', 'extractJson',
-          'groupTemplate', 'groupOtherBotRole',
-          'autoSuggestPrompt', 'autoSuggestPrefix', 'autoSuggestClean',
-          'localStopStrings', 'outputImageModal', 'verbosity', 'fallbackWhenBlankResponse',
-          'systemContentReplacement', 'systemRoleReplacement',
         ];
         const surfaceWritable = new Set([
           ...baseWritable,
@@ -1433,14 +1823,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             }
           }
           const oldVal = currentData[entry.field];
-          const oldSize =
-            type === 'boolean' || type === 'number'
-              ? String(oldVal ?? '').length
-              : (oldVal || '').length;
+          const oldSize = type === 'boolean' || type === 'number' ? String(oldVal ?? '').length : (oldVal || '').length;
           const newSize =
-            type === 'boolean' || type === 'number'
-              ? String(entry.content).length
-              : (entry.content as string).length;
+            type === 'boolean' || type === 'number' ? String(entry.content).length : (entry.content as string).length;
           validatedEntries.push({ field: entry.field, content: entry.content, oldSize, newSize, type });
         }
 
@@ -1937,7 +2322,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return mcpError(res, 400, {
               action: 'insert in field',
               message: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다',
-              suggestion: 'anchor 에 삽입 위치를 지정하는 텍스트를 전달하세요. 예: { "position": "after", "anchor": "기준 텍스트" }',
+              suggestion:
+                'anchor 에 삽입 위치를 지정하는 텍스트를 전달하세요. 예: { "position": "after", "anchor": "기준 텍스트" }',
               target: `field:${fieldName}`,
             });
           }
@@ -2042,7 +2428,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           return mcpError(res, 400, {
             action: 'batch replace in field',
             message: 'replacements must be a non-empty array',
-            suggestion: 'replacements 를 { find, replace } 객체 배열로 전달하세요. 예: { "replacements": [{ "find": "old", "replace": "new" }] }',
+            suggestion:
+              'replacements 를 { find, replace } 객체 배열로 전달하세요. 예: { "replacements": [{ "find": "old", "replace": "new" }] }',
             target: `field:${fieldName}`,
           });
         }
@@ -2490,93 +2877,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /lorebook
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && !parts[1] && req.method === 'GET') {
-        const rawEntries = currentData.lorebook || [];
-
-        // Build folder summary
-        const folderMap = new Map<string, { name: string; entryCount: number }>();
-        for (const [folderId, info] of buildFolderInfoMap(rawEntries)) {
-          folderMap.set(folderId, { name: info.name, entryCount: 0 });
-        }
-        for (const e of rawEntries) {
-          if (e.mode !== 'folder' && e.folder) {
-            const info = folderMap.get(resolveLorebookFolderRef(e.folder, rawEntries));
-            if (info) info.entryCount++;
-          }
-        }
-        const folders = Array.from(folderMap.entries()).map(([id, info]) => ({
-          id,
-          name: info.name,
-          entryCount: info.entryCount,
-        }));
-
-        // Parse preview_length
-        const previewLengthParam = url.searchParams.get('preview_length');
-        const previewLength =
-          previewLengthParam !== null ? Math.min(Math.max(parseInt(previewLengthParam, 10) || 0, 0), 500) : 150;
-
-        let entries = rawEntries.map((e: any, i: number) => {
-          const content = e.content || '';
-          const normalized = normalizeLorebookEntryForResponse(e, rawEntries);
-          const entry: Record<string, unknown> = {
-            index: i,
-            comment: normalized.comment || '',
-            key: normalized.key || '',
-            mode: normalized.mode || 'normal',
-            alwaysActive: !!normalized.alwaysActive,
-            contentSize: content.length,
-            folder: normalized.folder || '',
-          };
-          if (previewLength > 0) {
-            entry.contentPreview = content.slice(0, previewLength) + (content.length > previewLength ? '…' : '');
-          }
-          return entry;
-        });
-
-        // Filter by folder UUID
-        const folderParam = url.searchParams.get('folder');
-        if (folderParam) {
-          const folderId = resolveLorebookFolderRef(folderParam, rawEntries);
-          entries = entries.filter((e: any) => e.folder === folderId);
-        }
-
-        // Filter by keyword (comment/key)
-        const filterParam = url.searchParams.get('filter');
-        if (filterParam) {
-          const q = filterParam.toLowerCase();
-          entries = entries.filter((e: any) => e.comment.toLowerCase().includes(q) || e.key.toLowerCase().includes(q));
-        }
-        // Filter by content keyword
-        const contentFilterParam = url.searchParams.get('content_filter');
-        if (contentFilterParam) {
-          const cq = contentFilterParam.toLowerCase();
-          entries = entries.filter((_e: any) => {
-            const content = (rawEntries[(_e as any).index]?.content || '').toLowerCase();
-            return content.includes(cq);
-          });
-          // Add match context preview for content_filter results
-          entries = entries.map((e: any) => {
-            const content = (rawEntries[e.index]?.content || '').toLowerCase();
-            const matchPos = content.indexOf(cq);
-            if (matchPos >= 0) {
-              const rawContent = rawEntries[e.index]?.content || '';
-              const start = Math.max(0, matchPos - 50);
-              const end = Math.min(rawContent.length, matchPos + cq.length + 50);
-              e.contentMatch =
-                (start > 0 ? '…' : '') + rawContent.slice(start, end) + (end < rawContent.length ? '…' : '');
-            }
-            return e;
-          });
-        }
-        // Filter by content NOT containing keyword
-        const contentFilterNotParam = url.searchParams.get('content_filter_not');
-        if (contentFilterNotParam) {
-          const nq = contentFilterNotParam.toLowerCase();
-          entries = entries.filter((_e: any) => {
-            const content = (rawEntries[(_e as any).index]?.content || '').toLowerCase();
-            return !content.includes(nq);
-          });
-        }
-        return jsonRes(res, { count: entries.length, folders, entries });
+        return jsonRes(res, buildLorebookListResponse((currentData.lorebook as Record<string, unknown>[]) || [], url));
       }
 
       // ----------------------------------------------------------------
@@ -2689,7 +2990,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             action: 'batch write lorebook',
             target: 'lorebook:batch-write',
             message: `Missing "data" object for indices: ${missingData.map((e) => e.index).join(', ')}`,
-            suggestion: '각 entries 항목에 수정할 필드 값을 담은 data 객체를 포함하세요. 예: { "index": 0, "data": { "content": "..." } }',
+            suggestion:
+              '각 entries 항목에 수정할 필드 값을 담은 data 객체를 포함하세요. 예: { "index": 0, "data": { "content": "..." } }',
           });
         }
         // Build summary for confirmation
@@ -3944,14 +4246,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /regex
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && !parts[1] && req.method === 'GET') {
-        const entries = (currentData.regex || []).map((e: any, i: number) => ({
-          index: i,
-          comment: e.comment || '',
-          type: e.type || '',
-          findSize: (e.find || e.in || '').length,
-          replaceSize: (e.replace || e.out || '').length,
-        }));
-        return jsonRes(res, { count: entries.length, entries });
+        return jsonRes(res, buildRegexListResponse((currentData.regex as Record<string, unknown>[]) || []));
       }
 
       // ----------------------------------------------------------------
@@ -5094,13 +5389,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /lua — list Lua sections
       // ----------------------------------------------------------------
       if (parts[0] === 'lua' && !parts[1] && req.method === 'GET') {
-        const sections = luaCache.get(currentData.lua);
-        const result = sections.map((s, i) => ({
-          index: i,
-          name: s.name,
-          contentSize: s.content.length,
-        }));
-        return jsonRes(res, { count: result.length, sections: result });
+        return jsonRes(res, buildLuaListResponse(String(currentData.lua || ''), deps.parseLuaSections));
       }
 
       // ----------------------------------------------------------------

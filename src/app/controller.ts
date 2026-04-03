@@ -111,6 +111,7 @@ import { initSidebarDnD, destroyAllSortables } from '../lib/sidebar-dnd';
 import {
   handleNew as _handleNew,
   handleOpen as _handleOpen,
+  handleOpenPath as _handleOpenPath,
   handleSave as _handleSave,
   handleSaveAs as _handleSaveAs,
 } from '../lib/file-actions';
@@ -219,6 +220,8 @@ let pluniCategory = settingsSnapshot.pluniCategory;
 let autosaveEnabled = settingsSnapshot.autosaveEnabled;
 let autosaveInterval = settingsSnapshot.autosaveInterval;
 let autosaveDir = settingsSnapshot.autosaveDir; // empty = same as file
+let documentSwitchInProgress = false;
+let rendererOpenRequestInProgress = false;
 
 /** Sync imperative controller state → Pinia store for reactive UI */
 function syncStoreState(): void {
@@ -324,6 +327,54 @@ const layoutManager = createLayoutManager({
 window.tokiAPI.onMcpConfirmRequest(async (id, title, message) => {
   const result = await showConfirm(`[${title}]\n${message}`);
   window.tokiAPI.sendMcpConfirmResponse(id, result);
+});
+
+function getRendererDocumentFileType(data: Record<string, unknown>): 'charx' | 'risum' | 'risup' {
+  return data._fileType === 'risum' || data._fileType === 'risup' ? data._fileType : 'charx';
+}
+
+window.tokiAPI.onMcpOpenFileRequest(async (id, request) => {
+  if (rendererOpenRequestInProgress) {
+    window.tokiAPI.sendMcpOpenFileResponse(id, {
+      success: false,
+      error: 'Another document switch is already in progress.',
+      suggestion: '현재 열기 작업이 끝난 뒤 다시 시도하세요.',
+    });
+    return;
+  }
+
+  rendererOpenRequestInProgress = true;
+  try {
+    const opened = await _handleOpenPath(fileActionDeps, request.filePath, {
+      onLoadStateChange: (loading) => {
+        documentSwitchInProgress = loading;
+      },
+      saveCurrent: request.saveCurrent,
+      targetLabel: request.targetLabel,
+    });
+    if (!opened) {
+      window.tokiAPI.sendMcpOpenFileResponse(id, {
+        success: false,
+        canceled: true,
+        error: 'Document replacement was canceled or the current file could not be saved.',
+      });
+      return;
+    }
+    window.tokiAPI.sendMcpOpenFileResponse(id, {
+      success: true,
+      filePath: request.filePath,
+      fileType: getRendererDocumentFileType(opened),
+      name: String((opened as Record<string, unknown>).name || 'Untitled'),
+    });
+  } catch (error) {
+    window.tokiAPI.sendMcpOpenFileResponse(id, {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    rendererOpenRequestInProgress = false;
+    documentSwitchInProgress = false;
+  }
 });
 
 window.tokiAPI.onMcpStatus((event) => {
@@ -2077,7 +2128,7 @@ function getAutosaveDeps() {
     getAutosaveEnabled: () => autosaveEnabled,
     getAutosaveInterval: () => autosaveInterval,
     getAutosaveDir: () => autosaveDir,
-    getDirtyFieldCount: () => tabMgr.dirtyFields.size,
+    getDirtyFieldCount: () => (documentSwitchInProgress ? 0 : tabMgr.dirtyFields.size),
     getFileData: () => fileData as Record<string, unknown> | null,
     collectDirtyFields: () =>
       collectDirtyEditorFields({

@@ -73,6 +73,24 @@ interface McpConfirmCallback {
   (id: number, title: string, message: string): void;
 }
 
+interface McpOpenFileRequest {
+  filePath: string;
+  fileType: 'charx' | 'risum' | 'risup';
+  saveCurrent: boolean;
+  targetLabel: string;
+}
+
+interface McpOpenFileResponse {
+  success: boolean;
+  alreadyOpen?: boolean;
+  canceled?: boolean;
+  error?: string;
+  filePath?: string;
+  fileType?: 'charx' | 'risum' | 'risup';
+  name?: string;
+  suggestion?: string;
+}
+
 interface McpStatusEvent {
   action?: string;
   level: 'info' | 'warn' | 'error';
@@ -140,6 +158,7 @@ interface ReferenceRecord {
 interface TokiAPI {
   newFile: () => Promise<Record<string, unknown>>;
   openFile: () => Promise<Record<string, unknown> | null>;
+  openFilePath: (filePath: string) => Promise<Record<string, unknown>>;
   openReference: () => Promise<ReferenceRecord | ReferenceRecord[] | null>;
   openReferencePath: (filePath: string) => Promise<ReferenceRecord | null>;
   listReferences: () => Promise<ReferenceRecord[]>;
@@ -171,6 +190,8 @@ interface TokiAPI {
   onDataUpdated: (cb: DataUpdatedCallback) => void;
   onMcpConfirmRequest: (cb: McpConfirmCallback) => void;
   sendMcpConfirmResponse: (id: number, allowed: boolean) => void;
+  onMcpOpenFileRequest: (cb: (id: number, request: McpOpenFileRequest) => void) => void;
+  sendMcpOpenFileResponse: (id: number, response: McpOpenFileResponse) => void;
   onMcpStatus: (cb: (event: McpStatusEvent) => void) => void;
   onCloseConfirmRequest: (cb: CloseConfirmCallback) => void;
   sendCloseConfirmResponse: (id: number, choice: number) => void;

@@ -1,8 +1,12 @@
 import { afterEach } from 'vitest';
 
 afterEach(() => {
-  document.head.innerHTML = '';
-  document.body.className = '';
-  document.body.innerHTML = '';
-  localStorage.clear();
+  if (typeof document !== 'undefined') {
+    document.head.innerHTML = '';
+    document.body.className = '';
+    document.body.innerHTML = '';
+  }
+  if (typeof localStorage !== 'undefined') {
+    localStorage.clear();
+  }
 });

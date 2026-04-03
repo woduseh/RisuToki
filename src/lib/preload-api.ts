@@ -8,6 +8,7 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
   return {
     newFile: () => ipcRenderer.invoke('new-file'),
     openFile: () => ipcRenderer.invoke('open-file'),
+    openFilePath: (filePath) => ipcRenderer.invoke('open-file-path', filePath),
     openReference: () => ipcRenderer.invoke('open-reference'),
     openReferencePath: (filePath) => ipcRenderer.invoke('open-reference-path', filePath),
     listReferences: () => ipcRenderer.invoke('list-references'),
@@ -52,6 +53,12 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
       );
     },
     sendMcpConfirmResponse: (id, allowed) => ipcRenderer.send('mcp-confirm-response', id, allowed),
+    onMcpOpenFileRequest: (cb) => {
+      ipcRenderer.on('mcp-open-file-request', (_event, id: number, request: Parameters<typeof cb>[1]) =>
+        cb(id, request),
+      );
+    },
+    sendMcpOpenFileResponse: (id, response) => ipcRenderer.send('mcp-open-file-response', id, response),
     onMcpStatus: (cb) => {
       ipcRenderer.on('mcp-status', (_event, payload: TokiMcpStatus) => cb(payload));
     },
