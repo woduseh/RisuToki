@@ -24,6 +24,12 @@ export interface FileActionDeps {
   setStatus: (msg: string) => void;
 }
 
+export interface OpenPathOptions {
+  onLoadStateChange?: (loading: boolean) => void;
+  saveCurrent?: boolean;
+  targetLabel?: string;
+}
+
 function syncEditorToActiveTab(deps: FileActionDeps): void {
   const editor = deps.getEditorInstance();
   const { tabMgr } = deps;
@@ -71,9 +77,31 @@ function getSaveValidationMessage(fileData: Record<string, unknown>, tabMgr: Tab
   return getTriggerDraftValidationMessage(tabMgr);
 }
 
-async function confirmDocumentReplacement(deps: FileActionDeps, targetLabel: string): Promise<boolean> {
+function applyLoadedDocument(deps: FileActionDeps, data: Record<string, unknown>): void {
+  const store = useAppStore();
+  deps.setFileData(data);
+  resetEditorUI(deps);
+  store.clearRestoredSessionState();
+  store.setFileLabel(`${(data as Record<string, unknown>).name || 'Untitled'}`);
+  deps.buildSidebar();
+}
+
+async function confirmDocumentReplacement(
+  deps: FileActionDeps,
+  targetLabel: string,
+  options?: OpenPathOptions,
+): Promise<boolean> {
   if (!deps.hasUnsavedChanges()) {
     return true;
+  }
+
+  if (options?.saveCurrent) {
+    try {
+      await deps.saveCurrentDocument();
+    } catch {
+      return false;
+    }
+    return deps.tabMgr.dirtyFields.size === 0;
   }
 
   const decision = resolveCloseWindowAction({
@@ -94,6 +122,29 @@ async function confirmDocumentReplacement(deps: FileActionDeps, targetLabel: str
   return true;
 }
 
+async function openDocumentWithLoader(
+  deps: FileActionDeps,
+  targetLabel: string,
+  loader: () => Promise<Record<string, unknown> | null>,
+  options?: OpenPathOptions,
+): Promise<Record<string, unknown> | null> {
+  if (!(await confirmDocumentReplacement(deps, targetLabel, options))) return null;
+  deps.setStatus('파일 열기 중...');
+  options?.onLoadStateChange?.(true);
+  try {
+    const data = await loader();
+    if (!data) {
+      deps.setStatus('준비');
+      return null;
+    }
+    applyLoadedDocument(deps, data);
+    deps.setStatus(`파일 열림: ${(data as Record<string, unknown>).name}`);
+    return data;
+  } finally {
+    options?.onLoadStateChange?.(false);
+  }
+}
+
 export async function handleNew(deps: FileActionDeps): Promise<void> {
   const store = useAppStore();
   if (!(await confirmDocumentReplacement(deps, '새 파일'))) return;
@@ -111,27 +162,36 @@ export async function handleNew(deps: FileActionDeps): Promise<void> {
 }
 
 export async function handleOpen(deps: FileActionDeps): Promise<void> {
-  const store = useAppStore();
   try {
-    if (!(await confirmDocumentReplacement(deps, '파일 열기'))) return;
-    deps.setStatus('파일 열기 중...');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await (window as any).tokiAPI.openFile();
-    if (!data) {
-      deps.setStatus('준비');
-      return;
-    }
-    deps.setFileData(data);
-    resetEditorUI(deps);
-
-    store.clearRestoredSessionState();
-    store.setFileLabel(`${(data as Record<string, unknown>).name || 'Untitled'}`);
-
-    deps.buildSidebar();
-    deps.setStatus(`파일 열림: ${(data as Record<string, unknown>).name}`);
+    await openDocumentWithLoader(
+      deps,
+      '파일 열기',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      () => (window as any).tokiAPI.openFile(),
+    );
   } catch (err) {
     console.error('[renderer] handleOpen error:', err);
     deps.setStatus(`열기 실패: ${(err as Error).message}`);
+  }
+}
+
+export async function handleOpenPath(
+  deps: FileActionDeps,
+  filePath: string,
+  options?: OpenPathOptions,
+): Promise<Record<string, unknown> | null> {
+  try {
+    return await openDocumentWithLoader(
+      deps,
+      options?.targetLabel || filePath,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      () => (window as any).tokiAPI.openFilePath(filePath),
+      options,
+    );
+  } catch (err) {
+    console.error('[renderer] handleOpenPath error:', err);
+    deps.setStatus(`열기 실패: ${(err as Error).message}`);
+    throw err;
   }
 }
 

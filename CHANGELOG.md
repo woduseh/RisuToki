@@ -9,6 +9,21 @@
 
 ---
 
+## [0.38.0] - 2026-04-03
+
+### 새 기능
+
+- **열리지 않은 파일용 MCP probe/open workflow**: 절대 경로의 `.charx` / `.risum` / `.risup` 파일을 에디터에 열지 않은 상태에서도 `probe_field`, `probe_field_batch`, `probe_lorebook`, `probe_regex`, `probe_lua`로 읽을 수 있고, `open_file`로 현재 활성 문서로 전환해 기존 read/write/edit 도구를 그대로 이어서 사용할 수 있습니다
+
+### 변경
+
+- **`open_file`의 renderer-mediated 전환 경로**: unopened file 편집은 백그라운드 직접 쓰기 대신 기존 dirty-state, 저장, 탭 초기화, sidebar 재구성 파이프라인을 재사용하는 active-document 전환 경로로 통일했습니다
+
+### 수정
+
+- **document switch 중 autosave 경합 완화**: `open_file` 전환에서는 실제 파일 load 구간에만 autosave를 잠시 막아, 저장 확인 대기 동안 autosave가 불필요하게 비활성화되지 않도록 조정했습니다
+- **MCP unopened-file 회귀 테스트 보강**: probe route/tool smoke test와 `open_file` 단위 테스트, concurrent request `409` 회귀를 추가해 unopened-file access contract를 고정했습니다
+
 ## [0.37.0] - 2026-04-01
 
 ### 변경

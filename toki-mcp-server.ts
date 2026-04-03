@@ -585,6 +585,86 @@ server.tool(
   async ({ fields }) => textResult(await apiRequest('POST', '/field/batch', { fields })),
 );
 
+// ===== External File Probe Tools =====
+
+server.tool(
+  'probe_field',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일에서 특정 필드의 전체 내용을 읽습니다. 읽기 전용이며, 절대 file_path가 필요합니다.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    field: z.string().describe('읽을 필드 이름'),
+  },
+  async ({ file_path, field }) =>
+    textResult(await apiRequest('POST', `/probe/field/${encodeURIComponent(field)}`, { file_path })),
+);
+
+server.tool(
+  'probe_field_batch',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일에서 여러 필드를 한 번에 읽습니다. 최대 20개 필드. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    fields: z.array(z.string()).max(20).describe('읽을 필드 이름 배열 (최대 20개)'),
+  },
+  async ({ file_path, fields }) => textResult(await apiRequest('POST', '/probe/field/batch', { file_path, fields })),
+);
+
+server.tool(
+  'probe_lorebook',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 로어북 목록을 읽습니다. filter/folder/content_filter 옵션 지원. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    filter: z.string().optional().describe('검색 키워드 (comment, key에서 검색). 생략 시 전체 목록 반환'),
+    folder: z.string().optional().describe('폴더 UUID로 필터 (예: "folder:xxxx" 또는 UUID만). 생략 시 전체 반환'),
+    content_filter: z.string().optional().describe('본문(content) 검색 키워드. 대소문자 무시. filter와 AND 결합'),
+    content_filter_not: z.string().optional().describe('본문(content)에 이 키워드가 없는 항목만 필터. 대소문자 무시'),
+    preview_length: z.number().optional().describe('content 미리보기 길이 (기본 150, 0=비활성, 최대 500)'),
+  },
+  async ({ file_path, filter, folder, content_filter, content_filter_not, preview_length }) => {
+    const params = new URLSearchParams();
+    if (filter) params.set('filter', filter);
+    if (folder) params.set('folder', folder);
+    if (content_filter) params.set('content_filter', content_filter);
+    if (content_filter_not) params.set('content_filter_not', content_filter_not);
+    if (preview_length !== undefined) params.set('preview_length', String(preview_length));
+    const qs = params.toString();
+    return textResult(await apiRequest('POST', qs ? `/probe/lorebook?${qs}` : '/probe/lorebook', { file_path }));
+  },
+);
+
+server.tool(
+  'probe_regex',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 정규식 목록을 읽습니다. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+  },
+  async ({ file_path }) => textResult(await apiRequest('POST', '/probe/regex', { file_path })),
+);
+
+server.tool(
+  'probe_lua',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 Lua 섹션 목록을 읽습니다. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+  },
+  async ({ file_path }) => textResult(await apiRequest('POST', '/probe/lua', { file_path })),
+);
+
+server.tool(
+  'open_file',
+  '절대 경로의 .charx/.risum/.risup 파일을 현재 에디터 문서로 엽니다. 이후 read/write 계열 도구는 이 파일을 대상으로 동작합니다.',
+  {
+    file_path: z.string().describe('열 대상 .charx/.risum/.risup 파일의 절대 경로'),
+    save_current: z
+      .boolean()
+      .optional()
+      .describe(
+        'true면 현재 문서에 변경사항이 있을 때 먼저 저장을 시도합니다. 생략 시 기존 저장/폐기/취소 확인 흐름을 따릅니다.',
+      ),
+  },
+  async ({ file_path, save_current }) =>
+    textResult(await apiRequest('POST', '/open-file', { file_path, save_current })),
+);
+
 server.tool(
   'replace_in_field',
   '필드의 내용에서 문자열 치환을 수행합니다. 대형 필드를 전체 읽지 않고 서버에서 직접 처리합니다. 문자열 타입 필드만 지원 (배열/boolean/number/triggerScripts 제외). regex: true + flags 옵션으로 정규식 지원. ⚠️ 검색만 하려면 search_in_field를 사용하세요 — replace를 생략하면 빈 문자열(=삭제)이 적용됩니다. dry_run: true로 실제 변경 없이 매치 결과만 미리 확인 가능. 사용자 확인 필요.',

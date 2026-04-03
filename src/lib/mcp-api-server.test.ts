@@ -1,8 +1,10 @@
+// @vitest-environment node
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { openCharx, openRisum, openRisup, saveCharx, type CharxData } from '../charx-io';
 
 function parseLuaSections() {
   return [];
@@ -34,6 +36,12 @@ function detectCssBlockOpen() {
 
 function detectCssBlockClose() {
   return false;
+}
+
+function openExternalDocumentForTest(filePath: string): CharxData {
+  if (filePath.endsWith('.risum')) return openRisum(filePath);
+  if (filePath.endsWith('.risup')) return openRisup(filePath);
+  return openCharx(filePath);
 }
 
 interface SearchFixture {
@@ -94,14 +102,31 @@ function closeServer(server: http.Server): Promise<void> {
 interface TestDepsOverrides {
   parseLuaSections?: () => Array<{ name: string; content: string }>;
   parseCssSections?: () => { sections: Array<{ name: string; content: string }>; prefix: string; suffix: string };
+  openExternalDocument?: (filePath: string) => CharxData;
+  requestRendererOpenFile?: (request: {
+    filePath: string;
+    fileType: 'charx' | 'risum' | 'risup';
+    saveCurrent: boolean;
+    targetLabel: string;
+  }) => Promise<{
+    success: boolean;
+    alreadyOpen?: boolean;
+    canceled?: boolean;
+    error?: string;
+    filePath?: string;
+    fileType?: 'charx' | 'risum' | 'risup';
+    name?: string;
+    suggestion?: string;
+  }>;
 }
 
 async function startTestApiServer(
-  currentData: SearchFixture,
+  currentData: SearchFixture | null,
   referenceFiles: Array<{ fileName: string; data: SearchFixture }> = [],
   skillsDir?: string,
   overrides?: TestDepsOverrides,
 ) {
+  let activeData: SearchFixture | CharxData | null = currentData;
   const modulePath = './mcp-api-server.ts';
   const { startApiServer } = (await import(modulePath)) as { startApiServer: StartApiServer };
   let resolvePort!: (port: number) => void;
@@ -110,9 +135,24 @@ async function startTestApiServer(
   });
 
   const api = startApiServer({
-    getCurrentData: () => currentData,
+    getCurrentData: () => activeData,
     getReferenceFiles: () => referenceFiles,
     askRendererConfirm: async () => true,
+    requestRendererOpenFile:
+      overrides?.requestRendererOpenFile ??
+      (async (request) => {
+        activeData = openExternalDocumentForTest(request.filePath);
+        const openedName =
+          activeData && typeof activeData === 'object' && 'name' in activeData
+            ? String((activeData as { name?: unknown }).name || 'Untitled')
+            : 'Untitled';
+        return {
+          success: true,
+          filePath: request.filePath,
+          fileType: request.fileType,
+          name: openedName,
+        };
+      }),
     broadcastToAll: (channel: string, ...args: unknown[]) => {
       void channel;
       void args;
@@ -129,6 +169,7 @@ async function startTestApiServer(
     detectCssSectionInline,
     detectCssBlockOpen,
     detectCssBlockClose,
+    openExternalDocument: overrides?.openExternalDocument ?? openExternalDocumentForTest,
     normalizeTriggerScripts: (data: unknown) => data,
     extractPrimaryLua: () => '',
     mergePrimaryLua: (scripts: unknown, lua: string) => {
@@ -2710,7 +2751,9 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
 
   it('returns a structured error envelope for POST /lorebook/diff with missing index', async () => {
     const fixture: SearchFixture = createSearchFixture();
-    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    const api = await startTestApiServer(fixture, [
+      { fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } },
+    ]);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {});
       expect(res.status).toBe(400);
@@ -2726,7 +2769,9 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
 
   it('returns a structured error envelope for POST /lorebook/diff with missing reference indices', async () => {
     const fixture: SearchFixture = createSearchFixture();
-    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    const api = await startTestApiServer(fixture, [
+      { fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } },
+    ]);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', { index: 0 });
       expect(res.status).toBe(400);
@@ -2742,7 +2787,9 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
 
   it('returns a structured error envelope for POST /lorebook/diff with current entry out of range', async () => {
     const fixture: SearchFixture = createSearchFixture();
-    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    const api = await startTestApiServer(fixture, [
+      { fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } },
+    ]);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {
         index: 999,
@@ -2762,7 +2809,9 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
 
   it('returns a structured error envelope for POST /lorebook/diff with reference file out of range', async () => {
     const fixture: SearchFixture = createSearchFixture();
-    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    const api = await startTestApiServer(fixture, [
+      { fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } },
+    ]);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {
         index: 0,
@@ -2782,7 +2831,9 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
 
   it('returns a structured error envelope for POST /lorebook/diff with reference entry out of range', async () => {
     const fixture: SearchFixture = createSearchFixture();
-    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    const api = await startTestApiServer(fixture, [
+      { fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } },
+    ]);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {
         index: 0,
@@ -3360,11 +3411,7 @@ describe('MCP API structured error envelopes — skills routes', () => {
 
     const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
     try {
-      const res = await getJson<McpErrorEnvelope>(
-        api.port,
-        api.token,
-        '/skills/my-skill/..%2F..%2Fpackage.json',
-      );
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/skills/my-skill/..%2F..%2Fpackage.json');
       expect(res.status).toBe(400);
       expect(res.data).toHaveProperty('action', 'read_skill');
       expect(res.data).toHaveProperty('status', 400);
@@ -3384,16 +3431,523 @@ describe('MCP API structured error envelopes — skills routes', () => {
 
     const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
     try {
-      const res = await getJson<McpErrorEnvelope>(
-        api.port,
-        api.token,
-        '/skills/my-skill/MISSING.md',
-      );
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/skills/my-skill/MISSING.md');
       expect(res.status).toBe(404);
       expect(res.data).toHaveProperty('action', 'read_skill');
       expect(res.data).toHaveProperty('status', 404);
       expect(res.data).toHaveProperty('target', 'skills:my-skill:MISSING.md');
       expect(res.data.error).toContain('Skill file not found: my-skill/MISSING.md');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// External file probe routes (TDD – tests written before production code)
+// ---------------------------------------------------------------------------
+
+describe('MCP API open-file route', () => {
+  const OPEN_FILE_DIR = path.join(TEST_DIR, 'open-file-fixtures');
+
+  function openRouteCardData(): CharxData {
+    return {
+      name: 'Opened Via MCP',
+      description: 'Opened through open-file route.',
+      personality: 'Calm',
+      scenario: 'Open route room',
+      creatorcomment: 'Created for open-file tests',
+      tags: ['open-file'],
+      exampleMessage: '',
+      systemPrompt: '',
+      creator: '',
+      characterVersion: '1.0.0',
+      nickname: '',
+      source: [],
+      creationDate: 0,
+      modificationDate: 0,
+      additionalText: '',
+      license: '',
+      firstMessage: 'Hello from open_file.',
+      alternateGreetings: [],
+      groupOnlyGreetings: [],
+      globalNote: '',
+      css: '',
+      defaultVariables: '',
+      lua: '',
+      triggerScripts: [],
+      lorebook: [],
+      regex: [],
+      assets: [],
+      xMeta: {},
+      risumAssets: [],
+      cardAssets: [],
+      _risuExt: {},
+      _card: {
+        spec: 'chara_card_v3',
+        spec_version: '3.0',
+        data: {
+          extensions: { risuai: {} },
+          character_book: { entries: [] },
+          assets: [],
+        },
+      },
+      _moduleData: null,
+      _presetData: null,
+    };
+  }
+
+  async function writeOpenFixture(filePath: string): Promise<void> {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    saveCharx(filePath, openRouteCardData());
+  }
+
+  it('opens an external file even when no editor document is currently open', async () => {
+    const filePath = path.join(OPEN_FILE_DIR, 'open-target.charx');
+    await writeOpenFixture(filePath);
+    const api = await startTestApiServer(null);
+    try {
+      const res = await postJson<{
+        file_path?: string;
+        file_type?: string;
+        name?: string;
+        switched?: boolean;
+      }>(api.port, api.token, '/open-file', {
+        file_path: filePath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.file_path).toBe(filePath);
+      expect(res.data.file_type).toBe('charx');
+      expect(res.data.name).toBe('Opened Via MCP');
+      expect(res.data.switched).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('passes save_current through to the renderer-open dependency', async () => {
+    const filePath = path.join(OPEN_FILE_DIR, 'save-current.charx');
+    await writeOpenFixture(filePath);
+    let capturedSaveCurrent: boolean | null = null;
+    const api = await startTestApiServer(createSearchFixture(), [], undefined, {
+      requestRendererOpenFile: async (request) => {
+        capturedSaveCurrent = request.saveCurrent;
+        return {
+          success: true,
+          filePath: request.filePath,
+          fileType: request.fileType,
+          name: 'Opened Via MCP',
+        };
+      },
+    });
+    try {
+      const res = await postJson<{ save_current?: boolean }>(api.port, api.token, '/open-file', {
+        file_path: filePath,
+        save_current: true,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.save_current).toBe(true);
+      expect(capturedSaveCurrent).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured 409 envelope when renderer-side document replacement is canceled', async () => {
+    const filePath = path.join(OPEN_FILE_DIR, 'cancelled.charx');
+    await writeOpenFixture(filePath);
+    const api = await startTestApiServer(createSearchFixture(), [], undefined, {
+      requestRendererOpenFile: async () => ({
+        success: false,
+        canceled: true,
+        error: 'Document replacement was canceled or the current file could not be saved.',
+      }),
+    });
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/open-file', {
+        file_path: filePath,
+      });
+      expect(res.status).toBe(409);
+      expect(res.data).toHaveProperty('action', 'open file');
+      expect(res.data).toHaveProperty('status', 409);
+      expect(res.data).toHaveProperty('target', 'open:file');
+      expect(res.data.error).toContain('canceled');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects concurrent open-file requests with a structured 409 envelope', async () => {
+    const filePath = path.join(OPEN_FILE_DIR, 'concurrent.charx');
+    await writeOpenFixture(filePath);
+    let releaseFirst!: () => void;
+    const firstRequestGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const api = await startTestApiServer(createSearchFixture(), [], undefined, {
+      requestRendererOpenFile: async (request) => {
+        await firstRequestGate;
+        return {
+          success: true,
+          filePath: request.filePath,
+          fileType: request.fileType,
+          name: 'Opened Via MCP',
+        };
+      },
+    });
+    try {
+      const firstRequest = postJson(api.port, api.token, '/open-file', {
+        file_path: filePath,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const secondRes = await postJson<McpErrorEnvelope>(api.port, api.token, '/open-file', {
+        file_path: filePath,
+      });
+      expect(secondRes.status).toBe(409);
+      expect(secondRes.data).toHaveProperty('action', 'open file');
+      expect(secondRes.data).toHaveProperty('target', 'open:file');
+      expect(secondRes.data.error).toContain('already in progress');
+      releaseFirst();
+      const firstRes = await firstRequest;
+      expect(firstRes.status).toBe(200);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API external file probe routes', () => {
+  const PROBE_DIR = path.join(TEST_DIR, 'probe-fixtures');
+  interface ProbeErrorEnvelope {
+    action?: string;
+    error?: string;
+    status?: number;
+    suggestion?: string;
+    target?: string;
+  }
+
+  /** Create a valid .charx fixture through the real serializer path. */
+  function writeCharxFixture(filePath: string, data: CharxData): void {
+    saveCharx(filePath, data);
+    openCharx(filePath);
+  }
+
+  /** Canonical charx payload used by probe tests. */
+  function probeCardData(): CharxData {
+    return {
+      name: 'ProbeChar',
+      description: 'Probe description field.',
+      personality: 'Calm',
+      scenario: 'Probe room',
+      creatorcomment: 'Created for probe tests',
+      tags: ['probe', 'charx'],
+      exampleMessage: '',
+      systemPrompt: '',
+      creator: '',
+      characterVersion: '1.0.0',
+      nickname: '',
+      source: [],
+      creationDate: 0,
+      modificationDate: 0,
+      additionalText: '',
+      license: '',
+      firstMessage: 'Hello from probe.',
+      alternateGreetings: ['Alt greeting 1'],
+      groupOnlyGreetings: ['Group only probe greeting'],
+      globalNote: 'Probe system note.',
+      css: '/* probe css */',
+      defaultVariables: 'mode=probe',
+      lua: '-- ===== main =====\nprint("hello")\n',
+      triggerScripts: [
+        {
+          comment: 'main',
+          type: 'start',
+          conditions: [],
+          effect: [{ type: 'triggerlua', code: '-- ===== main =====\nprint("hello")\n' }],
+          lowLevelAccess: false,
+        },
+      ],
+      lorebook: [
+        {
+          comment: 'Lore A',
+          key: 'alpha',
+          secondkey: '',
+          content: 'Alpha lore body.',
+          insertorder: 100,
+          alwaysActive: false,
+          selective: false,
+          mode: 'normal',
+        },
+        {
+          comment: 'Lore B',
+          key: 'beta',
+          secondkey: '',
+          content: 'Beta lore body.',
+          insertorder: 200,
+          alwaysActive: false,
+          selective: false,
+          mode: 'normal',
+        },
+      ],
+      regex: [{ comment: 'Regex A', type: 'editoutput', find: 'foo', replace: 'bar', flag: 'g' }],
+      moduleId: 'probe-module',
+      moduleName: 'Probe Module',
+      moduleDescription: 'Probe module description',
+      assets: [{ path: 'assets/test.bin', data: Buffer.from([1, 2, 3, 4]) }],
+      xMeta: { portrait: { width: 128, height: 128 } },
+      risumAssets: [Buffer.from('embedded-asset')],
+      cardAssets: [{ type: 'icon', uri: 'assets/test.bin', name: 'test.bin' }],
+      _risuExt: {},
+      _card: {
+        spec: 'chara_card_v3',
+        spec_version: '3.0',
+        data: {
+          extensions: { risuai: {} },
+          character_book: { entries: [] },
+          assets: [],
+        },
+      },
+      _moduleData: null,
+      _presetData: null,
+    };
+  }
+
+  let probeCharxPath: string;
+
+  beforeAll(async () => {
+    await fs.promises.mkdir(PROBE_DIR, { recursive: true });
+    probeCharxPath = path.join(PROBE_DIR, 'probe-test.charx');
+    writeCharxFixture(probeCharxPath, probeCardData());
+  });
+
+  // ── 1. Path validation ──────────────────────────────────────────────
+
+  it('rejects empty file_path with a structured 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<ProbeErrorEnvelope>(api.port, api.token, '/probe/field/description', {
+        file_path: '',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.status).toBe(400);
+      expect(typeof res.data.error).toBe('string');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(typeof res.data.suggestion).toBe('string');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects file_path with path traversal (..) with a structured 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<ProbeErrorEnvelope>(api.port, api.token, '/probe/field/description', {
+        file_path: `${PROBE_DIR}${path.sep}..${path.sep}..${path.sep}etc${path.sep}passwd.charx`,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.status).toBe(400);
+      expect(typeof res.data.error).toBe('string');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(typeof res.data.suggestion).toBe('string');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects file_path with unsupported extension with a structured 400 envelope', async () => {
+    const txtPath = path.join(PROBE_DIR, 'not-a-card.txt');
+    await fs.promises.writeFile(txtPath, 'plain text', 'utf-8');
+
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<ProbeErrorEnvelope>(api.port, api.token, '/probe/field/description', {
+        file_path: txtPath,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.status).toBe(400);
+      expect(typeof res.data.error).toBe('string');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(typeof res.data.suggestion).toBe('string');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects file_path pointing to a non-existent file with a structured 400 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<ProbeErrorEnvelope>(api.port, api.token, '/probe/field/description', {
+        file_path: path.join(PROBE_DIR, 'does-not-exist.charx'),
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.status).toBe(400);
+      expect(typeof res.data.error).toBe('string');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(typeof res.data.suggestion).toBe('string');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects corrupted .charx probe files with a structured 400 envelope', async () => {
+    const corruptPath = path.join(PROBE_DIR, 'corrupt.charx');
+    await fs.promises.writeFile(corruptPath, 'not a zip archive', 'utf-8');
+
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<ProbeErrorEnvelope>(api.port, api.token, '/probe/field/description', {
+        file_path: corruptPath,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.status).toBe(400);
+      expect(typeof res.data.error).toBe('string');
+      expect(typeof res.data.action).toBe('string');
+      expect(typeof res.data.target).toBe('string');
+      expect(typeof res.data.suggestion).toBe('string');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── 2. Probe single field read ──────────────────────────────────────
+
+  it('reads a single field from an unopened charx file via probe', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{ field: string; content: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.field).toBe('description');
+      expect(res.data.content).toBe('Probe description field.');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── 3. Probe batch field read ───────────────────────────────────────
+
+  it('batch-reads multiple fields from an unopened charx file via probe', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{
+        count: number;
+        fields: Array<{ field: string; content: string }>;
+      }>(api.port, api.token, '/probe/field/batch', {
+        file_path: probeCharxPath,
+        fields: ['description', 'firstMessage'],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBe(2);
+      expect(res.data.fields).toHaveLength(2);
+      expect(res.data.fields[0]).toMatchObject({ field: 'description', content: 'Probe description field.' });
+      expect(res.data.fields[1]).toMatchObject({ field: 'firstMessage', content: 'Hello from probe.' });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── 4. Probe lorebook / regex / lua listing ─────────────────────────
+
+  it('lists lorebook entries from an unopened charx file via probe', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{
+        entries: Array<{ index: number; comment: string }>;
+      }>(api.port, api.token, '/probe/lorebook', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.entries).toHaveLength(2);
+      expect(res.data.entries[0].comment).toBe('Lore A');
+      expect(res.data.entries[1].comment).toBe('Lore B');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('lists regex entries from an unopened charx file via probe', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{
+        entries: Array<{ index: number; comment: string }>;
+      }>(api.port, api.token, '/probe/regex', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.entries).toHaveLength(1);
+      expect(res.data.entries[0].comment).toBe('Regex A');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('lists lua sections from an unopened charx file via probe', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{
+        sections: Array<{ name: string }>;
+      }>(api.port, api.token, '/probe/lua', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.data.sections)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── 5. Probe isolation: does NOT depend on getCurrentData() ─────────
+
+  it('returns probe data independent of the active document state', async () => {
+    const activeData = createSearchFixture();
+    activeData.description = 'Active document description (should not appear in probe)';
+
+    const api = await startTestApiServer(activeData);
+    try {
+      const res = await postJson<{ field: string; content: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.content).toBe('Probe description field.');
+      expect(res.data.content).not.toContain('Active document');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('does not mutate getCurrentData() when probing an external file', async () => {
+    const activeData = createSearchFixture();
+    const originalDescription = activeData.description;
+
+    const api = await startTestApiServer(activeData);
+    try {
+      const res = await postJson<{ content: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: probeCharxPath,
+      });
+
+      // Probe must succeed (route exists and reads external file)
+      expect(res.status).toBe(200);
+      // Active document must be unchanged after probe
+      expect(activeData.description).toBe(originalDescription);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('can probe an unopened file even when no editor document is open', async () => {
+    const api = await startTestApiServer(null);
+    try {
+      const res = await postJson<{ field: string; content: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.field).toBe('description');
+      expect(res.data.content).toBe('Probe description field.');
     } finally {
       await closeServer(api.server);
     }
