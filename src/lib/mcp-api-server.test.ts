@@ -2,6 +2,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import AdmZip from 'adm-zip';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 function parseLuaSections() {
@@ -2710,7 +2711,9 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
 
   it('returns a structured error envelope for POST /lorebook/diff with missing index', async () => {
     const fixture: SearchFixture = createSearchFixture();
-    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    const api = await startTestApiServer(fixture, [
+      { fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } },
+    ]);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {});
       expect(res.status).toBe(400);
@@ -2726,7 +2729,9 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
 
   it('returns a structured error envelope for POST /lorebook/diff with missing reference indices', async () => {
     const fixture: SearchFixture = createSearchFixture();
-    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    const api = await startTestApiServer(fixture, [
+      { fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } },
+    ]);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', { index: 0 });
       expect(res.status).toBe(400);
@@ -2742,7 +2747,9 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
 
   it('returns a structured error envelope for POST /lorebook/diff with current entry out of range', async () => {
     const fixture: SearchFixture = createSearchFixture();
-    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    const api = await startTestApiServer(fixture, [
+      { fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } },
+    ]);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {
         index: 999,
@@ -2762,7 +2769,9 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
 
   it('returns a structured error envelope for POST /lorebook/diff with reference file out of range', async () => {
     const fixture: SearchFixture = createSearchFixture();
-    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    const api = await startTestApiServer(fixture, [
+      { fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } },
+    ]);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {
         index: 0,
@@ -2782,7 +2791,9 @@ describe('MCP API structured error envelopes — lorebook read and diff routes',
 
   it('returns a structured error envelope for POST /lorebook/diff with reference entry out of range', async () => {
     const fixture: SearchFixture = createSearchFixture();
-    const api = await startTestApiServer(fixture, [{ fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } }]);
+    const api = await startTestApiServer(fixture, [
+      { fileName: 'ref.charx', data: { lorebook: createSearchFixture().lorebook } },
+    ]);
     try {
       const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/diff', {
         index: 0,
@@ -3360,11 +3371,7 @@ describe('MCP API structured error envelopes — skills routes', () => {
 
     const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
     try {
-      const res = await getJson<McpErrorEnvelope>(
-        api.port,
-        api.token,
-        '/skills/my-skill/..%2F..%2Fpackage.json',
-      );
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/skills/my-skill/..%2F..%2Fpackage.json');
       expect(res.status).toBe(400);
       expect(res.data).toHaveProperty('action', 'read_skill');
       expect(res.data).toHaveProperty('status', 400);
@@ -3384,16 +3391,233 @@ describe('MCP API structured error envelopes — skills routes', () => {
 
     const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
     try {
-      const res = await getJson<McpErrorEnvelope>(
-        api.port,
-        api.token,
-        '/skills/my-skill/MISSING.md',
-      );
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/skills/my-skill/MISSING.md');
       expect(res.status).toBe(404);
       expect(res.data).toHaveProperty('action', 'read_skill');
       expect(res.data).toHaveProperty('status', 404);
       expect(res.data).toHaveProperty('target', 'skills:my-skill:MISSING.md');
       expect(res.data.error).toContain('Skill file not found: my-skill/MISSING.md');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// External file probe routes (TDD – tests written before production code)
+// ---------------------------------------------------------------------------
+
+describe('MCP API external file probe routes', () => {
+  const PROBE_DIR = path.join(TEST_DIR, 'probe-fixtures');
+
+  /** Create a minimal .charx ZIP on disk containing the given card data. */
+  function writeCharxFixture(filePath: string, card: Record<string, unknown>): void {
+    const zip = new AdmZip();
+    zip.addFile('card.json', Buffer.from(JSON.stringify(card), 'utf-8'));
+    zip.writeZip(filePath);
+  }
+
+  /** Canonical card payload used by probe tests. */
+  function probeCardData(): Record<string, unknown> {
+    return {
+      name: 'ProbeChar',
+      description: 'Probe description field.',
+      firstMessage: 'Hello from probe.',
+      globalNote: 'Probe system note.',
+      lorebook: [
+        { comment: 'Lore A', key: 'alpha', content: 'Alpha lore body.', mode: 'normal', folder: '' },
+        { comment: 'Lore B', key: 'beta', content: 'Beta lore body.', mode: 'normal', folder: '' },
+      ],
+      regex: [{ comment: 'Regex A', type: 'editDisplay', findRegex: 'foo', replaceString: 'bar' }],
+      lua: '-- section: main\nprint("hello")\n',
+      alternateGreetings: ['Alt greeting 1'],
+    };
+  }
+
+  let probeCharxPath: string;
+
+  beforeAll(async () => {
+    await fs.promises.mkdir(PROBE_DIR, { recursive: true });
+    probeCharxPath = path.join(PROBE_DIR, 'probe-test.charx');
+    writeCharxFixture(probeCharxPath, probeCardData());
+  });
+
+  // ── 1. Path validation ──────────────────────────────────────────────
+
+  it('rejects empty file_path with 400', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: '',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.error).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects file_path with path traversal (..) with 400', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: path.join(PROBE_DIR, '..', '..', 'etc', 'passwd.charx'),
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.error).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects file_path with unsupported extension with 400', async () => {
+    const txtPath = path.join(PROBE_DIR, 'not-a-card.txt');
+    await fs.promises.writeFile(txtPath, 'plain text', 'utf-8');
+
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: txtPath,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.error).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects file_path pointing to a non-existent file with 400', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: path.join(PROBE_DIR, 'does-not-exist.charx'),
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.error).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── 2. Probe single field read ──────────────────────────────────────
+
+  it('reads a single field from an unopened charx file via probe', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{ field: string; content: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.field).toBe('description');
+      expect(res.data.content).toBe('Probe description field.');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── 3. Probe batch field read ───────────────────────────────────────
+
+  it('batch-reads multiple fields from an unopened charx file via probe', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{
+        results: Array<{ field: string; content: string }>;
+      }>(api.port, api.token, '/probe/field/batch', {
+        file_path: probeCharxPath,
+        fields: ['description', 'firstMessage'],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.results).toHaveLength(2);
+      expect(res.data.results[0]).toMatchObject({ field: 'description', content: 'Probe description field.' });
+      expect(res.data.results[1]).toMatchObject({ field: 'firstMessage', content: 'Hello from probe.' });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── 4. Probe lorebook / regex / lua listing ─────────────────────────
+
+  it('lists lorebook entries from an unopened charx file via probe', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{
+        entries: Array<{ index: number; comment: string }>;
+      }>(api.port, api.token, '/probe/lorebook', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.entries).toHaveLength(2);
+      expect(res.data.entries[0].comment).toBe('Lore A');
+      expect(res.data.entries[1].comment).toBe('Lore B');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('lists regex entries from an unopened charx file via probe', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{
+        entries: Array<{ index: number; comment: string }>;
+      }>(api.port, api.token, '/probe/regex', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.entries).toHaveLength(1);
+      expect(res.data.entries[0].comment).toBe('Regex A');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('lists lua sections from an unopened charx file via probe', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<{
+        sections: Array<{ name: string }>;
+      }>(api.port, api.token, '/probe/lua', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.data.sections)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // ── 5. Probe isolation: does NOT depend on getCurrentData() ─────────
+
+  it('returns probe data independent of the active document state', async () => {
+    const activeData = createSearchFixture();
+    activeData.description = 'Active document description (should not appear in probe)';
+
+    const api = await startTestApiServer(activeData);
+    try {
+      const res = await postJson<{ field: string; content: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: probeCharxPath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.content).toBe('Probe description field.');
+      expect(res.data.content).not.toContain('Active document');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('does not mutate getCurrentData() when probing an external file', async () => {
+    const activeData = createSearchFixture();
+    const originalDescription = activeData.description;
+
+    const api = await startTestApiServer(activeData);
+    try {
+      const res = await postJson<{ content: string }>(api.port, api.token, '/probe/field/description', {
+        file_path: probeCharxPath,
+      });
+
+      // Probe must succeed (route exists and reads external file)
+      expect(res.status).toBe(200);
+      // Active document must be unchanged after probe
+      expect(activeData.description).toBe(originalDescription);
     } finally {
       await closeServer(api.server);
     }
