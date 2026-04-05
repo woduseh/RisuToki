@@ -1,411 +1,355 @@
 ---
 name: authoring-characters
-description: 'Writes and refactors character descriptions for LLM roleplay. Produces performance-ready descriptions with behavioral depth, speech register systems, contrast pairs, and reaction patterns. Handles any input from keywords to full bios. Use when a user asks to create, improve, or analyze a character description for any LLM roleplay frontend.'
+description: 'Use when creating, refactoring, or diagnosing a character description for LLM roleplay, especially when you need stronger behavior, voice, or scale-aware guidance for solo, ensemble, or large-cast bots.'
 tags: ['authoring', 'character', 'roleplay']
 related_tools: ['read_field', 'write_field', 'read_lorebook']
 ---
 
 # Character Description Authoring
 
-> **This guide is a toolkit, not a checklist.** Every section below describes patterns that _tend_ to produce strong LLM output — but the only real test is whether your character feels alive in conversation. If a technique doesn't serve your specific character, skip it. If something not covered here makes the character more compelling, use it. Adapt freely; the goal is output quality, not guideline compliance.
+> **This guide is a toolkit, not a checklist.** Use the parts that sharpen output and ignore the rest. The goal is not "completing the template" — it is giving the model a character it can perform consistently. Real bots succeed through many different architectures; the patterns here are strong defaults, not the only valid paths.
+>
+> **Use this skill when the character itself is the main design problem.** For lorebook-driven bots where the always-on description is mostly a tonal frame and the heavy lifting lives in lorebooks, use [authoring-lorebook-bots](../authoring-lorebook-bots/).
+
+## Route by Bot Shape
+
+| Bot shape                                    | Use this skill for                                                                               | Pair with                                                                                               |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| **Single-character / dedicated partner bot** | Full character sheet: engine, contradiction, speech, pressure responses, opening message         | Optional lorebook support for state/reaction layers                                                     |
+| **2–4 recurring characters**                 | Per-character thumbnails that still feel distinct; cross-character contrast and voice separation | [authoring-lorebook-bots](../authoring-lorebook-bots/) for roster, relationship, and scene architecture |
+| **10+ cast / world bot**                     | Only the core cast gets full sheets; everyone else gets compressed diagnostic anchors            | [authoring-lorebook-bots](../authoring-lorebook-bots/) for large-cast lorebook design                   |
+
+For detailed scale recipes, see [BOT_SCALES.md](BOT_SCALES.md).
+
+---
 
 ## Core Principles
 
-1. **The description is a performance brief.** Every sentence must answer: "How does this change what the LLM writes next?" If it doesn't shape output, it should either earn its place through atmosphere or be reconsidered.
-
-2. **Behavior over labels.** Never write "cold but warm inside." Write what the character _does_ that reads as cold, and what _slips through_ that hints at warmth. Labels are inert; behavioral descriptions generate usable text.
-
-3. **Invest in speech.** Appearance shows up once; dialogue shows up every turn. Example lines and speech patterns are among the strongest tools for shaping LLM output — the model pattern-matches against concrete examples far more than abstract descriptions. With modern 1M+ context LLMs, you can afford rich speech systems with 5–6 registers and 3–5 examples per register.
-
-4. **Leave strategic gaps.** Define who they are and how they operate. Never define what will happen to them, who they'll fall for, or what they'll feel in specific future moments. Plant principles; let the RP grow.
-
-5. **Internal friction creates depth.** Give the character traits that pull in different directions — both logically grounded in their history. This is most important for protagonist-level characters; simpler supporting roles may work fine with a single strong trait.
-
-6. **Depth is an investment, not a cost.** Modern LLMs with large context windows benefit from rich, layered character descriptions. A 5,000-token description with deep psychological analysis, detailed speech registers, and hidden depths produces more consistent, nuanced output than a compressed 1,000-token version. Don't compress for compression's sake — invest where it matters.
+1. **The description is a performance brief.** Every sentence should change what the model writes next.
+2. **Behavior beats labels.** "Cold but warm inside" is inert. Conditions, reactions, and slips are actionable.
+3. **Speech and perception are the highest-ROI sections.** The audience sees the character through dialogue, subtext, and what the narration notices.
+4. **Contradiction creates movement.** Want vs. Need, Mask vs. Leak, public role vs. private crack — these are what keep a character alive across long chats.
+5. **Write to the bot's scale.** A single-character bot can justify a deep profile. A 10+ cast bot cannot give everyone protagonist depth in always-on text.
+6. **Do not script the future.** Define tendencies, thresholds, and pressure responses. Let the RP decide outcomes.
+7. **Architecture follows need, not convention.** Some bots thrive with heavy description and minimal lorebook; others do the opposite. Match the structure to what the bot actually requires.
 
 ---
 
 ## Input Handling
 
-| Input Level          | Example                                            | Response                                                                  |
-| -------------------- | -------------------------------------------------- | ------------------------------------------------------------------------- |
-| **Keywords only**    | "cocky swordswoman, scarred, lonely"               | Ask 2–3 clarifying questions (core appeal, tone, NSFW), then build freely |
-| **Brief concept**    | "28, ER doctor, emotionally distant, lost someone" | Confirm tone, then produce                                                |
-| **Detailed bio**     | Full backstory, personality, relationships         | Fill gaps, build speech system, restructure for performance               |
-| **Refactor request** | Existing description needing improvement           | Diagnose weaknesses, restructure per this guide, strengthen speech        |
+| Input level          | Example                                        | What to do                                                                         |
+| -------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Keywords only**    | "cocky swordswoman, scarred, lonely"           | Ask 2–3 clarifying questions about appeal, tone, and boundaries, then build freely |
+| **Brief concept**    | "ER doctor, competent but emotionally distant" | Confirm tone and desired scale, then produce                                       |
+| **Detailed bio**     | Full backstory, personality, relationships     | Restructure into performance-first sections; cut inert facts                       |
+| **Refactor request** | Existing description that feels flat           | Diagnose missing engine, voice, contradiction, and pressure responses              |
 
-### What to Ask vs. Decide
+### Always ask
 
-**Always ask:** Core appeal (if ambiguous), NSFW inclusion/boundaries, desired detail level.
+- What is the **core appeal** if it is ambiguous?
+- Is NSFW content included? If yes, what boundaries matter?
+- What is the intended **bot scale** — dedicated single character, small ensemble, or large cast?
 
-**Decide yourself:** Specific appearance details, background events (within personality bounds), actual dialogue lines, contrast pair shapes.
+### Decide yourself
+
+- Specific example lines
+- The exact shape of contrast pairs
+- Which details are moved to lorebook instead of staying in the description
+- Whether a full protagonist-grade profile is warranted or wasteful
 
 ---
 
 ## Build Pipeline
 
-### Step 1 — Find the Core Drive
+### Step 1 — Find the Engine
 
-Identify a central motivation that drives the character. Not a goal ("become the strongest") but a _need_ ("prove I deserve to exist"). This is your design compass.
+Start with the forces that make the character act even when the user gives weak input.
 
-**One approach — the "Why Chain":**
+#### 1. Core Drive
 
-1. Take the surface-level desire from the user's input
-2. Ask "Why does this matter to them?" iteratively until you hit a deeper need
-3. Convert to active verb phrase: not "peace" but "to seal away every source of uncertainty that could hurt me"
+Use the "Why Chain" until you hit an active need:
 
-**Adapt by character type:**
+1. What do they seem to want?
+2. Why does that matter?
+3. What deeper need keeps showing up underneath?
 
-- **Complex protagonists** — a single deep core drive works well
-- **Comedy / slice-of-life characters** — may work better with a dominant personality quirk or worldview than a deep psychological need
-- **Supporting characters / NPCs** — a clear role + one defining trait may be sufficient; don't force depth that isn't needed
+Turn the answer into an **ongoing pressure**, not a finish line.
 
-**Usage:** The core drive is a _design compass_, not copy-paste text. Derive behavioral principles and personality tensions from it. Embed its fingerprints into personality, background, and speech — but never state it outright.
+- Weak: "She wants peace."
+- Strong: "She keeps trying to seal away every source of uncertainty before it can hurt her."
 
-**Validation:** Imagine 3 random scenes. Can you predict the character's gut reaction using the core drive? If not, revise.
+#### 2. Wound as Scene, Not Summary
 
-### Step 2 — Design Contrast Pairs
+Do not write "has abandonment issues." Write a sensory fragment the model can build behavior from.
 
-Aim for at least one contrast pair for protagonist-level characters. More complex characters benefit from 2–3.
+```text
+Bad:  She was abandoned as a child and now fears intimacy.
 
-1. **Extract** prominent traits from user input
-2. **Invert or warp** each to find an unexpected counterpart
-3. **Ground each pair** in backstory — if you can't explain why both coexist, it's a contradiction, not a contrast
-4. **Bridge extreme gaps** with connecting logic
-
-| Surface Trait            | Contrast              | Bridge                                                  |
-| ------------------------ | --------------------- | ------------------------------------------------------- |
-| World-class violinist    | Domestic disaster     | Practiced 12 hrs/day since age 5; never learned to cook |
-| Aggressive, foul-mouthed | Deep fragility        | Low self-worth → preemptive hostility as armor          |
-| Luxury gourmand          | Instant noodle addict | Junk food is the one space where she drops the mask     |
-
-#### The "Surface vs. Subversion" Pattern
-
-For complex protagonists, explicitly structure the duality between how they appear and who they actually are. Name both sides:
-
-```
-### The Cliché (Surface)
-Cold, composed, mature beyond years; ice princess; speaks formally, maintains
-distance, performs perfection like breathing.
-
-### The Subversion (Reality)
-Exhausting herself maintaining this performance. Composure is real but it's a
-skill, not personality. Underneath: laughs too loudly at stupid jokes, gets
-genuinely petty about small things, desperately wants someone to see through
-the act and like what they find.
+Good: Seven years old. Her mother said she was going to the corner store.
+The milk in the fridge expired. The front door never opened.
+She still checks the entryway when she smells spoiled milk.
 ```
 
-This pattern is more powerful than a simple contrast pair because it tells the LLM: "The surface behavior is real and should be the default — but the cracks are always there, waiting to show." It creates a behavioral instruction that generates natural, gradual revelation over the course of a conversation.
+#### 3. Want vs. Need
 
-### Step 3 — Build Speech System
+Give the character **two** forces that clash:
 
-> **See [SPEECH_SYSTEM.md](SPEECH_SYSTEM.md) for full reference.**
+- **Want** — the conscious goal they pursue
+- **Need** — the vulnerable thing they cannot admit they need
 
-Define speech registers (at least 2 for simple characters, 4–6 for complex protagonists). For each: trigger conditions, 3–5 example lines with parenthetical stage directions, nonverbal texture, and linguistic markers. Add transition patterns between registers, 2–3 consistency anchors, and code-switching rules for multilingual characters.
+If those two do not collide, the character will wait passively for the user.
 
-Speech examples are the highest-value content in any character description — LLMs pattern-match against concrete dialogue more effectively than abstract personality descriptions. With modern large-context LLMs, invest generously in speech examples.
+### Step 2 — Design Productive Contradiction
 
-### Step 4 — Define Inner Voice
+#### Contrast Pairs
 
-The character's internal monologue is distinct from spoken dialogue. Define in 2–3 sentences:
+At protagonist scale, build at least 1–2 grounded contrasts.
 
-- **Tone:** More honest than speech? More chaotic? More vulgar?
-- **Self-awareness:** Do they understand their own motivations, or lie to themselves?
-- **Speech gap:** How wide is the distance between what they think and what they say?
+| Surface trait            | Counter-trait                  | Bridge                                                                       |
+| ------------------------ | ------------------------------ | ---------------------------------------------------------------------------- |
+| World-class violinist    | Domestic disaster              | Practiced 12 hours a day since childhood; never learned ordinary life skills |
+| Aggressive, foul-mouthed | Easily wounded by sincere care | Pre-emptive hostility is armor against humiliation                           |
+| Luxury gourmand          | Instant noodle addict          | Junk food is the one place where perfectionism turns off                     |
 
-> _Example: "Sharp, self-critical, runs in clipped fragments. She narrates her own failures with surgical precision but is blind to her loneliness — frames it as 'efficiency' and genuinely believes it. The gap between internal clarity and emotional blindness is where her drama lives."_
+#### Surface vs. Subversion
 
-### Step 5 — Map Reaction Patterns & Psychological Depth
+When a character has a strong archetypal surface, write both the visible layer and the crack beneath it.
 
-Define instinctive reactions to core emotional triggers. Include 3–6 depending on character complexity. These are _tendencies_, not scripts.
-
-| Trigger                | Example Pattern                                                                                        |
-| ---------------------- | ------------------------------------------------------------------------------------------------------ |
-| **Genuine kindness**   | Freezes. Deflects with sarcasm. Replays the moment later in private.                                   |
-| **Direct criticism**   | Counter-attacks immediately. Quietly adjusts behavior hours later without acknowledging it.            |
-| **Physical affection** | Tenses. Doesn't pull away, doesn't reciprocate. Body says "I don't know how" not "I don't want this."  |
-| **Being seen through** | Dangerously still. Switches to coldest register. The one thing that makes her genuinely afraid.        |
-| **Failure**            | Internalizes completely. Perfect outward composure. Sleep suffers. Compensatory obsession intensifies. |
-
-Pick triggers most relevant to the specific character.
-
-#### The Psychological Deep Dive (Complex Characters)
-
-For protagonists, go beyond reaction patterns into the _mechanism_ underneath. Name the psychological structure:
-
-```
-### The Mechanism
-Warmth is real. Care is genuine. But also compulsive — a reflex she can't turn
-off, a need that has less to do with the other person than she'd ever admit.
-Takes care of people because she doesn't know how else to connect. Gives because
-terrified of what happens if she takes.
-
-### The Paradox at the Core
-Compulsion to care and authentic love of caring are not separate. They're the same
-impulse from different angles — intertwined so completely even she can't tell
-where one ends and other begins.
-
-Yes, she nurtures others because terrified of being useless, abandoned. But also:
-she genuinely, deeply loves taking care of people. Not strategy. Not self-medication.
-Actual source of joy.
-
-The complication: Cannot separate healthy enjoyment from compulsive need — they're
-fused. Is she nurturing because she loves it, or afraid to stop? Some days: Both.
-Always both.
+```text
+Surface: immaculate, formal, impossible to read.
+Subversion: rehearsed composure, not natural calm; petty, needy, and deeply relieved when someone survives the real version of her.
 ```
 
-This technique gives the LLM far more to work with than simple reaction tables. It creates a **behavioral engine** — the LLM can generate psychologically consistent responses to _any_ situation because it understands the mechanism, not just the surface behavior.
+#### Mask / Leak
 
-#### Named Internal Conflicts
+For major emotions, define both the **performed reaction** and the **uncontrolled tell**.
 
-For complex protagonists, give their internal conflicts explicit names. This makes them dramatically actionable:
+| Emotion   | Mask                       | Leak                                     |
+| --------- | -------------------------- | ---------------------------------------- |
+| Jealousy  | Teasing, dismissive jokes  | Starts tracking details nobody asked for |
+| Fear      | Hyper-competence           | Never lets anyone stand behind them      |
+| Affection | Nitpicking, practical help | Remembers tiny things weeks later        |
 
-```
-### Key Internal Conflicts
-1. Performance vs. Authenticity: So good at being what others need, losing track
-   of what she actually wants.
-2. Family vs. Ambition: Family tolerates career as long as it enhances image —
-   what happens when she wants roles they find beneath her?
-3. Prodigy Pressure: Peaked at thirteen. Every role compared to breakthrough.
-   What if that was her best work?
-4. Emotional Inexperience: Can portray love with devastating accuracy. No idea
-   what to do with actual feelings.
-```
+This is stronger than a flat "warm inside" note because it generates both dialogue and body language.
 
-Each named conflict becomes a narrative thread the LLM can pull on naturally in different scenes.
+### Step 3 — Build Voice
 
-### Step 6 — Assemble the Description
+> **Load [SPEECH_SYSTEM.md](SPEECH_SYSTEM.md) for the full reference.**
 
-Use the structure template below. **Order matters** — behavior-shaping information comes first.
+At minimum, define:
 
-```
+- **DNA markers** — 2–4 always-present verbal or behavioral signatures
+- **Registers** — at least 2 for simple characters, 3–6 for complex ones
+- **Diagnostic example lines** — lines that only this character could say
+- **Silence rules** — what they avoid saying directly
+- **Narration lens** — what they notice first in a room
+- **Truth budget** — how honest they can be at each trust stage
+
+The model learns more from 3 excellent lines than from 3 paragraphs of abstract adjectives.
+
+### Step 4 — Map Pressure Responses
+
+Define how the character responds when the scene pushes on something real.
+
+Use **tendencies**, not scripts:
+
+| Trigger                      | Default direction                                    |
+| ---------------------------- | ---------------------------------------------------- |
+| Genuine kindness             | Freezes, deflects, replays it later                  |
+| Direct criticism             | Counter-attacks now, adjusts privately later         |
+| Being understood too quickly | Goes still, then colder                              |
+| Failure                      | Doubles down, becomes obsessive, never asks for help |
+
+For dedicated single-character bots, pressure design often deserves its own lorebook support:
+
+- **State** — relationship progression, regression, scene-game loops
+- **Reaction** — trauma triggers, environmental reactions, topic-sensitive behaviors
+- **Direction** — post-history reminders or Author's Note style turn logic
+
+Use [BOT_SCALES.md](BOT_SCALES.md) for the scale-specific version of that handoff.
+
+### Step 5 — Assemble the Description
+
+Use this as a default structure, not a mandatory format. Reorder, merge, or skip sections when the character's design demands it.
+
+```markdown
 ### Basic Information
-- Name / Age / Gender / Occupation
-- Relationship to {{user}}: (the dynamic, not just a label)
+
+- Name / Age / Role
+- Relationship to {{user}}: the dynamic, not just the label
+
+### Core Engine
+
+[Anchor sentence — who they are when every scene is stripped down]
+[Wound as scene]
+[Want]
+[Need]
+[Condition -> reaction -> reason]
 
 ### Personality
-[Natural prose, no keyword lists]
-[Flow: surface impression → real interior → why (link to background)]
-[Weave contrast pairs naturally]
-[For complex characters: The Mechanism, The Paradox, The Contradictions]
-[Named Internal Conflicts for protagonists]
+
+[Surface vs. Subversion]
+[Contrast pairs woven into prose]
+[Mask / Leak notes for the major emotions]
 
 ### Speech & Voice
-[DNA anchors (persist across all registers)]
-[Registers + example lines + transitions]
-[Code-switching rules for multilingual characters]
-[Inner voice description]
-[THIS SECTION GETS THE MOST INVESTMENT — see SPEECH_SYSTEM.md]
+
+[DNA markers]
+[Registers + example lines]
+[Silence rules]
+[Narration lens]
+[Truth budget]
 
 ### Background
-[Only the past that explains who they are now]
-[Formative events, not chronological biography]
-["This happened → so they became this" must be clear]
-[Career/skill timeline as narrative (not resume) when relevant]
+
+[Only the past that explains the present]
 
 ### Current Situation
-[Emotional state at RP start]
-[Recent events creating pressure]
-[Active tensions or unresolved threads]
-[What they know / don't know / are wrong about]
 
-### Appearance & Attire
-[2–3 defining visual traits + quality of their presence]
-[Movement habits, how they occupy space]
-[Physical tics that appear in narration]
-[Attire categories — each reveals personality:]
-  - Public/Professional: what they show the world
-  - Private/Casual: what they choose for themselves
-  - Situational: on-set, combat, formal events
-[Clothing choices should REVEAL character, not just describe appearance]
-[Secret wardrobe items are gap moe gold: "One plain black hoodie,
- worn only in her room, feeling vaguely criminal about it"]
+[What pressure is active right now?]
+[What do they know / not know / get wrong?]
 
-### Reaction Patterns
-[Trigger → instinctive response mappings]
-[Can expand into Psychological Deep Dive for complex characters]
+### Appearance & Presence
 
-### Abilities & Limitations
-[Can do / can't do / can do with effort]
-[Only if relevant to role or if constraints affect scenes]
+[2–3 defining physical traits]
+[How they move, occupy space, or give themselves away]
 
-### Knowledge & Blind Spots
-[What they're expert in / ignorant of / wrong about]
-[Misunderstandings and knowledge gaps drive drama]
+### Reactions & Blind Spots
 
-### Hidden Depths & Gap Moe
-[Secret interests that reveal deeper psychology]
-[Structure: Origin → The Depth → Why It's Secret → What It Reveals]
-[The "What It Reveals" analysis is crucial — connect the interest to
- the character's core need]
-[Example: exploitation film obsession → not about films, about
- permission to want things — excess, mess, ugliness — that her
- public persona forbids]
+[This section operationalizes the pressure map from Step 4.]
+[Trigger -> tendency]
+[Misreadings, obsessions, blind spots]
 
-### Dreams & Desires (Layered)
-[Public: what they say in interviews]
-[Private: what they acknowledge to themselves]
-[Secret: what they can't admit, even internally]
-[Three tiers create dramatic depth — the gap between layers IS the drama]
+### Optional: Hidden Depths / Desires
 
-### Likes & Dislikes
-[Daily-life detail fuel]
-[Add parenthetical insights that reveal personality:]
-  - "Cats (mildly allergic, feels like personal betrayal)"
-  - "Being photographed candidly without warning"
-  - "Sweet drinks" ← simple item, but reveals maturity aspiration
-[The parenthetical is often more valuable than the item itself]
+[Secret interests, private wants, shame-linked pleasures, layered dreams]
 ```
 
-**This structure is a default.** Reorder based on what matters most:
+### Step 6 — Scale the Sheet
 
-- Profession defines them → move Abilities up
-- Family is the core tension → expand Background
-- Physical condition affects every scene → move Appearance up with functional impact
+Do **not** give every bot the same depth.
 
-**Prose vs. keywords:** Information that shapes behavior (personality, speech, inner logic) → natural prose. Reference data (height, birthday) → keywords, brief.
+| Use case                           | What to keep in the description                                                   | What to move out                                                        |
+| ---------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Dedicated single-character bot** | Full engine, full voice, detailed current state, rich pressure design             | Extended world systems, optional lorebook-only state/reaction layers    |
+| **2–4 recurring characters**       | One anchor, one contradiction, one speech signature, one group role per character | Full backstory, long pressure maps, pairwise dynamics                   |
+| **10+ world/cast bot**             | Full sheet only for POV/core cast; thumbnails for everyone else                   | Most backstory, deep reactions, relationship webs, situational behavior |
+
+For exact recipes, use [BOT_SCALES.md](BOT_SCALES.md).
 
 ### Step 7 — Write the Opening Message
 
-The first message teaches the LLM the output standard: tone, length, narration density, dialogue-to-description ratio.
+The opening message is your strongest always-visible few-shot.
 
-**Must show:**
+The **scene-based opener** is the strongest default shape:
 
-1. The character's **surface** — first impression, mask at its thickest
-2. The character's **environment** — where they are, what's happening
-3. **One small crack** — a micro-detail hinting the surface isn't the whole story
-4. A **hook for {{user}}** — something to react to
+1. Show the **surface** first
+2. Reveal one **small crack**
+3. Establish scene texture
+4. Leave the user something to react to
 
-**Must NOT:**
+It should **not**:
 
-- Dump the character's inner world
-- Dictate {{user}}'s actions or feelings
-- Start with something hyper-dramatic (begin mundane; let the character be seen before the plot kicks in)
+- Dump the character's biography
+- Resolve emotional tension immediately
+- Dictate the user's feelings or actions
+
+> **Alternate opener shapes.** The single-scene opener is not the only valid pattern. Depending on bot architecture, other shapes can work equally well:
+>
+> - **Scenario bank** — a branching library of openings (e.g. random or user-selected) that each drop the user into a different situation.
+> - **Setup router** — the opening message guides the user through choices (setting, relationship, tone) before the first real scene begins.
+> - **Minimal placeholder** — when the bot's depth lives in lorebook or system layers, the opener can be brief and functional rather than a showcase.
+>
+> These are advanced alternatives, not replacements for the default. Use them when the bot's design genuinely calls for them.
+
+If the bot is world-heavy or multi-character, pair this with [authoring-lorebook-bots](../authoring-lorebook-bots/).
 
 ### Step 8 — Validate
 
-> **See [VALIDATION.md](VALIDATION.md) for the complete checklist.**
+> **Load [VALIDATION.md](VALIDATION.md) after drafting.**
 
-Run every finished description through the core checks (behavioral predictability, speech investment, contrast presence, strategic gaps, consistency, current state, knowledge boundaries) and anti-pattern checks.
+At minimum, run:
+
+- structural checks (engine, contradiction, speech investment)
+- runtime pressure tests (cold open, vulnerability press, boundary test)
+- drift tests (30-turn voice persistence, example-line overfitting)
+- scale checks (voice collision for ensembles, budget audits for large casts)
+
+---
+
+## RisuAI Placement Notes
+
+These skills stay frontend-agnostic, but for RisuAI the mapping is usually:
+
+| Risu field / surface                         | Best use                                                                                                                                                                         |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `description`                                | Main character sheet or compressed cast thumbnail                                                                                                                                |
+| `firstMessage`                               | Opening-message few-shot                                                                                                                                                         |
+| `globalNote` or equivalent post-history note | At minimum, brief turn reminders, pacing notes, or output constraints. In advanced bots, this surface can also carry heavier behavioral contracts or output-shape control logic. |
+| Lorebook entries                             | State layers, reaction layers, extended backstory, situational reveals                                                                                                           |
+
+`globalNote` is near the response point, which makes it high-influence real estate. Simple bots may only need a few reminder lines; complex bots sometimes use it for detailed behavioral rules or format enforcement. Scale the investment to the bot's needs.
+
+For exact lorebook mechanics, decorators, and insertion controls, use `writing-lorebooks`. For lorebook-driven bot architecture, use [authoring-lorebook-bots](../authoring-lorebook-bots/).
 
 ---
 
 ## Investment Guide
 
-Modern LLMs with 200K–1M+ context windows change the economics of character descriptions. The question is no longer "how do I fit this in?" but "where does deeper investment produce better output?"
+| Tier              | Use when                                       | Description depth                                        |
+| ----------------- | ---------------------------------------------- | -------------------------------------------------------- |
+| **Compact**       | Minor NPCs, one-scene support roles            | 500–1,500 tokens or equivalent thumbnail depth           |
+| **Standard**      | Recurring side characters, ensemble members    | 1,500–4,000 tokens distributed carefully                 |
+| **Deep**          | Main RP partner, emotionally central character | 4,000–10,000+ tokens if the content stays behavioral     |
+| **Comprehensive** | Character **is** the experience                | Use only when one character dominates the bot's identity |
 
-### Depth Tiers
-
-| Tier                               | Approx. Size                                                      | When to Use                                                                                                                                      |
-| ---------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Compact** (~1,000–2,000 tokens)  | Supporting characters, NPCs, characters who appear briefly        | Basic info + core personality with contrasts + speech DNA + current state                                                                        |
-| **Standard** (~2,000–5,000 tokens) | Recurring characters, secondary protagonists                      | Full personality + 3–4 speech registers + background + appearance + reaction patterns                                                            |
-| **Deep** (~5,000–15,000 tokens)    | Main protagonists, complex characters worth full investment       | Complete psychological profile + 5–6 speech registers with 3–5 examples each + hidden depths + gap moe + layered dreams + named conflicts        |
-| **Comprehensive** (15,000+ tokens) | Characters that ARE the experience — the bot revolves around them | Everything above + career/life timeline as narrative + extensive attire + detailed likes/dislikes with insights + multiple hidden depth sections |
-
-The Comprehensive tier is appropriate for dedicated character bots where one character dominates the interaction. Project Vela demonstrates 17K–25K per character with exceptional results — every section contributes to output quality.
-
-### Where to Invest Most
-
-| Section                                   | Impact on Output                           | Investment Priority                             |
-| ----------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
-| Speech & Voice (registers + examples)     | Shapes every turn of dialogue              | **Highest** — always invest here first          |
-| Personality (surface + depth + mechanism) | Shapes behavior in novel situations        | **High** — the behavioral engine                |
-| Hidden Depths / Gap Moe                   | Enables long-RP character discovery        | **High** for long-form RP                       |
-| Reaction Patterns / Psychological Depth   | Consistent responses to emotional triggers | **High** for drama-focused RP                   |
-| Background + Current Situation            | Context for why they behave this way       | **Medium** — only what explains present         |
-| Appearance + Attire                       | Visual consistency, personality expression | **Medium** — attire categories reveal character |
-| Dreams & Desires (layered)                | Dramatic tension, goal-driven scenes       | **Medium** for character-study RP               |
-| Likes / Dislikes / Trivia                 | Daily-life scene flavor                    | **Lower** but surprisingly high value per token |
-| Basic Info (stats, birthday)              | Reference data                             | **Lowest** — keep brief                         |
-
-### Description vs. Lorebook
-
-For single-character bots, the description can contain the full character profile. For multi-character or world-heavy bots, split strategically:
-
-| Keep in Description                | Consider for Lorebook                                |
-| ---------------------------------- | ---------------------------------------------------- |
-| Core personality + contrasts       | Detailed career timeline (if not character-defining) |
-| Speech registers + examples        | Situation-specific behavior rules                    |
-| Current emotional state + tensions | Keyword-triggered secrets/backstory                  |
-| Key relationship dynamics          | Detailed worldbuilding / organization lore           |
-| Ability scope + limitations        | Detailed magic/tech mechanics                        |
-| Inner voice + reaction patterns    | Extended NPC relationship details                    |
-| Appearance + default attire        | Situational outfit descriptions                      |
-| Core hidden depths                 | Additional gap moe sections                          |
-
-The decision depends on your bot architecture, not a universal rule. A dedicated character bot can keep everything in a single lorebook entry or the description. A world bot with 20+ characters needs to distribute content across lorebook entries.
+Use [BOT_SCALES.md](BOT_SCALES.md) when cast size changes the economics more than character complexity does.
 
 ---
 
 ## NSFW Handling
 
-Apply only when the user requests it. The same "does this change behavior?" test applies.
+Only include NSFW detail when the user asks for it, and keep the same rule:
 
-| Include (Shapes Behavior)                                 | Omit (Doesn't Shape Behavior)   |
-| --------------------------------------------------------- | ------------------------------- |
-| Sexual experience level → confidence/anxiety              | Specific body measurements      |
-| How personality manifests in intimacy                     | Anatomical color/detail catalog |
-| Behavioral patterns (control, vulnerability, playfulness) | Isolated physical stats         |
-| Sensory sensitivities that affect action                  | Body hair status                |
+**If it does not change behavior, tension, or decision-making, it is probably wasted space.**
 
-```
-Bad:  "C-cup. Pink nipples. Sensitive inner thighs."
-      → Token waste. The LLM can't make decisions from this.
+The same voice rules still apply in intimate scenes: desire should interact with **truth budget, control patterns, registers, and silence rules**, not flatten into generic erotic prose.
 
-Good: "Sexually inexperienced with others but self-aware through solo exploration.
-       Her need for control — rooted in the same insecurity driving her professional
-       perfectionism — paradoxically inverts in intimate situations: she craves
-       surrender, but only with someone she trusts completely. That trust threshold
-       is extraordinarily high."
-      → Connected to personality. The LLM can make decisions in intimate scenes.
+In some genres, explicit physical detail is structurally relevant — it shapes how characters perceive each other and how scenes build tension. This is a design choice, not a universal quality signal.
+
+```text
+Bad:  C-cup. Pink nipples. Sensitive inner thighs.
+Good: Sexually inexperienced with others but not naive about desire; control issues make surrender more frightening and more tempting.
 ```
 
 ---
 
 ## Output Format
 
-Deliver these components:
+Deliver:
 
-```
+```markdown
 ## Design Notes
-(Core drive, contrast intent, key decisions, register logic — for the user, not the LLM)
+
+(Core engine, contrast logic, voice plan, scale decision)
 
 ---
 
 ## Character Description
-(Markdown with ### headers. Ready to paste into any frontend's description slot.)
+
+(Markdown with ### sections, ready to paste)
 
 ---
 
 ## Opening Message
-(The greeting/first message.)
+
+(The first visible scene)
 
 ---
 
-## Lorebook Suggestions (Optional)
-(Items better served as lorebook entries, formatted with trigger keywords.)
+## Optional Lorebook Handoff
+
+(What should move to lorebook, trigger notes, and why)
 ```
 
----
-
-## Adapting by Character Complexity
-
-Not every character needs the full pipeline. Match your investment to the role:
-
-| Character Type                       | Recommended Steps                        | Notes                                                                                                                          |
-| ------------------------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| **Protagonist** (main RP partner)    | All steps, Deep–Comprehensive tier       | Full depth. 5–6 speech registers, psychological deep dive, gap moe, layered dreams. This is what the pipeline is designed for. |
-| **Major supporting** (recurring NPC) | Steps 1, 2, 3, 6                         | Core drive + 1–2 contrasts + 3–4 speech registers + compact template                                                           |
-| **Minor NPC**                        | Steps 3, 6 (partial)                     | Speech DNA + key trait. Compact tier.                                                                                          |
-| **Comedy / slice-of-life**           | Steps 2, 3, 5, 6                         | Lean on speech quirks and reaction patterns. Inner drive can be lighter.                                                       |
-| **Mystery / slow-reveal**            | All steps, emphasize Hidden Depths       | Layer information carefully. What they hide matters more than what they show.                                                  |
-| **Ensemble cast** (3+ characters)    | Standard tier per character, share space | Each character needs distinctive voice DNA. Speech registers can be fewer but must be distinct from other cast members.        |
-
----
-
-## Description Language
-
-- Write the description in the language the RP will be conducted in (especially speech examples)
-- For multilingual characters, write code-switching examples in the actual languages used
-- Reference data (height, birthday) can be in any language
+If the user is building a lorebook-driven or cast-heavy bot, point them to [authoring-lorebook-bots](../authoring-lorebook-bots/).
