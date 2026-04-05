@@ -25,10 +25,10 @@ Structured skill documents for LLMs working with RisuAI `.charx`, `.risum`, and 
 
 ## Authoring Skills
 
-| Skill                                               | Description                              | Files                                             | Metadata                |
-| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------- | ----------------------- |
-| [authoring-characters](authoring-characters/)       | Character description writing for LLM RP | `SKILL.md` + `SPEECH_SYSTEM.md` + `VALIDATION.md` | `tags`, `related_tools` |
-| [authoring-lorebook-bots](authoring-lorebook-bots/) | Lorebook-driven bot description writing  | `SKILL.md` + `LOREBOOK_ARCHITECTURE.md`           | `tags`, `related_tools` |
+| Skill                                               | Description                              | Files                                                               | Metadata                |
+| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------- | ----------------------- |
+| [authoring-characters](authoring-characters/)       | Character description writing for LLM RP | `SKILL.md` + `SPEECH_SYSTEM.md` + `VALIDATION.md` + `BOT_SCALES.md` | `tags`, `related_tools` |
+| [authoring-lorebook-bots](authoring-lorebook-bots/) | Lorebook-driven bot description writing  | `SKILL.md` + `LOREBOOK_ARCHITECTURE.md` + `BOT_SCALES.md`           | `tags`, `related_tools` |
 
 ## Frontmatter Schema
 

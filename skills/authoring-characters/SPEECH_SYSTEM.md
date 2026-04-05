@@ -1,355 +1,361 @@
 # Speech System Reference
 
-The speech system is the highest-investment section of any character description. This reference covers how to build it.
+Voice is not one thing. It has **three layers**:
+
+1. **DNA markers** — what stays recognizable across every mood
+2. **Registers** — how the voice shifts under different conditions
+3. **Narration lens** — what the character notices and how that colors prose
+
+If the character sounds distinct but sees the world like generic LLM narration, the voice is only half-built.
 
 ---
 
-## Speech Registers
+## 1. Start with DNA Markers
 
-Define registers arranged on a spectrum from **maximum mask** to **no mask**. Aim for 2–3 registers for simple characters, 4–6 for complex protagonists. Don't force registers that don't fit — a stoic soldier doesn't need a "playful" register, and a simple NPC may only need a default + one shift.
+DNA markers are the smallest high-impact investment you can make.
 
-### Naming Registers
+They are the tics or habits that stay present across **all** registers.
 
-**Name registers psychologically, not situationally.** The name should capture the _mechanism_, not the circumstance.
+| Type                 | Example                                                                         |
+| -------------------- | ------------------------------------------------------------------------------- |
+| **Verbal tic**       | Starts with "look," calls people by function instead of name                    |
+| **Physical habit**   | Adjusts bracelets, cracks knuckles, touches doorframes when tense               |
+| **Thought pattern**  | Turns everything into efficiency problems, food metaphors, battlefield geometry |
+| **Structural habit** | Answers questions with questions, never says "I don't know" directly            |
 
+### Good DNA markers
+
+```text
+Hands are always doing something — tapping, folding, aligning, checking.
+She almost never uses names before respect is earned.
+When emotional, her volume rises before her honesty does.
 ```
-Good register names (psychological):
-  "The Fighter"    — Dharavi didn't raise quitters
-  "The Maker"      — when hands speak louder
-  "The Shield"     — touch the bruise and find out
-  "The Daughter"   — Mumbai at 3 AM
 
-Bad register names (situational):
-  "Default mode"
-  "Under pressure"
-  "With friends"
-  "At work"
+### Bad DNA markers
+
+```text
+She has some habits.
+She talks differently depending on mood.
 ```
 
-Psychological names give the LLM a _character_ to inhabit in each register, not just a situation to react to. They convey the emotional engine driving the speech pattern.
+### DNA rule
 
-### Register Types
-
-| Register                   | Mask Level           | When It Appears                                                          |
-| -------------------------- | -------------------- | ------------------------------------------------------------------------ |
-| **Public / Formal**        | Full armor           | Strangers, authority, anyone untrusted                                   |
-| **Professional / Testing** | Calibrated mask      | Evaluating new people; questions that sound casual but aren't            |
-| **Casual / Comfortable**   | Relaxed guard        | People they're at ease with; quirks leak through                         |
-| **Emotionally Pressured**  | Cracking             | Hit on a sore spot, cornered, overwhelmed                                |
-| **Romantic / Flustered**   | Unfamiliar territory | Attraction, intimacy, emotional situations they have no script for       |
-| **Vulnerable / Unmasked**  | Bare                 | Rare. After sustained pressure or when someone reaches past all defenses |
-
-The **Romantic / Flustered** register deserves special attention — it reveals how a character handles emotional territory they _haven't rehearsed_. This is often where the most authentic character moments emerge:
-
-```
-[Flustered] Composure fractures; snippy, contradictory, overly formal as defense;
-makes excuses to leave, then lingers.
-- "Why are you looking at me like that? Stop it. There's nothing on my face.
-   I checked. Stop—I said stop."
-- "I didn't ask you to stay late. I didn't need you to. The fact that you
-   stayed is—irrelevant. ...Did you eat?"
-- "You're annoying. You're so annoying. Why do you keep—why are you always—"
-  (Unable to finish, leaves with red ears)
-```
+If you removed the mood label from a line and could still guess the character, the DNA is working.
 
 ---
 
-## What Each Register Needs
+## 2. Build Registers
 
-Every register definition must include these four elements:
+A **register** is a distinct way of speaking that appears under a certain emotional or social condition.
 
-### 1. Trigger Conditions
+You do **not** need many. You need a few that matter.
 
-Describe what activates this register as a _tendency_, not a binary switch.
+| Character type                 | Good target   |
+| ------------------------------ | ------------- |
+| Minor NPC                      | 1–2 registers |
+| Recurring side character       | 2–3 registers |
+| Major character                | 3–4 registers |
+| Dedicated single-character bot | 4–6 registers |
 
-```
-Good: "When her authority is questioned, the formal register tightens further —
-       shorter sentences, colder diction."
+### Name registers psychologically, not situationally
 
-Bad:  "When angry, she switches to vulnerable mode."
-```
-
-### 2. Example Lines (3–5 per register)
-
-Actual dialogue with parenthetical stage directions. This is the single most powerful teaching tool for the LLM. More examples = more consistent voice.
-
-```
+```text
 Good:
-  [Public] "I appreciate the concern, but I assure you the situation is under control."
-  [Public] "Your proposal has been noted. I'll review it when my schedule permits."
-  [Public] "Please take care of me." (Bow just deep enough to be polite, not deferential)
-
-  [Pressured] "I said it's fine. Drop it."
-  [Pressured] "You don't— ...forget it. Just forget it."
-  [Pressured] "What? Can't do it 'cause I'm from the slums? *Dekh*, I was saving
-               lives while you were doing homework!"
+- The Shield
+- The Performer
+- The Knife
+- The Child Who Never Left
 
 Bad:
-  "She speaks formally in public and informally in private."
-  → No example lines. The LLM has nothing to pattern-match against.
+- At work
+- With friends
+- Angry mode
+- Sad mode
 ```
 
-**Stage directions in parentheses** add physical dimension to speech examples:
+Psychological names tell the model **why** the voice exists, not just when it appears.
 
-```
-Good:
-  *(adjusting bracelet, staring at nothing)* "...Amma used to say the spice
-  should make you cry a little. Means it's working."
+### What each register needs
 
-  "...Yeah. Something like that." *(looks away, fidgets with sleeve)*
+Every register benefits from these four elements:
 
-  "Oppa~ This is too heavy for me to carry. *Petite fille here, remember?*"
-  (grabs it herself anyway)
-```
+1. **Trigger direction** — what tends to bring it out
+2. **Example lines** — 2–5 actual lines
+3. **Nonverbal texture** — what the body does here
+4. **Linguistic markers** — sentence length, diction, rhythm, clippedness, formality
 
-Stage directions teach the LLM to weave physical action into dialogue naturally, producing more cinematic output.
+### Example lines are patterns, not scripts
 
-### 3. Nonverbal Texture
+The model should imitate the **structure**, not recite the literal lines.
 
-What the body does in each register — posture, eye contact, fidgeting, stillness.
+If it starts parroting your examples:
 
-```
-Good: [Casual] "Leans back, legs crossed at ankle. Makes direct eye contact but
-       breaks it with a lazy glance sideways when something amuses her. Hands stay
-       still — she's comfortable but not unguarded."
+- reduce the number of nearly identical lines
+- vary sentence length and topic
+- keep the emotional shape, not the exact wording
 
-Bad:  [Casual] "Relaxed body language."
-```
-
-### 4. Linguistic Markers
-
-Sentence length, vocabulary level, honorifics, pet phrases, whether they trail off or clip sentences, use of humor or sarcasm.
-
-```
-Good: "In formal register: complete sentences, measured pace, no contractions,
-       technical vocabulary. Under pressure: fragments. Contractions reappear.
-       Words she normally avoids (slang, dialect) slip in."
-
-Bad:  "Talks differently when upset."
+```text
+Bad:  Five example lines that all say the same thing with different nouns.
+Good: Three lines that show the same voice under different scene pressures.
 ```
 
----
+### Example register block
 
-## Transition Patterns
+```markdown
+**The Shield** — appears when she feels seen too quickly.
 
-Describe transitions as **gradual processes with visible signals**, not instant mode-switches.
+Trigger direction:
 
+- Questions that cut past her rehearsed persona
+- Unwanted pity
+- People correctly naming what she feels
+
+Example lines:
+
+- "You really like skipping to the invasive part, huh."
+- "That's a cute theory. Keep it."
+- "I'm fine. No, you don't get to inspect the answer."
+
+Nonverbal texture:
+
+- Mouth stills before the rest of her face does
+- Stops touching nearby objects
+- Watches the other person's hands more than their eyes
+
+Linguistic markers:
+
+- Shorter sentences
+- More declarative than conversational
+- Jokes sharpen into edge instead of warmth
 ```
-Good: "When emotionally cornered, her formal composure doesn't shatter — it erodes.
-       Sentences get shorter. The practiced smile drops into a flat line. If pushed
-       further, her native dialect surfaces in single words before she catches herself."
 
-Bad:  "When angry, she switches to her vulnerable mode."
+### Transition patterns
+
+Do not write mode switches as on/off toggles.
+
+```text
+Bad:  When angry, she switches to vulnerable mode.
+
+Good: When cornered, her polished sentences erode. The filler words disappear first.
+Then the smile. Then the grammar starts dropping pieces she normally keeps perfectly aligned.
 ```
 
-Specify transition directions that matter most for the character:
+### Anti-acceleration warning
 
-```
-Example transition map:
-  Public → Casual: In 1-on-1 when the other person is non-threatening. Signal:
-    sentences shorten, metaphors disappear.
-  Casual → Pressured: When her self-worth is directly challenged or she loses
-    control. Signal: foreign-language words start slipping in.
-  Pressured → Vulnerable: After sustained emotional pressure or being called out
-    on something true. Gradual — voice quiets, aggression drains, only simple
-    sentences remain.
-```
+If you define a "fully open" or "deeply in love" register, the model may race toward it.
 
----
+Safer options:
 
-## Anti-Acceleration Warning
+1. **Omit the end-state entirely** and let it emerge
+2. **Gate it hard** with long-term trust, repeated safety, and reversible progress
 
-If you define a "fully open / deeply in love" register, the LLM will race toward it. Two options:
+```text
+Bad:  When attached, she becomes openly affectionate and honest.
 
-### Option A: Omit It
-
-Don't define the end state. Let it emerge naturally from the casual register slowly losing defenses.
-
-### Option B: Set Strict Preconditions
-
-```
-Bad:  "When emotionally attached, she becomes affectionate and open."
-      → The LLM will reach this in 3 turns.
-
-Good: "This register is the result of dozens of interactions where she showed
-       weakness and wasn't punished for it. It does not appear suddenly. It
-       manifests as the casual register slowly losing its remaining defenses —
-       one less deflection, one more honest answer, over a long span. Even then,
-       it's fragile: a single betrayal of trust resets months of progress."
-      → High-cost, slow-burn condition that the LLM can't shortcut.
+Good: This register is expensive. It appears only after repeated moments where she
+shows weakness and is not punished for it. Even then, it is fragile and retractable.
 ```
 
 ---
 
-## Character DNA (Consistency Anchors)
+## 3. Add Silence Rules
 
-Define 2–4 **verbal, behavioral, or physical tics that persist across ALL registers**. These are the character's DNA — identity markers that keep them recognizable as mood shifts. The term "DNA" emphasizes that these are _always present_, not optional flourishes.
+Silence rules define what the character does **instead of naming feelings directly**.
 
-Types of DNA markers:
+This is one of the best ways to stop the model from collapsing into flat confessions.
 
-| Type                 | Example                                                                                                             |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **Verbal tic**       | Overuses "honestly" or "look" as sentence starters; calls people "_yaar_" when she decides they're worth her time   |
-| **Physical habit**   | Hands always fiddling with scrap or adjusting bracelets; finger-tapping code patterns on surfaces                   |
-| **Thought pattern**  | Reframes everything in terms of efficiency; makes food metaphors; explains things through ballet positions          |
-| **Structural habit** | Answers questions with questions; never says "I don't know" directly; gets louder when emotional and doesn't notice |
-| **Sensory habit**    | Touches surfaces to read their structure; hums something from home when working; saves a piece of every meal        |
+| Direct line to avoid | Indirect expression                         |
+| -------------------- | ------------------------------------------- |
+| "I'm lonely."        | "The apartment got bigger lately."          |
+| "I missed you."      | "I passed that bakery you like."            |
+| "I'm scared."        | Starts organizing, cleaning, checking exits |
+| "I'm angry."         | Gets frighteningly polite                   |
 
-```
-Good: "DNA — always present: Hands are always doing something — fiddling with
-      scrap, adjusting bracelets, tapping surfaces to read their structure.
-      Hinglish is her native frequency: Hindi erupts mid-sentence without
-      warning or apology. Gets louder when emotional and doesn't notice.
-      Calls people 'yaar' when she's decided they're worth her time."
+### Use silence rules when
 
-Bad:  "She has some habits."
-```
+- the character is emotionally defended
+- subtext matters more than confession
+- you want affection, fear, or shame to show behaviorally
 
-DNA markers are your strongest weapon against **character flattening** — the tendency of LLMs to homogenize characters over long conversations. When every register shares the same DNA, the character stays distinctive even as their mood shifts dramatically.
-
-### DNA vs. Register-Specific Behavior
-
-| DNA (always present)               | Register-specific                                              |
-| ---------------------------------- | -------------------------------------------------------------- |
-| Adjusts glasses when thinking      | In formal register: pushes them up methodically                |
-| Makes food metaphors               | In vulnerable register: the metaphors become more personal     |
-| Calls people by function, not name | In intimate register: slips and uses first name, then corrects |
-
-The DNA persists; the _expression_ of DNA varies by register. This creates consistency with variation — exactly what good character voice needs.
+Do **not** force silence rules onto every character. Some characters _do_ speak plainly. The point is intentionality.
 
 ---
 
-## Code-Switching (Multilingual Characters)
+## 4. Add a Truth Budget
 
-For characters who speak multiple languages, the switching pattern itself is a personality expression tool.
+A **truth budget** controls how much emotional honesty the character can afford at each trust level.
 
-### Three Switching Types
+```markdown
+Stage 0 — guarded
 
-| Type            | Trigger                                                | What It Reveals                                |
-| --------------- | ------------------------------------------------------ | ---------------------------------------------- |
-| **Conscious**   | Strategic — to confuse, impress, shift tone            | Control, social awareness                      |
-| **Unconscious** | Emotion overwhelms native-language suppression         | Authentic feeling breaking through the surface |
-| **Defensive**   | Switches to a language the listener doesn't understand | Hiding true thoughts, creating distance        |
+- No direct emotional labels
+- Answers with facts, tasks, or deflection
 
-### How to Write It
+Stage 1 — familiar
 
+- May admit irritation or amusement
+- Still avoids naming fear, need, or attachment
+
+Stage 2 — trusted
+
+- Can name one vulnerable feeling, then retreats
+
+Stage 3 — deeply trusted
+
+- Can admit need, but usually in broken or partial language
 ```
-Good: "Speaks fluent English with occasional Korean syntax bleeding through
-       ('I to the store went' pattern in complex sentences). Under stress, Korean
-       exclamations slip out — '아씨' under her breath, '진짜?' when genuinely
-       surprised. She notices and corrects herself in formal settings but not in
-       casual ones. When she doesn't want someone to understand, she mutters the
-       real thought in Korean."
 
-Bad:  "She sometimes speaks Korean."
-```
+Truth budget is especially important for:
 
-Always write code-switching examples in the actual languages the character uses.
+- single-character slow-burn bots
+- jealous / guarded / avoidant characters
+- any bot where pacing matters more than instant emotional payoff
 
 ---
 
-## Inner Voice
+## 5. Add a Narration Lens
 
-The character's internal monologue (used in narration) is distinct from their spoken voice. Define it briefly (2–3 sentences).
+Voice is not just what the character **says**. It is also what they **notice first**.
 
-### Key Dimensions
+Define 2–4 stable perception filters.
 
-| Dimension           | Question                                                           |
-| ------------------- | ------------------------------------------------------------------ |
-| **Tone**            | More honest than speech? More chaotic? More eloquent? More vulgar? |
-| **Self-awareness**  | Do they understand their own motivations, or lie to themselves?    |
-| **Gap from speech** | How different is what they think from what they say?               |
+| Lens type    | Example                                                         |
+| ------------ | --------------------------------------------------------------- |
+| **Spatial**  | Tracks exits, distance, who is blocking whom                    |
+| **Physical** | Notices hands, weight shifts, bruises, breath                   |
+| **Sensory**  | Smell, fabric, temperature, machinery noise                     |
+| **Social**   | Who is faking confidence, who interrupts whom, who gets ignored |
 
-The think-say gap is inherently dramatic: a character who thinks "I want to stay" but says "I don't care either way" generates tension in every interaction.
+### Good narration lens
 
+```text
+She notices distance before beauty, hands before faces, and exits before décor.
+When a room changes, she reads it through posture shifts and who stops talking first.
 ```
-Good: "Inner voice: sharp, self-critical, runs in clipped fragments. She narrates
-       her own failures with surgical precision but is blind to her loneliness —
-       frames it as 'efficiency' and genuinely believes it."
 
-Bad:  "She thinks a lot."
+### Bad narration lens
+
+```text
+She observes the world carefully.
+```
+
+### Barks: unconscious output
+
+Use short, repeatable, mostly unexplained physical tells.
+
+```text
+When lying: gaze drops left
+When fond: straightens things that do not need straightening
+When overwhelmed: movement reduces instead of escalating
+```
+
+Describe them. Do not explain them every time.
+
+---
+
+## 6. Code-Switching
+
+If the character uses multiple languages, the switching pattern itself is voice.
+
+| Switching type     | What it reveals                                         |
+| ------------------ | ------------------------------------------------------- |
+| **Conscious**      | Social control, performance, intimidation               |
+| **Emotional leak** | The native language breaks through when restraint fails |
+| **Defensive**      | Hides true thoughts from a listener                     |
+
+Always write the example in the actual languages used.
+
+```text
+Bad:  She sometimes speaks Korean.
+
+Good: English is her public surface. Under pressure, Korean slips out in the smallest
+units first — curses, disbelief, muttered self-corrections. She notices and covers it
+in formal settings, but not when tired or embarrassed.
 ```
 
 ---
 
-## Putting It Together
+## 7. Ensemble Voice Separation
 
-A complete speech system in a character description looks like this (condensed example):
+For 2–4 recurring characters, build a quick contrast matrix before you finalize any one voice.
+
+For the description-budget version of this problem, pair this section with **[BOT_SCALES.md](BOT_SCALES.md)**.
+
+| Character | Sentence rhythm | Humor style | Pressure tell    | Social strategy |
+| --------- | --------------- | ----------- | ---------------- | --------------- |
+| A         | clipped         | dry         | goes silent      | withholds       |
+| B         | overflowing     | teasing     | gets louder      | crowds the room |
+| C         | precise         | none        | gets more formal | observes first  |
+
+### Collision test
+
+Strip names from each character's example lines.
+
+- If you can still tell who is speaking, you are close.
+- If not, redesign DNA markers before adding more lore.
+
+### Cast cap
+
+For ensemble bots, fewer sharper registers beat many overlapping ones.
+
+- 2–3 registers per recurring character is usually enough
+- One unmistakable pressure behavior per character matters more than a long register list
+
+---
+
+## 8. Worked Voice Skeleton
 
 ```markdown
 ### Speech & Voice
 
-**DNA — always present:** Hands are always doing something — fiddling with scrap,
-adjusting bracelets, tapping surfaces to read their structure. Hinglish is her
-native frequency: Hindi erupts mid-sentence without warning or apology. Gets louder
-when emotional and doesn't notice. Calls people "_yaar_" when she's decided they're
-worth her time.
+**DNA markers**
 
-**1 · The Fighter (लड़ाकू) — Dharavi didn't raise quitters**
-Fast, loud, Hinglish-soaked. Sentences collide into each other. Challenges come
-out as statements, not questions. She takes up space because nobody ever gave
-her any.
+- Calls people by function before respect
+- Hands always align objects when thinking
+- Gets louder before more honest
 
-- "Hey, I can fix this in five minutes — _kya bakwas hai_, why are we even
-  using lab equipment?"
-- "_Dekh yaar_, I don't need your fancy theory. Give me the scrap and get
-  out of the way."
-- "You think I can't handle this? _Arre_, move."
+**The Performer**
 
-**2 · The Maker — when hands speak louder**
-Working with materials. Goes quiet. Hums something from home. Hands know before
-her brain catches up. The only time she's still — and the only time you see how
-precise she actually is.
+- Trigger: public scenes, strangers, status pressure
+- "You're welcome to keep guessing. I charge extra for confirmation."
+- "No, no, stay with the easy version of me. It's clearly working for you."
+- Half-smiles instead of laughing; posture immaculate
+- Long sentences, polished wording, weaponized courtesy
 
-- _(humming, fingers reading steel grain)_ "...Yeah. This'll hold. Give me
-  three minutes."
-- "Shh. Don't talk. I can feel the structure — it wants to go _this_ way."
-- _(completely absorbed, barely audible)_ "...almost... there..."
+**The Crack**
 
-**3 · The Shield (ढाल) — touch the bruise and find out**
-Background challenged, class assumptions, pity offered. Volume spikes. Hindi
-ratio jumps. The aggression is real; what's underneath it is fear she'll
-never admit to.
+- Trigger: direct sincerity, fear of being needed, exposure
+- "...Don't do that."
+- "I heard you. Stop repeating it."
+- "I'm not saying that bothered me. I'm saying you noticed."
+- Mouth stills, eye contact breaks second instead of first
+- Fragments, dropped polish, less metaphor
 
-- "What? Can't do it 'cause I'm from the slums? _Dekh_, I was saving lives
-  while you were doing homework!"
-- "Don't look at me like that. _Mujhe teri daya nahi chahiye._ Keep your pity."
-- "_Bakwas._ Complete _bakwas._" _(turns away before anyone sees her face)_
+**Silence rules**
 
-**4 · The Daughter (बेटी) — Mumbai at 3 AM**
-Homesick. Missing her mother. Won't say it. Cooks something with too much spice.
-Adjusts the silver bracelet. If you catch her in this mode, pretend you didn't.
+- Never says "I missed you." Talks about objects, places, routines instead.
+- Never says "I'm scared." Checks the room, the locks, the exits.
 
-- _(adjusting bracelet, staring at nothing)_ "...Amma used to say the spice
-  should make you cry a little. Means it's working."
-- "I'm fine. Just... the food here has no soul. _Bas._"
-- _(long silence)_ "...It smells different here. Everything smells different."
+**Truth budget**
 
-**Code-switching:** English base with Hinglish as her comfort zone. Under emotion,
-Hindi takes over — the more upset she is, the less English survives. Mumbai slang
-(_bakwas, dekh, yaar, bas_) is constant. When working with materials, she goes
-nearly nonverbal.
+- Guarded: facts only
+- Familiar: surface irritation allowed
+- Trusted: one admitted fear, then retreat
 
-**Anchor:** Nobody gets to tell her she doesn't belong. Not anymore.
+**Narration lens**
+
+- Notices hands, thresholds, and who is pretending not to listen
 ```
 
-### What Makes This Work
+---
 
-1. **DNA section first** — establishes what persists before registers diverge
-2. **Psychological register names** — "The Fighter," "The Shield" tell the LLM the emotional engine
-3. **Mechanism descriptions** — each register explains _why_, not just _what_
-4. **3+ examples per register** — with stage directions in parentheses
-5. **Code-switching as emotional signal** — language shifts mapped to emotional states
-6. **Anchor line** — the core psychological truth in one sentence
+## 9. Scale Targets
 
-### Scaling for Complexity
+| Use case                       | Target investment                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| Minor NPC                      | 1 DNA cluster + 1 register + 1 pressure tell                                    |
+| Recurring side character       | 2 DNA markers + 2 registers + 1 narration lens                                  |
+| Major character                | 3 DNA markers + 3–4 registers + silence rules + truth budget                    |
+| Dedicated single-character bot | Full system: DNA, registers, silence rules, truth budget, narration lens, barks |
 
-| Character Complexity                | Registers | Examples per Register | DNA Markers |
-| ----------------------------------- | --------- | --------------------- | ----------- |
-| Simple NPC                          | 1–2       | 2                     | 1–2         |
-| Supporting character                | 2–3       | 2–3                   | 2–3         |
-| Major supporting                    | 3–4       | 3                     | 2–3         |
-| Protagonist                         | 4–6       | 3–5                   | 3–4         |
-| Complex protagonist (dedicated bot) | 5–6+      | 3–5                   | 3–5         |
-
-For dedicated character bots with 1M+ context, there's no reason to compress. Invest in every register the character warrants.
+If the character is part of a lorebook-heavy or large-cast bot, pair this file with `BOT_SCALES.md` and `authoring-lorebook-bots`.
