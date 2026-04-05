@@ -2,7 +2,7 @@
 
 > RisuAI .charx / .risum / .risup 파일 전용 에디터 + AI CLI 통합 터미널
 
-[![Version](https://img.shields.io/badge/version-0.38.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.38.1-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -297,6 +297,7 @@ Windows에서 git 체크아웃이 링크를 일반 텍스트 파일(`../skills`)
 | **워크플로**    | `using-mcp-tools`                                                                                                                        | 어떤 MCP 도구를 선택해야 할지 판단                        |
 | **구조 참조**   | `file-structure-reference`                                                                                                               | `.charx` / `.risum` / `.risup`, lorebook, regex 구조 확인 |
 | **태그 가이드** | `writing-danbooru-tags`                                                                                                                  | Danbooru 태그 검색·검증·정리                              |
+| **캐릭터 작성** | `authoring-characters`, `authoring-lorebook-bots`                                                                                        | 솔로·앙상블·대규모 월드캐스트 봇 description 작성 가이드  |
 | **문법 가이드** | `writing-cbs-syntax`, `writing-lua-scripts`, `writing-lorebooks`, `writing-regex-scripts`, `writing-html-css`, `writing-trigger-scripts` | surface별 구체 문법/패턴                                  |
 
 ### MCP 도구 목록
