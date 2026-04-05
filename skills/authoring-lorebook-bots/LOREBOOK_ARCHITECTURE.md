@@ -1,12 +1,18 @@
 # Lorebook Architecture for Description-Driven Bots
 
-How to design lorebook entries that complement an atmospheric bot description.
+How to design lorebook systems that **extend** the description instead of fighting it.
 
 ---
 
 ## Core Principle
 
-The bot description is the **persistent tonal lens**. Lorebook entries are **on-demand detail** that the LLM interprets _through_ that lens. Every entry should read like a natural extension of the description's voice.
+In a typical lorebook-driven bot the description is the **persistent frame** and lorebook entries are **conditional depth**. Some designs shift the balance further toward lorebook — always-on entries, dense state systems, or structural scaffolding — and that is equally valid when it serves the bot's goals.
+
+Regardless of balance, every entry should answer:
+
+**"When this activates, how does it change what the bot writes in this scene?"**
+
+If the answer is "it adds facts but not behavior, tone, or scene logic," the entry is probably weak.
 
 ---
 
@@ -14,336 +20,411 @@ The bot description is the **persistent tonal lens**. Lorebook entries are **on-
 
 ### 1. Self-Contained
 
-Each entry activates in isolation. It may be the only lorebook content the LLM sees in a given turn. Never assume other entries are active.
+Each entry may activate alone. Never assume other entries are present.
 
-❌ **Bad** (depends on another entry):
-
-```
-The Ashplains extend south from the border described in the "Northern Reach"
-entry. See also: "War of Sundering" for historical context.
-```
-
-✅ **Good** (stands alone):
-
-```
-The Ashplains are a scarred expanse of gray soil and crystallized earth where
-the old magic burned itself out. Nothing grows taller than knee-height. The
-wind carries a faint hum — not unpleasant, but wrong, like a song played
-one note off. Travelers cross quickly and don't camp if they can help it.
+```text
+Bad:  See also the Northern Reach entry for context.
+Good: The Northern Reach treats hospitality like debt — offered carefully, remembered forever.
 ```
 
 ### 2. Match the Description's Voice
 
-If the description reads like atmospheric fiction, the lorebook should too. Tonal consistency between description and lorebook is what produces coherent output.
+The lorebook should read like it belongs to the same bot.
 
-❌ **Bad** (clinical tone against atmospheric description):
-
-```
-The Council of Voices consists of five representatives, one from each
-province. They meet quarterly in the capital. Current members: Lord Varos
-(Northern Reach), Lady Ithel (Ashplains)...
-```
-
-✅ **Good** (matches atmospheric voice):
-
-```
-The Council of Voices hasn't agreed on anything meaningful in three years,
-but they keep meeting — five people who represent provinces that increasingly
-don't want to be represented. The sessions are formal, vicious, and largely
-performative. Real decisions happen in hallways afterward.
-```
+- atmospheric description + clinical lorebook = tonal whiplash
+- clinical description + atmospheric lorebook = awkward paste-in prose
 
 ### 3. Behavior Over Biography
 
-Every entry should answer: **"How does this change what the LLM writes?"** Don't describe what something _is_ — describe what it _does_ to the scene.
+Write what changes scenes.
 
-❌ **Bad** (biography):
-
-```
-Captain Maren Dreve, age 45, served in the Royal Guard for 20 years before
-being assigned to the Thornwood garrison. She has brown hair, green eyes,
-and a scar on her right forearm.
+```text
+Bad:  Captain Dreve is 45, born in Korvel, promoted at 34...
+Good: Captain Dreve makes everyone stand straighter by existing within ten feet of them.
 ```
 
-✅ **Good** (behavioral):
+### 4. Signal Density Over Raw Length
 
-```
-Captain Dreve runs the Thornwood garrison like someone waiting for an
-inspection that's never coming. Every patrol logged, every weapon counted,
-every report filed in triplicate — in a posting everyone else treats as
-exile. She doesn't smile at jokes, but she'll fix your armor strap without
-being asked. The kind of officer who makes you feel guilty for not trying
-harder.
-```
+Large context windows do **not** remove attention limits.
 
-### 4. Natural Trigger Keywords
+Long entries are fine if they stay rich with:
 
-Choose words that appear organically in conversation when the information is relevant.
+- behavior
+- speech cues
+- sensory texture
+- social pressure
+- scene consequences
 
-| Strategy                            | Example                                   |
-| ----------------------------------- | ----------------------------------------- |
-| **Use the thing's common name**     | `Ashplains`, `the Council`                |
-| **Include conversational variants** | `old magic, ancient magic, the Sundering` |
-| **Avoid over-specific triggers**    | ❌ `crystallized wasteland phenomenon`    |
-| **Avoid over-broad triggers**       | ❌ `magic` alone (fires constantly)       |
-| **Pair broad + narrow**             | `magic` + `old` as selective pair         |
+Cut sentences that do not materially change likely output.
 
-### 5. Layer Secrets by Trigger Depth
+### 5. Secrets Need Trigger Depth
 
-Hidden information should be triggered by words that only appear when the RP has progressed far enough.
-
-| Layer       | Trigger Strategy                 | Example                                            |
-| ----------- | -------------------------------- | -------------------------------------------------- |
-| **Surface** | Character/place names            | `Kael` → general info                              |
-| **Mid**     | Specific topics in conversation  | `knighthood, oath, the Order` → backstory          |
-| **Deep**    | Words that imply trust/discovery | `the scratched name, Oathkeeper, forgive` → secret |
-
-A character's deepest secret shouldn't trigger on their name — it should trigger on words that only come up when trust has been built or discovery has occurred.
-
-### 6. Signal Density
-
-With large context windows (200K–1M+), the constraint is no longer **space** — it's **attention**. Every sentence in a lorebook entry competes for the LLM's focus. The question is never "how many tokens?" but **"does every sentence change what the LLM writes?"**
-
-**Rich detail** adds value regardless of length — behavioral nuance, sensory texture, speech patterns, atmospheric prose, reaction patterns, relationship dynamics. A 600-token entry where every sentence is actionable outperforms a 200-token entry padded with filler.
-
-**Signal noise** wastes attention regardless of context size — facts that don't affect behavior, information already present in other active entries, measurements without narrative function, timeline data that doesn't explain current behavior.
-
-❌ **Low signal density** (300 tokens of noise):
-
-```
-Captain Maren Dreve is 45 years old. She was born in the Northern Reach
-town of Korvel to a family of shipbuilders. At 18 she joined the Royal
-Guard, where she served for 20 years. She was promoted to Captain at 34.
-She has brown hair, green eyes, and a scar on her right forearm from
-a training accident in her second year. She was assigned to Thornwood
-garrison three years ago. She has never married.
-```
-
-✅ **High signal density** (300 tokens of rich detail):
-
-```
-Captain Dreve runs the Thornwood garrison like someone waiting for an
-inspection that's never coming. Every patrol logged, every weapon counted,
-every report filed in triplicate — in a posting everyone else treats as
-exile. She doesn't smile at jokes, but she'll fix your armor strap without
-being asked. The kind of officer who makes you feel guilty for not trying
-harder.
-
-Speaks in clipped, complete sentences. Never raises her voice — drops it
-instead. Calls everyone by rank, even off duty. The one crack in her
-composure: when someone mentions the capital, her jaw sets and she changes
-the subject with the precision of someone who's practiced.
-```
-
-Both are ~300 tokens. The first gives the LLM biography it can't use. The second gives behavioral cues, speech patterns, a sensory presence, and a narrative hook — material the LLM can deploy in any scene.
-
-**The Usefulness Test:** For every sentence in an entry, ask: _"If I removed this sentence, would the LLM's output in a typical scene be noticeably different?"_ If removing it changes nothing, it's noise.
+If a secret activates on the character's name alone, it is not a secret architecture problem — it is a trigger-design failure.
 
 ---
 
-## What Goes Where: Decision Guide
+## Entry Roles
 
-| Content Type                   | Description    | Lorebook         | Rationale                         |
-| ------------------------------ | -------------- | ---------------- | --------------------------------- |
-| World atmosphere               | ✅             |                  | Always needed for tone            |
-| World mechanics (detailed)     |                | ✅               | Only needed when relevant         |
-| Core world rule (one sentence) | ✅             |                  | Frames everything                 |
-| Character behavioral engine    | ✅             |                  | Drives every response             |
-| Character backstory events     |                | ✅               | Only when referenced              |
-| Speech examples (3–5)          | ✅             |                  | Voice must be constant            |
-| Extended speech registers      |                | ✅               | Niche situations only             |
-| Current emotional state        | ✅             |                  | Starting fuel                     |
-| NPC profiles                   |                | ✅               | Only when NPC appears             |
-| Central NPC (1 sentence)       | ✅             |                  | If critical to starting situation |
-| Location descriptions          |                | ✅               | Only when at location             |
-| Faction/org details            |                | ✅               | Only when discussed               |
-| Secrets and hidden lore        |                | ✅               | Gated by trigger depth            |
-| Key character contradiction    | ✅ (existence) | ✅ (explanation) | Split across both                 |
-| Relationship with {{user}}     | ✅             |                  | Always in context                 |
+Think in **roles**, not just topics.
+
+### 1. Roster Entries
+
+Roster entries are lightweight "who matters here?" guides.
+
+Best for:
+
+- large casts
+- academy / office / guild / squad bots
+- rotating scene ownership
+
+A good roster entry gives:
+
+- name
+- one thumbnail line
+- scene function
+- maybe one pressure clue
+
+```text
+Mina — archivist; turns rumors into leverage before anyone notices they're ammunition.
+Rook — guard captain; speaks softly enough that everyone else becomes louder by comparison.
+Sera — medic; gentle hands, ruthless triage, zero patience for avoidable damage.
+```
+
+### 2. Full Character Profile Entries
+
+Use when a character needs more than a thumbnail.
+
+Good contents:
+
+- behavioral engine
+- current state
+- speech system or extra registers
+- topic-specific reactions
+- secrets or contradictions
+
+These are ideal for:
+
+- recurring characters in 2–4 cast bots
+- core cast in world bots
+- single-character bots with lorebook augmentation
+
+### 3. Pair-Dynamics and Relationship Architecture Entries
+
+One of the most underused high-value entry types.
+
+Use when the relationship itself changes scenes more than either character alone.
+
+Best contents:
+
+- how they behave around each other
+- what topics destabilize them
+- their default power imbalance
+- what each misreads about the other
+
+```text
+Mina + Rook: Mina treats his restraint as moral superiority and keeps poking it.
+Rook treats her needling as a test he refuses to fail. Their scenes are controlled
+duels disguised as logistics.
+```
+
+**Beyond pairs.** Relationship architecture can scale beyond two-person dynamics:
+
+- **Relationship clusters** — group dynamics where the chemistry is between 3+ people and cannot be decomposed into pair interactions alone (e.g., a family unit, a squad that only functions as a unit, a love triangle). Write these as their own entries when the group dynamic is load-bearing.
+- **Social / supporting ecology** — entries that define a character's broader social world: family patterns, community ties, professional networks, or rivalries that create pressure even when those people are offscreen. These work well for single-character bots where the ecology itself is a dramatic engine.
+- **Continuity / event-summary memory** — entries that record significant relationship events or state changes so the bot can reference shared history. Useful in longer-running scenarios but not every bot needs them.
+
+Use whichever shape fits the bot. A single-character bot might need ecology entries but no pair dynamics; a small ensemble might need only pairs; a world bot might need clusters.
+
+### 4. World / Institution Entries
+
+Use for:
+
+- factions
+- schools
+- churches
+- companies
+- governments
+- cultures
+
+Focus on:
+
+- how it pressures people
+- how it behaves in scenes
+- what social texture it adds
+
+### 5. Location Entries
+
+Good location entries do more than describe the room.
+
+They should also tell the bot:
+
+- how people behave there
+- what is safe / unsafe to say there
+- what sensory details matter
+- what kinds of interactions this place invites
+
+### 6. State / Reaction Entries
+
+These are excellent for dynamic bots.
+
+Use them for:
+
+- trust progression
+- suspicion states
+- injury reactions
+- grief loops
+- topic-specific behavior changes
+
+They are often better than stuffing every conditional reaction into the main description.
+
+### 7. Scene-Management Entries
+
+Critical for multi-character or world-heavy bots.
+
+These entries tell the bot how to handle crowded scenes.
+
+Good contents:
+
+- who gets spotlight first
+- how many active characters should meaningfully speak
+- when background cast should stay background
+- whether scenes prefer tight POV or wide ensemble play
+
+### 8. Secret / Reveal Entries
+
+Secrets should be layered.
+
+Use separate entries for:
+
+- public rumor
+- mid-depth truth
+- actual hidden cause
+
+This prevents the classic failure where one trigger reveals the entire mystery stack at once.
+
+### 9. Continuity / Event-Summary Entries (optional)
+
+In longer-running or progression-heavy bots, dedicated entries can track significant events, relationship milestones, or world-state changes that the bot should remember across scenes.
+
+Good uses:
+
+- recording relationship turning points so the bot can reference shared history
+- tracking world events that shift the political or social landscape
+- maintaining a running summary of user decisions that affect the scenario
+
+Not every bot needs these. They shine most in bots designed for extended play or bots where cumulative history is a dramatic resource.
+
+### 10. System / Directorial Entries (advanced, optional)
+
+In ambitious world bots or large-cast scenarios, some entries serve a **meta-narrative** function — they direct how the bot handles storytelling rather than adding world content.
+
+Examples:
+
+- **event dramaturgy** — entries that pace escalation, calibrate dramatic tension, or define event rhythms across sessions
+- **focus management** — entries that tell the bot how to foreground and background characters in crowded scenes, preventing attention spread
+- **user-context routing** — entries that adjust tone, cast availability, or scenario branches based on where the user is or what role they occupy
+
+These are power tools for complex designs. Most bots do not need them, and adding them to a bot that does not need them creates overhead without benefit.
 
 ---
 
-## Entry Sizing
+## Architecture by Bot Scale
 
-**General guideline:** Size entries based on their content needs, not arbitrary limits. Most entries work well at 100–500 tokens, but don't sacrifice coherence for size constraints.
+### Single-Character Bot with Lorebook Support
 
-| Size                | When to use                                                                                                                             |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| **~100 tokens**     | Simple facts, minor NPCs, small locations                                                                                               |
-| **~200–300 tokens** | Standard entries: locations, NPCs, mechanics                                                                                            |
-| **~300–800 tokens** | Complex entries: major NPCs, pivotal lore, detailed mechanics, character profiles                                                       |
-| **800+ tokens**     | Full character profiles in lorebook (for multi-character bots), detailed system entries — perfectly fine if the content is high-quality |
+One common entry mix (adjust to fit your bot):
 
-**With modern 1M+ context LLMs**, the old anxiety about entry size is largely obsolete. The real question is:
+- 1 state/reaction entry cluster
+- optional world-support entries
+- 1–2 deep reveal entries
+- optional location entries if the setting matters strongly
 
-- **Does this entry stand alone?** Can it be understood without other entries active?
-- **Does this entry add behavioral value?** Does it change what the LLM writes?
-- **Is the content focused?** A 500-token entry about one character is fine; a 500-token entry covering three unrelated topics should be split.
+Keep the emotional engine in the description. Use lorebook to make it responsive.
 
-For **multi-character bots** where each character has a dedicated lorebook entry, entries of 1,000–5,000+ tokens per character are appropriate and produce excellent results. The Project Vela pattern (17K–25K per character as always-active entries) demonstrates the upper range of this approach for dedicated character bots.
+### 2–4 Character Ensemble
 
-❌ **Bad** (unfocused mega-entry):
+One common entry mix (adjust to fit your bot):
 
-```
-Key: Vaeloria
-[Entire history, geography, political system, current events, cultural
-practices, religion, economy, military structure...]
-```
+- 1 roster summary entry
+- 1 full profile per recurring character
+- 1 pair-dynamics entry per major relationship
+- 1 scene-management entry if group scenes are common
+- world/location entries as needed
 
-✅ **Good** (focused entries — size matches content):
+This scale is where pair-dynamics entries shine the most.
 
-```
-Key: Vaeloria, the kingdom    → Current state & atmosphere (150 tokens)
-Key: Council of Voices         → Political body + behavioral cues (200 tokens)
-Key: old magic, the Sundering  → Magic system & history (300 tokens)
-Key: Northern Reach            → Region description + social dynamics (200 tokens)
-Key: Ashplains                 → Region description + sensory details (150 tokens)
-```
+Not every small ensemble needs complex scaffolding. If the cast works with short always-on dossiers and natural keyword triggers, that simplicity is a strength, not a gap.
 
-✅ **Also Good** (rich character entry for multi-character bot):
+### 10+ Character / World Bot
 
-```
-Key: Captain Dreve, Maren      → Full character profile: personality, speech
-                                  registers, backstory, current state (800 tokens)
-```
+Common entry groups (most world bots will not need all of these):
+
+- 1 always-on roster summary
+- full profiles only for core cast
+- recurring cast as thumbnail or medium entries
+- scene-management entry
+- relationship cluster entries
+- world / faction / location entries
+- layered secret entries
+
+Do **not** build 15 protagonist-grade always-on entries unless the bot is explicitly designed for that load and the underlying model handles it well.
 
 ---
 
-## Entry Structure Pattern
+## Trigger Design
 
-A well-structured lorebook entry follows this pattern:
+### Natural Trigger Keywords
 
-```
-[Atmospheric hook — 1 sentence that sets the tone]
-[Core information — what this is and how it affects the scene]
-[Behavioral cue — how characters act around/about this thing]
-[Sensory detail or narrative hook — something the LLM can use in prose]
-```
+Choose words users will actually say.
 
-**Example:**
+| Good strategy          | Example                                                |
+| ---------------------- | ------------------------------------------------------ |
+| Common name            | `Mina`, `the council`, `east tower`                    |
+| Conversational variant | `old magic`, `ancient magic`, `the old stuff`          |
+| Topic phrase           | `what happened`, `before the war`, `why did you leave` |
 
-```
-The Northern Reach is where Vaeloria goes to forget its problems — and its
-people. The province is cold in ways that have nothing to do with weather:
-polite distances, careful silences, debts remembered for generations. The
-towns are clean and orderly and profoundly unwelcoming to outsiders. People
-here speak softly, drink heavily, and settle grudges across decades. If
-someone from the Reach offers you hospitality, they mean it — and they'll
-expect you to earn it.
-```
+Avoid:
 
-This entry gives the LLM: setting mood, social dynamics, behavioral cues for NPCs from this region, and a narrative hook (the hospitality detail).
+- jargon nobody will type
+- single ultra-broad words that fire constantly
+- secrets attached to casual name mentions
 
----
+### Layered Trigger Depth
 
-## Trigger Keyword Patterns
+| Layer         | Trigger style               | Example                                                   |
+| ------------- | --------------------------- | --------------------------------------------------------- |
+| **Surface**   | name / place / common label | `Mina`, `east tower`                                      |
+| **Mid-depth** | topic cluster               | `archives`, `rumors`, `blackmail`                         |
+| **Deep**      | trust / discovery language  | `what are you hiding`, `why did you keep this`, `forgive` |
 
-### Single Character Bot
+### Collision Safeguards
 
-```
-Surface triggers (always available):
-  - Character name, nickname, common references
+Trigger collisions happen when too many relevant entries fire together.
 
-Topic triggers (mid-conversation):
-  - Backstory keywords, relationship names, location names
-  - "tell me about," "what happened," specific events
+Signs:
 
-Deep triggers (late-game):
-  - Secret-adjacent words, emotional keywords
-  - Words that imply intimacy or trust progression
-```
+- the bot starts listing facts from all active entries
+- a scene with one character suddenly includes three factions and two secrets
+- hidden layers surface just because neighboring keywords were present
 
-### World-Heavy Bot
+Safeguards:
 
-```
-Location triggers:
-  - Place names, "where are we," directional references
+1. split broad entries into focused ones
+2. give deep content narrower trigger paths
+3. prefer layered entries over all-in-one mega entries
+4. use selective or secondary keyword logic when available
+5. keep always-on summaries lightweight
 
-Mechanic triggers:
-  - System-specific terms (magic type names, tech terms)
-  - Action words ("cast," "hack," "pray")
+### Selective / Secondary Triggers
 
-Lore triggers:
-  - Historical event names, faction names
-  - Cultural terms, in-world jargon
-```
+When a broad keyword is unavoidable, require a second condition.
 
-### Selective Triggers (key + secondkey)
+| Broad key     | Secondary topic            | Purpose                                      |
+| ------------- | -------------------------- | -------------------------------------------- |
+| `magic`       | `old, origin, history`     | Stops history dumping on every spell mention |
+| `Mina`        | `past, archives, rumor`    | Backstory activates only when relevant       |
+| `the council` | `secret, corruption, vote` | Hidden politics stay hidden                  |
 
-Use selective mode when a broad keyword needs narrowing:
+### Decorator-Aware Activation Notes
 
-| key           | secondkey                | Activates when...                                    |
-| ------------- | ------------------------ | ---------------------------------------------------- |
-| `magic`       | `history, origin, old`   | Magic's history comes up, not every mention of magic |
-| `Kael`        | `past, knight, before`   | Kael's backstory, not every scene with Kael          |
-| `the Council` | `corrupt, secret, truth` | Council's hidden agenda, not general Council talk    |
+If your lorebook system supports insertion decorators or depth controls such as `@@depth`, `@@role`, or `@@position`, use them to refine already-good entry design — not to rescue bad architecture.
+
+Good use:
+
+- keep high-priority scene-routing entries close to the response
+- place low-priority world texture deeper in context
+- separate narrative framing from hard instruction
+
+Bad use:
+
+- stacking decorators on bloated entries that should have been split
+- using insertion priority to force irrelevant entries into every scene
+
+For exact decorator syntax, use `writing-lorebooks`.
 
 ---
 
 ## Folder Organization
 
-For bots with many entries, organize by category:
+Group by function, not just by noun type.
 
+```text
+World
+  - Current State
+  - Core Institutions
+  - Major Factions
+
+Cast
+  - Roster Summary
+  - Core Cast Profiles
+  - Recurring Cast Profiles
+
+Dynamics
+  - Pair Relationships
+  - Rivalries
+  - Shared Secrets
+
+Scenes
+  - Scene Management
+  - Social Rules
+  - Event Logic
+
+Secrets
+  - Public Rumors
+  - Mid-Depth Truths
+  - Hidden Causes
 ```
-📁 World
-   ├── Vaeloria (current state)
-   ├── The Ashplains
-   ├── Northern Reach
-   └── Old Magic
 
-📁 Characters
-   ├── Kael (extended backstory)
-   ├── Captain Dreve
-   └── The Employer
-
-📁 Secrets (deep triggers only)
-   ├── The scratched name
-   ├── Why Kael left the Order
-   └── The Employer's true goal
-
-📁 Mechanics
-   ├── Bloodline powers
-   └── The mercenary guild system
-```
-
-Use `add_lorebook({ comment: "folder name", mode: "folder", key: "", content: "" })` to create folders, then assign entries via their `folder` field.
+For very large bots, "Dynamics" and "Scenes" folders are often more valuable than yet another pile of biographies.
 
 ---
 
-## Common Entry Mistakes
+## Always-On Budget
 
-| Mistake                                                    | Fix                                                                             |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Entry depends on other entries being active                | Make each entry fully self-contained                                            |
-| Clinical/wiki tone against atmospheric description         | Rewrite in the description's voice                                              |
-| Trigger keyword is too broad (fires every turn)            | Use selective mode or more specific terms                                       |
-| Trigger keyword is too specific (never fires)              | Add conversational variants                                                     |
-| Entry describes what something _is_ but not what it _does_ | Add behavioral cues and narrative hooks                                         |
-| Secret info triggered by character's name                  | Use deep trigger words tied to discovery/trust                                  |
-| Duplicate content between description and lorebook         | Remove from whichever place it's less essential                                 |
-| Unfocused entry covering multiple unrelated topics         | Split into focused entries, each with appropriate triggers                      |
-| Low signal density (long entry, mostly biography/stats)    | Apply the Usefulness Test — cut lines that don't change LLM output              |
-| Redundant information across multiple entries              | Single-source each fact; repetition wastes attention                            |
-| Too many alwaysActive entries with low-priority content    | Reserve alwaysActive for core world rules, character lists, system instructions |
+Always-on entries compete for attention every turn.
+
+Good always-on candidates:
+
+- world current-state summary
+- short roster summary
+- scene-management entry
+- output or spoiler-prevention rules
+
+Move to keyword triggers when content is:
+
+- topic-specific
+- location-specific
+- relationship-specific
+- secret or reveal-driven
+- only relevant in some phases of play
+
+If your always-on stack becomes a second description, compress it.
 
 ---
 
-## AlwaysActive Budget
+## Audit Checklist
 
-AlwaysActive entries are **always in context** — they compete for the LLM's attention on every single turn. Even with 1M+ context, attention is finite.
+Ask these before calling the architecture finished:
 
-**High-value alwaysActive content:**
+| Check                | Question                                                       |
+| -------------------- | -------------------------------------------------------------- |
+| **Standalone**       | Can each important entry make sense alone?                     |
+| **Voice match**      | Does activated lore sound like it belongs in the same bot?     |
+| **Behavioral value** | Does each entry change scene output, not just explain facts?   |
+| **Trigger depth**    | Are secrets and deep truths gated well enough?                 |
+| **Collision safety** | What happens if 4–5 relevant entries activate together?        |
+| **Cast tiering**     | Are only the truly central characters always visible?          |
+| **Scene control**    | In a crowded scene, does the bot know where to focus?          |
+| **Leak prevention**  | Can casual mentions accidentally unlock late-game information? |
 
-- Core world rules and atmosphere
-- Character roster summaries (brief identifiers, not full profiles)
-- System instructions (formatting rules, spoiler prevention, output directives)
-- Probabilistic event systems (CBS conditionals make them near-zero cost when not triggered)
+---
 
-**Move to keyword-triggered:**
+## Final Rule
 
-- Detailed history and timelines → trigger on specific event names
-- Location descriptions → trigger on place names
-- Organization details → trigger on faction names
-- Character deep-dives → trigger on character names
+Do not measure a lorebook by how much it contains.
 
-**Monitoring:** If alwaysActive entries total exceeds ~5,000 tokens, review whether each one truly needs to be always present. Ask: _"If this entry were keyword-triggered instead, would anything break?"_ If the answer is "no, it would just activate when relevant," it shouldn't be alwaysActive.
+Measure it by how cleanly it answers:
+
+**"When this scene changes, which information should wake up — and what should stay asleep?"**
+
+The roles, patterns, and architecture outlines in this document are tools, not requirements. Use what serves your bot and leave the rest.

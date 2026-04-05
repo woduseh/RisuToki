@@ -1,45 +1,149 @@
 ---
 name: authoring-lorebook-bots
-description: 'Writes bot descriptions for lorebook-driven LLM roleplay bots. Produces atmospheric descriptions that serve as persistent tonal fields, character thumbnails, and interpretive lenses for lorebook content. Use when creating bots where detailed world/character information lives in lorebooks and the description provides the framing.'
+description: 'Writes lorebook-driven bot descriptions that frame tone, core cast, and scene logic while deeper world and character detail lives in lorebooks.'
 tags: ['authoring', 'lorebook', 'roleplay']
 related_tools: ['list_lorebook', 'read_lorebook', 'write_lorebook']
 ---
 
 # Bot Description for Lorebook-Driven Bots
 
-> **This guide is a toolkit, not a checklist.** The patterns here tend to produce strong lorebook-driven bots — but every bot has its own needs. If your bot's setting, tone, or structure calls for something different, trust that instinct over any guideline. The only real test is whether the LLM produces output that feels right. Adapt freely.
+> **Use this skill when the description is not supposed to carry everything.** In many bots the description provides the persistent frame — tone, world pressure, core cast thumbnail, and narrative direction — while the lorebook provides conditional detail. In lorebook-heavy bots the balance can shift further: the description's job becomes partly to teach the model how to read and use the lorebook itself.
+>
+> **If the main problem is one character's internal engine, voice, and contradictions, use [authoring-characters](../authoring-characters/).** This skill starts where single-character sheet-writing stops and architecture begins.
 
-## What a Bot Description Is
+## Route by Bot Shape
 
-A **mood board**, **genre contract**, **character thumbnail**, **narrative compass**, and **interpretive lens**.
+Most bots fall somewhere along this spectrum. These are common shapes, not a closed set — your bot's needs may call for a different balance.
 
-It is **not** a wiki article, a complete biography, a lorebook entry in the description slot, or a list of rules.
+| Bot shape                                       | Description job                                    | Lorebook job                                                           | Pair with                                                                |
+| ----------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| **Single-character bot with optional lorebook** | Keep the character strong even without entries     | Add state, reaction, deep reveal, or world support                     | [authoring-characters](../authoring-characters/)                         |
+| **2–4 recurring characters**                    | Establish tone, group tension, and cast thumbnails | Carry pair dynamics, deeper profiles, and scene-specific behavior      | [authoring-characters](../authoring-characters/) for per-character voice |
+| **10+ cast / world bot**                        | Frame the world, POV rules, and only the core cast | Carry most character/world detail, activation rules, and secret layers | [authoring-characters](../authoring-characters/) only for the core cast  |
 
-**The litmus test:** Delete all lorebook entries. Can the LLM still produce something that _feels right_ with only the description? If yes, the description works.
+For scale-specific recipes, use [BOT_SCALES.md](BOT_SCALES.md). For entry design and activation logic, use [LOREBOOK_ARCHITECTURE.md](LOREBOOK_ARCHITECTURE.md).
+
+---
+
+## What a Lorebook-Driven Description Is
+
+At its best, the description works as some combination of:
+
+- **tonal field**
+- **genre contract**
+- **interpretive lens**
+- **core-cast thumbnail board**
+- **scene-direction surface**
+
+It is generally **not** well served by being:
+
+- a wiki article
+- a full roster dump
+- a database summary
+- a lorebook pasted into the description slot
+
+### Litmus test
+
+**For description-led bots:** Delete the lorebook.
+
+- If the bot still feels tonally right, the description works.
+- If the bot still performs every hidden detail and side character, the description is probably overloaded.
+
+**For lorebook-heavy bots:** Delete the description.
+
+- If the bot loses all sense of tone, pacing, and genre, the description was doing its job.
+- If nothing changes, the description may be dead weight or the lorebook has absorbed work the description should own.
+
+In either case the ideal description gives the model the **right instinct**, not the full archive. How much of the engine lives in description vs lorebook varies by design — neither balance is inherently better.
 
 ---
 
 ## Core Principles
 
-### 1. The Description Is the Only Constant
+### 1. The Description Is the Persistent Anchor
 
-Lorebook entries come and go by trigger. The description is **always in context** — every word must earn its place.
+Lorebook entries activate conditionally. The description is always present. That usually makes it the natural home for:
 
-### 2. Atmosphere Over Information
+- atmosphere
+- behavioral framing
+- prose style
+- current pressure
+- the cast/world routing rules the model should never forget
 
-The description establishes a **persistent tonal field**. A noir bot should make breakfast feel like it's under gray light. A cozy fantasy should make tense moments feel like they'll end warmly. Facts are cheap; atmosphere is expensive.
+In lorebook-heavy designs, some of this weight may shift to always-on lorebook entries or `globalNote`. The principle still holds: whatever is always present shapes every response.
 
-### 3. Character Essence, Not Encyclopedia
+### 2. Atmosphere Beats Information
 
-For a lorebook-driven bot, the character needs: **core identity** (the behavioral engine), **current emotional state** (starting fuel), and **speech DNA** (enough to extrapolate consistent voice). Detailed history, relationships, and lore → lorebook. However, the character's psychological depth should be sufficient that the LLM can produce nuanced, consistent behavior even without lorebook entries active.
+The world section should tell the model how the world **feels to inhabit now**, not how to pass a trivia exam about it.
 
-### 4. The Description Sets the Style Standard
+### 3. Description Sets the Interpretation Style
 
-The LLM mirrors the prose style it sees in context. An atmospheric description produces atmospheric integration of lorebook facts. A bullet-point description produces info-dumps. Write the description in the style you want the RP output to match.
+Lorebook entries are filtered through whatever prose the description establishes.
 
-### 5. Imply More Than You State
+- atmospheric description -> lorebook facts integrate like fiction
+- clinical description -> lorebook facts get dumped like notes
 
-Write as though the narrator already knows the world — drop references without explaining them, use world-specific language casually, treat extraordinary things as mundane. The lorebook provides details when relevant; the description provides the _feeling_ that details exist.
+### 4. The More Characters You Have, the More Brutal Your Compression Must Be
+
+Large casts fail because every character gets protagonist treatment in always-on text.
+
+Keep full treatment for whoever actually defines the bot. Everyone else gets:
+
+- a thumbnail
+- a scene function
+- a trigger path into deeper lore
+
+### 5. Put Conditional Depth Where Conditions Exist
+
+If information matters only when:
+
+- a certain person appears
+- a specific topic is raised
+- trust deepens
+- a place is visited
+- a hidden layer is discovered
+
+...then it probably belongs in lorebook, not in the base description.
+
+### 6. The Description Should Teach the Bot How to Use the Lorebook
+
+The best descriptions imply that more detail exists without turning toward exposition.
+
+They teach the bot to:
+
+- treat the world as already lived-in
+- surface detail only when relevant
+- preserve tone even when activating factual entries
+
+In lorebook-heavy bots, this teaching role can become the description's primary job — framing the interpretive lens and behavioral contract that shapes how the model reads every lorebook entry it encounters.
+
+---
+
+## Role Boundary vs. `authoring-characters`
+
+Use **authoring-characters** for:
+
+- wound as scene
+- Want vs. Need
+- mask/leak
+- speech system
+- silence rules
+- narration lens
+- deep per-character performance
+
+Use **this skill** for:
+
+- description-level world framing
+- cast compression
+- roster logic
+- what stays always-on vs conditional
+- lorebook activation strategy
+- relationship / scene / world architecture
+
+In practice:
+
+- write the **core cast well** with `authoring-characters`
+- decide **how much of that survives in always-on text** with this skill
 
 ---
 
@@ -47,306 +151,250 @@ Write as though the narrator already knows the world — drop references without
 
 ### Step 1 — Define the Atmospheric Core
 
-Answer three questions before writing anything:
+Before drafting, decide:
 
-| Question                                                                  | What it determines                                                            |
-| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **Genre** — What kind of story is this?                                   | Event expectations, emotional register, narrative patterns                    |
-| **Texture** — If this bot were a physical space, what would it feel like? | Sensory language, prose temperature ("warm lamplight" vs "fluorescent hum")   |
-| **Emotional gravity** — What hangs in the air?                            | Dominant undercurrent: melancholy, tension, dread, longing, quiet contentment |
+| Question              | What it controls                                                          |
+| --------------------- | ------------------------------------------------------------------------- |
+| **Genre**             | Story expectations and failure modes                                      |
+| **Texture**           | Sensory language and prose temperature                                    |
+| **Emotional gravity** | What hangs over normal scenes                                             |
+| **Scene mode**        | Solo intimacy, rotating cast drama, world simulation, investigation, etc. |
 
-These don't go into the description directly. They're your compass.
+These are your compass, not necessarily literal text to paste.
 
-### Step 2 — Write the World in a Paragraph
+### Step 2 — Write the World as a Present Tense Pressure Field
 
-One paragraph to one short section. Like the first page of a novel.
+One paragraph is often enough.
 
-**Include:** Core world rule, sensory texture, current state, implied instability.
-**Exclude:** History lessons, political systems, geography, faction lists → lorebook.
+Include:
 
-❌ **Bad** (information dump):
+- core world rule
+- sensory texture
+- what is unstable **right now**
+- what kinds of scenes the bot naturally wants to generate
 
-```
-The Kingdom of Vaeloria was founded 3,000 years ago by the Dragon Empress Sylith
-after the War of Sundering. It is divided into five provinces: Northern Reach,
-the Ashplains, Emerald Coast, the Thornwood Marches, and the Imperial Capital
-of Aethis. The current political system is a constitutional monarchy with a
-Council of Voices representing each province...
-```
+Exclude:
 
-✅ **Good** (atmospheric primer):
+- full history
+- full geography
+- faction lists
+- system internals better handled by lorebook
 
-```
-Vaeloria is a kingdom that remembers too much. The old magic — the kind that
-reshaped continents — is gone, but its scars are everywhere: in the crystallized
-wastelands where nothing grows, in the songs that make animals flee, in the
-bloodlines that still carry powers nobody asked for. The empire holds together
-through tradition and stubbornness, but the edges are fraying. Something is
-shifting in the provinces, and the capital pretends not to notice.
+```text
+Bad:  The empire has seven provinces, three councils, and a 400-year succession dispute...
+Good: The empire is held together by etiquette, debt, and the mutual pretense that nothing has started rotting.
 ```
 
-The good version tells the LLM less factually but gives it far more to work with narratively.
+### Step 3 — Decide the Cast Tiering
 
-### Step 3 — Write the Character Thumbnail
+Before writing cast text, separate characters by importance.
 
-Compress the character to the **Essential Triad**:
+| Tier                | Description investment                | Lorebook investment |
+| ------------------- | ------------------------------------- | ------------------- |
+| **Core cast**       | moderate thumbnail or full mini-sheet | high                |
+| **Recurring cast**  | one-line thumbnail                    | moderate            |
+| **Background cast** | roster mention or none                | low to moderate     |
 
-#### Core Identity (2–4 sentences)
+If you cannot say why a character must be always-on, they probably do not belong in the description.
 
-Not their résumé — their _nature_.
+### Step 4 — Write Character Thumbnails, Not Full Biographies
 
-❌ **Bad:**
+For lorebook-driven bots, a thumbnail should usually answer:
 
-```
-Kael is a 32-year-old former knight turned mercenary who specializes in
-defensive combat and has a scar across his left eye from the Battle of
-Ashford. He carries a bastard sword named Oathkeeper.
-```
+1. what force this character brings into scenes
+2. how they feel **right now**
+3. what makes them distinct at a glance
 
-✅ **Good:**
-
-```
-Kael fights like a man who's already decided he doesn't deserve to survive —
-all defense, no self-preservation, throwing his body between harm and whoever
-hired him this week. He speaks like the knight he used to be and drinks like
-the one he's trying to forget.
+```text
+Bad:  Mina is a 27-year-old archivist who works in the east tower and likes tea.
+Good: Mina files rumors the way other people sharpen knives — quietly, precisely, and with obvious enjoyment.
 ```
 
-The good version gives the LLM a **behavioral engine** — it can generate reactions to any situation.
-
-#### Current Emotional State (1–3 sentences)
-
-Where the character is _right now_ — the RP's starting fuel.
-
-```
-He's three months into a contract that should have been simple, and two days
-past the point where he started suspecting his employer wants him dead. He's
-not scared — he's annoyed. Being betrayed is an inconvenience, not a wound.
-Not anymore.
-```
-
-#### Speech DNA
-
-Enough flavor that the LLM can extrapolate. Provide:
-
-- Default mode (2–3 example lines)
-- One contrasting mode (shift under pressure)
-- 1–2 consistency anchors (verbal tics that persist across moods)
-
-```
-Default: Short sentences. Dry. Rarely asks questions — makes statements that
-imply questions. Never says "I feel" anything.
-  "Job's done. You can pay me or not. I'll remember either way."
-  "That's a lot of guards for a building with nothing to hide."
-
-Under pressure: Gets quieter, not louder. Fragments. Old knightly formality
-leaks through.
-  "Behind me. Now."
-  "I gave my word. That hasn't changed."
-
-Anchor: Refers to people by function, not name, until he respects them
-("the merchant," "the healer," "the loud one").
-```
-
-### Step 4 — Set the Narrative Style
-
-Write the description **in the prose style you want the output to match**. The LLM mirrors what it reads.
-
-If you need to be explicit, briefly define:
-
-- **Prose density** — sparse and punchy, or rich and atmospheric?
-- **Perspective** — internal thoughts, external only, or mixed?
-- **Pacing** — quick cuts or slow immersive passages?
-- **Sensory emphasis** — which senses does this world notice most?
+If a character needs a deeper engine than that, write it in `authoring-characters` and move the rest into a dedicated lorebook entry.
 
 ### Step 5 — Establish the Lorebook Contract
 
-Signal that information will arrive dynamically.
+The description should imply that:
 
-**Subtle (preferred):** Write as though the narrator knows the world intimately and doesn't need to explain. The LLM learns to expect details from elsewhere.
+- specific names, places, topics, and discoveries will unlock more detail
+- hidden truths arrive late, not instantly
+- not every known fact deserves screen time in every scene
 
-**Explicit (when needed):**
+You can do this subtly by writing like a narrator who already knows the world.
 
-```
-[Detailed world lore, character history, NPC profiles, and location descriptions
-are provided through lorebook entries that activate contextually. The description
-above provides the persistent tone and character core.]
-```
+Only use explicit meta-text when the bot truly needs it.
 
----
+### Step 6 — Define Scene Logic
 
-## Bot Description Template
+For lorebook-driven bots, scene logic is often more important than raw fact coverage.
 
-```markdown
-### World
+Briefly define:
 
-[One paragraph to one section. Atmosphere, core rule, current state, implied depth.]
-[Write in the narrative voice you want the RP to use.]
+- who tends to own the opening beat
+- how crowded scenes should focus attention
+- whether the bot prefers intimate dialogue, rotating spotlight scenes, or world-reactive narration
+- what kinds of conflicts should recur
 
-### {{char}}
+This helps prevent the common failure where a rich lorebook exists but the bot does not know **how to stage it**.
 
-[Core identity: 2–4 sentences of behavioral essence]
-[Current state: 1–3 sentences of emotional/situational starting point]
-[Relationship to {{user}}: the dynamic, not just the label]
+### Step 7 — Decide What Goes Where
 
-### Voice
+| Keep in description                  | Move to lorebook                                 |
+| ------------------------------------ | ------------------------------------------------ |
+| World atmosphere and tone            | Detailed history and timelines                   |
+| Core world rule                      | Deep mechanics and system exceptions             |
+| Core cast thumbnail                  | Full character profiles                          |
+| Relationship to {{user}}             | Pair dynamics among side characters              |
+| Starting situation / current tension | Location entries, faction entries, secret layers |
+| Prose style and scene logic          | Topic-sensitive reactions and reveal chains      |
 
-[DNA markers — always-present tics (2–3)]
-[Default speech mode + 3–5 example lines with stage directions]
-[One shift mode + 2–3 example lines]
-[Code-switching rules for multilingual characters]
-[Inner voice: 1–2 sentences if relevant]
+Gray-zone rule:
 
-### The Situation
+- **existence** in description
+- **explanation** in lorebook
 
-[Where the RP begins. What's happening. What tension exists.]
-[What {{char}} knows / doesn't know / is wrong about right now.]
-```
+Examples:
 
-### Investment Guidance
+- Key contradiction -> hint in description, full cause in lorebook
+- Core institution -> one-line pressure in description, workings in lorebook
+- Important NPC -> thumbnail in description, full profile in lorebook
 
-| Section        | Priority              | Notes                                                                                   |
-| -------------- | --------------------- | --------------------------------------------------------------------------------------- |
-| Voice          | **Highest** — ~30–35% | Speech examples directly shape every turn of output. DNA markers + 2 registers minimum. |
-| Character Core | **High** — ~25%       | Behavioral engine + current state. Include Surface vs. Subversion if space allows.      |
-| World          | **Medium** — ~20%     | Atmosphere and core rule.                                                               |
-| Situation      | **Medium** — ~15–20%  | Starting tension.                                                                       |
+### Step 8 — Write the Opening Message
 
-**Target length is flexible.** A compact bot description might be 400–800 tokens. A richer one might be 1,500–2,500 tokens. With modern LLMs, the description can be longer if the content is high-quality and behavioral. The key constraint is: keep detailed _information_ (history, mechanics, NPC profiles) in lorebook entries, and keep the description focused on _atmosphere, personality, and voice_.
+The opening message should prove that the description+lorebook architecture creates a living scene.
 
-If you find your description exceeding 2,500 tokens, check whether you've drifted from atmospheric framing into detailed information that belongs in lorebook entries.
+Do:
 
----
+1. show the world through texture, not exposition
+2. foreground the current scene owner
+3. imply more cast/world depth than you explain
+4. leave clean room for user response
 
-## What Goes Where
+Do not:
 
-| Always in Description               | Always in Lorebook                      |
-| ----------------------------------- | --------------------------------------- |
-| World atmosphere and tone           | Detailed backstory events and timeline  |
-| Character's behavioral core         | NPC profiles and relationship histories |
-| Speech essentials (3–5 examples)    | Location descriptions                   |
-| Current emotional/situational state | World mechanics (magic, tech, politics) |
-| Relationship dynamic with {{user}}  | Faction/organization details            |
-|                                     | Detailed abilities/skills               |
-|                                     | Secrets and hidden lore                 |
-|                                     | Situational behavioral rules            |
+- introduce the whole roster
+- dump three active lorebook entries at once
+- explain the world before anyone has acted in it
 
-**With modern large-context LLMs, this boundary is flexible.** Extended speech registers, for instance, can stay in the description if the character's voice is the bot's primary draw. The deciding factor is _narrative role_: content that shapes the overall atmosphere and every-turn output → description. Content that's relevant only when a specific topic arises → lorebook.
+If the opening scene depends on one core character landing with protagonist-grade voice, build that character's sheet in [authoring-characters](../authoring-characters/) first.
 
-**Gray zone decisions:**
-
-- **Key contradiction** → _existence_ in description, _backstory explaining it_ in lorebook
-- **Central NPC** → one-sentence mention in description + full profile in lorebook
-- **Core world mechanic** → the rule in description, how it works in lorebook
-
-→ See **[LOREBOOK_ARCHITECTURE.md](./LOREBOOK_ARCHITECTURE.md)** for detailed lorebook entry design.
+> **Alternate firstMessage shapes.** An atmospheric scene opener is the most common shape, but bots can validly use other patterns:
+>
+> - **scenario bank / branch library** — multiple self-contained scene starts the user selects from
+> - **setup router / setup UX** — an interactive opener that configures the scenario before play begins
+> - **minimal placeholder or trigger stub** — a short seed that lets triggers or lorebook activations build the real opening
+>
+> These are advanced or niche patterns; the atmospheric scene opener remains a reliable default.
 
 ---
 
-## Opening Message Guidelines
+## Scale Notes
 
-The opening message brings the world alive beyond the compressed description.
+### Single-character with lorebook support
 
-**Do:**
+Use the description to keep the character emotionally alive on every turn.
 
-1. Demonstrate the world's texture through sensory detail, not exposition
-2. Show the character's default mode — voice, behavior, presence
-3. Imply depth without explaining (reference things the lorebook will expand)
-4. Create a natural entry point for {{user}} — a reason to respond
+Use lorebook for:
 
-**Don't:**
+- state progression
+- topic-based reactions
+- deeper world support
+- gated revelations
 
-- Explain world history or rules (let {{user}} discover them)
-- Introduce through self-description ("I am X, I do Y")
-- Frontload lorebook information
-- Open so dramatic there's nowhere to go but down
+### 2–4 recurring characters
 
-❌ **Bad:**
+The description should carry:
 
-```
-*Welcome to the Kingdom of Vaeloria, a land of ancient magic and political
-intrigue. Kael is a former knight turned mercenary, carrying deep scars
-from his past...*
+- group tension
+- each recurring character's thumbnail
+- the relationship shape between {{user}} and the cast
+- what kinds of scenes the ensemble creates
 
-"I'm Kael. I used to serve the crown, but that was a long time ago. Now I
-take jobs for coin. What do you need?"
-```
+The lorebook should carry:
 
-✅ **Good:**
+- full profiles
+- pair dynamics
+- rivalries, secrets, and progression
+- scene-dependent behavior
 
-```
-*The tavern smells like wet wood and regret. The kind of place where the
-candles are more for atmosphere than function, and the barkeep has learned
-to stop asking questions about the stains on the floor.*
+Small ensembles can be structurally simple. If the cast chemistry works with short always-on dossiers and no trigger gating, that is a valid architecture — not every ensemble needs a complex scaffolding stack.
 
-*The man in the corner booth hasn't looked up from his drink in twenty
-minutes. His armor — well-maintained, oddly formal for a place like this —
-marks him as either very new to mercenary work or very old at it. The sword
-propped against the wall beside him has a name engraved on the pommel, but
-the letters have been scratched out.*
+### 10+ world/cast
 
-*He notices you before you reach the table. Not a flinch — just a shift in
-attention, the kind that says he catalogued every person in this room the
-moment he walked in.*
+The description should carry:
 
-"Seat's not taken." *A pause that's almost courteous.* "Neither is my time,
-if you're buying."
-```
+- world tone
+- POV rules
+- core cast only
+- scene-management expectations
+
+The lorebook should carry almost everything else.
+
+If the description starts resembling a cast index, stop and compress.
+
+Use [BOT_SCALES.md](BOT_SCALES.md) for concrete recipes.
 
 ---
 
-## Validation Checklist
+## RisuAI Placement Notes
 
-Run every description through these checks:
+This skill stays frontend-agnostic, but in RisuAI the usual mapping is:
 
-| Check           | Question                                                                                  |
-| --------------- | ----------------------------------------------------------------------------------------- |
-| **Atmosphere**  | Reading only the description — do I _feel_ the world and character?                       |
-| **Standalone**  | Could the LLM run an engaging scene with only the description?                            |
-| **Redundancy**  | Is anything duplicated between description and lorebook?                                  |
-| **Voice**       | Are there enough speech examples to produce 10 consistent lines? Are DNA markers defined? |
-| **Lens**        | Does the tone color how the LLM will interpret lorebook entries?                          |
-| **Implication** | Does the description reference things it doesn't fully explain?                           |
-| **Depth**       | Is the character's behavioral engine rich enough to handle unexpected situations?         |
+| Risu field / surface                         | Best use                                                                                                                                                                       |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `description`                                | Tonal field, core cast thumbnails, scene logic                                                                                                                                 |
+| `firstMessage`                               | Proof-of-concept scene that demonstrates the architecture                                                                                                                      |
+| Lorebook entries                             | World systems, character profiles, locations, relationships, secrets, state/reaction layers                                                                                    |
+| `globalNote` or equivalent post-history note | Direction rules, pacing notes, anti-spoiler reminders. In advanced bots this can carry heavier loads: behavioral contracts, output-shape rules, or persistent scene directives |
+
+> **Advanced optional surfaces.** Some bots extend their architecture with technical surfaces like CBS variables, Lua scripting, CSS display panels, regex postprocessing, or trigger scripts — used for setup UX, live state displays, conditional routing, or output formatting. These are powerful amplifiers for ambitious designs, but they are never prerequisites. A bot with well-written description and lorebook needs none of them.
+
+For exact lorebook mechanics, decorators, and insertion controls, use `writing-lorebooks`.
 
 ---
 
 ## Common Mistakes
 
-| Mistake                                             | Why It Hurts                                                    | Fix                                                                                  |
-| --------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| All facts, no atmosphere                            | Flat, wiki-like narration                                       | Rewrite facts as atmosphere; show don't tell                                         |
-| Description and lorebook in different styles        | Tonal whiplash in output                                        | Write lorebook in the same voice as description                                      |
-| No speech examples                                  | Inconsistent character voice from the start                     | Always include 3–5 examples, even compressed                                         |
-| World section is a history lesson                   | LLM opens with exposition instead of immersion                  | Write the world as it feels _now_, not as a timeline                                 |
-| No current situation                                | LLM defaults to generic scenes                                  | Always include emotional state, location, active tension                             |
-| No DNA markers                                      | Character voice drifts over long conversations                  | Add 2–3 always-present tics per SPEECH_SYSTEM.md                                     |
-| Information in description that belongs in lorebook | Description bloated with content that's only sometimes relevant | Keep description focused on atmosphere, personality, voice; move details to lorebook |
+| Mistake                                             | Why it hurts                                         | Fix                                                       |
+| --------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| Description is a wiki summary                       | The bot opens by explaining instead of roleplaying   | Rewrite for atmosphere, pressure, and scene utility       |
+| Every character gets a full sheet in always-on text | Attention collapses and cast blur starts immediately | Tier the cast and move detail to lorebook                 |
+| Description and lorebook use different prose styles | Activated detail feels pasted on                     | Match voice across both surfaces                          |
+| Secrets trigger on names alone                      | Deep lore leaks too early                            | Use layered or topic-sensitive triggers                   |
+| Rich lorebook, weak description                     | The bot has information but no instinct              | Strengthen the description's tonal and scene-routing role |
+| Rich description, dead lorebook                     | The bot feels flat outside base scenes               | Build entries that change behavior, not just store facts  |
+| Crowded first message                               | User gets an infodump instead of a hook              | Start with one scene owner and one pressure line          |
+
+For entry-level fixes, use [LOREBOOK_ARCHITECTURE.md](LOREBOOK_ARCHITECTURE.md).
 
 ---
 
 ## Output Format
 
-When producing a lorebook-driven bot, deliver:
+Deliver:
 
-```
+```markdown
 ## Design Notes
-(Atmospheric core decisions, character essence rationale,
-lorebook architecture overview — for the user, not the LLM)
+
+(Atmospheric core, cast tiering, lorebook contract, scale decision)
 
 ---
 
 ## Bot Description
-(Markdown with ### sections. Ready to paste.)
+
+(Markdown with clear world / cast / situation sections, ready to paste)
 
 ---
 
 ## Opening Message
-(First message that brings the world alive.)
+
+(First scene proving the description architecture works)
 
 ---
 
-## Lorebook Architecture (Recommended)
-(Structured list of recommended entries:
- - Entry name / trigger keywords / content summary / insertion order)
+## Lorebook Architecture
+
+(Recommended entry groups, trigger logic, and what belongs there)
 ```
+
+If the user also needs a protagonist-grade character sheet for the core cast, pair this skill with [authoring-characters](../authoring-characters/).
