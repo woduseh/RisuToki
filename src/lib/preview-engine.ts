@@ -2346,6 +2346,14 @@ export const PreviewEngine: PreviewEngineModule = (() => {
         function getLastMessage(id) _raw_getLastMessage(id); return _jsRet end
         function getCurrentChatId() _raw_getCurrentChatId(); return _jsRet end
         function getCharacterId() _raw_getCharacterId(); return _jsRet end
+        function getState(id, name)
+          local escapedName = "__"..name
+          return json.decode(getChatVar(id, escapedName))
+        end
+        function setState(id, name, value)
+          local escapedName = "__"..name
+          setChatVar(id, escapedName, json.encode(value))
+        end
       `);
 
       if (luaCode) {

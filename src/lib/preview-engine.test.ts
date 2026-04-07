@@ -1188,3 +1188,101 @@ describe('PreviewEngine #when evaluation parity', () => {
     expect(result).toBe('hello');
   });
 });
+
+// ── getState/setState Lua parity (Hinano button regression) ─────────
+
+describe('PreviewEngine getState/setState parity', () => {
+  const windowWithWasmoon = window as Window & typeof globalThis & { wasmoon?: unknown };
+
+  afterEach(() => {
+    delete windowWithWasmoon.wasmoon;
+    PreviewEngine.resetVars();
+  });
+
+  function makeFakeWasmoon() {
+    const globalStore = new Map<string, unknown>();
+    globalStore.set('_callResult_modified', '0');
+
+    const doStringCalls: string[] = [];
+    const fakeEngine = {
+      global: {
+        set(key: string, value: unknown) {
+          globalStore.set(key, value);
+        },
+        get(key: string) {
+          return globalStore.get(key);
+        },
+        close() {},
+      },
+      async doString(code: string) {
+        doStringCalls.push(code);
+      },
+    };
+
+    windowWithWasmoon.wasmoon = {
+      LuaFactory: class {
+        async createEngine() {
+          return fakeEngine;
+        }
+      },
+    };
+
+    return { globalStore, doStringCalls };
+  }
+
+  it('Lua preamble should define getState and setState helper functions (RisuAI parity)', async () => {
+    // In RisuAI, getState/setState are Lua helpers defined in the preamble:
+    //   function getState(id, name)
+    //     local escapedName = "__"..name
+    //     return json.decode(getChatVar(id, escapedName))
+    //   end
+    //   function setState(id, name, value)
+    //     local escapedName = "__"..name
+    //     setChatVar(id, escapedName, json.encode(value))
+    //   end
+    //
+    // The preview engine currently lacks these definitions, causing Hinano
+    // button triggers that call setState/getState to fail silently.
+    const { doStringCalls } = makeFakeWasmoon();
+    await PreviewEngine.initLua('-- user code');
+
+    const allPreamble = doStringCalls.join('\n');
+    expect(allPreamble).toContain('function getState');
+    expect(allPreamble).toContain('function setState');
+  });
+
+  it('state round-trip: setState stores JSON-encoded value under __-prefixed chat var', async () => {
+    // RisuAI pattern: setState(id, "mood", "happy") → setChatVar(id, "__mood", '"happy"')
+    // Verify the preview engine's setChatVar can store the __-prefixed key and
+    // getChatVar can retrieve it, matching the RisuAI getState/setState contract.
+    PreviewEngine.resetVars();
+
+    // Simulate what setState("preview", "mood", "happy") should do:
+    PreviewEngine.setChatVar('__mood', JSON.stringify('happy'));
+
+    // Simulate what getState("preview", "mood") should return:
+    const stored = PreviewEngine.getChatVar('__mood');
+    expect(stored).toBe('"happy"');
+    expect(JSON.parse(stored)).toBe('happy');
+  });
+
+  it('state round-trip preserves complex JSON values through __-prefixed vars', () => {
+    PreviewEngine.resetVars();
+
+    const state = { hp: 100, status: 'normal', buffs: ['shield'] };
+    PreviewEngine.setChatVar('__battleState', JSON.stringify(state));
+
+    const raw = PreviewEngine.getChatVar('__battleState');
+    expect(JSON.parse(raw)).toEqual(state);
+  });
+
+  it('getVariables exposes __-prefixed state vars so they reach snapshot', () => {
+    // When a button trigger calls setState, the resulting __-prefixed var
+    // must appear in getVariables() so preview snapshots capture it.
+    PreviewEngine.resetVars();
+    PreviewEngine.setChatVar('__mood', '"happy"');
+
+    const vars = PreviewEngine.getVariables();
+    expect(vars).toHaveProperty('$__mood', '"happy"');
+  });
+});

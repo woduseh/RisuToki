@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDocumentPreviewRuntime, PreviewRuntimeTimeoutError } from './preview-runtime';
+import type { PreviewBridgeMessage } from './preview-runtime';
 import { createPreviewSession } from './preview-session';
 import type {
   CreatePreviewSessionOptions,
@@ -1021,5 +1022,236 @@ describe('preview session', () => {
     expect(session.getSnapshot().initState).toBe('error');
     expect(session.getSnapshot().initError).toContain('reset lua boom');
     expect(onError).toHaveBeenCalled();
+  });
+});
+
+// ── Hinano button parity: state round-trip / rerender / request injection ──
+
+describe('preview session: button-driven state parity (Hinano regression)', () => {
+  it('named trigger (risu-trigger) can set state that survives rerender', async () => {
+    // Simulates Hinano's Status Display buttons: a risu-trigger button fires
+    // a named trigger that calls setState, then display re-renders. The state
+    // must persist through the rerender cycle.
+    const engine = createEngine();
+    // Override runLuaTriggerByName to simulate setState behavior:
+    // In RisuAI, the trigger calls setState(id, "mood", "happy") which does
+    // setChatVar(id, "__mood", json.encode("happy"))
+    engine.runLuaTriggerByName = vi.fn(async (name: string) => {
+      engine.state.namedTrigger = name;
+      // Simulate what Lua setState would do:
+      engine.setChatVar('__mood', JSON.stringify('happy'));
+    });
+
+    const chatFrame = createChatFrame();
+    const windowTarget = createWindowTarget();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Hinano',
+        description: '',
+        firstMessage: '<button risu-trigger="setMood">기분 변경</button>',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script',
+      },
+      chatFrame,
+      windowTarget,
+    });
+
+    await session.initialize();
+
+    // Click the trigger button
+    const button = chatFrame.contentDocument.querySelector(
+      'button[risu-trigger="setMood"]',
+    ) as HTMLButtonElement | null;
+    expect(button).not.toBeNull();
+
+    button?.click();
+    await flushMessages();
+
+    // State must survive the rerender that happens after trigger execution
+    const snapshot = session.getSnapshot();
+    expect(engine.runLuaTriggerByName).toHaveBeenCalledWith('setMood');
+    expect(snapshot.variables.__mood).toBe(JSON.stringify('happy'));
+  });
+
+  it('button-driven display refresh re-renders messages after state change', async () => {
+    // After a risu-trigger button click, handleBridgeMessage calls
+    // reRenderMessages(). This test verifies that messages are actually
+    // cleared and re-added (display refresh visibility).
+    const engine = createEngine();
+    const appendCalls: Array<{ index: number; content: string }> = [];
+    const clearCalls: number[] = [];
+
+    const runtime: NonNullable<CreatePreviewSessionOptions['runtime']> = {
+      async appendMessage(msg) {
+        appendCalls.push({ index: msg.index, content: msg.content });
+      },
+      async clearMessages() {
+        clearCalls.push(1);
+      },
+      createBridgeMessage(message) {
+        return message;
+      },
+      dispose() {},
+      parseBridgeMessage(data) {
+        return data as PreviewBridgeMessage | null;
+      },
+      async resetDocument() {},
+      scrollToBottom() {},
+      async setBackground() {},
+    };
+
+    const chatFrame = createChatFrame();
+    const windowTarget = createWindowTarget();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Hinano',
+        description: '',
+        firstMessage: '안녕하세요',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script',
+      },
+      chatFrame,
+      windowTarget,
+      runtime,
+    });
+
+    await session.initialize();
+
+    // Record counts after init
+    const initAppendCount = appendCalls.length;
+    expect(initAppendCount).toBe(1); // first message
+
+    // Simulate a risu-trigger bridge message (as if button was clicked)
+    const bridgeEvent = new CustomEvent('preview-runtime-bridge', {
+      detail: { type: 'risu-trigger', name: 'onAction' },
+    });
+    chatFrame.contentDocument.dispatchEvent(bridgeEvent);
+    await flushMessages();
+
+    // reRenderMessages should have cleared and re-added
+    expect(clearCalls.length).toBeGreaterThanOrEqual(1);
+    expect(appendCalls.length).toBeGreaterThan(initAppendCount);
+  });
+
+  it('setChatVar state set by trigger reaches snapshot variables (request processing parity)', async () => {
+    // In RisuAI, state set via setState/setChatVar during a trigger is
+    // available in the request processing pipeline. In preview, this means
+    // the snapshot variables must reflect the state after trigger execution.
+    const engine = createEngine();
+    engine.runLuaTriggerByName = vi.fn(async () => {
+      // Simulate trigger setting multiple state vars (like Hinano's HP/status)
+      engine.setChatVar('__hp', '100');
+      engine.setChatVar('__status', '"normal"');
+      engine.setChatVar('__location', '"academy"');
+    });
+
+    const chatFrame = createChatFrame();
+    const windowTarget = createWindowTarget();
+    const stateSnapshots: PreviewSnapshot[] = [];
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Hinano',
+        description: '',
+        firstMessage: '<button risu-trigger="initBattle">전투 시작</button>',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script',
+      },
+      chatFrame,
+      windowTarget,
+      onStateChange: (snapshot) => stateSnapshots.push(snapshot),
+    });
+
+    await session.initialize();
+
+    const button = chatFrame.contentDocument.querySelector(
+      'button[risu-trigger="initBattle"]',
+    ) as HTMLButtonElement | null;
+    button?.click();
+    await flushMessages();
+
+    // The final snapshot must contain all state vars set by the trigger
+    const finalSnapshot = session.getSnapshot();
+    expect(finalSnapshot.variables.__hp).toBe('100');
+    expect(finalSnapshot.variables.__status).toBe('"normal"');
+    expect(finalSnapshot.variables.__location).toBe('"academy"');
+  });
+
+  it('risu-btn button click preserves state set during Lua button handler', async () => {
+    // risu-btn fires runLuaButtonClick. If the handler sets state via
+    // setChatVar, it must persist through the subsequent rerender.
+    const engine = createEngine();
+    engine.runLuaButtonClick = vi.fn(async (_chatId: number, data: string) => {
+      engine.state.luaOutput.push(`button:${_chatId}:${data}`);
+      // Simulate Lua setState during button click:
+      engine.setChatVar('__action', JSON.stringify(data));
+    });
+
+    const chatFrame = createChatFrame();
+    const windowTarget = createWindowTarget();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Hinano',
+        description: '',
+        firstMessage: '<button risu-btn="attack">공격</button>',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script',
+      },
+      chatFrame,
+      windowTarget,
+    });
+
+    await session.initialize();
+
+    const button = chatFrame.contentDocument.querySelector('button[risu-btn="attack"]') as HTMLButtonElement | null;
+    expect(button).not.toBeNull();
+
+    button?.click();
+    await flushMessages();
+
+    const snapshot = session.getSnapshot();
+    expect(snapshot.variables.__action).toBe(JSON.stringify('attack'));
+  });
+
+  it('queued scenario: defaultVariables with __-prefixed state are available after init', async () => {
+    // Some cards pre-seed state via defaultVariables. The __-prefixed vars
+    // should be accessible just like regular vars for the request pipeline.
+    const engine = createEngine();
+    const chatFrame = createChatFrame();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Hinano',
+        description: '',
+        firstMessage: '안녕',
+        defaultVariables: '__hp = 100\n__status = normal\naffinity = 0',
+        css: '',
+        lorebook: [],
+        regex: [],
+      },
+      chatFrame,
+      windowTarget: createWindowTarget(),
+      runtime: createNoopRuntime(),
+    });
+
+    await session.initialize();
+
+    // defaultVariables should be set on the engine
+    expect(engine.state.defaultVariables).toBe('__hp = 100\n__status = normal\naffinity = 0');
   });
 });
