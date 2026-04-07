@@ -14,7 +14,6 @@
 ### 수정
 
 - **프리뷰 `getState`/`setState` 실제 RisuAI 동작 일치**: 프리뷰 엔진의 `getState`/`setState`가 `__`-prefix JSON-backed state contract를 사용하도록 수정하여, 실제 RisuAI 런타임과 동일한 상태 관리 동작을 보장합니다
-- **치트 스탯 변경 후 디스플레이 즉시 갱신**: Fujimiya Hinano charx의 치트 스탯 핸들러가 성공적인 쓰기 후 `reloadDisplay(id)`를 명시적으로 호출하여, 치트 변경 사항이 UI에 즉시 반영됩니다
 
 ## [0.38.1] - 2026-04-04
 
