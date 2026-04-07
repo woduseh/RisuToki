@@ -9,6 +9,12 @@
 
 ---
 
+## [0.38.3] - 2026-04-07
+
+### 수정
+
+- **카드 회귀 테스트 추가**: 번들 `.charx`가 async 치트 핸들러와 array-aware `editRequest` scenario injection을 유지하도록 `test-charx` 회귀 검사를 추가했습니다
+
 ## [0.38.2] - 2026-04-06
 
 ### 수정

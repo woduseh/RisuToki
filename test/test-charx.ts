@@ -424,6 +424,46 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.equal(reopened.mcpUrl || '', '');
 })();
 
+(function testBundledHinanoCardUsesAsyncCheatHandlersAndArrayAwareScenarioInjection() {
+  const filePath = path.resolve(__dirname, '..', 'risu', 'bot', 'Fujimiya Hinano', 'Fujimiya Hinano.charx');
+  assert.ok(fs.existsSync(filePath), 'Bundled Fujimiya Hinano card should exist');
+
+  const reopened = openCharx(filePath);
+  const mainTrigger = reopened.triggerScripts?.[0];
+  const mainEffect = Array.isArray(mainTrigger?.effect) ? mainTrigger.effect[0] : undefined;
+  const mainCode =
+    mainEffect && typeof mainEffect === 'object' && 'code' in mainEffect && typeof mainEffect.code === 'string'
+      ? mainEffect.code
+      : '';
+
+  assert.ok(mainCode.length > 0, 'Bundled Fujimiya Hinano card should expose triggerlua code');
+  assert.match(
+    mainCode,
+    /_G\["onSet" \.\. s\.label\] = async\(function\(id\)/,
+    'Cheat stat setters should wrap alertInput with async() so :await() resumes correctly',
+  );
+  assert.match(
+    mainCode,
+    /onTimeskip\s*=\s*async\(function\(id\)/,
+    'Time skip should wrap alertInput with async() so :await() resumes correctly',
+  );
+  assert.match(
+    mainCode,
+    /local function injectScenarioDirective\(data, directive\)/,
+    'Scenario injection should use a helper that can handle editRequest prompt arrays',
+  );
+  assert.match(
+    mainCode,
+    /if type\(data\) == "table" then/,
+    'Scenario injection should support editRequest chat arrays directly',
+  );
+  assert.doesNotMatch(
+    mainCode,
+    /return data \.\. "\\n\\n<scenario_directive>/,
+    'Scenario injection should not concatenate raw strings onto editRequest arrays',
+  );
+})();
+
 fs.rmSync(tempDir, { recursive: true, force: true });
 
 // ---- .risup round-trip test ----
