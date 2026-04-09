@@ -45,6 +45,8 @@ This skill is the agent-facing entrypoint for **project-level guidance** that ev
 5. **Snapshot before risky edits** — use `snapshot_field` for safety.
 
 > Full details: [`docs/MCP_WORKFLOW.md`](../../docs/MCP_WORKFLOW.md)
+>
+> For **detailed MCP tool-selection guidance** (batch-first patterns, large-field editing, context-budget sizing), load the companion skill: `read_skill("using-mcp-tools")`.
 
 ---
 

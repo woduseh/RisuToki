@@ -302,7 +302,8 @@ Windows에서 git 체크아웃이 링크를 일반 텍스트 파일(`../skills`)
 
 | 분류            | 대표 스킬                                                                                                                                | 용도                                                      |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| **워크플로**    | `using-mcp-tools`                                                                                                                        | 어떤 MCP 도구를 선택해야 할지 판단                        |
+| **온보딩**      | `project-workflow`                                                                                                                       | 세션 시작 시 프로젝트 규칙·MCP 워크플로 온보딩            |
+| **도구 선택**   | `using-mcp-tools`                                                                                                                        | MCP 도구 선택·대형 필드 편집·batch-first 원칙 상세        |
 | **구조 참조**   | `file-structure-reference`                                                                                                               | `.charx` / `.risum` / `.risup`, lorebook, regex 구조 확인 |
 | **태그 가이드** | `writing-danbooru-tags`                                                                                                                  | Danbooru 태그 검색·검증·정리                              |
 | **캐릭터 작성** | `authoring-characters`, `authoring-lorebook-bots`                                                                                        | 솔로·앙상블·대규모 월드캐스트 봇 description 작성 가이드  |

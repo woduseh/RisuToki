@@ -6,8 +6,9 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 
 | If you are... | Read first | Then read |
 | --- | --- | --- |
+| starting a new session or onboarding | `read_skill("project-workflow")` | `docs/MCP_WORKFLOW.md`, `docs/PROJECT_RULES.md` |
 | editing `.charx` / `.risum` / `.risup` through MCP | `AGENTS.md` (TOC) | `docs/MCP_WORKFLOW.md`, `docs/MCP_TOOL_SURFACE.md` |
-| learning MCP tool selection, read rules, workflow | `docs/MCP_WORKFLOW.md` | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
+| learning detailed MCP tool selection & read rules | `read_skill("using-mcp-tools")` | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
 | recovering from an MCP tool failure or no-op | `docs/MCP_ERROR_CONTRACT.md` | `docs/MCP_TOOL_SURFACE.md` |
 | changing application code | `CONTRIBUTING.md` | `docs/MODULE_MAP.md`, `docs/analysis/ARCHITECTURE.md` |
 | checking project rules (versioning, CI, persona) | `docs/PROJECT_RULES.md` | `CONTRIBUTING.md` |
