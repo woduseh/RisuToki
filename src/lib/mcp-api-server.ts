@@ -5829,7 +5829,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /lua — list Lua sections
       // ----------------------------------------------------------------
       if (parts[0] === 'lua' && !parts[1] && req.method === 'GET') {
-        return jsonRes(res, buildLuaListResponse(String(currentData.lua || ''), deps.parseLuaSections));
+        const luaListPayload = buildLuaListResponse(String(currentData.lua || ''), deps.parseLuaSections);
+        return jsonResSuccess(res, luaListPayload, {
+          toolName: 'list_lua',
+          summary: `Listed ${luaListPayload.count} Lua sections`,
+          artifacts: { count: luaListPayload.count },
+        });
       }
 
       // ----------------------------------------------------------------
@@ -5846,7 +5851,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lua:${idx}`,
           });
         }
-        return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
+        return jsonResSuccess(
+          res,
+          { index: idx, name: sections[idx].name, content: sections[idx].content },
+          {
+            toolName: 'read_lua',
+            summary: `Read Lua section [${idx}] "${sections[idx].name}" (${sections[idx].content.length} chars)`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5878,7 +5890,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (typeof idx !== 'number' || idx < 0 || idx >= sections.length) return null;
           return { index: idx, name: sections[idx].name, content: sections[idx].content };
         });
-        return jsonRes(res, { count: result.filter(Boolean).length, total: indices.length, sections: result });
+        return jsonResSuccess(
+          res,
+          { count: result.filter(Boolean).length, total: indices.length, sections: result },
+          {
+            toolName: 'read_lua',
+            summary: `Batch read ${result.filter(Boolean).length}/${indices.length} Lua sections`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5921,7 +5940,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           logMcpMutation('add lua section', `lua:add`, { sectionName: name, newIndex: sections.length - 1 });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
           deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
-          return jsonRes(res, { success: true, index: sections.length - 1, name, contentSize: content.length });
+          return jsonResSuccess(
+            res,
+            { success: true, index: sections.length - 1, name, contentSize: content.length },
+            {
+              toolName: 'add_lua_section',
+              summary: `Added Lua section [${sections.length - 1}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add lua section',
@@ -5978,7 +6004,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           logMcpMutation('write lua section', `lua:${idx}`, { sectionName, oldSize, newSize });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
           deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
-          return jsonRes(res, { success: true, index: idx, name: sectionName, size: newSize, warning });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx, name: sectionName, size: newSize, warning },
+            {
+              toolName: 'write_lua',
+              summary: `Updated Lua section [${idx}] "${sectionName}" (${oldSize} → ${newSize} chars)`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write lua section',
@@ -6056,14 +6089,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           logMcpMutation('replace lua section content', `lua:${idx}`, { sectionName, matchCount });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
           deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            name: sectionName,
-            matchCount,
-            oldSize: content.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              name: sectionName,
+              matchCount,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_in_lua',
+              summary: `Replaced ${matchCount} match(es) in Lua section [${idx}] "${sectionName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'replace lua section content',
@@ -6162,15 +6202,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
           deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            name: sectionName,
-            position,
-            oldSize: oldContent.length,
-            newSize: newContent.length,
-            warning: warning || undefined,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              name: sectionName,
+              position,
+              oldSize: oldContent.length,
+              newSize: newContent.length,
+              warning: warning || undefined,
+            },
+            {
+              toolName: 'insert_in_lua',
+              summary: `Inserted content at ${position} in Lua section [${idx}] "${sectionName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'insert lua section content',
@@ -6192,7 +6239,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           name: s.name,
           contentSize: s.content.length,
         }));
-        return jsonRes(res, { count: result.length, sections: result });
+        return jsonResSuccess(
+          res,
+          { count: result.length, sections: result },
+          {
+            toolName: 'list_css',
+            summary: `Listed ${result.length} CSS sections`,
+            artifacts: { count: result.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6209,7 +6264,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `css-section:${idx}`,
           });
         }
-        return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
+        return jsonResSuccess(
+          res,
+          { index: idx, name: sections[idx].name, content: sections[idx].content },
+          {
+            toolName: 'read_css',
+            summary: `Read CSS section [${idx}] "${sections[idx].name}" (${sections[idx].content.length} chars)`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6241,7 +6303,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (typeof idx !== 'number' || idx < 0 || idx >= sections.length) return null;
           return { index: idx, name: sections[idx].name, content: sections[idx].content };
         });
-        return jsonRes(res, { count: result.filter(Boolean).length, total: indices.length, sections: result });
+        return jsonResSuccess(
+          res,
+          { count: result.filter(Boolean).length, total: indices.length, sections: result },
+          {
+            toolName: 'read_css',
+            summary: `Batch read ${result.filter(Boolean).length}/${indices.length} CSS sections`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6282,7 +6351,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.css = deps.combineCssSections(sections, prefix, suffix);
           logMcpMutation('add css section', `css-section:add`, { sectionName: name, newIndex: sections.length - 1 });
           deps.broadcastToAll('data-updated', 'css', currentData.css);
-          return jsonRes(res, { success: true, index: sections.length - 1, name, contentSize: content.length });
+          return jsonResSuccess(
+            res,
+            { success: true, index: sections.length - 1, name, contentSize: content.length },
+            {
+              toolName: 'add_css_section',
+              summary: `Added CSS section [${sections.length - 1}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add css section',
@@ -6332,7 +6408,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.css = deps.combineCssSections(sections, prefix, suffix);
           logMcpMutation('write css section', `css-section:${idx}`, { sectionName, oldSize, newSize });
           deps.broadcastToAll('data-updated', 'css', currentData.css);
-          return jsonRes(res, { success: true, index: idx, name: sectionName, size: newSize });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx, name: sectionName, size: newSize },
+            {
+              toolName: 'write_css',
+              summary: `Updated CSS section [${idx}] "${sectionName}" (${oldSize} → ${newSize} chars)`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write css section',
@@ -6408,14 +6491,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.css = deps.combineCssSections(sections, prefix, suffix);
           logMcpMutation('replace css section content', `css-section:${idx}`, { sectionName, matchCount });
           deps.broadcastToAll('data-updated', 'css', currentData.css);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            name: sectionName,
-            matchCount,
-            oldSize: content.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              name: sectionName,
+              matchCount,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_in_css',
+              summary: `Replaced ${matchCount} match(es) in CSS section [${idx}] "${sectionName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'replace css section content',
@@ -6520,15 +6610,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newSize: newContent.length,
           });
           deps.broadcastToAll('data-updated', 'css', currentData.css);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            name: sectionName,
-            position,
-            oldSize: oldContent.length,
-            newSize: newContent.length,
-            warning: warning || undefined,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              name: sectionName,
+              position,
+              oldSize: oldContent.length,
+              newSize: newContent.length,
+              warning: warning || undefined,
+            },
+            {
+              toolName: 'insert_in_css',
+              summary: `Inserted content at ${position} in CSS section [${idx}] "${sectionName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'insert css section content',
@@ -8345,12 +8442,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           return entry;
         });
-        return jsonRes(res, {
-          count: model.items.length,
-          state: model.state,
-          hasUnsupportedContent: model.hasUnsupportedContent,
-          items,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            count: model.items.length,
+            state: model.state,
+            hasUnsupportedContent: model.hasUnsupportedContent,
+            items,
+          },
+          {
+            toolName: 'list_risup_prompt_items',
+            summary: `Listed ${model.items.length} prompt items (state: ${model.state})`,
+            artifacts: { count: model.items.length, state: model.state },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -8410,7 +8515,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newIndex: newIdx,
           });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
-          return jsonRes(res, { success: true, index: newIdx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: newIdx },
+            {
+              toolName: 'write_risup_prompt_item',
+              summary: `Added prompt item [${newIdx}] (type: ${validation.model.type})`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add risup prompt item',
@@ -8482,7 +8594,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.promptTemplate = newText;
           logMcpMutation('reorder risup prompt items', 'risup:promptTemplate', { count: model.items.length });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
-          return jsonRes(res, { success: true, order: newOrder });
+          return jsonResSuccess(
+            res,
+            { success: true, order: newOrder },
+            {
+              toolName: 'write_risup_prompt_item',
+              summary: `Reordered ${model.items.length} prompt items`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'reorder risup prompt items',
@@ -8534,13 +8653,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const item = model.items[idx];
-        return jsonRes(res, {
-          index: idx,
-          id: item.id ?? null,
-          item: item.rawValue,
-          supported: item.supported,
-          type: item.type,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            id: item.id ?? null,
+            item: item.rawValue,
+            supported: item.supported,
+            type: item.type,
+          },
+          {
+            toolName: 'read_risup_prompt_item',
+            summary: `Read prompt item [${idx}] (type: ${item.type ?? 'unknown'})`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -8593,7 +8719,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.promptTemplate = newText;
           logMcpMutation('delete risup prompt item', 'risup:promptTemplate', { idx, deletedType });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
-          return jsonRes(res, { success: true, deleted: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: idx },
+            {
+              toolName: 'write_risup_prompt_item',
+              summary: `Deleted prompt item [${idx}] (type: ${deletedType})`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'delete risup prompt item',
@@ -8667,7 +8800,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.promptTemplate = newText;
           logMcpMutation('write risup prompt item', `risup:promptTemplate:${idx}`, { type: validation.model.type });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
-          return jsonRes(res, { success: true, index: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx },
+            {
+              toolName: 'write_risup_prompt_item',
+              summary: `Updated prompt item [${idx}] (type: ${validation.model.type})`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write risup prompt item',
@@ -8707,7 +8847,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const promptRaw = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
         const promptModel = parsePromptTemplate(promptRaw);
         const warnings = promptModel.state !== 'invalid' ? collectFormatingOrderWarnings(promptModel, model) : [];
-        return jsonRes(res, { state: model.state, items, warnings });
+        return jsonResSuccess(
+          res,
+          { state: model.state, items, warnings },
+          {
+            toolName: 'read_risup_formating_order',
+            summary: `Read formating order (${items.length} tokens, state: ${model.state})`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -8762,7 +8909,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             count: newTokens.length,
           });
           deps.broadcastToAll('data-updated', 'formatingOrder', newValue);
-          return jsonRes(res, { success: true, count: newTokens.length });
+          return jsonResSuccess(
+            res,
+            { success: true, count: newTokens.length },
+            {
+              toolName: 'write_risup_formating_order',
+              summary: `Updated formating order (${newTokens.length} tokens)`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write risup formating order',

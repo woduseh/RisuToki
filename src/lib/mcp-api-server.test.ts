@@ -4432,3 +4432,490 @@ describe('MCP envelope — lorebook/regex/greeting/trigger CRUD families', () =>
     }
   });
 });
+
+// ================================================================
+// Envelope migration: lua section, css section, risup prompt families
+// ================================================================
+describe('MCP envelope — lua/css section and risup prompt families', () => {
+  function createLuaCssFixture(): SearchFixture {
+    return {
+      ...createSearchFixture(),
+      lua: '---@name main\nprint("hello")\n---@name utils\nlocal x = 1',
+      css: '/* ===== main ===== */\nbody { color: red; }\n/* ===== theme ===== */\n.dark { color: white; }',
+    };
+  }
+
+  const luaCssOverrides: TestDepsOverrides = {
+    parseLuaSections: () => [
+      { name: 'main', content: 'print("hello")' },
+      { name: 'utils', content: 'local x = 1' },
+    ],
+    parseCssSections: () => ({
+      sections: [
+        { name: 'main', content: 'body { color: red; }' },
+        { name: 'theme', content: '.dark { color: white; }' },
+      ],
+      prefix: '',
+      suffix: '',
+    }),
+  };
+
+  function createRisupEnvelopeFixture(): SearchFixture {
+    return {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'Hello world', role: 'system' },
+        { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+        { type: 'lorebook' },
+      ]),
+      formatingOrder: JSON.stringify(['main', 'description', 'chats']),
+    };
+  }
+
+  // --- Lua section family ---
+
+  it('list_lua response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/lua');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(typeof res.data.count).toBe('number');
+      expect(Array.isArray(res.data.sections)).toBe(true);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      expect(typeof res.data.artifacts).toBe('object');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('read_lua response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/lua/0');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.index).toBe(0);
+      expect(typeof res.data.name).toBe('string');
+      expect(typeof res.data.content).toBe('string');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('lua batch read response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lua/batch', {
+        indices: [0, 1],
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(typeof res.data.count).toBe('number');
+      expect(typeof res.data.total).toBe('number');
+      expect(Array.isArray(res.data.sections)).toBe(true);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('add_lua_section response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lua/add', {
+        name: 'newSection',
+        content: 'local y = 2',
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.index).toBe('number');
+      expect(res.data.name).toBe('newSection');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write_lua response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lua/0', {
+        content: 'print("updated")',
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(res.data.index).toBe(0);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('replace_in_lua response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lua/0/replace', {
+        find: 'hello',
+        replace: 'world',
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.matchCount).toBe('number');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('insert_in_lua response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lua/0/insert', {
+        content: '-- new line',
+        position: 'end',
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(res.data.position).toBe('end');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // --- CSS section family ---
+
+  it('list_css response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/css-section');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(typeof res.data.count).toBe('number');
+      expect(Array.isArray(res.data.sections)).toBe(true);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      expect(typeof res.data.artifacts).toBe('object');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('read_css response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/css-section/0');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.index).toBe(0);
+      expect(typeof res.data.name).toBe('string');
+      expect(typeof res.data.content).toBe('string');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('css batch read response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/css-section/batch', {
+        indices: [0, 1],
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(typeof res.data.count).toBe('number');
+      expect(typeof res.data.total).toBe('number');
+      expect(Array.isArray(res.data.sections)).toBe(true);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('add_css_section response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/css-section/add', {
+        name: 'newCss',
+        content: '.new { display: block; }',
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.index).toBe('number');
+      expect(res.data.name).toBe('newCss');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write_css response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/css-section/0', {
+        content: 'body { color: blue; }',
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(res.data.index).toBe(0);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('replace_in_css response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/css-section/0/replace', {
+        find: 'red',
+        replace: 'blue',
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.matchCount).toBe('number');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('insert_in_css response includes envelope fields', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/css-section/0/insert', {
+        content: '.extra { margin: 0; }',
+        position: 'end',
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(res.data.position).toBe('end');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // --- Risup prompt family ---
+
+  it('list_risup_prompt_items response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-items');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(typeof res.data.count).toBe('number');
+      expect(res.data.state).toBe('valid');
+      expect(Array.isArray(res.data.items)).toBe(true);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      expect(typeof res.data.artifacts).toBe('object');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('read_risup_prompt_item response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-item/0');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.index).toBe(0);
+      expect(res.data.type).toBe('plain');
+      expect(typeof res.data.supported).toBe('boolean');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write_risup_prompt_item response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-item/0', {
+        item: { type: 'plain', type2: 'normal', text: 'Updated text', role: 'system' },
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(res.data.index).toBe(0);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('add_risup_prompt_item response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-item/add', {
+        item: { type: 'plain', type2: 'normal', text: 'New item', role: 'system' },
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.index).toBe('number');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('reorder_risup_prompt_items response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-item/reorder', {
+        order: [2, 0, 1],
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(Array.isArray(res.data.order)).toBe(true);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('delete_risup_prompt_item response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-item/0/delete', {});
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(res.data.deleted).toBe(0);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('read_risup_formating_order response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/risup/formating-order');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(typeof res.data.state).toBe('string');
+      expect(Array.isArray(res.data.items)).toBe(true);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write_risup_formating_order response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/formating-order', {
+        items: [{ token: 'main' }, { token: 'chats' }],
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.count).toBe('number');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
