@@ -63,10 +63,13 @@ npm run dist:all     # Windows NSIS + 포터블 빌드
 ### 개발 문서
 
 - `docs/README.md` — 에이전트/기여자용 지식 베이스 인덱스
-- `docs/MODULE_MAP.md` — TypeScript 소스 탐색용 모듈 맵
+- `docs/MCP_WORKFLOW.md` — MCP 도구 선택·읽기 규칙·워크플로 패턴
 - `docs/MCP_TOOL_SURFACE.md` — MCP 도구 패밀리, 경계, 후속 액션 맵
-- `docs/analysis/ARCHITECTURE.md` — 런타임 구조와 데이터 흐름
 - `docs/MCP_ERROR_CONTRACT.md` — MCP 성공/에러/no-op 응답 계약과 에이전트 복구 규칙
+- `docs/PROJECT_RULES.md` — 프로젝트 규칙 (버전 관리, CI, 페르소나 워크플로)
+- `docs/MODULE_MAP.md` — TypeScript 소스 탐색용 모듈 맵
+- `docs/analysis/ARCHITECTURE.md` — 런타임 구조와 데이터 흐름
+- `skills/project-workflow` — 프로젝트 온보딩 스킬 (`read_skill("project-workflow")`)
 - `CONTRIBUTING.md` — 변경 원칙과 검증 절차
 - `CHANGELOG.md` — 버전별 변경 이력
 - GitHub Actions `CI` — push/PR 시 Ubuntu lint · typecheck · test + Windows Electron/Renderer build 자동 검증

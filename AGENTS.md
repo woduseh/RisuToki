@@ -26,7 +26,7 @@
 3. **열리지 않은 파일은 `probe_*`로 먼저 읽으세요.** 수정이 필요할 때만 `open_file`로 전환합니다.
 4. **MCP 도구·필드 변경 시** `AGENTS.md`, `docs/`, `skills/`를 함께 갱신하세요. → [문서 규칙 상세](docs/PROJECT_RULES.md#1-문서-및-버전-관리-필수)
 5. **매 작업마다** `package.json` 버전 범프 + `CHANGELOG.md` 업데이트를 합니다.
-6. **구문이 애매하면 먼저 스킬 문서를 읽으세요.** `read_skill("using-mcp-tools")` 부터 시작합니다.
+6. **구문이 애매하면 먼저 스킬 문서를 읽으세요.** 프로젝트 온보딩은 `read_skill("project-workflow")`, MCP 도구 선택 상세는 `read_skill("using-mcp-tools")`를 참조합니다.
 
 ---
 
