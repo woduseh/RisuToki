@@ -1097,7 +1097,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `probe:field:${fieldName}`,
           });
         }
-        return jsonRes(res, buildFieldReadResponsePayload(probe.data, fieldName, deps));
+        const probePayload = buildFieldReadResponsePayload(probe.data, fieldName, deps);
+        return jsonResSuccess(res, probePayload, {
+          toolName: 'probe_field',
+          summary: `Probed field "${fieldName}" from external file`,
+        });
       }
 
       // ----------------------------------------------------------------
@@ -1139,7 +1143,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const results = buildFieldBatchReadResults(probe.data, fields, deps);
-        return jsonRes(res, { count: results.length, fields: results });
+        return jsonResSuccess(
+          res,
+          { count: results.length, fields: results },
+          {
+            toolName: 'probe_field_batch',
+            summary: `Probed ${results.length} field(s) from external file`,
+            artifacts: { count: results.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -1148,7 +1160,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'probe' && parts[1] === 'lorebook' && !parts[2] && req.method === 'POST') {
         const probe = await readProbeDocumentRequest(req, res, 'probe/lorebook', 'probe lorebook', 'probe:lorebook');
         if (!probe) return;
-        return jsonRes(res, buildLorebookListResponse((probe.data.lorebook as Record<string, unknown>[]) || [], url));
+        const probeLbPayload = buildLorebookListResponse((probe.data.lorebook as Record<string, unknown>[]) || [], url);
+        return jsonResSuccess(res, probeLbPayload, {
+          toolName: 'probe_lorebook',
+          summary: `Probed lorebook from external file (${(probeLbPayload as any).count ?? 0} entries)`,
+          artifacts: { count: (probeLbPayload as any).count ?? 0 },
+        });
       }
 
       // ----------------------------------------------------------------
@@ -1157,7 +1174,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'probe' && parts[1] === 'regex' && !parts[2] && req.method === 'POST') {
         const probe = await readProbeDocumentRequest(req, res, 'probe/regex', 'probe regex', 'probe:regex');
         if (!probe) return;
-        return jsonRes(res, buildRegexListResponse((probe.data.regex as Record<string, unknown>[]) || []));
+        const probeRxPayload = buildRegexListResponse((probe.data.regex as Record<string, unknown>[]) || []);
+        return jsonResSuccess(res, probeRxPayload, {
+          toolName: 'probe_regex',
+          summary: `Probed regex from external file (${(probeRxPayload as any).count ?? 0} entries)`,
+          artifacts: { count: (probeRxPayload as any).count ?? 0 },
+        });
       }
 
       // ----------------------------------------------------------------
@@ -1166,7 +1188,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'probe' && parts[1] === 'lua' && !parts[2] && req.method === 'POST') {
         const probe = await readProbeDocumentRequest(req, res, 'probe/lua', 'probe lua', 'probe:lua');
         if (!probe) return;
-        return jsonRes(res, buildLuaListResponse(String(probe.data.lua || ''), deps.parseLuaSections));
+        const probeLuaPayload = buildLuaListResponse(String(probe.data.lua || ''), deps.parseLuaSections);
+        return jsonResSuccess(res, probeLuaPayload, {
+          toolName: 'probe_lua',
+          summary: `Probed Lua from external file (${(probeLuaPayload as any).count ?? 0} sections)`,
+          artifacts: { count: (probeLuaPayload as any).count ?? 0 },
+        });
       }
 
       if (req.method === 'POST' && url.pathname === '/open-file') {
@@ -1217,14 +1244,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: 'open:file',
             });
           }
-          return jsonRes(res, {
-            file_path: response.filePath || request.filePath,
-            file_type: response.fileType || request.fileType,
-            name: response.name || path.basename(request.filePath),
-            already_open: response.alreadyOpen === true,
-            switched: response.alreadyOpen !== true,
-            save_current: request.body.save_current === true,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              file_path: response.filePath || request.filePath,
+              file_type: response.fileType || request.fileType,
+              name: response.name || path.basename(request.filePath),
+              already_open: response.alreadyOpen === true,
+              switched: response.alreadyOpen !== true,
+              save_current: request.body.save_current === true,
+            },
+            {
+              toolName: 'open_file',
+              summary: `Opened ${response.name || path.basename(request.filePath)}${response.alreadyOpen ? ' (already open)' : ''}`,
+              artifacts: {
+                filePath: response.filePath || request.filePath,
+                alreadyOpen: response.alreadyOpen === true,
+              },
+            },
+          );
         } catch (error) {
           return mcpError(
             res,
@@ -6655,7 +6693,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (r.data.regex?.length) fields.push({ name: 'regex', count: r.data.regex.length, type: 'array' });
           return { index: i, fileName: r.fileName, fields };
         });
-        return jsonRes(res, { count: refs.length, references: refs });
+        return jsonResSuccess(
+          res,
+          { count: refs.length, references: refs },
+          {
+            toolName: 'list_references',
+            summary: `Listed ${refs.length} reference file(s)`,
+            artifacts: { count: refs.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6738,7 +6784,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return !content.includes(nq);
           });
         }
-        return jsonRes(res, { index: idx, fileName: ref.fileName, count: entries.length, entries });
+        return jsonResSuccess(
+          res,
+          { index: idx, fileName: ref.fileName, count: entries.length, entries },
+          {
+            toolName: 'list_reference_lorebook',
+            summary: `Listed ${entries.length} lorebook entries in reference ${idx}`,
+            artifacts: { refIndex: idx, count: entries.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6787,13 +6841,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             entry: projectLorebookEntryForResponse(lorebook[entryIdx], lorebook, requestedFields),
           };
         });
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: refFiles[idx].fileName,
-          count: entries.filter(Boolean).length,
-          total: indices.length,
-          entries,
-        });
+        const batchCount = entries.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: refFiles[idx].fileName,
+            count: batchCount,
+            total: indices.length,
+            entries,
+          },
+          {
+            toolName: 'read_reference_lorebook_batch',
+            summary: `Batch read ${batchCount}/${indices.length} reference lorebook entries`,
+            artifacts: { refIndex: idx, count: batchCount, total: indices.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6819,12 +6882,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Lorebook entry index ${entryIdx} out of range (0-${lorebook.length - 1})`,
           });
         }
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: ref.fileName,
-          entryIndex: entryIdx,
-          entry: normalizeLorebookEntryForResponse(lorebook[entryIdx], lorebook),
-        });
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: ref.fileName,
+            entryIndex: entryIdx,
+            entry: normalizeLorebookEntryForResponse(lorebook[entryIdx], lorebook),
+          },
+          {
+            toolName: 'read_reference_lorebook',
+            summary: `Read reference ${idx} lorebook entry ${entryIdx}`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6850,7 +6920,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           replaceSize:
             typeof e.replace === 'string' ? e.replace.length : typeof e.out === 'string' ? (e.out as string).length : 0,
         }));
-        return jsonRes(res, { refIndex: idx, fileName: ref.fileName, count: entries.length, entries });
+        return jsonResSuccess(
+          res,
+          { refIndex: idx, fileName: ref.fileName, count: entries.length, entries },
+          {
+            toolName: 'list_reference_regex',
+            summary: `Listed ${entries.length} regex entries in reference ${idx}`,
+            artifacts: { refIndex: idx, count: entries.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6884,7 +6962,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (entry.replace === undefined) entry.replace = '';
         delete entry.in;
         delete entry.out;
-        return jsonRes(res, { refIndex: idx, fileName: ref.fileName, entryIndex: entryIdx, entry });
+        return jsonResSuccess(
+          res,
+          { refIndex: idx, fileName: ref.fileName, entryIndex: entryIdx, entry },
+          {
+            toolName: 'read_reference_regex',
+            summary: `Read reference ${idx} regex entry ${entryIdx}`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6903,7 +6988,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const ref = refFiles[idx];
         const luaCode = ref.data.lua || '';
         if (!luaCode) {
-          return jsonRes(res, { index: idx, fileName: ref.fileName, count: 0, sections: [] });
+          return jsonResSuccess(
+            res,
+            { index: idx, fileName: ref.fileName, count: 0, sections: [] },
+            {
+              toolName: 'list_reference_lua',
+              summary: `Listed 0 Lua sections in reference ${idx} (empty)`,
+              artifacts: { refIndex: idx, count: 0 },
+            },
+          );
         }
         const sections = deps.parseLuaSections(luaCode);
         const result = sections.map((s, i) => ({
@@ -6911,7 +7004,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           name: s.name,
           contentSize: s.content.length,
         }));
-        return jsonRes(res, { index: idx, fileName: ref.fileName, count: result.length, sections: result });
+        return jsonResSuccess(
+          res,
+          { index: idx, fileName: ref.fileName, count: result.length, sections: result },
+          {
+            toolName: 'list_reference_lua',
+            summary: `Listed ${result.length} Lua section(s) in reference ${idx}`,
+            artifacts: { refIndex: idx, count: result.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6951,13 +7052,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (typeof sIdx !== 'number' || sIdx < 0 || sIdx >= sections.length) return null;
           return { index: sIdx, name: sections[sIdx].name, content: sections[sIdx].content };
         });
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: refFiles[idx].fileName,
-          count: result.filter(Boolean).length,
-          total: indices.length,
-          sections: result,
-        });
+        const luaBatchCount = result.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: refFiles[idx].fileName,
+            count: luaBatchCount,
+            total: indices.length,
+            sections: result,
+          },
+          {
+            toolName: 'read_reference_lua_batch',
+            summary: `Batch read ${luaBatchCount}/${indices.length} reference Lua sections`,
+            artifacts: { refIndex: idx, count: luaBatchCount, total: indices.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6984,13 +7094,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Lua section index ${sectionIdx} out of range (0-${sections.length - 1})`,
           });
         }
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: ref.fileName,
-          sectionIndex: sectionIdx,
-          name: sections[sectionIdx].name,
-          content: sections[sectionIdx].content,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: ref.fileName,
+            sectionIndex: sectionIdx,
+            name: sections[sectionIdx].name,
+            content: sections[sectionIdx].content,
+          },
+          {
+            toolName: 'read_reference_lua',
+            summary: `Read reference ${idx} Lua section ${sectionIdx} ("${sections[sectionIdx].name}")`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7009,7 +7126,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const ref = refFiles[idx];
         const cssCode = ref.data.css || '';
         if (!cssCode) {
-          return jsonRes(res, { index: idx, fileName: ref.fileName, count: 0, sections: [] });
+          return jsonResSuccess(
+            res,
+            { index: idx, fileName: ref.fileName, count: 0, sections: [] },
+            {
+              toolName: 'list_reference_css',
+              summary: `Listed 0 CSS sections in reference ${idx} (empty)`,
+              artifacts: { refIndex: idx, count: 0 },
+            },
+          );
         }
         const cssResult = deps.parseCssSections(cssCode);
         const result = cssResult.sections.map((s, i) => ({
@@ -7017,7 +7142,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           name: s.name,
           contentSize: s.content.length,
         }));
-        return jsonRes(res, { index: idx, fileName: ref.fileName, count: result.length, sections: result });
+        return jsonResSuccess(
+          res,
+          { index: idx, fileName: ref.fileName, count: result.length, sections: result },
+          {
+            toolName: 'list_reference_css',
+            summary: `Listed ${result.length} CSS section(s) in reference ${idx}`,
+            artifacts: { refIndex: idx, count: result.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7059,13 +7192,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (typeof sIdx !== 'number' || sIdx < 0 || sIdx >= cssResult.sections.length) return null;
           return { index: sIdx, name: cssResult.sections[sIdx].name, content: cssResult.sections[sIdx].content };
         });
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: refFiles[idx].fileName,
-          count: result.filter(Boolean).length,
-          total: indices.length,
-          sections: result,
-        });
+        const cssBatchCount = result.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: refFiles[idx].fileName,
+            count: cssBatchCount,
+            total: indices.length,
+            sections: result,
+          },
+          {
+            toolName: 'read_reference_css_batch',
+            summary: `Batch read ${cssBatchCount}/${indices.length} reference CSS sections`,
+            artifacts: { refIndex: idx, count: cssBatchCount, total: indices.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7094,13 +7236,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `CSS section index ${sectionIdx} out of range (0-${cssResult.sections.length - 1})`,
           });
         }
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: ref.fileName,
-          sectionIndex: sectionIdx,
-          name: cssResult.sections[sectionIdx].name,
-          content: cssResult.sections[sectionIdx].content,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: ref.fileName,
+            sectionIndex: sectionIdx,
+            name: cssResult.sections[sectionIdx].name,
+            content: cssResult.sections[sectionIdx].content,
+          },
+          {
+            toolName: 'read_reference_css',
+            summary: `Read reference ${idx} CSS section ${sectionIdx} ("${cssResult.sections[sectionIdx].name}")`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7119,33 +7268,61 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const ref = refFiles[idx];
         if (fieldName === 'lorebook') {
-          return jsonRes(res, {
-            index: idx,
-            fileName: ref.fileName,
-            field: 'lorebook',
-            content: (ref.data.lorebook || []).map((entry: Record<string, unknown>) =>
-              normalizeLorebookEntryForResponse(entry, ref.data.lorebook || []),
-            ),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              index: idx,
+              fileName: ref.fileName,
+              field: 'lorebook',
+              content: (ref.data.lorebook || []).map((entry: Record<string, unknown>) =>
+                normalizeLorebookEntryForResponse(entry, ref.data.lorebook || []),
+              ),
+            },
+            {
+              toolName: 'read_reference_field',
+              summary: `Read reference ${idx} field "lorebook"`,
+            },
+          );
         }
         if (fieldName === 'regex') {
-          return jsonRes(res, { index: idx, fileName: ref.fileName, field: 'regex', content: ref.data.regex || [] });
+          return jsonResSuccess(
+            res,
+            { index: idx, fileName: ref.fileName, field: 'regex', content: ref.data.regex || [] },
+            {
+              toolName: 'read_reference_field',
+              summary: `Read reference ${idx} field "regex"`,
+            },
+          );
         }
         if (fieldName === 'triggerScripts') {
-          return jsonRes(res, {
-            index: idx,
-            fileName: ref.fileName,
-            field: 'triggerScripts',
-            content: ref.data.triggerScripts || '[]',
-          });
+          return jsonResSuccess(
+            res,
+            {
+              index: idx,
+              fileName: ref.fileName,
+              field: 'triggerScripts',
+              content: ref.data.triggerScripts || '[]',
+            },
+            {
+              toolName: 'read_reference_field',
+              summary: `Read reference ${idx} field "triggerScripts"`,
+            },
+          );
         }
         if (fieldName === 'alternateGreetings') {
-          return jsonRes(res, {
-            index: idx,
-            fileName: ref.fileName,
-            field: fieldName,
-            content: ref.data[fieldName] || [],
-          });
+          return jsonResSuccess(
+            res,
+            {
+              index: idx,
+              fileName: ref.fileName,
+              field: fieldName,
+              content: ref.data[fieldName] || [],
+            },
+            {
+              toolName: 'read_reference_field',
+              summary: `Read reference ${idx} field "${fieldName}"`,
+            },
+          );
         }
         const allowedRefFields = [
           'lua',
@@ -7163,12 +7340,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Unknown field: ${fieldName}`,
           });
         }
-        return jsonRes(res, {
-          index: idx,
-          fileName: ref.fileName,
-          field: fieldName,
-          content: ref.data[fieldName] || '',
-        });
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            fileName: ref.fileName,
+            field: fieldName,
+            content: ref.data[fieldName] || '',
+          },
+          {
+            toolName: 'read_reference_field',
+            summary: `Read reference ${idx} field "${fieldName}"`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7176,14 +7360,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'assets' && !parts[1] && req.method === 'GET') {
         const assets = currentData.assets || [];
-        return jsonRes(res, {
-          count: assets.length,
-          assets: assets.map((a: any, i: number) => ({
-            index: i,
-            path: a.path,
-            size: a.data ? a.data.length : 0,
-          })),
-        });
+        return jsonResSuccess(
+          res,
+          {
+            count: assets.length,
+            assets: assets.map((a: any, i: number) => ({
+              index: i,
+              path: a.path,
+              size: a.data ? a.data.length : 0,
+            })),
+          },
+          {
+            toolName: 'list_charx_assets',
+            summary: `Listed ${assets.length} charx asset(s)`,
+            artifacts: { count: assets.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7203,13 +7395,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const asset = assets[idx];
         const ext = (asset.path.split('.').pop() || 'png').toLowerCase();
         const mime = extToMime(ext);
-        return jsonRes(res, {
-          index: idx,
-          path: asset.path,
-          size: asset.data ? asset.data.length : 0,
-          mimeType: mime,
-          base64: asset.data ? asset.data.toString('base64') : '',
-        });
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            path: asset.path,
+            size: asset.data ? asset.data.length : 0,
+            mimeType: mime,
+            base64: asset.data ? asset.data.toString('base64') : '',
+          },
+          {
+            toolName: 'read_charx_asset',
+            summary: `Read charx asset ${idx} (${asset.path}, ${asset.data ? asset.data.length : 0} bytes)`,
+            artifacts: { index: idx, path: asset.path, size: asset.data ? asset.data.length : 0 },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7271,7 +7471,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         deps.broadcastToAll('data-updated', { field: 'assets' });
-        return jsonRes(res, { ok: true, path: assetPath, size: buf.length });
+        return jsonResSuccess(
+          res,
+          { ok: true, path: assetPath, size: buf.length },
+          {
+            toolName: 'add_charx_asset',
+            summary: `Added charx asset "${assetPath}" (${buf.length} bytes)`,
+            artifacts: { path: assetPath, size: buf.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7310,7 +7518,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (caIdx >= 0) currentData.cardAssets.splice(caIdx, 1);
         }
         deps.broadcastToAll('data-updated', { field: 'assets' });
-        return jsonRes(res, { ok: true, deleted: assetToDelete.path });
+        return jsonResSuccess(
+          res,
+          { ok: true, deleted: assetToDelete.path },
+          {
+            toolName: 'delete_charx_asset',
+            summary: `Deleted charx asset "${assetToDelete.path}"`,
+            artifacts: { deleted: assetToDelete.path },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7366,7 +7582,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
         }
         deps.broadcastToAll('data-updated', { field: 'assets' });
-        return jsonRes(res, { ok: true, oldPath, newPath });
+        return jsonResSuccess(
+          res,
+          { ok: true, oldPath, newPath },
+          {
+            toolName: 'rename_charx_asset',
+            summary: `Renamed charx asset "${oldPath}" → "${newPath}"`,
+            artifacts: { oldPath, newPath },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7416,21 +7640,29 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         });
 
         if (convertible.length === 0) {
-          return jsonRes(res, {
-            ok: true,
-            message: 'No convertible assets found.',
-            stats: {
-              total: assets.length,
-              converted: 0,
-              skipped: assets.length,
-              failed: 0,
-              larger: 0,
-              originalSize: assets.reduce((s, a) => s + a.data.length, 0),
-              compressedSize: assets.reduce((s, a) => s + a.data.length, 0),
-              savedBytes: 0,
-              savedPercent: 0,
+          return jsonResSuccess(
+            res,
+            {
+              ok: true,
+              message: 'No convertible assets found.',
+              stats: {
+                total: assets.length,
+                converted: 0,
+                skipped: assets.length,
+                failed: 0,
+                larger: 0,
+                originalSize: assets.reduce((s, a) => s + a.data.length, 0),
+                compressedSize: assets.reduce((s, a) => s + a.data.length, 0),
+                savedBytes: 0,
+                savedPercent: 0,
+              },
             },
-          });
+            {
+              toolName: 'compress_assets_webp',
+              summary: 'No convertible assets found',
+              artifacts: { total: assets.length, converted: 0, skipped: assets.length },
+            },
+          );
         }
 
         const totalSize = assets.reduce((s, a) => s + a.data.length, 0);
@@ -7481,19 +7713,27 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             savedBytes: result.stats.savedBytes,
           });
 
-          return jsonRes(res, {
-            ok: true,
-            stats: result.stats,
-            referencesUpdated: refsUpdated,
-            details: result.details.map((d) => ({
-              originalPath: d.originalPath,
-              newPath: d.newPath,
-              originalSize: d.originalSize,
-              newSize: d.newSize,
-              status: d.status,
-              reason: d.reason,
-            })),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              ok: true,
+              stats: result.stats,
+              referencesUpdated: refsUpdated,
+              details: result.details.map((d) => ({
+                originalPath: d.originalPath,
+                newPath: d.newPath,
+                originalSize: d.originalSize,
+                newSize: d.newSize,
+                status: d.status,
+                reason: d.reason,
+              })),
+            },
+            {
+              toolName: 'compress_assets_webp',
+              summary: `Compressed ${result.stats.converted} asset(s), saved ${result.stats.savedBytes} bytes`,
+              artifacts: { converted: result.stats.converted, savedBytes: result.stats.savedBytes },
+            },
+          );
         } catch (err: unknown) {
           return mcpError(res, 500, {
             action: 'compress-webp',
@@ -7882,7 +8122,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             size: buf.length,
           };
         });
-        return jsonRes(res, { count: items.length, assets: items });
+        return jsonResSuccess(
+          res,
+          { count: items.length, assets: items },
+          {
+            toolName: 'list_risum_assets',
+            summary: `Listed ${items.length} risum asset(s)`,
+            artifacts: { count: items.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7906,13 +8154,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           [];
         const meta = Array.isArray(modAssets[idx]) ? (modAssets[idx] as string[]) : null;
         const assetBuf = risumAssets[idx];
-        return jsonRes(res, {
-          index: idx,
-          name: meta?.[0] || `asset_${idx}`,
-          path: meta?.[2] || '',
-          size: assetBuf.length,
-          base64: assetBuf.toString('base64'),
-        });
+        const risumAssetName = meta?.[0] || `asset_${idx}`;
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            name: risumAssetName,
+            path: meta?.[2] || '',
+            size: assetBuf.length,
+            base64: assetBuf.toString('base64'),
+          },
+          {
+            toolName: 'read_risum_asset',
+            summary: `Read risum asset ${idx} ("${risumAssetName}", ${assetBuf.length} bytes)`,
+            artifacts: { index: idx, name: risumAssetName, size: assetBuf.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7966,7 +8223,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         if (deps.invalidateAssetsMapCache) deps.invalidateAssetsMapCache();
         deps.broadcastToAll('data-updated', { field: 'risumAssets' });
-        return jsonRes(res, { ok: true, index: currentData.risumAssets.length - 1, name: assetName, size: buf.length });
+        return jsonResSuccess(
+          res,
+          { ok: true, index: currentData.risumAssets.length - 1, name: assetName, size: buf.length },
+          {
+            toolName: 'add_risum_asset',
+            summary: `Added risum asset "${assetName}" (${buf.length} bytes)`,
+            artifacts: { name: assetName, size: buf.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -8016,7 +8281,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         if (deps.invalidateAssetsMapCache) deps.invalidateAssetsMapCache();
         deps.broadcastToAll('data-updated', { field: 'risumAssets' });
-        return jsonRes(res, { ok: true, deleted: deleteName });
+        return jsonResSuccess(
+          res,
+          { ok: true, deleted: deleteName },
+          {
+            toolName: 'delete_risum_asset',
+            summary: `Deleted risum asset "${deleteName}"`,
+            artifacts: { deleted: deleteName },
+          },
+        );
       }
 
       // ================================================================
@@ -8227,7 +8500,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           };
         }
 
-        return jsonRes(res, { toggles, count: Object.keys(toggles).length });
+        return jsonResSuccess(
+          res,
+          { toggles, count: Object.keys(toggles).length },
+          {
+            toolName: 'list_cbs_toggles',
+            summary: `Found ${Object.keys(toggles).length} CBS toggle(s)`,
+            artifacts: { count: Object.keys(toggles).length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -8252,7 +8533,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
         const cbsEntries = collectCBSEntries(currentData, field, lorebookIndex);
         if (cbsEntries.length === 0) {
-          return jsonRes(res, { field, message: 'No CBS content found in specified field' });
+          return jsonResSuccess(
+            res,
+            { field, message: 'No CBS content found in specified field' },
+            {
+              toolName: 'simulate_cbs',
+              summary: `No CBS content found in field "${field}"`,
+            },
+          );
         }
 
         const entry = cbsEntries[0];
@@ -8293,12 +8581,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             }
           }
 
-          return jsonRes(res, {
-            field: entry.path,
-            original_length: text.length,
-            combos: results.length,
-            results,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              field: entry.path,
+              original_length: text.length,
+              combos: results.length,
+              results,
+            },
+            {
+              toolName: 'simulate_cbs',
+              summary: `Simulated CBS for ${entry.path} (${results.length} combos)`,
+              artifacts: { combos: results.length, originalLength: text.length },
+            },
+          );
         }
 
         // Single resolve
@@ -8308,13 +8604,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           let result = cbsResolve(resolved, parsed.blocks, normalizedToggles);
           if (compact) result = result.replace(/\n{3,}/g, '\n\n').trim();
 
-          return jsonRes(res, {
-            field: entry.path,
-            toggles: normalizedToggles,
-            original_length: text.length,
-            resolved: result,
-            resolved_length: result.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              field: entry.path,
+              toggles: normalizedToggles,
+              original_length: text.length,
+              resolved: result,
+              resolved_length: result.length,
+            },
+            {
+              toolName: 'simulate_cbs',
+              summary: `Simulated CBS for ${entry.path} (${text.length}→${result.length} chars)`,
+              artifacts: { originalLength: text.length, resolvedLength: result.length },
+            },
+          );
         } catch (e: any) {
           return mcpError(res, 400, {
             action: 'cbs/simulate',
@@ -8344,7 +8648,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
         const cbsEntries = collectCBSEntries(currentData, field, lorebookIndex);
         if (cbsEntries.length === 0) {
-          return jsonRes(res, { field, changed: false, message: 'No CBS content found in specified field' });
+          return jsonResSuccess(
+            res,
+            { field, changed: false, message: 'No CBS content found in specified field' },
+            {
+              toolName: 'diff_cbs',
+              summary: `No CBS content found in field "${field}"`,
+            },
+          );
         }
 
         const entry = cbsEntries[0];
@@ -8387,15 +8698,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             if (!targetSet.has(line)) removed.push(line);
           }
 
-          return jsonRes(res, {
-            field: entry.path,
-            changed: added.length > 0 || removed.length > 0,
-            toggles: normalizedToggles,
-            baseline_length: baseResult.length,
-            target_length: targetResult.length,
-            added_lines: added,
-            removed_lines: removed,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              field: entry.path,
+              changed: added.length > 0 || removed.length > 0,
+              toggles: normalizedToggles,
+              baseline_length: baseResult.length,
+              target_length: targetResult.length,
+              added_lines: added,
+              removed_lines: removed,
+            },
+            {
+              toolName: 'diff_cbs',
+              summary: `CBS diff for ${entry.path}: ${added.length} added, ${removed.length} removed`,
+              artifacts: { addedCount: added.length, removedCount: removed.length },
+            },
+          );
         } catch (e: any) {
           return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: `CBS diff error: ${e.message}` });
         }
@@ -8961,7 +9280,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
           skills.sort((a, b) => a.name.localeCompare(b.name));
-          return jsonRes(res, { count: skills.length, skills });
+          return jsonResSuccess(
+            res,
+            { count: skills.length, skills },
+            {
+              toolName: 'list_skills',
+              summary: `Listed ${skills.length} skill(s)`,
+              artifacts: { count: skills.length },
+            },
+          );
         } catch {
           return jsonRes(res, { count: 0, skills: [], error: 'Skills directory not found' });
         }
@@ -8985,7 +9312,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const filePath = path.join(deps.getSkillsDir(), skillName, fileName);
         try {
           const content = fs.readFileSync(filePath, 'utf-8');
-          return jsonRes(res, { skill: skillName, file: fileName, content });
+          return jsonResSuccess(
+            res,
+            { skill: skillName, file: fileName, content },
+            {
+              toolName: 'read_skill',
+              summary: `Read skill ${skillName}/${fileName} (${content.length} chars)`,
+              artifacts: { skill: skillName, file: fileName, size: content.length },
+            },
+          );
         } catch {
           return mcpError(res, 404, {
             action: 'read_skill',

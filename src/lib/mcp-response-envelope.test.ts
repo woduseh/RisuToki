@@ -277,4 +277,277 @@ describe('realistic payload enrichment', () => {
     expect(result.status).toBe(200);
     expect((result.next_actions as string[]).length).toBeGreaterThan(0);
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Reference family
+  // ──────────────────────────────────────────────────────────────────────
+
+  it('enriches a list_references response', () => {
+    const payload = { count: 2, references: [{ index: 0, fileName: 'a.charx' }] };
+    const result = mcpSuccess(payload, {
+      toolName: 'list_references',
+      summary: 'Listed 2 reference files',
+      artifacts: { count: 2 },
+    });
+    expect(result.count).toBe(2);
+    expect(result.references).toBeDefined();
+    expect(result.status).toBe(200);
+    expect(result.next_actions as string[]).toEqual(FAMILY_NEXT_ACTIONS.reference);
+  });
+
+  it('enriches a read_reference_lorebook response', () => {
+    const payload = { refIndex: 0, fileName: 'a.charx', entryIndex: 1, entry: { comment: 'Test' } };
+    const result = mcpSuccess(payload, {
+      toolName: 'read_reference_lorebook',
+      summary: 'Read reference lorebook entry 1',
+    });
+    expect(result.refIndex).toBe(0);
+    expect(result.entryIndex).toBe(1);
+    expect(result.status).toBe(200);
+  });
+
+  it('enriches a list_reference_lua response', () => {
+    const payload = { index: 0, fileName: 'a.charx', count: 3, sections: [] };
+    const result = mcpSuccess(payload, {
+      toolName: 'list_reference_lua',
+      summary: 'Listed 3 Lua sections in reference 0',
+      artifacts: { count: 3 },
+    });
+    expect(result.count).toBe(3);
+    expect(result.status).toBe(200);
+  });
+
+  it('enriches a read_reference_field response', () => {
+    const payload = { index: 0, fileName: 'a.charx', field: 'description', content: 'hello' };
+    const result = mcpSuccess(payload, {
+      toolName: 'read_reference_field',
+      summary: 'Read reference field "description"',
+    });
+    expect(result.field).toBe('description');
+    expect(result.content).toBe('hello');
+    expect(result.status).toBe(200);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Probe family
+  // ──────────────────────────────────────────────────────────────────────
+
+  it('enriches a probe_field response', () => {
+    const payload = { field: 'name', value: 'Test', type: 'string', size: 4 };
+    const result = mcpSuccess(payload, {
+      toolName: 'probe_field',
+      summary: 'Probed field "name" (4 chars)',
+    });
+    expect(result.field).toBe('name');
+    expect(result.value).toBe('Test');
+    expect(result.status).toBe(200);
+    expect(result.next_actions as string[]).toEqual(FAMILY_NEXT_ACTIONS.probe);
+  });
+
+  it('enriches a probe_field_batch response', () => {
+    const payload = { count: 2, fields: [{ field: 'name' }, { field: 'description' }] };
+    const result = mcpSuccess(payload, {
+      toolName: 'probe_field_batch',
+      summary: 'Probed 2 fields from external file',
+      artifacts: { count: 2 },
+    });
+    expect(result.count).toBe(2);
+    expect(result.status).toBe(200);
+  });
+
+  it('enriches a probe_lorebook response', () => {
+    const payload = { count: 5, entries: [] };
+    const result = mcpSuccess(payload, {
+      toolName: 'probe_lorebook',
+      summary: 'Probed 5 lorebook entries',
+      artifacts: { count: 5 },
+    });
+    expect(result.count).toBe(5);
+    expect(result.status).toBe(200);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Open-file
+  // ──────────────────────────────────────────────────────────────────────
+
+  it('enriches an open_file response', () => {
+    const payload = {
+      file_path: '/test.charx',
+      file_type: 'charx',
+      name: 'test.charx',
+      already_open: false,
+      switched: true,
+      save_current: false,
+    };
+    const result = mcpSuccess(payload, {
+      toolName: 'open_file',
+      summary: 'Opened test.charx',
+      artifacts: { filePath: '/test.charx', alreadyOpen: false },
+    });
+    expect(result.file_path).toBe('/test.charx');
+    expect(result.switched).toBe(true);
+    expect(result.status).toBe(200);
+    expect(result.next_actions as string[]).toEqual(FAMILY_NEXT_ACTIONS.probe);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Skills family
+  // ──────────────────────────────────────────────────────────────────────
+
+  it('enriches a list_skills response', () => {
+    const payload = { count: 3, skills: [{ name: 'writing-cbs-syntax' }] };
+    const result = mcpSuccess(payload, {
+      toolName: 'list_skills',
+      summary: 'Listed 3 skills',
+      artifacts: { count: 3 },
+    });
+    expect(result.count).toBe(3);
+    expect(result.status).toBe(200);
+    expect(result.next_actions as string[]).toEqual(FAMILY_NEXT_ACTIONS.skill);
+  });
+
+  it('enriches a read_skill response', () => {
+    const payload = { skill: 'writing-cbs-syntax', file: 'SKILL.md', content: '# CBS' };
+    const result = mcpSuccess(payload, {
+      toolName: 'read_skill',
+      summary: 'Read skill writing-cbs-syntax/SKILL.md',
+    });
+    expect(result.skill).toBe('writing-cbs-syntax');
+    expect(result.content).toBe('# CBS');
+    expect(result.status).toBe(200);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Charx asset family
+  // ──────────────────────────────────────────────────────────────────────
+
+  it('enriches a list_charx_assets response', () => {
+    const payload = { count: 2, assets: [{ index: 0, path: 'assets/icon/a.png', size: 100 }] };
+    const result = mcpSuccess(payload, {
+      toolName: 'list_charx_assets',
+      summary: 'Listed 2 charx assets',
+      artifacts: { count: 2 },
+    });
+    expect(result.count).toBe(2);
+    expect(result.status).toBe(200);
+    expect(result.next_actions as string[]).toEqual(FAMILY_NEXT_ACTIONS['charx-asset']);
+  });
+
+  it('enriches a read_charx_asset response', () => {
+    const payload = { index: 0, path: 'assets/icon/a.png', size: 100, mimeType: 'image/png', base64: 'AAAA' };
+    const result = mcpSuccess(payload, {
+      toolName: 'read_charx_asset',
+      summary: 'Read charx asset assets/icon/a.png (100 bytes)',
+    });
+    expect(result.path).toBe('assets/icon/a.png');
+    expect(result.status).toBe(200);
+  });
+
+  it('enriches an add_charx_asset response', () => {
+    const payload = { ok: true, path: 'assets/icon/b.png', size: 200 };
+    const result = mcpSuccess(payload, {
+      toolName: 'add_charx_asset',
+      summary: 'Added charx asset assets/icon/b.png (200 bytes)',
+      artifacts: { path: 'assets/icon/b.png', size: 200 },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.path).toBe('assets/icon/b.png');
+    expect(result.status).toBe(200);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Risum asset family
+  // ──────────────────────────────────────────────────────────────────────
+
+  it('enriches a list_risum_assets response', () => {
+    const payload = { count: 1, assets: [{ index: 0, name: 'bg', size: 500 }] };
+    const result = mcpSuccess(payload, {
+      toolName: 'list_risum_assets',
+      summary: 'Listed 1 risum asset',
+      artifacts: { count: 1 },
+    });
+    expect(result.count).toBe(1);
+    expect(result.status).toBe(200);
+    expect(result.next_actions as string[]).toEqual(FAMILY_NEXT_ACTIONS['risum-asset']);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Asset compression family
+  // ──────────────────────────────────────────────────────────────────────
+
+  it('enriches a compress_assets_webp response', () => {
+    const payload = { ok: true, stats: { converted: 3, savedBytes: 1024 }, details: [] };
+    const result = mcpSuccess(payload, {
+      toolName: 'compress_assets_webp',
+      summary: 'Compressed 3 assets, saved 1024 bytes',
+      artifacts: { converted: 3, savedBytes: 1024 },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.stats).toBeDefined();
+    expect(result.status).toBe(200);
+    expect(result.next_actions as string[]).toEqual(FAMILY_NEXT_ACTIONS['asset-compression']);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // CBS family
+  // ──────────────────────────────────────────────────────────────────────
+
+  it('enriches a validate_cbs response', () => {
+    const payload = { valid: true, entries: [], summary: { total: 5, passed: 5, failed: 0 } };
+    const result = mcpSuccess(payload, {
+      toolName: 'validate_cbs',
+      summary: 'Validated CBS: 5 passed, 0 failed',
+      artifacts: { total: 5, passed: 5, failed: 0 },
+    });
+    expect(result.valid).toBe(true);
+    expect(result.status).toBe(200);
+    expect(result.next_actions as string[]).toEqual(FAMILY_NEXT_ACTIONS.cbs);
+  });
+
+  it('enriches a list_cbs_toggles response', () => {
+    const payload = { toggles: { mood: { conditions: ['happy'], fields: ['description'] } }, count: 1 };
+    const result = mcpSuccess(payload, {
+      toolName: 'list_cbs_toggles',
+      summary: 'Found 1 CBS toggle',
+      artifacts: { count: 1 },
+    });
+    expect(result.toggles).toBeDefined();
+    expect(result.count).toBe(1);
+    expect(result.status).toBe(200);
+  });
+
+  it('enriches a simulate_cbs response', () => {
+    const payload = {
+      field: 'description',
+      toggles: { mood: '1' },
+      original_length: 100,
+      resolved: 'hello',
+      resolved_length: 5,
+    };
+    const result = mcpSuccess(payload, {
+      toolName: 'simulate_cbs',
+      summary: 'Simulated CBS for description (100→5 chars)',
+    });
+    expect(result.field).toBe('description');
+    expect(result.resolved).toBe('hello');
+    expect(result.status).toBe(200);
+  });
+
+  it('enriches a diff_cbs response', () => {
+    const payload = {
+      field: 'description',
+      changed: true,
+      toggles: { mood: '1' },
+      added_lines: ['a'],
+      removed_lines: ['b'],
+    };
+    const result = mcpSuccess(payload, {
+      toolName: 'diff_cbs',
+      summary: 'CBS diff: 1 added, 1 removed',
+      artifacts: { addedCount: 1, removedCount: 1 },
+    });
+    expect(result.changed).toBe(true);
+    expect(result.added_lines).toEqual(['a']);
+    expect(result.status).toBe(200);
+  });
 });
