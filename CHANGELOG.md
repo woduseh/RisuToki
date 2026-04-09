@@ -9,11 +9,52 @@
 
 ---
 
+## [0.39.1] - 2026-04-10
+
+### 변경
+
+- **`AGENTS.md` TOC 전환**: `AGENTS.md`를 컴팩트한 라우팅 목차로 슬림화하고, 기존 MCP 워크플로 상세(도구 맵, 읽기 규칙, 워크플로 패턴, 주의사항)를 `docs/MCP_WORKFLOW.md`로, 프로젝트 규칙(버전 관리, CI, 페르소나)을 `docs/PROJECT_RULES.md`로 분리했습니다. 세션 시작 시 에이전트가 읽는 컨텍스트가 ~230줄에서 ~50줄로 줄어듭니다.
+- **`docs/README.md` 라우팅 갱신**: 새 canonical docs(`MCP_WORKFLOW.md`, `PROJECT_RULES.md`)를 routing table과 core documents 목록에 추가했습니다.
+
+## [0.39.0] - 2026-04-10
+
+### 새 기능
+
+- **MCP hard-failure recovery metadata 확장**: `src/lib/mcp-api-server.ts`와 `src/lib/mcp-response-envelope.ts`가 `mcpError()` / `mcpNoOp()` 응답에 `retryable`과 deterministic `next_actions`를 공통으로 추가합니다. 이제 400/401/403, 409, 5xx, 그리고 compatibility no-op 경로를 에이전트가 같은 방식으로 분기할 수 있습니다.
+- **성공 응답 context-budget 메타데이터 추가**: `mcpSuccess()`가 `artifacts.byte_size`를 자동으로 채워 성공 응답의 대략적인 UTF-8 JSON 크기를 노출합니다. 에이전트는 이 값을 보고 broad read 대신 `search_in_field`, `read_field_range`, item/section read, `probe_*` 같은 좁은 surface로 전환할 수 있습니다.
+- **결정적 agent eval 스위트 도입**: `npm run test:evals`를 추가하고, response contract / taxonomy / Lua section workflow / MCP recovery flow를 고정하는 `agent eval` 시나리오를 기존 Vitest 스위트에 배치했습니다.
+
+### 변경
+
+- **Harness docs/skills rollout 완료**: `docs/MCP_ERROR_CONTRACT.md`, `docs/MCP_TOOL_SURFACE.md`, `docs/MODULE_MAP.md`, `docs/README.md`, `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `skills/using-mcp-tools/*`를 갱신해 recovery metadata, `artifacts.byte_size`, 그리고 `npm run test:evals` 경로가 같은 설명을 가리키도록 정리했습니다.
+
+## [0.38.9] - 2026-04-10
+
+### 변경
+
+- **Harness knowledge base 확장**: `docs/README.md`, `docs/MODULE_MAP.md`, `docs/MCP_TOOL_SURFACE.md`를 추가해 에이전트가 `docs/` 안에서 현재 지식 베이스를 탐색하고, TypeScript 소스 구조와 MCP 도구 경계를 예측 가능한 형태로 따라갈 수 있도록 정리했습니다.
+- **개발자/에이전트 문서 라우팅 통일**: `README.md`, `CONTRIBUTING.md`, `AGENTS.md`가 같은 knowledge-base entrypoint와 source-navigation 규칙을 가리키도록 맞췄습니다.
+
+### 수정
+
+- **`using-mcp-tools` 참조 문서 최신화**: `skills/using-mcp-tools/TOOL_REFERENCE.md`의 오래된 `v0.34.0` 범위 설명을 현재의 repo-wide success/error/no-op 계약에 맞게 갱신하고, canonical docs 포인터를 추가했습니다.
+
+## [0.38.8] - 2026-04-10
+
+### 수정
+
+- **MCP no-op recovery envelope 도입**: `src/lib/mcp-api-server.ts`에 `mcpNoOp()` 헬퍼를 추가하고 field/lorebook/regex/lua/css의 남은 18개 `HTTP 200 + success: false` 경로를 구조화된 recovery contract로 통일했습니다. 이제 no-op 응답도 `action`, `target`, `status`, `suggestion`, `error`를 제공하면서 `message`, `matchCount`, `results`, `errors`, `startAnchorFoundAt`, `dryRun` 같은 기존 필드를 그대로 유지합니다.
+- **No-op 회귀 테스트 추가**: `src/lib/mcp-api-server.test.ts`에 field/lorebook/regex/lua/css 대표 no-op 경로 7개에 대한 회귀 테스트를 추가해 bare `success: false` 응답이 다시 섞이지 않도록 고정했습니다.
+- **MCP 계약 문서화 보강**: `docs/MCP_ERROR_CONTRACT.md`를 추가하고 `AGENTS.md`, `README.md`에 연결해 success/error/no-op 엔벨로프와 에이전트 복구 규칙을 repo-local knowledge base로 고정했습니다.
+
 ## [0.38.7] - 2026-04-10
 
 ### 수정
 
-- **MCP 성공 응답 엔벨로프 — 잔여 경로 마이그레이션**: `replace_in_field` dry-run, `replace_block_in_field` (dry-run/성공), `insert_in_field` 성공, `replace_in_field_batch` (dry-run/성공), `replace_across_all_lorebook` dry-run, 로어북 block-replace dry-run, `import_lorebook_from_files` (빈 결과/dry-run), `export_field_to_file` 성공, `validate_cbs`, `list_skills` 폴백 — 총 13개 경로를 `jsonRes` → `jsonResSuccess`로 전환
+- **MCP 성공 응답 엔벨로프 — 잔여 경로 마이그레이션**: `replace_in_field` dry-run, `replace_block_in_field` (dry-run/성공), `insert_in_field` 성공, `replace_in_field_batch` (dry-run/성공), `replace_across_all_lorebook` dry-run, 로어북 block-replace dry-run, `import_lorebook_from_files` (빈 결과/dry-run), `export_field_to_file` 성공, `list_skills` 폴백 — 총 12개 안전 경로를 `jsonRes` → `jsonResSuccess`로 전환
+- **`validate_cbs` 호환성 예외 유지**: `validate_cbs`는 기존 `summary: { total, passed, failed }` 구조를 유지해야 하므로 성공 엔벨로프 대상에서 제외하고 bare JSON 응답으로 되돌렸습니다
+- **로어북 import UI 동기화 수정**: `import_lorebook_from_files` 성공 후 renderer broadcast를 표준 `('data-updated', 'lorebook', data)` 시그니처로 통일해 즉시 UI가 갱신되도록 수정했습니다
+- **`read_skill` 경로 검증 강화**: file name뿐 아니라 skill name에도 path traversal 방지를 적용해 `%2F..` 형태의 우회 요청을 400 구조화 에러로 차단합니다
 - **MCP 요청 본문 camelCase 수용**: `dry_run` (snake_case) 전용이던 6개 파싱 위치를 `body.dry_run ?? body.dryRun` 로 변경하여 camelCase `dryRun` 도 동등하게 허용
 
 ## [0.38.6] - 2026-04-10
