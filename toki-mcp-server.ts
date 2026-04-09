@@ -16,6 +16,7 @@ import path = require('path');
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { TOOL_TAXONOMY } from './src/lib/mcp-tool-taxonomy';
 
 const TOKI_PORT = process.env.TOKI_PORT;
 const TOKI_TOKEN = process.env.TOKI_TOKEN;
@@ -2180,6 +2181,22 @@ server.prompt(
     ],
   }),
 );
+
+// ==================== Apply Taxonomy Annotations ====================
+
+// Patch MCP SDK ToolAnnotations onto every registered tool using the taxonomy.
+// Uses RegisteredTool.update() so existing registrations stay untouched.
+{
+  const registry = (
+    server as unknown as { _registeredTools: Record<string, { update: (u: Record<string, unknown>) => void }> }
+  )._registeredTools;
+  for (const [name, entry] of Object.entries(TOOL_TAXONOMY)) {
+    const tool = registry[name];
+    if (tool) {
+      tool.update({ annotations: entry.hints });
+    }
+  }
+}
 
 // ==================== Start ====================
 

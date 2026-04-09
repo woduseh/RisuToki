@@ -9,6 +9,22 @@
 
 ---
 
+## [0.38.5] - 2026-04-09
+
+### 새 기능
+
+- **MCP 도구 분류 체계 (Tool Taxonomy)**: 120개 MCP 도구를 19개 패밀리로 분류하는 단일 소스 오브 트루스 모듈 `src/lib/mcp-tool-taxonomy.ts`를 추가했습니다
+  - 패밀리: field, probe, lorebook, regex, greeting, trigger, lua, css, reference, charx-asset, risum-asset, asset-compression, risup-prompt, skill, danbooru, cbs, snapshot, search, lorebook-io
+  - MCP SDK `ToolAnnotations` (readOnlyHint, destructiveHint, idempotentHint, openWorldHint)를 등록 후 자동으로 패치합니다
+  - 도구 추가/삭제 시 분류 체계 동기화를 기계적으로 검증하는 22개 테스트를 포함합니다
+
+## [0.38.4] - 2026-04-09
+
+### 수정
+
+- **MCP 글로벌 guard 구조화 에러 응답 완성**: 전역 `Unauthorized` / `No file open` guard도 `mcpError()` 엔벨로프로 통일해 `action`, `target`, `status`, `suggestion` 필드를 같은 방식으로 제공하도록 정리했습니다
+- **전역 guard 회귀 테스트 추가**: `src/lib/mcp-api-server.test.ts`에 unauthorized / no-file-open 경로 회귀 테스트를 추가해 bare `{ error }` 응답이 다시 섞이지 않도록 고정했습니다
+
 ## [0.38.3] - 2026-04-07
 
 ### 수정
