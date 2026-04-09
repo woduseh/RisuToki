@@ -34,6 +34,7 @@
 
 | 스킬                       | 용도                                                   |
 | -------------------------- | ------------------------------------------------------ |
+| `project-workflow`         | 프로젝트 규칙, MCP 워크플로, 온보딩 가이드             |
 | `using-mcp-tools`          | 도구 선택, 대형 필드 편집, batch-first 원칙            |
 | `file-structure-reference` | `.charx` / `.risum` / `.risup` / lorebook / regex 구조 |
 | `writing-cbs-syntax`       | CBS 템플릿 태그 문법                                   |

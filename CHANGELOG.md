@@ -14,6 +14,7 @@
 ### 변경
 
 - **`AGENTS.md` TOC 전환**: `AGENTS.md`를 컴팩트한 라우팅 목차로 슬림화하고, 기존 MCP 워크플로 상세(도구 맵, 읽기 규칙, 워크플로 패턴, 주의사항)를 `docs/MCP_WORKFLOW.md`로, 프로젝트 규칙(버전 관리, CI, 페르소나)을 `docs/PROJECT_RULES.md`로 분리했습니다. 세션 시작 시 에이전트가 읽는 컨텍스트가 ~230줄에서 ~50줄로 줄어듭니다.
+- **`skills/project-workflow` 스킬 추가**: 추출된 MCP 워크플로 및 프로젝트 규칙 가이드를 `list_skills` / `read_skill`로 검색할 수 있는 스킬로 래핑했습니다. 에이전트가 docs를 직접 탐색하지 않아도 스킬 경로로 발견할 수 있습니다.
 - **`docs/README.md` 라우팅 갱신**: 새 canonical docs(`MCP_WORKFLOW.md`, `PROJECT_RULES.md`)를 routing table과 core documents 목록에 추가했습니다.
 
 ## [0.39.0] - 2026-04-10

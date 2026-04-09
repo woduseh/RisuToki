@@ -6,6 +6,7 @@ Structured skill documents for LLMs working with RisuAI `.charx`, `.risum`, and 
 
 | Skill                                                 | Description                                              | Files                                                   | Metadata                |
 | ----------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------- | ----------------------- |
+| [project-workflow](project-workflow/)                 | Project rules, MCP workflow, and agent onboarding guide  | `SKILL.md`                                              | `tags`, `related_tools` |
 | [using-mcp-tools](using-mcp-tools/)                   | MCP tool choice, batch-safe workflows, and anti-patterns | `SKILL.md` + `TOOL_REFERENCE.md` + `FILE_STRUCTURES.md` | `tags`, `related_tools` |
 | [file-structure-reference](file-structure-reference/) | `.charx` / `.risum` / `.risup`, lorebook, regex schemas  | `SKILL.md`                                              | `tags`, `related_tools` |
 | [writing-danbooru-tags](writing-danbooru-tags/)       | Danbooru tag discovery and validation workflow           | `SKILL.md`                                              | `tags`, `related_tools` |
