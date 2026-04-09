@@ -9,6 +9,13 @@
 
 ---
 
+## [0.38.7] - 2026-04-10
+
+### 수정
+
+- **MCP 성공 응답 엔벨로프 — 잔여 경로 마이그레이션**: `replace_in_field` dry-run, `replace_block_in_field` (dry-run/성공), `insert_in_field` 성공, `replace_in_field_batch` (dry-run/성공), `replace_across_all_lorebook` dry-run, 로어북 block-replace dry-run, `import_lorebook_from_files` (빈 결과/dry-run), `export_field_to_file` 성공, `validate_cbs`, `list_skills` 폴백 — 총 13개 경로를 `jsonRes` → `jsonResSuccess`로 전환
+- **MCP 요청 본문 camelCase 수용**: `dry_run` (snake_case) 전용이던 6개 파싱 위치를 `body.dry_run ?? body.dryRun` 로 변경하여 camelCase `dryRun` 도 동등하게 허용
+
 ## [0.38.6] - 2026-04-10
 
 ### 새 기능

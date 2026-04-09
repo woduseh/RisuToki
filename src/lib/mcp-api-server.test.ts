@@ -4919,3 +4919,239 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
     }
   });
 });
+
+// ================================================================
+// Envelope migration: residual bare jsonRes → jsonResSuccess
+// ================================================================
+describe('MCP API response envelope — residual success migration', () => {
+  // --- Group 1: Field dry-run previews ---
+
+  it('replace_in_field dry-run includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description/replace', {
+        find: 'searchable',
+        replace: 'findable',
+        dryRun: true,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.dryRun).toBe(true);
+      expect(typeof res.data.matchCount).toBe('number');
+      // Envelope fields
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('replace_block_in_field dry-run includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description/block-replace', {
+        start_anchor: 'Field',
+        end_anchor: 'searchable',
+        content: 'NEW',
+        dryRun: true,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.dryRun).toBe(true);
+      expect(typeof res.data.oldBlockSize).toBe('number');
+      // Envelope fields
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('replace_in_field_batch dry-run includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description/batch-replace', {
+        replacements: [{ find: 'searchable', replace: 'findable' }],
+        dryRun: true,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.dryRun).toBe(true);
+      expect(typeof res.data.totalMatches).toBe('number');
+      // Envelope fields
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // --- Group 2: Field mutation successes ---
+
+  it('replace_block_in_field success includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description/block-replace', {
+        start_anchor: 'Field',
+        end_anchor: 'searchable',
+        content: 'NEW',
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.oldBlockSize).toBe('number');
+      // Envelope fields
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('insert_in_field success includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description/insert', {
+        content: 'INSERTED',
+        position: 0,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.field).toBe('description');
+      // Envelope fields
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('replace_in_field_batch success includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description/batch-replace', {
+        replacements: [{ find: 'searchable', replace: 'findable' }],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.totalMatches).toBe('number');
+      // Envelope fields
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // --- Group 3: Lorebook dry-run previews ---
+
+  it('replace_across_all_lorebook dry-run includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/replace-all', {
+        find: 'alpha',
+        replace: 'beta',
+        dryRun: true,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.dryRun).toBe(true);
+      expect(typeof res.data.totalMatches).toBe('number');
+      // Envelope fields
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('lorebook block-replace dry-run includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/0/block-replace', {
+        start_anchor: 'Lore',
+        end_anchor: 'entry.',
+        content: 'NEW',
+        dryRun: true,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.dryRun).toBe(true);
+      expect(typeof res.data.oldBlockSize).toBe('number');
+      // Envelope fields
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // --- Group 4: validate_cbs ---
+
+  it('validate_cbs includes envelope fields', async () => {
+    const fixture = { ...createSearchFixture(), description: '{{#if toggle_test}}yes{{/if}}' };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/cbs/validate');
+      expect(res.status).toBe(200);
+      expect(typeof res.data.valid).toBe('boolean');
+      expect(Array.isArray(res.data.entries)).toBe(true);
+      // Envelope fields
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // --- Group 5: list_skills fallback ---
+
+  it('list_skills fallback includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture, [], 'C:\\non\\existent\\path\\skills_missing_12345');
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/skills');
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBe(0);
+      expect(Array.isArray(res.data.skills)).toBe(true);
+      expect(typeof res.data.error).toBe('string');
+      // Envelope fields
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // --- Group 6: import_lorebook_from_files (skipped — requires lorebook-io with fs) ---
+  // These tests require the lorebook-io module which uses real filesystem access (importFromJson,
+  // importFromMarkdown). The test harness does not mock this module, making these tests too
+  // complex to set up without substantial refactoring. The code migration is still applied.
+
+  it.skip('import_lorebook_from_files empty result includes envelope fields', () => {
+    // Would test POST /lorebook/import with format that yields 0 entries
+  });
+
+  it.skip('import_lorebook_from_files dry-run includes envelope fields', () => {
+    // Would test POST /lorebook/import with dryRun: true
+  });
+
+  // --- Group 7: export_field_to_file (skipped — requires lorebook-io with fs) ---
+  // Same reason as above: exportFieldToFile performs real filesystem I/O.
+
+  it.skip('export_field_to_file includes envelope fields', () => {
+    // Would test POST /field/export with field/filePath/format
+  });
+});

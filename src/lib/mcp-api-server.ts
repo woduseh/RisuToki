@@ -2051,7 +2051,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const replaceStr: string = body.replace !== undefined ? normalizeLF(body.replace) : '';
           const useRegex = !!body.regex;
           const flags: string = body.flags || 'g';
-          const dryRun = !!body.dry_run;
+          const dryRun = !!(body.dry_run ?? body.dryRun);
           let newContent: string;
           let matchCount: number;
 
@@ -2105,14 +2105,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               );
               return { position: mp.position, match: mp.match.substring(0, 200), before, after };
             });
-            return jsonRes(res, {
-              dryRun: true,
-              field: fieldName,
-              matchCount,
-              fieldLength: content.length,
-              previews,
-              newSize: newContent.length,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                dryRun: true,
+                field: fieldName,
+                matchCount,
+                fieldLength: content.length,
+                previews,
+                newSize: newContent.length,
+              },
+              {
+                toolName: 'replace_in_field',
+                summary: `Dry-run: ${matchCount} match(es) in "${fieldName}"`,
+                artifacts: { matchCount, fieldLength: content.length },
+              },
+            );
           }
 
           const allowed = await deps.askRendererConfirm(
@@ -2237,7 +2245,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const endAnchor = normalizeLF(body.end_anchor);
           const newBlock: string = body.content !== undefined ? normalizeLF(body.content) : '';
           const includeAnchors = body.include_anchors !== false; // default true: anchors are replaced too
-          const dryRun = !!body.dry_run;
+          const dryRun = !!(body.dry_run ?? body.dryRun);
 
           const startPos = content.indexOf(startAnchor);
           if (startPos === -1) {
@@ -2269,19 +2277,27 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const newContent = content.slice(0, replaceStart) + newBlock + content.slice(replaceEnd);
 
           if (dryRun) {
-            return jsonRes(res, {
-              dryRun: true,
-              field: fieldName,
-              startAnchorAt: startPos,
-              endAnchorAt: endPos,
-              includeAnchors,
-              oldBlockSize: oldBlock.length,
-              oldBlockPreview: oldBlock.substring(0, 300) + (oldBlock.length > 300 ? '...' : ''),
-              newBlockSize: newBlock.length,
-              newBlockPreview: newBlock.substring(0, 300) + (newBlock.length > 300 ? '...' : ''),
-              fieldLength: content.length,
-              newFieldLength: newContent.length,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                dryRun: true,
+                field: fieldName,
+                startAnchorAt: startPos,
+                endAnchorAt: endPos,
+                includeAnchors,
+                oldBlockSize: oldBlock.length,
+                oldBlockPreview: oldBlock.substring(0, 300) + (oldBlock.length > 300 ? '...' : ''),
+                newBlockSize: newBlock.length,
+                newBlockPreview: newBlock.substring(0, 300) + (newBlock.length > 300 ? '...' : ''),
+                fieldLength: content.length,
+                newFieldLength: newContent.length,
+              },
+              {
+                toolName: 'replace_block_in_field',
+                summary: `Dry-run: block in "${fieldName}" (${oldBlock.length}→${newBlock.length} chars)`,
+                artifacts: { oldBlockSize: oldBlock.length, newBlockSize: newBlock.length },
+              },
+            );
           }
 
           const allowed = await deps.askRendererConfirm(
@@ -2305,17 +2321,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               newBlockSize: newBlock.length,
             });
             deps.broadcastToAll('data-updated', fieldName, newContent);
-            return jsonRes(res, {
-              success: true,
-              field: fieldName,
-              startAnchorAt: startPos,
-              endAnchorAt: endPos,
-              includeAnchors,
-              oldBlockSize: oldBlock.length,
-              newBlockSize: newBlock.length,
-              oldSize: content.length,
-              newSize: newContent.length,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                field: fieldName,
+                startAnchorAt: startPos,
+                endAnchorAt: endPos,
+                includeAnchors,
+                oldBlockSize: oldBlock.length,
+                newBlockSize: newBlock.length,
+                oldSize: content.length,
+                newSize: newContent.length,
+              },
+              {
+                toolName: 'replace_block_in_field',
+                summary: `Replaced block in "${fieldName}" (${oldBlock.length}→${newBlock.length} chars)`,
+                artifacts: { oldBlockSize: oldBlock.length, newBlockSize: newBlock.length },
+              },
+            );
           } else {
             return mcpError(res, 403, {
               action: 'block replace in field',
@@ -2456,13 +2480,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               newSize: newContent.length,
             });
             deps.broadcastToAll('data-updated', fieldName, newContent);
-            return jsonRes(res, {
-              success: true,
-              field: fieldName,
-              position,
-              oldSize: oldContent.length,
-              newSize: newContent.length,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                field: fieldName,
+                position,
+                oldSize: oldContent.length,
+                newSize: newContent.length,
+              },
+              {
+                toolName: 'insert_in_field',
+                summary: `Inserted into "${fieldName}" at ${position} (${oldContent.length}→${newContent.length} chars)`,
+                artifacts: { oldSize: oldContent.length, newSize: newContent.length },
+              },
+            );
           } else {
             return mcpError(res, 403, {
               action: 'insert in field',
@@ -2560,7 +2592,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
         }
-        const dryRun = !!body.dry_run;
+        const dryRun = !!(body.dry_run ?? body.dryRun);
         // Acquire mutex to prevent parallel writes
         const release = await acquireFieldMutex(fieldName);
         try {
@@ -2601,14 +2633,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
           if (dryRun) {
-            return jsonRes(res, {
-              dryRun: true,
-              field: fieldName,
-              totalMatches,
-              originalSize,
-              newSize: content.length,
-              results,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                dryRun: true,
+                field: fieldName,
+                totalMatches,
+                originalSize,
+                newSize: content.length,
+                results,
+              },
+              {
+                toolName: 'replace_in_field_batch',
+                summary: `Dry-run: ${totalMatches} total match(es) in "${fieldName}"`,
+                artifacts: { totalMatches, fieldLength: originalSize },
+              },
+            );
           }
           const summary = results
             .filter((r) => r.matchCount > 0)
@@ -2633,14 +2673,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               count: replacements.length,
             });
             deps.broadcastToAll('data-updated', fieldName, content);
-            return jsonRes(res, {
-              success: true,
-              field: fieldName,
-              totalMatches,
-              originalSize,
-              newSize: content.length,
-              results,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                field: fieldName,
+                totalMatches,
+                originalSize,
+                newSize: content.length,
+                results,
+              },
+              {
+                toolName: 'replace_in_field_batch',
+                summary: `Batch replaced ${totalMatches} match(es) in "${fieldName}"`,
+                artifacts: { totalMatches, originalSize, newSize: content.length },
+              },
+            );
           } else {
             return mcpError(res, 403, {
               action: 'batch replace in field',
@@ -3791,7 +3839,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const replaceStr: string = body.replace !== undefined ? normalizeLF(body.replace) : '';
         const useRegex = !!body.regex;
         const flags: string = body.flags || 'g';
-        const dryRun = !!body.dry_run;
+        const dryRun = !!(body.dry_run ?? body.dryRun);
 
         const results: Array<{
           index: number;
@@ -3853,18 +3901,26 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
         // Dry-run: return match info without modifying
         if (dryRun) {
-          return jsonRes(res, {
-            dryRun: true,
-            field: targetField,
-            totalEntries: lorebook.length,
-            matchedEntries: results.length,
-            totalMatches,
-            results: results.map((r) => ({
-              index: r.index,
-              comment: r.comment,
-              matchCount: r.matchCount,
-            })),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              dryRun: true,
+              field: targetField,
+              totalEntries: lorebook.length,
+              matchedEntries: results.length,
+              totalMatches,
+              results: results.map((r) => ({
+                index: r.index,
+                comment: r.comment,
+                matchCount: r.matchCount,
+              })),
+            },
+            {
+              toolName: 'replace_across_all_lorebook',
+              summary: `Dry-run: ${totalMatches} match(es) across ${results.length} lorebook entries`,
+              artifacts: { totalMatches, matchedEntries: results.length, totalEntries: lorebook.length },
+            },
+          );
         }
 
         const summary = results
@@ -4328,7 +4384,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const endAnchor = normalizeLF(body.end_anchor);
         const newBlock: string = body.content !== undefined ? normalizeLF(body.content) : '';
         const includeAnchors = body.include_anchors !== false;
-        const dryRun = !!body.dry_run;
+        const dryRun = !!(body.dry_run ?? body.dryRun);
 
         const startPos = content.indexOf(startAnchor);
         if (startPos === -1) {
@@ -4359,20 +4415,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const newContent = content.slice(0, replaceStart) + newBlock + content.slice(replaceEnd);
 
         if (dryRun) {
-          return jsonRes(res, {
-            dryRun: true,
-            index: idx,
-            field: targetField,
-            startAnchorAt: startPos,
-            endAnchorAt: endPos,
-            includeAnchors,
-            oldBlockSize: oldBlock.length,
-            oldBlockPreview: oldBlock.substring(0, 300) + (oldBlock.length > 300 ? '...' : ''),
-            newBlockSize: newBlock.length,
-            newBlockPreview: newBlock.substring(0, 300) + (newBlock.length > 300 ? '...' : ''),
-            fieldLength: content.length,
-            newFieldLength: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              dryRun: true,
+              index: idx,
+              field: targetField,
+              startAnchorAt: startPos,
+              endAnchorAt: endPos,
+              includeAnchors,
+              oldBlockSize: oldBlock.length,
+              oldBlockPreview: oldBlock.substring(0, 300) + (oldBlock.length > 300 ? '...' : ''),
+              newBlockSize: newBlock.length,
+              newBlockPreview: newBlock.substring(0, 300) + (newBlock.length > 300 ? '...' : ''),
+              fieldLength: content.length,
+              newFieldLength: newContent.length,
+            },
+            {
+              toolName: 'replace_in_lorebook',
+              summary: `Dry-run: block in lorebook #${idx} "${targetField}" (${oldBlock.length}→${newBlock.length} chars)`,
+              artifacts: { index: idx, oldBlockSize: oldBlock.length, newBlockSize: newBlock.length },
+            },
+          );
         }
 
         const comment = entry.comment || `#${idx}`;
@@ -7866,7 +7930,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const conflict = ['skip', 'overwrite', 'rename'].includes(body.conflict)
           ? (body.conflict as 'skip' | 'overwrite' | 'rename')
           : 'skip';
-        const dryRun = body.dry_run === true;
+        const dryRun = body.dry_run === true || body.dryRun === true;
 
         try {
           // Lazy-load lorebook-io
@@ -7878,12 +7942,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             format === 'json' ? await lorebookIo.importFromJson(source) : await lorebookIo.importFromMarkdown(source);
 
           if (importEntries.length === 0) {
-            return jsonRes(res, {
-              success: true,
-              totalFound: 0,
-              imported: 0,
-              message: 'No entries found to import.',
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                totalFound: 0,
+                imported: 0,
+                message: 'No entries found to import.',
+              },
+              {
+                toolName: 'import_lorebook_from_files',
+                summary: 'No entries found to import',
+                artifacts: { totalFound: 0, imported: 0 },
+              },
+            );
           }
 
           // Resolve conflicts
@@ -7896,18 +7968,30 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
           // Dry run: return preview without changes
           if (dryRun) {
-            return jsonRes(res, {
-              success: true,
-              dryRun: true,
-              totalFound: importEntries.length,
-              toAdd: resolution.toAdd.length,
-              toOverwrite: resolution.toOverwrite.length,
-              skipped: resolution.skipped.length,
-              renamed: resolution.renamed.length,
-              newFolders: resolution.newFolders,
-              skippedEntries: resolution.skipped,
-              renamedEntries: resolution.renamed,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                dryRun: true,
+                totalFound: importEntries.length,
+                toAdd: resolution.toAdd.length,
+                toOverwrite: resolution.toOverwrite.length,
+                skipped: resolution.skipped.length,
+                renamed: resolution.renamed.length,
+                newFolders: resolution.newFolders,
+                skippedEntries: resolution.skipped,
+                renamedEntries: resolution.renamed,
+              },
+              {
+                toolName: 'import_lorebook_from_files',
+                summary: `Dry-run: ${importEntries.length} entries found (${resolution.toAdd.length} new, ${resolution.toOverwrite.length} overwrite)`,
+                artifacts: {
+                  totalFound: importEntries.length,
+                  toAdd: resolution.toAdd.length,
+                  toOverwrite: resolution.toOverwrite.length,
+                },
+              },
+            );
           }
 
           // User confirmation
@@ -8093,7 +8177,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Exported "${field}" to ${filePath}.`,
           });
 
-          return jsonRes(res, result);
+          return jsonResSuccess(res, result as Record<string, unknown>, {
+            toolName: 'export_field_to_file',
+            summary: `Exported "${field}" to ${filePath}`,
+            artifacts: {
+              filePath: (result as Record<string, unknown>).filePath,
+              size: (result as Record<string, unknown>).size,
+            },
+          });
         } catch (err: unknown) {
           return mcpError(res, 500, {
             action: 'export-field',
@@ -8455,11 +8546,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           results.push(item);
         }
 
-        return jsonRes(res, {
-          valid: failed === 0,
-          entries: results,
-          summary: { total: results.length, passed, failed },
-        });
+        return jsonResSuccess(
+          res,
+          {
+            valid: failed === 0,
+            entries: results,
+            summary: { total: results.length, passed, failed },
+          },
+          {
+            toolName: 'validate_cbs',
+            summary: `CBS validation: ${passed} passed, ${failed} failed`,
+            artifacts: { total: results.length, passed, failed },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -9290,7 +9389,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             },
           );
         } catch {
-          return jsonRes(res, { count: 0, skills: [], error: 'Skills directory not found' });
+          return jsonResSuccess(
+            res,
+            { count: 0, skills: [], error: 'Skills directory not found' },
+            {
+              toolName: 'list_skills',
+              summary: 'Skills directory not found',
+              artifacts: { count: 0 },
+            },
+          );
         }
       }
 
