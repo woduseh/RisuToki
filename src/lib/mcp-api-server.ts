@@ -3093,7 +3093,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (typeof idx !== 'number' || idx < 0 || idx >= lorebook.length) return null;
           return { index: idx, entry: projectLorebookEntryForResponse(lorebook[idx], lorebook, requestedFields) };
         });
-        return jsonRes(res, { count: entries.filter(Boolean).length, total: indices.length, entries });
+        const validCount = entries.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          { count: validCount, total: indices.length, entries },
+          {
+            toolName: 'read_lorebook_batch',
+            summary: `Batch read ${validCount}/${indices.length} lorebook entries`,
+            artifacts: { count: validCount, total: indices.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -3163,7 +3172,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           canonicalizeLorebookFolderRefs(lorebook);
           logMcpMutation('batch write lorebook', 'lorebook:batch-write', { count: entries.length });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, count: results.length, results });
+          return jsonResSuccess(
+            res,
+            { success: true, count: results.length, results },
+            {
+              toolName: 'write_lorebook_batch',
+              summary: `Batch updated ${results.length} lorebook entries`,
+              artifacts: { count: results.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch write lorebook',
@@ -3273,17 +3290,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             }
           }
         }
-        return jsonRes(res, {
-          index,
-          refIndex,
-          refEntryIndex,
-          currentComment: current.comment || '',
-          referenceComment: reference.comment || '',
-          referenceFile: refFiles[refIndex].fileName,
-          identical: diffs.length === 0,
-          diffCount: diffs.length,
-          diffs,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            index,
+            refIndex,
+            refEntryIndex,
+            currentComment: current.comment || '',
+            referenceComment: reference.comment || '',
+            referenceFile: refFiles[refIndex].fileName,
+            identical: diffs.length === 0,
+            diffCount: diffs.length,
+            diffs,
+          },
+          {
+            toolName: 'diff_lorebook',
+            summary:
+              diffs.length === 0
+                ? `Lorebook entry [${index}] is identical to reference`
+                : `Found ${diffs.length} differences in lorebook entry [${index}]`,
+            artifacts: { diffCount: diffs.length, identical: diffs.length === 0 },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -3347,11 +3375,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
         }
 
-        return jsonRes(res, {
-          totalEntries: lorebook.filter((e: any) => e.mode !== 'folder').length,
-          issueCount: issues.length,
-          issues: issues.sort((a, b) => a.index - b.index),
-        });
+        const totalEntries = lorebook.filter((e: any) => e.mode !== 'folder').length;
+        return jsonResSuccess(
+          res,
+          {
+            totalEntries,
+            issueCount: issues.length,
+            issues: issues.sort((a, b) => a.index - b.index),
+          },
+          {
+            toolName: 'validate_lorebook_keys',
+            summary: `Validated ${totalEntries} lorebook entries, found ${issues.length} issues`,
+            artifacts: { totalEntries, issueCount: issues.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -3397,7 +3434,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const newIndex = currentData.lorebook.length - 1;
           logMcpMutation('clone lorebook entry', `lorebook:clone`, { sourceIdx, sourceName, newIndex });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, sourceIndex: sourceIdx, newIndex, comment: clone.comment || '' });
+          return jsonResSuccess(
+            res,
+            { success: true, sourceIndex: sourceIdx, newIndex, comment: clone.comment || '' },
+            {
+              toolName: 'clone_lorebook',
+              summary: `Cloned lorebook entry [${sourceIdx}] → [${newIndex}]`,
+              artifacts: { sourceIndex: sourceIdx, newIndex },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'clone lorebook entry',
@@ -3443,7 +3488,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           canonicalizeLorebookFolderRefs(currentData.lorebook);
           logMcpMutation('update lorebook entry', `lorebook:${idx}`, { entryName, updatedKeys: Object.keys(body) });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, index: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx },
+            {
+              toolName: 'write_lorebook',
+              summary: `Updated lorebook entry [${idx}] "${entryName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'update lorebook entry',
@@ -3494,7 +3546,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newIndex: currentData.lorebook.length - 1,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, index: currentData.lorebook.length - 1 });
+          const addedIdx = currentData.lorebook.length - 1;
+          return jsonResSuccess(
+            res,
+            { success: true, index: addedIdx },
+            {
+              toolName: 'add_lorebook',
+              summary: `Added lorebook entry [${addedIdx}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add lorebook entry',
@@ -3568,7 +3628,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             entries: results,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, added: results.length, entries: results });
+          return jsonResSuccess(
+            res,
+            { success: true, added: results.length, entries: results },
+            {
+              toolName: 'add_lorebook',
+              summary: `Batch added ${results.length} lorebook entries`,
+              artifacts: { added: results.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch add lorebook entries',
@@ -3636,7 +3704,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             entries: deleted,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, deleted: deleted.length, entries: deleted });
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: deleted.length, entries: deleted },
+            {
+              toolName: 'delete_lorebook',
+              summary: `Batch deleted ${deleted.length} lorebook entries`,
+              artifacts: { deleted: deleted.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch delete lorebook entries',
@@ -3772,17 +3848,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             totalMatches,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            field: targetField,
-            matchedEntries: results.length,
-            totalMatches,
-            results: results.map((r) => ({
-              index: r.index,
-              comment: r.comment,
-              matchCount: r.matchCount,
-            })),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              field: targetField,
+              matchedEntries: results.length,
+              totalMatches,
+              results: results.map((r) => ({
+                index: r.index,
+                comment: r.comment,
+                matchCount: r.matchCount,
+              })),
+            },
+            {
+              toolName: 'replace_across_all_lorebook',
+              summary: `Replaced ${totalMatches} matches across ${results.length} lorebook entries`,
+              artifacts: { matchedEntries: results.length, totalMatches },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'replace all lorebook',
@@ -3900,16 +3984,24 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             totalMatches: activeResults.reduce((s, r) => s + r.matchCount, 0),
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            count: activeResults.length,
-            results: results.map((r) => ({
-              index: r.index,
-              comment: r.comment,
-              matchCount: r.matchCount,
-              skipped: r.skipped,
-            })),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              count: activeResults.length,
+              results: results.map((r) => ({
+                index: r.index,
+                comment: r.comment,
+                matchCount: r.matchCount,
+                skipped: r.skipped,
+              })),
+            },
+            {
+              toolName: 'replace_across_all_lorebook',
+              summary: `Batch replaced in ${activeResults.length} lorebook entries`,
+              artifacts: { count: activeResults.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch replace lorebook',
@@ -4028,17 +4120,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           logMcpMutation('batch insert lorebook', 'lorebook:batch-insert', { count: results.length });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            count: results.length,
-            results: results.map((r) => ({
-              index: r.index,
-              comment: r.comment,
-              position: r.position,
-              oldSize: r.oldSize,
-              newSize: r.newSize,
-            })),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              count: results.length,
+              results: results.map((r) => ({
+                index: r.index,
+                comment: r.comment,
+                position: r.position,
+                oldSize: r.oldSize,
+                newSize: r.newSize,
+              })),
+            },
+            {
+              toolName: 'write_lorebook',
+              summary: `Batch inserted content into ${results.length} lorebook entries`,
+              artifacts: { count: results.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch insert lorebook',
@@ -4123,15 +4223,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.lorebook[idx][targetField] = newContent;
           logMcpMutation('replace lorebook field', `lorebook:${idx}`, { entryName, field: targetField, matchCount });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            comment: entryName,
-            field: targetField,
-            matchCount,
-            oldSize: content.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              comment: entryName,
+              field: targetField,
+              matchCount,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_in_lorebook',
+              summary: `Replaced ${matchCount} matches in lorebook entry [${idx}] "${entryName}"`,
+              artifacts: { matchCount, oldSize: content.length, newSize: newContent.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'replace lorebook field',
@@ -4242,18 +4350,26 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newBlockSize: newBlock.length,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            field: targetField,
-            startAnchorAt: startPos,
-            endAnchorAt: endPos,
-            includeAnchors,
-            oldBlockSize: oldBlock.length,
-            newBlockSize: newBlock.length,
-            oldSize: content.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              field: targetField,
+              startAnchorAt: startPos,
+              endAnchorAt: endPos,
+              includeAnchors,
+              oldBlockSize: oldBlock.length,
+              newBlockSize: newBlock.length,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_block_in_lorebook',
+              summary: `Block-replaced in lorebook entry [${idx}]`,
+              artifacts: { oldBlockSize: oldBlock.length, newBlockSize: newBlock.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'block replace lorebook',
@@ -4336,14 +4452,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newSize: newContent.length,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            comment: entryName,
-            position,
-            oldSize: oldContent.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              comment: entryName,
+              position,
+              oldSize: oldContent.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'insert_in_lorebook',
+              summary: `Inserted content into lorebook entry [${idx}] "${entryName}"`,
+              artifacts: { position, oldSize: oldContent.length, newSize: newContent.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'insert lorebook content',
@@ -4379,7 +4503,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.lorebook.splice(idx, 1);
           logMcpMutation('delete lorebook entry', `lorebook:${idx}`, { entryName });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, deleted: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: idx },
+            {
+              toolName: 'delete_lorebook',
+              summary: `Deleted lorebook entry [${idx}] "${entryName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'delete lorebook entry',
@@ -4395,7 +4526,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /regex
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && !parts[1] && req.method === 'GET') {
-        return jsonRes(res, buildRegexListResponse((currentData.regex as Record<string, unknown>[]) || []));
+        const regexList = buildRegexListResponse((currentData.regex as Record<string, unknown>[]) || []);
+        return jsonResSuccess(res, regexList, {
+          toolName: 'list_regex',
+          summary: `Listed ${regexList.count} regex entries`,
+        });
       }
 
       // ----------------------------------------------------------------
@@ -4419,7 +4554,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (entry.replace === undefined) entry.replace = '';
         delete entry.in;
         delete entry.out;
-        return jsonRes(res, { index: idx, entry });
+        return jsonResSuccess(
+          res,
+          { index: idx, entry },
+          {
+            toolName: 'read_regex',
+            summary: `Read regex entry [${idx}] "${entry.comment || ''}"`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -4460,7 +4602,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           normalizeRegexType(entry);
           logMcpMutation('update regex entry', `regex:${idx}`, { entryName, updatedKeys: Object.keys(body) });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, { success: true, index: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx },
+            {
+              toolName: 'write_regex',
+              summary: `Updated regex entry [${idx}] "${entryName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'update regex entry',
@@ -4503,7 +4652,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.regex.push(entry);
           logMcpMutation('add regex entry', 'regex:add', { entryName: name, newIndex: currentData.regex.length - 1 });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, { success: true, index: currentData.regex.length - 1 });
+          const addedRegexIdx = currentData.regex.length - 1;
+          return jsonResSuccess(
+            res,
+            { success: true, index: addedRegexIdx },
+            {
+              toolName: 'add_regex',
+              summary: `Added regex entry [${addedRegexIdx}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add regex entry',
@@ -4568,7 +4725,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           logMcpMutation('batch add regex entries', 'regex:batch-add', { count: results.length });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, { success: true, added: results.length, entries: results });
+          return jsonResSuccess(
+            res,
+            { success: true, added: results.length, entries: results },
+            {
+              toolName: 'add_regex_batch',
+              summary: `Batch added ${results.length} regex entries`,
+              artifacts: { added: results.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch add regex entries',
@@ -4641,7 +4806,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           logMcpMutation('batch write regex entries', 'regex:batch-write', { count: results.length });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, { success: true, modified: results.length, entries: results });
+          return jsonResSuccess(
+            res,
+            { success: true, modified: results.length, entries: results },
+            {
+              toolName: 'write_regex_batch',
+              summary: `Batch modified ${results.length} regex entries`,
+              artifacts: { modified: results.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch write regex entries',
@@ -4733,15 +4906,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           logMcpMutation('replace regex field', `regex:${idx}`, { entryName, field: targetField, matchCount });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            comment: entryName,
-            field: targetField,
-            matchCount,
-            oldSize: content.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              comment: entryName,
+              field: targetField,
+              matchCount,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_in_regex',
+              summary: `Replaced ${matchCount} matches in regex entry [${idx}] "${entryName}"`,
+              artifacts: { matchCount, oldSize: content.length, newSize: newContent.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'replace regex field',
@@ -4844,15 +5025,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newSize: newContent.length,
           });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            comment: entryName,
-            field: targetField,
-            position,
-            oldSize: oldContent.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              comment: entryName,
+              field: targetField,
+              position,
+              oldSize: oldContent.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'insert_in_regex',
+              summary: `Inserted content into regex entry [${idx}] "${entryName}"`,
+              artifacts: { position, oldSize: oldContent.length, newSize: newContent.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'insert regex field',
@@ -4888,7 +5077,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.regex.splice(idx, 1);
           logMcpMutation('delete regex entry', `regex:${idx}`, { entryName });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, { success: true, deleted: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: idx },
+            {
+              toolName: 'delete_regex',
+              summary: `Deleted regex entry [${idx}] "${entryName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'delete regex entry',
@@ -4957,7 +5153,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return e;
           });
         }
-        return jsonRes(res, { type: greetingType, field: fieldName, count: items.length, total: arr.length, items });
+        return jsonResSuccess(
+          res,
+          { type: greetingType, field: fieldName, count: items.length, total: arr.length, items },
+          {
+            toolName: 'list_greetings',
+            summary: `Listed ${items.length} ${greetingType} greetings`,
+            artifacts: { count: items.length, total: arr.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -4984,7 +5188,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `greeting:${greetingType}:${parts[2]}`,
           });
         }
-        return jsonRes(res, { type: greetingType, index: idx, content: arr[idx] });
+        return jsonResSuccess(
+          res,
+          { type: greetingType, index: idx, content: arr[idx] },
+          {
+            toolName: 'read_greeting',
+            summary: `Read ${greetingType} greeting [${idx}]`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5025,7 +5236,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const newIdx = currentData[fieldName].length - 1;
           logMcpMutation('add greeting', `greeting:${greetingType}:add`, { newIndex: newIdx });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, { success: true, type: greetingType, index: newIdx });
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, index: newIdx },
+            {
+              toolName: 'write_greeting',
+              summary: `Added ${greetingType} greeting [${newIdx}]`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add greeting',
@@ -5095,7 +5313,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData[fieldName] = arr;
           logMcpMutation('batch write greetings', `greeting:${greetingType}:batch-write`, { count: writes.length });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, { success: true, type: greetingType, count: writes.length });
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, count: writes.length },
+            {
+              toolName: 'batch_write_greeting',
+              summary: `Batch updated ${writes.length} ${greetingType} greetings`,
+              artifacts: { count: writes.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch write greetings',
@@ -5154,7 +5380,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData[fieldName] = reordered;
           logMcpMutation('reorder greetings', `greeting:${greetingType}:reorder`, { count: arr.length });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, { success: true, type: greetingType, count: reordered.length });
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, count: reordered.length },
+            {
+              toolName: 'batch_write_greeting',
+              summary: `Reordered ${reordered.length} ${greetingType} greetings`,
+              artifacts: { count: reordered.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'reorder greetings',
@@ -5222,7 +5456,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newSize: body.content.length,
           });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, { success: true, type: greetingType, index: idx, size: body.content.length });
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, index: idx, size: body.content.length },
+            {
+              toolName: 'write_greeting',
+              summary: `Updated ${greetingType} greeting [${idx}]`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write greeting',
@@ -5269,7 +5510,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData[fieldName].splice(idx, 1);
           logMcpMutation('delete greeting', `greeting:${greetingType}:${idx}`, {});
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, { success: true, type: greetingType, deleted: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, deleted: idx },
+            {
+              toolName: 'write_greeting',
+              summary: `Deleted ${greetingType} greeting [${idx}]`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'delete greeting',
@@ -5342,12 +5590,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             indices: uniqueIndices,
           });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, {
-            success: true,
-            type: greetingType,
-            deletedCount: uniqueIndices.length,
-            deletedIndices: uniqueIndices,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              type: greetingType,
+              deletedCount: uniqueIndices.length,
+              deletedIndices: uniqueIndices,
+            },
+            {
+              toolName: 'batch_write_greeting',
+              summary: `Batch deleted ${uniqueIndices.length} ${greetingType} greetings`,
+              artifacts: { deletedCount: uniqueIndices.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch delete greetings',
@@ -5376,7 +5632,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           effectCount: Array.isArray(t.effect) ? t.effect.length : 0,
           lowLevelAccess: !!t.lowLevelAccess,
         }));
-        return jsonRes(res, { count: scripts.length, items });
+        return jsonResSuccess(
+          res,
+          { count: scripts.length, items },
+          {
+            toolName: 'list_triggers',
+            summary: `Listed ${scripts.length} trigger scripts`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5393,7 +5656,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `trigger:${parts[1]}`,
           });
         }
-        return jsonRes(res, { index: idx, trigger: scripts[idx] });
+        return jsonResSuccess(
+          res,
+          { index: idx, trigger: scripts[idx] },
+          {
+            toolName: 'read_trigger',
+            summary: `Read trigger script [${idx}] "${scripts[idx].comment || ''}"`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5428,7 +5698,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             deps.stringifyTriggerScripts(currentData.triggerScripts),
           );
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-          return jsonRes(res, { success: true, index: newIdx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: newIdx },
+            {
+              toolName: 'write_trigger',
+              summary: `Added trigger script [${newIdx}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add trigger',
@@ -5471,7 +5748,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             deps.stringifyTriggerScripts(currentData.triggerScripts),
           );
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-          return jsonRes(res, { success: true, deleted: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: idx },
+            {
+              toolName: 'write_trigger',
+              summary: `Deleted trigger script [${idx}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'delete trigger',
@@ -5522,7 +5806,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             deps.stringifyTriggerScripts(currentData.triggerScripts),
           );
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-          return jsonRes(res, { success: true, index: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx },
+            {
+              toolName: 'write_trigger',
+              summary: `Updated trigger script [${idx}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write trigger',
@@ -7199,7 +7490,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Exported ${result.exportedCount} entries to ${format.toUpperCase()}.`,
           });
 
-          return jsonRes(res, result);
+          return jsonResSuccess(res, result as unknown as Record<string, unknown>, {
+            toolName: 'export_lorebook_to_files',
+            summary: `Exported ${result.exportedCount} lorebook entries to ${format.toUpperCase()}`,
+            artifacts: { exportedCount: result.exportedCount, format },
+          });
         } catch (err: unknown) {
           return mcpError(res, 500, {
             action: 'export-lorebook',
@@ -7367,16 +7662,29 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Imported ${resolution.toAdd.length + resolution.toOverwrite.length} entries.`,
           });
 
-          return jsonRes(res, {
-            success: true,
-            totalFound: importEntries.length,
-            imported: resolution.toAdd.length,
-            overwritten: resolution.toOverwrite.length,
-            skipped: resolution.skipped.length,
-            renamed: resolution.renamed.length,
-            foldersCreated,
-            errors,
-          });
+          const importedCount = resolution.toAdd.length + resolution.toOverwrite.length;
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              totalFound: importEntries.length,
+              imported: resolution.toAdd.length,
+              overwritten: resolution.toOverwrite.length,
+              skipped: resolution.skipped.length,
+              renamed: resolution.renamed.length,
+              foldersCreated,
+              errors,
+            },
+            {
+              toolName: 'import_lorebook_from_files',
+              summary: `Imported ${importedCount} lorebook entries (${resolution.toAdd.length} new, ${resolution.toOverwrite.length} overwritten)`,
+              artifacts: {
+                totalFound: importEntries.length,
+                imported: resolution.toAdd.length,
+                overwritten: resolution.toOverwrite.length,
+              },
+            },
+          );
         } catch (err: unknown) {
           return mcpError(res, 500, {
             action: 'import-lorebook',
