@@ -25,6 +25,7 @@ import {
   validateFormatingOrderText,
   type PromptItemModel,
 } from './risup-prompt-model';
+import { mcpSuccess, type McpSuccessOptions } from './mcp-response-envelope';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -932,6 +933,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     jsonMcpError(res, status, info, broadcastStatus, error);
   }
 
+  // Shorthand to emit an MCP success response with envelope enrichment
+  function jsonResSuccess(res: http.ServerResponse, payload: Record<string, unknown>, opts: McpSuccessOptions): void {
+    jsonRes(res, mcpSuccess(payload, opts));
+  }
+
   async function resolveExternalDocumentRequest<TBody extends Record<string, any> = Record<string, any>>(
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -1051,7 +1057,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
   const server = http.createServer(async (req, res) => {
     // Auth check
     if (req.headers.authorization !== `Bearer ${token}`) {
-      return jsonRes(res, { error: 'Unauthorized' }, 401);
+      return mcpError(res, 401, {
+        action: 'authenticate request',
+        target: 'request:auth',
+        message: 'Unauthorized',
+        suggestion: '유효한 TOKI_TOKEN으로 Authorization Bearer 헤더를 다시 보내세요.',
+      });
     }
     const url = new URL(req.url!, 'http://127.0.0.1');
     const parts = url.pathname.split('/').filter(Boolean);
@@ -1233,7 +1244,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
       const currentData = deps.getCurrentData();
       if (!currentData) {
-        return jsonRes(res, { error: 'No file open' }, 400);
+        return mcpError(res, 400, {
+          action: 'require current document',
+          target: 'document:current',
+          message: 'No file open',
+          suggestion: 'open_file를 사용하거나 에디터에서 파일을 먼저 연 뒤 다시 시도하세요.',
+        });
       }
 
       // ----------------------------------------------------------------
@@ -1388,7 +1404,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
         }
 
-        return jsonRes(res, { fileType, fields });
+        return jsonResSuccess(
+          res,
+          { fileType, fields },
+          {
+            toolName: 'list_fields',
+            summary: `Listed ${fields.length} fields (${fileType})`,
+            artifacts: { count: fields.length, fileType },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -1409,7 +1433,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (req.method === 'GET') {
-          return jsonRes(res, buildFieldReadResponsePayload(currentData, fieldName, deps));
+          const readPayload = buildFieldReadResponsePayload(currentData, fieldName, deps);
+          return jsonResSuccess(res, readPayload, {
+            toolName: 'read_field',
+            summary: `Read field "${fieldName}"`,
+            artifacts: { fieldName },
+          });
         }
 
         if (req.method === 'POST') {
@@ -1512,11 +1541,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
                 deps.stringifyTriggerScripts(currentData.triggerScripts),
               );
               deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-              return jsonRes(res, {
-                success: true,
-                field: fieldName,
-                size: deps.stringifyTriggerScripts(currentData.triggerScripts).length,
-              });
+              const tsSize = deps.stringifyTriggerScripts(currentData.triggerScripts).length;
+              return jsonResSuccess(
+                res,
+                {
+                  success: true,
+                  field: fieldName,
+                  size: tsSize,
+                },
+                {
+                  toolName: 'write_field',
+                  summary: `Updated triggerScripts (${tsSize} chars)`,
+                  artifacts: { fieldName, size: tsSize },
+                },
+              );
             }
             currentData[fieldName] = content;
             if (fieldName === 'lua') {
@@ -1529,7 +1567,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             }
             logMcpMutation('update field', `field:${fieldName}`, { oldSize, newSize });
             deps.broadcastToAll('data-updated', fieldName, content);
-            return jsonRes(res, { success: true, field: fieldName, size: content.length });
+            return jsonResSuccess(
+              res,
+              { success: true, field: fieldName, size: content.length },
+              {
+                toolName: 'write_field',
+                summary: `Updated "${fieldName}" (${oldSize}→${content.length} chars)`,
+                artifacts: { fieldName, oldSize, newSize: content.length },
+              },
+            );
           } else {
             return mcpError(res, 403, {
               action: 'update field',
@@ -1574,7 +1620,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const results = buildFieldBatchReadResults(currentData, fields, deps);
-        return jsonRes(res, { count: results.length, fields: results });
+        return jsonResSuccess(
+          res,
+          { count: results.length, fields: results },
+          {
+            toolName: 'read_field_batch',
+            summary: `Read ${results.length} fields`,
+            artifacts: { count: results.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -1859,7 +1913,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             count: results.length,
             fields: results.map((r) => r.field),
           });
-          return jsonRes(res, { success: true, count: results.length, results });
+          return jsonResSuccess(
+            res,
+            { success: true, count: results.length, results },
+            {
+              toolName: 'write_field_batch',
+              summary: `Batch-wrote ${results.length} fields`,
+              artifacts: { count: results.length, fields: results.map((r) => r.field) },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch write field',
@@ -2031,13 +2093,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             }
             logMcpMutation('replace in field', `field:${fieldName}`, { matchCount });
             deps.broadcastToAll('data-updated', fieldName, newContent);
-            return jsonRes(res, {
-              success: true,
-              field: fieldName,
-              matchCount,
-              oldSize: content.length,
-              newSize: newContent.length,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                field: fieldName,
+                matchCount,
+                oldSize: content.length,
+                newSize: newContent.length,
+              },
+              {
+                toolName: 'replace_in_field',
+                summary: `Replaced ${matchCount} match(es) in "${fieldName}" (${content.length}→${newContent.length})`,
+                artifacts: { fieldName, matchCount, oldSize: content.length, newSize: newContent.length },
+              },
+            );
           } else {
             return mcpError(res, 403, {
               action: 'replace in field',
@@ -2563,18 +2633,26 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         try {
-          return jsonRes(
-            res,
-            searchAllTextSurfaces(currentData, {
-              query: normalizeLF(String(body.query)),
-              regex: !!body.regex,
-              flags: typeof body.flags === 'string' ? body.flags : undefined,
-              includeLorebook: body.include_lorebook !== false,
-              includeGreetings: body.include_greetings !== false,
-              contextChars: Math.max(0, Math.min(Number(body.context_chars) || 60, 300)),
-              maxMatchesPerSurface: Math.max(1, Math.min(Number(body.max_matches_per_field) || 5, 20)),
-            }),
-          );
+          const searchResult = searchAllTextSurfaces(currentData, {
+            query: normalizeLF(String(body.query)),
+            regex: !!body.regex,
+            flags: typeof body.flags === 'string' ? body.flags : undefined,
+            includeLorebook: body.include_lorebook !== false,
+            includeGreetings: body.include_greetings !== false,
+            contextChars: Math.max(0, Math.min(Number(body.context_chars) || 60, 300)),
+            maxMatchesPerSurface: Math.max(1, Math.min(Number(body.max_matches_per_field) || 5, 20)),
+          });
+          const totalHits = Array.isArray(searchResult.surfaces)
+            ? (searchResult.surfaces as Array<{ totalMatches?: number }>).reduce(
+                (sum, s) => sum + (s.totalMatches || 0),
+                0,
+              )
+            : 0;
+          return jsonResSuccess(res, searchResult as unknown as Record<string, unknown>, {
+            toolName: 'search_all_fields',
+            summary: `Searched all fields: ${totalHits} total match(es)`,
+            artifacts: { totalMatches: totalHits },
+          });
         } catch (err) {
           return mcpError(res, 400, {
             action: 'search all fields',
@@ -2625,14 +2703,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             maxMatches,
           });
 
-          return jsonRes(res, {
-            field: fieldName,
-            query: result.query,
-            totalMatches: result.totalMatches,
-            returnedMatches: result.returnedMatches,
-            fieldLength: result.contentLength,
-            matches: result.matches,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              field: fieldName,
+              query: result.query,
+              totalMatches: result.totalMatches,
+              returnedMatches: result.returnedMatches,
+              fieldLength: result.contentLength,
+              matches: result.matches,
+            },
+            {
+              toolName: 'search_in_field',
+              summary: `Found ${result.totalMatches} match(es) in "${fieldName}"`,
+              artifacts: { fieldName, totalMatches: result.totalMatches },
+            },
+          );
         } catch (err) {
           return mcpError(res, 400, {
             action: 'search in field',
@@ -2707,14 +2793,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
         const length = Math.max(1, Math.min(Number(url.searchParams.get('length')) || 2000, MAX_RANGE_LENGTH));
         const slice = content.slice(offset, offset + length);
-        return jsonRes(res, {
-          field: fieldName,
-          totalLength: content.length,
-          offset,
-          length: slice.length,
-          hasMore: offset + length < content.length,
-          content: slice,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            field: fieldName,
+            totalLength: content.length,
+            offset,
+            length: slice.length,
+            hasMore: offset + length < content.length,
+            content: slice,
+          },
+          {
+            toolName: 'read_field_range',
+            summary: `Read ${slice.length} chars from "${fieldName}" at offset ${offset}`,
+            artifacts: { fieldName, offset, length: slice.length, totalLength: content.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -2743,14 +2837,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         snaps.push(snapshot);
         // Keep max 10 snapshots per field
         if (snaps.length > 10) snaps.shift();
-        return jsonRes(res, {
-          success: true,
-          snapshotId,
-          field: fieldName,
-          size: snapshot.size,
-          timestamp: snapshot.timestamp,
-          totalSnapshots: snaps.length,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            success: true,
+            snapshotId,
+            field: fieldName,
+            size: snapshot.size,
+            timestamp: snapshot.timestamp,
+            totalSnapshots: snaps.length,
+          },
+          {
+            toolName: 'snapshot_field',
+            summary: `Snapshot created for "${fieldName}" (${snapshot.size} chars)`,
+            artifacts: { fieldName, snapshotId, size: snapshot.size },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -2759,11 +2861,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'field' && parts[1] && parts[2] === 'snapshots' && !parts[3] && req.method === 'GET') {
         const fieldName = decodeURIComponent(parts[1]);
         const snaps = fieldSnapshots.get(fieldName) || [];
-        return jsonRes(res, {
-          field: fieldName,
-          count: snaps.length,
-          snapshots: snaps.map((s) => ({ id: s.id, timestamp: s.timestamp, size: s.size })),
-        });
+        return jsonResSuccess(
+          res,
+          {
+            field: fieldName,
+            count: snaps.length,
+            snapshots: snaps.map((s) => ({ id: s.id, timestamp: s.timestamp, size: s.size })),
+          },
+          {
+            toolName: 'list_snapshots',
+            summary: `${snaps.length} snapshot(s) for "${fieldName}"`,
+            artifacts: { fieldName, count: snaps.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -2816,13 +2926,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             restoredSize: snapshot.size,
           });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, {
-            success: true,
-            field: fieldName,
-            snapshotId,
-            restoredSize: snapshot.size,
-            timestamp: snapshot.timestamp,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              field: fieldName,
+              snapshotId,
+              restoredSize: snapshot.size,
+              timestamp: snapshot.timestamp,
+            },
+            {
+              toolName: 'restore_snapshot',
+              summary: `Restored "${fieldName}" from snapshot ${snapshotId} (${snapshot.size} chars)`,
+              artifacts: { fieldName, snapshotId, restoredSize: snapshot.size },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'restore field',
@@ -2847,11 +2965,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         if (typeof raw !== 'string') {
-          return jsonRes(res, {
-            field: fieldName,
-            type: Array.isArray(raw) ? 'array' : typeof raw,
-            size: JSON.stringify(raw).length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              field: fieldName,
+              type: Array.isArray(raw) ? 'array' : typeof raw,
+              size: JSON.stringify(raw).length,
+            },
+            {
+              toolName: 'get_field_stats',
+              summary: `Stats for "${fieldName}" (${Array.isArray(raw) ? 'array' : typeof raw})`,
+              artifacts: { fieldName },
+            },
+          );
         }
         const content = raw as string;
         const lines = content.split('\n');
@@ -2860,24 +2986,38 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const cbsTags = (content.match(/\{\{[^}]+\}\}/g) || []).length;
         // Count HTML tags
         const htmlTags = (content.match(/<[^>]+>/g) || []).length;
-        return jsonRes(res, {
-          field: fieldName,
-          type: 'string',
-          characters: content.length,
-          lines: lines.length,
-          words: words.length,
-          cbsTags,
-          htmlTags,
-          emptyLines: lines.filter((l) => l.trim() === '').length,
-          longestLine: Math.max(...lines.map((l) => l.length)),
-        });
+        return jsonResSuccess(
+          res,
+          {
+            field: fieldName,
+            type: 'string',
+            characters: content.length,
+            lines: lines.length,
+            words: words.length,
+            cbsTags,
+            htmlTags,
+            emptyLines: lines.filter((l) => l.trim() === '').length,
+            longestLine: Math.max(...lines.map((l) => l.length)),
+          },
+          {
+            toolName: 'get_field_stats',
+            summary: `Stats for "${fieldName}" (${content.length} chars, ${lines.length} lines)`,
+            artifacts: { fieldName, characters: content.length, lines: lines.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
       // GET /lorebook
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && !parts[1] && req.method === 'GET') {
-        return jsonRes(res, buildLorebookListResponse((currentData.lorebook as Record<string, unknown>[]) || [], url));
+        const lbPayload = buildLorebookListResponse((currentData.lorebook as Record<string, unknown>[]) || [], url);
+        const lbCount = typeof lbPayload.count === 'number' ? lbPayload.count : 0;
+        return jsonResSuccess(res, lbPayload, {
+          toolName: 'list_lorebook',
+          summary: `Listed ${lbCount} lorebook entries`,
+          artifacts: { count: lbCount },
+        });
       }
 
       // ----------------------------------------------------------------
@@ -2908,10 +3048,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lorebook:${idx}`,
           });
         }
-        return jsonRes(res, {
-          index: idx,
-          entry: normalizeLorebookEntryForResponse(currentData.lorebook[idx], currentData.lorebook || []),
-        });
+        const lbEntry = normalizeLorebookEntryForResponse(currentData.lorebook[idx], currentData.lorebook || []);
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            entry: lbEntry,
+          },
+          {
+            toolName: 'read_lorebook',
+            summary: `Read lorebook entry [${idx}] "${(lbEntry as Record<string, unknown>).comment || ''}"`,
+            artifacts: { index: idx, comment: (lbEntry as Record<string, unknown>).comment || '' },
+          },
+        );
       }
 
       // ----------------------------------------------------------------

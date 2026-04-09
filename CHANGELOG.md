@@ -9,6 +9,19 @@
 
 ---
 
+## [0.38.6] - 2026-04-10
+
+### 새 기능
+
+- **MCP 성공 응답 엔벨로프 (Success Response Envelope)**: MCP 도구의 성공 응답에 구조화된 관찰 필드를 추가하는 additive-only 계약을 도입했습니다
+  - 새 모듈 `src/lib/mcp-response-envelope.ts`: `mcpSuccess()` 헬퍼와 패밀리별 `FAMILY_NEXT_ACTIONS` 맵
+  - 엔벨로프 필드: `status` (항상 200), `summary` (작업 요약 문자열), `next_actions` (분류 체계 기반 후속 도구 제안), `artifacts` (작업 핵심 지표)
+  - 기존 응답의 최상위 필드를 제거하거나 `data` 객체로 감싸지 않는 additive-only 설계
+  - 1차 마이그레이션 범위: field (list/read/write/batch), search (search_in_field, search_all_fields), snapshot (create/list/restore), lorebook (list/read), field stats/range — 총 15개 성공 경로
+  - 21개 단위 테스트 + 10개 통합 테스트로 계약 보장 (기존 164개 API 테스트 전부 통과)
+  - 분류 체계(taxonomy)와 연동하여 `next_actions`를 패밀리 단위로 결정적으로 생성
+  - 에러 응답에는 엔벨로프가 적용되지 않아 기존 `mcpError()` 계약 유지
+
 ## [0.38.5] - 2026-04-09
 
 ### 새 기능

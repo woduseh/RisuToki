@@ -170,6 +170,7 @@
 - 프리뷰 매크로는 `{{charpersona}}`와 `{{chardesc}}`를 서로 다른 필드로 유지해야 합니다. `{{charpersona}}`는 personality, `{{chardesc}}`는 description을 읽습니다.
 - **MCP 구조화 에러 응답 (v0.38.4 contract)**: regex, greetings, lua/css 섹션, field/lorebook, reference, charx/risum asset, risup reorder/formating-order, skills file-read validation, unopened-file probe/open 라우트의 `4xx/409` 에러와 글로벌 `Unauthorized` / `No file open` guard는 구조화된 `mcpError()` 엔벨로프를 반환합니다. 응답에는 `action`, `target`, `status`, `suggestion` 등의 additive 필드가 포함되며, MCP 브릿지 호환을 위해 최상위 `error` 필드도 그대로 유지됩니다. 아직 HTTP-200 `success: false` no-op 응답은 이 contract 밖에 남아 있습니다.
 - **MCP 도구 분류 체계 (v0.38.5)**: `src/lib/mcp-tool-taxonomy.ts`가 120개 도구를 19개 패밀리로 분류하는 단일 소스 오브 트루스입니다. 도구 추가/삭제 시 이 파일도 함께 갱신해야 하며, `mcp-tool-taxonomy.test.ts`가 양방향 완전성(orphan/phantom 없음)과 행동 힌트 일관성을 검증합니다. MCP SDK `ToolAnnotations`(readOnlyHint, destructiveHint, idempotentHint, openWorldHint)는 등록 후 `RegisteredTool.update()`로 자동 패치됩니다.
+- **MCP 성공 응답 엔벨로프 (v0.38.6 contract)**: `src/lib/mcp-response-envelope.ts`가 성공 응답에 additive 관찰 필드를 추가하는 공유 헬퍼입니다. `mcpSuccess(payload, opts)` 함수는 기존 페이로드에 `status` (200), `summary`, `next_actions`, `artifacts` 필드를 최상위에 추가하며 기존 필드를 제거하거나 감싸지 않습니다. `FAMILY_NEXT_ACTIONS` 맵이 분류 체계(taxonomy)와 연동하여 패밀리별 후속 도구를 결정적으로 제안합니다. 1차 마이그레이션: field(list/read/write/batch), search(search_in_field, search_all_fields), snapshot(create/list/restore), lorebook(list/read), field stats/range — 총 15개 성공 경로. 나머지 경로는 이후 점진적으로 마이그레이션합니다.
 
 ---
 

@@ -3319,6 +3319,38 @@ describe('MCP API structured error envelopes — risum-asset routes', () => {
 // structured mcpError() envelope (action, error, status, target).
 // ---------------------------------------------------------------------------
 
+describe('MCP API structured error envelopes — global guards', () => {
+  it('returns a structured error envelope for unauthorized requests', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, 'wrong-token', '/fields');
+      expect(res.status).toBe(401);
+      expect(res.data).toHaveProperty('action', 'authenticate request');
+      expect(res.data).toHaveProperty('status', 401);
+      expect(res.data).toHaveProperty('target', 'request:auth');
+      expect(res.data).toHaveProperty('error', 'Unauthorized');
+      expect(typeof res.data.suggestion).toBe('string');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured error envelope when no file is open', async () => {
+    const api = await startTestApiServer(null);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/fields');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'require current document');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'document:current');
+      expect(res.data).toHaveProperty('error', 'No file open');
+      expect(typeof res.data.suggestion).toBe('string');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
 describe('MCP API structured error envelopes — risup reorder routes', () => {
   function createRisupFixture(): SearchFixture {
     return {
@@ -3948,6 +3980,211 @@ describe('MCP API external file probe routes', () => {
       expect(res.status).toBe(200);
       expect(res.data.field).toBe('description');
       expect(res.data.content).toBe('Probe description field.');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Success envelope integration tests
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('MCP API success response envelope', () => {
+  /**
+   * Verify that envelope fields (status, summary, next_actions, artifacts)
+   * are present on migrated success responses, without removing any
+   * existing top-level fields.
+   */
+
+  it('list_fields response includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/fields');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(Array.isArray(res.data.fields)).toBe(true);
+      expect(typeof res.data.fileType).toBe('string');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      expect(typeof res.data.artifacts).toBe('object');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('read_field response includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/field/description');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.field).toBe('description');
+      expect(typeof res.data.content).toBe('string');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write_field response includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description', {
+        content: 'Updated description for envelope test.',
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(res.data.field).toBe('description');
+      expect(typeof res.data.size).toBe('number');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect((res.data.summary as string).includes('description')).toBe(true);
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      expect((res.data.next_actions as string[]).length).toBeGreaterThan(0);
+      expect(typeof res.data.artifacts).toBe('object');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('read_field_batch response includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/batch', {
+        fields: ['name', 'description'],
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(typeof res.data.count).toBe('number');
+      expect(Array.isArray(res.data.fields)).toBe(true);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('search_in_field response includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description/search', {
+        query: 'Alpha',
+      });
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.field).toBe('description');
+      expect(typeof res.data.totalMatches).toBe('number');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect((res.data.summary as string).includes('match')).toBe(true);
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('list_lorebook response includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/lorebook');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(typeof res.data.count).toBe('number');
+      expect(Array.isArray(res.data.entries)).toBe(true);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      expect(typeof res.data.artifacts).toBe('object');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('read_lorebook response includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/lorebook/0');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.index).toBe(0);
+      expect(typeof res.data.entry).toBe('object');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('snapshot_field response includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description/snapshot', {});
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.snapshotId).toBe('string');
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('list_snapshots response includes envelope fields', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/field/description/snapshots');
+      expect(res.status).toBe(200);
+      // Original fields preserved
+      expect(res.data.field).toBe('description');
+      expect(typeof res.data.count).toBe('number');
+      expect(Array.isArray(res.data.snapshots)).toBe(true);
+      // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('envelope does not break error responses (no envelope on errors)', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/field/nonexistent_field');
+      expect(res.status).toBe(400);
+      // Error responses should NOT have success envelope fields
+      expect(res.data.error).toBeDefined();
+      expect(res.data.action).toBeDefined();
+      // next_actions should NOT be present on errors
+      expect(res.data.next_actions).toBeUndefined();
+      expect(res.data.summary).toBeUndefined();
     } finally {
       await closeServer(api.server);
     }
