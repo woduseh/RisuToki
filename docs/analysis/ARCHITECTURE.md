@@ -139,9 +139,9 @@ main.ts (Node/Electron)  ←✗→  src/app/controller.ts (Renderer/Vue)
 |----------|------|------|-----------|
 | `tsconfig.electron.json` | ES2022 | CommonJS | `main.ts`, `preload.ts`, `popout-preload.ts`, 타입 선언 |
 | `tsconfig.json` | ES2022 | ESNext (Bundler) | `src/**/*.ts`, `vite.config.ts`, `vitest.setup.ts` |
-| `tsconfig.node-libs.json` | ES2022 | CommonJS | `toki-mcp-server.ts`, `src/lib/` (Node 직접 실행) |
+| `tsconfig.node-libs.json` | ES2022 | Node16 | `src/lib/` 선택 파일, `src/charx-io.ts` 등 (side-by-side JS 출력) |
 
-Vite가 렌더러 번들을 빌드하고, `tsc`가 메인 프로세스 / MCP 서버를 컴파일합니다. `src/lib/` 아래에 `.ts`와 `.js`가 나란히 존재하는 이유는 `tsc` 컴파일 출력 때문입니다.
+Vite가 렌더러 번들을 빌드하고, `tsc`가 메인 프로세스 진입점과 공유 라이브러리를, esbuild가 프리로드와 MCP stdio 서버를 번들합니다. `src/lib/` 아래에 `.ts`와 `.js`가 나란히 존재하는 이유는 `build:node-libs`(`tsc`) 출력 때문입니다.
 
 ---
 
@@ -177,12 +177,13 @@ Vite가 렌더러 번들을 빌드하고, `tsc`가 메인 프로세스 / MCP 서
 
 | 모듈 | 위치 | 역할 |
 |------|------|------|
-| `autosave-manager.ts` | 메인+렌더러 | 자동 저장 폴링, `.toki-recovery.json` sidecar 기록 |
+| `autosave-manager.ts` | 메인 | IPC 자동 저장 핸들러, `.toki-recovery.json` sidecar 기록 |
+| `settings-handlers.ts` | 렌더러 (`src/app/`) | 자동 저장 타이머 폴링 (렌더러 측 `setInterval`) |
 | `session-recovery.ts` | 공유 | 복구 데이터 모델 및 직렬화 |
 | `session-recovery-main.ts` | 메인 | 메인 프로세스 복구 후크 (대기 중인 복구 기록 추적) |
-| `session-recovery-manager.ts` | 렌더러 | 복구 후보 평가 및 UI 워크플로 |
-| `session-recovery-controller.ts` | `src/app/` | 복구 UI 오케스트레이션 |
-| `backup-store.ts` | 공유 | 마지막 직렬화 상태 캐시 |
+| `session-recovery-manager.ts` | 메인 | 복구 후보 평가 및 복원/무시 결정 흐름 (`main.ts`에서 초기화) |
+| `session-recovery-controller.ts` | 렌더러 (`src/app/`) | 복구 UI 오케스트레이션 |
+| `backup-store.ts` | 렌더러 | 인메모리 직렬화 상태 캐시 (탭별 되돌리기용) |
 
 복구 흐름: 시작 시 `get-pending-session-recovery` IPC → 복구 후보 발견 시 사용자에게 `자동 저장 복원` / `원본 열기` / `무시` 제안 → 복원 시 `[자동복원]` 배지 표시.
 
@@ -324,10 +325,17 @@ vite.config.ts
   └─ 개발 서버: 127.0.0.1:5173
 
 tsconfig.electron.json (tsc)
-  └─ main.ts, preload.ts, popout-preload.ts → dist/ (CommonJS)
+  └─ main.ts → 루트 main.js (CommonJS)
 
-tsconfig.node-libs.json (tsc)
-  └─ toki-mcp-server.ts, src/lib/*.ts → .js 사이드바이사이드 (CommonJS)
+esbuild (build:preload)
+  ├─ preload.ts → 루트 preload.js
+  └─ popout-preload.ts → 루트 popout-preload.js
+
+esbuild (build:mcp)
+  └─ toki-mcp-server.ts → 루트 toki-mcp-server.js (CJS 번들)
+
+tsconfig.node-libs.json (tsc, module: Node16)
+  └─ src/lib/ 선택 파일, src/charx-io.ts 등 → .js 사이드바이사이드
 ```
 
 `npm run build`는 `lint + typecheck + test + Electron 컴파일 + Vite 번들`을 순서대로 실행합니다.
