@@ -13,7 +13,6 @@ function baseSettingsSnapshot() {
     darkMode: false,
     rpMode: 'off',
     rpCustomText: '',
-    pluniCategory: 'solo',
     bgmEnabled: false,
     bgmPath: '',
     autosaveEnabled: false,

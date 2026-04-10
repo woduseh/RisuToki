@@ -14,7 +14,6 @@ export interface SettingsState {
   bgmEnabled: boolean;
   rpMode: string;
   rpCustomText: string;
-  pluniCategory: string;
 }
 
 export interface SettingsCallbacks {
@@ -28,7 +27,6 @@ export interface SettingsCallbacks {
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
   onOpenPersonaTab(name: string): Promise<void>;
-  onPluniCategoryChange(category: string): void;
 }
 
 let closeSettingsOverlay: (() => void) | null = null;
@@ -199,7 +197,6 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
     { value: 'toki', label: '토키 (라이트)' },
     { value: 'aris', label: '아리스 (다크)' },
     { value: 'custom', label: '커스텀' },
-    { value: 'pluni', label: '플루니 연구소' },
   ];
   for (const opt of rpOptions) {
     const o = document.createElement('option');
@@ -228,37 +225,7 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   rpCustomRow.appendChild(rpCustomArea);
   body.appendChild(rpCustomRow);
 
-  // Pluni category selector (shown only when 'pluni' selected)
-  const pluniCategoryRow = document.createElement('div');
-  pluniCategoryRow.className = 'settings-row';
-  pluniCategoryRow.setAttribute('data-testid', 'pluni-category-row');
-  if (state.rpMode !== 'pluni') pluniCategoryRow.style.display = 'none';
-  const pluniCatLeft = document.createElement('div');
-  pluniCatLeft.innerHTML =
-    '<div class="settings-label">챗봇 카테고리</div><div class="settings-desc">분석 대상 챗봇 유형 선택</div>';
-  const pluniCatSelect = document.createElement('select');
-  pluniCatSelect.className = 'settings-select';
-  pluniCatSelect.setAttribute('data-testid', 'pluni-category-select');
-  const categoryOptions = [
-    { value: 'solo', label: '1:1 챗봇' },
-    { value: 'world-sim', label: '월드 시뮬레이터' },
-    { value: 'multi-char', label: '멀티 캐릭터 월드 시뮬레이터' },
-  ];
-  for (const opt of categoryOptions) {
-    const o = document.createElement('option');
-    o.value = opt.value;
-    o.textContent = opt.label;
-    if (opt.value === state.pluniCategory) o.selected = true;
-    pluniCatSelect.appendChild(o);
-  }
-  pluniCatSelect.addEventListener('change', () => {
-    callbacks.onPluniCategoryChange(pluniCatSelect.value);
-  });
-  pluniCategoryRow.appendChild(pluniCatLeft);
-  pluniCategoryRow.appendChild(pluniCatSelect);
-  body.appendChild(pluniCategoryRow);
-
-  // Preview/edit built-in persona button (hidden for 'off', 'custom', 'pluni')
+  // Preview/edit built-in persona button (hidden for 'off', 'custom')
   const rpEditRow = document.createElement('div');
   rpEditRow.className = 'settings-row';
   rpEditRow.style.cssText = 'justify-content:flex-end;';
@@ -269,7 +236,7 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   rpEditBtn.textContent = '페르소나 파일 편집';
   rpEditBtn.addEventListener('click', async () => {
     const name = rpSelect.value;
-    if (name === 'off' || name === 'custom' || name === 'pluni') return;
+    if (name === 'off' || name === 'custom') return;
     await callbacks.onOpenPersonaTab(name);
     close();
   });
@@ -279,7 +246,6 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   rpSelect.addEventListener('change', () => {
     callbacks.onRpModeChange(rpSelect.value);
     rpCustomRow.style.display = rpSelect.value === 'custom' ? '' : 'none';
-    pluniCategoryRow.style.display = rpSelect.value === 'pluni' ? '' : 'none';
     const showEdit = rpSelect.value === 'toki' || rpSelect.value === 'aris';
     rpEditRow.style.display = showEdit ? '' : 'none';
   });

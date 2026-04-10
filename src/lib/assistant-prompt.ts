@@ -4,7 +4,6 @@ import {
   detectRuntimePlatform,
 } from './assistant-launch';
 import type { AssistantAgent } from './assistant-launch';
-import { type ChatbotCategory, ADVISOR_IDS, buildAdvisorSummary, buildModelSeatHint } from './pluni-persona';
 import { AI_AGENT_LABELS } from './terminal-chat';
 
 export interface PromptInfo {
@@ -19,13 +18,6 @@ interface NavigatorLike {
     platform?: string;
   };
 }
-
-/** Korean labels for chatbot categories (used in status messages). */
-const CATEGORY_LABELS: Record<ChatbotCategory, string> = {
-  solo: '1:1 챗봇',
-  'world-sim': '월드 시뮬레이터',
-  'multi-char': '멀티 캐릭터',
-};
 
 export interface AssistantDeps {
   rpMode: string;
@@ -43,47 +35,15 @@ export interface AssistantDeps {
   terminalInput(text: string): void;
   setStatus(msg: string): void;
   navigatorLike?: NavigatorLike;
-  /** Chatbot category for Pluni Institute mode. Defaults to 'solo'. */
-  pluniCategory?: string;
-  /** Sync Copilot custom-agent profiles for Pluni advisors. */
-  syncCopilotAgentProfiles?(category: string, projectRoot?: string | null): Promise<void>;
-  /** Explicit project root for AGENTS.md / profile placement (typically terminal cwd). */
+  /** Explicit project root for AGENTS.md placement (typically terminal cwd). */
   projectRoot?: string | null;
 }
 
-type RpDeps = Pick<AssistantDeps, 'rpMode' | 'rpCustomText' | 'readPersona' | 'pluniCategory'>;
-
-/**
- * Build a dynamic Pluni Institute session prompt with all three advisors
- * and category-specific interpretation focus.
- */
-function buildPluniPersona(category: ChatbotCategory): string {
-  const seatHint = buildModelSeatHint();
-  const lines: string[] = [
-    `== 플루니 캐릭터 연구소 (Pluni's Character Institute) ==`,
-    ``,
-    `세 명의 고문이 협력하여 챗봇 캐릭터를 분석·개선합니다.`,
-    `모델 배분: ${seatHint.label}`,
-    ``,
-  ];
-
-  for (const id of ADVISOR_IDS) {
-    lines.push(buildAdvisorSummary(id, category));
-    lines.push('');
-  }
-
-  lines.push(`각 고문의 관점을 균형 있게 반영하여 피드백하세요.`);
-  return lines.join('\n');
-}
+type RpDeps = Pick<AssistantDeps, 'rpMode' | 'rpCustomText' | 'readPersona'>;
 
 export async function loadRpPersona(deps: RpDeps): Promise<string> {
   if (deps.rpMode === 'off') return '';
   if (deps.rpMode === 'custom') return deps.rpCustomText;
-
-  if (deps.rpMode === 'pluni') {
-    const category = (deps.pluniCategory as ChatbotCategory) || 'solo';
-    return buildPluniPersona(category);
-  }
 
   const text = await deps.readPersona(deps.rpMode);
   return text || '';
@@ -212,8 +172,6 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
   }
 
   const runtimePlatform = detectRuntimePlatform(deps.navigatorLike);
-  const isPluni = deps.rpMode === 'pluni';
-  const pluniCategory = (deps.pluniCategory as ChatbotCategory) || 'solo';
 
   if (agent === 'copilot') {
     // Shared prep (also used by manual copilot-launch detection)
@@ -225,11 +183,7 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
     }
     deps.terminalInput(buildAssistantLaunchCommand({ agent, platform: runtimePlatform }));
 
-    if (isPluni) {
-      deps.setStatus(`${AI_AGENT_LABELS[agent]} 시작 중... (플루니 연구소 / ${CATEGORY_LABELS[pluniCategory]})`);
-    } else {
-      deps.setStatus(`${AI_AGENT_LABELS[agent]} 시작 중...`);
-    }
+    deps.setStatus(`${AI_AGENT_LABELS[agent]} 시작 중...`);
     return;
   }
 
@@ -277,20 +231,13 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
 }
 
 /**
- * Prepare Copilot session files (MCP config, AGENTS.md, agent profiles)
+ * Prepare Copilot session files (MCP config, AGENTS.md)
  * without sending any terminal commands.  Used by both menu-driven starts
  * (via startAssistantCli) and manual copilot-launch detection.
  */
 export async function prepareCopilotSession(deps: AssistantDeps): Promise<void> {
   const mcpConnected = !!(await deps.writeCopilotMcpConfig());
   await deps.cleanupAgentsMd();
-
-  const isPluni = deps.rpMode === 'pluni';
-  const pluniCategory = (deps.pluniCategory as ChatbotCategory) || 'solo';
-
-  if (isPluni && deps.syncCopilotAgentProfiles) {
-    await deps.syncCopilotAgentProfiles(pluniCategory, deps.projectRoot);
-  }
 
   const promptInfo = await deps.getClaudePrompt();
   const initPrompt = await buildAssistantPrompt(promptInfo, mcpConnected, deps);

@@ -56,7 +56,6 @@ describe('help popup', () => {
         bgmEnabled: false,
         rpMode: 'off',
         rpCustomText: '',
-        pluniCategory: 'solo',
       },
       {
         onAutosaveToggle: vi.fn(),
@@ -69,7 +68,6 @@ describe('help popup', () => {
         onRpModeChange: vi.fn(),
         onRpCustomTextChange: vi.fn(),
         onOpenPersonaTab: vi.fn().mockResolvedValue(undefined),
-        onPluniCategoryChange: vi.fn(),
       },
     );
 

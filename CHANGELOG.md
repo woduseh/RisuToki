@@ -9,6 +9,26 @@
 
 ---
 
+## [0.41.0] - 2025-07-17
+
+### 삭제
+
+- **플루니 연구소(Pluni laboratory) RP 모드 제거**: `rpMode === "pluni"` 전체 기능 삭제 — 3인 자문 패널(Pluni/Kotone/Sophia), `.github/agents/*.agent.md` 프로필 생성, 챗봇 카테고리(solo/world-sim/multi-char) 선택, 터미널 수동 `copilot` 탐지, IPC 핸들러(`sync-copilot-agent-profiles`)를 모두 제거했습니다.
+- 관련 모듈/테스트/런타임 agent profile 파일 삭제: `pluni-persona.ts`, `copilot-agent-profile-manager.ts`, 각 테스트 파일, `.github/agents/*.agent.md`
+- 관련 설정 필드 제거: `pluniCategory`, `writePluniCategory`, `normalizePluniCategory`, `setPluniCategory`
+- UI에서 플루니 연구소 드롭다운 옵션 및 챗봇 카테고리 셀렉터 제거
+
+### 변경
+
+- `RpMode` 타입에서 `'pluni'` 리터럴 제거 (`'off' | 'toki' | 'aris' | 'custom'`)
+- `normalizeRpMode`이 `'pluni'`를 `'off'`로 폴백 (기존 저장값 안전 처리)
+- 설정 팝업, 어시스턴트 프롬프트, 컨트롤러, 팝아웃 컨트롤러에서 플루니 관련 분기 및 dead code 정리
+- `agents-md-manager.ts`에서 `syncCopilotProfiles`, `setActiveAgentProfileState`, `isUnderProjectRoot` 제거
+- `preload-api.ts` / `electron-api.d.ts` / `preload.js`에서 `syncCopilotAgentProfiles` IPC 제거
+- README, PROJECT_RULES, skills/PROJECT_RULES, MODULE_MAP, ARCHITECTURE에서 플루니 관련 문서 업데이트
+
+---
+
 ## [0.40.1] - 2026-04-10
 
 ### 새 기능

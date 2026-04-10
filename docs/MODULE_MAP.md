@@ -38,8 +38,6 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/assistant-launch.ts` — assistant process launch flow
 - `src/lib/assistant-prompt.ts` — assistant bootstrap prompt assembly
 - `src/lib/agents-md-manager.ts` — runtime `AGENTS.md` generation
-- `src/lib/copilot-agent-profile-manager.ts` — `.github/agents/*.agent.md` profile generation
-- `src/lib/pluni-persona.ts` — Pluni persona mode orchestration
 
 ## File formats and RisuAI document modeling
 

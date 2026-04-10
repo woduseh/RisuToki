@@ -21,7 +21,6 @@ export function getRpLabel(rpMode: string): string {
   if (rpMode === 'toki') return '토키';
   if (rpMode === 'aris') return '아리스';
   if (rpMode === 'custom') return '커스텀';
-  if (rpMode === 'pluni') return '플루니 연구소';
   return 'OFF';
 }
 
@@ -194,7 +193,6 @@ export interface SettingsPopupDeps {
     bgmEnabled: boolean;
     rpMode: string;
     rpCustomText: string;
-    pluniCategory: string;
   };
   onAutosaveToggle(enabled: boolean): void;
   onAutosaveIntervalChange(interval: number): void;
@@ -206,7 +204,6 @@ export interface SettingsPopupDeps {
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
   onOpenPersonaTab(name: string): Promise<void>;
-  onPluniCategoryChange(category: string): void;
 }
 
 export function showSettingsPopup(deps: SettingsPopupDeps): void {
@@ -222,7 +219,6 @@ export function showSettingsPopup(deps: SettingsPopupDeps): void {
     onRpModeChange: deps.onRpModeChange,
     onRpCustomTextChange: deps.onRpCustomTextChange,
     onOpenPersonaTab: deps.onOpenPersonaTab,
-    onPluniCategoryChange: deps.onPluniCategoryChange,
   } as Parameters<typeof renderSettingsPopup>[1]);
 }
 
