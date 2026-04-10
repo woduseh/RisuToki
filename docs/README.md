@@ -10,18 +10,17 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 | editing `.charx` / `.risum` / `.risup` through MCP | `read_skill("using-mcp-tools")` | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
 | recovering from an MCP tool failure or no-op | `docs/MCP_ERROR_CONTRACT.md` | `docs/MCP_TOOL_SURFACE.md` |
 | changing application code | `CONTRIBUTING.md` | `docs/analysis/ARCHITECTURE.md`, `docs/MODULE_MAP.md` |
-| checking project rules (versioning, CI, persona) | `read_skill("project-workflow")` | `docs/PROJECT_RULES.md` |
-| tracing a past feature or design decision | `docs/analysis/ARCHITECTURE.md` | `docs/superpowers/` |
+| checking project rules (versioning, CI, guide locations) | `read_skill("project-workflow")` | `docs/PROJECT_RULES.md` |
+| tracing a past feature or design decision | `docs/analysis/ARCHITECTURE.md` | `CHANGELOG.md` |
 
 ## Core documents
 
 - **`docs/MCP_WORKFLOW.md`** — MCP tool routing map, read rules, effective workflow patterns, operational caveats
 - **`docs/MCP_TOOL_SURFACE.md`** — MCP family map, tool boundaries, behavior hints, and deterministic `next_actions`
 - **`docs/MCP_ERROR_CONTRACT.md`** — success / error / no-op response contracts and the recovery playbook
-- **`docs/PROJECT_RULES.md`** — versioning, CI/release workflow, guide locations, Copilot persona workflow
+- **`docs/PROJECT_RULES.md`** — versioning, CI/release workflow, and guide locations
 - **`docs/MODULE_MAP.md`** — source navigation map for the active TypeScript codebase
 - **`docs/analysis/ARCHITECTURE.md`** — **canonical** TypeScript runtime architecture, process boundaries, ownership rules, and large-module hotspots
-- `docs/superpowers/` — historical plans and specs; useful context, but not the primary live contract
 
 ## Boundary notes
 

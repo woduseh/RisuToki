@@ -9,6 +9,19 @@
 
 ---
 
+## [0.41.1] - 2026-04-10
+
+### Changed
+
+- Rewrote the tracked project documentation into natural English across `README.md`, `AGENTS.md`, `CLAUDE.md`, `docs/`, and the mirrored `skills/project-workflow/` guides so agents and contributors can navigate the repository without mixed-language drift.
+- Refreshed documentation references to match the current project shape, including the post-Pluni rules/docs wording and the current `agents-md-manager.ts` size in `docs/analysis/ARCHITECTURE.md`.
+
+### Removed
+
+- Deleted the obsolete `docs/superpowers/` artifact set and removed its index/coverage dependency from `src/lib/doc-drift.test.ts` and `docs/README.md`.
+
+---
+
 ## [0.41.0] - 2025-07-17
 
 ### 삭제

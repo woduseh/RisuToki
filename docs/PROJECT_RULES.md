@@ -1,52 +1,52 @@
 # Project Rules
 
-프로젝트 전반에 걸쳐 지켜야 하는 규칙과 워크플로를 정리합니다.
+Rules and workflows that apply across the entire project.
 
 ---
 
-## 1. 문서 및 버전 관리 (필수)
+## 1. Documentation and versioning (mandatory)
 
-매 기능 개선·버그 수정 시 **반드시** 아래를 함께 업데이트합니다.
+Every feature improvement or bug fix **must** include the following updates.
 
-1. **`package.json` 버전 범프** — [시멘틱 버저닝](https://semver.org/) 준수
-   - `MAJOR` (x.0.0): 호환성을 깨는 변경
-   - `MINOR` (0.x.0): 새 기능 추가 (하위 호환)
-   - `PATCH` (0.0.x): 버그 수정 (하위 호환)
-2. **`CHANGELOG.md` 업데이트** — [Keep a Changelog](https://keepachangelog.com/) 형식
-   - 새 버전 항목을 파일 **최상단**에 추가
-   - `### 새 기능` / `### 변경` / `### 수정` / `### 삭제` 카테고리 사용
-3. **`README.md` 업데이트** — 새 기능이 사용자에게 보이는 변경이면 해당 섹션 갱신
-4. **`AGENTS.md` 및 관련 skill 문서 업데이트**
-   - MCP 도구·필드·워크플로우가 변하면 `AGENTS.md`, `docs/`, `skills/README.md`, 관련 `skills/*`를 함께 갱신
+1. **`package.json` version bump** — follow [Semantic Versioning](https://semver.org/)
+   - `MAJOR` (x.0.0): breaking changes
+   - `MINOR` (0.x.0): new features (backward-compatible)
+   - `PATCH` (0.0.x): bug fixes (backward-compatible)
+2. **`CHANGELOG.md` update** — use [Keep a Changelog](https://keepachangelog.com/) format
+   - Add the new version entry at the **top** of the file
+   - Use headings: `### Added` / `### Changed` / `### Fixed` / `### Removed`
+3. **`README.md` update** — refresh the relevant section when a change is user-visible
+4. **`AGENTS.md` and related skill docs update**
+   - When MCP tools, fields, or workflows change, update `AGENTS.md`, `docs/`, `skills/README.md`, and the affected `skills/*` files together
 
-이 규칙은 별도 지시가 없어도 **매 작업마다** 자동 적용합니다.
+These rules apply **automatically to every task**, even without an explicit reminder.
 
 ---
 
-## 2. 검증 및 릴리스 워크플로
+## 2. Validation and release workflow
 
-- PR / push 검증은 **Ubuntu validate + Windows build** 2단계로 유지합니다.
+- PR / push validation uses a **two-stage** process: Ubuntu validate + Windows build.
   - Ubuntu: `npm run lint`, `npm run typecheck`, `npm test`
   - Windows: `npm run build:electron`, `npm run build:renderer`
-- MCP contract / taxonomy / section workflow를 수정할 때는 전체 검증 전에 `npm run test:evals`로 deterministic harness 시나리오를 먼저 돌리세요.
-- PR 단계에서는 패키징(`electron-builder`)까지 돌리지 않고, 태그 릴리스 workflow에서만 실행합니다.
-- 의존성 업데이트는 `Dependabot`으로 npm / GitHub Actions를 주간 점검합니다.
+- When changing MCP contracts, taxonomy, or section-parsing behavior, run `npm run test:evals` (deterministic harness scenarios) before the full validation suite.
+- PRs do **not** run packaging (`electron-builder`); packaging runs only in the tag-release workflow.
+- Dependency updates are monitored weekly via `Dependabot` for npm and GitHub Actions.
 
 ---
 
-## 3. 가이드 파일 위치
+## 3. Guide file locations
 
-| 경로 | 설명 |
-| --- | --- |
-| `docs/README.md` | 코드 작업용 지식 베이스 인덱스 |
-| `docs/MODULE_MAP.md` | TypeScript 소스 탐색용 모듈 맵 |
-| `docs/MCP_WORKFLOW.md` | MCP 도구 선택, 읽기 규칙, 워크플로 패턴 |
-| `docs/MCP_TOOL_SURFACE.md` | MCP 도구 패밀리, 경계, behavior hints, deterministic `next_actions` 맵 |
-| `docs/MCP_ERROR_CONTRACT.md` | MCP 성공/에러/no-op 응답 계약과 recovery playbook |
-| `skills/` | 번들 프로젝트 스킬 문서. 로컬 스킬 문서도 이 위치에 추가 가능 |
-| `guides/` | 한국어 원본 가이드 (앱 내 가이드 뷰어로 접근) |
-| `.claude/skills`, `.gemini/skills`, `.github/skills` | 루트 `skills/`를 가리키는 로컬 CLI 검색 경로 |
+| Path                                                 | Description                                                                |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| `docs/README.md`                                     | Knowledge-base index for code work                                         |
+| `docs/MODULE_MAP.md`                                 | Module map for TypeScript source navigation                                |
+| `docs/MCP_WORKFLOW.md`                               | MCP tool selection, read rules, workflow patterns                          |
+| `docs/MCP_TOOL_SURFACE.md`                           | MCP tool families, boundaries, behavior hints, deterministic `next_actions` map |
+| `docs/MCP_ERROR_CONTRACT.md`                         | MCP success / error / no-op response contracts and recovery playbook       |
+| `skills/`                                            | Bundled project skill docs; local skill docs can also be added here        |
+| `guides/`                                            | Korean-language original guides (accessible through the in-app guide viewer) |
+| `.claude/skills`, `.gemini/skills`, `.github/skills` | Local CLI search paths that point to the root `skills/` directory          |
 
-> `npm run sync:skills`는 Windows에서 실제 symlink를 우선 만들고, 불가능할 때만 junction으로 폴백하며, 루트 `skills/`가 없으면 조용히 건너뜁니다.
+> `npm run sync:skills` prefers real symlinks on Windows and falls back to junctions when symlinks are not available. It silently skips if the root `skills/` directory does not exist.
 
 ---

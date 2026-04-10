@@ -10,14 +10,14 @@ related_tools: ['list_skills', 'read_skill', 'list_fields', 'read_field_batch', 
 This skill is the agent-facing entrypoint for **project-level guidance** that every coding agent should know before making changes. It covers two areas:
 
 1. **MCP workflow** — tool selection, read rules, workflow patterns, and caveats
-2. **Project rules** — versioning, documentation updates, CI, and persona workflows
+2. **Project rules** — versioning, documentation updates, CI, and guide locations
 
 ## Supporting Files
 
 | File                                   | Contents                                                                                |
 | -------------------------------------- | --------------------------------------------------------------------------------------- |
 | [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)   | Full MCP tool routing map, read rules, workflow patterns, caveats, and skill navigation |
-| [`PROJECT_RULES.md`](PROJECT_RULES.md) | Versioning, CI/release workflow, file locations, and persona workflow                   |
+| [`PROJECT_RULES.md`](PROJECT_RULES.md) | Versioning, CI/release workflow, and guide locations                                    |
 
 Load these via `read_skill("project-workflow", "MCP_WORKFLOW.md")` and `read_skill("project-workflow", "PROJECT_RULES.md")` when you need complete detail.
 
@@ -74,4 +74,4 @@ Load these via `read_skill("project-workflow", "MCP_WORKFLOW.md")` and `read_ski
 - MCP contract changes → run `npm run test:evals` first
 - No packaging in PR — only on tag release
 
-> Complete versioning rules, CI workflow, file locations, and persona workflow: [`PROJECT_RULES.md`](PROJECT_RULES.md)
+> Complete versioning rules, CI workflow, and guide locations: [`PROJECT_RULES.md`](PROJECT_RULES.md)
