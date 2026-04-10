@@ -11,6 +11,7 @@
  *   5. FAMILY_NEXT_ACTIONS tool references against the taxonomy
  *   6. docs/superpowers/INDEX.md coverage of plan/spec files
  */
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -279,6 +280,17 @@ describe('superpowers INDEX.md coverage', () => {
   const indexPath = path.join(superpowersDir, 'INDEX.md');
 
   function getActualFiles(subdir: string): string[] {
+    const gitDir = path.join(ROOT, '.git');
+    if (fs.existsSync(gitDir)) {
+      const prefix = `docs/superpowers/${subdir}/`;
+      return execFileSync('git', ['ls-files', prefix], { cwd: ROOT, encoding: 'utf-8' })
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith(prefix) && line.endsWith('.md'))
+        .map((line) => path.posix.basename(line))
+        .sort();
+    }
+
     const dir = path.join(superpowersDir, subdir);
     if (!fs.existsSync(dir)) return [];
     return fs

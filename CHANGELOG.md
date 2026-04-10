@@ -24,6 +24,7 @@
 
 - **`FieldAccessRules` 경계 불일치 수정** (`src/lib/mcp-field-access.ts`, `src/lib/mcp-field-access.test.ts`, `src/lib/mcp-api-server.ts`): deprecated field와 read-only field를 분리해 `readOnlyFields ⊆ allowedFields` 불변 조건을 명시적으로 고정하고, charx/risum/risup 전부에서 동일한 계약을 검증하도록 보강했습니다.
 - **`test-charx` worktree/clean-clone 회귀 수정** (`test/test-charx.ts`): Git에 없는 로컬 `risu/bot/Fujimiya Hinano` 카드에 의존하던 회귀 검사를 self-contained `.charx` fixture로 교체해, clean clone과 git worktree에서도 같은 async cheat-handler / array-aware scenario-injection 불변 조건을 안정적으로 검증하도록 바꿨습니다.
+- **autosave/doc-drift Linux CI 안정화** (`src/lib/autosave-manager.test.ts`, `src/lib/doc-drift.test.ts`, `docs/superpowers/INDEX.md`): autosave 테스트가 OS-native path를 사용하도록 바꾸고, superpowers 인덱스 coverage가 raw disk가 아니라 Git 추적 파일 기준으로 판단하도록 조정해 Windows 로컬과 Ubuntu CI가 같은 계약을 검증하게 맞췄습니다.
 
 ## [0.40.0] - 2026-04-10
 
