@@ -9,6 +9,16 @@
 
 ---
 
+## [0.39.5] - 2026-04-10
+
+### 새 기능
+
+- **구조 아키텍처 가드 테스트 추가** (`src/lib/architecture.test.ts`): `src/lib/` 프로덕션 모듈이 `src/app/` / `src/popout/`를 런타임 import하지 못하도록, 런타임 store import가 허용된 bridge 파일만 통과하도록, 그리고 `JSON.parse(JSON.stringify(...))` clone 패턴이 `shared-utils.ts` 밖으로 새지 않도록 기계적으로 고정하는 구조 테스트를 추가했습니다.
+
+### 변경
+
+- **`npm run lint` coverage gate 확장** (`package.json`): 새 `src/lib/architecture.test.ts`를 lint whitelist에 포함시켜, guard test 자체도 CI lint gate 밖으로 빠지지 않도록 맞췄습니다.
+
 ## [0.39.4] - 2026-04-10
 
 ### 수정
