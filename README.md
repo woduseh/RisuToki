@@ -1,45 +1,45 @@
 # RisuToki
 
-> RisuAI .charx / .risum / .risup 파일 전용 에디터 + AI CLI 통합 터미널
+> Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-0.39.1-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.41.1-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
 
-## RisuToki란?
+## What is RisuToki?
 
-RisuToki는 [RisuAI](https://risuai.net/) 캐릭터 카드(`.charx`), 모듈(`.risum`), 프리셋(`.risup`) 파일을 편집하기 위한 **데스크톱 전용 에디터**입니다. VS Code 수준의 Monaco 에디터와 내장 터미널을 통해 AI CLI(Claude Code, GitHub Copilot CLI, Codex, Gemini CLI)를 직접 연동할 수 있으며, MCP(Model Context Protocol)로 파일 구조를 AI에 자동 전달합니다.
+RisuToki is a **desktop editor** purpose-built for [RisuAI](https://risuai.net/) character cards (`.charx`), modules (`.risum`), and presets (`.risup`). It pairs a VS Code–grade Monaco editor with a built-in terminal that connects directly to AI CLIs (Claude Code, GitHub Copilot CLI, Codex, Gemini CLI) and automatically exposes the open file's structure to those CLIs through MCP (Model Context Protocol).
 
-### 주요 기능
+### Key Features
 
-| 기능                  | 설명                                                                                                                                                                                                                                         |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 📝 **Monaco 에디터**  | VS Code 동일 편집 엔진 — 구문 강조, 자동완성, 찾기/바꾸기                                                                                                                                                                                    |
-| 🤖 **AI CLI 연동**    | Claude Code · GitHub Copilot CLI · Codex · Gemini CLI 터미널 내 실행 + MCP 자동 연결 + Copilot custom-agent 부트스트랩                                                                                                                       |
-| 📦 **3종 파일 지원**  | `.charx` (캐릭터 카드) · `.risum` (모듈) · `.risup` (프리셋) 열기/편집/저장                                                                                                                                                                  |
-| 🔧 **MCP 도구 120종** | 필드·로어북·정규식·Lua/CSS 섹션·인사말·트리거·risup promptTemplate/formatingOrder·에셋·CBS 검증·참고자료·Danbooru 태그·스킬 문서 읽기/쓰기 + unopened-file probe/open_file + 일괄 검색/치환 + route-local structured `4xx/409` 에러 엔벨로프 |
-| 🎭 **프리뷰 모드**    | CBS/Lua 렌더링 + 로어북 데코레이터 매칭/디버그 + 인라인 로딩/에러 진단 포함 `.charx` 전용 채팅 시뮬레이션 (F5)                                                                                                                               |
-| 📚 **참고 자료**      | 다른 .charx/.risum 파일을 읽기 전용으로 로드 + 세부 항목 개별 조회                                                                                                                                                                           |
-| 🐰 **RP 모드**        | 토키/아리스/커스텀 페르소나로 AI CLI 응답 말투 조정                                                                                                                                                                                          |
-| 🔀 **사이드바 DnD**   | 로어북·정규식·Lua/CSS 섹션·인사말·에셋 드래그 앤 드롭으로 순서 변경                                                                                                                                                                          |
-| 🖼 **슬롯 레이아웃**  | 패널 드래그 앤 드롭으로 자유 배치 + 팝아웃(외부 창 분리)                                                                                                                                                                                     |
-| 💾 **자동 저장/백업** | 설정 가능한 간격의 자동 저장 + 파일 타입별 `.charx` / `.risum` / `.risup` autosave + `.toki-recovery.json` provenance sidecar + 항목별 최대 20개 버전 백업                                                                                   |
-| 🔄 **세션 복구**      | 비정상 종료 뒤 자동 저장 복원 제안 (`자동 저장 복원` / `원본 열기` / `무시`) + `[자동복원]` 배지와 provenance 상태 표시                                                                                                                      |
-| 🎵 **MomoTalk UI**    | 모모톡 테마 팝업, NSIS 인스톨러, 아바타 GIF 시스템                                                                                                                                                                                           |
+| Feature                    | Description                                                                                                                                                                                                                                                                 |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 📝 **Monaco Editor**       | Same editing engine as VS Code — syntax highlighting, autocomplete, find & replace                                                                                                                                                                                          |
+| 🤖 **AI CLI Integration**  | Run Claude Code · GitHub Copilot CLI · Codex · Gemini CLI inside the terminal with automatic MCP connection                                                                                                                                                                 |
+| 📦 **Three File Formats**  | Open, edit, and save `.charx` (character cards) · `.risum` (modules) · `.risup` (presets)                                                                                                                                                                                   |
+| 🔧 **120+ MCP Tools**      | Read/write fields, lorebooks, regex, Lua/CSS sections, greetings, triggers, risup `promptTemplate`/`formatingOrder`, assets, CBS validation, references, Danbooru tags, skill docs + unopened-file probe/open + batch search/replace + structured `4xx/409` error envelopes |
+| 🎭 **Preview Mode**        | `.charx`-only chat simulation (F5) with CBS/Lua rendering, lorebook decorator matching/debug, and inline loading/error diagnostics                                                                                                                                          |
+| 📚 **References**          | Load other `.charx`/`.risum` files as read-only references and drill into individual entries                                                                                                                                                                                |
+| 🐰 **RP Mode**             | Adjust AI CLI response style with Toki / Aris / custom personas                                                                                                                                                                                                             |
+| 🔀 **Sidebar Drag & Drop** | Reorder lorebook entries, regex scripts, Lua/CSS sections, greetings, and assets by dragging                                                                                                                                                                                |
+| 🖼 **Slot Layout**         | Freely arrange panels with drag & drop + pop-out editors in separate windows                                                                                                                                                                                                |
+| 💾 **Autosave & Backup**   | Configurable-interval autosave per file type (`.charx`/`.risum`/`.risup`) with `.toki-recovery.json` provenance sidecar + up to 20 backup versions per item                                                                                                                 |
+| 🔄 **Session Recovery**    | After an abnormal exit, offers to **Restore autosave / Open original / Ignore** with an `[Auto-restored]` badge and provenance status                                                                                                                                       |
+| 🎵 **MomoTalk UI**         | MomoTalk-themed popups, NSIS installer, animated avatar GIF system                                                                                                                                                                                                          |
 
 ---
 
-## 설치
+## Installation
 
-### 다운로드 (일반 사용자)
+### Download (end users)
 
-[Releases](https://github.com/woduseh/RisuToki/releases) 페이지에서 최신 버전을 다운로드하세요.
+Grab the latest release from the [Releases](https://github.com/woduseh/RisuToki/releases) page.
 
-- **RisuToki Setup x.x.x.exe** — 설치형
-- **RisuToki-x.x.x-portable.exe** — 포터블 (설치 불필요)
+- **RisuToki Setup x.x.x.exe** — installer
+- **RisuToki-x.x.x-portable.exe** — portable (no installation required)
 
-### 소스에서 실행 (개발자)
+### From Source (developers)
 
 ```bash
 git clone https://github.com/woduseh/RisuToki.git
@@ -48,583 +48,539 @@ npm install
 npm run dev
 ```
 
-### 개발 스크립트
+### Development Scripts
 
 ```bash
-npm run dev          # Vite + Electron 개발 모드
+npm run dev          # Vite + Electron dev mode
 npm run lint         # ESLint
-npm run typecheck    # Vue + TypeScript 타입 검사
-npm run test:evals   # 결정적 agent/harness eval 시나리오
-npm test             # Node 회귀 테스트 + Vitest
+npm run typecheck    # Vue + TypeScript type checking
+npm run test:evals   # Deterministic agent/harness eval scenarios
+npm test             # Node regression tests + Vitest
 npm run build        # lint + typecheck + test + Electron + Vite build
-npm run dist:all     # Windows NSIS + 포터블 빌드
+npm run dist:all     # Windows NSIS + portable build
 ```
 
-### 개발 문서
+### Developer Documentation
 
-- `docs/README.md` — 에이전트/기여자용 지식 베이스 인덱스
-- `docs/MCP_WORKFLOW.md` — MCP 도구 선택·읽기 규칙·워크플로 패턴
-- `docs/MCP_TOOL_SURFACE.md` — MCP 도구 패밀리, 경계, 후속 액션 맵
-- `docs/MCP_ERROR_CONTRACT.md` — MCP 성공/에러/no-op 응답 계약과 에이전트 복구 규칙
-- `docs/PROJECT_RULES.md` — 프로젝트 규칙 (버전 관리, CI, 페르소나 워크플로)
-- `docs/MODULE_MAP.md` — TypeScript 소스 탐색용 모듈 맵
-- `docs/analysis/ARCHITECTURE.md` — TypeScript 런타임 아키텍처, 프로세스 경계, 소유권 규칙, 대형 모듈 핫스팟
-- `skills/project-workflow` — 프로젝트 온보딩 스킬 (`read_skill("project-workflow")`)
-- `CONTRIBUTING.md` — 변경 원칙과 검증 절차
-- `CHANGELOG.md` — 버전별 변경 이력
-- GitHub Actions `CI` — push/PR 시 Ubuntu lint · typecheck · test + Windows Electron/Renderer build 자동 검증
-- GitHub Actions `Release` — `v*` 태그 push 시 Windows 빌드 자동 릴리즈
-
----
-
-# 사용 가이드
-
-## 목차
-
-1. [시작하기](#1-시작하기)
-2. [화면 구성](#2-화면-구성)
-3. [파일 열기 / 저장](#3-파일-열기--저장)
-4. [사이드바 (항목 트리)](#4-사이드바-항목-트리)
-5. [에디터 (Monaco)](#5-에디터-monaco)
-6. [TokiTalk 터미널](#6-tokitalk-터미널)
-7. [AI CLI 연동 + MCP](#7-ai-cli-연동--mcp)
-8. [프리뷰 모드 / RP 모드](#8-프리뷰-모드--rp-모드)
-9. [설정](#9-설정)
-10. [단축키 목록](#10-단축키-목록)
+- `docs/README.md` — Knowledge-base index for agents and contributors
+- `docs/MCP_WORKFLOW.md` — MCP tool selection, read rules, and workflow patterns
+- `docs/MCP_TOOL_SURFACE.md` — MCP tool families, boundaries, and follow-up action map
+- `docs/MCP_ERROR_CONTRACT.md` — MCP success/error/no-op response contract and agent recovery rules
+- `docs/PROJECT_RULES.md` — Project rules (versioning, CI, and guide locations)
+- `docs/MODULE_MAP.md` — TypeScript source navigation module map
+- `docs/analysis/ARCHITECTURE.md` — Runtime architecture, process boundaries, ownership rules, large-module hotspots
+- `skills/project-workflow` — Project onboarding skill (`read_skill("project-workflow")`)
+- `CONTRIBUTING.md` — Change principles and validation procedures
+- `CHANGELOG.md` — Version-by-version change history
+- GitHub Actions `CI` — On push/PR: Ubuntu lint · typecheck · test + Windows Electron/Renderer build
+- GitHub Actions `Release` — On `v*` tag push: automated Windows build and release
 
 ---
 
-## 1. 시작하기
+# User Guide
 
-RisuToki 실행 파일(.exe)을 더블클릭하면 됩니다.
+## Table of Contents
 
-### 사전 요구사항
+1. [Getting Started](#1-getting-started)
+2. [Interface Layout](#2-interface-layout)
+3. [Opening & Saving Files](#3-opening--saving-files)
+4. [Sidebar (Item Tree)](#4-sidebar-item-tree)
+5. [Editor (Monaco)](#5-editor-monaco)
+6. [TokiTalk Terminal](#6-tokitalk-terminal)
+7. [AI CLI Integration + MCP](#7-ai-cli-integration--mcp)
+8. [Preview Mode / RP Mode](#8-preview-mode--rp-mode)
+9. [Settings](#9-settings)
+10. [Keyboard Shortcuts](#10-keyboard-shortcuts)
 
-- AI CLI 연동을 사용하려면 원하는 CLI가 시스템 PATH에 등록되어 있어야 합니다.
+---
+
+## 1. Getting Started
+
+Double-click the RisuToki executable (`.exe`) to launch.
+
+### Prerequisites
+
+- To use the AI CLI integration, the CLI you want must be on your system PATH:
   - **Claude Code**: `claude` · **GitHub Copilot CLI**: `copilot` · **Codex**: `codex` · **Gemini CLI**: `gemini`
-- CLI가 설치되어 있지 않아도 에디터 자체 기능은 정상 작동합니다.
+- If no CLI is installed the editor itself works normally — AI integration is optional.
 
 ---
 
-## 2. 화면 구성
+## 2. Interface Layout
 
-<img width="1913" height="1004" alt="화면 구성" src="https://github.com/user-attachments/assets/6398e854-f7a8-49bb-a8e2-c73861446b97" />
+<img width="1913" height="1004" alt="Interface layout" src="https://github.com/user-attachments/assets/6398e854-f7a8-49bb-a8e2-c73861446b97" />
 
-| 영역                | 설명                                                    |
-| ------------------- | ------------------------------------------------------- |
-| **사이드바**        | 파일 항목 트리 + 참고자료 탭                            |
-| **에디터**          | Monaco 기반 코드/텍스트 에디터                          |
-| **TokiTalk 터미널** | 내장 터미널 (셸 + AI CLI 실행)                          |
-| **아바타 패널**     | 토키/아리스 캐릭터 (대기: 아이콘 / 작업 중: 춤추는 GIF) |
+| Area                  | Description                                             |
+| --------------------- | ------------------------------------------------------- |
+| **Sidebar**           | Item tree + References tab                              |
+| **Editor**            | Monaco-based code/text editor                           |
+| **TokiTalk Terminal** | Built-in terminal (shell + AI CLI)                      |
+| **Avatar Panel**      | Toki/Aris character (idle: icon / working: dancing GIF) |
 
-- **보기** 메뉴에서 사이드바/터미널 위치 변경 가능
-- 각 패널 경계선 드래그로 크기 조절
-- 사이드바 접기: `Ctrl+B` / 터미널 접기: `` Ctrl+` ``
-
----
-
-## 3. 파일 열기 / 저장
-
-<img width="240" height="258" alt="파일 메뉴" src="https://github.com/user-attachments/assets/d7dca751-3044-44dc-b93b-d99dc02226c2" />
-
-| 동작               | 방법                                                           |
-| ------------------ | -------------------------------------------------------------- |
-| **새로 만들기**    | `Ctrl+N` 또는 파일 → 새로 만들기                               |
-| **열기**           | `Ctrl+O` 또는 파일 → 열기 (.charx / .risum / .risup 파일 선택) |
-| **저장**           | `Ctrl+S` 또는 파일 → 저장                                      |
-| **다른 이름 저장** | `Ctrl+Shift+S` 또는 파일 → 다른 이름 저장                      |
-
-- 수정된 탭은 이름 옆에 **●** 표시 · 창 닫기 시 모모톡 스타일 저장 확인 팝업
-- `새로 만들기` / `열기`도 현재 문서에 저장되지 않은 변경이 있으면 먼저 저장 여부를 확인합니다.
-- **자동 저장**: 설정에서 간격(1~30분) 지정 가능. 현재 문서 타입에 맞는 autosave와 `.toki-recovery.json` provenance sidecar를 함께 기록합니다.
-- 비정상 종료 뒤 다시 시작하면 복원 가능한 autosave가 있는 문서에 대해 **자동 저장 복원 / 원본 열기 / 무시** 중 하나를 고를 수 있습니다.
-- 자동 저장에서 복원한 문서는 파일 라벨에 `[자동복원]`이 붙고 상태바에 provenance가 표시되며, 저장 / 열기 / 새 파일 성공 시 자동으로 해제됩니다.
-
-### 드래그 앤 드롭
-
-| 파일 유형                 | 동작                                      |
-| ------------------------- | ----------------------------------------- |
-| **.charx / .risum**       | 참고 자료로 추가 (읽기 전용)              |
-| **.json**                 | 로어북 또는 정규식으로 자동 판별하여 추가 |
-| **.png / .jpg / .gif 등** | 에셋(이미지)으로 추가                     |
+- Reposition the sidebar and terminal from the **View** menu.
+- Drag panel borders to resize.
+- Toggle the sidebar with `Ctrl+B`, the terminal with `` Ctrl+` ``.
 
 ---
 
-## 4. 사이드바 (항목 트리)
+## 3. Opening & Saving Files
 
-사이드바는 **항목** / **참고자료** 두 탭으로 나뉩니다.
+<img width="240" height="258" alt="File menu" src="https://github.com/user-attachments/assets/d7dca751-3044-44dc-b93b-d99dc02226c2" />
 
-### 항목 탭
+| Action      | How                                                               |
+| ----------- | ----------------------------------------------------------------- |
+| **New**     | `Ctrl+N` or File → New                                            |
+| **Open**    | `Ctrl+O` or File → Open (select a `.charx` / `.risum` / `.risup`) |
+| **Save**    | `Ctrl+S` or File → Save                                           |
+| **Save As** | `Ctrl+Shift+S` or File → Save As                                  |
 
-파일 타입에 따라 아래 항목들이 표시됩니다:
+- Modified tabs show a **●** dot next to their name. Closing the window triggers a MomoTalk-style save confirmation popup.
+- **New** and **Open** also prompt to save if the current document has unsaved changes.
+- **Autosave**: Set the interval (1–30 min) in Settings. Autosave writes a file matching the current document type alongside a `.toki-recovery.json` provenance sidecar.
+- After an abnormal exit, on the next launch you can choose **Restore autosave / Open original / Ignore** for each document that has a recoverable autosave.
+- A document restored from autosave shows an `[Auto-restored]` label and provenance info in the status bar. The badge clears automatically once you save, open a file, or create a new file.
 
-<img width="269" height="365" alt="사이드바" src="https://github.com/user-attachments/assets/80fc85c8-1b06-4094-a752-9ef99e765a10" />
-<img width="262" height="357" alt="로어북" src="https://github.com/user-attachments/assets/baa21125-ee5e-477b-855e-c79bbd2e122b" />
+### Drag & Drop
 
-#### 기본 항목
-
-| 항목                 | 설명                                                                                  | 파일 타입           |
-| -------------------- | ------------------------------------------------------------------------------------- | ------------------- |
-| **Lua**              | Lua 트리거 스크립트 (섹션 분할 편집)                                                  | charx, risum        |
-| **트리거 스크립트**  | 트리거 스크립트 (개별 트리거 편집)                                                    | charx, risum        |
-| **글로벌노트**       | 시스템 프롬프트 뒤에 삽입되는 인스트럭션                                              | charx               |
-| **첫 메시지**        | 대화 시작 시 표시되는 첫 번째 메시지                                                  | charx               |
-| **추가 첫 메시지**   | 대체 첫 메시지 (개별 탭으로 편집)                                                     | charx               |
-| **그룹 첫 메시지**   | 그룹 전용 인사말 (개별 탭으로 편집)                                                   | charx               |
-| **CSS**              | RisuAI 채팅 UI 커스텀 스타일 (섹션 분할)                                              | charx               |
-| **설명**             | 캐릭터/모듈/프리셋 설명                                                               | charx, risum, risup |
-| **프리셋: 기본**     | 프리셋 이름 등 기본 메타 편집                                                         | risup               |
-| **프리셋: 프롬프트** | 구조화 `promptTemplate` / `formatingOrder`, `customPromptTemplateToggle`, 템플릿 변수 | risup               |
-| **프리셋: 모델/API** | 모델명, 서브모델, API 타입, 전처리 옵션                                               | risup               |
-| **프리셋: 파라미터** | 기본 파라미터 / 샘플링 / 추론 옵션                                                    | risup               |
-
-- `.risup` 파일은 Lua / CSS / 로어북 / 에셋 대신 **프리셋 전용 그룹 폼 + 설명 + 정규식 폴더**를 표시합니다.
-- visible `프롬프트` 그룹은 더 이상 legacy `mainPrompt` / `jailbreak` / `globalNote` 중심이 아니라, **구조화 `promptTemplate` / `formatingOrder` + 템플릿 변수** 중심으로 동작합니다.
-- `promptTemplate`는 raw JSON textarea 대신 **카드형 항목 목록 + 상세 편집기**로 열리며, `type`, `type2`, `role`, `text`, `range`, `innerFormat`, `defaultText`, cache 옵션을 구조적으로 수정할 수 있습니다. 지원되는 항목에는 안정적 `id`가 자동으로 부여되며, 타입 변경·순서 변경 뒤에도 같은 항목이면 `id`가 유지됩니다.
-- `formatingOrder`는 raw JSON textarea 대신 **재정렬 가능한 토큰 목록**으로 열리며, known/unknown token을 그대로 유지합니다. 중복 토큰이나 대응 없는 토큰이 있으면 경고로 표시되지만 저장은 막지 않습니다.
-- `customPromptTemplateToggle`는 실제 RisuAI 사용 흐름에 맞춰 **멀티라인 textarea**로 편집됩니다.
-- legacy `mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`는 파일에 그대로 보존되지만 **주요 프롬프트 UI에서는 내려가며**, 호환성 데이터로 유지됩니다.
-- 실제 RisuAI가 내보낸 `.risup`는 gzip / zlib / raw-deflate 변형까지 열 수 있고, 저장 시 감지한 압축 모드를 최대한 보존합니다.
-- JSON 기반 프리셋 필드(`presetBias`, `localStopStrings`)와 구조화 프롬프트 필드(`promptTemplate`, `formatingOrder`)가 잘못된 형식이면 저장이 차단되고 상태바에 문제 필드가 표시됩니다.
-- MCP generic `write_field` / `write_field_batch`와 autosave도 동일한 risup 검증 경계를 사용하므로, malformed JSON/shape는 메모리나 autosave 파일에 조용히 남지 않고 즉시 거부됩니다.
-- `.charx`의 **캐릭터 정보**에는 `description`, `globalNote`, `defaultVariables`와 함께 `creatorcomment`, `characterVersion`도 포함됩니다.
-- `triggerScripts`는 raw JSON 대신 **구조화된 트리거 폼 에디터**로 열리며, 지원하지 않는 trigger/effect/condition이 남아 있으면 저장이 차단됩니다.
-- `.charx` / `.risum`은 빈 `triggerScripts` 또는 단독 `triggerlua` wrapper를 **Lua 모드**로 취급합니다. 이때 트리거 항목은 비활성처럼 보이고, 독립 트리거가 있을 때는 반대로 Lua 폴더가 비활성처럼 보입니다.
-
-#### Lua / CSS 섹션 시스템
-
-<img width="1629" height="709" alt="Lua 섹션" src="https://github.com/user-attachments/assets/da9deeb0-fcc3-44f8-a64f-63ed40571444" />
-
-- Lua: `-- ===== 섹션명 =====` 구분자로 분할 · CSS: `/* ===== 섹션명 ===== */` 구분자로 분할
-- **통합 보기**: 전체 코드를 하나의 탭에서 편집 · **개별 섹션**: 각 섹션을 별도 탭에서 편집
-- 우클릭 → 새 섹션 추가 / 이름 변경 / 삭제 / 백업 불러오기
-
-#### 로어북
-
-<img width="1627" height="709" alt="로어북" src="https://github.com/user-attachments/assets/556eadc9-e377-4955-b7bf-7963562dc00a" />
-
-- 폴더 구조 지원 · 항목 클릭 → 전용 폼 에디터 (comment, key, content, mode 등)
-- 우클릭 → 새 항목/폴더 추가 · JSON 가져오기 · 이름 변경 · 삭제 · 백업 불러오기
-- 드래그 앤 드롭으로 항목 재정렬 + 폴더 간 이동
-
-#### 정규식 / 에셋
-
-- **정규식**: 전용 폼 에디터 (find, replace, type, flag) · 우클릭 CRUD · 드래그 앤 드롭 재정렬
-- **에셋**: 이미지 파일 목록 · 클릭 → 이미지 뷰어 (확대/축소/드래그) · 우클릭 추가/삭제
-
-### 참고자료 탭
-
-<img width="518" height="186" alt="참고자료" src="https://github.com/user-attachments/assets/0535187b-5ae8-4873-b641-2478f94914b3" />
-
-- **가이드**: 내장 문법 가이드 (Lua, CBS, 로어북, 정규식, HTML/CSS 등)
-- **참고 파일**: 다른 .charx/.risum 파일을 읽기 전용으로 로드 (로어북/Lua/CSS 개별 항목까지 조회 가능)
-- 앱 재시작 시 자동 복원 · AI CLI에서 MCP 도구로도 접근 가능
-
-### 백업 시스템
-
-- 편집 시작/탭 전환/MCP 덮어쓰기 시 자동 백업 (탭당 최대 20 버전)
-- 항목 우클릭 → **백업 불러오기** → 날짜/시간별 버전 선택 + 미리보기
+| File Type               | Action                                          |
+| ----------------------- | ----------------------------------------------- |
+| **.charx / .risum**     | Added as a read-only reference                  |
+| **.json**               | Auto-detected as lorebook or regex and imported |
+| **.png / .jpg / .gif…** | Added as an image asset                         |
 
 ---
 
-## 5. 에디터 (Monaco)
+## 4. Sidebar (Item Tree)
 
-VS Code와 동일한 Monaco 편집 엔진을 사용합니다.
+The sidebar has two tabs: **Items** and **References**.
 
-- 구문 강조 (Lua, HTML, CSS, JSON 등) · 자동 완성 · 찾기/바꾸기 (`Ctrl+F` / `Ctrl+H`)
-- 마우스 휠 줌 (`Ctrl + 마우스 휠`) · 미니맵
-- 여러 항목을 동시에 탭으로 열기 · 탭 드래그로 순서 변경
-- 탭 `↗` 버튼 → 별도 창에서 편집 (팝아웃) · `⧉` 버튼 → 메인 창 내 슬롯 분리
-- 탭 팝아웃 버튼은 키보드 포커스로도 접근 가능하며, 팝아웃 중인 에디터 영역에는 `📌 도킹하면 여기로 복원됩니다` 안내가 표시됩니다.
-- 읽기 전용 탭을 팝아웃하면 제목 배지와 비활성 저장 버튼으로 편집 불가 상태를 바로 확인할 수 있고, 메인 창 placeholder도 `열람중`으로 구분되어 편집 가능한 팝아웃과 혼동되지 않습니다.
+### Items Tab
+
+Which items appear depends on the file type:
+
+<img width="269" height="365" alt="Sidebar" src="https://github.com/user-attachments/assets/80fc85c8-1b06-4094-a752-9ef99e765a10" />
+<img width="262" height="357" alt="Lorebook" src="https://github.com/user-attachments/assets/baa21125-ee5e-477b-855e-c79bbd2e122b" />
+
+#### Default Items
+
+| Item                    | Description                                                                                      | File Types          |
+| ----------------------- | ------------------------------------------------------------------------------------------------ | ------------------- |
+| **Lua**                 | Lua trigger scripts (section-based editing)                                                      | charx, risum        |
+| **Trigger Scripts**     | Individual trigger editing                                                                       | charx, risum        |
+| **Global Note**         | Instruction inserted after the system prompt                                                     | charx               |
+| **First Message**       | Opening message shown at the start of a conversation                                             | charx               |
+| **Alternate Greetings** | Alternative first messages (each in its own tab)                                                 | charx               |
+| **Group Greetings**     | Group-only greetings (each in its own tab)                                                       | charx               |
+| **CSS**                 | Custom chat-UI styles for RisuAI (section-based)                                                 | charx               |
+| **Description**         | Character / module / preset description                                                          | charx, risum, risup |
+| **Preset: General**     | Preset name and basic metadata                                                                   | risup               |
+| **Preset: Prompts**     | Structured `promptTemplate` / `formatingOrder`, `customPromptTemplateToggle`, template variables | risup               |
+| **Preset: Model/API**   | Model name, sub-model, API type, preprocessing options                                           | risup               |
+| **Preset: Parameters**  | Base parameters / sampling / reasoning options                                                   | risup               |
+
+- `.risup` files show **preset-specific form groups + description + regex folder** instead of Lua / CSS / lorebook / assets.
+- The visible **Prompts** group is built around **structured `promptTemplate` / `formatingOrder` + template variables** rather than the legacy `mainPrompt` / `jailbreak` / `globalNote` fields.
+- `promptTemplate` opens as a **card-style item list + detail editor** (not raw JSON). You can structurally edit `type`, `type2`, `role`, `text`, `range`, `innerFormat`, `defaultText`, and cache options. Supported items receive a stable `id` that persists across type changes and reordering.
+- `formatingOrder` opens as a **reorderable token list** that preserves both known and unknown tokens. Duplicate or unmatched tokens trigger a warning but do not block saving.
+- `customPromptTemplateToggle` is edited in a **multiline textarea** matching the RisuAI usage flow.
+- Legacy fields (`mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`) are preserved in the file but demoted from the primary prompt UI — they remain as compatibility data.
+- RisuToki can open `.risup` exports in gzip, zlib, and raw-deflate variants, and it preserves the detected compression mode on save.
+- If JSON-based preset fields (`presetBias`, `localStopStrings`) or structured prompt fields (`promptTemplate`, `formatingOrder`) contain malformed data, saving is blocked and the status bar shows the offending field.
+- MCP `write_field` / `write_field_batch` and autosave share the same risup validation boundary, so malformed JSON/shape is rejected immediately — it never silently persists in memory or in autosave files.
+- `.charx` **Character Info** includes `description`, `globalNote`, `defaultVariables`, `creatorcomment`, and `characterVersion`.
+- `triggerScripts` opens in a **structured trigger form editor** (not raw JSON). If unsupported trigger/effect/condition types are present, saving is blocked.
+- `.charx` / `.risum` files with an empty `triggerScripts` array or a lone `triggerlua` wrapper are treated as **Lua mode**. In that case, the trigger item appears dimmed; conversely, when standalone triggers exist, the Lua folder appears dimmed.
+
+#### Lua / CSS Section System
+
+<img width="1629" height="709" alt="Lua sections" src="https://github.com/user-attachments/assets/da9deeb0-fcc3-44f8-a64f-63ed40571444" />
+
+- Lua sections are delimited by `-- ===== SectionName =====`; CSS sections by `/* ===== SectionName ===== */`.
+- **Unified view**: edit all code in a single tab. **Individual sections**: edit each section in its own tab.
+- Right-click to add, rename, delete, or restore a section from backup.
+
+#### Lorebook
+
+<img width="1627" height="709" alt="Lorebook" src="https://github.com/user-attachments/assets/556eadc9-e377-4955-b7bf-7963562dc00a" />
+
+- Supports folder hierarchy. Click an entry to open a form editor (comment, key, content, mode, etc.).
+- Right-click to add entries/folders, import JSON, rename, delete, or restore from backup.
+- Drag & drop to reorder entries or move them between folders.
+
+#### Regex / Assets
+
+- **Regex**: Form editor (find, replace, type, flag) with right-click CRUD and drag-&-drop reordering.
+- **Assets**: Image file list. Click to open an image viewer (zoom / pan). Right-click to add or delete.
+
+### References Tab
+
+<img width="518" height="186" alt="References" src="https://github.com/user-attachments/assets/0535187b-5ae8-4873-b641-2478f94914b3" />
+
+- **Guides**: Built-in syntax guides (Lua, CBS, lorebook, regex, HTML/CSS, etc.).
+- **Reference files**: Load other `.charx`/`.risum` files as read-only references — you can drill down to individual lorebook/Lua/CSS items.
+- References are automatically restored on app restart and are also accessible to AI CLIs via MCP tools.
+
+### Backup System
+
+- Automatic backups are created when editing starts, tabs switch, or MCP overwrites content (up to 20 versions per tab).
+- Right-click an item → **Restore from Backup** → pick a timestamped version with preview.
 
 ---
 
-## 6. TokiTalk 터미널
+## 5. Editor (Monaco)
 
-<img width="259" height="38" alt="터미널 헤더" src="https://github.com/user-attachments/assets/a336229d-dc6d-4dc2-bf5d-64ee75e98f45" />
+RisuToki uses the same Monaco editing engine that powers VS Code.
 
-- 일반 셸 명령어 실행 (bash/powershell) · **복사**: `Ctrl+C` · **붙여넣기**: `Ctrl+V` 또는 우클릭
-
-### 터미널 메뉴
-
-<img width="227" height="148" alt="터미널 메뉴" src="https://github.com/user-attachments/assets/e4f5397a-6925-4d70-83d6-5b7e8b4ca7cb" />
-
-- **Claude Code / Copilot CLI / Codex / Gemini 시작** — 현재 파일 컨텍스트와 함께 AI CLI 실행
-- **터미널 지우기** / **터미널 재시작**
-
-### 헤더 버튼
-
-| 버튼 | 기능                                      |
-| ---- | ----------------------------------------- |
-| 🐰   | RP 모드 토글 (토키/아리스 말투로 AI 응답) |
-| 🔇   | BGM ON/OFF (우클릭으로 파일 변경)         |
-| 🖼   | 터미널 배경 이미지 설정                   |
-| ⚙    | 설정 패널 열기                            |
-| ━    | 터미널 패널 접기/펼치기                   |
-
-- 터미널 팝아웃은 메인 창과 같은 레이아웃/아바타/터미널 표면 스타일을 재사용해 라이트·다크 모드 모두 톤이 더 자연스럽게 맞춰집니다.
-- 터미널 팝아웃에서 xterm 초기화에 실패하면 빈 화면 대신 안내 메시지를 표시하고, 창을 닫을 때 terminal UI와 설정 구독을 함께 정리해 재오픈 시 상태가 누적되지 않도록 보강되었습니다.
+- Syntax highlighting (Lua, HTML, CSS, JSON, etc.), autocomplete, find & replace (`Ctrl+F` / `Ctrl+H`).
+- Mouse-wheel zoom (`Ctrl + scroll`), minimap.
+- Open multiple items as tabs simultaneously; drag tabs to reorder.
+- `↗` button on a tab → pop out into a separate window. `⧉` button → split into a slot inside the main window.
+- Pop-out buttons are keyboard-focusable. While an editor is popped out, its slot shows a "📌 Dock to restore here" placeholder.
+- Popping out a read-only tab shows a title badge and a disabled Save button so you can tell at a glance that the tab is not editable. The main-window placeholder also says "Viewing" to avoid confusion with editable pop-outs.
 
 ---
 
-## 7. AI CLI 연동 + MCP
+## 6. TokiTalk Terminal
 
-RisuToki의 핵심 기능입니다. 터미널에서 AI CLI를 실행하면 열려 있는 파일의 구조와 내용이 자동으로 전달됩니다.
+<img width="259" height="38" alt="Terminal header" src="https://github.com/user-attachments/assets/a336229d-dc6d-4dc2-bf5d-64ee75e98f45" />
 
-### 지원 CLI
+- Runs shell commands (bash / PowerShell). **Copy**: `Ctrl+C`. **Paste**: `Ctrl+V` or right-click.
 
-| CLI                | MCP 설정 위치                | 컨텍스트 전달 방식                           |
-| ------------------ | ---------------------------- | -------------------------------------------- |
-| Claude Code        | `~/.mcp.json`                | `--append-system-prompt`로 파일 정보 전달    |
-| GitHub Copilot CLI | `~/.copilot/mcp-config.json` | `AGENTS.md` 자동 생성 + 프로젝트 가이드 병합 |
-| Codex              | `~/.codex/config.toml`       | `AGENTS.md` 자동 생성 + 프로젝트 가이드 병합 |
-| Gemini CLI         | `~/.gemini/settings.json`    | `AGENTS.md` 자동 생성 + 프로젝트 가이드 병합 |
+### Terminal Menu
 
-> 앱 시작 시 4개 CLI 설정 파일이 자동 생성되며, 앱 종료 시 정리됩니다.
+<img width="227" height="148" alt="Terminal menu" src="https://github.com/user-attachments/assets/e4f5397a-6925-4d70-83d6-5b7e8b4ca7cb" />
 
-### 프로젝트 스킬 폴더
+- **Start Claude Code / Copilot CLI / Codex / Gemini** — launches the AI CLI with the current file context.
+- **Clear Terminal** / **Restart Terminal**
 
-루트 `skills/` 폴더는 프로젝트 스킬 문서를 두는 위치이며, 현재 저장소에는 번들 스킬 문서가 함께 포함됩니다. 필요하면 이 위치에 로컬 프로젝트 스킬 문서를 추가로 둘 수 있습니다.
+### Header Buttons
 
-`.claude/skills`, `.gemini/skills`, `.github/skills`는 각 CLI가 찾는 경로이며, 로컬에서는 이 경로들이 루트 `skills/`를 가리키는 디렉터리 링크로 복구됩니다. Windows에서는 git 상태를 깨끗하게 유지하기 위해 실제 symlink를 먼저 시도하고, 권한 때문에 불가능할 때만 junction으로 폴백합니다.
+| Button | Function                                            |
+| ------ | --------------------------------------------------- |
+| 🐰     | Toggle RP mode (Toki/Aris persona for AI responses) |
+| 🔇     | BGM on/off (right-click to change the track)        |
+| 🖼     | Set terminal background image                       |
+| ⚙      | Open settings panel                                 |
+| ━      | Collapse / expand the terminal panel                |
 
-Windows에서 git 체크아웃이 링크를 일반 텍스트 파일(`../skills`)로 풀어버리거나 루트 `skills/` 폴더가 비어 보이면 `npm run sync:skills`를 실행하세요. 이 명령은 `npm install`의 `prepare` 단계에서도 자동 실행되며, 루트 `skills/` 폴더가 없으면 조용히 건너뜁니다.
+- Terminal pop-outs reuse the main window's layout, avatar, and surface styles so light and dark modes look consistent.
+- If xterm fails to initialize in a pop-out, a message is shown instead of a blank screen. Closing the pop-out cleans up both terminal UI and settings subscriptions to avoid stale state on re-open.
 
-`list_skills`는 이제 각 스킬의 `name`, `description`, `tags`, `relatedTools`, `files`를 함께 반환합니다. 따라서 AI는 긴 `AGENTS.md`를 항상 들고 있지 않아도, 필요한 문법/구조/워크플로 스킬만 골라서 on-demand로 읽을 수 있습니다.
+---
 
-### 내장 스킬 맵
+## 7. AI CLI Integration + MCP
 
-| 분류            | 대표 스킬                                                                                                                                | 용도                                                      |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| **온보딩**      | `project-workflow`                                                                                                                       | 세션 시작 시 프로젝트 규칙·MCP 워크플로 온보딩            |
-| **도구 선택**   | `using-mcp-tools`                                                                                                                        | MCP 도구 선택·대형 필드 편집·batch-first 원칙 상세        |
-| **구조 참조**   | `file-structure-reference`                                                                                                               | `.charx` / `.risum` / `.risup`, lorebook, regex 구조 확인 |
-| **태그 가이드** | `writing-danbooru-tags`                                                                                                                  | Danbooru 태그 검색·검증·정리                              |
-| **캐릭터 작성** | `authoring-characters`, `authoring-lorebook-bots`                                                                                        | 솔로·앙상블·대규모 월드캐스트 봇 description 작성 가이드  |
-| **문법 가이드** | `writing-cbs-syntax`, `writing-lua-scripts`, `writing-lorebooks`, `writing-regex-scripts`, `writing-html-css`, `writing-trigger-scripts` | surface별 구체 문법/패턴                                  |
+This is a core feature of RisuToki. When you launch an AI CLI from the terminal, the structure and content of the currently open file are automatically provided.
 
-### MCP 도구 목록
+### Supported CLIs
 
-CLI 시작 시 MCP 서버가 자동 연결되어 AI가 에디터의 현재 문서를 직접 읽고 쓸 수 있고, 열리지 않은 절대 경로 `.charx` / `.risum` / `.risup` 파일도 probe 뒤 `open_file`로 활성 문서로 전환할 수 있습니다.
+| CLI                | MCP Config Location          | Context Delivery                                  |
+| ------------------ | ---------------------------- | ------------------------------------------------- |
+| Claude Code        | `~/.mcp.json`                | File info injected via `--append-system-prompt`   |
+| GitHub Copilot CLI | `~/.copilot/mcp-config.json` | `AGENTS.md` auto-generated + project guide merged |
+| Codex              | `~/.codex/config.toml`       | `AGENTS.md` auto-generated + project guide merged |
+| Gemini CLI         | `~/.gemini/settings.json`    | `AGENTS.md` auto-generated + project guide merged |
 
-| 카테고리           | 도구                                                                                                                                                                                                                                  |
+> All four CLI config files are created automatically at app startup and cleaned up on exit.
+
+### Project Skills Folder
+
+The root `skills/` folder holds project skill documents. This repository ships bundled skill docs there; you can add your own alongside them.
+
+`.claude/skills`, `.gemini/skills`, and `.github/skills` are the paths each CLI looks for. Locally, these are maintained as directory links pointing to the root `skills/` folder. On Windows the app tries a real symlink first and falls back to a junction if permissions do not allow it, keeping the git working tree clean.
+
+If a Windows git checkout turns these links into plain text files (`../skills`) or the `skills/` folder looks empty, run `npm run sync:skills`. This also runs automatically during the `prepare` phase of `npm install` (and is silently skipped if `skills/` does not exist).
+
+`list_skills` returns each skill's `name`, `description`, `tags`, `relatedTools`, and `files`, so an AI can discover and read only the skills it needs on demand instead of keeping the entire `AGENTS.md` in context.
+
+### Built-in Skill Map
+
+| Category           | Key Skills                                                                                                                               | Purpose                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Onboarding**     | `project-workflow`                                                                                                                       | Project rules and MCP workflow onboarding at session start     |
+| **Tool Selection** | `using-mcp-tools`                                                                                                                        | MCP tool selection, large-field editing, batch-first principle |
+| **Structure Ref**  | `file-structure-reference`                                                                                                               | `.charx` / `.risum` / `.risup`, lorebook, and regex structures |
+| **Tag Guide**      | `writing-danbooru-tags`                                                                                                                  | Danbooru tag search, validation, and cleanup                   |
+| **Char Authoring** | `authoring-characters`, `authoring-lorebook-bots`                                                                                        | Solo, ensemble, and large-worldcast bot description guides     |
+| **Syntax Guides**  | `writing-cbs-syntax`, `writing-lua-scripts`, `writing-lorebooks`, `writing-regex-scripts`, `writing-html-css`, `writing-trigger-scripts` | Concrete syntax and patterns per surface                       |
+
+### MCP Tool Catalogue
+
+When an AI CLI starts, the MCP server connects automatically so the AI can read and write the active document directly. It can also probe unopened `.charx` / `.risum` / `.risup` files by absolute path and switch to them with `open_file`.
+
+| Category           | Tools                                                                                                                                                                                                                                 |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **필드**           | `list_fields` · `read_field` · `write_field` · `search_in_field` · `read_field_range` · `replace_in_field` · `replace_in_field_batch` · `insert_in_field` · `search_all_fields`                                                       |
-| **외부 파일**      | `probe_field` · `probe_field_batch` · `probe_lorebook` · `probe_regex` · `probe_lua` · `open_file` — 에디터에 열지 않은 절대 경로 파일을 읽고 현재 활성 문서로 전환                                                                   |
-| **Lua 섹션**       | `list_lua` · `read_lua` · `write_lua` · `replace_in_lua` · `insert_in_lua` · `add_lua_section`                                                                                                                                        |
-| **CSS 섹션**       | `list_css` · `read_css` · `write_css` · `replace_in_css` · `insert_in_css` · `add_css_section`                                                                                                                                        |
-| **로어북**         | `list_lorebook` · `read_lorebook` · `write_lorebook` · `add_lorebook` · `delete_lorebook` · `replace_in_lorebook` · `replace_across_all_lorebook` + 배치 도구                                                                         |
-| **정규식**         | `list_regex` · `read_regex` · `write_regex` · `add_regex` · `delete_regex` · `replace_in_regex` · `insert_in_regex` · `add_regex_batch` · `write_regex_batch`                                                                         |
-| **인사말**         | `list_greetings` · `read_greeting` · `write_greeting` · `add_greeting` · `delete_greeting`                                                                                                                                            |
-| **트리거**         | `list_triggers` · `read_trigger` · `write_trigger` · `add_trigger` · `delete_trigger`                                                                                                                                                 |
-| **risup 프롬프트** | `list_risup_prompt_items` · `read_risup_prompt_item` · `write_risup_prompt_item` · `add_risup_prompt_item` · `delete_risup_prompt_item` · `reorder_risup_prompt_items` · `read_risup_formating_order` · `write_risup_formating_order` |
-| **참고자료**       | `list_references` · `read_reference_field` + 로어북/Lua/CSS/정규식 세부 조회 도구                                                                                                                                                     |
-| **에셋**           | charx: `list_charx_assets` · `read_charx_asset` · `add_charx_asset` · `delete_charx_asset` · `rename_charx_asset` / risum: `list_risum_assets` · `read_risum_asset` · `add_risum_asset` · `delete_risum_asset`                        |
+| **Fields**         | `list_fields` · `read_field` · `write_field` · `search_in_field` · `read_field_range` · `replace_in_field` · `replace_in_field_batch` · `insert_in_field` · `search_all_fields`                                                       |
+| **Unopened Files** | `probe_field` · `probe_field_batch` · `probe_lorebook` · `probe_regex` · `probe_lua` · `open_file` — read an unopened file by absolute path and switch it to the active document                                                      |
+| **Lua Sections**   | `list_lua` · `read_lua` · `write_lua` · `replace_in_lua` · `insert_in_lua` · `add_lua_section`                                                                                                                                        |
+| **CSS Sections**   | `list_css` · `read_css` · `write_css` · `replace_in_css` · `insert_in_css` · `add_css_section`                                                                                                                                        |
+| **Lorebook**       | `list_lorebook` · `read_lorebook` · `write_lorebook` · `add_lorebook` · `delete_lorebook` · `replace_in_lorebook` · `replace_across_all_lorebook` + batch tools                                                                       |
+| **Regex**          | `list_regex` · `read_regex` · `write_regex` · `add_regex` · `delete_regex` · `replace_in_regex` · `insert_in_regex` · `add_regex_batch` · `write_regex_batch`                                                                         |
+| **Greetings**      | `list_greetings` · `read_greeting` · `write_greeting` · `add_greeting` · `delete_greeting`                                                                                                                                            |
+| **Triggers**       | `list_triggers` · `read_trigger` · `write_trigger` · `add_trigger` · `delete_trigger`                                                                                                                                                 |
+| **risup Prompts**  | `list_risup_prompt_items` · `read_risup_prompt_item` · `write_risup_prompt_item` · `add_risup_prompt_item` · `delete_risup_prompt_item` · `reorder_risup_prompt_items` · `read_risup_formating_order` · `write_risup_formating_order` |
+| **References**     | `list_references` · `read_reference_field` + lorebook/Lua/CSS/regex sub-query tools                                                                                                                                                   |
+| **Assets**         | charx: `list_charx_assets` · `read_charx_asset` · `add_charx_asset` · `delete_charx_asset` · `rename_charx_asset` / risum: `list_risum_assets` · `read_risum_asset` · `add_risum_asset` · `delete_risum_asset`                        |
 | **Danbooru**       | `validate_danbooru_tags` · `search_danbooru_tags` · `get_popular_danbooru_tags`                                                                                                                                                       |
-| **CBS 검증**       | `validate_cbs` · `list_cbs_toggles` · `simulate_cbs` · `diff_cbs` — CBS 구조 검증 + 토글 시뮬레이션                                                                                                                                   |
-| **스킬**           | `list_skills` · `read_skill` — CBS/Lua/로어북/정규식 등 문법 가이드                                                                                                                                                                   |
+| **CBS Validation** | `validate_cbs` · `list_cbs_toggles` · `simulate_cbs` · `diff_cbs` — structural CBS validation + toggle simulation                                                                                                                     |
+| **Skills**         | `list_skills` · `read_skill` — CBS/Lua/lorebook/regex syntax guides                                                                                                                                                                   |
 
-- `write` / `add` / `delete` 사용 시 **모모톡 스타일 확인 팝업** 표시 ("이번 작업 동안 전부 허용" 토글로 생략 가능)
-- AI CLI가 수정한 내용은 에디터에 실시간 반영
-- 열리지 않은 파일은 먼저 `probe_*` 도구로 읽고, 실제 편집이 필요할 때만 `open_file`로 현재 활성 문서로 전환하는 흐름이 권장됩니다
-- 정규식·인사말·Lua/CSS 섹션, field/lorebook, reference, asset/risum-asset, risup reorder/formating-order, skills 파일 읽기, unopened-file probe/open validation 경로의 route-local `4xx/409` 에러는 `action`, `target`, `status`, `suggestion`, `retryable`, `next_actions` 같은 구조화 필드를 포함하여 AI CLI가 에러를 자동 진단·복구할 수 있습니다. 글로벌 `Unauthorized` / `No file open` guard와 HTTP-200 `success: false` no-op 경로도 같은 recovery 메타데이터를 제공하며, 성공 응답은 `artifacts.byte_size`로 context-budget 힌트까지 제공합니다. 상세 계약은 `docs/MCP_ERROR_CONTRACT.md`에 정리되어 있습니다.
-- 로어북 폴더는 폴더 항목의 canonical `key` 값인 `folder:UUID`를 기준으로 추적되며, 자식 항목의 `folder` 값도 같은 `folder:UUID` 형태로 정규화됩니다. 예전 bare UUID / `id` 기반 폴더 데이터도 읽기 시 자동 호환됩니다.
+- `write` / `add` / `delete` calls trigger a **MomoTalk-style confirmation popup** (a "Allow all for this session" toggle lets you skip it).
+- Changes made by the AI CLI are reflected in the editor in real time.
+- For unopened files, the recommended flow is to `probe_*` first, then `open_file` only when edits are actually needed.
+- Route-local `4xx/409` errors across regex, greetings, Lua/CSS sections, fields, lorebook, references, assets, risup reorder/formating-order, skill-file reads, and unopened-file probe/open validation carry structured fields (`action`, `target`, `status`, `suggestion`, `retryable`, `next_actions`) so the AI CLI can diagnose and recover automatically. Global `Unauthorized` / `No file open` guards and HTTP-200 `success: false` no-op paths provide the same recovery metadata. Success responses include `artifacts.byte_size` as a context-budget hint. The full contract is documented in `docs/MCP_ERROR_CONTRACT.md`.
+- Lorebook folders are tracked by the canonical `key` of the folder entry (`folder:UUID`). Child entries normalize their `folder` value to the same `folder:UUID` form. Legacy bare-UUID / `id`-based folder data is auto-upgraded on read.
 
-<img width="1593" height="380" alt="MCP 연동" src="https://github.com/user-attachments/assets/bb2cf1b0-d8f9-4eb7-afe4-37491ca9cfc6" />
+<img width="1593" height="380" alt="MCP integration" src="https://github.com/user-attachments/assets/bb2cf1b0-d8f9-4eb7-afe4-37491ca9cfc6" />
 
-### 사용 예시
-
-```
-"글로벌노트에 시스템 프롬프트 추가해줘"
-"로어북에서 키워드가 '세이버'인 항목 찾아서 내용 수정해줘"
-"Lua 코드에서 버그 찾아줘"
-"참고 파일의 로어북과 현재 로어북을 비교해줘"
-"C:\\cards\\villain.charx 파일을 probe_lorebook로 훑고, 필요하면 open_file로 열어서 description 수정해줘"
-"캐릭터 외형에 맞는 Danbooru 태그로 이미지 프롬프트 만들어줘"
-```
-
----
-
-## 8. 프리뷰 모드 / RP 모드
-
-### 프리뷰 모드 (F5)
-
-<img width="1380" height="783" alt="프리뷰" src="https://github.com/user-attachments/assets/c16a9e11-b7ac-460a-80a3-b779c70bed1b" />
-
-RisuAI와 동일한 렌더링 파이프라인으로 채팅 화면을 시뮬레이션합니다.
-
-- **firstMessage** 자동 표시 → 유저 입력 → AI 응답(직접 입력) 순서로 대화 테스트
-- 프리뷰는 현재 `.charx` 파일에서만 열립니다. `.risum` / `.risup`가 활성 탭일 때는 보기 메뉴와 `F5`가 모두 차단됩니다.
-- CBS(Conditional Block System) 실행 — 변수 조건분기, 버튼 클릭 처리, 함수(`#func`/`call`), 반복(`#each`), 주사위/난수, 유니코드/암호화 태그 등 RisuAI 상위 호환
-- 정규식 · Lua 트리거 적용 (editOutput → editDisplay → editInput)
-- 에셋 참조 자동 변환 (`{{raw::name}}`, `{{asset::name}}`, `ccdefault:`, `embeded://`)
-- 로어북 프리뷰는 `@@depth` / `@@position` / `@@role` / `@@scan_depth` / `@@probability` / `@@activate` / `@@dont_activate` / `@@match_full_word` / `@@additional_keys` / `@@exclude_keys`를 반영하며, `@@probability`는 재현 가능한 결정적 roll로 시뮬레이션됩니다.
-- **디버그 패널**: 변수 덤프 · 로어북 활성화 요약(활성/전체 수 + 확률 표시) · 매칭 키/제외 키 · 데코레이터 태그 · scan depth · 확률 판정 · 경고 · 삽입순서·selective 배지 · 정규식 플래그·비활성 섹션 · Lua 로그 실시간 확인
-- 프리뷰 초기화(리셋) · 팝아웃(`↗`)으로 별도 창 분리 가능
-- `risu-btn` / `risu-trigger` 기반 버튼과 `triggerScripts` 기반 Lua 핸들러를 프리뷰에서도 확인 가능
-- Lua `setDescription`, `setPersonality`, `setScenario`, `setFirstMessage` 호출 결과가 프리뷰 세션에 즉시 반영되어, 카드 필드 변경 스크립트를 더 가깝게 검증할 수 있습니다.
-- `{{charpersona}}`는 personality를, `{{chardesc}}`는 description을 각각 읽도록 정리되어, 캐릭터 성격과 설명 텍스트를 프리뷰 템플릿에서 구분해 검증할 수 있습니다.
-- 첫 메시지 렌더 시 강제 맨 아래 스크롤을 피하도록 조정되어 긴 카드도 위쪽부터 바로 확인 가능
-- 프리뷰 팝아웃은 `초기화` / `디버그 패널` / `메인 창으로 도킹` / `닫기`를 각각 명시적으로 구분하며, 메인/팝아웃 프리뷰 모두 디버그가 열려 있을 때 버튼 활성 상태가 표시됩니다.
-- 메인/팝아웃 프리뷰 입력창은 IME 조합 중 Enter를 전송으로 처리하지 않아, 한글 입력 중 메시지가 잘못 전송되지 않습니다.
-- 팝아웃 헤더 버튼과 채팅/디버그 표면은 라이트·다크 모드에 맞춰 공용 테마로 정리되어, 다크 모드에서도 버튼 색이 과하게 뜨지 않고 editor/preview/terminal 팝아웃 전반의 톤이 더 일관되게 보입니다.
-- `npm run dev` 개발 모드에서도 샌드박스 iframe 보안 정책과 충돌하지 않도록 프리뷰 bridge를 정리해, 브라우저 콘솔 `SecurityError` 없이 동일한 프리뷰 흐름을 확인 가능
-- `{{cbr}}` / `{{cnl}}` / `{{cnewline}}`는 실제 줄바꿈으로 렌더링되고, 프리뷰의 `chatindex` / `isfirstmsg` / Lua `onOutput` 흐름도 실제 메시지 순서에 맞게 보정되었습니다.
-- 프리뷰 초기화 시 인라인 상태 배너를 표시해, iframe이 5 초 안에 준비되지 않으면 타임아웃 에러를, Lua 트리거 실패 등 런타임 에러가 발생하면 해당 메시지를 패널 안에서 바로 확인 가능 — 초기화 중에는 입력·전송·리셋 버튼이 비활성화됩니다.
-- 프리뷰는 샌드박스 iframe에서 렌더링되며 `<script>`, 인라인 이벤트 속성(`on*`), 프레임 탈출을 전제로 한 HTML은 실행되지 않음
-- 앱은 더 이상 숨은 로컬 sync HTTP 서버를 열지 않으며, 파일 교환은 직접 열기/저장과 MCP 경로만 지원
-
-### RP 모드
-
-- 터미널 헤더 🐰 버튼으로 토글
-- 토키(라이트) / 아리스(다크) / 커스텀 중 선택
-- AI CLI 응답 말투를 조정합니다.
-- 터미널 팝아웃의 채팅 입력도 IME 조합 중 Enter를 바로 전송하지 않도록 맞춰, 팝아웃 상태에서도 한글 입력 중 오작동이 줄어듭니다.
-
-### 아바타 패널
-
-<img width="184" height="250" alt="아바타" src="https://github.com/user-attachments/assets/8c3f79b3-e7e4-4b13-92a2-dade8ddeb5a9" />
-<img width="522" height="509" alt="아바타 설정" src="https://github.com/user-attachments/assets/83c4ee4a-f726-45df-8713-4b25883a5c76" />
-
-- 대기: 기본 아이콘 (💤) / 작업 중: 춤추는 GIF (✨)
-- 우클릭 → 커스텀 이미지 등록 · GIF 초록 배경 자동 크로마키
-- 다크 모드: 토키 ↔ 아리스 자동 전환
-
----
-
-## 9. 설정
-
-<img width="398" height="555" alt="설정" src="https://github.com/user-attachments/assets/6682dfa3-103e-495c-8192-97cdb3c74e9b" />
-
-메뉴바 **설정** 또는 `Ctrl+,` 단축키로 열 수 있습니다.
-
-| 설정                | 설명                                              |
-| ------------------- | ------------------------------------------------- |
-| **자동저장 ON/OFF** | 일정 간격으로 자동 저장                           |
-| **저장 간격**       | 1분 / 5분 / 10분 / 20분 / 30분                    |
-| **자동저장 경로**   | 기본(파일 옆) 또는 커스텀 폴더 지정               |
-| **다크 모드**       | 라이트(토키) ↔ 다크(아리스) 전환                  |
-| **BGM**             | 배경 음악 ON/OFF                                  |
-| **RP 모드**         | 토키/아리스/커스텀 선택                           |
-| **페르소나 편집**   | 정적 RP 페르소나 텍스트 수정 (토키/아리스/커스텀) |
-
-> RP 모드 사용 시 AI CLI 시작 전에 페르소나를 설정해두세요.
-
----
-
-## 10. 단축키 목록
-
-| 단축키         | 기능                 |
-| -------------- | -------------------- |
-| `Ctrl+N`       | 새로 만들기          |
-| `Ctrl+O`       | 파일 열기            |
-| `Ctrl+S`       | 저장                 |
-| `Ctrl+Shift+S` | 다른 이름으로 저장   |
-| `Ctrl+W`       | 현재 탭 닫기         |
-| `Ctrl+B`       | 사이드바 토글        |
-| `` Ctrl+` ``   | 터미널 토글          |
-| `Ctrl+,`       | 설정 열기            |
-| `Ctrl+F`       | 찾기                 |
-| `Ctrl+H`       | 찾기/바꾸기          |
-| `F5`           | 프리뷰 (.charx 전용) |
-
----
-
-## 문제 해결
-
-| 증상                            | 해결                                                                                                                       |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| AI CLI가 MCP 도구를 못 찾음     | 앱과 해당 CLI 세션을 완전히 다시 시작한 뒤 다시 시도                                                                       |
-| Copilot CLI 인증 실패           | 터미널에서 `/login` 입력 후 GitHub 로그인                                                                                  |
-| 저장 시 데이터 누락             | 열려 있는 모든 탭의 변경사항이 저장됩니다 — 탭 닫기 전 `Ctrl+S`                                                            |
-| 프리뷰에서 CBS/Lua가 작동 안 함 | 프리뷰는 일부 고급 API만 지원합니다 — RisuAI에서 최종 테스트하세요                                                         |
-| 시작 시 자동 저장 복원 대화상자 | 이전 종료가 비정상이었고 복원 가능한 autosave가 남아 있으면 정상 동작입니다 — 복원 / 원본 열기 / 무시 중 하나를 선택하세요 |
-
----
-
-## 라이선스
-
-[CC BY-NC 4.0](LICENSE) — 비상업적 사용에 한해 자유롭게 이용 가능
-
----
-
-## 14. RP 모드
-
-AI CLI의 응답 스타일을 바꾸는 기능입니다.
-
-- 터미널 헤더의 🐰 버튼으로 토글
-- 설정 패널에서 상세 모드 선택 가능 (토키/아리스/커스텀)
-- 활성화 시 버튼 배경이 밝아집니다
-- 다음 번 AI CLI 시작 시부터 적용
-- 앱 재시작 후에도 상태 유지
-
----
-
-## 15. 단축키 목록
-
-### 파일
-
-| 단축키         | 동작           |
-| -------------- | -------------- |
-| `Ctrl+N`       | 새로 만들기    |
-| `Ctrl+O`       | 열기           |
-| `Ctrl+S`       | 저장           |
-| `Ctrl+Shift+S` | 다른 이름 저장 |
-| `Ctrl+W`       | 탭 닫기        |
-
-### 편집
-
-| 단축키   | 동작      |
-| -------- | --------- |
-| `Ctrl+Z` | 실행 취소 |
-| `Ctrl+Y` | 다시 실행 |
-| `Ctrl+F` | 찾기      |
-| `Ctrl+H` | 바꾸기    |
-| `Ctrl+A` | 모두 선택 |
-
-### 보기
-
-| 단축키       | 동작                 |
-| ------------ | -------------------- |
-| `Ctrl+B`     | 사이드바 토글        |
-| `` Ctrl+` `` | 터미널 토글          |
-| `Ctrl+,`     | 설정 열기            |
-| `Ctrl++`     | 에디터 확대          |
-| `Ctrl+-`     | 에디터 축소          |
-| `Ctrl+0`     | 에디터 기본 크기     |
-| `F5`         | 프리뷰 (.charx 전용) |
-| `F12`        | 개발자 도구          |
-
-### 터미널
-
-| 단축키             | 동작     |
-| ------------------ | -------- |
-| `Ctrl+C` (선택 시) | 복사     |
-| `Ctrl+V`           | 붙여넣기 |
-| 우클릭             | 붙여넣기 |
-
----
-
-## 16. 지원 파일 형식
-
-### .charx — 캐릭터 카드 v3
+### Usage Examples
 
 ```
-example.charx (ZIP 아카이브)
-├── card.json          ← V3 캐릭터 카드 스펙 (name, description, firstMessage 등)
-├── module.risum       ← RPack 인코딩 바이너리 (Lua 트리거, 정규식, 로어북)
-└── assets/            ← 이미지 리소스
-    ├── icon/          ← 캐릭터 아이콘
-    └── other/image/   ← 기타 이미지
+"Add a system prompt to the global note"
+"Find the lorebook entry with keyword 'Saber' and edit its content"
+"Look for bugs in the Lua code"
+"Compare the reference file's lorebook with the current one"
+"Probe C:\\cards\\villain.charx with probe_lorebook, then open_file if you need to edit the description"
+"Generate an image prompt with Danbooru tags matching this character's appearance"
 ```
 
-### .risum — 모듈
+---
 
-RPack 인코딩 바이너리 파일. Lua 트리거, 정규식, 로어북, CJS, 에셋 등을 포함합니다.
+## 8. Preview Mode / RP Mode
 
-### .risup — 프리셋
+### Preview Mode (F5)
 
-암호화된 AI 프리셋 파일. 모델 설정, 생성 파라미터, 프롬프트 템플릿 등을 포함합니다.
+<img width="1380" height="783" alt="Preview" src="https://github.com/user-attachments/assets/c16a9e11-b7ac-460a-80a3-b779c70bed1b" />
 
-- 실제 RisuAI export 기준 gzip / zlib / raw-deflate 변형을 모두 열 수 있습니다.
-- visible `프롬프트` 그룹은 `promptTemplate`, `formatingOrder`, `customPromptTemplateToggle`, 템플릿 변수 중심의 **template-first 프롬프트 surface**로 동작합니다.
-- `promptTemplate`는 항목 단위 구조화 에디터로 열리며, `plain` / `jailbreak` / `cot` / `chatML` / `persona` / `description` / `lorebook` / `postEverything` / `memory` / `authornote` / `chat` / `cache` 타입을 직접 수정할 수 있습니다.
-- `formatingOrder`는 순서 전용 리스트 에디터로 열리며, legacy/custom token도 문자열이면 보존됩니다.
-- `customPromptTemplateToggle`는 멀티라인 textarea로 열리며, 구조화 프롬프트 에디터와 함께 앱 기본 스타일에 맞춘 카드/셀렉트/버튼 UI를 사용합니다.
-- legacy `mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`는 호환성 데이터로 남아 있지만 주요 프롬프트 흐름에서는 내려갑니다.
-- MCP에서는 raw `read_field` / `write_field` 외에도 prompt item CRUD / reorder와 formatting order 전용 도구를 제공합니다. prompt item 조회 응답에는 additive `id`가, `read_risup_formating_order` 응답에는 advisory `warnings` 배열이 포함되며, raw `write_field("promptTemplate")`는 명시적 `id`를 그대로 보존합니다.
+Simulates a chat screen using the same rendering pipeline as RisuAI.
 
-### 편집 가능 필드 (charx)
+- The **firstMessage** is displayed automatically → you type a user message → type an AI reply to test the conversation flow.
+- Preview is available only for `.charx` files. When a `.risum` or `.risup` is the active tab, both the View menu entry and `F5` are disabled.
+- **CBS (Conditional Block System)** execution — variable branching, button-click handling, functions (`#func`/`call`), loops (`#each`), dice/random, Unicode/encryption tags, and more, compatible with RisuAI.
+- Regex and Lua triggers are applied in order: editOutput → editDisplay → editInput.
+- Asset references are resolved automatically (`{{raw::name}}`, `{{asset::name}}`, `ccdefault:`, `embeded://`).
+- Lorebook preview respects `@@depth` / `@@position` / `@@role` / `@@scan_depth` / `@@probability` / `@@activate` / `@@dont_activate` / `@@match_full_word` / `@@additional_keys` / `@@exclude_keys`. `@@probability` is simulated with a reproducible deterministic roll.
+- **Debug panel**: variable dump · lorebook activation summary (active/total + probability display) · matched/excluded keys · decorator tags · scan depth · probability verdict · warnings · insertion-order/selective badges · regex flags/inactive sections · live Lua logs.
+- Reset the preview or pop it out (`↗`) into a separate window.
+- `risu-btn` / `risu-trigger` buttons and `triggerScripts`-based Lua handlers work in preview.
+- Lua calls to `setDescription`, `setPersonality`, `setScenario`, `setFirstMessage` take effect in the preview session immediately, letting you verify field-changing scripts more closely.
+- `{{charpersona}}` reads personality and `{{chardesc}}` reads description, so you can distinguish between the two in preview templates.
+- First-message rendering avoids a forced scroll-to-bottom, so long cards can be read from the top right away.
+- The pop-out preview toolbar separates **Reset / Debug Panel / Dock to Main / Close** explicitly; both main and pop-out previews highlight the debug button when the panel is open.
+- IME composition in main and pop-out preview inputs does not trigger a send on Enter, preventing accidental submissions during CJK input.
+- Pop-out header buttons and the chat/debug surfaces share a common theme for light and dark modes, so button colors stay subdued in dark mode and the overall tone is consistent across editor, preview, and terminal pop-outs.
+- In `npm run dev` mode, the preview bridge avoids conflicts with the sandbox iframe security policy — no `SecurityError` in the browser console.
+- `{{cbr}}` / `{{cnl}}` / `{{cnewline}}` render as actual line breaks. `chatindex`, `isfirstmsg`, and Lua `onOutput` follow the real message order.
+- During preview initialization an inline status banner appears: a timeout error if the iframe is not ready within 5 seconds, or a runtime error message (e.g., Lua trigger failure). While initializing, the input, send, and reset buttons are disabled.
+- Preview renders inside a sandboxed iframe. `<script>` tags, inline event attributes (`on*`), and frame-escape HTML are not executed.
+- The app no longer opens a hidden local sync HTTP server; file exchange is handled exclusively through direct open/save and MCP.
 
-| 필드                   | 설명                                          |
+### RP Mode
+
+- Toggle with the 🐰 button in the terminal header.
+- Choose between Toki (light) / Aris (dark) / Custom.
+- Adjusts the AI CLI's response style.
+- The setting takes effect from the next CLI launch and persists across app restarts.
+- IME composition in the terminal pop-out chat input also does not trigger a send on Enter, reducing misfires during CJK input.
+
+### Avatar Panel
+
+<img width="184" height="250" alt="Avatar" src="https://github.com/user-attachments/assets/8c3f79b3-e7e4-4b13-92a2-dade8ddeb5a9" />
+<img width="522" height="509" alt="Avatar settings" src="https://github.com/user-attachments/assets/83c4ee4a-f726-45df-8713-4b25883a5c76" />
+
+- Idle: default icon (💤) / Working: dancing GIF (✨).
+- Right-click to register a custom image. Green-screen GIF backgrounds are chroma-keyed automatically.
+- Dark mode automatically switches between Toki and Aris.
+
+---
+
+## 9. Settings
+
+<img width="398" height="555" alt="Settings" src="https://github.com/user-attachments/assets/6682dfa3-103e-495c-8192-97cdb3c74e9b" />
+
+Open from the menu bar **Settings** or with `Ctrl+,`.
+
+| Setting             | Description                                        |
+| ------------------- | -------------------------------------------------- |
+| **Autosave ON/OFF** | Save at a regular interval                         |
+| **Save Interval**   | 1 min / 5 min / 10 min / 20 min / 30 min           |
+| **Autosave Path**   | Default (next to the file) or a custom folder      |
+| **Dark Mode**       | Light (Toki) ↔ Dark (Aris)                         |
+| **BGM**             | Background music on/off                            |
+| **RP Mode**         | Toki / Aris / Custom                               |
+| **Persona Editor**  | Edit the static RP persona text (Toki/Aris/Custom) |
+
+> Set up your persona **before** starting an AI CLI session when using RP mode.
+
+---
+
+## 10. Keyboard Shortcuts
+
+### File
+
+| Shortcut       | Action    |
+| -------------- | --------- |
+| `Ctrl+N`       | New       |
+| `Ctrl+O`       | Open      |
+| `Ctrl+S`       | Save      |
+| `Ctrl+Shift+S` | Save As   |
+| `Ctrl+W`       | Close tab |
+
+### Edit
+
+| Shortcut | Action     |
+| -------- | ---------- |
+| `Ctrl+Z` | Undo       |
+| `Ctrl+Y` | Redo       |
+| `Ctrl+F` | Find       |
+| `Ctrl+H` | Replace    |
+| `Ctrl+A` | Select all |
+
+### View
+
+| Shortcut     | Action                |
+| ------------ | --------------------- |
+| `Ctrl+B`     | Toggle sidebar        |
+| `` Ctrl+` `` | Toggle terminal       |
+| `Ctrl+,`     | Open settings         |
+| `Ctrl++`     | Zoom in (editor)      |
+| `Ctrl+-`     | Zoom out (editor)     |
+| `Ctrl+0`     | Reset editor zoom     |
+| `F5`         | Preview (.charx only) |
+| `F12`        | Developer tools       |
+
+### Terminal
+
+| Shortcut             | Action |
+| -------------------- | ------ |
+| `Ctrl+C` (selection) | Copy   |
+| `Ctrl+V`             | Paste  |
+| Right-click          | Paste  |
+
+---
+
+## Supported File Formats
+
+### .charx — Character Card v3
+
+```
+example.charx (ZIP archive)
+├── card.json          ← V3 character card spec (name, description, firstMessage, etc.)
+├── module.risum       ← RPack-encoded binary (Lua triggers, regex, lorebook)
+└── assets/            ← Image resources
+    ├── icon/          ← Character icon
+    └── other/image/   ← Other images
+```
+
+### .risum — Module
+
+RPack-encoded binary file containing Lua triggers, regex scripts, lorebook entries, CJS, assets, and more.
+
+### .risup — Preset
+
+Encrypted AI preset file containing model settings, generation parameters, prompt templates, and more.
+
+- Opens all compression variants exported by RisuAI: gzip, zlib, and raw-deflate.
+- The visible **Prompts** group uses a **template-first prompt surface** built around `promptTemplate`, `formatingOrder`, `customPromptTemplateToggle`, and template variables.
+- `promptTemplate` opens in a per-item structured editor supporting `plain` / `jailbreak` / `cot` / `chatML` / `persona` / `description` / `lorebook` / `postEverything` / `memory` / `authornote` / `chat` / `cache` types.
+- `formatingOrder` opens in an order-only list editor that preserves legacy/custom tokens as-is (if they are strings).
+- `customPromptTemplateToggle` opens in a multiline textarea, styled with the app's standard card/select/button UI alongside the structured prompt editor.
+- Legacy fields (`mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`) remain as compatibility data but are demoted from the primary prompt flow.
+- Via MCP, in addition to raw `read_field` / `write_field`, dedicated prompt-item CRUD/reorder and formatting-order tools are available. Prompt-item responses include an additive `id`; `read_risup_formating_order` responses include an advisory `warnings` array. Raw `write_field("promptTemplate")` preserves explicit `id` values.
+
+### Editable Fields (charx)
+
+| Field                  | Description                                   |
 | ---------------------- | --------------------------------------------- |
-| `lua`                  | Lua 5.4 트리거 스크립트 (RisuAI CBS API 사용) |
-| `triggerScripts`       | 구조화 트리거 목록/조건/효과 편집 데이터      |
-| `globalNote`           | 포스트 히스토리 인스트럭션                    |
-| `firstMessage`         | 첫 메시지 (HTML/마크다운)                     |
-| `alternateGreetings[]` | 추가 첫 메시지 배열                           |
-| `groupOnlyGreetings[]` | 그룹 전용 첫 메시지 배열                      |
-| `description`          | 캐릭터 설명                                   |
-| `creatorcomment`       | 제작자 노트                                   |
-| `characterVersion`     | 캐릭터 버전                                   |
-| `css`                  | 커스텀 CSS                                    |
-| `defaultVariables`     | 기본 변수                                     |
-| `lorebook[]`           | 로어북 항목 배열                              |
-| `regex[]`              | 정규식 스크립트 배열                          |
+| `lua`                  | Lua 5.4 trigger scripts (RisuAI CBS API)      |
+| `triggerScripts`       | Structured trigger list/condition/effect data |
+| `globalNote`           | Post-history instruction                      |
+| `firstMessage`         | First message (HTML / Markdown)               |
+| `alternateGreetings[]` | Alternate first-message array                 |
+| `groupOnlyGreetings[]` | Group-only first-message array                |
+| `description`          | Character description                         |
+| `creatorcomment`       | Creator's note                                |
+| `characterVersion`     | Character version                             |
+| `css`                  | Custom CSS                                    |
+| `defaultVariables`     | Default variables                             |
+| `lorebook[]`           | Lorebook entry array                          |
+| `regex[]`              | Regex script array                            |
 
-### 편집 가능 필드 (risum)
+### Editable Fields (risum)
 
-| 필드                  | 설명                         |
-| --------------------- | ---------------------------- |
-| `name`                | 모듈 이름                    |
-| `description`         | 모듈 설명                    |
-| `lua`                 | Lua 트리거 스크립트          |
-| `triggerScripts`      | 구조화 트리거 목록/조건/효과 |
-| `cjs`                 | CommonJS 코드                |
-| `lowLevelAccess`      | 저수준 접근 활성화 (boolean) |
-| `backgroundEmbedding` | 배경 임베딩 HTML             |
-| `lorebook[]`          | 로어북 항목 배열             |
-| `regex[]`             | 정규식 스크립트 배열         |
+| Field                 | Description                              |
+| --------------------- | ---------------------------------------- |
+| `name`                | Module name                              |
+| `description`         | Module description                       |
+| `lua`                 | Lua trigger scripts                      |
+| `triggerScripts`      | Structured trigger list/condition/effect |
+| `cjs`                 | CommonJS code                            |
+| `lowLevelAccess`      | Low-level access enabled (boolean)       |
+| `backgroundEmbedding` | Background embedding HTML                |
+| `lorebook[]`          | Lorebook entry array                     |
+| `regex[]`             | Regex script array                       |
 
-### 편집 가능 필드 (risup)
+### Editable Fields (risup)
 
-| 필드 그룹                      | 예시 필드                                                                                                                                      |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| 기본                           | `name`                                                                                                                                         |
-| 설명                           | `description`                                                                                                                                  |
-| 프롬프트                       | 구조화 `promptTemplate`, 구조화 `formatingOrder`, `customPromptTemplateToggle`, `templateDefaultVariables`, `moduleIntergration`, `presetBias` |
-| 레거시 프롬프트(호환성 데이터) | `mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`                                          |
-| 모델/API                       | `aiModel`, `subModel`, `apiType`, `promptPreprocess`                                                                                           |
-| 기본 파라미터                  | `temperature`, `maxContext`, `maxResponse`, `frequencyPenalty`, `presencePenalty`                                                              |
-| 샘플링/추론                    | `top_p`, `top_k`, `repetition_penalty`, `min_p`, `top_a`, `reasonEffort`, `thinkingTokens`, `thinkingType`                                     |
-| JSON 스키마                    | `jsonSchemaEnabled`, `jsonSchema`, `strictJsonSchema`, `extractJson`                                                                           |
-| 기타                           | `groupTemplate`, `autoSuggestPrompt`, `localStopStrings`, `verbosity`, `systemContentReplacement`, `systemRoleReplacement`                     |
-| 정규식                         | `regex[]`                                                                                                                                      |
+| Field Group                  | Example Fields                                                                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| General                      | `name`                                                                                                                                                 |
+| Description                  | `description`                                                                                                                                          |
+| Prompts                      | Structured `promptTemplate`, structured `formatingOrder`, `customPromptTemplateToggle`, `templateDefaultVariables`, `moduleIntergration`, `presetBias` |
+| Legacy Prompts (compat data) | `mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`                                                  |
+| Model/API                    | `aiModel`, `subModel`, `apiType`, `promptPreprocess`                                                                                                   |
+| Base Parameters              | `temperature`, `maxContext`, `maxResponse`, `frequencyPenalty`, `presencePenalty`                                                                      |
+| Sampling/Reasoning           | `top_p`, `top_k`, `repetition_penalty`, `min_p`, `top_a`, `reasonEffort`, `thinkingTokens`, `thinkingType`                                             |
+| JSON Schema                  | `jsonSchemaEnabled`, `jsonSchema`, `strictJsonSchema`, `extractJson`                                                                                   |
+| Other                        | `groupTemplate`, `autoSuggestPrompt`, `localStopStrings`, `verbosity`, `systemContentReplacement`, `systemRoleReplacement`                             |
+| Regex                        | `regex[]`                                                                                                                                              |
 
-> 참고: `ooba`, `NAISettings`, `customFlags` 같은 복잡한 중첩 preset 객체는 파일에 **보존**되지만, 현재 UI에서는 개별 폼으로 노출하지 않습니다. 지원하지 않는 `promptTemplate` item shape는 구조화 에디터에서 읽기 전용 경고로 표시되며, raw 수정이 필요하면 `write_field("promptTemplate")` 또는 risup prompt MCP fallback을 사용하세요.
+> Note: Complex nested preset objects like `ooba`, `NAISettings`, and `customFlags` are **preserved** in the file but are not exposed as individual forms in the current UI. Unsupported `promptTemplate` item shapes show a read-only warning in the structured editor. For raw edits, use `write_field("promptTemplate")` or the risup prompt MCP fallback.
 
 ---
 
-## 17. 문제 해결
+## Troubleshooting
 
-### AI CLI가 시작되지 않음
+### AI CLI won't start
 
-- 사용하려는 CLI(`claude`, `copilot`, `codex`, `gemini`)가 PATH에 등록되어 있는지 확인하세요.
-- 터미널에서 직접 해당 명령어를 입력해 보세요.
-- GitHub Copilot CLI는 첫 실행 시 `/login` 인증이 필요할 수 있습니다.
+- Verify that the CLI you want (`claude`, `copilot`, `codex`, `gemini`) is on your PATH.
+- Try running the command directly in the terminal.
+- GitHub Copilot CLI may require `/login` authentication on first use.
 
-### MCP 연결 실패
+### MCP connection failure
 
-- Claude Code 시작 시 `~/.mcp.json`이 자동 생성됩니다.
-- GitHub Copilot CLI 시작 시 `~/.copilot/mcp-config.json`이 자동 생성됩니다.
-- Codex 시작 시 `~/.codex/config.toml`에 RisuToki MCP 블록이 자동 추가됩니다.
-- Gemini 시작 시 `~/.gemini/settings.json`이 자동 생성됩니다.
-- 에디터를 재시작하면 포트가 변경될 수 있으며, 자동으로 새 포트가 반영됩니다.
-- 각 CLI를 에디터에서 시작해야 RisuToki MCP 도구가 연동됩니다.
-- 업데이트 직후에도 `search_all_fields`에서 `MCP server 'risutoki': Not found`가 보이면, 이미 실행 중이던 구버전 CLI 세션일 수 있으니 터미널 메뉴에서 해당 CLI를 완전히 다시 시작하세요.
+- Config files are auto-created when each CLI starts: `~/.mcp.json` (Claude Code), `~/.copilot/mcp-config.json` (Copilot CLI), `~/.codex/config.toml` (Codex), `~/.gemini/settings.json` (Gemini).
+- Restarting the editor may change the port; the new port is picked up automatically.
+- You must start each CLI **from inside the editor** for RisuToki's MCP tools to connect.
+- If `search_all_fields` still reports `MCP server 'risutoki': Not found` right after an update, an older CLI session may be running. Fully restart the CLI from the terminal menu.
 
-### 파일이 열리지 않음
+### File won't open
 
-- `.charx`, `.risum`, `.risup` 확장자 파일인지 확인하세요.
-- `.charx` 파일은 유효한 ZIP 형식이어야 합니다.
-- `.risup` 파일은 RisuAI에서 내보낸 프리셋 파일이어야 하며, 현재 버전은 gzip / zlib / raw-deflate export 모두 지원합니다.
+- Make sure the file has a `.charx`, `.risum`, or `.risup` extension.
+- `.charx` files must be valid ZIP archives.
+- `.risup` files must be presets exported from RisuAI. gzip, zlib, and raw-deflate exports are all supported.
 
-### GIF 아바타가 움직이지 않음
+### GIF avatar not animating
 
-- 아바타 패널이 숨겨져 있지 않은지 확인하세요 (보기 → 아바타 토글).
+- Check that the avatar panel is visible (View → toggle avatar).
 
-### 저장 후에도 수정 표시가 남음
+### Modified indicator remains after saving
 
-- 모든 탭의 변경사항이 한 번에 저장됩니다. `Ctrl+S`로 저장 후 표시가 사라집니다.
+- All tab changes are saved at once. Press `Ctrl+S` — the indicator clears.
 
-### 자동 저장이 안 됨
+### Autosave not working
 
-- 설정에서 자동 저장이 ON인지 확인하세요.
-- 새 파일(한 번도 저장 안 한 파일)은 자동저장 경로를 지정해야 합니다.
+- Confirm that autosave is enabled in Settings.
+- For a new file (never saved), you must set an autosave path first.
 
-### 시작 시 자동 저장 복원 대화상자가 뜸
+### Autosave recovery dialog on startup
 
-- 이전 세션이 비정상 종료되었고 복원 가능한 autosave와 `.toki-recovery.json` sidecar가 남아 있으면 표시됩니다.
-- 자동 저장을 이어서 열려면 **자동 저장 복원**, 원본 파일만 열려면 **원본 열기**, 이번 한 번 무시하려면 **무시**를 선택하세요.
-- 복원한 뒤 저장 / 열기 / 새 파일을 성공하면 `[자동복원]` 표시와 recovery status는 자동으로 사라집니다.
+- This appears when the previous session exited abnormally and a recoverable autosave with a `.toki-recovery.json` sidecar exists.
+- Choose **Restore autosave** to continue from the saved state, **Open original** for the last-saved file, or **Ignore** to skip.
+- After restoring, the `[Auto-restored]` badge and recovery status clear automatically once you save, open another file, or create a new file.
+
+---
+
+## License
+
+[CC BY-NC 4.0](LICENSE) — free for non-commercial use.

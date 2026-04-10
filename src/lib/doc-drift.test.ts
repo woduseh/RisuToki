@@ -9,9 +9,7 @@
  *   3. MODULE_MAP.md module listings against actual src/lib/*.ts files
  *   4. MCP_TOOL_SURFACE.md tool references against the taxonomy
  *   5. FAMILY_NEXT_ACTIONS tool references against the taxonomy
- *   6. docs/superpowers/INDEX.md coverage of plan/spec files
  */
-import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -200,6 +198,8 @@ describe('MODULE_MAP ↔ src/lib coverage', () => {
 describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
   const taxonomySet = new Set(ALL_TOOL_NAMES);
   const surfaceToolNames = extractToolSurfaceToolNames();
+  const surfacePath = path.join(DOCS_DIR, 'MCP_TOOL_SURFACE.md');
+  const errorContractPath = path.join(DOCS_DIR, 'MCP_ERROR_CONTRACT.md');
 
   // Known non-tool backtick tokens that appear in MCP_TOOL_SURFACE.md
   // (file paths, envelope function names, field names, etc.)
@@ -213,7 +213,6 @@ describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
     'mcpSuccess',
     'mcpError',
     'mcpNoOp',
-    'read_field',
     'artifacts.byte_size',
   ]);
 
@@ -224,9 +223,12 @@ describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
     expect(orphans, 'MCP_TOOL_SURFACE.md references tools not in TOOL_TAXONOMY').toEqual([]);
   });
 
+  it('core MCP contract docs exist', () => {
+    expect(fs.existsSync(surfacePath), 'Missing docs/MCP_TOOL_SURFACE.md').toBe(true);
+    expect(fs.existsSync(errorContractPath), 'Missing docs/MCP_ERROR_CONTRACT.md').toBe(true);
+  });
+
   it('every taxonomy family has a section in MCP_TOOL_SURFACE.md', () => {
-    const surfacePath = path.join(DOCS_DIR, 'MCP_TOOL_SURFACE.md');
-    if (!fs.existsSync(surfacePath)) return;
     const content = fs.readFileSync(surfacePath, 'utf-8');
     const undocumented: string[] = [];
     for (const family of TOOL_FAMILIES) {
@@ -272,81 +274,5 @@ describe('FAMILY_NEXT_ACTIONS ↔ taxonomy alignment', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// 5. Superpowers INDEX.md coverage
+// 5. (removed — docs/superpowers/ was deleted as a historical artifact)
 // ────────────────────────────────────────────────────────────────────────────
-
-describe('superpowers INDEX.md coverage', () => {
-  const superpowersDir = path.join(DOCS_DIR, 'superpowers');
-  const indexPath = path.join(superpowersDir, 'INDEX.md');
-
-  function getActualFiles(subdir: string): string[] {
-    const gitDir = path.join(ROOT, '.git');
-    if (fs.existsSync(gitDir)) {
-      const prefix = `docs/superpowers/${subdir}/`;
-      return execFileSync('git', ['ls-files', prefix], { cwd: ROOT, encoding: 'utf-8' })
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.startsWith(prefix) && line.endsWith('.md'))
-        .map((line) => path.posix.basename(line))
-        .sort();
-    }
-
-    const dir = path.join(superpowersDir, subdir);
-    if (!fs.existsSync(dir)) return [];
-    return fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith('.md'))
-      .sort();
-  }
-
-  function getIndexedFiles(): { file: string; status: string }[] {
-    if (!fs.existsSync(indexPath)) return [];
-    const content = fs.readFileSync(indexPath, 'utf-8');
-    // Parse table rows: | filename | status | ... |
-    const rows = content.matchAll(/^\|\s*`?([^|`]+\.md)`?\s*\|\s*(\w+)\s*\|/gm);
-    return [...rows].map((m) => ({
-      file: m[1].trim(),
-      status: m[2].trim(),
-    }));
-  }
-
-  it('INDEX.md exists', () => {
-    expect(fs.existsSync(indexPath), 'docs/superpowers/INDEX.md should exist').toBe(true);
-  });
-
-  it('every plan file is indexed', () => {
-    const actualPlans = getActualFiles('plans');
-    const indexed = new Set(getIndexedFiles().map((e) => e.file));
-    const missing = actualPlans.filter((f) => !indexed.has(f));
-    expect(missing, 'plan files not listed in INDEX.md').toEqual([]);
-  });
-
-  it('every spec file is indexed', () => {
-    const actualSpecs = getActualFiles('specs');
-    const indexed = new Set(getIndexedFiles().map((e) => e.file));
-    const missing = actualSpecs.filter((f) => !indexed.has(f));
-    expect(missing, 'spec files not listed in INDEX.md').toEqual([]);
-  });
-
-  it('INDEX.md has no phantom entries (listed but nonexistent)', () => {
-    const indexedFiles = getIndexedFiles();
-    const actualPlans = new Set(getActualFiles('plans'));
-    const actualSpecs = new Set(getActualFiles('specs'));
-    const allActual = new Set([...actualPlans, ...actualSpecs]);
-    const phantoms = indexedFiles.filter((e) => !allActual.has(e.file));
-    expect(
-      phantoms.map((p) => p.file),
-      'INDEX.md references files that do not exist',
-    ).toEqual([]);
-  });
-
-  it('every INDEX.md entry has a valid status', () => {
-    const validStatuses = new Set(['active', 'superseded', 'research', 'partial']);
-    const indexed = getIndexedFiles();
-    const invalid = indexed.filter((e) => !validStatuses.has(e.status));
-    expect(
-      invalid.map((e) => `${e.file}: "${e.status}"`),
-      'INDEX.md entries with invalid status (expected: active|superseded|research|partial)',
-    ).toEqual([]);
-  });
-});

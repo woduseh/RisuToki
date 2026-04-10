@@ -36,7 +36,7 @@ If a change touches the renderer and feels reusable, prefer adding or extending 
 - `docs/MCP_WORKFLOW.md`: MCP tool routing, read rules, workflow patterns, operational caveats
 - `docs/MCP_TOOL_SURFACE.md`: MCP tool families, boundaries, and deterministic follow-up actions
 - `docs/MCP_ERROR_CONTRACT.md`: success / error / no-op envelopes and recovery rules
-- `docs/PROJECT_RULES.md`: versioning, CI/release workflow, guide locations, persona workflow
+- `docs/PROJECT_RULES.md`: versioning, CI/release workflow, guide locations
 - `docs/MODULE_MAP.md`: source navigation map for the active TypeScript codebase
 - `docs/analysis/ARCHITECTURE.md`: runtime structure and data flow
 - `npm run test:evals`: targeted deterministic agent/harness scenarios for recovery, context-budgeting, taxonomy, and section workflows
