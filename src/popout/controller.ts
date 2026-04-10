@@ -297,8 +297,7 @@ function initPopoutRpMode(): () => void {
 }
 
 function updatePopoutRpStyle(btn: HTMLElement, active: boolean, rpMode = readAppSettingsSnapshot().rpMode): void {
-  const label =
-    rpMode === 'aris' ? '아리스' : rpMode === 'custom' ? '커스텀' : rpMode === 'pluni' ? '플루니 연구소' : '토키';
+  const label = rpMode === 'aris' ? '아리스' : rpMode === 'custom' ? '커스텀' : '토키';
   setPopoutButtonActive(btn, active);
   btn.title = active ? `RP 모드 ON (${label})` : 'RP 모드 OFF';
 }

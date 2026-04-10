@@ -20,7 +20,6 @@ import {
   handleCopilotStart as _handleCopilotStart,
   handleCodexStart as _handleCodexStart,
   handleGeminiStart as _handleGeminiStart,
-  prepareCopilotSession as _prepareCopilotSession,
 } from '../lib/assistant-prompt';
 import {
   getDefaultRpModeForDarkMode,
@@ -33,7 +32,6 @@ import {
   writeBgmEnabled,
   writeBgmPath,
   writeLayoutState,
-  writePluniCategory,
   writeRpCustomText,
   writeRpMode,
 } from '../lib/app-settings';
@@ -93,7 +91,7 @@ import {
   TERM_THEME_DARK,
   TERM_THEME_LIGHT,
 } from '../lib/terminal-ui';
-import { TerminalSessionContext, isCopilotLaunchCommand } from '../lib/terminal-session-context';
+import { TerminalSessionContext } from '../lib/terminal-session-context';
 import {
   applySelectedChoice,
   cleanTuiOutput,
@@ -214,7 +212,6 @@ let darkMode = settingsSnapshot.darkMode;
 // Migrate old boolean value
 let rpMode = settingsSnapshot.rpMode;
 let rpCustomText = settingsSnapshot.rpCustomText;
-let pluniCategory = settingsSnapshot.pluniCategory;
 
 // Autosave state
 let autosaveEnabled = settingsSnapshot.autosaveEnabled;
@@ -228,7 +225,6 @@ function syncStoreState(): void {
   const store = useAppStore();
   store.setDarkMode(darkMode);
   store.setRpMode(rpMode as RpMode);
-  store.setPluniCategory(pluniCategory);
   store.bgmEnabled = isBgmEnabled();
 }
 
@@ -1839,22 +1835,10 @@ async function initTerminal(): Promise<void> {
     onUserInput: (data) => {
       lastUserInputTime = Date.now();
       const prevCwd = terminalSession.cwd;
-      const prevCount = terminalSession.completedCommands.length;
       terminalSession.feedInput(data);
       // Sync tracked terminal cwd to main process when it changes
       if (terminalSession.cwd !== prevCwd) {
         window.tokiAPI.setTerminalCwd(terminalSession.cwd);
-      }
-
-      // Detect manually-typed copilot launch (Pluni mode only).
-      // Menu-driven starts go through startAssistantCli → terminalInput and
-      // never pass through this onUserInput path, so there is no double-trigger.
-      if (rpMode === 'pluni' && terminalSession.completedCommands.length > prevCount) {
-        const lastCmd = terminalSession.completedCommands[terminalSession.completedCommands.length - 1];
-        if (isCopilotLaunchCommand(lastCmd.line)) {
-          // Gate: hold Enter until prep completes, then release it to the PTY
-          return _prepareCopilotSession(getAssistantDeps() as unknown as Parameters<typeof _prepareCopilotSession>[0]);
-        }
       }
     },
     preserveAmdLoader: true,
@@ -2027,7 +2011,6 @@ function getAssistantDeps() {
   return {
     rpMode,
     rpCustomText,
-    pluniCategory,
     hasTerminal: !!term,
     readPersona: (mode: string) => window.tokiAPI.readPersona(mode),
     getClaudePrompt: () => window.tokiAPI.getClaudePrompt(),
@@ -2038,8 +2021,6 @@ function getAssistantDeps() {
     cleanupAgentsMd: () => window.tokiAPI.cleanupAgentsMd(),
     writeSystemPrompt: (content: string) => window.tokiAPI.writeSystemPrompt(content),
     writeAgentsMd: (content: string, projectRoot?: string | null) => window.tokiAPI.writeAgentsMd(content, projectRoot),
-    syncCopilotAgentProfiles: (category: string, projectRoot?: string | null) =>
-      window.tokiAPI.syncCopilotAgentProfiles(category, projectRoot),
     terminalInput: (text: string) => window.tokiAPI.terminalInput(text),
     setStatus,
     navigatorLike: window.navigator,
@@ -2167,7 +2148,6 @@ function showSettingsPopup(): void {
       bgmEnabled: isBgmEnabled(),
       rpMode,
       rpCustomText,
-      pluniCategory,
     }),
     onAutosaveToggle(enabled) {
       autosaveEnabled = enabled;
@@ -2220,11 +2200,6 @@ function showSettingsPopup(): void {
     onRpCustomTextChange(text) {
       rpCustomText = text;
       writeRpCustomText(rpCustomText);
-    },
-    onPluniCategoryChange(category: string) {
-      pluniCategory = category as typeof pluniCategory;
-      writePluniCategory(pluniCategory);
-      syncStoreState();
     },
     async onOpenPersonaTab(name) {
       const tabId = `persona_${name}`;
@@ -2493,7 +2468,6 @@ export async function initMainRenderer(): Promise<void> {
     darkMode = snapshot.darkMode;
     rpMode = snapshot.rpMode;
     rpCustomText = snapshot.rpCustomText;
-    pluniCategory = snapshot.pluniCategory;
     setBgmEnabled(snapshot.bgmEnabled);
     autosaveEnabled = snapshot.autosaveEnabled;
     autosaveInterval = snapshot.autosaveInterval;

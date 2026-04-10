@@ -203,7 +203,6 @@ interface TokiAPI {
   writeGeminiMcpConfig: () => Promise<string | null>;
   writeAgentsMd: (content: string, projectRoot?: string | null) => Promise<string>;
   cleanupAgentsMd: () => Promise<boolean>;
-  syncCopilotAgentProfiles: (category: string, projectRoot?: string | null) => Promise<boolean>;
   onDataUpdated: (cb: DataUpdatedCallback) => void;
   onMcpConfirmRequest: (cb: McpConfirmCallback) => void;
   sendMcpConfirmResponse: (id: number, allowed: boolean) => void;

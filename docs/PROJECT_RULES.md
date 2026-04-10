@@ -50,13 +50,3 @@
 > `npm run sync:skills`는 Windows에서 실제 symlink를 우선 만들고, 불가능할 때만 junction으로 폴백하며, 루트 `skills/`가 없으면 조용히 건너뜁니다.
 
 ---
-
-## 4. Copilot 플루니 페르소나 워크플로
-
-- `rpMode === "pluni"`는 **GitHub Copilot CLI 전용** 고급 페르소나 모드입니다.
-- Copilot을 플루니 모드로 시작하면 선택한 카테고리(`solo`, `world-sim`, `multi-char`)에 맞춰 세션 `AGENTS.md`와 임시 `.github/agents/pluni.agent.md`, `kotone.agent.md`, `sophia.agent.md`를 생성합니다.
-- 에이전트 파일은 `.agent.md` 확장자와 YAML frontmatter(`---\nname: ...\n---`)를 사용합니다.
-- 부트스트랩 경로는 **내장 터미널의 현재 작업 디렉터리(cwd)** 기준으로 결정됩니다. 터미널에서 `cd`로 이동한 뒤 시작하면 그 경로가 프로젝트 루트로 사용됩니다.
-- 플루니 모드가 활성화된 상태에서는 메뉴 액션뿐 아니라 **터미널에 직접 `copilot`을 입력해도** 동일한 부트스트랩이 적용됩니다.
-- Copilot이 아닌 CLI에서는 같은 3인 자문 구조를 단일 세션 프롬프트로 합성해 전달합니다.
-- 이 `.github/agents/*.agent.md` 파일과 세션 `AGENTS.md`는 **런타임 산출물**이므로 소스 파일처럼 취급하거나 커밋하지 않습니다.
