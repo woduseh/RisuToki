@@ -36,8 +36,8 @@ Repo-wide MCP routes now use three additive response helpers:
 
 Additive recovery fields on hard failures and no-ops:
 
-| Field        | Description                                      |
-| ------------ | ------------------------------------------------ |
+| Field        | Description                                       |
+| ------------ | ------------------------------------------------- |
 | `action`     | The operation that failed or no-op'd              |
 | `target`     | The resource target (e.g. `regex`, `lua`)         |
 | `status`     | HTTP-style status code (e.g. `404`, `400`, `200`) |
@@ -47,11 +47,11 @@ Additive recovery fields on hard failures and no-ops:
 
 Success-envelope observation fields:
 
-| Field | Description |
-| --- | --- |
-| `summary` | Human-readable one-line outcome summary |
-| `next_actions` | Deterministic follow-up tool suggestions from the MCP family taxonomy |
-| `artifacts` | Small machine-readable outcome details |
+| Field                 | Description                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------- |
+| `summary`             | Human-readable one-line outcome summary                                                               |
+| `next_actions`        | Deterministic follow-up tool suggestions from the MCP family taxonomy                                 |
+| `artifacts`           | Small machine-readable outcome details                                                                |
 | `artifacts.byte_size` | Approximate UTF-8 JSON size of the success response, excluding the `artifacts.byte_size` field itself |
 
 Current coverage summary:
