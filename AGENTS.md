@@ -5,28 +5,36 @@
 
 ---
 
-## 어디서 읽을 것인가
+## 세션 시작 시 읽을 것
 
-| 목적                                | 문서                                                       |
-| ----------------------------------- | ---------------------------------------------------------- |
-| MCP 도구 선택·읽기 규칙·워크플로    | [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)             |
-| MCP 도구 패밀리·경계·behavior hints | [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)     |
-| MCP 에러/no-op/성공 응답 계약       | [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md) |
-| 프로젝트 규칙 (버전·CI·페르소나)    | [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)           |
-| TypeScript 소스 탐색                | [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                 |
-| 전체 지식 베이스 인덱스             | [`docs/README.md`](docs/README.md)                         |
-| 스킬 문서 (CBS/Lua/로어북 등)       | `list_skills` → `read_skill(name)`                         |
+| 순서 | 무엇을                                 | 어떻게                             |
+| ---- | -------------------------------------- | ---------------------------------- |
+| 1    | **온보딩·프로젝트 규칙·MCP 워크플로**  | `read_skill("project-workflow")`   |
+| 2    | **MCP 도구 선택·대형 필드·batch 상세** | `read_skill("using-mcp-tools")`    |
+| 3    | CBS/Lua/로어북 등 세부 문법            | `list_skills` → `read_skill(name)` |
+
+### 레포 내 추가 참조 (repo-local — 세션 외부에서는 없을 수 있음)
+
+| 문서                                                       | 내용                            |
+| ---------------------------------------------------------- | ------------------------------- |
+| [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)             | MCP 도구 선택·읽기 규칙 원본    |
+| [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)     | 도구 패밀리·경계·behavior hints |
+| [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md) | 에러/no-op/성공 응답 계약       |
+| [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)           | 버전·CI·페르소나 규칙           |
+| [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                 | TypeScript 소스 탐색            |
+| [`docs/README.md`](docs/README.md)                         | 전체 지식 베이스 인덱스         |
 
 ---
 
 ## 반드시 지킬 규칙
 
-1. **대형 surface를 `read_field`로 통째로 읽지 마세요.** `lua`, `css`, `alternateGreetings`, `triggerScripts`, `promptTemplate`/`formatingOrder`는 전용 list→read 도구를 사용합니다. → [읽기 규칙 상세](docs/MCP_WORKFLOW.md#2-읽기-규칙)
-2. **batch 도구 우선.** 여러 항목을 수정할 때 단일 write를 반복하지 말고 batch 도구를 사용하세요.
-3. **열리지 않은 파일은 `probe_*`로 먼저 읽으세요.** 수정이 필요할 때만 `open_file`로 전환합니다.
-4. **MCP 도구·필드 변경 시** `AGENTS.md`, `docs/`, `skills/`를 함께 갱신하세요. → [문서 규칙 상세](docs/PROJECT_RULES.md#1-문서-및-버전-관리-필수)
-5. **매 작업마다** `package.json` 버전 범프 + `CHANGELOG.md` 업데이트를 합니다.
-6. **구문이 애매하면 먼저 스킬 문서를 읽으세요.** 프로젝트 온보딩은 `read_skill("project-workflow")`, MCP 도구 선택 상세는 `read_skill("using-mcp-tools")`를 참조합니다.
+1. **세션 시작 시** `read_skill("project-workflow")`를 먼저 읽으세요. 모든 MCP 규칙과 프로젝트 규칙이 들어 있습니다.
+2. **대형 surface를 `read_field`로 통째로 읽지 마세요.** `lua`, `css`, `alternateGreetings`, `triggerScripts`, `promptTemplate`/`formatingOrder`는 전용 list→read 도구를 사용합니다.
+3. **batch 도구 우선.** 여러 항목을 수정할 때 단일 write를 반복하지 말고 batch 도구를 사용하세요.
+4. **열리지 않은 파일은 `probe_*`로 먼저 읽으세요.** 수정이 필요할 때만 `open_file`로 전환합니다.
+5. **MCP 도구·필드 변경 시** `AGENTS.md`, `docs/`, `skills/`를 함께 갱신하세요.
+6. **매 작업마다** `package.json` 버전 범프 + `CHANGELOG.md` 업데이트를 합니다.
+7. **구문이 애매하면 먼저 스킬 문서를 읽으세요.** MCP 도구 선택 상세는 `read_skill("using-mcp-tools")`를 참조합니다.
 
 ---
 
