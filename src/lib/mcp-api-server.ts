@@ -25,7 +25,8 @@ import {
   validateFormatingOrderText,
   type PromptItemModel,
 } from './risup-prompt-model';
-import { mcpSuccess, type McpSuccessOptions } from './mcp-response-envelope';
+import { mcpSuccess, errorRecoveryMeta, type McpSuccessOptions } from './mcp-response-envelope';
+import { normalizeLF, extToMime, cloneJson } from './shared-utils';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -93,39 +94,6 @@ export interface McpApiServer {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-/** Normalize CRLF → LF for consistent matching across all replace/insert/search ops. */
-function normalizeLF(s: string): string {
-  return s.indexOf('\r') >= 0 ? s.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : s;
-}
-
-const MIME_MAP: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  webp: 'image/webp',
-  gif: 'image/gif',
-  svg: 'image/svg+xml',
-  avif: 'image/avif',
-  mp3: 'audio/mpeg',
-  ogg: 'audio/ogg',
-  wav: 'audio/wav',
-  flac: 'audio/flac',
-  m4a: 'audio/mp4',
-  aac: 'audio/aac',
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  mov: 'video/quicktime',
-  woff: 'font/woff',
-  woff2: 'font/woff2',
-  ttf: 'font/ttf',
-  otf: 'font/otf',
-  css: 'text/css',
-};
-
-function extToMime(ext: string): string {
-  return MIME_MAP[ext.toLowerCase()] || 'application/octet-stream';
-}
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -474,6 +442,8 @@ interface McpErrorInfo {
   rejected?: boolean;
 }
 
+type McpNoOpInfo = Omit<McpErrorInfo, 'rejected'>;
+
 function jsonMcpError(
   res: http.ServerResponse,
   status: number,
@@ -481,11 +451,14 @@ function jsonMcpError(
   broadcastStatus: (payload: Record<string, unknown>) => void,
   error?: unknown,
 ): void {
+  const recovery = errorRecoveryMeta(info.target, status);
   const payload: Record<string, unknown> = {
     action: info.action,
     details: info.details,
     error: info.message,
+    next_actions: recovery.next_actions,
     rejected: !!info.rejected,
+    retryable: recovery.retryable,
     status,
     suggestion: info.suggestion,
     target: info.target,
@@ -506,6 +479,23 @@ function jsonMcpError(
     target: info.target,
   });
   jsonRes(res, payload, status);
+}
+
+function jsonMcpNoOp(res: http.ServerResponse, info: McpNoOpInfo, extra: Record<string, unknown> = {}): void {
+  const recovery = errorRecoveryMeta(info.target, 200);
+  jsonRes(res, {
+    ...extra,
+    action: info.action,
+    details: info.details,
+    error: info.message,
+    message: info.message,
+    next_actions: recovery.next_actions,
+    retryable: false,
+    status: 200,
+    success: false,
+    suggestion: info.suggestion,
+    target: info.target,
+  });
 }
 
 async function readJsonBody(
@@ -931,6 +921,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
   // Shorthand to emit an MCP error response
   function mcpError(res: http.ServerResponse, status: number, info: McpErrorInfo, error?: unknown): void {
     jsonMcpError(res, status, info, broadcastStatus, error);
+  }
+
+  function mcpNoOp(res: http.ServerResponse, info: McpNoOpInfo, extra: Record<string, unknown> = {}): void {
+    jsonMcpNoOp(res, info, extra);
   }
 
   // Shorthand to emit an MCP success response with envelope enrichment
@@ -2085,12 +2079,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newContent = content.split(findStr).join(replaceStr);
           }
           if (matchCount === 0) {
-            return jsonRes(res, {
-              success: false,
-              message: '일치하는 항목 없음',
-              matchCount: 0,
-              ...(dryRun ? { dryRun: true } : {}),
-            });
+            return mcpNoOp(
+              res,
+              {
+                action: 'replace in field',
+                message: '일치하는 항목 없음',
+                suggestion:
+                  'read_field 또는 search_in_field로 현재 내용을 다시 확인하고 find/regex/flags를 조정하세요.',
+                target: `field:${fieldName}`,
+              },
+              {
+                matchCount: 0,
+                ...(dryRun ? { dryRun: true } : {}),
+              },
+            );
           }
 
           // Dry-run: return match preview without modifying data
@@ -2249,19 +2251,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
           const startPos = content.indexOf(startAnchor);
           if (startPos === -1) {
-            return jsonRes(res, {
-              success: false,
+            return mcpNoOp(res, {
+              action: 'block replace in field',
               message: `시작 앵커를 찾을 수 없음: ${startAnchor.substring(0, 80)}`,
+              suggestion:
+                'read_field 또는 read_field_range로 현재 내용을 확인해 start_anchor/end_anchor를 다시 지정하세요.',
+              target: `field:${fieldName}`,
             });
           }
           const searchAfter = startPos + startAnchor.length;
           const endPos = content.indexOf(endAnchor, searchAfter);
           if (endPos === -1) {
-            return jsonRes(res, {
-              success: false,
-              message: `끝 앵커를 찾을 수 없음 (시작 앵커 이후): ${endAnchor.substring(0, 80)}`,
-              startAnchorFoundAt: startPos,
-            });
+            return mcpNoOp(
+              res,
+              {
+                action: 'block replace in field',
+                message: `끝 앵커를 찾을 수 없음 (시작 앵커 이후): ${endAnchor.substring(0, 80)}`,
+                suggestion:
+                  'read_field 또는 read_field_range로 현재 내용을 확인해 start_anchor/end_anchor를 다시 지정하세요.',
+                target: `field:${fieldName}`,
+              },
+              { startAnchorFoundAt: startPos },
+            );
           }
 
           // Determine what range to replace
@@ -2439,9 +2450,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           } else if ((position === 'after' || position === 'before') && body.anchor) {
             const anchorPos = oldContent.indexOf(normalizeLF(body.anchor));
             if (anchorPos === -1) {
-              return jsonRes(res, {
-                success: false,
+              return mcpNoOp(res, {
+                action: 'insert in field',
                 message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+                suggestion:
+                  'read_field 또는 read_field_range로 현재 내용을 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
+                target: `field:${fieldName}`,
               });
             }
             if (position === 'after') {
@@ -2625,12 +2639,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
           const totalMatches = results.reduce((s, r) => s + r.matchCount, 0);
           if (totalMatches === 0) {
-            return jsonRes(res, {
-              success: false,
-              message: '모든 치환에서 일치하는 항목 없음',
-              results,
-              ...(dryRun ? { dryRun: true } : {}),
-            });
+            return mcpNoOp(
+              res,
+              {
+                action: 'batch replace in field',
+                message: '모든 치환에서 일치하는 항목 없음',
+                suggestion: 'results를 확인하고 각 find/replace/regex/flags를 조정한 뒤 다시 시도하세요.',
+                target: `field:${fieldName}`,
+              },
+              {
+                results,
+                ...(dryRun ? { dryRun: true } : {}),
+              },
+            );
           }
           if (dryRun) {
             return jsonResSuccess(
@@ -2916,7 +2937,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           field: fieldName,
           timestamp: new Date().toISOString(),
           size: typeof content === 'string' ? content.length : JSON.stringify(content).length,
-          content: typeof content === 'string' ? content : JSON.parse(JSON.stringify(content)),
+          content: typeof content === 'string' ? content : cloneJson(content),
         };
         if (!fieldSnapshots.has(fieldName)) fieldSnapshots.set(fieldName, []);
         const snaps = fieldSnapshots.get(fieldName)!;
@@ -2998,7 +3019,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
         if (allowed) {
           currentData[fieldName] =
-            typeof snapshot.content === 'string' ? snapshot.content : JSON.parse(JSON.stringify(snapshot.content));
+            typeof snapshot.content === 'string' ? snapshot.content : cloneJson(snapshot.content);
           if (fieldName === 'lua') {
             currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
             deps.broadcastToAll(
@@ -3501,7 +3522,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
 
         if (allowed) {
-          const clone = JSON.parse(JSON.stringify(source));
+          const clone = cloneJson(source);
           // Apply overrides
           if (body.overrides && typeof body.overrides === 'object') {
             Object.assign(clone, pickAllowedFields(body.overrides, LOREBOOK_ALLOWED_FIELDS));
@@ -3886,15 +3907,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (results.length === 0) {
-          return jsonRes(res, {
-            success: false,
-            message: '전체 로어북에서 일치하는 항목 없음',
-            totalEntries: lorebook.length,
-            matchedEntries: 0,
-            totalMatches: 0,
-            field: targetField,
-            ...(dryRun ? { dryRun: true } : {}),
-          });
+          return mcpNoOp(
+            res,
+            {
+              action: 'replace all lorebook',
+              message: '전체 로어북에서 일치하는 항목 없음',
+              suggestion:
+                'list_lorebook 또는 read_lorebook_batch로 현재 내용을 확인하고 find/field/regex/flags를 조정하세요.',
+              target: 'lorebook:replace-all',
+            },
+            {
+              totalEntries: lorebook.length,
+              matchedEntries: 0,
+              totalMatches: 0,
+              field: targetField,
+              ...(dryRun ? { dryRun: true } : {}),
+            },
+          );
         }
 
         const totalMatches = results.reduce((s, r) => s + r.matchCount, 0);
@@ -4058,11 +4087,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         });
         const activeResults = results.filter((r) => !r.skipped);
         if (activeResults.length === 0) {
-          return jsonRes(res, {
-            success: false,
-            message: '모든 항목에서 일치하는 내용 없음',
-            results: results.map((r) => ({ index: r.index, comment: r.comment, matchCount: 0, skipped: true })),
-          });
+          return mcpNoOp(
+            res,
+            {
+              action: 'batch replace lorebook',
+              message: '모든 항목에서 일치하는 내용 없음',
+              suggestion: 'results를 확인해 index별 find/replace/regex/flags를 조정한 뒤 다시 시도하세요.',
+              target: 'lorebook:batch-replace',
+            },
+            {
+              results: results.map((r) => ({ index: r.index, comment: r.comment, matchCount: 0, skipped: true })),
+            },
+          );
         }
         const summary = activeResults.map((r) => `  [${r.index}] "${r.comment}": ${r.matchCount}건`).join('\n');
         const allowed = await deps.askRendererConfirm(
@@ -4196,10 +4232,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         });
         const errors = results.filter((r) => r.error);
         if (errors.length > 0) {
-          return jsonRes(res, {
-            success: false,
-            errors: errors.map((r) => ({ index: r.index, error: r.error })),
-          });
+          return mcpNoOp(
+            res,
+            {
+              action: 'batch insert lorebook',
+              message: '하나 이상의 삽입 요청에 오류가 있습니다',
+              suggestion: 'errors 배열의 index/error를 확인해 anchor/position/content를 수정한 뒤 다시 시도하세요.',
+              target: 'lorebook:batch-insert',
+            },
+            {
+              errors: errors.map((r) => ({ index: r.index, error: r.error })),
+            },
+          );
         }
         const summary = results
           .map((r) => `  [${r.index}] "${r.comment}": ${r.position}, +${r.newSize - r.oldSize} chars`)
@@ -4304,7 +4348,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (matchCount === 0) {
-          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0, field: targetField });
+          return mcpNoOp(
+            res,
+            {
+              action: 'replace lorebook field',
+              message: '일치하는 항목 없음',
+              suggestion:
+                'read_lorebook 또는 list_lorebook로 현재 내용을 확인하고 find/field/regex/flags를 조정하세요.',
+              target: `lorebook:${idx}`,
+            },
+            { matchCount: 0, field: targetField },
+          );
         }
 
         const fieldLabel = targetField === 'content' ? '' : ` [${targetField}]`;
@@ -4388,19 +4442,26 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
         const startPos = content.indexOf(startAnchor);
         if (startPos === -1) {
-          return jsonRes(res, {
-            success: false,
+          return mcpNoOp(res, {
+            action: 'block replace lorebook',
             message: `시작 앵커를 찾을 수 없음: ${startAnchor.substring(0, 80)}`,
+            suggestion: 'read_lorebook로 현재 내용을 확인해 start_anchor/end_anchor를 다시 지정하세요.',
+            target: `lorebook:${idx}`,
           });
         }
         const searchAfter = startPos + startAnchor.length;
         const endPos = content.indexOf(endAnchor, searchAfter);
         if (endPos === -1) {
-          return jsonRes(res, {
-            success: false,
-            message: `끝 앵커를 찾을 수 없음 (시작 앵커 이후): ${endAnchor.substring(0, 80)}`,
-            startAnchorFoundAt: startPos,
-          });
+          return mcpNoOp(
+            res,
+            {
+              action: 'block replace lorebook',
+              message: `끝 앵커를 찾을 수 없음 (시작 앵커 이후): ${endAnchor.substring(0, 80)}`,
+              suggestion: 'read_lorebook로 현재 내용을 확인해 start_anchor/end_anchor를 다시 지정하세요.',
+              target: `lorebook:${idx}`,
+            },
+            { startAnchorFoundAt: startPos },
+          );
         }
 
         let replaceStart: number, replaceEnd: number;
@@ -4519,9 +4580,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         } else if ((position === 'after' || position === 'before') && body.anchor) {
           const anchorPos = oldContent.indexOf(normalizeLF(body.anchor));
           if (anchorPos === -1) {
-            return jsonRes(res, {
-              success: false,
+            return mcpNoOp(res, {
+              action: 'insert lorebook content',
               message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+              suggestion:
+                'read_lorebook로 현재 내용을 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
+              target: `lorebook:${idx}`,
             });
           }
           if (position === 'after') {
@@ -4990,7 +5054,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (matchCount === 0) {
-          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0 });
+          return mcpNoOp(
+            res,
+            {
+              action: 'replace regex field',
+              message: '일치하는 항목 없음',
+              suggestion: 'read_regex로 현재 필드를 확인하고 find/regex/flags를 조정하세요.',
+              target: `regex:${idx}:replace`,
+            },
+            { matchCount: 0 },
+          );
         }
 
         const allowed = await deps.askRendererConfirm(
@@ -5085,9 +5158,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const anchorNorm = normalizeLF(body.anchor);
           const anchorPos = oldContent.indexOf(anchorNorm);
           if (anchorPos === -1) {
-            return jsonRes(res, {
-              success: false,
+            return mcpNoOp(res, {
+              action: 'insert regex field',
               message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+              suggestion:
+                'read_regex로 현재 필드를 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
+              target: `regex:${idx}:insert`,
             });
           }
           if (position === 'after') {
@@ -6176,7 +6252,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (matchCount === 0) {
-          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0 });
+          return mcpNoOp(
+            res,
+            {
+              action: 'replace lua section content',
+              message: '일치하는 항목 없음',
+              suggestion: 'read_lua로 현재 섹션 내용을 확인하고 find/regex/flags를 조정하세요.',
+              target: `lua:${idx}`,
+            },
+            { matchCount: 0 },
+          );
         }
 
         const allowed = await deps.askRendererConfirm(
@@ -6255,9 +6340,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const anchorNorm = normalizeLF(body.anchor);
           const anchorPos = oldContent.indexOf(anchorNorm);
           if (anchorPos === -1) {
-            return jsonRes(res, {
-              success: false,
+            return mcpNoOp(res, {
+              action: 'insert lua section content',
               message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+              suggestion:
+                'read_lua로 현재 섹션 내용을 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
+              target: `lua:${idx}`,
             });
           }
           if (position === 'after') {
@@ -6580,7 +6668,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (matchCount === 0) {
-          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0 });
+          return mcpNoOp(
+            res,
+            {
+              action: 'replace css section content',
+              message: '일치하는 항목 없음',
+              suggestion: 'read_css로 현재 섹션 내용을 확인하고 find/regex/flags를 조정하세요.',
+              target: `css-section:${idx}`,
+            },
+            { matchCount: 0 },
+          );
         }
 
         const allowed = await deps.askRendererConfirm(
@@ -6657,9 +6754,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const anchorNorm = normalizeLF(body.anchor);
           const anchorPos = oldContent.indexOf(anchorNorm);
           if (anchorPos === -1) {
-            return jsonRes(res, {
-              success: false,
+            return mcpNoOp(res, {
+              action: 'insert css section content',
               message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+              suggestion:
+                'read_css로 현재 섹션 내용을 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
+              target: `css-section:${idx}`,
             });
           }
           if (position === 'after') {
@@ -7930,7 +8030,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const conflict = ['skip', 'overwrite', 'rename'].includes(body.conflict)
           ? (body.conflict as 'skip' | 'overwrite' | 'rename')
           : 'skip';
-        const dryRun = body.dry_run === true || body.dryRun === true;
+        const dryRun = !!(body.dry_run ?? body.dryRun);
 
         try {
           // Lazy-load lorebook-io
@@ -8073,9 +8173,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           canonicalizeLorebookFolderRefs((currentData.lorebook as Record<string, unknown>[]) || []);
 
           // Broadcast update
-          deps.broadcastToAll('data-updated', {
-            lorebook: currentData.lorebook,
-          });
+          deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
 
           broadcastStatus({
             type: 'success',
@@ -8546,19 +8644,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           results.push(item);
         }
 
-        return jsonResSuccess(
-          res,
-          {
-            valid: failed === 0,
-            entries: results,
-            summary: { total: results.length, passed, failed },
-          },
-          {
-            toolName: 'validate_cbs',
-            summary: `CBS validation: ${passed} passed, ${failed} failed`,
-            artifacts: { total: results.length, passed, failed },
-          },
-        );
+        return jsonRes(res, {
+          valid: failed === 0,
+          entries: results,
+          summary: { total: results.length, passed, failed },
+        });
       }
 
       // ----------------------------------------------------------------
@@ -9408,6 +9498,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'skills' && parts[1] && req.method === 'GET') {
         const skillName = decodeURIComponent(parts[1]);
         const fileName = parts[2] ? decodeURIComponent(parts[2]) : 'SKILL.md';
+        if (skillName.includes('..') || skillName.includes('/') || skillName.includes('\\')) {
+          return mcpError(res, 400, {
+            action: 'read_skill',
+            message: 'Invalid skill name',
+            suggestion: 'Skill name must not contain path separators or "..".',
+            target: `skills:${skillName}:${fileName}`,
+          });
+        }
         if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
           return mcpError(res, 400, {
             action: 'read_skill',

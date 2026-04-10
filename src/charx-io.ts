@@ -38,6 +38,9 @@ const { normalizePromptTemplateForStorage, serializePromptTemplate } = require('
   normalizePromptTemplateForStorage: (value: unknown) => { items: unknown[] };
   serializePromptTemplate: (model: { items: unknown[] }) => string;
 };
+const { cloneJson } = require('./lib/shared-utils') as {
+  cloneJson: <T>(value: T) => T;
+};
 
 const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_FILE_SIZE: number = 200 * 1024 * 1024; // 200 MB
@@ -281,7 +284,7 @@ function applyRisumModuleFields(mod: Record<string, unknown>, data: CharxData): 
 }
 
 function cloneTriggerScripts(triggerScripts: unknown): TriggerScript[] {
-  return Array.isArray(triggerScripts) ? (JSON.parse(JSON.stringify(triggerScripts)) as TriggerScript[]) : [];
+  return Array.isArray(triggerScripts) ? cloneJson(triggerScripts as TriggerScript[]) : [];
 }
 
 export function extractPrimaryLuaFromTriggerScripts(triggerScripts: unknown): string {
@@ -526,7 +529,7 @@ export function saveCharx(filePath: string, data: CharxData): void {
   const zip = new AdmZip();
 
   // Build card.json
-  const card: Record<string, unknown> = JSON.parse(JSON.stringify(data._card || {}));
+  const card: Record<string, unknown> = cloneJson(data._card || {});
   if (!card.spec) card.spec = 'chara_card_v3';
   if (!card.spec_version) card.spec_version = '3.0';
   if (!card.data) card.data = {};
@@ -626,7 +629,7 @@ export function saveCharx(filePath: string, data: CharxData): void {
 
   // Build module.risum
   const moduleJson: Record<string, unknown> = data._moduleData
-    ? JSON.parse(JSON.stringify(data._moduleData))
+    ? cloneJson(data._moduleData)
     : {
         type: 'risuModule',
         module: {
@@ -751,7 +754,7 @@ export function openRisum(filePath: string): CharxData {
  */
 export function saveRisum(filePath: string, data: CharxData): void {
   const moduleJson: Record<string, unknown> = data._moduleData
-    ? JSON.parse(JSON.stringify(data._moduleData))
+    ? cloneJson(data._moduleData)
     : {
         type: 'risuModule',
         module: {
@@ -1141,7 +1144,7 @@ export function openRisup(filePath: string): CharxData {
  */
 export function saveRisup(filePath: string, data: CharxData): void {
   // Start from preserved preset data, or create minimal preset
-  const preset: Record<string, unknown> = data._presetData ? JSON.parse(JSON.stringify(data._presetData)) : {};
+  const preset: Record<string, unknown> = data._presetData ? cloneJson(data._presetData) : {};
 
   // Apply edited fields
   applyPresetFields(preset, data);

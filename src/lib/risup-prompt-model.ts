@@ -2,6 +2,8 @@
 // Mirrors only the prompt item shapes needed from RisuAI prompt.ts.
 // Unknown shapes are preserved via rawValue so no data is silently lost.
 
+import { isRecord, cloneRecord, cloneJson } from './shared-utils';
+
 type JsonRecord = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
@@ -154,20 +156,6 @@ export interface FormatingOrderModel {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function isRecord(value: unknown): value is JsonRecord {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function cloneRecord(value: unknown): JsonRecord {
-  if (!isRecord(value)) return {};
-  return JSON.parse(JSON.stringify(value)) as JsonRecord;
-}
-
-function cloneValue<T>(value: T): T {
-  if (value === undefined) return value;
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
 function isPlainKind(v: unknown): v is PromptItemPlainKind {
   return PLAIN_KINDS.includes(v as PromptItemPlainKind);
 }
@@ -296,7 +284,7 @@ function parsePromptItem(value: unknown): PromptItemModel {
       id: undefined,
       type: null,
       supported: false,
-      rawValue: cloneValue(value),
+      rawValue: cloneJson(value),
     };
   }
 
@@ -315,7 +303,7 @@ function parsePromptItem(value: unknown): PromptItemModel {
     id: typeof rawId === 'string' ? rawId : undefined,
     type: typeof type === 'string' ? type : null,
     supported: false,
-    rawValue: cloneValue(value),
+    rawValue: cloneJson(value),
   };
 }
 
@@ -421,7 +409,7 @@ function serializeCacheItem(item: PromptItemCacheModel): unknown {
 
 function serializePromptItem(item: PromptItemModel): unknown {
   if (!item.supported) {
-    return cloneValue(item.rawValue);
+    return cloneJson(item.rawValue);
   }
   switch (item.type) {
     case 'plain':

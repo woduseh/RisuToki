@@ -13,6 +13,7 @@
     "src/charx-io.ts",
     "src/lorebook-convert.ts",
     "src/rpack.ts",
+    "src/lib/shared-utils.ts",
     "src/lib/mcp-api-server.ts",
     "src/lib/mcp-search.ts",
     "src/lib/mcp-config.ts",

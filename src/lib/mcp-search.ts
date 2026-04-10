@@ -1,3 +1,5 @@
+import { normalizeLF } from './shared-utils';
+
 export const SEARCHABLE_TEXT_FIELDS = [
   'name',
   'description',
@@ -136,10 +138,6 @@ interface LorebookLikeEntry {
   comment?: unknown;
   key?: unknown;
   content?: unknown;
-}
-
-function normalizeLF(value: string): string {
-  return value.indexOf('\r') >= 0 ? value.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : value;
 }
 
 function clamp(value: number, min: number, max: number): number {
