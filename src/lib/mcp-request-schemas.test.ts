@@ -163,6 +163,27 @@ describe('replaceBodySchema', () => {
   it('rejects non-string find', () => {
     expect(validateBody({ find: 42 }, replaceBodySchema).success).toBe(false);
   });
+
+  it('accepts dry_run alone', () => {
+    const result = validateBody({ find: 'x', dry_run: true }, replaceBodySchema);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts dryRun alone', () => {
+    const result = validateBody({ find: 'x', dryRun: true }, replaceBodySchema);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts both dry_run and dryRun when they agree', () => {
+    const result = validateBody({ find: 'x', dry_run: true, dryRun: true }, replaceBodySchema);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects conflicting dry_run and dryRun', () => {
+    const result = validateBody({ find: 'x', dry_run: true, dryRun: false }, replaceBodySchema);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toContain('conflicting');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -202,6 +223,15 @@ describe('blockReplaceBodySchema', () => {
     const result = validateBody({ start_anchor: 'A' }, blockReplaceBodySchema);
     expect(result.success).toBe(false);
     if (!result.success) expect(result.path).toBe('end_anchor');
+  });
+
+  it('rejects conflicting dry_run and dryRun', () => {
+    const result = validateBody(
+      { start_anchor: 'A', end_anchor: 'B', dry_run: true, dryRun: false },
+      blockReplaceBodySchema,
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toContain('conflicting');
   });
 });
 
@@ -289,6 +319,15 @@ describe('batchReplaceBodySchema', () => {
 
   it('rejects non-array replacements', () => {
     expect(validateBody({ replacements: 'bad' }, batchReplaceBodySchema).success).toBe(false);
+  });
+
+  it('rejects conflicting dry_run and dryRun', () => {
+    const result = validateBody(
+      { replacements: [{ find: 'a', replace: 'b' }], dry_run: false, dryRun: true },
+      batchReplaceBodySchema,
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toContain('conflicting');
   });
 });
 

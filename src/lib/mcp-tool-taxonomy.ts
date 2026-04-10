@@ -216,17 +216,30 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   delete_risum_asset: { family: 'risum-asset', hints: DESTRUCTIVE },
 
   // ── Asset Compression ──────────────────────────────────────────────────
-  compress_assets_webp: { family: 'asset-compression', hints: WRITE },
+  compress_assets_webp: { family: 'asset-compression', hints: DESTRUCTIVE },
 
   // ── Risup Prompt ───────────────────────────────────────────────────────
   list_risup_prompt_items: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
   read_risup_prompt_item: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
+  read_risup_prompt_item_batch: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
+  search_in_risup_prompt_items: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
   write_risup_prompt_item: { family: 'risup-prompt', hints: WRITE_IDEMPOTENT },
+  write_risup_prompt_item_batch: { family: 'risup-prompt', hints: WRITE },
   add_risup_prompt_item: { family: 'risup-prompt', hints: WRITE },
+  add_risup_prompt_item_batch: { family: 'risup-prompt', hints: WRITE },
   delete_risup_prompt_item: { family: 'risup-prompt', hints: DESTRUCTIVE },
   reorder_risup_prompt_items: { family: 'risup-prompt', hints: WRITE_IDEMPOTENT },
   read_risup_formating_order: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
   write_risup_formating_order: { family: 'risup-prompt', hints: WRITE_IDEMPOTENT },
+  diff_risup_prompt: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
+  export_risup_prompt_to_text: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
+  copy_risup_prompt_items_as_text: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
+  import_risup_prompt_from_text: { family: 'risup-prompt', hints: WRITE },
+  list_risup_prompt_snippets: { family: 'risup-prompt', hints: OPEN_WORLD_RO },
+  read_risup_prompt_snippet: { family: 'risup-prompt', hints: OPEN_WORLD_RO },
+  save_risup_prompt_snippet: { family: 'risup-prompt', hints: OPEN_WORLD_WRITE },
+  insert_risup_prompt_snippet: { family: 'risup-prompt', hints: OPEN_WORLD_WRITE },
+  delete_risup_prompt_snippet: { family: 'risup-prompt', hints: { ...DESTRUCTIVE, openWorldHint: true } },
 
   // ── Skill / Docs ───────────────────────────────────────────────────────
   list_skills: { family: 'skill', hints: RO_IDEMPOTENT },

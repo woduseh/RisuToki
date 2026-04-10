@@ -541,7 +541,19 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
 
 // ==================== MCP Server Setup ====================
 
-const server = new McpServer({ name: 'risutoki', version: '1.4.1' });
+const server = new McpServer({ name: 'risutoki', version: '0.53.0' });
+
+// Collect RegisteredTool handles for annotation patching via public API.
+// Each server.tool() return is stored so we avoid accessing _registeredTools.
+const _registeredToolHandles = new Map<string, ReturnType<typeof server.tool>>();
+const _origServerTool = server.tool.bind(server) as typeof server.tool;
+server.tool = ((...args: unknown[]) => {
+  const result = (_origServerTool as (...a: unknown[]) => ReturnType<typeof server.tool>)(...args);
+  if (typeof args[0] === 'string') {
+    _registeredToolHandles.set(args[0], result);
+  }
+  return result;
+}) as typeof server.tool;
 
 // ===== Field Tools =====
 
@@ -554,14 +566,14 @@ server.tool(
 
 server.tool(
   'read_field',
-  '필드의 전체 내용을 읽습니다. ⚠️ 금지: lua → list_lua/read_lua, css → list_css/read_css, alternateGreetings/groupOnlyGreetings → list_greetings/read_greeting, triggerScripts → list_triggers/read_trigger를 반드시 사용하세요. 이 도구로 이들을 읽으면 전체가 한번에 반환되어 컨텍스트를 낭비합니다. 대형 필드(firstMessage 등 수십KB+)는 search_in_field나 read_field_range 사용을 권장합니다. 공통 필드: globalNote, firstMessage, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, creationDate(읽기전용), modificationDate(읽기전용), additionalText, license. risum 전용: cjs, lowLevelAccess, hideIcon, backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription, moduleId(읽기전용). risup 전용: mainPrompt, jailbreak, temperature, maxContext, maxResponse, frequencyPenalty, presencePenalty, aiModel, subModel, apiType 등',
+  '작은 활성 문서 필드의 전체 내용을 읽습니다. ⚠️ lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts는 전용 list_*/read_* 도구를 사용하세요. `.risup`의 promptTemplate/formatingOrder도 risup 전용 도구를 우선 사용해야 합니다. 큰 필드는 search_in_field 또는 read_field_range부터 시작하세요. 가능한 필드는 list_fields로 확인하세요.',
   { field: z.string().describe('필드 이름') },
   async ({ field }) => textResult(await apiRequest('GET', `/field/${encodeURIComponent(field)}`)),
 );
 
 server.tool(
   'write_field',
-  '필드에 새 내용을 씁니다. 에디터에서 사용자 확인 팝업이 뜹니다. 공통 필드: lua, triggerScripts, globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, css, defaultVariables, description, name. charx 전용: personality, scenario, creatorcomment, tags, exampleMessage, systemPrompt, creator, characterVersion, nickname, source, additionalText, license. risum 전용: cjs, lowLevelAccess(boolean), hideIcon(boolean), backgroundEmbedding, moduleNamespace, customModuleToggle, mcpUrl, moduleName, moduleDescription. risup 전용: mainPrompt, jailbreak, temperature(number), maxContext(number), maxResponse(number), frequencyPenalty(number), presencePenalty(number), aiModel, subModel, apiType, promptPreprocess(boolean), promptTemplate(JSON), presetBias(JSON), formatingOrder(JSON), presetImage, top_p(number), top_k(number), repetition_penalty(number), min_p(number), top_a(number), reasonEffort(number), thinkingTokens(number), thinkingType, adaptiveThinkingEffort, useInstructPrompt(boolean), instructChatTemplate, JinjaTemplate, customPromptTemplateToggle, templateDefaultVariables, moduleIntergration, jsonSchemaEnabled(boolean), jsonSchema, strictJsonSchema(boolean), extractJson, groupTemplate, groupOtherBotRole, autoSuggestPrompt, autoSuggestPrefix, autoSuggestClean(boolean), localStopStrings(JSON), outputImageModal(boolean), verbosity(number), fallbackWhenBlankResponse(boolean), systemContentReplacement, systemRoleReplacement',
+  '작은 활성 문서 필드에 새 내용을 씁니다. ⚠️ lua/css는 write_lua/write_css, alternateGreetings/groupOnlyGreetings는 write_greeting/batch_write_greeting, triggerScripts는 write_trigger를 우선 사용하세요. `.risup`의 promptTemplate/formatingOrder는 전용 risup prompt 도구를 우선 사용하고, write_field는 unsupported raw shape fallback일 때만 쓰는 편이 안전합니다. 가능한 필드는 list_fields로 확인하세요. 사용자 확인 필요.',
   {
     field: z.string().describe('필드 이름'),
     content: z
@@ -576,7 +588,7 @@ server.tool(
 
 server.tool(
   'read_field_batch',
-  '여러 필드의 내용을 한번에 읽습니다. read_field를 반복 호출하는 대신 이 도구를 사용하세요. 최대 20개 필드. 유효하지 않은 필드는 개별 에러로 반환됩니다 (전체 실패 X).',
+  '여러 작은 활성 문서 필드를 한 번에 읽습니다. read_field 반복 대신 이 도구를 사용하세요. ⚠️ lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts와 `.risup` promptTemplate/formatingOrder 같은 구조화 표면은 전용 도구를 사용하세요. 최대 20개 필드. 유효하지 않은 필드는 개별 에러로 반환됩니다 (전체 실패 X).',
   {
     fields: z
       .array(z.string())
@@ -590,7 +602,7 @@ server.tool(
 
 server.tool(
   'probe_field',
-  '에디터에 열지 않은 .charx/.risum/.risup 파일에서 특정 필드의 전체 내용을 읽습니다. 읽기 전용이며, 절대 file_path가 필요합니다.',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일에서 작은 필드 하나를 읽습니다. 절대 file_path가 필요하며 읽기 전용입니다. ⚠️ lorebook/regex/lua는 probe_lorebook/probe_regex/probe_lua를 우선 사용하세요. css/greetings/triggers 같은 구조화 표면은 가능하면 open_file 후 전용 도구로 읽는 편이 안전합니다.',
   {
     file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
     field: z.string().describe('읽을 필드 이름'),
@@ -731,7 +743,7 @@ server.tool(
 
 server.tool(
   'search_in_field',
-  '필드 내용에서 문자열을 검색하고 주변 컨텍스트와 함께 반환합니다 — 수정 없이 읽기 전용. grep처럼 작동하지만 필드 내용 대상. 정규식도 지원.',
+  '필드 내용에서 문자열을 검색하고 주변 컨텍스트와 함께 반환합니다 — 수정 없는 읽기 전용입니다. 대상 필드를 이미 알고 있을 때 사용하세요. 필드가 아직 불명확하면 search_all_fields를 먼저 사용하세요. 정규식도 지원합니다.',
   {
     field: z.string().describe('필드 이름 (예: globalNote, firstMessage, description, lua 등)'),
     query: z.string().describe('검색할 문자열 (또는 regex: true일 때 정규식 패턴)'),
@@ -794,7 +806,7 @@ server.tool(
 
 server.tool(
   'write_field_batch',
-  '여러 필드의 내용을 한 번에 수정합니다. 한 번의 확인으로 모든 필드를 동시에 업데이트. characterVersion + defaultVariables 같이 여러 소형 필드를 동시에 바꿀 때 유용. triggerScripts/alternateGreetings 등 복잡한 필드는 제외. 사용자 확인 필요.',
+  '여러 작은 필드의 내용을 한 번에 수정합니다. 한 번의 확인으로 모든 필드를 동시에 업데이트합니다. ⚠️ lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts와 `.risup` promptTemplate/formatingOrder 같은 구조화 표면은 전용 도구를 우선 사용하세요. characterVersion + defaultVariables 같이 여러 소형 필드를 함께 바꿀 때 유용합니다. 사용자 확인 필요.',
   {
     entries: z
       .array(
@@ -856,7 +868,7 @@ server.tool(
 
 server.tool(
   'search_all_fields',
-  '모든 텍스트 필드(firstMessage, description, globalNote, alternateGreetings, groupOnlyGreetings, lorebook content 등)에서 한 번에 검색합니다. 잔류 태그 확인 등 전체 스캔에 유용. 읽기 전용.',
+  '모든 텍스트 필드에서 한 번에 검색합니다. 어떤 필드에 텍스트가 있는지 아직 모를 때 사용하는 cross-field scan 도구입니다. 결과를 확인한 뒤에는 search_in_field, read_field, 또는 구조화 표면 전용 도구로 좁혀 가세요. 읽기 전용입니다.',
   {
     query: z.string().describe('검색할 문자열 (또는 regex: true일 때 정규식 패턴)'),
     regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false)'),
@@ -1466,7 +1478,10 @@ server.tool(
   {
     index: z.number().describe('Lua 섹션 인덱스'),
     content: z.string().describe('삽입할 코드'),
-    position: z.string().optional().describe('삽입 위치: "end"(기본), "start", "after", "before"'),
+    position: z
+      .enum(['end', 'start', 'after', 'before'])
+      .optional()
+      .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
     anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
   },
   async ({ index, content, position, anchor }) =>
@@ -1551,7 +1566,10 @@ server.tool(
   {
     index: z.number().describe('CSS 섹션 인덱스'),
     content: z.string().describe('삽입할 코드'),
-    position: z.string().optional().describe('삽입 위치: "end"(기본), "start", "after", "before"'),
+    position: z
+      .enum(['end', 'start', 'after', 'before'])
+      .optional()
+      .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
     anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
   },
   async ({ index, content, position, anchor }) =>
@@ -1586,7 +1604,7 @@ server.tool(
 
 server.tool(
   'read_reference_field',
-  '참고 자료 파일의 특정 필드를 읽습니다 (읽기 전용). ⚠️ lorebook/lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts/regex는 전용 list_reference_* → read_reference_* 도구를 우선 사용하세요. 이 도구는 짧은 scalar 필드(예: globalNote, firstMessage, description, defaultVariables, name)에만 사용하는 편이 안전합니다.',
+  '참고 자료 파일의 짧은 scalar/top-level 필드를 읽습니다 (읽기 전용). ⚠️ lorebook/lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts/regex는 전용 list_reference_* → read_reference_* 도구를 우선 사용하세요. 큰 reference 텍스트는 search_in_reference_field 또는 read_reference_field_range부터 시작하는 편이 안전합니다.',
   {
     index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
     field: z.string().describe('필드 이름'),
@@ -2215,6 +2233,17 @@ server.tool(
 );
 
 server.tool(
+  'search_in_risup_prompt_items',
+  'Searches text-bearing risup prompt items by substring and returns matching indices, matched field names, stable ids, and previews. Searches supported text/name fields plus raw JSON for unsupported items. The current file must be a .risup preset.',
+  {
+    query: z.string().min(1).describe('Substring to search for inside prompt items.'),
+    caseSensitive: z.boolean().optional().describe('When true, use case-sensitive matching. Default: false.'),
+  },
+  async ({ query, caseSensitive }) =>
+    textResult(await apiRequest('POST', '/risup/prompt-items/search', { query, caseSensitive })),
+);
+
+server.tool(
   'read_risup_prompt_item',
   'Reads a single prompt item from the risup promptTemplate by index. Returns the raw item object plus supported/type metadata and an additive "id" field for stable identification. The current file must be a .risup preset.',
   {
@@ -2226,8 +2255,17 @@ server.tool(
 );
 
 server.tool(
+  'read_risup_prompt_item_batch',
+  'Reads multiple risup prompt items in one call. Invalid indices return null entries so the caller can preserve ordering while skipping missing items. Prefer this over repeated read_risup_prompt_item calls when inspecting several items.',
+  {
+    indices: z.array(z.number()).max(50).describe('Zero-based prompt item indices to read (maximum 50).'),
+  },
+  async ({ indices }) => textResult(await apiRequest('POST', '/risup/prompt-item/batch', { indices })),
+);
+
+server.tool(
   'write_risup_prompt_item',
-  'Replaces a single prompt item in the risup promptTemplate by index. Only supported item types are accepted (plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache). For unsupported/raw structures use write_field("promptTemplate"). Requires user confirmation.',
+  'Replaces a single prompt item in the risup promptTemplate by index. Only supported item types are accepted (plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache). For unsupported/raw structures use write_field("promptTemplate"). Requires user confirmation. Successful responses may include additive "orderWarnings" when the resulting prompt no longer matches formatingOrder references.',
   {
     index: z
       .number()
@@ -2242,8 +2280,27 @@ server.tool(
 );
 
 server.tool(
+  'write_risup_prompt_item_batch',
+  'Replaces multiple risup prompt items by index in a single confirmed operation. Only supported item types are accepted. Prefer this over repeated write_risup_prompt_item calls when editing several sibling items. Successful responses may include additive "orderWarnings" for the resulting prompt/formatingOrder consistency state.',
+  {
+    writes: z
+      .array(
+        z.object({
+          index: z.number().describe('Zero-based index of the prompt item to replace.'),
+          item: z
+            .record(z.string(), z.unknown())
+            .describe('Replacement item object. Must be a supported prompt item type.'),
+        }),
+      )
+      .max(50)
+      .describe('Batch replacement payload [{ index, item }, ...] (maximum 50).'),
+  },
+  async ({ writes }) => textResult(await apiRequest('POST', '/risup/prompt-item/batch-write', { writes })),
+);
+
+server.tool(
   'add_risup_prompt_item',
-  'Appends a new prompt item to the risup promptTemplate. Only supported item types are accepted (plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache). For unsupported/raw structures use write_field("promptTemplate"). Requires user confirmation.',
+  'Appends a new prompt item to the risup promptTemplate. Only supported item types are accepted (plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache). For unsupported/raw structures use write_field("promptTemplate"). Requires user confirmation. Successful responses may include additive "orderWarnings".',
   {
     item: z
       .record(z.string(), z.unknown())
@@ -2255,8 +2312,20 @@ server.tool(
 );
 
 server.tool(
+  'add_risup_prompt_item_batch',
+  'Appends multiple new prompt items to the risup promptTemplate in one confirmed operation. Only supported item types are accepted. Prefer this over repeated add_risup_prompt_item calls when building or extending a preset. Successful responses may include additive "orderWarnings".',
+  {
+    items: z
+      .array(z.record(z.string(), z.unknown()))
+      .max(50)
+      .describe('Prompt item objects to append [{...}, {...}] (maximum 50).'),
+  },
+  async ({ items }) => textResult(await apiRequest('POST', '/risup/prompt-item/batch-add', { items })),
+);
+
+server.tool(
   'delete_risup_prompt_item',
-  'Deletes a single prompt item from the risup promptTemplate by index. Requires user confirmation.',
+  'Deletes a single prompt item from the risup promptTemplate by index. Requires user confirmation. Successful responses may include additive "orderWarnings".',
   {
     index: z
       .number()
@@ -2267,7 +2336,7 @@ server.tool(
 
 server.tool(
   'reorder_risup_prompt_items',
-  'Reorders all prompt items in the risup promptTemplate. The order array must be a full permutation of [0, 1, ..., n-1] where n is the current item count. Requires user confirmation.',
+  'Reorders all prompt items in the risup promptTemplate. The order array must be a full permutation of [0, 1, ..., n-1] where n is the current item count. Requires user confirmation. Successful responses may include additive "orderWarnings".',
   {
     order: z
       .array(z.number())
@@ -2285,7 +2354,7 @@ server.tool(
 
 server.tool(
   'write_risup_formating_order',
-  'Writes the risup formatingOrder. All tokens must be strings; unknown tokens are preserved as-is. Non-string tokens are rejected with 400. Requires user confirmation.',
+  'Writes the risup formatingOrder. All tokens must be strings; unknown tokens are preserved as-is. Non-string tokens are rejected with 400. Requires user confirmation. Successful responses include an additive "warnings" array with duplicate/dangling token diagnostics relative to the current promptTemplate.',
   {
     items: z
       .array(z.object({ token: z.string().describe('Formating order token (e.g. "main", "chats", "lorebook")') }))
@@ -2294,6 +2363,118 @@ server.tool(
       ),
   },
   async ({ items }) => textResult(await apiRequest('POST', '/risup/formating-order', { items })),
+);
+
+server.tool(
+  'diff_risup_prompt',
+  'Compares the current .risup prompt surface against a loaded reference .risup file. Returns serializer-based promptTemplate line differences plus formatingOrder token differences and warnings. This is a compare precursor for prompt editing workflows and does not mutate the file.',
+  {
+    refIndex: z
+      .number()
+      .describe('Reference file index from list_references. The selected reference must be a .risup preset.'),
+  },
+  async ({ refIndex }) => textResult(await apiRequest('POST', '/risup/prompt-diff', { refIndex })),
+);
+
+server.tool(
+  'export_risup_prompt_to_text',
+  'Exports the current risup promptTemplate to a structured text format intended for human review or text-based editing. The output preserves supported item IDs, supported-item extra JSON fields, and unsupported/raw items through explicit raw blocks. The current file must be a .risup preset.',
+  {},
+  async () => textResult(await apiRequest('GET', '/risup/prompt-text')),
+);
+
+server.tool(
+  'copy_risup_prompt_items_as_text',
+  'Copies selected risup promptTemplate items to the structured text format without exporting the whole template. The order of the indices array controls the output order, so this is the preferred block-level reuse tool before reaching for a persistent library. The current file must be a .risup preset.',
+  {
+    indices: z
+      .array(z.number())
+      .min(1)
+      .max(50)
+      .describe('Zero-based prompt item indices to export as text, in output order.'),
+  },
+  async ({ indices }) => textResult(await apiRequest('POST', '/risup/prompt-text/copy', { indices })),
+);
+
+server.tool(
+  'import_risup_prompt_from_text',
+  'Imports the structured risup prompt text format. By default it replaces the entire promptTemplate; set mode="append" to insert the parsed items into the existing template, optionally at insertAt. Set dry_run=true to validate and preview the parsed items without mutating the file. The current file must be a .risup preset. Requires user confirmation unless dry_run is used. Dry-run and successful mutation responses may include additive "orderWarnings".',
+  {
+    text: z.string().describe('Structured prompt text, usually from export_risup_prompt_to_text after manual edits.'),
+    dry_run: z
+      .boolean()
+      .optional()
+      .describe('When true, validate and preview the import without writing promptTemplate.'),
+    mode: z
+      .enum(['replace', 'append'])
+      .optional()
+      .describe(
+        'replace = overwrite the whole template (default), append = insert parsed items into the current template.',
+      ),
+    insertAt: z
+      .number()
+      .optional()
+      .describe('When mode="append", zero-based insertion position. Default: append to the end.'),
+  },
+  async ({ text, dry_run, mode, insertAt }) =>
+    textResult(await apiRequest('POST', '/risup/prompt-text/import', { text, dry_run, mode, insertAt })),
+);
+
+server.tool(
+  'list_risup_prompt_snippets',
+  'Lists persistent risup prompt snippets stored in the app sidecar library. This library survives app restarts and is intended for reusable prompt blocks built on the structured text serializer.',
+  {},
+  async () => textResult(await apiRequest('GET', '/risup/prompt-snippets')),
+);
+
+server.tool(
+  'read_risup_prompt_snippet',
+  'Reads one persistent risup prompt snippet by snippet id or exact name. Returns the stored structured text plus snippet metadata, so it can be reviewed or reused before insertion.',
+  {
+    identifier: z.string().describe('Snippet id or exact snippet name from list_risup_prompt_snippets.'),
+  },
+  async ({ identifier }) => textResult(await apiRequest('POST', '/risup/prompt-snippets/read', { identifier })),
+);
+
+server.tool(
+  'save_risup_prompt_snippet',
+  'Saves or updates a persistent risup prompt snippet in the app sidecar library. Provide exactly one source: either serializer text via text, or current promptTemplate blocks via indices. Requires user confirmation.',
+  {
+    name: z.string().describe('Snippet name. Saving the same name again updates the existing snippet.'),
+    text: z.string().optional().describe('Structured prompt text to persist as a snippet.'),
+    indices: z
+      .array(z.number())
+      .min(1)
+      .max(50)
+      .optional()
+      .describe('Current promptTemplate indices to serialize and save as a snippet. Requires an open .risup file.'),
+  },
+  async ({ name, text, indices }) =>
+    textResult(await apiRequest('POST', '/risup/prompt-snippets/save', { name, text, indices })),
+);
+
+server.tool(
+  'insert_risup_prompt_snippet',
+  'Inserts a stored risup prompt snippet into the current .risup promptTemplate using fresh item ids. Set dry_run=true to preview the insertion without mutating the file. Successful responses may include additive "orderWarnings".',
+  {
+    identifier: z.string().describe('Snippet id or exact snippet name from list_risup_prompt_snippets.'),
+    dry_run: z
+      .boolean()
+      .optional()
+      .describe('When true, validate and preview the insertion without writing promptTemplate.'),
+    insertAt: z.number().optional().describe('Zero-based insertion position. Default: append to the end.'),
+  },
+  async ({ identifier, dry_run, insertAt }) =>
+    textResult(await apiRequest('POST', '/risup/prompt-snippets/insert', { identifier, dry_run, insertAt })),
+);
+
+server.tool(
+  'delete_risup_prompt_snippet',
+  'Deletes a persistent risup prompt snippet from the app sidecar library by snippet id or exact name. Requires user confirmation.',
+  {
+    identifier: z.string().describe('Snippet id or exact snippet name from list_risup_prompt_snippets.'),
+  },
+  async ({ identifier }) => textResult(await apiRequest('POST', '/risup/prompt-snippets/delete', { identifier })),
 );
 
 // ==================== Prompt ====================
@@ -2317,15 +2498,12 @@ server.prompt(
 // ==================== Apply Taxonomy Annotations ====================
 
 // Patch MCP SDK ToolAnnotations onto every registered tool using the taxonomy.
-// Uses RegisteredTool.update() so existing registrations stay untouched.
+// Uses the collected RegisteredTool handles and the public update() API.
 {
-  const registry = (
-    server as unknown as { _registeredTools: Record<string, { update: (u: Record<string, unknown>) => void }> }
-  )._registeredTools;
   for (const [name, entry] of Object.entries(TOOL_TAXONOMY)) {
-    const tool = registry[name];
-    if (tool) {
-      tool.update({ annotations: entry.hints });
+    const handle = _registeredToolHandles.get(name);
+    if (handle) {
+      handle.update({ annotations: entry.hints });
     }
   }
 }

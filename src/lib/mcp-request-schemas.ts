@@ -34,6 +34,24 @@ const positionEnum = z.preprocess(
 );
 
 // ---------------------------------------------------------------------------
+// dry_run / dryRun conflict guard
+// ---------------------------------------------------------------------------
+
+/** True when both `dry_run` and `dryRun` are present with conflicting boolean values. */
+function hasDryRunConflict(d: Record<string, unknown>): boolean {
+  const a = d.dry_run;
+  const b = d.dryRun;
+  if (a === undefined || b === undefined) return false;
+  return Boolean(a) !== Boolean(b);
+}
+
+const DRY_RUN_CONFLICT_MSG = {
+  message:
+    'dry_run and dryRun are both present with conflicting values. Use dry_run (canonical); dryRun is a deprecated alias.',
+  path: ['dryRun'],
+};
+
+// ---------------------------------------------------------------------------
 // Field editing request bodies
 // ---------------------------------------------------------------------------
 
@@ -70,27 +88,31 @@ export type FieldBatchWriteBody = z.infer<typeof fieldBatchWriteSchema>;
 // ---------------------------------------------------------------------------
 
 /** POST .../replace  (replace_in_field, replace_in_lorebook, …) */
-export const replaceBodySchema = z.object({
-  find: z.string().min(1),
-  replace: z.string().optional(),
-  regex: boolish.optional(),
-  flags: lenientString,
-  dry_run: boolish.optional(),
-  dryRun: boolish.optional(),
-  // lorebook replace adds an optional target field name
-  field: z.string().optional(),
-});
+export const replaceBodySchema = z
+  .object({
+    find: z.string().min(1),
+    replace: z.string().optional(),
+    regex: boolish.optional(),
+    flags: lenientString,
+    dry_run: boolish.optional(),
+    dryRun: boolish.optional(),
+    // lorebook replace adds an optional target field name
+    field: z.string().optional(),
+  })
+  .refine((d) => !hasDryRunConflict(d), DRY_RUN_CONFLICT_MSG);
 export type ReplaceBody = z.infer<typeof replaceBodySchema>;
 
 /** POST .../block-replace  (replace_block_in_field, …) */
-export const blockReplaceBodySchema = z.object({
-  start_anchor: z.string().min(1),
-  end_anchor: z.string().min(1),
-  content: z.string().optional(),
-  include_anchors: z.boolean().optional(),
-  dry_run: boolish.optional(),
-  dryRun: boolish.optional(),
-});
+export const blockReplaceBodySchema = z
+  .object({
+    start_anchor: z.string().min(1),
+    end_anchor: z.string().min(1),
+    content: z.string().optional(),
+    include_anchors: z.boolean().optional(),
+    dry_run: boolish.optional(),
+    dryRun: boolish.optional(),
+  })
+  .refine((d) => !hasDryRunConflict(d), DRY_RUN_CONFLICT_MSG);
 export type BlockReplaceBody = z.infer<typeof blockReplaceBodySchema>;
 
 /** POST .../insert  (insert_in_field, insert_in_lorebook, …) */
@@ -111,11 +133,13 @@ const batchReplacementSchema = z.object({
 export type BatchReplacement = z.infer<typeof batchReplacementSchema>;
 
 /** POST .../batch-replace  (replace_in_field_batch, …) */
-export const batchReplaceBodySchema = z.object({
-  replacements: z.array(batchReplacementSchema),
-  dry_run: boolish.optional(),
-  dryRun: boolish.optional(),
-});
+export const batchReplaceBodySchema = z
+  .object({
+    replacements: z.array(batchReplacementSchema),
+    dry_run: boolish.optional(),
+    dryRun: boolish.optional(),
+  })
+  .refine((d) => !hasDryRunConflict(d), DRY_RUN_CONFLICT_MSG);
 export type BatchReplaceBody = z.infer<typeof batchReplaceBodySchema>;
 
 // ---------------------------------------------------------------------------

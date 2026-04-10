@@ -9,6 +9,131 @@
 
 ---
 
+## [0.53.0] - 2026-04-11
+
+### Fixed
+
+- Fixed `compress_assets_webp` taxonomy hint from `WRITE` to `DESTRUCTIVE` — lossy compression is irreversible and agents should treat it accordingly.
+- Added `dry_run`/`dryRun` conflict guard to `replaceBodySchema`, `blockReplaceBodySchema`, and `batchReplaceBodySchema` — payloads supplying both keys with conflicting boolean values are now rejected with a clear error. `dry_run` is the canonical key; `dryRun` remains as a deprecated alias.
+- Replaced private `_registeredTools` access for taxonomy annotation patching with a public-API interceptor that collects `RegisteredTool` handles and calls `.update()` — eliminates fragile dependency on MCP SDK internals.
+
+## [0.52.0] - 2026-04-10
+
+### Added
+
+- Added deterministic per-tool `next_actions` overrides for high-traffic MCP flows such as `open_file`, generic field reads/writes, reference reads, and batch risup prompt edits so agents are steered toward narrower follow-up tools.
+- Added workflow mirror drift coverage so `docs/MCP_WORKFLOW.md` and `skills/project-workflow/MCP_WORKFLOW.md` cannot silently diverge.
+
+### Changed
+
+- Tightened MCP tool descriptions for generic `field`, `probe`, `search`, and reference reads so they front-load dedicated-tool warnings instead of burying routing guidance in long field catalogs.
+- Compactified MCP workflow/reference docs around critical anti-patterns, start-here routing, per-tool `next_actions`, and prompt-vs-tool distinctions such as `danbooru_tag_guide`.
+- Corrected `insert_in_lua` and `insert_in_css` so `position` is constrained to the documented enum values instead of accepting arbitrary strings.
+
+## [0.51.0] - 2026-04-10
+
+### Added
+
+- Added `diff_risup_prompt`, an MCP compare precursor that diffs the current `.risup` preset against a loaded reference `.risup` using serializer-backed `promptTemplate` line summaries plus `formatingOrder` token/warning comparisons.
+
+### Changed
+
+- Updated the risup MCP workflow/docs/skills/README/module map so agents can use a prompt-specific compare step before importing blocks or aligning prompt order against a reference preset.
+
+## [0.50.0] - 2026-04-10
+
+### Added
+
+- Added a persistent, sidecar-backed `.risup` prompt snippet library with MCP tools for listing, reading, saving, inserting, and deleting reusable serializer-based prompt blocks across sessions.
+
+### Changed
+
+- `save_risup_prompt_snippet` can now persist either existing serializer text or selected `promptTemplate` indices, and `insert_risup_prompt_snippet` reuses append-style insertion with fresh prompt item ids plus `dry_run` previews.
+- Updated the risup MCP workflow/docs/skills/README/module map so agents can route reusable block workflows through the new prompt snippet library instead of only ad-hoc copy/import chains.
+
+## [0.49.0] - 2026-04-10
+
+### Changed
+
+- Existing `formatingOrder` consistency diagnostics are now surfaced directly on `.risup` prompt mutation responses, so add/write/delete/reorder/import flows can return `orderWarnings` without requiring a separate `read_risup_formating_order` step.
+- `write_risup_formating_order` now also returns its advisory `warnings` array immediately after a successful write, using the same duplicate/dangling-token checks as the read route.
+
+## [0.48.0] - 2026-04-10
+
+### Changed
+
+- Added a promptTemplate toolbar search/filter so larger `.risup` prompt lists can be narrowed by prompt text, type, and other visible item metadata without dropping back to raw JSON.
+- Search mode now shows live match counts, supports one-click clear or `Escape`, shows an empty-result hint, and temporarily disables reorder controls while the filtered view is active.
+
+## [0.47.0] - 2026-04-10
+
+### Changed
+
+- Improved the structured `.risup` `promptTemplate` add flow with a grouped type-aware add menu instead of always inserting a temporary `plain` item first.
+- Added per-item **insert below** actions so new prompt blocks can be placed directly after the current item without adding at the bottom and dragging them back into position.
+
+## [0.46.0] - 2026-04-10
+
+### Added
+
+- Added block-level `.risup` prompt text reuse on top of the existing serializer:
+  - `copy_risup_prompt_items_as_text`
+  - `import_risup_prompt_from_text` now supports `mode: "append"` with optional `insertAt`
+
+### Changed
+
+- Prompt text import `dry_run` can now preview append-mode flows as well as full-template replacement.
+- Updated MCP workflow/docs/skills so agents prefer selected-item text copy plus append import before reaching for a speculative persistent snippet library.
+
+## [0.45.0] - 2026-04-10
+
+### Added
+
+- Added a structured `.risup` prompt text serializer with MCP whole-template export/import tools:
+  - `export_risup_prompt_to_text`
+  - `import_risup_prompt_from_text`
+
+### Changed
+
+- The serializer format now preserves supported-item IDs, supported-item extra JSON fields, and unsupported/raw prompt items while still being human-editable.
+- Added `dry_run` support for prompt text imports so agents can preview parsed prompt items before replacing `promptTemplate`.
+- Updated risup MCP workflow docs, skills, AGENTS guidance, and README references for the new whole-template text path.
+
+## [0.44.0] - 2026-04-10
+
+### Changed
+
+- Added drag-and-drop reorder to the structured `.risup` `promptTemplate`, `formatingOrder`, and `customPromptTemplateToggle` editors using the existing SortableJS interaction pattern while keeping the button-based controls as a fallback.
+- Introduced a shared flat-list reorder helper so prompt/order/toggle editors all apply the same stable index move semantics.
+
+## [0.43.0] - 2026-04-10
+
+### Added
+
+- Added a structured **visual/raw editor** for `.risup` `customPromptTemplateToggle`, covering toggle, text, textarea, select, divider, caption, group, and group-end rows without changing the stored line syntax.
+
+### Changed
+
+- Improved the `.risup` `promptTemplate` editor with item summaries, per-item collapse/expand, collapse-all/expand-all controls, and one-click duplication for faster large-preset editing.
+- Documented the new toggle editor modules in `docs/MODULE_MAP.md` and updated the README to reflect the richer preset-editing surface.
+
+## [0.42.0] - 2026-04-10
+
+### Added
+
+- Expanded the risup prompt MCP family with agent-efficient structured tools:
+  - `search_in_risup_prompt_items`
+  - `read_risup_prompt_item_batch`
+  - `write_risup_prompt_item_batch`
+  - `add_risup_prompt_item_batch`
+
+### Changed
+
+- Improved `.risup` prompt MCP stability and ergonomics:
+  - Single and batch prompt-item writes now preserve existing stable item IDs when replacement payloads omit an explicit `id`.
+  - Batch risup prompt operations now reduce repeated confirmation prompts when editing several sibling items.
+  - Updated `AGENTS.md`, MCP workflow docs, and skill references so agents prefer the new risup batch/search surfaces over repeated single-item calls.
+
 ## [0.41.3] - 2026-04-10
 
 ### Changed

@@ -141,6 +141,12 @@ describe('MCP Tool Taxonomy', () => {
     }
   });
 
+  it('compress_assets_webp is destructive (lossy, irreversible compression)', () => {
+    const hints = getToolAnnotations('compress_assets_webp');
+    expect(hints?.destructiveHint).toBe(true);
+    expect(hints?.readOnlyHint).not.toBe(true);
+  });
+
   it('list_* tools are read-only', () => {
     for (const name of ALL_TOOL_NAMES) {
       if (name.startsWith('list_')) {
