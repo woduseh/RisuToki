@@ -128,9 +128,9 @@ main.ts (Node/Electron)  ←✗→  src/app/controller.ts (Renderer/Vue)
 
 | 소유 계층 | 모듈 예시 |
 |-----------|-----------|
-| 메인 프로세스 전용 | `terminal-manager.ts`, `session-recovery-main.ts`, `main-state-store.ts`, `mcp-config.ts` |
-| 렌더러 전용 | `layout-manager.ts`, `tab-manager.ts`, `sidebar-builder.ts`, `form-editor.ts`, `monaco-loader.ts` |
-| 양쪽 공유 | `charx-io.ts`, `data-serializer.ts`, `section-parser.ts`, `document-validation.ts` |
+| 메인 프로세스 전용 | `terminal-manager.ts`, `session-recovery-main.ts`, `main-state-store.ts`, `mcp-config.ts`, `charx-io.ts`, `data-serializer.ts`, `document-validation.ts` |
+| 렌더러 전용 | `layout-manager.ts`, `tab-manager.ts`, `sidebar-builder.ts`, `form-editor.ts`, `monaco-loader.ts`, `section-parser.ts` |
+| 양쪽 공유 | `shared-utils.ts`, `risup-prompt-model.ts`, `cbs-parser.ts`, `cbs-evaluator.ts` |
 | MCP 서버 전용 | `mcp-api-server.ts`, `mcp-tool-taxonomy.ts`, `mcp-response-envelope.ts`, `mcp-search.ts` |
 
 ### 2.3 컴파일 타겟
@@ -283,7 +283,7 @@ AI CLI (Claude/Copilot/...)
   └─ stdio ──► toki-mcp-server.ts (별도 자식 프로세스, MCP 프로토콜 파싱)
                 └─ HTTP 127.0.0.1:${TOKI_PORT} ──► mcp-api-server.ts (메인 프로세스 내 도구 라우팅)
                               ├─ 읽기 도구: deps.getCurrentData()로 메인 프로세스 인메모리 상태 읽기
-                              ├─ 쓰기 도구: IPC 확인 팝업 ──► 렌더러 적용
+                              ├─ 쓰기 도구: 렌더러 IPC 확인 팝업 → 메인 프로세스 직접 변이 → data-updated 브로드캐스트
                               └─ 응답: mcpSuccess/mcpError/mcpNoOp 엔벨로프
 ```
 

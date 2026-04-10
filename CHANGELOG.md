@@ -9,6 +9,22 @@
 
 ---
 
+## [0.39.2] - 2026-04-10
+
+### 새 기능
+
+- **문서 드리프트 가드 테스트 추가** (`src/lib/doc-drift.test.ts`): 문서, 스킬, 분류 체계 참조, MODULE_MAP이 실제 코드베이스와 정렬되어 있는지 기계적으로 검증하는 18개 테스트를 추가했습니다.
+  - 스킬 `related_tools`가 `TOOL_TAXONOMY`에 존재하는 도구만 참조하는지 확인
+  - `MODULE_MAP.md`가 `src/lib/*.ts` 모듈을 빠짐없이 커버하는지 확인
+  - `MCP_TOOL_SURFACE.md` 도구 참조가 분류 체계와 일치하는지 확인
+  - `FAMILY_NEXT_ACTIONS` 참조 도구가 분류 체계에 존재하는지 확인
+  - `docs/superpowers/INDEX.md`가 모든 plan/spec 파일을 커버하고 유효한 상태값을 갖는지 확인
+- **Superpowers 아티팩트 인덱스** (`docs/superpowers/INDEX.md`): plan/spec 파일의 경량 인덱스를 추가하여 active/superseded/research/partial 상태를 구분할 수 있게 했습니다.
+
+### 변경
+
+- **`MODULE_MAP.md` 커버리지 확장**: 누락되었던 6개 모듈(`shared-utils`, `cbs-parser`, `cbs-evaluator`, `cbs-extractor`, `trigger-form-editor`, `trigger-scripts-runtime`, `mcp-request-schemas`)을 추가했습니다.
+
 ## [0.39.1] - 2026-04-10
 
 ### 변경
