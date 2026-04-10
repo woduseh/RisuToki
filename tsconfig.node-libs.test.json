@@ -17,7 +17,6 @@
     "src/lib/mcp-config.ts",
     "src/lib/agents-md-manager.ts",
     "src/lib/asset-manager.ts",
-    "src/lib/sync-server.ts",
     "src/lib/guides-manager.ts",
     "src/lib/terminal-manager.ts",
     "src/lib/ipc-confirm.ts",

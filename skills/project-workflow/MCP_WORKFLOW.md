@@ -150,6 +150,7 @@ For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](..
 
 - The preview panel displays initialization and runtime diagnostics as inline banners. If the iframe is not ready within 5 seconds a timeout error is shown; runtime errors such as Lua trigger failures appear directly inside the panel. Controller-level Wasmoon preflight (`ensureWasmoon()`) runs outside the preview panel and is not surfaced through these banners.
 - Preview is available only for `.charx` files. When a `.risum` or `.risup` file is open, the View menu preview item and the `F5` shortcut are both blocked. Internally, a missing `_fileType` and an explicit `_fileType: 'charx'` are both treated as charx.
+- Preview message rendering now supports richer markdown (`#` headings, ordered/unordered lists, links, strikethrough, horizontal rules) plus a wider safe structural-HTML allowlist (`h1-h6`, `ul/ol/li`, `details/summary`, `figure`, `section/article`, `u`, `sub`, `sup`, etc.). Messages still render inside the existing sandbox/CSP boundary, and inline styles remain narrowly restricted.
 - The preview Lua functions `setDescription`, `setPersonality`, `setScenario`, and `setFirstMessage` update preview-local state immediately, so you can verify card-field-changing triggers inside the preview.
 - Preview macros keep `{{charpersona}}` and `{{chardesc}}` as distinct fields. `{{charpersona}}` reads from personality; `{{chardesc}}` reads from description.
 

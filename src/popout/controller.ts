@@ -410,11 +410,6 @@ function popoutChatSend(): void {
   }, 50);
 }
 
-function finalizePopoutChat(): void {
-  popoutChatSession.finalizeResponse();
-  renderPopoutChat();
-}
-
 function renderPopoutChat(): void {
   const container = document.getElementById('chat-messages');
   if (!container) return;

@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-0.58.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.59.1-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -358,6 +358,7 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 
 - The **firstMessage** is displayed automatically → you type a user message → type an AI reply to test the conversation flow.
 - Preview is available only for `.charx` files. When a `.risum` or `.risup` is the active tab, both the View menu entry and `F5` are disabled.
+- Preview now renders richer markdown (`#` headings, ordered/unordered lists, links, strikethrough, horizontal rules) plus safe structural HTML such as headings, lists, `details/summary`, `figure`, `section/article`, `u`, `sub`, and `sup`.
 - **CBS (Conditional Block System)** execution — variable branching, button-click handling, functions (`#func`/`call`), loops (`#each`), dice/random, Unicode/encryption tags, and more, compatible with RisuAI.
 - Regex and Lua triggers are applied in order: editOutput → editDisplay → editInput.
 - Asset references are resolved automatically (`{{raw::name}}`, `{{asset::name}}`, `ccdefault:`, `embeded://`).
@@ -374,7 +375,7 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 - In `npm run dev` mode, the preview bridge avoids conflicts with the sandbox iframe security policy — no `SecurityError` in the browser console.
 - `{{cbr}}` / `{{cnl}}` / `{{cnewline}}` render as actual line breaks. `chatindex`, `isfirstmsg`, and Lua `onOutput` follow the real message order.
 - During preview initialization an inline status banner appears: a timeout error if the iframe is not ready within 5 seconds, or a runtime error message (e.g., Lua trigger failure). While initializing, the input, send, and reset buttons are disabled.
-- Preview renders inside a sandboxed iframe. `<script>` tags, inline event attributes (`on*`), and frame-escape HTML are not executed.
+- Preview renders inside a sandboxed iframe. `<script>` tags, inline event attributes (`on*`), frame-escape HTML, and unsafe inline styles are not executed.
 - The app no longer opens a hidden local sync HTTP server; file exchange is handled exclusively through direct open/save and MCP.
 
 ### RP Mode

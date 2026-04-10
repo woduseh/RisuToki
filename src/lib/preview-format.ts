@@ -15,19 +15,125 @@ export function escapePreviewHtml(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 export { sanitizePreviewHtml } from './preview-sanitizer';
 
+const HTML_TAG_TOKEN = '\x00PHT';
+const BLOCK_HTML_TOKEN = '\x00PBH';
+const INLINE_HTML_TOKEN = '\x00PIH';
+const BLOCK_BREAK_TAGS =
+  '(?:article|blockquote|details|div|dl|figure|figcaption|h[1-6]|hr|ol|p|pre|section|summary|table|ul)';
+
+function restorePlaceholderValues(value: string, prefix: string, placeholders: string[]): string {
+  return value.replace(new RegExp(`${prefix}(\\d+)\\x00`, 'g'), (_match, index: string) => {
+    return placeholders[Number.parseInt(index, 10)] ?? '';
+  });
+}
+
+function transformMarkdownTables(value: string): string {
+  const lines = value.split('\n');
+  const tableBlocks: { start: number; end: number }[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    if (lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+      const start = i;
+      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) i++;
+      tableBlocks.push({ start, end: i });
+    } else {
+      i++;
+    }
+  }
+
+  for (let t = tableBlocks.length - 1; t >= 0; t--) {
+    const block = tableBlocks[t];
+    const tableLines = lines.slice(block.start, block.end);
+    const isSepLine = (line: string) => /^\|[\s:|-]+\|$/.test(line.trim());
+    const rows: string[][] = [];
+    let headerCount = 0;
+
+    for (const tableLine of tableLines) {
+      if (isSepLine(tableLine)) {
+        if (rows.length > 0) headerCount = rows.length;
+        continue;
+      }
+      rows.push(
+        tableLine
+          .split('|')
+          .slice(1, -1)
+          .map((cell) => cell.trim()),
+      );
+    }
+
+    let html = '<table>';
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const tag = rowIndex < headerCount ? 'th' : 'td';
+      html += '<tr>' + rows[rowIndex].map((cell) => `<${tag}>${cell}</${tag}>`).join('') + '</tr>';
+    }
+    html += '</table>';
+    lines.splice(block.start, block.end - block.start, html);
+  }
+
+  return lines.join('\n');
+}
+
+function transformMarkdownLists(value: string): string {
+  const lines = value.split('\n');
+  const renderedLines: string[] = [];
+
+  for (let index = 0; index < lines.length; ) {
+    const unorderedMatch = lines[index].match(/^\s*[-*+]\s+(.+)$/);
+    if (unorderedMatch) {
+      const items: string[] = [];
+      while (index < lines.length) {
+        const currentMatch = lines[index].match(/^\s*[-*+]\s+(.+)$/);
+        if (!currentMatch) break;
+        items.push(currentMatch[1]);
+        index++;
+      }
+      renderedLines.push(`<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`);
+      continue;
+    }
+
+    const orderedMatch = lines[index].match(/^\s*(\d+)\.\s+(.+)$/);
+    if (orderedMatch) {
+      const items: string[] = [];
+      const start = Number.parseInt(orderedMatch[1], 10);
+      while (index < lines.length) {
+        const currentMatch = lines[index].match(/^\s*(\d+)\.\s+(.+)$/);
+        if (!currentMatch) break;
+        items.push(currentMatch[2]);
+        index++;
+      }
+      const startAttr = start === 1 ? '' : ` start="${start}"`;
+      renderedLines.push(`<ol${startAttr}>${items.map((item) => `<li>${item}</li>`).join('')}</ol>`);
+      continue;
+    }
+
+    renderedLines.push(lines[index]);
+    index++;
+  }
+
+  return renderedLines.join('\n');
+}
+
+function cleanupBlockLineBreaks(value: string): string {
+  let cleaned = value;
+  for (let pass = 0; pass < 2; pass++) {
+    cleaned = cleaned.replace(new RegExp(`(<\\/?${BLOCK_BREAK_TAGS}[^>]*>)<br>`, 'g'), '$1');
+    cleaned = cleaned.replace(new RegExp(`<br>(<\\/?${BLOCK_BREAK_TAGS}[^>]*>)`, 'g'), '$1');
+  }
+  return cleaned;
+}
+
 export function simpleMarkdown(text: string): string {
   if (!text) return '';
 
-  const htmlTags: string[] = [];
-  let rendered = String(text).replace(/<[^>]+>/g, (match) => {
-    htmlTags.push(match);
-    return `\x00HTAG${htmlTags.length - 1}\x00`;
-  });
+  let rendered = String(text);
 
   // Resolve RisuAI Private Use Area escape characters
   rendered = rendered
@@ -39,57 +145,49 @@ export function simpleMarkdown(text: string): string {
     .replace(/\uE9BD/g, ')')
     .replace(/\uE9BE/g, ':');
 
-  // Table support: detect lines that start with | and convert to HTML table
-  const lines = rendered.split('\n');
-  const tableBlocks: { start: number; end: number }[] = [];
-  let i = 0;
-  while (i < lines.length) {
-    if (lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
-      const start = i;
-      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) i++;
-      tableBlocks.push({ start, end: i });
-    } else {
-      i++;
-    }
-  }
-  for (let t = tableBlocks.length - 1; t >= 0; t--) {
-    const block = tableBlocks[t];
-    const tableLines = lines.slice(block.start, block.end);
-    const isSepLine = (line: string) => /^\|[\s:|-]+\|$/.test(line.trim());
-    const rows: string[][] = [];
-    let headerCount = 0;
-    for (const tl of tableLines) {
-      if (isSepLine(tl)) {
-        if (rows.length > 0) headerCount = rows.length;
-        continue;
-      }
-      const cells = tl
-        .split('|')
-        .slice(1, -1)
-        .map((c) => c.trim());
-      rows.push(cells);
-    }
-    let html = '<table>';
-    for (let r = 0; r < rows.length; r++) {
-      const tag = r < headerCount ? 'th' : 'td';
-      html += '<tr>' + rows[r].map((c) => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
-    }
-    html += '</table>';
-    lines.splice(block.start, block.end - block.start, html);
-  }
-  rendered = lines.join('\n');
+  const blockHtml: string[] = [];
+  rendered = rendered.replace(/```([\w-]*)\n([\s\S]*?)```/g, (_match, _lang: string, code: string) => {
+    blockHtml.push(`<pre><code>${escapePreviewHtml(code)}</code></pre>`);
+    return `${BLOCK_HTML_TOKEN}${blockHtml.length - 1}\x00`;
+  });
+
+  const inlineHtml: string[] = [];
+  rendered = rendered.replace(/`([^`]+)`/g, (_match, code: string) => {
+    inlineHtml.push(`<code>${escapePreviewHtml(code)}</code>`);
+    return `${INLINE_HTML_TOKEN}${inlineHtml.length - 1}\x00`;
+  });
+
+  const htmlTags: string[] = [];
+  rendered = rendered.replace(/<[^>]+>/g, (match) => {
+    htmlTags.push(match);
+    return `${HTML_TAG_TOKEN}${htmlTags.length - 1}\x00`;
+  });
+
+  rendered = transformMarkdownTables(rendered);
+  rendered = transformMarkdownLists(rendered);
 
   // Blockquote: lines starting with >
   rendered = rendered.replace(/^(&gt;|>)\s?(.*)$/gm, '<blockquote>$2</blockquote>');
   rendered = rendered.replace(/<\/blockquote>\n<blockquote>/g, '\n');
 
-  // Code blocks: ```...```
-  rendered = rendered.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  rendered = rendered.replace(/^(#{1,6})[ \t]+(.+)$/gm, (_match, hashes: string, heading: string) => {
+    return `<h${hashes.length}>${heading.trim()}</h${hashes.length}>`;
+  });
+
+  rendered = rendered.replace(/^(?:-{3,}|\*{3,}|_{3,})$/gm, '<hr>');
 
   rendered = rendered.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   rendered = rendered.replace(/__(.+?)__/g, '<strong>$1</strong>');
   rendered = rendered.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
   rendered = rendered.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>');
+  rendered = rendered.replace(/~~(.+?)~~/g, '<del>$1</del>');
+  rendered = rendered.replace(
+    /\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/g,
+    (_match, label: string, href: string, title?: string) => {
+      const titleAttr = title ? ` title="${escapePreviewHtml(title)}"` : '';
+      return `<a href="${escapePreviewHtml(href)}" target="_blank" rel="noopener noreferrer"${titleAttr}>${label}</a>`;
+    },
+  );
   rendered = rendered.replace(
     /\u201C([^\u201D]+)\u201D/g,
     '<span style="color:var(--FontColorQuote2)">\u201C$1\u201D</span>',
@@ -98,11 +196,13 @@ export function simpleMarkdown(text: string): string {
     /(?:^|(?<=[\s\n(]))"([^"]+?)"(?=[\s\n).,!?;:]|$)/gm,
     '<span style="color:var(--FontColorQuote2)">\u201C$1\u201D</span>',
   );
-  rendered = rendered.replace(/`([^`]+)`/g, '<code>$1</code>');
-  rendered = rendered.replace(/\n/g, '<br>');
-  rendered = rendered.replace(/\x00HTAG(\d+)\x00/g, (_, index: string) => htmlTags[Number.parseInt(index, 10)]);
 
-  return rendered;
+  rendered = restorePlaceholderValues(rendered, BLOCK_HTML_TOKEN, blockHtml);
+  rendered = restorePlaceholderValues(rendered, INLINE_HTML_TOKEN, inlineHtml);
+  rendered = restorePlaceholderValues(rendered, HTML_TAG_TOKEN, htmlTags);
+  rendered = rendered.replace(/\n/g, '<br>');
+
+  return cleanupBlockLineBreaks(rendered);
 }
 
 export function wrapCssForPreview({
@@ -238,13 +338,27 @@ body {
   color: var(--FontColorStandard);
 }
 .chattext p { color: var(--FontColorStandard); margin: 0.25em 0; }
+.chattext h1, .chattext h2, .chattext h3, .chattext h4, .chattext h5, .chattext h6 {
+  color: var(--FontColorBold);
+  line-height: 1.3;
+  margin: 0.75em 0 0.35em;
+}
+.chattext h1 { font-size: 1.65em; }
+.chattext h2 { font-size: 1.45em; }
+.chattext h3 { font-size: 1.25em; }
+.chattext h4 { font-size: 1.15em; }
+.chattext h5 { font-size: 1.05em; }
+.chattext h6 { font-size: 1em; }
 .chattext em { color: var(--FontColorItalic); font-style: italic; }
 .chattext strong { color: var(--FontColorBold); font-weight: bold; }
 .chattext strong em, .chattext em strong { color: var(--FontColorItalicBold); font-weight: bold; font-style: italic; }
+.chattext del, .chattext s { opacity: 0.72; text-decoration: line-through; }
 .chattext mark[risu-mark="quote1"] { background: transparent; color: var(--FontColorQuote1); }
 .chattext mark[risu-mark="quote2"] { background: transparent; color: var(--FontColorQuote2); }
 .chattext img { max-width: 100%; height: auto; border-radius: 4px; margin: 4px 0; }
 .chattext a { color: #8BE9FD; text-decoration: underline; }
+.chattext ul, .chattext ol { margin: 0.5em 0; padding-left: 1.5em; }
+.chattext li + li { margin-top: 0.2em; }
 .chattext code {
   background: rgba(255,255,255,0.1);
   padding: 2px 6px;
@@ -260,6 +374,22 @@ body {
   margin: 8px 0;
 }
 .chattext pre code { background: none; padding: 0; }
+.chattext table {
+  width: auto;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+}
+.chattext th, .chattext td {
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+.chattext th {
+  color: var(--FontColorBold);
+  background: rgba(255,255,255,0.06);
+}
 .chattext hr { border: none; border-top: 1px solid var(--risu-theme-borderc); margin: 8px 0; }
 .chattext blockquote, .chattext mark[risu-mark="blockquote1"] {
   display: block;
@@ -269,6 +399,32 @@ body {
   color: var(--FontColorQuote1);
   margin: 4px 0;
 }
+.chattext details, .chattext figure, .chattext section, .chattext article, .chattext dl {
+  display: block;
+  margin: 0.5em 0;
+}
+.chattext details {
+  border: 1px solid var(--risu-theme-borderc);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  padding: 0.4rem 0.6rem;
+}
+.chattext summary { cursor: pointer; font-weight: 600; }
+.chattext figcaption {
+  color: var(--risu-theme-textcolor2);
+  font-size: 0.9em;
+  margin-top: 0.35em;
+}
+.chattext dt { font-weight: 600; color: var(--FontColorBold); }
+.chattext dd { margin-left: 1rem; }
+.chattext sub, .chattext sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+.chattext sub { bottom: -0.25em; }
+.chattext sup { top: -0.5em; }
 .cbs-button {
   display: inline-block;
   padding: 6px 16px;
@@ -298,12 +454,12 @@ export function buildPreviewMessageHtml({ index, name, avatarBg, content }: Prev
   return `<div class="risu-chat" data-chat-index="${index}">
   <div class="risu-chat-inner">
     <div class="chat-avatar" style="background-color:${escapePreviewHtml(avatarBg)}"></div>
-    <span class="chat-content">
+    <div class="chat-content">
       <div class="flexium items-center chat-width">
         <div class="chat-width chat-name">${escapePreviewHtml(name)}</div>
       </div>
-      <span class="chattext chat-width prose">${sanitizePreviewHtml(content)}</span>
-    </span>
+      <div class="chattext chat-width prose">${sanitizePreviewHtml(content)}</div>
+    </div>
   </div>
 </div>`;
 }

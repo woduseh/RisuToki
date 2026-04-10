@@ -225,7 +225,3 @@ export function getRisupFieldDefinition(id: string): RisupFieldDefinition | unde
 export function isRisupEditableFieldId(id: string): id is RisupFieldId {
   return fieldMap.has(id as RisupFieldId);
 }
-
-export function getRisupFieldValue(data: Partial<Record<RisupFieldId, unknown>>, fieldId: RisupFieldId): unknown {
-  return data[fieldId];
-}

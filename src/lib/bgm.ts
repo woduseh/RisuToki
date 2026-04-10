@@ -18,9 +18,8 @@ const BGM_BURST_WINDOW = 500;
  */
 export function initBgm(initialEnabled: boolean, initialPath: string): void {
   bgmEnabled = initialEnabled;
-  bgmFilePath = !initialPath || initialPath === '../../assets/Usagi_Flap.mp3'
-    ? toMediaAsset('Usagi_Flap.mp3')
-    : initialPath;
+  bgmFilePath =
+    !initialPath || initialPath === '../../assets/Usagi_Flap.mp3' ? toMediaAsset('Usagi_Flap.mp3') : initialPath;
   bgmAudio = new Audio(bgmFilePath);
   bgmAudio.loop = true;
   bgmAudio.volume = 0.3;
@@ -34,39 +33,14 @@ export function setBgmEnabled(enabled: boolean): void {
   bgmEnabled = enabled;
 }
 
-export function getBgmFilePath(): string {
-  return bgmFilePath;
-}
-
 export function setBgmFilePath(path: string): void {
   bgmFilePath = path;
   if (bgmAudio) bgmAudio.src = path;
 }
 
-export function startBgm(): void {
-  if (bgmAudio && bgmAudio.paused) {
-    bgmAudio.play().catch(() => { /* autoplay blocked */ });
-  }
-}
-
-export function stopBgm(): void {
-  if (bgmAudio && !bgmAudio.paused) {
-    bgmAudio.pause();
-  }
-  bgmBurstCount = 0;
-  if (bgmSilenceTimer) { clearTimeout(bgmSilenceTimer); bgmSilenceTimer = null; }
-  if (bgmBurstTimer) { clearTimeout(bgmBurstTimer); bgmBurstTimer = null; }
-}
-
 export function pauseBgm(): void {
   if (bgmAudio && !bgmAudio.paused) {
     bgmAudio.pause();
-  }
-}
-
-export function resumeBgm(): void {
-  if (bgmAudio && bgmAudio.paused) {
-    bgmAudio.play().catch(() => { /* autoplay blocked */ });
   }
 }
 
@@ -80,12 +54,16 @@ export function handleTerminalDataForBgm(): void {
 
   bgmBurstCount++;
   if (bgmBurstTimer) clearTimeout(bgmBurstTimer);
-  bgmBurstTimer = setTimeout(() => { bgmBurstCount = 0; }, BGM_BURST_WINDOW);
+  bgmBurstTimer = setTimeout(() => {
+    bgmBurstCount = 0;
+  }, BGM_BURST_WINDOW);
 
   if (bgmBurstCount < BGM_BURST_THRESHOLD && bgmAudio.paused) return;
 
   if (bgmAudio.paused) {
-    bgmAudio.play().catch(() => { /* autoplay blocked */ });
+    bgmAudio.play().catch(() => {
+      /* autoplay blocked */
+    });
   }
 
   if (bgmSilenceTimer) clearTimeout(bgmSilenceTimer);

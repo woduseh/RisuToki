@@ -158,11 +158,6 @@ export function _setAgentsMdRestoreStateForTesting(
   activeAgentsOriginalContent = originalContent;
 }
 
-/** @internal Exported only for unit tests — sets deps without IPC registration. */
-export function _setDepsForTesting(d: AgentsMdDeps): void {
-  deps = d;
-}
-
 // ---------------------------------------------------------------------------
 // Init — register IPC handlers
 // ---------------------------------------------------------------------------

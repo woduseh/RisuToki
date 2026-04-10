@@ -1,6 +1,6 @@
 import { readAppSettingsSnapshot } from './app-settings';
 
-export function getBundledAssetUrl(baseDirectory: 'app-assets' | 'vendor', relativePath: string): string {
+function getBundledAssetUrl(baseDirectory: 'app-assets' | 'vendor', relativePath: string): string {
   const normalizedPath = relativePath.replace(/^\.\//, '');
   return new URL(`./${baseDirectory}/${normalizedPath}`, window.location.href).toString();
 }
@@ -45,5 +45,4 @@ export function getTalkTitle(): 'ArisTalk' | 'TokiTalk' {
   return isDarkModeEnabled() ? 'ArisTalk' : 'TokiTalk';
 }
 
-export const toVendorAsset = getVendorAssetUrl;
 export const toMediaAsset = getMediaAssetUrl;

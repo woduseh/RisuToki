@@ -62,19 +62,6 @@ interface PreviewLorebookRuntimeEntry {
   useRegex?: boolean;
   [key: string]: unknown;
 }
-interface PreviewRegexRuntimeScript {
-  ableFlag?: boolean;
-  comment?: string;
-  find?: string;
-  flag?: string;
-  flags?: string;
-  in?: string;
-  out?: string;
-  replace?: string;
-  replaceOrder?: number;
-  type?: string;
-  [key: string]: unknown;
-}
 interface PreviewEngineModule extends PreviewEngineContract {
   calcString(expr: string): number;
   clearTempVars(): void;
@@ -83,11 +70,6 @@ interface PreviewEngineModule extends PreviewEngineContract {
   getGlobalChatVar(key: string): string;
   setGlobalChatVar(key: string, value: unknown): void;
   setErrorHandler(handler: ((context: string, message: string) => void) | null): void;
-}
-interface InitLuaFn {
-  (luaCode: string): Promise<boolean>;
-  _getCaptured?: () => string;
-  _resetCaptured?: () => void;
 }
 interface CBSArg {
   assets?: Array<[string, string]>;
@@ -330,7 +312,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     };
 
     // --- Variables ---
-    reg('getvar', (_p1, arg, args) => getChatVar(args[0] || ''));
+    reg('getvar', (_p1, _arg, args) => getChatVar(args[0] || ''));
     reg('setvar', (_p1, arg, args) => {
       if (arg.runVar) setChatVar(args[0] || '', args[1] || '');
       return '';

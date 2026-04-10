@@ -1,25 +1,9 @@
-import {
-  readAppSettingsSnapshot,
-  writeIdleAvatarState,
-  writeWorkingAvatarState
-} from './app-settings';
-import {
-  RISU_IDLE,
-  RISU_DANCING,
-  TOKI_IDLE,
-  TOKI_CUTE,
-  TOKI_DANCING,
-  loadAvatarImage
-} from './avatar';
+import { readAppSettingsSnapshot, writeIdleAvatarState, writeWorkingAvatarState } from './app-settings';
+import { RISU_IDLE, RISU_DANCING, TOKI_IDLE, TOKI_CUTE, TOKI_DANCING, loadAvatarImage } from './avatar';
 
 // ==================== Dialogue Lines ====================
 
-const TOKI_IDLE_LINES = [
-  '분부대로.',
-  '완벽한 보좌를 약속드립니다.',
-  '대기 중입니다.',
-  '지시를 기다리겠습니다.',
-];
+const TOKI_IDLE_LINES = ['분부대로.', '완벽한 보좌를 약속드립니다.', '대기 중입니다.', '지시를 기다리겠습니다.'];
 const TOKI_WORKING_LINES = [
   '신속히 처리하겠습니다.',
   '...집중하고 있습니다.',
@@ -68,27 +52,17 @@ let _statusTextEl: HTMLElement | null;
  * Return a character dialogue line for the current dark-mode & active state.
  * Used by the controller's refreshDarkModeUi to update the status text.
  */
-export function getDialogueLine(darkMode: boolean, active: boolean): string {
+function getDialogueLine(darkMode: boolean, active: boolean): string {
   if (active) {
     return darkMode ? randomLine(RISU_WORKING_LINES) : randomLine(TOKI_WORKING_LINES);
   }
   return darkMode ? randomLine(RISU_IDLE_LINES) : randomLine(TOKI_IDLE_LINES);
 }
 
-/** Whether the avatar module has been initialised (tokiImg exists). */
-export function isAvatarReady(): boolean {
-  return tokiImg !== null;
-}
-
-/** Whether the avatar is currently in "active/working" state. */
-export function isTokiActive(): boolean {
-  return tokiActive;
-}
-
 /**
  * Load an image source into the avatar element, deduplicating unchanged loads.
  */
-export function loadTokiImage(src: string): void {
+function loadTokiImage(src: string): void {
   const prevSrc = tokiCurrentSrc;
   tokiCurrentSrc = src;
 
@@ -124,9 +98,7 @@ export function initTokiAvatar(container: HTMLElement, deps: AvatarUIDeps): void
   // Set initial dialogue
   const initStatusText = document.getElementById('toki-status-text');
   if (initStatusText) {
-    initStatusText.textContent = deps.darkMode
-      ? randomLine(RISU_IDLE_LINES)
-      : randomLine(TOKI_IDLE_LINES);
+    initStatusText.textContent = deps.darkMode ? randomLine(RISU_IDLE_LINES) : randomLine(TOKI_IDLE_LINES);
   }
 
   // Right-click to switch avatar
@@ -156,38 +128,51 @@ const PICKER_IMAGES: readonly PickerImage[] = [
 
 function makeCard(img: PickerImage, currentSrc: string, onClick: () => void): HTMLElement {
   const card = document.createElement('div');
-  card.style.cssText = 'border:2px solid var(--border-color);border-radius:8px;padding:6px;cursor:pointer;text-align:center;transition:border-color 0.2s;';
+  card.style.cssText =
+    'border:2px solid var(--border-color);border-radius:8px;padding:6px;cursor:pointer;text-align:center;transition:border-color 0.2s;';
   const preview = document.createElement('img');
   preview.src = img.src;
   preview.style.cssText = 'width:60px;height:60px;object-fit:contain;display:block;margin:0 auto 4px;';
   const lbl = document.createElement('div');
-  lbl.style.cssText = 'font-size:10px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px;';
+  lbl.style.cssText =
+    'font-size:10px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:80px;';
   lbl.textContent = img.label;
   card.appendChild(preview);
   card.appendChild(lbl);
   if (currentSrc === img.src) card.style.borderColor = 'var(--accent)';
   card.addEventListener('click', onClick);
-  card.addEventListener('mouseenter', () => { card.style.borderColor = 'var(--accent)'; });
-  card.addEventListener('mouseleave', () => { if (currentSrc !== img.src) card.style.borderColor = 'var(--border-color)'; });
+  card.addEventListener('mouseenter', () => {
+    card.style.borderColor = 'var(--accent)';
+  });
+  card.addEventListener('mouseleave', () => {
+    if (currentSrc !== img.src) card.style.borderColor = 'var(--border-color)';
+  });
   return card;
 }
 
 function makeAddCard(onPick: () => void): HTMLElement {
   const card = document.createElement('div');
-  card.style.cssText = 'border:2px dashed var(--border-color);border-radius:8px;padding:6px;cursor:pointer;text-align:center;transition:border-color 0.2s;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80px;';
-  card.innerHTML = '<div style="font-size:24px;color:var(--text-secondary);">+</div><div style="font-size:10px;color:var(--text-secondary);">이미지 추가</div>';
+  card.style.cssText =
+    'border:2px dashed var(--border-color);border-radius:8px;padding:6px;cursor:pointer;text-align:center;transition:border-color 0.2s;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80px;';
+  card.innerHTML =
+    '<div style="font-size:24px;color:var(--text-secondary);">+</div><div style="font-size:10px;color:var(--text-secondary);">이미지 추가</div>';
   card.addEventListener('click', onPick);
-  card.addEventListener('mouseenter', () => { card.style.borderColor = 'var(--accent)'; });
-  card.addEventListener('mouseleave', () => { card.style.borderColor = 'var(--border-color)'; });
+  card.addEventListener('mouseenter', () => {
+    card.style.borderColor = 'var(--accent)';
+  });
+  card.addEventListener('mouseleave', () => {
+    card.style.borderColor = 'var(--border-color)';
+  });
   return card;
 }
 
 /**
  * Show the avatar picker modal for idle / working images.
  */
-export function showAvatarPicker(deps: AvatarUIDeps): void {
+function showAvatarPicker(deps: AvatarUIDeps): void {
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:99999;display:flex;align-items:center;justify-content:center;';
+  overlay.style.cssText =
+    'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:99999;display:flex;align-items:center;justify-content:center;';
   const popup = document.createElement('div');
   popup.className = 'settings-popup';
   popup.style.cssText += 'width:520px;max-width:90vw;';
@@ -215,23 +200,29 @@ export function showAvatarPicker(deps: AvatarUIDeps): void {
 
   const idleGrid = document.createElement('div');
   idleGrid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;';
-  const idleSrc = savedIdle ? savedIdle.src : (tokiCurrentSrc || '');
+  const idleSrc = savedIdle ? savedIdle.src : tokiCurrentSrc || '';
   for (const img of PICKER_IMAGES) {
-    idleGrid.appendChild(makeCard(img, idleSrc, () => {
-      writeIdleAvatarState({ src: img.src });
-      if (!tokiActive) loadTokiImage(img.src);
-      overlay.remove();
-      deps.setStatus(`대기 이미지: ${img.label}`);
-    }));
+    idleGrid.appendChild(
+      makeCard(img, idleSrc, () => {
+        writeIdleAvatarState({ src: img.src });
+        if (!tokiActive) loadTokiImage(img.src);
+        overlay.remove();
+        deps.setStatus(`대기 이미지: ${img.label}`);
+      }),
+    );
   }
-  idleGrid.appendChild(makeAddCard(async () => {
-    const dataUri: string | undefined = await (window as unknown as { tokiAPI: { pickBgImage(): Promise<string | undefined> } }).tokiAPI.pickBgImage();
-    if (!dataUri) return;
-    writeIdleAvatarState({ src: dataUri });
-    if (!tokiActive) loadTokiImage(dataUri);
-    overlay.remove();
-    deps.setStatus('대기 이미지: 커스텀');
-  }));
+  idleGrid.appendChild(
+    makeAddCard(async () => {
+      const dataUri: string | undefined = await (
+        window as unknown as { tokiAPI: { pickBgImage(): Promise<string | undefined> } }
+      ).tokiAPI.pickBgImage();
+      if (!dataUri) return;
+      writeIdleAvatarState({ src: dataUri });
+      if (!tokiActive) loadTokiImage(dataUri);
+      overlay.remove();
+      deps.setStatus('대기 이미지: 커스텀');
+    }),
+  );
   body.appendChild(idleGrid);
 
   // === Section: 작업중 이미지 ===
@@ -244,28 +235,36 @@ export function showAvatarPicker(deps: AvatarUIDeps): void {
   workGrid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;';
   const workSrc = savedWork ? savedWork.src : '';
   for (const img of PICKER_IMAGES) {
-    workGrid.appendChild(makeCard(img, workSrc, () => {
-      writeWorkingAvatarState({ src: img.src });
-      if (tokiActive) loadTokiImage(img.src);
-      overlay.remove();
-      deps.setStatus(`작업중 이미지: ${img.label}`);
-    }));
+    workGrid.appendChild(
+      makeCard(img, workSrc, () => {
+        writeWorkingAvatarState({ src: img.src });
+        if (tokiActive) loadTokiImage(img.src);
+        overlay.remove();
+        deps.setStatus(`작업중 이미지: ${img.label}`);
+      }),
+    );
   }
-  workGrid.appendChild(makeAddCard(async () => {
-    const dataUri: string | undefined = await (window as unknown as { tokiAPI: { pickBgImage(): Promise<string | undefined> } }).tokiAPI.pickBgImage();
-    if (!dataUri) return;
-    writeWorkingAvatarState({ src: dataUri });
-    if (tokiActive) loadTokiImage(dataUri);
-    overlay.remove();
-    deps.setStatus('작업중 이미지: 커스텀');
-  }));
+  workGrid.appendChild(
+    makeAddCard(async () => {
+      const dataUri: string | undefined = await (
+        window as unknown as { tokiAPI: { pickBgImage(): Promise<string | undefined> } }
+      ).tokiAPI.pickBgImage();
+      if (!dataUri) return;
+      writeWorkingAvatarState({ src: dataUri });
+      if (tokiActive) loadTokiImage(dataUri);
+      overlay.remove();
+      deps.setStatus('작업중 이미지: 커스텀');
+    }),
+  );
   body.appendChild(workGrid);
 
   popup.appendChild(header);
   popup.appendChild(body);
   overlay.appendChild(popup);
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', (e: MouseEvent) => { if (e.target === overlay) overlay.remove(); });
+  overlay.addEventListener('click', (e: MouseEvent) => {
+    if (e.target === overlay) overlay.remove();
+  });
 }
 
 /**

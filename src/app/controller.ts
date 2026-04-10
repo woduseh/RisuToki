@@ -39,7 +39,6 @@ import type { StoredLayoutState } from '../lib/app-settings';
 import { initTokiAvatar as initTokiAvatarUi, setTokiActive } from '../lib/avatar-ui';
 import { defineDarkMonacoTheme } from '../lib/dark-mode';
 import { showImageViewer as renderImageViewer } from '../lib/image-viewer';
-import { closeAllMenus } from '../lib/menu-bar';
 import { handleTerminalDataForBgm, isBgmEnabled, pauseBgm, setBgmEnabled, setBgmFilePath } from '../lib/bgm';
 import { ensureBlueArchiveMonacoTheme, loadMonacoRuntime } from '../lib/monaco-loader';
 import { createBufferedTerminalChatSession } from '../lib/chat-session';
@@ -75,14 +74,8 @@ import {
 } from '../lib/form-editor';
 import type { FormTabInfo } from '../lib/form-editor';
 import type { RisupFormTabInfo } from '../lib/risup-form-editor';
-import {
-  showConfirm,
-  resetConfirmAllowAll,
-  showCloseConfirm,
-  showPrompt,
-  showSessionRecoveryDialog,
-} from '../lib/dialog';
-import { showContextMenu, hideContextMenu } from '../lib/context-menu';
+import { showConfirm, showCloseConfirm, showPrompt, showSessionRecoveryDialog } from '../lib/dialog';
+import { showContextMenu } from '../lib/context-menu';
 import type { ContextMenuItem } from '../lib/context-menu';
 import { initPanelDragDrop as _initPanelDragDrop } from '../lib/panel-drag';
 import {
@@ -117,7 +110,6 @@ import type { FileActionDeps } from '../lib/file-actions';
 import { runStartupSessionRecovery } from './session-recovery-controller';
 import {
   stringifyStringArray,
-  addReferenceFile as _addReferenceFile,
   buildRefsSidebar as _buildRefsSidebar,
   openRefTabById as _openRefTabById,
 } from '../lib/sidebar-refs';
@@ -135,7 +127,6 @@ import {
   updateRpButtonStyle,
   updateBgmButtonStyle,
   initBgmUi,
-  initRpModeButton,
   toggleDarkMode as _toggleDarkMode,
   refreshDarkModeUi as _refreshDarkModeUi,
   startAutosave,
@@ -826,12 +817,6 @@ function buildRefsSidebar(): void {
   const refsEl = document.getElementById('sidebar-refs');
   if (!refsEl) return;
   _buildRefsSidebar(refsEl, getRefsSidebarDeps() as unknown as Parameters<typeof _buildRefsSidebar>[1]);
-}
-
-function addReferenceFile(): void {
-  const refsEl = document.getElementById('sidebar-refs');
-  if (!refsEl) return;
-  _addReferenceFile(refsEl, getRefsSidebarDeps() as unknown as Parameters<typeof _addReferenceFile>[1]);
 }
 
 function openRefTabById(tabId: string): void {
@@ -2874,7 +2859,7 @@ export async function initMainRenderer(): Promise<void> {
         } else if (prefix === 'css_s') {
           tabMgr.refreshIndexedTabs(prefix, buildCssSectionTabState);
         } else if (prefix === 'risup_') {
-          tabMgr.refreshIndexedTabs(prefix, (index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
+          tabMgr.refreshIndexedTabs(prefix, (_index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
         }
       }
       if (field === tabMgr.activeTabId && editorInstance) {

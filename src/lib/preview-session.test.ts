@@ -324,6 +324,42 @@ describe('preview session', () => {
     expect(stateSnapshots.length).toBeGreaterThan(0);
   });
 
+  it('renders richer markdown and structural html inside the message container without reparenting them out', async () => {
+    const engine = createEngine();
+    const chatFrame = createChatFrame();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        description: '',
+        firstMessage:
+          '# 제목\n- 첫째\n- 둘째\n[문서](https://example.com)\n<details open><summary>더보기</summary><p><u>강조</u> 내용</p></details>',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [],
+        lua: '-- lua script',
+      },
+      chatFrame,
+      windowTarget: createWindowTarget(),
+    });
+
+    await session.initialize();
+
+    const chatText = chatFrame.contentDocument.querySelector('.chattext');
+    const heading = chatText?.querySelector('h1');
+    const listItems = [...(chatText?.querySelectorAll('ul li') ?? [])].map((item) => item.textContent);
+    const link = chatText?.querySelector('a[href="https://example.com"]');
+    const details = chatText?.querySelector('details');
+
+    expect(heading?.textContent).toBe('제목');
+    expect(listItems).toEqual(['첫째', '둘째']);
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(details?.hasAttribute('open')).toBe(true);
+    expect(details?.querySelector('summary')?.textContent).toBe('더보기');
+    expect(details?.querySelector('u')?.textContent).toBe('강조');
+  });
+
   it('hydrates personality and scenario into the engine during initialization', async () => {
     const engine = createEngine();
     const chatFrame = createChatFrame();

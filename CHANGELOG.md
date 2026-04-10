@@ -9,6 +9,29 @@
 
 ---
 
+## [0.59.1] - 2026-04-11
+
+### Changed
+
+- Removed unused imports, helpers, exports, and unused callback parameters across the controller, preview, avatar, asset runtime, BGM, popout, agents-md-manager, and risup field modules to shrink dead surface area without changing behavior.
+- Dropped dead `sync-server` references from the lint/typecheck metadata and pruned the module map so project docs match the remaining source tree.
+
+### Removed
+
+- Deleted fully unused modules and artifacts: `src/lib/logger.ts`, `src/lib/sync-server.ts`, stale `src/lib/sync-server.js`, `src/lib/copilot-agent-profile-manager.js`, and `src/lib/pluni-persona.js`.
+
+## [0.59.0] - 2026-04-11
+
+### Added
+
+- Added richer preview markdown rendering for headings, ordered/unordered lists, links, strikethrough, and horizontal rules.
+- Added safe structural HTML support in preview messages for common content tags such as headings, lists, details/summary, figure/figcaption, section/article, description lists, underline, subscript, and superscript.
+
+### Changed
+
+- Switched preview message content wrappers from inline `span` containers to block-safe `div` containers so structural HTML is no longer reparented or flattened by invalid markup.
+- Expanded preview styling/tests so richer HTML blocks render consistently in both inline and pop-out preview flows while keeping the existing sandbox/CSP protections.
+
 ## [0.58.0] - 2026-04-11
 
 ### Added

@@ -151,8 +151,6 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/preload-api.ts` — typed renderer API surface
 - `src/lib/ipc-confirm.ts` — confirmation IPC helpers
 - `src/lib/action-registry.ts` — command registry
-- `src/lib/sync-server.ts` — sync server helpers
 - `src/lib/skill-link-sync.ts` — local skill-link synchronization
 - `src/lib/drag-drop-import.ts` — drag/drop import helpers
 - `src/lib/script-loader.ts` — script loading helpers
-- `src/lib/logger.ts` — shared logging utilities

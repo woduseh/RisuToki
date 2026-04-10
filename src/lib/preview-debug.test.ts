@@ -40,7 +40,7 @@ describe('preview debug helpers', () => {
 
     expect(variablesHtml).toContain('affinity');
     expect(variablesHtml).toContain('12');
-    expect(variablesHtml).toContain('{"affinity":0}');
+    expect(variablesHtml).toContain('{&quot;affinity&quot;:0}');
     expect(lorebookHtml).toContain('인사');
     expect(lorebookHtml).toContain('🟢 키 매칭');
   });
