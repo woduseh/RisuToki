@@ -5,6 +5,7 @@ import { getFolderRef, normalizeFolderRef, resolveLorebookFolderRef } from './lo
 import { getRisupFieldGroup } from './risup-fields';
 import { coerceRisupInputValue, validateRisupDraftFields, type RisupFormTabInfo } from './risup-form-editor';
 import { createFormatingOrderEditor, createPromptTemplateEditor } from './risup-prompt-editor';
+import { createCustomPromptTemplateToggleEditor } from './risup-toggle-editor';
 import {
   coerceTriggerFormInputValue,
   getTriggerFormValidationMessage,
@@ -666,6 +667,26 @@ export function showRisupEditor(tabInfo: RisupFormTabInfo): void {
       editorContainer.className = 'form-embedded-editor formating-order-editor-container';
       body.appendChild(editorContainer);
       createFormatingOrderEditor(
+        editorContainer,
+        typeof data[field.id] === 'string' ? (data[field.id] as string) : '',
+        readonly
+          ? null
+          : (value) => {
+              applyFieldChange(field.id, value);
+            },
+      );
+      continue;
+    }
+
+    if (field.editor === 'toggle-template') {
+      const label = document.createElement('div');
+      label.className = 'form-section-label';
+      label.textContent = field.label;
+      body.appendChild(label);
+      const editorContainer = document.createElement('div');
+      editorContainer.className = 'form-embedded-editor toggle-template-editor-container';
+      body.appendChild(editorContainer);
+      createCustomPromptTemplateToggleEditor(
         editorContainer,
         typeof data[field.id] === 'string' ? (data[field.id] as string) : '',
         readonly

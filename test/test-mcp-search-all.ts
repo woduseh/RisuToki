@@ -234,6 +234,7 @@ async function startTestApiServer(currentData: SearchFixture) {
     },
     stringifyTriggerScripts: (scripts: unknown) => JSON.stringify(scripts),
     getSkillsDir: () => path.join(__dirname, '..', 'skills'),
+    getUserDataPath: () => path.join(os.tmpdir(), 'risutoki-mcp-search-all-tests'),
   });
 
   const port = await portPromise;
@@ -348,6 +349,19 @@ function assertSurfaceSummary(
       tools.tools.some((tool) => tool.name === 'open_file'),
       'open_file should be registered',
     );
+    const replaceInField = tools.tools.find((tool) => tool.name === 'replace_in_field');
+    assert.ok(replaceInField, 'replace_in_field should be registered');
+    assert.equal(replaceInField._meta?.['risutoki/requiresConfirmation'], true);
+    assert.equal(replaceInField._meta?.['risutoki/supportsDryRun'], true);
+
+    const openFileTool = tools.tools.find((tool) => tool.name === 'open_file');
+    assert.ok(openFileTool, 'open_file should be registered');
+    assert.equal(openFileTool._meta?.['risutoki/requiresConfirmation'], false);
+    assert.equal(openFileTool._meta?.['risutoki/supportsDryRun'], false);
+
+    const listFields = tools.tools.find((tool) => tool.name === 'list_fields');
+    assert.ok(listFields, 'list_fields should be registered');
+    assert.equal(listFields._meta, undefined);
 
     const fieldSearch = await client.callTool({
       name: 'search_in_field',

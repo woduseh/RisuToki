@@ -48,20 +48,5 @@ Thumbs.db
 .gemini/*
 !.gemini/skills
 
-# Bot data
-bot/
-
-# Prompt data
-prompts/
-
-# Preset data
-presets/
-
-# Module data
-modules/
-
 # RisuAI Resources
 risu/
-
-# Docs
-docs/

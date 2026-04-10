@@ -27,6 +27,9 @@ If this file and code diverge, the TypeScript source wins.
 - Global `Unauthorized` and `No file open` guards use the same structured `mcpError()` contract.
 - `validate_cbs` is the intentional success-envelope exception because it keeps its existing structured `summary` object.
 - Agents should treat larger `artifacts.byte_size` values as a cue to keep follow-up reads narrow: search first, then read ranges/items/sections instead of broad dumps.
+- High-traffic tools may return narrower per-tool `next_actions` than the family default; trust the response metadata first, then fall back to the family map when no override is present.
+- `tools/list` exposes additive per-tool `_meta` for mutation-capable tools: `risutoki/requiresConfirmation` and `risutoki/supportsDryRun`. Use these to prefer preview-first routes when available and to anticipate approval pauses before mutating.
+- Indexed mutation tools now accept additive stale-index guards across the structured families: carry the latest `comment` into `expected_comment` for lorebook/regex/trigger writes, the latest `preview` into `expected_preview` or `expected_previews` for greeting writes/deletes, and the latest `type` / `preview` into `expected_type` / `expected_preview` for risup prompt-item writes. Mismatches fail with `409` plus family-specific `details.expected_*` / `details.actual_*` fields instead of silently touching the wrong entry.
 
 ## Family map
 
@@ -57,11 +60,11 @@ If this file and code diverge, the TypeScript source wins.
 
 ### `session`
 
-- **Use when:** inspecting the current document, dirty/autosave state, recovery status, and snapshot totals before resuming work or making risky edits
+- **Use when:** inspecting the current document, dirty/autosave state, recovery status, snapshot totals, and compact structured-surface counts before resuming work or making risky edits
 - **Tools:** `session_status`
 - **Hints:** RO, idempotent
 - **Next actions:** `session_status`, `open_file`, `list_snapshots`
-- **Boundary:** this family reports editor/runtime state rather than document content and remains available even when no file is open
+- **Boundary:** this family reports editor/runtime state rather than document content and remains available even when no file is open; use the returned `surfaceSummary` to decide whether follow-up `list_*` reads are needed
 
 ### `probe`
 
@@ -79,6 +82,8 @@ If this file and code diverge, the TypeScript source wins.
 - **Next actions:** `list_lorebook`, `read_lorebook`, `write_lorebook`, `validate_lorebook_keys`
 - **Boundary:** use `reference` for read-only comparison against reference files and `lorebook-io` for filesystem import/export
 - **No-op coverage:** no-match, anchor-miss, zero-active batch replace, and batch-insert item error paths use `mcpNoOp()`
+- **Guard coverage:** lorebook indexed mutation tools support optional `expected_comment` stale-index protection; `batch_delete_lorebook` uses aligned `expected_comments`, and `replace_in_lorebook_batch` also supports `dry_run`
+- **Batch result shape:** lorebook batch mutation success routes include per-item `results[]` alongside legacy fields such as `entries` and `count` so agents can verify outcomes without an immediate re-read
 
 ### `lorebook-io`
 
@@ -91,27 +96,32 @@ If this file and code diverge, the TypeScript source wins.
 ### `regex`
 
 - **Use when:** reading or editing regex entries on the active document
-- **Tools:** `list_regex`, `read_regex`, `write_regex`, `write_regex_batch`, `add_regex`, `add_regex_batch`, `delete_regex`, `replace_in_regex`, `insert_in_regex`
+- **Tools:** `list_regex`, `read_regex`, `read_regex_batch`, `write_regex`, `write_regex_batch`, `add_regex`, `add_regex_batch`, `delete_regex`, `replace_in_regex`, `insert_in_regex`
 - **Hints:** reads are RO/idempotent; writes/adds mutate; deletes are destructive
 - **Next actions:** `list_regex`, `read_regex`, `write_regex`
 - **Boundary:** use `reference` for read-only comparison against reference files; use `field` only for generic top-level card fields
 - **No-op coverage:** no-match replace and anchor-miss insert paths use `mcpNoOp()`
+- **Guard coverage:** regex indexed mutation tools support optional `expected_comment` stale-index protection
+- **Batch result shape:** `write_regex_batch` success payloads include per-item `results[]` alongside legacy `entries`
 
 ### `greeting`
 
 - **Use when:** managing alternate or grouped greeting arrays
-- **Tools:** `list_greetings`, `read_greeting`, `write_greeting`, `add_greeting`, `delete_greeting`, `batch_delete_greeting`, `batch_write_greeting`, `reorder_greetings`
+- **Tools:** `list_greetings`, `read_greeting`, `read_greeting_batch`, `write_greeting`, `add_greeting`, `delete_greeting`, `batch_delete_greeting`, `batch_write_greeting`, `reorder_greetings`
 - **Hints:** reads are RO/idempotent; writes/adds/reorders mutate; deletes are destructive
 - **Next actions:** `list_greetings`, `read_greeting`, `write_greeting`
 - **Boundary:** do not treat greeting arrays as generic fields; this family exists to avoid dumping and rewriting raw arrays
+- **Guard coverage:** greeting indexed mutation tools support preview-based guards via `expected_preview`; `batch_delete_greeting` uses aligned `expected_previews`
+- **Batch result shape:** `batch_write_greeting` and `batch_delete_greeting` success payloads include per-item `results[]`
 
 ### `trigger`
 
-- **Use when:** reading or editing trigger scripts individually
-- **Tools:** `list_triggers`, `read_trigger`, `write_trigger`, `add_trigger`, `delete_trigger`
+- **Use when:** reading or editing trigger scripts individually or in small batches
+- **Tools:** `list_triggers`, `read_trigger`, `read_trigger_batch`, `write_trigger`, `add_trigger`, `delete_trigger`
 - **Hints:** reads are RO/idempotent; writes/adds mutate; deletes are destructive
 - **Next actions:** `list_triggers`, `read_trigger`, `write_trigger`
 - **Boundary:** use this family instead of raw `triggerScripts` field reads
+- **Guard coverage:** trigger indexed mutation tools support optional `expected_comment` stale-index protection
 
 ### `lua`
 
@@ -134,10 +144,10 @@ If this file and code diverge, the TypeScript source wins.
 ### `reference`
 
 - **Use when:** reading loaded reference files without mutating them, including reference-only sessions with no active main document
-- **Tools:** `list_references`, `read_reference_field`, `read_reference_field_batch`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_greetings`, `read_reference_greeting`, `list_reference_triggers`, `read_reference_trigger`, `list_reference_lorebook`, `read_reference_lorebook`, `read_reference_lorebook_batch`, `list_reference_regex`, `read_reference_regex`, `list_reference_lua`, `read_reference_lua`, `read_reference_lua_batch`, `list_reference_css`, `read_reference_css`, `read_reference_css_batch`, `list_reference_risup_prompt_items`, `read_reference_risup_prompt_item`, `read_reference_risup_formating_order`
+- **Tools:** `list_references`, `read_reference_field`, `read_reference_field_batch`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_greetings`, `read_reference_greeting`, `read_reference_greeting_batch`, `list_reference_triggers`, `read_reference_trigger`, `read_reference_trigger_batch`, `list_reference_lorebook`, `read_reference_lorebook`, `read_reference_lorebook_batch`, `list_reference_regex`, `read_reference_regex`, `read_reference_regex_batch`, `list_reference_lua`, `read_reference_lua`, `read_reference_lua_batch`, `list_reference_css`, `read_reference_css`, `read_reference_css_batch`, `list_reference_risup_prompt_items`, `read_reference_risup_prompt_item`, `read_reference_risup_prompt_item_batch`, `read_reference_risup_formating_order`
 - **Hints:** RO, idempotent
 - **Next actions:** `list_references`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_greetings`, `list_reference_triggers`, `list_reference_lorebook`, `list_reference_risup_prompt_items`
-- **Boundary:** this family is read-only by design; start with `list_references` to discover loaded `.charx` / `.risum` / `.risup` references, use search/range readers before dumping large text fields, then switch to live document families only after deciding to copy or adapt content
+- **Boundary:** this family is read-only by design; start with `list_references` to discover loaded `.charx` / `.risum` / `.risup` references, use search/range readers before dumping large text fields, and switch to `read_reference_*_batch` instead of looping single reads when comparing several sibling items
 
 ### `charx-asset`
 
@@ -165,11 +175,13 @@ If this file and code diverge, the TypeScript source wins.
 
 ### `risup-prompt`
 
-- **Use when:** reading or editing structured `.risup` prompt items and formatting order
-- **Tools:** `list_risup_prompt_items`, `read_risup_prompt_item`, `write_risup_prompt_item`, `add_risup_prompt_item`, `delete_risup_prompt_item`, `reorder_risup_prompt_items`, `read_risup_formating_order`, `write_risup_formating_order`
-- **Hints:** list/read are RO/idempotent; writes/reorders mutate; delete is destructive
-- **Next actions:** `list_risup_prompt_items`, `read_risup_prompt_item`, `read_risup_formating_order`
+- **Use when:** reading or editing structured `.risup` prompt items, formatting order, prompt-vs-reference comparison, and persistent reusable prompt snippets
+- **Tools:** `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_prompt_item`, `read_risup_prompt_item_batch`, `write_risup_prompt_item`, `write_risup_prompt_item_batch`, `add_risup_prompt_item`, `add_risup_prompt_item_batch`, `delete_risup_prompt_item`, `reorder_risup_prompt_items`, `read_risup_formating_order`, `write_risup_formating_order`, `diff_risup_prompt`, `export_risup_prompt_to_text`, `copy_risup_prompt_items_as_text`, `import_risup_prompt_from_text`, `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `save_risup_prompt_snippet`, `insert_risup_prompt_snippet`, `delete_risup_prompt_snippet`
+- **Hints:** list/search/read/diff/export are RO/idempotent; persistent snippet list/read are open-world reads; writes/adds/reorders/import/save/insert mutate; prompt-item delete and snippet delete are destructive
+- **Next actions:** `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_formating_order`, `diff_risup_prompt`, `export_risup_prompt_to_text`, `import_risup_prompt_from_text`, `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `save_risup_prompt_snippet`, `insert_risup_prompt_snippet`
 - **Boundary:** prefer this structured surface over raw `promptTemplate` / `formatingOrder` field writes whenever possible
+- **Guard coverage:** indexed prompt-item writes support optional `expected_type` / `expected_preview` stale-index guards
+- **Batch result shape:** prompt-item batch add/write success payloads include per-item `results[]`
 
 ### `skill`
 

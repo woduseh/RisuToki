@@ -13,8 +13,12 @@ import {
 } from './lorebook-folders';
 import { SEARCHABLE_TEXT_FIELDS, searchAllTextSurfaces, searchTextBlock } from './mcp-search';
 import {
+  duplicatePromptItem,
   parsePromptTemplate,
+  parsePromptTemplateFromText,
   serializePromptTemplate,
+  serializePromptTemplateSubsetToText,
+  serializePromptTemplateToText,
   parseFormatingOrder,
   collectFormatingOrderWarnings,
   validateLocalStopStringsText,
@@ -23,6 +27,16 @@ import {
   validateFormatingOrderText,
   type PromptItemModel,
 } from './risup-prompt-model';
+import { diffRisupPromptData } from './risup-prompt-compare';
+import {
+  canonicalizeRisupPromptSnippetText,
+  deleteRisupPromptSnippet,
+  getRisupPromptSnippetLibraryPath,
+  listRisupPromptSnippets,
+  readRisupPromptSnippet,
+  saveRisupPromptSnippet,
+  type RisupPromptSnippet,
+} from './risup-prompt-snippet-store';
 import { mcpSuccess, errorRecoveryMeta, type McpErrorInfo, type McpSuccessOptions } from './mcp-response-envelope';
 import { normalizeLF, extToMime, cloneJson } from './shared-utils';
 import { REF_SCALAR_FIELDS, REF_ALLOWED_READ_FIELDS, getGreetingFieldName, getRefFileType } from './reference-store';
@@ -141,6 +155,9 @@ export interface McpApiDeps {
 
   // skills directory
   getSkillsDir: () => string;
+
+  // user data directory for sidecar state
+  getUserDataPath: () => string;
 
   // session metadata
   getSessionStatus?: () => Promise<McpSessionStatus> | McpSessionStatus;
@@ -306,6 +323,37 @@ function promptItemPreview(item: PromptItemModel): string {
   }
 }
 
+function collectRisupFormatingOrderWarningsForPrompt(
+  currentData: Record<string, unknown>,
+  promptModel: ReturnType<typeof parsePromptTemplate>,
+): string[] {
+  if (promptModel.state === 'invalid') return [];
+  const rawOrder = typeof currentData.formatingOrder === 'string' ? currentData.formatingOrder : '';
+  const orderModel = parseFormatingOrder(rawOrder);
+  if (orderModel.state === 'invalid') return [];
+  return collectFormatingOrderWarnings(promptModel, orderModel);
+}
+
+function getRisupPromptSnippetLibraryFilePath(deps: McpApiDeps): string {
+  return getRisupPromptSnippetLibraryPath(deps.getUserDataPath());
+}
+
+function buildRisupPromptSnippetSummary(snippet: RisupPromptSnippet): {
+  id: string;
+  name: string;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+} {
+  return {
+    id: snippet.id,
+    name: snippet.name,
+    itemCount: snippet.itemCount,
+    createdAt: snippet.createdAt,
+    updatedAt: snippet.updatedAt,
+  };
+}
+
 /**
  * Validate a raw item object as a supported prompt item.
  * Returns the parsed model on success, or an error string on failure.
@@ -322,6 +370,73 @@ function validatePromptItemInput(item: unknown): { model: PromptItemModel } | { 
     };
   }
   return { model: parsed };
+}
+
+const MAX_RISUP_PROMPT_BATCH = 50;
+
+function hasExplicitPromptItemId(item: unknown): boolean {
+  return (
+    !!item &&
+    typeof item === 'object' &&
+    !Array.isArray(item) &&
+    typeof (item as Record<string, unknown>).id === 'string' &&
+    !!(item as Record<string, unknown>).id
+  );
+}
+
+function getPromptItemSearchFields(item: PromptItemModel): Array<{ field: string; value: string }> {
+  const fields: Array<{ field: string; value: string }> = [];
+  const push = (field: string, value: string | undefined): void => {
+    if (typeof value === 'string' && value.length > 0) {
+      fields.push({ field, value });
+    }
+  };
+
+  if (!item.supported) {
+    push('raw', JSON.stringify(item.rawValue));
+    return fields;
+  }
+
+  switch (item.type) {
+    case 'plain':
+    case 'jailbreak':
+    case 'cot':
+    case 'chatML':
+      push('text', item.text);
+      push('name', item.name);
+      break;
+    case 'persona':
+    case 'description':
+    case 'lorebook':
+    case 'postEverything':
+    case 'memory':
+      push('innerFormat', item.innerFormat);
+      push('name', item.name);
+      break;
+    case 'authornote':
+      push('defaultText', item.defaultText);
+      push('innerFormat', item.innerFormat);
+      push('name', item.name);
+      break;
+    case 'chat':
+      push('name', item.name);
+      break;
+    case 'cache':
+      push('name', item.name);
+      break;
+  }
+
+  return fields;
+}
+
+function findPromptItemMatchedFields(item: PromptItemModel, query: string, caseSensitive: boolean): string[] {
+  const needle = caseSensitive ? query : query.toLowerCase();
+  return getPromptItemSearchFields(item)
+    .filter(({ value }) => {
+      const haystack = caseSensitive ? value : value.toLowerCase();
+      return haystack.includes(needle);
+    })
+    .map(({ field }) => field);
 }
 
 const REFERENCE_TEXT_FIELDS = new Set<string>([...SEARCHABLE_TEXT_FIELDS, 'promptTemplate', 'formatingOrder']);
@@ -522,6 +637,188 @@ function pickAllowedFields(source: Record<string, unknown>, allowed: Set<string>
   return result;
 }
 
+function getLorebookEntryComment(entry: Record<string, unknown> | undefined): string {
+  return typeof entry?.comment === 'string' ? entry.comment : '';
+}
+
+function getLorebookEntryLabel(entry: Record<string, unknown> | undefined, index: number): string {
+  const comment = getLorebookEntryComment(entry);
+  return comment || `entry_${index}`;
+}
+
+function ensureExpectedStringMatch(
+  res: http.ServerResponse,
+  index: number,
+  actualValue: string,
+  expectedValue: unknown,
+  config: {
+    parameterName: string;
+    actualKey: string;
+    resourceLabel: string;
+    identityLabel: string;
+    action: string;
+    target: string;
+    suggestion: string;
+    onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void;
+  },
+): boolean {
+  if (expectedValue === undefined) return true;
+  if (typeof expectedValue !== 'string') {
+    config.onError(res, 400, {
+      action: config.action,
+      message: `${config.parameterName} must be a string when provided`,
+      suggestion: config.suggestion,
+      target: config.target,
+    });
+    return false;
+  }
+  if (actualValue === expectedValue) return true;
+  config.onError(res, 409, {
+    action: config.action,
+    message: `Stale ${config.resourceLabel} index ${index}: expected ${config.identityLabel} "${expectedValue}" but found "${actualValue}"`,
+    suggestion: config.suggestion,
+    target: config.target,
+    details: { [config.parameterName]: expectedValue, [config.actualKey]: actualValue },
+  });
+  return false;
+}
+
+function ensureLorebookExpectedComment(
+  res: http.ServerResponse,
+  index: number,
+  entry: Record<string, unknown> | undefined,
+  expectedComment: unknown,
+  action: string,
+  target: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): boolean {
+  return ensureExpectedStringMatch(res, index, getLorebookEntryComment(entry), expectedComment, {
+    parameterName: 'expected_comment',
+    actualKey: 'actual_comment',
+    resourceLabel: 'lorebook',
+    identityLabel: 'comment',
+    action,
+    target,
+    suggestion: 'list_lorebook로 최신 index/comment를 다시 확인한 뒤 다시 시도하세요.',
+    onError,
+  });
+}
+
+function getRegexEntryComment(entry: Record<string, unknown> | undefined): string {
+  return typeof entry?.comment === 'string' ? entry.comment : '';
+}
+
+function ensureRegexExpectedComment(
+  res: http.ServerResponse,
+  index: number,
+  entry: Record<string, unknown> | undefined,
+  expectedComment: unknown,
+  action: string,
+  target: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): boolean {
+  return ensureExpectedStringMatch(res, index, getRegexEntryComment(entry), expectedComment, {
+    parameterName: 'expected_comment',
+    actualKey: 'actual_comment',
+    resourceLabel: 'regex',
+    identityLabel: 'comment',
+    action,
+    target,
+    suggestion: 'list_regex로 최신 index/comment를 다시 확인한 뒤 다시 시도하세요.',
+    onError,
+  });
+}
+
+function getTriggerEntryComment(entry: Record<string, unknown> | undefined): string {
+  return typeof entry?.comment === 'string' ? entry.comment : '';
+}
+
+function ensureTriggerExpectedComment(
+  res: http.ServerResponse,
+  index: number,
+  entry: Record<string, unknown> | undefined,
+  expectedComment: unknown,
+  action: string,
+  target: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): boolean {
+  return ensureExpectedStringMatch(res, index, getTriggerEntryComment(entry), expectedComment, {
+    parameterName: 'expected_comment',
+    actualKey: 'actual_comment',
+    resourceLabel: 'trigger',
+    identityLabel: 'comment',
+    action,
+    target,
+    suggestion: 'list_triggers로 최신 index/comment를 다시 확인한 뒤 다시 시도하세요.',
+    onError,
+  });
+}
+
+function getGreetingPreview(content: string): string {
+  return content.slice(0, 100) + (content.length > 100 ? '…' : '');
+}
+
+function ensureGreetingExpectedPreview(
+  res: http.ServerResponse,
+  index: number,
+  content: string | undefined,
+  expectedPreview: unknown,
+  action: string,
+  target: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): boolean {
+  return ensureExpectedStringMatch(res, index, getGreetingPreview(content ?? ''), expectedPreview, {
+    parameterName: 'expected_preview',
+    actualKey: 'actual_preview',
+    resourceLabel: 'greeting',
+    identityLabel: 'preview',
+    action,
+    target,
+    suggestion: 'list_greetings로 최신 index/preview를 다시 확인한 뒤 다시 시도하세요.',
+    onError,
+  });
+}
+
+function getPromptItemType(item: PromptItemModel): string {
+  return item.type ?? 'unknown';
+}
+
+function ensureRisupPromptExpectedIdentity(
+  res: http.ServerResponse,
+  index: number,
+  item: PromptItemModel,
+  expectedType: unknown,
+  expectedPreview: unknown,
+  action: string,
+  target: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): boolean {
+  if (
+    !ensureExpectedStringMatch(res, index, getPromptItemType(item), expectedType, {
+      parameterName: 'expected_type',
+      actualKey: 'actual_type',
+      resourceLabel: 'risup prompt item',
+      identityLabel: 'type',
+      action,
+      target,
+      suggestion: 'list_risup_prompt_items로 최신 index/type/preview를 다시 확인한 뒤 다시 시도하세요.',
+      onError,
+    })
+  ) {
+    return false;
+  }
+  return ensureExpectedStringMatch(res, index, promptItemPreview(item), expectedPreview, {
+    parameterName: 'expected_preview',
+    actualKey: 'actual_preview',
+    resourceLabel: 'risup prompt item',
+    identityLabel: 'preview',
+    action,
+    target,
+    suggestion: 'list_risup_prompt_items로 최신 index/type/preview를 다시 확인한 뒤 다시 시도하세요.',
+    onError,
+  });
+}
+
 function normalizeLorebookEntryFolderIdentity(entry: Record<string, unknown>): void {
   if (entry.mode === 'folder') {
     const folderUuid = getFolderUuid(entry) || crypto.randomUUID();
@@ -668,6 +965,17 @@ function buildRegexListResponse(regexEntries: Record<string, unknown>[]): Record
     replaceSize: String(entry.replace || entry.out || '').length,
   }));
   return { count: entries.length, entries };
+}
+
+function normalizeRegexEntryForResponse(entry: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...entry };
+  if (!normalized.find && normalized.in) normalized.find = normalized.in;
+  if (!normalized.replace && normalized.out) normalized.replace = normalized.out;
+  if (normalized.find === undefined) normalized.find = '';
+  if (normalized.replace === undefined) normalized.replace = '';
+  delete normalized.in;
+  delete normalized.out;
+  return normalized;
 }
 
 function buildLuaListResponse(luaCode: string, parseLuaSections: (lua: string) => Section[]): Record<string, unknown> {
@@ -1168,8 +1476,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
       const isSessionStatusRoute = parts[0] === 'session' && parts[1] === 'status' && !parts[2] && req.method === 'GET';
       const isReferenceRoute = parts[0] === 'references' || parts[0] === 'reference';
+      const isRisupPromptSnippetRoute = parts[0] === 'risup' && parts[1] === 'prompt-snippets';
       const currentData = deps.getCurrentData();
-      if (!currentData && !isSessionStatusRoute && !isReferenceRoute) {
+      if (!currentData && !isSessionStatusRoute && !isReferenceRoute && !isRisupPromptSnippetRoute) {
         return mcpError(res, 400, {
           action: 'require current document',
           target: 'document:current',
@@ -2648,6 +2957,44 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               ? 'charx'
               : null);
         const loaded = !!currentData;
+        const surfaceSummary = loaded
+          ? (() => {
+              const lorebookCount = Array.isArray(currentData.lorebook) ? currentData.lorebook.length : 0;
+              const regexCount = Array.isArray(currentData.regex) ? currentData.regex.length : 0;
+              const alternateGreetingCount = Array.isArray(currentData.alternateGreetings)
+                ? currentData.alternateGreetings.length
+                : 0;
+              const groupGreetingCount = Array.isArray(currentData.groupOnlyGreetings)
+                ? currentData.groupOnlyGreetings.length
+                : 0;
+              const normalizedTriggers = deps.normalizeTriggerScripts(currentData.triggerScripts || []);
+              const triggerCount = Array.isArray(normalizedTriggers) ? normalizedTriggers.length : 0;
+              const luaCode = typeof currentData.lua === 'string' ? currentData.lua : '';
+              const cssCode = typeof currentData.css === 'string' ? currentData.css : '';
+              const luaSectionCount = luaCode.trim() ? luaCache.get(luaCode).length : 0;
+              const cssSectionCount = cssCode.trim() ? cssCache.get(cssCode).sections.length : 0;
+              let risupPromptItemCount: number | null = null;
+              let risupPromptState: 'empty' | 'invalid' | 'valid' | null = null;
+              if (documentFileType === 'risup') {
+                const promptModel = parsePromptTemplate(
+                  typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '',
+                );
+                risupPromptItemCount = promptModel.items.length;
+                risupPromptState = promptModel.state;
+              }
+              return {
+                lorebookCount,
+                regexCount,
+                alternateGreetingCount,
+                groupGreetingCount,
+                triggerCount,
+                luaSectionCount,
+                cssSectionCount,
+                risupPromptItemCount,
+                risupPromptState,
+              };
+            })()
+          : null;
 
         // Reference summary
         const refFiles = deps.getReferenceFiles();
@@ -2677,6 +3024,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               totalFields: snapshotSummary.length,
               totalSnapshots,
             },
+            surfaceSummary,
             references: {
               count: refsSummary.length,
               files: refsSummary,
@@ -2695,6 +3043,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               loaded,
               totalSnapshots,
               referenceCount: refsSummary.length,
+              hasSurfaceSummary: !!surfaceSummary,
             },
           },
         );
@@ -2976,6 +3325,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               '각 entries 항목에 수정할 필드 값을 담은 data 객체를 포함하세요. 예: { "index": 0, "data": { "content": "..." } }',
           });
         }
+        for (const entry of entries) {
+          if (
+            !ensureLorebookExpectedComment(
+              res,
+              entry.index,
+              lorebook[entry.index],
+              (entry as { expected_comment?: unknown }).expected_comment,
+              'batch write lorebook',
+              'lorebook:batch-write',
+              mcpError,
+            )
+          ) {
+            return;
+          }
+        }
         // Build summary for confirmation
         const summary = entries
           .map(
@@ -3231,7 +3595,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const source = currentData.lorebook[sourceIdx];
-        const sourceName = source.comment || `entry_${sourceIdx}`;
+        if (
+          !ensureLorebookExpectedComment(
+            res,
+            sourceIdx,
+            source,
+            body.expected_comment,
+            'clone lorebook entry',
+            `lorebook:clone:${sourceIdx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
+        const sourceName = getLorebookEntryLabel(source, sourceIdx);
 
         const allowed = await deps.askRendererConfirm(
           'MCP 복제 요청',
@@ -3299,7 +3676,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `lorebook/${idx}`, broadcastStatus);
         if (!body) return;
-        const entryName: string = currentData.lorebook[idx].comment || `entry_${idx}`;
+        if (
+          !ensureLorebookExpectedComment(
+            res,
+            idx,
+            currentData.lorebook[idx],
+            body.expected_comment,
+            'update lorebook entry',
+            `lorebook:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
+        const entryName: string = getLorebookEntryLabel(currentData.lorebook[idx], idx);
 
         const allowed = await deps.askRendererConfirm(
           'MCP 수정 요청',
@@ -3454,9 +3844,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
           return jsonResSuccess(
             res,
-            { success: true, added: results.length, entries: results },
+            { success: true, added: results.length, entries: results, results },
             {
-              toolName: 'add_lorebook',
+              toolName: 'add_lorebook_batch',
               summary: `Batch added ${results.length} lorebook entries`,
               artifacts: { added: results.length },
             },
@@ -3498,6 +3888,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         const lorebook = currentData.lorebook || [];
+        const expectedComments = body.expected_comments;
+        if (expectedComments !== undefined) {
+          if (!Array.isArray(expectedComments) || expectedComments.length !== indices.length) {
+            return mcpError(res, 400, {
+              action: 'batch delete lorebook entries',
+              target: 'lorebook:batch-delete',
+              message: 'expected_comments must be an array with the same length as indices',
+              suggestion: 'expected_comments를 indices와 같은 순서/길이의 comment 배열로 보내거나 생략하세요.',
+            });
+          }
+          if (expectedComments.some((comment) => typeof comment !== 'string')) {
+            return mcpError(res, 400, {
+              action: 'batch delete lorebook entries',
+              target: 'lorebook:batch-delete',
+              message: 'expected_comments entries must all be strings',
+              suggestion: 'expected_comments에는 문자열 comment만 포함하세요.',
+            });
+          }
+        }
         for (const idx of indices) {
           if (typeof idx !== 'number' || idx < 0 || idx >= lorebook.length || !lorebook[idx]) {
             return mcpError(res, 400, {
@@ -3508,8 +3917,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
         }
+        if (Array.isArray(expectedComments)) {
+          for (const [position, idx] of indices.entries()) {
+            if (
+              !ensureLorebookExpectedComment(
+                res,
+                idx,
+                lorebook[idx],
+                expectedComments[position],
+                'batch delete lorebook entries',
+                'lorebook:batch-delete',
+                mcpError,
+              )
+            ) {
+              return;
+            }
+          }
+        }
 
-        const entryNames = indices.map((idx) => `${idx}: ${lorebook[idx].comment || `entry_${idx}`}`);
+        const entryNames = indices.map((idx) => `${idx}: ${getLorebookEntryLabel(lorebook[idx], idx)}`);
         const allowed = await deps.askRendererConfirm(
           'MCP 일괄 삭제 요청',
           `AI 어시스턴트가 ${indices.length}개의 로어북 항목을 삭제하려 합니다:\n${entryNames.map((n) => `  - ${n}`).join('\n')}`,
@@ -3530,9 +3956,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
           return jsonResSuccess(
             res,
-            { success: true, deleted: deleted.length, entries: deleted },
+            { success: true, deleted: deleted.length, entries: deleted, results: deleted },
             {
-              toolName: 'delete_lorebook',
+              toolName: 'batch_delete_lorebook',
               summary: `Batch deleted ${deleted.length} lorebook entries`,
               artifacts: { deleted: deleted.length },
             },
@@ -3724,12 +4150,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'lorebook' && parts[1] === 'batch-replace' && req.method === 'POST') {
         const body = await readJsonBody(req, res, 'lorebook/batch-replace', broadcastStatus);
         if (!body) return;
+        const dryRun = !!(body.dry_run ?? body.dryRun);
         const replacements: Array<{
           index: number;
           find: string;
           replace?: string;
           regex?: boolean;
           flags?: string;
+          expected_comment?: string;
         }> = body.replacements;
         if (!Array.isArray(replacements) || replacements.length === 0) {
           return mcpError(res, 400, {
@@ -3766,6 +4194,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               message: `Missing "find" for index ${r.index}`,
               suggestion: '각 replacement 객체에 검색할 find 문자열을 포함하세요.',
             });
+          }
+          if (
+            !ensureLorebookExpectedComment(
+              res,
+              r.index,
+              lorebook[r.index],
+              r.expected_comment,
+              'batch replace lorebook',
+              'lorebook:batch-replace',
+              mcpError,
+            )
+          ) {
+            return;
           }
         }
         // Pre-compute matches for each replacement
@@ -3818,6 +4259,27 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           );
         }
         const summary = activeResults.map((r) => `  [${r.index}] "${r.comment}": ${r.matchCount}건`).join('\n');
+        if (dryRun) {
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              dryRun: true,
+              count: activeResults.length,
+              results: results.map((r) => ({
+                index: r.index,
+                comment: r.comment,
+                matchCount: r.matchCount,
+                skipped: r.skipped,
+              })),
+            },
+            {
+              toolName: 'replace_in_lorebook_batch',
+              summary: `Dry-run: matched ${activeResults.length} lorebook replacements`,
+              artifacts: { count: activeResults.length, dryRun: true },
+            },
+          );
+        }
         const allowed = await deps.askRendererConfirm(
           'MCP 일괄 치환 요청',
           `AI 어시스턴트가 로어북 ${activeResults.length}개 항목에서 치환하려 합니다.\n\n${summary.substring(0, 500)}${summary.length > 500 ? '\n...' : ''}`,
@@ -3844,7 +4306,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               })),
             },
             {
-              toolName: 'replace_across_all_lorebook',
+              toolName: 'replace_in_lorebook_batch',
               summary: `Batch replaced in ${activeResults.length} lorebook entries`,
               artifacts: { count: activeResults.length },
             },
@@ -3871,6 +4333,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           content: string;
           position?: string;
           anchor?: string;
+          expected_comment?: string;
         }> = body.insertions;
         if (!Array.isArray(insertions) || insertions.length === 0) {
           return mcpError(res, 400, {
@@ -3907,6 +4370,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               message: `Missing "content" for index ${ins.index}`,
               suggestion: '각 insertion 객체에 삽입할 content 문자열을 포함하세요.',
             });
+          }
+          if (
+            !ensureLorebookExpectedComment(
+              res,
+              ins.index,
+              lorebook[ins.index],
+              ins.expected_comment,
+              'batch insert lorebook',
+              'lorebook:batch-insert',
+              mcpError,
+            )
+          ) {
+            return;
           }
         }
         // Pre-compute new contents
@@ -3989,7 +4465,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               })),
             },
             {
-              toolName: 'write_lorebook',
+              toolName: 'insert_in_lorebook_batch',
               summary: `Batch inserted content into ${results.length} lorebook entries`,
               artifacts: { count: results.length },
             },
@@ -4020,6 +4496,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `lorebook/${idx}/replace`, broadcastStatus);
         if (!body) return;
+        if (
+          !ensureLorebookExpectedComment(
+            res,
+            idx,
+            currentData.lorebook[idx],
+            body.expected_comment,
+            'replace lorebook field',
+            `lorebook:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         if (!body.find) {
           return mcpError(res, 400, {
             action: 'replace lorebook content',
@@ -4038,7 +4527,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lorebook:${idx}`,
           });
         }
-        const entryName: string = currentData.lorebook[idx].comment || `entry_${idx}`;
+        const entryName: string = getLorebookEntryLabel(currentData.lorebook[idx], idx);
         const content: string = normalizeLF(currentData.lorebook[idx][targetField] || '');
         const findStr: string = normalizeLF(body.find);
         const replaceStr: string = body.replace !== undefined ? normalizeLF(body.replace) : '';
@@ -4131,6 +4620,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `lorebook/${idx}/block-replace`, broadcastStatus);
         if (!body) return;
+        if (
+          !ensureLorebookExpectedComment(
+            res,
+            idx,
+            currentData.lorebook[idx],
+            body.expected_comment,
+            'block replace lorebook',
+            `lorebook:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         if (!body.start_anchor || !body.end_anchor) {
           return mcpError(res, 400, {
             action: 'block replace lorebook',
@@ -4217,7 +4719,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           );
         }
 
-        const comment = entry.comment || `#${idx}`;
+        const comment = getLorebookEntryLabel(entry, idx);
         const allowed = await deps.askRendererConfirm(
           'MCP 로어북 블록 치환',
           `AI 어시스턴트가 로어북 [${comment}]의 ${targetField}에서 블록 치환하려 합니다.\n시작: ${startAnchor.substring(0, 50)}\n끝: ${endAnchor.substring(0, 50)}\n블록: ${oldBlock.length}→${newBlock.length}자`,
@@ -4276,6 +4778,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `lorebook/${idx}/insert`, broadcastStatus);
         if (!body) return;
+        if (
+          !ensureLorebookExpectedComment(
+            res,
+            idx,
+            currentData.lorebook[idx],
+            body.expected_comment,
+            'insert lorebook content',
+            `lorebook:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         if (body.content === undefined) {
           return mcpError(res, 400, {
             action: 'insert lorebook content',
@@ -4284,7 +4799,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lorebook:${idx}`,
           });
         }
-        const entryName: string = currentData.lorebook[idx].comment || `entry_${idx}`;
+        const entryName: string = getLorebookEntryLabel(currentData.lorebook[idx], idx);
         const oldContent: string = normalizeLF(currentData.lorebook[idx].content || '');
         let newContent: string;
         const position: string = body.position || 'end';
@@ -4375,7 +4890,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lorebook:${idx}`,
           });
         }
-        const entryName: string = currentData.lorebook[idx].comment || `entry_${idx}`;
+        const body = await readJsonBody(req, res, `lorebook/${idx}/delete`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureLorebookExpectedComment(
+            res,
+            idx,
+            currentData.lorebook[idx],
+            body.expected_comment,
+            'delete lorebook entry',
+            `lorebook:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
+        const entryName: string = getLorebookEntryLabel(currentData.lorebook[idx], idx);
 
         const allowed = await deps.askRendererConfirm(
           'MCP 삭제 요청',
@@ -4429,14 +4959,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `regex:${idx}`,
           });
         }
-        const entry = { ...currentData.regex[idx] };
-        // Normalize legacy in/out → find/replace before removing duplicates
-        if (!entry.find && entry.in) entry.find = entry.in;
-        if (!entry.replace && entry.out) entry.replace = entry.out;
-        if (entry.find === undefined) entry.find = '';
-        if (entry.replace === undefined) entry.replace = '';
-        delete entry.in;
-        delete entry.out;
+        const entry = normalizeRegexEntryForResponse(currentData.regex[idx]);
         return jsonResSuccess(
           res,
           { index: idx, entry },
@@ -4448,12 +4971,53 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /regex/batch — batch read multiple regex entries
+      // ----------------------------------------------------------------
+      if (parts[0] === 'regex' && parts[1] === 'batch' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'regex/batch', broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return mcpError(res, 400, {
+            action: 'batch read regex',
+            message: 'indices must be an array of numbers',
+            suggestion: 'indices를 숫자 index 배열로 전달하세요. 예: { "indices": [0, 1] }',
+            target: 'regex:batch',
+          });
+        }
+        const MAX_BATCH = 50;
+        if (indices.length > MAX_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch read regex',
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+            suggestion: `요청을 ${MAX_BATCH}개 이하의 index로 나누어 여러 번 호출하세요.`,
+            target: 'regex:batch',
+          });
+        }
+        const regexEntries = (currentData.regex as Record<string, unknown>[]) || [];
+        const entries = indices.map((idx: number) => {
+          if (typeof idx !== 'number' || idx < 0 || idx >= regexEntries.length) return null;
+          return { index: idx, entry: normalizeRegexEntryForResponse(regexEntries[idx]) };
+        });
+        const validCount = entries.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          { count: validCount, total: indices.length, entries },
+          {
+            toolName: 'read_regex_batch',
+            summary: `Batch read ${validCount}/${indices.length} regex entries`,
+            artifacts: { count: validCount, total: indices.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
       // POST /regex/:idx (modify existing)
       // ----------------------------------------------------------------
       if (
         parts[0] === 'regex' &&
         parts[1] &&
-        !['add', 'batch-add', 'batch-write'].includes(parts[1]) &&
+        !['add', 'batch', 'batch-add', 'batch-write'].includes(parts[1]) &&
         !parts[2] &&
         req.method === 'POST'
       ) {
@@ -4468,6 +5032,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `regex/${idx}`, broadcastStatus);
         if (!body) return;
+        if (
+          !ensureRegexExpectedComment(
+            res,
+            idx,
+            currentData.regex[idx],
+            body.expected_comment,
+            'update regex entry',
+            `regex:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const entryName: string = currentData.regex[idx].comment || `regex_${idx}`;
 
         const allowed = await deps.askRendererConfirm(
@@ -4663,6 +5240,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `regex:batch-write`,
             });
           }
+          if (
+            !ensureRegexExpectedComment(
+              res,
+              idx,
+              regexArr[idx],
+              (e as { expected_comment?: unknown }).expected_comment,
+              'batch write regex entries',
+              'regex:batch-write',
+              mcpError,
+            )
+          ) {
+            return;
+          }
         }
 
         const summaryLines = batchEntries.map((e) => {
@@ -4691,7 +5281,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
           return jsonResSuccess(
             res,
-            { success: true, modified: results.length, entries: results },
+            { success: true, modified: results.length, entries: results, results },
             {
               toolName: 'write_regex_batch',
               summary: `Batch modified ${results.length} regex entries`,
@@ -4724,6 +5314,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `regex/${idx}/replace`, broadcastStatus);
         if (!body) return;
+        if (
+          !ensureRegexExpectedComment(
+            res,
+            idx,
+            currentData.regex[idx],
+            body.expected_comment,
+            'replace regex field',
+            `regex:${idx}:replace`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const targetField: string = body.field;
         if (targetField !== 'find' && targetField !== 'replace') {
           return mcpError(res, 400, {
@@ -4841,6 +5444,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `regex/${idx}/insert`, broadcastStatus);
         if (!body) return;
+        if (
+          !ensureRegexExpectedComment(
+            res,
+            idx,
+            currentData.regex[idx],
+            body.expected_comment,
+            'insert regex field',
+            `regex:${idx}:insert`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const targetField: string = body.field;
         if (targetField !== 'find' && targetField !== 'replace') {
           return mcpError(res, 400, {
@@ -4960,6 +5576,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             suggestion: 'list_regex 또는 GET /regex 로 유효한 index를 다시 확인하세요.',
             target: `regex:${idx}`,
           });
+        }
+        const body = await readJsonBody(req, res, `regex/${idx}/delete`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureRegexExpectedComment(
+            res,
+            idx,
+            currentData.regex[idx],
+            body.expected_comment,
+            'delete regex entry',
+            `regex:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
         }
         const entryName: string = currentData.regex[idx].comment || `regex_${idx}`;
 
@@ -5094,6 +5725,57 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /greeting/:type/batch — batch read multiple greetings
+      // ----------------------------------------------------------------
+      if (parts[0] === 'greeting' && parts[1] && parts[2] === 'batch' && !parts[3] && req.method === 'POST') {
+        const greetingType = parts[1];
+        const fieldName = getGreetingFieldName(greetingType);
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: 'batch read greetings',
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}:batch`,
+          });
+        }
+        const body = await readJsonBody(req, res, `greeting/${greetingType}/batch`, broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return mcpError(res, 400, {
+            action: 'batch read greetings',
+            message: 'indices must be an array of numbers',
+            suggestion: '{ "indices": [0, 1] } 형식으로 전송하세요.',
+            target: `greeting:${greetingType}:batch`,
+          });
+        }
+        const MAX_BATCH = 50;
+        if (indices.length > MAX_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch read greetings',
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+            suggestion: `인덱스를 ${MAX_BATCH}개 이하로 나누어 전송하세요.`,
+            target: `greeting:${greetingType}:batch`,
+          });
+        }
+        const arr: string[] = currentData[fieldName] || [];
+        const items = indices.map((idx: number) => {
+          if (typeof idx !== 'number' || idx < 0 || idx >= arr.length) return null;
+          return { index: idx, content: arr[idx] };
+        });
+        const validCount = items.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          { type: greetingType, field: fieldName, count: validCount, total: indices.length, items },
+          {
+            toolName: 'read_greeting_batch',
+            summary: `Batch read ${validCount}/${indices.length} ${greetingType} greetings`,
+            artifacts: { count: validCount, total: indices.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
       // POST /greeting/:type/add — add greeting
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] === 'add' && req.method === 'POST') {
@@ -5166,7 +5848,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `greeting/${greetingType}/batch-write`, broadcastStatus);
         if (!body) return;
-        const writes: Array<{ index: number; content: string }> = body.writes;
+        const writes: Array<{ index: number; content: string; expected_preview?: unknown }> = body.writes;
         if (!Array.isArray(writes) || writes.length === 0) {
           return mcpError(res, 400, {
             action: 'batch write greetings',
@@ -5194,6 +5876,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `greeting:${greetingType}:batch-write`,
           });
         }
+        for (const write of writes) {
+          if (
+            !ensureGreetingExpectedPreview(
+              res,
+              write.index,
+              arr[write.index],
+              write.expected_preview,
+              'batch write greetings',
+              `greeting:${greetingType}:batch-write`,
+              mcpError,
+            )
+          ) {
+            return;
+          }
+        }
         const summary = writes
           .map((w) => `  [${w.index}]: ${w.content.substring(0, 60)}${w.content.length > 60 ? '...' : ''}`)
           .join('\n');
@@ -5202,6 +5899,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           `AI 어시스턴트가 ${greetingType} 인사말 ${writes.length}개를 일괄 수정하려 합니다.\n\n${summary.substring(0, 500)}${summary.length > 500 ? '\n...' : ''}`,
         );
         if (allowed) {
+          const results = writes.map((write) => ({ index: write.index, preview: getGreetingPreview(write.content) }));
           for (const w of writes) {
             arr[w.index] = w.content;
           }
@@ -5210,7 +5908,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
           return jsonResSuccess(
             res,
-            { success: true, type: greetingType, count: writes.length },
+            { success: true, type: greetingType, count: writes.length, results },
             {
               toolName: 'batch_write_greeting',
               summary: `Batch updated ${writes.length} ${greetingType} greetings`,
@@ -5298,7 +5996,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // POST /greeting/:type/:idx — write single greeting
       // ----------------------------------------------------------------
-      const greetingReservedPaths = ['add', 'batch-write', 'batch-delete', 'reorder'];
+      const greetingReservedPaths = ['add', 'batch', 'batch-write', 'batch-delete', 'reorder'];
       if (
         parts[0] === 'greeting' &&
         parts[1] &&
@@ -5336,6 +6034,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             suggestion: '{ "content": "수정할 인사말 텍스트" } 형식으로 전달하세요.',
             target: `greeting:${greetingType}:${idx}`,
           });
+        }
+        if (
+          !ensureGreetingExpectedPreview(
+            res,
+            idx,
+            arr[idx],
+            body.expected_preview,
+            'write greeting',
+            `greeting:${greetingType}:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
         }
         const label = greetingType === 'alternate' ? '추가 첫 메시지' : '그룹 전용 인사말';
 
@@ -5394,6 +6105,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `greeting:${greetingType}:${parts[2]}`,
           });
         }
+        const body = await readJsonBody(req, res, `greeting/${greetingType}/${idx}/delete`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureGreetingExpectedPreview(
+            res,
+            idx,
+            arr[idx],
+            body.expected_preview,
+            'delete greeting',
+            `greeting:${greetingType}:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const label = greetingType === 'alternate' ? '추가 첫 메시지' : '그룹 전용 인사말';
 
         const allowed = await deps.askRendererConfirm(
@@ -5409,7 +6135,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             res,
             { success: true, type: greetingType, deleted: idx },
             {
-              toolName: 'write_greeting',
+              toolName: 'delete_greeting',
               summary: `Deleted ${greetingType} greeting [${idx}]`,
             },
           );
@@ -5441,6 +6167,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const body = await readJsonBody(req, res, `greeting/${greetingType}/batch-delete`, broadcastStatus);
         if (!body) return;
         const indices: number[] = body.indices;
+        const expectedPreviews = body.expected_previews;
         if (!Array.isArray(indices) || indices.length === 0) {
           return mcpError(res, 400, {
             action: 'batch delete greetings',
@@ -5470,6 +6197,31 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
         }
+        if (expectedPreviews !== undefined) {
+          if (!Array.isArray(expectedPreviews) || expectedPreviews.length !== indices.length) {
+            return mcpError(res, 400, {
+              action: 'batch delete greetings',
+              message: 'expected_previews must be an array with the same length as indices',
+              suggestion: 'expected_previews에는 indices와 같은 순서/길이로 list_greetings의 preview 값을 넣으세요.',
+              target: `greeting:${greetingType}`,
+            });
+          }
+          for (const [position, idx] of indices.entries()) {
+            if (
+              !ensureGreetingExpectedPreview(
+                res,
+                idx,
+                arr[idx],
+                expectedPreviews[position],
+                'batch delete greetings',
+                `greeting:${greetingType}:batch-delete`,
+                mcpError,
+              )
+            ) {
+              return;
+            }
+          }
+        }
         const label = greetingType === 'alternate' ? '추가 첫 메시지' : '그룹 전용 인사말';
         const allowed = await deps.askRendererConfirm(
           'MCP 일괄 삭제 요청',
@@ -5477,6 +6229,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
 
         if (allowed) {
+          const results = uniqueIndices.map((idx) => ({ index: idx, preview: getGreetingPreview(arr[idx] || '') }));
           for (const idx of uniqueIndices) {
             currentData[fieldName].splice(idx, 1);
           }
@@ -5492,9 +6245,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               type: greetingType,
               deletedCount: uniqueIndices.length,
               deletedIndices: uniqueIndices,
+              results,
             },
             {
-              toolName: 'batch_write_greeting',
+              toolName: 'batch_delete_greeting',
               summary: `Batch deleted ${uniqueIndices.length} ${greetingType} greetings`,
               artifacts: { deletedCount: uniqueIndices.length },
             },
@@ -5557,6 +6311,47 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           {
             toolName: 'read_trigger',
             summary: `Read trigger script [${idx}] "${scripts[idx].comment || ''}"`,
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /trigger/batch — batch read trigger scripts
+      // ----------------------------------------------------------------
+      if (parts[0] === 'trigger' && parts[1] === 'batch' && !parts[2] && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'trigger/batch', broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return mcpError(res, 400, {
+            action: 'batch read triggers',
+            message: 'indices must be an array of numbers',
+            suggestion: '{ "indices": [0, 1] } 형식으로 전송하세요.',
+            target: 'trigger:batch',
+          });
+        }
+        const MAX_BATCH = 50;
+        if (indices.length > MAX_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch read triggers',
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+            suggestion: `인덱스를 ${MAX_BATCH}개 이하로 나누어 전송하세요.`,
+            target: 'trigger:batch',
+          });
+        }
+        const scripts = currentData.triggerScripts || [];
+        const triggers = indices.map((idx: number) => {
+          if (typeof idx !== 'number' || idx < 0 || idx >= scripts.length) return null;
+          return { index: idx, trigger: scripts[idx] };
+        });
+        const validCount = triggers.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          { count: validCount, total: indices.length, triggers },
+          {
+            toolName: 'read_trigger_batch',
+            summary: `Batch read ${validCount}/${indices.length} trigger scripts`,
+            artifacts: { count: validCount, total: indices.length },
           },
         );
       }
@@ -5626,6 +6421,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `trigger:${parts[1]}`,
           });
         }
+        const body = await readJsonBody(req, res, `trigger/${idx}/delete`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureTriggerExpectedComment(
+            res,
+            idx,
+            scripts[idx],
+            body.expected_comment,
+            'delete trigger',
+            `trigger:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const name = scripts[idx].comment || `trigger_${idx}`;
 
         const allowed = await deps.askRendererConfirm(
@@ -5647,7 +6457,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             res,
             { success: true, deleted: idx },
             {
-              toolName: 'write_trigger',
+              toolName: 'delete_trigger',
               summary: `Deleted trigger script [${idx}] "${name}"`,
             },
           );
@@ -5665,7 +6475,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // POST /trigger/:idx — write single trigger script
       // ----------------------------------------------------------------
-      if (parts[0] === 'trigger' && parts[1] && !parts[2] && req.method === 'POST') {
+      if (parts[0] === 'trigger' && parts[1] && parts[1] !== 'batch' && !parts[2] && req.method === 'POST') {
         const scripts = currentData.triggerScripts || [];
         const idx = parseInt(parts[1], 10);
         if (isNaN(idx) || idx < 0 || idx >= scripts.length) {
@@ -5678,6 +6488,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `trigger/${idx}`, broadcastStatus);
         if (!body) return;
+        if (
+          !ensureTriggerExpectedComment(
+            res,
+            idx,
+            scripts[idx],
+            body.expected_comment,
+            'write trigger',
+            `trigger:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const name = body.comment || scripts[idx].comment || `trigger_${idx}`;
 
         const allowed = await deps.askRendererConfirm(
@@ -6705,6 +7528,81 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /reference/:idx/greeting/:type/batch — batch read reference greetings
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'greeting' &&
+        parts[3] &&
+        parts[4] === 'batch' &&
+        !parts[5] &&
+        req.method === 'POST'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'batch read reference greetings',
+            target: `reference:${idx}:greeting:${parts[3]}:batch`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+        const greetingType = parts[3];
+        const fieldName = getGreetingFieldName(greetingType);
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: 'batch read reference greetings',
+            target: `reference:${idx}:greeting:${greetingType}:batch`,
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+          });
+        }
+        const body = await readJsonBody(req, res, `reference/${idx}/greeting/${greetingType}/batch`, broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return mcpError(res, 400, {
+            action: 'batch read reference greetings',
+            target: `reference:${idx}:greeting:${greetingType}:batch`,
+            message: 'indices must be an array of numbers',
+          });
+        }
+        const MAX_BATCH = 50;
+        if (indices.length > MAX_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch read reference greetings',
+            target: `reference:${idx}:greeting:${greetingType}:batch`,
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+          });
+        }
+        const ref = refFiles[idx];
+        const arr: string[] = Array.isArray(ref.data[fieldName]) ? ref.data[fieldName] : [];
+        const items = indices.map((entryIdx: number) => {
+          if (typeof entryIdx !== 'number' || entryIdx < 0 || entryIdx >= arr.length) return null;
+          return { index: entryIdx, content: arr[entryIdx] };
+        });
+        const validCount = items.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: ref.fileName,
+            type: greetingType,
+            field: fieldName,
+            count: validCount,
+            total: indices.length,
+            items,
+          },
+          {
+            toolName: 'read_reference_greeting_batch',
+            summary: `Batch read ${validCount}/${indices.length} ${greetingType} reference greetings`,
+            artifacts: { refIndex: idx, count: validCount, total: indices.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
       // GET /reference/:idx/greeting/:type/:entryIdx — read single reference greeting
       // ----------------------------------------------------------------
       if (
@@ -6787,6 +7685,69 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             toolName: 'list_reference_triggers',
             summary: `Listed ${scripts.length} reference trigger scripts`,
             artifacts: { refIndex: idx, count: scripts.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /reference/:idx/trigger/batch — batch read reference trigger scripts
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'trigger' &&
+        parts[3] === 'batch' &&
+        !parts[4] &&
+        req.method === 'POST'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'batch read reference triggers',
+            target: `reference:${idx}:trigger:batch`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+        const body = await readJsonBody(req, res, `reference/${idx}/trigger/batch`, broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return mcpError(res, 400, {
+            action: 'batch read reference triggers',
+            target: `reference:${idx}:trigger:batch`,
+            message: 'indices must be an array of numbers',
+          });
+        }
+        const MAX_BATCH = 50;
+        if (indices.length > MAX_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch read reference triggers',
+            target: `reference:${idx}:trigger:batch`,
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+          });
+        }
+        const ref = refFiles[idx];
+        const normalized = deps.normalizeTriggerScripts(ref.data.triggerScripts || []);
+        const scripts = Array.isArray(normalized) ? normalized : [];
+        const triggers = indices.map((triggerIdx: number) => {
+          if (typeof triggerIdx !== 'number' || triggerIdx < 0 || triggerIdx >= scripts.length) return null;
+          return { index: triggerIdx, trigger: scripts[triggerIdx] };
+        });
+        const validCount = triggers.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: ref.fileName,
+            count: validCount,
+            total: indices.length,
+            triggers,
+          },
+          {
+            toolName: 'read_reference_trigger_batch',
+            summary: `Batch read ${validCount}/${indices.length} reference trigger scripts`,
+            artifacts: { refIndex: idx, count: validCount, total: indices.length },
           },
         );
       }
@@ -7061,6 +8022,67 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /reference/:idx/regex/batch — batch read reference regex entries
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'regex' &&
+        parts[3] === 'batch' &&
+        req.method === 'POST'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'batch read reference regex',
+            target: `reference:${idx}:regex:batch`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+        const body = await readJsonBody(req, res, `reference/${idx}/regex/batch`, broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return mcpError(res, 400, {
+            action: 'batch read reference regex',
+            target: `reference:${idx}:regex:batch`,
+            message: 'indices must be an array of numbers',
+          });
+        }
+        const MAX_BATCH = 50;
+        if (indices.length > MAX_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch read reference regex',
+            target: `reference:${idx}:regex:batch`,
+            message: `Maximum ${MAX_BATCH} indices per batch`,
+          });
+        }
+        const ref = refFiles[idx];
+        const regexArr = (ref.data.regex as Record<string, unknown>[]) || [];
+        const entries = indices.map((entryIdx: number) => {
+          if (typeof entryIdx !== 'number' || entryIdx < 0 || entryIdx >= regexArr.length) return null;
+          return { index: entryIdx, entry: normalizeRegexEntryForResponse(regexArr[entryIdx]) };
+        });
+        const validCount = entries.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: ref.fileName,
+            count: validCount,
+            total: indices.length,
+            entries,
+          },
+          {
+            toolName: 'read_reference_regex_batch',
+            summary: `Batch read ${validCount}/${indices.length} reference regex entries`,
+            artifacts: { refIndex: idx, count: validCount, total: indices.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
       // GET /reference/:idx/regex/:entryIdx — read single reference regex entry
       // ----------------------------------------------------------------
       if (parts[0] === 'reference' && parts[1] && parts[2] === 'regex' && parts[3] && req.method === 'GET') {
@@ -7083,14 +8105,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Regex entry index ${entryIdx} out of range (0-${regexArr.length - 1})`,
           });
         }
-        const entry = { ...regexArr[entryIdx] };
-        // Normalize legacy in/out → find/replace
-        if (!entry.find && entry.in) entry.find = entry.in;
-        if (!entry.replace && entry.out) entry.replace = entry.out;
-        if (entry.find === undefined) entry.find = '';
-        if (entry.replace === undefined) entry.replace = '';
-        delete entry.in;
-        delete entry.out;
+        const entry = normalizeRegexEntryForResponse(regexArr[entryIdx]);
         return jsonResSuccess(
           res,
           { refIndex: idx, fileName: ref.fileName, entryIndex: entryIdx, entry },
@@ -7666,6 +8681,103 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             toolName: 'list_reference_risup_prompt_items',
             summary: `Listed ${model.items.length} prompt items in reference ${idx} (state: ${model.state})`,
             artifacts: { count: model.items.length, state: model.state },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /reference/:idx/risup/prompt-items/batch — batch read reference risup prompt items
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'risup' &&
+        parts[3] === 'prompt-items' &&
+        parts[4] === 'batch' &&
+        !parts[5] &&
+        req.method === 'POST'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'batch read reference risup prompt items',
+            target: `reference:${idx}:risup:promptTemplate:batch`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+
+        const ref = refFiles[idx];
+        if (getRefFileType(ref) !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'batch read reference risup prompt items',
+            message: 'Selected reference file is not a risup preset.',
+            suggestion: 'list_references로 fileType이 "risup"인 reference를 선택하세요.',
+            target: `reference:${idx}:risup:promptTemplate:batch`,
+          });
+        }
+
+        const body = await readJsonBody(req, res, `reference/${idx}/risup/prompt-items/batch`, broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices)) {
+          return mcpError(res, 400, {
+            action: 'batch read reference risup prompt items',
+            message: 'indices must be an array of numbers',
+            suggestion: 'indices를 숫자 index 배열로 전달하세요. 예: { "indices": [0, 1] }',
+            target: `reference:${idx}:risup:promptTemplate:batch`,
+          });
+        }
+        if (indices.length > MAX_RISUP_PROMPT_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch read reference risup prompt items',
+            message: `Maximum ${MAX_RISUP_PROMPT_BATCH} indices per batch`,
+            suggestion: `요청을 ${MAX_RISUP_PROMPT_BATCH}개 이하의 index로 나누어 여러 번 호출하세요.`,
+            target: `reference:${idx}:risup:promptTemplate:batch`,
+          });
+        }
+
+        const refData = (ref.data || {}) as Record<string, unknown>;
+        const rawText = typeof refData.promptTemplate === 'string' ? refData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'batch read reference risup prompt items',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion:
+              'read_reference_field(index, "promptTemplate") 또는 read_reference_field_range로 원문을 확인하세요.',
+            target: `reference:${idx}:risup:promptTemplate:batch`,
+            details: { parseError: model.parseError },
+          });
+        }
+
+        const entries = indices.map((itemIdx: number) => {
+          if (typeof itemIdx !== 'number' || itemIdx < 0 || itemIdx >= model.items.length) {
+            return null;
+          }
+          const item = model.items[itemIdx];
+          return {
+            index: itemIdx,
+            id: item.id ?? null,
+            item: item.rawValue,
+            supported: item.supported,
+            type: item.type ?? null,
+          };
+        });
+        const validCount = entries.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            fileName: ref.fileName,
+            count: validCount,
+            total: indices.length,
+            entries,
+          },
+          {
+            toolName: 'read_reference_risup_prompt_item_batch',
+            summary: `Batch read ${validCount}/${indices.length} prompt items in reference ${idx}`,
+            artifacts: { count: validCount, total: indices.length },
           },
         );
       }
@@ -8875,6 +9987,147 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /risup/prompt-items/search — search prompt items by text/name
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-items' &&
+        parts[2] === 'search' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'search risup prompt items',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'search risup prompt items',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 promptTemplate을 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: model.parseError },
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-items/search', broadcastStatus);
+        if (!body) return;
+        const query = typeof body.query === 'string' ? body.query : '';
+        if (!query.trim()) {
+          return mcpError(res, 400, {
+            action: 'search risup prompt items',
+            message: 'query must be a non-empty string',
+            suggestion: '{ "query": "찾을 문자열" } 형식으로 전달하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const caseSensitive = body.caseSensitive === true;
+        const matches = model.items
+          .map((item, index) => {
+            const matchedFields = findPromptItemMatchedFields(item, query, caseSensitive);
+            if (matchedFields.length === 0) return null;
+            return {
+              index,
+              id: item.id ?? null,
+              type: item.type ?? null,
+              supported: item.supported,
+              preview: promptItemPreview(item),
+              matched_fields: matchedFields,
+            };
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+        return jsonResSuccess(
+          res,
+          { query, caseSensitive, count: matches.length, matches },
+          {
+            toolName: 'search_in_risup_prompt_items',
+            summary: `Found ${matches.length} prompt items matching "${query}"`,
+            artifacts: { count: matches.length, query },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item/batch — batch read prompt items
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] === 'batch' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'batch read risup prompt items',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'batch read risup prompt items',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 promptTemplate을 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: model.parseError },
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-item/batch', broadcastStatus);
+        if (!body) return;
+        const indices = body.indices;
+        if (!Array.isArray(indices)) {
+          return mcpError(res, 400, {
+            action: 'batch read risup prompt items',
+            message: 'indices must be an array of numbers',
+            suggestion: 'indices를 숫자 index 배열로 전달하세요. 예: { "indices": [0, 1] }',
+            target: 'risup:promptTemplate',
+          });
+        }
+        if (indices.length > MAX_RISUP_PROMPT_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch read risup prompt items',
+            message: `Maximum ${MAX_RISUP_PROMPT_BATCH} indices per batch`,
+            suggestion: `요청을 ${MAX_RISUP_PROMPT_BATCH}개 이하의 index로 나누어 여러 번 호출하세요.`,
+            target: 'risup:promptTemplate',
+          });
+        }
+        const entries = indices.map((idx: number) => {
+          if (typeof idx !== 'number' || idx < 0 || idx >= model.items.length) {
+            return null;
+          }
+          const item = model.items[idx];
+          return {
+            index: idx,
+            id: item.id ?? null,
+            item: item.rawValue,
+            supported: item.supported,
+            type: item.type ?? null,
+          };
+        });
+        const validCount = entries.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          { count: validCount, total: indices.length, entries },
+          {
+            toolName: 'read_risup_prompt_item_batch',
+            summary: `Batch read ${validCount}/${indices.length} prompt items`,
+            artifacts: { count: validCount, total: indices.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
       // POST /risup/prompt-item/add — add new prompt item
       // ----------------------------------------------------------------
       if (
@@ -8916,6 +10169,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: 'risup:promptTemplate',
           });
         }
+        if (validation.model.supported && !hasExplicitPromptItemId(body.item)) {
+          validation.model.id = '';
+        }
         const newItems = [...model.items, validation.model];
         const newText = serializePromptTemplate({ items: newItems });
         const newIdx = newItems.length - 1;
@@ -8926,6 +10182,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
         if (allowed) {
           currentData.promptTemplate = newText;
+          const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
           logMcpMutation('add risup prompt item', 'risup:promptTemplate', {
             type: validation.model.type,
             newIndex: newIdx,
@@ -8933,9 +10190,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
           return jsonResSuccess(
             res,
-            { success: true, index: newIdx },
+            { success: true, index: newIdx, orderWarnings },
             {
-              toolName: 'write_risup_prompt_item',
+              toolName: 'add_risup_prompt_item',
               summary: `Added prompt item [${newIdx}] (type: ${validation.model.type})`,
             },
           );
@@ -8948,6 +10205,115 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: 'risup:promptTemplate',
           });
         }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item/batch-add — add multiple prompt items
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] === 'batch-add' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'batch add risup prompt items',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'batch add risup prompt items',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: model.parseError },
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-item/batch-add', broadcastStatus);
+        if (!body) return;
+        const itemsRaw = body.items;
+        if (!Array.isArray(itemsRaw) || itemsRaw.length === 0) {
+          return mcpError(res, 400, {
+            action: 'batch add risup prompt items',
+            message: 'items must be a non-empty array of prompt item objects',
+            suggestion: '{ "items": [{ ... }, { ... }] } 형식으로 전달하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        if (itemsRaw.length > MAX_RISUP_PROMPT_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch add risup prompt items',
+            message: `Maximum ${MAX_RISUP_PROMPT_BATCH} items per batch`,
+            suggestion: `요청을 ${MAX_RISUP_PROMPT_BATCH}개 이하의 항목으로 나누어 여러 번 호출하세요.`,
+            target: 'risup:promptTemplate',
+          });
+        }
+        const validated = itemsRaw.map((item, index) => {
+          const validation = validatePromptItemInput(item);
+          if ('error' in validation) {
+            return { error: validation.error, index };
+          }
+          if (validation.model.supported && !hasExplicitPromptItemId(item)) {
+            validation.model.id = '';
+          }
+          return { index, model: validation.model };
+        });
+        const invalid = validated.find((entry): entry is { error: string; index: number } => 'error' in entry);
+        if (invalid) {
+          return mcpError(res, 400, {
+            action: 'batch add risup prompt items',
+            message: `Invalid item at batch index ${invalid.index}: ${invalid.error}`,
+            suggestion:
+              'Supported types: plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache.',
+            target: 'risup:promptTemplate',
+            details: { invalidIndex: invalid.index },
+          });
+        }
+        const validEntries = validated.filter(
+          (entry): entry is { index: number; model: PromptItemModel } => 'model' in entry,
+        );
+        const models = validEntries.map((entry) => entry.model);
+        const newItems = [...model.items, ...models];
+        const newText = serializePromptTemplate({ items: newItems });
+        const indices = models.map((_, offset) => model.items.length + offset);
+        const summary = models
+          .map((entry, offset) => `  [${indices[offset]}] type: ${entry.type ?? 'unknown'}`)
+          .join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 추가 요청',
+          `AI 어시스턴트가 promptTemplate에 항목 ${models.length}개를 일괄 추가하려 합니다.\n\n${summary.substring(0, 500)}${summary.length > 500 ? '\n...' : ''}`,
+        );
+        if (allowed) {
+          currentData.promptTemplate = newText;
+          const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
+          logMcpMutation('batch add risup prompt items', 'risup:promptTemplate', { count: models.length });
+          deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+          const results = indices.map((index, offset) => ({ index, type: models[offset]?.type ?? null }));
+          return jsonResSuccess(
+            res,
+            { success: true, count: models.length, indices, orderWarnings, results },
+            {
+              toolName: 'add_risup_prompt_item_batch',
+              summary: `Batch added ${models.length} prompt items`,
+              artifacts: { count: models.length },
+            },
+          );
+        }
+        return mcpError(res, 403, {
+          action: 'batch add risup prompt items',
+          message: '사용자가 거부했습니다',
+          rejected: true,
+          suggestion: '앱에서 일괄 추가 요청을 허용한 뒤 다시 시도하세요.',
+          target: 'risup:promptTemplate',
+        });
       }
 
       // ----------------------------------------------------------------
@@ -9008,13 +10374,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
         if (allowed) {
           currentData.promptTemplate = newText;
+          const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
           logMcpMutation('reorder risup prompt items', 'risup:promptTemplate', { count: model.items.length });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
           return jsonResSuccess(
             res,
-            { success: true, order: newOrder },
+            { success: true, order: newOrder, orderWarnings },
             {
-              toolName: 'write_risup_prompt_item',
+              toolName: 'reorder_risup_prompt_items',
               summary: `Reordered ${model.items.length} prompt items`,
             },
           );
@@ -9037,7 +10404,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         parts[1] === 'prompt-item' &&
         parts[2] &&
         !parts[3] &&
-        !['add', 'reorder'].includes(parts[2]) &&
+        !['add', 'reorder', 'batch', 'batch-add', 'batch-write'].includes(parts[2]) &&
         req.method === 'GET'
       ) {
         const fileType = currentData._fileType || 'charx';
@@ -9123,6 +10490,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `risup:promptTemplate:${parts[2]}`,
           });
         }
+        const body = await readJsonBody(req, res, `risup/prompt-item/${idx}/delete`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureRisupPromptExpectedIdentity(
+            res,
+            idx,
+            model.items[idx],
+            body.expected_type,
+            body.expected_preview,
+            'delete risup prompt item',
+            `risup:promptTemplate:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const deletedType = model.items[idx].type ?? 'unknown';
 
         const allowed = await deps.askRendererConfirm(
@@ -9133,13 +10516,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const newItems = model.items.filter((_, i) => i !== idx);
           const newText = serializePromptTemplate({ items: newItems });
           currentData.promptTemplate = newText;
+          const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
           logMcpMutation('delete risup prompt item', 'risup:promptTemplate', { idx, deletedType });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
           return jsonResSuccess(
             res,
-            { success: true, deleted: idx },
+            { success: true, deleted: idx, orderWarnings },
             {
-              toolName: 'write_risup_prompt_item',
+              toolName: 'delete_risup_prompt_item',
               summary: `Deleted prompt item [${idx}] (type: ${deletedType})`,
             },
           );
@@ -9155,6 +10539,149 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /risup/prompt-item/batch-write — update multiple prompt items
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] === 'batch-write' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'batch write risup prompt items',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'batch write risup prompt items',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: model.parseError },
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-item/batch-write', broadcastStatus);
+        if (!body) return;
+        const writes = body.writes;
+        if (!Array.isArray(writes) || writes.length === 0) {
+          return mcpError(res, 400, {
+            action: 'batch write risup prompt items',
+            message: 'writes must be a non-empty array of {index, item}',
+            suggestion: '{ "writes": [{ "index": 0, "item": { ... } }] } 형식으로 전달하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        if (writes.length > MAX_RISUP_PROMPT_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch write risup prompt items',
+            message: `Maximum ${MAX_RISUP_PROMPT_BATCH} writes per batch`,
+            suggestion: `요청을 ${MAX_RISUP_PROMPT_BATCH}개 이하의 항목으로 나누어 여러 번 호출하세요.`,
+            target: 'risup:promptTemplate',
+          });
+        }
+        for (const write of writes) {
+          const index = typeof write?.index === 'number' ? write.index : NaN;
+          if (Number.isInteger(index) && index >= 0 && index < model.items.length) {
+            if (
+              !ensureRisupPromptExpectedIdentity(
+                res,
+                index,
+                model.items[index],
+                (write as { expected_type?: unknown }).expected_type,
+                (write as { expected_preview?: unknown }).expected_preview,
+                'batch write risup prompt items',
+                'risup:promptTemplate',
+                mcpError,
+              )
+            ) {
+              return;
+            }
+          }
+        }
+        const seen = new Set<number>();
+        const validatedWrites = writes.map((write, batchIndex) => {
+          const index = typeof write?.index === 'number' ? write.index : NaN;
+          if (!Number.isInteger(index) || index < 0 || index >= model.items.length) {
+            return { error: `Invalid index at batch position ${batchIndex}`, batchIndex };
+          }
+          if (seen.has(index)) {
+            return { error: `Duplicate index ${index} in writes`, batchIndex };
+          }
+          seen.add(index);
+          const validation = validatePromptItemInput(write.item);
+          if ('error' in validation) {
+            return { error: validation.error, batchIndex };
+          }
+          const existingItem = model.items[index];
+          if (validation.model.supported && !hasExplicitPromptItemId(write.item)) {
+            validation.model.id = existingItem.supported ? existingItem.id : '';
+          }
+          return { batchIndex, index, model: validation.model };
+        });
+        const invalidWrite = validatedWrites.find(
+          (entry): entry is { error: string; batchIndex: number } => 'error' in entry,
+        );
+        if (invalidWrite) {
+          return mcpError(res, 400, {
+            action: 'batch write risup prompt items',
+            message: invalidWrite.error,
+            suggestion:
+              '{ "writes": [{ "index": 0, "item": { "type": "plain", "type2": "normal", "text": "...", "role": "system" } }] } 형식을 확인하세요.',
+            target: 'risup:promptTemplate',
+            details: { invalidBatchIndex: invalidWrite.batchIndex },
+          });
+        }
+        const validWrites = validatedWrites.filter(
+          (entry): entry is { batchIndex: number; index: number; model: PromptItemModel } => 'model' in entry,
+        );
+        const writeMap = new Map(validWrites.map((entry) => [entry.index, entry.model]));
+        const summary = validWrites
+          .map((entry) => `  [${entry.index}] type: ${entry.model.type ?? 'unknown'}`)
+          .join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 수정 요청',
+          `AI 어시스턴트가 promptTemplate 항목 ${validWrites.length}개를 일괄 수정하려 합니다.\n\n${summary.substring(0, 500)}${summary.length > 500 ? '\n...' : ''}`,
+        );
+        if (allowed) {
+          const newItems = model.items.map((item, index) => writeMap.get(index) ?? item);
+          const newText = serializePromptTemplate({ items: newItems });
+          currentData.promptTemplate = newText;
+          const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
+          logMcpMutation('batch write risup prompt items', 'risup:promptTemplate', { count: validWrites.length });
+          deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              count: validWrites.length,
+              orderWarnings,
+              results: validWrites.map((entry) => ({ index: entry.index, type: entry.model.type ?? null })),
+            },
+            {
+              toolName: 'write_risup_prompt_item_batch',
+              summary: `Batch updated ${validWrites.length} prompt items`,
+              artifacts: { count: validWrites.length },
+            },
+          );
+        }
+        return mcpError(res, 403, {
+          action: 'batch write risup prompt items',
+          message: '사용자가 거부했습니다',
+          rejected: true,
+          suggestion: '앱에서 일괄 수정 요청을 허용한 뒤 다시 시도하세요.',
+          target: 'risup:promptTemplate',
+        });
+      }
+
+      // ----------------------------------------------------------------
       // POST /risup/prompt-item/:idx — write/update prompt item
       // ----------------------------------------------------------------
       if (
@@ -9162,7 +10689,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         parts[1] === 'prompt-item' &&
         parts[2] &&
         !parts[3] &&
-        !['add', 'reorder'].includes(parts[2]) &&
+        !['add', 'reorder', 'batch', 'batch-add', 'batch-write'].includes(parts[2]) &&
         req.method === 'POST'
       ) {
         const fileType = currentData._fileType || 'charx';
@@ -9195,6 +10722,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `risup/prompt-item/${idx}`, broadcastStatus);
         if (!body) return;
+        if (
+          !ensureRisupPromptExpectedIdentity(
+            res,
+            idx,
+            model.items[idx],
+            body.expected_type,
+            body.expected_preview,
+            'write risup prompt item',
+            `risup:promptTemplate:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const validation = validatePromptItemInput(body.item);
         if ('error' in validation) {
           return mcpError(res, 400, {
@@ -9205,6 +10746,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `risup:promptTemplate:${idx}`,
           });
         }
+        const existingItem = model.items[idx];
+        if (validation.model.supported && !hasExplicitPromptItemId(body.item)) {
+          validation.model.id = existingItem.supported ? existingItem.id : '';
+        }
 
         const allowed = await deps.askRendererConfirm(
           'MCP 수정 요청',
@@ -9214,11 +10759,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const newItems = model.items.map((item, i) => (i === idx ? validation.model : item));
           const newText = serializePromptTemplate({ items: newItems });
           currentData.promptTemplate = newText;
+          const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
           logMcpMutation('write risup prompt item', `risup:promptTemplate:${idx}`, { type: validation.model.type });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
           return jsonResSuccess(
             res,
-            { success: true, index: idx },
+            { success: true, index: idx, orderWarnings },
             {
               toolName: 'write_risup_prompt_item',
               summary: `Updated prompt item [${idx}] (type: ${validation.model.type})`,
@@ -9319,6 +10865,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
         if (allowed) {
           currentData.formatingOrder = newValue;
+          const promptRaw = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+          const promptModel = parsePromptTemplate(promptRaw);
+          const warnings =
+            promptModel.state !== 'invalid'
+              ? collectFormatingOrderWarnings(promptModel, parseFormatingOrder(newValue))
+              : [];
           logMcpMutation('write risup formating order', 'risup:formatingOrder', {
             oldSize: oldValue.length,
             newSize: newValue.length,
@@ -9327,7 +10879,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           deps.broadcastToAll('data-updated', 'formatingOrder', newValue);
           return jsonResSuccess(
             res,
-            { success: true, count: newTokens.length },
+            { success: true, count: newTokens.length, warnings },
             {
               toolName: 'write_risup_formating_order',
               summary: `Updated formating order (${newTokens.length} tokens)`,
@@ -9340,6 +10892,1045 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             rejected: true,
             suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
             target: 'risup:formatingOrder',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-diff — compare current risup prompt vs reference
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risup' && parts[1] === 'prompt-diff' && !parts[2] && req.method === 'POST') {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'diff risup prompt',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-diff', broadcastStatus);
+        if (!body) return;
+        if (!Number.isInteger(body.refIndex) || body.refIndex < 0) {
+          return mcpError(res, 400, {
+            action: 'diff risup prompt',
+            message: 'refIndex must be a non-negative integer',
+            suggestion: '{ "refIndex": 0 } 형식으로 전달하세요. list_references 결과의 index를 사용합니다.',
+            target: 'risup:promptTemplate',
+          });
+        }
+
+        const refFiles = deps.getReferenceFiles();
+        const refIndex = body.refIndex as number;
+        if (refIndex >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'diff risup prompt',
+            message: `Reference index ${refIndex} out of range`,
+            suggestion: 'list_references로 유효한 reference index를 확인하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+
+        const ref = refFiles[refIndex];
+        if (getRefFileType(ref) !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'diff risup prompt',
+            message: 'Selected reference file is not a risup preset.',
+            suggestion: 'list_references로 fileType이 "risup"인 reference를 선택하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+
+        const currentPromptRaw = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const currentPromptModel = parsePromptTemplate(currentPromptRaw);
+        if (currentPromptModel.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'diff risup prompt',
+            message: `Invalid current promptTemplate: ${currentPromptModel.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 현재 promptTemplate을 먼저 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: currentPromptModel.parseError },
+          });
+        }
+
+        const currentOrderRaw = typeof currentData.formatingOrder === 'string' ? currentData.formatingOrder : '';
+        const currentOrderModel = parseFormatingOrder(currentOrderRaw);
+        if (currentOrderModel.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'diff risup prompt',
+            message: `Invalid current formatingOrder: ${currentOrderModel.parseError}`,
+            suggestion: 'write_field("formatingOrder")로 현재 formatingOrder를 먼저 수정하거나 초기화하세요.',
+            target: 'risup:formatingOrder',
+            details: { parseError: currentOrderModel.parseError },
+          });
+        }
+
+        const refData = (ref.data || {}) as Record<string, unknown>;
+        const referencePromptRaw = typeof refData.promptTemplate === 'string' ? refData.promptTemplate : '';
+        const referencePromptModel = parsePromptTemplate(referencePromptRaw);
+        if (referencePromptModel.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'diff risup prompt',
+            message: `Invalid reference promptTemplate: ${referencePromptModel.parseError}`,
+            suggestion:
+              'list_reference_risup_prompt_items 또는 read_reference_field로 reference promptTemplate을 확인하세요.',
+            target: `reference:${refIndex}:risup:promptTemplate`,
+            details: { parseError: referencePromptModel.parseError },
+          });
+        }
+
+        const referenceOrderRaw = typeof refData.formatingOrder === 'string' ? refData.formatingOrder : '';
+        const referenceOrderModel = parseFormatingOrder(referenceOrderRaw);
+        if (referenceOrderModel.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'diff risup prompt',
+            message: `Invalid reference formatingOrder: ${referenceOrderModel.parseError}`,
+            suggestion:
+              'read_reference_risup_formating_order 또는 read_reference_field로 reference formatingOrder를 확인하세요.',
+            target: `reference:${refIndex}:risup:formatingOrder`,
+            details: { parseError: referenceOrderModel.parseError },
+          });
+        }
+
+        const diff = diffRisupPromptData(
+          currentPromptModel,
+          currentOrderModel,
+          referencePromptModel,
+          referenceOrderModel,
+        );
+        return jsonResSuccess(
+          res,
+          {
+            refIndex,
+            referenceFile: ref.fileName,
+            identical: diff.identical,
+            changedSections: diff.changedSections,
+            promptTemplate: diff.promptTemplate,
+            formatingOrder: diff.formatingOrder,
+          },
+          {
+            toolName: 'diff_risup_prompt',
+            summary: diff.identical
+              ? `Current risup prompt is identical to reference ${refIndex}`
+              : `Found risup prompt differences vs reference ${refIndex}`,
+            artifacts: {
+              identical: diff.identical,
+              changedSectionCount: diff.changedSections.length,
+              promptLinesAdded: diff.promptTemplate.linesAdded,
+              promptLinesRemoved: diff.promptTemplate.linesRemoved,
+            },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /risup/prompt-text — export promptTemplate as structured text
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risup' && parts[1] === 'prompt-text' && !parts[2] && req.method === 'GET') {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'export risup prompt to text',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'export risup prompt to text',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: model.parseError },
+          });
+        }
+        const text = serializePromptTemplateToText(model);
+        return jsonResSuccess(
+          res,
+          {
+            count: model.items.length,
+            state: model.state,
+            hasUnsupportedContent: model.hasUnsupportedContent,
+            text,
+          },
+          {
+            toolName: 'export_risup_prompt_to_text',
+            summary: `Exported ${model.items.length} prompt item(s) to text`,
+            artifacts: { count: model.items.length, hasUnsupportedContent: model.hasUnsupportedContent },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-text/copy — export selected prompt items as text
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-text' &&
+        parts[2] === 'copy' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'copy risup prompt items as text',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'copy risup prompt items as text',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: model.parseError },
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-text/copy', broadcastStatus);
+        if (!body) return;
+        const indices = body.indices;
+        if (!Array.isArray(indices) || indices.length === 0) {
+          return mcpError(res, 400, {
+            action: 'copy risup prompt items as text',
+            message: 'indices must be a non-empty array of numbers',
+            suggestion: '{ "indices": [0, 2] } 형식으로 전달하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        if (indices.length > MAX_RISUP_PROMPT_BATCH) {
+          return mcpError(res, 400, {
+            action: 'copy risup prompt items as text',
+            message: `Maximum ${MAX_RISUP_PROMPT_BATCH} indices per batch`,
+            suggestion: `요청을 ${MAX_RISUP_PROMPT_BATCH}개 이하의 index로 나누어 여러 번 호출하세요.`,
+            target: 'risup:promptTemplate',
+          });
+        }
+        for (let i = 0; i < indices.length; i++) {
+          const index = indices[i];
+          if (!Number.isInteger(index) || index < 0 || index >= model.items.length) {
+            return mcpError(res, 400, {
+              action: 'copy risup prompt items as text',
+              message: `Invalid index at position ${i}: ${String(index)}`,
+              suggestion: 'list_risup_prompt_items로 유효한 index를 확인하세요.',
+              target: 'risup:promptTemplate',
+              details: { invalidIndex: index, batchIndex: i },
+            });
+          }
+        }
+        const text = serializePromptTemplateSubsetToText(model, indices as number[]);
+        const items = (indices as number[]).map((index) => {
+          const item = model.items[index];
+          return {
+            index,
+            id: item.id ?? null,
+            type: item.type ?? null,
+            supported: item.supported,
+            preview: promptItemPreview(item),
+          };
+        });
+        return jsonResSuccess(
+          res,
+          {
+            count: items.length,
+            indices,
+            hasUnsupportedContent: items.some((item) => item.supported === false),
+            text,
+            items,
+          },
+          {
+            toolName: 'copy_risup_prompt_items_as_text',
+            summary: `Copied ${items.length} prompt item(s) to text`,
+            artifacts: { count: items.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-text/import — import promptTemplate text format
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-text' &&
+        parts[2] === 'import' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'import risup prompt from text',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-text/import', broadcastStatus);
+        if (!body) return;
+        if (typeof body.text !== 'string') {
+          return mcpError(res, 400, {
+            action: 'import risup prompt from text',
+            message: 'text must be a string',
+            suggestion: '{ "text": "### [plain] ###\\n..." } 형식으로 전달하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+
+        const imported = parsePromptTemplateFromText(body.text);
+        if (imported.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'import risup prompt from text',
+            message: `Invalid prompt text: ${imported.parseError}`,
+            suggestion: 'export_risup_prompt_to_text 결과 형식을 유지하면서 text를 수정한 뒤 다시 시도하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: imported.parseError },
+          });
+        }
+
+        const mode = body.mode === undefined ? 'replace' : body.mode;
+        if (mode !== 'replace' && mode !== 'append') {
+          return mcpError(res, 400, {
+            action: 'import risup prompt from text',
+            message: 'mode must be "replace" or "append"',
+            suggestion: '{ "text": "...", "mode": "append", "insertAt": 3 } 형식으로 전달하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+
+        let itemsForPreview = imported.items;
+        let existingCount = 0;
+        let resolvedInsertAt: number | null = null;
+        if (mode === 'append') {
+          const currentPromptText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+          const currentModel = parsePromptTemplate(currentPromptText);
+          if (currentModel.state === 'invalid') {
+            return mcpError(res, 400, {
+              action: 'import risup prompt from text',
+              message: `Invalid current promptTemplate: ${currentModel.parseError}`,
+              suggestion: 'write_field("promptTemplate")로 현재 promptTemplate을 먼저 수정하거나 초기화하세요.',
+              target: 'risup:promptTemplate',
+              details: { parseError: currentModel.parseError },
+            });
+          }
+          existingCount = currentModel.items.length;
+          if (body.insertAt === undefined) {
+            resolvedInsertAt = existingCount;
+          } else if (!Number.isInteger(body.insertAt) || body.insertAt < 0 || body.insertAt > existingCount) {
+            return mcpError(res, 400, {
+              action: 'import risup prompt from text',
+              message: `insertAt must be an integer between 0 and ${existingCount}`,
+              suggestion: '{ "text": "...", "mode": "append", "insertAt": 0 } 형식으로 전달하세요.',
+              target: 'risup:promptTemplate',
+            });
+          } else {
+            resolvedInsertAt = body.insertAt as number;
+          }
+          itemsForPreview = imported.items.map((item) => duplicatePromptItem(item));
+        }
+
+        const itemSummaries = itemsForPreview.map((item, index) => ({
+          index,
+          id: item.id ?? null,
+          type: item.type ?? null,
+          supported: item.supported,
+          preview: promptItemPreview(item),
+        }));
+        let previewPromptModel = imported;
+        if (mode === 'append') {
+          const currentPromptText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+          const currentModel = parsePromptTemplate(currentPromptText);
+          if (currentModel.state === 'invalid') {
+            return mcpError(res, 400, {
+              action: 'import risup prompt from text',
+              message: `Invalid current promptTemplate: ${currentModel.parseError}`,
+              suggestion: 'write_field("promptTemplate")로 현재 promptTemplate을 먼저 수정하거나 초기화하세요.',
+              target: 'risup:promptTemplate',
+              details: { parseError: currentModel.parseError },
+            });
+          }
+          const previewPromptText = serializePromptTemplate({
+            items: [
+              ...currentModel.items.slice(0, resolvedInsertAt ?? currentModel.items.length),
+              ...itemsForPreview,
+              ...currentModel.items.slice(resolvedInsertAt ?? currentModel.items.length),
+            ],
+          });
+          previewPromptModel = parsePromptTemplate(previewPromptText);
+        }
+        const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, previewPromptModel);
+        const dryRun = body.dry_run === true || body.dryRun === true;
+        if (dryRun) {
+          return jsonResSuccess(
+            res,
+            {
+              dry_run: true,
+              success: true,
+              mode,
+              count: imported.items.length,
+              state: imported.state,
+              hasUnsupportedContent: imported.hasUnsupportedContent,
+              insertAt: resolvedInsertAt,
+              orderWarnings,
+              total_after: mode === 'append' ? existingCount + imported.items.length : imported.items.length,
+              items: itemSummaries,
+            },
+            {
+              toolName: 'import_risup_prompt_from_text',
+              summary: `Validated ${mode} prompt text import (${imported.items.length} item(s))`,
+              artifacts: { count: imported.items.length, dry_run: true, mode },
+            },
+          );
+        }
+
+        let newPromptTemplate = serializePromptTemplate(imported);
+        if (mode === 'append') {
+          const currentPromptText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+          const currentModel = parsePromptTemplate(currentPromptText);
+          if (currentModel.state === 'invalid') {
+            return mcpError(res, 400, {
+              action: 'import risup prompt from text',
+              message: `Invalid current promptTemplate: ${currentModel.parseError}`,
+              suggestion: 'write_field("promptTemplate")로 현재 promptTemplate을 먼저 수정하거나 초기화하세요.',
+              target: 'risup:promptTemplate',
+              details: { parseError: currentModel.parseError },
+            });
+          }
+          const insertionIndex = resolvedInsertAt ?? currentModel.items.length;
+          const appendedItems = imported.items.map((item) => duplicatePromptItem(item));
+          newPromptTemplate = serializePromptTemplate({
+            items: [
+              ...currentModel.items.slice(0, insertionIndex),
+              ...appendedItems,
+              ...currentModel.items.slice(insertionIndex),
+            ],
+          });
+        }
+        const summary = itemSummaries
+          .slice(0, 8)
+          .map((item) => `  [${item.index}] ${item.type ?? 'unknown'}${item.supported ? '' : ' (raw)'}`)
+          .join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 텍스트 가져오기 요청',
+          mode === 'append'
+            ? `AI 어시스턴트가 text serializer 형식의 항목 ${imported.items.length}개를 promptTemplate 위치 ${resolvedInsertAt ?? 0}에 삽입하려 합니다.\n\n${summary}${itemSummaries.length > 8 ? '\n...' : ''}`
+            : `AI 어시스턴트가 text serializer 형식에서 promptTemplate 전체를 ${imported.items.length}개 항목으로 교체하려 합니다.\n\n${summary}${itemSummaries.length > 8 ? '\n...' : ''}`,
+        );
+        if (allowed) {
+          currentData.promptTemplate = newPromptTemplate;
+          const appliedPromptModel = parsePromptTemplate(newPromptTemplate);
+          const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, appliedPromptModel);
+          logMcpMutation('import risup prompt from text', 'risup:promptTemplate', {
+            count: imported.items.length,
+            hasUnsupportedContent: imported.hasUnsupportedContent,
+            mode,
+            insertAt: resolvedInsertAt,
+          });
+          deps.broadcastToAll('data-updated', 'promptTemplate', newPromptTemplate);
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              mode,
+              count: imported.items.length,
+              hasUnsupportedContent: imported.hasUnsupportedContent,
+              insertAt: resolvedInsertAt,
+              orderWarnings,
+            },
+            {
+              toolName: 'import_risup_prompt_from_text',
+              summary:
+                mode === 'append'
+                  ? `Appended ${imported.items.length} prompt item(s) from text`
+                  : `Imported ${imported.items.length} prompt item(s) from text`,
+              artifacts: { count: imported.items.length, hasUnsupportedContent: imported.hasUnsupportedContent, mode },
+            },
+          );
+        }
+        return mcpError(res, 403, {
+          action: 'import risup prompt from text',
+          message: '사용자가 거부했습니다',
+          rejected: true,
+          suggestion: '앱에서 가져오기 요청을 허용한 뒤 다시 시도하세요.',
+          target: 'risup:promptTemplate',
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /risup/prompt-snippets — list persistent snippet summaries
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risup' && parts[1] === 'prompt-snippets' && !parts[2] && req.method === 'GET') {
+        try {
+          const snippets = listRisupPromptSnippets(getRisupPromptSnippetLibraryFilePath(deps));
+          return jsonResSuccess(
+            res,
+            {
+              count: snippets.length,
+              snippets,
+            },
+            {
+              toolName: 'list_risup_prompt_snippets',
+              summary: `Listed ${snippets.length} risup prompt snippet(s)`,
+              artifacts: { count: snippets.length },
+            },
+          );
+        } catch (error) {
+          return mcpError(res, 500, {
+            action: 'list risup prompt snippets',
+            message: `Failed to read prompt snippet library: ${(error as Error).message}`,
+            suggestion: '손상된 sidecar JSON을 정리하거나 라이브러리 파일 권한을 확인하세요.',
+            target: 'risup:prompt-snippets',
+            details: { error: (error as Error).message },
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-snippets/read — read one persistent snippet
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-snippets' &&
+        parts[2] === 'read' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const body = await readJsonBody(req, res, 'risup/prompt-snippets/read', broadcastStatus);
+        if (!body) return;
+        if (typeof body.identifier !== 'string' || body.identifier.trim().length === 0) {
+          return mcpError(res, 400, {
+            action: 'read risup prompt snippet',
+            message: 'identifier must be a non-empty string',
+            suggestion: '{ "identifier": "snippet id or exact name" } 형식으로 전달하세요.',
+            target: 'risup:prompt-snippets',
+          });
+        }
+
+        let snippet = null;
+        try {
+          snippet = readRisupPromptSnippet(getRisupPromptSnippetLibraryFilePath(deps), body.identifier);
+        } catch (error) {
+          return mcpError(res, 500, {
+            action: 'read risup prompt snippet',
+            message: `Failed to read prompt snippet library: ${(error as Error).message}`,
+            suggestion: '손상된 sidecar JSON을 정리하거나 라이브러리 파일 권한을 확인하세요.',
+            target: 'risup:prompt-snippets',
+            details: { error: (error as Error).message },
+          });
+        }
+        if (!snippet) {
+          return mcpError(res, 404, {
+            action: 'read risup prompt snippet',
+            message: `Prompt snippet not found: ${body.identifier}`,
+            suggestion: 'list_risup_prompt_snippets로 사용 가능한 snippet id/name을 확인하세요.',
+            target: 'risup:prompt-snippets',
+          });
+        }
+
+        try {
+          const normalized = canonicalizeRisupPromptSnippetText(snippet.text);
+          return jsonResSuccess(
+            res,
+            {
+              snippet: buildRisupPromptSnippetSummary(snippet),
+              text: normalized.text,
+              count: normalized.itemCount,
+              hasUnsupportedContent: normalized.hasUnsupportedContent,
+            },
+            {
+              toolName: 'read_risup_prompt_snippet',
+              summary: `Read risup prompt snippet "${snippet.name}"`,
+              artifacts: { count: normalized.itemCount, hasUnsupportedContent: normalized.hasUnsupportedContent },
+            },
+          );
+        } catch (error) {
+          return mcpError(res, 409, {
+            action: 'read risup prompt snippet',
+            message: `Stored snippet text is invalid: ${(error as Error).message}`,
+            suggestion:
+              'save_risup_prompt_snippet으로 같은 이름의 snippet을 덮어쓰거나 delete_risup_prompt_snippet으로 제거하세요.',
+            target: 'risup:prompt-snippets',
+            details: { snippet: buildRisupPromptSnippetSummary(snippet), error: (error as Error).message },
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-snippets/save — save/upsert persistent snippet
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-snippets' &&
+        parts[2] === 'save' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const body = await readJsonBody(req, res, 'risup/prompt-snippets/save', broadcastStatus);
+        if (!body) return;
+        if (typeof body.name !== 'string' || body.name.trim().length === 0) {
+          return mcpError(res, 400, {
+            action: 'save risup prompt snippet',
+            message: 'name must be a non-empty string',
+            suggestion:
+              '{ "name": "Reusable block", "indices": [0, 1] } 또는 { "name": "Reusable block", "text": "..." } 형식으로 전달하세요.',
+            target: 'risup:prompt-snippets',
+          });
+        }
+
+        const hasText = typeof body.text === 'string';
+        const hasIndices = Array.isArray(body.indices);
+        if ((hasText && hasIndices) || (!hasText && !hasIndices)) {
+          return mcpError(res, 400, {
+            action: 'save risup prompt snippet',
+            message: 'Provide exactly one of text or indices',
+            suggestion:
+              '기존 serializer text를 저장하려면 text만, 현재 promptTemplate 블록을 저장하려면 indices만 전달하세요.',
+            target: 'risup:prompt-snippets',
+          });
+        }
+
+        let sourceText = '';
+        let source = 'text';
+        let sourceItems: Array<{
+          index: number;
+          id: string | null;
+          type: string | null;
+          supported: boolean;
+          preview: string;
+        }> = [];
+
+        if (hasText) {
+          sourceText = body.text as string;
+        } else {
+          if (!currentData) {
+            return mcpError(res, 400, {
+              action: 'save risup prompt snippet',
+              message: 'No file open',
+              suggestion: 'indices로 저장하려면 .risup 파일을 먼저 여세요. 파일 없이 저장하려면 text를 사용하세요.',
+              target: 'document:current',
+            });
+          }
+          const fileType = currentData._fileType || 'charx';
+          if (fileType !== 'risup') {
+            return mcpError(res, 400, {
+              action: 'save risup prompt snippet',
+              message: 'Current file is not a risup preset.',
+              suggestion: 'indices로 저장하려면 .risup 파일을 연 뒤 다시 시도하세요.',
+              target: 'risup:promptTemplate',
+            });
+          }
+          const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+          const model = parsePromptTemplate(rawText);
+          if (model.state === 'invalid') {
+            return mcpError(res, 400, {
+              action: 'save risup prompt snippet',
+              message: `Invalid promptTemplate: ${model.parseError}`,
+              suggestion: 'write_field("promptTemplate")로 현재 promptTemplate을 먼저 수정하거나 초기화하세요.',
+              target: 'risup:promptTemplate',
+              details: { parseError: model.parseError },
+            });
+          }
+          const indices = body.indices as unknown[];
+          if (indices.length === 0) {
+            return mcpError(res, 400, {
+              action: 'save risup prompt snippet',
+              message: 'indices must be a non-empty array of numbers',
+              suggestion: '{ "name": "Reusable block", "indices": [0, 2] } 형식으로 전달하세요.',
+              target: 'risup:promptTemplate',
+            });
+          }
+          if (indices.length > MAX_RISUP_PROMPT_BATCH) {
+            return mcpError(res, 400, {
+              action: 'save risup prompt snippet',
+              message: `Maximum ${MAX_RISUP_PROMPT_BATCH} indices per batch`,
+              suggestion: `요청을 ${MAX_RISUP_PROMPT_BATCH}개 이하의 index로 나누어 여러 번 호출하세요.`,
+              target: 'risup:promptTemplate',
+            });
+          }
+          const resolvedIndices = indices as number[];
+          for (let i = 0; i < resolvedIndices.length; i++) {
+            const index = resolvedIndices[i];
+            if (!Number.isInteger(index) || index < 0 || index >= model.items.length) {
+              return mcpError(res, 400, {
+                action: 'save risup prompt snippet',
+                message: `Invalid index at position ${i}: ${String(index)}`,
+                suggestion: 'list_risup_prompt_items로 유효한 index를 확인하세요.',
+                target: 'risup:promptTemplate',
+                details: { invalidIndex: index, batchIndex: i },
+              });
+            }
+          }
+          source = 'indices';
+          sourceText = serializePromptTemplateSubsetToText(model, resolvedIndices);
+          sourceItems = resolvedIndices.map((index) => ({
+            index,
+            id: model.items[index].id ?? null,
+            type: model.items[index].type ?? null,
+            supported: model.items[index].supported,
+            preview: promptItemPreview(model.items[index]),
+          }));
+        }
+
+        let previewCount = 0;
+        try {
+          const normalized = canonicalizeRisupPromptSnippetText(sourceText);
+          sourceText = normalized.text;
+          previewCount = normalized.itemCount;
+        } catch (error) {
+          return mcpError(res, 400, {
+            action: 'save risup prompt snippet',
+            message: `Invalid snippet text: ${(error as Error).message}`,
+            suggestion:
+              source === 'indices'
+                ? '현재 promptTemplate 블록이 serializer로 변환 가능한지 확인하세요.'
+                : 'export_risup_prompt_to_text 또는 copy_risup_prompt_items_as_text 결과 형식을 유지하면서 text를 수정하세요.',
+            target: 'risup:prompt-snippets',
+            details: { error: (error as Error).message },
+          });
+        }
+
+        const summary = sourceItems
+          .slice(0, 8)
+          .map((item) => `  [${item.index}] ${item.type ?? 'unknown'}${item.supported ? '' : ' (raw)'}`)
+          .join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 스니펫 저장 요청',
+          source === 'indices'
+            ? `AI 어시스턴트가 promptTemplate 항목 ${sourceItems.length}개를 영구 snippet "${body.name.trim()}"로 저장하려 합니다.\n\n${summary}${sourceItems.length > 8 ? '\n...' : ''}`
+            : `AI 어시스턴트가 serializer text ${previewCount}개 항목을 영구 snippet "${body.name.trim()}"로 저장하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'save risup prompt snippet',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 저장 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'risup:prompt-snippets',
+          });
+        }
+
+        try {
+          const saved = saveRisupPromptSnippet(getRisupPromptSnippetLibraryFilePath(deps), {
+            name: body.name,
+            text: sourceText,
+          });
+          const snippetSummary = buildRisupPromptSnippetSummary(saved.snippet);
+          logMcpMutation('save risup prompt snippet', 'risup:prompt-snippets', {
+            count: saved.snippet.itemCount,
+            created: saved.created,
+            source,
+            snippetName: saved.snippet.name,
+          });
+          deps.broadcastToAll('risup-prompt-snippets-updated', {
+            action: saved.created ? 'created' : 'updated',
+            snippet: snippetSummary,
+          });
+          return jsonResSuccess(
+            res,
+            {
+              created: saved.created,
+              source,
+              hasUnsupportedContent: saved.hasUnsupportedContent,
+              snippet: snippetSummary,
+              items: sourceItems,
+            },
+            {
+              toolName: 'save_risup_prompt_snippet',
+              summary: `${saved.created ? 'Saved' : 'Updated'} risup prompt snippet "${saved.snippet.name}"`,
+              artifacts: { count: saved.snippet.itemCount, created: saved.created, source },
+            },
+          );
+        } catch (error) {
+          return mcpError(res, 500, {
+            action: 'save risup prompt snippet',
+            message: `Failed to save prompt snippet: ${(error as Error).message}`,
+            suggestion: 'sidecar JSON 파일 권한을 확인하거나 userData 디렉터리 접근 문제를 점검하세요.',
+            target: 'risup:prompt-snippets',
+            details: { error: (error as Error).message },
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-snippets/insert — insert a stored snippet
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-snippets' &&
+        parts[2] === 'insert' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        if (!currentData) {
+          return mcpError(res, 400, {
+            action: 'insert risup prompt snippet',
+            message: 'No file open',
+            suggestion: 'snippet을 삽입하려면 .risup 파일을 먼저 여세요.',
+            target: 'document:current',
+          });
+        }
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'insert risup prompt snippet',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-snippets/insert', broadcastStatus);
+        if (!body) return;
+        if (typeof body.identifier !== 'string' || body.identifier.trim().length === 0) {
+          return mcpError(res, 400, {
+            action: 'insert risup prompt snippet',
+            message: 'identifier must be a non-empty string',
+            suggestion: '{ "identifier": "snippet id or exact name", "insertAt": 0 } 형식으로 전달하세요.',
+            target: 'risup:prompt-snippets',
+          });
+        }
+
+        let snippet = null;
+        try {
+          snippet = readRisupPromptSnippet(getRisupPromptSnippetLibraryFilePath(deps), body.identifier);
+        } catch (error) {
+          return mcpError(res, 500, {
+            action: 'insert risup prompt snippet',
+            message: `Failed to read prompt snippet library: ${(error as Error).message}`,
+            suggestion: '손상된 sidecar JSON을 정리하거나 라이브러리 파일 권한을 확인하세요.',
+            target: 'risup:prompt-snippets',
+            details: { error: (error as Error).message },
+          });
+        }
+        if (!snippet) {
+          return mcpError(res, 404, {
+            action: 'insert risup prompt snippet',
+            message: `Prompt snippet not found: ${body.identifier}`,
+            suggestion: 'list_risup_prompt_snippets로 사용 가능한 snippet id/name을 확인하세요.',
+            target: 'risup:prompt-snippets',
+          });
+        }
+
+        const currentPromptText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const currentModel = parsePromptTemplate(currentPromptText);
+        if (currentModel.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'insert risup prompt snippet',
+            message: `Invalid current promptTemplate: ${currentModel.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 현재 promptTemplate을 먼저 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+            details: { parseError: currentModel.parseError },
+          });
+        }
+
+        const imported = parsePromptTemplateFromText(snippet.text);
+        if (imported.state === 'invalid') {
+          return mcpError(res, 409, {
+            action: 'insert risup prompt snippet',
+            message: `Stored snippet text is invalid: ${imported.parseError}`,
+            suggestion:
+              'save_risup_prompt_snippet으로 같은 이름의 snippet을 덮어쓰거나 delete_risup_prompt_snippet으로 제거하세요.',
+            target: 'risup:prompt-snippets',
+            details: { snippet: buildRisupPromptSnippetSummary(snippet), parseError: imported.parseError },
+          });
+        }
+
+        let resolvedInsertAt = currentModel.items.length;
+        if (body.insertAt !== undefined) {
+          if (!Number.isInteger(body.insertAt) || body.insertAt < 0 || body.insertAt > currentModel.items.length) {
+            return mcpError(res, 400, {
+              action: 'insert risup prompt snippet',
+              message: `insertAt must be an integer between 0 and ${currentModel.items.length}`,
+              suggestion: '{ "identifier": "snippet id or exact name", "insertAt": 0 } 형식으로 전달하세요.',
+              target: 'risup:promptTemplate',
+            });
+          }
+          resolvedInsertAt = body.insertAt as number;
+        }
+
+        const insertedItems = imported.items.map((item) => duplicatePromptItem(item));
+        const itemSummaries = insertedItems.map((item, index) => ({
+          index,
+          id: item.id ?? null,
+          type: item.type ?? null,
+          supported: item.supported,
+          preview: promptItemPreview(item),
+        }));
+        const previewPromptText = serializePromptTemplate({
+          items: [
+            ...currentModel.items.slice(0, resolvedInsertAt),
+            ...insertedItems,
+            ...currentModel.items.slice(resolvedInsertAt),
+          ],
+        });
+        const previewPromptModel = parsePromptTemplate(previewPromptText);
+        const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, previewPromptModel);
+        const dryRun = body.dry_run === true || body.dryRun === true;
+        if (dryRun) {
+          return jsonResSuccess(
+            res,
+            {
+              dry_run: true,
+              success: true,
+              count: imported.items.length,
+              insertAt: resolvedInsertAt,
+              hasUnsupportedContent: imported.hasUnsupportedContent,
+              orderWarnings,
+              snippet: buildRisupPromptSnippetSummary(snippet),
+              total_after: currentModel.items.length + imported.items.length,
+              items: itemSummaries,
+            },
+            {
+              toolName: 'insert_risup_prompt_snippet',
+              summary: `Validated insertion of risup prompt snippet "${snippet.name}"`,
+              artifacts: { count: imported.items.length, dry_run: true },
+            },
+          );
+        }
+
+        const summary = itemSummaries
+          .slice(0, 8)
+          .map((item) => `  [${item.index}] ${item.type ?? 'unknown'}${item.supported ? '' : ' (raw)'}`)
+          .join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 스니펫 삽입 요청',
+          `AI 어시스턴트가 snippet "${snippet.name}"의 항목 ${imported.items.length}개를 promptTemplate 위치 ${resolvedInsertAt}에 삽입하려 합니다.\n\n${summary}${itemSummaries.length > 8 ? '\n...' : ''}`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'insert risup prompt snippet',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삽입 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+
+        currentData.promptTemplate = previewPromptText;
+        logMcpMutation('insert risup prompt snippet', 'risup:promptTemplate', {
+          count: imported.items.length,
+          insertAt: resolvedInsertAt,
+          snippetName: snippet.name,
+          hasUnsupportedContent: imported.hasUnsupportedContent,
+        });
+        deps.broadcastToAll('data-updated', 'promptTemplate', previewPromptText);
+        return jsonResSuccess(
+          res,
+          {
+            success: true,
+            count: imported.items.length,
+            insertAt: resolvedInsertAt,
+            hasUnsupportedContent: imported.hasUnsupportedContent,
+            orderWarnings,
+            snippet: buildRisupPromptSnippetSummary(snippet),
+          },
+          {
+            toolName: 'insert_risup_prompt_snippet',
+            summary: `Inserted risup prompt snippet "${snippet.name}"`,
+            artifacts: { count: imported.items.length, insertAt: resolvedInsertAt },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-snippets/delete — delete one snippet
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-snippets' &&
+        parts[2] === 'delete' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const body = await readJsonBody(req, res, 'risup/prompt-snippets/delete', broadcastStatus);
+        if (!body) return;
+        if (typeof body.identifier !== 'string' || body.identifier.trim().length === 0) {
+          return mcpError(res, 400, {
+            action: 'delete risup prompt snippet',
+            message: 'identifier must be a non-empty string',
+            suggestion: '{ "identifier": "snippet id or exact name" } 형식으로 전달하세요.',
+            target: 'risup:prompt-snippets',
+          });
+        }
+
+        let snippet = null;
+        try {
+          snippet = readRisupPromptSnippet(getRisupPromptSnippetLibraryFilePath(deps), body.identifier);
+        } catch (error) {
+          return mcpError(res, 500, {
+            action: 'delete risup prompt snippet',
+            message: `Failed to read prompt snippet library: ${(error as Error).message}`,
+            suggestion: '손상된 sidecar JSON을 정리하거나 라이브러리 파일 권한을 확인하세요.',
+            target: 'risup:prompt-snippets',
+            details: { error: (error as Error).message },
+          });
+        }
+        if (!snippet) {
+          return mcpError(res, 404, {
+            action: 'delete risup prompt snippet',
+            message: `Prompt snippet not found: ${body.identifier}`,
+            suggestion: 'list_risup_prompt_snippets로 사용 가능한 snippet id/name을 확인하세요.',
+            target: 'risup:prompt-snippets',
+          });
+        }
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 스니펫 삭제 요청',
+          `AI 어시스턴트가 영구 snippet "${snippet.name}" (${snippet.itemCount}개 항목)을 삭제하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'delete risup prompt snippet',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'risup:prompt-snippets',
+          });
+        }
+
+        try {
+          const removed = deleteRisupPromptSnippet(getRisupPromptSnippetLibraryFilePath(deps), body.identifier);
+          if (!removed) {
+            return mcpError(res, 404, {
+              action: 'delete risup prompt snippet',
+              message: `Prompt snippet not found: ${body.identifier}`,
+              suggestion: 'list_risup_prompt_snippets로 사용 가능한 snippet id/name을 확인하세요.',
+              target: 'risup:prompt-snippets',
+            });
+          }
+          const snippetSummary = buildRisupPromptSnippetSummary(removed);
+          logMcpMutation('delete risup prompt snippet', 'risup:prompt-snippets', {
+            count: removed.itemCount,
+            snippetName: removed.name,
+          });
+          deps.broadcastToAll('risup-prompt-snippets-updated', {
+            action: 'deleted',
+            snippet: snippetSummary,
+          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              snippet: snippetSummary,
+            },
+            {
+              toolName: 'delete_risup_prompt_snippet',
+              summary: `Deleted risup prompt snippet "${removed.name}"`,
+              artifacts: { count: removed.itemCount },
+            },
+          );
+        } catch (error) {
+          return mcpError(res, 500, {
+            action: 'delete risup prompt snippet',
+            message: `Failed to delete prompt snippet: ${(error as Error).message}`,
+            suggestion: 'sidecar JSON 파일 권한을 확인하거나 userData 디렉터리 접근 문제를 점검하세요.',
+            target: 'risup:prompt-snippets',
+            details: { error: (error as Error).message },
           });
         }
       }

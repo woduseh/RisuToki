@@ -35,7 +35,6 @@ const KNOWN_UNLINTED_LIB_FILES = new Set([
   'src/lib/section-parser.ts',
   'src/lib/settings-popup.test.ts',
   'src/lib/sidebar-dnd.test.ts',
-  'src/lib/sidebar-dnd.ts',
   'src/lib/sidebar-refs.test.ts',
   'src/lib/terminal-session-context.test.ts',
   'src/lib/terminal-session-context.ts',

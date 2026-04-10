@@ -10,6 +10,9 @@
  *   - destructiveHint: true → tool may irreversibly delete/overwrite data
  *   - idempotentHint:  true → calling N times ≡ calling once (same args → same result)
  *   - openWorldHint:   true → tool interacts with external systems (network, filesystem)
+ *
+ * Additional mutation capability metadata is exposed separately through MCP tool `_meta`
+ * because the SDK strips unknown keys from `annotations`.
  */
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -51,6 +54,33 @@ interface BehaviorHints {
   idempotentHint?: boolean;
   openWorldHint?: boolean;
 }
+
+export interface MutationMeta {
+  requiresConfirmation: boolean;
+  supportsDryRun: boolean;
+}
+
+export const TOOL_MUTATION_META_KEYS = {
+  requiresConfirmation: 'risutoki/requiresConfirmation',
+  supportsDryRun: 'risutoki/supportsDryRun',
+} as const;
+
+export const NO_CONFIRMATION_TOOL_NAMES = ['open_file', 'snapshot_field'] as const;
+
+export const DRY_RUN_TOOL_NAMES = [
+  'replace_in_field',
+  'replace_in_field_batch',
+  'replace_block_in_field',
+  'replace_block_in_lorebook',
+  'replace_in_lorebook_batch',
+  'replace_across_all_lorebook',
+  'import_lorebook_from_files',
+  'import_risup_prompt_from_text',
+  'insert_risup_prompt_snippet',
+] as const;
+
+const NO_CONFIRMATION_TOOL_NAME_SET = new Set<string>(NO_CONFIRMATION_TOOL_NAMES);
+const DRY_RUN_TOOL_NAME_SET = new Set<string>(DRY_RUN_TOOL_NAMES);
 
 const RO_IDEMPOTENT: BehaviorHints = { readOnlyHint: true, idempotentHint: true };
 const WRITE: BehaviorHints = { readOnlyHint: false };
@@ -134,6 +164,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   // ── Regex ──────────────────────────────────────────────────────────────
   list_regex: { family: 'regex', hints: RO_IDEMPOTENT },
   read_regex: { family: 'regex', hints: RO_IDEMPOTENT },
+  read_regex_batch: { family: 'regex', hints: RO_IDEMPOTENT },
   write_regex: { family: 'regex', hints: WRITE_IDEMPOTENT },
   write_regex_batch: { family: 'regex', hints: WRITE },
   add_regex: { family: 'regex', hints: WRITE },
@@ -145,6 +176,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   // ── Greeting ───────────────────────────────────────────────────────────
   list_greetings: { family: 'greeting', hints: RO_IDEMPOTENT },
   read_greeting: { family: 'greeting', hints: RO_IDEMPOTENT },
+  read_greeting_batch: { family: 'greeting', hints: RO_IDEMPOTENT },
   write_greeting: { family: 'greeting', hints: WRITE_IDEMPOTENT },
   add_greeting: { family: 'greeting', hints: WRITE },
   delete_greeting: { family: 'greeting', hints: DESTRUCTIVE },
@@ -155,6 +187,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   // ── Trigger ────────────────────────────────────────────────────────────
   list_triggers: { family: 'trigger', hints: RO_IDEMPOTENT },
   read_trigger: { family: 'trigger', hints: RO_IDEMPOTENT },
+  read_trigger_batch: { family: 'trigger', hints: RO_IDEMPOTENT },
   write_trigger: { family: 'trigger', hints: WRITE_IDEMPOTENT },
   add_trigger: { family: 'trigger', hints: WRITE },
   delete_trigger: { family: 'trigger', hints: DESTRUCTIVE },
@@ -185,13 +218,16 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   read_reference_field_range: { family: 'reference', hints: RO_IDEMPOTENT },
   list_reference_greetings: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_greeting: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_greeting_batch: { family: 'reference', hints: RO_IDEMPOTENT },
   list_reference_triggers: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_trigger: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_trigger_batch: { family: 'reference', hints: RO_IDEMPOTENT },
   list_reference_lorebook: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_lorebook: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_lorebook_batch: { family: 'reference', hints: RO_IDEMPOTENT },
   list_reference_regex: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_regex: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_regex_batch: { family: 'reference', hints: RO_IDEMPOTENT },
   list_reference_lua: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_lua: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_lua_batch: { family: 'reference', hints: RO_IDEMPOTENT },
@@ -200,6 +236,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   read_reference_css_batch: { family: 'reference', hints: RO_IDEMPOTENT },
   list_reference_risup_prompt_items: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_risup_prompt_item: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_risup_prompt_item_batch: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_risup_formating_order: { family: 'reference', hints: RO_IDEMPOTENT },
 
   // ── Charx Asset ────────────────────────────────────────────────────────
@@ -273,6 +310,32 @@ export function getToolFamily(name: string): ToolFamily | undefined {
 /** Get MCP SDK ToolAnnotations for a tool. Returns undefined if not in taxonomy. */
 export function getToolAnnotations(name: string): BehaviorHints | undefined {
   return TOOL_TAXONOMY[name]?.hints;
+}
+
+/**
+ * Return additive mutation capability metadata for tools that mutate state.
+ *
+ * Read-only tools return undefined because they do not participate in confirmation or dry-run flows.
+ * Non-read-only tools default to confirmation=true unless explicitly exempted.
+ */
+export function getToolMutationMeta(name: string): MutationMeta | undefined {
+  const hints = TOOL_TAXONOMY[name]?.hints;
+  if (!hints) return undefined;
+  if (hints.readOnlyHint === true) return undefined;
+  return {
+    requiresConfirmation: !NO_CONFIRMATION_TOOL_NAME_SET.has(name),
+    supportsDryRun: DRY_RUN_TOOL_NAME_SET.has(name),
+  };
+}
+
+/** Build the MCP `_meta` payload for a tool, if it exposes mutation capability metadata. */
+export function getToolMeta(name: string): Record<string, unknown> | undefined {
+  const mutationMeta = getToolMutationMeta(name);
+  if (!mutationMeta) return undefined;
+  return {
+    [TOOL_MUTATION_META_KEYS.requiresConfirmation]: mutationMeta.requiresConfirmation,
+    [TOOL_MUTATION_META_KEYS.supportsDryRun]: mutationMeta.supportsDryRun,
+  };
 }
 
 /**

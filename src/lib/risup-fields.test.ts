@@ -38,9 +38,9 @@ describe('risup field metadata', () => {
     expect(templateFields).not.toContain('instructChatTemplate');
     expect(templateFields).not.toContain('JinjaTemplate');
 
-    // customPromptTemplateToggle must be a multiline textarea, not a single-line input
+    // customPromptTemplateToggle must use its dedicated structured editor
     const customToggle = getRisupFieldGroup('templates')?.fields.find((f) => f.id === 'customPromptTemplateToggle');
-    expect(customToggle?.editor).toBe('textarea');
+    expect(customToggle?.editor).toBe('toggle-template');
   });
 
   it('moves useInstructPrompt/instructChatTemplate/JinjaTemplate to the legacy prompts group', () => {

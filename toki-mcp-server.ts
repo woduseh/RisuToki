@@ -16,7 +16,7 @@ import path = require('path');
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { TOOL_TAXONOMY } from './src/lib/mcp-tool-taxonomy';
+import { getToolMeta, TOOL_TAXONOMY } from './src/lib/mcp-tool-taxonomy';
 
 const TOKI_PORT = process.env.TOKI_PORT;
 const TOKI_TOKEN = process.env.TOKI_TOKEN;
@@ -541,7 +541,7 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
 
 // ==================== MCP Server Setup ====================
 
-const server = new McpServer({ name: 'risutoki', version: '0.53.0' });
+const server = new McpServer({ name: 'risutoki', version: '0.58.0' });
 
 // Collect RegisteredTool handles for annotation patching via public API.
 // Each server.tool() return is stored so we avoid accessing _registeredTools.
@@ -938,13 +938,17 @@ server.tool(
 
 server.tool(
   'write_lorebook_batch',
-  '여러 로어북 항목을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 사용자 확인 필요.',
+  '여러 로어북 항목을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 각 항목에 optional expected_comment를 넣으면 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     entries: z
       .array(
         z.object({
           index: z.number().describe('로어북 항목 인덱스'),
           data: z.record(z.string(), z.unknown()).describe('수정할 데이터'),
+          expected_comment: z
+            .string()
+            .optional()
+            .describe('선택: 이 index에 있어야 한다고 기대하는 현재 comment. 다르면 409 Conflict로 중단됩니다.'),
         }),
       )
       .max(50)
@@ -974,26 +978,37 @@ server.tool(
 
 server.tool(
   'clone_lorebook',
-  '기존 로어북 항목을 복제합니다. overrides로 복제본의 필드를 변경할 수 있습니다. 사용자 확인 필요.',
+  '기존 로어북 항목을 복제합니다. overrides로 복제본의 필드를 변경할 수 있습니다. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     index: z.number().describe('복제할 원본 로어북 항목 인덱스'),
+    expected_comment: z
+      .string()
+      .optional()
+      .describe('선택: 이 index에 있어야 한다고 기대하는 현재 comment. 다르면 409 Conflict로 중단됩니다.'),
     overrides: z
       .record(z.string(), z.unknown())
       .optional()
       .describe('복제본에 적용할 필드 오버라이드 (예: {comment: "새이름", key: "새키"})'),
   },
-  async ({ index, overrides }) => textResult(await apiRequest('POST', '/lorebook/clone', { index, overrides })),
+  async ({ index, expected_comment, overrides }) =>
+    textResult(await apiRequest('POST', '/lorebook/clone', { index, expected_comment, overrides })),
 );
 
 server.tool(
   'write_lorebook',
-  '특정 인덱스의 로어북 항목을 수정합니다. 사용자 확인 필요.',
+  '특정 인덱스의 로어북 항목을 수정합니다. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     index: z.number().describe('로어북 항목 인덱스'),
     data: z.record(z.string(), z.unknown()).describe('수정할 로어북 데이터 (부분 또는 전체)'),
+    expected_comment: z
+      .string()
+      .optional()
+      .describe('선택: 이 index에 있어야 한다고 기대하는 현재 comment. 다르면 409 Conflict로 중단됩니다.'),
   },
-  async ({ index, data }) =>
-    textResult(await apiRequest('POST', `/lorebook/${index}`, data as Record<string, unknown>)),
+  async ({ index, data, expected_comment }) =>
+    textResult(
+      await apiRequest('POST', `/lorebook/${index}`, { ...(data as Record<string, unknown>), expected_comment }),
+    ),
 );
 
 server.tool(
@@ -1021,23 +1036,36 @@ server.tool(
 
 server.tool(
   'delete_lorebook',
-  '특정 인덱스의 로어북 항목을 삭제합니다. 사용자 확인 필요.',
-  { index: z.number().describe('삭제할 로어북 항목 인덱스') },
-  async ({ index }) => textResult(await apiRequest('POST', `/lorebook/${index}/delete`)),
+  '특정 인덱스의 로어북 항목을 삭제합니다. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('삭제할 로어북 항목 인덱스'),
+    expected_comment: z
+      .string()
+      .optional()
+      .describe('선택: 이 index에 있어야 한다고 기대하는 현재 comment. 다르면 409 Conflict로 중단됩니다.'),
+  },
+  async ({ index, expected_comment }) =>
+    textResult(await apiRequest('POST', `/lorebook/${index}/delete`, { expected_comment })),
 );
 
 server.tool(
   'batch_delete_lorebook',
-  '여러 로어북 항목을 한 번에 삭제합니다. 인덱스를 내림차순 처리하여 시프트 문제를 방지합니다. 최대 50개. 사용자 확인 필요.',
+  '여러 로어북 항목을 한 번에 삭제합니다. 인덱스를 내림차순 처리하여 시프트 문제를 방지합니다. optional expected_comments를 함께 보내면 stale index를 감지할 수 있습니다. 최대 50개. 사용자 확인 필요.',
   {
     indices: z.array(z.number()).describe('삭제할 로어북 항목 인덱스 배열 (예: [0, 2, 5])'),
+    expected_comments: z
+      .array(z.string())
+      .max(50)
+      .optional()
+      .describe('선택: indices와 같은 순서의 현재 comment 배열. 다르면 409 Conflict로 중단됩니다.'),
   },
-  async ({ indices }) => textResult(await apiRequest('POST', '/lorebook/batch-delete', { indices })),
+  async ({ indices, expected_comments }) =>
+    textResult(await apiRequest('POST', '/lorebook/batch-delete', { indices, expected_comments })),
 );
 
 server.tool(
   'replace_in_lorebook',
-  '로어북 항목의 필드에서 문자열 치환을 수행합니다. 대용량 항목도 전체를 읽지 않고 서버에서 직접 처리합니다. field 파라미터로 content 외에 comment, key, secondkey도 치환 가능. 사용자 확인 필요.',
+  '로어북 항목의 필드에서 문자열 치환을 수행합니다. 대용량 항목도 전체를 읽지 않고 서버에서 직접 처리합니다. field 파라미터로 content 외에 comment, key, secondkey도 치환 가능. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     index: z.number().describe('로어북 항목 인덱스'),
     find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
@@ -1048,14 +1076,20 @@ server.tool(
       .enum(['content', 'comment', 'key', 'secondkey'])
       .optional()
       .describe('치환 대상 필드 (기본: "content"). comment/key/secondkey도 지원'),
+    expected_comment: z
+      .string()
+      .optional()
+      .describe('선택: 이 index에 있어야 한다고 기대하는 현재 comment. 다르면 409 Conflict로 중단됩니다.'),
   },
-  async ({ index, find, replace, regex, flags, field }) =>
-    textResult(await apiRequest('POST', `/lorebook/${index}/replace`, { find, replace, regex, flags, field })),
+  async ({ index, find, replace, regex, flags, field, expected_comment }) =>
+    textResult(
+      await apiRequest('POST', `/lorebook/${index}/replace`, { find, replace, regex, flags, field, expected_comment }),
+    ),
 );
 
 server.tool(
   'insert_in_lorebook',
-  '로어북 항목의 content에 텍스트를 삽입합니다. 전체를 읽지 않고 특정 위치에 추가. 사용자 확인 필요.',
+  '로어북 항목의 content에 텍스트를 삽입합니다. 전체를 읽지 않고 특정 위치에 추가합니다. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     index: z.number().describe('로어북 항목 인덱스'),
     content: z.string().describe('삽입할 텍스트'),
@@ -1064,14 +1098,18 @@ server.tool(
       .optional()
       .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
     anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+    expected_comment: z
+      .string()
+      .optional()
+      .describe('선택: 이 index에 있어야 한다고 기대하는 현재 comment. 다르면 409 Conflict로 중단됩니다.'),
   },
-  async ({ index, content, position, anchor }) =>
-    textResult(await apiRequest('POST', `/lorebook/${index}/insert`, { content, position, anchor })),
+  async ({ index, content, position, anchor, expected_comment }) =>
+    textResult(await apiRequest('POST', `/lorebook/${index}/insert`, { content, position, anchor, expected_comment })),
 );
 
 server.tool(
   'replace_block_in_lorebook',
-  '로어북 항목에서 두 앵커 사이의 멀티라인 블록을 교체합니다. 여러 줄에 걸친 텍스트 블록도 안전하게 교체 가능. field 옵션으로 content(기본)/comment/key/secondkey 대상 선택. dry_run 지원. 사용자 확인 필요.',
+  '로어북 항목에서 두 앵커 사이의 멀티라인 블록을 교체합니다. 여러 줄에 걸친 텍스트 블록도 안전하게 교체 가능. field 옵션으로 content(기본)/comment/key/secondkey 대상 선택. dry_run 지원. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     index: z.number().describe('로어북 항목 인덱스'),
     start_anchor: z.string().describe('블록 시작 앵커 문자열 (멀티라인 가능)'),
@@ -1080,8 +1118,12 @@ server.tool(
     include_anchors: z.boolean().optional().describe('true(기본): 앵커 포함 전체 교체, false: 앵커 사이 내용만 교체'),
     field: z.enum(['content', 'comment', 'key', 'secondkey']).optional().describe('치환 대상 필드 (기본: "content")'),
     dry_run: z.boolean().optional().describe('true이면 실제 변경 없이 미리보기만 반환 (기본: false)'),
+    expected_comment: z
+      .string()
+      .optional()
+      .describe('선택: 이 index에 있어야 한다고 기대하는 현재 comment. 다르면 409 Conflict로 중단됩니다.'),
   },
-  async ({ index, start_anchor, end_anchor, content, include_anchors, field, dry_run }) =>
+  async ({ index, start_anchor, end_anchor, content, include_anchors, field, dry_run, expected_comment }) =>
     textResult(
       await apiRequest('POST', `/lorebook/${index}/block-replace`, {
         start_anchor,
@@ -1090,13 +1132,14 @@ server.tool(
         include_anchors,
         field,
         dry_run,
+        expected_comment,
       }),
     ),
 );
 
 server.tool(
   'replace_in_lorebook_batch',
-  '여러 로어북 항목의 content에서 문자열 치환을 일괄 수행합니다. 각 항목별 매치 수를 계산하고 한 번의 확인으로 전부 적용합니다. 사용자 확인 필요.',
+  '여러 로어북 항목의 content에서 문자열 치환을 일괄 수행합니다. 각 항목별 매치 수를 계산하고 한 번의 확인으로 전부 적용합니다. dry_run으로 실제 변경 없이 매치 결과를 미리 확인할 수 있고, 각 항목에 optional expected_comment를 넣으면 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     replacements: z
       .array(
@@ -1106,12 +1149,18 @@ server.tool(
           replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
           regex: z.boolean().optional().describe('정규식 모드 여부'),
           flags: z.string().optional().describe('정규식 플래그 (기본: "g")'),
+          expected_comment: z
+            .string()
+            .optional()
+            .describe('선택: 이 index에 있어야 한다고 기대하는 현재 comment. 다르면 409 Conflict로 중단됩니다.'),
         }),
       )
       .max(50)
       .describe('치환 작업 배열 [{index, find, replace, regex?, flags?}] (최대 50개)'),
+    dry_run: z.boolean().optional().describe('true이면 실제 변경 없이 매치 결과만 반환합니다 (기본: false)'),
   },
-  async ({ replacements }) => textResult(await apiRequest('POST', '/lorebook/batch-replace', { replacements })),
+  async ({ replacements, dry_run }) =>
+    textResult(await apiRequest('POST', '/lorebook/batch-replace', { replacements, dry_run })),
 );
 
 server.tool(
@@ -1131,7 +1180,7 @@ server.tool(
 
 server.tool(
   'insert_in_lorebook_batch',
-  '여러 로어북 항목의 content에 텍스트를 일괄 삽입합니다. 한 번의 확인으로 전부 적용합니다. 사용자 확인 필요.',
+  '여러 로어북 항목의 content에 텍스트를 일괄 삽입합니다. 한 번의 확인으로 전부 적용합니다. 각 항목에 optional expected_comment를 넣으면 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     insertions: z
       .array(
@@ -1143,6 +1192,10 @@ server.tool(
             .optional()
             .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
           anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+          expected_comment: z
+            .string()
+            .optional()
+            .describe('선택: 이 index에 있어야 한다고 기대하는 현재 comment. 다르면 409 Conflict로 중단됩니다.'),
         }),
       )
       .max(50)
@@ -1168,13 +1221,24 @@ server.tool(
 );
 
 server.tool(
+  'read_regex_batch',
+  '여러 정규식 항목을 한 번에 읽습니다. read_regex를 반복 호출하는 대신 이 도구를 사용하세요.',
+  {
+    indices: z.array(z.number()).max(50).describe('읽을 정규식 항목 인덱스 배열 (최대 50개)'),
+  },
+  async ({ indices }) => textResult(await apiRequest('POST', '/regex/batch', { indices })),
+);
+
+server.tool(
   'write_regex',
-  '특정 인덱스의 정규식 항목을 수정합니다. 사용자 확인 필요.',
+  '특정 인덱스의 정규식 항목을 수정합니다. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     index: z.number().describe('정규식 항목 인덱스'),
     data: z.record(z.string(), z.unknown()).describe('수정할 정규식 데이터'),
+    expected_comment: z.string().optional().describe('선택사항: list_regex에서 본 현재 comment와 다르면 409 반환'),
   },
-  async ({ index, data }) => textResult(await apiRequest('POST', `/regex/${index}`, data as Record<string, unknown>)),
+  async ({ index, data, expected_comment }) =>
+    textResult(await apiRequest('POST', `/regex/${index}`, { ...(data as Record<string, unknown>), expected_comment })),
 );
 
 server.tool(
@@ -1186,7 +1250,7 @@ server.tool(
 
 server.tool(
   'replace_in_regex',
-  '정규식 항목의 find 또는 replace 필드에서 문자열 치환을 수행합니다. 대형 regex 필드를 전체 읽지 않고 서버에서 직접 처리합니다. regex: true + flags 옵션으로 정규식 지원. 사용자 확인 필요.',
+  '정규식 항목의 find 또는 replace 필드에서 문자열 치환을 수행합니다. 대형 regex 필드를 전체 읽지 않고 서버에서 직접 처리합니다. regex: true + flags 옵션으로 정규식 지원. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     index: z.number().describe('정규식 항목 인덱스'),
     field: z.enum(['find', 'replace']).describe('편집할 필드: "find" (IN 패턴) 또는 "replace" (OUT 치환 텍스트)'),
@@ -1194,14 +1258,17 @@ server.tool(
     replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
     regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false)'),
     flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+    expected_comment: z.string().optional().describe('선택사항: list_regex에서 본 현재 comment와 다르면 409 반환'),
   },
-  async ({ index, field, find, replace, regex, flags }) =>
-    textResult(await apiRequest('POST', `/regex/${index}/replace`, { field, find, replace, regex, flags })),
+  async ({ index, field, find, replace, regex, flags, expected_comment }) =>
+    textResult(
+      await apiRequest('POST', `/regex/${index}/replace`, { field, find, replace, regex, flags, expected_comment }),
+    ),
 );
 
 server.tool(
   'insert_in_regex',
-  '정규식 항목의 find 또는 replace 필드에 텍스트를 삽입합니다. 대형 regex 필드를 전체 읽지 않고 서버에서 직접 처리합니다. 사용자 확인 필요.',
+  '정규식 항목의 find 또는 replace 필드에 텍스트를 삽입합니다. 대형 regex 필드를 전체 읽지 않고 서버에서 직접 처리합니다. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     index: z.number().describe('정규식 항목 인덱스'),
     field: z.enum(['find', 'replace']).describe('편집할 필드: "find" (IN 패턴) 또는 "replace" (OUT 치환 텍스트)'),
@@ -1211,16 +1278,23 @@ server.tool(
       .optional()
       .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
     anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+    expected_comment: z.string().optional().describe('선택사항: list_regex에서 본 현재 comment와 다르면 409 반환'),
   },
-  async ({ index, field, content, position, anchor }) =>
-    textResult(await apiRequest('POST', `/regex/${index}/insert`, { field, content, position, anchor })),
+  async ({ index, field, content, position, anchor, expected_comment }) =>
+    textResult(
+      await apiRequest('POST', `/regex/${index}/insert`, { field, content, position, anchor, expected_comment }),
+    ),
 );
 
 server.tool(
   'delete_regex',
-  '특정 인덱스의 정규식 항목을 삭제합니다. 사용자 확인 필요.',
-  { index: z.number().describe('삭제할 정규식 항목 인덱스') },
-  async ({ index }) => textResult(await apiRequest('POST', `/regex/${index}/delete`)),
+  '특정 인덱스의 정규식 항목을 삭제합니다. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('삭제할 정규식 항목 인덱스'),
+    expected_comment: z.string().optional().describe('선택사항: list_regex에서 본 현재 comment와 다르면 409 반환'),
+  },
+  async ({ index, expected_comment }) =>
+    textResult(await apiRequest('POST', `/regex/${index}/delete`, { expected_comment })),
 );
 
 server.tool(
@@ -1237,13 +1311,17 @@ server.tool(
 
 server.tool(
   'write_regex_batch',
-  '여러 정규식 항목을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 최대 50개. 사용자 확인 필요.',
+  '여러 정규식 항목을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 각 항목에 optional expected_comment를 넣으면 stale index를 감지할 수 있습니다. 최대 50개. 사용자 확인 필요.',
   {
     entries: z
       .array(
         z.object({
           index: z.number().describe('정규식 항목 인덱스'),
           data: z.record(z.string(), z.unknown()).describe('수정할 정규식 데이터'),
+          expected_comment: z
+            .string()
+            .optional()
+            .describe('선택사항: list_regex에서 본 현재 comment와 다르면 409 반환'),
         }),
       )
       .max(50)
@@ -1282,14 +1360,26 @@ server.tool(
 );
 
 server.tool(
+  'read_greeting_batch',
+  '여러 인사말을 한 번에 읽습니다. read_greeting을 반복 호출하는 대신 이 도구를 사용하세요.',
+  {
+    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    indices: z.array(z.number()).max(50).describe('읽을 인사말 인덱스 배열 (최대 50개)'),
+  },
+  async ({ type, indices }) => textResult(await apiRequest('POST', `/greeting/${type}/batch`, { indices })),
+);
+
+server.tool(
   'write_greeting',
-  '특정 인덱스의 인사말을 수정합니다. 사용자 확인 필요.',
+  '특정 인덱스의 인사말을 수정합니다. optional expected_preview로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
     index: z.number().describe('인사말 인덱스'),
     content: z.string().describe('새로운 인사말 텍스트'),
+    expected_preview: z.string().optional().describe('선택사항: list_greetings에서 본 현재 preview와 다르면 409 반환'),
   },
-  async ({ type, index, content }) => textResult(await apiRequest('POST', `/greeting/${type}/${index}`, { content })),
+  async ({ type, index, content, expected_preview }) =>
+    textResult(await apiRequest('POST', `/greeting/${type}/${index}`, { content, expected_preview })),
 );
 
 server.tool(
@@ -1304,27 +1394,36 @@ server.tool(
 
 server.tool(
   'delete_greeting',
-  '특정 인덱스의 인사말을 삭제합니다. 사용자 확인 필요.',
+  '특정 인덱스의 인사말을 삭제합니다. optional expected_preview로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
     index: z.number().describe('삭제할 인사말 인덱스'),
+    expected_preview: z.string().optional().describe('선택사항: list_greetings에서 본 현재 preview와 다르면 409 반환'),
   },
-  async ({ type, index }) => textResult(await apiRequest('POST', `/greeting/${type}/${index}/delete`)),
+  async ({ type, index, expected_preview }) =>
+    textResult(await apiRequest('POST', `/greeting/${type}/${index}/delete`, { expected_preview })),
 );
 
 server.tool(
   'batch_delete_greeting',
-  '여러 인사말을 한 번에 삭제합니다. 인덱스를 내림차순 처리하여 시프트 문제를 방지합니다. 사용자 확인 필요.',
+  '여러 인사말을 한 번에 삭제합니다. 인덱스를 내림차순 처리하여 시프트 문제를 방지합니다. optional expected_previews를 함께 보내면 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
     indices: z.array(z.number()).describe('삭제할 인사말 인덱스 배열 (예: [0, 2, 5])'),
+    expected_previews: z
+      .array(z.string())
+      .optional()
+      .describe(
+        '선택사항: indices와 같은 순서/길이의 preview 배열. list_greetings의 preview를 그대로 넣으면 stale index 감지',
+      ),
   },
-  async ({ type, indices }) => textResult(await apiRequest('POST', `/greeting/${type}/batch-delete`, { indices })),
+  async ({ type, indices, expected_previews }) =>
+    textResult(await apiRequest('POST', `/greeting/${type}/batch-delete`, { indices, expected_previews })),
 );
 
 server.tool(
   'batch_write_greeting',
-  '여러 인사말을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 사용자 확인 필요.',
+  '여러 인사말을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 각 항목에 optional expected_preview를 넣으면 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     type: z.enum(['alternate', 'group']).describe('"alternate" (추가 첫 메시지) 또는 "group" (그룹 전용)'),
     writes: z
@@ -1332,6 +1431,10 @@ server.tool(
         z.object({
           index: z.number().describe('인사말 인덱스'),
           content: z.string().describe('새로운 인사말 텍스트'),
+          expected_preview: z
+            .string()
+            .optional()
+            .describe('선택사항: list_greetings에서 본 현재 preview와 다르면 409 반환'),
         }),
       )
       .max(50)
@@ -1367,8 +1470,17 @@ server.tool(
 );
 
 server.tool(
+  'read_trigger_batch',
+  '여러 트리거 스크립트를 한 번에 읽습니다. read_trigger를 반복 호출하는 대신 이 도구를 사용하세요.',
+  {
+    indices: z.array(z.number()).max(50).describe('읽을 트리거 인덱스 배열 (최대 50개)'),
+  },
+  async ({ indices }) => textResult(await apiRequest('POST', '/trigger/batch', { indices })),
+);
+
+server.tool(
   'write_trigger',
-  '특정 인덱스의 트리거 스크립트를 수정합니다. 변경할 필드만 전달하면 나머지는 유지됩니다. 사용자 확인 필요.',
+  '특정 인덱스의 트리거 스크립트를 수정합니다. 변경할 필드만 전달하면 나머지는 유지됩니다. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     index: z.number().describe('트리거 인덱스'),
     comment: z.string().optional().describe('트리거 이름/설명'),
@@ -1376,14 +1488,16 @@ server.tool(
     conditions: z.array(z.unknown()).optional().describe('조건 배열'),
     effect: z.array(z.unknown()).optional().describe('효과 배열'),
     lowLevelAccess: z.boolean().optional().describe('저수준 접근 여부'),
+    expected_comment: z.string().optional().describe('선택사항: list_triggers에서 본 현재 comment와 다르면 409 반환'),
   },
-  async ({ index, comment, type, conditions, effect, lowLevelAccess }) => {
+  async ({ index, comment, type, conditions, effect, lowLevelAccess, expected_comment }) => {
     const body: Record<string, unknown> = {};
     if (comment !== undefined) body.comment = comment;
     if (type !== undefined) body.type = type;
     if (conditions !== undefined) body.conditions = conditions;
     if (effect !== undefined) body.effect = effect;
     if (lowLevelAccess !== undefined) body.lowLevelAccess = lowLevelAccess;
+    if (expected_comment !== undefined) body.expected_comment = expected_comment;
     return textResult(await apiRequest('POST', `/trigger/${index}`, body));
   },
 );
@@ -1411,9 +1525,13 @@ server.tool(
 
 server.tool(
   'delete_trigger',
-  '특정 인덱스의 트리거 스크립트를 삭제합니다. 사용자 확인 필요.',
-  { index: z.number().describe('삭제할 트리거 인덱스') },
-  async ({ index }) => textResult(await apiRequest('POST', `/trigger/${index}/delete`)),
+  '특정 인덱스의 트리거 스크립트를 삭제합니다. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('삭제할 트리거 인덱스'),
+    expected_comment: z.string().optional().describe('선택사항: list_triggers에서 본 현재 comment와 다르면 409 반환'),
+  },
+  async ({ index, expected_comment }) =>
+    textResult(await apiRequest('POST', `/trigger/${index}/delete`, { expected_comment })),
 );
 
 // ===== Lua Tools =====
@@ -1690,6 +1808,18 @@ server.tool(
 );
 
 server.tool(
+  'read_reference_greeting_batch',
+  '참고 자료 파일의 여러 인사말을 한 번에 읽습니다 (읽기 전용).',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    type: z.enum(['alternate', 'group']).describe('인사말 종류'),
+    indices: z.array(z.number()).max(50).describe('읽을 인사말 인덱스 배열 (최대 50개)'),
+  },
+  async ({ index, type, indices }) =>
+    textResult(await apiRequest('POST', `/reference/${index}/greeting/${encodeURIComponent(type)}/batch`, { indices })),
+);
+
+server.tool(
   'list_reference_triggers',
   '참고 자료 파일의 트리거 스크립트 목록을 확인합니다 (읽기 전용). read_reference_field("triggerScripts")의 전체 JSON 덤프 대신 comment/type/count 요약을 반환합니다.',
   {
@@ -1706,6 +1836,16 @@ server.tool(
     triggerIndex: z.number().describe('트리거 인덱스 (list_reference_triggers 결과 참조)'),
   },
   async ({ index, triggerIndex }) => textResult(await apiRequest('GET', `/reference/${index}/trigger/${triggerIndex}`)),
+);
+
+server.tool(
+  'read_reference_trigger_batch',
+  '참고 자료 파일의 여러 트리거 스크립트를 한 번에 읽습니다 (읽기 전용).',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    indices: z.array(z.number()).max(50).describe('읽을 트리거 인덱스 배열 (최대 50개)'),
+  },
+  async ({ index, indices }) => textResult(await apiRequest('POST', `/reference/${index}/trigger/batch`, { indices })),
 );
 
 server.tool(
@@ -1830,6 +1970,16 @@ server.tool(
 );
 
 server.tool(
+  'read_reference_regex_batch',
+  '참고 자료 파일의 여러 정규식 항목을 한 번에 읽습니다 (읽기 전용).',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    indices: z.array(z.number()).max(50).describe('읽을 정규식 항목 인덱스 배열 (최대 50개)'),
+  },
+  async ({ index, indices }) => textResult(await apiRequest('POST', `/reference/${index}/regex/batch`, { indices })),
+);
+
+server.tool(
   'list_reference_risup_prompt_items',
   '참고 자료 파일이 .risup일 때 promptTemplate 항목 목록을 읽습니다 (읽기 전용). 각 항목의 index, type, supported, id, preview를 반환합니다.',
   {
@@ -1847,6 +1997,17 @@ server.tool(
   },
   async ({ index, itemIndex }) =>
     textResult(await apiRequest('GET', `/reference/${index}/risup/prompt-item/${itemIndex}`)),
+);
+
+server.tool(
+  'read_reference_risup_prompt_item_batch',
+  '참고 자료 파일이 .risup일 때 여러 promptTemplate 항목을 한 번에 읽습니다 (읽기 전용).',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    indices: z.array(z.number()).max(50).describe('읽을 prompt item 인덱스 배열 (최대 50개)'),
+  },
+  async ({ index, indices }) =>
+    textResult(await apiRequest('POST', `/reference/${index}/risup/prompt-items/batch`, { indices })),
 );
 
 server.tool(
@@ -2265,7 +2426,7 @@ server.tool(
 
 server.tool(
   'write_risup_prompt_item',
-  'Replaces a single prompt item in the risup promptTemplate by index. Only supported item types are accepted (plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache). For unsupported/raw structures use write_field("promptTemplate"). Requires user confirmation. Successful responses may include additive "orderWarnings" when the resulting prompt no longer matches formatingOrder references.',
+  'Replaces a single prompt item in the risup promptTemplate by index. Only supported item types are accepted (plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, cache). For unsupported/raw structures use write_field("promptTemplate"). Optional expected_type / expected_preview guards can detect stale indices. Requires user confirmation. Successful responses may include additive "orderWarnings" when the resulting prompt no longer matches formatingOrder references.',
   {
     index: z
       .number()
@@ -2275,13 +2436,24 @@ server.tool(
       .describe(
         'Replacement item object. Must be a supported type. Example: { "type": "plain", "type2": "normal", "text": "...", "role": "system" }',
       ),
+    expected_type: z
+      .string()
+      .optional()
+      .describe('Optional stale-index guard: the current prompt item type must still match.'),
+    expected_preview: z
+      .string()
+      .optional()
+      .describe(
+        'Optional stale-index guard: the current prompt item preview from list_risup_prompt_items must still match.',
+      ),
   },
-  async ({ index, item }) => textResult(await apiRequest('POST', `/risup/prompt-item/${index}`, { item })),
+  async ({ index, item, expected_type, expected_preview }) =>
+    textResult(await apiRequest('POST', `/risup/prompt-item/${index}`, { item, expected_type, expected_preview })),
 );
 
 server.tool(
   'write_risup_prompt_item_batch',
-  'Replaces multiple risup prompt items by index in a single confirmed operation. Only supported item types are accepted. Prefer this over repeated write_risup_prompt_item calls when editing several sibling items. Successful responses may include additive "orderWarnings" for the resulting prompt/formatingOrder consistency state.',
+  'Replaces multiple risup prompt items by index in a single confirmed operation. Only supported item types are accepted. Prefer this over repeated write_risup_prompt_item calls when editing several sibling items. Each write can carry optional expected_type / expected_preview guards to detect stale indices. Requires user confirmation. Successful responses may include additive "orderWarnings" for the resulting prompt/formatingOrder consistency state.',
   {
     writes: z
       .array(
@@ -2290,6 +2462,14 @@ server.tool(
           item: z
             .record(z.string(), z.unknown())
             .describe('Replacement item object. Must be a supported prompt item type.'),
+          expected_type: z
+            .string()
+            .optional()
+            .describe('Optional stale-index guard: the current prompt item type must still match.'),
+          expected_preview: z
+            .string()
+            .optional()
+            .describe('Optional stale-index guard: the current prompt item preview must still match.'),
         }),
       )
       .max(50)
@@ -2313,7 +2493,7 @@ server.tool(
 
 server.tool(
   'add_risup_prompt_item_batch',
-  'Appends multiple new prompt items to the risup promptTemplate in one confirmed operation. Only supported item types are accepted. Prefer this over repeated add_risup_prompt_item calls when building or extending a preset. Successful responses may include additive "orderWarnings".',
+  'Appends multiple new prompt items to the risup promptTemplate in one confirmed operation. Only supported item types are accepted. Prefer this over repeated add_risup_prompt_item calls when building or extending a preset. Requires user confirmation. Successful responses may include additive "orderWarnings".',
   {
     items: z
       .array(z.record(z.string(), z.unknown()))
@@ -2325,13 +2505,22 @@ server.tool(
 
 server.tool(
   'delete_risup_prompt_item',
-  'Deletes a single prompt item from the risup promptTemplate by index. Requires user confirmation. Successful responses may include additive "orderWarnings".',
+  'Deletes a single prompt item from the risup promptTemplate by index. Optional expected_type / expected_preview guards can detect stale indices. Requires user confirmation. Successful responses may include additive "orderWarnings".',
   {
     index: z
       .number()
       .describe('Zero-based index of the prompt item to delete. Use list_risup_prompt_items to find valid indices.'),
+    expected_type: z
+      .string()
+      .optional()
+      .describe('Optional stale-index guard: the current prompt item type must still match.'),
+    expected_preview: z
+      .string()
+      .optional()
+      .describe('Optional stale-index guard: the current prompt item preview must still match.'),
   },
-  async ({ index }) => textResult(await apiRequest('POST', `/risup/prompt-item/${index}/delete`, {})),
+  async ({ index, expected_type, expected_preview }) =>
+    textResult(await apiRequest('POST', `/risup/prompt-item/${index}/delete`, { expected_type, expected_preview })),
 );
 
 server.tool(
@@ -2455,7 +2644,7 @@ server.tool(
 
 server.tool(
   'insert_risup_prompt_snippet',
-  'Inserts a stored risup prompt snippet into the current .risup promptTemplate using fresh item ids. Set dry_run=true to preview the insertion without mutating the file. Successful responses may include additive "orderWarnings".',
+  'Inserts a stored risup prompt snippet into the current .risup promptTemplate using fresh item ids. Set dry_run=true to preview the insertion without mutating the file. Requires user confirmation unless dry_run is used. Successful responses may include additive "orderWarnings".',
   {
     identifier: z.string().describe('Snippet id or exact snippet name from list_risup_prompt_snippets.'),
     dry_run: z
@@ -2503,7 +2692,7 @@ server.prompt(
   for (const [name, entry] of Object.entries(TOOL_TAXONOMY)) {
     const handle = _registeredToolHandles.get(name);
     if (handle) {
-      handle.update({ annotations: entry.hints });
+      handle.update({ annotations: entry.hints, _meta: getToolMeta(name) });
     }
   }
 }

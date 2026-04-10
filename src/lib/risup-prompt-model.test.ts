@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   parsePromptTemplate,
+  parsePromptTemplateFromText,
   serializePromptTemplate,
+  serializePromptTemplateSubsetToText,
+  serializePromptTemplateToText,
   parseFormatingOrder,
   serializeFormatingOrder,
   validatePromptTemplateText,
@@ -439,6 +442,95 @@ describe('serializePromptTemplate', () => {
     expect(parsed[0]).toMatchObject(PLAIN);
     expect(parsed[1]).toMatchObject(UNKNOWN);
     expect(parsed[2]).toMatchObject(CHAT_END);
+  });
+});
+
+describe('promptTemplate text format', () => {
+  function canonicalJsonAfterTextRoundTrip(items: unknown[]): string {
+    const canonicalModel = parsePromptTemplate(stringify(items));
+    const text = serializePromptTemplateToText(canonicalModel);
+    const parsedFromText = parsePromptTemplateFromText(text);
+    expect(parsedFromText.state).toBe('valid');
+    return serializePromptTemplate(parsedFromText);
+  }
+
+  it('serializes empty promptTemplate items to a blank string', () => {
+    expect(serializePromptTemplateToText({ items: [] })).toBe('');
+  });
+
+  it('round-trips supported, unsupported, and extra-field items through the text format', () => {
+    const items = [
+      { ...PLAIN, customExtraField: 'keep me' },
+      { ...AUTHORNOTE_DEFAULT, name: 'AN block' },
+      { id: 'legacy-unknown-1', type: 'futureType', data: { x: 1 } },
+    ];
+
+    const canonicalJson = serializePromptTemplate(parsePromptTemplate(stringify(items)));
+    const canonicalFromText = canonicalJsonAfterTextRoundTrip(items);
+    const text = serializePromptTemplateToText(parsePromptTemplate(stringify(items)));
+
+    expect(JSON.parse(canonicalFromText)).toEqual(JSON.parse(canonicalJson));
+    expect(text).toContain('extra-json: {"customExtraField":"keep me"}');
+    expect(text).toContain('### [raw] ###');
+  });
+
+  it('preserves body text containing delimiter-like lines', () => {
+    const items = [
+      {
+        type: 'plain',
+        type2: 'normal',
+        text: 'line 1\n===\n---\nline 4',
+        role: 'bot',
+      },
+    ];
+
+    const model = parsePromptTemplate(stringify(items));
+    const text = serializePromptTemplateToText(model);
+    const parsed = parsePromptTemplateFromText(text);
+
+    expect(text).toContain('body-lines: 4');
+    expect(parsed.state).toBe('valid');
+    expect(parsed.items[0].supported && parsed.items[0].type === 'plain' && parsed.items[0].text).toBe(
+      'line 1\n===\n---\nline 4',
+    );
+  });
+
+  it('uses JSON metadata for multiline defaultText values', () => {
+    const items = [{ type: 'authornote', defaultText: 'first line\nsecond line', innerFormat: '[AN]', name: 'Note' }];
+    const model = parsePromptTemplate(stringify(items));
+    const text = serializePromptTemplateToText(model);
+    const parsed = parsePromptTemplateFromText(text);
+
+    expect(text).toContain('defaultText-json: "first line\\nsecond line"');
+    expect(parsed.state).toBe('valid');
+    expect(JSON.parse(serializePromptTemplate(parsed))).toEqual(JSON.parse(serializePromptTemplate(model)));
+  });
+
+  it('returns invalid state for malformed text blocks', () => {
+    const parsed = parsePromptTemplateFromText(
+      '### [plain] ###\nrole: system\ntype2: normal\nbody-lines: nope\n---\nhello\n===',
+    );
+
+    expect(parsed.state).toBe('invalid');
+    expect(parsed.parseError).toMatch(/body-lines/i);
+  });
+
+  it('serializes a requested subset to text in the requested order', () => {
+    const model = parsePromptTemplate(
+      stringify([
+        { type: 'plain', type2: 'normal', text: 'first', role: 'system' },
+        { type: 'chatML', text: 'second' },
+        { type: 'cache', name: 'third', depth: 1, role: 'all' },
+      ]),
+    );
+
+    const subsetText = serializePromptTemplateSubsetToText(model, [2, 0]);
+    const parsedSubset = parsePromptTemplateFromText(subsetText);
+
+    expect(parsedSubset.state).toBe('valid');
+    expect(parsedSubset.items).toHaveLength(2);
+    expect(parsedSubset.items[0].type).toBe('cache');
+    expect(parsedSubset.items[1].type).toBe('plain');
   });
 });
 

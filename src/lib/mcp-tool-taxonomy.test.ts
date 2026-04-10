@@ -6,8 +6,11 @@ import {
   TOOL_TAXONOMY,
   TOOL_FAMILIES,
   ALL_TOOL_NAMES,
+  DRY_RUN_TOOL_NAMES,
+  NO_CONFIRMATION_TOOL_NAMES,
   getToolFamily,
   getToolAnnotations,
+  getToolMutationMeta,
   getToolsByFamily,
 } from './mcp-tool-taxonomy';
 import { FAMILY_NEXT_ACTIONS } from './mcp-response-envelope';
@@ -22,7 +25,23 @@ function extractRegisteredToolNames(): string[] {
   return [...matches].map((m) => m[1]).sort();
 }
 
+function extractRegisteredToolBlocks(): Map<string, string> {
+  const serverSrc = fs.readFileSync(path.resolve(__dirname, '../../toki-mcp-server.ts'), 'utf-8');
+  const matches = [...serverSrc.matchAll(/server\.tool\(\s*'([^']+)'/g)];
+  const blocks = new Map<string, string>();
+  for (let i = 0; i < matches.length; i += 1) {
+    const name = matches[i][1];
+    const start = matches[i].index ?? 0;
+    const end = i + 1 < matches.length ? (matches[i + 1].index ?? serverSrc.length) : serverSrc.length;
+    blocks.set(name, serverSrc.slice(start, end));
+  }
+  return blocks;
+}
+
 const registeredTools = extractRegisteredToolNames();
+const registeredToolBlocks = extractRegisteredToolBlocks();
+const noConfirmationToolSet = new Set<string>(NO_CONFIRMATION_TOOL_NAMES);
+const dryRunToolSet = new Set<string>(DRY_RUN_TOOL_NAMES);
 
 // ────────────────────────────────────────────────────────────────────────────
 // Tests
@@ -162,6 +181,59 @@ describe('MCP Tool Taxonomy', () => {
         const hints = getToolAnnotations(name);
         expect(hints?.readOnlyHint, `${name} should be readOnly`).toBe(true);
       }
+    }
+  });
+
+  it('read-only tools do not expose mutation metadata', () => {
+    for (const name of ALL_TOOL_NAMES) {
+      const hints = getToolAnnotations(name);
+      if (hints?.readOnlyHint === true) {
+        expect(getToolMutationMeta(name), `${name} should not expose mutation metadata`).toBeUndefined();
+      }
+    }
+  });
+
+  it('non-read-only tools expose confirmation metadata with only reviewed exceptions', () => {
+    for (const name of ALL_TOOL_NAMES) {
+      const hints = getToolAnnotations(name);
+      if (hints?.readOnlyHint === true) continue;
+      const meta = getToolMutationMeta(name);
+      expect(meta, `${name} should expose mutation metadata`).toBeDefined();
+      expect(meta?.requiresConfirmation, `${name} confirmation metadata mismatch`).toBe(
+        !noConfirmationToolSet.has(name),
+      );
+    }
+  });
+
+  it('supportsDryRun metadata matches the reviewed tool list', () => {
+    for (const name of ALL_TOOL_NAMES) {
+      const hints = getToolAnnotations(name);
+      const meta = getToolMutationMeta(name);
+      if (hints?.readOnlyHint === true) {
+        expect(meta, `${name} should not have dry-run metadata`).toBeUndefined();
+        continue;
+      }
+      expect(meta?.supportsDryRun, `${name} dry-run metadata mismatch`).toBe(dryRunToolSet.has(name));
+    }
+  });
+
+  it('tools marked as requiring confirmation say so in the registered description', () => {
+    for (const name of ALL_TOOL_NAMES) {
+      const meta = getToolMutationMeta(name);
+      if (!meta?.requiresConfirmation) continue;
+      const block = registeredToolBlocks.get(name);
+      expect(block, `${name} should have a registered tool block`).toBeDefined();
+      expect(block, `${name} description should mention confirmation`).toMatch(
+        /사용자 확인 필요|Requires user confirmation/,
+      );
+    }
+  });
+
+  it('tools marked as supporting dry_run mention dry_run in the registered tool block', () => {
+    for (const name of DRY_RUN_TOOL_NAMES) {
+      const block = registeredToolBlocks.get(name);
+      expect(block, `${name} should have a registered tool block`).toBeDefined();
+      expect(block, `${name} should mention dry_run`).toMatch(/\bdry_run\b/);
     }
   });
 

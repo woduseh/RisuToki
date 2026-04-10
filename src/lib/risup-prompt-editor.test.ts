@@ -1,7 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
+import { moveListItem } from './list-reorder';
 import { createFormatingOrderEditor, createPromptTemplateEditor } from './risup-prompt-editor';
 
+describe('moveListItem', () => {
+  it('moves an entry to an arbitrary target index', () => {
+    expect(moveListItem(['a', 'b', 'c', 'd'], 0, 2)).toEqual(['b', 'c', 'a', 'd']);
+    expect(moveListItem(['a', 'b', 'c', 'd'], 3, 1)).toEqual(['a', 'd', 'b', 'c']);
+  });
+});
+
 describe('createPromptTemplateEditor', () => {
+  function clickContextMenuItem(label: string): void {
+    const item = [...document.querySelectorAll<HTMLDivElement>('.ctx-item')].find(
+      (entry) => entry.textContent === label,
+    );
+    expect(item).toBeTruthy();
+    item!.click();
+  }
+
+  function makePromptTemplate(texts: string[]): string {
+    return JSON.stringify(texts.map((text) => ({ type: 'plain', type2: 'normal', text, role: 'system' })));
+  }
+
   it('renders a list container for an empty template', () => {
     const container = document.createElement('div');
     const handle = createPromptTemplateEditor(container, '', null);
@@ -70,6 +90,19 @@ describe('createPromptTemplateEditor', () => {
     handle.dispose();
   });
 
+  it('adds drag handles and dnd indices for editable prompt lists', () => {
+    const container = document.createElement('div');
+    const template = JSON.stringify([
+      { type: 'plain', type2: 'normal', text: 'A', role: 'system' },
+      { type: 'plain', type2: 'normal', text: 'B', role: 'system' },
+    ]);
+    const handle = createPromptTemplateEditor(container, template, vi.fn());
+
+    expect(container.querySelectorAll('.prompt-editor-drag-handle').length).toBe(2);
+    expect(container.querySelector('[data-prompt-item]')?.getAttribute('data-dnd-idx')).toBe('0');
+    handle.dispose();
+  });
+
   it('surfaces a warning for unsupported item types', () => {
     const container = document.createElement('div');
     const template = JSON.stringify([{ type: 'unknown-xyz', data: 'foo' }]);
@@ -95,7 +128,21 @@ describe('createPromptTemplateEditor', () => {
     handle.dispose();
   });
 
-  it('adds a new item when the add button is clicked', () => {
+  it('shows a type-aware add menu when the add button is clicked', () => {
+    const container = document.createElement('div');
+    const handle = createPromptTemplateEditor(container, '[]', vi.fn());
+
+    const addButton = container.querySelector<HTMLButtonElement>('[data-action="add-item"]');
+    expect(addButton).toBeTruthy();
+    addButton!.click();
+
+    const menu = document.querySelector('.ctx-menu');
+    expect(menu).toBeTruthy();
+    expect(document.querySelectorAll('.ctx-item').length).toBe(12);
+    handle.dispose();
+  });
+
+  it('adds a new item of the selected type from the add menu', () => {
     const container = document.createElement('div');
     const onChange = vi.fn();
     const handle = createPromptTemplateEditor(container, '[]', onChange);
@@ -103,10 +150,12 @@ describe('createPromptTemplateEditor', () => {
     const addButton = container.querySelector<HTMLButtonElement>('[data-action="add-item"]');
     expect(addButton).toBeTruthy();
     addButton!.click();
+    clickContextMenuItem('cache');
 
     expect(onChange).toHaveBeenCalled();
-    const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as unknown[];
+    const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as Array<{ type: string }>;
     expect(newValue.length).toBe(1);
+    expect(newValue[0].type).toBe('cache');
     handle.dispose();
   });
 
@@ -151,6 +200,126 @@ describe('createPromptTemplateEditor', () => {
     handle.dispose();
   });
 
+  it('shows the prompt search input only for larger templates', () => {
+    const smallContainer = document.createElement('div');
+    const largeContainer = document.createElement('div');
+    const smallHandle = createPromptTemplateEditor(
+      smallContainer,
+      makePromptTemplate(['a', 'b', 'c', 'd', 'e']),
+      vi.fn(),
+    );
+    const largeHandle = createPromptTemplateEditor(
+      largeContainer,
+      makePromptTemplate(['a', 'b', 'c', 'd', 'e', 'f']),
+      vi.fn(),
+    );
+
+    expect(smallContainer.querySelector('[data-action="filter-items"]')).toBeNull();
+    expect(largeContainer.querySelector('[data-action="filter-items"]')).toBeTruthy();
+
+    smallHandle.dispose();
+    largeHandle.dispose();
+  });
+
+  it('filters prompt items and updates the toolbar summary', () => {
+    const container = document.createElement('div');
+    const handle = createPromptTemplateEditor(
+      container,
+      makePromptTemplate(['alpha', 'beta target', 'gamma', 'delta', 'beta second', 'omega']),
+      vi.fn(),
+    );
+
+    const filterInput = container.querySelector<HTMLInputElement>('[data-action="filter-items"]');
+    expect(filterInput).toBeTruthy();
+    filterInput!.value = 'BeTa';
+    filterInput!.dispatchEvent(new Event('input'));
+
+    expect(container.querySelectorAll('[data-prompt-item]').length).toBe(2);
+    expect(container.querySelector('.prompt-editor-list-summary')?.textContent).toContain('일치 2 / 6개');
+
+    handle.dispose();
+  });
+
+  it('clears the prompt filter with the clear button and restores all items', () => {
+    const container = document.createElement('div');
+    const handle = createPromptTemplateEditor(
+      container,
+      makePromptTemplate(['alpha', 'beta target', 'gamma', 'delta', 'beta second', 'omega']),
+      vi.fn(),
+    );
+
+    const filterInput = container.querySelector<HTMLInputElement>('[data-action="filter-items"]');
+    filterInput!.value = 'beta';
+    filterInput!.dispatchEvent(new Event('input'));
+
+    const clearButton = container.querySelector<HTMLButtonElement>('[data-action="clear-filter"]');
+    expect(clearButton).toBeTruthy();
+    clearButton!.click();
+
+    expect(container.querySelectorAll('[data-prompt-item]').length).toBe(6);
+    expect(container.querySelector('.prompt-editor-list-summary')?.textContent).toContain('항목 6개');
+
+    handle.dispose();
+  });
+
+  it('clears the prompt filter with Escape', () => {
+    const container = document.createElement('div');
+    const handle = createPromptTemplateEditor(
+      container,
+      makePromptTemplate(['alpha', 'beta target', 'gamma', 'delta', 'beta second', 'omega']),
+      vi.fn(),
+    );
+
+    const filterInput = container.querySelector<HTMLInputElement>('[data-action="filter-items"]');
+    filterInput!.value = 'beta';
+    filterInput!.dispatchEvent(new Event('input'));
+
+    const activeInput = container.querySelector<HTMLInputElement>('[data-action="filter-items"]');
+    activeInput!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(container.querySelectorAll('[data-prompt-item]').length).toBe(6);
+    expect(container.querySelector('[data-action="clear-filter"]')).toBeNull();
+
+    handle.dispose();
+  });
+
+  it('shows an empty-search message and disables reorder controls while filtering', () => {
+    const container = document.createElement('div');
+    const handle = createPromptTemplateEditor(
+      container,
+      makePromptTemplate(['alpha', 'beta target', 'gamma', 'delta', 'beta second', 'omega']),
+      vi.fn(),
+    );
+
+    const filterInput = container.querySelector<HTMLInputElement>('[data-action="filter-items"]');
+    filterInput!.value = 'beta';
+    filterInput!.dispatchEvent(new Event('input'));
+
+    expect(container.querySelectorAll('[data-action="drag-handle"]').length).toBe(2);
+    expect(
+      [...container.querySelectorAll<HTMLButtonElement>('[data-action="drag-handle"]')].every(
+        (button) => button.disabled,
+      ),
+    ).toBe(true);
+    expect(
+      [...container.querySelectorAll<HTMLButtonElement>('[data-action="move-up"]')].every((button) => button.disabled),
+    ).toBe(true);
+    expect(
+      [...container.querySelectorAll<HTMLButtonElement>('[data-action="move-down"]')].every(
+        (button) => button.disabled,
+      ),
+    ).toBe(true);
+
+    const activeInput = container.querySelector<HTMLInputElement>('[data-action="filter-items"]');
+    activeInput!.value = 'zzz';
+    activeInput!.dispatchEvent(new Event('input'));
+
+    expect(container.querySelectorAll('[data-prompt-item]').length).toBe(0);
+    expect(container.textContent).toContain('검색 결과가 없습니다.');
+
+    handle.dispose();
+  });
+
   it('preserves the same id when an item type changes', () => {
     const container = document.createElement('div');
     const template = JSON.stringify([
@@ -191,6 +360,66 @@ describe('createPromptTemplateEditor', () => {
     handle.dispose();
   });
 
+  it('duplicates an item with a fresh id when duplicate is clicked', () => {
+    const container = document.createElement('div');
+    const template = JSON.stringify([{ id: 'prompt-a', type: 'plain', type2: 'normal', text: 'A', role: 'system' }]);
+    const onChange = vi.fn();
+    const handle = createPromptTemplateEditor(container, template, onChange);
+
+    const duplicateButton = container.querySelector<HTMLButtonElement>('[data-action="duplicate-item"]');
+    expect(duplicateButton).toBeTruthy();
+    duplicateButton!.click();
+
+    const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as { id: string; text: string }[];
+    expect(newValue.length).toBe(2);
+    expect(newValue[1].text).toBe('A');
+    expect(newValue[1].id).not.toBe('prompt-a');
+    handle.dispose();
+  });
+
+  it('inserts a selected item type below the current item', () => {
+    const container = document.createElement('div');
+    const template = JSON.stringify([
+      { id: 'prompt-a', type: 'plain', type2: 'normal', text: 'A', role: 'system' },
+      { id: 'prompt-b', type: 'plain', type2: 'normal', text: 'B', role: 'system' },
+    ]);
+    const onChange = vi.fn();
+    const handle = createPromptTemplateEditor(container, template, onChange);
+
+    const insertButtons = container.querySelectorAll<HTMLButtonElement>('[data-action="insert-item-below"]');
+    expect(insertButtons.length).toBe(2);
+    insertButtons[0].click();
+    clickContextMenuItem('chat');
+
+    const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as Array<{
+      id: string;
+      type: string;
+      text?: string;
+    }>;
+    expect(newValue.length).toBe(3);
+    expect(newValue[0].id).toBe('prompt-a');
+    expect(newValue[1].type).toBe('chat');
+    expect(newValue[1].id).not.toBe('prompt-a');
+    expect(newValue[2].id).toBe('prompt-b');
+    handle.dispose();
+  });
+
+  it('collapses and expands item details without changing the prompt data', () => {
+    const container = document.createElement('div');
+    const template = JSON.stringify([{ type: 'plain', type2: 'normal', text: 'Hello', role: 'system' }]);
+    const handle = createPromptTemplateEditor(container, template, vi.fn());
+
+    expect(container.querySelector('.prompt-item-fields')).toBeTruthy();
+    const collapseButton = container.querySelector<HTMLButtonElement>('[data-action="toggle-collapse"]');
+    expect(collapseButton).toBeTruthy();
+    collapseButton!.click();
+
+    expect(container.querySelector('.prompt-item-fields')).toBeNull();
+    collapseButton!.click();
+    expect(container.querySelector('.prompt-item-fields')).toBeTruthy();
+    handle.dispose();
+  });
+
   it('creates a fresh id when a new item is added', () => {
     const container = document.createElement('div');
     const onChange = vi.fn();
@@ -198,6 +427,7 @@ describe('createPromptTemplateEditor', () => {
 
     const addButton = container.querySelector<HTMLButtonElement>('[data-action="add-item"]');
     addButton!.click();
+    clickContextMenuItem('plain');
 
     const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as { id: string }[];
     expect(newValue.length).toBe(1);
@@ -327,6 +557,16 @@ describe('createFormatingOrderEditor', () => {
     expect(container.querySelector('.prompt-order-actions')).toBeTruthy();
     expect(container.querySelector('[data-action="move-down"]')?.classList.contains('settings-btn')).toBe(true);
 
+    handle.dispose();
+  });
+
+  it('adds drag handles and dnd indices for editable formatingOrder lists', () => {
+    const container = document.createElement('div');
+    const order = JSON.stringify(['main', 'chats', 'lorebook']);
+    const handle = createFormatingOrderEditor(container, order, vi.fn());
+
+    expect(container.querySelectorAll('.prompt-order-drag-handle').length).toBe(3);
+    expect(container.querySelector('[data-order-token]')?.getAttribute('data-dnd-idx')).toBe('0');
     handle.dispose();
   });
 });

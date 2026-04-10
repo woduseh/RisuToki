@@ -2,6 +2,8 @@
 // Replaces raw JSON textareas with list+detail editors, serializing back to JSON strings
 // so the rest of the app continues to work with data.promptTemplate / data.formatingOrder.
 
+import Sortable from 'sortablejs';
+import { hideContextMenu, showContextMenu, type ContextMenuItem } from './context-menu';
 import type {
   FormatingOrderItemModel,
   PromptItemAuthorNoteModel,
@@ -20,11 +22,14 @@ import {
   SUPPORTED_PROMPT_ITEM_TYPES,
   defaultFormatingOrder,
   defaultPromptItem,
+  duplicatePromptItem,
   parseFormatingOrder,
   parsePromptTemplate,
   serializeFormatingOrder,
   serializePromptTemplate,
 } from './risup-prompt-model';
+import { moveListItem } from './list-reorder';
+import { SHARED_OPTIONS, makeFlatOnEnd } from './sidebar-dnd';
 
 export interface PromptEditorHandle {
   dispose(): void;
@@ -161,6 +166,89 @@ const CACHE_ROLE_OPTIONS = [
   { value: 'all', label: 'all' },
 ];
 const PROMPT_TYPE_OPTIONS = SUPPORTED_PROMPT_ITEM_TYPES.map((type) => ({ value: type, label: type }));
+const PROMPT_ADD_MENU_GROUPS: SupportedPromptItemType[][] = [
+  ['plain', 'jailbreak', 'cot', 'chatML'],
+  ['persona', 'description', 'lorebook', 'postEverything', 'memory'],
+  ['authornote', 'chat', 'cache'],
+];
+
+function showPromptAddMenu(anchor: HTMLElement, onSelect: (type: SupportedPromptItemType) => void): void {
+  const rect = anchor.getBoundingClientRect();
+  const menuItems: ContextMenuItem[] = [];
+  for (let groupIndex = 0; groupIndex < PROMPT_ADD_MENU_GROUPS.length; groupIndex++) {
+    const group = PROMPT_ADD_MENU_GROUPS[groupIndex];
+    for (const type of group) {
+      menuItems.push({
+        label: type,
+        action: () => {
+          onSelect(type);
+        },
+      });
+    }
+    if (groupIndex < PROMPT_ADD_MENU_GROUPS.length - 1) {
+      menuItems.push('---');
+    }
+  }
+  showContextMenu(rect.left, rect.bottom, menuItems);
+}
+
+function previewText(text: string | undefined): string {
+  const normalized = (text ?? '').replace(/\s+/g, ' ').trim();
+  return normalized.length > 48 ? `${normalized.slice(0, 48)}...` : normalized;
+}
+
+function normalizePromptSearchQuery(query: string): string {
+  return query.trim().toLowerCase();
+}
+
+function promptItemSearchText(item: PromptItemModel): string {
+  const parts: string[] = [item.type ?? '', promptItemSummary(item)];
+  if (item.supported) {
+    for (const [key, value] of Object.entries(item)) {
+      if (key === 'supported' || value === null || value === undefined) continue;
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        parts.push(String(value));
+      }
+    }
+  } else if (item.rawValue) {
+    parts.push(JSON.stringify(item.rawValue));
+  }
+  return parts.join('\n').toLowerCase();
+}
+
+function promptItemMatchesSearch(item: PromptItemModel, normalizedQuery: string): boolean {
+  return normalizedQuery.length === 0 || promptItemSearchText(item).includes(normalizedQuery);
+}
+
+function promptItemSummary(item: PromptItemModel): string {
+  if (!item.supported) {
+    return `지원되지 않는 ${item.type ?? 'unknown'} 항목`;
+  }
+
+  switch (item.type) {
+    case 'plain':
+    case 'jailbreak':
+    case 'cot':
+    case 'chatML':
+      return previewText(item.text) || '(비어 있음)';
+    case 'persona':
+    case 'description':
+    case 'lorebook':
+    case 'postEverything':
+    case 'memory':
+      return previewText(item.innerFormat ?? item.name) || '(비어 있음)';
+    case 'authornote':
+      return previewText(item.defaultText ?? item.innerFormat ?? item.name) || '(비어 있음)';
+    case 'chat':
+      return `range ${item.rangeStart}..${item.rangeEnd}${item.name ? ` • ${item.name}` : ''}`;
+    case 'cache':
+      return `${item.name || '(이름 없음)'} • depth ${item.depth} • ${item.role}`;
+  }
+}
+
+function promptItemCollapseKey(item: PromptItemModel, index: number): string {
+  return item.id ?? `prompt-item-${index}-${item.type ?? 'unknown'}`;
+}
 
 function renderItemFields(
   container: HTMLElement,
@@ -446,6 +534,39 @@ export function createPromptTemplateEditor(
 ): PromptEditorHandle {
   const readonly = onChange === null;
   let model = parsePromptTemplate(initialValue);
+  let collapsedItemKeys = new Set<string>();
+  let filterQuery = '';
+  let collapsedItemKeysBeforeFilter: Set<string> | null = null;
+  let promptSortable: Sortable | null = null;
+
+  function isFilterActive(): boolean {
+    return normalizePromptSearchQuery(filterQuery).length > 0;
+  }
+
+  function setFilterQuery(
+    nextQuery: string,
+    focusOptions?: { selectionStart: number | null; selectionEnd: number | null },
+  ): void {
+    const wasActive = isFilterActive();
+    const willBeActive = normalizePromptSearchQuery(nextQuery).length > 0;
+    if (!wasActive && willBeActive) {
+      collapsedItemKeysBeforeFilter = new Set(collapsedItemKeys);
+      collapsedItemKeys.clear();
+    } else if (wasActive && !willBeActive) {
+      if (collapsedItemKeysBeforeFilter) {
+        collapsedItemKeys = new Set(collapsedItemKeysBeforeFilter);
+      }
+      collapsedItemKeysBeforeFilter = null;
+    }
+    filterQuery = nextQuery;
+    render(focusOptions);
+  }
+
+  function destroyPromptSortable(): void {
+    if (!promptSortable) return;
+    promptSortable.destroy();
+    promptSortable = null;
+  }
 
   function notifyChange(): void {
     if (onChange) onChange(serializePromptTemplate(model));
@@ -468,11 +589,25 @@ export function createPromptTemplateEditor(
       hasUnsupportedContent: newItems.some((it) => !it.supported),
       state: newItems.length === 0 ? 'empty' : 'valid',
     };
+    if (isFilterActive()) {
+      collapsedItemKeysBeforeFilter = null;
+    }
     notifyChange();
     render();
   }
 
-  function render(): void {
+  function toggleCollapsed(item: PromptItemModel, index: number): void {
+    const key = promptItemCollapseKey(item, index);
+    if (collapsedItemKeys.has(key)) {
+      collapsedItemKeys.delete(key);
+    } else {
+      collapsedItemKeys.add(key);
+    }
+    render();
+  }
+
+  function render(filterFocus?: { selectionStart: number | null; selectionEnd: number | null }): void {
+    destroyPromptSortable();
     container.innerHTML = '';
     const root = document.createElement('div');
     root.setAttribute('data-prompt-editor', '');
@@ -504,13 +639,105 @@ export function createPromptTemplateEditor(
     list.className = 'prompt-editor-list';
 
     const items = model.items;
+    const normalizedFilterQuery = normalizePromptSearchQuery(filterQuery);
+    const filterActive = normalizedFilterQuery.length > 0;
+    const matchingCount = items.reduce(
+      (count, item) => count + (promptItemMatchesSearch(item, normalizedFilterQuery) ? 1 : 0),
+      0,
+    );
+    const toolbar = document.createElement('div');
+    toolbar.className = 'prompt-editor-toolbar prompt-editor-toolbar-top';
+    const summary = document.createElement('div');
+    summary.className = 'prompt-editor-list-summary';
+    summary.textContent = filterActive ? `일치 ${matchingCount} / ${items.length}개` : `항목 ${items.length}개`;
+    toolbar.appendChild(summary);
+    if (items.length > 5 || filterActive) {
+      const filterWrap = document.createElement('div');
+      filterWrap.className = 'prompt-editor-filter';
+
+      const filterInput = document.createElement('input');
+      filterInput.setAttribute('data-action', 'filter-items');
+      filterInput.type = 'text';
+      filterInput.className = 'form-input prompt-editor-input prompt-editor-filter-input';
+      filterInput.placeholder = '프롬프트 검색...';
+      filterInput.value = filterQuery;
+      filterInput.addEventListener('input', () => {
+        setFilterQuery(filterInput.value, {
+          selectionStart: filterInput.selectionStart,
+          selectionEnd: filterInput.selectionEnd,
+        });
+      });
+      filterInput.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || filterInput.value.length === 0) return;
+        event.preventDefault();
+        setFilterQuery('', { selectionStart: 0, selectionEnd: 0 });
+      });
+      filterWrap.appendChild(filterInput);
+
+      if (filterActive) {
+        const clearBtn = document.createElement('button');
+        clearBtn.setAttribute('data-action', 'clear-filter');
+        clearBtn.type = 'button';
+        clearBtn.className = 'settings-btn prompt-editor-action';
+        clearBtn.textContent = '✕';
+        clearBtn.title = '검색 지우기';
+        clearBtn.addEventListener('click', () => {
+          setFilterQuery('', { selectionStart: 0, selectionEnd: 0 });
+        });
+        filterWrap.appendChild(clearBtn);
+      }
+
+      toolbar.appendChild(filterWrap);
+    }
+    if (items.length > 1) {
+      const toolbarActions = document.createElement('div');
+      toolbarActions.className = 'prompt-editor-actions';
+
+      const expandAllBtn = document.createElement('button');
+      expandAllBtn.type = 'button';
+      expandAllBtn.className = 'settings-btn prompt-editor-action';
+      expandAllBtn.setAttribute('data-action', 'expand-all');
+      expandAllBtn.textContent = '모두 펼치기';
+      expandAllBtn.addEventListener('click', () => {
+        collapsedItemKeys.clear();
+        render();
+      });
+      toolbarActions.appendChild(expandAllBtn);
+
+      const collapseAllBtn = document.createElement('button');
+      collapseAllBtn.type = 'button';
+      collapseAllBtn.className = 'settings-btn prompt-editor-action';
+      collapseAllBtn.setAttribute('data-action', 'collapse-all');
+      collapseAllBtn.textContent = '모두 접기';
+      collapseAllBtn.addEventListener('click', () => {
+        collapsedItemKeys = new Set(items.map((entry, index) => promptItemCollapseKey(entry, index)));
+        render();
+      });
+      toolbarActions.appendChild(collapseAllBtn);
+      toolbar.appendChild(toolbarActions);
+    }
+    root.appendChild(toolbar);
+
+    if (filterActive && matchingCount === 0) {
+      const emptySearch = document.createElement('div');
+      emptySearch.className = 'prompt-editor-message prompt-editor-empty-search';
+      emptySearch.textContent = '검색 결과가 없습니다.';
+      root.appendChild(emptySearch);
+    }
+
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
+      if (filterActive && !promptItemMatchesSearch(item, normalizedFilterQuery)) {
+        continue;
+      }
+      const collapsed = collapsedItemKeys.has(promptItemCollapseKey(item, i));
       const itemEl = document.createElement('div');
       itemEl.setAttribute('data-prompt-item', '');
-      itemEl.className = 'prompt-item prompt-editor-card';
+      itemEl.className = 'prompt-item prompt-editor-card' + (collapsed ? ' prompt-editor-card-collapsed' : '');
+      if (!readonly && items.length > 1 && !filterActive) {
+        itemEl.dataset.dndIdx = String(i);
+      }
 
-      // Header row: type label + reorder + remove buttons
       const header = document.createElement('div');
       header.className = 'prompt-item-header prompt-editor-card-header';
 
@@ -541,20 +768,45 @@ export function createPromptTemplateEditor(
         header.appendChild(typeLabel);
       }
 
-      if (!readonly) {
-        const actions = document.createElement('div');
-        actions.className = 'prompt-editor-actions';
+      const summaryEl = document.createElement('div');
+      summaryEl.className = 'prompt-editor-summary';
+      summaryEl.textContent = promptItemSummary(item);
+      header.appendChild(summaryEl);
 
+      const actions = document.createElement('div');
+      actions.className = 'prompt-editor-actions';
+
+      if (!readonly) {
+        const dragHandle = document.createElement('button');
+        dragHandle.setAttribute('data-action', 'drag-handle');
+        dragHandle.type = 'button';
+        dragHandle.className = 'settings-btn prompt-editor-action prompt-editor-drag-handle';
+        dragHandle.textContent = '↕';
+        dragHandle.title = filterActive ? '검색 중에는 재정렬할 수 없습니다.' : '드래그해서 재정렬';
+        dragHandle.disabled = filterActive;
+        actions.appendChild(dragHandle);
+      }
+
+      const collapseBtn = document.createElement('button');
+      collapseBtn.setAttribute('data-action', 'toggle-collapse');
+      collapseBtn.type = 'button';
+      collapseBtn.className = 'settings-btn prompt-editor-action';
+      collapseBtn.textContent = collapsed ? '▶' : '▼';
+      collapseBtn.title = collapsed ? '펼치기' : '접기';
+      collapseBtn.addEventListener('click', () => {
+        toggleCollapsed(item, i);
+      });
+      actions.appendChild(collapseBtn);
+
+      if (!readonly) {
         const upBtn = document.createElement('button');
         upBtn.setAttribute('data-action', 'move-up');
         upBtn.type = 'button';
         upBtn.className = 'settings-btn prompt-editor-action';
         upBtn.textContent = '↑';
-        upBtn.disabled = i === 0;
+        upBtn.disabled = filterActive || i === 0;
         upBtn.addEventListener('click', () => {
-          const next = [...model.items];
-          [next[i - 1], next[i]] = [next[i], next[i - 1]];
-          structuralChange(next);
+          structuralChange(moveListItem(model.items, i, i - 1));
         });
         actions.appendChild(upBtn);
 
@@ -563,13 +815,41 @@ export function createPromptTemplateEditor(
         downBtn.type = 'button';
         downBtn.className = 'settings-btn prompt-editor-action';
         downBtn.textContent = '↓';
-        downBtn.disabled = i === items.length - 1;
+        downBtn.disabled = filterActive || i === items.length - 1;
         downBtn.addEventListener('click', () => {
-          const next = [...model.items];
-          [next[i], next[i + 1]] = [next[i + 1], next[i]];
-          structuralChange(next);
+          structuralChange(moveListItem(model.items, i, i + 1));
         });
         actions.appendChild(downBtn);
+
+        const duplicateBtn = document.createElement('button');
+        duplicateBtn.setAttribute('data-action', 'duplicate-item');
+        duplicateBtn.type = 'button';
+        duplicateBtn.className = 'settings-btn prompt-editor-action';
+        duplicateBtn.textContent = '⧉';
+        duplicateBtn.title = '복제';
+        duplicateBtn.addEventListener('click', () => {
+          const next = [...model.items];
+          next.splice(i + 1, 0, duplicatePromptItem(item));
+          structuralChange(next);
+        });
+        actions.appendChild(duplicateBtn);
+
+        const insertBtn = document.createElement('button');
+        insertBtn.setAttribute('data-action', 'insert-item-below');
+        insertBtn.type = 'button';
+        insertBtn.className = 'settings-btn prompt-editor-action';
+        insertBtn.textContent = '+';
+        insertBtn.title = '아래에 추가';
+        insertBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          showPromptAddMenu(insertBtn, (type) => {
+            const next = [...model.items];
+            next.splice(i + 1, 0, defaultPromptItem(type));
+            structuralChange(next);
+          });
+        });
+        actions.appendChild(insertBtn);
 
         const removeBtn = document.createElement('button');
         removeBtn.setAttribute('data-action', 'remove-item');
@@ -582,15 +862,18 @@ export function createPromptTemplateEditor(
           structuralChange(next);
         });
         actions.appendChild(removeBtn);
-        header.appendChild(actions);
       }
+
+      header.appendChild(actions);
 
       itemEl.appendChild(header);
 
-      const fields = document.createElement('div');
-      fields.className = 'prompt-item-fields prompt-editor-card-body';
-      renderItemFields(fields, item, i, updateItem, readonly);
-      itemEl.appendChild(fields);
+      if (!collapsed) {
+        const fields = document.createElement('div');
+        fields.className = 'prompt-item-fields prompt-editor-card-body';
+        renderItemFields(fields, item, i, updateItem, readonly);
+        itemEl.appendChild(fields);
+      }
 
       list.appendChild(itemEl);
     }
@@ -605,20 +888,48 @@ export function createPromptTemplateEditor(
       addBtn.type = 'button';
       addBtn.className = 'settings-btn prompt-editor-add';
       addBtn.textContent = '+ 추가';
-      addBtn.addEventListener('click', () => {
-        structuralChange([...model.items, defaultPromptItem()]);
+      addBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showPromptAddMenu(addBtn, (type) => {
+          structuralChange([...model.items, defaultPromptItem(type)]);
+        });
       });
       addArea.appendChild(addBtn);
       root.appendChild(addArea);
     }
 
     container.appendChild(root);
+
+    if (!readonly && items.length > 1 && !filterActive) {
+      promptSortable = Sortable.create(list, {
+        ...SHARED_OPTIONS,
+        handle: '.prompt-editor-drag-handle',
+        onEnd: makeFlatOnEnd((fromIdx, toIdx) => {
+          structuralChange(moveListItem(model.items, fromIdx, toIdx));
+        }),
+      });
+    }
+
+    if (filterFocus && (items.length > 5 || filterActive)) {
+      const filterInput = container.querySelector<HTMLInputElement>('[data-action="filter-items"]');
+      if (filterInput) {
+        queueMicrotask(() => {
+          filterInput.focus();
+          if (filterFocus.selectionStart !== null && filterFocus.selectionEnd !== null) {
+            filterInput.setSelectionRange(filterFocus.selectionStart, filterFocus.selectionEnd);
+          }
+        });
+      }
+    }
   }
 
   render();
 
   return {
     dispose(): void {
+      destroyPromptSortable();
+      hideContextMenu();
       container.innerHTML = '';
     },
   };
@@ -635,6 +946,13 @@ export function createFormatingOrderEditor(
 ): PromptEditorHandle {
   const readonly = onChange === null;
   let model = parseFormatingOrder(initialValue);
+  let orderSortable: Sortable | null = null;
+
+  function destroyOrderSortable(): void {
+    if (!orderSortable) return;
+    orderSortable.destroy();
+    orderSortable = null;
+  }
 
   function notifyChange(): void {
     if (onChange) onChange(serializeFormatingOrder(model));
@@ -651,6 +969,7 @@ export function createFormatingOrderEditor(
   }
 
   function render(): void {
+    destroyOrderSortable();
     container.innerHTML = '';
     const root = document.createElement('div');
     root.setAttribute('data-formating-order-editor', '');
@@ -702,6 +1021,9 @@ export function createFormatingOrderEditor(
       tokenEl.setAttribute('data-order-token', '');
       tokenEl.setAttribute('data-token', item.token);
       tokenEl.className = 'order-token prompt-order-token' + (item.known ? '' : ' order-token-unknown');
+      if (!readonly && items.length > 1) {
+        tokenEl.dataset.dndIdx = String(i);
+      }
 
       const label = document.createElement('span');
       label.className = 'prompt-order-label';
@@ -712,6 +1034,14 @@ export function createFormatingOrderEditor(
         const actions = document.createElement('div');
         actions.className = 'prompt-order-actions';
 
+        const dragHandle = document.createElement('button');
+        dragHandle.setAttribute('data-action', 'drag-handle');
+        dragHandle.type = 'button';
+        dragHandle.className = 'settings-btn prompt-order-action prompt-order-drag-handle';
+        dragHandle.textContent = '↕';
+        dragHandle.title = '드래그해서 재정렬';
+        actions.appendChild(dragHandle);
+
         const upBtn = document.createElement('button');
         upBtn.setAttribute('data-action', 'move-up');
         upBtn.type = 'button';
@@ -719,9 +1049,7 @@ export function createFormatingOrderEditor(
         upBtn.textContent = '↑';
         upBtn.disabled = i === 0;
         upBtn.addEventListener('click', () => {
-          const next = [...model.items];
-          [next[i - 1], next[i]] = [next[i], next[i - 1]];
-          structuralChange(next);
+          structuralChange(moveListItem(model.items, i, i - 1));
         });
         actions.appendChild(upBtn);
 
@@ -732,9 +1060,7 @@ export function createFormatingOrderEditor(
         downBtn.textContent = '↓';
         downBtn.disabled = i === items.length - 1;
         downBtn.addEventListener('click', () => {
-          const next = [...model.items];
-          [next[i], next[i + 1]] = [next[i + 1], next[i]];
-          structuralChange(next);
+          structuralChange(moveListItem(model.items, i, i + 1));
         });
         actions.appendChild(downBtn);
         tokenEl.appendChild(actions);
@@ -745,12 +1071,23 @@ export function createFormatingOrderEditor(
 
     root.appendChild(list);
     container.appendChild(root);
+
+    if (!readonly && items.length > 1) {
+      orderSortable = Sortable.create(list, {
+        ...SHARED_OPTIONS,
+        handle: '.prompt-order-drag-handle',
+        onEnd: makeFlatOnEnd((fromIdx, toIdx) => {
+          structuralChange(moveListItem(model.items, fromIdx, toIdx));
+        }),
+      });
+    }
   }
 
   render();
 
   return {
     dispose(): void {
+      destroyOrderSortable();
       container.innerHTML = '';
     },
   };

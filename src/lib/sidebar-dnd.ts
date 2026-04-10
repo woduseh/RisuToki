@@ -34,7 +34,7 @@ export interface DndDeps {
 // Shared options (matches RisuAI pattern)
 // ---------------------------------------------------------------------------
 
-const SHARED_OPTIONS: Sortable.Options = {
+export const SHARED_OPTIONS: Sortable.Options = {
   delay: 200,
   delayOnTouchOnly: true,
   animation: 150,
@@ -81,7 +81,7 @@ function readIndicesFromContainer(container: HTMLElement): number[] {
 }
 
 /** Generic flat-list reorder: reads new order from DOM, calls reorder callback, reverts DOM */
-function makeFlatOnEnd(reorder: (fromIdx: number, toIdx: number) => void): Sortable.Options['onEnd'] {
+export function makeFlatOnEnd(reorder: (fromIdx: number, toIdx: number) => void): Sortable.Options['onEnd'] {
   return (evt) => {
     if (evt.oldIndex == null || evt.newIndex == null || evt.oldIndex === evt.newIndex) return;
     const container = evt.from;

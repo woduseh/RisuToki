@@ -182,6 +182,7 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     mergePrimaryLua: (scripts: unknown, lua: string) => unknown;
     stringifyTriggerScripts: (scripts: unknown) => string;
     getSkillsDir: () => string;
+    getUserDataPath: () => string;
     getSessionStatus: () => Promise<McpSessionStatus>;
   }) => McpApiServer;
 };
@@ -813,6 +814,7 @@ app.whenReady().then(() => {
     mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,
     stringifyTriggerScripts,
     getSkillsDir: () => (app.isPackaged ? path.join(process.resourcesPath!, 'skills') : path.join(__dirname, 'skills')),
+    getUserDataPath: () => app.getPath('userData'),
     getSessionStatus: getCurrentMcpSessionStatus,
   });
   apiToken = mcpApi.token;

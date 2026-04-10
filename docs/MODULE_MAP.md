@@ -55,7 +55,11 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/risup-fields.ts` — structured risup field definitions
 - `src/lib/risup-form-editor.ts` — risup form editing
 - `src/lib/risup-prompt-editor.ts` — risup prompt-item editing
-- `src/lib/risup-prompt-model.ts` — risup prompt-item parsing/model helpers
+- `src/lib/risup-prompt-model.ts` — risup prompt-item parsing/model helpers, including whole-template text import/export
+- `src/lib/risup-prompt-compare.ts` — serializer-backed risup prompt/reference compare helpers for MCP diffs
+- `src/lib/risup-prompt-snippet-store.ts` — sidecar-backed persistent risup prompt snippet library
+- `src/lib/risup-toggle-editor.ts` — customPromptTemplateToggle visual/raw editor
+- `src/lib/risup-toggle-model.ts` — customPromptTemplateToggle syntax parsing/model helpers
 
 ## CBS (Custom Bracket Syntax)
 
@@ -78,6 +82,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/layout-manager.ts` — panel layout orchestration
 - `src/lib/tab-manager.ts` — tab lifecycle management
 - `src/lib/indexed-tabs.ts` — indexed tab helpers
+- `src/lib/list-reorder.ts` — shared flat-list reorder helper for structured editors
 - `src/lib/form-editor.ts` — generic form-editing helpers
 - `src/lib/charx-sidebar-fields.ts` — charx sidebar field model
 - `src/lib/sidebar-builder.ts` — sidebar tree construction

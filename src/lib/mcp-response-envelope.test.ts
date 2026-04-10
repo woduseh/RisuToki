@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { mcpSuccess, FAMILY_NEXT_ACTIONS, errorRecoveryMeta } from './mcp-response-envelope';
+import { mcpSuccess, FAMILY_NEXT_ACTIONS, TOOL_NEXT_ACTIONS, errorRecoveryMeta } from './mcp-response-envelope';
 import { TOOL_FAMILIES, TOOL_TAXONOMY, getToolsByFamily } from './mcp-tool-taxonomy';
 import type { ToolFamily } from './mcp-tool-taxonomy';
 
@@ -57,7 +57,7 @@ describe('mcpSuccess envelope', () => {
       ...payload,
       status: 200,
       summary: 'Wrote field',
-      next_actions: FAMILY_NEXT_ACTIONS.field,
+      next_actions: TOOL_NEXT_ACTIONS.write_field,
       artifacts,
     };
     const result = mcpSuccess(payload, {
@@ -114,15 +114,24 @@ describe('mcpSuccess envelope', () => {
     expect(result.next_actions).toEqual(['read_field', 'write_field']);
   });
 
-  it('derives next_actions from taxonomy family when toolName is given', () => {
+  it('uses per-tool next_actions override when available', () => {
     const payload = { success: true };
     const result = mcpSuccess(payload, {
-      toolName: 'write_field',
-      summary: 'Wrote field',
+      toolName: 'open_file',
+      summary: 'Opened file',
     });
 
-    expect(Array.isArray(result.next_actions)).toBe(true);
-    expect((result.next_actions as string[]).length).toBeGreaterThan(0);
+    expect(result.next_actions).toEqual(TOOL_NEXT_ACTIONS.open_file);
+  });
+
+  it('derives next_actions from taxonomy family when no per-tool override exists', () => {
+    const payload = { success: true };
+    const result = mcpSuccess(payload, {
+      toolName: 'list_fields',
+      summary: 'Listed fields',
+    });
+
+    expect(result.next_actions).toEqual(FAMILY_NEXT_ACTIONS.field);
   });
 
   it('returns empty next_actions when toolName is unknown', () => {
@@ -245,6 +254,35 @@ describe('FAMILY_NEXT_ACTIONS', () => {
   });
 });
 
+describe('TOOL_NEXT_ACTIONS overrides', () => {
+  it('only defines overrides for real taxonomy tools', () => {
+    const allTools = new Set(Object.keys(TOOL_TAXONOMY));
+    for (const toolName of Object.keys(TOOL_NEXT_ACTIONS)) {
+      expect(allTools.has(toolName), `TOOL_NEXT_ACTIONS contains unknown tool "${toolName}"`).toBe(true);
+    }
+  });
+
+  it('every suggested tool name in overrides exists in the taxonomy', () => {
+    const allTools = new Set(Object.keys(TOOL_TAXONOMY));
+    for (const [toolName, actions] of Object.entries(TOOL_NEXT_ACTIONS)) {
+      if (!actions) continue;
+      for (const action of actions) {
+        expect(allTools.has(action), `TOOL_NEXT_ACTIONS["${toolName}"] suggests unknown tool "${action}"`).toBe(true);
+      }
+    }
+  });
+
+  it('override arrays stay bounded (≤10 per tool)', () => {
+    for (const [toolName, actions] of Object.entries(TOOL_NEXT_ACTIONS)) {
+      if (!actions) continue;
+      expect(
+        actions.length,
+        `TOOL_NEXT_ACTIONS["${toolName}"] has ${actions.length} entries (max 10)`,
+      ).toBeLessThanOrEqual(10);
+    }
+  });
+});
+
 // ────────────────────────────────────────────────────────────────────────────
 // Integration-style: verify envelope on realistic payloads
 // ────────────────────────────────────────────────────────────────────────────
@@ -337,7 +375,7 @@ describe('realistic payload enrichment', () => {
     expect(result.count).toBe(2);
     expect(result.references).toBeDefined();
     expect(result.status).toBe(200);
-    expect(result.next_actions as string[]).toEqual(FAMILY_NEXT_ACTIONS.reference);
+    expect(result.next_actions as string[]).toEqual(TOOL_NEXT_ACTIONS.list_references);
   });
 
   it('enriches a read_reference_lorebook response', () => {
@@ -371,6 +409,7 @@ describe('realistic payload enrichment', () => {
     expect(result.field).toBe('description');
     expect(result.content).toBe('hello');
     expect(result.status).toBe(200);
+    expect(result.next_actions as string[]).toEqual(TOOL_NEXT_ACTIONS.read_reference_field);
   });
 
   // ──────────────────────────────────────────────────────────────────────
@@ -432,7 +471,7 @@ describe('realistic payload enrichment', () => {
     expect(result.file_path).toBe('/test.charx');
     expect(result.switched).toBe(true);
     expect(result.status).toBe(200);
-    expect(result.next_actions as string[]).toEqual(FAMILY_NEXT_ACTIONS.probe);
+    expect(result.next_actions as string[]).toEqual(TOOL_NEXT_ACTIONS.open_file);
   });
 
   // ──────────────────────────────────────────────────────────────────────

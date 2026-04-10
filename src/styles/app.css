@@ -2001,6 +2001,18 @@ body {
   padding: 3px 10px;
 }
 
+.prompt-editor-drag-handle,
+.prompt-order-drag-handle,
+.toggle-template-drag-handle {
+  cursor: grab;
+}
+
+.prompt-editor-drag-handle:active,
+.prompt-order-drag-handle:active,
+.toggle-template-drag-handle:active {
+  cursor: grabbing;
+}
+
 .prompt-editor-card-body {
   display: flex;
   flex-direction: column;
@@ -2047,6 +2059,43 @@ body {
   justify-content: flex-end;
 }
 
+.prompt-editor-toolbar-top {
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.prompt-editor-list-summary,
+.prompt-editor-summary {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.prompt-editor-summary {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prompt-editor-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: min(280px, 100%);
+}
+
+.prompt-editor-filter-input {
+  min-width: 160px;
+}
+
+.prompt-editor-card-collapsed .prompt-editor-card-header {
+  margin-bottom: 0;
+}
+
 .prompt-editor-checkbox-row {
   display: flex;
   align-items: center;
@@ -2066,6 +2115,64 @@ body {
 
 .order-token-unknown {
   border-style: dashed;
+}
+
+.toggle-template-editor-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toggle-template-modebar,
+.toggle-template-addbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.toggle-template-mode-btn.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.toggle-template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toggle-template-item-header {
+  align-items: center;
+}
+
+.toggle-template-item-type {
+  min-width: 130px;
+  max-width: 160px;
+}
+
+.toggle-template-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.toggle-template-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toggle-template-field--full {
+  grid-column: 1 / -1;
+}
+
+.toggle-template-empty {
+  margin: 0;
+}
+
+.toggle-template-raw {
+  min-height: 180px;
 }
 
 /* Regex Flags Panel */

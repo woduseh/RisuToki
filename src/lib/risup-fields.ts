@@ -5,7 +5,8 @@ export type RisupFieldEditorKind =
   | 'checkbox'
   | 'json'
   | 'prompt-template'
-  | 'formating-order';
+  | 'formating-order'
+  | 'toggle-template';
 
 export type RisupFieldId =
   | 'name'
@@ -99,7 +100,7 @@ const groups: readonly RisupFieldGroup[] = [
       { id: 'promptTemplate', label: '프롬프트 템플릿', editor: 'prompt-template' },
       { id: 'presetBias', label: '프리셋 바이어스', editor: 'json', rows: 6 },
       { id: 'formatingOrder', label: '포매팅 순서', editor: 'formating-order' },
-      { id: 'customPromptTemplateToggle', label: '커스텀 템플릿 토글', editor: 'textarea', rows: 4 },
+      { id: 'customPromptTemplateToggle', label: '커스텀 템플릿 토글', editor: 'toggle-template', rows: 4 },
       { id: 'templateDefaultVariables', label: '기본 템플릿 변수', editor: 'textarea', rows: 5 },
       { id: 'moduleIntergration', label: '모듈 통합', editor: 'text' },
     ],

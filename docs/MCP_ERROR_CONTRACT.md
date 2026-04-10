@@ -21,12 +21,14 @@ Typical cases:
 3. unauthorized access
 4. no active document
 5. renderer-side rejection or conflict (`rejected`, `409`)
+6. stale-index guard conflicts on guarded indexed writes using `expected_comment`, `expected_preview`, or `expected_type`
 
 Notes:
 
 - `error` mirrors the human-readable message
 - `suggestion` should tell the agent what to do next
 - `details` should carry small machine-readable facts, not large payloads
+- Stale-index conflicts return `409` with family-specific `details.expected_*` / `details.actual_*` fields (for example `expected_comment`, `expected_preview`, or `expected_type`), so the caller can refresh the relevant list route deterministically before retrying
 - `mcpError()` broadcasts failure status to the renderer UI
 - `No file open` applies only to routes that require the active main document; `session_status`, `probe_*`, and `reference*` routes remain available without one
 
@@ -35,7 +37,7 @@ Notes:
 Both `mcpError()` and `mcpNoOp()` responses include machine-readable recovery hints:
 
 - `retryable` (boolean) — `true` only for conflict (409) and server-error (5xx) statuses; `false` for validation errors (4xx) and no-op (200) responses.
-- `next_actions` (string[]) — deterministic list of suggested follow-up MCP tool names, derived from the `target` prefix using the MCP tool taxonomy family map. Special cases: `document:current` → `['open_file', 'list_references', 'session_status']`; unknown prefixes → `[]`.
+- `next_actions` (string[]) — deterministic list of suggested follow-up MCP tool names. Success responses prefer explicit override → per-tool override → family default. Error/no-op responses derive from the `target` prefix using the MCP tool taxonomy family map. Special cases: `document:current` → `['open_file', 'list_references', 'session_status']`; unknown prefixes → `[]`.
 
 These fields are additive and do not replace existing fields.
 
@@ -85,13 +87,13 @@ Intentional exception:
 
 ## 5. Agent recovery playbook
 
-1. If `status >= 400`, treat the result as a hard failure. Check `retryable` to decide whether to retry after delay. Read `suggestion` first, then inspect `details` or `rejected`. Use `next_actions` to discover recovery tools.
+1. If `status >= 400`, treat the result as a hard failure. Check `retryable` to decide whether to retry after delay. Read `suggestion` first, then inspect `details` or `rejected`. Use `next_actions` to discover recovery tools. For indexed-write `409` stale-index conflicts, refresh the relevant family list route and carry the latest `comment`, `preview`, or `type` value forward as the matching `expected_*` guard.
 2. If `status === 200` and `success === false`, treat the result as a no-op (`retryable` is always `false`). Use the preserved route-local fields to recover:
    - `matchCount: 0` means the search string or regex needs adjustment
    - `startAnchorFoundAt` means the start anchor matched, but the end anchor did not
    - `results[]` shows which batch replacements were skipped
    - `errors[]` shows which batch insert items need repair
-3. If the result is a success envelope, prefer `next_actions` over free-form guessing. Check `artifacts.byte_size` before asking for more data: if the response is already large, switch to narrower reads (`list_*`, `search_in_field`, `read_field_range`, per-item reads, or probes) instead of dumping adjacent surfaces.
+3. If the result is a success envelope, prefer `next_actions` over free-form guessing. High-traffic tools may narrow the family defaults to a smaller per-tool set. Check `artifacts.byte_size` before asking for more data: if the response is already large, switch to narrower reads (`list_*`, `search_in_field`, `read_field_range`, per-item reads, or probes) instead of dumping adjacent surfaces. Successful lorebook, regex, greeting, and risup batch mutations may include `results[]` for per-entry verification without an immediate re-read.
 
 ## 6. Contributor rule
 

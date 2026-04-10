@@ -30,13 +30,15 @@
 ## Mandatory rules
 
 1. **At the start of every session**, read `read_skill("project-workflow")` first. It contains a summary of MCP rules and project rules. Load `MCP_WORKFLOW.md` and `PROJECT_RULES.md` from that skill when you need full detail.
-2. **Never bulk-read large surfaces with `read_field`.** For `lua`, `css`, `alternateGreetings`, `triggerScripts`, `promptTemplate`/`formatingOrder`, use the dedicated list → read tools instead.
-3. **Prefer batch tools.** When editing multiple items, use batch tools rather than repeating single writes.
+2. **Never bulk-read large surfaces with `read_field`.** For `lua`, `css`, `alternateGreetings`, `triggerScripts`, `promptTemplate`/`formatingOrder`, use the dedicated risup prompt tools first (`list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_prompt_item_batch`, `export_risup_prompt_to_text`, `diff_risup_prompt`, `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `read_risup_formating_order`).
+3. **Prefer batch tools.** When reading or editing multiple sibling items, use batch reads/writes rather than repeating single-item calls.
 4. **Probe before you open.** Use `probe_*` to inspect files that are not yet open; switch to `open_file` only when you need to write.
-5. **Check `session_status` before risky writes or after resuming an interrupted session.** It reports the current document, dirty/autosave state, recovery info, and snapshot state. It works even when no file is open.
+5. **Check `session_status` before risky writes or after resuming an interrupted session.** It reports the current document, dirty/autosave state, recovery info, snapshot state, and compact structured-surface counts. It works even when no file is open.
 6. **Keep docs in sync.** When MCP tools or fields change, update `AGENTS.md`, `docs/`, and `skills/` together.
 7. **Bump version + changelog every task.** Update `package.json` version and add a `CHANGELOG.md` entry for every change.
 8. **When syntax is unclear, read the skill docs first.** For detailed MCP tool-selection guidance, see `read_skill("using-mcp-tools")`.
+9. **Trust MCP routing hints.** Prefer returned `next_actions`, `artifacts.byte_size`, and tool-list `_meta` hints like `risutoki/requiresConfirmation` / `risutoki/supportsDryRun` over free-form guessing; high-traffic tools may narrow the family defaults with safer follow-up guidance.
+10. **Use indexed-write stale-index guards.** Carry the latest family identity values from list/read routes into mutation calls: `expected_comment` for lorebook/regex/trigger, `expected_preview` / `expected_previews` for greetings, and `expected_type` plus optional `expected_preview` for risup prompt-item writes. For large lorebook replacements, prefer `replace_in_lorebook_batch(dry_run=true)` before the confirmed apply.
 
 ---
 

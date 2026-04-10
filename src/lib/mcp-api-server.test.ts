@@ -1,10 +1,12 @@
 // @vitest-environment node
 import * as http from 'http';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openCharx, openRisum, openRisup, saveCharx, type CharxData } from '../charx-io';
+import { parsePromptTemplate, parsePromptTemplateFromText, serializePromptTemplateToText } from './risup-prompt-model';
 
 function parseLuaSections() {
   return [];
@@ -135,9 +137,14 @@ function closeServer(server: http.Server): Promise<void> {
 
 interface TestDepsOverrides {
   getSessionStatus?: () => TestSessionStatus;
-  parseLuaSections?: () => Array<{ name: string; content: string }>;
-  parseCssSections?: () => { sections: Array<{ name: string; content: string }>; prefix: string; suffix: string };
+  parseLuaSections?: (lua: string) => Array<{ name: string; content: string }>;
+  parseCssSections?: (css: string) => {
+    sections: Array<{ name: string; content: string }>;
+    prefix: string;
+    suffix: string;
+  };
   openExternalDocument?: (filePath: string) => CharxData;
+  userDataPath?: string;
   broadcastToAll?: (channel: string, ...args: unknown[]) => void;
   requestRendererOpenFile?: (request: {
     filePath: string;
@@ -216,6 +223,7 @@ async function startTestApiServer(
     },
     stringifyTriggerScripts: (scripts: unknown) => JSON.stringify(scripts),
     getSkillsDir: () => skillsDir ?? path.join(__dirname, '..', '..', 'skills'),
+    getUserDataPath: () => overrides?.userDataPath ?? path.join(os.tmpdir(), 'risutoki-mcp-api-test-user-data'),
     getSessionStatus:
       overrides?.getSessionStatus ??
       (() => ({
@@ -799,6 +807,12 @@ describe('MCP API risup prompt-item routes', () => {
     };
   }
 
+  function createPlainSnippetText(text: string): string {
+    return serializePromptTemplateToText(
+      parsePromptTemplate(JSON.stringify([{ type: 'plain', type2: 'normal', text, role: 'system' }])),
+    );
+  }
+
   it('lists prompt items with type/supported/preview metadata', async () => {
     const api = await startTestApiServer(createRisupFixture());
     try {
@@ -866,6 +880,45 @@ describe('MCP API risup prompt-item routes', () => {
     }
   });
 
+  it('batch-reads prompt items and preserves nulls for invalid indices', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await postJson<{
+        count: number;
+        total: number;
+        entries: Array<{ index: number; type: string | null; supported: boolean } | null>;
+      }>(api.port, api.token, '/risup/prompt-item/batch', {
+        indices: [0, 99, 2],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBe(2);
+      expect(res.data.total).toBe(3);
+      expect(res.data.entries[0]).toMatchObject({ index: 0, type: 'plain', supported: true });
+      expect(res.data.entries[1]).toBeNull();
+      expect(res.data.entries[2]).toMatchObject({ index: 2, type: 'lorebook', supported: true });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('searches prompt items by substring across text-bearing fields', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await postJson<{
+        count: number;
+        matches: Array<{ index: number; matched_fields: string[] }>;
+      }>(api.port, api.token, '/risup/prompt-items/search', {
+        query: 'hello',
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBe(1);
+      expect(res.data.matches[0].index).toBe(0);
+      expect(res.data.matches[0].matched_fields).toContain('text');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('writes one prompt item and mutates currentData.promptTemplate', async () => {
     const currentData = createRisupFixture();
     const api = await startTestApiServer(currentData);
@@ -885,6 +938,34 @@ describe('MCP API risup prompt-item routes', () => {
     }
   });
 
+  it('batch-writes multiple prompt items in one request', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    try {
+      const res = await postJson<{ success: boolean; count: number }>(
+        api.port,
+        api.token,
+        '/risup/prompt-item/batch-write',
+        {
+          writes: [
+            { index: 0, item: { type: 'plain', type2: 'normal', text: 'Batch updated', role: 'user' } },
+            { index: 2, item: { type: 'lorebook', name: 'Lore entry' } },
+          ],
+        },
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.count).toBe(2);
+      const parsed = JSON.parse(currentData.promptTemplate as string) as Array<Record<string, unknown>>;
+      expect(parsed[0].text).toBe('Batch updated');
+      expect(parsed[0].role).toBe('user');
+      expect(parsed[2].type).toBe('lorebook');
+      expect(parsed[2].name).toBe('Lore entry');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('adds a new prompt item', async () => {
     const currentData = createRisupFixture();
     const api = await startTestApiServer(currentData);
@@ -899,6 +980,34 @@ describe('MCP API risup prompt-item routes', () => {
       const parsed = JSON.parse(currentData.promptTemplate as string) as Array<Record<string, unknown>>;
       expect(parsed).toHaveLength(4);
       expect(parsed[3].type).toBe('jailbreak');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-adds new prompt items', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    try {
+      const res = await postJson<{ success: boolean; count: number; indices: number[] }>(
+        api.port,
+        api.token,
+        '/risup/prompt-item/batch-add',
+        {
+          items: [
+            { type: 'jailbreak', type2: 'normal', text: 'First batch item', role: 'system' },
+            { type: 'persona', name: 'Batch persona' },
+          ],
+        },
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.count).toBe(2);
+      expect(res.data.indices).toEqual([3, 4]);
+      const parsed = JSON.parse(currentData.promptTemplate as string) as Array<Record<string, unknown>>;
+      expect(parsed).toHaveLength(5);
+      expect(parsed[3].type).toBe('jailbreak');
+      expect(parsed[4].type).toBe('persona');
     } finally {
       await closeServer(api.server);
     }
@@ -994,6 +1103,353 @@ describe('MCP API risup prompt-item routes', () => {
       expect(res.data.success).toBe(true);
       const parsed = JSON.parse(currentData.formatingOrder as string) as string[];
       expect(parsed).toContain('customUnknownToken');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('diffs the current risup prompt against a reference risup preset', async () => {
+    const currentData = createRisupFixture();
+    const referenceData: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'Reference world', role: 'system' },
+        { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+        { type: 'lorebook' },
+      ]),
+      formatingOrder: JSON.stringify(['main', 'chats', 'description']),
+    };
+    const api = await startTestApiServer(currentData, [{ fileName: 'ref-preset.risup', data: referenceData }]);
+    try {
+      const res = await postJson<{
+        identical: boolean;
+        changedSections: string[];
+        promptTemplate: { currentCount: number; linesAdded: number; linesRemoved: number };
+        formatingOrder: { reordered: boolean; currentTokens: string[]; referenceTokens: string[] };
+      }>(api.port, api.token, '/risup/prompt-diff', {
+        refIndex: 0,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.identical).toBe(false);
+      expect(res.data.changedSections).toEqual(['promptTemplate', 'formatingOrder']);
+      expect(res.data.promptTemplate.currentCount).toBe(3);
+      expect(res.data.promptTemplate.linesAdded).toBeGreaterThan(0);
+      expect(res.data.promptTemplate.linesRemoved).toBeGreaterThan(0);
+      expect(res.data.formatingOrder.reordered).toBe(true);
+      expect(res.data.formatingOrder.currentTokens).toEqual(['main', 'description', 'chats']);
+      expect(res.data.formatingOrder.referenceTokens).toEqual(['main', 'chats', 'description']);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('exports promptTemplate to structured text', async () => {
+    const currentData: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'Hello\n===\nWorld', role: 'system', customExtraField: 'keep me' },
+        { id: 'legacy-unknown-1', type: 'futureType', data: { x: 1 } },
+      ]),
+      formatingOrder: '[]',
+    };
+    const api = await startTestApiServer(currentData);
+    try {
+      const res = await getJson<{ count: number; hasUnsupportedContent: boolean; text: string }>(
+        api.port,
+        api.token,
+        '/risup/prompt-text',
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBe(2);
+      expect(res.data.hasUnsupportedContent).toBe(true);
+      expect(res.data.text).toContain('### [plain] ###');
+      expect(res.data.text).toContain('extra-json: {"customExtraField":"keep me"}');
+      expect(res.data.text).toContain('### [raw] ###');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('copies selected prompt items to text in the requested order', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await postJson<{ count: number; indices: number[]; text: string }>(
+        api.port,
+        api.token,
+        '/risup/prompt-text/copy',
+        {
+          indices: [2, 0],
+        },
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBe(2);
+      expect(res.data.indices).toEqual([2, 0]);
+
+      const parsed = parsePromptTemplateFromText(res.data.text);
+      expect(parsed.state).toBe('valid');
+      expect(parsed.items).toHaveLength(2);
+      expect(parsed.items[0].type).toBe('lorebook');
+      expect(parsed.items[1].type).toBe('plain');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('supports dry-run import for prompt text without mutating promptTemplate', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    const sourceText = serializePromptTemplateToText(
+      parsePromptTemplate(
+        JSON.stringify([
+          { type: 'chatML', text: 'Imported', name: 'Prompt block' },
+          { type: 'chat', rangeStart: 1, rangeEnd: 3 },
+        ]),
+      ),
+    );
+    try {
+      const res = await postJson<{
+        dry_run: boolean;
+        success: boolean;
+        count: number;
+        orderWarnings: string[];
+        items: Array<{ type: string | null }>;
+      }>(api.port, api.token, '/risup/prompt-text/import', { text: sourceText, dry_run: true });
+      expect(res.status).toBe(200);
+      expect(res.data.dry_run).toBe(true);
+      expect(res.data.success).toBe(true);
+      expect(res.data.count).toBe(2);
+      expect(res.data.orderWarnings).toEqual([
+        'Dangling formatingOrder token: "description" has no matching prompt item',
+      ]);
+      expect(res.data.items[0].type).toBe('chatML');
+      expect(currentData.promptTemplate).toBe(createRisupFixture().promptTemplate);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('imports structured prompt text and replaces promptTemplate', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    const sourceItems = [
+      { type: 'plain', type2: 'normal', text: 'Imported text', role: 'bot', customExtraField: 'keep me' },
+      { id: 'legacy-unknown-1', type: 'futureType', data: { x: 1 } },
+    ];
+    const sourceText = serializePromptTemplateToText(parsePromptTemplate(JSON.stringify(sourceItems)));
+    try {
+      const res = await postJson<{
+        success: boolean;
+        count: number;
+        hasUnsupportedContent: boolean;
+        orderWarnings: string[];
+      }>(api.port, api.token, '/risup/prompt-text/import', { text: sourceText });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.count).toBe(2);
+      expect(res.data.hasUnsupportedContent).toBe(true);
+      expect(res.data.orderWarnings).toEqual([
+        'Dangling formatingOrder token: "description" has no matching prompt item',
+      ]);
+      const parsed = JSON.parse(currentData.promptTemplate as string) as Array<Record<string, unknown>>;
+      expect(parsed).toHaveLength(2);
+      expect(parsed[0]).toMatchObject({
+        type: 'plain',
+        text: 'Imported text',
+        role: 'bot',
+        customExtraField: 'keep me',
+      });
+      expect(parsed[1]).toMatchObject({ id: 'legacy-unknown-1', type: 'futureType', data: { x: 1 } });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('imports structured prompt text in append mode with fresh ids', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    const sourceItems = [
+      { id: 'shared-id', type: 'plain', type2: 'normal', text: 'Appended text', role: 'system' },
+      { id: 'legacy-unknown-1', type: 'futureType', data: { x: 1 } },
+    ];
+    const sourceText = serializePromptTemplateToText(parsePromptTemplate(JSON.stringify(sourceItems)));
+    try {
+      const res = await postJson<{
+        success: boolean;
+        mode: string;
+        count: number;
+        insertAt: number;
+        orderWarnings: string[];
+      }>(api.port, api.token, '/risup/prompt-text/import', { text: sourceText, mode: 'append', insertAt: 1 });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.mode).toBe('append');
+      expect(res.data.count).toBe(2);
+      expect(res.data.insertAt).toBe(1);
+      expect(res.data.orderWarnings).toEqual([
+        'Dangling formatingOrder token: "description" has no matching prompt item',
+      ]);
+
+      const parsed = JSON.parse(currentData.promptTemplate as string) as Array<Record<string, unknown>>;
+      expect(parsed).toHaveLength(5);
+      expect(parsed[1]).toMatchObject({ type: 'plain', text: 'Appended text' });
+      expect(parsed[1].id).not.toBe('shared-id');
+      expect(parsed[2]).toMatchObject({ type: 'futureType', data: { x: 1 } });
+      expect(parsed[2].id).not.toBe('legacy-unknown-1');
+      expect(parsed[3].type).toBe('chat');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('saves, lists, and reads persistent risup prompt snippets', async () => {
+    const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'risup-prompt-snippet-api-'));
+    const api = await startTestApiServer(createRisupFixture(), [], undefined, { userDataPath });
+    try {
+      const saveRes = await postJson<{
+        created: boolean;
+        source: string;
+        snippet: { id: string; name: string; itemCount: number };
+        items: Array<{ index: number }>;
+      }>(api.port, api.token, '/risup/prompt-snippets/save', {
+        name: 'Intro blocks',
+        indices: [0, 2],
+      });
+      expect(saveRes.status).toBe(200);
+      expect(saveRes.data.created).toBe(true);
+      expect(saveRes.data.source).toBe('indices');
+      expect(saveRes.data.snippet).toMatchObject({ name: 'Intro blocks', itemCount: 2 });
+      expect(saveRes.data.items).toHaveLength(2);
+
+      const listRes = await getJson<{
+        count: number;
+        snippets: Array<{ id: string; name: string; itemCount: number }>;
+      }>(api.port, api.token, '/risup/prompt-snippets');
+      expect(listRes.status).toBe(200);
+      expect(listRes.data.count).toBe(1);
+      expect(listRes.data.snippets[0]).toMatchObject({ name: 'Intro blocks', itemCount: 2 });
+
+      const readRes = await postJson<{
+        count: number;
+        snippet: { id: string; name: string };
+        text: string;
+      }>(api.port, api.token, '/risup/prompt-snippets/read', {
+        identifier: saveRes.data.snippet.id,
+      });
+      expect(readRes.status).toBe(200);
+      expect(readRes.data.snippet.name).toBe('Intro blocks');
+      expect(readRes.data.count).toBe(2);
+
+      const parsed = parsePromptTemplateFromText(readRes.data.text);
+      expect(parsed.state).toBe('valid');
+      expect(parsed.items).toHaveLength(2);
+      expect(parsed.items[0].type).toBe('plain');
+      expect(parsed.items[1].type).toBe('lorebook');
+    } finally {
+      await closeServer(api.server);
+      fs.rmSync(userDataPath, { recursive: true, force: true });
+    }
+  });
+
+  it('supports dry-run and insertion for persistent risup prompt snippets', async () => {
+    const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'risup-prompt-snippet-api-'));
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData, [], undefined, { userDataPath });
+    try {
+      const saveRes = await postJson<{ snippet: { name: string } }>(
+        api.port,
+        api.token,
+        '/risup/prompt-snippets/save',
+        {
+          name: 'Single insert',
+          text: createPlainSnippetText('Inserted text'),
+        },
+      );
+      expect(saveRes.status).toBe(200);
+
+      const dryRunRes = await postJson<{
+        dry_run: boolean;
+        success: boolean;
+        count: number;
+        insertAt: number;
+        snippet: { name: string };
+      }>(api.port, api.token, '/risup/prompt-snippets/insert', {
+        identifier: 'Single insert',
+        insertAt: 1,
+        dry_run: true,
+      });
+      expect(dryRunRes.status).toBe(200);
+      expect(dryRunRes.data.dry_run).toBe(true);
+      expect(dryRunRes.data.success).toBe(true);
+      expect(dryRunRes.data.count).toBe(1);
+      expect(dryRunRes.data.insertAt).toBe(1);
+      expect(dryRunRes.data.snippet.name).toBe('Single insert');
+      expect(currentData.promptTemplate).toBe(createRisupFixture().promptTemplate);
+
+      const insertRes = await postJson<{
+        success: boolean;
+        count: number;
+        insertAt: number;
+        snippet: { name: string };
+      }>(api.port, api.token, '/risup/prompt-snippets/insert', {
+        identifier: 'Single insert',
+        insertAt: 1,
+      });
+      expect(insertRes.status).toBe(200);
+      expect(insertRes.data.success).toBe(true);
+      expect(insertRes.data.count).toBe(1);
+      expect(insertRes.data.insertAt).toBe(1);
+
+      const parsed = JSON.parse(currentData.promptTemplate as string) as Array<Record<string, unknown>>;
+      expect(parsed).toHaveLength(4);
+      expect(parsed[1]).toMatchObject({ type: 'plain', text: 'Inserted text' });
+      expect(parsed[2].type).toBe('chat');
+    } finally {
+      await closeServer(api.server);
+      fs.rmSync(userDataPath, { recursive: true, force: true });
+    }
+  });
+
+  it('deletes persistent risup prompt snippets by exact name', async () => {
+    const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'risup-prompt-snippet-api-'));
+    const api = await startTestApiServer(createRisupFixture(), [], undefined, { userDataPath });
+    try {
+      const saveRes = await postJson<{ snippet: { name: string } }>(
+        api.port,
+        api.token,
+        '/risup/prompt-snippets/save',
+        {
+          name: 'Delete me',
+          text: createPlainSnippetText('Delete me'),
+        },
+      );
+      expect(saveRes.status).toBe(200);
+
+      const deleteRes = await postJson<{ success: boolean; snippet: { name: string } }>(
+        api.port,
+        api.token,
+        '/risup/prompt-snippets/delete',
+        { identifier: 'Delete me' },
+      );
+      expect(deleteRes.status).toBe(200);
+      expect(deleteRes.data.success).toBe(true);
+      expect(deleteRes.data.snippet.name).toBe('Delete me');
+
+      const listRes = await getJson<{ count: number }>(api.port, api.token, '/risup/prompt-snippets');
+      expect(listRes.status).toBe(200);
+      expect(listRes.data.count).toBe(0);
+    } finally {
+      await closeServer(api.server);
+      fs.rmSync(userDataPath, { recursive: true, force: true });
+    }
+  });
+
+  it('returns 400 for malformed prompt text imports', async () => {
+    const api = await startTestApiServer(createRisupFixture());
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/risup/prompt-text/import', {
+        text: '### [plain] ###\nrole: system\nbody-lines: nope\n---\nhello\n===',
+      });
+      expect(res.status).toBe(400);
     } finally {
       await closeServer(api.server);
     }
@@ -1366,6 +1822,35 @@ describe('MCP API risup prompt stable IDs and warnings', () => {
     }
   });
 
+  it('batch add route assigns distinct generated ids to identical new items', async () => {
+    const currentData = createRisupFixture();
+    const api = await startTestApiServer(currentData);
+    try {
+      const newItem = { type: 'plain', type2: 'normal', text: 'Repeat me', role: 'system' };
+      const res = await postJson<{ success: boolean; indices: number[] }>(
+        api.port,
+        api.token,
+        '/risup/prompt-item/batch-add',
+        {
+          items: [newItem, newItem],
+        },
+      );
+      expect(res.status).toBe(200);
+
+      const listRes = await getJson<{
+        items: Array<{ index: number; id: string | null }>;
+      }>(api.port, api.token, '/risup/prompt-items');
+      expect(listRes.status).toBe(200);
+      const firstAdded = listRes.data.items[res.data.indices[0]];
+      const secondAdded = listRes.data.items[res.data.indices[1]];
+      expect(typeof firstAdded.id).toBe('string');
+      expect(typeof secondAdded.id).toBe('string');
+      expect(firstAdded.id).not.toBe(secondAdded.id);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('write route preserves provided id through parse/serialize flow', async () => {
     const currentData: SearchFixture = {
       _fileType: 'risup',
@@ -1387,6 +1872,40 @@ describe('MCP API risup prompt stable IDs and warnings', () => {
       }>(api.port, api.token, '/risup/prompt-item/0');
       expect(readRes.status).toBe(200);
       expect(readRes.data.id).toBe('my-custom-id');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch write preserves existing ids when replacement items omit them', async () => {
+    const currentData: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([
+        { id: 'keep-me', type: 'plain', type2: 'normal', text: 'Original', role: 'system' },
+        { id: 'keep-chat', type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+      ]),
+      formatingOrder: '[]',
+    };
+    const api = await startTestApiServer(currentData);
+    try {
+      const res = await postJson<{ success: boolean; count: number }>(
+        api.port,
+        api.token,
+        '/risup/prompt-item/batch-write',
+        {
+          writes: [{ index: 0, item: { type: 'plain', type2: 'normal', text: 'Updated', role: 'user' } }],
+        },
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+
+      const readRes = await getJson<{
+        id: string | null;
+        item: Record<string, unknown>;
+      }>(api.port, api.token, '/risup/prompt-item/0');
+      expect(readRes.status).toBe(200);
+      expect(readRes.data.id).toBe('keep-me');
+      expect(readRes.data.item.text).toBe('Updated');
     } finally {
       await closeServer(api.server);
     }
@@ -3242,6 +3761,23 @@ describe('MCP API structured error envelopes — lorebook mutation routes', () =
     }
   });
 
+  it('batch-delete: expected_comments mismatch → 409 envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/batch-delete', {
+        indices: [0],
+        expected_comments: ['Wrong lore'],
+      });
+      expect(res.status).toBe(409);
+      expect(res.data).toHaveProperty('action', 'batch delete lorebook entries');
+      expect(res.data).toHaveProperty('status', 409);
+      expect(res.data).toHaveProperty('target', 'lorebook:batch-delete');
+      expect(res.data.error).toContain('Stale lorebook index 0');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   // ── POST /lorebook/batch-replace ───────────────────────────────────
   it('batch-replace: replacements not array → 400 envelope', async () => {
     const api = await startTestApiServer(createSearchFixture());
@@ -3305,6 +3841,26 @@ describe('MCP API structured error envelopes — lorebook mutation routes', () =
       expect(res.data).toHaveProperty('target', 'lorebook:batch-replace');
       expect(res.data.error).toContain('find');
       expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch-replace: dry_run previews matches without mutating lorebook', async () => {
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/batch-replace', {
+        replacements: [{ index: 0, find: 'alpha', replace: 'beta', expected_comment: 'Bridge lore' }],
+        dry_run: true,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.dryRun).toBe(true);
+      expect(res.data.count).toBe(1);
+      expect(Array.isArray(res.data.results)).toBe(true);
+      expect((res.data.results as Array<Record<string, unknown>>)[0]?.matchCount).toBe(1);
+      expect(fixture.lorebook?.[0]?.content).toBe('Lore alpha entry.');
     } finally {
       await closeServer(api.server);
     }
@@ -4710,6 +5266,17 @@ describe('MCP API success response envelope', () => {
         totalFields: 1,
         totalSnapshots: 1,
       });
+      expect(res.data.surfaceSummary).toEqual({
+        lorebookCount: 2,
+        regexCount: 0,
+        alternateGreetingCount: 2,
+        groupGreetingCount: 1,
+        triggerCount: 0,
+        luaSectionCount: 0,
+        cssSectionCount: 0,
+        risupPromptItemCount: null,
+        risupPromptState: null,
+      });
       expect(res.data.references).toEqual({
         count: 0,
         files: [],
@@ -4771,6 +5338,67 @@ describe('MCP API success response envelope', () => {
         byField: [],
         totalFields: 0,
         totalSnapshots: 0,
+      });
+      expect(res.data.surfaceSummary).toBeNull();
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('session_status surfaceSummary reports risup prompt counts for risup documents', async () => {
+    const fixture: SearchFixture = {
+      _fileType: 'risup',
+      name: 'Status Preset',
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'Hello', role: 'system' },
+        { type: 'persona', text: 'Persona block' },
+      ]),
+      formatingOrder: '["main"]',
+      alternateGreetings: ['Alt greeting'],
+      groupOnlyGreetings: [],
+      lorebook: [],
+      regex: [{ comment: 'status-regex', type: 'editoutput', in: 'foo', out: 'bar' }],
+      triggerScripts: [{ comment: 'status-trigger', type: 'start', conditions: [], effect: [], lowLevelAccess: false }],
+      lua: '---@name main\nprint("hello")',
+      css: '/* ===== main ===== */\nbody { color: red; }',
+    };
+    const api = await startTestApiServer(fixture, [], undefined, {
+      getSessionStatus: () => ({
+        currentFilePath: 'C:\\presets\\status-preset.risup',
+        currentFileType: 'risup',
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: null,
+      }),
+      parseLuaSections: (lua: string) => (lua.trim() ? [{ name: 'main', content: lua.trim() }] : []),
+      parseCssSections: (css: string) =>
+        css.trim()
+          ? { sections: [{ name: 'main', content: css.trim() }], prefix: '', suffix: '' }
+          : { sections: [], prefix: '', suffix: '' },
+    });
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+
+      expect(res.status).toBe(200);
+      expect(res.data.loaded).toBe(true);
+      expect(res.data.document).toEqual({
+        filePath: 'C:\\presets\\status-preset.risup',
+        fileType: 'risup',
+        name: 'Status Preset',
+      });
+      expect(res.data.surfaceSummary).toEqual({
+        lorebookCount: 0,
+        regexCount: 1,
+        alternateGreetingCount: 1,
+        groupGreetingCount: 0,
+        triggerCount: 1,
+        luaSectionCount: 1,
+        cssSectionCount: 1,
+        risupPromptItemCount: 2,
+        risupPromptState: 'valid',
       });
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
@@ -5185,6 +5813,44 @@ describe('MCP envelope — lorebook/regex/greeting/trigger CRUD families', () =>
     }
   });
 
+  it('write_lorebook rejects stale expected_comment with 409 envelope', async () => {
+    const api = await startTestApiServer(createEnvelopeFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lorebook/0', {
+        content: 'updated lore',
+        expected_comment: 'Wrong lore',
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.status).toBe(409);
+      expect(res.data.target).toBe('lorebook:0');
+      expect(res.data.error).toContain('Stale lorebook index 0');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch_delete_lorebook response includes results alias', async () => {
+    const fixture = createEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/batch-delete', {
+        indices: [0],
+        expected_comments: ['Bridge lore'],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.deleted).toBe(1);
+      expect(Array.isArray(res.data.entries)).toBe(true);
+      expect(Array.isArray(res.data.results)).toBe(true);
+      expect((res.data.results as Array<Record<string, unknown>>)[0]?.comment).toBe('Bridge lore');
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('validate_lorebook_keys response includes envelope fields', async () => {
     const fixture = createEnvelopeFixture();
     const api = await startTestApiServer(fixture);
@@ -5256,6 +5922,25 @@ describe('MCP envelope — lorebook/regex/greeting/trigger CRUD families', () =>
     }
   });
 
+  it('read_regex_batch response includes envelope fields', async () => {
+    const fixture = createEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/regex/batch', {
+        indices: [0, 99],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBe(1);
+      expect(res.data.total).toBe(2);
+      expect(Array.isArray(res.data.entries)).toBe(true);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('write_regex response includes envelope fields', async () => {
     const fixture = createEnvelopeFixture();
     const api = await startTestApiServer(fixture);
@@ -5267,6 +5952,41 @@ describe('MCP envelope — lorebook/regex/greeting/trigger CRUD families', () =>
       expect(res.data.success).toBe(true);
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write_regex rejects stale expected_comment with 409 envelope', async () => {
+    const api = await startTestApiServer(createEnvelopeFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/regex/0', {
+        comment: 'updated-regex',
+        expected_comment: 'wrong-regex',
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.status).toBe(409);
+      expect(res.data.target).toBe('regex:0');
+      expect(res.data.error).toContain('Stale regex index 0');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write_regex_batch response includes results alias', async () => {
+    const fixture = createEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/regex/batch-write', {
+        entries: [{ index: 0, data: { comment: 'batch-regex' }, expected_comment: 'test-regex' }],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(Array.isArray(res.data.entries)).toBe(true);
+      expect(Array.isArray(res.data.results)).toBe(true);
+      expect((res.data.results as Array<Record<string, unknown>>)[0]?.comment).toBe('batch-regex');
+      expect(res.data.status).toBe(200);
       expect(Array.isArray(res.data.next_actions)).toBe(true);
     } finally {
       await closeServer(api.server);
@@ -5307,6 +6027,26 @@ describe('MCP envelope — lorebook/regex/greeting/trigger CRUD families', () =>
     }
   });
 
+  it('read_greeting_batch response includes envelope fields', async () => {
+    const fixture = createEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/greeting/alternate/batch', {
+        indices: [0, 99],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.type).toBe('alternate');
+      expect(res.data.count).toBe(1);
+      expect(res.data.total).toBe(2);
+      expect(Array.isArray(res.data.items)).toBe(true);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('write_greeting response includes envelope fields', async () => {
     const fixture = createEnvelopeFixture();
     const api = await startTestApiServer(fixture);
@@ -5318,6 +6058,77 @@ describe('MCP envelope — lorebook/regex/greeting/trigger CRUD families', () =>
       expect(res.data.success).toBe(true);
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write_greeting rejects stale expected_preview with 409 envelope', async () => {
+    const api = await startTestApiServer(createEnvelopeFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/greeting/alternate/0', {
+        content: 'updated greeting',
+        expected_preview: 'Wrong preview',
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.status).toBe(409);
+      expect(res.data.target).toBe('greeting:alternate:0');
+      expect(res.data.error).toContain('Stale greeting index 0');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch_write_greeting response includes results alias', async () => {
+    const fixture = createEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/greeting/alternate/batch-write', {
+        writes: [{ index: 0, content: 'updated greeting', expected_preview: 'Alternate Alpha greeting.' }],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.type).toBe('alternate');
+      expect(Array.isArray(res.data.results)).toBe(true);
+      expect((res.data.results as Array<Record<string, unknown>>)[0]?.preview).toBe('updated greeting');
+      expect(res.data.status).toBe(200);
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch_delete_greeting rejects stale expected_previews with 409 envelope', async () => {
+    const api = await startTestApiServer(createEnvelopeFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/greeting/alternate/batch-delete', {
+        indices: [0],
+        expected_previews: ['Wrong preview'],
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.status).toBe(409);
+      expect(res.data.target).toBe('greeting:alternate:batch-delete');
+      expect(res.data.error).toContain('Stale greeting index 0');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('batch_delete_greeting response includes results alias', async () => {
+    const fixture = createEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/greeting/alternate/batch-delete', {
+        indices: [0],
+        expected_previews: ['Alternate Alpha greeting.'],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(res.data.deletedCount).toBe(1);
+      expect(Array.isArray(res.data.results)).toBe(true);
+      expect((res.data.results as Array<Record<string, unknown>>)[0]?.preview).toBe('Alternate Alpha greeting.');
+      expect(res.data.status).toBe(200);
       expect(Array.isArray(res.data.next_actions)).toBe(true);
     } finally {
       await closeServer(api.server);
@@ -5357,6 +6168,25 @@ describe('MCP envelope — lorebook/regex/greeting/trigger CRUD families', () =>
     }
   });
 
+  it('read_trigger_batch response includes envelope fields', async () => {
+    const fixture = createEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/trigger/batch', {
+        indices: [0, 99],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBe(1);
+      expect(res.data.total).toBe(2);
+      expect(Array.isArray(res.data.triggers)).toBe(true);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('write_trigger response includes envelope fields', async () => {
     const fixture = createEnvelopeFixture();
     const api = await startTestApiServer(fixture);
@@ -5366,6 +6196,136 @@ describe('MCP envelope — lorebook/regex/greeting/trigger CRUD families', () =>
       });
       expect(res.status).toBe(200);
       expect(res.data.success).toBe(true);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('delete_trigger rejects stale expected_comment with 409 envelope', async () => {
+    const api = await startTestApiServer(createEnvelopeFixture());
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/trigger/0/delete', {
+        expected_comment: 'wrong-trigger',
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.status).toBe(409);
+      expect(res.data.target).toBe('trigger:0');
+      expect(res.data.error).toContain('Stale trigger index 0');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP envelope — reference batch readers', () => {
+  function createReferenceBatchFixture(): SearchFixture {
+    return {
+      ...createSearchFixture(),
+      regex: [
+        { comment: 'ref-regex', type: 'editoutput', in: 'foo', out: 'bar', find: 'foo', replace: 'bar', flag: 'g' },
+      ],
+      triggerScripts: [{ comment: 'ref-trigger', type: 'start', conditions: [], effect: [], lowLevelAccess: false }],
+    };
+  }
+
+  it('read_reference_greeting_batch response includes envelope fields', async () => {
+    const api = await startTestApiServer(createSearchFixture(), [
+      { fileName: 'ref.charx', data: createReferenceBatchFixture() },
+    ]);
+    try {
+      const res = await postJson<Record<string, unknown>>(
+        api.port,
+        api.token,
+        '/reference/0/greeting/alternate/batch',
+        {
+          indices: [0, 99],
+        },
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.refIndex).toBe(0);
+      expect(res.data.type).toBe('alternate');
+      expect(res.data.count).toBe(1);
+      expect(res.data.total).toBe(2);
+      expect(Array.isArray(res.data.items)).toBe(true);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('read_reference_trigger_batch response includes envelope fields', async () => {
+    const api = await startTestApiServer(createSearchFixture(), [
+      { fileName: 'ref.charx', data: createReferenceBatchFixture() },
+    ]);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/reference/0/trigger/batch', {
+        indices: [0, 99],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.refIndex).toBe(0);
+      expect(res.data.count).toBe(1);
+      expect(res.data.total).toBe(2);
+      expect(Array.isArray(res.data.triggers)).toBe(true);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('read_reference_regex_batch response includes envelope fields', async () => {
+    const api = await startTestApiServer(createSearchFixture(), [
+      { fileName: 'ref.charx', data: createReferenceBatchFixture() },
+    ]);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/reference/0/regex/batch', {
+        indices: [0, 99],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.refIndex).toBe(0);
+      expect(res.data.count).toBe(1);
+      expect(res.data.total).toBe(2);
+      expect(Array.isArray(res.data.entries)).toBe(true);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('read_reference_risup_prompt_item_batch response includes envelope fields', async () => {
+    const api = await startTestApiServer(createSearchFixture(), [
+      {
+        fileName: 'ref.risup',
+        data: {
+          _fileType: 'risup',
+          promptTemplate: JSON.stringify([
+            { id: 'prompt-1', type: 'plain', type2: 'normal', text: 'Hello', role: 'system' },
+          ]),
+        },
+      },
+    ]);
+    try {
+      const res = await postJson<Record<string, unknown>>(
+        api.port,
+        api.token,
+        '/reference/0/risup/prompt-items/batch',
+        {
+          indices: [0, 99],
+        },
+      );
+      expect(res.status).toBe(200);
+      expect(res.data.index).toBe(0);
+      expect(res.data.count).toBe(1);
+      expect(res.data.total).toBe(2);
+      expect(Array.isArray(res.data.entries)).toBe(true);
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
@@ -5745,6 +6705,43 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
     }
   });
 
+  it('read_risup_prompt_item_batch response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-item/batch', {
+        indices: [0, 1],
+      });
+      expect(res.status).toBe(200);
+      expect(typeof res.data.count).toBe('number');
+      expect(typeof res.data.total).toBe('number');
+      expect(Array.isArray(res.data.entries)).toBe(true);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('search_in_risup_prompt_items response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-items/search', {
+        query: 'hello',
+      });
+      expect(res.status).toBe(200);
+      expect(typeof res.data.count).toBe('number');
+      expect(Array.isArray(res.data.matches)).toBe(true);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('write_risup_prompt_item response includes envelope fields', async () => {
     const fixture = createRisupEnvelopeFixture();
     const api = await startTestApiServer(fixture);
@@ -5765,6 +6762,45 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
     }
   });
 
+  it('write_risup_prompt_item_batch response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-item/batch-write', {
+        writes: [{ index: 0, item: { type: 'plain', type2: 'normal', text: 'Batch edit', role: 'system' } }],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.count).toBe('number');
+      expect(Array.isArray(res.data.results)).toBe(true);
+      expect(res.data.orderWarnings).toEqual([
+        'Dangling formatingOrder token: "description" has no matching prompt item',
+      ]);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write_risup_prompt_item rejects stale expected_type with 409 envelope', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/risup/prompt-item/0', {
+        item: { type: 'plain', type2: 'normal', text: 'Updated text', role: 'system' },
+        expected_type: 'chat',
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.status).toBe(409);
+      expect(res.data.target).toBe('risup:promptTemplate:0');
+      expect(res.data.error).toContain('Stale risup prompt item index 0');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('add_risup_prompt_item response includes envelope fields', async () => {
     const fixture = createRisupEnvelopeFixture();
     const api = await startTestApiServer(fixture);
@@ -5776,7 +6812,34 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       // Original fields preserved
       expect(res.data.success).toBe(true);
       expect(typeof res.data.index).toBe('number');
+      expect(res.data.orderWarnings).toEqual([
+        'Dangling formatingOrder token: "description" has no matching prompt item',
+      ]);
       // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('add_risup_prompt_item_batch response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-item/batch-add', {
+        items: [{ type: 'plain', type2: 'normal', text: 'Batch new item', role: 'system' }],
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(true);
+      expect(typeof res.data.count).toBe('number');
+      expect(Array.isArray(res.data.indices)).toBe(true);
+      expect(Array.isArray(res.data.results)).toBe(true);
+      expect((res.data.results as Array<Record<string, unknown>>)[0]?.type).toBe('plain');
+      expect(res.data.orderWarnings).toEqual([
+        'Dangling formatingOrder token: "description" has no matching prompt item',
+      ]);
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
@@ -5796,6 +6859,9 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       // Original fields preserved
       expect(res.data.success).toBe(true);
       expect(Array.isArray(res.data.order)).toBe(true);
+      expect(res.data.orderWarnings).toEqual([
+        'Dangling formatingOrder token: "description" has no matching prompt item',
+      ]);
       // Envelope fields present
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
@@ -5814,6 +6880,9 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       // Original fields preserved
       expect(res.data.success).toBe(true);
       expect(res.data.deleted).toBe(0);
+      expect(res.data.orderWarnings).toEqual([
+        'Dangling formatingOrder token: "description" has no matching prompt item',
+      ]);
       // Envelope fields present
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
@@ -5846,13 +6915,37 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
     const api = await startTestApiServer(fixture);
     try {
       const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/formating-order', {
-        items: [{ token: 'main' }, { token: 'chats' }],
+        items: [{ token: 'main' }, { token: 'description' }, { token: 'chats' }],
       });
       expect(res.status).toBe(200);
       // Original fields preserved
       expect(res.data.success).toBe(true);
       expect(typeof res.data.count).toBe('number');
+      expect(res.data.warnings).toEqual(['Dangling formatingOrder token: "description" has no matching prompt item']);
       // Envelope fields present
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('diff_risup_prompt response includes envelope fields', async () => {
+    const fixture = createRisupEnvelopeFixture();
+    const referenceData: SearchFixture = {
+      _fileType: 'risup',
+      promptTemplate: JSON.stringify([{ type: 'plain', type2: 'normal', text: 'Different reference', role: 'system' }]),
+      formatingOrder: JSON.stringify(['main']),
+    };
+    const api = await startTestApiServer(fixture, [{ fileName: 'compare.risup', data: referenceData }]);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/risup/prompt-diff', { refIndex: 0 });
+      expect(res.status).toBe(200);
+      expect(typeof res.data.identical).toBe('boolean');
+      expect(Array.isArray(res.data.changedSections)).toBe(true);
+      expect(typeof res.data.promptTemplate).toBe('object');
+      expect(typeof res.data.formatingOrder).toBe('object');
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);

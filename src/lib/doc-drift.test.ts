@@ -99,6 +99,13 @@ function extractToolSurfaceToolNames(): string[] {
   return [...allNames];
 }
 
+function normalizeWorkflowMirrorMarkdown(content: string): string {
+  return content
+    .replace(/\r\n/g, '\n')
+    .replace(/\]\(\.\.\/\.\.\/docs\/([^)]+)\)/g, (_match, file) => `](${file})`)
+    .trim();
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // 1. Skills ↔ Taxonomy alignment
 // ────────────────────────────────────────────────────────────────────────────
@@ -214,6 +221,13 @@ describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
     'mcpError',
     'mcpNoOp',
     'artifacts.byte_size',
+    '_meta',
+    'expected_comment',
+    'expected_comments',
+    'expected_preview',
+    'expected_previews',
+    'expected_type',
+    'dry_run',
   ]);
 
   it('every tool name in MCP_TOOL_SURFACE.md exists in taxonomy', () => {
@@ -274,5 +288,23 @@ describe('FAMILY_NEXT_ACTIONS ↔ taxonomy alignment', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// 5. (removed — docs/superpowers/ was deleted as a historical artifact)
+// 5. Workflow doc mirror sync
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('workflow doc mirrors stay in sync', () => {
+  const docsWorkflowPath = path.join(DOCS_DIR, 'MCP_WORKFLOW.md');
+  const skillWorkflowPath = path.join(ROOT, 'skills', 'project-workflow', 'MCP_WORKFLOW.md');
+
+  it('skills/project-workflow/MCP_WORKFLOW.md matches docs/MCP_WORKFLOW.md after link normalization', () => {
+    expect(fs.existsSync(docsWorkflowPath), 'Missing docs/MCP_WORKFLOW.md').toBe(true);
+    expect(fs.existsSync(skillWorkflowPath), 'Missing skills/project-workflow/MCP_WORKFLOW.md').toBe(true);
+
+    const docsContent = normalizeWorkflowMirrorMarkdown(fs.readFileSync(docsWorkflowPath, 'utf-8'));
+    const skillContent = normalizeWorkflowMirrorMarkdown(fs.readFileSync(skillWorkflowPath, 'utf-8'));
+    expect(skillContent).toEqual(docsContent);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 6. (removed — docs/superpowers/ was deleted as a historical artifact)
 // ────────────────────────────────────────────────────────────────────────────

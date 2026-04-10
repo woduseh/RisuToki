@@ -40,6 +40,9 @@ vi.mock('./risup-prompt-editor', () => ({
   createFormatingOrderEditor: vi.fn(),
   createPromptTemplateEditor: vi.fn(),
 }));
+vi.mock('./risup-toggle-editor', () => ({
+  createCustomPromptTemplateToggleEditor: vi.fn(),
+}));
 vi.mock('./trigger-form-editor', () => ({
   coerceTriggerFormInputValue: vi.fn(),
   getTriggerFormValidationMessage: vi.fn(),
@@ -289,5 +292,30 @@ describe('showRisupEditor validation boxes', () => {
     const warningBox = container.querySelector('.risup-validation-warnings') as HTMLElement;
     expect(errorBox.style.display).toBe('none');
     expect(warningBox.style.display).toBe('none');
+  });
+
+  it('renders the dedicated custom toggle editor for customPromptTemplateToggle fields', async () => {
+    const { validateRisupDraftFields: mockValidate } = await import('./risup-form-editor');
+    const { getRisupFieldGroup: mockGetGroup } = await import('./risup-fields');
+    const { createCustomPromptTemplateToggleEditor: mockToggleEditor } = await import('./risup-toggle-editor');
+    vi.mocked(mockGetGroup).mockReturnValue({
+      id: 'templates',
+      label: '생성',
+      icon: '⚙️',
+      fields: [{ id: 'customPromptTemplateToggle', label: '커스텀 템플릿 토글', editor: 'toggle-template' }],
+    });
+    vi.mocked(mockValidate).mockReturnValue([]);
+
+    const deps = createDeps();
+    initFormEditor(deps);
+    showRisupEditor(
+      makeRisupTab({
+        getValue: () => ({ name: 'test-preset', customPromptTemplateToggle: 'flag=Enable' }),
+      }),
+    );
+
+    expect(mockToggleEditor).toHaveBeenCalledTimes(1);
+    const container = document.getElementById('editor-container')!;
+    expect(container.querySelector('.toggle-template-editor-container')).not.toBeNull();
   });
 });

@@ -9,6 +9,71 @@
 
 ---
 
+## [0.58.0] - 2026-04-11
+
+### Added
+
+- Added optional stale-index guards to the remaining high-traffic indexed MCP mutation families: regex and trigger writes now accept `expected_comment`, greeting writes/deletes accept `expected_preview` / `expected_previews`, and risup prompt-item writes accept `expected_type` plus optional `expected_preview`. Mismatches now return `409 Conflict` instead of silently applying to shifted indices.
+
+### Changed
+
+- Normalized additional batch mutation success payloads so `write_regex_batch`, `batch_write_greeting`, `batch_delete_greeting`, and `add_risup_prompt_item_batch` include per-item `results[]` alongside their legacy fields.
+- Updated MCP workflow/docs/skills/README guidance so indexed-write guard routing now covers lorebook, regex, greeting, trigger, and risup prompt-item families instead of only the lorebook-first slice.
+
+## [0.57.0] - 2026-04-11
+
+### Added
+
+- Added optional `expected_comment` identity guards to the lorebook indexed mutation routes: `write_lorebook`, `write_lorebook_batch`, `clone_lorebook`, `delete_lorebook`, `batch_delete_lorebook`, `replace_in_lorebook`, `replace_block_in_lorebook`, `insert_in_lorebook`, `replace_in_lorebook_batch`, and `insert_in_lorebook_batch`. Supplying a mismatched comment now returns `409 Conflict` instead of silently applying a stale-index mutation.
+- Added `dry_run` preview support to `replace_in_lorebook_batch` so agents can inspect multi-entry replacement matches before a confirmed write.
+
+### Changed
+
+- Normalized lorebook batch mutation success payloads to include per-entry `results[]` alongside legacy summary fields so agents can verify outcomes without an immediate follow-up read.
+- Updated MCP workflow/docs/skills/README guidance so lorebook index-based edits now explicitly recommend carrying `list_lorebook` comments into `expected_comment` / `expected_comments` for stale-index safety.
+
+### Note
+
+- Identity guards and batch-result normalization remain lorebook-first in this release. Regex, greeting, trigger, and `.risup` indexed mutation families still need parity in a follow-up roadmap slice.
+
+## [0.56.0] - 2026-04-11
+
+### Added
+
+- Added machine-readable MCP mutation metadata through tool `_meta`, exposing `risutoki/requiresConfirmation` and `risutoki/supportsDryRun` so clients can prefer preview-first routes and anticipate approval pauses without guessing from descriptions alone.
+
+### Changed
+
+- Updated MCP taxonomy/tests and the MCP integration smoke test so mutation metadata stays aligned with registered tool descriptions and survives `tools/list` serialization.
+- Updated MCP workflow/docs/skills/README guidance to teach agents to inspect tool `_meta` before choosing between sibling write routes.
+
+## [0.55.1] - 2026-04-11
+
+### Fixed
+
+- Synced the MCP server self-reported version and the README release badge with the package version so tool metadata and documentation no longer lag behind the shipped build.
+
+## [0.55.0] - 2026-04-11
+
+### Added
+
+- Added `surfaceSummary` to `session_status`, exposing compact structured-surface counts for lorebook, regex, greetings, triggers, Lua sections, CSS sections, and `.risup` prompt items so agents can skip unnecessary discovery loops.
+
+### Changed
+
+- Updated MCP workflow/docs/skills/README guidance so `session_status` is now documented as the first discovery step for both editor state and structured-surface availability.
+
+## [0.54.0] - 2026-04-11
+
+### Added
+
+- Added batch-read MCP routes for active structured families that previously forced repeated single reads: `read_regex_batch`, `read_greeting_batch`, and `read_trigger_batch`.
+- Added matching read-only reference batch readers for sibling comparison flows: `read_reference_greeting_batch`, `read_reference_trigger_batch`, `read_reference_regex_batch`, and `read_reference_risup_prompt_item_batch`.
+
+### Changed
+
+- Updated MCP workflow/docs/skills/README guidance so multi-item inspection paths now point agents toward batch readers instead of repeated single-item loops.
+
 ## [0.53.0] - 2026-04-11
 
 ### Fixed

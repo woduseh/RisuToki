@@ -10,8 +10,7 @@
  *   - Envelope fields are merged at the top level (never wrapped under `data`).
  *   - The original payload object is never mutated.
  *   - `status` is always 200 for success responses.
- *   - `next_actions` are deterministic: derived from the tool's family in the taxonomy
- *     unless explicitly overridden.
+ *   - `next_actions` are deterministic: explicit override → per-tool override → family default.
  */
 
 import { TOOL_TAXONOMY, TOOL_FAMILIES } from './mcp-tool-taxonomy';
@@ -74,7 +73,18 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
   'charx-asset': ['list_charx_assets', 'read_charx_asset', 'add_charx_asset'],
   'risum-asset': ['list_risum_assets', 'read_risum_asset', 'add_risum_asset'],
   'asset-compression': ['compress_assets_webp', 'list_charx_assets'],
-  'risup-prompt': ['list_risup_prompt_items', 'read_risup_prompt_item', 'read_risup_formating_order'],
+  'risup-prompt': [
+    'list_risup_prompt_items',
+    'search_in_risup_prompt_items',
+    'read_risup_formating_order',
+    'diff_risup_prompt',
+    'export_risup_prompt_to_text',
+    'import_risup_prompt_from_text',
+    'list_risup_prompt_snippets',
+    'read_risup_prompt_snippet',
+    'save_risup_prompt_snippet',
+    'insert_risup_prompt_snippet',
+  ],
   skill: ['list_skills', 'read_skill'],
   danbooru: ['validate_danbooru_tags', 'search_danbooru_tags', 'get_popular_danbooru_tags'],
   cbs: ['validate_cbs', 'simulate_cbs', 'diff_cbs'],
@@ -82,6 +92,43 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
   search: ['search_in_field', 'search_all_fields', 'read_field'],
   'lorebook-io': ['list_lorebook', 'export_lorebook_to_files', 'import_lorebook_from_files'],
   session: ['session_status', 'open_file', 'list_references', 'list_snapshots'],
+};
+
+/**
+ * Narrower follow-up suggestions for high-traffic tools whose best next step is
+ * more specific than the generic family default.
+ */
+export const TOOL_NEXT_ACTIONS: Partial<Record<keyof typeof TOOL_TAXONOMY, string[]>> = {
+  open_file: ['session_status', 'list_fields', 'list_references'],
+  read_field: ['search_in_field', 'read_field_range', 'get_field_stats', 'snapshot_field', 'write_field'],
+  write_field: ['read_field', 'search_in_field', 'get_field_stats', 'snapshot_field'],
+  read_field_batch: ['search_in_field', 'read_field_range', 'write_field_batch', 'snapshot_field'],
+  search_in_field: [
+    'read_field_range',
+    'snapshot_field',
+    'replace_in_field',
+    'replace_block_in_field',
+    'insert_in_field',
+  ],
+  list_references: [
+    'read_reference_field',
+    'search_in_reference_field',
+    'read_reference_field_range',
+    'list_reference_lorebook',
+    'list_reference_risup_prompt_items',
+  ],
+  read_reference_field: ['list_references', 'search_in_reference_field', 'read_reference_field_range'],
+  read_reference_field_batch: ['list_references', 'search_in_reference_field', 'read_reference_field_range'],
+  read_risup_prompt_item_batch: [
+    'read_risup_formating_order',
+    'diff_risup_prompt',
+    'write_risup_prompt_item_batch',
+    'export_risup_prompt_to_text',
+  ],
+  write_risup_prompt_item: ['list_risup_prompt_items', 'read_risup_formating_order', 'diff_risup_prompt'],
+  write_risup_prompt_item_batch: ['list_risup_prompt_items', 'read_risup_formating_order', 'diff_risup_prompt'],
+  add_risup_prompt_item: ['list_risup_prompt_items', 'read_risup_formating_order', 'diff_risup_prompt'],
+  add_risup_prompt_item_batch: ['list_risup_prompt_items', 'read_risup_formating_order', 'diff_risup_prompt'],
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -111,6 +158,8 @@ export function mcpSuccess(payload: Record<string, unknown>, opts: McpSuccessOpt
 function resolveNextActions(opts: McpSuccessOptions): string[] {
   if (opts.nextActions) return opts.nextActions;
   if (!opts.toolName) return [];
+  const toolOverride = TOOL_NEXT_ACTIONS[opts.toolName];
+  if (toolOverride) return toolOverride;
   const entry = TOOL_TAXONOMY[opts.toolName];
   if (!entry) return [];
   return FAMILY_NEXT_ACTIONS[entry.family] ?? [];
