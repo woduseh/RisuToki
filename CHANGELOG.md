@@ -9,6 +9,16 @@
 
 ---
 
+## [0.39.3] - 2026-04-10
+
+### 변경
+
+- **MCP 요청 본문에 Zod 스키마 도입** (`src/lib/mcp-request-schemas.ts`): MCP HTTP API의 공통 요청 본문 형태(replace, block-replace, insert, batch-replace, search, search-all, field-batch-read, field-batch-write, external-document)에 Zod 기반 typed 스키마와 `validateBody` 헬퍼를 추가했습니다.
+  - `mcp-api-server.ts`의 필드 편집 핸들러 8곳에서 ad-hoc `typeof` 체인과 수동 probing을 `parseBody` + 스키마 검증으로 교체
+  - `resolveExternalDocumentRequest`와 `readProbeDocumentRequest`의 제네릭 `Record<string, any>` 타입 매개변수를 `ExternalDocumentBody` 타입으로 대체
+  - `flags`(non-string → undefined 변환), `position`(non-enum → undefined 변환) 필드에 lenient coercion 적용하여 기존 동작 유지
+  - 44개 단위 테스트 추가 (`src/lib/mcp-request-schemas.test.ts`)
+
 ## [0.39.2] - 2026-04-10
 
 ### 새 기능

@@ -27,6 +27,19 @@ import {
 } from './risup-prompt-model';
 import { mcpSuccess, errorRecoveryMeta, type McpSuccessOptions } from './mcp-response-envelope';
 import { normalizeLF, extToMime, cloneJson } from './shared-utils';
+import {
+  replaceBodySchema,
+  blockReplaceBodySchema,
+  insertBodySchema,
+  batchReplaceBodySchema,
+  searchBodySchema,
+  searchAllBodySchema,
+  fieldBatchReadSchema,
+  fieldBatchWriteSchema,
+  externalDocumentBodySchema,
+  validateBody,
+  type ExternalDocumentBody,
+} from './mcp-request-schemas';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -927,21 +940,49 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     jsonMcpNoOp(res, info, extra);
   }
 
+  /**
+   * Parse a raw request body with a Zod schema, returning typed data or
+   * sending an mcpError and returning null.
+   */
+  function parseBody<T>(
+    res: http.ServerResponse,
+    body: Record<string, unknown>,
+    schema: import('zod').ZodType<T>,
+    meta: { action: string; target: string; suggestion?: string },
+  ): T | null {
+    const result = validateBody(body, schema);
+    if (result.success) return result.data;
+    const fieldHint = result.path ? ` (at "${result.path}")` : '';
+    mcpError(res, 400, {
+      action: meta.action,
+      target: meta.target,
+      message: `${result.error}${fieldHint}`,
+      suggestion: meta.suggestion ?? '요청 본문의 구조와 필드 타입을 다시 확인하세요.',
+    });
+    return null;
+  }
+
   // Shorthand to emit an MCP success response with envelope enrichment
   function jsonResSuccess(res: http.ServerResponse, payload: Record<string, unknown>, opts: McpSuccessOptions): void {
     jsonRes(res, mcpSuccess(payload, opts));
   }
 
-  async function resolveExternalDocumentRequest<TBody extends Record<string, any> = Record<string, any>>(
+  async function resolveExternalDocumentRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
     routePath: string,
     action: string,
     target: string,
-  ): Promise<{ body: TBody; filePath: string; fileType: SupportedFileType } | null> {
-    const body = await readJsonBody(req, res, routePath, broadcastStatus);
-    if (!body) return null;
-    const rawPath = typeof body.file_path === 'string' ? body.file_path.trim() : '';
+  ): Promise<{ body: ExternalDocumentBody; filePath: string; fileType: SupportedFileType } | null> {
+    const rawBody = await readJsonBody(req, res, routePath, broadcastStatus);
+    if (!rawBody) return null;
+    const parsed = parseBody(res, rawBody, externalDocumentBodySchema, {
+      action,
+      target,
+      suggestion: '절대 경로의 file_path를 요청 본문에 포함하세요.',
+    });
+    if (!parsed) return null;
+    const rawPath = parsed.file_path.trim();
     if (!rawPath) {
       mcpError(res, 400, {
         action,
@@ -1010,20 +1051,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     }
 
     return {
-      body: body as TBody,
+      body: parsed,
       filePath,
       fileType,
     };
   }
 
-  async function readProbeDocumentRequest<TBody extends Record<string, any> = Record<string, any>>(
+  async function readProbeDocumentRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
     routePath: string,
     action: string,
     target: string,
-  ): Promise<{ body: TBody; data: Record<string, unknown>; filePath: string; fileType: SupportedFileType } | null> {
-    const request = await resolveExternalDocumentRequest<TBody>(req, res, routePath, action, target);
+  ): Promise<{
+    body: ExternalDocumentBody;
+    data: Record<string, unknown>;
+    filePath: string;
+    fileType: SupportedFileType;
+  } | null> {
+    const request = await resolveExternalDocumentRequest(req, res, routePath, action, target);
     if (!request) return null;
 
     try {
@@ -1102,7 +1148,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // POST /probe/field/batch — read multiple fields from an unopened file
       // ----------------------------------------------------------------
       if (parts[0] === 'probe' && parts[1] === 'field' && parts[2] === 'batch' && !parts[3] && req.method === 'POST') {
-        const probe = await readProbeDocumentRequest<{ file_path?: string; fields?: unknown }>(
+        const probe = await readProbeDocumentRequest(
           req,
           res,
           'probe/field/batch',
@@ -1191,13 +1237,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       if (req.method === 'POST' && url.pathname === '/open-file') {
-        const request = await resolveExternalDocumentRequest<{ file_path?: string; save_current?: unknown }>(
-          req,
-          res,
-          'open-file',
-          'open file',
-          'open:file',
-        );
+        const request = await resolveExternalDocumentRequest(req, res, 'open-file', 'open file', 'open:file');
         if (!request) return;
 
         if (request.body.save_current !== undefined && typeof request.body.save_current !== 'boolean') {
@@ -1626,20 +1666,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'field' && parts[1] === 'batch' && !parts[2] && req.method === 'POST') {
         const body = await readJsonBody(req, res, 'field/batch', broadcastStatus);
         if (!body) return;
-        const fields: string[] = body.fields;
-        if (!Array.isArray(fields) || fields.length === 0) {
+        const parsed = parseBody(res, body, fieldBatchReadSchema, {
+          action: 'read field batch',
+          target: 'field:batch',
+          suggestion: 'fields 를 문자열 배열로 전달하세요. 예: { "fields": ["name", "description"] }',
+        });
+        if (!parsed) return;
+        const fields = parsed.fields;
+        if (fields.length === 0) {
           return mcpError(res, 400, {
             action: 'read field batch',
             message: 'fields must be a non-empty string array',
             suggestion: 'fields 를 문자열 배열로 전달하세요. 예: { "fields": ["name", "description"] }',
-            target: 'field:batch',
-          });
-        }
-        if (!fields.every((f: unknown) => typeof f === 'string')) {
-          return mcpError(res, 400, {
-            action: 'read field batch',
-            message: 'fields must be a non-empty string array — every element must be a string',
-            suggestion: 'fields 배열의 모든 항목이 문자열인지 확인하세요. 예: { "fields": ["name", "description"] }',
             target: 'field:batch',
           });
         }
@@ -1669,8 +1707,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'field' && parts[1] === 'batch-write' && !parts[2] && req.method === 'POST') {
         const body = await readJsonBody(req, res, 'field/batch-write', broadcastStatus);
         if (!body) return;
-        const entries: Array<{ field: string; content: unknown }> = body.entries;
-        if (!Array.isArray(entries) || entries.length === 0) {
+        const parsed = parseBody(res, body, fieldBatchWriteSchema, {
+          action: 'batch write field',
+          target: 'field:batch-write',
+          suggestion:
+            'entries 를 { field, content } 객체 배열로 전달하세요. 예: { "entries": [{ "field": "name", "content": "새 이름" }] }',
+        });
+        if (!parsed) return;
+        const entries = parsed.entries;
+        if (entries.length === 0) {
           return mcpError(res, 400, {
             action: 'batch write field',
             message: 'entries must be a non-empty array of {field, content}',
@@ -2029,23 +2074,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `field/${fieldName}/replace`, broadcastStatus);
         if (!body) return;
-        if (!body.find) {
-          return mcpError(res, 400, {
-            action: 'replace in field',
-            message: 'Missing "find"',
-            suggestion: 'find 문자열 또는 정규식을 포함한 요청 본문을 보내세요.',
-            target: `field:${fieldName}`,
-          });
-        }
+        const parsed = parseBody(res, body, replaceBodySchema, {
+          action: 'replace in field',
+          target: `field:${fieldName}`,
+          suggestion: 'find 문자열 또는 정규식을 포함한 요청 본문을 보내세요.',
+        });
+        if (!parsed) return;
         // Acquire mutex to prevent parallel writes on same field
         const release = await acquireFieldMutex(fieldName);
         try {
           const content: string = normalizeLF(currentData[fieldName] || '');
-          const findStr: string = normalizeLF(body.find);
-          const replaceStr: string = body.replace !== undefined ? normalizeLF(body.replace) : '';
-          const useRegex = !!body.regex;
-          const flags: string = body.flags || 'g';
-          const dryRun = !!(body.dry_run ?? body.dryRun);
+          const findStr: string = normalizeLF(parsed.find);
+          const replaceStr: string = parsed.replace !== undefined ? normalizeLF(parsed.replace) : '';
+          const useRegex = !!parsed.regex;
+          const flags: string = parsed.flags || 'g';
+          const dryRun = !!(parsed.dry_run ?? parsed.dryRun);
           let newContent: string;
           let matchCount: number;
 
@@ -2232,22 +2275,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `field/${fieldName}/block-replace`, broadcastStatus);
         if (!body) return;
-        if (!body.start_anchor || !body.end_anchor) {
-          return mcpError(res, 400, {
-            action: 'block replace in field',
-            message: 'Missing "start_anchor" or "end_anchor"',
-            suggestion: '블록의 시작과 끝을 나타내는 앵커 문자열이 필요합니다.',
-            target: `field:${fieldName}`,
-          });
-        }
+        const parsed = parseBody(res, body, blockReplaceBodySchema, {
+          action: 'block replace in field',
+          target: `field:${fieldName}`,
+          suggestion: '블록의 시작과 끝을 나타내는 앵커 문자열이 필요합니다.',
+        });
+        if (!parsed) return;
         const release = await acquireFieldMutex(fieldName);
         try {
           const content = normalizeLF(currentData[fieldName] || '');
-          const startAnchor = normalizeLF(body.start_anchor);
-          const endAnchor = normalizeLF(body.end_anchor);
-          const newBlock: string = body.content !== undefined ? normalizeLF(body.content) : '';
-          const includeAnchors = body.include_anchors !== false; // default true: anchors are replaced too
-          const dryRun = !!(body.dry_run ?? body.dryRun);
+          const startAnchor = normalizeLF(parsed.start_anchor);
+          const endAnchor = normalizeLF(parsed.end_anchor);
+          const newBlock: string = parsed.content !== undefined ? normalizeLF(parsed.content) : '';
+          const includeAnchors = parsed.include_anchors !== false; // default true: anchors are replaced too
+          const dryRun = !!(parsed.dry_run ?? parsed.dryRun);
 
           const startPos = content.indexOf(startAnchor);
           if (startPos === -1) {
@@ -2428,38 +2469,36 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `field/${fieldName}/insert`, broadcastStatus);
         if (!body) return;
-        if (body.content === undefined) {
-          return mcpError(res, 400, {
-            action: 'insert in field',
-            message: 'Missing "content"',
-            suggestion: '삽입할 content를 요청 본문에 포함하세요.',
-            target: `field:${fieldName}`,
-          });
-        }
+        const parsed = parseBody(res, body, insertBodySchema, {
+          action: 'insert in field',
+          target: `field:${fieldName}`,
+          suggestion: '삽입할 content를 요청 본문에 포함하세요.',
+        });
+        if (!parsed) return;
         // Acquire mutex to prevent parallel writes on same field
         const release = await acquireFieldMutex(fieldName);
         try {
           const oldContent: string = normalizeLF(currentData[fieldName] || '');
           let newContent: string;
-          const position: string = body.position || 'end';
-          const insertContent = normalizeLF(body.content);
+          const position: string = parsed.position || 'end';
+          const insertContent = normalizeLF(parsed.content);
           if (position === 'end') {
             newContent = oldContent + '\n' + insertContent;
           } else if (position === 'start') {
             newContent = insertContent + '\n' + oldContent;
-          } else if ((position === 'after' || position === 'before') && body.anchor) {
-            const anchorPos = oldContent.indexOf(normalizeLF(body.anchor));
+          } else if ((position === 'after' || position === 'before') && parsed.anchor) {
+            const anchorPos = oldContent.indexOf(normalizeLF(parsed.anchor));
             if (anchorPos === -1) {
               return mcpNoOp(res, {
                 action: 'insert in field',
-                message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+                message: `앵커 문자열을 찾을 수 없음: ${parsed.anchor.substring(0, 80)}`,
                 suggestion:
                   'read_field 또는 read_field_range로 현재 내용을 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
                 target: `field:${fieldName}`,
               });
             }
             if (position === 'after') {
-              const insertAt = anchorPos + normalizeLF(body.anchor).length;
+              const insertAt = anchorPos + normalizeLF(parsed.anchor).length;
               newContent = oldContent.slice(0, insertAt) + '\n' + insertContent + oldContent.slice(insertAt);
             } else {
               newContent = oldContent.slice(0, anchorPos) + insertContent + '\n' + oldContent.slice(anchorPos);
@@ -2473,10 +2512,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${fieldName}`,
             });
           }
-          const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
+          const preview = parsed.content.substring(0, 100) + (parsed.content.length > 100 ? '...' : '');
           const allowed = await deps.askRendererConfirm(
             'MCP 필드 삽입 요청',
-            `AI 어시스턴트가 "${fieldName}" 필드에 내용을 삽입하려 합니다.\n위치: ${position}${body.anchor ? ' "' + body.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
+            `AI 어시스턴트가 "${fieldName}" 필드에 내용을 삽입하려 합니다.\n위치: ${position}${parsed.anchor ? ' "' + parsed.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
           );
           if (allowed) {
             currentData[fieldName] = newContent;
@@ -2576,9 +2615,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `field/${fieldName}/batch-replace`, broadcastStatus);
         if (!body) return;
-        const replacements: Array<{ find: string; replace?: string; regex?: boolean; flags?: string }> =
-          body.replacements;
-        if (!Array.isArray(replacements) || replacements.length === 0) {
+        const parsed = parseBody(res, body, batchReplaceBodySchema, {
+          action: 'batch replace in field',
+          target: `field:${fieldName}`,
+          suggestion:
+            'replacements 를 { find, replace } 객체 배열로 전달하세요. 예: { "replacements": [{ "find": "old", "replace": "new" }] }',
+        });
+        if (!parsed) return;
+        const replacements = parsed.replacements;
+        if (replacements.length === 0) {
           return mcpError(res, 400, {
             action: 'batch replace in field',
             message: 'replacements must be a non-empty array',
@@ -2596,17 +2641,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `field:${fieldName}`,
           });
         }
-        for (const r of replacements) {
-          if (!r.find) {
-            return mcpError(res, 400, {
-              action: 'batch replace in field',
-              message: 'Each replacement must include "find"',
-              suggestion: '모든 치환 항목에 find 키를 포함하세요. 예: { "find": "검색어", "replace": "대체어" }',
-              target: `field:${fieldName}`,
-            });
-          }
-        }
-        const dryRun = !!(body.dry_run ?? body.dryRun);
+        const dryRun = !!(parsed.dry_run ?? parsed.dryRun);
         // Acquire mutex to prevent parallel writes
         const release = await acquireFieldMutex(fieldName);
         try {
@@ -2730,24 +2765,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'search-all' && !parts[1] && req.method === 'POST') {
         const body = await readJsonBody(req, res, 'search-all', broadcastStatus);
         if (!body) return;
-        if (!body.query) {
-          return mcpError(res, 400, {
-            action: 'search all fields',
-            message: 'Missing "query"',
-            suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
-            target: '/search-all',
-          });
-        }
+        const parsed = parseBody(res, body, searchAllBodySchema, {
+          action: 'search all fields',
+          target: '/search-all',
+          suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
+        });
+        if (!parsed) return;
 
         try {
           const searchResult = searchAllTextSurfaces(currentData, {
-            query: normalizeLF(String(body.query)),
-            regex: !!body.regex,
-            flags: typeof body.flags === 'string' ? body.flags : undefined,
-            includeLorebook: body.include_lorebook !== false,
-            includeGreetings: body.include_greetings !== false,
-            contextChars: Math.max(0, Math.min(Number(body.context_chars) || 60, 300)),
-            maxMatchesPerSurface: Math.max(1, Math.min(Number(body.max_matches_per_field) || 5, 20)),
+            query: normalizeLF(String(parsed.query)),
+            regex: !!parsed.regex,
+            flags: parsed.flags,
+            includeLorebook: parsed.include_lorebook !== false,
+            includeGreetings: parsed.include_greetings !== false,
+            contextChars: Math.max(0, Math.min(Number(parsed.context_chars) || 60, 300)),
+            maxMatchesPerSurface: Math.max(1, Math.min(Number(parsed.max_matches_per_field) || 5, 20)),
           });
           const totalHits = Array.isArray(searchResult.surfaces)
             ? (searchResult.surfaces as Array<{ totalMatches?: number }>).reduce(
@@ -2784,22 +2817,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `field/${fieldName}/search`, broadcastStatus);
         if (!body) return;
-        if (!body.query) {
-          return mcpError(res, 400, {
-            action: 'search in field',
-            message: 'Missing "query"',
-            suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
-            target: `field:${fieldName}`,
-          });
-        }
+        const parsed = parseBody(res, body, searchBodySchema, {
+          action: 'search in field',
+          target: `field:${fieldName}`,
+          suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
+        });
+        if (!parsed) return;
         const content: string = normalizeLF(
           typeof currentData[fieldName] === 'string' ? currentData[fieldName] : String(currentData[fieldName] ?? ''),
         );
-        const queryStr: string = normalizeLF(String(body.query));
-        const contextChars: number = Math.max(0, Math.min(Number(body.context_chars) || 100, 500));
-        const maxMatches: number = Math.max(1, Math.min(Number(body.max_matches) || 20, 100));
-        const useRegex = !!body.regex;
-        const flags = typeof body.flags === 'string' ? body.flags : useRegex ? 'gi' : undefined;
+        const queryStr: string = normalizeLF(String(parsed.query));
+        const contextChars: number = Math.max(0, Math.min(Number(parsed.context_chars) || 100, 500));
+        const maxMatches: number = Math.max(1, Math.min(Number(parsed.max_matches) || 20, 100));
+        const useRegex = !!parsed.regex;
+        const flags = parsed.flags ?? (useRegex ? 'gi' : undefined);
 
         try {
           const result = searchTextBlock(content, {

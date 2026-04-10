@@ -103,6 +103,7 @@ interface TestDepsOverrides {
   parseLuaSections?: () => Array<{ name: string; content: string }>;
   parseCssSections?: () => { sections: Array<{ name: string; content: string }>; prefix: string; suffix: string };
   openExternalDocument?: (filePath: string) => CharxData;
+  broadcastToAll?: (channel: string, ...args: unknown[]) => void;
   requestRendererOpenFile?: (request: {
     filePath: string;
     fileType: 'charx' | 'risum' | 'risup';
@@ -153,10 +154,12 @@ async function startTestApiServer(
           name: openedName,
         };
       }),
-    broadcastToAll: (channel: string, ...args: unknown[]) => {
-      void channel;
-      void args;
-    },
+    broadcastToAll:
+      overrides?.broadcastToAll ??
+      ((channel: string, ...args: unknown[]) => {
+        void channel;
+        void args;
+      }),
     broadcastMcpStatus: (payload: Record<string, unknown>) => {
       void payload;
     },
@@ -1774,9 +1777,37 @@ interface McpErrorEnvelope {
   error: string;
   status: number;
   target: string;
+  retryable?: boolean;
+  next_actions?: string[];
   rejected?: boolean;
   suggestion?: string;
   details?: unknown;
+}
+
+interface McpNoOpEnvelope extends McpErrorEnvelope {
+  success: false;
+  message: string;
+  matchCount?: number;
+  field?: string;
+  results?: unknown;
+  errors?: unknown;
+  startAnchorFoundAt?: number;
+  dryRun?: boolean;
+}
+
+function expectMcpNoOpEnvelope(data: McpNoOpEnvelope, expected: { action: string; target: string }): void {
+  expect(data).toHaveProperty('success', false);
+  expect(data).toHaveProperty('action', expected.action);
+  expect(data).toHaveProperty('status', 200);
+  expect(data).toHaveProperty('target', expected.target);
+  expect(data).toHaveProperty('error', data.message);
+  expect(data.suggestion).toBeDefined();
+}
+
+function expectMcpSuccessArtifacts(data: Record<string, unknown>): void {
+  expect(typeof data.artifacts).toBe('object');
+  expect((data.artifacts as Record<string, unknown>).byte_size).toEqual(expect.any(Number));
+  expect((data.artifacts as Record<string, unknown>).byte_size as number).toBeGreaterThan(0);
 }
 
 describe('MCP API structured error envelopes — regex routes', () => {
@@ -1797,6 +1828,31 @@ describe('MCP API structured error envelopes — regex routes', () => {
       expect(typeof res.data.action).toBe('string');
       expect(typeof res.data.target).toBe('string');
       expect(res.data.error).toContain('out of range');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured no-op envelope for anchor miss in POST /regex/:idx/insert', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      regex: [{ comment: 'test-regex', type: 'editoutput', find: 'foo', replace: 'bar' }],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpNoOpEnvelope>(api.port, api.token, '/regex/0/insert', {
+        field: 'find',
+        content: 'baz',
+        position: 'after',
+        anchor: 'missing-anchor',
+      });
+      expect(res.status).toBe(200);
+      expectMcpNoOpEnvelope(res.data, {
+        action: 'insert regex field',
+        target: 'regex:0:insert',
+      });
+      expect(res.data.error).toContain('앵커 문자열');
+      expect(res.data.message).toContain('missing-anchor');
     } finally {
       await closeServer(api.server);
     }
@@ -1954,6 +2010,31 @@ describe('MCP API structured error envelopes — lua-section routes', () => {
       await closeServer(api.server);
     }
   });
+
+  it('returns a structured no-op envelope for no matches in POST /lua/:idx/replace', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      lua: 'has-section',
+    };
+    const api = await startTestApiServer(fixture, [], undefined, {
+      parseLuaSections: () => [{ name: 'TestSection', content: 'print("hello")' }],
+    });
+    try {
+      const res = await postJson<McpNoOpEnvelope>(api.port, api.token, '/lua/0/replace', {
+        find: 'missing-value',
+        replace: 'updated',
+      });
+      expect(res.status).toBe(200);
+      expectMcpNoOpEnvelope(res.data, {
+        action: 'replace lua section content',
+        target: 'lua:0',
+      });
+      expect(res.data.message).toBe('일치하는 항목 없음');
+      expect(res.data.matchCount).toBe(0);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
 });
 
 describe('MCP API insert-regex-field action consistency', () => {
@@ -2103,6 +2184,36 @@ describe('MCP API structured error envelopes — css-section routes', () => {
       await closeServer(api.server);
     }
   });
+
+  it('returns a structured no-op envelope for anchor miss in POST /css-section/:idx/insert', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      css: 'has-section',
+    };
+    const api = await startTestApiServer(fixture, [], undefined, {
+      parseCssSections: () => ({
+        sections: [{ name: 'TestSection', content: 'body { color: red; }' }],
+        prefix: '',
+        suffix: '',
+      }),
+    });
+    try {
+      const res = await postJson<McpNoOpEnvelope>(api.port, api.token, '/css-section/0/insert', {
+        content: 'p { color: blue; }',
+        position: 'before',
+        anchor: 'missing-anchor',
+      });
+      expect(res.status).toBe(200);
+      expectMcpNoOpEnvelope(res.data, {
+        action: 'insert css section content',
+        target: 'css-section:0',
+      });
+      expect(res.data.error).toContain('앵커 문자열');
+      expect(res.data.message).toContain('missing-anchor');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
 });
 
 describe('MCP API structured error envelopes — field routes', () => {
@@ -2151,7 +2262,8 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('action', 'read field batch');
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:batch');
-      expect(res.data.error).toContain('non-empty');
+      // Schema validation rejects non-array fields with a type error
+      expect(res.data.error).toMatch(/array|non-empty/i);
       expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);
@@ -2418,6 +2530,50 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('target', 'field:description');
       expect(res.data.error).toContain('find');
       expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured no-op envelope for POST /field/description/replace with no matches', async () => {
+    const fixture: SearchFixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpNoOpEnvelope>(api.port, api.token, '/field/description/replace', {
+        find: 'missing-value',
+        replace: 'updated',
+      });
+      expect(res.status).toBe(200);
+      expectMcpNoOpEnvelope(res.data, {
+        action: 'replace in field',
+        target: 'field:description',
+      });
+      expect(res.data.message).toBe('일치하는 항목 없음');
+      expect(res.data.matchCount).toBe(0);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('returns a structured no-op envelope for POST /field/description/block-replace when end anchor is missing', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      description: 'START\nField Alpha is searchable.',
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpNoOpEnvelope>(api.port, api.token, '/field/description/block-replace', {
+        start_anchor: 'START',
+        end_anchor: 'END',
+        content: 'replacement',
+      });
+      expect(res.status).toBe(200);
+      expectMcpNoOpEnvelope(res.data, {
+        action: 'block replace in field',
+        target: 'field:description',
+      });
+      expect(res.data.error).toContain('끝 앵커');
+      expect(res.data.startAnchorFoundAt).toBe(0);
     } finally {
       await closeServer(api.server);
     }
@@ -3177,6 +3333,23 @@ describe('MCP API structured error envelopes — lorebook mutation routes', () =
     }
   });
 
+  it('batch-insert: anchor miss returns a structured no-op envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpNoOpEnvelope>(api.port, api.token, '/lorebook/batch-insert', {
+        insertions: [{ index: 0, position: 'after', anchor: 'missing-anchor', content: 'new text' }],
+      });
+      expect(res.status).toBe(200);
+      expectMcpNoOpEnvelope(res.data, {
+        action: 'batch insert lorebook',
+        target: 'lorebook:batch-insert',
+      });
+      expect(res.data.errors).toEqual([{ index: 0, error: '앵커를 찾을 수 없음: missing-anchor' }]);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   // ── POST /lorebook/:idx/insert — anchor required ──────────────────
   it('insert: anchor required for after/before position → 400 envelope', async () => {
     const api = await startTestApiServer(createSearchFixture());
@@ -3191,6 +3364,26 @@ describe('MCP API structured error envelopes — lorebook mutation routes', () =
       expect(res.data).toHaveProperty('target', 'lorebook:0');
       expect(res.data.error).toContain('anchor');
       expect(res.data.suggestion).toBeDefined();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('replace: no matches returns a structured no-op envelope', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpNoOpEnvelope>(api.port, api.token, '/lorebook/0/replace', {
+        find: 'missing-value',
+        replace: 'updated',
+      });
+      expect(res.status).toBe(200);
+      expectMcpNoOpEnvelope(res.data, {
+        action: 'replace lorebook field',
+        target: 'lorebook:0',
+      });
+      expect(res.data.message).toBe('일치하는 항목 없음');
+      expect(res.data.matchCount).toBe(0);
+      expect(res.data.field).toBe('content');
     } finally {
       await closeServer(api.server);
     }
@@ -3434,6 +3627,26 @@ describe('MCP API structured error envelopes — risup formating-order routes', 
 });
 
 describe('MCP API structured error envelopes — skills routes', () => {
+  it('returns a structured error envelope for traversal-shaped skill name in GET /skills/:name', async () => {
+    const skillsDir = path.join(TEST_DIR, 'skills-skill-name-traversal-envelope');
+    await fs.promises.rm(skillsDir, { recursive: true, force: true });
+    await writeSkillFixture(skillsDir, 'my-skill', {
+      'SKILL.md': `---\nname: my-skill\ndescription: 'test'\n---\n# Skill\n`,
+    });
+
+    const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
+    try {
+      const res = await getJson<McpErrorEnvelope>(api.port, api.token, '/skills/..%2F..%2Foutside');
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'read_skill');
+      expect(res.data).toHaveProperty('status', 400);
+      expect(res.data).toHaveProperty('target', 'skills:../../outside:SKILL.md');
+      expect(res.data.error).toContain('Invalid skill name');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('returns a structured error envelope for traversal-shaped file name in GET /skills/:name/:file', async () => {
     const skillsDir = path.join(TEST_DIR, 'skills-traversal-envelope');
     await fs.promises.rm(skillsDir, { recursive: true, force: true });
@@ -3642,6 +3855,32 @@ describe('MCP API open-file route', () => {
       releaseFirst();
       const firstRes = await firstRequest;
       expect(firstRes.status).toBe(200);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('agent eval: no-file-open guard recovers after open-file and returns a bounded success envelope', async () => {
+    const filePath = path.join(OPEN_FILE_DIR, 'agent-eval-recovery.charx');
+    await writeOpenFixture(filePath);
+    const api = await startTestApiServer(null);
+    try {
+      const blocked = await getJson<McpErrorEnvelope>(api.port, api.token, '/fields');
+      expect(blocked.status).toBe(400);
+      expect(blocked.data.target).toBe('document:current');
+      expect(blocked.data.retryable).toBe(false);
+      expect(blocked.data.next_actions).toEqual(['open_file']);
+
+      const opened = await postJson<Record<string, unknown>>(api.port, api.token, '/open-file', {
+        file_path: filePath,
+      });
+      expect(opened.status).toBe(200);
+
+      const recovered = await getJson<Record<string, unknown>>(api.port, api.token, '/fields');
+      expect(recovered.status).toBe(200);
+      expect(Array.isArray(recovered.data.fields)).toBe(true);
+      expect((recovered.data.fields as unknown[]).length).toBeGreaterThan(0);
+      expect((recovered.data.artifacts as Record<string, unknown>).byte_size).toEqual(expect.any(Number));
     } finally {
       await closeServer(api.server);
     }
@@ -4010,7 +4249,7 @@ describe('MCP API success response envelope', () => {
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
-      expect(typeof res.data.artifacts).toBe('object');
+      expectMcpSuccessArtifacts(res.data);
     } finally {
       await closeServer(api.server);
     }
@@ -4052,7 +4291,7 @@ describe('MCP API success response envelope', () => {
       expect((res.data.summary as string).includes('description')).toBe(true);
       expect(Array.isArray(res.data.next_actions)).toBe(true);
       expect((res.data.next_actions as string[]).length).toBeGreaterThan(0);
-      expect(typeof res.data.artifacts).toBe('object');
+      expectMcpSuccessArtifacts(res.data);
     } finally {
       await closeServer(api.server);
     }
@@ -4112,7 +4351,7 @@ describe('MCP API success response envelope', () => {
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
-      expect(typeof res.data.artifacts).toBe('object');
+      expectMcpSuccessArtifacts(res.data);
     } finally {
       await closeServer(api.server);
     }
@@ -4182,8 +4421,9 @@ describe('MCP API success response envelope', () => {
       // Error responses should NOT have success envelope fields
       expect(res.data.error).toBeDefined();
       expect(res.data.action).toBeDefined();
-      // next_actions should NOT be present on errors
-      expect(res.data.next_actions).toBeUndefined();
+      // next_actions IS present on errors (recovery metadata contract)
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      // summary should NOT be present on errors (success-only field)
       expect(res.data.summary).toBeUndefined();
     } finally {
       await closeServer(api.server);
@@ -4487,7 +4727,7 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
-      expect(typeof res.data.artifacts).toBe('object');
+      expectMcpSuccessArtifacts(res.data);
     } finally {
       await closeServer(api.server);
     }
@@ -4632,7 +4872,7 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
-      expect(typeof res.data.artifacts).toBe('object');
+      expectMcpSuccessArtifacts(res.data);
     } finally {
       await closeServer(api.server);
     }
@@ -4778,7 +5018,7 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
-      expect(typeof res.data.artifacts).toBe('object');
+      expectMcpSuccessArtifacts(res.data);
     } finally {
       await closeServer(api.server);
     }
@@ -5098,18 +5338,17 @@ describe('MCP API response envelope — residual success migration', () => {
 
   // --- Group 4: validate_cbs ---
 
-  it('validate_cbs includes envelope fields', async () => {
-    const fixture = { ...createSearchFixture(), description: '{{#if toggle_test}}yes{{/if}}' };
+  it('validate_cbs preserves its structured summary payload', async () => {
+    const fixture = { ...createSearchFixture(), description: '{{#when toggle_test::1}}yes{{/when}}' };
     const api = await startTestApiServer(fixture);
     try {
       const res = await getJson<Record<string, unknown>>(api.port, api.token, '/cbs/validate');
       expect(res.status).toBe(200);
-      expect(typeof res.data.valid).toBe('boolean');
+      expect(res.data.valid).toBe(true);
       expect(Array.isArray(res.data.entries)).toBe(true);
-      // Envelope fields
-      expect(res.data.status).toBe(200);
-      expect(typeof res.data.summary).toBe('string');
-      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      expect(res.data.summary).toEqual({ total: 1, passed: 1, failed: 0 });
+      expect(res.data).not.toHaveProperty('status');
+      expect(res.data).not.toHaveProperty('next_actions');
     } finally {
       await closeServer(api.server);
     }
@@ -5135,23 +5374,282 @@ describe('MCP API response envelope — residual success migration', () => {
     }
   });
 
-  // --- Group 6: import_lorebook_from_files (skipped — requires lorebook-io with fs) ---
-  // These tests require the lorebook-io module which uses real filesystem access (importFromJson,
-  // importFromMarkdown). The test harness does not mock this module, making these tests too
-  // complex to set up without substantial refactoring. The code migration is still applied.
+  // --- Group 6: import_lorebook_from_files ---
 
-  it.skip('import_lorebook_from_files empty result includes envelope fields', () => {
-    // Would test POST /lorebook/import with format that yields 0 entries
+  it('import_lorebook_from_files empty result includes envelope fields', async () => {
+    const importDir = path.join(TEST_DIR, 'envelope-import-empty');
+    await fs.promises.rm(importDir, { recursive: true, force: true });
+    await fs.promises.mkdir(importDir, { recursive: true });
+    const sourcePath = path.join(importDir, 'empty.json');
+    await fs.promises.writeFile(sourcePath, JSON.stringify({ entries: [] }, null, 2), 'utf-8');
+
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/import', {
+        format: 'json',
+        source_path: sourcePath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.totalFound).toBe(0);
+      expect(res.data.imported).toBe(0);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
   });
 
-  it.skip('import_lorebook_from_files dry-run includes envelope fields', () => {
-    // Would test POST /lorebook/import with dryRun: true
+  it('import_lorebook_from_files dry-run includes envelope fields', async () => {
+    const importDir = path.join(TEST_DIR, 'envelope-import-dry-run');
+    await fs.promises.rm(importDir, { recursive: true, force: true });
+    await fs.promises.mkdir(importDir, { recursive: true });
+    const sourcePath = path.join(importDir, 'dry-run.json');
+    await fs.promises.writeFile(
+      sourcePath,
+      JSON.stringify(
+        {
+          entries: [{ comment: 'Imported dry run', key: 'imported-dry-run', content: 'Imported dry-run content.' }],
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/import', {
+        format: 'json',
+        source_path: sourcePath,
+        dryRun: true,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.dryRun).toBe(true);
+      expect(res.data.totalFound).toBe(1);
+      expect(res.data.toAdd).toBe(1);
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      expect(fixture.lorebook).toHaveLength(2);
+    } finally {
+      await closeServer(api.server);
+    }
   });
 
-  // --- Group 7: export_field_to_file (skipped — requires lorebook-io with fs) ---
-  // Same reason as above: exportFieldToFile performs real filesystem I/O.
+  it('import_lorebook_from_files prefers dry_run when both casing variants are provided', async () => {
+    const importDir = path.join(TEST_DIR, 'envelope-import-casing-precedence');
+    await fs.promises.rm(importDir, { recursive: true, force: true });
+    await fs.promises.mkdir(importDir, { recursive: true });
+    const sourcePath = path.join(importDir, 'casing-precedence.json');
+    await fs.promises.writeFile(
+      sourcePath,
+      JSON.stringify(
+        {
+          entries: [
+            { comment: 'Imported precedence', key: 'imported-precedence', content: 'Imported precedence content.' },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
 
-  it.skip('export_field_to_file includes envelope fields', () => {
-    // Would test POST /field/export with field/filePath/format
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/import', {
+        format: 'json',
+        source_path: sourcePath,
+        dry_run: false,
+        dryRun: true,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data).not.toHaveProperty('dryRun');
+      expect(res.data.imported).toBe(1);
+      expect(res.data.status).toBe(200);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('import_lorebook_from_files success broadcasts lorebook updates with the standard channel shape', async () => {
+    const importDir = path.join(TEST_DIR, 'envelope-import-success');
+    await fs.promises.rm(importDir, { recursive: true, force: true });
+    await fs.promises.mkdir(importDir, { recursive: true });
+    const sourcePath = path.join(importDir, 'success.json');
+    await fs.promises.writeFile(
+      sourcePath,
+      JSON.stringify(
+        {
+          entries: [{ comment: 'Imported live', key: 'imported-live', content: 'Imported success content.' }],
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    const broadcasts: Array<[string, ...unknown[]]> = [];
+    const api = await startTestApiServer(createSearchFixture(), [], undefined, {
+      broadcastToAll: (channel, ...args) => {
+        broadcasts.push([channel, ...args]);
+      },
+    });
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/import', {
+        format: 'json',
+        source_path: sourcePath,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.imported).toBe(1);
+      expect(res.data.status).toBe(200);
+      const lorebookBroadcast = broadcasts.find(
+        (call) => call[0] === 'data-updated' && call[1] === 'lorebook' && Array.isArray(call[2]),
+      );
+      expect(lorebookBroadcast).toBeDefined();
+      expect(
+        (lorebookBroadcast?.[2] as Array<Record<string, unknown>>).some((entry) => entry.comment === 'Imported live'),
+      ).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  // --- Group 7: export_field_to_file ---
+
+  it('export_field_to_file includes envelope fields', async () => {
+    const exportDir = path.join(TEST_DIR, 'envelope-export-field');
+    await fs.promises.rm(exportDir, { recursive: true, force: true });
+    await fs.promises.mkdir(exportDir, { recursive: true });
+    const targetPath = path.join(exportDir, 'description.txt');
+    const fixture = createSearchFixture();
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/field/export', {
+        field: 'description',
+        file_path: targetPath,
+        format: 'txt',
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.filePath).toBe(path.resolve(targetPath));
+      expect(typeof res.data.size).toBe('number');
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      await expect(fs.promises.readFile(path.resolve(targetPath), 'utf-8')).resolves.toBe(fixture.description);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recovery metadata contract — `retryable` and `next_actions` on error/no-op
+//
+// These tests verify that mcpError() and mcpNoOp() responses expose additive
+// machine-readable recovery metadata (`retryable`, `next_actions`) so agents
+// can programmatically decide how to recover from failures.
+// ---------------------------------------------------------------------------
+
+interface McpRecoveryEnvelope {
+  action: string;
+  error: string;
+  status: number;
+  target: string;
+  retryable: boolean;
+  next_actions: string[];
+  suggestion?: string;
+  rejected?: boolean;
+  details?: unknown;
+}
+
+interface McpNoOpRecoveryEnvelope extends McpRecoveryEnvelope {
+  success: false;
+  message: string;
+}
+
+describe('MCP error recovery metadata — global guards', () => {
+  it('unauthorized guard returns retryable: false and empty next_actions', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await getJson<McpRecoveryEnvelope>(api.port, 'wrong-token', '/fields');
+      expect(res.status).toBe(401);
+      expect(res.data.retryable).toBe(false);
+      expect(res.data.next_actions).toEqual([]);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('no-file-open guard returns retryable: false and next_actions with open_file', async () => {
+    const api = await startTestApiServer(null);
+    try {
+      const res = await getJson<McpRecoveryEnvelope>(api.port, api.token, '/fields');
+      expect(res.status).toBe(400);
+      expect(res.data.retryable).toBe(false);
+      expect(res.data.next_actions).toEqual(['open_file']);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP error recovery metadata — 400 validation', () => {
+  it('unknown field GET returns retryable: false and field-family next_actions', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await getJson<McpRecoveryEnvelope>(api.port, api.token, '/field/not-a-real-field');
+      expect(res.status).toBe(400);
+      expect(res.data.retryable).toBe(false);
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      expect(res.data.next_actions.length).toBeGreaterThan(0);
+      expect(res.data.next_actions).toContain('list_fields');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP error recovery metadata — 409 conflict', () => {
+  it('duplicate asset returns retryable: true', async () => {
+    const assetPath = 'assets/other/image/recovery-dup.png';
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      assets: [{ path: assetPath, data: Buffer.from('existing-asset') }],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpRecoveryEnvelope>(api.port, api.token, '/asset/add', {
+        fileName: 'recovery-dup.png',
+        base64: Buffer.from('new-asset').toString('base64'),
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.retryable).toBe(true);
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP error recovery metadata — no-op responses', () => {
+  it('field replace no-match returns retryable: false and field-family next_actions', async () => {
+    const api = await startTestApiServer(createSearchFixture());
+    try {
+      const res = await postJson<McpNoOpRecoveryEnvelope>(api.port, api.token, '/field/description/replace', {
+        find: 'nonexistent-string-xyz',
+        replace: 'replacement',
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.success).toBe(false);
+      expect(res.data.retryable).toBe(false);
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+      expect(res.data.next_actions.length).toBeGreaterThan(0);
+      expect(res.data.next_actions).toContain('search_in_field');
+    } finally {
+      await closeServer(api.server);
+    }
   });
 });
