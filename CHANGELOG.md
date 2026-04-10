@@ -13,6 +13,7 @@
 
 ### 변경
 
+- **아키텍처 가이드 전면 교체**: `docs/analysis/ARCHITECTURE.md`를 현재 TypeScript 런타임 기준으로 전면 재작성했습니다. 메인/프리로드/렌더러/MCP 프로세스 소유권, import 방향 규칙, 컴파일 타겟, 주요 도메인(프리뷰·세션 복구·어시스턴트·터미널), 데이터 흐름, 그리고 대형 모듈 핫스팟(mcp-api-server.ts ~9,200줄, controller.ts ~2,930줄 등)을 기록합니다. 구조와 레이어링의 정식(canonical) 참조 문서가 됩니다.
 - **`AGENTS.md` TOC 전환**: `AGENTS.md`를 컴팩트한 라우팅 목차로 슬림화하고, 기존 MCP 워크플로 상세(도구 맵, 읽기 규칙, 워크플로 패턴, 주의사항)를 `docs/MCP_WORKFLOW.md`로, 프로젝트 규칙(버전 관리, CI, 페르소나)을 `docs/PROJECT_RULES.md`로 분리했습니다. 세션 시작 시 에이전트가 읽는 컨텍스트가 ~230줄에서 ~50줄로 줄어듭니다.
 - **`skills/project-workflow` 스킬 추가**: 추출된 MCP 워크플로 및 프로젝트 규칙 가이드를 `list_skills` / `read_skill`로 검색할 수 있는 스킬로 래핑했습니다. `SKILL.md`(요약) + `MCP_WORKFLOW.md`(전체 도구 맵·읽기 규칙·워크플로 패턴·주의사항) + `PROJECT_RULES.md`(버전 관리·CI·페르소나 워크플로)로 구성되어 세션 복사만으로도 완전한 가이드를 제공합니다.
 - **`docs/README.md` 라우팅 갱신**: 새 canonical docs(`MCP_WORKFLOW.md`, `PROJECT_RULES.md`)를 routing table과 core documents 목록에 추가했습니다.

@@ -68,7 +68,7 @@ npm run dist:all     # Windows NSIS + 포터블 빌드
 - `docs/MCP_ERROR_CONTRACT.md` — MCP 성공/에러/no-op 응답 계약과 에이전트 복구 규칙
 - `docs/PROJECT_RULES.md` — 프로젝트 규칙 (버전 관리, CI, 페르소나 워크플로)
 - `docs/MODULE_MAP.md` — TypeScript 소스 탐색용 모듈 맵
-- `docs/analysis/ARCHITECTURE.md` — 런타임 구조와 데이터 흐름
+- `docs/analysis/ARCHITECTURE.md` — TypeScript 런타임 아키텍처, 프로세스 경계, 소유권 규칙, 대형 모듈 핫스팟
 - `skills/project-workflow` — 프로젝트 온보딩 스킬 (`read_skill("project-workflow")`)
 - `CONTRIBUTING.md` — 변경 원칙과 검증 절차
 - `CHANGELOG.md` — 버전별 변경 이력

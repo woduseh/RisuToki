@@ -15,14 +15,15 @@
 
 ### 레포 내 추가 참조 (repo-local — 세션 외부에서는 없을 수 있음)
 
-| 문서                                                       | 내용                            |
-| ---------------------------------------------------------- | ------------------------------- |
-| [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)             | MCP 도구 선택·읽기 규칙 원본    |
-| [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)     | 도구 패밀리·경계·behavior hints |
-| [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md) | 에러/no-op/성공 응답 계약       |
-| [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)           | 버전·CI·페르소나 규칙           |
-| [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                 | TypeScript 소스 탐색            |
-| [`docs/README.md`](docs/README.md)                         | 전체 지식 베이스 인덱스         |
+| 문서                                                             | 내용                                             |
+| ---------------------------------------------------------------- | ------------------------------------------------ |
+| [`docs/analysis/ARCHITECTURE.md`](docs/analysis/ARCHITECTURE.md) | 런타임 아키텍처·프로세스 경계·핫스팟 (canonical) |
+| [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)                   | MCP 도구 선택·읽기 규칙 원본                     |
+| [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)           | 도구 패밀리·경계·behavior hints                  |
+| [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md)       | 에러/no-op/성공 응답 계약                        |
+| [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)                 | 버전·CI·페르소나 규칙                            |
+| [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                       | TypeScript 소스 탐색                             |
+| [`docs/README.md`](docs/README.md)                               | 전체 지식 베이스 인덱스                          |
 
 ---
 
