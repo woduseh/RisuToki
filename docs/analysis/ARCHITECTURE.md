@@ -81,7 +81,7 @@ Electron `contextIsolation` 하에서 렌더러가 메인 프로세스와 소통
 **메인 윈도우** (`src/main.ts` → `src/app/controller.ts`):
 - Vue 3 + Pinia 아키텍처
 - 파일 상태, UI 레이아웃, 탭, 에디터, 사이드바, 프리뷰, 터미널/채팅, 어시스턴트를 통합 관리
-- Pinia 스토어: `src/stores/app-store.ts` — 앱 전체 공유 상태의 단일 소스
+- Pinia 스토어: `src/stores/app-store.ts` — 메인 렌더러 UI 상태의 중심. 저장/자동 저장/MCP 수정이 기준으로 삼는 문서 권한 상태는 메인 프로세스 `mainState.currentData`가 별도로 소유
 
 **팝아웃 윈도우** (`src/popout.ts` → `src/popout/controller.ts`):
 - **Imperative TS/DOM** — Vue/Pinia를 사용하지 않고 `document.createElement` 기반 직접 DOM 조작
@@ -133,6 +133,8 @@ main.ts (Node/Electron)  ←✗→  src/app/controller.ts (Renderer/Vue)
 | 양쪽 공유 | `shared-utils.ts`, `risup-prompt-model.ts`, `cbs-parser.ts`, `cbs-evaluator.ts` |
 | MCP 서버 전용 | `mcp-api-server.ts`, `mcp-tool-taxonomy.ts`, `mcp-response-envelope.ts`, `mcp-search.ts` |
 
+주의: `src/lib/section-parser.ts` 자체는 렌더러 전용이지만, MCP 경로는 이 파일을 import하지 않고 `main.ts`가 `startApiServer()` deps로 넘기는 병행 Lua/CSS section parser 구현(`parseLuaSections`, `combineLuaSections`, `parseCssSections` 등)을 사용합니다. 섹션 문법 변경은 현재 두 경로를 함께 맞춰야 합니다.
+
 ### 2.3 컴파일 타겟
 
 | tsconfig | 타겟 | 모듈 | 대상 파일 |
@@ -155,7 +157,7 @@ Vite가 렌더러 번들을 빌드하고, `tsc`가 메인 프로세스 진입점
 | `src/lib/data-serializer.ts` | ~300 | 정규화된 JSON/바이너리 직렬화 |
 | `src/lib/document-validation.ts` | ~90 | 문서 형태(shape) 검증 |
 | `src/lib/risup-prompt-model.ts` | ~700 | `.risup` promptTemplate 파싱/모델 |
-| `src/lib/section-parser.ts` | ~210 | Lua/CSS 섹션 파싱 (`===section===` 구문) |
+| `src/lib/section-parser.ts` | ~210 | 렌더러용 Lua/CSS 섹션 파싱 (`===section===` 구문). MCP/메인 경로는 현재 `main.ts`의 병행 구현을 사용 |
 
 ### 3.2 프리뷰 시스템 (`.charx` 전용)
 

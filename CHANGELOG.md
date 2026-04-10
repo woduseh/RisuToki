@@ -9,6 +9,14 @@
 
 ---
 
+## [0.39.4] - 2026-04-10
+
+### 수정
+
+- **MCP 검색 요청 숫자 옵션 호환성 복구** (`src/lib/mcp-request-schemas.ts`): `search_in_field` / `search_all_fields` 요청 본문에서 `context_chars`, `max_matches`, `max_matches_per_field`가 숫자 문자열(`"120"`)로 들어와도 기존처럼 허용되도록 복원했습니다. 숫자로 해석할 수 없는 값은 `undefined`로 정규화되어 기존 handler 기본값 경로를 유지합니다.
+- **아키텍처 문서 상태 소유권/섹션 파서 경계 명확화** (`docs/analysis/ARCHITECTURE.md`): `app-store.ts`를 메인 렌더러 UI 상태의 중심으로 낮추고, 저장·자동 저장·MCP 수정의 권한 상태는 메인 프로세스 `mainState.currentData`가 소유한다는 점을 명시했습니다. 또한 `section-parser.ts`는 렌더러 전용이지만 MCP 경로는 `main.ts`의 병행 Lua/CSS 파서를 사용한다는 hidden coupling도 드러냈습니다.
+- **하네스 lint gate와 lockfile 메타데이터 동기화** (`package.json`, `package-lock.json`): 새 하네스 테스트/스키마 파일들이 `npm run lint` 범위 밖으로 빠지지 않도록 lint whitelist를 보강하고, lockfile 버전을 `0.39.4`로 맞췄습니다.
+
 ## [0.39.3] - 2026-04-10
 
 ### 변경
@@ -33,7 +41,7 @@
 
 ### 변경
 
-- **`MODULE_MAP.md` 커버리지 확장**: 누락되었던 6개 모듈(`shared-utils`, `cbs-parser`, `cbs-evaluator`, `cbs-extractor`, `trigger-form-editor`, `trigger-scripts-runtime`, `mcp-request-schemas`)을 추가했습니다.
+- **`MODULE_MAP.md` 커버리지 확장**: 누락되었던 6개 모듈(`shared-utils`, `cbs-parser`, `cbs-evaluator`, `cbs-extractor`, `trigger-form-editor`, `trigger-scripts-runtime`)을 추가했습니다.
 
 ## [0.39.1] - 2026-04-10
 

@@ -317,6 +317,24 @@ describe('searchBodySchema', () => {
     }
   });
 
+  it('coerces numeric string options to numbers', () => {
+    const result = validateBody({ query: 'test', context_chars: '120', max_matches: '8' }, searchBodySchema);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.context_chars).toBe(120);
+      expect(result.data.max_matches).toBe(8);
+    }
+  });
+
+  it('coerces invalid numeric strings to undefined', () => {
+    const result = validateBody({ query: 'test', context_chars: 'wide', max_matches: 'many' }, searchBodySchema);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.context_chars).toBeUndefined();
+      expect(result.data.max_matches).toBeUndefined();
+    }
+  });
+
   it('rejects empty query', () => {
     expect(validateBody({ query: '' }, searchBodySchema).success).toBe(false);
   });
@@ -360,6 +378,30 @@ describe('searchAllBodySchema', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.include_lorebook).toBe(false);
+    }
+  });
+
+  it('coerces numeric string options to numbers', () => {
+    const result = validateBody(
+      { query: 'test', context_chars: '60', max_matches_per_field: '4' },
+      searchAllBodySchema,
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.context_chars).toBe(60);
+      expect(result.data.max_matches_per_field).toBe(4);
+    }
+  });
+
+  it('coerces invalid numeric strings to undefined', () => {
+    const result = validateBody(
+      { query: 'test', context_chars: 'wide', max_matches_per_field: 'many' },
+      searchAllBodySchema,
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.context_chars).toBeUndefined();
+      expect(result.data.max_matches_per_field).toBeUndefined();
     }
   });
 

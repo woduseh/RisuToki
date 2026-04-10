@@ -10,6 +10,20 @@ import { z } from 'zod';
 /** Coerce non-string values to undefined so callers fall back to defaults. */
 const lenientString = z.preprocess((v) => (typeof v === 'string' ? v : undefined), z.string().optional());
 
+/** Coerce numeric strings to numbers and invalid values to undefined. */
+const lenientNumber = z.preprocess((v) => {
+  if (typeof v === 'number') {
+    return Number.isFinite(v) ? v : undefined;
+  }
+  if (typeof v === 'string') {
+    const trimmed = v.trim();
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}, z.number().optional());
+
 /** Coerce truthy values to boolean (body may carry `1` / `0`). */
 const boolish = z.union([z.boolean(), z.number()]).transform(Boolean);
 
@@ -113,8 +127,8 @@ export const searchBodySchema = z.object({
   query: z.string().min(1),
   regex: boolish.optional(),
   flags: lenientString,
-  context_chars: z.number().optional(),
-  max_matches: z.number().optional(),
+  context_chars: lenientNumber,
+  max_matches: lenientNumber,
 });
 export type SearchBody = z.infer<typeof searchBodySchema>;
 
@@ -125,8 +139,8 @@ export const searchAllBodySchema = z.object({
   flags: lenientString,
   include_lorebook: z.boolean().optional(),
   include_greetings: z.boolean().optional(),
-  context_chars: z.number().optional(),
-  max_matches_per_field: z.number().optional(),
+  context_chars: lenientNumber,
+  max_matches_per_field: lenientNumber,
 });
 export type SearchAllBody = z.infer<typeof searchAllBodySchema>;
 
