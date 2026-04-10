@@ -59,7 +59,17 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
   trigger: ['list_triggers', 'read_trigger', 'write_trigger'],
   lua: ['list_lua', 'read_lua', 'write_lua'],
   css: ['list_css', 'read_css', 'write_css'],
-  reference: ['list_references', 'list_reference_lorebook', 'list_reference_regex'],
+  reference: [
+    'list_references',
+    'read_reference_field',
+    'search_in_reference_field',
+    'read_reference_field_range',
+    'list_reference_lorebook',
+    'list_reference_lua',
+    'list_reference_css',
+    'list_reference_regex',
+    'list_reference_risup_prompt_items',
+  ],
   'charx-asset': ['list_charx_assets', 'read_charx_asset', 'add_charx_asset'],
   'risum-asset': ['list_risum_assets', 'read_risum_asset', 'add_risum_asset'],
   'asset-compression': ['compress_assets_webp', 'list_charx_assets'],
@@ -70,7 +80,7 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
   snapshot: ['list_snapshots', 'snapshot_field', 'restore_snapshot'],
   search: ['search_in_field', 'search_all_fields', 'read_field'],
   'lorebook-io': ['list_lorebook', 'export_lorebook_to_files', 'import_lorebook_from_files'],
-  session: ['session_status', 'open_file', 'list_snapshots'],
+  session: ['session_status', 'open_file', 'list_references', 'list_snapshots'],
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -164,7 +174,7 @@ const TARGET_PREFIX_TO_FAMILY: Record<string, ToolFamily> = {
  * Special next_actions for targets that don't map to a tool family.
  */
 const SPECIAL_TARGET_NEXT_ACTIONS: Record<string, string[]> = {
-  'document:current': ['open_file'],
+  'document:current': ['open_file', 'list_references', 'session_status'],
 };
 
 export interface McpErrorRecoveryMeta {

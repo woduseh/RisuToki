@@ -829,7 +829,7 @@ server.tool(
 
 server.tool(
   'session_status',
-  '현재 MCP 세션 상태를 읽습니다. 열린 문서 경로/타입/이름, renderer dirty 상태, autosave 설정, recovery 메타데이터, 필드 스냅샷 요약을 한 번에 확인할 수 있습니다. 변경 전 상황 파악용 읽기 전용 도구입니다.',
+  '현재 MCP 세션 상태를 읽습니다. 열린 문서 경로/타입/이름, renderer dirty 상태, autosave 설정, recovery 메타데이터, 필드 스냅샷 요약, 로드된 참고 자료(references) 목록을 한 번에 확인할 수 있습니다. 메인 파일이 열려 있지 않아도 동작하며, 참고 자료가 있으면 list_references로 드릴다운하세요. 변경 전 상황 파악용 읽기 전용 도구입니다.',
   {},
   async () => textResult(await apiRequest('GET', '/session/status')),
 );
@@ -1579,7 +1579,7 @@ server.tool(
 
 server.tool(
   'list_references',
-  '로드된 참고 자료 파일 목록을 확인합니다 (읽기 전용). 각 파일의 필드와 크기를 포함합니다.',
+  '로드된 참고 자료 파일 목록을 확인합니다 (읽기 전용). 각 파일의 필드와 크기를 포함합니다. 메인 파일이 열려 있지 않아도 동작합니다. 큰 참고 필드는 search_in_reference_field / read_reference_field_range로 좁혀 읽고, lorebook/lua/css/regex는 list_reference_* → read_reference_*를 사용하세요.',
   {},
   async () => textResult(await apiRequest('GET', '/references')),
 );
@@ -1592,6 +1592,60 @@ server.tool(
     field: z.string().describe('필드 이름'),
   },
   async ({ index, field }) => textResult(await apiRequest('GET', `/reference/${index}/${encodeURIComponent(field)}`)),
+);
+
+server.tool(
+  'read_reference_field_batch',
+  '참고 자료 파일의 여러 필드를 한번에 읽습니다. 짧은 top-level 필드를 함께 비교할 때 사용하세요. lorebook/lua/css 전체 덤프 대신 전용 list/read 도구를 우선 사용하세요.',
+  {
+    index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+    fields: z.array(z.string()).max(20).describe('읽을 필드 이름 배열 (최대 20개)'),
+  },
+  async ({ index, fields }) => textResult(await apiRequest('POST', `/reference/${index}/field/batch`, { fields })),
+);
+
+server.tool(
+  'search_in_reference_field',
+  '참고 자료 파일의 텍스트 필드에서 문자열을 검색하고 주변 컨텍스트와 함께 반환합니다. 큰 reference 필드를 통째로 읽지 않고 필요한 위치만 찾을 때 유용합니다.',
+  {
+    index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+    field: z.string().describe('필드 이름 (예: description, mainPrompt, globalNote)'),
+    query: z.string().describe('검색할 문자열 (또는 regex: true일 때 정규식 패턴)'),
+    context_chars: z.number().optional().describe('매치 전후에 표시할 문자 수 (기본: 100, 최대: 500)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false)'),
+    flags: z.string().optional().describe('정규식 플래그 (기본: "gi"). regex: true일 때만 사용'),
+    max_matches: z.number().optional().describe('최대 반환 매치 수 (기본: 20, 최대: 100)'),
+  },
+  async ({ index, field, query, context_chars, regex, flags, max_matches }) =>
+    textResult(
+      await apiRequest('POST', `/reference/${index}/field/${encodeURIComponent(field)}/search`, {
+        query,
+        context_chars,
+        regex,
+        flags,
+        max_matches,
+      }),
+    ),
+);
+
+server.tool(
+  'read_reference_field_range',
+  '참고 자료 파일의 큰 텍스트 필드에서 특정 구간만 읽습니다. 전체를 읽지 않고 문자 오프셋과 길이로 필요한 부분만 가져옵니다.',
+  {
+    index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+    field: z.string().describe('필드 이름 (예: description, mainPrompt, globalNote)'),
+    offset: z.number().optional().describe('시작 문자 오프셋 (기본: 0)'),
+    length: z.number().optional().describe('읽을 문자 수 (기본: 2000, 최대: 10000)'),
+  },
+  async ({ index, field, offset, length }) => {
+    const params = new URLSearchParams();
+    if (offset !== undefined) params.set('offset', String(offset));
+    if (length !== undefined) params.set('length', String(length));
+    const qs = params.toString();
+    return textResult(
+      await apiRequest('GET', `/reference/${index}/field/${encodeURIComponent(field)}/range${qs ? '?' + qs : ''}`),
+    );
+  },
 );
 
 server.tool(
@@ -1713,6 +1767,35 @@ server.tool(
     entryIndex: z.number().describe('정규식 항목 인덱스 (list_reference_regex 결과 참조)'),
   },
   async ({ index, entryIndex }) => textResult(await apiRequest('GET', `/reference/${index}/regex/${entryIndex}`)),
+);
+
+server.tool(
+  'list_reference_risup_prompt_items',
+  '참고 자료 파일이 .risup일 때 promptTemplate 항목 목록을 읽습니다 (읽기 전용). 각 항목의 index, type, supported, id, preview를 반환합니다.',
+  {
+    index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+  },
+  async ({ index }) => textResult(await apiRequest('GET', `/reference/${index}/risup/prompt-items`)),
+);
+
+server.tool(
+  'read_reference_risup_prompt_item',
+  '참고 자료 파일이 .risup일 때 promptTemplate 항목 하나를 읽습니다 (읽기 전용). list_reference_risup_prompt_items로 인덱스 확인 후 사용하세요.',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    itemIndex: z.number().describe('prompt item 인덱스 (list_reference_risup_prompt_items 결과 참조)'),
+  },
+  async ({ index, itemIndex }) =>
+    textResult(await apiRequest('GET', `/reference/${index}/risup/prompt-item/${itemIndex}`)),
+);
+
+server.tool(
+  'read_reference_risup_formating_order',
+  '참고 자료 파일이 .risup일 때 formatingOrder를 토큰 목록으로 읽습니다 (읽기 전용). warnings 배열에 dangling/duplicate 진단이 포함됩니다.',
+  {
+    index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+  },
+  async ({ index }) => textResult(await apiRequest('GET', `/reference/${index}/risup/formating-order`)),
 );
 
 // ===== Risum Asset Tools =====

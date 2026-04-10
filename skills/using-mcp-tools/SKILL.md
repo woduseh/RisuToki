@@ -45,6 +45,8 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 
 - Regex: `list_regex` → `read_regex(index)` → targeted writes.
 - Reference lorebooks/Lua/CSS/regex: use the dedicated `list_reference_*` and `read_reference_*` routes instead of `read_reference_field`.
+- Large reference fields: use `search_in_reference_field` to locate text, `read_reference_field_range` to read a specific span.
+- **No main file required**: `list_references`, `session_status`, and all `*_reference_*` tools work even when no main document is open. Start with `session_status` or `list_references` to discover loaded references.
 
 ## Batch-First Rule
 

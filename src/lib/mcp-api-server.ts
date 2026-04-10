@@ -25,6 +25,7 @@ import {
 } from './risup-prompt-model';
 import { mcpSuccess, errorRecoveryMeta, type McpErrorInfo, type McpSuccessOptions } from './mcp-response-envelope';
 import { normalizeLF, extToMime, cloneJson } from './shared-utils';
+import { REF_SCALAR_FIELDS, REF_ALLOWED_READ_FIELDS, getRefFileType } from './reference-store';
 import {
   replaceBodySchema,
   blockReplaceBodySchema,
@@ -321,6 +322,38 @@ function validatePromptItemInput(item: unknown): { model: PromptItemModel } | { 
     };
   }
   return { model: parsed };
+}
+
+const REFERENCE_TEXT_FIELDS = new Set<string>([...SEARCHABLE_TEXT_FIELDS, 'promptTemplate', 'formatingOrder']);
+
+function isReferenceTextField(fieldName: string): boolean {
+  return REFERENCE_TEXT_FIELDS.has(fieldName) || REF_ALLOWED_READ_FIELDS.includes(fieldName);
+}
+
+function buildReferenceFieldReadPayload(
+  refData: Record<string, unknown>,
+  fieldName: string,
+  deps: Pick<McpApiDeps, 'stringifyTriggerScripts'>,
+): Record<string, unknown> | null {
+  if (fieldName === 'lorebook') {
+    const lorebook = Array.isArray(refData.lorebook) ? (refData.lorebook as Array<Record<string, unknown>>) : [];
+    return {
+      field: 'lorebook',
+      content: lorebook.map((entry) => normalizeLorebookEntryForResponse(entry, lorebook)),
+    };
+  }
+  if (fieldName === 'regex') {
+    return {
+      field: 'regex',
+      content: Array.isArray(refData.regex) ? refData.regex : [],
+    };
+  }
+
+  const rules = getFieldAccessRules(refData);
+  if (!rules.allowedFields.includes(fieldName)) {
+    return null;
+  }
+  return buildFieldReadResponsePayload(refData, fieldName, deps);
 }
 
 function getRisupStructuredFieldError(fieldName: string, content: unknown): string | null {
@@ -1134,13 +1167,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       const isSessionStatusRoute = parts[0] === 'session' && parts[1] === 'status' && !parts[2] && req.method === 'GET';
+      const isReferenceRoute = parts[0] === 'references' || parts[0] === 'reference';
       const currentData = deps.getCurrentData();
-      if (!currentData && !isSessionStatusRoute) {
+      if (!currentData && !isSessionStatusRoute && !isReferenceRoute) {
         return mcpError(res, 400, {
           action: 'require current document',
           target: 'document:current',
           message: 'No file open',
-          suggestion: 'open_file를 사용하거나 에디터에서 파일을 먼저 연 뒤 다시 시도하세요.',
+          suggestion:
+            'open_file를 사용하거나 에디터에서 파일을 먼저 연 뒤 다시 시도하세요. 참고 자료가 로드되어 있다면 list_references는 파일 없이도 사용 가능합니다.',
         });
       }
 
@@ -2613,6 +2648,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               ? 'charx'
               : null);
         const loaded = !!currentData;
+
+        // Reference summary
+        const refFiles = deps.getReferenceFiles();
+        const refsSummary = refFiles.map((r: any, i: number) => ({
+          index: i,
+          id: r.id || r.filePath || r.fileName,
+          fileName: r.fileName,
+          fileType: getRefFileType(r),
+        }));
+
         return jsonResSuccess(
           res,
           {
@@ -2632,16 +2677,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               totalFields: snapshotSummary.length,
               totalSnapshots,
             },
+            references: {
+              count: refsSummary.length,
+              files: refsSummary,
+            },
           },
           {
             toolName: 'session_status',
             summary: loaded
-              ? `Session status for "${documentName ?? 'Untitled'}" (${totalSnapshots} snapshot${totalSnapshots === 1 ? '' : 's'})`
-              : 'Session status (no document loaded)',
+              ? `Session status for "${documentName ?? 'Untitled'}" (${totalSnapshots} snapshot${totalSnapshots === 1 ? '' : 's'}, ${refsSummary.length} ref${refsSummary.length === 1 ? '' : 's'})`
+              : refsSummary.length > 0
+                ? `No document loaded but ${refsSummary.length} reference file(s) available — use list_references to inspect`
+                : `Session status (no document loaded, no references)`,
             artifacts: {
               filePath: status?.currentFilePath ?? null,
               loaded,
               totalSnapshots,
+              referenceCount: refsSummary.length,
             },
           },
         );
@@ -6509,17 +6561,55 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'references' && !parts[1] && req.method === 'GET') {
         const refFiles = deps.getReferenceFiles();
         const refs = refFiles.map((r: any, i: number) => {
+          const fileType = getRefFileType(r);
+          const refId = r.id || r.filePath || r.fileName;
           const fields: Record<string, unknown>[] = [];
-          for (const f of ['lua', 'globalNote', 'firstMessage', 'css', 'description', 'defaultVariables']) {
-            if (r.data[f]) fields.push({ name: f, size: r.data[f].length });
+          const pushStringField = (name: string) => {
+            const value = r.data?.[name];
+            if (typeof value === 'string' && value) {
+              fields.push({ name, size: value.length });
+            }
+          };
+          // lua / css — standalone complex surfaces
+          pushStringField('lua');
+          pushStringField('css');
+          // Shared scalar fields
+          for (const sf of REF_SCALAR_FIELDS) {
+            const val = r.data[sf.id];
+            if (sf.isArray) {
+              if (Array.isArray(val) && val.length > 0) fields.push({ name: sf.id, count: val.length, type: 'array' });
+            } else if (sf.id === 'triggerScripts') {
+              if (val && val !== '[]') fields.push({ name: sf.id, size: val.length });
+            } else if (val) {
+              fields.push({ name: sf.id, size: typeof val === 'string' ? val.length : 0 });
+            }
           }
-          if (r.data.triggerScripts && r.data.triggerScripts !== '[]')
-            fields.push({ name: 'triggerScripts', size: r.data.triggerScripts.length });
-          if (r.data.alternateGreetings?.length)
-            fields.push({ name: 'alternateGreetings', count: r.data.alternateGreetings.length, type: 'array' });
+          if (fileType === 'risum') {
+            pushStringField('moduleDescription');
+            pushStringField('cjs');
+            pushStringField('backgroundEmbedding');
+          }
+          if (fileType === 'risup') {
+            for (const fieldName of [
+              'mainPrompt',
+              'jailbreak',
+              'promptTemplate',
+              'formatingOrder',
+              'templateDefaultVariables',
+            ]) {
+              pushStringField(fieldName);
+            }
+          }
+          // Complex array surfaces
           if (r.data.lorebook?.length) fields.push({ name: 'lorebook', count: r.data.lorebook.length, type: 'array' });
           if (r.data.regex?.length) fields.push({ name: 'regex', count: r.data.regex.length, type: 'array' });
-          return { index: i, fileName: r.fileName, fields };
+          return {
+            index: i,
+            id: refId,
+            fileName: r.fileName,
+            fileType,
+            fields,
+          };
         });
         return jsonResSuccess(
           res,
@@ -7081,9 +7171,431 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /reference/:idx/field/batch — read multiple reference fields
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'field' &&
+        parts[3] === 'batch' &&
+        !parts[4] &&
+        req.method === 'POST'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'read reference field batch',
+            target: `reference:${idx}:field:batch`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+        const body = await readJsonBody(req, res, `reference/${idx}/field/batch`, broadcastStatus);
+        if (!body) return;
+        const parsed = parseBody(res, body, fieldBatchReadSchema, {
+          action: 'read reference field batch',
+          target: `reference:${idx}:field:batch`,
+          suggestion: 'fields 를 문자열 배열로 전달하세요. 예: { "fields": ["name", "description"] }',
+        });
+        if (!parsed) return;
+        const fields = parsed.fields;
+        if (fields.length === 0) {
+          return mcpError(res, 400, {
+            action: 'read reference field batch',
+            message: 'fields must be a non-empty string array',
+            suggestion: 'fields 를 문자열 배열로 전달하세요. 예: { "fields": ["name", "description"] }',
+            target: `reference:${idx}:field:batch`,
+          });
+        }
+        if (fields.length > MAX_FIELD_BATCH) {
+          return mcpError(res, 400, {
+            action: 'read reference field batch',
+            message: `Maximum ${MAX_FIELD_BATCH} fields per batch`,
+            suggestion: `요청을 ${MAX_FIELD_BATCH}개 이하의 필드로 나누어 여러 번 호출하세요.`,
+            target: `reference:${idx}:field:batch`,
+          });
+        }
+
+        const ref = refFiles[idx];
+        const refData = (ref.data || {}) as Record<string, unknown>;
+        const rules = getFieldAccessRules(refData);
+        const results = fields.map((fieldName) => {
+          const payload = buildReferenceFieldReadPayload(refData, fieldName, deps);
+          if (payload) {
+            return payload;
+          }
+          return { field: fieldName, error: `Unknown field: ${fieldName} ${getUnknownFieldHint(rules)}` };
+        });
+
+        return jsonResSuccess(
+          res,
+          { index: idx, fileName: ref.fileName, count: results.length, fields: results },
+          {
+            toolName: 'read_reference_field_batch',
+            summary: `Read ${results.length} fields from reference ${idx}`,
+            artifacts: { count: results.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /reference/:idx/field/:name/search — search within a reference field
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'field' &&
+        parts[3] &&
+        parts[4] === 'search' &&
+        !parts[5] &&
+        req.method === 'POST'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        const fieldName = decodeURIComponent(parts[3]);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'search in reference field',
+            target: `reference:${idx}:field:${fieldName}:search`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+        if (!isReferenceTextField(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'search in reference field',
+            message: `"${fieldName}" 필드는 검색을 지원하지 않습니다.`,
+            suggestion: '문자열 타입 reference 필드에만 사용 가능합니다.',
+            target: `reference:${idx}:field:${fieldName}:search`,
+          });
+        }
+        const body = await readJsonBody(req, res, `reference/${idx}/field/${fieldName}/search`, broadcastStatus);
+        if (!body) return;
+        const parsed = parseBody(res, body, searchBodySchema, {
+          action: 'search in reference field',
+          target: `reference:${idx}:field:${fieldName}:search`,
+          suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
+        });
+        if (!parsed) return;
+
+        const ref = refFiles[idx];
+        const refData = (ref.data || {}) as Record<string, unknown>;
+        const content = normalizeLF(
+          typeof refData[fieldName] === 'string' ? refData[fieldName] : String(refData[fieldName] ?? ''),
+        );
+        const queryStr = normalizeLF(String(parsed.query));
+        const contextChars = Math.max(0, Math.min(Number(parsed.context_chars) || 100, 500));
+        const maxMatches = Math.max(1, Math.min(Number(parsed.max_matches) || 20, 100));
+        const useRegex = !!parsed.regex;
+        const flags = parsed.flags ?? (useRegex ? 'gi' : undefined);
+
+        try {
+          const result = searchTextBlock(content, {
+            query: queryStr,
+            regex: useRegex,
+            flags,
+            contextChars,
+            maxMatches,
+          });
+          return jsonResSuccess(
+            res,
+            {
+              index: idx,
+              fileName: ref.fileName,
+              field: fieldName,
+              query: result.query,
+              totalMatches: result.totalMatches,
+              returnedMatches: result.returnedMatches,
+              fieldLength: result.contentLength,
+              matches: result.matches,
+            },
+            {
+              toolName: 'search_in_reference_field',
+              summary: `Found ${result.totalMatches} match(es) in reference ${idx} field "${fieldName}"`,
+              artifacts: { fieldName, totalMatches: result.totalMatches },
+            },
+          );
+        } catch (err) {
+          return mcpError(res, 400, {
+            action: 'search in reference field',
+            message: `Invalid regex: ${err instanceof Error ? err.message : String(err)}`,
+            target: `reference:${idx}:field:${fieldName}:search`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/field/:name/range — read a substring of a reference field
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'field' &&
+        parts[3] &&
+        parts[4] === 'range' &&
+        !parts[5] &&
+        req.method === 'GET'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        const fieldName = decodeURIComponent(parts[3]);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'read reference field range',
+            target: `reference:${idx}:field:${fieldName}:range`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+        if (!isReferenceTextField(fieldName)) {
+          return mcpError(res, 400, {
+            action: 'read reference field range',
+            message: `"${fieldName}" 필드는 범위 읽기를 지원하지 않습니다.`,
+            suggestion: '문자열 타입 reference 필드에만 사용 가능합니다.',
+            target: `reference:${idx}:field:${fieldName}:range`,
+          });
+        }
+
+        const ref = refFiles[idx];
+        const refData = (ref.data || {}) as Record<string, unknown>;
+        const content = typeof refData[fieldName] === 'string' ? refData[fieldName] : String(refData[fieldName] ?? '');
+        const MAX_RANGE_LENGTH = 10000;
+        const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+        const length = Math.max(1, Math.min(Number(url.searchParams.get('length')) || 2000, MAX_RANGE_LENGTH));
+        const slice = content.slice(offset, offset + length);
+
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            fileName: ref.fileName,
+            field: fieldName,
+            totalLength: content.length,
+            offset,
+            length: slice.length,
+            hasMore: offset + length < content.length,
+            content: slice,
+          },
+          {
+            toolName: 'read_reference_field_range',
+            summary: `Read ${slice.length} chars from reference ${idx} field "${fieldName}" at offset ${offset}`,
+            artifacts: { fieldName, offset, length: slice.length, totalLength: content.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/risup/prompt-items — list reference risup prompt items
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'risup' &&
+        parts[3] === 'prompt-items' &&
+        !parts[4] &&
+        req.method === 'GET'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'list reference risup prompt items',
+            target: `reference:${idx}:risup:promptTemplate`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+
+        const ref = refFiles[idx];
+        if (getRefFileType(ref) !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'list reference risup prompt items',
+            message: 'Selected reference file is not a risup preset.',
+            suggestion: 'list_references로 fileType이 "risup"인 reference를 선택하세요.',
+            target: `reference:${idx}:risup:promptTemplate`,
+          });
+        }
+
+        const refData = (ref.data || {}) as Record<string, unknown>;
+        const rawText = typeof refData.promptTemplate === 'string' ? refData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'list reference risup prompt items',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion:
+              'read_reference_field(index, "promptTemplate") 또는 read_reference_field_range로 원문을 확인하세요.',
+            target: `reference:${idx}:risup:promptTemplate`,
+            details: { parseError: model.parseError },
+          });
+        }
+
+        const items = model.items.map((item, i) => {
+          const entry: Record<string, unknown> = {
+            index: i,
+            id: item.id ?? null,
+            type: item.type ?? null,
+            supported: item.supported,
+            preview: promptItemPreview(item),
+          };
+          if (item.supported && item.name !== undefined) {
+            entry.name = item.name;
+          }
+          return entry;
+        });
+
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            fileName: ref.fileName,
+            count: model.items.length,
+            state: model.state,
+            hasUnsupportedContent: model.hasUnsupportedContent,
+            items,
+          },
+          {
+            toolName: 'list_reference_risup_prompt_items',
+            summary: `Listed ${model.items.length} prompt items in reference ${idx} (state: ${model.state})`,
+            artifacts: { count: model.items.length, state: model.state },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/risup/prompt-item/:itemIdx — read a reference risup prompt item
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'risup' &&
+        parts[3] === 'prompt-item' &&
+        parts[4] &&
+        !parts[5] &&
+        req.method === 'GET'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        const itemIdx = parseInt(parts[4], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'read reference risup prompt item',
+            target: `reference:${idx}:risup:promptTemplate:${parts[4]}`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+
+        const ref = refFiles[idx];
+        if (getRefFileType(ref) !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'read reference risup prompt item',
+            message: 'Selected reference file is not a risup preset.',
+            suggestion: 'list_references로 fileType이 "risup"인 reference를 선택하세요.',
+            target: `reference:${idx}:risup:promptTemplate:${parts[4]}`,
+          });
+        }
+
+        const refData = (ref.data || {}) as Record<string, unknown>;
+        const rawText = typeof refData.promptTemplate === 'string' ? refData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'read reference risup prompt item',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion:
+              'read_reference_field(index, "promptTemplate") 또는 read_reference_field_range로 원문을 확인하세요.',
+            target: `reference:${idx}:risup:promptTemplate:${parts[4]}`,
+          });
+        }
+        if (isNaN(itemIdx) || itemIdx < 0 || itemIdx >= model.items.length) {
+          return mcpError(res, 400, {
+            action: 'read reference risup prompt item',
+            message: `Index ${parts[4]} out of range (0–${model.items.length - 1})`,
+            suggestion: 'list_reference_risup_prompt_items로 유효한 index를 확인하세요.',
+            target: `reference:${idx}:risup:promptTemplate:${parts[4]}`,
+          });
+        }
+
+        const item = model.items[itemIdx];
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            fileName: ref.fileName,
+            itemIndex: itemIdx,
+            id: item.id ?? null,
+            item: item.rawValue,
+            supported: item.supported,
+            type: item.type,
+          },
+          {
+            toolName: 'read_reference_risup_prompt_item',
+            summary: `Read reference ${idx} prompt item [${itemIdx}] (type: ${item.type ?? 'unknown'})`,
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/risup/formating-order — read reference risup formating order
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'risup' &&
+        parts[3] === 'formating-order' &&
+        !parts[4] &&
+        req.method === 'GET'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'read reference risup formating order',
+            target: `reference:${idx}:risup:formatingOrder`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+
+        const ref = refFiles[idx];
+        if (getRefFileType(ref) !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'read reference risup formating order',
+            message: 'Selected reference file is not a risup preset.',
+            suggestion: 'list_references로 fileType이 "risup"인 reference를 선택하세요.',
+            target: `reference:${idx}:risup:formatingOrder`,
+          });
+        }
+
+        const refData = (ref.data || {}) as Record<string, unknown>;
+        const rawText = typeof refData.formatingOrder === 'string' ? refData.formatingOrder : '';
+        const model = parseFormatingOrder(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'read reference risup formating order',
+            message: `Invalid formatingOrder: ${model.parseError}`,
+            suggestion:
+              'read_reference_field(index, "formatingOrder") 또는 read_reference_field_range로 원문을 확인하세요.',
+            target: `reference:${idx}:risup:formatingOrder`,
+            details: { parseError: model.parseError },
+          });
+        }
+
+        const items = model.items.map((item, i) => ({ index: i, token: item.token, known: item.known }));
+        const promptRaw = typeof refData.promptTemplate === 'string' ? refData.promptTemplate : '';
+        const promptModel = parsePromptTemplate(promptRaw);
+        const warnings = promptModel.state !== 'invalid' ? collectFormatingOrderWarnings(promptModel, model) : [];
+
+        return jsonResSuccess(
+          res,
+          { index: idx, fileName: ref.fileName, state: model.state, items, warnings },
+          {
+            toolName: 'read_reference_risup_formating_order',
+            summary: `Read reference ${idx} formating order (${items.length} tokens, state: ${model.state})`,
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
       // GET /reference/:idx/:field — read a reference file's field
       // ----------------------------------------------------------------
-      if (parts[0] === 'reference' && parts[1] && parts[2] && req.method === 'GET') {
+      if (parts[0] === 'reference' && parts[1] && parts[2] && !parts[3] && req.method === 'GET') {
         const refFiles = deps.getReferenceFiles();
         const idx = parseInt(parts[1], 10);
         const fieldName = decodeURIComponent(parts[2]);
@@ -7095,77 +7607,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const ref = refFiles[idx];
-        if (fieldName === 'lorebook') {
-          return jsonResSuccess(
-            res,
-            {
-              index: idx,
-              fileName: ref.fileName,
-              field: 'lorebook',
-              content: (ref.data.lorebook || []).map((entry: Record<string, unknown>) =>
-                normalizeLorebookEntryForResponse(entry, ref.data.lorebook || []),
-              ),
-            },
-            {
-              toolName: 'read_reference_field',
-              summary: `Read reference ${idx} field "lorebook"`,
-            },
-          );
-        }
-        if (fieldName === 'regex') {
-          return jsonResSuccess(
-            res,
-            { index: idx, fileName: ref.fileName, field: 'regex', content: ref.data.regex || [] },
-            {
-              toolName: 'read_reference_field',
-              summary: `Read reference ${idx} field "regex"`,
-            },
-          );
-        }
-        if (fieldName === 'triggerScripts') {
-          return jsonResSuccess(
-            res,
-            {
-              index: idx,
-              fileName: ref.fileName,
-              field: 'triggerScripts',
-              content: ref.data.triggerScripts || '[]',
-            },
-            {
-              toolName: 'read_reference_field',
-              summary: `Read reference ${idx} field "triggerScripts"`,
-            },
-          );
-        }
-        if (fieldName === 'alternateGreetings') {
-          return jsonResSuccess(
-            res,
-            {
-              index: idx,
-              fileName: ref.fileName,
-              field: fieldName,
-              content: ref.data[fieldName] || [],
-            },
-            {
-              toolName: 'read_reference_field',
-              summary: `Read reference ${idx} field "${fieldName}"`,
-            },
-          );
-        }
-        const allowedRefFields = [
-          'lua',
-          'globalNote',
-          'firstMessage',
-          'css',
-          'description',
-          'defaultVariables',
-          'name',
-        ];
-        if (!allowedRefFields.includes(fieldName)) {
+        const refData = (ref.data || {}) as Record<string, unknown>;
+        const rules = getFieldAccessRules(refData);
+        const payload = buildReferenceFieldReadPayload(refData, fieldName, deps);
+        if (!payload) {
           return mcpError(res, 400, {
             action: 'read reference field',
             target: `reference:${idx}:${fieldName}`,
-            message: `Unknown field: ${fieldName}`,
+            message: `Unknown field: ${fieldName} ${getUnknownFieldHint(rules)}`,
           });
         }
         return jsonResSuccess(
@@ -7173,8 +7622,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           {
             index: idx,
             fileName: ref.fileName,
-            field: fieldName,
-            content: ref.data[fieldName] || '',
+            ...payload,
           },
           {
             toolName: 'read_reference_field',

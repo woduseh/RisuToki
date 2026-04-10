@@ -220,12 +220,12 @@ describe('FAMILY_NEXT_ACTIONS', () => {
     }
   });
 
-  it('next_actions arrays are not excessively large (≤6 per family)', () => {
+  it('next_actions arrays are not excessively large (≤10 per family)', () => {
     for (const [family, actions] of Object.entries(FAMILY_NEXT_ACTIONS)) {
       expect(
         actions.length,
-        `FAMILY_NEXT_ACTIONS["${family}"] has ${actions.length} entries (max 6)`,
-      ).toBeLessThanOrEqual(6);
+        `FAMILY_NEXT_ACTIONS["${family}"] has ${actions.length} entries (max 10)`,
+      ).toBeLessThanOrEqual(10);
     }
   });
 
@@ -679,9 +679,9 @@ describe('errorRecoveryMeta()', () => {
     expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS['charx-asset']);
   });
 
-  it('resolves open_file for document:current special target', () => {
+  it('resolves open_file + list_references + session_status for document:current special target', () => {
     const meta = errorRecoveryMeta('document:current', 400);
-    expect(meta.next_actions).toEqual(['open_file']);
+    expect(meta.next_actions).toEqual(['open_file', 'list_references', 'session_status']);
   });
 
   it('returns empty next_actions for unknown target prefix', () => {
@@ -735,10 +735,10 @@ describe('agent eval: recovery guidance chooses the next safe tool', () => {
     expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS.field);
   });
 
-  it('keeps no-document failures focused on open_file only', () => {
+  it('keeps no-document failures steering toward open_file, list_references, and session_status', () => {
     const meta = errorRecoveryMeta('document:current', 400);
 
     expect(meta.retryable).toBe(false);
-    expect(meta.next_actions).toEqual(['open_file']);
+    expect(meta.next_actions).toEqual(['open_file', 'list_references', 'session_status']);
   });
 });

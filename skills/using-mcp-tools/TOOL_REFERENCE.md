@@ -20,7 +20,7 @@ For the canonical repo-wide family map and response-contract coverage, see:
 - **Greetings** — `list_greetings`, `read_greeting`, `write_greeting`, `add_greeting`, `delete_greeting`, `batch_delete_greeting`, `batch_write_greeting`, `reorder_greetings`
 - **Triggers** — `list_triggers`, `read_trigger`, `write_trigger`, `add_trigger`, `delete_trigger`
 - **Risup prompt tools** — `list_risup_prompt_items`, `read_risup_prompt_item`, `write_risup_prompt_item`, `add_risup_prompt_item`, `delete_risup_prompt_item`, `reorder_risup_prompt_items`, `read_risup_formating_order`, `write_risup_formating_order`
-- **References** — `list_references`, `read_reference_field`, `list_reference_lorebook`, `read_reference_lorebook`, `read_reference_lorebook_batch`, `list_reference_lua`, `read_reference_lua`, `read_reference_lua_batch`, `list_reference_css`, `read_reference_css`, `read_reference_css_batch`, `list_reference_regex`, `read_reference_regex`
+- **References** — `list_references`, `read_reference_field`, `read_reference_field_batch`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_lorebook`, `read_reference_lorebook`, `read_reference_lorebook_batch`, `list_reference_lua`, `read_reference_lua`, `read_reference_lua_batch`, `list_reference_css`, `read_reference_css`, `read_reference_css_batch`, `list_reference_regex`, `read_reference_regex`, `list_reference_risup_prompt_items`, `read_reference_risup_prompt_item`, `read_reference_risup_formating_order`
 - **Assets** — `list_charx_assets`, `read_charx_asset`, `add_charx_asset`, `delete_charx_asset`, `rename_charx_asset`, `list_risum_assets`, `read_risum_asset`, `add_risum_asset`, `delete_risum_asset`, `compress_assets_webp`
 - **Danbooru** — `tag_db_status`, `validate_danbooru_tags`, `search_danbooru_tags`, `get_popular_danbooru_tags`, `danbooru_tag_guide`
 - **CBS validation** — `validate_cbs`, `list_cbs_toggles`, `simulate_cbs`, `diff_cbs`
@@ -63,7 +63,7 @@ Current coverage summary:
 Context-budget rule:
 
 - Read `artifacts.byte_size` before requesting adjacent content. If the success response is already large, prefer narrower follow-up tools (`list_*`, `search_in_field`, `read_field_range`, item/section reads, or `probe_*`) instead of broader dumps.
-- Use `session_status` before risky writes or after interruptions; it is the read-only exception that still works without an open document.
+- Use `session_status` before risky writes or after interruptions; it is the read-only exception that still works without an open document. When `loaded` is `false` but references exist, use `list_references` to begin working with reference materials.
 - Run `npm run test:evals` when changing MCP contracts or workflow routing and you want the deterministic harness scenarios only.
 
 The top-level `error` field remains present for MCP bridge compatibility.

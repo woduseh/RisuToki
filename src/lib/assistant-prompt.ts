@@ -130,9 +130,15 @@ export async function buildAssistantPrompt(
     lines.push(`[참고 자료] (읽기 전용)`);
     lines.push(`- list_references: 참고 자료 파일 목록`);
     lines.push(`- read_reference_field(index, field): 참고 파일의 필드 읽기`);
+    lines.push(`- read_reference_field_batch(index, fields) / search_in_reference_field(index, field, query)`);
+    lines.push(`- read_reference_field_range(index, field, offset?, length?): 큰 reference 필드 부분 읽기`);
     lines.push(`- list_reference_lorebook(index, filter?) / read_reference_lorebook(index, entryIndex)`);
     lines.push(`- list_reference_lua(index) / read_reference_lua(index, sectionIndex)`);
     lines.push(`- list_reference_css(index) / read_reference_css(index, sectionIndex)`);
+    lines.push(
+      `- .risup reference → list_reference_risup_prompt_items / read_reference_risup_prompt_item / read_reference_risup_formating_order`,
+    );
+    lines.push(`- 메인 파일이 없어도 참고 자료만 로드되어 있다면 list_references로 먼저 확인 가능`);
     lines.push(``);
     lines.push(`[스킬 문서]`);
     lines.push(
@@ -150,7 +156,12 @@ export async function buildAssistantPrompt(
     lines.push(`- 인사말 → list_greetings(type) → read_greeting(type, index) (개별)`);
     lines.push(`- 트리거 → list_triggers → read_trigger(index) (개별)`);
     lines.push(`- 참고 자료 로어북 → list_reference_lorebook(folder?) → read_reference_lorebook (개별)`);
+    lines.push(
+      `- 참고 자료 Lua/CSS/regex → list_reference_lua / list_reference_css / list_reference_regex → read_reference_* (개별)`,
+    );
+    lines.push(`- 참고 자료 큰 필드 → search_in_reference_field / read_reference_field_range`);
     lines.push(`- ⚠️ read_field("lua/css/alternateGreetings/triggerScripts")는 전체 덤프 → 사용 금지`);
+    lines.push(`- ⚠️ read_reference_field("lorebook/lua/css")도 전체 덤프 → list_reference_* / read_reference_* 사용`);
   } else {
     lines.push(`편집 중인 항목의 내용을 알려주면 수정을 도와드리겠습니다.`);
   }

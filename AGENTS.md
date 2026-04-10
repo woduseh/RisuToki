@@ -56,3 +56,5 @@
 | `writing-danbooru-tags`    | Danbooru tag search and validation                                                              |
 
 Use `list_skills` to see all available skills and their metadata, then `read_skill(name, file?)` to load only what you need.
+
+If no main file is open but reference files are loaded, start with `session_status` or `list_references`, then narrow large reference text with `search_in_reference_field` / `read_reference_field_range` before drilling into `list_reference_*` / `read_reference_*`.

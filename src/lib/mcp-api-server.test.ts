@@ -3587,6 +3587,124 @@ describe('MCP API structured error envelopes — global guards', () => {
       await closeServer(api.server);
     }
   });
+
+  it('allows GET /references without a main document and includes fileType metadata', async () => {
+    const api = await startTestApiServer(null, [
+      {
+        fileName: 'preset.risup',
+        data: {
+          _fileType: 'risup',
+          mainPrompt: 'Preset main prompt',
+          promptTemplate: '[{"type":"plain","text":"hi"}]',
+          formatingOrder: '["main"]',
+        },
+      },
+    ]);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/references');
+      expect(res.status).toBe(200);
+      expect(res.data.count).toBe(1);
+      expect(res.data.references).toEqual([
+        expect.objectContaining({
+          index: 0,
+          id: 'preset.risup',
+          fileName: 'preset.risup',
+          fileType: 'risup',
+        }),
+      ]);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('supports batch/search/range reads against reference text surfaces without a main document', async () => {
+    const api = await startTestApiServer(null, [
+      {
+        fileName: 'bot.charx',
+        data: {
+          description: 'needle in the reference haystack',
+          firstMessage: 'Hello reference world',
+          alternateGreetings: ['hello reference'],
+          triggerScripts: [{ comment: 'ref trigger', type: 'input', conditions: [], effect: [] }],
+        },
+      },
+    ]);
+    try {
+      const batch = await postJson<Record<string, unknown>>(api.port, api.token, '/reference/0/field/batch', {
+        fields: ['description', 'alternateGreetings', 'triggerScripts'],
+      });
+      expect(batch.status).toBe(200);
+      expect(batch.data.fields).toEqual([
+        expect.objectContaining({ field: 'description', content: 'needle in the reference haystack' }),
+        expect.objectContaining({ field: 'alternateGreetings', type: 'array', content: ['hello reference'] }),
+        expect.objectContaining({ field: 'triggerScripts' }),
+      ]);
+
+      const search = await postJson<Record<string, unknown>>(
+        api.port,
+        api.token,
+        '/reference/0/field/description/search',
+        {
+          query: 'needle',
+        },
+      );
+      expect(search.status).toBe(200);
+      expect(search.data.field).toBe('description');
+      expect(search.data.totalMatches).toBe(1);
+
+      const range = await getJson<Record<string, unknown>>(
+        api.port,
+        api.token,
+        '/reference/0/field/firstMessage/range?offset=6&length=9',
+      );
+      expect(range.status).toBe(200);
+      expect(range.data.field).toBe('firstMessage');
+      expect(range.data.content).toBe('reference');
+      expect(range.data.hasMore).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('reads structured risup prompt surfaces from references', async () => {
+    const api = await startTestApiServer(null, [
+      {
+        fileName: 'preset.risup',
+        data: {
+          _fileType: 'risup',
+          promptTemplate: JSON.stringify([
+            { type: 'plain', text: 'Hello preset', role: 'system' },
+            { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+          ]),
+          formatingOrder: JSON.stringify(['main', 'description']),
+        },
+      },
+    ]);
+    try {
+      const list = await getJson<Record<string, unknown>>(api.port, api.token, '/reference/0/risup/prompt-items');
+      expect(list.status).toBe(200);
+      expect(list.data.count).toBe(2);
+      expect(list.data.items).toEqual([
+        expect.objectContaining({ index: 0, type: 'plain', supported: true }),
+        expect.objectContaining({ index: 1, type: 'chat', supported: true }),
+      ]);
+
+      const item = await getJson<Record<string, unknown>>(api.port, api.token, '/reference/0/risup/prompt-item/0');
+      expect(item.status).toBe(200);
+      expect(item.data.itemIndex).toBe(0);
+      expect(item.data.type).toBe('plain');
+
+      const order = await getJson<Record<string, unknown>>(api.port, api.token, '/reference/0/risup/formating-order');
+      expect(order.status).toBe(200);
+      expect(order.data.items).toEqual([
+        { index: 0, token: 'main', known: true },
+        { index: 1, token: 'description', known: true },
+      ]);
+      expect(order.data.warnings).toEqual(['Dangling formatingOrder token: "description" has no matching prompt item']);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
 });
 
 describe('MCP API structured error envelopes — risup reorder routes', () => {
@@ -3914,7 +4032,7 @@ describe('MCP API open-file route', () => {
       expect(blocked.status).toBe(400);
       expect(blocked.data.target).toBe('document:current');
       expect(blocked.data.retryable).toBe(false);
-      expect(blocked.data.next_actions).toEqual(['open_file']);
+      expect(blocked.data.next_actions).toEqual(['open_file', 'list_references', 'session_status']);
 
       const opened = await postJson<Record<string, unknown>>(api.port, api.token, '/open-file', {
         file_path: filePath,
@@ -4530,6 +4648,10 @@ describe('MCP API success response envelope', () => {
         totalFields: 1,
         totalSnapshots: 1,
       });
+      expect(res.data.references).toEqual({
+        count: 0,
+        files: [],
+      });
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
@@ -4565,6 +4687,10 @@ describe('MCP API success response envelope', () => {
         filePath: null,
         fileType: null,
         name: null,
+      });
+      expect(res.data.references).toEqual({
+        count: 0,
+        files: [],
       });
       expect(res.data.renderer).toEqual({
         autosaveDir: 'C:\\autosave',
@@ -6097,13 +6223,13 @@ describe('MCP error recovery metadata — global guards', () => {
     }
   });
 
-  it('no-file-open guard returns retryable: false and next_actions with open_file', async () => {
+  it('no-file-open guard returns retryable: false and next_actions with open_file, list_references, session_status', async () => {
     const api = await startTestApiServer(null);
     try {
       const res = await getJson<McpRecoveryEnvelope>(api.port, api.token, '/fields');
       expect(res.status).toBe(400);
       expect(res.data.retryable).toBe(false);
-      expect(res.data.next_actions).toEqual(['open_file']);
+      expect(res.data.next_actions).toEqual(['open_file', 'list_references', 'session_status']);
     } finally {
       await closeServer(api.server);
     }

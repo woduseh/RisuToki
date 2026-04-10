@@ -20,7 +20,7 @@ RisuToki is a **desktop editor** purpose-built for [RisuAI](https://risuai.net/)
 | 📦 **Three File Formats**  | Open, edit, and save `.charx` (character cards) · `.risum` (modules) · `.risup` (presets)                                                                                                                                                                                   |
 | 🔧 **120+ MCP Tools**      | Read/write fields, lorebooks, regex, Lua/CSS sections, greetings, triggers, risup `promptTemplate`/`formatingOrder`, assets, CBS validation, references, Danbooru tags, skill docs + unopened-file probe/open + batch search/replace + structured `4xx/409` error envelopes |
 | 🎭 **Preview Mode**        | `.charx`-only chat simulation (F5) with CBS/Lua rendering, lorebook decorator matching/debug, and inline loading/error diagnostics                                                                                                                                          |
-| 📚 **References**          | Load other `.charx`/`.risum` files as read-only references and drill into individual entries                                                                                                                                                                                |
+| 📚 **References**          | Load other `.charx`/`.risum`/`.risup` files as read-only references and drill into individual entries                                                                                                                                                                       |
 | 🐰 **RP Mode**             | Adjust AI CLI response style with Toki / Aris / custom personas                                                                                                                                                                                                             |
 | 🔀 **Sidebar Drag & Drop** | Reorder lorebook entries, regex scripts, Lua/CSS sections, greetings, and assets by dragging                                                                                                                                                                                |
 | 🖼 **Slot Layout**         | Freely arrange panels with drag & drop + pop-out editors in separate windows                                                                                                                                                                                                |
@@ -142,11 +142,11 @@ Double-click the RisuToki executable (`.exe`) to launch.
 
 ### Drag & Drop
 
-| File Type               | Action                                          |
-| ----------------------- | ----------------------------------------------- |
-| **.charx / .risum**     | Added as a read-only reference                  |
-| **.json**               | Auto-detected as lorebook or regex and imported |
-| **.png / .jpg / .gif…** | Added as an image asset                         |
+| File Type                    | Action                                          |
+| ---------------------------- | ----------------------------------------------- |
+| **.charx / .risum / .risup** | Added as a read-only reference                  |
+| **.json**                    | Auto-detected as lorebook or regex and imported |
+| **.png / .jpg / .gif…**      | Added as an image asset                         |
 
 ---
 
@@ -217,8 +217,8 @@ Which items appear depends on the file type:
 <img width="518" height="186" alt="References" src="https://github.com/user-attachments/assets/0535187b-5ae8-4873-b641-2478f94914b3" />
 
 - **Guides**: Built-in syntax guides (Lua, CBS, lorebook, regex, HTML/CSS, etc.).
-- **Reference files**: Load other `.charx`/`.risum` files as read-only references — you can drill down to individual lorebook/Lua/CSS items.
-- References are automatically restored on app restart and are also accessible to AI CLIs via MCP tools.
+- **Reference files**: Load other `.charx`/`.risum`/`.risup` files as read-only references — you can drill down to individual lorebook/Lua/CSS items and narrow large fields with MCP search/range readers.
+- References are automatically restored on app restart and are also accessible to AI CLIs via MCP tools, even when no main file is currently open.
 
 ### Backup System
 
@@ -319,7 +319,7 @@ When an AI CLI starts, the MCP server connects automatically so the AI can read 
 | **Greetings**      | `list_greetings` · `read_greeting` · `write_greeting` · `add_greeting` · `delete_greeting`                                                                                                                                            |
 | **Triggers**       | `list_triggers` · `read_trigger` · `write_trigger` · `add_trigger` · `delete_trigger`                                                                                                                                                 |
 | **risup Prompts**  | `list_risup_prompt_items` · `read_risup_prompt_item` · `write_risup_prompt_item` · `add_risup_prompt_item` · `delete_risup_prompt_item` · `reorder_risup_prompt_items` · `read_risup_formating_order` · `write_risup_formating_order` |
-| **References**     | `list_references` · `read_reference_field` + lorebook/Lua/CSS/regex sub-query tools                                                                                                                                                   |
+| **References**     | `list_references` · `read_reference_field` · `search_in_reference_field` · `read_reference_field_range` + lorebook/Lua/CSS/regex sub-query tools — works without a main file open                                                     |
 | **Assets**         | charx: `list_charx_assets` · `read_charx_asset` · `add_charx_asset` · `delete_charx_asset` · `rename_charx_asset` / risum: `list_risum_assets` · `read_risum_asset` · `add_risum_asset` · `delete_risum_asset`                        |
 | **Danbooru**       | `validate_danbooru_tags` · `search_danbooru_tags` · `get_popular_danbooru_tags`                                                                                                                                                       |
 | **CBS Validation** | `validate_cbs` · `list_cbs_toggles` · `simulate_cbs` · `diff_cbs` — structural CBS validation + toggle simulation                                                                                                                     |

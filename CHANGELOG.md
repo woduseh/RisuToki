@@ -9,6 +9,36 @@
 
 ---
 
+## [0.41.3] - 2026-04-10
+
+### Changed
+
+- Improved reference-system discoverability for AI agents:
+  - `session_status` tool description now mentions references and works-without-main-file behavior.
+  - `list_references` tool description now mentions no-main-file support and steers agents toward `search_in_reference_field` / `read_reference_field_range`.
+  - "No file open" error now suggests `list_references` as an alternative recovery path alongside `open_file`.
+  - `session_status` summary for no-document sessions with references explicitly directs agents to `list_references`.
+  - `FAMILY_NEXT_ACTIONS['reference']` expanded with `read_reference_field`, `list_reference_lua`, `list_reference_css`, `list_reference_regex`.
+  - `FAMILY_NEXT_ACTIONS['session']` now includes `list_references`.
+  - `SPECIAL_TARGET_NEXT_ACTIONS['document:current']` expanded to include `list_references` and `session_status`.
+  - Assistant prompt read-rules now explicitly forbid `read_reference_field("lorebook/lua/css")` full dumps.
+- Updated skills docs (`using-mcp-tools/SKILL.md`, `TOOL_REFERENCE.md`, `MCP_WORKFLOW.md`) and `README.md` to list `search_in_reference_field` / `read_reference_field_range` and document reference-only sessions.
+
+## [0.41.2] - 2026-04-10
+
+### Changed
+
+- Allowed MCP reference routes to work in reference-only sessions with no active main document, and exposed loaded reference summaries through `session_status`.
+- Added `.risup` support across reference loading surfaces, including the open-reference dialog, manifest restore, and drag-and-drop reference import.
+- Unified reference scalar-field discovery across the sidebar, popout, and MCP responses so `alternateGreetings`, `groupOnlyGreetings`, and `defaultVariables` stay in sync.
+- Added context-efficient reference MCP readers for batch field reads, text search/range access, and structured `.risup` prompt/formating-order inspection.
+
+### Fixed
+
+- Added additive `id` / `fileType` metadata to `list_references` so agents can distinguish loaded reference files more reliably.
+
+---
+
 ## [0.41.1] - 2026-04-10
 
 ### Changed
