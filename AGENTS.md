@@ -7,11 +7,11 @@
 
 ## 세션 시작 시 읽을 것
 
-| 순서 | 무엇을                                 | 어떻게                             |
-| ---- | -------------------------------------- | ---------------------------------- |
-| 1    | **온보딩·프로젝트 규칙·MCP 워크플로**  | `read_skill("project-workflow")`   |
-| 2    | **MCP 도구 선택·대형 필드·batch 상세** | `read_skill("using-mcp-tools")`    |
-| 3    | CBS/Lua/로어북 등 세부 문법            | `list_skills` → `read_skill(name)` |
+| 순서 | 무엇을                                 | 어떻게                                                                                                                                                           |
+| ---- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | **온보딩·프로젝트 규칙·MCP 워크플로**  | `read_skill("project-workflow")` → 상세가 필요하면 `read_skill("project-workflow", "MCP_WORKFLOW.md")` 또는 `read_skill("project-workflow", "PROJECT_RULES.md")` |
+| 2    | **MCP 도구 선택·대형 필드·batch 상세** | `read_skill("using-mcp-tools")`                                                                                                                                  |
+| 3    | CBS/Lua/로어북 등 세부 문법            | `list_skills` → `read_skill(name)`                                                                                                                               |
 
 ### 레포 내 추가 참조 (repo-local — 세션 외부에서는 없을 수 있음)
 
@@ -28,7 +28,7 @@
 
 ## 반드시 지킬 규칙
 
-1. **세션 시작 시** `read_skill("project-workflow")`를 먼저 읽으세요. 모든 MCP 규칙과 프로젝트 규칙이 들어 있습니다.
+1. **세션 시작 시** `read_skill("project-workflow")`를 먼저 읽으세요. MCP 규칙과 프로젝트 규칙의 요약이 들어 있으며, 상세가 필요하면 그 안의 `MCP_WORKFLOW.md`와 `PROJECT_RULES.md`를 로드하세요.
 2. **대형 surface를 `read_field`로 통째로 읽지 마세요.** `lua`, `css`, `alternateGreetings`, `triggerScripts`, `promptTemplate`/`formatingOrder`는 전용 list→read 도구를 사용합니다.
 3. **batch 도구 우선.** 여러 항목을 수정할 때 단일 write를 반복하지 말고 batch 도구를 사용하세요.
 4. **열리지 않은 파일은 `probe_*`로 먼저 읽으세요.** 수정이 필요할 때만 `open_file`로 전환합니다.
@@ -40,17 +40,17 @@
 
 ## 스킬 문서 빠른 참조
 
-| 스킬                       | 용도                                                   |
-| -------------------------- | ------------------------------------------------------ |
-| `project-workflow`         | 프로젝트 규칙, MCP 워크플로, 온보딩 가이드             |
-| `using-mcp-tools`          | 도구 선택, 대형 필드 편집, batch-first 원칙            |
-| `file-structure-reference` | `.charx` / `.risum` / `.risup` / lorebook / regex 구조 |
-| `writing-cbs-syntax`       | CBS 템플릿 태그 문법                                   |
-| `writing-lua-scripts`      | Lua 5.4 트리거 스크립트                                |
-| `writing-lorebooks`        | 로어북 키워드, 데코레이터, 폴더                        |
-| `writing-regex-scripts`    | 정규식 수정 스크립트                                   |
-| `writing-html-css`         | backgroundEmbedding, x-risu- CSS                       |
-| `writing-trigger-scripts`  | V2 트리거 스크립트                                     |
-| `writing-danbooru-tags`    | Danbooru 태그 검색/검증                                |
+| 스킬                       | 용도                                                                                     |
+| -------------------------- | ---------------------------------------------------------------------------------------- |
+| `project-workflow`         | 프로젝트 규칙, MCP 워크플로, 온보딩 가이드 (`MCP_WORKFLOW.md` + `PROJECT_RULES.md` 포함) |
+| `using-mcp-tools`          | 도구 선택, 대형 필드 편집, batch-first 원칙                                              |
+| `file-structure-reference` | `.charx` / `.risum` / `.risup` / lorebook / regex 구조                                   |
+| `writing-cbs-syntax`       | CBS 템플릿 태그 문법                                                                     |
+| `writing-lua-scripts`      | Lua 5.4 트리거 스크립트                                                                  |
+| `writing-lorebooks`        | 로어북 키워드, 데코레이터, 폴더                                                          |
+| `writing-regex-scripts`    | 정규식 수정 스크립트                                                                     |
+| `writing-html-css`         | backgroundEmbedding, x-risu- CSS                                                         |
+| `writing-trigger-scripts`  | V2 트리거 스크립트                                                                       |
+| `writing-danbooru-tags`    | Danbooru 태그 검색/검증                                                                  |
 
 `list_skills`로 전체 목록과 메타데이터를 확인하고, `read_skill(name, file?)`로 필요한 파일만 로드하세요.
