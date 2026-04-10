@@ -23,6 +23,17 @@ describe('isRecord', () => {
     expect(isRecord('hello')).toBe(false);
     expect(isRecord(true)).toBe(false);
   });
+
+  it('returns false for non-plain objects (Date, RegExp, Map, etc.)', () => {
+    expect(isRecord(new Date())).toBe(false);
+    expect(isRecord(/abc/)).toBe(false);
+    expect(isRecord(new Map())).toBe(false);
+    expect(isRecord(new Set())).toBe(false);
+  });
+
+  it('returns true for null-prototype objects', () => {
+    expect(isRecord(Object.create(null))).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -86,6 +97,12 @@ describe('cloneRecord', () => {
     expect(cloneRecord(42)).toEqual({});
     expect(cloneRecord([1, 2])).toEqual({});
     expect(cloneRecord('hello')).toEqual({});
+  });
+
+  it('returns empty object for non-plain objects (Date, RegExp, Map)', () => {
+    expect(cloneRecord(new Date())).toEqual({});
+    expect(cloneRecord(/abc/)).toEqual({});
+    expect(cloneRecord(new Map([['a', 1]]))).toEqual({});
   });
 });
 
