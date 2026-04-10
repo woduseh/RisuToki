@@ -16,6 +16,7 @@ import path = require('path');
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { TOOL_TAXONOMY } from './src/lib/mcp-tool-taxonomy';
 
 const TOKI_PORT = process.env.TOKI_PORT;
 const TOKI_TOKEN = process.env.TOKI_TOKEN;
@@ -824,6 +825,13 @@ server.tool(
     field: z.string().describe('스냅샷 목록을 확인할 필드 이름'),
   },
   async ({ field }) => textResult(await apiRequest('GET', `/field/${encodeURIComponent(field)}/snapshots`)),
+);
+
+server.tool(
+  'session_status',
+  '현재 MCP 세션 상태를 읽습니다. 열린 문서 경로/타입/이름, renderer dirty 상태, autosave 설정, recovery 메타데이터, 필드 스냅샷 요약을 한 번에 확인할 수 있습니다. 변경 전 상황 파악용 읽기 전용 도구입니다.',
+  {},
+  async () => textResult(await apiRequest('GET', '/session/status')),
 );
 
 server.tool(
@@ -2180,6 +2188,22 @@ server.prompt(
     ],
   }),
 );
+
+// ==================== Apply Taxonomy Annotations ====================
+
+// Patch MCP SDK ToolAnnotations onto every registered tool using the taxonomy.
+// Uses RegisteredTool.update() so existing registrations stay untouched.
+{
+  const registry = (
+    server as unknown as { _registeredTools: Record<string, { update: (u: Record<string, unknown>) => void }> }
+  )._registeredTools;
+  for (const [name, entry] of Object.entries(TOOL_TAXONOMY)) {
+    const tool = registry[name];
+    if (tool) {
+      tool.update({ annotations: entry.hints });
+    }
+  }
+}
 
 // ==================== Start ====================
 

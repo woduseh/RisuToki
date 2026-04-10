@@ -14,9 +14,12 @@ Run the full validation sequence before opening a PR:
 ```bash
 npm run lint
 npm run typecheck
+npm run test:evals
 npm test
 npm run build
 ```
+
+Use `npm run test:evals` when changing MCP contracts, taxonomy, or section-parsing behavior and you want the targeted deterministic harness scenarios without running the full suite.
 
 ## Project map
 
@@ -26,6 +29,19 @@ npm run build
 - `src/lib/*`: reusable renderer logic
 
 If a change touches the renderer and feels reusable, prefer adding or extending a shared module in `src/lib/` rather than expanding a controller further.
+
+## Knowledge base
+
+- `docs/README.md`: repo-local knowledge-base index
+- `docs/MCP_WORKFLOW.md`: MCP tool routing, read rules, workflow patterns, operational caveats
+- `docs/MCP_TOOL_SURFACE.md`: MCP tool families, boundaries, and deterministic follow-up actions
+- `docs/MCP_ERROR_CONTRACT.md`: success / error / no-op envelopes and recovery rules
+- `docs/PROJECT_RULES.md`: versioning, CI/release workflow, guide locations, persona workflow
+- `docs/MODULE_MAP.md`: source navigation map for the active TypeScript codebase
+- `docs/analysis/ARCHITECTURE.md`: runtime structure and data flow
+- `npm run test:evals`: targeted deterministic agent/harness scenarios for recovery, context-budgeting, taxonomy, and section workflows
+
+When both `.ts` and `.js` siblings exist under `src/lib/`, edit the `.ts` source. Treat nearby `.test.ts` files as the nearest behavior spec.
 
 ## Working with settings
 

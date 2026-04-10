@@ -59,6 +59,10 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
       );
     },
     sendMcpOpenFileResponse: (id, response) => ipcRenderer.send('mcp-open-file-response', id, response),
+    onMcpSessionStatusRequest: (cb) => {
+      ipcRenderer.on('mcp-session-status-request', (_event, id: number) => cb(id));
+    },
+    sendMcpSessionStatusResponse: (id, response) => ipcRenderer.send('mcp-session-status-response', id, response),
     onMcpStatus: (cb) => {
       ipcRenderer.on('mcp-status', (_event, payload: TokiMcpStatus) => cb(payload));
     },

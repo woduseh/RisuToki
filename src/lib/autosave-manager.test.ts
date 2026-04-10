@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { ipcHandle } = vi.hoisted(() => ({
@@ -28,7 +29,7 @@ function getRegisteredHandler(name: string) {
 function makeDeps(overrides: Partial<AutosaveManagerDeps> = {}): AutosaveManagerDeps {
   return {
     getCurrentData: () => ({ _fileType: 'charx', name: 'TestChar' }),
-    getCurrentFilePath: () => 'C:\\data\\test.charx',
+    getCurrentFilePath: () => makeTestPath('data', 'test.charx'),
     getMainWindow: () => null,
     saveCharx: vi.fn(),
     saveRisum: vi.fn(),
@@ -40,6 +41,12 @@ function makeDeps(overrides: Partial<AutosaveManagerDeps> = {}): AutosaveManager
     applyUpdates: vi.fn(),
     ...overrides,
   };
+}
+
+const TEST_ROOT = process.platform === 'win32' ? 'C:\\' : path.sep;
+
+function makeTestPath(...parts: string[]): string {
+  return path.join(TEST_ROOT, ...parts);
 }
 
 describe('autosave-manager', () => {
@@ -60,7 +67,7 @@ describe('autosave-manager', () => {
       const saveCharx = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'charx', name: 'MyChar' }),
-        getCurrentFilePath: () => 'C:\\data\\char.charx',
+        getCurrentFilePath: () => makeTestPath('data', 'char.charx'),
         saveCharx,
       });
       initAutosaveManager(d);
@@ -77,7 +84,7 @@ describe('autosave-manager', () => {
       const saveRisum = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'risum', name: 'MyModule' }),
-        getCurrentFilePath: () => 'C:\\data\\module.risum',
+        getCurrentFilePath: () => makeTestPath('data', 'module.risum'),
         saveRisum,
       });
       initAutosaveManager(d);
@@ -94,7 +101,7 @@ describe('autosave-manager', () => {
       const saveRisup = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'risup', name: 'MyPreset' }),
-        getCurrentFilePath: () => 'C:\\data\\preset.risup',
+        getCurrentFilePath: () => makeTestPath('data', 'preset.risup'),
         saveRisup,
         applyUpdates,
       });
@@ -112,7 +119,7 @@ describe('autosave-manager', () => {
       const saveCharx = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ name: 'Legacy' }),
-        getCurrentFilePath: () => 'C:\\data\\old.charx',
+        getCurrentFilePath: () => makeTestPath('data', 'old.charx'),
         saveCharx,
       });
       initAutosaveManager(d);
@@ -127,7 +134,7 @@ describe('autosave-manager', () => {
       const saveCharx = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'charx', name: 'MyChar' }),
-        getCurrentFilePath: () => 'C:\\data\\char.charx',
+        getCurrentFilePath: () => makeTestPath('data', 'char.charx'),
         saveCharx,
       });
       initAutosaveManager(d);
@@ -148,7 +155,7 @@ describe('autosave-manager', () => {
       const localWriteFileSync = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'charx', name: 'MyChar' }),
-        getCurrentFilePath: () => 'C:\\data\\char.charx',
+        getCurrentFilePath: () => makeTestPath('data', 'char.charx'),
         writeFileSync: localWriteFileSync,
       });
       initAutosaveManager(d);
@@ -166,7 +173,7 @@ describe('autosave-manager', () => {
       const localWriteFileSync = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'risum', name: 'MyModule' }),
-        getCurrentFilePath: () => 'C:\\data\\module.risum',
+        getCurrentFilePath: () => makeTestPath('data', 'module.risum'),
         writeFileSync: localWriteFileSync,
       });
       initAutosaveManager(d);
@@ -178,7 +185,7 @@ describe('autosave-manager', () => {
       const sidecarJson = JSON.parse(localWriteFileSync.mock.calls[0][1] as string);
       expect(sidecarJson).toEqual(
         expect.objectContaining({
-          sourceFilePath: 'C:\\data\\module.risum',
+          sourceFilePath: makeTestPath('data', 'module.risum'),
           sourceFileType: 'risum',
           autosavePath: expect.stringMatching(/_autosave_.*\.risum$/),
           savedAt: expect.any(String),
@@ -193,7 +200,7 @@ describe('autosave-manager', () => {
       const saveCharx = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'charx', name: 'C' }),
-        getCurrentFilePath: () => 'C:\\data\\test.charx',
+        getCurrentFilePath: () => makeTestPath('data', 'test.charx'),
         saveCharx,
         writeFileSync: localWriteFileSync,
       });
@@ -211,7 +218,7 @@ describe('autosave-manager', () => {
       const localWriteFileSync = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'charx', name: 'C' }),
-        getCurrentFilePath: () => 'C:\\data\\test.charx',
+        getCurrentFilePath: () => makeTestPath('data', 'test.charx'),
         writeFileSync: localWriteFileSync,
       });
       initAutosaveManager(d);
@@ -228,19 +235,20 @@ describe('autosave-manager', () => {
       const saveCharx = vi.fn();
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'charx', name: 'C' }),
-        getCurrentFilePath: () => 'C:\\data\\test.charx',
+        getCurrentFilePath: () => makeTestPath('data', 'test.charx'),
         saveCharx,
         writeFileSync: localWriteFileSync,
       });
       initAutosaveManager(d);
       const handler = getRegisteredHandler('autosave-file');
 
-      await handler({}, { name: 'New', _autosaveDir: 'C:\\custom' });
+      const customDir = makeTestPath('custom');
+      await handler({}, { name: 'New', _autosaveDir: customDir });
 
       const sidecarJson = JSON.parse(localWriteFileSync.mock.calls[0][1] as string);
       expect(sidecarJson.dirtyFields).not.toContain('_autosaveDir');
       expect(sidecarJson.dirtyFields).toContain('name');
-      expect(saveCharx).toHaveBeenCalledWith(expect.stringMatching(/^C:\\custom\\/), expect.anything());
+      expect((saveCharx.mock.calls[0][0] as string).startsWith(customDir + path.sep)).toBe(true);
     });
   });
 
@@ -260,7 +268,7 @@ describe('autosave-manager', () => {
       const unlinkSync = vi.fn();
 
       const d = makeDeps({
-        getCurrentFilePath: () => 'C:\\data\\char.charx',
+        getCurrentFilePath: () => makeTestPath('data', 'char.charx'),
         readdirSync,
         unlinkSync,
       });
@@ -287,7 +295,7 @@ describe('autosave-manager', () => {
       const unlinkSync = vi.fn();
 
       const d = makeDeps({
-        getCurrentFilePath: () => 'C:\\data\\mod.risum',
+        getCurrentFilePath: () => makeTestPath('data', 'mod.risum'),
         readdirSync,
         unlinkSync,
       });
@@ -309,7 +317,7 @@ describe('autosave-manager', () => {
       const unlinkSync = vi.fn();
 
       const d = makeDeps({
-        getCurrentFilePath: () => 'C:\\data\\preset.risup',
+        getCurrentFilePath: () => makeTestPath('data', 'preset.risup'),
         readdirSync,
         unlinkSync,
       });
@@ -333,14 +341,14 @@ describe('autosave-manager', () => {
       const unlinkSync = vi.fn();
 
       const d = makeDeps({
-        getCurrentFilePath: () => 'C:\\data\\char.charx',
+        getCurrentFilePath: () => makeTestPath('data', 'char.charx'),
         readdirSync,
         unlinkSync,
       });
       initAutosaveManager(d);
       const handler = getRegisteredHandler('cleanup-autosave');
 
-      handler(null, 'C:\\custom');
+      handler(null, makeTestPath('custom'));
 
       expect(unlinkSync).toHaveBeenCalledTimes(4);
     });
@@ -360,7 +368,7 @@ describe('autosave-manager', () => {
           name: 'Preset',
           promptTemplate: idBearingTemplate,
         }),
-        getCurrentFilePath: () => 'C:\\data\\preset.risup',
+        getCurrentFilePath: () => makeTestPath('data', 'preset.risup'),
         saveRisup,
         applyUpdates,
       });
@@ -390,19 +398,15 @@ describe('autosave-manager', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       try {
-        initAutosaveManager({
-          getCurrentData: () => currentData,
-          getCurrentFilePath: () => 'C:\\Users\\wodus\\Temp\\preset.risup',
-          getMainWindow: () => null,
-          saveCharx: vi.fn(),
-          saveRisum: vi.fn(),
-          saveRisup,
-          writeFileSync: localWriteFileSync,
-          mkdirSync: vi.fn(),
-          readdirSync: vi.fn().mockReturnValue([]),
-          unlinkSync: vi.fn(),
-          applyUpdates,
-        });
+        initAutosaveManager(
+          makeDeps({
+            getCurrentData: () => currentData,
+            getCurrentFilePath: () => makeTestPath('tmp', 'preset.risup'),
+            saveRisup,
+            writeFileSync: localWriteFileSync,
+            applyUpdates,
+          }),
+        );
 
         const autosaveHandler = getRegisteredHandler('autosave-file');
         const result = await autosaveHandler({}, { name: 'BadName', promptTemplate: '{"broken":true}' });
@@ -434,19 +438,15 @@ describe('autosave-manager', () => {
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       try {
-        initAutosaveManager({
-          getCurrentData: () => currentData,
-          getCurrentFilePath: () => 'C:\\Users\\wodus\\Temp\\preset.risup',
-          getMainWindow: () => null,
-          saveCharx: vi.fn(),
-          saveRisum: vi.fn(),
-          saveRisup,
-          writeFileSync: localWriteFileSync,
-          mkdirSync: vi.fn(),
-          readdirSync: vi.fn().mockReturnValue([]),
-          unlinkSync: vi.fn(),
-          applyUpdates,
-        });
+        initAutosaveManager(
+          makeDeps({
+            getCurrentData: () => currentData,
+            getCurrentFilePath: () => makeTestPath('tmp', 'preset.risup'),
+            saveRisup,
+            writeFileSync: localWriteFileSync,
+            applyUpdates,
+          }),
+        );
 
         const autosaveHandler = getRegisteredHandler('autosave-file');
         const result = await autosaveHandler({}, { name: 'BadName', localStopStrings: '["END", 42]' });
@@ -473,7 +473,7 @@ describe('autosave-manager', () => {
       try {
         const d = makeDeps({
           getCurrentData: () => ({ _fileType: 'charx', name: 'MyChar' }),
-          getCurrentFilePath: () => 'C:\\data\\char.charx',
+          getCurrentFilePath: () => makeTestPath('data', 'char.charx'),
           writeFileSync: vi.fn(() => {
             throw new Error('disk full');
           }),
@@ -504,7 +504,7 @@ describe('autosave-manager', () => {
     it('returns success with the autosave path', async () => {
       const d = makeDeps({
         getCurrentData: () => ({ _fileType: 'charx', name: 'Char' }),
-        getCurrentFilePath: () => 'C:\\data\\char.charx',
+        getCurrentFilePath: () => makeTestPath('data', 'char.charx'),
       });
       initAutosaveManager(d);
       const handler = getRegisteredHandler('autosave-file');

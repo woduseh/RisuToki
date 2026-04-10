@@ -2,8 +2,7 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parse, extractToggles, extractToggleValues, validateNesting, resolveInnerExpressions } from './cbs-parser';
-import { resolve as cbsResolve, generateCombinations } from './cbs-evaluator';
+import { handleCbsRoute } from './mcp-cbs-routes';
 import {
   buildFolderInfoMap,
   canonicalizeLorebookFolderRefs,
@@ -13,7 +12,6 @@ import {
   resolveLorebookFolderRef,
 } from './lorebook-folders';
 import { SEARCHABLE_TEXT_FIELDS, searchAllTextSurfaces, searchTextBlock } from './mcp-search';
-import type { ToggleMap } from './cbs-parser';
 import {
   parsePromptTemplate,
   serializePromptTemplate,
@@ -25,6 +23,34 @@ import {
   validateFormatingOrderText,
   type PromptItemModel,
 } from './risup-prompt-model';
+import { mcpSuccess, errorRecoveryMeta, type McpErrorInfo, type McpSuccessOptions } from './mcp-response-envelope';
+import { normalizeLF, extToMime, cloneJson } from './shared-utils';
+import {
+  replaceBodySchema,
+  blockReplaceBodySchema,
+  insertBodySchema,
+  batchReplaceBodySchema,
+  searchBodySchema,
+  searchAllBodySchema,
+  fieldBatchReadSchema,
+  fieldBatchWriteSchema,
+  externalDocumentBodySchema,
+  validateBody,
+  type ExternalDocumentBody,
+} from './mcp-request-schemas';
+import {
+  BOOLEAN_FIELD_NAMES,
+  FIELD_RESERVED_PATHS,
+  MAX_FIELD_BATCH,
+  NUMBER_FIELD_NAMES,
+  SUPPORTED_EXTERNAL_FILE_TYPES,
+  buildFieldBatchReadResults,
+  buildFieldReadResponsePayload,
+  getFieldAccessRules,
+  getStringMutationFieldStatus,
+  getUnknownFieldHint,
+  type SupportedFileType,
+} from './mcp-field-access';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -41,6 +67,40 @@ export interface CssCacheEntry {
   sections: Section[];
   prefix: string;
   suffix: string;
+}
+
+export interface McpPendingRecoveryStatus {
+  autosavePath: string;
+  dirtyFields: string[];
+  sourceFilePath: string;
+  staleWarning: string | null;
+}
+
+export interface McpLastRestoredStatus {
+  appVersion: string;
+  autosavePath: string;
+  dirtyFields: string[];
+  savedAt: string;
+  sourceFilePath: string | null;
+  sourceFileType: 'charx' | 'risum' | 'risup';
+}
+
+export interface McpRendererSessionStatus {
+  autosaveDir: string;
+  autosaveEnabled: boolean;
+  autosaveInterval: number;
+  dirtyFieldCount: number;
+  dirtyFields: string[];
+  documentSwitchInProgress: boolean;
+  hasUnsavedChanges: boolean;
+}
+
+export interface McpSessionStatus {
+  currentFilePath: string | null;
+  currentFileType: 'charx' | 'risum' | 'risup' | null;
+  lastRestored: McpLastRestoredStatus | null;
+  pendingRecovery: McpPendingRecoveryStatus | null;
+  renderer: McpRendererSessionStatus | null;
 }
 
 export interface McpApiDeps {
@@ -80,6 +140,9 @@ export interface McpApiDeps {
 
   // skills directory
   getSkillsDir: () => string;
+
+  // session metadata
+  getSessionStatus?: () => Promise<McpSessionStatus> | McpSessionStatus;
 }
 
 export interface McpApiServer {
@@ -93,42 +156,7 @@ export interface McpApiServer {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Normalize CRLF → LF for consistent matching across all replace/insert/search ops. */
-function normalizeLF(s: string): string {
-  return s.indexOf('\r') >= 0 ? s.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : s;
-}
-
-const MIME_MAP: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  webp: 'image/webp',
-  gif: 'image/gif',
-  svg: 'image/svg+xml',
-  avif: 'image/avif',
-  mp3: 'audio/mpeg',
-  ogg: 'audio/ogg',
-  wav: 'audio/wav',
-  flac: 'audio/flac',
-  m4a: 'audio/mp4',
-  aac: 'audio/aac',
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  mov: 'video/quicktime',
-  woff: 'font/woff',
-  woff2: 'font/woff2',
-  ttf: 'font/ttf',
-  otf: 'font/otf',
-  css: 'text/css',
-};
-
-function extToMime(ext: string): string {
-  return MIME_MAP[ext.toLowerCase()] || 'application/octet-stream';
-}
-
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
-
-type SupportedFileType = 'charx' | 'risum' | 'risup';
 
 export interface RendererOpenFileRequest {
   filePath: string;
@@ -147,141 +175,6 @@ export interface RendererOpenFileResponse {
   name?: string;
   suggestion?: string;
 }
-
-const CORE_FIELD_NAMES = [
-  'name',
-  'description',
-  'firstMessage',
-  'alternateGreetings',
-  'globalNote',
-  'css',
-  'defaultVariables',
-  'triggerScripts',
-  'lua',
-];
-
-const CHARX_FIELD_NAMES = [
-  'personality',
-  'scenario',
-  'creatorcomment',
-  'tags',
-  'exampleMessage',
-  'systemPrompt',
-  'creator',
-  'characterVersion',
-  'nickname',
-  'source',
-  'additionalText',
-  'license',
-];
-
-const CHARX_READ_ONLY_FIELD_NAMES = ['creationDate', 'modificationDate'];
-
-const CHARX_DEPRECATED_FIELD_NAMES = [
-  'personality',
-  'scenario',
-  'nickname',
-  'source',
-  'additionalText',
-  'tags',
-  'license',
-  'groupOnlyGreetings',
-];
-
-const RISUM_FIELD_NAMES = [
-  'cjs',
-  'lowLevelAccess',
-  'hideIcon',
-  'backgroundEmbedding',
-  'moduleNamespace',
-  'customModuleToggle',
-  'mcpUrl',
-  'moduleName',
-  'moduleDescription',
-];
-
-const RISUM_READ_ONLY_FIELD_NAMES = ['moduleId'];
-
-const RISUP_FIELD_NAMES = [
-  'mainPrompt',
-  'jailbreak',
-  'temperature',
-  'maxContext',
-  'maxResponse',
-  'frequencyPenalty',
-  'presencePenalty',
-  'aiModel',
-  'subModel',
-  'apiType',
-  'promptPreprocess',
-  'promptTemplate',
-  'presetBias',
-  'formatingOrder',
-  'presetImage',
-  'top_p',
-  'top_k',
-  'repetition_penalty',
-  'min_p',
-  'top_a',
-  'reasonEffort',
-  'thinkingTokens',
-  'thinkingType',
-  'adaptiveThinkingEffort',
-  'useInstructPrompt',
-  'instructChatTemplate',
-  'JinjaTemplate',
-  'customPromptTemplateToggle',
-  'templateDefaultVariables',
-  'moduleIntergration',
-  'jsonSchemaEnabled',
-  'jsonSchema',
-  'strictJsonSchema',
-  'extractJson',
-  'groupTemplate',
-  'groupOtherBotRole',
-  'autoSuggestPrompt',
-  'autoSuggestPrefix',
-  'autoSuggestClean',
-  'localStopStrings',
-  'outputImageModal',
-  'verbosity',
-  'fallbackWhenBlankResponse',
-  'systemContentReplacement',
-  'systemRoleReplacement',
-];
-
-const ARRAY_FIELD_NAMES = ['alternateGreetings', 'tags', 'source'];
-const BOOLEAN_FIELD_NAMES = [
-  'lowLevelAccess',
-  'hideIcon',
-  'promptPreprocess',
-  'useInstructPrompt',
-  'jsonSchemaEnabled',
-  'strictJsonSchema',
-  'autoSuggestClean',
-  'outputImageModal',
-  'fallbackWhenBlankResponse',
-];
-const NUMBER_FIELD_NAMES = [
-  'temperature',
-  'maxContext',
-  'maxResponse',
-  'frequencyPenalty',
-  'presencePenalty',
-  'top_p',
-  'top_k',
-  'repetition_penalty',
-  'min_p',
-  'top_a',
-  'reasonEffort',
-  'thinkingTokens',
-  'verbosity',
-  'creationDate',
-  'modificationDate',
-];
-const FIELD_RESERVED_PATHS = ['batch', 'batch-write', 'export'];
-const MAX_FIELD_BATCH = 20;
-const SUPPORTED_EXTERNAL_FILE_TYPES = new Set<SupportedFileType>(['charx', 'risum', 'risup']);
 
 // In-memory snapshot storage for field rollback (cleared on file reload)
 interface FieldSnapshot {
@@ -464,14 +357,7 @@ function getRisupStructuredFieldSuggestion(fieldName: string): string {
         : 'localStopStrings는 문자열만 포함한 JSON 배열 문자열이어야 합니다.';
 }
 
-interface McpErrorInfo {
-  action: string;
-  target: string;
-  message: string;
-  suggestion?: string;
-  details?: Record<string, unknown>;
-  rejected?: boolean;
-}
+type McpNoOpInfo = Omit<McpErrorInfo, 'rejected'>;
 
 function jsonMcpError(
   res: http.ServerResponse,
@@ -480,11 +366,14 @@ function jsonMcpError(
   broadcastStatus: (payload: Record<string, unknown>) => void,
   error?: unknown,
 ): void {
+  const recovery = errorRecoveryMeta(info.target, status);
   const payload: Record<string, unknown> = {
     action: info.action,
     details: info.details,
     error: info.message,
+    next_actions: recovery.next_actions,
     rejected: !!info.rejected,
+    retryable: recovery.retryable,
     status,
     suggestion: info.suggestion,
     target: info.target,
@@ -505,6 +394,23 @@ function jsonMcpError(
     target: info.target,
   });
   jsonRes(res, payload, status);
+}
+
+function jsonMcpNoOp(res: http.ServerResponse, info: McpNoOpInfo, extra: Record<string, unknown> = {}): void {
+  const recovery = errorRecoveryMeta(info.target, 200);
+  jsonRes(res, {
+    ...extra,
+    action: info.action,
+    details: info.details,
+    error: info.message,
+    message: info.message,
+    next_actions: recovery.next_actions,
+    retryable: false,
+    status: 200,
+    success: false,
+    suggestion: info.suggestion,
+    target: info.target,
+  });
 }
 
 async function readJsonBody(
@@ -626,89 +532,6 @@ function projectLorebookEntryForResponse(
     }
   }
   return projected;
-}
-
-interface DocumentTypeFlags {
-  fileType: SupportedFileType;
-  isCharx: boolean;
-  isRisum: boolean;
-  isRisup: boolean;
-}
-
-interface FieldAccessRules extends DocumentTypeFlags {
-  allowedFields: string[];
-  readOnlyFields: string[];
-}
-
-function getDocumentTypeFlags(currentData: Record<string, unknown>): DocumentTypeFlags {
-  const rawFileType = currentData._fileType;
-  const fileType: SupportedFileType = rawFileType === 'risum' || rawFileType === 'risup' ? rawFileType : 'charx';
-  return {
-    fileType,
-    isCharx: fileType === 'charx',
-    isRisum: fileType === 'risum',
-    isRisup: fileType === 'risup',
-  };
-}
-
-function getFieldAccessRules(currentData: Record<string, unknown>): FieldAccessRules {
-  const flags = getDocumentTypeFlags(currentData);
-  return {
-    ...flags,
-    allowedFields: [
-      ...CORE_FIELD_NAMES,
-      ...(flags.isCharx ? [...CHARX_FIELD_NAMES, ...CHARX_READ_ONLY_FIELD_NAMES] : []),
-      ...(flags.isRisum ? [...RISUM_FIELD_NAMES, ...RISUM_READ_ONLY_FIELD_NAMES] : []),
-      ...(flags.isRisup ? RISUP_FIELD_NAMES : []),
-    ],
-    readOnlyFields: [
-      ...(flags.isRisum ? RISUM_READ_ONLY_FIELD_NAMES : []),
-      ...(flags.isCharx ? [...CHARX_READ_ONLY_FIELD_NAMES, ...CHARX_DEPRECATED_FIELD_NAMES] : []),
-    ],
-  };
-}
-
-function getUnknownFieldHint(rules: Pick<FieldAccessRules, 'isRisum' | 'isRisup'>): string {
-  if (rules.isRisum) return '(risum 필드 포함)';
-  if (rules.isRisup) return '(risup 프리셋 필드 포함)';
-  return '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
-}
-
-function buildFieldReadResponsePayload(
-  currentData: Record<string, unknown>,
-  fieldName: string,
-  deps: Pick<McpApiDeps, 'stringifyTriggerScripts'>,
-): Record<string, unknown> {
-  if (fieldName === 'triggerScripts') {
-    return {
-      field: fieldName,
-      content: deps.stringifyTriggerScripts(currentData.triggerScripts),
-    };
-  }
-  if (ARRAY_FIELD_NAMES.includes(fieldName)) {
-    return { field: fieldName, content: currentData[fieldName] || [], type: 'array' };
-  }
-  if (BOOLEAN_FIELD_NAMES.includes(fieldName)) {
-    return { field: fieldName, content: !!currentData[fieldName], type: 'boolean' };
-  }
-  if (NUMBER_FIELD_NAMES.includes(fieldName)) {
-    return { field: fieldName, content: currentData[fieldName] ?? 0, type: 'number' };
-  }
-  return { field: fieldName, content: currentData[fieldName] || '' };
-}
-
-function buildFieldBatchReadResults(
-  currentData: Record<string, unknown>,
-  fields: string[],
-  deps: Pick<McpApiDeps, 'stringifyTriggerScripts'>,
-): Record<string, unknown>[] {
-  const rules = getFieldAccessRules(currentData);
-  return fields.map((fieldName) => {
-    if (!rules.allowedFields.includes(fieldName)) {
-      return { field: fieldName, error: `Unknown field: ${fieldName}` };
-    }
-    return buildFieldReadResponsePayload(currentData, fieldName, deps);
-  });
 }
 
 function buildLorebookListResponse(rawEntries: Record<string, unknown>[], url: URL): Record<string, unknown> {
@@ -932,16 +755,53 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     jsonMcpError(res, status, info, broadcastStatus, error);
   }
 
-  async function resolveExternalDocumentRequest<TBody extends Record<string, any> = Record<string, any>>(
+  function mcpNoOp(res: http.ServerResponse, info: McpNoOpInfo, extra: Record<string, unknown> = {}): void {
+    jsonMcpNoOp(res, info, extra);
+  }
+
+  /**
+   * Parse a raw request body with a Zod schema, returning typed data or
+   * sending an mcpError and returning null.
+   */
+  function parseBody<T>(
+    res: http.ServerResponse,
+    body: Record<string, unknown>,
+    schema: import('zod').ZodType<T>,
+    meta: { action: string; target: string; suggestion?: string },
+  ): T | null {
+    const result = validateBody(body, schema);
+    if (result.success) return result.data;
+    const fieldHint = result.path ? ` (at "${result.path}")` : '';
+    mcpError(res, 400, {
+      action: meta.action,
+      target: meta.target,
+      message: `${result.error}${fieldHint}`,
+      suggestion: meta.suggestion ?? '요청 본문의 구조와 필드 타입을 다시 확인하세요.',
+    });
+    return null;
+  }
+
+  // Shorthand to emit an MCP success response with envelope enrichment
+  function jsonResSuccess(res: http.ServerResponse, payload: Record<string, unknown>, opts: McpSuccessOptions): void {
+    jsonRes(res, mcpSuccess(payload, opts));
+  }
+
+  async function resolveExternalDocumentRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
     routePath: string,
     action: string,
     target: string,
-  ): Promise<{ body: TBody; filePath: string; fileType: SupportedFileType } | null> {
-    const body = await readJsonBody(req, res, routePath, broadcastStatus);
-    if (!body) return null;
-    const rawPath = typeof body.file_path === 'string' ? body.file_path.trim() : '';
+  ): Promise<{ body: ExternalDocumentBody; filePath: string; fileType: SupportedFileType } | null> {
+    const rawBody = await readJsonBody(req, res, routePath, broadcastStatus);
+    if (!rawBody) return null;
+    const parsed = parseBody(res, rawBody, externalDocumentBodySchema, {
+      action,
+      target,
+      suggestion: '절대 경로의 file_path를 요청 본문에 포함하세요.',
+    });
+    if (!parsed) return null;
+    const rawPath = parsed.file_path.trim();
     if (!rawPath) {
       mcpError(res, 400, {
         action,
@@ -1010,20 +870,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     }
 
     return {
-      body: body as TBody,
+      body: parsed,
       filePath,
       fileType,
     };
   }
 
-  async function readProbeDocumentRequest<TBody extends Record<string, any> = Record<string, any>>(
+  async function readProbeDocumentRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
     routePath: string,
     action: string,
     target: string,
-  ): Promise<{ body: TBody; data: Record<string, unknown>; filePath: string; fileType: SupportedFileType } | null> {
-    const request = await resolveExternalDocumentRequest<TBody>(req, res, routePath, action, target);
+  ): Promise<{
+    body: ExternalDocumentBody;
+    data: Record<string, unknown>;
+    filePath: string;
+    fileType: SupportedFileType;
+  } | null> {
+    const request = await resolveExternalDocumentRequest(req, res, routePath, action, target);
     if (!request) return null;
 
     try {
@@ -1051,7 +916,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
   const server = http.createServer(async (req, res) => {
     // Auth check
     if (req.headers.authorization !== `Bearer ${token}`) {
-      return jsonRes(res, { error: 'Unauthorized' }, 401);
+      return mcpError(res, 401, {
+        action: 'authenticate request',
+        target: 'request:auth',
+        message: 'Unauthorized',
+        suggestion: '유효한 TOKI_TOKEN으로 Authorization Bearer 헤더를 다시 보내세요.',
+      });
     }
     const url = new URL(req.url!, 'http://127.0.0.1');
     const parts = url.pathname.split('/').filter(Boolean);
@@ -1086,14 +956,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `probe:field:${fieldName}`,
           });
         }
-        return jsonRes(res, buildFieldReadResponsePayload(probe.data, fieldName, deps));
+        const probePayload = buildFieldReadResponsePayload(probe.data, fieldName, deps);
+        return jsonResSuccess(res, probePayload, {
+          toolName: 'probe_field',
+          summary: `Probed field "${fieldName}" from external file`,
+        });
       }
 
       // ----------------------------------------------------------------
       // POST /probe/field/batch — read multiple fields from an unopened file
       // ----------------------------------------------------------------
       if (parts[0] === 'probe' && parts[1] === 'field' && parts[2] === 'batch' && !parts[3] && req.method === 'POST') {
-        const probe = await readProbeDocumentRequest<{ file_path?: string; fields?: unknown }>(
+        const probe = await readProbeDocumentRequest(
           req,
           res,
           'probe/field/batch',
@@ -1128,7 +1002,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const results = buildFieldBatchReadResults(probe.data, fields, deps);
-        return jsonRes(res, { count: results.length, fields: results });
+        return jsonResSuccess(
+          res,
+          { count: results.length, fields: results },
+          {
+            toolName: 'probe_field_batch',
+            summary: `Probed ${results.length} field(s) from external file`,
+            artifacts: { count: results.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -1137,7 +1019,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'probe' && parts[1] === 'lorebook' && !parts[2] && req.method === 'POST') {
         const probe = await readProbeDocumentRequest(req, res, 'probe/lorebook', 'probe lorebook', 'probe:lorebook');
         if (!probe) return;
-        return jsonRes(res, buildLorebookListResponse((probe.data.lorebook as Record<string, unknown>[]) || [], url));
+        const probeLbPayload = buildLorebookListResponse((probe.data.lorebook as Record<string, unknown>[]) || [], url);
+        return jsonResSuccess(res, probeLbPayload, {
+          toolName: 'probe_lorebook',
+          summary: `Probed lorebook from external file (${(probeLbPayload as any).count ?? 0} entries)`,
+          artifacts: { count: (probeLbPayload as any).count ?? 0 },
+        });
       }
 
       // ----------------------------------------------------------------
@@ -1146,7 +1033,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'probe' && parts[1] === 'regex' && !parts[2] && req.method === 'POST') {
         const probe = await readProbeDocumentRequest(req, res, 'probe/regex', 'probe regex', 'probe:regex');
         if (!probe) return;
-        return jsonRes(res, buildRegexListResponse((probe.data.regex as Record<string, unknown>[]) || []));
+        const probeRxPayload = buildRegexListResponse((probe.data.regex as Record<string, unknown>[]) || []);
+        return jsonResSuccess(res, probeRxPayload, {
+          toolName: 'probe_regex',
+          summary: `Probed regex from external file (${(probeRxPayload as any).count ?? 0} entries)`,
+          artifacts: { count: (probeRxPayload as any).count ?? 0 },
+        });
       }
 
       // ----------------------------------------------------------------
@@ -1155,17 +1047,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'probe' && parts[1] === 'lua' && !parts[2] && req.method === 'POST') {
         const probe = await readProbeDocumentRequest(req, res, 'probe/lua', 'probe lua', 'probe:lua');
         if (!probe) return;
-        return jsonRes(res, buildLuaListResponse(String(probe.data.lua || ''), deps.parseLuaSections));
+        const probeLuaPayload = buildLuaListResponse(String(probe.data.lua || ''), deps.parseLuaSections);
+        return jsonResSuccess(res, probeLuaPayload, {
+          toolName: 'probe_lua',
+          summary: `Probed Lua from external file (${(probeLuaPayload as any).count ?? 0} sections)`,
+          artifacts: { count: (probeLuaPayload as any).count ?? 0 },
+        });
       }
 
       if (req.method === 'POST' && url.pathname === '/open-file') {
-        const request = await resolveExternalDocumentRequest<{ file_path?: string; save_current?: unknown }>(
-          req,
-          res,
-          'open-file',
-          'open file',
-          'open:file',
-        );
+        const request = await resolveExternalDocumentRequest(req, res, 'open-file', 'open file', 'open:file');
         if (!request) return;
 
         if (request.body.save_current !== undefined && typeof request.body.save_current !== 'boolean') {
@@ -1206,14 +1097,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: 'open:file',
             });
           }
-          return jsonRes(res, {
-            file_path: response.filePath || request.filePath,
-            file_type: response.fileType || request.fileType,
-            name: response.name || path.basename(request.filePath),
-            already_open: response.alreadyOpen === true,
-            switched: response.alreadyOpen !== true,
-            save_current: request.body.save_current === true,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              file_path: response.filePath || request.filePath,
+              file_type: response.fileType || request.fileType,
+              name: response.name || path.basename(request.filePath),
+              already_open: response.alreadyOpen === true,
+              switched: response.alreadyOpen !== true,
+              save_current: request.body.save_current === true,
+            },
+            {
+              toolName: 'open_file',
+              summary: `Opened ${response.name || path.basename(request.filePath)}${response.alreadyOpen ? ' (already open)' : ''}`,
+              artifacts: {
+                filePath: response.filePath || request.filePath,
+                alreadyOpen: response.alreadyOpen === true,
+              },
+            },
+          );
         } catch (error) {
           return mcpError(
             res,
@@ -1231,9 +1133,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
       }
 
+      const isSessionStatusRoute = parts[0] === 'session' && parts[1] === 'status' && !parts[2] && req.method === 'GET';
       const currentData = deps.getCurrentData();
-      if (!currentData) {
-        return jsonRes(res, { error: 'No file open' }, 400);
+      if (!currentData && !isSessionStatusRoute) {
+        return mcpError(res, 400, {
+          action: 'require current document',
+          target: 'document:current',
+          message: 'No file open',
+          suggestion: 'open_file를 사용하거나 에디터에서 파일을 먼저 연 뒤 다시 시도하세요.',
+        });
       }
 
       // ----------------------------------------------------------------
@@ -1388,7 +1296,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
         }
 
-        return jsonRes(res, { fileType, fields });
+        return jsonResSuccess(
+          res,
+          { fileType, fields },
+          {
+            toolName: 'list_fields',
+            summary: `Listed ${fields.length} fields (${fileType})`,
+            artifacts: { count: fields.length, fileType },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -1409,7 +1325,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (req.method === 'GET') {
-          return jsonRes(res, buildFieldReadResponsePayload(currentData, fieldName, deps));
+          const readPayload = buildFieldReadResponsePayload(currentData, fieldName, deps);
+          return jsonResSuccess(res, readPayload, {
+            toolName: 'read_field',
+            summary: `Read field "${fieldName}"`,
+            artifacts: { fieldName },
+          });
         }
 
         if (req.method === 'POST') {
@@ -1512,11 +1433,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
                 deps.stringifyTriggerScripts(currentData.triggerScripts),
               );
               deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-              return jsonRes(res, {
-                success: true,
-                field: fieldName,
-                size: deps.stringifyTriggerScripts(currentData.triggerScripts).length,
-              });
+              const tsSize = deps.stringifyTriggerScripts(currentData.triggerScripts).length;
+              return jsonResSuccess(
+                res,
+                {
+                  success: true,
+                  field: fieldName,
+                  size: tsSize,
+                },
+                {
+                  toolName: 'write_field',
+                  summary: `Updated triggerScripts (${tsSize} chars)`,
+                  artifacts: { fieldName, size: tsSize },
+                },
+              );
             }
             currentData[fieldName] = content;
             if (fieldName === 'lua') {
@@ -1529,7 +1459,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             }
             logMcpMutation('update field', `field:${fieldName}`, { oldSize, newSize });
             deps.broadcastToAll('data-updated', fieldName, content);
-            return jsonRes(res, { success: true, field: fieldName, size: content.length });
+            return jsonResSuccess(
+              res,
+              { success: true, field: fieldName, size: content.length },
+              {
+                toolName: 'write_field',
+                summary: `Updated "${fieldName}" (${oldSize}→${content.length} chars)`,
+                artifacts: { fieldName, oldSize, newSize: content.length },
+              },
+            );
           } else {
             return mcpError(res, 403, {
               action: 'update field',
@@ -1548,20 +1486,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'field' && parts[1] === 'batch' && !parts[2] && req.method === 'POST') {
         const body = await readJsonBody(req, res, 'field/batch', broadcastStatus);
         if (!body) return;
-        const fields: string[] = body.fields;
-        if (!Array.isArray(fields) || fields.length === 0) {
+        const parsed = parseBody(res, body, fieldBatchReadSchema, {
+          action: 'read field batch',
+          target: 'field:batch',
+          suggestion: 'fields 를 문자열 배열로 전달하세요. 예: { "fields": ["name", "description"] }',
+        });
+        if (!parsed) return;
+        const fields = parsed.fields;
+        if (fields.length === 0) {
           return mcpError(res, 400, {
             action: 'read field batch',
             message: 'fields must be a non-empty string array',
             suggestion: 'fields 를 문자열 배열로 전달하세요. 예: { "fields": ["name", "description"] }',
-            target: 'field:batch',
-          });
-        }
-        if (!fields.every((f: unknown) => typeof f === 'string')) {
-          return mcpError(res, 400, {
-            action: 'read field batch',
-            message: 'fields must be a non-empty string array — every element must be a string',
-            suggestion: 'fields 배열의 모든 항목이 문자열인지 확인하세요. 예: { "fields": ["name", "description"] }',
             target: 'field:batch',
           });
         }
@@ -1574,7 +1510,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const results = buildFieldBatchReadResults(currentData, fields, deps);
-        return jsonRes(res, { count: results.length, fields: results });
+        return jsonResSuccess(
+          res,
+          { count: results.length, fields: results },
+          {
+            toolName: 'read_field_batch',
+            summary: `Read ${results.length} fields`,
+            artifacts: { count: results.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -1583,8 +1527,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'field' && parts[1] === 'batch-write' && !parts[2] && req.method === 'POST') {
         const body = await readJsonBody(req, res, 'field/batch-write', broadcastStatus);
         if (!body) return;
-        const entries: Array<{ field: string; content: unknown }> = body.entries;
-        if (!Array.isArray(entries) || entries.length === 0) {
+        const parsed = parseBody(res, body, fieldBatchWriteSchema, {
+          action: 'batch write field',
+          target: 'field:batch-write',
+          suggestion:
+            'entries 를 { field, content } 객체 배열로 전달하세요. 예: { "entries": [{ "field": "name", "content": "새 이름" }] }',
+        });
+        if (!parsed) return;
+        const entries = parsed.entries;
+        if (entries.length === 0) {
           return mcpError(res, 400, {
             action: 'batch write field',
             message: 'entries must be a non-empty array of {field, content}',
@@ -1593,32 +1544,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: 'field:batch-write',
           });
         }
-        const MAX_BATCH_WRITE = 20;
-        if (entries.length > MAX_BATCH_WRITE) {
+        if (entries.length > MAX_FIELD_BATCH) {
           return mcpError(res, 400, {
             action: 'batch write field',
-            message: `Maximum ${MAX_BATCH_WRITE} entries per batch`,
-            suggestion: `요청을 ${MAX_BATCH_WRITE}개 이하의 항목으로 나누어 여러 번 호출하세요.`,
+            message: `Maximum ${MAX_FIELD_BATCH} entries per batch`,
+            suggestion: `요청을 ${MAX_FIELD_BATCH}개 이하의 항목으로 나누어 여러 번 호출하세요.`,
             target: 'field:batch-write',
           });
         }
         // Surface-aware validation (mirrors single-field POST /field/:name)
-        const isRisum = (currentData._fileType || 'charx') === 'risum';
-        const isRisup = (currentData._fileType || 'charx') === 'risup';
-        const isCharx = !isRisum && !isRisup;
-        const charxReadOnlyFields = ['creationDate', 'modificationDate'];
-        const risumReadOnlyFields = ['moduleId'];
-        const readOnlyFields = [...(isCharx ? charxReadOnlyFields : []), ...(isRisum ? risumReadOnlyFields : [])];
-        const charxDeprecatedFields = [
-          'personality',
-          'scenario',
-          'nickname',
-          'source',
-          'additionalText',
-          'tags',
-          'license',
-          'groupOnlyGreetings',
-        ];
+        const rules = getFieldAccessRules(currentData);
+        const readOnlyFields = rules.readOnlyFields;
+        const deprecatedFields = rules.deprecatedFields;
         // Exclude complex fields that need special handling
         const excludedFields = ['triggerScripts', 'alternateGreetings', 'lorebook'];
         // Validate all entries before asking for confirmation
@@ -1629,100 +1566,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           newSize: number;
           type: string;
         }> = [];
-        const boolFields = [
-          'lowLevelAccess',
-          'hideIcon',
-          'promptPreprocess',
-          'useInstructPrompt',
-          'jsonSchemaEnabled',
-          'strictJsonSchema',
-          'autoSuggestClean',
-          'outputImageModal',
-          'fallbackWhenBlankResponse',
-        ];
-        const numFields = [
-          'temperature',
-          'maxContext',
-          'maxResponse',
-          'frequencyPenalty',
-          'presencePenalty',
-          'top_p',
-          'top_k',
-          'repetition_penalty',
-          'min_p',
-          'top_a',
-          'reasonEffort',
-          'thinkingTokens',
-          'verbosity',
-        ];
+        const boolFields = BOOLEAN_FIELD_NAMES;
+        const numFields = NUMBER_FIELD_NAMES;
         const jsonFields = ['promptTemplate', 'presetBias', 'formatingOrder', 'localStopStrings'];
-        // Surface-aware writable set — only fields valid on the current _fileType
-        const baseWritable = ['name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'lua'];
-        const charxOnlyWritable = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
-        const risumOnlyWritable = [
-          'cjs',
-          'lowLevelAccess',
-          'hideIcon',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-        ];
-        const risupOnlyWritable = [
-          'mainPrompt',
-          'jailbreak',
-          'temperature',
-          'maxContext',
-          'maxResponse',
-          'frequencyPenalty',
-          'presencePenalty',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'promptPreprocess',
-          'promptTemplate',
-          'presetBias',
-          'formatingOrder',
-          'presetImage',
-          'top_p',
-          'top_k',
-          'repetition_penalty',
-          'min_p',
-          'top_a',
-          'reasonEffort',
-          'thinkingTokens',
-          'thinkingType',
-          'adaptiveThinkingEffort',
-          'useInstructPrompt',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'customPromptTemplateToggle',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchemaEnabled',
-          'jsonSchema',
-          'strictJsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'autoSuggestClean',
-          'localStopStrings',
-          'outputImageModal',
-          'verbosity',
-          'fallbackWhenBlankResponse',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        const surfaceWritable = new Set([
-          ...baseWritable,
-          ...(isCharx ? charxOnlyWritable : []),
-          ...(isRisum ? risumOnlyWritable : []),
-          ...(isRisup ? risupOnlyWritable : []),
-        ]);
+        const surfaceWritable = new Set(
+          rules.allowedFields.filter(
+            (field) =>
+              !readOnlyFields.includes(field) && !deprecatedFields.includes(field) && !excludedFields.includes(field),
+          ),
+        );
 
         for (const entry of entries) {
           if (!entry.field || entry.content === undefined) {
@@ -1741,7 +1593,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${entry.field}`,
             });
           }
-          if (isCharx && charxDeprecatedFields.includes(entry.field)) {
+          if (deprecatedFields.includes(entry.field)) {
             return mcpError(res, 400, {
               action: 'batch write field',
               message: `"${entry.field}" 필드는 charx에서 읽기 전용(deprecated)입니다.`,
@@ -1758,14 +1610,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
           if (!surfaceWritable.has(entry.field)) {
-            const hint = isRisum
-              ? '(risum 필드 포함)'
-              : isRisup
-                ? '(risup 프리셋 필드 포함)'
-                : '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
             return mcpError(res, 400, {
               action: 'batch write field',
-              message: `Unknown field: ${entry.field} ${hint}`,
+              message: `Unknown field: ${entry.field} ${getUnknownFieldHint(rules)}`,
               suggestion: 'list_fields 또는 GET /field/batch 로 허용된 필드를 다시 확인하세요.',
               target: `field:${entry.field}`,
             });
@@ -1859,7 +1706,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             count: results.length,
             fields: results.map((r) => r.field),
           });
-          return jsonRes(res, { success: true, count: results.length, results });
+          return jsonResSuccess(
+            res,
+            { success: true, count: results.length, results },
+            {
+              toolName: 'write_field_batch',
+              summary: `Batch-wrote ${results.length} fields`,
+              artifacts: { count: results.length, fields: results.map((r) => r.field) },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch write field',
@@ -1876,47 +1731,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'replace' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        // Reuse field validation from the main field handler
-        const stringFieldsForReplace = [
-          'name',
-          'description',
-          'firstMessage',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'lua',
-          'creatorcomment',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
-          'cjs',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-          'mainPrompt',
-          'jailbreak',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        const readOnlyFieldsReplace = ['creationDate', 'modificationDate', 'moduleId'];
-        if (readOnlyFieldsReplace.includes(fieldName)) {
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        if (mutationFieldStatus === 'read-only') {
           return mcpError(res, 400, {
             action: 'replace in field',
             message: `"${fieldName}" 필드는 읽기 전용입니다.`,
@@ -1924,7 +1740,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `field:${fieldName}`,
           });
         }
-        if (!stringFieldsForReplace.includes(fieldName)) {
+        if (mutationFieldStatus !== 'ok') {
           return mcpError(res, 400, {
             action: 'replace in field',
             message: `"${fieldName}" 필드는 문자열 치환을 지원하지 않습니다.`,
@@ -1935,23 +1751,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `field/${fieldName}/replace`, broadcastStatus);
         if (!body) return;
-        if (!body.find) {
-          return mcpError(res, 400, {
-            action: 'replace in field',
-            message: 'Missing "find"',
-            suggestion: 'find 문자열 또는 정규식을 포함한 요청 본문을 보내세요.',
-            target: `field:${fieldName}`,
-          });
-        }
+        const parsed = parseBody(res, body, replaceBodySchema, {
+          action: 'replace in field',
+          target: `field:${fieldName}`,
+          suggestion: 'find 문자열 또는 정규식을 포함한 요청 본문을 보내세요.',
+        });
+        if (!parsed) return;
         // Acquire mutex to prevent parallel writes on same field
         const release = await acquireFieldMutex(fieldName);
         try {
           const content: string = normalizeLF(currentData[fieldName] || '');
-          const findStr: string = normalizeLF(body.find);
-          const replaceStr: string = body.replace !== undefined ? normalizeLF(body.replace) : '';
-          const useRegex = !!body.regex;
-          const flags: string = body.flags || 'g';
-          const dryRun = !!body.dry_run;
+          const findStr: string = normalizeLF(parsed.find);
+          const replaceStr: string = parsed.replace !== undefined ? normalizeLF(parsed.replace) : '';
+          const useRegex = !!parsed.regex;
+          const flags: string = parsed.flags || 'g';
+          const dryRun = !!(parsed.dry_run ?? parsed.dryRun);
           let newContent: string;
           let matchCount: number;
 
@@ -1985,12 +1799,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newContent = content.split(findStr).join(replaceStr);
           }
           if (matchCount === 0) {
-            return jsonRes(res, {
-              success: false,
-              message: '일치하는 항목 없음',
-              matchCount: 0,
-              ...(dryRun ? { dryRun: true } : {}),
-            });
+            return mcpNoOp(
+              res,
+              {
+                action: 'replace in field',
+                message: '일치하는 항목 없음',
+                suggestion:
+                  'read_field 또는 search_in_field로 현재 내용을 다시 확인하고 find/regex/flags를 조정하세요.',
+                target: `field:${fieldName}`,
+              },
+              {
+                matchCount: 0,
+                ...(dryRun ? { dryRun: true } : {}),
+              },
+            );
           }
 
           // Dry-run: return match preview without modifying data
@@ -2005,14 +1827,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               );
               return { position: mp.position, match: mp.match.substring(0, 200), before, after };
             });
-            return jsonRes(res, {
-              dryRun: true,
-              field: fieldName,
-              matchCount,
-              fieldLength: content.length,
-              previews,
-              newSize: newContent.length,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                dryRun: true,
+                field: fieldName,
+                matchCount,
+                fieldLength: content.length,
+                previews,
+                newSize: newContent.length,
+              },
+              {
+                toolName: 'replace_in_field',
+                summary: `Dry-run: ${matchCount} match(es) in "${fieldName}"`,
+                artifacts: { matchCount, fieldLength: content.length },
+              },
+            );
           }
 
           const allowed = await deps.askRendererConfirm(
@@ -2031,13 +1861,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             }
             logMcpMutation('replace in field', `field:${fieldName}`, { matchCount });
             deps.broadcastToAll('data-updated', fieldName, newContent);
-            return jsonRes(res, {
-              success: true,
-              field: fieldName,
-              matchCount,
-              oldSize: content.length,
-              newSize: newContent.length,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                field: fieldName,
+                matchCount,
+                oldSize: content.length,
+                newSize: newContent.length,
+              },
+              {
+                toolName: 'replace_in_field',
+                summary: `Replaced ${matchCount} match(es) in "${fieldName}" (${content.length}→${newContent.length})`,
+                artifacts: { fieldName, matchCount, oldSize: content.length, newSize: newContent.length },
+              },
+            );
           } else {
             return mcpError(res, 403, {
               action: 'replace in field',
@@ -2057,46 +1895,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'block-replace' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const stringFieldsForReplace = [
-          'name',
-          'description',
-          'firstMessage',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'lua',
-          'creatorcomment',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
-          'cjs',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-          'mainPrompt',
-          'jailbreak',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        const readOnlyFieldsBR = ['creationDate', 'modificationDate', 'moduleId'];
-        if (readOnlyFieldsBR.includes(fieldName)) {
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        if (mutationFieldStatus === 'read-only') {
           return mcpError(res, 400, {
             action: 'block replace in field',
             message: `"${fieldName}" 필드는 읽기 전용입니다.`,
@@ -2104,7 +1904,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `field:${fieldName}`,
           });
         }
-        if (!stringFieldsForReplace.includes(fieldName)) {
+        if (mutationFieldStatus !== 'ok') {
           return mcpError(res, 400, {
             action: 'block replace in field',
             message: `"${fieldName}" 필드는 블록 치환을 지원하지 않습니다.`,
@@ -2114,38 +1914,45 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `field/${fieldName}/block-replace`, broadcastStatus);
         if (!body) return;
-        if (!body.start_anchor || !body.end_anchor) {
-          return mcpError(res, 400, {
-            action: 'block replace in field',
-            message: 'Missing "start_anchor" or "end_anchor"',
-            suggestion: '블록의 시작과 끝을 나타내는 앵커 문자열이 필요합니다.',
-            target: `field:${fieldName}`,
-          });
-        }
+        const parsed = parseBody(res, body, blockReplaceBodySchema, {
+          action: 'block replace in field',
+          target: `field:${fieldName}`,
+          suggestion: '블록의 시작과 끝을 나타내는 앵커 문자열이 필요합니다.',
+        });
+        if (!parsed) return;
         const release = await acquireFieldMutex(fieldName);
         try {
           const content = normalizeLF(currentData[fieldName] || '');
-          const startAnchor = normalizeLF(body.start_anchor);
-          const endAnchor = normalizeLF(body.end_anchor);
-          const newBlock: string = body.content !== undefined ? normalizeLF(body.content) : '';
-          const includeAnchors = body.include_anchors !== false; // default true: anchors are replaced too
-          const dryRun = !!body.dry_run;
+          const startAnchor = normalizeLF(parsed.start_anchor);
+          const endAnchor = normalizeLF(parsed.end_anchor);
+          const newBlock: string = parsed.content !== undefined ? normalizeLF(parsed.content) : '';
+          const includeAnchors = parsed.include_anchors !== false; // default true: anchors are replaced too
+          const dryRun = !!(parsed.dry_run ?? parsed.dryRun);
 
           const startPos = content.indexOf(startAnchor);
           if (startPos === -1) {
-            return jsonRes(res, {
-              success: false,
+            return mcpNoOp(res, {
+              action: 'block replace in field',
               message: `시작 앵커를 찾을 수 없음: ${startAnchor.substring(0, 80)}`,
+              suggestion:
+                'read_field 또는 read_field_range로 현재 내용을 확인해 start_anchor/end_anchor를 다시 지정하세요.',
+              target: `field:${fieldName}`,
             });
           }
           const searchAfter = startPos + startAnchor.length;
           const endPos = content.indexOf(endAnchor, searchAfter);
           if (endPos === -1) {
-            return jsonRes(res, {
-              success: false,
-              message: `끝 앵커를 찾을 수 없음 (시작 앵커 이후): ${endAnchor.substring(0, 80)}`,
-              startAnchorFoundAt: startPos,
-            });
+            return mcpNoOp(
+              res,
+              {
+                action: 'block replace in field',
+                message: `끝 앵커를 찾을 수 없음 (시작 앵커 이후): ${endAnchor.substring(0, 80)}`,
+                suggestion:
+                  'read_field 또는 read_field_range로 현재 내용을 확인해 start_anchor/end_anchor를 다시 지정하세요.',
+                target: `field:${fieldName}`,
+              },
+              { startAnchorFoundAt: startPos },
+            );
           }
 
           // Determine what range to replace
@@ -2161,19 +1968,27 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const newContent = content.slice(0, replaceStart) + newBlock + content.slice(replaceEnd);
 
           if (dryRun) {
-            return jsonRes(res, {
-              dryRun: true,
-              field: fieldName,
-              startAnchorAt: startPos,
-              endAnchorAt: endPos,
-              includeAnchors,
-              oldBlockSize: oldBlock.length,
-              oldBlockPreview: oldBlock.substring(0, 300) + (oldBlock.length > 300 ? '...' : ''),
-              newBlockSize: newBlock.length,
-              newBlockPreview: newBlock.substring(0, 300) + (newBlock.length > 300 ? '...' : ''),
-              fieldLength: content.length,
-              newFieldLength: newContent.length,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                dryRun: true,
+                field: fieldName,
+                startAnchorAt: startPos,
+                endAnchorAt: endPos,
+                includeAnchors,
+                oldBlockSize: oldBlock.length,
+                oldBlockPreview: oldBlock.substring(0, 300) + (oldBlock.length > 300 ? '...' : ''),
+                newBlockSize: newBlock.length,
+                newBlockPreview: newBlock.substring(0, 300) + (newBlock.length > 300 ? '...' : ''),
+                fieldLength: content.length,
+                newFieldLength: newContent.length,
+              },
+              {
+                toolName: 'replace_block_in_field',
+                summary: `Dry-run: block in "${fieldName}" (${oldBlock.length}→${newBlock.length} chars)`,
+                artifacts: { oldBlockSize: oldBlock.length, newBlockSize: newBlock.length },
+              },
+            );
           }
 
           const allowed = await deps.askRendererConfirm(
@@ -2197,17 +2012,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               newBlockSize: newBlock.length,
             });
             deps.broadcastToAll('data-updated', fieldName, newContent);
-            return jsonRes(res, {
-              success: true,
-              field: fieldName,
-              startAnchorAt: startPos,
-              endAnchorAt: endPos,
-              includeAnchors,
-              oldBlockSize: oldBlock.length,
-              newBlockSize: newBlock.length,
-              oldSize: content.length,
-              newSize: newContent.length,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                field: fieldName,
+                startAnchorAt: startPos,
+                endAnchorAt: endPos,
+                includeAnchors,
+                oldBlockSize: oldBlock.length,
+                newBlockSize: newBlock.length,
+                oldSize: content.length,
+                newSize: newContent.length,
+              },
+              {
+                toolName: 'replace_block_in_field',
+                summary: `Replaced block in "${fieldName}" (${oldBlock.length}→${newBlock.length} chars)`,
+                artifacts: { oldBlockSize: oldBlock.length, newBlockSize: newBlock.length },
+              },
+            );
           } else {
             return mcpError(res, 403, {
               action: 'block replace in field',
@@ -2227,46 +2050,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'insert' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const stringFieldsForInsert = [
-          'name',
-          'description',
-          'firstMessage',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'lua',
-          'creatorcomment',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
-          'cjs',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-          'mainPrompt',
-          'jailbreak',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        const readOnlyFieldsInsert = ['creationDate', 'modificationDate', 'moduleId'];
-        if (readOnlyFieldsInsert.includes(fieldName)) {
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        if (mutationFieldStatus === 'read-only') {
           return mcpError(res, 400, {
             action: 'insert in field',
             message: `"${fieldName}" 필드는 읽기 전용입니다.`,
@@ -2274,7 +2059,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `field:${fieldName}`,
           });
         }
-        if (!stringFieldsForInsert.includes(fieldName)) {
+        if (mutationFieldStatus !== 'ok') {
           return mcpError(res, 400, {
             action: 'insert in field',
             message: `"${fieldName}" 필드는 텍스트 삽입을 지원하지 않습니다.`,
@@ -2285,35 +2070,36 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `field/${fieldName}/insert`, broadcastStatus);
         if (!body) return;
-        if (body.content === undefined) {
-          return mcpError(res, 400, {
-            action: 'insert in field',
-            message: 'Missing "content"',
-            suggestion: '삽입할 content를 요청 본문에 포함하세요.',
-            target: `field:${fieldName}`,
-          });
-        }
+        const parsed = parseBody(res, body, insertBodySchema, {
+          action: 'insert in field',
+          target: `field:${fieldName}`,
+          suggestion: '삽입할 content를 요청 본문에 포함하세요.',
+        });
+        if (!parsed) return;
         // Acquire mutex to prevent parallel writes on same field
         const release = await acquireFieldMutex(fieldName);
         try {
           const oldContent: string = normalizeLF(currentData[fieldName] || '');
           let newContent: string;
-          const position: string = body.position || 'end';
-          const insertContent = normalizeLF(body.content);
+          const position: string = parsed.position || 'end';
+          const insertContent = normalizeLF(parsed.content);
           if (position === 'end') {
             newContent = oldContent + '\n' + insertContent;
           } else if (position === 'start') {
             newContent = insertContent + '\n' + oldContent;
-          } else if ((position === 'after' || position === 'before') && body.anchor) {
-            const anchorPos = oldContent.indexOf(normalizeLF(body.anchor));
+          } else if ((position === 'after' || position === 'before') && parsed.anchor) {
+            const anchorPos = oldContent.indexOf(normalizeLF(parsed.anchor));
             if (anchorPos === -1) {
-              return jsonRes(res, {
-                success: false,
-                message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+              return mcpNoOp(res, {
+                action: 'insert in field',
+                message: `앵커 문자열을 찾을 수 없음: ${parsed.anchor.substring(0, 80)}`,
+                suggestion:
+                  'read_field 또는 read_field_range로 현재 내용을 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
+                target: `field:${fieldName}`,
               });
             }
             if (position === 'after') {
-              const insertAt = anchorPos + normalizeLF(body.anchor).length;
+              const insertAt = anchorPos + normalizeLF(parsed.anchor).length;
               newContent = oldContent.slice(0, insertAt) + '\n' + insertContent + oldContent.slice(insertAt);
             } else {
               newContent = oldContent.slice(0, anchorPos) + insertContent + '\n' + oldContent.slice(anchorPos);
@@ -2327,10 +2113,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${fieldName}`,
             });
           }
-          const preview = body.content.substring(0, 100) + (body.content.length > 100 ? '...' : '');
+          const preview = parsed.content.substring(0, 100) + (parsed.content.length > 100 ? '...' : '');
           const allowed = await deps.askRendererConfirm(
             'MCP 필드 삽입 요청',
-            `AI 어시스턴트가 "${fieldName}" 필드에 내용을 삽입하려 합니다.\n위치: ${position}${body.anchor ? ' "' + body.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
+            `AI 어시스턴트가 "${fieldName}" 필드에 내용을 삽입하려 합니다.\n위치: ${position}${parsed.anchor ? ' "' + parsed.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
           );
           if (allowed) {
             currentData[fieldName] = newContent;
@@ -2348,13 +2134,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               newSize: newContent.length,
             });
             deps.broadcastToAll('data-updated', fieldName, newContent);
-            return jsonRes(res, {
-              success: true,
-              field: fieldName,
-              position,
-              oldSize: oldContent.length,
-              newSize: newContent.length,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                field: fieldName,
+                position,
+                oldSize: oldContent.length,
+                newSize: newContent.length,
+              },
+              {
+                toolName: 'insert_in_field',
+                summary: `Inserted into "${fieldName}" at ${position} (${oldContent.length}→${newContent.length} chars)`,
+                artifacts: { oldSize: oldContent.length, newSize: newContent.length },
+              },
+            );
           } else {
             return mcpError(res, 403, {
               action: 'insert in field',
@@ -2374,45 +2168,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'batch-replace' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const stringFieldsForBatchReplace = [
-          'name',
-          'description',
-          'firstMessage',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'lua',
-          'creatorcomment',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
-          'cjs',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-          'mainPrompt',
-          'jailbreak',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        if (!stringFieldsForBatchReplace.includes(fieldName)) {
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        if (mutationFieldStatus === 'read-only') {
+          return mcpError(res, 400, {
+            action: 'batch replace in field',
+            message: `"${fieldName}" 필드는 읽기 전용입니다.`,
+            suggestion: '이 필드는 수정할 수 없습니다.',
+            target: `field:${fieldName}`,
+          });
+        }
+        if (mutationFieldStatus !== 'ok') {
           return mcpError(res, 400, {
             action: 'batch replace in field',
             message: `"${fieldName}" 필드는 문자열 치환을 지원하지 않습니다.`,
@@ -2422,9 +2187,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `field/${fieldName}/batch-replace`, broadcastStatus);
         if (!body) return;
-        const replacements: Array<{ find: string; replace?: string; regex?: boolean; flags?: string }> =
-          body.replacements;
-        if (!Array.isArray(replacements) || replacements.length === 0) {
+        const parsed = parseBody(res, body, batchReplaceBodySchema, {
+          action: 'batch replace in field',
+          target: `field:${fieldName}`,
+          suggestion:
+            'replacements 를 { find, replace } 객체 배열로 전달하세요. 예: { "replacements": [{ "find": "old", "replace": "new" }] }',
+        });
+        if (!parsed) return;
+        const replacements = parsed.replacements;
+        if (replacements.length === 0) {
           return mcpError(res, 400, {
             action: 'batch replace in field',
             message: 'replacements must be a non-empty array',
@@ -2442,17 +2213,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `field:${fieldName}`,
           });
         }
-        for (const r of replacements) {
-          if (!r.find) {
-            return mcpError(res, 400, {
-              action: 'batch replace in field',
-              message: 'Each replacement must include "find"',
-              suggestion: '모든 치환 항목에 find 키를 포함하세요. 예: { "find": "검색어", "replace": "대체어" }',
-              target: `field:${fieldName}`,
-            });
-          }
-        }
-        const dryRun = !!body.dry_run;
+        const dryRun = !!(parsed.dry_run ?? parsed.dryRun);
         // Acquire mutex to prevent parallel writes
         const release = await acquireFieldMutex(fieldName);
         try {
@@ -2485,22 +2246,37 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
           const totalMatches = results.reduce((s, r) => s + r.matchCount, 0);
           if (totalMatches === 0) {
-            return jsonRes(res, {
-              success: false,
-              message: '모든 치환에서 일치하는 항목 없음',
-              results,
-              ...(dryRun ? { dryRun: true } : {}),
-            });
+            return mcpNoOp(
+              res,
+              {
+                action: 'batch replace in field',
+                message: '모든 치환에서 일치하는 항목 없음',
+                suggestion: 'results를 확인하고 각 find/replace/regex/flags를 조정한 뒤 다시 시도하세요.',
+                target: `field:${fieldName}`,
+              },
+              {
+                results,
+                ...(dryRun ? { dryRun: true } : {}),
+              },
+            );
           }
           if (dryRun) {
-            return jsonRes(res, {
-              dryRun: true,
-              field: fieldName,
-              totalMatches,
-              originalSize,
-              newSize: content.length,
-              results,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                dryRun: true,
+                field: fieldName,
+                totalMatches,
+                originalSize,
+                newSize: content.length,
+                results,
+              },
+              {
+                toolName: 'replace_in_field_batch',
+                summary: `Dry-run: ${totalMatches} total match(es) in "${fieldName}"`,
+                artifacts: { totalMatches, fieldLength: originalSize },
+              },
+            );
           }
           const summary = results
             .filter((r) => r.matchCount > 0)
@@ -2525,14 +2301,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               count: replacements.length,
             });
             deps.broadcastToAll('data-updated', fieldName, content);
-            return jsonRes(res, {
-              success: true,
-              field: fieldName,
-              totalMatches,
-              originalSize,
-              newSize: content.length,
-              results,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                field: fieldName,
+                totalMatches,
+                originalSize,
+                newSize: content.length,
+                results,
+              },
+              {
+                toolName: 'replace_in_field_batch',
+                summary: `Batch replaced ${totalMatches} match(es) in "${fieldName}"`,
+                artifacts: { totalMatches, originalSize, newSize: content.length },
+              },
+            );
           } else {
             return mcpError(res, 403, {
               action: 'batch replace in field',
@@ -2553,28 +2337,34 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'search-all' && !parts[1] && req.method === 'POST') {
         const body = await readJsonBody(req, res, 'search-all', broadcastStatus);
         if (!body) return;
-        if (!body.query) {
-          return mcpError(res, 400, {
-            action: 'search all fields',
-            message: 'Missing "query"',
-            suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
-            target: '/search-all',
-          });
-        }
+        const parsed = parseBody(res, body, searchAllBodySchema, {
+          action: 'search all fields',
+          target: '/search-all',
+          suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
+        });
+        if (!parsed) return;
 
         try {
-          return jsonRes(
-            res,
-            searchAllTextSurfaces(currentData, {
-              query: normalizeLF(String(body.query)),
-              regex: !!body.regex,
-              flags: typeof body.flags === 'string' ? body.flags : undefined,
-              includeLorebook: body.include_lorebook !== false,
-              includeGreetings: body.include_greetings !== false,
-              contextChars: Math.max(0, Math.min(Number(body.context_chars) || 60, 300)),
-              maxMatchesPerSurface: Math.max(1, Math.min(Number(body.max_matches_per_field) || 5, 20)),
-            }),
-          );
+          const searchResult = searchAllTextSurfaces(currentData, {
+            query: normalizeLF(String(parsed.query)),
+            regex: !!parsed.regex,
+            flags: parsed.flags,
+            includeLorebook: parsed.include_lorebook !== false,
+            includeGreetings: parsed.include_greetings !== false,
+            contextChars: Math.max(0, Math.min(Number(parsed.context_chars) || 60, 300)),
+            maxMatchesPerSurface: Math.max(1, Math.min(Number(parsed.max_matches_per_field) || 5, 20)),
+          });
+          const totalHits = Array.isArray(searchResult.surfaces)
+            ? (searchResult.surfaces as Array<{ totalMatches?: number }>).reduce(
+                (sum, s) => sum + (s.totalMatches || 0),
+                0,
+              )
+            : 0;
+          return jsonResSuccess(res, searchResult as unknown as Record<string, unknown>, {
+            toolName: 'search_all_fields',
+            summary: `Searched all fields: ${totalHits} total match(es)`,
+            artifacts: { totalMatches: totalHits },
+          });
         } catch (err) {
           return mcpError(res, 400, {
             action: 'search all fields',
@@ -2599,22 +2389,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const body = await readJsonBody(req, res, `field/${fieldName}/search`, broadcastStatus);
         if (!body) return;
-        if (!body.query) {
-          return mcpError(res, 400, {
-            action: 'search in field',
-            message: 'Missing "query"',
-            suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
-            target: `field:${fieldName}`,
-          });
-        }
+        const parsed = parseBody(res, body, searchBodySchema, {
+          action: 'search in field',
+          target: `field:${fieldName}`,
+          suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
+        });
+        if (!parsed) return;
         const content: string = normalizeLF(
           typeof currentData[fieldName] === 'string' ? currentData[fieldName] : String(currentData[fieldName] ?? ''),
         );
-        const queryStr: string = normalizeLF(String(body.query));
-        const contextChars: number = Math.max(0, Math.min(Number(body.context_chars) || 100, 500));
-        const maxMatches: number = Math.max(1, Math.min(Number(body.max_matches) || 20, 100));
-        const useRegex = !!body.regex;
-        const flags = typeof body.flags === 'string' ? body.flags : useRegex ? 'gi' : undefined;
+        const queryStr: string = normalizeLF(String(parsed.query));
+        const contextChars: number = Math.max(0, Math.min(Number(parsed.context_chars) || 100, 500));
+        const maxMatches: number = Math.max(1, Math.min(Number(parsed.max_matches) || 20, 100));
+        const useRegex = !!parsed.regex;
+        const flags = parsed.flags ?? (useRegex ? 'gi' : undefined);
 
         try {
           const result = searchTextBlock(content, {
@@ -2625,14 +2413,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             maxMatches,
           });
 
-          return jsonRes(res, {
-            field: fieldName,
-            query: result.query,
-            totalMatches: result.totalMatches,
-            returnedMatches: result.returnedMatches,
-            fieldLength: result.contentLength,
-            matches: result.matches,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              field: fieldName,
+              query: result.query,
+              totalMatches: result.totalMatches,
+              returnedMatches: result.returnedMatches,
+              fieldLength: result.contentLength,
+              matches: result.matches,
+            },
+            {
+              toolName: 'search_in_field',
+              summary: `Found ${result.totalMatches} match(es) in "${fieldName}"`,
+              artifacts: { fieldName, totalMatches: result.totalMatches },
+            },
+          );
         } catch (err) {
           return mcpError(res, 400, {
             action: 'search in field',
@@ -2707,14 +2503,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
         const length = Math.max(1, Math.min(Number(url.searchParams.get('length')) || 2000, MAX_RANGE_LENGTH));
         const slice = content.slice(offset, offset + length);
-        return jsonRes(res, {
-          field: fieldName,
-          totalLength: content.length,
-          offset,
-          length: slice.length,
-          hasMore: offset + length < content.length,
-          content: slice,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            field: fieldName,
+            totalLength: content.length,
+            offset,
+            length: slice.length,
+            hasMore: offset + length < content.length,
+            content: slice,
+          },
+          {
+            toolName: 'read_field_range',
+            summary: `Read ${slice.length} chars from "${fieldName}" at offset ${offset}`,
+            artifacts: { fieldName, offset, length: slice.length, totalLength: content.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -2736,21 +2540,29 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           field: fieldName,
           timestamp: new Date().toISOString(),
           size: typeof content === 'string' ? content.length : JSON.stringify(content).length,
-          content: typeof content === 'string' ? content : JSON.parse(JSON.stringify(content)),
+          content: typeof content === 'string' ? content : cloneJson(content),
         };
         if (!fieldSnapshots.has(fieldName)) fieldSnapshots.set(fieldName, []);
         const snaps = fieldSnapshots.get(fieldName)!;
         snaps.push(snapshot);
         // Keep max 10 snapshots per field
         if (snaps.length > 10) snaps.shift();
-        return jsonRes(res, {
-          success: true,
-          snapshotId,
-          field: fieldName,
-          size: snapshot.size,
-          timestamp: snapshot.timestamp,
-          totalSnapshots: snaps.length,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            success: true,
+            snapshotId,
+            field: fieldName,
+            size: snapshot.size,
+            timestamp: snapshot.timestamp,
+            totalSnapshots: snaps.length,
+          },
+          {
+            toolName: 'snapshot_field',
+            summary: `Snapshot created for "${fieldName}" (${snapshot.size} chars)`,
+            artifacts: { fieldName, snapshotId, size: snapshot.size },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -2759,11 +2571,80 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'field' && parts[1] && parts[2] === 'snapshots' && !parts[3] && req.method === 'GET') {
         const fieldName = decodeURIComponent(parts[1]);
         const snaps = fieldSnapshots.get(fieldName) || [];
-        return jsonRes(res, {
-          field: fieldName,
-          count: snaps.length,
-          snapshots: snaps.map((s) => ({ id: s.id, timestamp: s.timestamp, size: s.size })),
-        });
+        return jsonResSuccess(
+          res,
+          {
+            field: fieldName,
+            count: snaps.length,
+            snapshots: snaps.map((s) => ({ id: s.id, timestamp: s.timestamp, size: s.size })),
+          },
+          {
+            toolName: 'list_snapshots',
+            summary: `${snaps.length} snapshot(s) for "${fieldName}"`,
+            artifacts: { fieldName, count: snaps.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /session/status — inspect the current MCP-visible session state
+      // ----------------------------------------------------------------
+      if (parts[0] === 'session' && parts[1] === 'status' && !parts[2] && req.method === 'GET') {
+        const status = deps.getSessionStatus ? await deps.getSessionStatus() : null;
+        const snapshotSummary = [...fieldSnapshots.entries()]
+          .filter(([, snaps]) => snaps.length > 0)
+          .map(([field, snaps]) => ({ field, count: snaps.length }))
+          .sort((a, b) => a.field.localeCompare(b.field));
+        const totalSnapshots = snapshotSummary.reduce((sum, entry) => sum + entry.count, 0);
+        const documentName =
+          currentData &&
+          typeof currentData === 'object' &&
+          typeof currentData.name === 'string' &&
+          currentData.name.trim()
+            ? currentData.name
+            : null;
+        const documentFileType =
+          status?.currentFileType ??
+          (currentData &&
+          typeof currentData === 'object' &&
+          (currentData._fileType === 'risum' || currentData._fileType === 'risup')
+            ? currentData._fileType
+            : currentData
+              ? 'charx'
+              : null);
+        const loaded = !!currentData;
+        return jsonResSuccess(
+          res,
+          {
+            loaded,
+            document: {
+              filePath: status?.currentFilePath ?? null,
+              fileType: documentFileType,
+              name: documentName,
+            },
+            renderer: status?.renderer ?? null,
+            recovery: {
+              lastRestored: status?.lastRestored ?? null,
+              pendingRecovery: status?.pendingRecovery ?? null,
+            },
+            snapshots: {
+              byField: snapshotSummary,
+              totalFields: snapshotSummary.length,
+              totalSnapshots,
+            },
+          },
+          {
+            toolName: 'session_status',
+            summary: loaded
+              ? `Session status for "${documentName ?? 'Untitled'}" (${totalSnapshots} snapshot${totalSnapshots === 1 ? '' : 's'})`
+              : 'Session status (no document loaded)',
+            artifacts: {
+              filePath: status?.currentFilePath ?? null,
+              loaded,
+              totalSnapshots,
+            },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -2802,7 +2683,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
         if (allowed) {
           currentData[fieldName] =
-            typeof snapshot.content === 'string' ? snapshot.content : JSON.parse(JSON.stringify(snapshot.content));
+            typeof snapshot.content === 'string' ? snapshot.content : cloneJson(snapshot.content);
           if (fieldName === 'lua') {
             currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
             deps.broadcastToAll(
@@ -2816,13 +2697,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             restoredSize: snapshot.size,
           });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, {
-            success: true,
-            field: fieldName,
-            snapshotId,
-            restoredSize: snapshot.size,
-            timestamp: snapshot.timestamp,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              field: fieldName,
+              snapshotId,
+              restoredSize: snapshot.size,
+              timestamp: snapshot.timestamp,
+            },
+            {
+              toolName: 'restore_snapshot',
+              summary: `Restored "${fieldName}" from snapshot ${snapshotId} (${snapshot.size} chars)`,
+              artifacts: { fieldName, snapshotId, restoredSize: snapshot.size },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'restore field',
@@ -2847,11 +2736,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         if (typeof raw !== 'string') {
-          return jsonRes(res, {
-            field: fieldName,
-            type: Array.isArray(raw) ? 'array' : typeof raw,
-            size: JSON.stringify(raw).length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              field: fieldName,
+              type: Array.isArray(raw) ? 'array' : typeof raw,
+              size: JSON.stringify(raw).length,
+            },
+            {
+              toolName: 'get_field_stats',
+              summary: `Stats for "${fieldName}" (${Array.isArray(raw) ? 'array' : typeof raw})`,
+              artifacts: { fieldName },
+            },
+          );
         }
         const content = raw as string;
         const lines = content.split('\n');
@@ -2860,24 +2757,38 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const cbsTags = (content.match(/\{\{[^}]+\}\}/g) || []).length;
         // Count HTML tags
         const htmlTags = (content.match(/<[^>]+>/g) || []).length;
-        return jsonRes(res, {
-          field: fieldName,
-          type: 'string',
-          characters: content.length,
-          lines: lines.length,
-          words: words.length,
-          cbsTags,
-          htmlTags,
-          emptyLines: lines.filter((l) => l.trim() === '').length,
-          longestLine: Math.max(...lines.map((l) => l.length)),
-        });
+        return jsonResSuccess(
+          res,
+          {
+            field: fieldName,
+            type: 'string',
+            characters: content.length,
+            lines: lines.length,
+            words: words.length,
+            cbsTags,
+            htmlTags,
+            emptyLines: lines.filter((l) => l.trim() === '').length,
+            longestLine: Math.max(...lines.map((l) => l.length)),
+          },
+          {
+            toolName: 'get_field_stats',
+            summary: `Stats for "${fieldName}" (${content.length} chars, ${lines.length} lines)`,
+            artifacts: { fieldName, characters: content.length, lines: lines.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
       // GET /lorebook
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && !parts[1] && req.method === 'GET') {
-        return jsonRes(res, buildLorebookListResponse((currentData.lorebook as Record<string, unknown>[]) || [], url));
+        const lbPayload = buildLorebookListResponse((currentData.lorebook as Record<string, unknown>[]) || [], url);
+        const lbCount = typeof lbPayload.count === 'number' ? lbPayload.count : 0;
+        return jsonResSuccess(res, lbPayload, {
+          toolName: 'list_lorebook',
+          summary: `Listed ${lbCount} lorebook entries`,
+          artifacts: { count: lbCount },
+        });
       }
 
       // ----------------------------------------------------------------
@@ -2908,10 +2819,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lorebook:${idx}`,
           });
         }
-        return jsonRes(res, {
-          index: idx,
-          entry: normalizeLorebookEntryForResponse(currentData.lorebook[idx], currentData.lorebook || []),
-        });
+        const lbEntry = normalizeLorebookEntryForResponse(currentData.lorebook[idx], currentData.lorebook || []);
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            entry: lbEntry,
+          },
+          {
+            toolName: 'read_lorebook',
+            summary: `Read lorebook entry [${idx}] "${(lbEntry as Record<string, unknown>).comment || ''}"`,
+            artifacts: { index: idx, comment: (lbEntry as Record<string, unknown>).comment || '' },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -2944,7 +2864,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (typeof idx !== 'number' || idx < 0 || idx >= lorebook.length) return null;
           return { index: idx, entry: projectLorebookEntryForResponse(lorebook[idx], lorebook, requestedFields) };
         });
-        return jsonRes(res, { count: entries.filter(Boolean).length, total: indices.length, entries });
+        const validCount = entries.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          { count: validCount, total: indices.length, entries },
+          {
+            toolName: 'read_lorebook_batch',
+            summary: `Batch read ${validCount}/${indices.length} lorebook entries`,
+            artifacts: { count: validCount, total: indices.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -3014,7 +2943,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           canonicalizeLorebookFolderRefs(lorebook);
           logMcpMutation('batch write lorebook', 'lorebook:batch-write', { count: entries.length });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, count: results.length, results });
+          return jsonResSuccess(
+            res,
+            { success: true, count: results.length, results },
+            {
+              toolName: 'write_lorebook_batch',
+              summary: `Batch updated ${results.length} lorebook entries`,
+              artifacts: { count: results.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch write lorebook',
@@ -3124,17 +3061,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             }
           }
         }
-        return jsonRes(res, {
-          index,
-          refIndex,
-          refEntryIndex,
-          currentComment: current.comment || '',
-          referenceComment: reference.comment || '',
-          referenceFile: refFiles[refIndex].fileName,
-          identical: diffs.length === 0,
-          diffCount: diffs.length,
-          diffs,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            index,
+            refIndex,
+            refEntryIndex,
+            currentComment: current.comment || '',
+            referenceComment: reference.comment || '',
+            referenceFile: refFiles[refIndex].fileName,
+            identical: diffs.length === 0,
+            diffCount: diffs.length,
+            diffs,
+          },
+          {
+            toolName: 'diff_lorebook',
+            summary:
+              diffs.length === 0
+                ? `Lorebook entry [${index}] is identical to reference`
+                : `Found ${diffs.length} differences in lorebook entry [${index}]`,
+            artifacts: { diffCount: diffs.length, identical: diffs.length === 0 },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -3198,11 +3146,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
         }
 
-        return jsonRes(res, {
-          totalEntries: lorebook.filter((e: any) => e.mode !== 'folder').length,
-          issueCount: issues.length,
-          issues: issues.sort((a, b) => a.index - b.index),
-        });
+        const totalEntries = lorebook.filter((e: any) => e.mode !== 'folder').length;
+        return jsonResSuccess(
+          res,
+          {
+            totalEntries,
+            issueCount: issues.length,
+            issues: issues.sort((a, b) => a.index - b.index),
+          },
+          {
+            toolName: 'validate_lorebook_keys',
+            summary: `Validated ${totalEntries} lorebook entries, found ${issues.length} issues`,
+            artifacts: { totalEntries, issueCount: issues.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -3229,7 +3186,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
 
         if (allowed) {
-          const clone = JSON.parse(JSON.stringify(source));
+          const clone = cloneJson(source);
           // Apply overrides
           if (body.overrides && typeof body.overrides === 'object') {
             Object.assign(clone, pickAllowedFields(body.overrides, LOREBOOK_ALLOWED_FIELDS));
@@ -3248,7 +3205,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const newIndex = currentData.lorebook.length - 1;
           logMcpMutation('clone lorebook entry', `lorebook:clone`, { sourceIdx, sourceName, newIndex });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, sourceIndex: sourceIdx, newIndex, comment: clone.comment || '' });
+          return jsonResSuccess(
+            res,
+            { success: true, sourceIndex: sourceIdx, newIndex, comment: clone.comment || '' },
+            {
+              toolName: 'clone_lorebook',
+              summary: `Cloned lorebook entry [${sourceIdx}] → [${newIndex}]`,
+              artifacts: { sourceIndex: sourceIdx, newIndex },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'clone lorebook entry',
@@ -3294,7 +3259,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           canonicalizeLorebookFolderRefs(currentData.lorebook);
           logMcpMutation('update lorebook entry', `lorebook:${idx}`, { entryName, updatedKeys: Object.keys(body) });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, index: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx },
+            {
+              toolName: 'write_lorebook',
+              summary: `Updated lorebook entry [${idx}] "${entryName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'update lorebook entry',
@@ -3345,7 +3317,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newIndex: currentData.lorebook.length - 1,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, index: currentData.lorebook.length - 1 });
+          const addedIdx = currentData.lorebook.length - 1;
+          return jsonResSuccess(
+            res,
+            { success: true, index: addedIdx },
+            {
+              toolName: 'add_lorebook',
+              summary: `Added lorebook entry [${addedIdx}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add lorebook entry',
@@ -3419,7 +3399,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             entries: results,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, added: results.length, entries: results });
+          return jsonResSuccess(
+            res,
+            { success: true, added: results.length, entries: results },
+            {
+              toolName: 'add_lorebook',
+              summary: `Batch added ${results.length} lorebook entries`,
+              artifacts: { added: results.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch add lorebook entries',
@@ -3487,7 +3475,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             entries: deleted,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, deleted: deleted.length, entries: deleted });
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: deleted.length, entries: deleted },
+            {
+              toolName: 'delete_lorebook',
+              summary: `Batch deleted ${deleted.length} lorebook entries`,
+              artifacts: { deleted: deleted.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch delete lorebook entries',
@@ -3528,7 +3524,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const replaceStr: string = body.replace !== undefined ? normalizeLF(body.replace) : '';
         const useRegex = !!body.regex;
         const flags: string = body.flags || 'g';
-        const dryRun = !!body.dry_run;
+        const dryRun = !!(body.dry_run ?? body.dryRun);
 
         const results: Array<{
           index: number;
@@ -3575,33 +3571,49 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (results.length === 0) {
-          return jsonRes(res, {
-            success: false,
-            message: '전체 로어북에서 일치하는 항목 없음',
-            totalEntries: lorebook.length,
-            matchedEntries: 0,
-            totalMatches: 0,
-            field: targetField,
-            ...(dryRun ? { dryRun: true } : {}),
-          });
+          return mcpNoOp(
+            res,
+            {
+              action: 'replace all lorebook',
+              message: '전체 로어북에서 일치하는 항목 없음',
+              suggestion:
+                'list_lorebook 또는 read_lorebook_batch로 현재 내용을 확인하고 find/field/regex/flags를 조정하세요.',
+              target: 'lorebook:replace-all',
+            },
+            {
+              totalEntries: lorebook.length,
+              matchedEntries: 0,
+              totalMatches: 0,
+              field: targetField,
+              ...(dryRun ? { dryRun: true } : {}),
+            },
+          );
         }
 
         const totalMatches = results.reduce((s, r) => s + r.matchCount, 0);
 
         // Dry-run: return match info without modifying
         if (dryRun) {
-          return jsonRes(res, {
-            dryRun: true,
-            field: targetField,
-            totalEntries: lorebook.length,
-            matchedEntries: results.length,
-            totalMatches,
-            results: results.map((r) => ({
-              index: r.index,
-              comment: r.comment,
-              matchCount: r.matchCount,
-            })),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              dryRun: true,
+              field: targetField,
+              totalEntries: lorebook.length,
+              matchedEntries: results.length,
+              totalMatches,
+              results: results.map((r) => ({
+                index: r.index,
+                comment: r.comment,
+                matchCount: r.matchCount,
+              })),
+            },
+            {
+              toolName: 'replace_across_all_lorebook',
+              summary: `Dry-run: ${totalMatches} match(es) across ${results.length} lorebook entries`,
+              artifacts: { totalMatches, matchedEntries: results.length, totalEntries: lorebook.length },
+            },
+          );
         }
 
         const summary = results
@@ -3623,17 +3635,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             totalMatches,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            field: targetField,
-            matchedEntries: results.length,
-            totalMatches,
-            results: results.map((r) => ({
-              index: r.index,
-              comment: r.comment,
-              matchCount: r.matchCount,
-            })),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              field: targetField,
+              matchedEntries: results.length,
+              totalMatches,
+              results: results.map((r) => ({
+                index: r.index,
+                comment: r.comment,
+                matchCount: r.matchCount,
+              })),
+            },
+            {
+              toolName: 'replace_across_all_lorebook',
+              summary: `Replaced ${totalMatches} matches across ${results.length} lorebook entries`,
+              artifacts: { matchedEntries: results.length, totalMatches },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'replace all lorebook',
@@ -3731,11 +3751,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         });
         const activeResults = results.filter((r) => !r.skipped);
         if (activeResults.length === 0) {
-          return jsonRes(res, {
-            success: false,
-            message: '모든 항목에서 일치하는 내용 없음',
-            results: results.map((r) => ({ index: r.index, comment: r.comment, matchCount: 0, skipped: true })),
-          });
+          return mcpNoOp(
+            res,
+            {
+              action: 'batch replace lorebook',
+              message: '모든 항목에서 일치하는 내용 없음',
+              suggestion: 'results를 확인해 index별 find/replace/regex/flags를 조정한 뒤 다시 시도하세요.',
+              target: 'lorebook:batch-replace',
+            },
+            {
+              results: results.map((r) => ({ index: r.index, comment: r.comment, matchCount: 0, skipped: true })),
+            },
+          );
         }
         const summary = activeResults.map((r) => `  [${r.index}] "${r.comment}": ${r.matchCount}건`).join('\n');
         const allowed = await deps.askRendererConfirm(
@@ -3751,16 +3778,24 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             totalMatches: activeResults.reduce((s, r) => s + r.matchCount, 0),
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            count: activeResults.length,
-            results: results.map((r) => ({
-              index: r.index,
-              comment: r.comment,
-              matchCount: r.matchCount,
-              skipped: r.skipped,
-            })),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              count: activeResults.length,
+              results: results.map((r) => ({
+                index: r.index,
+                comment: r.comment,
+                matchCount: r.matchCount,
+                skipped: r.skipped,
+              })),
+            },
+            {
+              toolName: 'replace_across_all_lorebook',
+              summary: `Batch replaced in ${activeResults.length} lorebook entries`,
+              artifacts: { count: activeResults.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch replace lorebook',
@@ -3861,10 +3896,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         });
         const errors = results.filter((r) => r.error);
         if (errors.length > 0) {
-          return jsonRes(res, {
-            success: false,
-            errors: errors.map((r) => ({ index: r.index, error: r.error })),
-          });
+          return mcpNoOp(
+            res,
+            {
+              action: 'batch insert lorebook',
+              message: '하나 이상의 삽입 요청에 오류가 있습니다',
+              suggestion: 'errors 배열의 index/error를 확인해 anchor/position/content를 수정한 뒤 다시 시도하세요.',
+              target: 'lorebook:batch-insert',
+            },
+            {
+              errors: errors.map((r) => ({ index: r.index, error: r.error })),
+            },
+          );
         }
         const summary = results
           .map((r) => `  [${r.index}] "${r.comment}": ${r.position}, +${r.newSize - r.oldSize} chars`)
@@ -3879,17 +3922,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           logMcpMutation('batch insert lorebook', 'lorebook:batch-insert', { count: results.length });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            count: results.length,
-            results: results.map((r) => ({
-              index: r.index,
-              comment: r.comment,
-              position: r.position,
-              oldSize: r.oldSize,
-              newSize: r.newSize,
-            })),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              count: results.length,
+              results: results.map((r) => ({
+                index: r.index,
+                comment: r.comment,
+                position: r.position,
+                oldSize: r.oldSize,
+                newSize: r.newSize,
+              })),
+            },
+            {
+              toolName: 'write_lorebook',
+              summary: `Batch inserted content into ${results.length} lorebook entries`,
+              artifacts: { count: results.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch insert lorebook',
@@ -3961,7 +4012,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (matchCount === 0) {
-          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0, field: targetField });
+          return mcpNoOp(
+            res,
+            {
+              action: 'replace lorebook field',
+              message: '일치하는 항목 없음',
+              suggestion:
+                'read_lorebook 또는 list_lorebook로 현재 내용을 확인하고 find/field/regex/flags를 조정하세요.',
+              target: `lorebook:${idx}`,
+            },
+            { matchCount: 0, field: targetField },
+          );
         }
 
         const fieldLabel = targetField === 'content' ? '' : ` [${targetField}]`;
@@ -3974,15 +4035,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.lorebook[idx][targetField] = newContent;
           logMcpMutation('replace lorebook field', `lorebook:${idx}`, { entryName, field: targetField, matchCount });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            comment: entryName,
-            field: targetField,
-            matchCount,
-            oldSize: content.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              comment: entryName,
+              field: targetField,
+              matchCount,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_in_lorebook',
+              summary: `Replaced ${matchCount} matches in lorebook entry [${idx}] "${entryName}"`,
+              artifacts: { matchCount, oldSize: content.length, newSize: newContent.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'replace lorebook field',
@@ -4033,23 +4102,30 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const endAnchor = normalizeLF(body.end_anchor);
         const newBlock: string = body.content !== undefined ? normalizeLF(body.content) : '';
         const includeAnchors = body.include_anchors !== false;
-        const dryRun = !!body.dry_run;
+        const dryRun = !!(body.dry_run ?? body.dryRun);
 
         const startPos = content.indexOf(startAnchor);
         if (startPos === -1) {
-          return jsonRes(res, {
-            success: false,
+          return mcpNoOp(res, {
+            action: 'block replace lorebook',
             message: `시작 앵커를 찾을 수 없음: ${startAnchor.substring(0, 80)}`,
+            suggestion: 'read_lorebook로 현재 내용을 확인해 start_anchor/end_anchor를 다시 지정하세요.',
+            target: `lorebook:${idx}`,
           });
         }
         const searchAfter = startPos + startAnchor.length;
         const endPos = content.indexOf(endAnchor, searchAfter);
         if (endPos === -1) {
-          return jsonRes(res, {
-            success: false,
-            message: `끝 앵커를 찾을 수 없음 (시작 앵커 이후): ${endAnchor.substring(0, 80)}`,
-            startAnchorFoundAt: startPos,
-          });
+          return mcpNoOp(
+            res,
+            {
+              action: 'block replace lorebook',
+              message: `끝 앵커를 찾을 수 없음 (시작 앵커 이후): ${endAnchor.substring(0, 80)}`,
+              suggestion: 'read_lorebook로 현재 내용을 확인해 start_anchor/end_anchor를 다시 지정하세요.',
+              target: `lorebook:${idx}`,
+            },
+            { startAnchorFoundAt: startPos },
+          );
         }
 
         let replaceStart: number, replaceEnd: number;
@@ -4064,20 +4140,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const newContent = content.slice(0, replaceStart) + newBlock + content.slice(replaceEnd);
 
         if (dryRun) {
-          return jsonRes(res, {
-            dryRun: true,
-            index: idx,
-            field: targetField,
-            startAnchorAt: startPos,
-            endAnchorAt: endPos,
-            includeAnchors,
-            oldBlockSize: oldBlock.length,
-            oldBlockPreview: oldBlock.substring(0, 300) + (oldBlock.length > 300 ? '...' : ''),
-            newBlockSize: newBlock.length,
-            newBlockPreview: newBlock.substring(0, 300) + (newBlock.length > 300 ? '...' : ''),
-            fieldLength: content.length,
-            newFieldLength: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              dryRun: true,
+              index: idx,
+              field: targetField,
+              startAnchorAt: startPos,
+              endAnchorAt: endPos,
+              includeAnchors,
+              oldBlockSize: oldBlock.length,
+              oldBlockPreview: oldBlock.substring(0, 300) + (oldBlock.length > 300 ? '...' : ''),
+              newBlockSize: newBlock.length,
+              newBlockPreview: newBlock.substring(0, 300) + (newBlock.length > 300 ? '...' : ''),
+              fieldLength: content.length,
+              newFieldLength: newContent.length,
+            },
+            {
+              toolName: 'replace_in_lorebook',
+              summary: `Dry-run: block in lorebook #${idx} "${targetField}" (${oldBlock.length}→${newBlock.length} chars)`,
+              artifacts: { index: idx, oldBlockSize: oldBlock.length, newBlockSize: newBlock.length },
+            },
+          );
         }
 
         const comment = entry.comment || `#${idx}`;
@@ -4093,18 +4177,26 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newBlockSize: newBlock.length,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            field: targetField,
-            startAnchorAt: startPos,
-            endAnchorAt: endPos,
-            includeAnchors,
-            oldBlockSize: oldBlock.length,
-            newBlockSize: newBlock.length,
-            oldSize: content.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              field: targetField,
+              startAnchorAt: startPos,
+              endAnchorAt: endPos,
+              includeAnchors,
+              oldBlockSize: oldBlock.length,
+              newBlockSize: newBlock.length,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_block_in_lorebook',
+              summary: `Block-replaced in lorebook entry [${idx}]`,
+              artifacts: { oldBlockSize: oldBlock.length, newBlockSize: newBlock.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'block replace lorebook',
@@ -4152,9 +4244,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         } else if ((position === 'after' || position === 'before') && body.anchor) {
           const anchorPos = oldContent.indexOf(normalizeLF(body.anchor));
           if (anchorPos === -1) {
-            return jsonRes(res, {
-              success: false,
+            return mcpNoOp(res, {
+              action: 'insert lorebook content',
               message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+              suggestion:
+                'read_lorebook로 현재 내용을 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
+              target: `lorebook:${idx}`,
             });
           }
           if (position === 'after') {
@@ -4187,14 +4282,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newSize: newContent.length,
           });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            comment: entryName,
-            position,
-            oldSize: oldContent.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              comment: entryName,
+              position,
+              oldSize: oldContent.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'insert_in_lorebook',
+              summary: `Inserted content into lorebook entry [${idx}] "${entryName}"`,
+              artifacts: { position, oldSize: oldContent.length, newSize: newContent.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'insert lorebook content',
@@ -4230,7 +4333,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.lorebook.splice(idx, 1);
           logMcpMutation('delete lorebook entry', `lorebook:${idx}`, { entryName });
           deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
-          return jsonRes(res, { success: true, deleted: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: idx },
+            {
+              toolName: 'delete_lorebook',
+              summary: `Deleted lorebook entry [${idx}] "${entryName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'delete lorebook entry',
@@ -4246,7 +4356,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /regex
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && !parts[1] && req.method === 'GET') {
-        return jsonRes(res, buildRegexListResponse((currentData.regex as Record<string, unknown>[]) || []));
+        const regexList = buildRegexListResponse((currentData.regex as Record<string, unknown>[]) || []);
+        return jsonResSuccess(res, regexList, {
+          toolName: 'list_regex',
+          summary: `Listed ${regexList.count} regex entries`,
+        });
       }
 
       // ----------------------------------------------------------------
@@ -4270,7 +4384,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (entry.replace === undefined) entry.replace = '';
         delete entry.in;
         delete entry.out;
-        return jsonRes(res, { index: idx, entry });
+        return jsonResSuccess(
+          res,
+          { index: idx, entry },
+          {
+            toolName: 'read_regex',
+            summary: `Read regex entry [${idx}] "${entry.comment || ''}"`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -4311,7 +4432,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           normalizeRegexType(entry);
           logMcpMutation('update regex entry', `regex:${idx}`, { entryName, updatedKeys: Object.keys(body) });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, { success: true, index: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx },
+            {
+              toolName: 'write_regex',
+              summary: `Updated regex entry [${idx}] "${entryName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'update regex entry',
@@ -4354,7 +4482,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.regex.push(entry);
           logMcpMutation('add regex entry', 'regex:add', { entryName: name, newIndex: currentData.regex.length - 1 });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, { success: true, index: currentData.regex.length - 1 });
+          const addedRegexIdx = currentData.regex.length - 1;
+          return jsonResSuccess(
+            res,
+            { success: true, index: addedRegexIdx },
+            {
+              toolName: 'add_regex',
+              summary: `Added regex entry [${addedRegexIdx}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add regex entry',
@@ -4419,7 +4555,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           logMcpMutation('batch add regex entries', 'regex:batch-add', { count: results.length });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, { success: true, added: results.length, entries: results });
+          return jsonResSuccess(
+            res,
+            { success: true, added: results.length, entries: results },
+            {
+              toolName: 'add_regex_batch',
+              summary: `Batch added ${results.length} regex entries`,
+              artifacts: { added: results.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch add regex entries',
@@ -4492,7 +4636,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           logMcpMutation('batch write regex entries', 'regex:batch-write', { count: results.length });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, { success: true, modified: results.length, entries: results });
+          return jsonResSuccess(
+            res,
+            { success: true, modified: results.length, entries: results },
+            {
+              toolName: 'write_regex_batch',
+              summary: `Batch modified ${results.length} regex entries`,
+              artifacts: { modified: results.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch write regex entries',
@@ -4566,7 +4718,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (matchCount === 0) {
-          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0 });
+          return mcpNoOp(
+            res,
+            {
+              action: 'replace regex field',
+              message: '일치하는 항목 없음',
+              suggestion: 'read_regex로 현재 필드를 확인하고 find/regex/flags를 조정하세요.',
+              target: `regex:${idx}:replace`,
+            },
+            { matchCount: 0 },
+          );
         }
 
         const allowed = await deps.askRendererConfirm(
@@ -4584,15 +4745,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           logMcpMutation('replace regex field', `regex:${idx}`, { entryName, field: targetField, matchCount });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            comment: entryName,
-            field: targetField,
-            matchCount,
-            oldSize: content.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              comment: entryName,
+              field: targetField,
+              matchCount,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_in_regex',
+              summary: `Replaced ${matchCount} matches in regex entry [${idx}] "${entryName}"`,
+              artifacts: { matchCount, oldSize: content.length, newSize: newContent.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'replace regex field',
@@ -4653,9 +4822,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const anchorNorm = normalizeLF(body.anchor);
           const anchorPos = oldContent.indexOf(anchorNorm);
           if (anchorPos === -1) {
-            return jsonRes(res, {
-              success: false,
+            return mcpNoOp(res, {
+              action: 'insert regex field',
               message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+              suggestion:
+                'read_regex로 현재 필드를 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
+              target: `regex:${idx}:insert`,
             });
           }
           if (position === 'after') {
@@ -4695,15 +4867,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newSize: newContent.length,
           });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            comment: entryName,
-            field: targetField,
-            position,
-            oldSize: oldContent.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              comment: entryName,
+              field: targetField,
+              position,
+              oldSize: oldContent.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'insert_in_regex',
+              summary: `Inserted content into regex entry [${idx}] "${entryName}"`,
+              artifacts: { position, oldSize: oldContent.length, newSize: newContent.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'insert regex field',
@@ -4739,7 +4919,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.regex.splice(idx, 1);
           logMcpMutation('delete regex entry', `regex:${idx}`, { entryName });
           deps.broadcastToAll('data-updated', 'regex', currentData.regex);
-          return jsonRes(res, { success: true, deleted: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: idx },
+            {
+              toolName: 'delete_regex',
+              summary: `Deleted regex entry [${idx}] "${entryName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'delete regex entry',
@@ -4808,7 +4995,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return e;
           });
         }
-        return jsonRes(res, { type: greetingType, field: fieldName, count: items.length, total: arr.length, items });
+        return jsonResSuccess(
+          res,
+          { type: greetingType, field: fieldName, count: items.length, total: arr.length, items },
+          {
+            toolName: 'list_greetings',
+            summary: `Listed ${items.length} ${greetingType} greetings`,
+            artifacts: { count: items.length, total: arr.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -4835,7 +5030,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `greeting:${greetingType}:${parts[2]}`,
           });
         }
-        return jsonRes(res, { type: greetingType, index: idx, content: arr[idx] });
+        return jsonResSuccess(
+          res,
+          { type: greetingType, index: idx, content: arr[idx] },
+          {
+            toolName: 'read_greeting',
+            summary: `Read ${greetingType} greeting [${idx}]`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -4876,7 +5078,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const newIdx = currentData[fieldName].length - 1;
           logMcpMutation('add greeting', `greeting:${greetingType}:add`, { newIndex: newIdx });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, { success: true, type: greetingType, index: newIdx });
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, index: newIdx },
+            {
+              toolName: 'write_greeting',
+              summary: `Added ${greetingType} greeting [${newIdx}]`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add greeting',
@@ -4946,7 +5155,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData[fieldName] = arr;
           logMcpMutation('batch write greetings', `greeting:${greetingType}:batch-write`, { count: writes.length });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, { success: true, type: greetingType, count: writes.length });
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, count: writes.length },
+            {
+              toolName: 'batch_write_greeting',
+              summary: `Batch updated ${writes.length} ${greetingType} greetings`,
+              artifacts: { count: writes.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch write greetings',
@@ -5005,7 +5222,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData[fieldName] = reordered;
           logMcpMutation('reorder greetings', `greeting:${greetingType}:reorder`, { count: arr.length });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, { success: true, type: greetingType, count: reordered.length });
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, count: reordered.length },
+            {
+              toolName: 'batch_write_greeting',
+              summary: `Reordered ${reordered.length} ${greetingType} greetings`,
+              artifacts: { count: reordered.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'reorder greetings',
@@ -5073,7 +5298,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newSize: body.content.length,
           });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, { success: true, type: greetingType, index: idx, size: body.content.length });
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, index: idx, size: body.content.length },
+            {
+              toolName: 'write_greeting',
+              summary: `Updated ${greetingType} greeting [${idx}]`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write greeting',
@@ -5120,7 +5352,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData[fieldName].splice(idx, 1);
           logMcpMutation('delete greeting', `greeting:${greetingType}:${idx}`, {});
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, { success: true, type: greetingType, deleted: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, deleted: idx },
+            {
+              toolName: 'write_greeting',
+              summary: `Deleted ${greetingType} greeting [${idx}]`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'delete greeting',
@@ -5193,12 +5432,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             indices: uniqueIndices,
           });
           deps.broadcastToAll('data-updated', fieldName, currentData[fieldName]);
-          return jsonRes(res, {
-            success: true,
-            type: greetingType,
-            deletedCount: uniqueIndices.length,
-            deletedIndices: uniqueIndices,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              type: greetingType,
+              deletedCount: uniqueIndices.length,
+              deletedIndices: uniqueIndices,
+            },
+            {
+              toolName: 'batch_write_greeting',
+              summary: `Batch deleted ${uniqueIndices.length} ${greetingType} greetings`,
+              artifacts: { deletedCount: uniqueIndices.length },
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'batch delete greetings',
@@ -5227,7 +5474,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           effectCount: Array.isArray(t.effect) ? t.effect.length : 0,
           lowLevelAccess: !!t.lowLevelAccess,
         }));
-        return jsonRes(res, { count: scripts.length, items });
+        return jsonResSuccess(
+          res,
+          { count: scripts.length, items },
+          {
+            toolName: 'list_triggers',
+            summary: `Listed ${scripts.length} trigger scripts`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5244,7 +5498,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `trigger:${parts[1]}`,
           });
         }
-        return jsonRes(res, { index: idx, trigger: scripts[idx] });
+        return jsonResSuccess(
+          res,
+          { index: idx, trigger: scripts[idx] },
+          {
+            toolName: 'read_trigger',
+            summary: `Read trigger script [${idx}] "${scripts[idx].comment || ''}"`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5279,7 +5540,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             deps.stringifyTriggerScripts(currentData.triggerScripts),
           );
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-          return jsonRes(res, { success: true, index: newIdx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: newIdx },
+            {
+              toolName: 'write_trigger',
+              summary: `Added trigger script [${newIdx}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add trigger',
@@ -5322,7 +5590,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             deps.stringifyTriggerScripts(currentData.triggerScripts),
           );
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-          return jsonRes(res, { success: true, deleted: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: idx },
+            {
+              toolName: 'write_trigger',
+              summary: `Deleted trigger script [${idx}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'delete trigger',
@@ -5373,7 +5648,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             deps.stringifyTriggerScripts(currentData.triggerScripts),
           );
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
-          return jsonRes(res, { success: true, index: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx },
+            {
+              toolName: 'write_trigger',
+              summary: `Updated trigger script [${idx}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write trigger',
@@ -5389,7 +5671,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /lua — list Lua sections
       // ----------------------------------------------------------------
       if (parts[0] === 'lua' && !parts[1] && req.method === 'GET') {
-        return jsonRes(res, buildLuaListResponse(String(currentData.lua || ''), deps.parseLuaSections));
+        const luaListPayload = buildLuaListResponse(String(currentData.lua || ''), deps.parseLuaSections);
+        return jsonResSuccess(res, luaListPayload, {
+          toolName: 'list_lua',
+          summary: `Listed ${luaListPayload.count} Lua sections`,
+          artifacts: { count: luaListPayload.count },
+        });
       }
 
       // ----------------------------------------------------------------
@@ -5406,7 +5693,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lua:${idx}`,
           });
         }
-        return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
+        return jsonResSuccess(
+          res,
+          { index: idx, name: sections[idx].name, content: sections[idx].content },
+          {
+            toolName: 'read_lua',
+            summary: `Read Lua section [${idx}] "${sections[idx].name}" (${sections[idx].content.length} chars)`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5438,7 +5732,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (typeof idx !== 'number' || idx < 0 || idx >= sections.length) return null;
           return { index: idx, name: sections[idx].name, content: sections[idx].content };
         });
-        return jsonRes(res, { count: result.filter(Boolean).length, total: indices.length, sections: result });
+        return jsonResSuccess(
+          res,
+          { count: result.filter(Boolean).length, total: indices.length, sections: result },
+          {
+            toolName: 'read_lua',
+            summary: `Batch read ${result.filter(Boolean).length}/${indices.length} Lua sections`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5481,7 +5782,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           logMcpMutation('add lua section', `lua:add`, { sectionName: name, newIndex: sections.length - 1 });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
           deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
-          return jsonRes(res, { success: true, index: sections.length - 1, name, contentSize: content.length });
+          return jsonResSuccess(
+            res,
+            { success: true, index: sections.length - 1, name, contentSize: content.length },
+            {
+              toolName: 'add_lua_section',
+              summary: `Added Lua section [${sections.length - 1}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add lua section',
@@ -5538,7 +5846,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           logMcpMutation('write lua section', `lua:${idx}`, { sectionName, oldSize, newSize });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
           deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
-          return jsonRes(res, { success: true, index: idx, name: sectionName, size: newSize, warning });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx, name: sectionName, size: newSize, warning },
+            {
+              toolName: 'write_lua',
+              summary: `Updated Lua section [${idx}] "${sectionName}" (${oldSize} → ${newSize} chars)`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write lua section',
@@ -5601,7 +5916,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (matchCount === 0) {
-          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0 });
+          return mcpNoOp(
+            res,
+            {
+              action: 'replace lua section content',
+              message: '일치하는 항목 없음',
+              suggestion: 'read_lua로 현재 섹션 내용을 확인하고 find/regex/flags를 조정하세요.',
+              target: `lua:${idx}`,
+            },
+            { matchCount: 0 },
+          );
         }
 
         const allowed = await deps.askRendererConfirm(
@@ -5616,14 +5940,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           logMcpMutation('replace lua section content', `lua:${idx}`, { sectionName, matchCount });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
           deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            name: sectionName,
-            matchCount,
-            oldSize: content.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              name: sectionName,
+              matchCount,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_in_lua',
+              summary: `Replaced ${matchCount} match(es) in Lua section [${idx}] "${sectionName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'replace lua section content',
@@ -5673,9 +6004,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const anchorNorm = normalizeLF(body.anchor);
           const anchorPos = oldContent.indexOf(anchorNorm);
           if (anchorPos === -1) {
-            return jsonRes(res, {
-              success: false,
+            return mcpNoOp(res, {
+              action: 'insert lua section content',
               message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+              suggestion:
+                'read_lua로 현재 섹션 내용을 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
+              target: `lua:${idx}`,
             });
           }
           if (position === 'after') {
@@ -5722,15 +6056,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
           deps.broadcastToAll('data-updated', 'lua', currentData.lua);
           deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            name: sectionName,
-            position,
-            oldSize: oldContent.length,
-            newSize: newContent.length,
-            warning: warning || undefined,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              name: sectionName,
+              position,
+              oldSize: oldContent.length,
+              newSize: newContent.length,
+              warning: warning || undefined,
+            },
+            {
+              toolName: 'insert_in_lua',
+              summary: `Inserted content at ${position} in Lua section [${idx}] "${sectionName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'insert lua section content',
@@ -5752,7 +6093,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           name: s.name,
           contentSize: s.content.length,
         }));
-        return jsonRes(res, { count: result.length, sections: result });
+        return jsonResSuccess(
+          res,
+          { count: result.length, sections: result },
+          {
+            toolName: 'list_css',
+            summary: `Listed ${result.length} CSS sections`,
+            artifacts: { count: result.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5769,7 +6118,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `css-section:${idx}`,
           });
         }
-        return jsonRes(res, { index: idx, name: sections[idx].name, content: sections[idx].content });
+        return jsonResSuccess(
+          res,
+          { index: idx, name: sections[idx].name, content: sections[idx].content },
+          {
+            toolName: 'read_css',
+            summary: `Read CSS section [${idx}] "${sections[idx].name}" (${sections[idx].content.length} chars)`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5801,7 +6157,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (typeof idx !== 'number' || idx < 0 || idx >= sections.length) return null;
           return { index: idx, name: sections[idx].name, content: sections[idx].content };
         });
-        return jsonRes(res, { count: result.filter(Boolean).length, total: indices.length, sections: result });
+        return jsonResSuccess(
+          res,
+          { count: result.filter(Boolean).length, total: indices.length, sections: result },
+          {
+            toolName: 'read_css',
+            summary: `Batch read ${result.filter(Boolean).length}/${indices.length} CSS sections`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -5842,7 +6205,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.css = deps.combineCssSections(sections, prefix, suffix);
           logMcpMutation('add css section', `css-section:add`, { sectionName: name, newIndex: sections.length - 1 });
           deps.broadcastToAll('data-updated', 'css', currentData.css);
-          return jsonRes(res, { success: true, index: sections.length - 1, name, contentSize: content.length });
+          return jsonResSuccess(
+            res,
+            { success: true, index: sections.length - 1, name, contentSize: content.length },
+            {
+              toolName: 'add_css_section',
+              summary: `Added CSS section [${sections.length - 1}] "${name}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add css section',
@@ -5892,7 +6262,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.css = deps.combineCssSections(sections, prefix, suffix);
           logMcpMutation('write css section', `css-section:${idx}`, { sectionName, oldSize, newSize });
           deps.broadcastToAll('data-updated', 'css', currentData.css);
-          return jsonRes(res, { success: true, index: idx, name: sectionName, size: newSize });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx, name: sectionName, size: newSize },
+            {
+              toolName: 'write_css',
+              summary: `Updated CSS section [${idx}] "${sectionName}" (${oldSize} → ${newSize} chars)`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write css section',
@@ -5955,7 +6332,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (matchCount === 0) {
-          return jsonRes(res, { success: false, message: '일치하는 항목 없음', matchCount: 0 });
+          return mcpNoOp(
+            res,
+            {
+              action: 'replace css section content',
+              message: '일치하는 항목 없음',
+              suggestion: 'read_css로 현재 섹션 내용을 확인하고 find/regex/flags를 조정하세요.',
+              target: `css-section:${idx}`,
+            },
+            { matchCount: 0 },
+          );
         }
 
         const allowed = await deps.askRendererConfirm(
@@ -5968,14 +6354,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.css = deps.combineCssSections(sections, prefix, suffix);
           logMcpMutation('replace css section content', `css-section:${idx}`, { sectionName, matchCount });
           deps.broadcastToAll('data-updated', 'css', currentData.css);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            name: sectionName,
-            matchCount,
-            oldSize: content.length,
-            newSize: newContent.length,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              name: sectionName,
+              matchCount,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_in_css',
+              summary: `Replaced ${matchCount} match(es) in CSS section [${idx}] "${sectionName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'replace css section content',
@@ -6025,9 +6418,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           const anchorNorm = normalizeLF(body.anchor);
           const anchorPos = oldContent.indexOf(anchorNorm);
           if (anchorPos === -1) {
-            return jsonRes(res, {
-              success: false,
+            return mcpNoOp(res, {
+              action: 'insert css section content',
               message: `앵커 문자열을 찾을 수 없음: ${body.anchor.substring(0, 80)}`,
+              suggestion:
+                'read_css로 현재 섹션 내용을 확인해 anchor 문자열을 다시 지정하거나 position을 start/end로 변경하세요.',
+              target: `css-section:${idx}`,
             });
           }
           if (position === 'after') {
@@ -6080,15 +6476,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newSize: newContent.length,
           });
           deps.broadcastToAll('data-updated', 'css', currentData.css);
-          return jsonRes(res, {
-            success: true,
-            index: idx,
-            name: sectionName,
-            position,
-            oldSize: oldContent.length,
-            newSize: newContent.length,
-            warning: warning || undefined,
-          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              index: idx,
+              name: sectionName,
+              position,
+              oldSize: oldContent.length,
+              newSize: newContent.length,
+              warning: warning || undefined,
+            },
+            {
+              toolName: 'insert_in_css',
+              summary: `Inserted content at ${position} in CSS section [${idx}] "${sectionName}"`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'insert css section content',
@@ -6118,7 +6521,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (r.data.regex?.length) fields.push({ name: 'regex', count: r.data.regex.length, type: 'array' });
           return { index: i, fileName: r.fileName, fields };
         });
-        return jsonRes(res, { count: refs.length, references: refs });
+        return jsonResSuccess(
+          res,
+          { count: refs.length, references: refs },
+          {
+            toolName: 'list_references',
+            summary: `Listed ${refs.length} reference file(s)`,
+            artifacts: { count: refs.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6201,7 +6612,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             return !content.includes(nq);
           });
         }
-        return jsonRes(res, { index: idx, fileName: ref.fileName, count: entries.length, entries });
+        return jsonResSuccess(
+          res,
+          { index: idx, fileName: ref.fileName, count: entries.length, entries },
+          {
+            toolName: 'list_reference_lorebook',
+            summary: `Listed ${entries.length} lorebook entries in reference ${idx}`,
+            artifacts: { refIndex: idx, count: entries.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6250,13 +6669,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             entry: projectLorebookEntryForResponse(lorebook[entryIdx], lorebook, requestedFields),
           };
         });
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: refFiles[idx].fileName,
-          count: entries.filter(Boolean).length,
-          total: indices.length,
-          entries,
-        });
+        const batchCount = entries.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: refFiles[idx].fileName,
+            count: batchCount,
+            total: indices.length,
+            entries,
+          },
+          {
+            toolName: 'read_reference_lorebook_batch',
+            summary: `Batch read ${batchCount}/${indices.length} reference lorebook entries`,
+            artifacts: { refIndex: idx, count: batchCount, total: indices.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6282,12 +6710,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Lorebook entry index ${entryIdx} out of range (0-${lorebook.length - 1})`,
           });
         }
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: ref.fileName,
-          entryIndex: entryIdx,
-          entry: normalizeLorebookEntryForResponse(lorebook[entryIdx], lorebook),
-        });
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: ref.fileName,
+            entryIndex: entryIdx,
+            entry: normalizeLorebookEntryForResponse(lorebook[entryIdx], lorebook),
+          },
+          {
+            toolName: 'read_reference_lorebook',
+            summary: `Read reference ${idx} lorebook entry ${entryIdx}`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6313,7 +6748,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           replaceSize:
             typeof e.replace === 'string' ? e.replace.length : typeof e.out === 'string' ? (e.out as string).length : 0,
         }));
-        return jsonRes(res, { refIndex: idx, fileName: ref.fileName, count: entries.length, entries });
+        return jsonResSuccess(
+          res,
+          { refIndex: idx, fileName: ref.fileName, count: entries.length, entries },
+          {
+            toolName: 'list_reference_regex',
+            summary: `Listed ${entries.length} regex entries in reference ${idx}`,
+            artifacts: { refIndex: idx, count: entries.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6347,7 +6790,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (entry.replace === undefined) entry.replace = '';
         delete entry.in;
         delete entry.out;
-        return jsonRes(res, { refIndex: idx, fileName: ref.fileName, entryIndex: entryIdx, entry });
+        return jsonResSuccess(
+          res,
+          { refIndex: idx, fileName: ref.fileName, entryIndex: entryIdx, entry },
+          {
+            toolName: 'read_reference_regex',
+            summary: `Read reference ${idx} regex entry ${entryIdx}`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6366,7 +6816,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const ref = refFiles[idx];
         const luaCode = ref.data.lua || '';
         if (!luaCode) {
-          return jsonRes(res, { index: idx, fileName: ref.fileName, count: 0, sections: [] });
+          return jsonResSuccess(
+            res,
+            { index: idx, fileName: ref.fileName, count: 0, sections: [] },
+            {
+              toolName: 'list_reference_lua',
+              summary: `Listed 0 Lua sections in reference ${idx} (empty)`,
+              artifacts: { refIndex: idx, count: 0 },
+            },
+          );
         }
         const sections = deps.parseLuaSections(luaCode);
         const result = sections.map((s, i) => ({
@@ -6374,7 +6832,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           name: s.name,
           contentSize: s.content.length,
         }));
-        return jsonRes(res, { index: idx, fileName: ref.fileName, count: result.length, sections: result });
+        return jsonResSuccess(
+          res,
+          { index: idx, fileName: ref.fileName, count: result.length, sections: result },
+          {
+            toolName: 'list_reference_lua',
+            summary: `Listed ${result.length} Lua section(s) in reference ${idx}`,
+            artifacts: { refIndex: idx, count: result.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6414,13 +6880,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (typeof sIdx !== 'number' || sIdx < 0 || sIdx >= sections.length) return null;
           return { index: sIdx, name: sections[sIdx].name, content: sections[sIdx].content };
         });
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: refFiles[idx].fileName,
-          count: result.filter(Boolean).length,
-          total: indices.length,
-          sections: result,
-        });
+        const luaBatchCount = result.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: refFiles[idx].fileName,
+            count: luaBatchCount,
+            total: indices.length,
+            sections: result,
+          },
+          {
+            toolName: 'read_reference_lua_batch',
+            summary: `Batch read ${luaBatchCount}/${indices.length} reference Lua sections`,
+            artifacts: { refIndex: idx, count: luaBatchCount, total: indices.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6447,13 +6922,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Lua section index ${sectionIdx} out of range (0-${sections.length - 1})`,
           });
         }
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: ref.fileName,
-          sectionIndex: sectionIdx,
-          name: sections[sectionIdx].name,
-          content: sections[sectionIdx].content,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: ref.fileName,
+            sectionIndex: sectionIdx,
+            name: sections[sectionIdx].name,
+            content: sections[sectionIdx].content,
+          },
+          {
+            toolName: 'read_reference_lua',
+            summary: `Read reference ${idx} Lua section ${sectionIdx} ("${sections[sectionIdx].name}")`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6472,7 +6954,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const ref = refFiles[idx];
         const cssCode = ref.data.css || '';
         if (!cssCode) {
-          return jsonRes(res, { index: idx, fileName: ref.fileName, count: 0, sections: [] });
+          return jsonResSuccess(
+            res,
+            { index: idx, fileName: ref.fileName, count: 0, sections: [] },
+            {
+              toolName: 'list_reference_css',
+              summary: `Listed 0 CSS sections in reference ${idx} (empty)`,
+              artifacts: { refIndex: idx, count: 0 },
+            },
+          );
         }
         const cssResult = deps.parseCssSections(cssCode);
         const result = cssResult.sections.map((s, i) => ({
@@ -6480,7 +6970,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           name: s.name,
           contentSize: s.content.length,
         }));
-        return jsonRes(res, { index: idx, fileName: ref.fileName, count: result.length, sections: result });
+        return jsonResSuccess(
+          res,
+          { index: idx, fileName: ref.fileName, count: result.length, sections: result },
+          {
+            toolName: 'list_reference_css',
+            summary: `Listed ${result.length} CSS section(s) in reference ${idx}`,
+            artifacts: { refIndex: idx, count: result.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6522,13 +7020,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (typeof sIdx !== 'number' || sIdx < 0 || sIdx >= cssResult.sections.length) return null;
           return { index: sIdx, name: cssResult.sections[sIdx].name, content: cssResult.sections[sIdx].content };
         });
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: refFiles[idx].fileName,
-          count: result.filter(Boolean).length,
-          total: indices.length,
-          sections: result,
-        });
+        const cssBatchCount = result.filter(Boolean).length;
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: refFiles[idx].fileName,
+            count: cssBatchCount,
+            total: indices.length,
+            sections: result,
+          },
+          {
+            toolName: 'read_reference_css_batch',
+            summary: `Batch read ${cssBatchCount}/${indices.length} reference CSS sections`,
+            artifacts: { refIndex: idx, count: cssBatchCount, total: indices.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6557,13 +7064,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `CSS section index ${sectionIdx} out of range (0-${cssResult.sections.length - 1})`,
           });
         }
-        return jsonRes(res, {
-          refIndex: idx,
-          fileName: ref.fileName,
-          sectionIndex: sectionIdx,
-          name: cssResult.sections[sectionIdx].name,
-          content: cssResult.sections[sectionIdx].content,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: ref.fileName,
+            sectionIndex: sectionIdx,
+            name: cssResult.sections[sectionIdx].name,
+            content: cssResult.sections[sectionIdx].content,
+          },
+          {
+            toolName: 'read_reference_css',
+            summary: `Read reference ${idx} CSS section ${sectionIdx} ("${cssResult.sections[sectionIdx].name}")`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6582,33 +7096,61 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const ref = refFiles[idx];
         if (fieldName === 'lorebook') {
-          return jsonRes(res, {
-            index: idx,
-            fileName: ref.fileName,
-            field: 'lorebook',
-            content: (ref.data.lorebook || []).map((entry: Record<string, unknown>) =>
-              normalizeLorebookEntryForResponse(entry, ref.data.lorebook || []),
-            ),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              index: idx,
+              fileName: ref.fileName,
+              field: 'lorebook',
+              content: (ref.data.lorebook || []).map((entry: Record<string, unknown>) =>
+                normalizeLorebookEntryForResponse(entry, ref.data.lorebook || []),
+              ),
+            },
+            {
+              toolName: 'read_reference_field',
+              summary: `Read reference ${idx} field "lorebook"`,
+            },
+          );
         }
         if (fieldName === 'regex') {
-          return jsonRes(res, { index: idx, fileName: ref.fileName, field: 'regex', content: ref.data.regex || [] });
+          return jsonResSuccess(
+            res,
+            { index: idx, fileName: ref.fileName, field: 'regex', content: ref.data.regex || [] },
+            {
+              toolName: 'read_reference_field',
+              summary: `Read reference ${idx} field "regex"`,
+            },
+          );
         }
         if (fieldName === 'triggerScripts') {
-          return jsonRes(res, {
-            index: idx,
-            fileName: ref.fileName,
-            field: 'triggerScripts',
-            content: ref.data.triggerScripts || '[]',
-          });
+          return jsonResSuccess(
+            res,
+            {
+              index: idx,
+              fileName: ref.fileName,
+              field: 'triggerScripts',
+              content: ref.data.triggerScripts || '[]',
+            },
+            {
+              toolName: 'read_reference_field',
+              summary: `Read reference ${idx} field "triggerScripts"`,
+            },
+          );
         }
         if (fieldName === 'alternateGreetings') {
-          return jsonRes(res, {
-            index: idx,
-            fileName: ref.fileName,
-            field: fieldName,
-            content: ref.data[fieldName] || [],
-          });
+          return jsonResSuccess(
+            res,
+            {
+              index: idx,
+              fileName: ref.fileName,
+              field: fieldName,
+              content: ref.data[fieldName] || [],
+            },
+            {
+              toolName: 'read_reference_field',
+              summary: `Read reference ${idx} field "${fieldName}"`,
+            },
+          );
         }
         const allowedRefFields = [
           'lua',
@@ -6626,12 +7168,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Unknown field: ${fieldName}`,
           });
         }
-        return jsonRes(res, {
-          index: idx,
-          fileName: ref.fileName,
-          field: fieldName,
-          content: ref.data[fieldName] || '',
-        });
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            fileName: ref.fileName,
+            field: fieldName,
+            content: ref.data[fieldName] || '',
+          },
+          {
+            toolName: 'read_reference_field',
+            summary: `Read reference ${idx} field "${fieldName}"`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6639,14 +7188,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'assets' && !parts[1] && req.method === 'GET') {
         const assets = currentData.assets || [];
-        return jsonRes(res, {
-          count: assets.length,
-          assets: assets.map((a: any, i: number) => ({
-            index: i,
-            path: a.path,
-            size: a.data ? a.data.length : 0,
-          })),
-        });
+        return jsonResSuccess(
+          res,
+          {
+            count: assets.length,
+            assets: assets.map((a: any, i: number) => ({
+              index: i,
+              path: a.path,
+              size: a.data ? a.data.length : 0,
+            })),
+          },
+          {
+            toolName: 'list_charx_assets',
+            summary: `Listed ${assets.length} charx asset(s)`,
+            artifacts: { count: assets.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6666,13 +7223,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const asset = assets[idx];
         const ext = (asset.path.split('.').pop() || 'png').toLowerCase();
         const mime = extToMime(ext);
-        return jsonRes(res, {
-          index: idx,
-          path: asset.path,
-          size: asset.data ? asset.data.length : 0,
-          mimeType: mime,
-          base64: asset.data ? asset.data.toString('base64') : '',
-        });
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            path: asset.path,
+            size: asset.data ? asset.data.length : 0,
+            mimeType: mime,
+            base64: asset.data ? asset.data.toString('base64') : '',
+          },
+          {
+            toolName: 'read_charx_asset',
+            summary: `Read charx asset ${idx} (${asset.path}, ${asset.data ? asset.data.length : 0} bytes)`,
+            artifacts: { index: idx, path: asset.path, size: asset.data ? asset.data.length : 0 },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6734,7 +7299,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         deps.broadcastToAll('data-updated', { field: 'assets' });
-        return jsonRes(res, { ok: true, path: assetPath, size: buf.length });
+        return jsonResSuccess(
+          res,
+          { ok: true, path: assetPath, size: buf.length },
+          {
+            toolName: 'add_charx_asset',
+            summary: `Added charx asset "${assetPath}" (${buf.length} bytes)`,
+            artifacts: { path: assetPath, size: buf.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6773,7 +7346,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (caIdx >= 0) currentData.cardAssets.splice(caIdx, 1);
         }
         deps.broadcastToAll('data-updated', { field: 'assets' });
-        return jsonRes(res, { ok: true, deleted: assetToDelete.path });
+        return jsonResSuccess(
+          res,
+          { ok: true, deleted: assetToDelete.path },
+          {
+            toolName: 'delete_charx_asset',
+            summary: `Deleted charx asset "${assetToDelete.path}"`,
+            artifacts: { deleted: assetToDelete.path },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6829,7 +7410,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
         }
         deps.broadcastToAll('data-updated', { field: 'assets' });
-        return jsonRes(res, { ok: true, oldPath, newPath });
+        return jsonResSuccess(
+          res,
+          { ok: true, oldPath, newPath },
+          {
+            toolName: 'rename_charx_asset',
+            summary: `Renamed charx asset "${oldPath}" → "${newPath}"`,
+            artifacts: { oldPath, newPath },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -6879,21 +7468,29 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         });
 
         if (convertible.length === 0) {
-          return jsonRes(res, {
-            ok: true,
-            message: 'No convertible assets found.',
-            stats: {
-              total: assets.length,
-              converted: 0,
-              skipped: assets.length,
-              failed: 0,
-              larger: 0,
-              originalSize: assets.reduce((s, a) => s + a.data.length, 0),
-              compressedSize: assets.reduce((s, a) => s + a.data.length, 0),
-              savedBytes: 0,
-              savedPercent: 0,
+          return jsonResSuccess(
+            res,
+            {
+              ok: true,
+              message: 'No convertible assets found.',
+              stats: {
+                total: assets.length,
+                converted: 0,
+                skipped: assets.length,
+                failed: 0,
+                larger: 0,
+                originalSize: assets.reduce((s, a) => s + a.data.length, 0),
+                compressedSize: assets.reduce((s, a) => s + a.data.length, 0),
+                savedBytes: 0,
+                savedPercent: 0,
+              },
             },
-          });
+            {
+              toolName: 'compress_assets_webp',
+              summary: 'No convertible assets found',
+              artifacts: { total: assets.length, converted: 0, skipped: assets.length },
+            },
+          );
         }
 
         const totalSize = assets.reduce((s, a) => s + a.data.length, 0);
@@ -6944,19 +7541,27 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             savedBytes: result.stats.savedBytes,
           });
 
-          return jsonRes(res, {
-            ok: true,
-            stats: result.stats,
-            referencesUpdated: refsUpdated,
-            details: result.details.map((d) => ({
-              originalPath: d.originalPath,
-              newPath: d.newPath,
-              originalSize: d.originalSize,
-              newSize: d.newSize,
-              status: d.status,
-              reason: d.reason,
-            })),
-          });
+          return jsonResSuccess(
+            res,
+            {
+              ok: true,
+              stats: result.stats,
+              referencesUpdated: refsUpdated,
+              details: result.details.map((d) => ({
+                originalPath: d.originalPath,
+                newPath: d.newPath,
+                originalSize: d.originalSize,
+                newSize: d.newSize,
+                status: d.status,
+                reason: d.reason,
+              })),
+            },
+            {
+              toolName: 'compress_assets_webp',
+              summary: `Compressed ${result.stats.converted} asset(s), saved ${result.stats.savedBytes} bytes`,
+              artifacts: { converted: result.stats.converted, savedBytes: result.stats.savedBytes },
+            },
+          );
         } catch (err: unknown) {
           return mcpError(res, 500, {
             action: 'compress-webp',
@@ -7050,7 +7655,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Exported ${result.exportedCount} entries to ${format.toUpperCase()}.`,
           });
 
-          return jsonRes(res, result);
+          return jsonResSuccess(res, result as unknown as Record<string, unknown>, {
+            toolName: 'export_lorebook_to_files',
+            summary: `Exported ${result.exportedCount} lorebook entries to ${format.toUpperCase()}`,
+            artifacts: { exportedCount: result.exportedCount, format },
+          });
         } catch (err: unknown) {
           return mcpError(res, 500, {
             action: 'export-lorebook',
@@ -7085,7 +7694,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const conflict = ['skip', 'overwrite', 'rename'].includes(body.conflict)
           ? (body.conflict as 'skip' | 'overwrite' | 'rename')
           : 'skip';
-        const dryRun = body.dry_run === true;
+        const dryRun = !!(body.dry_run ?? body.dryRun);
 
         try {
           // Lazy-load lorebook-io
@@ -7097,12 +7706,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             format === 'json' ? await lorebookIo.importFromJson(source) : await lorebookIo.importFromMarkdown(source);
 
           if (importEntries.length === 0) {
-            return jsonRes(res, {
-              success: true,
-              totalFound: 0,
-              imported: 0,
-              message: 'No entries found to import.',
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                totalFound: 0,
+                imported: 0,
+                message: 'No entries found to import.',
+              },
+              {
+                toolName: 'import_lorebook_from_files',
+                summary: 'No entries found to import',
+                artifacts: { totalFound: 0, imported: 0 },
+              },
+            );
           }
 
           // Resolve conflicts
@@ -7115,18 +7732,30 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
           // Dry run: return preview without changes
           if (dryRun) {
-            return jsonRes(res, {
-              success: true,
-              dryRun: true,
-              totalFound: importEntries.length,
-              toAdd: resolution.toAdd.length,
-              toOverwrite: resolution.toOverwrite.length,
-              skipped: resolution.skipped.length,
-              renamed: resolution.renamed.length,
-              newFolders: resolution.newFolders,
-              skippedEntries: resolution.skipped,
-              renamedEntries: resolution.renamed,
-            });
+            return jsonResSuccess(
+              res,
+              {
+                success: true,
+                dryRun: true,
+                totalFound: importEntries.length,
+                toAdd: resolution.toAdd.length,
+                toOverwrite: resolution.toOverwrite.length,
+                skipped: resolution.skipped.length,
+                renamed: resolution.renamed.length,
+                newFolders: resolution.newFolders,
+                skippedEntries: resolution.skipped,
+                renamedEntries: resolution.renamed,
+              },
+              {
+                toolName: 'import_lorebook_from_files',
+                summary: `Dry-run: ${importEntries.length} entries found (${resolution.toAdd.length} new, ${resolution.toOverwrite.length} overwrite)`,
+                artifacts: {
+                  totalFound: importEntries.length,
+                  toAdd: resolution.toAdd.length,
+                  toOverwrite: resolution.toOverwrite.length,
+                },
+              },
+            );
           }
 
           // User confirmation
@@ -7208,9 +7837,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           canonicalizeLorebookFolderRefs((currentData.lorebook as Record<string, unknown>[]) || []);
 
           // Broadcast update
-          deps.broadcastToAll('data-updated', {
-            lorebook: currentData.lorebook,
-          });
+          deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
 
           broadcastStatus({
             type: 'success',
@@ -7218,16 +7845,29 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Imported ${resolution.toAdd.length + resolution.toOverwrite.length} entries.`,
           });
 
-          return jsonRes(res, {
-            success: true,
-            totalFound: importEntries.length,
-            imported: resolution.toAdd.length,
-            overwritten: resolution.toOverwrite.length,
-            skipped: resolution.skipped.length,
-            renamed: resolution.renamed.length,
-            foldersCreated,
-            errors,
-          });
+          const importedCount = resolution.toAdd.length + resolution.toOverwrite.length;
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              totalFound: importEntries.length,
+              imported: resolution.toAdd.length,
+              overwritten: resolution.toOverwrite.length,
+              skipped: resolution.skipped.length,
+              renamed: resolution.renamed.length,
+              foldersCreated,
+              errors,
+            },
+            {
+              toolName: 'import_lorebook_from_files',
+              summary: `Imported ${importedCount} lorebook entries (${resolution.toAdd.length} new, ${resolution.toOverwrite.length} overwritten)`,
+              artifacts: {
+                totalFound: importEntries.length,
+                imported: resolution.toAdd.length,
+                overwritten: resolution.toOverwrite.length,
+              },
+            },
+          );
         } catch (err: unknown) {
           return mcpError(res, 500, {
             action: 'import-lorebook',
@@ -7299,7 +7939,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: `Exported "${field}" to ${filePath}.`,
           });
 
-          return jsonRes(res, result);
+          return jsonResSuccess(res, result as Record<string, unknown>, {
+            toolName: 'export_field_to_file',
+            summary: `Exported "${field}" to ${filePath}`,
+            artifacts: {
+              filePath: (result as Record<string, unknown>).filePath,
+              size: (result as Record<string, unknown>).size,
+            },
+          });
         } catch (err: unknown) {
           return mcpError(res, 500, {
             action: 'export-field',
@@ -7328,7 +7975,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             size: buf.length,
           };
         });
-        return jsonRes(res, { count: items.length, assets: items });
+        return jsonResSuccess(
+          res,
+          { count: items.length, assets: items },
+          {
+            toolName: 'list_risum_assets',
+            summary: `Listed ${items.length} risum asset(s)`,
+            artifacts: { count: items.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7352,13 +8007,22 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           [];
         const meta = Array.isArray(modAssets[idx]) ? (modAssets[idx] as string[]) : null;
         const assetBuf = risumAssets[idx];
-        return jsonRes(res, {
-          index: idx,
-          name: meta?.[0] || `asset_${idx}`,
-          path: meta?.[2] || '',
-          size: assetBuf.length,
-          base64: assetBuf.toString('base64'),
-        });
+        const risumAssetName = meta?.[0] || `asset_${idx}`;
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            name: risumAssetName,
+            path: meta?.[2] || '',
+            size: assetBuf.length,
+            base64: assetBuf.toString('base64'),
+          },
+          {
+            toolName: 'read_risum_asset',
+            summary: `Read risum asset ${idx} ("${risumAssetName}", ${assetBuf.length} bytes)`,
+            artifacts: { index: idx, name: risumAssetName, size: assetBuf.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7412,7 +8076,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         if (deps.invalidateAssetsMapCache) deps.invalidateAssetsMapCache();
         deps.broadcastToAll('data-updated', { field: 'risumAssets' });
-        return jsonRes(res, { ok: true, index: currentData.risumAssets.length - 1, name: assetName, size: buf.length });
+        return jsonResSuccess(
+          res,
+          { ok: true, index: currentData.risumAssets.length - 1, name: assetName, size: buf.length },
+          {
+            toolName: 'add_risum_asset',
+            summary: `Added risum asset "${assetName}" (${buf.length} bytes)`,
+            artifacts: { name: assetName, size: buf.length },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7462,389 +8134,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         if (deps.invalidateAssetsMapCache) deps.invalidateAssetsMapCache();
         deps.broadcastToAll('data-updated', { field: 'risumAssets' });
-        return jsonRes(res, { ok: true, deleted: deleteName });
+        return jsonResSuccess(
+          res,
+          { ok: true, deleted: deleteName },
+          {
+            toolName: 'delete_risum_asset',
+            summary: `Deleted risum asset "${deleteName}"`,
+            artifacts: { deleted: deleteName },
+          },
+        );
       }
 
-      // ================================================================
-      // CBS (Conditional Block Syntax) validation routes
-      // ================================================================
-
-      // Helper: collect CBS-containing text entries from current data
-      function collectCBSEntries(
-        currentData: any,
-        fieldFilter?: string,
-        lorebookIndex?: number,
-      ): { path: string; text: string }[] {
-        const entries: { path: string; text: string }[] = [];
-
-        if (lorebookIndex !== undefined) {
-          const lb = currentData.lorebook || [];
-          if (lorebookIndex < 0 || lorebookIndex >= lb.length) return entries;
-          const content = lb[lorebookIndex].content || '';
-          if (content.includes('{{#when') || content.includes('{{getglobalvar')) {
-            entries.push({ path: `lorebook[${lorebookIndex}].content`, text: content });
-          }
-          return entries;
-        }
-
-        if (fieldFilter) {
-          // Single field
-          let text = '';
-          if (fieldFilter.startsWith('lorebook[')) {
-            const match = fieldFilter.match(/^lorebook\[(\d+)\]\.content$/);
-            if (match) {
-              const idx = parseInt(match[1], 10);
-              const lb = currentData.lorebook || [];
-              if (idx >= 0 && idx < lb.length) text = lb[idx].content || '';
-            }
-          } else {
-            text = typeof currentData[fieldFilter] === 'string' ? currentData[fieldFilter] : '';
-          }
-          if (text && (text.includes('{{#when') || text.includes('{{getglobalvar'))) {
-            entries.push({ path: fieldFilter, text });
-          }
-          return entries;
-        }
-
-        // Scan all text fields
-        const textFields = [
-          'globalNote',
-          'firstMessage',
-          'description',
-          'personality',
-          'scenario',
-          'systemPrompt',
-          'exampleMessage',
-          'additionalText',
-          'mainPrompt',
-          'jailbreak',
-        ];
-        for (const f of textFields) {
-          const val = currentData[f];
-          if (typeof val === 'string' && (val.includes('{{#when') || val.includes('{{getglobalvar'))) {
-            entries.push({ path: f, text: val });
-          }
-        }
-
-        // Scan alternate greetings
-        const altGreetings = currentData.alternateGreetings || [];
-        for (let i = 0; i < altGreetings.length; i++) {
-          const g = altGreetings[i];
-          if (typeof g === 'string' && (g.includes('{{#when') || g.includes('{{getglobalvar'))) {
-            entries.push({ path: `alternateGreetings[${i}]`, text: g });
-          }
-        }
-
-        // Scan lorebook
-        const lb = currentData.lorebook || [];
-        for (let i = 0; i < lb.length; i++) {
-          const content = lb[i].content || '';
-          if (content.includes('{{#when') || content.includes('{{getglobalvar')) {
-            entries.push({ path: `lorebook[${i}].content`, text: content });
-          }
-        }
-
-        return entries;
-      }
-
-      // Helper: normalize toggle keys — add toggle_ prefix if missing
-      function normalizeToggles(toggles: Record<string, string>): ToggleMap {
-        const result: ToggleMap = {};
-        for (const [key, val] of Object.entries(toggles)) {
-          const normalizedKey = key.startsWith('toggle_') ? key : `toggle_${key}`;
-          result[normalizedKey] = String(val);
-        }
-        return result;
-      }
-
-      // ----------------------------------------------------------------
-      // GET /cbs/validate — validate CBS nesting
-      // ----------------------------------------------------------------
-      if (parts[0] === 'cbs' && parts[1] === 'validate' && !parts[2] && req.method === 'GET') {
-        const currentData = deps.getCurrentData();
-        if (!currentData)
-          return mcpError(res, 400, { action: 'cbs/validate', target: 'cbs', message: 'No file loaded' });
-
-        const fieldFilter = url.searchParams.get('field') || undefined;
-        const lbIdxParam = url.searchParams.get('lorebook_index');
-        const lorebookIndex = lbIdxParam !== null ? parseInt(lbIdxParam, 10) : undefined;
-        const allCombos = url.searchParams.get('all_combos') === 'true';
-
-        const cbsEntries = collectCBSEntries(currentData, fieldFilter, lorebookIndex);
-        const MAX_VALIDATE_COMBOS = 1024;
-        const results: any[] = [];
-        let passed = 0;
-        let failed = 0;
-
-        for (const entry of cbsEntries) {
-          const vr = validateNesting(entry.text);
-          const item: any = {
-            path: entry.path,
-            valid: vr.valid,
-            opens: vr.openCount,
-            closes: vr.closeCount,
-          };
-          if (!vr.valid) {
-            item.errors = vr.errors;
-          }
-
-          // Optional: all-combos resolve validation
-          if (allCombos && vr.valid) {
-            const toggles = extractToggles(entry.text);
-            const toggleArr = Array.from(toggles);
-            const valueMap: Record<string, string[]> = {};
-            for (const t of toggleArr) {
-              valueMap[t] = Array.from(extractToggleValues(entry.text, t));
-              if (valueMap[t].length === 0) valueMap[t] = ['0', '1'];
-            }
-            const combos = generateCombinations(toggleArr, valueMap);
-            if (combos.length > MAX_VALIDATE_COMBOS) {
-              item.combo_warning = `${combos.length} combinations exceed limit of ${MAX_VALIDATE_COMBOS}, skipped`;
-            } else {
-              const comboErrors: string[] = [];
-              for (const combo of combos) {
-                try {
-                  const resolved = resolveInnerExpressions(entry.text, combo);
-                  const reParsed = parse(resolved);
-                  cbsResolve(resolved, reParsed.blocks, combo);
-                } catch (e: any) {
-                  comboErrors.push(`combo ${JSON.stringify(combo)}: ${e.message}`);
-                  if (comboErrors.length >= 5) {
-                    comboErrors.push('... (truncated)');
-                    break;
-                  }
-                }
-              }
-              if (comboErrors.length > 0) {
-                item.valid = false;
-                item.combo_errors = comboErrors;
-              }
-              item.combos_tested = Math.min(combos.length, MAX_VALIDATE_COMBOS);
-            }
-          }
-
-          if (item.valid) passed++;
-          else failed++;
-          results.push(item);
-        }
-
-        return jsonRes(res, {
-          valid: failed === 0,
-          entries: results,
-          summary: { total: results.length, passed, failed },
-        });
-      }
-
-      // ----------------------------------------------------------------
-      // GET /cbs/toggles — list CBS toggles
-      // ----------------------------------------------------------------
-      if (parts[0] === 'cbs' && parts[1] === 'toggles' && !parts[2] && req.method === 'GET') {
-        const currentData = deps.getCurrentData();
-        if (!currentData)
-          return mcpError(res, 400, { action: 'cbs/toggles', target: 'cbs', message: 'No file loaded' });
-
-        const fieldFilter = url.searchParams.get('field') || undefined;
-        const lbIdxParam = url.searchParams.get('lorebook_index');
-        const lorebookIndex = lbIdxParam !== null ? parseInt(lbIdxParam, 10) : undefined;
-
-        const cbsEntries = collectCBSEntries(currentData, fieldFilter, lorebookIndex);
-        const toggleMap: Record<string, { conditions: Set<string>; fields: Set<string> }> = {};
-
-        for (const entry of cbsEntries) {
-          const toggleNames = extractToggles(entry.text);
-          for (const name of toggleNames) {
-            if (!toggleMap[name]) {
-              toggleMap[name] = { conditions: new Set(), fields: new Set() };
-            }
-            toggleMap[name].fields.add(entry.path);
-            const values = extractToggleValues(entry.text, name);
-            for (const v of values) {
-              toggleMap[name].conditions.add(v);
-            }
-          }
-        }
-
-        // Convert sets to arrays for JSON serialization
-        const toggles: Record<string, { conditions: string[]; fields: string[] }> = {};
-        for (const [name, data] of Object.entries(toggleMap)) {
-          toggles[name] = {
-            conditions: Array.from(data.conditions).sort(),
-            fields: Array.from(data.fields),
-          };
-        }
-
-        return jsonRes(res, { toggles, count: Object.keys(toggles).length });
-      }
-
-      // ----------------------------------------------------------------
-      // POST /cbs/simulate — resolve CBS with toggles
-      // ----------------------------------------------------------------
-      if (parts[0] === 'cbs' && parts[1] === 'simulate' && !parts[2] && req.method === 'POST') {
-        const currentData = deps.getCurrentData();
-        if (!currentData)
-          return mcpError(res, 400, { action: 'cbs/simulate', target: 'cbs', message: 'No file loaded' });
-
-        const body = await readJsonBody(req, res, 'cbs/simulate', broadcastStatus);
-        if (!body) return;
-
-        const field = body.field;
-        if (!field) return mcpError(res, 400, { action: 'cbs/simulate', target: 'cbs', message: 'field is required' });
-
-        const lorebookIndex = typeof body.lorebook_index === 'number' ? body.lorebook_index : undefined;
-        const userToggles = body.toggles || {};
-        const allCombos = body.all_combos === true;
-        const compact = body.compact !== false; // default true
-        const MAX_SIMULATE_COMBOS = 256;
-
-        const cbsEntries = collectCBSEntries(currentData, field, lorebookIndex);
-        if (cbsEntries.length === 0) {
-          return jsonRes(res, { field, message: 'No CBS content found in specified field' });
-        }
-
-        const entry = cbsEntries[0];
-        const text = entry.text;
-        const normalizedToggles = normalizeToggles(userToggles);
-
-        if (allCombos) {
-          const toggleNames = extractToggles(text);
-          const toggleArr = Array.from(toggleNames);
-          const valueMap: Record<string, string[]> = {};
-          for (const t of toggleNames) {
-            valueMap[t] = Array.from(extractToggleValues(text, t));
-            if (valueMap[t].length === 0) valueMap[t] = ['0', '1'];
-          }
-          const combos = generateCombinations(toggleArr, valueMap);
-          if (combos.length > MAX_SIMULATE_COMBOS) {
-            return mcpError(res, 400, {
-              action: 'cbs/simulate',
-              target: 'cbs',
-              message: `${combos.length} combinations exceed limit of ${MAX_SIMULATE_COMBOS}`,
-            });
-          }
-
-          const results: any[] = [];
-          for (const combo of combos) {
-            try {
-              const resolved = resolveInnerExpressions(text, combo);
-              const parsed = parse(resolved);
-              let result = cbsResolve(resolved, parsed.blocks, combo);
-              if (compact) result = result.replace(/\n{3,}/g, '\n\n').trim();
-              results.push({
-                toggles: combo,
-                resolved_length: result.length,
-                resolved: result,
-              });
-            } catch (e: any) {
-              results.push({ toggles: combo, error: e.message });
-            }
-          }
-
-          return jsonRes(res, {
-            field: entry.path,
-            original_length: text.length,
-            combos: results.length,
-            results,
-          });
-        }
-
-        // Single resolve
-        try {
-          const resolved = resolveInnerExpressions(text, normalizedToggles);
-          const parsed = parse(resolved);
-          let result = cbsResolve(resolved, parsed.blocks, normalizedToggles);
-          if (compact) result = result.replace(/\n{3,}/g, '\n\n').trim();
-
-          return jsonRes(res, {
-            field: entry.path,
-            toggles: normalizedToggles,
-            original_length: text.length,
-            resolved: result,
-            resolved_length: result.length,
-          });
-        } catch (e: any) {
-          return mcpError(res, 400, {
-            action: 'cbs/simulate',
-            target: 'cbs',
-            message: `CBS resolve error: ${e.message}`,
-          });
-        }
-      }
-
-      // ----------------------------------------------------------------
-      // POST /cbs/diff — baseline diff
-      // ----------------------------------------------------------------
-      if (parts[0] === 'cbs' && parts[1] === 'diff' && !parts[2] && req.method === 'POST') {
-        const currentData = deps.getCurrentData();
-        if (!currentData) return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: 'No file loaded' });
-
-        const body = await readJsonBody(req, res, 'cbs/diff', broadcastStatus);
-        if (!body) return;
-
-        const field = body.field;
-        if (!field) return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: 'field is required' });
-        const toggles = body.toggles;
-        if (!toggles || Object.keys(toggles).length === 0)
-          return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: 'toggles is required' });
-
-        const lorebookIndex = typeof body.lorebook_index === 'number' ? body.lorebook_index : undefined;
-
-        const cbsEntries = collectCBSEntries(currentData, field, lorebookIndex);
-        if (cbsEntries.length === 0) {
-          return jsonRes(res, { field, changed: false, message: 'No CBS content found in specified field' });
-        }
-
-        const entry = cbsEntries[0];
-        const text = entry.text;
-        const normalizedToggles = normalizeToggles(toggles);
-
-        // Baseline: all toggles set to "0"
-        const toggleNames = extractToggles(text);
-        const baseline: ToggleMap = {};
-        for (const t of toggleNames) {
-          baseline[t] = '0';
-        }
-
-        try {
-          const resolvedBase = resolveInnerExpressions(text, baseline);
-          const parsedBase = parse(resolvedBase);
-          const baseResult = cbsResolve(resolvedBase, parsedBase.blocks, baseline)
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
-
-          const resolvedTarget = resolveInnerExpressions(text, normalizedToggles);
-          const parsedTarget = parse(resolvedTarget);
-          const targetResult = cbsResolve(resolvedTarget, parsedTarget.blocks, normalizedToggles)
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
-
-          const baseLines = baseResult.split('\n');
-          const targetLines = targetResult.split('\n');
-
-          const added: string[] = [];
-          const removed: string[] = [];
-
-          const baseSet = new Set(baseLines);
-          const targetSet = new Set(targetLines);
-
-          for (const line of targetLines) {
-            if (!baseSet.has(line)) added.push(line);
-          }
-          for (const line of baseLines) {
-            if (!targetSet.has(line)) removed.push(line);
-          }
-
-          return jsonRes(res, {
-            field: entry.path,
-            changed: added.length > 0 || removed.length > 0,
-            toggles: normalizedToggles,
-            baseline_length: baseResult.length,
-            target_length: targetResult.length,
-            added_lines: added,
-            removed_lines: removed,
-          });
-        } catch (e: any) {
-          return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: `CBS diff error: ${e.message}` });
-        }
+      if (
+        await handleCbsRoute(req, res, parts, url, {
+          getCurrentData: deps.getCurrentData,
+          readJsonBody,
+          broadcastStatus,
+          jsonRes,
+          jsonResSuccess,
+          mcpError,
+        })
+      ) {
+        return;
       }
 
       // ================================================================
@@ -7888,12 +8199,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
           return entry;
         });
-        return jsonRes(res, {
-          count: model.items.length,
-          state: model.state,
-          hasUnsupportedContent: model.hasUnsupportedContent,
-          items,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            count: model.items.length,
+            state: model.state,
+            hasUnsupportedContent: model.hasUnsupportedContent,
+            items,
+          },
+          {
+            toolName: 'list_risup_prompt_items',
+            summary: `Listed ${model.items.length} prompt items (state: ${model.state})`,
+            artifacts: { count: model.items.length, state: model.state },
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -7953,7 +8272,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             newIndex: newIdx,
           });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
-          return jsonRes(res, { success: true, index: newIdx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: newIdx },
+            {
+              toolName: 'write_risup_prompt_item',
+              summary: `Added prompt item [${newIdx}] (type: ${validation.model.type})`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'add risup prompt item',
@@ -8025,7 +8351,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.promptTemplate = newText;
           logMcpMutation('reorder risup prompt items', 'risup:promptTemplate', { count: model.items.length });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
-          return jsonRes(res, { success: true, order: newOrder });
+          return jsonResSuccess(
+            res,
+            { success: true, order: newOrder },
+            {
+              toolName: 'write_risup_prompt_item',
+              summary: `Reordered ${model.items.length} prompt items`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'reorder risup prompt items',
@@ -8077,13 +8410,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const item = model.items[idx];
-        return jsonRes(res, {
-          index: idx,
-          id: item.id ?? null,
-          item: item.rawValue,
-          supported: item.supported,
-          type: item.type,
-        });
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            id: item.id ?? null,
+            item: item.rawValue,
+            supported: item.supported,
+            type: item.type,
+          },
+          {
+            toolName: 'read_risup_prompt_item',
+            summary: `Read prompt item [${idx}] (type: ${item.type ?? 'unknown'})`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -8136,7 +8476,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.promptTemplate = newText;
           logMcpMutation('delete risup prompt item', 'risup:promptTemplate', { idx, deletedType });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
-          return jsonRes(res, { success: true, deleted: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: idx },
+            {
+              toolName: 'write_risup_prompt_item',
+              summary: `Deleted prompt item [${idx}] (type: ${deletedType})`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'delete risup prompt item',
@@ -8210,7 +8557,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           currentData.promptTemplate = newText;
           logMcpMutation('write risup prompt item', `risup:promptTemplate:${idx}`, { type: validation.model.type });
           deps.broadcastToAll('data-updated', 'promptTemplate', newText);
-          return jsonRes(res, { success: true, index: idx });
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx },
+            {
+              toolName: 'write_risup_prompt_item',
+              summary: `Updated prompt item [${idx}] (type: ${validation.model.type})`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write risup prompt item',
@@ -8250,7 +8604,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const promptRaw = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
         const promptModel = parsePromptTemplate(promptRaw);
         const warnings = promptModel.state !== 'invalid' ? collectFormatingOrderWarnings(promptModel, model) : [];
-        return jsonRes(res, { state: model.state, items, warnings });
+        return jsonResSuccess(
+          res,
+          { state: model.state, items, warnings },
+          {
+            toolName: 'read_risup_formating_order',
+            summary: `Read formating order (${items.length} tokens, state: ${model.state})`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -8305,7 +8666,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             count: newTokens.length,
           });
           deps.broadcastToAll('data-updated', 'formatingOrder', newValue);
-          return jsonRes(res, { success: true, count: newTokens.length });
+          return jsonResSuccess(
+            res,
+            { success: true, count: newTokens.length },
+            {
+              toolName: 'write_risup_formating_order',
+              summary: `Updated formating order (${newTokens.length} tokens)`,
+            },
+          );
         } else {
           return mcpError(res, 403, {
             action: 'write risup formating order',
@@ -8350,9 +8718,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
           skills.sort((a, b) => a.name.localeCompare(b.name));
-          return jsonRes(res, { count: skills.length, skills });
+          return jsonResSuccess(
+            res,
+            { count: skills.length, skills },
+            {
+              toolName: 'list_skills',
+              summary: `Listed ${skills.length} skill(s)`,
+              artifacts: { count: skills.length },
+            },
+          );
         } catch {
-          return jsonRes(res, { count: 0, skills: [], error: 'Skills directory not found' });
+          return jsonResSuccess(
+            res,
+            { count: 0, skills: [], error: 'Skills directory not found' },
+            {
+              toolName: 'list_skills',
+              summary: 'Skills directory not found',
+              artifacts: { count: 0 },
+            },
+          );
         }
       }
 
@@ -8363,6 +8747,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'skills' && parts[1] && req.method === 'GET') {
         const skillName = decodeURIComponent(parts[1]);
         const fileName = parts[2] ? decodeURIComponent(parts[2]) : 'SKILL.md';
+        if (skillName.includes('..') || skillName.includes('/') || skillName.includes('\\')) {
+          return mcpError(res, 400, {
+            action: 'read_skill',
+            message: 'Invalid skill name',
+            suggestion: 'Skill name must not contain path separators or "..".',
+            target: `skills:${skillName}:${fileName}`,
+          });
+        }
         if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
           return mcpError(res, 400, {
             action: 'read_skill',
@@ -8374,7 +8766,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const filePath = path.join(deps.getSkillsDir(), skillName, fileName);
         try {
           const content = fs.readFileSync(filePath, 'utf-8');
-          return jsonRes(res, { skill: skillName, file: fileName, content });
+          return jsonResSuccess(
+            res,
+            { skill: skillName, file: fileName, content },
+            {
+              toolName: 'read_skill',
+              summary: `Read skill ${skillName}/${fileName} (${content.length} chars)`,
+              artifacts: { skill: skillName, file: fileName, size: content.length },
+            },
+          );
         } catch {
           return mcpError(res, 404, {
             action: 'read_skill',

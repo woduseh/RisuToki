@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { normalizeFolderRef } from './lorebook-folders';
+import { extToMime } from './shared-utils';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -22,54 +23,6 @@ export interface AssetManagerDeps {
 
 let deps: AssetManagerDeps;
 let _assetsMapCache: { assets: Record<string, string>; debug: Record<string, any> } | null = null;
-
-// ---------------------------------------------------------------------------
-// MIME helpers
-// ---------------------------------------------------------------------------
-
-function getMimeType(ext: string): string {
-  switch (ext.toLowerCase()) {
-    case 'png':
-      return 'image/png';
-    case 'jpg':
-    case 'jpeg':
-      return 'image/jpeg';
-    case 'webp':
-      return 'image/webp';
-    case 'gif':
-      return 'image/gif';
-    case 'svg':
-      return 'image/svg+xml';
-    case 'mp3':
-      return 'audio/mpeg';
-    case 'ogg':
-      return 'audio/ogg';
-    case 'wav':
-      return 'audio/wav';
-    case 'flac':
-      return 'audio/flac';
-    case 'm4a':
-      return 'audio/mp4';
-    case 'aac':
-      return 'audio/aac';
-    case 'mp4':
-      return 'video/mp4';
-    case 'webm':
-      return 'video/webm';
-    case 'mov':
-      return 'video/quicktime';
-    case 'woff':
-      return 'font/woff';
-    case 'woff2':
-      return 'font/woff2';
-    case 'ttf':
-      return 'font/ttf';
-    case 'otf':
-      return 'font/otf';
-    default:
-      return 'application/octet-stream';
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Public helpers
@@ -134,7 +87,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
         const asset = data.assets.find((a: any) => a.path === zipPath);
         if (asset) {
           const ext = (ca.ext || 'png').toLowerCase();
-          const mime = getMimeType(ext);
+          const mime = extToMime(ext);
           result[name] = `data:${mime};base64,${asset.data.toString('base64')}`;
           cardResolved++;
         } else {
@@ -151,7 +104,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
           });
           if (fallback) {
             const ext = (ca.ext || 'png').toLowerCase();
-            const mime = getMimeType(ext);
+            const mime = extToMime(ext);
             result[name] = `data:${mime};base64,${fallback.data.toString('base64')}`;
             cardResolved++;
           } else {
@@ -163,7 +116,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
         const asset = data.assets.find((a: any) => a.path === zipPath);
         if (asset) {
           const ext = (ca.ext || zipPath.split('.').pop() || 'png').toLowerCase();
-          const mime = getMimeType(ext);
+          const mime = extToMime(ext);
           result[name] = `data:${mime};base64,${asset.data.toString('base64')}`;
           cardResolved++;
         } else {
@@ -199,7 +152,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
       const bin = risumBinaries[idx];
       if (bin) {
         const ext = (ma.ext || (Array.isArray(ma) ? ma[2] : '') || 'png').toLowerCase();
-        const mime = getMimeType(ext);
+        const mime = extToMime(ext);
         result[name] =
           `data:${mime};base64,${Buffer.isBuffer(bin) ? bin.toString('base64') : Buffer.from(bin).toString('base64')}`;
       }
@@ -212,7 +165,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
       const nameNoExt = fileName.replace(/\.[^.]+$/, '');
       if (result[nameNoExt]) continue;
       const ext = fileName.split('.').pop()!.toLowerCase();
-      const mime = getMimeType(ext);
+      const mime = extToMime(ext);
       result[nameNoExt] = `data:${mime};base64,${asset.data.toString('base64')}`;
     }
 
@@ -546,8 +499,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
     const filePath = result.filePaths[0];
     const data = fs.readFileSync(filePath);
     const ext = path.extname(filePath).replace('.', '').toLowerCase();
-    const mime =
-      ext === 'gif' ? 'image/gif' : ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    const mime = extToMime(ext);
     return `data:${mime};base64,${data.toString('base64')}`;
   });
 

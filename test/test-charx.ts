@@ -424,41 +424,115 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.equal(reopened.mcpUrl || '', '');
 })();
 
-(function testBundledHinanoCardUsesAsyncCheatHandlersAndArrayAwareScenarioInjection() {
-  const filePath = path.resolve(__dirname, '..', 'risu', 'bot', 'Fujimiya Hinano', 'Fujimiya Hinano.charx');
-  assert.ok(fs.existsSync(filePath), 'Bundled Fujimiya Hinano card should exist');
+(function testHinanoRegressionUsesAsyncCheatHandlersAndArrayAwareScenarioInjection() {
+  const filePath = path.join(tempDir, 'hinano-regression.charx');
+  const mainCode = [
+    'local stats = {{ label = "HP" }}',
+    'for _, s in ipairs(stats) do',
+    '  _G["onSet" .. s.label] = async(function(id)',
+    '    return alertInput(id, "set value"):await()',
+    '  end)',
+    'end',
+    '',
+    'onTimeskip = async(function(id)',
+    '  return alertInput(id, "timeskip"):await()',
+    'end)',
+    '',
+    'local function injectScenarioDirective(data, directive)',
+    '  if type(data) == "table" then',
+    '    for i = 1, #data do',
+    '      local item = data[i]',
+    '      if type(item) == "string" then',
+    '        data[i] = item .. "\\n\\n<scenario_directive>" .. directive .. "</scenario_directive>"',
+    '      end',
+    '    end',
+    '    return data',
+    '  end',
+    '  return tostring(data or "")',
+    '    .. "\\n\\n<scenario_directive>"',
+    '    .. directive',
+    '    .. "</scenario_directive>"',
+    'end',
+  ].join('\n');
+
+  saveCharx(filePath, {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'Hinano Regression',
+    description: '',
+    personality: '',
+    scenario: '',
+    creatorcomment: '',
+    tags: [],
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: mainCode,
+    triggerScripts: [
+      {
+        comment: 'main',
+        type: 'start',
+        conditions: [],
+        effect: [{ type: 'triggerlua', code: mainCode }],
+        lowLevelAccess: false,
+      },
+    ],
+    lorebook: [],
+    regex: [],
+    moduleId: 'module-hinano-regression',
+    moduleName: 'Hinano Regression',
+    moduleDescription: '',
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {
+        extensions: { risuai: {} },
+        character_book: { entries: [] },
+        assets: [],
+      },
+    },
+    _moduleData: null,
+  } as any);
 
   const reopened = openCharx(filePath);
   const mainTrigger = reopened.triggerScripts?.[0];
   const mainEffect = Array.isArray(mainTrigger?.effect) ? mainTrigger.effect[0] : undefined;
-  const mainCode =
+  const reopenedMainCode =
     mainEffect && typeof mainEffect === 'object' && 'code' in mainEffect && typeof mainEffect.code === 'string'
       ? mainEffect.code
       : '';
 
-  assert.ok(mainCode.length > 0, 'Bundled Fujimiya Hinano card should expose triggerlua code');
+  assert.ok(reopenedMainCode.length > 0, 'Hinano regression fixture should expose triggerlua code');
   assert.match(
-    mainCode,
+    reopenedMainCode,
     /_G\["onSet" \.\. s\.label\] = async\(function\(id\)/,
     'Cheat stat setters should wrap alertInput with async() so :await() resumes correctly',
   );
   assert.match(
-    mainCode,
+    reopenedMainCode,
     /onTimeskip\s*=\s*async\(function\(id\)/,
     'Time skip should wrap alertInput with async() so :await() resumes correctly',
   );
   assert.match(
-    mainCode,
+    reopenedMainCode,
     /local function injectScenarioDirective\(data, directive\)/,
     'Scenario injection should use a helper that can handle editRequest prompt arrays',
   );
   assert.match(
-    mainCode,
+    reopenedMainCode,
     /if type\(data\) == "table" then/,
     'Scenario injection should support editRequest chat arrays directly',
   );
   assert.doesNotMatch(
-    mainCode,
+    reopenedMainCode,
     /return data \.\. "\\n\\n<scenario_directive>/,
     'Scenario injection should not concatenate raw strings onto editRequest arrays',
   );

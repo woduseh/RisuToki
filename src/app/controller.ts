@@ -377,6 +377,22 @@ window.tokiAPI.onMcpOpenFileRequest(async (id, request) => {
   }
 });
 
+window.tokiAPI.onMcpSessionStatusRequest((id) => {
+  const dirtyFields = documentSwitchInProgress ? [] : [...tabMgr.dirtyFields].sort();
+  window.tokiAPI.sendMcpSessionStatusResponse(id, {
+    success: true,
+    renderer: {
+      autosaveDir,
+      autosaveEnabled,
+      autosaveInterval,
+      dirtyFieldCount: dirtyFields.length,
+      dirtyFields,
+      documentSwitchInProgress,
+      hasUnsavedChanges: dirtyFields.length > 0,
+    },
+  });
+});
+
 window.tokiAPI.onMcpStatus((event) => {
   const prefix = event.rejected ? 'MCP 요청 거부' : event.level === 'error' ? 'MCP 오류' : 'MCP 경고';
   const detail = event.suggestion ? ` — ${event.suggestion}` : '';

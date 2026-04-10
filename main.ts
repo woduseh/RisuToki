@@ -7,7 +7,7 @@ import * as os from 'os';
 
 // Type-only imports from local TypeScript modules (erased at compile time)
 import type { CharxData } from './src/charx-io';
-import type { McpApiServer, Section, CssCacheEntry } from './src/lib/mcp-api-server';
+import type { McpApiServer, Section, CssCacheEntry, McpSessionStatus } from './src/lib/mcp-api-server';
 import { markRecoveryDocumentActiveForPath, syncRecoveryAfterExplicitSave } from './src/lib/session-recovery-main';
 
 // ---------------------------------------------------------------------------
@@ -78,6 +78,23 @@ interface RendererOpenFileResponse {
   filePath?: string;
   fileType?: 'charx' | 'risum' | 'risup';
   name?: string;
+  suggestion?: string;
+}
+
+interface RendererSessionStatus {
+  autosaveDir: string;
+  autosaveEnabled: boolean;
+  autosaveInterval: number;
+  dirtyFieldCount: number;
+  dirtyFields: string[];
+  documentSwitchInProgress: boolean;
+  hasUnsavedChanges: boolean;
+}
+
+interface RendererSessionStatusResponse {
+  success: boolean;
+  error?: string;
+  renderer?: RendererSessionStatus | null;
   suggestion?: string;
 }
 
@@ -163,6 +180,7 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     mergePrimaryLua: (scripts: unknown, lua: string) => unknown;
     stringifyTriggerScripts: (scripts: unknown) => string;
     getSkillsDir: () => string;
+    getSessionStatus: () => Promise<McpSessionStatus>;
   }) => McpApiServer;
 };
 
@@ -308,6 +326,9 @@ let recoveryManager: ReturnType<typeof createSessionRecoveryManager> | null = nu
 let rendererOpenRequestId = 0;
 const rendererOpenCallbacks: Record<number, (response: RendererOpenFileResponse) => void> = {};
 const RENDERER_OPEN_TIMEOUT_MS = 60000;
+let rendererSessionStatusRequestId = 0;
+const rendererSessionStatusCallbacks: Record<number, (response: RendererSessionStatusResponse) => void> = {};
+const RENDERER_SESSION_STATUS_TIMEOUT_MS = 5000;
 
 // ---------------------------------------------------------------------------
 // Document open helper (shared by open-file and recovery)
@@ -415,6 +436,71 @@ ipcMain.on('mcp-open-file-response', (_event, id: number, response: RendererOpen
   rendererOpenCallbacks[id](response);
   delete rendererOpenCallbacks[id];
 });
+
+function requestRendererSessionStatus(): Promise<RendererSessionStatusResponse> {
+  const targetWindow = mainWindow;
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    return Promise.resolve({
+      success: false,
+      error: 'Main renderer window is not available.',
+      suggestion: 'RisuToki 메인 창이 열린 상태에서 다시 시도하세요.',
+    });
+  }
+
+  const id = ++rendererSessionStatusRequestId;
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      if (!rendererSessionStatusCallbacks[id]) return;
+      delete rendererSessionStatusCallbacks[id];
+      resolve({
+        success: false,
+        error: 'Timed out waiting for renderer session status.',
+        suggestion: '메인 렌더러가 응답 가능한 상태인지 확인하세요.',
+      });
+    }, RENDERER_SESSION_STATUS_TIMEOUT_MS);
+
+    rendererSessionStatusCallbacks[id] = (response) => {
+      clearTimeout(timeout);
+      resolve(response);
+    };
+    targetWindow.webContents.send('mcp-session-status-request', id);
+  });
+}
+
+ipcMain.on('mcp-session-status-response', (_event, id: number, response: RendererSessionStatusResponse) => {
+  if (!rendererSessionStatusCallbacks[id]) return;
+  rendererSessionStatusCallbacks[id](response);
+  delete rendererSessionStatusCallbacks[id];
+});
+
+async function getCurrentMcpSessionStatus(): Promise<McpSessionStatus> {
+  const rendererResponse = await requestRendererSessionStatus();
+  const pendingRecovery = recoveryManager ? await recoveryManager.getPendingRecovery() : null;
+  const lastRestored = recoveryManager?.getLastRestoredProvenance() ?? null;
+  return {
+    currentFilePath: mainState.currentFilePath,
+    currentFileType: mainState.currentData ? getDocumentFileType(mainState.currentData) : null,
+    lastRestored: lastRestored
+      ? {
+          appVersion: lastRestored.appVersion,
+          autosavePath: lastRestored.autosavePath,
+          dirtyFields: [...lastRestored.dirtyFields],
+          savedAt: lastRestored.savedAt,
+          sourceFilePath: lastRestored.sourceFilePath,
+          sourceFileType: lastRestored.sourceFileType,
+        }
+      : null,
+    pendingRecovery: pendingRecovery
+      ? {
+          autosavePath: pendingRecovery.autosavePath,
+          dirtyFields: [...pendingRecovery.provenance.dirtyFields],
+          sourceFilePath: pendingRecovery.sourceFilePath,
+          staleWarning: pendingRecovery.staleWarning,
+        }
+      : null,
+    renderer: rendererResponse.success ? (rendererResponse.renderer ?? null) : null,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Reference file helpers
@@ -718,6 +804,7 @@ app.whenReady().then(() => {
     mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,
     stringifyTriggerScripts,
     getSkillsDir: () => (app.isPackaged ? path.join(process.resourcesPath!, 'skills') : path.join(__dirname, 'skills')),
+    getSessionStatus: getCurrentMcpSessionStatus,
   });
   apiToken = mcpApi.token;
 

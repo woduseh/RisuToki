@@ -1,4 +1,5 @@
 import type { TriggerScriptEffectModel, TriggerScriptEntryModel, TriggerScriptModel } from './trigger-script-model';
+import { isRecord, cloneJson } from './shared-utils';
 
 export interface TriggerFormTabInfo {
   id: string;
@@ -37,15 +38,6 @@ export interface TriggerFormDetailState {
 
 type EditableTriggerScalarField = 'comment' | 'type' | 'lowLevelAccess';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function cloneJsonValue<T>(value: T): T {
-  if (value === undefined) return value;
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
 function coerceTypedTriggerFormValue(
   value: string | boolean,
   valueKind: TriggerFormValueKind,
@@ -81,7 +73,7 @@ function ensureTriggerRawRecordBacking(trigger: TriggerScriptEntryModel): Record
     return trigger.rawValue;
   }
 
-  const normalized = cloneJsonValue(trigger.value);
+  const normalized = cloneJson(trigger.value);
   trigger.rawValue = normalized;
   return normalized;
 }
@@ -104,10 +96,10 @@ function syncTriggerScalarBackingField(
 
 function snapshotTriggerEffectBacking(effect: TriggerScriptEffectModel): unknown {
   if (!effect.supported) {
-    return cloneJsonValue(effect.rawValue);
+    return cloneJson(effect.rawValue);
   }
 
-  const value = cloneJsonValue(effect.value);
+  const value = cloneJson(effect.value);
   if (effect.type === null) {
     delete value.type;
   } else {
@@ -125,17 +117,17 @@ function syncTriggerEffectArrays(trigger: TriggerScriptEntryModel): void {
   const serializedEffects = trigger.effects.map((effect) => snapshotTriggerEffectBacking(effect));
   trigger.value.effect = serializedEffects;
   if (Array.isArray(trigger.value.effects)) {
-    trigger.value.effects = cloneJsonValue(serializedEffects);
+    trigger.value.effects = cloneJson(serializedEffects);
   }
   const rawValue = ensureTriggerRawRecordBacking(trigger);
   if (
     Object.prototype.hasOwnProperty.call(rawValue, 'effect') ||
     !Object.prototype.hasOwnProperty.call(rawValue, 'effects')
   ) {
-    rawValue.effect = cloneJsonValue(serializedEffects);
+    rawValue.effect = cloneJson(serializedEffects);
   }
   if (Array.isArray(rawValue.effects)) {
-    rawValue.effects = cloneJsonValue(serializedEffects);
+    rawValue.effects = cloneJson(serializedEffects);
   }
 }
 
@@ -161,7 +153,7 @@ export function updateTriggerFormLuaEffectCode(
   effect.supported = true;
   effect.value.type = 'triggerlua';
   effect.value.code = value;
-  effect.rawValue = cloneJsonValue(effect.value);
+  effect.rawValue = cloneJson(effect.value);
   syncTriggerEffectArrays(trigger);
 }
 

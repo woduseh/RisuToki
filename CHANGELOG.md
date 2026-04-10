@@ -9,6 +9,162 @@
 
 ---
 
+## [0.40.1] - 2026-04-10
+
+### 새 기능
+
+- **다단계 harness eval 확장** (`src/lib/mcp-api-server.test.ts`, `src/lib/mcp-response-envelope.test.ts`): `session_status → write_field → session_status`, `probe_field → open_file → read_field`, lorebook read/write round-trip 같은 실제 에이전트 orchestration 흐름과 deterministic recovery-guidance 경로를 고정하는 eval 시나리오를 추가했습니다.
+
+### 변경
+
+- **MCP decomposition slice 완료** (`src/lib/mcp-field-access.ts`, `src/lib/mcp-cbs-routes.ts`, `src/lib/mcp-api-server.ts`, `docs/MODULE_MAP.md`, `docs/analysis/ARCHITECTURE.md`): 필드 접근/문자열 변형 정책을 공유 경계로 추출하고 CBS route family를 별도 모듈로 분리해 `mcp-api-server.ts`의 책임을 더 명시적인 경계로 나눴습니다.
+- **필드 텍스트 변형 정책 중앙화** (`src/lib/mcp-field-access.ts`, `src/lib/mcp-field-access.test.ts`, `src/lib/mcp-api-server.ts`): replace / block-replace / insert / batch-replace 경로가 더 이상 각자 허용 필드 목록을 복제하지 않고, 공통 allowlist와 read-only 판정 헬퍼를 공유하도록 정리했습니다.
+
+### 수정
+
+- **`FieldAccessRules` 경계 불일치 수정** (`src/lib/mcp-field-access.ts`, `src/lib/mcp-field-access.test.ts`, `src/lib/mcp-api-server.ts`): deprecated field와 read-only field를 분리해 `readOnlyFields ⊆ allowedFields` 불변 조건을 명시적으로 고정하고, charx/risum/risup 전부에서 동일한 계약을 검증하도록 보강했습니다.
+- **`test-charx` worktree/clean-clone 회귀 수정** (`test/test-charx.ts`): Git에 없는 로컬 `risu/bot/Fujimiya Hinano` 카드에 의존하던 회귀 검사를 self-contained `.charx` fixture로 교체해, clean clone과 git worktree에서도 같은 async cheat-handler / array-aware scenario-injection 불변 조건을 안정적으로 검증하도록 바꿨습니다.
+- **autosave/doc-drift Linux CI 안정화** (`src/lib/autosave-manager.test.ts`, `src/lib/doc-drift.test.ts`, `docs/superpowers/INDEX.md`): autosave 테스트가 OS-native path를 사용하도록 바꾸고, superpowers 인덱스 coverage가 raw disk가 아니라 Git 추적 파일 기준으로 판단하도록 조정해 Windows 로컬과 Ubuntu CI가 같은 계약을 검증하게 맞췄습니다.
+
+## [0.40.0] - 2026-04-10
+
+### 새 기능
+
+- **`session_status` 세션 관찰 surface 추가** (`src/lib/mcp-api-server.ts`, `toki-mcp-server.ts`, `main.ts`, `src/app/controller.ts`, `src/lib/preload-api.ts`): MCP가 현재 파일 경로/타입, renderer dirty/autosave 상태, 복구 메타데이터, 필드 스냅샷 합계를 한 번에 조회할 수 있는 read-only 세션 상태 도구를 추가했습니다. 이 surface는 활성 문서가 없어도 `loaded: false`로 정상 응답해, 중단된 세션을 재개하거나 위험한 쓰기 전에 상태를 먼저 확인할 수 있습니다.
+
+### 변경
+
+- **세션 상태 라우팅 문서화** (`AGENTS.md`, `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_WORKFLOW.md`, `skills/using-mcp-tools/*`): 에이전트가 위험한 MCP 쓰기 전이나 비정상 종료 뒤 작업 재개 시 `session_status`를 먼저 호출하도록 도구 라우팅과 안전 워크플로를 갱신했습니다.
+
+### 수정
+
+- **`session_status` no-file-open 예외 고정** (`src/lib/mcp-api-server.ts`, `src/lib/mcp-api-server.test.ts`): 전역 `No file open` guard가 세션 상태 조회까지 막지 않도록 조정하고, 문서가 열려 있지 않은 상태에서도 200 응답과 `loaded: false` 계약을 검증하는 테스트를 추가했습니다.
+- **MCP API 서버 테스트 세션 격리 보강** (`src/lib/mcp-api-server.test.ts`): 새 테스트 서버를 시작할 때 섹션/스냅샷 캐시를 비워, 이전 테스트의 스냅샷이 다음 세션 상태 계약 검증에 섞이지 않도록 정리했습니다.
+
+## [0.39.5] - 2026-04-10
+
+### 새 기능
+
+- **구조 아키텍처 가드 테스트 추가** (`src/lib/architecture.test.ts`): `src/lib/` 프로덕션 모듈이 `src/app/` / `src/popout/`를 런타임 import하지 못하도록, 런타임 store import가 허용된 bridge 파일만 통과하도록, 그리고 `JSON.parse(JSON.stringify(...))` clone 패턴이 `shared-utils.ts` 밖으로 새지 않도록 기계적으로 고정하는 구조 테스트를 추가했습니다.
+
+### 변경
+
+- **`npm run lint` coverage gate 확장** (`package.json`): 새 `src/lib/architecture.test.ts`를 lint whitelist에 포함시켜, guard test 자체도 CI lint gate 밖으로 빠지지 않도록 맞췄습니다.
+
+## [0.39.4] - 2026-04-10
+
+### 수정
+
+- **MCP 검색 요청 숫자 옵션 호환성 복구** (`src/lib/mcp-request-schemas.ts`): `search_in_field` / `search_all_fields` 요청 본문에서 `context_chars`, `max_matches`, `max_matches_per_field`가 숫자 문자열(`"120"`)로 들어와도 기존처럼 허용되도록 복원했습니다. 숫자로 해석할 수 없는 값은 `undefined`로 정규화되어 기존 handler 기본값 경로를 유지합니다.
+- **아키텍처 문서 상태 소유권/섹션 파서 경계 명확화** (`docs/analysis/ARCHITECTURE.md`): `app-store.ts`를 메인 렌더러 UI 상태의 중심으로 낮추고, 저장·자동 저장·MCP 수정의 권한 상태는 메인 프로세스 `mainState.currentData`가 소유한다는 점을 명시했습니다. 또한 `section-parser.ts`는 렌더러 전용이지만 MCP 경로는 `main.ts`의 병행 Lua/CSS 파서를 사용한다는 hidden coupling도 드러냈습니다.
+- **하네스 lint gate와 lockfile 메타데이터 동기화** (`package.json`, `package-lock.json`): 새 하네스 테스트/스키마 파일들이 `npm run lint` 범위 밖으로 빠지지 않도록 lint whitelist를 보강하고, lockfile 버전을 `0.39.4`로 맞췄습니다.
+
+## [0.39.3] - 2026-04-10
+
+### 변경
+
+- **MCP 요청 본문에 Zod 스키마 도입** (`src/lib/mcp-request-schemas.ts`): MCP HTTP API의 공통 요청 본문 형태(replace, block-replace, insert, batch-replace, search, search-all, field-batch-read, field-batch-write, external-document)에 Zod 기반 typed 스키마와 `validateBody` 헬퍼를 추가했습니다.
+  - `mcp-api-server.ts`의 필드 편집 핸들러 8곳에서 ad-hoc `typeof` 체인과 수동 probing을 `parseBody` + 스키마 검증으로 교체
+  - `resolveExternalDocumentRequest`와 `readProbeDocumentRequest`의 제네릭 `Record<string, any>` 타입 매개변수를 `ExternalDocumentBody` 타입으로 대체
+  - `flags`(non-string → undefined 변환), `position`(non-enum → undefined 변환) 필드에 lenient coercion 적용하여 기존 동작 유지
+  - 44개 단위 테스트 추가 (`src/lib/mcp-request-schemas.test.ts`)
+
+## [0.39.2] - 2026-04-10
+
+### 새 기능
+
+- **문서 드리프트 가드 테스트 추가** (`src/lib/doc-drift.test.ts`): 문서, 스킬, 분류 체계 참조, MODULE_MAP이 실제 코드베이스와 정렬되어 있는지 기계적으로 검증하는 18개 테스트를 추가했습니다.
+  - 스킬 `related_tools`가 `TOOL_TAXONOMY`에 존재하는 도구만 참조하는지 확인
+  - `MODULE_MAP.md`가 `src/lib/*.ts` 모듈을 빠짐없이 커버하는지 확인
+  - `MCP_TOOL_SURFACE.md` 도구 참조가 분류 체계와 일치하는지 확인
+  - `FAMILY_NEXT_ACTIONS` 참조 도구가 분류 체계에 존재하는지 확인
+  - `docs/superpowers/INDEX.md`가 모든 plan/spec 파일을 커버하고 유효한 상태값을 갖는지 확인
+- **Superpowers 아티팩트 인덱스** (`docs/superpowers/INDEX.md`): plan/spec 파일의 경량 인덱스를 추가하여 active/superseded/research/partial 상태를 구분할 수 있게 했습니다.
+
+### 변경
+
+- **`MODULE_MAP.md` 커버리지 확장**: 누락되었던 6개 모듈(`shared-utils`, `cbs-parser`, `cbs-evaluator`, `cbs-extractor`, `trigger-form-editor`, `trigger-scripts-runtime`)을 추가했습니다.
+
+## [0.39.1] - 2026-04-10
+
+### 변경
+
+- **아키텍처 가이드 전면 교체**: `docs/analysis/ARCHITECTURE.md`를 현재 TypeScript 런타임 기준으로 전면 재작성했습니다. 메인/프리로드/렌더러/MCP 프로세스 소유권, import 방향 규칙, 컴파일 타겟, 주요 도메인(프리뷰·세션 복구·어시스턴트·터미널), 데이터 흐름, 그리고 대형 모듈 핫스팟(mcp-api-server.ts ~9,200줄, controller.ts ~2,930줄 등)을 기록합니다. 구조와 레이어링의 정식(canonical) 참조 문서가 됩니다.
+- **`AGENTS.md` TOC 전환**: `AGENTS.md`를 컴팩트한 라우팅 목차로 슬림화하고, 기존 MCP 워크플로 상세(도구 맵, 읽기 규칙, 워크플로 패턴, 주의사항)를 `docs/MCP_WORKFLOW.md`로, 프로젝트 규칙(버전 관리, CI, 페르소나)을 `docs/PROJECT_RULES.md`로 분리했습니다. 세션 시작 시 에이전트가 읽는 컨텍스트가 ~230줄에서 ~50줄로 줄어듭니다.
+- **`skills/project-workflow` 스킬 추가**: 추출된 MCP 워크플로 및 프로젝트 규칙 가이드를 `list_skills` / `read_skill`로 검색할 수 있는 스킬로 래핑했습니다. `SKILL.md`(요약) + `MCP_WORKFLOW.md`(전체 도구 맵·읽기 규칙·워크플로 패턴·주의사항) + `PROJECT_RULES.md`(버전 관리·CI·페르소나 워크플로)로 구성되어 세션 복사만으로도 완전한 가이드를 제공합니다.
+- **`docs/README.md` 라우팅 갱신**: 새 canonical docs(`MCP_WORKFLOW.md`, `PROJECT_RULES.md`)를 routing table과 core documents 목록에 추가했습니다.
+- **엔트리포인트 라우팅 일관성 수정**: `README.md`, `docs/README.md`, `skills/project-workflow/SKILL.md`에서 `project-workflow`를 세션 온보딩 시작점으로, `using-mcp-tools`를 MCP 도구 선택 상세 스킬로 일관되게 안내하도록 수정했습니다.
+
+## [0.39.0] - 2026-04-10
+
+### 새 기능
+
+- **MCP hard-failure recovery metadata 확장**: `src/lib/mcp-api-server.ts`와 `src/lib/mcp-response-envelope.ts`가 `mcpError()` / `mcpNoOp()` 응답에 `retryable`과 deterministic `next_actions`를 공통으로 추가합니다. 이제 400/401/403, 409, 5xx, 그리고 compatibility no-op 경로를 에이전트가 같은 방식으로 분기할 수 있습니다.
+- **성공 응답 context-budget 메타데이터 추가**: `mcpSuccess()`가 `artifacts.byte_size`를 자동으로 채워 성공 응답의 대략적인 UTF-8 JSON 크기를 노출합니다. 에이전트는 이 값을 보고 broad read 대신 `search_in_field`, `read_field_range`, item/section read, `probe_*` 같은 좁은 surface로 전환할 수 있습니다.
+- **결정적 agent eval 스위트 도입**: `npm run test:evals`를 추가하고, response contract / taxonomy / Lua section workflow / MCP recovery flow를 고정하는 `agent eval` 시나리오를 기존 Vitest 스위트에 배치했습니다.
+
+### 변경
+
+- **Harness docs/skills rollout 완료**: `docs/MCP_ERROR_CONTRACT.md`, `docs/MCP_TOOL_SURFACE.md`, `docs/MODULE_MAP.md`, `docs/README.md`, `AGENTS.md`, `README.md`, `CONTRIBUTING.md`, `skills/using-mcp-tools/*`를 갱신해 recovery metadata, `artifacts.byte_size`, 그리고 `npm run test:evals` 경로가 같은 설명을 가리키도록 정리했습니다.
+
+## [0.38.9] - 2026-04-10
+
+### 변경
+
+- **Harness knowledge base 확장**: `docs/README.md`, `docs/MODULE_MAP.md`, `docs/MCP_TOOL_SURFACE.md`를 추가해 에이전트가 `docs/` 안에서 현재 지식 베이스를 탐색하고, TypeScript 소스 구조와 MCP 도구 경계를 예측 가능한 형태로 따라갈 수 있도록 정리했습니다.
+- **개발자/에이전트 문서 라우팅 통일**: `README.md`, `CONTRIBUTING.md`, `AGENTS.md`가 같은 knowledge-base entrypoint와 source-navigation 규칙을 가리키도록 맞췄습니다.
+
+### 수정
+
+- **`using-mcp-tools` 참조 문서 최신화**: `skills/using-mcp-tools/TOOL_REFERENCE.md`의 오래된 `v0.34.0` 범위 설명을 현재의 repo-wide success/error/no-op 계약에 맞게 갱신하고, canonical docs 포인터를 추가했습니다.
+
+## [0.38.8] - 2026-04-10
+
+### 수정
+
+- **MCP no-op recovery envelope 도입**: `src/lib/mcp-api-server.ts`에 `mcpNoOp()` 헬퍼를 추가하고 field/lorebook/regex/lua/css의 남은 18개 `HTTP 200 + success: false` 경로를 구조화된 recovery contract로 통일했습니다. 이제 no-op 응답도 `action`, `target`, `status`, `suggestion`, `error`를 제공하면서 `message`, `matchCount`, `results`, `errors`, `startAnchorFoundAt`, `dryRun` 같은 기존 필드를 그대로 유지합니다.
+- **No-op 회귀 테스트 추가**: `src/lib/mcp-api-server.test.ts`에 field/lorebook/regex/lua/css 대표 no-op 경로 7개에 대한 회귀 테스트를 추가해 bare `success: false` 응답이 다시 섞이지 않도록 고정했습니다.
+- **MCP 계약 문서화 보강**: `docs/MCP_ERROR_CONTRACT.md`를 추가하고 `AGENTS.md`, `README.md`에 연결해 success/error/no-op 엔벨로프와 에이전트 복구 규칙을 repo-local knowledge base로 고정했습니다.
+
+## [0.38.7] - 2026-04-10
+
+### 수정
+
+- **MCP 성공 응답 엔벨로프 — 잔여 경로 마이그레이션**: `replace_in_field` dry-run, `replace_block_in_field` (dry-run/성공), `insert_in_field` 성공, `replace_in_field_batch` (dry-run/성공), `replace_across_all_lorebook` dry-run, 로어북 block-replace dry-run, `import_lorebook_from_files` (빈 결과/dry-run), `export_field_to_file` 성공, `list_skills` 폴백 — 총 12개 안전 경로를 `jsonRes` → `jsonResSuccess`로 전환
+- **`validate_cbs` 호환성 예외 유지**: `validate_cbs`는 기존 `summary: { total, passed, failed }` 구조를 유지해야 하므로 성공 엔벨로프 대상에서 제외하고 bare JSON 응답으로 되돌렸습니다
+- **로어북 import UI 동기화 수정**: `import_lorebook_from_files` 성공 후 renderer broadcast를 표준 `('data-updated', 'lorebook', data)` 시그니처로 통일해 즉시 UI가 갱신되도록 수정했습니다
+- **`read_skill` 경로 검증 강화**: file name뿐 아니라 skill name에도 path traversal 방지를 적용해 `%2F..` 형태의 우회 요청을 400 구조화 에러로 차단합니다
+- **MCP 요청 본문 camelCase 수용**: `dry_run` (snake_case) 전용이던 6개 파싱 위치를 `body.dry_run ?? body.dryRun` 로 변경하여 camelCase `dryRun` 도 동등하게 허용
+
+## [0.38.6] - 2026-04-10
+
+### 새 기능
+
+- **MCP 성공 응답 엔벨로프 (Success Response Envelope)**: MCP 도구의 성공 응답에 구조화된 관찰 필드를 추가하는 additive-only 계약을 도입했습니다
+  - 새 모듈 `src/lib/mcp-response-envelope.ts`: `mcpSuccess()` 헬퍼와 패밀리별 `FAMILY_NEXT_ACTIONS` 맵
+  - 엔벨로프 필드: `status` (항상 200), `summary` (작업 요약 문자열), `next_actions` (분류 체계 기반 후속 도구 제안), `artifacts` (작업 핵심 지표)
+  - 기존 응답의 최상위 필드를 제거하거나 `data` 객체로 감싸지 않는 additive-only 설계
+  - 1차 마이그레이션 범위: field (list/read/write/batch), search (search_in_field, search_all_fields), snapshot (create/list/restore), lorebook (list/read), field stats/range — 총 15개 성공 경로
+  - 21개 단위 테스트 + 10개 통합 테스트로 계약 보장 (기존 164개 API 테스트 전부 통과)
+  - 분류 체계(taxonomy)와 연동하여 `next_actions`를 패밀리 단위로 결정적으로 생성
+  - 에러 응답에는 엔벨로프가 적용되지 않아 기존 `mcpError()` 계약 유지
+
+## [0.38.5] - 2026-04-09
+
+### 새 기능
+
+- **MCP 도구 분류 체계 (Tool Taxonomy)**: 120개 MCP 도구를 19개 패밀리로 분류하는 단일 소스 오브 트루스 모듈 `src/lib/mcp-tool-taxonomy.ts`를 추가했습니다
+  - 패밀리: field, probe, lorebook, regex, greeting, trigger, lua, css, reference, charx-asset, risum-asset, asset-compression, risup-prompt, skill, danbooru, cbs, snapshot, search, lorebook-io
+  - MCP SDK `ToolAnnotations` (readOnlyHint, destructiveHint, idempotentHint, openWorldHint)를 등록 후 자동으로 패치합니다
+  - 도구 추가/삭제 시 분류 체계 동기화를 기계적으로 검증하는 22개 테스트를 포함합니다
+
+## [0.38.4] - 2026-04-09
+
+### 수정
+
+- **MCP 글로벌 guard 구조화 에러 응답 완성**: 전역 `Unauthorized` / `No file open` guard도 `mcpError()` 엔벨로프로 통일해 `action`, `target`, `status`, `suggestion` 필드를 같은 방식으로 제공하도록 정리했습니다
+- **전역 guard 회귀 테스트 추가**: `src/lib/mcp-api-server.test.ts`에 unauthorized / no-file-open 경로 회귀 테스트를 추가해 bare `{ error }` 응답이 다시 섞이지 않도록 고정했습니다
+
 ## [0.38.3] - 2026-04-07
 
 ### 수정

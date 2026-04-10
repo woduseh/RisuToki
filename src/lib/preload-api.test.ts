@@ -55,4 +55,52 @@ describe('createTokiApi', () => {
     await api.resolvePendingSessionRecovery('ignore');
     expect(ipcRenderer.invoke).toHaveBeenCalledWith('resolve-pending-session-recovery', 'ignore');
   });
+
+  test('exposes MCP session status IPC bridge methods', () => {
+    const ipcRenderer = makeMockIpc();
+    const api = createTokiApi(ipcRenderer as unknown as IpcRenderer) as unknown as {
+      onMcpSessionStatusRequest?: unknown;
+      sendMcpSessionStatusResponse?: unknown;
+    };
+
+    expect(typeof api.onMcpSessionStatusRequest).toBe('function');
+    expect(typeof api.sendMcpSessionStatusResponse).toBe('function');
+  });
+
+  test('MCP session status bridge uses the correct IPC channels', () => {
+    const ipcRenderer = makeMockIpc();
+    const api = createTokiApi(ipcRenderer as unknown as IpcRenderer) as unknown as {
+      onMcpSessionStatusRequest: (cb: (id: number) => void) => void;
+      sendMcpSessionStatusResponse: (id: number, response: Record<string, unknown>) => void;
+    };
+    const callback = () => undefined;
+
+    api.onMcpSessionStatusRequest(callback);
+    expect(ipcRenderer.on).toHaveBeenCalledWith('mcp-session-status-request', expect.any(Function));
+
+    api.sendMcpSessionStatusResponse(7, {
+      success: true,
+      renderer: {
+        autosaveDir: 'C:\\autosave',
+        autosaveEnabled: true,
+        autosaveInterval: 120000,
+        dirtyFieldCount: 2,
+        dirtyFields: ['description', 'firstMessage'],
+        documentSwitchInProgress: false,
+        hasUnsavedChanges: true,
+      },
+    });
+    expect(ipcRenderer.send).toHaveBeenCalledWith('mcp-session-status-response', 7, {
+      success: true,
+      renderer: {
+        autosaveDir: 'C:\\autosave',
+        autosaveEnabled: true,
+        autosaveInterval: 120000,
+        dirtyFieldCount: 2,
+        dirtyFields: ['description', 'firstMessage'],
+        documentSwitchInProgress: false,
+        hasUnsavedChanges: true,
+      },
+    });
+  });
 });

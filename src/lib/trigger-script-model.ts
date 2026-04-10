@@ -1,5 +1,7 @@
 export type TriggerScriptTextState = 'invalid' | 'empty' | 'lua' | 'trigger-editor';
 
+import { isRecord, cloneRecord, cloneJson } from './shared-utils';
+
 type JsonRecord = Record<string, unknown>;
 
 export interface TriggerScriptIssue {
@@ -53,20 +55,6 @@ export interface TriggerScriptModel {
   parseError?: string;
 }
 
-function isRecord(value: unknown): value is JsonRecord {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function cloneRecord(value: unknown): JsonRecord {
-  if (!isRecord(value)) return {};
-  return JSON.parse(JSON.stringify(value)) as JsonRecord;
-}
-
-function cloneJsonValue<T>(value: T): T {
-  if (value === undefined) return value;
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
 function hasValidTriggerScalarFields(value: JsonRecord): boolean {
   return (
     (value.comment === undefined || typeof value.comment === 'string') &&
@@ -101,7 +89,7 @@ function createConditionModel(value: unknown, path: string, issues: TriggerScrip
     type,
     supported,
     value: record,
-    rawValue: cloneJsonValue(value),
+    rawValue: cloneJson(value),
   };
 }
 
@@ -134,7 +122,7 @@ function createEffectModel(value: unknown, path: string, issues: TriggerScriptIs
     code,
     supported,
     value: record,
-    rawValue: cloneJsonValue(value),
+    rawValue: cloneJson(value),
   };
 }
 
@@ -154,7 +142,7 @@ function createTriggerModel(value: unknown, index: number, issues: TriggerScript
       effects: [],
       supported: false,
       value: {},
-      rawValue: cloneJsonValue(value),
+      rawValue: cloneJson(value),
     };
   }
 
@@ -246,7 +234,7 @@ function createTriggerModel(value: unknown, index: number, issues: TriggerScript
       conditions.every((condition) => condition.supported) &&
       effects.every((effect) => effect.supported),
     value: record,
-    rawValue: cloneJsonValue(value),
+    rawValue: cloneJson(value),
   };
 }
 
@@ -363,7 +351,7 @@ export function isTriggerScriptsLuaMode(value: unknown): boolean {
 
 function serializeCondition(condition: TriggerScriptConditionModel): unknown {
   if (!condition.supported) {
-    return cloneJsonValue(condition.rawValue);
+    return cloneJson(condition.rawValue);
   }
 
   const value = cloneRecord(condition.value);
@@ -377,7 +365,7 @@ function serializeCondition(condition: TriggerScriptConditionModel): unknown {
 
 function serializeEffect(effect: TriggerScriptEffectModel): unknown {
   if (!effect.supported) {
-    return cloneJsonValue(effect.rawValue);
+    return cloneJson(effect.rawValue);
   }
 
   const value = cloneRecord(effect.value);
@@ -399,7 +387,7 @@ function serializeEffect(effect: TriggerScriptEffectModel): unknown {
 
 function serializeTrigger(trigger: TriggerScriptEntryModel): unknown {
   if (!trigger.supported) {
-    return cloneJsonValue(trigger.rawValue);
+    return cloneJson(trigger.rawValue);
   }
 
   const value = cloneRecord(trigger.value);
@@ -527,17 +515,17 @@ function syncTriggerEffectArrays(trigger: TriggerScriptEntryModel): void {
   const serializedEffects = trigger.effects.map((entry) => serializeEffect(entry));
   trigger.value.effect = serializedEffects;
   if (Array.isArray(trigger.value.effects)) {
-    trigger.value.effects = cloneJsonValue(serializedEffects);
+    trigger.value.effects = cloneJson(serializedEffects);
   }
   if (isRecord(trigger.rawValue)) {
     if (
       Object.prototype.hasOwnProperty.call(trigger.rawValue, 'effect') ||
       !Object.prototype.hasOwnProperty.call(trigger.rawValue, 'effects')
     ) {
-      trigger.rawValue.effect = cloneJsonValue(serializedEffects);
+      trigger.rawValue.effect = cloneJson(serializedEffects);
     }
     if (Array.isArray(trigger.rawValue.effects)) {
-      trigger.rawValue.effects = cloneJsonValue(serializedEffects);
+      trigger.rawValue.effects = cloneJson(serializedEffects);
     }
   }
 }
@@ -587,7 +575,7 @@ export function mergeLuaIntoTriggerScriptsText(triggerScriptsText: string, lua: 
     effect.supported = true;
     effect.value.type = 'triggerlua';
     effect.value.code = lua;
-    effect.rawValue = cloneJsonValue(effect.value);
+    effect.rawValue = cloneJson(effect.value);
     syncTriggerEffectArrays(trigger);
     trigger.supported =
       hasValidTriggerScalarFields(trigger.value) &&
