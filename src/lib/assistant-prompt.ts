@@ -132,6 +132,8 @@ export async function buildAssistantPrompt(
     lines.push(`- read_reference_field(index, field): 참고 파일의 필드 읽기`);
     lines.push(`- read_reference_field_batch(index, fields) / search_in_reference_field(index, field, query)`);
     lines.push(`- read_reference_field_range(index, field, offset?, length?): 큰 reference 필드 부분 읽기`);
+    lines.push(`- list_reference_greetings(index, type) / read_reference_greeting(index, type, entryIndex)`);
+    lines.push(`- list_reference_triggers(index) / read_reference_trigger(index, triggerIndex)`);
     lines.push(`- list_reference_lorebook(index, filter?) / read_reference_lorebook(index, entryIndex)`);
     lines.push(`- list_reference_lua(index) / read_reference_lua(index, sectionIndex)`);
     lines.push(`- list_reference_css(index) / read_reference_css(index, sectionIndex)`);
@@ -155,13 +157,17 @@ export async function buildAssistantPrompt(
     lines.push(`- 정규식 → list_regex → read_regex(index) (개별)`);
     lines.push(`- 인사말 → list_greetings(type) → read_greeting(type, index) (개별)`);
     lines.push(`- 트리거 → list_triggers → read_trigger(index) (개별)`);
+    lines.push(`- 참고 자료 인사말 → list_reference_greetings(type) → read_reference_greeting(type, index)`);
+    lines.push(`- 참고 자료 트리거 → list_reference_triggers → read_reference_trigger(index)`);
     lines.push(`- 참고 자료 로어북 → list_reference_lorebook(folder?) → read_reference_lorebook (개별)`);
     lines.push(
       `- 참고 자료 Lua/CSS/regex → list_reference_lua / list_reference_css / list_reference_regex → read_reference_* (개별)`,
     );
     lines.push(`- 참고 자료 큰 필드 → search_in_reference_field / read_reference_field_range`);
     lines.push(`- ⚠️ read_field("lua/css/alternateGreetings/triggerScripts")는 전체 덤프 → 사용 금지`);
-    lines.push(`- ⚠️ read_reference_field("lorebook/lua/css")도 전체 덤프 → list_reference_* / read_reference_* 사용`);
+    lines.push(
+      `- ⚠️ read_reference_field("lorebook/lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts/regex")도 전체 덤프 → list_reference_* / read_reference_* 사용`,
+    );
   } else {
     lines.push(`편집 중인 항목의 내용을 알려주면 수정을 도와드리겠습니다.`);
   }

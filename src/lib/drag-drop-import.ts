@@ -56,8 +56,8 @@ export function initDragDrop(dropTarget: HTMLElement, deps: DragDropDeps): void 
     for (const file of files) {
       const ext = file.name.split('.').pop()!.toLowerCase();
 
-      // .charx/.risum files → add as reference (works even without main file open)
-      if (ext === 'charx' || ext === 'risum') {
+      // .charx/.risum/.risup files → add as reference (works even without main file open)
+      if (ext === 'charx' || ext === 'risum' || ext === 'risup') {
         const filePath = (file as File & { path: string }).path;
         if (deps.referenceFiles.some((r) => isSameReferencePath(r.filePath, filePath))) {
           deps.setStatus(`이미 로드됨: ${file.name}`);

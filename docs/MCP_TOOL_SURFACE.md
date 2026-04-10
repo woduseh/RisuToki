@@ -133,11 +133,11 @@ If this file and code diverge, the TypeScript source wins.
 
 ### `reference`
 
-- **Use when:** reading reference files without mutating them
-- **Tools:** `list_references`, `read_reference_field`, `list_reference_lorebook`, `read_reference_lorebook`, `read_reference_lorebook_batch`, `list_reference_regex`, `read_reference_regex`, `list_reference_lua`, `read_reference_lua`, `read_reference_lua_batch`, `list_reference_css`, `read_reference_css`, `read_reference_css_batch`
+- **Use when:** reading loaded reference files without mutating them, including reference-only sessions with no active main document
+- **Tools:** `list_references`, `read_reference_field`, `read_reference_field_batch`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_greetings`, `read_reference_greeting`, `list_reference_triggers`, `read_reference_trigger`, `list_reference_lorebook`, `read_reference_lorebook`, `read_reference_lorebook_batch`, `list_reference_regex`, `read_reference_regex`, `list_reference_lua`, `read_reference_lua`, `read_reference_lua_batch`, `list_reference_css`, `read_reference_css`, `read_reference_css_batch`, `list_reference_risup_prompt_items`, `read_reference_risup_prompt_item`, `read_reference_risup_formating_order`
 - **Hints:** RO, idempotent
-- **Next actions:** `list_references`, `list_reference_lorebook`, `list_reference_regex`
-- **Boundary:** this family is read-only by design; switch to live document families only after deciding to copy or adapt content
+- **Next actions:** `list_references`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_greetings`, `list_reference_triggers`, `list_reference_lorebook`, `list_reference_risup_prompt_items`
+- **Boundary:** this family is read-only by design; start with `list_references` to discover loaded `.charx` / `.risum` / `.risup` references, use search/range readers before dumping large text fields, then switch to live document families only after deciding to copy or adapt content
 
 ### `charx-asset`
 

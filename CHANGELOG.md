@@ -18,11 +18,14 @@
   - `list_references` tool description now mentions no-main-file support and steers agents toward `search_in_reference_field` / `read_reference_field_range`.
   - "No file open" error now suggests `list_references` as an alternative recovery path alongside `open_file`.
   - `session_status` summary for no-document sessions with references explicitly directs agents to `list_references`.
-  - `FAMILY_NEXT_ACTIONS['reference']` expanded with `read_reference_field`, `list_reference_lua`, `list_reference_css`, `list_reference_regex`.
+  - `FAMILY_NEXT_ACTIONS['reference']` expanded with greeting, trigger, field, Lua, CSS, regex, lorebook, and `.risup` follow-up readers.
   - `FAMILY_NEXT_ACTIONS['session']` now includes `list_references`.
   - `SPECIAL_TARGET_NEXT_ACTIONS['document:current']` expanded to include `list_references` and `session_status`.
-  - Assistant prompt read-rules now explicitly forbid `read_reference_field("lorebook/lua/css")` full dumps.
-- Updated skills docs (`using-mcp-tools/SKILL.md`, `TOOL_REFERENCE.md`, `MCP_WORKFLOW.md`) and `README.md` to list `search_in_reference_field` / `read_reference_field_range` and document reference-only sessions.
+  - Assistant prompt read-rules now explicitly forbid `read_reference_field("lorebook/lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts/regex")` full dumps.
+- Expanded reference read parity:
+  - Added `list_reference_greetings` / `read_reference_greeting` and `list_reference_triggers` / `read_reference_trigger` so agents can inspect reference greetings and trigger scripts without dumping raw arrays or JSON blobs.
+  - Introduced a shared reference item registry so the sidebar and reference popout can render more of the same read-only items across `.charx`, `.risum`, and `.risup` references, including charx metadata, greeting folders, trigger forms, and visible risup groups.
+- Updated skills docs (`using-mcp-tools/SKILL.md`, `TOOL_REFERENCE.md`, `MCP_WORKFLOW.md`), workflow docs, and `README.md` to list the newer reference search/range, greeting/trigger, and reference-only session flows.
 
 ## [0.41.2] - 2026-04-10
 

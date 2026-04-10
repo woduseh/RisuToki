@@ -1,5 +1,14 @@
 import { createTreeItem, createFolderItem } from './sidebar-builder';
+import {
+  findReferenceUiFieldItem,
+  getReferenceGreetingItemLabel,
+  getReferenceUiItems,
+  shouldRenderReferenceUiItem,
+} from './reference-item-registry';
+import { getRefFileType } from './reference-store';
 import { parseLuaSections, parseCssSections } from './section-parser';
+import { parseTriggerScriptsText } from './trigger-script-model';
+import { normalizeTriggerScriptsText } from './trigger-scripts-runtime';
 
 // ---- Types ----
 
@@ -12,20 +21,24 @@ export interface ReferenceFileData {
   triggerScripts?: string;
   alternateGreetings?: string[];
   groupOnlyGreetings?: string[];
+  defaultVariables?: string;
   lorebook?: Array<Record<string, unknown>>;
   regex?: Array<Record<string, unknown>>;
   [key: string]: unknown;
 }
 
 export interface ReferenceFile {
+  id?: string;
   fileName: string;
   filePath?: string;
+  fileType?: 'charx' | 'risum' | 'risup';
   data: ReferenceFileData;
 }
 
 export interface OpenedTab {
   id: string;
   _refLorebook?: unknown[];
+  _risupGroupId?: string;
   [key: string]: unknown;
 }
 
@@ -266,6 +279,7 @@ function renderReferenceFile(
   ri: number,
 ): void {
   const ref = referenceFiles[ri];
+  const fileType = ref.fileType || getRefFileType(ref);
   const refFolder = createFolderItem(ref.fileName, '📎', 0);
   container.appendChild(refFolder.header);
   container.appendChild(refFolder.children);
@@ -303,68 +317,121 @@ function renderReferenceFile(
     deps.showContextMenu(e.clientX, e.clientY, items);
   });
 
-  // Lua — split into sections like main sidebar
-  if (ref.data.lua) {
-    renderRefLua(refFolder.children, deps, ref, refIdx);
-  }
-
-  // Standard fields
-  const refFields = [
-    { id: 'globalNote', label: '글로벌노트', lang: 'plaintext' },
-    { id: 'firstMessage', label: '첫 메시지', lang: 'html' },
-    { id: 'triggerScripts', label: '트리거 스크립트', lang: 'json' },
-    {
-      id: 'alternateGreetings',
-      label: '추가 첫 메시지',
-      lang: 'json',
-      get: () => stringifyStringArray(ref.data.alternateGreetings),
-    },
-    { id: 'description', label: '설명', lang: 'plaintext' },
-  ];
-
-  for (const f of refFields) {
-    const val = ref.data[f.id];
-    if (Array.isArray(val)) {
-      if (val.length === 0) continue;
-    } else if (f.id === 'triggerScripts') {
-      if (!ref.data.triggerScripts || ref.data.triggerScripts === '[]') continue;
-    } else if (!val) {
+  for (const item of getReferenceUiItems(fileType)) {
+    if (!shouldRenderReferenceUiItem(item, ref.data)) {
       continue;
     }
-    const el = createTreeItem(f.label, '·', 1);
-    const tabId = `ref_${refIdx}_${f.id}`;
-    el.addEventListener('click', () => {
-      deps.openTab(tabId, `[참고] ${ref.fileName} - ${f.label}`, f.lang, f.get || (() => ref.data[f.id]), null);
+    if (item.kind === 'field') {
+      const el = createTreeItem(item.label, item.icon, 1);
+      const tabId = `ref_${refIdx}_${item.field}`;
+      el.addEventListener('click', () => {
+        deps.openTab(tabId, `[참고] ${ref.fileName} - ${item.label}`, item.language, () => ref.data[item.field], null);
+      });
+      el.addEventListener('contextmenu', (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        deps.showContextMenu(e.clientX, e.clientY, [
+          {
+            label: 'MCP 경로 복사',
+            action: () => {
+              navigator.clipboard.writeText(`read_reference_field(${refIdx}, "${item.field}")`);
+              deps.setStatus(`복사됨: read_reference_field(${refIdx}, "${item.field}")`);
+            },
+          },
+        ]);
+      });
+      refFolder.children.appendChild(el);
+      continue;
+    }
+    if (item.kind === 'greetings') {
+      renderRefGreetings(refFolder.children, deps, ref, refIdx, item.label, item.greetingType, item.field, item.icon);
+      continue;
+    }
+    if (item.kind === 'lua') {
+      renderRefLua(refFolder.children, deps, ref, refIdx);
+      continue;
+    }
+    if (item.kind === 'css') {
+      renderRefCss(refFolder.children, deps, ref, refIdx);
+      continue;
+    }
+    if (item.kind === 'triggerScripts') {
+      renderRefTriggerScripts(refFolder.children, deps, ref, refIdx, item.label, item.icon);
+      continue;
+    }
+    if (item.kind === 'lorebook') {
+      renderRefLorebook(refFolder.children, deps, ref, refIdx);
+      continue;
+    }
+    if (item.kind === 'regex') {
+      renderRefRegex(refFolder.children, deps, ref, refIdx);
+      continue;
+    }
+    if (item.kind === 'risup-group') {
+      const el = createTreeItem(item.label, item.icon, 1);
+      const tabId = `ref_${refIdx}_risup_${item.groupId}`;
+      el.addEventListener('click', () => {
+        const tab = deps.openTab(tabId, `[참고] ${ref.fileName} - ${item.label}`, '_risupform', () => ref.data, null);
+        if (tab) tab._risupGroupId = item.groupId;
+      });
+      refFolder.children.appendChild(el);
+    }
+  }
+}
+
+function renderRefGreetings(
+  parent: HTMLElement,
+  deps: RefsSidebarDeps,
+  ref: ReferenceFile,
+  refIdx: number,
+  label: string,
+  greetingType: 'alternate' | 'group',
+  fieldName: 'alternateGreetings' | 'groupOnlyGreetings',
+  icon: string,
+): void {
+  const greetings = Array.isArray(ref.data[fieldName]) ? ref.data[fieldName] : [];
+  if (greetings.length === 0) return;
+
+  const folder = createFolderItem(label, icon, 1);
+  parent.appendChild(folder.header);
+  parent.appendChild(folder.children);
+
+  folder.header.addEventListener('contextmenu', (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    deps.showContextMenu(e.clientX, e.clientY, [
+      {
+        label: 'MCP 경로 복사',
+        action: () => {
+          navigator.clipboard.writeText(`list_reference_greetings(${refIdx}, "${greetingType}")`);
+          deps.setStatus(`복사됨: list_reference_greetings(${refIdx}, "${greetingType}")`);
+        },
+      },
+    ]);
+  });
+
+  for (let i = 0; i < greetings.length; i++) {
+    const greetingLabel = getReferenceGreetingItemLabel(i);
+    const itemEl = createTreeItem(greetingLabel, '·', 2);
+    const tabId = `ref_${refIdx}_greeting_${greetingType}_${i}`;
+    itemEl.title = greetings[i].slice(0, 80).replace(/\n/g, ' ') || '(빈 인사말)';
+    itemEl.addEventListener('click', () => {
+      deps.openTab(tabId, `[참고] ${ref.fileName} - ${greetingLabel}`, 'html', () => greetings[i] ?? '', null);
     });
-    el.addEventListener('contextmenu', (e: MouseEvent) => {
+    itemEl.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
       deps.showContextMenu(e.clientX, e.clientY, [
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "${f.id}")`);
-            deps.setStatus(`복사됨: read_reference_field(${refIdx}, "${f.id}")`);
+            navigator.clipboard.writeText(`read_reference_greeting(${refIdx}, "${greetingType}", ${i})`);
+            deps.setStatus(`복사됨: read_reference_greeting(${refIdx}, "${greetingType}", ${i})`);
           },
         },
       ]);
     });
-    refFolder.children.appendChild(el);
-  }
-
-  // CSS — split into sections
-  if (ref.data.css) {
-    renderRefCss(refFolder.children, deps, ref, refIdx);
-  }
-
-  // Lorebook
-  if (ref.data.lorebook && ref.data.lorebook.length > 0) {
-    renderRefLorebook(refFolder.children, deps, ref, refIdx);
-  }
-
-  // Regex
-  if (ref.data.regex && ref.data.regex.length > 0) {
-    renderRefRegex(refFolder.children, deps, ref, refIdx);
+    folder.children.appendChild(itemEl);
   }
 }
 
@@ -384,8 +451,8 @@ function renderRefLua(parent: HTMLElement, deps: RefsSidebarDeps, ref: Reference
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "lua")`);
-            deps.setStatus(`복사됨: read_reference_field(${refIdx}, "lua")`);
+            navigator.clipboard.writeText(`list_reference_lua(${refIdx})`);
+            deps.setStatus(`복사됨: list_reference_lua(${refIdx})`);
           },
         },
       ]);
@@ -407,8 +474,8 @@ function renderRefLua(parent: HTMLElement, deps: RefsSidebarDeps, ref: Reference
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "lua")`);
-            deps.setStatus(`복사됨: read_reference_field(${refIdx}, "lua")`);
+            navigator.clipboard.writeText(`list_reference_lua(${refIdx})`);
+            deps.setStatus(`복사됨: list_reference_lua(${refIdx})`);
           },
         },
       ]);
@@ -435,9 +502,7 @@ function renderRefLua(parent: HTMLElement, deps: RefsSidebarDeps, ref: Reference
           {
             label: 'MCP 경로 복사',
             action: () => {
-              navigator.clipboard.writeText(
-                `read_reference_field(${refIdx}, "lua") → 섹션 "${sec.name}" (index ${secIdx})`,
-              );
+              navigator.clipboard.writeText(`read_reference_lua(${refIdx}, ${secIdx})`);
               deps.setStatus(`복사됨: 참고자료[${refIdx}] Lua 섹션[${secIdx}]`);
             },
           },
@@ -464,8 +529,8 @@ function renderRefCss(parent: HTMLElement, deps: RefsSidebarDeps, ref: Reference
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "css")`);
-            deps.setStatus(`복사됨: read_reference_field(${refIdx}, "css")`);
+            navigator.clipboard.writeText(`list_reference_css(${refIdx})`);
+            deps.setStatus(`복사됨: list_reference_css(${refIdx})`);
           },
         },
       ]);
@@ -486,8 +551,8 @@ function renderRefCss(parent: HTMLElement, deps: RefsSidebarDeps, ref: Reference
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "css")`);
-            deps.setStatus(`복사됨: read_reference_field(${refIdx}, "css")`);
+            navigator.clipboard.writeText(`list_reference_css(${refIdx})`);
+            deps.setStatus(`복사됨: list_reference_css(${refIdx})`);
           },
         },
       ]);
@@ -513,9 +578,7 @@ function renderRefCss(parent: HTMLElement, deps: RefsSidebarDeps, ref: Reference
           {
             label: 'MCP 경로 복사',
             action: () => {
-              navigator.clipboard.writeText(
-                `read_reference_field(${refIdx}, "css") → 섹션 "${sec.name}" (index ${secIdx})`,
-              );
+              navigator.clipboard.writeText(`read_reference_css(${refIdx}, ${secIdx})`);
               deps.setStatus(`복사됨: 참고자료[${refIdx}] CSS 섹션[${secIdx}]`);
             },
           },
@@ -604,7 +667,7 @@ function renderRefLorebook(parent: HTMLElement, deps: RefsSidebarDeps, ref: Refe
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "lorebook") → index ${li}`);
+            navigator.clipboard.writeText(`read_reference_lorebook(${refIdx}, ${li})`);
             deps.setStatus(`복사됨: 참고자료[${refIdx}] 로어북[${li}]`);
           },
         },
@@ -663,7 +726,7 @@ function renderRefRegex(parent: HTMLElement, deps: RefsSidebarDeps, ref: Referen
         {
           label: 'MCP 경로 복사',
           action: () => {
-            navigator.clipboard.writeText(`read_reference_field(${refIdx}, "regex") → index ${rxIdx}`);
+            navigator.clipboard.writeText(`read_reference_regex(${refIdx}, ${rxIdx})`);
             deps.setStatus(`복사됨: 참고자료[${refIdx}] 정규식[${rxIdx}]`);
           },
         },
@@ -671,6 +734,41 @@ function renderRefRegex(parent: HTMLElement, deps: RefsSidebarDeps, ref: Referen
     });
     rxFolder.children.appendChild(rxEl);
   }
+}
+
+function renderRefTriggerScripts(
+  parent: HTMLElement,
+  deps: RefsSidebarDeps,
+  ref: ReferenceFile,
+  refIdx: number,
+  label: string,
+  icon: string,
+): void {
+  const el = createTreeItem(label, icon, 1);
+  const tabId = `ref_${refIdx}_triggerScripts`;
+  el.addEventListener('click', () => {
+    deps.openTab(
+      tabId,
+      `[참고] ${ref.fileName} - ${label}`,
+      '_triggerform',
+      () => parseTriggerScriptsText(normalizeTriggerScriptsText(ref.data.triggerScripts)),
+      null,
+    );
+  });
+  el.addEventListener('contextmenu', (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    deps.showContextMenu(e.clientX, e.clientY, [
+      {
+        label: 'MCP 경로 복사',
+        action: () => {
+          navigator.clipboard.writeText(`list_reference_triggers(${refIdx})`);
+          deps.setStatus(`복사됨: list_reference_triggers(${refIdx})`);
+        },
+      },
+    ]);
+  });
+  parent.appendChild(el);
 }
 
 // ---- openRefTabById ----
@@ -701,34 +799,46 @@ export function openRefTabById(tabId: string, deps: OpenRefTabDeps): void {
   const referenceFiles = deps.getReferenceFiles();
   if (ri < 0 || ri >= referenceFiles.length) return;
   const ref = referenceFiles[ri];
+  const fileType = ref.fileType || getRefFileType(ref);
   const fieldPart = parts[2];
 
   if (fieldPart === 'lua') {
     deps.openTab(tabId, `[참고] ${ref.fileName} - Lua`, 'lua', () => ref.data.lua, null);
   } else if (fieldPart === 'css') {
     deps.openTab(tabId, `[참고] ${ref.fileName} - CSS`, 'css', () => ref.data.css, null);
-  } else if (fieldPart === 'globalNote') {
-    deps.openTab(tabId, `[참고] ${ref.fileName} - 글로벌노트`, 'plaintext', () => ref.data.globalNote, null);
-  } else if (fieldPart === 'firstMessage') {
-    deps.openTab(tabId, `[참고] ${ref.fileName} - 첫 메시지`, 'html', () => ref.data.firstMessage, null);
   } else if (fieldPart === 'triggerScripts') {
     deps.openTab(
       tabId,
       `[참고] ${ref.fileName} - 트리거 스크립트`,
-      'json',
-      () => ref.data.triggerScripts || '[]',
+      '_triggerform',
+      () => parseTriggerScriptsText(normalizeTriggerScriptsText(ref.data.triggerScripts)),
       null,
     );
-  } else if (fieldPart === 'alternateGreetings') {
-    deps.openTab(
-      tabId,
-      `[참고] ${ref.fileName} - 추가 첫 메시지`,
-      'json',
-      () => stringifyStringArray(ref.data.alternateGreetings),
-      null,
+  } else if (fieldPart === 'greeting' && parts.length >= 5) {
+    const greetingType = parts[3];
+    const fieldName =
+      greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
+    const idx = parseInt(parts[4], 10);
+    const greetings = fieldName && Array.isArray(ref.data[fieldName]) ? ref.data[fieldName] : [];
+    if (idx >= 0 && idx < greetings.length) {
+      const greetingLabel = getReferenceGreetingItemLabel(idx);
+      deps.openTab(tabId, `[참고] ${ref.fileName} - ${greetingLabel}`, 'html', () => greetings[idx] ?? '', null);
+    }
+  } else if (fieldPart === 'risup' && parts.length >= 4) {
+    const groupId = parts.slice(3).join('_');
+    const groupItem = getReferenceUiItems(fileType).find(
+      (item) => item.kind === 'risup-group' && item.groupId === groupId,
     );
-  } else if (fieldPart === 'description') {
-    deps.openTab(tabId, `[참고] ${ref.fileName} - 설명`, 'plaintext', () => ref.data.description, null);
+    if (groupItem?.kind === 'risup-group') {
+      const tab = deps.openTab(
+        tabId,
+        `[참고] ${ref.fileName} - ${groupItem.label}`,
+        '_risupform',
+        () => ref.data,
+        null,
+      );
+      if (tab) tab._risupGroupId = groupItem.groupId;
+    }
   } else if (fieldPart === 'lb' && parts.length >= 4) {
     const li = parseInt(parts[3], 10);
     if (ref.data.lorebook && ref.data.lorebook[li]) {
@@ -747,6 +857,17 @@ export function openRefTabById(tabId: string, deps: OpenRefTabDeps): void {
     if (ref.data.regex && ref.data.regex[xi]) {
       const rxLabel = (ref.data.regex[xi].comment as string) || `#${xi}`;
       deps.openTab(tabId, `[참고] ${ref.fileName} - ${rxLabel}`, '_regexform', () => ref.data.regex![xi], null);
+    }
+  } else {
+    const fieldDef = findReferenceUiFieldItem(fileType, fieldPart);
+    if (fieldDef) {
+      deps.openTab(
+        tabId,
+        `[참고] ${ref.fileName} - ${fieldDef.label}`,
+        fieldDef.language,
+        () => ref.data[fieldDef.field],
+        null,
+      );
     }
   }
 }

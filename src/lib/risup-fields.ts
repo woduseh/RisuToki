@@ -1,5 +1,3 @@
-import type { CharxData } from '../stores/app-store';
-
 export type RisupFieldEditorKind =
   | 'text'
   | 'textarea'
@@ -227,6 +225,6 @@ export function isRisupEditableFieldId(id: string): id is RisupFieldId {
   return fieldMap.has(id as RisupFieldId);
 }
 
-export function getRisupFieldValue(data: Partial<CharxData>, fieldId: RisupFieldId): unknown {
+export function getRisupFieldValue(data: Partial<Record<RisupFieldId, unknown>>, fieldId: RisupFieldId): unknown {
   return data[fieldId];
 }

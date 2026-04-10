@@ -3666,6 +3666,68 @@ describe('MCP API structured error envelopes — global guards', () => {
     }
   });
 
+  it('supports structured greeting and trigger reads against references without a main document', async () => {
+    const api = await startTestApiServer(null, [
+      {
+        fileName: 'bot.charx',
+        data: {
+          alternateGreetings: ['hello reference'],
+          groupOnlyGreetings: ['group-only reference'],
+          triggerScripts: [
+            {
+              comment: 'ref trigger',
+              type: 'input',
+              conditions: [{ type: 'match' }],
+              effect: [{ type: 'reply' }],
+              lowLevelAccess: true,
+            },
+          ],
+        },
+      },
+    ]);
+    try {
+      const alternateList = await getJson<Record<string, unknown>>(
+        api.port,
+        api.token,
+        '/reference/0/greetings/alternate',
+      );
+      expect(alternateList.status).toBe(200);
+      expect(alternateList.data.field).toBe('alternateGreetings');
+      expect(alternateList.data.count).toBe(1);
+
+      const groupEntry = await getJson<Record<string, unknown>>(api.port, api.token, '/reference/0/greeting/group/0');
+      expect(groupEntry.status).toBe(200);
+      expect(groupEntry.data.type).toBe('group');
+      expect(groupEntry.data.content).toBe('group-only reference');
+
+      const triggerList = await getJson<Record<string, unknown>>(api.port, api.token, '/reference/0/triggers');
+      expect(triggerList.status).toBe(200);
+      expect(triggerList.data.count).toBe(1);
+      expect(triggerList.data.items).toEqual([
+        expect.objectContaining({
+          index: 0,
+          comment: 'ref trigger',
+          type: 'input',
+          conditionCount: 1,
+          effectCount: 1,
+          lowLevelAccess: true,
+        }),
+      ]);
+
+      const triggerEntry = await getJson<Record<string, unknown>>(api.port, api.token, '/reference/0/trigger/0');
+      expect(triggerEntry.status).toBe(200);
+      expect(triggerEntry.data.triggerIndex).toBe(0);
+      expect(triggerEntry.data.trigger).toEqual(
+        expect.objectContaining({
+          comment: 'ref trigger',
+          type: 'input',
+        }),
+      );
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('reads structured risup prompt surfaces from references', async () => {
     const api = await startTestApiServer(null, [
       {

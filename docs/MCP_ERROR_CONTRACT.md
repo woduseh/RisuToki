@@ -4,11 +4,11 @@ For tool-family boundaries and routing rules, pair this document with `docs/MCP_
 
 RisuToki MCP routes use three additive response helpers:
 
-| Helper | HTTP status | Meaning | Required additive fields | Compatibility rule |
-| --- | --- | --- | --- | --- |
-| `mcpSuccess(payload, opts)` | `200` | The mutation or read succeeded. | `status`, `summary`, `next_actions`, `artifacts`, `artifacts.byte_size` | Never wrap or remove the existing payload. |
-| `mcpError(status, info)` | `4xx` / `409` / `5xx` | The request failed and the caller must recover before retrying. | `action`, `target`, `error`, `status`, `suggestion`, `retryable`, `next_actions` | Keep the top-level `error` field for MCP bridge compatibility. |
-| `mcpNoOp(info, extra)` | `200` | The request was valid, but nothing was applied. | `success: false`, `message`, `action`, `target`, `error`, `status`, `suggestion`, `retryable: false`, `next_actions` | Preserve legacy route-local fields such as `matchCount`, `results`, `errors`, and `startAnchorFoundAt`. |
+| Helper                      | HTTP status           | Meaning                                                         | Required additive fields                                                                                             | Compatibility rule                                                                                      |
+| --------------------------- | --------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `mcpSuccess(payload, opts)` | `200`                 | The mutation or read succeeded.                                 | `status`, `summary`, `next_actions`, `artifacts`, `artifacts.byte_size`                                              | Never wrap or remove the existing payload.                                                              |
+| `mcpError(status, info)`    | `4xx` / `409` / `5xx` | The request failed and the caller must recover before retrying. | `action`, `target`, `error`, `status`, `suggestion`, `retryable`, `next_actions`                                     | Keep the top-level `error` field for MCP bridge compatibility.                                          |
+| `mcpNoOp(info, extra)`      | `200`                 | The request was valid, but nothing was applied.                 | `success: false`, `message`, `action`, `target`, `error`, `status`, `suggestion`, `retryable: false`, `next_actions` | Preserve legacy route-local fields such as `matchCount`, `results`, `errors`, and `startAnchorFoundAt`. |
 
 ## 1. `mcpError()` — hard failure
 
@@ -28,13 +28,14 @@ Notes:
 - `suggestion` should tell the agent what to do next
 - `details` should carry small machine-readable facts, not large payloads
 - `mcpError()` broadcasts failure status to the renderer UI
+- `No file open` applies only to routes that require the active main document; `session_status`, `probe_*`, and `reference*` routes remain available without one
 
 ### Recovery metadata (additive, v0.38.9+)
 
 Both `mcpError()` and `mcpNoOp()` responses include machine-readable recovery hints:
 
 - `retryable` (boolean) — `true` only for conflict (409) and server-error (5xx) statuses; `false` for validation errors (4xx) and no-op (200) responses.
-- `next_actions` (string[]) — deterministic list of suggested follow-up MCP tool names, derived from the `target` prefix using the MCP tool taxonomy family map. Special cases: `document:current` → `['open_file']`; unknown prefixes → `[]`.
+- `next_actions` (string[]) — deterministic list of suggested follow-up MCP tool names, derived from the `target` prefix using the MCP tool taxonomy family map. Special cases: `document:current` → `['open_file', 'list_references', 'session_status']`; unknown prefixes → `[]`.
 
 These fields are additive and do not replace existing fields.
 

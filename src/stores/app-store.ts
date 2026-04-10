@@ -142,8 +142,10 @@ export interface RegexEntry {
 }
 
 export interface ReferenceFile {
+  id?: string;
   fileName: string;
   filePath: string;
+  fileType?: 'charx' | 'risum' | 'risup';
   data: Record<string, unknown>;
 }
 

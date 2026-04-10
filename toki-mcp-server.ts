@@ -1586,7 +1586,7 @@ server.tool(
 
 server.tool(
   'read_reference_field',
-  '참고 자료 파일의 특정 필드를 읽습니다 (읽기 전용). ⚠️ lorebook/lua/css는 전체를 한번에 반환하여 컨텍스트를 낭비합니다. 대신 list_reference_lorebook → read_reference_lorebook, list_reference_lua → read_reference_lua, list_reference_css → read_reference_css를 사용하세요. 이 도구는 짧은 필드에만 사용: globalNote, firstMessage, alternateGreetings, groupOnlyGreetings, description, defaultVariables, name, triggerScripts, regex',
+  '참고 자료 파일의 특정 필드를 읽습니다 (읽기 전용). ⚠️ lorebook/lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts/regex는 전용 list_reference_* → read_reference_* 도구를 우선 사용하세요. 이 도구는 짧은 scalar 필드(예: globalNote, firstMessage, description, defaultVariables, name)에만 사용하는 편이 안전합니다.',
   {
     index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
     field: z.string().describe('필드 이름'),
@@ -1646,6 +1646,48 @@ server.tool(
       await apiRequest('GET', `/reference/${index}/field/${encodeURIComponent(field)}/range${qs ? '?' + qs : ''}`),
     );
   },
+);
+
+server.tool(
+  'list_reference_greetings',
+  '참고 자료 파일의 인사말 목록을 확인합니다 (alternate/group, 읽기 전용). read_reference_field("alternateGreetings"/"groupOnlyGreetings") 대신 이 도구로 인덱스를 먼저 좁히세요.',
+  {
+    index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+    type: z.enum(['alternate', 'group']).describe('인사말 종류'),
+  },
+  async ({ index, type }) =>
+    textResult(await apiRequest('GET', `/reference/${index}/greetings/${encodeURIComponent(type)}`)),
+);
+
+server.tool(
+  'read_reference_greeting',
+  '참고 자료 파일의 인사말 하나를 읽습니다 (읽기 전용). list_reference_greetings로 인덱스를 확인한 뒤 사용하세요.',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    type: z.enum(['alternate', 'group']).describe('인사말 종류'),
+    entryIndex: z.number().describe('인사말 인덱스 (list_reference_greetings 결과 참조)'),
+  },
+  async ({ index, type, entryIndex }) =>
+    textResult(await apiRequest('GET', `/reference/${index}/greeting/${encodeURIComponent(type)}/${entryIndex}`)),
+);
+
+server.tool(
+  'list_reference_triggers',
+  '참고 자료 파일의 트리거 스크립트 목록을 확인합니다 (읽기 전용). read_reference_field("triggerScripts")의 전체 JSON 덤프 대신 comment/type/count 요약을 반환합니다.',
+  {
+    index: z.number().describe('참고 파일 인덱스 (list_references 결과 참조)'),
+  },
+  async ({ index }) => textResult(await apiRequest('GET', `/reference/${index}/triggers`)),
+);
+
+server.tool(
+  'read_reference_trigger',
+  '참고 자료 파일의 트리거 스크립트 하나를 읽습니다 (읽기 전용). list_reference_triggers로 인덱스를 확인한 뒤 사용하세요.',
+  {
+    index: z.number().describe('참고 파일 인덱스'),
+    triggerIndex: z.number().describe('트리거 인덱스 (list_reference_triggers 결과 참조)'),
+  },
+  async ({ index, triggerIndex }) => textResult(await apiRequest('GET', `/reference/${index}/trigger/${triggerIndex}`)),
 );
 
 server.tool(

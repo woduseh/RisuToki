@@ -15,8 +15,10 @@ import { markRecoveryDocumentActiveForPath, syncRecoveryAfterExplicitSave } from
 // ---------------------------------------------------------------------------
 
 interface ReferenceRecord {
+  id?: string;
   fileName: string;
   filePath: string;
+  fileType?: 'charx' | 'risum' | 'risup';
   data: Record<string, unknown>;
 }
 
@@ -525,10 +527,17 @@ function persistReferenceFiles(): void {
 
 function restoreReferenceRecord(filePath: string): ReferenceRecord {
   const normalizedPath = normalizeReferencePath(filePath);
-  const refData = normalizedPath.endsWith('.risum') ? openRisum(normalizedPath) : openCharx(normalizedPath);
+  let refData;
+  if (normalizedPath.endsWith('.risum')) refData = openRisum(normalizedPath);
+  else if (normalizedPath.endsWith('.risup')) refData = openRisup(normalizedPath);
+  else refData = openCharx(normalizedPath);
+  const fileType: 'charx' | 'risum' | 'risup' =
+    refData._fileType === 'risum' || refData._fileType === 'risup' ? refData._fileType : 'charx';
   return {
+    id: normalizedPath,
     fileName: path.basename(normalizedPath),
     filePath: normalizedPath,
+    fileType,
     data: serializeForRenderer(refData),
   };
 }
@@ -1114,9 +1123,10 @@ ipcMain.handle('open-reference', async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow!, {
       filters: [
-        { name: 'RisuAI Files', extensions: ['charx', 'risum'] },
+        { name: 'RisuAI Files', extensions: ['charx', 'risum', 'risup'] },
         { name: 'Character Card', extensions: ['charx'] },
         { name: 'RisuAI Module', extensions: ['risum'] },
+        { name: 'RisuAI Preset', extensions: ['risup'] },
       ],
       properties: ['openFile', 'multiSelections'],
     });

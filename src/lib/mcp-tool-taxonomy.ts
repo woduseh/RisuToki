@@ -180,6 +180,13 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   // ── Reference (read-only) ──────────────────────────────────────────────
   list_references: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_field: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_field_batch: { family: 'reference', hints: RO_IDEMPOTENT },
+  search_in_reference_field: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_field_range: { family: 'reference', hints: RO_IDEMPOTENT },
+  list_reference_greetings: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_greeting: { family: 'reference', hints: RO_IDEMPOTENT },
+  list_reference_triggers: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_trigger: { family: 'reference', hints: RO_IDEMPOTENT },
   list_reference_lorebook: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_lorebook: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_lorebook_batch: { family: 'reference', hints: RO_IDEMPOTENT },
@@ -191,6 +198,9 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   list_reference_css: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_css: { family: 'reference', hints: RO_IDEMPOTENT },
   read_reference_css_batch: { family: 'reference', hints: RO_IDEMPOTENT },
+  list_reference_risup_prompt_items: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_risup_prompt_item: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_risup_formating_order: { family: 'reference', hints: RO_IDEMPOTENT },
 
   // ── Charx Asset ────────────────────────────────────────────────────────
   list_charx_assets: { family: 'charx-asset', hints: RO_IDEMPOTENT },

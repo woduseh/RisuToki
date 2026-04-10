@@ -31,18 +31,18 @@ Load these via `read_skill("project-workflow", "MCP_WORKFLOW.md")` and `read_ski
 
 ## MCP Tool Routing — Quick Reference
 
-| Category                 | Preferred tools                                                                               | When                                   |
-| ------------------------ | --------------------------------------------------------------------------------------------- | -------------------------------------- |
-| **Fields**               | `list_fields`, `read_field`, `read_field_batch`, `write_field`, `write_field_batch`           | Small text field full read/write       |
-| **Large fields**         | `search_in_field`, `read_field_range`, `replace_in_field`, `replace_in_field_batch`           | Partial edits in 10+ KB fields         |
-| **Unopened files**       | `probe_field`, `probe_field_batch`, `probe_lorebook`, `probe_regex`, `probe_lua`, `open_file` | Reading files not yet opened in editor |
-| **Lua / CSS**            | `list_lua` / `list_css` → `read_lua` / `read_css`                                             | Section-level read/write               |
-| **Lorebook**             | `list_lorebook` → `read_lorebook` / `read_lorebook_batch`                                     | Browse, compare, batch edit            |
-| **Regex**                | `list_regex` → `read_regex` → targeted writes                                                 | Entry-level operations                 |
-| **Greetings / Triggers** | `list_greetings` / `list_triggers` → per-item tools                                           | Individual editing                     |
-| **risup prompts**        | `list_risup_prompt_items`, `read_risup_prompt_item`, `read_risup_formating_order`             | Structured prompt editing              |
-| **References**           | `list_reference_*` → `read_reference_*`                                                       | Read-only comparisons                  |
-| **Skills**               | `list_skills`, `read_skill`                                                                   | On-demand guide loading                |
+| Category                 | Preferred tools                                                                                                                                     | When                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **Fields**               | `list_fields`, `read_field`, `read_field_batch`, `write_field`, `write_field_batch`                                                                 | Small text field full read/write                     |
+| **Large fields**         | `search_in_field`, `read_field_range`, `replace_in_field`, `replace_in_field_batch`                                                                 | Partial edits in 10+ KB fields                       |
+| **Unopened files**       | `probe_field`, `probe_field_batch`, `probe_lorebook`, `probe_regex`, `probe_lua`, `open_file`                                                       | Reading files not yet opened in editor               |
+| **Lua / CSS**            | `list_lua` / `list_css` → `read_lua` / `read_css`                                                                                                   | Section-level read/write                             |
+| **Lorebook**             | `list_lorebook` → `read_lorebook` / `read_lorebook_batch`                                                                                           | Browse, compare, batch edit                          |
+| **Regex**                | `list_regex` → `read_regex` → targeted writes                                                                                                       | Entry-level operations                               |
+| **Greetings / Triggers** | `list_greetings` / `list_triggers` → per-item tools                                                                                                 | Individual editing                                   |
+| **risup prompts**        | `list_risup_prompt_items`, `read_risup_prompt_item`, `read_risup_formating_order`                                                                   | Structured prompt editing                            |
+| **References**           | `list_references`, `read_reference_field_batch`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_*` → `read_reference_*` | Read-only comparisons, even without a main file open |
+| **Skills**               | `list_skills`, `read_skill`                                                                                                                         | On-demand guide loading                              |
 
 ### Critical Read Rules
 

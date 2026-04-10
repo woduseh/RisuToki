@@ -91,7 +91,18 @@ describe('buildAssistantPrompt', () => {
     expect(result).toContain('read_trigger');
     expect(result).toContain('list_reference_lorebook');
     expect(result).toContain('read_reference_lorebook');
+    expect(result).toContain('list_reference_greetings');
+    expect(result).toContain('read_reference_greeting');
+    expect(result).toContain('list_reference_triggers');
+    expect(result).toContain('read_reference_trigger');
+    expect(result).toContain('search_in_reference_field');
+    expect(result).toContain('read_reference_field_range');
+    expect(result).toContain('list_reference_risup_prompt_items');
     expect(result).toContain('list_skills');
+    expect(result).toContain('메인 파일이 없어도 참고 자료만 로드되어 있다면 list_references로 먼저 확인 가능');
+    expect(result).toContain(
+      'read_reference_field("lorebook/lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts/regex")',
+    );
     expect(result).toContain('읽기 규칙');
     expect(result).toContain('사용 금지');
     expect(result).not.toContain('편집 중인 항목의 내용을 알려주면');

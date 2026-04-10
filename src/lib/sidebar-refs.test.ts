@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { buildRefsSidebar, _resetBuildVersion } from './sidebar-refs';
+import { buildRefsSidebar, openRefTabById, _resetBuildVersion } from './sidebar-refs';
 import type { RefsSidebarDeps } from './sidebar-refs';
 
 /**
@@ -75,5 +75,91 @@ describe('buildRefsSidebar race-condition guard', () => {
     await stale;
     const guideItems = container.querySelectorAll('[data-label="guide1.md"]');
     expect(guideItems.length).toBeLessThanOrEqual(1);
+  });
+
+  it('renders structured reference parity items for charx and risup files', async () => {
+    const container = document.getElementById('sidebar-refs')!;
+    const refs = [
+      {
+        fileName: 'card.charx',
+        data: {
+          creatorcomment: 'creator note',
+          characterVersion: '1.2.3',
+          alternateGreetings: ['hello there'],
+          groupOnlyGreetings: ['group hello'],
+          triggerScripts: '[{"comment":"main","type":"input","conditions":[],"effect":[]}]',
+        },
+      },
+      {
+        fileName: 'preset.risup',
+        fileType: 'risup' as const,
+        data: {
+          _fileType: 'risup',
+          description: 'preset description',
+        },
+      },
+    ];
+    const deps = createMockDeps(0);
+    deps.getReferenceFiles = () => refs as never[];
+    deps.syncReferenceFiles = vi.fn().mockResolvedValue(refs as never[]);
+
+    await buildRefsSidebar(container, deps);
+
+    expect(container.querySelector('[data-label="제작자 노트"]')).not.toBeNull();
+    expect(container.querySelector('[data-label="캐릭터 버전"]')).not.toBeNull();
+    expect(container.querySelector('[data-label="인사말 1"]')).not.toBeNull();
+    expect(container.querySelector('[data-label="트리거 스크립트"]')).not.toBeNull();
+    expect([...container.querySelectorAll('.tree-item')].some((el) => el.textContent?.includes('기본'))).toBe(true);
+  });
+});
+
+describe('openRefTabById', () => {
+  it('opens greeting, trigger, and risup reference tabs in read-only mode', () => {
+    const referenceFiles = [
+      {
+        fileName: 'card.charx',
+        data: {
+          alternateGreetings: ['hello there'],
+          triggerScripts: '[{"comment":"main","type":"input","conditions":[],"effect":[]}]',
+        },
+      },
+      {
+        fileName: 'preset.risup',
+        fileType: 'risup' as const,
+        data: {
+          _fileType: 'risup',
+          description: 'preset description',
+        },
+      },
+    ];
+    const openTab = vi.fn().mockImplementation((id: string) => ({ id }));
+    const deps = {
+      getReferenceFiles: () => referenceFiles as never[],
+      openTab,
+      findOpenTab: vi.fn().mockReturnValue(undefined),
+      activateTab: vi.fn(),
+    };
+
+    openRefTabById('ref_0_greeting_alternate_0', deps);
+    expect(openTab).toHaveBeenNthCalledWith(
+      1,
+      'ref_0_greeting_alternate_0',
+      '[참고] card.charx - 인사말 1',
+      'html',
+      expect.any(Function),
+      null,
+    );
+
+    openRefTabById('ref_0_triggerScripts', deps);
+    const triggerCall = openTab.mock.calls[1];
+    expect(triggerCall[0]).toBe('ref_0_triggerScripts');
+    expect(triggerCall[2]).toBe('_triggerform');
+    expect(triggerCall[4]).toBeNull();
+    expect(triggerCall[3]()).toEqual(expect.objectContaining({ triggers: expect.any(Array) }));
+
+    openRefTabById('ref_1_risup_templates', deps);
+    const risupTab = openTab.mock.results[2]?.value as { _risupGroupId?: string };
+    expect(openTab.mock.calls[2][2]).toBe('_risupform');
+    expect(risupTab._risupGroupId).toBe('templates');
   });
 });

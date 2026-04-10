@@ -167,8 +167,10 @@ interface PopoutRefsData {
 }
 
 interface ReferenceRecord {
+  id?: string;
   fileName: string;
   filePath: string;
+  fileType?: 'charx' | 'risum' | 'risup';
   data: Record<string, unknown>;
 }
 

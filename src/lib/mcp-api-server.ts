@@ -25,7 +25,7 @@ import {
 } from './risup-prompt-model';
 import { mcpSuccess, errorRecoveryMeta, type McpErrorInfo, type McpSuccessOptions } from './mcp-response-envelope';
 import { normalizeLF, extToMime, cloneJson } from './shared-utils';
-import { REF_SCALAR_FIELDS, REF_ALLOWED_READ_FIELDS, getRefFileType } from './reference-store';
+import { REF_SCALAR_FIELDS, REF_ALLOWED_READ_FIELDS, getGreetingFieldName, getRefFileType } from './reference-store';
 import {
   replaceBodySchema,
   blockReplaceBodySchema,
@@ -2689,6 +2689,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               : refsSummary.length > 0
                 ? `No document loaded but ${refsSummary.length} reference file(s) available — use list_references to inspect`
                 : `Session status (no document loaded, no references)`,
+            nextActions: !loaded && refsSummary.length > 0 ? ['list_references', 'open_file'] : undefined,
             artifacts: {
               filePath: status?.currentFilePath ?? null,
               loaded,
@@ -4991,7 +4992,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ================================================================
-      // GREETINGS  (alternateGreetings only — groupOnlyGreetings deprecated)
+      // GREETINGS
       // ================================================================
 
       // ----------------------------------------------------------------
@@ -4999,12 +5000,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greetings' && parts[1] && !parts[2] && req.method === 'GET') {
         const greetingType = parts[1]; // "alternate" | "group"
-        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
+        const fieldName = getGreetingFieldName(greetingType);
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'list greetings',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
             target: `greetings:${greetingType}`,
           });
         }
@@ -5063,12 +5064,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] && !parts[3] && req.method === 'GET') {
         const greetingType = parts[1];
-        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
+        const fieldName = getGreetingFieldName(greetingType);
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'read greeting',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
             target: `greeting:${greetingType}`,
           });
         }
@@ -5097,12 +5098,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] === 'add' && req.method === 'POST') {
         const greetingType = parts[1];
-        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
+        const fieldName = getGreetingFieldName(greetingType);
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'add greeting',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
             target: `greeting:${greetingType}:add`,
           });
         }
@@ -5154,12 +5155,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] === 'batch-write' && req.method === 'POST') {
         const greetingType = parts[1];
-        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
+        const fieldName = getGreetingFieldName(greetingType);
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'batch write greetings',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
             target: `greeting:${greetingType}:batch-write`,
           });
         }
@@ -5232,12 +5233,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] === 'reorder' && req.method === 'POST') {
         const greetingType = parts[1];
-        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
+        const fieldName = getGreetingFieldName(greetingType);
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'reorder greetings',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
             target: `greeting:${greetingType}:reorder`,
           });
         }
@@ -5307,12 +5308,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         req.method === 'POST'
       ) {
         const greetingType = parts[1];
-        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
+        const fieldName = getGreetingFieldName(greetingType);
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'write greeting',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
             target: `greeting:${greetingType}`,
           });
         }
@@ -5374,12 +5375,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] && parts[3] === 'delete' && req.method === 'POST') {
         const greetingType = parts[1];
-        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
+        const fieldName = getGreetingFieldName(greetingType);
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'delete greeting',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
             target: `greeting:${greetingType}`,
           });
         }
@@ -5428,12 +5429,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'greeting' && parts[1] && parts[2] === 'batch-delete' && req.method === 'POST') {
         const greetingType = parts[1];
-        const fieldName = greetingType === 'alternate' ? 'alternateGreetings' : null;
+        const fieldName = getGreetingFieldName(greetingType);
         if (!fieldName) {
           return mcpError(res, 400, {
             action: 'batch delete greetings',
             message: `Unknown greeting type: "${greetingType}"`,
-            suggestion: 'type은 "alternate"만 사용 가능합니다. ("group"은 지원 중단됨)',
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
             target: `greeting:${greetingType}`,
           });
         }
@@ -6618,6 +6619,216 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             toolName: 'list_references',
             summary: `Listed ${refs.length} reference file(s)`,
             artifacts: { count: refs.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/greetings/:type — list reference greetings
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'greetings' &&
+        parts[3] &&
+        !parts[4] &&
+        req.method === 'GET'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'list reference greetings',
+            target: `reference:${idx}:greetings:${parts[3]}`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+        const greetingType = parts[3];
+        const fieldName = getGreetingFieldName(greetingType);
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: 'list reference greetings',
+            target: `reference:${idx}:greetings:${greetingType}`,
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+          });
+        }
+        const ref = refFiles[idx];
+        const arr: string[] = Array.isArray(ref.data[fieldName]) ? ref.data[fieldName] : [];
+        let items = arr.map((g: string, i: number) => ({
+          index: i,
+          contentSize: g.length,
+          preview: g.slice(0, 100) + (g.length > 100 ? '…' : ''),
+        }));
+        const filterParam = url.searchParams.get('filter');
+        if (filterParam) {
+          const q = filterParam.toLowerCase();
+          items = items.filter((entry) => (arr[entry.index] || '').toLowerCase().includes(q));
+        }
+        const contentFilterParam = url.searchParams.get('content_filter');
+        if (contentFilterParam) {
+          const cq = contentFilterParam.toLowerCase();
+          items = items.filter((entry) => (arr[entry.index] || '').toLowerCase().includes(cq));
+          items = items.map((entry) => {
+            const rawContent = arr[entry.index] || '';
+            const lowered = rawContent.toLowerCase();
+            const matchPos = lowered.indexOf(cq);
+            if (matchPos >= 0) {
+              const start = Math.max(0, matchPos - 50);
+              const end = Math.min(rawContent.length, matchPos + cq.length + 50);
+              return {
+                ...entry,
+                contentMatch:
+                  (start > 0 ? '…' : '') + rawContent.slice(start, end) + (end < rawContent.length ? '…' : ''),
+              };
+            }
+            return entry;
+          });
+        }
+        return jsonResSuccess(
+          res,
+          {
+            refIndex: idx,
+            fileName: ref.fileName,
+            type: greetingType,
+            field: fieldName,
+            count: items.length,
+            total: arr.length,
+            items,
+          },
+          {
+            toolName: 'list_reference_greetings',
+            summary: `Listed ${items.length} ${greetingType} reference greetings`,
+            artifacts: { refIndex: idx, count: items.length, total: arr.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/greeting/:type/:entryIdx — read single reference greeting
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'greeting' &&
+        parts[3] &&
+        parts[4] &&
+        !parts[5] &&
+        req.method === 'GET'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'read reference greeting',
+            target: `reference:${idx}:greeting:${parts[3]}:${parts[4]}`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+        const greetingType = parts[3];
+        const fieldName = getGreetingFieldName(greetingType);
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: 'read reference greeting',
+            target: `reference:${idx}:greeting:${greetingType}`,
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+          });
+        }
+        const ref = refFiles[idx];
+        const arr: string[] = Array.isArray(ref.data[fieldName]) ? ref.data[fieldName] : [];
+        const entryIdx = parseInt(parts[4], 10);
+        if (isNaN(entryIdx) || entryIdx < 0 || entryIdx >= arr.length) {
+          return mcpError(res, 400, {
+            action: 'read reference greeting',
+            target: `reference:${idx}:greeting:${greetingType}:${entryIdx}`,
+            message: `Greeting index ${entryIdx} out of range (0..${arr.length - 1})`,
+            suggestion: `list_reference_greetings로 유효한 index를 확인하세요.`,
+          });
+        }
+        return jsonResSuccess(
+          res,
+          { refIndex: idx, fileName: ref.fileName, type: greetingType, entryIndex: entryIdx, content: arr[entryIdx] },
+          {
+            toolName: 'read_reference_greeting',
+            summary: `Read ${greetingType} reference greeting [${entryIdx}]`,
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/triggers — list reference trigger scripts
+      // ----------------------------------------------------------------
+      if (parts[0] === 'reference' && parts[1] && parts[2] === 'triggers' && !parts[3] && req.method === 'GET') {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'list reference triggers',
+            target: `reference:${idx}:triggers`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+        const ref = refFiles[idx];
+        const normalized = deps.normalizeTriggerScripts(ref.data.triggerScripts || []);
+        const scripts = Array.isArray(normalized) ? normalized : [];
+        const items = scripts.map((t: any, i: number) => ({
+          index: i,
+          comment: t.comment || '',
+          type: t.type || '',
+          conditionCount: Array.isArray(t.conditions) ? t.conditions.length : 0,
+          effectCount: Array.isArray(t.effect) ? t.effect.length : 0,
+          lowLevelAccess: !!t.lowLevelAccess,
+        }));
+        return jsonResSuccess(
+          res,
+          { refIndex: idx, fileName: ref.fileName, count: scripts.length, items },
+          {
+            toolName: 'list_reference_triggers',
+            summary: `Listed ${scripts.length} reference trigger scripts`,
+            artifacts: { refIndex: idx, count: scripts.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /reference/:idx/trigger/:triggerIdx — read single reference trigger script
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'reference' &&
+        parts[1] &&
+        parts[2] === 'trigger' &&
+        parts[3] &&
+        !parts[4] &&
+        req.method === 'GET'
+      ) {
+        const refFiles = deps.getReferenceFiles();
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= refFiles.length) {
+          return mcpError(res, 400, {
+            action: 'read reference trigger',
+            target: `reference:${idx}:trigger:${parts[3]}`,
+            message: `Reference index ${idx} out of range`,
+          });
+        }
+        const ref = refFiles[idx];
+        const normalized = deps.normalizeTriggerScripts(ref.data.triggerScripts || []);
+        const scripts = Array.isArray(normalized) ? normalized : [];
+        const triggerIdx = parseInt(parts[3], 10);
+        if (isNaN(triggerIdx) || triggerIdx < 0 || triggerIdx >= scripts.length) {
+          return mcpError(res, 400, {
+            action: 'read reference trigger',
+            target: `reference:${idx}:trigger:${triggerIdx}`,
+            message: `Trigger index ${triggerIdx} out of range (0..${scripts.length - 1})`,
+            suggestion: 'list_reference_triggers로 유효한 index를 확인하세요.',
+          });
+        }
+        return jsonResSuccess(
+          res,
+          { refIndex: idx, fileName: ref.fileName, triggerIndex: triggerIdx, trigger: scripts[triggerIdx] },
+          {
+            toolName: 'read_reference_trigger',
+            summary: `Read reference trigger [${triggerIdx}] "${scripts[triggerIdx].comment || ''}"`,
           },
         );
       }

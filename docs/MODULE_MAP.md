@@ -127,6 +127,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/popout-state.ts` — popout state model
 - `src/lib/popout-payload-store.ts` — popout payload persistence
 - `src/lib/external-text-tab.ts` — external text tab handling
+- `src/lib/reference-item-registry.ts` — shared read-only reference item descriptors and visibility rules
 - `src/lib/reference-store.ts` — reference-file persistence
 - `src/lib/refs-popout-data.ts` — reference popout payload helpers
 - `src/lib/guides-manager.ts` — in-app guide loading
