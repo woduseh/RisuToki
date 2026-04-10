@@ -26,10 +26,19 @@ export interface McpSuccessOptions {
   toolName?: string;
   /** Human-readable one-liner describing the outcome. */
   summary: string;
-  /** Key details from the operation (counts, sizes, names). */
+  /** Key details from the operation (counts, sizes, names). `byte_size` is added automatically. */
   artifacts?: Record<string, unknown>;
   /** Explicit override for suggested follow-up tool names. */
   nextActions?: string[];
+}
+
+export interface McpErrorInfo {
+  action: string;
+  target: string;
+  message: string;
+  suggestion?: string;
+  details?: Record<string, unknown>;
+  rejected?: boolean;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -61,6 +70,7 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
   snapshot: ['list_snapshots', 'snapshot_field', 'restore_snapshot'],
   search: ['search_in_field', 'search_all_fields', 'read_field'],
   'lorebook-io': ['list_lorebook', 'export_lorebook_to_files', 'import_lorebook_from_files'],
+  session: ['session_status', 'open_file', 'list_snapshots'],
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -77,12 +87,13 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
  */
 export function mcpSuccess(payload: Record<string, unknown>, opts: McpSuccessOptions): Record<string, unknown> {
   const nextActions = resolveNextActions(opts);
+  const artifacts = createArtifacts(payload, opts, nextActions);
   return {
     ...payload,
     status: 200,
     summary: opts.summary,
     next_actions: nextActions,
-    artifacts: opts.artifacts ?? {},
+    artifacts,
   };
 }
 
@@ -92,6 +103,97 @@ function resolveNextActions(opts: McpSuccessOptions): string[] {
   const entry = TOOL_TAXONOMY[opts.toolName];
   if (!entry) return [];
   return FAMILY_NEXT_ACTIONS[entry.family] ?? [];
+}
+
+function createArtifacts(
+  payload: Record<string, unknown>,
+  opts: McpSuccessOptions,
+  nextActions: string[],
+): Record<string, unknown> {
+  const baseArtifacts = opts.artifacts ?? {};
+  const responseWithoutByteSize = {
+    ...payload,
+    status: 200,
+    summary: opts.summary,
+    next_actions: nextActions,
+    artifacts: baseArtifacts,
+  };
+
+  return {
+    ...baseArtifacts,
+    byte_size: Buffer.byteLength(JSON.stringify(responseWithoutByteSize), 'utf8'),
+  };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Error/no-op recovery metadata
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Map from MCP error `target` prefixes to tool families.
+ * The target format is `prefix:...`; we extract the first segment.
+ */
+const TARGET_PREFIX_TO_FAMILY: Record<string, ToolFamily> = {
+  field: 'field',
+  probe: 'probe',
+  open: 'probe',
+  lorebook: 'lorebook',
+  regex: 'regex',
+  greeting: 'greeting',
+  greetings: 'greeting',
+  trigger: 'trigger',
+  lua: 'lua',
+  css: 'css',
+  'css-section': 'css',
+  reference: 'reference',
+  asset: 'charx-asset',
+  assets: 'charx-asset',
+  'risum-asset': 'risum-asset',
+  risup: 'risup-prompt',
+  skill: 'skill',
+  skills: 'skill',
+  danbooru: 'danbooru',
+  cbs: 'cbs',
+  snapshot: 'snapshot',
+  search: 'search',
+  session: 'session',
+  '/search-all': 'search',
+};
+
+/**
+ * Special next_actions for targets that don't map to a tool family.
+ */
+const SPECIAL_TARGET_NEXT_ACTIONS: Record<string, string[]> = {
+  'document:current': ['open_file'],
+};
+
+export interface McpErrorRecoveryMeta {
+  retryable: boolean;
+  next_actions: string[];
+}
+
+/**
+ * Derive recovery metadata for error/no-op responses.
+ *
+ * - `retryable`: true only for conflict (409) and server-error (5xx) statuses
+ * - `next_actions`: derived from the `target` prefix using the tool taxonomy
+ */
+export function errorRecoveryMeta(target: string, status: number): McpErrorRecoveryMeta {
+  const retryable = status === 409 || status >= 500;
+  const nextActions = resolveErrorNextActions(target);
+  return { retryable, next_actions: nextActions };
+}
+
+function resolveErrorNextActions(target: string): string[] {
+  // Check special full-target overrides first
+  if (SPECIAL_TARGET_NEXT_ACTIONS[target]) {
+    return SPECIAL_TARGET_NEXT_ACTIONS[target];
+  }
+  // Extract prefix before first colon
+  const prefix = target.split(':')[0];
+  const family = TARGET_PREFIX_TO_FAMILY[prefix];
+  if (!family) return [];
+  return FAMILY_NEXT_ACTIONS[family] ?? [];
 }
 
 // Compile-time check: ensure FAMILY_NEXT_ACTIONS covers all families

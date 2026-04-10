@@ -117,6 +117,38 @@ describe('combineLuaSections', () => {
   });
 });
 
+describe('agent eval: lua section edit workflow', () => {
+  it('lets an agent re-read a targeted Lua section after edit without boundary drift', () => {
+    const original = [
+      '-- ===== helpers =====',
+      'local function greet()',
+      '  return "hello"',
+      'end',
+      '',
+      '-- ===== main =====',
+      'print(greet())',
+    ].join('\n');
+
+    const sections = parseLuaSections(original);
+    const updatedSections = sections.map((section) =>
+      section.name === 'helpers'
+        ? {
+            ...section,
+            content: `${section.content}\nlocal function wave()\n  return "o/"\nend`,
+          }
+        : section,
+    );
+
+    const combined = combineLuaSections(updatedSections);
+    const reparsed = parseLuaSections(combined);
+
+    expect(reparsed.map((section) => section.name)).toEqual(['helpers', 'main']);
+    expect(reparsed[0].content).toContain('local function wave()');
+    expect(reparsed[0].content).toContain('return "o/"');
+    expect(reparsed[1].content).toBe('print(greet())');
+  });
+});
+
 // ── CSS inline / block detection helpers ────────────────────────────────────
 
 describe('detectCssSectionInline', () => {

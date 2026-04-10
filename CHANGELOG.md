@@ -9,6 +9,37 @@
 
 ---
 
+## [0.40.1] - 2026-04-10
+
+### 새 기능
+
+- **다단계 harness eval 확장** (`src/lib/mcp-api-server.test.ts`, `src/lib/mcp-response-envelope.test.ts`): `session_status → write_field → session_status`, `probe_field → open_file → read_field`, lorebook read/write round-trip 같은 실제 에이전트 orchestration 흐름과 deterministic recovery-guidance 경로를 고정하는 eval 시나리오를 추가했습니다.
+
+### 변경
+
+- **MCP decomposition slice 완료** (`src/lib/mcp-field-access.ts`, `src/lib/mcp-cbs-routes.ts`, `src/lib/mcp-api-server.ts`, `docs/MODULE_MAP.md`, `docs/analysis/ARCHITECTURE.md`): 필드 접근/문자열 변형 정책을 공유 경계로 추출하고 CBS route family를 별도 모듈로 분리해 `mcp-api-server.ts`의 책임을 더 명시적인 경계로 나눴습니다.
+- **필드 텍스트 변형 정책 중앙화** (`src/lib/mcp-field-access.ts`, `src/lib/mcp-field-access.test.ts`, `src/lib/mcp-api-server.ts`): replace / block-replace / insert / batch-replace 경로가 더 이상 각자 허용 필드 목록을 복제하지 않고, 공통 allowlist와 read-only 판정 헬퍼를 공유하도록 정리했습니다.
+
+### 수정
+
+- **`FieldAccessRules` 경계 불일치 수정** (`src/lib/mcp-field-access.ts`, `src/lib/mcp-field-access.test.ts`, `src/lib/mcp-api-server.ts`): deprecated field와 read-only field를 분리해 `readOnlyFields ⊆ allowedFields` 불변 조건을 명시적으로 고정하고, charx/risum/risup 전부에서 동일한 계약을 검증하도록 보강했습니다.
+- **`test-charx` worktree/clean-clone 회귀 수정** (`test/test-charx.ts`): Git에 없는 로컬 `risu/bot/Fujimiya Hinano` 카드에 의존하던 회귀 검사를 self-contained `.charx` fixture로 교체해, clean clone과 git worktree에서도 같은 async cheat-handler / array-aware scenario-injection 불변 조건을 안정적으로 검증하도록 바꿨습니다.
+
+## [0.40.0] - 2026-04-10
+
+### 새 기능
+
+- **`session_status` 세션 관찰 surface 추가** (`src/lib/mcp-api-server.ts`, `toki-mcp-server.ts`, `main.ts`, `src/app/controller.ts`, `src/lib/preload-api.ts`): MCP가 현재 파일 경로/타입, renderer dirty/autosave 상태, 복구 메타데이터, 필드 스냅샷 합계를 한 번에 조회할 수 있는 read-only 세션 상태 도구를 추가했습니다. 이 surface는 활성 문서가 없어도 `loaded: false`로 정상 응답해, 중단된 세션을 재개하거나 위험한 쓰기 전에 상태를 먼저 확인할 수 있습니다.
+
+### 변경
+
+- **세션 상태 라우팅 문서화** (`AGENTS.md`, `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_WORKFLOW.md`, `skills/using-mcp-tools/*`): 에이전트가 위험한 MCP 쓰기 전이나 비정상 종료 뒤 작업 재개 시 `session_status`를 먼저 호출하도록 도구 라우팅과 안전 워크플로를 갱신했습니다.
+
+### 수정
+
+- **`session_status` no-file-open 예외 고정** (`src/lib/mcp-api-server.ts`, `src/lib/mcp-api-server.test.ts`): 전역 `No file open` guard가 세션 상태 조회까지 막지 않도록 조정하고, 문서가 열려 있지 않은 상태에서도 200 응답과 `loaded: false` 계약을 검증하는 테스트를 추가했습니다.
+- **MCP API 서버 테스트 세션 격리 보강** (`src/lib/mcp-api-server.test.ts`): 새 테스트 서버를 시작할 때 섹션/스냅샷 캐시를 비워, 이전 테스트의 스냅샷이 다음 세션 상태 계약 검증에 섞이지 않도록 정리했습니다.
+
 ## [0.39.5] - 2026-04-10
 
 ### 새 기능

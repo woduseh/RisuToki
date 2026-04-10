@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { mcpSuccess, FAMILY_NEXT_ACTIONS } from './mcp-response-envelope';
+import { mcpSuccess, FAMILY_NEXT_ACTIONS, errorRecoveryMeta } from './mcp-response-envelope';
 import { TOOL_FAMILIES, TOOL_TAXONOMY, getToolsByFamily } from './mcp-tool-taxonomy';
 import type { ToolFamily } from './mcp-tool-taxonomy';
 
@@ -46,7 +46,30 @@ describe('mcpSuccess envelope', () => {
       artifacts: { fieldName: 'persona', oldSize: 100, newSize: 200 },
     });
 
-    expect(result.artifacts).toEqual({ fieldName: 'persona', oldSize: 100, newSize: 200 });
+    expect(result.artifacts).toEqual(expect.objectContaining({ fieldName: 'persona', oldSize: 100, newSize: 200 }));
+    expect((result.artifacts as Record<string, unknown>).byte_size).toEqual(expect.any(Number));
+  });
+
+  it('adds artifacts.byte_size when custom artifacts are provided', () => {
+    const payload = { success: true };
+    const artifacts = { fieldName: 'persona', oldSize: 100, newSize: 200 };
+    const expectedWithoutByteSize = {
+      ...payload,
+      status: 200,
+      summary: 'Wrote field',
+      next_actions: FAMILY_NEXT_ACTIONS.field,
+      artifacts,
+    };
+    const result = mcpSuccess(payload, {
+      toolName: 'write_field',
+      summary: 'Wrote field',
+      artifacts,
+    });
+
+    expect(result.artifacts).toEqual({
+      ...artifacts,
+      byte_size: Buffer.byteLength(JSON.stringify(expectedWithoutByteSize), 'utf8'),
+    });
   });
 
   it('defaults artifacts to empty object when not provided', () => {
@@ -56,7 +79,28 @@ describe('mcpSuccess envelope', () => {
       summary: 'Listed fields',
     });
 
-    expect(result.artifacts).toEqual({});
+    expect(result.artifacts).toEqual({
+      byte_size: expect.any(Number),
+    });
+  });
+
+  it('adds artifacts.byte_size when artifacts are omitted', () => {
+    const payload = { success: true };
+    const expectedWithoutByteSize = {
+      ...payload,
+      status: 200,
+      summary: 'Listed fields',
+      next_actions: FAMILY_NEXT_ACTIONS.field,
+      artifacts: {},
+    };
+    const result = mcpSuccess(payload, {
+      toolName: 'list_fields',
+      summary: 'Listed fields',
+    });
+
+    expect(result.artifacts).toEqual({
+      byte_size: Buffer.byteLength(JSON.stringify(expectedWithoutByteSize), 'utf8'),
+    });
   });
 
   it('uses explicit nextActions override when provided', () => {
@@ -219,7 +263,8 @@ describe('realistic payload enrichment', () => {
     expect(result.size).toBe(512);
     expect(result.status).toBe(200);
     expect(result.summary).toBe('Updated description (512 chars)');
-    expect(result.artifacts).toEqual({ fieldName: 'description', size: 512 });
+    expect(result.artifacts).toEqual(expect.objectContaining({ fieldName: 'description', size: 512 }));
+    expect((result.artifacts as Record<string, unknown>).byte_size).toEqual(expect.any(Number));
     expect((result.next_actions as string[]).length).toBeGreaterThan(0);
   });
 
@@ -492,6 +537,9 @@ describe('realistic payload enrichment', () => {
   // CBS family
   // ──────────────────────────────────────────────────────────────────────
 
+  // Note: validate_cbs is intentionally exempt from the envelope in production
+  // because its structured `summary` object would collide with the envelope's
+  // string `summary`. This test exercises mcpSuccess() in isolation only.
   it('enriches a validate_cbs response', () => {
     const payload = { valid: true, entries: [], summary: { total: 5, passed: 5, failed: 0 } };
     const result = mcpSuccess(payload, {
@@ -549,5 +597,148 @@ describe('realistic payload enrichment', () => {
     expect(result.changed).toBe(true);
     expect(result.added_lines).toEqual(['a']);
     expect(result.status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// errorRecoveryMeta() — unit tests
+// ---------------------------------------------------------------------------
+describe('errorRecoveryMeta()', () => {
+  it('returns retryable: false for 400 status', () => {
+    const meta = errorRecoveryMeta('field:name', 400);
+    expect(meta.retryable).toBe(false);
+  });
+
+  it('returns retryable: false for 401 status', () => {
+    const meta = errorRecoveryMeta('request:auth', 401);
+    expect(meta.retryable).toBe(false);
+  });
+
+  it('returns retryable: true for 409 status', () => {
+    const meta = errorRecoveryMeta('asset:test.png', 409);
+    expect(meta.retryable).toBe(true);
+  });
+
+  it('returns retryable: true for 500 status', () => {
+    const meta = errorRecoveryMeta('open:file', 500);
+    expect(meta.retryable).toBe(true);
+  });
+
+  it('returns retryable: false for 200 status (no-op)', () => {
+    const meta = errorRecoveryMeta('field:description', 200);
+    expect(meta.retryable).toBe(false);
+  });
+
+  it('resolves next_actions from field family target prefix', () => {
+    const meta = errorRecoveryMeta('field:name', 400);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS.field);
+  });
+
+  it('resolves next_actions from lorebook family target prefix', () => {
+    const meta = errorRecoveryMeta('lorebook:3', 400);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS.lorebook);
+  });
+
+  it('resolves next_actions from regex family target prefix', () => {
+    const meta = errorRecoveryMeta('regex:0', 400);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS.regex);
+  });
+
+  it('resolves next_actions from css-section target prefix alias', () => {
+    const meta = errorRecoveryMeta('css-section:0', 400);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS.css);
+  });
+
+  it('resolves next_actions from open target prefix alias', () => {
+    const meta = errorRecoveryMeta('open:file', 500);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS.probe);
+  });
+
+  it('resolves next_actions from greetings target prefix alias', () => {
+    const meta = errorRecoveryMeta('greetings:alternate', 400);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS.greeting);
+  });
+
+  it('resolves next_actions from skills target prefix alias', () => {
+    const meta = errorRecoveryMeta('skills:using-mcp-tools:SKILL.md', 400);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS.skill);
+  });
+
+  it('resolves next_actions from assets target without a colon', () => {
+    const meta = errorRecoveryMeta('assets', 400);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS['charx-asset']);
+  });
+
+  it('resolves next_actions from search-all target without a colon', () => {
+    const meta = errorRecoveryMeta('/search-all', 400);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS.search);
+  });
+
+  it('resolves next_actions from asset (charx-asset) family target prefix', () => {
+    const meta = errorRecoveryMeta('asset:foo.png', 409);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS['charx-asset']);
+  });
+
+  it('resolves open_file for document:current special target', () => {
+    const meta = errorRecoveryMeta('document:current', 400);
+    expect(meta.next_actions).toEqual(['open_file']);
+  });
+
+  it('returns empty next_actions for unknown target prefix', () => {
+    const meta = errorRecoveryMeta('request:auth', 401);
+    expect(meta.next_actions).toEqual([]);
+  });
+
+  it('returns empty next_actions for target with no colon', () => {
+    const meta = errorRecoveryMeta('unknown', 400);
+    expect(meta.next_actions).toEqual([]);
+  });
+});
+
+describe('agent eval: response contracts stay deterministic for agents', () => {
+  it('keeps context-budget sizing monotonic across progressively larger success payloads', () => {
+    const small = mcpSuccess({ content: 'alpha' }, { toolName: 'read_field', summary: 'Read small field' });
+    const medium = mcpSuccess(
+      { content: 'alpha'.repeat(40) },
+      { toolName: 'read_field', summary: 'Read medium field' },
+    );
+    const large = mcpSuccess({ content: 'alpha'.repeat(400) }, { toolName: 'read_field', summary: 'Read large field' });
+
+    const smallSize = (small.artifacts as Record<string, unknown>).byte_size as number;
+    const mediumSize = (medium.artifacts as Record<string, unknown>).byte_size as number;
+    const largeSize = (large.artifacts as Record<string, unknown>).byte_size as number;
+
+    expect(smallSize).toBeGreaterThan(0);
+    expect(mediumSize).toBeGreaterThan(smallSize);
+    expect(largeSize).toBeGreaterThan(mediumSize);
+  });
+
+  it('keeps field-family recovery guidance stable across validation, conflict, and server errors', () => {
+    const validation = errorRecoveryMeta('field:description', 400);
+    const conflict = errorRecoveryMeta('field:description', 409);
+    const server = errorRecoveryMeta('field:description', 500);
+
+    expect(validation.retryable).toBe(false);
+    expect(conflict.retryable).toBe(true);
+    expect(server.retryable).toBe(true);
+    expect(validation.next_actions).toEqual(FAMILY_NEXT_ACTIONS.field);
+    expect(conflict.next_actions).toEqual(FAMILY_NEXT_ACTIONS.field);
+    expect(server.next_actions).toEqual(FAMILY_NEXT_ACTIONS.field);
+  });
+});
+
+describe('agent eval: recovery guidance chooses the next safe tool', () => {
+  it('keeps field validation failures discovery-first and non-retryable', () => {
+    const meta = errorRecoveryMeta('field:description', 400);
+
+    expect(meta.retryable).toBe(false);
+    expect(meta.next_actions).toEqual(FAMILY_NEXT_ACTIONS.field);
+  });
+
+  it('keeps no-document failures focused on open_file only', () => {
+    const meta = errorRecoveryMeta('document:current', 400);
+
+    expect(meta.retryable).toBe(false);
+    expect(meta.next_actions).toEqual(['open_file']);
   });
 });

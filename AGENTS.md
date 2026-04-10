@@ -33,9 +33,10 @@
 2. **대형 surface를 `read_field`로 통째로 읽지 마세요.** `lua`, `css`, `alternateGreetings`, `triggerScripts`, `promptTemplate`/`formatingOrder`는 전용 list→read 도구를 사용합니다.
 3. **batch 도구 우선.** 여러 항목을 수정할 때 단일 write를 반복하지 말고 batch 도구를 사용하세요.
 4. **열리지 않은 파일은 `probe_*`로 먼저 읽으세요.** 수정이 필요할 때만 `open_file`로 전환합니다.
-5. **MCP 도구·필드 변경 시** `AGENTS.md`, `docs/`, `skills/`를 함께 갱신하세요.
-6. **매 작업마다** `package.json` 버전 범프 + `CHANGELOG.md` 업데이트를 합니다.
-7. **구문이 애매하면 먼저 스킬 문서를 읽으세요.** MCP 도구 선택 상세는 `read_skill("using-mcp-tools")`를 참조합니다.
+5. **위험한 MCP 쓰기 전 또는 중단 뒤 재개 시** `session_status`로 현재 문서, dirty/autosave, recovery, snapshot 상태를 먼저 확인하세요. 이 도구는 파일이 열려 있지 않아도 호출할 수 있습니다.
+6. **MCP 도구·필드 변경 시** `AGENTS.md`, `docs/`, `skills/`를 함께 갱신하세요.
+7. **매 작업마다** `package.json` 버전 범프 + `CHANGELOG.md` 업데이트를 합니다.
+8. **구문이 애매하면 먼저 스킬 문서를 읽으세요.** MCP 도구 선택 상세는 `read_skill("using-mcp-tools")`를 참조합니다.
 
 ---
 

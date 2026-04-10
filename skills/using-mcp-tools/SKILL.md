@@ -1,8 +1,8 @@
 ---
 name: using-mcp-tools
-description: 'Workflow guide for choosing RisuToki MCP tools safely. Use when deciding which read or write surface fits a task, especially for large fields, lorebooks, regex, references, or batch edits.'
+description: 'Workflow guide for choosing RisuToki MCP tools safely. Use when deciding which read or write surface fits a task, especially for session state, large fields, lorebooks, regex, references, or batch edits.'
 tags: ['workflow', 'mcp', 'editing']
-related_tools: ['search_all_fields', 'write_field_batch', 'read_lorebook_batch', 'read_skill']
+related_tools: ['session_status', 'search_all_fields', 'write_field_batch', 'read_lorebook_batch', 'read_skill']
 ---
 
 # Using MCP Tools Safely
@@ -16,6 +16,13 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 - Do **not** dump `alternateGreetings`; use `list_greetings("alternate")`.
 - Do **not** dump `triggerScripts`; use `list_triggers` → `read_trigger(index)`.
 - For risup prompt editing, prefer `list_risup_prompt_items` and `read_risup_formating_order`.
+- Before risky edits or after interruptions, call `session_status` to inspect the active document, dirty/autosave state, recovery metadata, and snapshot totals.
+
+## Session-Awareness Workflow
+
+1. Call `session_status` when resuming after a crash, taking over an unknown session, or before risky writes.
+2. If `loaded` is `false`, switch to `probe_*` or `open_file` before using edit routes that require an active document.
+3. If `pendingRecovery`, `dirtyFields`, or autosave settings look unexpected, stabilize the session first instead of guessing from partial field reads.
 
 ## Large-Field Workflow
 
@@ -50,7 +57,15 @@ If the task touches multiple sibling items, prefer:
 
 This reduces repeated confirmation prompts and keeps edits coherent.
 
+## Context Budget Cues
+
+- Check `artifacts.byte_size` on successful MCP responses before asking for more content.
+- If the response is already large, narrow the next read with `search_in_field`, `read_field_range`, per-item reads, or `probe_*` instead of broad dumps.
+- Prefer progressive disclosure: list/search first, then read the smallest section or item that can answer the question.
+
 ## Full Reference Files
 
 - `read_skill("using-mcp-tools", "TOOL_REFERENCE.md")` — complete MCP tool catalog
 - `read_skill("using-mcp-tools", "FILE_STRUCTURES.md")` — exact schemas and shapes
+- `docs/MCP_TOOL_SURFACE.md` — canonical MCP family map, tool boundaries, and deterministic follow-up actions
+- `docs/MCP_ERROR_CONTRACT.md` — repo-wide success / error / no-op response contract

@@ -93,9 +93,11 @@ Electron `contextIsolation` 하에서 렌더러가 메인 프로세스와 소통
 ```
 main.ts (Electron 메인 프로세스)
   └─ startApiServer(deps) → src/lib/mcp-api-server.ts (HTTP API, ~9,200줄)
-       ├─ deps.getCurrentData()로 메인 프로세스 인메모리 문서 상태 읽기/쓰기
-       ├─ src/lib/mcp-tool-taxonomy.ts (19 패밀리, ~234줄)
-       ├─ src/lib/mcp-response-envelope.ts (응답 포맷, ~176줄)
+        ├─ deps.getCurrentData()로 메인 프로세스 인메모리 문서 상태 읽기/쓰기
+        ├─ src/lib/mcp-cbs-routes.ts (CBS route-family dispatcher)
+        ├─ src/lib/mcp-field-access.ts (필드 이름/문서 타입 access policy)
+        ├─ src/lib/mcp-tool-taxonomy.ts (19 패밀리, ~234줄)
+        ├─ src/lib/mcp-response-envelope.ts (응답 포맷, ~176줄)
        └─ src/lib/mcp-search.ts (전문 검색, ~355줄)
 
 toki-mcp-server.ts (별도 자식 프로세스, stdio transport, ~2,020줄)
@@ -131,7 +133,7 @@ main.ts (Node/Electron)  ←✗→  src/app/controller.ts (Renderer/Vue)
 | 메인 프로세스 전용 | `terminal-manager.ts`, `session-recovery-main.ts`, `main-state-store.ts`, `mcp-config.ts`, `charx-io.ts`, `data-serializer.ts`, `document-validation.ts` |
 | 렌더러 전용 | `layout-manager.ts`, `tab-manager.ts`, `sidebar-builder.ts`, `form-editor.ts`, `monaco-loader.ts`, `section-parser.ts` |
 | 양쪽 공유 | `shared-utils.ts`, `risup-prompt-model.ts`, `cbs-parser.ts`, `cbs-evaluator.ts` |
-| MCP 서버 전용 | `mcp-api-server.ts`, `mcp-tool-taxonomy.ts`, `mcp-response-envelope.ts`, `mcp-search.ts` |
+| MCP 서버 전용 | `mcp-api-server.ts`, `mcp-cbs-routes.ts`, `mcp-field-access.ts`, `mcp-tool-taxonomy.ts`, `mcp-response-envelope.ts`, `mcp-search.ts` |
 
 주의: `src/lib/section-parser.ts` 자체는 렌더러 전용이지만, MCP 경로는 이 파일을 import하지 않고 `main.ts`가 `startApiServer()` deps로 넘기는 병행 Lua/CSS section parser 구현(`parseLuaSections`, `combineLuaSections`, `parseCssSections` 등)을 사용합니다. 섹션 문법 변경은 현재 두 경로를 함께 맞춰야 합니다.
 
@@ -258,7 +260,7 @@ Vite가 렌더러 번들을 빌드하고, `tsc`가 메인 프로세스 진입점
 이 문서는 현재 상태를 있는 그대로 기록합니다. 분해나 리팩터링은 별도 작업으로 진행하되, 다음 원칙을 따릅니다:
 
 1. **`src/lib/` 추출 우선**: 컨트롤러에 새 비즈니스 로직을 추가하기 전에, 재사용 가능한 동작을 `src/lib/`의 작은 모듈로 먼저 추출합니다.
-2. **도구 패밀리 단위 분리**: `mcp-api-server.ts`를 분해할 때는 `mcp-tool-taxonomy.ts`의 19개 패밀리를 자연스러운 분할 경계로 사용합니다.
+2. **도구 패밀리 단위 분리**: `mcp-api-server.ts`를 분해할 때는 `mcp-tool-taxonomy.ts`의 19개 패밀리를 자연스러운 분할 경계로 사용하되, `mcp-field-access.ts`처럼 순수 policy/helper 모듈은 그보다 앞서 분리해도 됩니다.
 3. **테스트 먼저**: `.test.ts` 파일이 옆에 있는 모듈은 그 테스트가 실행 가능한 행위 사양입니다. 분해 시 기존 테스트가 깨지지 않도록 합니다.
 
 ---

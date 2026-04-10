@@ -91,6 +91,23 @@ interface McpOpenFileResponse {
   suggestion?: string;
 }
 
+interface McpRendererSessionStatusIpc {
+  autosaveDir: string;
+  autosaveEnabled: boolean;
+  autosaveInterval: number;
+  dirtyFieldCount: number;
+  dirtyFields: string[];
+  documentSwitchInProgress: boolean;
+  hasUnsavedChanges: boolean;
+}
+
+interface McpSessionStatusResponseIpc {
+  success: boolean;
+  error?: string;
+  renderer?: McpRendererSessionStatusIpc | null;
+  suggestion?: string;
+}
+
 interface McpStatusEvent {
   action?: string;
   level: 'info' | 'warn' | 'error';
@@ -192,6 +209,8 @@ interface TokiAPI {
   sendMcpConfirmResponse: (id: number, allowed: boolean) => void;
   onMcpOpenFileRequest: (cb: (id: number, request: McpOpenFileRequest) => void) => void;
   sendMcpOpenFileResponse: (id: number, response: McpOpenFileResponse) => void;
+  onMcpSessionStatusRequest: (cb: (id: number) => void) => void;
+  sendMcpSessionStatusResponse: (id: number, response: McpSessionStatusResponseIpc) => void;
   onMcpStatus: (cb: (event: McpStatusEvent) => void) => void;
   onCloseConfirmRequest: (cb: CloseConfirmCallback) => void;
   sendCloseConfirmResponse: (id: number, choice: number) => void;

@@ -36,6 +36,7 @@ export const TOOL_FAMILIES = [
   'snapshot',
   'search',
   'lorebook-io',
+  'session',
 ] as const;
 
 export type ToolFamily = (typeof TOOL_FAMILIES)[number];
@@ -94,6 +95,9 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   snapshot_field: { family: 'snapshot', hints: WRITE },
   list_snapshots: { family: 'snapshot', hints: RO_IDEMPOTENT },
   restore_snapshot: { family: 'snapshot', hints: WRITE },
+
+  // ── Session ────────────────────────────────────────────────────────────
+  session_status: { family: 'session', hints: RO_IDEMPOTENT },
 
   // ── Probe / Open ───────────────────────────────────────────────────────
   probe_field: { family: 'probe', hints: RO_IDEMPOTENT },

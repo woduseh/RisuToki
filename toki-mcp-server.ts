@@ -828,6 +828,13 @@ server.tool(
 );
 
 server.tool(
+  'session_status',
+  '현재 MCP 세션 상태를 읽습니다. 열린 문서 경로/타입/이름, renderer dirty 상태, autosave 설정, recovery 메타데이터, 필드 스냅샷 요약을 한 번에 확인할 수 있습니다. 변경 전 상황 파악용 읽기 전용 도구입니다.',
+  {},
+  async () => textResult(await apiRequest('GET', '/session/status')),
+);
+
+server.tool(
   'restore_snapshot',
   '스냅샷으로 필드를 복원합니다. list_snapshots로 스냅샷 ID를 확인한 뒤 사용. 사용자 확인 필요.',
   {

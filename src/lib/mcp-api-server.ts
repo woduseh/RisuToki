@@ -2,8 +2,7 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parse, extractToggles, extractToggleValues, validateNesting, resolveInnerExpressions } from './cbs-parser';
-import { resolve as cbsResolve, generateCombinations } from './cbs-evaluator';
+import { handleCbsRoute } from './mcp-cbs-routes';
 import {
   buildFolderInfoMap,
   canonicalizeLorebookFolderRefs,
@@ -13,7 +12,6 @@ import {
   resolveLorebookFolderRef,
 } from './lorebook-folders';
 import { SEARCHABLE_TEXT_FIELDS, searchAllTextSurfaces, searchTextBlock } from './mcp-search';
-import type { ToggleMap } from './cbs-parser';
 import {
   parsePromptTemplate,
   serializePromptTemplate,
@@ -25,7 +23,7 @@ import {
   validateFormatingOrderText,
   type PromptItemModel,
 } from './risup-prompt-model';
-import { mcpSuccess, errorRecoveryMeta, type McpSuccessOptions } from './mcp-response-envelope';
+import { mcpSuccess, errorRecoveryMeta, type McpErrorInfo, type McpSuccessOptions } from './mcp-response-envelope';
 import { normalizeLF, extToMime, cloneJson } from './shared-utils';
 import {
   replaceBodySchema,
@@ -40,6 +38,19 @@ import {
   validateBody,
   type ExternalDocumentBody,
 } from './mcp-request-schemas';
+import {
+  BOOLEAN_FIELD_NAMES,
+  FIELD_RESERVED_PATHS,
+  MAX_FIELD_BATCH,
+  NUMBER_FIELD_NAMES,
+  SUPPORTED_EXTERNAL_FILE_TYPES,
+  buildFieldBatchReadResults,
+  buildFieldReadResponsePayload,
+  getFieldAccessRules,
+  getStringMutationFieldStatus,
+  getUnknownFieldHint,
+  type SupportedFileType,
+} from './mcp-field-access';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -56,6 +67,40 @@ export interface CssCacheEntry {
   sections: Section[];
   prefix: string;
   suffix: string;
+}
+
+export interface McpPendingRecoveryStatus {
+  autosavePath: string;
+  dirtyFields: string[];
+  sourceFilePath: string;
+  staleWarning: string | null;
+}
+
+export interface McpLastRestoredStatus {
+  appVersion: string;
+  autosavePath: string;
+  dirtyFields: string[];
+  savedAt: string;
+  sourceFilePath: string | null;
+  sourceFileType: 'charx' | 'risum' | 'risup';
+}
+
+export interface McpRendererSessionStatus {
+  autosaveDir: string;
+  autosaveEnabled: boolean;
+  autosaveInterval: number;
+  dirtyFieldCount: number;
+  dirtyFields: string[];
+  documentSwitchInProgress: boolean;
+  hasUnsavedChanges: boolean;
+}
+
+export interface McpSessionStatus {
+  currentFilePath: string | null;
+  currentFileType: 'charx' | 'risum' | 'risup' | null;
+  lastRestored: McpLastRestoredStatus | null;
+  pendingRecovery: McpPendingRecoveryStatus | null;
+  renderer: McpRendererSessionStatus | null;
 }
 
 export interface McpApiDeps {
@@ -95,6 +140,9 @@ export interface McpApiDeps {
 
   // skills directory
   getSkillsDir: () => string;
+
+  // session metadata
+  getSessionStatus?: () => Promise<McpSessionStatus> | McpSessionStatus;
 }
 
 export interface McpApiServer {
@@ -109,8 +157,6 @@ export interface McpApiServer {
 // ---------------------------------------------------------------------------
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
-
-type SupportedFileType = 'charx' | 'risum' | 'risup';
 
 export interface RendererOpenFileRequest {
   filePath: string;
@@ -129,141 +175,6 @@ export interface RendererOpenFileResponse {
   name?: string;
   suggestion?: string;
 }
-
-const CORE_FIELD_NAMES = [
-  'name',
-  'description',
-  'firstMessage',
-  'alternateGreetings',
-  'globalNote',
-  'css',
-  'defaultVariables',
-  'triggerScripts',
-  'lua',
-];
-
-const CHARX_FIELD_NAMES = [
-  'personality',
-  'scenario',
-  'creatorcomment',
-  'tags',
-  'exampleMessage',
-  'systemPrompt',
-  'creator',
-  'characterVersion',
-  'nickname',
-  'source',
-  'additionalText',
-  'license',
-];
-
-const CHARX_READ_ONLY_FIELD_NAMES = ['creationDate', 'modificationDate'];
-
-const CHARX_DEPRECATED_FIELD_NAMES = [
-  'personality',
-  'scenario',
-  'nickname',
-  'source',
-  'additionalText',
-  'tags',
-  'license',
-  'groupOnlyGreetings',
-];
-
-const RISUM_FIELD_NAMES = [
-  'cjs',
-  'lowLevelAccess',
-  'hideIcon',
-  'backgroundEmbedding',
-  'moduleNamespace',
-  'customModuleToggle',
-  'mcpUrl',
-  'moduleName',
-  'moduleDescription',
-];
-
-const RISUM_READ_ONLY_FIELD_NAMES = ['moduleId'];
-
-const RISUP_FIELD_NAMES = [
-  'mainPrompt',
-  'jailbreak',
-  'temperature',
-  'maxContext',
-  'maxResponse',
-  'frequencyPenalty',
-  'presencePenalty',
-  'aiModel',
-  'subModel',
-  'apiType',
-  'promptPreprocess',
-  'promptTemplate',
-  'presetBias',
-  'formatingOrder',
-  'presetImage',
-  'top_p',
-  'top_k',
-  'repetition_penalty',
-  'min_p',
-  'top_a',
-  'reasonEffort',
-  'thinkingTokens',
-  'thinkingType',
-  'adaptiveThinkingEffort',
-  'useInstructPrompt',
-  'instructChatTemplate',
-  'JinjaTemplate',
-  'customPromptTemplateToggle',
-  'templateDefaultVariables',
-  'moduleIntergration',
-  'jsonSchemaEnabled',
-  'jsonSchema',
-  'strictJsonSchema',
-  'extractJson',
-  'groupTemplate',
-  'groupOtherBotRole',
-  'autoSuggestPrompt',
-  'autoSuggestPrefix',
-  'autoSuggestClean',
-  'localStopStrings',
-  'outputImageModal',
-  'verbosity',
-  'fallbackWhenBlankResponse',
-  'systemContentReplacement',
-  'systemRoleReplacement',
-];
-
-const ARRAY_FIELD_NAMES = ['alternateGreetings', 'tags', 'source'];
-const BOOLEAN_FIELD_NAMES = [
-  'lowLevelAccess',
-  'hideIcon',
-  'promptPreprocess',
-  'useInstructPrompt',
-  'jsonSchemaEnabled',
-  'strictJsonSchema',
-  'autoSuggestClean',
-  'outputImageModal',
-  'fallbackWhenBlankResponse',
-];
-const NUMBER_FIELD_NAMES = [
-  'temperature',
-  'maxContext',
-  'maxResponse',
-  'frequencyPenalty',
-  'presencePenalty',
-  'top_p',
-  'top_k',
-  'repetition_penalty',
-  'min_p',
-  'top_a',
-  'reasonEffort',
-  'thinkingTokens',
-  'verbosity',
-  'creationDate',
-  'modificationDate',
-];
-const FIELD_RESERVED_PATHS = ['batch', 'batch-write', 'export'];
-const MAX_FIELD_BATCH = 20;
-const SUPPORTED_EXTERNAL_FILE_TYPES = new Set<SupportedFileType>(['charx', 'risum', 'risup']);
 
 // In-memory snapshot storage for field rollback (cleared on file reload)
 interface FieldSnapshot {
@@ -446,15 +357,6 @@ function getRisupStructuredFieldSuggestion(fieldName: string): string {
         : 'localStopStrings는 문자열만 포함한 JSON 배열 문자열이어야 합니다.';
 }
 
-interface McpErrorInfo {
-  action: string;
-  target: string;
-  message: string;
-  suggestion?: string;
-  details?: Record<string, unknown>;
-  rejected?: boolean;
-}
-
 type McpNoOpInfo = Omit<McpErrorInfo, 'rejected'>;
 
 function jsonMcpError(
@@ -630,89 +532,6 @@ function projectLorebookEntryForResponse(
     }
   }
   return projected;
-}
-
-interface DocumentTypeFlags {
-  fileType: SupportedFileType;
-  isCharx: boolean;
-  isRisum: boolean;
-  isRisup: boolean;
-}
-
-interface FieldAccessRules extends DocumentTypeFlags {
-  allowedFields: string[];
-  readOnlyFields: string[];
-}
-
-function getDocumentTypeFlags(currentData: Record<string, unknown>): DocumentTypeFlags {
-  const rawFileType = currentData._fileType;
-  const fileType: SupportedFileType = rawFileType === 'risum' || rawFileType === 'risup' ? rawFileType : 'charx';
-  return {
-    fileType,
-    isCharx: fileType === 'charx',
-    isRisum: fileType === 'risum',
-    isRisup: fileType === 'risup',
-  };
-}
-
-function getFieldAccessRules(currentData: Record<string, unknown>): FieldAccessRules {
-  const flags = getDocumentTypeFlags(currentData);
-  return {
-    ...flags,
-    allowedFields: [
-      ...CORE_FIELD_NAMES,
-      ...(flags.isCharx ? [...CHARX_FIELD_NAMES, ...CHARX_READ_ONLY_FIELD_NAMES] : []),
-      ...(flags.isRisum ? [...RISUM_FIELD_NAMES, ...RISUM_READ_ONLY_FIELD_NAMES] : []),
-      ...(flags.isRisup ? RISUP_FIELD_NAMES : []),
-    ],
-    readOnlyFields: [
-      ...(flags.isRisum ? RISUM_READ_ONLY_FIELD_NAMES : []),
-      ...(flags.isCharx ? [...CHARX_READ_ONLY_FIELD_NAMES, ...CHARX_DEPRECATED_FIELD_NAMES] : []),
-    ],
-  };
-}
-
-function getUnknownFieldHint(rules: Pick<FieldAccessRules, 'isRisum' | 'isRisup'>): string {
-  if (rules.isRisum) return '(risum 필드 포함)';
-  if (rules.isRisup) return '(risup 프리셋 필드 포함)';
-  return '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
-}
-
-function buildFieldReadResponsePayload(
-  currentData: Record<string, unknown>,
-  fieldName: string,
-  deps: Pick<McpApiDeps, 'stringifyTriggerScripts'>,
-): Record<string, unknown> {
-  if (fieldName === 'triggerScripts') {
-    return {
-      field: fieldName,
-      content: deps.stringifyTriggerScripts(currentData.triggerScripts),
-    };
-  }
-  if (ARRAY_FIELD_NAMES.includes(fieldName)) {
-    return { field: fieldName, content: currentData[fieldName] || [], type: 'array' };
-  }
-  if (BOOLEAN_FIELD_NAMES.includes(fieldName)) {
-    return { field: fieldName, content: !!currentData[fieldName], type: 'boolean' };
-  }
-  if (NUMBER_FIELD_NAMES.includes(fieldName)) {
-    return { field: fieldName, content: currentData[fieldName] ?? 0, type: 'number' };
-  }
-  return { field: fieldName, content: currentData[fieldName] || '' };
-}
-
-function buildFieldBatchReadResults(
-  currentData: Record<string, unknown>,
-  fields: string[],
-  deps: Pick<McpApiDeps, 'stringifyTriggerScripts'>,
-): Record<string, unknown>[] {
-  const rules = getFieldAccessRules(currentData);
-  return fields.map((fieldName) => {
-    if (!rules.allowedFields.includes(fieldName)) {
-      return { field: fieldName, error: `Unknown field: ${fieldName}` };
-    }
-    return buildFieldReadResponsePayload(currentData, fieldName, deps);
-  });
 }
 
 function buildLorebookListResponse(rawEntries: Record<string, unknown>[], url: URL): Record<string, unknown> {
@@ -1314,8 +1133,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
       }
 
+      const isSessionStatusRoute = parts[0] === 'session' && parts[1] === 'status' && !parts[2] && req.method === 'GET';
       const currentData = deps.getCurrentData();
-      if (!currentData) {
+      if (!currentData && !isSessionStatusRoute) {
         return mcpError(res, 400, {
           action: 'require current document',
           target: 'document:current',
@@ -1724,32 +1544,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: 'field:batch-write',
           });
         }
-        const MAX_BATCH_WRITE = 20;
-        if (entries.length > MAX_BATCH_WRITE) {
+        if (entries.length > MAX_FIELD_BATCH) {
           return mcpError(res, 400, {
             action: 'batch write field',
-            message: `Maximum ${MAX_BATCH_WRITE} entries per batch`,
-            suggestion: `요청을 ${MAX_BATCH_WRITE}개 이하의 항목으로 나누어 여러 번 호출하세요.`,
+            message: `Maximum ${MAX_FIELD_BATCH} entries per batch`,
+            suggestion: `요청을 ${MAX_FIELD_BATCH}개 이하의 항목으로 나누어 여러 번 호출하세요.`,
             target: 'field:batch-write',
           });
         }
         // Surface-aware validation (mirrors single-field POST /field/:name)
-        const isRisum = (currentData._fileType || 'charx') === 'risum';
-        const isRisup = (currentData._fileType || 'charx') === 'risup';
-        const isCharx = !isRisum && !isRisup;
-        const charxReadOnlyFields = ['creationDate', 'modificationDate'];
-        const risumReadOnlyFields = ['moduleId'];
-        const readOnlyFields = [...(isCharx ? charxReadOnlyFields : []), ...(isRisum ? risumReadOnlyFields : [])];
-        const charxDeprecatedFields = [
-          'personality',
-          'scenario',
-          'nickname',
-          'source',
-          'additionalText',
-          'tags',
-          'license',
-          'groupOnlyGreetings',
-        ];
+        const rules = getFieldAccessRules(currentData);
+        const readOnlyFields = rules.readOnlyFields;
+        const deprecatedFields = rules.deprecatedFields;
         // Exclude complex fields that need special handling
         const excludedFields = ['triggerScripts', 'alternateGreetings', 'lorebook'];
         // Validate all entries before asking for confirmation
@@ -1760,100 +1566,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           newSize: number;
           type: string;
         }> = [];
-        const boolFields = [
-          'lowLevelAccess',
-          'hideIcon',
-          'promptPreprocess',
-          'useInstructPrompt',
-          'jsonSchemaEnabled',
-          'strictJsonSchema',
-          'autoSuggestClean',
-          'outputImageModal',
-          'fallbackWhenBlankResponse',
-        ];
-        const numFields = [
-          'temperature',
-          'maxContext',
-          'maxResponse',
-          'frequencyPenalty',
-          'presencePenalty',
-          'top_p',
-          'top_k',
-          'repetition_penalty',
-          'min_p',
-          'top_a',
-          'reasonEffort',
-          'thinkingTokens',
-          'verbosity',
-        ];
+        const boolFields = BOOLEAN_FIELD_NAMES;
+        const numFields = NUMBER_FIELD_NAMES;
         const jsonFields = ['promptTemplate', 'presetBias', 'formatingOrder', 'localStopStrings'];
-        // Surface-aware writable set — only fields valid on the current _fileType
-        const baseWritable = ['name', 'description', 'firstMessage', 'globalNote', 'css', 'defaultVariables', 'lua'];
-        const charxOnlyWritable = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
-        const risumOnlyWritable = [
-          'cjs',
-          'lowLevelAccess',
-          'hideIcon',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-        ];
-        const risupOnlyWritable = [
-          'mainPrompt',
-          'jailbreak',
-          'temperature',
-          'maxContext',
-          'maxResponse',
-          'frequencyPenalty',
-          'presencePenalty',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'promptPreprocess',
-          'promptTemplate',
-          'presetBias',
-          'formatingOrder',
-          'presetImage',
-          'top_p',
-          'top_k',
-          'repetition_penalty',
-          'min_p',
-          'top_a',
-          'reasonEffort',
-          'thinkingTokens',
-          'thinkingType',
-          'adaptiveThinkingEffort',
-          'useInstructPrompt',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'customPromptTemplateToggle',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchemaEnabled',
-          'jsonSchema',
-          'strictJsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'autoSuggestClean',
-          'localStopStrings',
-          'outputImageModal',
-          'verbosity',
-          'fallbackWhenBlankResponse',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        const surfaceWritable = new Set([
-          ...baseWritable,
-          ...(isCharx ? charxOnlyWritable : []),
-          ...(isRisum ? risumOnlyWritable : []),
-          ...(isRisup ? risupOnlyWritable : []),
-        ]);
+        const surfaceWritable = new Set(
+          rules.allowedFields.filter(
+            (field) =>
+              !readOnlyFields.includes(field) && !deprecatedFields.includes(field) && !excludedFields.includes(field),
+          ),
+        );
 
         for (const entry of entries) {
           if (!entry.field || entry.content === undefined) {
@@ -1872,7 +1593,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${entry.field}`,
             });
           }
-          if (isCharx && charxDeprecatedFields.includes(entry.field)) {
+          if (deprecatedFields.includes(entry.field)) {
             return mcpError(res, 400, {
               action: 'batch write field',
               message: `"${entry.field}" 필드는 charx에서 읽기 전용(deprecated)입니다.`,
@@ -1889,14 +1610,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             });
           }
           if (!surfaceWritable.has(entry.field)) {
-            const hint = isRisum
-              ? '(risum 필드 포함)'
-              : isRisup
-                ? '(risup 프리셋 필드 포함)'
-                : '(charx 파일에서는 risum/risup 전용 필드를 사용할 수 없습니다)';
             return mcpError(res, 400, {
               action: 'batch write field',
-              message: `Unknown field: ${entry.field} ${hint}`,
+              message: `Unknown field: ${entry.field} ${getUnknownFieldHint(rules)}`,
               suggestion: 'list_fields 또는 GET /field/batch 로 허용된 필드를 다시 확인하세요.',
               target: `field:${entry.field}`,
             });
@@ -2015,47 +1731,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'replace' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        // Reuse field validation from the main field handler
-        const stringFieldsForReplace = [
-          'name',
-          'description',
-          'firstMessage',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'lua',
-          'creatorcomment',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
-          'cjs',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-          'mainPrompt',
-          'jailbreak',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        const readOnlyFieldsReplace = ['creationDate', 'modificationDate', 'moduleId'];
-        if (readOnlyFieldsReplace.includes(fieldName)) {
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        if (mutationFieldStatus === 'read-only') {
           return mcpError(res, 400, {
             action: 'replace in field',
             message: `"${fieldName}" 필드는 읽기 전용입니다.`,
@@ -2063,7 +1740,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `field:${fieldName}`,
           });
         }
-        if (!stringFieldsForReplace.includes(fieldName)) {
+        if (mutationFieldStatus !== 'ok') {
           return mcpError(res, 400, {
             action: 'replace in field',
             message: `"${fieldName}" 필드는 문자열 치환을 지원하지 않습니다.`,
@@ -2218,46 +1895,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'block-replace' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const stringFieldsForReplace = [
-          'name',
-          'description',
-          'firstMessage',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'lua',
-          'creatorcomment',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
-          'cjs',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-          'mainPrompt',
-          'jailbreak',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        const readOnlyFieldsBR = ['creationDate', 'modificationDate', 'moduleId'];
-        if (readOnlyFieldsBR.includes(fieldName)) {
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        if (mutationFieldStatus === 'read-only') {
           return mcpError(res, 400, {
             action: 'block replace in field',
             message: `"${fieldName}" 필드는 읽기 전용입니다.`,
@@ -2265,7 +1904,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `field:${fieldName}`,
           });
         }
-        if (!stringFieldsForReplace.includes(fieldName)) {
+        if (mutationFieldStatus !== 'ok') {
           return mcpError(res, 400, {
             action: 'block replace in field',
             message: `"${fieldName}" 필드는 블록 치환을 지원하지 않습니다.`,
@@ -2411,46 +2050,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'insert' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const stringFieldsForInsert = [
-          'name',
-          'description',
-          'firstMessage',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'lua',
-          'creatorcomment',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
-          'cjs',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-          'mainPrompt',
-          'jailbreak',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        const readOnlyFieldsInsert = ['creationDate', 'modificationDate', 'moduleId'];
-        if (readOnlyFieldsInsert.includes(fieldName)) {
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        if (mutationFieldStatus === 'read-only') {
           return mcpError(res, 400, {
             action: 'insert in field',
             message: `"${fieldName}" 필드는 읽기 전용입니다.`,
@@ -2458,7 +2059,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `field:${fieldName}`,
           });
         }
-        if (!stringFieldsForInsert.includes(fieldName)) {
+        if (mutationFieldStatus !== 'ok') {
           return mcpError(res, 400, {
             action: 'insert in field',
             message: `"${fieldName}" 필드는 텍스트 삽입을 지원하지 않습니다.`,
@@ -2567,45 +2168,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'batch-replace' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const stringFieldsForBatchReplace = [
-          'name',
-          'description',
-          'firstMessage',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'lua',
-          'creatorcomment',
-          'exampleMessage',
-          'systemPrompt',
-          'creator',
-          'characterVersion',
-          'cjs',
-          'backgroundEmbedding',
-          'moduleNamespace',
-          'customModuleToggle',
-          'mcpUrl',
-          'moduleName',
-          'moduleDescription',
-          'mainPrompt',
-          'jailbreak',
-          'aiModel',
-          'subModel',
-          'apiType',
-          'instructChatTemplate',
-          'JinjaTemplate',
-          'templateDefaultVariables',
-          'moduleIntergration',
-          'jsonSchema',
-          'extractJson',
-          'groupTemplate',
-          'groupOtherBotRole',
-          'autoSuggestPrompt',
-          'autoSuggestPrefix',
-          'systemContentReplacement',
-          'systemRoleReplacement',
-        ];
-        if (!stringFieldsForBatchReplace.includes(fieldName)) {
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        if (mutationFieldStatus === 'read-only') {
+          return mcpError(res, 400, {
+            action: 'batch replace in field',
+            message: `"${fieldName}" 필드는 읽기 전용입니다.`,
+            suggestion: '이 필드는 수정할 수 없습니다.',
+            target: `field:${fieldName}`,
+          });
+        }
+        if (mutationFieldStatus !== 'ok') {
           return mcpError(res, 400, {
             action: 'batch replace in field',
             message: `"${fieldName}" 필드는 문자열 치환을 지원하지 않습니다.`,
@@ -3010,6 +2582,67 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             toolName: 'list_snapshots',
             summary: `${snaps.length} snapshot(s) for "${fieldName}"`,
             artifacts: { fieldName, count: snaps.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /session/status — inspect the current MCP-visible session state
+      // ----------------------------------------------------------------
+      if (parts[0] === 'session' && parts[1] === 'status' && !parts[2] && req.method === 'GET') {
+        const status = deps.getSessionStatus ? await deps.getSessionStatus() : null;
+        const snapshotSummary = [...fieldSnapshots.entries()]
+          .filter(([, snaps]) => snaps.length > 0)
+          .map(([field, snaps]) => ({ field, count: snaps.length }))
+          .sort((a, b) => a.field.localeCompare(b.field));
+        const totalSnapshots = snapshotSummary.reduce((sum, entry) => sum + entry.count, 0);
+        const documentName =
+          currentData &&
+          typeof currentData === 'object' &&
+          typeof currentData.name === 'string' &&
+          currentData.name.trim()
+            ? currentData.name
+            : null;
+        const documentFileType =
+          status?.currentFileType ??
+          (currentData &&
+          typeof currentData === 'object' &&
+          (currentData._fileType === 'risum' || currentData._fileType === 'risup')
+            ? currentData._fileType
+            : currentData
+              ? 'charx'
+              : null);
+        const loaded = !!currentData;
+        return jsonResSuccess(
+          res,
+          {
+            loaded,
+            document: {
+              filePath: status?.currentFilePath ?? null,
+              fileType: documentFileType,
+              name: documentName,
+            },
+            renderer: status?.renderer ?? null,
+            recovery: {
+              lastRestored: status?.lastRestored ?? null,
+              pendingRecovery: status?.pendingRecovery ?? null,
+            },
+            snapshots: {
+              byField: snapshotSummary,
+              totalFields: snapshotSummary.length,
+              totalSnapshots,
+            },
+          },
+          {
+            toolName: 'session_status',
+            summary: loaded
+              ? `Session status for "${documentName ?? 'Untitled'}" (${totalSnapshots} snapshot${totalSnapshots === 1 ? '' : 's'})`
+              : 'Session status (no document loaded)',
+            artifacts: {
+              filePath: status?.currentFilePath ?? null,
+              loaded,
+              totalSnapshots,
+            },
           },
         );
       }
@@ -8512,432 +8145,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         );
       }
 
-      // ================================================================
-      // CBS (Conditional Block Syntax) validation routes
-      // ================================================================
-
-      // Helper: collect CBS-containing text entries from current data
-      function collectCBSEntries(
-        currentData: any,
-        fieldFilter?: string,
-        lorebookIndex?: number,
-      ): { path: string; text: string }[] {
-        const entries: { path: string; text: string }[] = [];
-
-        if (lorebookIndex !== undefined) {
-          const lb = currentData.lorebook || [];
-          if (lorebookIndex < 0 || lorebookIndex >= lb.length) return entries;
-          const content = lb[lorebookIndex].content || '';
-          if (content.includes('{{#when') || content.includes('{{getglobalvar')) {
-            entries.push({ path: `lorebook[${lorebookIndex}].content`, text: content });
-          }
-          return entries;
-        }
-
-        if (fieldFilter) {
-          // Single field
-          let text = '';
-          if (fieldFilter.startsWith('lorebook[')) {
-            const match = fieldFilter.match(/^lorebook\[(\d+)\]\.content$/);
-            if (match) {
-              const idx = parseInt(match[1], 10);
-              const lb = currentData.lorebook || [];
-              if (idx >= 0 && idx < lb.length) text = lb[idx].content || '';
-            }
-          } else {
-            text = typeof currentData[fieldFilter] === 'string' ? currentData[fieldFilter] : '';
-          }
-          if (text && (text.includes('{{#when') || text.includes('{{getglobalvar'))) {
-            entries.push({ path: fieldFilter, text });
-          }
-          return entries;
-        }
-
-        // Scan all text fields
-        const textFields = [
-          'globalNote',
-          'firstMessage',
-          'description',
-          'personality',
-          'scenario',
-          'systemPrompt',
-          'exampleMessage',
-          'additionalText',
-          'mainPrompt',
-          'jailbreak',
-        ];
-        for (const f of textFields) {
-          const val = currentData[f];
-          if (typeof val === 'string' && (val.includes('{{#when') || val.includes('{{getglobalvar'))) {
-            entries.push({ path: f, text: val });
-          }
-        }
-
-        // Scan alternate greetings
-        const altGreetings = currentData.alternateGreetings || [];
-        for (let i = 0; i < altGreetings.length; i++) {
-          const g = altGreetings[i];
-          if (typeof g === 'string' && (g.includes('{{#when') || g.includes('{{getglobalvar'))) {
-            entries.push({ path: `alternateGreetings[${i}]`, text: g });
-          }
-        }
-
-        // Scan lorebook
-        const lb = currentData.lorebook || [];
-        for (let i = 0; i < lb.length; i++) {
-          const content = lb[i].content || '';
-          if (content.includes('{{#when') || content.includes('{{getglobalvar')) {
-            entries.push({ path: `lorebook[${i}].content`, text: content });
-          }
-        }
-
-        return entries;
-      }
-
-      // Helper: normalize toggle keys — add toggle_ prefix if missing
-      function normalizeToggles(toggles: Record<string, string>): ToggleMap {
-        const result: ToggleMap = {};
-        for (const [key, val] of Object.entries(toggles)) {
-          const normalizedKey = key.startsWith('toggle_') ? key : `toggle_${key}`;
-          result[normalizedKey] = String(val);
-        }
-        return result;
-      }
-
-      // ----------------------------------------------------------------
-      // GET /cbs/validate — validate CBS nesting
-      // ----------------------------------------------------------------
-      if (parts[0] === 'cbs' && parts[1] === 'validate' && !parts[2] && req.method === 'GET') {
-        const currentData = deps.getCurrentData();
-        if (!currentData)
-          return mcpError(res, 400, { action: 'cbs/validate', target: 'cbs', message: 'No file loaded' });
-
-        const fieldFilter = url.searchParams.get('field') || undefined;
-        const lbIdxParam = url.searchParams.get('lorebook_index');
-        const lorebookIndex = lbIdxParam !== null ? parseInt(lbIdxParam, 10) : undefined;
-        const allCombos = url.searchParams.get('all_combos') === 'true';
-
-        const cbsEntries = collectCBSEntries(currentData, fieldFilter, lorebookIndex);
-        const MAX_VALIDATE_COMBOS = 1024;
-        const results: any[] = [];
-        let passed = 0;
-        let failed = 0;
-
-        for (const entry of cbsEntries) {
-          const vr = validateNesting(entry.text);
-          const item: any = {
-            path: entry.path,
-            valid: vr.valid,
-            opens: vr.openCount,
-            closes: vr.closeCount,
-          };
-          if (!vr.valid) {
-            item.errors = vr.errors;
-          }
-
-          // Optional: all-combos resolve validation
-          if (allCombos && vr.valid) {
-            const toggles = extractToggles(entry.text);
-            const toggleArr = Array.from(toggles);
-            const valueMap: Record<string, string[]> = {};
-            for (const t of toggleArr) {
-              valueMap[t] = Array.from(extractToggleValues(entry.text, t));
-              if (valueMap[t].length === 0) valueMap[t] = ['0', '1'];
-            }
-            const combos = generateCombinations(toggleArr, valueMap);
-            if (combos.length > MAX_VALIDATE_COMBOS) {
-              item.combo_warning = `${combos.length} combinations exceed limit of ${MAX_VALIDATE_COMBOS}, skipped`;
-            } else {
-              const comboErrors: string[] = [];
-              for (const combo of combos) {
-                try {
-                  const resolved = resolveInnerExpressions(entry.text, combo);
-                  const reParsed = parse(resolved);
-                  cbsResolve(resolved, reParsed.blocks, combo);
-                } catch (e: any) {
-                  comboErrors.push(`combo ${JSON.stringify(combo)}: ${e.message}`);
-                  if (comboErrors.length >= 5) {
-                    comboErrors.push('... (truncated)');
-                    break;
-                  }
-                }
-              }
-              if (comboErrors.length > 0) {
-                item.valid = false;
-                item.combo_errors = comboErrors;
-              }
-              item.combos_tested = Math.min(combos.length, MAX_VALIDATE_COMBOS);
-            }
-          }
-
-          if (item.valid) passed++;
-          else failed++;
-          results.push(item);
-        }
-
-        return jsonRes(res, {
-          valid: failed === 0,
-          entries: results,
-          summary: { total: results.length, passed, failed },
-        });
-      }
-
-      // ----------------------------------------------------------------
-      // GET /cbs/toggles — list CBS toggles
-      // ----------------------------------------------------------------
-      if (parts[0] === 'cbs' && parts[1] === 'toggles' && !parts[2] && req.method === 'GET') {
-        const currentData = deps.getCurrentData();
-        if (!currentData)
-          return mcpError(res, 400, { action: 'cbs/toggles', target: 'cbs', message: 'No file loaded' });
-
-        const fieldFilter = url.searchParams.get('field') || undefined;
-        const lbIdxParam = url.searchParams.get('lorebook_index');
-        const lorebookIndex = lbIdxParam !== null ? parseInt(lbIdxParam, 10) : undefined;
-
-        const cbsEntries = collectCBSEntries(currentData, fieldFilter, lorebookIndex);
-        const toggleMap: Record<string, { conditions: Set<string>; fields: Set<string> }> = {};
-
-        for (const entry of cbsEntries) {
-          const toggleNames = extractToggles(entry.text);
-          for (const name of toggleNames) {
-            if (!toggleMap[name]) {
-              toggleMap[name] = { conditions: new Set(), fields: new Set() };
-            }
-            toggleMap[name].fields.add(entry.path);
-            const values = extractToggleValues(entry.text, name);
-            for (const v of values) {
-              toggleMap[name].conditions.add(v);
-            }
-          }
-        }
-
-        // Convert sets to arrays for JSON serialization
-        const toggles: Record<string, { conditions: string[]; fields: string[] }> = {};
-        for (const [name, data] of Object.entries(toggleMap)) {
-          toggles[name] = {
-            conditions: Array.from(data.conditions).sort(),
-            fields: Array.from(data.fields),
-          };
-        }
-
-        return jsonResSuccess(
-          res,
-          { toggles, count: Object.keys(toggles).length },
-          {
-            toolName: 'list_cbs_toggles',
-            summary: `Found ${Object.keys(toggles).length} CBS toggle(s)`,
-            artifacts: { count: Object.keys(toggles).length },
-          },
-        );
-      }
-
-      // ----------------------------------------------------------------
-      // POST /cbs/simulate — resolve CBS with toggles
-      // ----------------------------------------------------------------
-      if (parts[0] === 'cbs' && parts[1] === 'simulate' && !parts[2] && req.method === 'POST') {
-        const currentData = deps.getCurrentData();
-        if (!currentData)
-          return mcpError(res, 400, { action: 'cbs/simulate', target: 'cbs', message: 'No file loaded' });
-
-        const body = await readJsonBody(req, res, 'cbs/simulate', broadcastStatus);
-        if (!body) return;
-
-        const field = body.field;
-        if (!field) return mcpError(res, 400, { action: 'cbs/simulate', target: 'cbs', message: 'field is required' });
-
-        const lorebookIndex = typeof body.lorebook_index === 'number' ? body.lorebook_index : undefined;
-        const userToggles = body.toggles || {};
-        const allCombos = body.all_combos === true;
-        const compact = body.compact !== false; // default true
-        const MAX_SIMULATE_COMBOS = 256;
-
-        const cbsEntries = collectCBSEntries(currentData, field, lorebookIndex);
-        if (cbsEntries.length === 0) {
-          return jsonResSuccess(
-            res,
-            { field, message: 'No CBS content found in specified field' },
-            {
-              toolName: 'simulate_cbs',
-              summary: `No CBS content found in field "${field}"`,
-            },
-          );
-        }
-
-        const entry = cbsEntries[0];
-        const text = entry.text;
-        const normalizedToggles = normalizeToggles(userToggles);
-
-        if (allCombos) {
-          const toggleNames = extractToggles(text);
-          const toggleArr = Array.from(toggleNames);
-          const valueMap: Record<string, string[]> = {};
-          for (const t of toggleNames) {
-            valueMap[t] = Array.from(extractToggleValues(text, t));
-            if (valueMap[t].length === 0) valueMap[t] = ['0', '1'];
-          }
-          const combos = generateCombinations(toggleArr, valueMap);
-          if (combos.length > MAX_SIMULATE_COMBOS) {
-            return mcpError(res, 400, {
-              action: 'cbs/simulate',
-              target: 'cbs',
-              message: `${combos.length} combinations exceed limit of ${MAX_SIMULATE_COMBOS}`,
-            });
-          }
-
-          const results: any[] = [];
-          for (const combo of combos) {
-            try {
-              const resolved = resolveInnerExpressions(text, combo);
-              const parsed = parse(resolved);
-              let result = cbsResolve(resolved, parsed.blocks, combo);
-              if (compact) result = result.replace(/\n{3,}/g, '\n\n').trim();
-              results.push({
-                toggles: combo,
-                resolved_length: result.length,
-                resolved: result,
-              });
-            } catch (e: any) {
-              results.push({ toggles: combo, error: e.message });
-            }
-          }
-
-          return jsonResSuccess(
-            res,
-            {
-              field: entry.path,
-              original_length: text.length,
-              combos: results.length,
-              results,
-            },
-            {
-              toolName: 'simulate_cbs',
-              summary: `Simulated CBS for ${entry.path} (${results.length} combos)`,
-              artifacts: { combos: results.length, originalLength: text.length },
-            },
-          );
-        }
-
-        // Single resolve
-        try {
-          const resolved = resolveInnerExpressions(text, normalizedToggles);
-          const parsed = parse(resolved);
-          let result = cbsResolve(resolved, parsed.blocks, normalizedToggles);
-          if (compact) result = result.replace(/\n{3,}/g, '\n\n').trim();
-
-          return jsonResSuccess(
-            res,
-            {
-              field: entry.path,
-              toggles: normalizedToggles,
-              original_length: text.length,
-              resolved: result,
-              resolved_length: result.length,
-            },
-            {
-              toolName: 'simulate_cbs',
-              summary: `Simulated CBS for ${entry.path} (${text.length}→${result.length} chars)`,
-              artifacts: { originalLength: text.length, resolvedLength: result.length },
-            },
-          );
-        } catch (e: any) {
-          return mcpError(res, 400, {
-            action: 'cbs/simulate',
-            target: 'cbs',
-            message: `CBS resolve error: ${e.message}`,
-          });
-        }
-      }
-
-      // ----------------------------------------------------------------
-      // POST /cbs/diff — baseline diff
-      // ----------------------------------------------------------------
-      if (parts[0] === 'cbs' && parts[1] === 'diff' && !parts[2] && req.method === 'POST') {
-        const currentData = deps.getCurrentData();
-        if (!currentData) return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: 'No file loaded' });
-
-        const body = await readJsonBody(req, res, 'cbs/diff', broadcastStatus);
-        if (!body) return;
-
-        const field = body.field;
-        if (!field) return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: 'field is required' });
-        const toggles = body.toggles;
-        if (!toggles || Object.keys(toggles).length === 0)
-          return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: 'toggles is required' });
-
-        const lorebookIndex = typeof body.lorebook_index === 'number' ? body.lorebook_index : undefined;
-
-        const cbsEntries = collectCBSEntries(currentData, field, lorebookIndex);
-        if (cbsEntries.length === 0) {
-          return jsonResSuccess(
-            res,
-            { field, changed: false, message: 'No CBS content found in specified field' },
-            {
-              toolName: 'diff_cbs',
-              summary: `No CBS content found in field "${field}"`,
-            },
-          );
-        }
-
-        const entry = cbsEntries[0];
-        const text = entry.text;
-        const normalizedToggles = normalizeToggles(toggles);
-
-        // Baseline: all toggles set to "0"
-        const toggleNames = extractToggles(text);
-        const baseline: ToggleMap = {};
-        for (const t of toggleNames) {
-          baseline[t] = '0';
-        }
-
-        try {
-          const resolvedBase = resolveInnerExpressions(text, baseline);
-          const parsedBase = parse(resolvedBase);
-          const baseResult = cbsResolve(resolvedBase, parsedBase.blocks, baseline)
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
-
-          const resolvedTarget = resolveInnerExpressions(text, normalizedToggles);
-          const parsedTarget = parse(resolvedTarget);
-          const targetResult = cbsResolve(resolvedTarget, parsedTarget.blocks, normalizedToggles)
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
-
-          const baseLines = baseResult.split('\n');
-          const targetLines = targetResult.split('\n');
-
-          const added: string[] = [];
-          const removed: string[] = [];
-
-          const baseSet = new Set(baseLines);
-          const targetSet = new Set(targetLines);
-
-          for (const line of targetLines) {
-            if (!baseSet.has(line)) added.push(line);
-          }
-          for (const line of baseLines) {
-            if (!targetSet.has(line)) removed.push(line);
-          }
-
-          return jsonResSuccess(
-            res,
-            {
-              field: entry.path,
-              changed: added.length > 0 || removed.length > 0,
-              toggles: normalizedToggles,
-              baseline_length: baseResult.length,
-              target_length: targetResult.length,
-              added_lines: added,
-              removed_lines: removed,
-            },
-            {
-              toolName: 'diff_cbs',
-              summary: `CBS diff for ${entry.path}: ${added.length} added, ${removed.length} removed`,
-              artifacts: { addedCount: added.length, removedCount: removed.length },
-            },
-          );
-        } catch (e: any) {
-          return mcpError(res, 400, { action: 'cbs/diff', target: 'cbs', message: `CBS diff error: ${e.message}` });
-        }
+      if (
+        await handleCbsRoute(req, res, parts, url, {
+          getCurrentData: deps.getCurrentData,
+          readJsonBody,
+          broadcastStatus,
+          jsonRes,
+          jsonResSuccess,
+          mcpError,
+        })
+      ) {
+        return;
       }
 
       // ================================================================

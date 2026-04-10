@@ -10,6 +10,7 @@ import {
   getToolAnnotations,
   getToolsByFamily,
 } from './mcp-tool-taxonomy';
+import { FAMILY_NEXT_ACTIONS } from './mcp-response-envelope';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Extract tool names from toki-mcp-server.ts source
@@ -200,5 +201,23 @@ describe('MCP Tool Taxonomy', () => {
 
   it('taxonomy tool count matches server registration count', () => {
     expect(ALL_TOOL_NAMES.length).toBe(registeredTools.length);
+  });
+});
+
+describe('agent eval: validation workflows stay discovery-first', () => {
+  it('keeps every CBS follow-up tool read-only', () => {
+    for (const toolName of FAMILY_NEXT_ACTIONS.cbs) {
+      const hints = getToolAnnotations(toolName);
+      expect(hints?.readOnlyHint, `${toolName} should remain readOnly for CBS recovery flows`).toBe(true);
+      expect(hints?.destructiveHint, `${toolName} should not become destructive`).not.toBe(true);
+    }
+  });
+
+  it('keeps lorebook validation available without suggesting destructive recovery', () => {
+    expect(getToolAnnotations('validate_lorebook_keys')?.readOnlyHint).toBe(true);
+    expect(FAMILY_NEXT_ACTIONS.lorebook).toContain('validate_lorebook_keys');
+    for (const toolName of FAMILY_NEXT_ACTIONS.cbs) {
+      expect(toolName.startsWith('write_') || toolName.startsWith('delete_')).toBe(false);
+    }
   });
 });

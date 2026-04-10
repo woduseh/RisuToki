@@ -68,6 +68,40 @@ interface SearchSurface {
   [key: string]: unknown;
 }
 
+interface TestPendingRecoveryStatus {
+  autosavePath: string;
+  dirtyFields: string[];
+  sourceFilePath: string;
+  staleWarning: string | null;
+}
+
+interface TestLastRestoredStatus {
+  appVersion: string;
+  autosavePath: string;
+  dirtyFields: string[];
+  savedAt: string;
+  sourceFilePath: string | null;
+  sourceFileType: 'charx' | 'risum' | 'risup';
+}
+
+interface TestRendererSessionStatus {
+  autosaveDir: string;
+  autosaveEnabled: boolean;
+  autosaveInterval: number;
+  dirtyFieldCount: number;
+  dirtyFields: string[];
+  documentSwitchInProgress: boolean;
+  hasUnsavedChanges: boolean;
+}
+
+interface TestSessionStatus {
+  currentFilePath: string | null;
+  currentFileType: 'charx' | 'risum' | 'risup' | null;
+  lastRestored: TestLastRestoredStatus | null;
+  pendingRecovery: TestPendingRecoveryStatus | null;
+  renderer: TestRendererSessionStatus | null;
+}
+
 function createSearchFixture(): SearchFixture {
   return {
     description: 'Field Alpha is searchable.',
@@ -100,6 +134,7 @@ function closeServer(server: http.Server): Promise<void> {
 }
 
 interface TestDepsOverrides {
+  getSessionStatus?: () => TestSessionStatus;
   parseLuaSections?: () => Array<{ name: string; content: string }>;
   parseCssSections?: () => { sections: Array<{ name: string; content: string }>; prefix: string; suffix: string };
   openExternalDocument?: (filePath: string) => CharxData;
@@ -181,8 +216,18 @@ async function startTestApiServer(
     },
     stringifyTriggerScripts: (scripts: unknown) => JSON.stringify(scripts),
     getSkillsDir: () => skillsDir ?? path.join(__dirname, '..', '..', 'skills'),
-  });
+    getSessionStatus:
+      overrides?.getSessionStatus ??
+      (() => ({
+        currentFilePath: null,
+        currentFileType: null,
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: null,
+      })),
+  } as Parameters<StartApiServer>[0]);
 
+  api.invalidateSectionCaches();
   const port = await portPromise;
   return { ...api, port };
 }
@@ -4410,6 +4455,475 @@ describe('MCP API success response envelope', () => {
     } finally {
       await closeServer(api.server);
     }
+  });
+
+  it('session_status response includes session metadata and snapshot totals', async () => {
+    const fixture = { ...createSearchFixture(), name: 'Status Card' };
+    const api = await startTestApiServer(fixture, [], undefined, {
+      getSessionStatus: () => ({
+        currentFilePath: 'C:\\cards\\status-card.charx',
+        currentFileType: 'charx',
+        lastRestored: {
+          appVersion: '0.39.5',
+          autosavePath: 'C:\\autosave\\status-card_autosave_2.charx',
+          dirtyFields: ['name'],
+          savedAt: '2026-04-10T00:00:00.000Z',
+          sourceFilePath: 'C:\\cards\\status-card.charx',
+          sourceFileType: 'charx',
+        },
+        pendingRecovery: {
+          autosavePath: 'C:\\autosave\\status-card_autosave_3.charx',
+          dirtyFields: ['description'],
+          sourceFilePath: 'C:\\cards\\status-card.charx',
+          staleWarning: null,
+        },
+        renderer: {
+          autosaveDir: 'C:\\autosave',
+          autosaveEnabled: true,
+          autosaveInterval: 120000,
+          dirtyFieldCount: 2,
+          dirtyFields: ['description', 'firstMessage'],
+          documentSwitchInProgress: false,
+          hasUnsavedChanges: true,
+        },
+      }),
+    });
+    try {
+      await postJson(api.port, api.token, '/field/description/snapshot', {});
+
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+
+      expect(res.status).toBe(200);
+      expect(res.data.loaded).toBe(true);
+      expect(res.data.document).toEqual({
+        filePath: 'C:\\cards\\status-card.charx',
+        fileType: 'charx',
+        name: 'Status Card',
+      });
+      expect(res.data.renderer).toEqual({
+        autosaveDir: 'C:\\autosave',
+        autosaveEnabled: true,
+        autosaveInterval: 120000,
+        dirtyFieldCount: 2,
+        dirtyFields: ['description', 'firstMessage'],
+        documentSwitchInProgress: false,
+        hasUnsavedChanges: true,
+      });
+      expect(res.data.recovery).toEqual({
+        lastRestored: {
+          appVersion: '0.39.5',
+          autosavePath: 'C:\\autosave\\status-card_autosave_2.charx',
+          dirtyFields: ['name'],
+          savedAt: '2026-04-10T00:00:00.000Z',
+          sourceFilePath: 'C:\\cards\\status-card.charx',
+          sourceFileType: 'charx',
+        },
+        pendingRecovery: {
+          autosavePath: 'C:\\autosave\\status-card_autosave_3.charx',
+          dirtyFields: ['description'],
+          sourceFilePath: 'C:\\cards\\status-card.charx',
+          staleWarning: null,
+        },
+      });
+      expect(res.data.snapshots).toEqual({
+        byField: [{ count: 1, field: 'description' }],
+        totalFields: 1,
+        totalSnapshots: 1,
+      });
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('session_status remains available when no document is open', async () => {
+    const api = await startTestApiServer(null, [], undefined, {
+      getSessionStatus: () => ({
+        currentFilePath: null,
+        currentFileType: null,
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: {
+          autosaveDir: 'C:\\autosave',
+          autosaveEnabled: false,
+          autosaveInterval: 120000,
+          dirtyFieldCount: 0,
+          dirtyFields: [],
+          documentSwitchInProgress: false,
+          hasUnsavedChanges: false,
+        },
+      }),
+    });
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+
+      expect(res.status).toBe(200);
+      expect(res.data.loaded).toBe(false);
+      expect(res.data.document).toEqual({
+        filePath: null,
+        fileType: null,
+        name: null,
+      });
+      expect(res.data.renderer).toEqual({
+        autosaveDir: 'C:\\autosave',
+        autosaveEnabled: false,
+        autosaveInterval: 120000,
+        dirtyFieldCount: 0,
+        dirtyFields: [],
+        documentSwitchInProgress: false,
+        hasUnsavedChanges: false,
+      });
+      expect(res.data.recovery).toEqual({
+        lastRestored: null,
+        pendingRecovery: null,
+      });
+      expect(res.data.snapshots).toEqual({
+        byField: [],
+        totalFields: 0,
+        totalSnapshots: 0,
+      });
+      expect(res.data.status).toBe(200);
+      expect(typeof res.data.summary).toBe('string');
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  describe('agent eval: session-aware mutation workflows', () => {
+    it('session_status -> snapshot_field -> session_status updates snapshot totals', async () => {
+      const sessionStatus: TestSessionStatus = {
+        currentFilePath: 'C:\\cards\\agent-eval.charx',
+        currentFileType: 'charx',
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: {
+          autosaveDir: 'C:\\autosave',
+          autosaveEnabled: true,
+          autosaveInterval: 120000,
+          dirtyFieldCount: 0,
+          dirtyFields: [],
+          documentSwitchInProgress: false,
+          hasUnsavedChanges: false,
+        },
+      };
+      const api = await startTestApiServer({ ...createSearchFixture(), name: 'Agent Eval Card' }, [], undefined, {
+        getSessionStatus: () => sessionStatus,
+      });
+      try {
+        const before = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+        expect(before.status).toBe(200);
+        expect(before.data.loaded).toBe(true);
+        expect(before.data.snapshots).toEqual({
+          byField: [],
+          totalFields: 0,
+          totalSnapshots: 0,
+        });
+        expectMcpSuccessArtifacts(before.data);
+
+        const snapshot = await postJson<Record<string, unknown>>(
+          api.port,
+          api.token,
+          '/field/description/snapshot',
+          {},
+        );
+        expect(snapshot.status).toBe(200);
+        expectMcpSuccessArtifacts(snapshot.data);
+
+        const after = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+        expect(after.status).toBe(200);
+        expect(after.data.snapshots).toEqual({
+          byField: [{ count: 1, field: 'description' }],
+          totalFields: 1,
+          totalSnapshots: 1,
+        });
+        expectMcpSuccessArtifacts(after.data);
+      } finally {
+        await closeServer(api.server);
+      }
+    });
+
+    it('session_status -> write_field -> session_status reflects dirty renderer state', async () => {
+      const sessionStatus: TestSessionStatus = {
+        currentFilePath: 'C:\\cards\\agent-eval.charx',
+        currentFileType: 'charx',
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: {
+          autosaveDir: 'C:\\autosave',
+          autosaveEnabled: true,
+          autosaveInterval: 120000,
+          dirtyFieldCount: 0,
+          dirtyFields: [],
+          documentSwitchInProgress: false,
+          hasUnsavedChanges: false,
+        },
+      };
+      const api = await startTestApiServer({ ...createSearchFixture(), name: 'Agent Eval Card' }, [], undefined, {
+        getSessionStatus: () => sessionStatus,
+        broadcastToAll: (channel: string, ...args: unknown[]) => {
+          if (channel !== 'data-updated' || !sessionStatus.renderer) return;
+          const [fieldName] = args;
+          if (typeof fieldName !== 'string') return;
+          const dirtyFields = new Set(sessionStatus.renderer.dirtyFields);
+          dirtyFields.add(fieldName);
+          sessionStatus.renderer.dirtyFields = [...dirtyFields].sort();
+          sessionStatus.renderer.dirtyFieldCount = sessionStatus.renderer.dirtyFields.length;
+          sessionStatus.renderer.hasUnsavedChanges = sessionStatus.renderer.dirtyFieldCount > 0;
+        },
+      });
+      try {
+        const before = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+        expect(before.status).toBe(200);
+        expect(before.data.renderer).toEqual({
+          autosaveDir: 'C:\\autosave',
+          autosaveEnabled: true,
+          autosaveInterval: 120000,
+          dirtyFieldCount: 0,
+          dirtyFields: [],
+          documentSwitchInProgress: false,
+          hasUnsavedChanges: false,
+        });
+
+        const write = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description', {
+          content: 'Agent-updated description.',
+        });
+        expect(write.status).toBe(200);
+        expectMcpSuccessArtifacts(write.data);
+
+        const after = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+        expect(after.status).toBe(200);
+        expect(after.data.renderer).toEqual({
+          autosaveDir: 'C:\\autosave',
+          autosaveEnabled: true,
+          autosaveInterval: 120000,
+          dirtyFieldCount: 1,
+          dirtyFields: ['description'],
+          documentSwitchInProgress: false,
+          hasUnsavedChanges: true,
+        });
+        expectMcpSuccessArtifacts(after.data);
+      } finally {
+        await closeServer(api.server);
+      }
+    });
+
+    it('session_status -> open-file -> session_status reports the loaded document', async () => {
+      const filePath = path.join(TEST_DIR, 'agent-eval-status-open.charx');
+      const sessionStatus: TestSessionStatus = {
+        currentFilePath: null,
+        currentFileType: null,
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: {
+          autosaveDir: 'C:\\autosave',
+          autosaveEnabled: false,
+          autosaveInterval: 120000,
+          dirtyFieldCount: 0,
+          dirtyFields: [],
+          documentSwitchInProgress: false,
+          hasUnsavedChanges: false,
+        },
+      };
+      await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+      saveCharx(filePath, {
+        name: 'Opened Via Agent Eval',
+        description: 'Loaded after session_status inspection.',
+        personality: 'Calm',
+        scenario: 'Agent eval route',
+        creatorcomment: '',
+        tags: [],
+        exampleMessage: '',
+        systemPrompt: '',
+        creator: '',
+        characterVersion: '1.0.0',
+        nickname: '',
+        source: [],
+        creationDate: 0,
+        modificationDate: 0,
+        additionalText: '',
+        license: '',
+        firstMessage: 'Hello.',
+        alternateGreetings: [],
+        groupOnlyGreetings: [],
+        globalNote: '',
+        css: '',
+        defaultVariables: '',
+        lua: '',
+        triggerScripts: [],
+        lorebook: [],
+        regex: [],
+        assets: [],
+        xMeta: {},
+        risumAssets: [],
+        cardAssets: [],
+        _risuExt: {},
+        _card: {
+          spec: 'chara_card_v3',
+          spec_version: '3.0',
+          data: {
+            extensions: { risuai: {} },
+            character_book: { entries: [] },
+            assets: [],
+          },
+        },
+        _moduleData: null,
+        _presetData: null,
+      });
+      const api = await startTestApiServer(null, [], undefined, {
+        getSessionStatus: () => sessionStatus,
+      });
+      try {
+        const before = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+        expect(before.status).toBe(200);
+        expect(before.data.loaded).toBe(false);
+
+        const opened = await postJson<Record<string, unknown>>(api.port, api.token, '/open-file', {
+          file_path: filePath,
+        });
+        expect(opened.status).toBe(200);
+        expectMcpSuccessArtifacts(opened.data);
+
+        sessionStatus.currentFilePath = filePath;
+        sessionStatus.currentFileType = 'charx';
+
+        const after = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+        expect(after.status).toBe(200);
+        expect(after.data.loaded).toBe(true);
+        expect(after.data.document).toEqual({
+          filePath,
+          fileType: 'charx',
+          name: 'Opened Via Agent Eval',
+        });
+        expectMcpSuccessArtifacts(after.data);
+      } finally {
+        await closeServer(api.server);
+      }
+    });
+  });
+
+  describe('agent eval: cross-family orchestration flows', () => {
+    it('read_field -> write_field -> read_field roundtrips field content', async () => {
+      const api = await startTestApiServer(createSearchFixture());
+      try {
+        const firstRead = await getJson<Record<string, unknown>>(api.port, api.token, '/field/description');
+        expect(firstRead.status).toBe(200);
+        expect(firstRead.data.content).toBe('Field Alpha is searchable.');
+        expectMcpSuccessArtifacts(firstRead.data);
+
+        const write = await postJson<Record<string, unknown>>(api.port, api.token, '/field/description', {
+          content: 'Field Alpha was updated by an agent eval.',
+        });
+        expect(write.status).toBe(200);
+        expect(write.data.success).toBe(true);
+        expectMcpSuccessArtifacts(write.data);
+
+        const secondRead = await getJson<Record<string, unknown>>(api.port, api.token, '/field/description');
+        expect(secondRead.status).toBe(200);
+        expect(secondRead.data.content).toBe('Field Alpha was updated by an agent eval.');
+        expectMcpSuccessArtifacts(secondRead.data);
+      } finally {
+        await closeServer(api.server);
+      }
+    });
+
+    it('probe_field -> open-file -> read_field transitions from unopened to active document', async () => {
+      const filePath = path.join(TEST_DIR, 'agent-eval-probe-open.charx');
+      await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+      saveCharx(filePath, {
+        name: 'Probe/Open Eval',
+        description: 'Probe first, then open, then read.',
+        personality: 'Calm',
+        scenario: 'Probe route',
+        creatorcomment: '',
+        tags: [],
+        exampleMessage: '',
+        systemPrompt: '',
+        creator: '',
+        characterVersion: '1.0.0',
+        nickname: '',
+        source: [],
+        creationDate: 0,
+        modificationDate: 0,
+        additionalText: '',
+        license: '',
+        firstMessage: 'Hello.',
+        alternateGreetings: [],
+        groupOnlyGreetings: [],
+        globalNote: '',
+        css: '',
+        defaultVariables: '',
+        lua: '',
+        triggerScripts: [],
+        lorebook: [],
+        regex: [],
+        assets: [],
+        xMeta: {},
+        risumAssets: [],
+        cardAssets: [],
+        _risuExt: {},
+        _card: {
+          spec: 'chara_card_v3',
+          spec_version: '3.0',
+          data: {
+            extensions: { risuai: {} },
+            character_book: { entries: [] },
+            assets: [],
+          },
+        },
+        _moduleData: null,
+        _presetData: null,
+      });
+      const api = await startTestApiServer(null);
+      try {
+        const probe = await postJson<Record<string, unknown>>(api.port, api.token, '/probe/field/description', {
+          file_path: filePath,
+        });
+        expect(probe.status).toBe(200);
+        expect(probe.data.content).toBe('Probe first, then open, then read.');
+        expectMcpSuccessArtifacts(probe.data);
+
+        const open = await postJson<Record<string, unknown>>(api.port, api.token, '/open-file', {
+          file_path: filePath,
+        });
+        expect(open.status).toBe(200);
+        expect(open.data.file_path).toBe(filePath);
+        expectMcpSuccessArtifacts(open.data);
+
+        const read = await getJson<Record<string, unknown>>(api.port, api.token, '/field/description');
+        expect(read.status).toBe(200);
+        expect(read.data.content).toBe('Probe first, then open, then read.');
+        expectMcpSuccessArtifacts(read.data);
+      } finally {
+        await closeServer(api.server);
+      }
+    });
+
+    it('list_lorebook -> write_lorebook -> read_lorebook roundtrips lorebook content', async () => {
+      const api = await startTestApiServer(createSearchFixture());
+      try {
+        const listed = await getJson<Record<string, unknown>>(api.port, api.token, '/lorebook');
+        expect(listed.status).toBe(200);
+        expect(listed.data.count).toBe(2);
+        expectMcpSuccessArtifacts(listed.data);
+
+        const written = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/0', {
+          content: 'Lore alpha entry updated by agent eval.',
+        });
+        expect(written.status).toBe(200);
+        expect(written.data.success).toBe(true);
+        expectMcpSuccessArtifacts(written.data);
+
+        const read = await getJson<Record<string, unknown>>(api.port, api.token, '/lorebook/0');
+        expect(read.status).toBe(200);
+        expect((read.data.entry as Record<string, unknown>).content).toBe('Lore alpha entry updated by agent eval.');
+        expectMcpSuccessArtifacts(read.data);
+      } finally {
+        await closeServer(api.server);
+      }
+    });
   });
 
   it('envelope does not break error responses (no envelope on errors)', async () => {
