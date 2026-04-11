@@ -50,8 +50,21 @@ function isPreferredDirectoryLink(
     return false;
   }
 
-  if (fs.realpathSync.native(linkPath) !== fs.realpathSync.native(sourcePath)) {
-    return false;
+  try {
+    if (fs.realpathSync.native(linkPath) !== fs.realpathSync.native(sourcePath)) {
+      return false;
+    }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (platform !== 'win32' || (code !== 'EACCES' && code !== 'ENOENT' && code !== 'EPERM' && code !== 'UNKNOWN')) {
+      throw error;
+    }
+
+    const normalizedLinkTarget = readNormalizedLinkTarget(linkPath);
+    return (
+      normalizedLinkTarget === normalizeRelativeTarget(relativeTarget) ||
+      normalizedLinkTarget === normalizeRelativeTarget(sourcePath)
+    );
   }
 
   if (platform !== 'win32') {

@@ -129,6 +129,30 @@ describe('skill link sync', () => {
     }
   });
 
+  windowsSymlinkIt('accepts already-correct Windows symlinks when realpath is blocked', () => {
+    const root = makeProjectRoot();
+    ensureProjectSkillLinks(root, { platform: 'win32' });
+    const specs = getProjectSkillLinkSpecs(root);
+    const originalRealpathNative = fs.realpathSync.native.bind(fs.realpathSync);
+    const realpathNativeSpy = vi.spyOn(fs.realpathSync, 'native').mockImplementation((entryPath) => {
+      const entry = String(entryPath);
+      if (specs.some((spec) => spec.linkPath === entry)) {
+        const error = new Error('realpath denied') as NodeJS.ErrnoException;
+        error.code = 'EPERM';
+        throw error;
+      }
+
+      return originalRealpathNative(entryPath as Parameters<typeof fs.realpathSync.native>[0]);
+    });
+
+    try {
+      const results = ensureProjectSkillLinks(root, { platform: 'win32' });
+      expect(results.map((result) => result.status)).toEqual(['ok', 'ok', 'ok']);
+    } finally {
+      realpathNativeSpy.mockRestore();
+    }
+  });
+
   it('refuses to replace unexpected real directories', () => {
     const root = makeProjectRoot();
     const specs = getProjectSkillLinkSpecs(root);

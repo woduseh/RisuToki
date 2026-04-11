@@ -9,6 +9,12 @@
 
 ---
 
+## [0.60.4] - 2026-04-11
+
+### Fixed
+
+- Treated Windows symlinks with a matching stored target as already-correct even when `realpath` is blocked during `npm ci`, preventing `sync:skills` from failing on GitHub Actions checkouts.
+
 ## [0.60.3] - 2026-04-11
 
 ### Fixed
