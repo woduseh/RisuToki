@@ -78,9 +78,9 @@ describe('skill link sync', () => {
     const root = makeProjectRoot();
     const specs = getProjectSkillLinkSpecs(root);
 
-    fs.writeFileSync(specs[0].linkPath, '../skills', 'utf8');
-    fs.writeFileSync(specs[1].linkPath, '..\\skills\n', 'utf8');
-    fs.writeFileSync(specs[2].linkPath, '../skills\n', 'utf8');
+    fs.writeFileSync(specs[0].linkPath, specs[0].relativeTarget, 'utf8');
+    fs.writeFileSync(specs[1].linkPath, specs[1].relativeTarget.replace(/\//g, '\\') + '\n', 'utf8');
+    fs.writeFileSync(specs[2].linkPath, specs[2].relativeTarget + '\n', 'utf8');
 
     const results = ensureProjectSkillLinks(root, { platform: 'win32' });
 
@@ -123,15 +123,15 @@ describe('skill link sync', () => {
     const root = makeProjectRoot();
     const specs = getProjectSkillLinkSpecs(root);
 
-    fs.writeFileSync(specs[0].linkPath, '../skills', 'utf8');
-    fs.writeFileSync(specs[1].linkPath, '../skills', 'utf8');
-    fs.writeFileSync(specs[2].linkPath, '../skills', 'utf8');
+    fs.writeFileSync(specs[0].linkPath, specs[0].relativeTarget, 'utf8');
+    fs.writeFileSync(specs[1].linkPath, specs[1].relativeTarget, 'utf8');
+    fs.writeFileSync(specs[2].linkPath, specs[2].relativeTarget, 'utf8');
 
     ensureProjectSkillLinks(root, { platform: 'win32' });
 
     for (const spec of specs) {
       expect(fs.lstatSync(spec.linkPath).isSymbolicLink()).toBe(true);
-      expect(fs.readlinkSync(spec.linkPath).replace(/\\/g, '/')).toBe('../skills');
+      expect(fs.readlinkSync(spec.linkPath).replace(/\\/g, '/')).toBe(spec.relativeTarget.replace(/\\/g, '/'));
     }
   });
 
@@ -139,9 +139,9 @@ describe('skill link sync', () => {
     const root = makeProjectRoot();
     const specs = getProjectSkillLinkSpecs(root);
 
-    fs.writeFileSync(specs[0].linkPath, '../skills', 'utf8');
-    fs.writeFileSync(specs[1].linkPath, '../skills', 'utf8');
-    fs.writeFileSync(specs[2].linkPath, '../skills', 'utf8');
+    fs.writeFileSync(specs[0].linkPath, specs[0].relativeTarget, 'utf8');
+    fs.writeFileSync(specs[1].linkPath, specs[1].relativeTarget, 'utf8');
+    fs.writeFileSync(specs[2].linkPath, specs[2].relativeTarget, 'utf8');
 
     const originalSymlinkSync = fs.symlinkSync.bind(fs);
     const symlinkSpy = vi.spyOn(fs, 'symlinkSync').mockImplementation((target, pathArg, type) => {

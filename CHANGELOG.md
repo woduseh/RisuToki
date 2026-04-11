@@ -9,6 +9,12 @@
 
 ---
 
+## [0.60.1] - 2026-04-11
+
+### Fixed
+
+- Fixed the Windows `skill-link-sync` symlink-target expectation so the tag-triggered release workflow follows the generated `.copilot-skill-catalog` link target instead of the old root `skills/` path.
+
 ## [0.60.0] - 2026-04-11
 
 ### Added
