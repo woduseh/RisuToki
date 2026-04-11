@@ -34,3 +34,4 @@
 3. Use dedicated MCP surfaces for `lua`, `css`, greetings, lorebooks, regex, and triggers. Do not bulk-read those through generic `read_field`.
 4. Treat files in `docs/` as bot-specific review/reference material; shared syntax belongs in `risu/common/skills/`.
 5. Local `.charx` work products in this directory stay ignored. Only routing/docs/skills surfaces are tracked here.
+6. Preset, module, and plugin composition workflows are separate. Do not load them as defaults in this subtree unless the task explicitly bridges artifacts.

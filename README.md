@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-0.60.4-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.60.5-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -63,6 +63,7 @@ npm run dist:all     # Windows NSIS + portable build
 ### Developer Documentation
 
 - `docs/README.md` — Knowledge-base index for agents and contributors
+- `AGENTS.md` + local `risu/*/AGENTS.md` routers — Product-first root routing plus subtree-specific authoring guidance
 - `docs/MCP_WORKFLOW.md` — MCP tool selection, read rules, and workflow patterns
 - `docs/MCP_TOOL_SURFACE.md` — MCP tool families, boundaries, and follow-up action map
 - `docs/MCP_ERROR_CONTRACT.md` — MCP success/error/no-op response contract and agent recovery rules

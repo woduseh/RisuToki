@@ -26,3 +26,4 @@
 3. Carry the latest `expected_type` and optional `expected_preview` from `list_risup_prompt_items` into writes when editing by index.
 4. Use `export_risup_prompt_to_text` for large prompt rewrites, `diff_risup_prompt` for preset comparison, and snippets for reusable blocks.
 5. Local `.risup` work products in this directory stay ignored. Only routing/docs/skills surfaces are tracked here.
+6. Bot, module, and plugin composition workflows are separate. Only pull them in when the preset task explicitly crosses those boundaries (for example, documenting `moduleIntergration`).

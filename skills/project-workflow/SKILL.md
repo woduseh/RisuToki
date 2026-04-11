@@ -66,7 +66,7 @@ Load these via `read_skill("project-workflow", "MCP_WORKFLOW.md")` and `read_ski
 1. **`package.json` version bump** — semver
 2. **`CHANGELOG.md`** — Keep a Changelog format, newest entry at top
 3. **`README.md`** — update if the change is user-visible
-4. **`AGENTS.md` / `docs/` / `skills/`** — update when MCP tools, fields, or workflows change
+4. **`AGENTS.md` / `docs/` / `skills/`** — update when MCP tools, fields, workflows, or Copilot routing change
 
 ### CI / Validation
 

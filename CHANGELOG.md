@@ -9,6 +9,18 @@
 
 ---
 
+## [0.60.5] - 2026-04-11
+
+### Added
+
+- Added `risu/common/AGENTS.md` so the shared authoring subtree now has its own local router instead of borrowing product-first root guidance.
+
+### Changed
+
+- Switched Copilot CLI authoring routing from repo-wide `.github/instructions` files to a product-first root `AGENTS.md` plus nearest-subtree `risu/{common,bot,prompts,modules,plugins}/AGENTS.md` routers after validating that the current CLI loads all `.github/instructions/*.instructions.md` files together.
+- Narrowed the root `AGENTS.md` mandatory rules to repo-wide/product behavior and moved authoring-only MCP guidance back into subtree-local routers so `risu/bot`, `risu/prompts`, and `risu/modules` no longer inherit unrelated artifact instructions from the repo root.
+- Updated README, contributing docs, project rules, and skill readmes to document that the skill catalog remains repo-global while active authoring guidance is selected by the nearest local `AGENTS.md`.
+
 ## [0.60.4] - 2026-04-11
 
 ### Fixed

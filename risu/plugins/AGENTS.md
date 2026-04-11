@@ -25,3 +25,4 @@
 3. Keep the metadata header stable, especially `//@name` and `//@api 3.0`.
 4. Treat the sandbox/security boundary as intentional. Do not design around escaping it.
 5. Local plugin work products in this directory stay ignored. Only routing/docs/skills surfaces are tracked here.
+6. Bot, preset, and module composition workflows are separate. Only pull them in when the plugin task explicitly emits or integrates those artifact surfaces.

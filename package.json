@@ -1,6 +1,6 @@
 {
   "name": "risutoki",
-  "version": "0.60.4",
+  "version": "0.60.5",
   "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
   "main": "main.js",
   "scripts": {
@@ -121,6 +121,7 @@
       "guides/**/*",
       "resources/**/*",
       "skills/**/*",
+      "risu/common/AGENTS.md",
       "risu/common/README.md",
       "risu/common/docs/**/*",
       "risu/common/skills/**/*",

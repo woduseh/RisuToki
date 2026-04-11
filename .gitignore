@@ -58,6 +58,7 @@ risu/**
 # Selectively tracked authoring docs / skills / routers
 !risu/common/
 risu/common/**
+!risu/common/AGENTS.md
 !risu/common/README.md
 !risu/common/docs/
 !risu/common/docs/**

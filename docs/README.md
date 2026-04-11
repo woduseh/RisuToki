@@ -4,15 +4,15 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 
 ## Start here
 
-| If you are...                                            | Read first                                       | Then read                                                |
-| -------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------- |
-| starting a new session or onboarding                     | `read_skill("project-workflow")`                 | `read_skill("using-mcp-tools")`                          |
-| working on authoring materials under `risu/`             | local `risu/{artifact}/AGENTS.md` or `README.md` | matching `risu/.../skills/` + `risu/.../docs/` surfaces  |
-| editing `.charx` / `.risum` / `.risup` through MCP       | `read_skill("using-mcp-tools")`                  | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
-| recovering from an MCP tool failure or no-op             | `docs/MCP_ERROR_CONTRACT.md`                     | `docs/MCP_TOOL_SURFACE.md`                               |
-| changing application code                                | `CONTRIBUTING.md`                                | `docs/analysis/ARCHITECTURE.md`, `docs/MODULE_MAP.md`    |
-| checking project rules (versioning, CI, guide locations) | `read_skill("project-workflow")`                 | `docs/PROJECT_RULES.md`                                  |
-| tracing a past feature or design decision                | `docs/analysis/ARCHITECTURE.md`                  | `CHANGELOG.md`                                           |
+| If you are...                                            | Read first                                                                   | Then read                                                |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------- |
+| starting a new session or onboarding                     | `read_skill("project-workflow")`                                             | `read_skill("using-mcp-tools")`                          |
+| working on authoring materials under `risu/`             | nearest `risu/{common,bot,prompts,modules,plugins}/AGENTS.md` or `README.md` | matching `risu/.../skills/` + `risu/.../docs/` surfaces  |
+| editing `.charx` / `.risum` / `.risup` through MCP       | `read_skill("using-mcp-tools")`                                              | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
+| recovering from an MCP tool failure or no-op             | `docs/MCP_ERROR_CONTRACT.md`                                                 | `docs/MCP_TOOL_SURFACE.md`                               |
+| changing application code                                | `CONTRIBUTING.md`                                                            | `docs/analysis/ARCHITECTURE.md`, `docs/MODULE_MAP.md`    |
+| checking project rules (versioning, CI, guide locations) | `read_skill("project-workflow")`                                             | `docs/PROJECT_RULES.md`                                  |
+| tracing a past feature or design decision                | `docs/analysis/ARCHITECTURE.md`                                              | `CHANGELOG.md`                                           |
 
 ## Core documents
 
@@ -25,7 +25,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 
 ## Boundary notes
 
-- Root `AGENTS.md` is a compact routing TOC. Deep MCP workflow details live in `docs/MCP_WORKFLOW.md`.
+- Root `AGENTS.md` is a compact **product-first** routing TOC. The nearest `risu/{scope}/AGENTS.md` handles authoring routing under `risu/`.
 - Root `skills/` now holds product/editor skills only. Shared and artifact-specific authoring skills live under `risu/common/skills/` and `risu/{bot,prompts,modules,plugins}/skills/`.
 - Built-in authoring docs live under `risu/common/docs/` and `risu/{bot,prompts,modules,plugins}/docs/`.
 - Success envelopes expose `artifacts.byte_size`; use it as a context-budget cue before asking for adjacent content.

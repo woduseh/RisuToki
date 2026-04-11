@@ -32,3 +32,4 @@
 5. **Prefer soft-apply** (enable module ID) over hard-apply (`applyModule`) — soft is reversible.
 6. Prefix CSS classes with `x-risu-` inside `backgroundEmbedding` to avoid collisions across modules.
 7. Local `.risum` work products in this directory stay ignored. Only routing/docs/skills surfaces are tracked here.
+8. Bot, preset, and plugin composition workflows are separate. Do not treat them as the default path in this subtree unless the task explicitly bridges artifacts.

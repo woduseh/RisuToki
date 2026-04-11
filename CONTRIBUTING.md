@@ -39,6 +39,7 @@ If a change touches the renderer and feels reusable, prefer adding or extending 
 - `docs/PROJECT_RULES.md`: versioning, CI/release workflow, guide locations
 - `docs/MODULE_MAP.md`: source navigation map for the active TypeScript codebase
 - `docs/analysis/ARCHITECTURE.md`: runtime structure and data flow
+- `AGENTS.md` plus local `risu/*/AGENTS.md`: product-first root routing and subtree-specific authoring behavior
 - `npm run test:evals`: targeted deterministic agent/harness scenarios for recovery, context-budgeting, taxonomy, and section workflows
 
 When both `.ts` and `.js` siblings exist under `src/lib/`, edit the `.ts` source. Treat nearby `.test.ts` files as the nearest behavior spec.
