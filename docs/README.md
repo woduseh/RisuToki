@@ -4,14 +4,15 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 
 ## Start here
 
-| If you are... | Read first | Then read |
-| --- | --- | --- |
-| starting a new session or onboarding | `read_skill("project-workflow")` | `read_skill("using-mcp-tools")` |
-| editing `.charx` / `.risum` / `.risup` through MCP | `read_skill("using-mcp-tools")` | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
-| recovering from an MCP tool failure or no-op | `docs/MCP_ERROR_CONTRACT.md` | `docs/MCP_TOOL_SURFACE.md` |
-| changing application code | `CONTRIBUTING.md` | `docs/analysis/ARCHITECTURE.md`, `docs/MODULE_MAP.md` |
-| checking project rules (versioning, CI, guide locations) | `read_skill("project-workflow")` | `docs/PROJECT_RULES.md` |
-| tracing a past feature or design decision | `docs/analysis/ARCHITECTURE.md` | `CHANGELOG.md` |
+| If you are...                                            | Read first                                       | Then read                                                |
+| -------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------- |
+| starting a new session or onboarding                     | `read_skill("project-workflow")`                 | `read_skill("using-mcp-tools")`                          |
+| working on authoring materials under `risu/`             | local `risu/{artifact}/AGENTS.md` or `README.md` | matching `risu/.../skills/` + `risu/.../docs/` surfaces  |
+| editing `.charx` / `.risum` / `.risup` through MCP       | `read_skill("using-mcp-tools")`                  | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
+| recovering from an MCP tool failure or no-op             | `docs/MCP_ERROR_CONTRACT.md`                     | `docs/MCP_TOOL_SURFACE.md`                               |
+| changing application code                                | `CONTRIBUTING.md`                                | `docs/analysis/ARCHITECTURE.md`, `docs/MODULE_MAP.md`    |
+| checking project rules (versioning, CI, guide locations) | `read_skill("project-workflow")`                 | `docs/PROJECT_RULES.md`                                  |
+| tracing a past feature or design decision                | `docs/analysis/ARCHITECTURE.md`                  | `CHANGELOG.md`                                           |
 
 ## Core documents
 
@@ -25,9 +26,10 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 ## Boundary notes
 
 - Root `AGENTS.md` is a compact routing TOC. Deep MCP workflow details live in `docs/MCP_WORKFLOW.md`.
-- `skills/` contains on-demand LLM guides; load them selectively instead of dumping everything at once.
+- Root `skills/` now holds product/editor skills only. Shared and artifact-specific authoring skills live under `risu/common/skills/` and `risu/{bot,prompts,modules,plugins}/skills/`.
+- Built-in authoring docs live under `risu/common/docs/` and `risu/{bot,prompts,modules,plugins}/docs/`.
 - Success envelopes expose `artifacts.byte_size`; use it as a context-budget cue before asking for adjacent content.
 - `npm run test:evals` runs the deterministic harness scenarios that pin recovery metadata, taxonomy invariants, Lua section workflows, and context-budget sizing.
-- `guides/` contains the original Korean human-facing guide material.
+- `guides/` is the default writable guide location for imported/user-created guide files and may be empty in the repo.
 - When both `.ts` and `.js` siblings exist under `src/lib/`, prefer the `.ts` source. The `.js` file is generated output.
 - When a `.test.ts` sits next to a module, treat it as the nearest executable behavior spec.

@@ -233,7 +233,7 @@ async function startTestApiServer(currentData: SearchFixture) {
       return scripts;
     },
     stringifyTriggerScripts: (scripts: unknown) => JSON.stringify(scripts),
-    getSkillsDir: () => path.join(__dirname, '..', 'skills'),
+    getSkillRoots: () => [path.join(__dirname, '..', 'skills')],
     getUserDataPath: () => path.join(os.tmpdir(), 'risutoki-mcp-search-all-tests'),
   });
 

@@ -13,6 +13,12 @@ function makeProjectRoot() {
 
   fs.mkdirSync(path.join(root, 'skills', 'authoring-characters'), { recursive: true });
   fs.writeFileSync(path.join(root, 'skills', 'authoring-characters', 'SKILL.md'), '# skill placeholder\n', 'utf8');
+  fs.mkdirSync(path.join(root, 'risu', 'common', 'skills', 'writing-cbs-syntax'), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, 'risu', 'common', 'skills', 'writing-cbs-syntax', 'SKILL.md'),
+    '# skill placeholder\n',
+    'utf8',
+  );
 
   fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
   fs.mkdirSync(path.join(root, '.gemini'), { recursive: true });
@@ -30,27 +36,6 @@ function makeProjectRootWithoutSkills() {
   fs.mkdirSync(path.join(root, '.github'), { recursive: true });
 
   return root;
-}
-
-function createDirectoryLink(linkPath: string, sourcePath: string, platform: NodeJS.Platform | string) {
-  const relativeTarget = path.relative(path.dirname(linkPath), sourcePath);
-
-  if (platform === 'win32') {
-    try {
-      fs.symlinkSync(relativeTarget, linkPath, 'dir');
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'EACCES' && code !== 'EPERM' && code !== 'UNKNOWN') {
-        throw error;
-      }
-    }
-
-    fs.symlinkSync(sourcePath, linkPath, 'junction');
-    return;
-  }
-
-  fs.symlinkSync(relativeTarget, linkPath, 'dir');
 }
 
 function canCreateWindowsDirectorySymlink() {
@@ -109,18 +94,16 @@ describe('skill link sync', () => {
 
   it('keeps already-correct links unchanged', () => {
     const root = makeProjectRoot();
-    const specs = getProjectSkillLinkSpecs(root);
-
-    for (const spec of specs) {
-      createDirectoryLink(spec.linkPath, spec.sourcePath, process.platform);
-    }
-
+    ensureProjectSkillLinks(root, { platform: process.platform });
     const results = ensureProjectSkillLinks(root, { platform: process.platform });
+    const specs = getProjectSkillLinkSpecs(root);
 
     expect(results.map((result) => result.status)).toEqual(['ok', 'ok', 'ok']);
 
     for (const spec of specs) {
       expect(fs.realpathSync.native(spec.linkPath)).toBe(fs.realpathSync.native(spec.sourcePath));
+      expect(fs.existsSync(path.join(spec.linkPath, 'authoring-characters', 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(spec.linkPath, 'writing-cbs-syntax', 'SKILL.md'))).toBe(true);
     }
   });
 

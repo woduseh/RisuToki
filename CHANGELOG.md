@@ -9,6 +9,18 @@
 
 ---
 
+## [0.60.0] - 2026-04-11
+
+### Added
+
+- Added a selectively tracked `risu/` authoring knowledge tree with new router/readme surfaces plus dedicated `.risup`, `.risum`, and plugin v3 skill bundles under `risu/prompts/`, `risu/modules/`, and `risu/plugins/`.
+- Added new authoring references for the split surfaces: `.risup` preset field docs, `.risum` module field docs, plugin API v3 quick reference, and plugin migration guidance.
+
+### Changed
+
+- Split product/editor skills from authoring skills so root `skills/` stays product-focused while shared/artifact-specific authoring docs live under `risu/common/` and `risu/{bot,prompts,modules,plugins}/`.
+- Updated skill/doc discovery, routing docs, and packaging metadata so the generated `.copilot-skill-catalog` and packaged app include the tracked multi-root authoring surfaces without bundling ignored local work products.
+
 ## [0.59.1] - 2026-04-11
 
 ### Changed

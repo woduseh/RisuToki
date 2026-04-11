@@ -11,7 +11,8 @@
 | ----- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1     | **Onboarding, project rules, MCP workflow** | `read_skill("project-workflow")` — for full detail, follow up with `read_skill("project-workflow", "MCP_WORKFLOW.md")` or `read_skill("project-workflow", "PROJECT_RULES.md")` |
 | 2     | **MCP tool selection, large fields, batch** | `read_skill("using-mcp-tools")`                                                                                                                                                |
-| 3     | CBS / Lua / lorebook and other syntax       | `list_skills` → `read_skill(name)`                                                                                                                                             |
+| 3     | **Artifact authoring routing**              | If you are working under `risu/`, read the local `risu/{artifact}/AGENTS.md` or `README.md`, plus `.github/instructions/risu-authoring.instructions.md`                        |
+| 4     | CBS / Lua / lorebook and other syntax       | `list_skills` → `read_skill(name)`                                                                                                                                             |
 
 ### Additional repo-local references (may not be available outside the repo)
 
@@ -48,8 +49,13 @@
 | -------------------------- | ----------------------------------------------------------------------------------------------- |
 | `project-workflow`         | Project rules, MCP workflow, onboarding guide (includes `MCP_WORKFLOW.md` + `PROJECT_RULES.md`) |
 | `using-mcp-tools`          | Tool selection, large-field editing, batch-first principles                                     |
+| `authoring-characters`     | Character-focused `.charx` description writing                                                  |
+| `authoring-lorebook-bots`  | Lorebook-driven / cast-heavy bot composition                                                    |
 | `file-structure-reference` | `.charx` / `.risum` / `.risup` / lorebook / regex structure                                     |
 | `writing-cbs-syntax`       | CBS template-tag syntax                                                                         |
+| `writing-risup-presets`    | `.risup` preset composition, promptTemplate workflow, and structured output                     |
+| `writing-risum-modules`    | `.risum` module composition, merge order, and toggle/module integration                         |
+| `writing-plugins-v3`       | RisuAI plugin v3 sandbox/API authoring                                                          |
 | `writing-lua-scripts`      | Lua 5.4 trigger scripts                                                                         |
 | `writing-lorebooks`        | Lorebook keywords, decorators, folders                                                          |
 | `writing-regex-scripts`    | Regex modification scripts                                                                      |
@@ -58,5 +64,9 @@
 | `writing-danbooru-tags`    | Danbooru tag search and validation                                                              |
 
 Use `list_skills` to see all available skills and their metadata, then `read_skill(name, file?)` to load only what you need.
+
+- Product/editor workflow skills stay under root `skills/`.
+- Shared authoring syntax/reference lives under `risu/common/skills/`.
+- Artifact-specific authoring skills live under `risu/{bot,prompts,modules,plugins}/skills/`.
 
 If no main file is open but reference files are loaded, start with `session_status` or `list_references`, then narrow large reference text with `search_in_reference_field` / `read_reference_field_range` before drilling into `list_reference_*` / `read_reference_*`.

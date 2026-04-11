@@ -1,6 +1,8 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveGuideRootDirs } from './content-roots';
+import { listGuideCatalogEntries, resolveGuideCatalogEntry } from './guide-catalog';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -28,24 +30,33 @@ const sessionGuides: { filename: string; content: string }[] = [];
 // Public helpers
 // ---------------------------------------------------------------------------
 
+function getGuideBaseDir(): string {
+  return app.isPackaged ? process.resourcesPath! : deps.getDirname();
+}
+
 export function getGuidesDir(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath!, 'guides')
-    : path.join(deps.getDirname(), 'guides');
+  return path.join(getGuideBaseDir(), 'guides');
+}
+
+function getGuideRoots() {
+  return resolveGuideRootDirs(getGuideBaseDir());
+}
+
+export function resolveBuiltInGuidePath(filename: string): string | null {
+  return resolveGuideCatalogEntry(getGuideRoots(), filename)?.filePath ?? null;
 }
 
 export function getGuidesListResult(): GuidesListResult {
-  const guidesDir = getGuidesDir();
   let builtIn: string[] = [];
   try {
-    builtIn = fs.readdirSync(guidesDir).filter(f => f.endsWith('.md')).sort();
+    builtIn = listGuideCatalogEntries(getGuideRoots()).map((entry) => entry.name);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    console.warn('[main] Failed to read guides dir:', msg);
+    console.warn('[main] Failed to read guide catalog:', msg);
   }
   return {
     builtIn,
-    session: sessionGuides.map(g => g.filename),
+    session: sessionGuides.map((g) => g.filename),
   };
 }
 
@@ -61,9 +72,12 @@ export function initGuidesManager(d: GuidesManagerDeps): void {
   });
 
   ipcMain.handle('read-guide', (_, filename: string) => {
-    const sg = sessionGuides.find(g => g.filename === filename);
+    const sg = sessionGuides.find((g) => g.filename === filename);
     if (sg) return sg.content;
-    const filePath = path.join(getGuidesDir(), filename);
+    const filePath = resolveBuiltInGuidePath(filename);
+    if (!filePath) {
+      return null;
+    }
     try {
       return fs.readFileSync(filePath, 'utf-8');
     } catch (e: unknown) {
@@ -74,12 +88,17 @@ export function initGuidesManager(d: GuidesManagerDeps): void {
   });
 
   ipcMain.handle('write-guide', (_, filename: string, content: string) => {
-    const sg = sessionGuides.find(g => g.filename === filename);
-    if (sg) { sg.content = content; return true; }
+    const sg = sessionGuides.find((g) => g.filename === filename);
+    if (sg) {
+      sg.content = content;
+      return true;
+    }
     const guidesDir = getGuidesDir();
-    const filePath = path.join(guidesDir, filename);
+    const filePath = resolveBuiltInGuidePath(filename) ?? path.join(guidesDir, filename);
     const existedBefore = fs.existsSync(filePath);
-    try { fs.mkdirSync(guidesDir, { recursive: true }); } catch (e: unknown) {
+    try {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('[main] mkdir guides failed:', msg);
     }
@@ -106,11 +125,12 @@ export function initGuidesManager(d: GuidesManagerDeps): void {
     });
     if (result.canceled || !result.filePaths.length) return [];
     const imported: string[] = [];
-    const guidesDir = getGuidesDir();
     let builtInNames: string[] = [];
-    try { builtInNames = fs.readdirSync(guidesDir).filter(f => f.endsWith('.md')); } catch (e: unknown) {
+    try {
+      builtInNames = listGuideCatalogEntries(getGuideRoots()).map((entry) => entry.name);
+    } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[main] Failed to read guides dir for dedup:', msg);
+      console.warn('[main] Failed to read guide catalog for dedup:', msg);
     }
     for (const fp of result.filePaths) {
       let name = path.basename(fp);
@@ -119,7 +139,7 @@ export function initGuidesManager(d: GuidesManagerDeps): void {
         const ext = path.extname(name);
         const base = name.slice(0, -ext.length);
         let n = 1;
-        while (builtInNames.includes(name) || sessionGuides.some(g => g.filename === name)) {
+        while (builtInNames.includes(name) || sessionGuides.some((g) => g.filename === name)) {
           n++;
           name = `${base} (${n})${ext}`;
         }
@@ -137,13 +157,13 @@ export function initGuidesManager(d: GuidesManagerDeps): void {
   });
 
   ipcMain.handle('delete-guide', (_, filename: string) => {
-    const sgIdx = sessionGuides.findIndex(g => g.filename === filename);
+    const sgIdx = sessionGuides.findIndex((g) => g.filename === filename);
     if (sgIdx >= 0) {
       sessionGuides.splice(sgIdx, 1);
       deps.broadcastRefsDataChanged();
       return true;
     }
-    const filePath = path.join(getGuidesDir(), filename);
+    const filePath = resolveBuiltInGuidePath(filename) ?? path.join(getGuidesDir(), filename);
     try {
       fs.unlinkSync(filePath);
       deps.broadcastRefsDataChanged();
@@ -153,5 +173,9 @@ export function initGuidesManager(d: GuidesManagerDeps): void {
       console.warn('[main] Failed to delete guide:', filename, msg);
       return false;
     }
+  });
+
+  ipcMain.handle('resolve-guide-path', (_, filename: string) => {
+    return resolveBuiltInGuidePath(filename);
   });
 }

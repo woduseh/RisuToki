@@ -36,17 +36,20 @@ These rules apply **automatically to every task**, even without an explicit remi
 
 ## 3. Guide file locations
 
-| Path                                                 | Description                                                                |
-| ---------------------------------------------------- | -------------------------------------------------------------------------- |
-| `docs/README.md`                                     | Knowledge-base index for code work                                         |
-| `docs/MODULE_MAP.md`                                 | Module map for TypeScript source navigation                                |
-| `docs/MCP_WORKFLOW.md`                               | MCP tool selection, read rules, workflow patterns                          |
-| `docs/MCP_TOOL_SURFACE.md`                           | MCP tool families, boundaries, behavior hints, deterministic `next_actions` map |
-| `docs/MCP_ERROR_CONTRACT.md`                         | MCP success / error / no-op response contracts and recovery playbook       |
-| `skills/`                                            | Bundled project skill docs; local skill docs can also be added here        |
-| `guides/`                                            | Korean-language original guides (accessible through the in-app guide viewer) |
-| `.claude/skills`, `.gemini/skills`, `.github/skills` | Local CLI search paths that point to the root `skills/` directory          |
+| Path                                                                | Description                                                                            |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `docs/README.md`                                                    | Knowledge-base index for code work                                                     |
+| `docs/MODULE_MAP.md`                                                | Module map for TypeScript source navigation                                            |
+| `docs/MCP_WORKFLOW.md`                                              | MCP tool selection, read rules, workflow patterns                                      |
+| `docs/MCP_TOOL_SURFACE.md`                                          | MCP tool families, boundaries, behavior hints, deterministic `next_actions` map        |
+| `docs/MCP_ERROR_CONTRACT.md`                                        | MCP success / error / no-op response contracts and recovery playbook                   |
+| `skills/`                                                           | Bundled product/editor skill docs                                                      |
+| `risu/common/skills/`, `risu/{bot,prompts,modules,plugins}/skills/` | Bundled authoring skill docs; actual work products in the same subtrees remain ignored |
+| `risu/common/docs/`, `risu/{bot,prompts,modules,plugins}/docs/`     | Bundled authoring docs and quick references                                            |
+| `guides/`                                                           | Default writable guide location for imported/user-authored guides                      |
+| `.copilot-skill-catalog/`                                           | Generated aggregate CLI skill catalog rebuilt from the tracked skill roots             |
+| `.claude/skills`, `.gemini/skills`, `.github/skills`                | Local CLI search paths that point to `.copilot-skill-catalog/`                         |
 
-> `npm run sync:skills` prefers real symlinks on Windows and falls back to junctions when symlinks are not available. It silently skips if the root `skills/` directory does not exist.
+> `npm run sync:skills` rebuilds `.copilot-skill-catalog/` from `skills/` plus the tracked `risu/*/skills/` roots, then repairs the CLI directory links. It prefers real symlinks on Windows and falls back to junctions when symlinks are not available. It silently skips if no tracked skill roots exist.
 
 ---

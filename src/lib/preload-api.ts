@@ -121,5 +121,6 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     },
     setPreviewPopoutData: (data) => ipcRenderer.invoke('set-preview-popout-data', data),
     getGuidesPath: () => ipcRenderer.invoke('get-guides-path'),
+    resolveGuidePath: (filename) => ipcRenderer.invoke('resolve-guide-path', filename),
   };
 }

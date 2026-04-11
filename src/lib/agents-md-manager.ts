@@ -10,7 +10,7 @@ export interface AgentsMdDeps {
   getCurrentFilePath: () => string | null;
   getTerminalCwd: () => string | null;
   getDirname: () => string;
-  getGuidesDir: () => string;
+  resolveGuidePath: (filename: string) => string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,8 +93,8 @@ function readProjectGuideContent(cwd: string, agentsPath: string): string {
     return fs.readFileSync(bundledClaudePath, 'utf-8');
   }
 
-  const guidesClaudePath = path.join(deps.getGuidesDir(), 'CLAUDE.md');
-  if (fs.existsSync(guidesClaudePath)) {
+  const guidesClaudePath = deps.resolveGuidePath('CLAUDE.md');
+  if (guidesClaudePath && fs.existsSync(guidesClaudePath)) {
     return fs.readFileSync(guidesClaudePath, 'utf-8');
   }
 

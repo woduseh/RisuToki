@@ -48,5 +48,54 @@ Thumbs.db
 .gemini/*
 !.gemini/skills
 
+# Generated Copilot skill catalog
+.copilot-skill-catalog/
+
 # RisuAI Resources
-risu/
+!risu/
+risu/**
+
+# Selectively tracked authoring docs / skills / routers
+!risu/common/
+risu/common/**
+!risu/common/README.md
+!risu/common/docs/
+!risu/common/docs/**
+!risu/common/skills/
+!risu/common/skills/**
+
+!risu/bot/
+risu/bot/**
+!risu/bot/AGENTS.md
+!risu/bot/README.md
+!risu/bot/docs/
+!risu/bot/docs/**
+!risu/bot/skills/
+!risu/bot/skills/**
+
+!risu/prompts/
+risu/prompts/**
+!risu/prompts/AGENTS.md
+!risu/prompts/README.md
+!risu/prompts/docs/
+!risu/prompts/docs/**
+!risu/prompts/skills/
+!risu/prompts/skills/**
+
+!risu/modules/
+risu/modules/**
+!risu/modules/AGENTS.md
+!risu/modules/README.md
+!risu/modules/docs/
+!risu/modules/docs/**
+!risu/modules/skills/
+!risu/modules/skills/**
+
+!risu/plugins/
+risu/plugins/**
+!risu/plugins/AGENTS.md
+!risu/plugins/README.md
+!risu/plugins/docs/
+!risu/plugins/docs/**
+!risu/plugins/skills/
+!risu/plugins/skills/**

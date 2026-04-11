@@ -27,7 +27,7 @@ function createMockDeps(syncDelay = 10): RefsSidebarDeps {
     writeGuide: vi.fn().mockResolvedValue(undefined),
     deleteGuide: vi.fn().mockResolvedValue(undefined),
     importGuide: vi.fn().mockResolvedValue([]),
-    getGuidesPath: vi.fn().mockResolvedValue(null),
+    resolveGuidePath: vi.fn().mockResolvedValue(null),
   };
 }
 

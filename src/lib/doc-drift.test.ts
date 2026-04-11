@@ -13,11 +13,12 @@
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveSkillRootDirs } from './content-roots';
 import { ALL_TOOL_NAMES, TOOL_FAMILIES } from './mcp-tool-taxonomy';
 import { FAMILY_NEXT_ACTIONS } from './mcp-response-envelope';
+import { listSkillCatalogEntries } from './skill-catalog';
 
 const ROOT = path.resolve(__dirname, '../..');
-const SKILLS_DIR = path.join(ROOT, 'skills');
 const DOCS_DIR = path.join(ROOT, 'docs');
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -56,19 +57,18 @@ function parseSkillFrontmatter(filePath: string): Record<string, unknown> {
 }
 
 /** Get all skill directories that contain SKILL.md. */
-function getSkillEntries(): { dir: string; name: string; frontmatter: Record<string, unknown> }[] {
-  if (!fs.existsSync(SKILLS_DIR)) return [];
-  return fs
-    .readdirSync(SKILLS_DIR)
-    .filter((entry) => {
-      const skillPath = path.join(SKILLS_DIR, entry, 'SKILL.md');
-      return fs.statSync(path.join(SKILLS_DIR, entry)).isDirectory() && fs.existsSync(skillPath);
-    })
-    .map((dir) => ({
-      dir,
-      name: dir,
-      frontmatter: parseSkillFrontmatter(path.join(SKILLS_DIR, dir, 'SKILL.md')),
-    }));
+function getSkillEntries(): {
+  dir: string;
+  name: string;
+  frontmatter: Record<string, unknown>;
+  rootRelativePath: string;
+}[] {
+  return listSkillCatalogEntries(resolveSkillRootDirs(ROOT)).map((entry) => ({
+    dir: entry.name,
+    name: entry.name,
+    frontmatter: parseSkillFrontmatter(path.join(entry.dirPath, 'SKILL.md')),
+    rootRelativePath: entry.rootRelativePath,
+  }));
 }
 
 /** Extract src/lib module paths referenced in MODULE_MAP.md. */
@@ -152,16 +152,31 @@ describe('skills ↔ taxonomy alignment', () => {
     expect(missing).toEqual([]);
   });
 
-  it('skill directory names listed in skills/README.md exist on disk', () => {
-    const readmePath = path.join(SKILLS_DIR, 'README.md');
-    if (!fs.existsSync(readmePath)) return;
-    const content = fs.readFileSync(readmePath, 'utf-8');
-    // Extract directory references from markdown links like [name](dir-name/)
-    const linkMatches = content.matchAll(/\[[\w-]+\]\(([\w-]+)\/?\)/g);
-    const referencedDirs = [...linkMatches].map((m) => m[1]);
-    const actualDirs = new Set(skills.map((s) => s.dir));
-    const missing = referencedDirs.filter((d) => !actualDirs.has(d));
-    expect(missing, 'skills/README.md references nonexistent skill directories').toEqual([]);
+  it('skill README indexes reference real directories in their own root', () => {
+    const missing: string[] = [];
+
+    for (const skillRoot of resolveSkillRootDirs(ROOT)) {
+      const readmePath = path.join(skillRoot.absolutePath, 'README.md');
+      if (!fs.existsSync(readmePath)) continue;
+
+      const content = fs.readFileSync(readmePath, 'utf-8');
+      const linkMatches = content.matchAll(/\[[\w-]+\]\(([\w-]+)\/?\)/g);
+      const referencedDirs = [...linkMatches].map((m) => m[1]);
+      const actualDirs = new Set(
+        fs.readdirSync(skillRoot.absolutePath).filter((entry) => {
+          const dirPath = path.join(skillRoot.absolutePath, entry);
+          return fs.statSync(dirPath).isDirectory() && fs.existsSync(path.join(dirPath, 'SKILL.md'));
+        }),
+      );
+
+      for (const referencedDir of referencedDirs) {
+        if (!actualDirs.has(referencedDir)) {
+          missing.push(`${skillRoot.relativePath}: ${referencedDir}`);
+        }
+      }
+    }
+
+    expect(missing, 'Skill README index references nonexistent directories').toEqual([]);
   });
 });
 

@@ -8,6 +8,7 @@ import * as os from 'os';
 // Type-only imports from local TypeScript modules (erased at compile time)
 import type { CharxData } from './src/charx-io';
 import type { McpApiServer, Section, CssCacheEntry, McpSessionStatus } from './src/lib/mcp-api-server';
+import { resolveSkillRootDirs } from './src/lib/content-roots';
 import { markRecoveryDocumentActiveForPath, syncRecoveryAfterExplicitSave } from './src/lib/session-recovery-main';
 
 // ---------------------------------------------------------------------------
@@ -181,7 +182,7 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     extractPrimaryLua: (scripts: unknown) => string;
     mergePrimaryLua: (scripts: unknown, lua: string) => unknown;
     stringifyTriggerScripts: (scripts: unknown) => string;
-    getSkillsDir: () => string;
+    getSkillRoots: () => string[];
     getUserDataPath: () => string;
     getSessionStatus: () => Promise<McpSessionStatus>;
   }) => McpApiServer;
@@ -215,7 +216,7 @@ const { initAgentsMdManager, cleanupAgentsMd } = require('./src/lib/agents-md-ma
     getCurrentFilePath: () => string | null;
     getTerminalCwd: () => string | null;
     getDirname: () => string;
-    getGuidesDir: () => string;
+    resolveGuidePath: (filename: string) => string | null;
   }) => void;
   cleanupAgentsMd: () => void;
 };
@@ -228,15 +229,17 @@ const { initAssetManager, invalidateAssetsMapCache } = require('./src/lib/asset-
   invalidateAssetsMapCache: () => void;
 };
 
-const { initGuidesManager, getGuidesDir, getGuidesListResult } = require('./src/lib/guides-manager') as {
-  initGuidesManager: (deps: {
-    getMainWindow: () => BrowserWindow | null;
-    getDirname: () => string;
-    broadcastRefsDataChanged: () => void;
-  }) => void;
-  getGuidesDir: () => string;
-  getGuidesListResult: () => GuidesListResult;
-};
+const { initGuidesManager, getGuidesDir, getGuidesListResult, resolveBuiltInGuidePath } =
+  require('./src/lib/guides-manager') as {
+    initGuidesManager: (deps: {
+      getMainWindow: () => BrowserWindow | null;
+      getDirname: () => string;
+      broadcastRefsDataChanged: () => void;
+    }) => void;
+    getGuidesDir: () => string;
+    getGuidesListResult: () => GuidesListResult;
+    resolveBuiltInGuidePath: (filename: string) => string | null;
+  };
 
 const { initIpcConfirm, askRendererConfirm, askRendererCloseConfirm } = require('./src/lib/ipc-confirm') as {
   initIpcConfirm: (deps: { getMainWindow: () => BrowserWindow | null }) => void;
@@ -813,7 +816,8 @@ app.whenReady().then(() => {
     extractPrimaryLua: extractPrimaryLuaFromTriggerScripts,
     mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,
     stringifyTriggerScripts,
-    getSkillsDir: () => (app.isPackaged ? path.join(process.resourcesPath!, 'skills') : path.join(__dirname, 'skills')),
+    getSkillRoots: () =>
+      resolveSkillRootDirs(app.isPackaged ? process.resourcesPath! : __dirname).map((root) => root.absolutePath),
     getUserDataPath: () => app.getPath('userData'),
     getSessionStatus: getCurrentMcpSessionStatus,
   });
@@ -840,7 +844,7 @@ app.whenReady().then(() => {
     getCurrentFilePath: () => mainState.currentFilePath,
     getTerminalCwd: () => mainState.terminalCwd,
     getDirname: () => __dirname,
-    getGuidesDir,
+    resolveGuidePath: resolveBuiltInGuidePath,
   });
 
   // Initialize asset management

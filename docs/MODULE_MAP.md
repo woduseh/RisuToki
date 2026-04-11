@@ -136,6 +136,9 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/reference-store.ts` — reference-file persistence
 - `src/lib/refs-popout-data.ts` — reference popout payload helpers
 - `src/lib/guides-manager.ts` — in-app guide loading
+- `src/lib/content-roots.ts` — tracked skill/doc root definitions and generated catalog paths
+- `src/lib/guide-catalog.ts` — multi-root built-in guide enumeration and resolution
+- `src/lib/skill-catalog.ts` — multi-root skill enumeration and resolution
 
 ## Assets and media
 

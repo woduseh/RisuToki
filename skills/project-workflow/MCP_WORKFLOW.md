@@ -188,12 +188,13 @@ For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](..
 
 ### When the Skills Folder Appears Empty
 
-If `list_skills` returns nothing, the local `skills/` folder may be missing or its symlinks may need repair. Check the following:
+If `list_skills` returns nothing, one or more tracked skill roots may be missing or the generated CLI catalog may need repair. Check the following:
 
 1. `npm run sync:skills`
-2. The `skills/` directory in the current worktree
-3. Symlink state of `.claude/skills`, `.gemini/skills`, `.github/skills`
+2. The tracked skill roots in the current worktree: `skills/`, `risu/common/skills/`, `risu/{bot,prompts,modules,plugins}/skills/`
+3. The generated `.copilot-skill-catalog/`
+4. Symlink state of `.claude/skills`, `.gemini/skills`, `.github/skills`
 
-If it is still empty, fall back to `guides/` and the codebase itself.
+If it is still empty, fall back to `docs/`, the local `risu/{artifact}/README.md` / `AGENTS.md`, and the codebase itself.
 
 `list_skills` returns `name`, `description`, `tags`, `relatedTools`, and `files` metadata for each skill. If you are unsure which guide to read, start with `list_skills` to pick one, then open only the file you need with `read_skill(name, file?)`.

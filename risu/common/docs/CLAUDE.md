@@ -405,19 +405,23 @@ getTokens(id, "텍스트")         -- 비동기
 
 ### 가이드 파일 위치
 
-`guides/` 폴더에 문법 가이드가 포함되어 있습니다. 필요 시 참고하세요.
+공용 문법 가이드는 현재 `risu/common/docs/` 아래에 있으며, 산출물별 가이드는 `risu/bot/docs/`, `risu/prompts/docs/`, `risu/modules/docs/`, `risu/plugins/docs/` 같은 sibling 디렉토리로 분리되어 있습니다.
 
 ```
-guides/
-├── CLAUDE.md                          — 이 파일 (MCP 도구 레퍼런스, 파일 구조)
-├── CBS_QUICK_REF.md                   — CBS 전체 레퍼런스 (130+ 태그)
-├── 문법가이드_Lua.md                   — Lua 5.4 문법 + RisuAI API 상세
-├── 문법가이드_로어북.md                 — 로어북 구조, CBS 문법, 데코레이터, 활용 패턴
-├── 문법가이드_정규식.md                 — 정규식 스크립트 type별 용도, 패턴 예시
-├── 문법가이드_HTML_CSS.md              — CSS/HTML UI 제작, backgroundHTML, 에셋 활용
-├── 문법가이드_트리거_스크립트.md         — Lua 트리거 이벤트, callAxModel, 고급 패턴
-├── 문법가이드_에셋_프롬프트.md          — description 기반 이미지 프롬프트 작성 가이드
-└── ...프로젝트별 추가 가이드
+risu/
+├── common/docs/
+│   ├── CLAUDE.md                      — 이 파일 (공용 MCP/문법 레퍼런스)
+│   ├── CBS_QUICK_REF.md               — CBS 전체 레퍼런스
+│   ├── 문법가이드_Lua.md               — Lua 5.4 문법 + RisuAI API 상세
+│   ├── 문법가이드_로어북.md             — 로어북 구조, CBS 문법, 데코레이터, 활용 패턴
+│   ├── 문법가이드_정규식.md             — 정규식 스크립트 type별 용도, 패턴 예시
+│   ├── 문법가이드_HTML_CSS.md          — CSS/HTML UI 제작, backgroundEmbedding, 에셋 활용
+│   ├── 문법가이드_트리거_스크립트.md     — Lua 트리거 이벤트, callAxModel, 고급 패턴
+│   └── 문법가이드_에셋_프롬프트.md      — description 기반 이미지 프롬프트 작성 가이드
+├── bot/docs/                          — bot 전용 비평/구성 가이드
+├── prompts/docs/                      — `.risup` 전용 가이드
+├── modules/docs/                      — `.risum` 전용 가이드
+└── plugins/docs/                      — plugin v3 전용 가이드
 ```
 
 세션 시작 시 이 파일(`CLAUDE.md`)이 자동 로드됩니다. 상세 문법이 필요하면 위 가이드를 `read_reference_field` 도구로 읽거나, 파일 경로로 직접 참조하세요.

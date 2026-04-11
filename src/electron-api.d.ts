@@ -267,6 +267,7 @@ interface TokiAPI {
   onEditorPopoutSave: (cb: VoidCallback) => void;
   setPreviewPopoutData: (data: PopoutPanelData) => Promise<string>;
   getGuidesPath: () => Promise<string>;
+  resolveGuidePath: (filename: string) => Promise<string | null>;
 }
 
 interface PopoutAPI {

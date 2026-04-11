@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-0.59.1-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.60.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -285,26 +285,37 @@ This is a core feature of RisuToki. When you launch an AI CLI from the terminal,
 
 > All four CLI config files are created automatically at app startup and cleaned up on exit.
 
-### Project Skills Folder
+### Unified Skill Catalog
 
-The root `skills/` folder holds project skill documents. This repository ships bundled skill docs there; you can add your own alongside them.
+This repository now ships skills from multiple tracked roots:
 
-`.claude/skills`, `.gemini/skills`, and `.github/skills` are the paths each CLI looks for. Locally, these are maintained as directory links pointing to the root `skills/` folder. On Windows the app tries a real symlink first and falls back to a junction if permissions do not allow it, keeping the git working tree clean.
+| Root                   | Purpose                                                               |
+| ---------------------- | --------------------------------------------------------------------- |
+| `skills/`              | Product/editor workflow, MCP routing, and project conventions         |
+| `risu/common/skills/`  | Shared authoring syntax/reference across `.charx`, `.risum`, `.risup` |
+| `risu/bot/skills/`     | Bot and character composition                                         |
+| `risu/prompts/skills/` | `.risup` preset and prompt composition                                |
+| `risu/modules/skills/` | `.risum` module composition                                           |
+| `risu/plugins/skills/` | RisuAI plugin v3 authoring                                            |
 
-If a Windows git checkout turns these links into plain text files (`../skills`) or the `skills/` folder looks empty, run `npm run sync:skills`. This also runs automatically during the `prepare` phase of `npm install` (and is silently skipped if `skills/` does not exist).
+`list_skills` returns a unified catalog across all of these roots with each skill's `name`, `description`, `tags`, `relatedTools`, and `files`, so an AI can discover and read only the guides it needs on demand instead of loading the full `AGENTS.md`.
 
-`list_skills` returns each skill's `name`, `description`, `tags`, `relatedTools`, and `files`, so an AI can discover and read only the skills it needs on demand instead of keeping the entire `AGENTS.md` in context.
+`.claude/skills`, `.gemini/skills`, and `.github/skills` are the paths each CLI looks for. Locally, `npm run sync:skills` rebuilds a generated `.copilot-skill-catalog/` from the tracked skill roots above, then repairs those three paths as directory links to that aggregate catalog. On Windows the app tries a real symlink first and falls back to a junction if permissions do not allow it, keeping the git working tree clean.
+
+If a Windows git checkout turns those links into plain text placeholder files (`../skills`) or the generated catalog looks empty, run `npm run sync:skills`. This also runs automatically during the `prepare` phase of `npm install` (and is silently skipped if no tracked skill roots exist).
 
 ### Built-in Skill Map
 
-| Category           | Key Skills                                                                                                                               | Purpose                                                        |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **Onboarding**     | `project-workflow`                                                                                                                       | Project rules and MCP workflow onboarding at session start     |
-| **Tool Selection** | `using-mcp-tools`                                                                                                                        | MCP tool selection, large-field editing, batch-first principle |
-| **Structure Ref**  | `file-structure-reference`                                                                                                               | `.charx` / `.risum` / `.risup`, lorebook, and regex structures |
-| **Tag Guide**      | `writing-danbooru-tags`                                                                                                                  | Danbooru tag search, validation, and cleanup                   |
-| **Char Authoring** | `authoring-characters`, `authoring-lorebook-bots`                                                                                        | Solo, ensemble, and large-worldcast bot description guides     |
-| **Syntax Guides**  | `writing-cbs-syntax`, `writing-lua-scripts`, `writing-lorebooks`, `writing-regex-scripts`, `writing-html-css`, `writing-trigger-scripts` | Concrete syntax and patterns per surface                       |
+| Category              | Key Skills                                                                                                                                                           | Purpose                                                        |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Onboarding**        | `project-workflow`                                                                                                                                                   | Project rules and MCP workflow onboarding at session start     |
+| **Tool Selection**    | `using-mcp-tools`                                                                                                                                                    | MCP tool selection, large-field editing, batch-first principle |
+| **Shared Syntax/Ref** | `file-structure-reference`, `writing-cbs-syntax`, `writing-lua-scripts`, `writing-lorebooks`, `writing-regex-scripts`, `writing-html-css`, `writing-trigger-scripts` | Shared authoring mechanics across RisuAI artifact types        |
+| **Asset Prompting**   | `writing-asset-prompts`, `writing-danbooru-tags`                                                                                                                     | Character image prompt composition and Danbooru tag cleanup    |
+| **Bot Authoring**     | `authoring-characters`, `authoring-lorebook-bots`, `writing-arca-html`                                                                                               | `.charx` composition, lorebook-driven bot design, intro pages  |
+| **Preset Authoring**  | `writing-risup-presets`                                                                                                                                              | `.risup` prompt/preset composition and promptTemplate workflow |
+| **Module Authoring**  | `writing-risum-modules`                                                                                                                                              | `.risum` module composition, merge order, and toggle design    |
+| **Plugin Authoring**  | `writing-plugins-v3`                                                                                                                                                 | RisuAI plugin v3 sandbox/API authoring                         |
 
 ### MCP Tool Catalogue
 

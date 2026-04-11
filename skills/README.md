@@ -1,37 +1,27 @@
-# RisuAI Skills Library
+# RisuToki Product Skills
 
-Structured skill documents for LLMs working with RisuAI `.charx`, `.risum`, and `.risup` files. Each skill uses YAML frontmatter plus optional routing metadata so `list_skills` can expose richer summaries.
+Skill documents for agents working on **the RisuToki editor itself** — MCP workflow, tool selection, and project conventions.
 
-## Workflow & Reference Skills
+> **Looking for authoring skills?** Syntax, composition, and content-creation skills now live under the selectively tracked `risu/` subtree.
 
-| Skill                                                 | Description                                              | Files                                                   | Metadata                |
-| ----------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------- | ----------------------- |
-| [project-workflow](project-workflow/)                 | Project rules, MCP workflow, and agent onboarding guide  | `SKILL.md` + `MCP_WORKFLOW.md` + `PROJECT_RULES.md`     | `tags`, `related_tools` |
-| [using-mcp-tools](using-mcp-tools/)                   | MCP tool choice, batch-safe workflows, and anti-patterns | `SKILL.md` + `TOOL_REFERENCE.md` + `FILE_STRUCTURES.md` | `tags`, `related_tools` |
-| [file-structure-reference](file-structure-reference/) | `.charx` / `.risum` / `.risup`, lorebook, regex schemas  | `SKILL.md`                                              | `tags`, `related_tools` |
-| [writing-danbooru-tags](writing-danbooru-tags/)       | Danbooru tag discovery and validation workflow           | `SKILL.md`                                              | `tags`, `related_tools` |
+## Product skills
 
-## Syntax & Tool Skills
+| Skill                                 | Description                                              | Files                                                   |
+| ------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| [project-workflow](project-workflow/) | Project rules, MCP workflow, and agent onboarding guide  | `SKILL.md` + `MCP_WORKFLOW.md` + `PROJECT_RULES.md`     |
+| [using-mcp-tools](using-mcp-tools/)   | MCP tool choice, batch-safe workflows, and anti-patterns | `SKILL.md` + `TOOL_REFERENCE.md` + `FILE_STRUCTURES.md` |
 
-| Skill                                               | Description                                       | Files                           | Metadata                |
-| --------------------------------------------------- | ------------------------------------------------- | ------------------------------- | ----------------------- |
-| [writing-cbs-syntax](writing-cbs-syntax/)           | CBS template syntax and validation                | `SKILL.md` + `REFERENCE.md`     | `tags`, `related_tools` |
-| [writing-lua-scripts](writing-lua-scripts/)         | Lua 5.4 scripting API for RisuAI                  | `SKILL.md` + `API_REFERENCE.md` | `tags`, `related_tools` |
-| [writing-lorebooks](writing-lorebooks/)             | Lorebook entry structure and activation rules     | `SKILL.md`                      | `tags`, `related_tools` |
-| [writing-regex-scripts](writing-regex-scripts/)     | Regex script types, flags, and rendering patterns | `SKILL.md`                      | `tags`, `related_tools` |
-| [writing-html-css](writing-html-css/)               | HTML/CSS constraints and UI patterns              | `SKILL.md`                      | `tags`, `related_tools` |
-| [writing-arca-html](writing-arca-html/)             | Restricted WYSIWYG HTML authoring                 | `SKILL.md`                      | `tags`, `related_tools` |
-| [writing-trigger-scripts](writing-trigger-scripts/) | Trigger execution model and automation planning   | `SKILL.md`                      | `tags`, `related_tools` |
-| [writing-asset-prompts](writing-asset-prompts/)     | Image prompt writing for character assets         | `SKILL.md`                      | `tags`, `related_tools` |
+## Authoring skills
 
-## Authoring Skills
+| Subtree                | Purpose                                                            | Index                                      |
+| ---------------------- | ------------------------------------------------------------------ | ------------------------------------------ |
+| `risu/common/skills/`  | Shared syntax/reference for `.charx`, `.risum`, `.risup` authoring | [README](../risu/common/skills/README.md)  |
+| `risu/bot/skills/`     | Bot and character composition guidance                             | [README](../risu/bot/skills/README.md)     |
+| `risu/prompts/skills/` | `.risup` preset and prompt authoring                               | [README](../risu/prompts/skills/README.md) |
+| `risu/modules/skills/` | `.risum` module authoring                                          | [README](../risu/modules/skills/README.md) |
+| `risu/plugins/skills/` | RisuAI plugin v3 authoring                                         | [README](../risu/plugins/skills/README.md) |
 
-| Skill                                               | Description                              | Files                                                               | Metadata                |
-| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------- | ----------------------- |
-| [authoring-characters](authoring-characters/)       | Character description writing for LLM RP | `SKILL.md` + `SPEECH_SYSTEM.md` + `VALIDATION.md` + `BOT_SCALES.md` | `tags`, `related_tools` |
-| [authoring-lorebook-bots](authoring-lorebook-bots/) | Lorebook-driven bot description writing  | `SKILL.md` + `LOREBOOK_ARCHITECTURE.md` + `BOT_SCALES.md`           | `tags`, `related_tools` |
-
-## Frontmatter Schema
+## Frontmatter schema
 
 Every `SKILL.md` starts with YAML frontmatter.
 
@@ -52,30 +42,26 @@ related_tools: ['search_all_fields', 'write_field_batch', 'read_skill']
 ### Optional additive fields
 
 - `tags`
-  - Inline JSON-style string array only
-  - Example: `tags: ["workflow", "mcp"]`
 - `related_tools`
-  - Inline JSON-style string array only
-  - Example: `related_tools: ["list_lorebook", "read_lorebook"]`
+- `artifact_types`
+- `canonical_sources`
 
-These optional fields are exposed by MCP `list_skills` as `tags` and `relatedTools`.
+The MCP `list_skills` response currently exposes `name`, `description`, `tags`, `relatedTools`, and `files`. Additional frontmatter is still useful for human routing and future tooling.
 
-## How to Use
+`npm run sync:skills` rebuilds `.copilot-skill-catalog/` from the tracked skill roots above so `.claude/skills`, `.gemini/skills`, and `.github/skills` all see the same unified catalog.
 
-### For AI Assistants
+## How to use
 
-1. Start with `list_skills` when you need to choose a guide.
+### For AI assistants
+
+1. Use `list_skills` to discover the unified skill catalog.
 2. Read `SKILL.md` first.
-3. Load reference files only when deeper detail is needed.
-4. Use `tags` and `relatedTools` to find the shortest relevant path.
+3. Load auxiliary reference files only when deeper detail is needed.
 
-### For Humans
+### For humans
 
-Browse individual skill folders directly. The `guides/` folder still contains the original Korean-language material for human reading and translation source.
+Browse the relevant subtree directly:
 
-## Relationship to `guides/`
-
-```text
-guides/          → Human-readable Korean guides (original)
-skills/          → LLM-optimized skills + MCP-readable metadata
-```
+- product/editor work → `skills/`
+- shared authoring syntax → `risu/common/skills/`
+- artifact-specific authoring → `risu/{bot,prompts,modules,plugins}/`

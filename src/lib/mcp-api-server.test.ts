@@ -6,6 +6,7 @@ import * as path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openCharx, openRisum, openRisup, saveCharx, type CharxData } from '../charx-io';
+import { resolveSkillRootDirs } from './content-roots';
 import { parsePromptTemplate, parsePromptTemplateFromText, serializePromptTemplateToText } from './risup-prompt-model';
 
 function parseLuaSections() {
@@ -166,7 +167,7 @@ interface TestDepsOverrides {
 async function startTestApiServer(
   currentData: SearchFixture | null,
   referenceFiles: Array<{ fileName: string; data: SearchFixture }> = [],
-  skillsDir?: string,
+  skillRoots?: string | string[],
   overrides?: TestDepsOverrides,
 ) {
   let activeData: SearchFixture | CharxData | null = currentData;
@@ -222,7 +223,12 @@ async function startTestApiServer(
       return scripts;
     },
     stringifyTriggerScripts: (scripts: unknown) => JSON.stringify(scripts),
-    getSkillsDir: () => skillsDir ?? path.join(__dirname, '..', '..', 'skills'),
+    getSkillRoots: () =>
+      Array.isArray(skillRoots)
+        ? skillRoots
+        : skillRoots
+          ? [skillRoots]
+          : resolveSkillRootDirs(path.join(__dirname, '..', '..')).map((root) => root.absolutePath),
     getUserDataPath: () => overrides?.userDataPath ?? path.join(os.tmpdir(), 'risutoki-mcp-api-test-user-data'),
     getSessionStatus:
       overrides?.getSessionStatus ??

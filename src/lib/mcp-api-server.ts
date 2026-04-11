@@ -28,6 +28,7 @@ import {
   type PromptItemModel,
 } from './risup-prompt-model';
 import { diffRisupPromptData } from './risup-prompt-compare';
+import { listSkillCatalogEntries, resolveSkillCatalogFile } from './skill-catalog';
 import {
   canonicalizeRisupPromptSnippetText,
   deleteRisupPromptSnippet,
@@ -153,8 +154,8 @@ export interface McpApiDeps {
   mergePrimaryLua: (scripts: any, lua: string) => any;
   stringifyTriggerScripts: (scripts: any) => string;
 
-  // skills directory
-  getSkillsDir: () => string;
+  // skills directories
+  getSkillRoots: () => string[];
 
   // user data directory for sidecar state
   getUserDataPath: () => string;
@@ -11939,9 +11940,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /skills — list available skill documents
       // ----------------------------------------------------------------
       if (parts[0] === 'skills' && !parts[1] && req.method === 'GET') {
-        const skillsDir = deps.getSkillsDir();
         try {
-          const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+          const skillRoots = deps.getSkillRoots().map((rootPath) => ({
+            absolutePath: rootPath,
+            relativePath: rootPath,
+            scope: 'product' as const,
+          }));
+          const entries = listSkillCatalogEntries(skillRoots);
           const skills: Array<{
             name: string;
             description: string;
@@ -11950,21 +11955,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             files: string[];
           }> = [];
           for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            const skillMdPath = path.join(skillsDir, entry.name, 'SKILL.md');
-            if (!fs.existsSync(skillMdPath)) continue;
+            const skillMdPath = path.join(entry.dirPath, 'SKILL.md');
             const raw = fs.readFileSync(skillMdPath, 'utf-8');
             const fm = parseYamlFrontmatter(raw);
-            const dirFiles = fs
-              .readdirSync(path.join(skillsDir, entry.name))
-              .filter((f) => f.endsWith('.md'))
-              .sort((a, b) => a.localeCompare(b));
             skills.push({
               name: fm.name || entry.name,
               description: fm.description || '',
               tags: fm.tags,
               relatedTools: fm.relatedTools,
-              files: dirFiles,
+              files: entry.files,
             });
           }
           skills.sort((a, b) => a.name.localeCompare(b.name));
@@ -12013,8 +12012,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `skills:${skillName}:${fileName}`,
           });
         }
-        const filePath = path.join(deps.getSkillsDir(), skillName, fileName);
+        const skillRoots = deps.getSkillRoots().map((rootPath) => ({
+          absolutePath: rootPath,
+          relativePath: rootPath,
+          scope: 'product' as const,
+        }));
+        const filePath = resolveSkillCatalogFile(skillRoots, skillName, fileName);
         try {
+          if (!filePath) {
+            throw new Error('missing skill file');
+          }
           const content = fs.readFileSync(filePath, 'utf-8');
           return jsonResSuccess(
             res,

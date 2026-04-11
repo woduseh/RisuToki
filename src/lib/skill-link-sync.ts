@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { getCopilotSkillCatalogPath, resolveSkillRootDirs } from './content-roots';
+import { listSkillCatalogEntries } from './skill-catalog';
 
 const PROJECT_SKILL_DIRS = ['.claude', '.gemini', '.github'] as const;
+const LEGACY_PLACEHOLDER_TARGETS = ['../skills', '..\\skills'] as const;
 
 export type SkillLinkStatus = 'created' | 'repaired' | 'ok';
 
@@ -29,7 +32,11 @@ function readNormalizedLinkTarget(linkPath: string) {
 
 function isExpectedPlaceholderFile(filePath: string, expectedRelativeTarget: string) {
   const content = fs.readFileSync(filePath, 'utf8');
-  return normalizeRelativeTarget(content) === normalizeRelativeTarget(expectedRelativeTarget);
+  const normalizedContent = normalizeRelativeTarget(content);
+  return (
+    normalizedContent === normalizeRelativeTarget(expectedRelativeTarget) ||
+    LEGACY_PLACEHOLDER_TARGETS.some((target) => normalizedContent === normalizeRelativeTarget(target))
+  );
 }
 
 function isPreferredDirectoryLink(
@@ -82,8 +89,24 @@ function createDirectoryLink(
   fs.symlinkSync(relativeTarget, linkPath, 'dir');
 }
 
-function hasSkillDirectory(sourcePath: string) {
-  return fs.existsSync(sourcePath) && fs.statSync(sourcePath).isDirectory();
+function rebuildCopilotSkillCatalog(projectRoot: string, platform: NodeJS.Platform | string) {
+  const skillRoots = resolveSkillRootDirs(projectRoot);
+  if (skillRoots.length === 0) {
+    return null;
+  }
+
+  const catalogPath = getCopilotSkillCatalogPath(projectRoot);
+  const entries = listSkillCatalogEntries(skillRoots);
+
+  fs.rmSync(catalogPath, { recursive: true, force: true });
+  fs.mkdirSync(catalogPath, { recursive: true });
+
+  for (const entry of entries) {
+    const linkPath = path.join(catalogPath, entry.name);
+    createDirectoryLink(linkPath, entry.dirPath, path.relative(path.dirname(linkPath), entry.dirPath), platform);
+  }
+
+  return catalogPath;
 }
 
 function repairProjectSkillLink(spec: ProjectSkillLinkSpec, platform: NodeJS.Platform | string): SkillLinkStatus {
@@ -123,7 +146,7 @@ function repairProjectSkillLink(spec: ProjectSkillLinkSpec, platform: NodeJS.Pla
 }
 
 export function getProjectSkillLinkSpecs(projectRoot: string): ProjectSkillLinkSpec[] {
-  const sourcePath = path.join(projectRoot, 'skills');
+  const sourcePath = getCopilotSkillCatalogPath(projectRoot);
 
   return PROJECT_SKILL_DIRS.map((projectSkillDir) => {
     const linkPath = path.join(projectRoot, projectSkillDir, 'skills');
@@ -139,14 +162,15 @@ export function ensureProjectSkillLinks(
   projectRoot: string,
   options: EnsureProjectSkillLinksOptions = {},
 ): SkillLinkResult[] {
-  const specs = getProjectSkillLinkSpecs(projectRoot);
   const platform = options.platform ?? process.platform;
+  const sourcePath = rebuildCopilotSkillCatalog(projectRoot, platform);
 
-  if (specs.length === 0) {
+  if (!sourcePath) {
     return [];
   }
 
-  if (!hasSkillDirectory(specs[0].sourcePath)) {
+  const specs = getProjectSkillLinkSpecs(projectRoot);
+  if (specs.length === 0) {
     return [];
   }
 
@@ -162,7 +186,7 @@ function formatRelativePath(projectRoot: string, entryPath: string) {
 
 export function syncProjectSkillLinks(projectRoot = process.cwd()) {
   const results = ensureProjectSkillLinks(projectRoot);
-  const relativeSourcePath = formatRelativePath(projectRoot, path.join(projectRoot, 'skills'));
+  const relativeSourcePath = formatRelativePath(projectRoot, getCopilotSkillCatalogPath(projectRoot));
 
   for (const result of results) {
     console.log(

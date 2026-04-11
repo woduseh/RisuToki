@@ -809,7 +809,7 @@ function getRefsSidebarDeps() {
     writeGuide: (n: string, c: string) => window.tokiAPI.writeGuide(n, c),
     deleteGuide: (n: string) => window.tokiAPI.deleteGuide(n),
     importGuide: () => window.tokiAPI.importGuide(),
-    getGuidesPath: () => window.tokiAPI.getGuidesPath(),
+    resolveGuidePath: (name: string) => window.tokiAPI.resolveGuidePath(name),
   };
 }
 

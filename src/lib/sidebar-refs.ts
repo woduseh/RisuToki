@@ -77,7 +77,7 @@ export interface RefsSidebarDeps {
   writeGuide(name: string, content: string): Promise<void>;
   deleteGuide(name: string): Promise<void>;
   importGuide(): Promise<string[]>;
-  getGuidesPath(): Promise<string | null>;
+  resolveGuidePath(name: string): Promise<string | null>;
 }
 
 // ---- Pure utilities ----
@@ -199,8 +199,8 @@ export async function buildRefsSidebar(container: HTMLElement, deps: RefsSidebar
         items.push({
           label: '경로 복사',
           action: async () => {
-            const guidesDir = await deps.getGuidesPath();
-            const fullPath = guidesDir ? `${guidesDir.replace(/\\/g, '/')}/${fileName}` : `guides/${fileName}`;
+            const resolvedPath = await deps.resolveGuidePath(fileName);
+            const fullPath = resolvedPath ? resolvedPath.replace(/\\/g, '/') : fileName;
             navigator.clipboard.writeText(fullPath);
             deps.setStatus(`복사됨: ${fullPath}`);
           },
