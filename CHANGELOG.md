@@ -9,6 +9,12 @@
 
 ---
 
+## [0.60.2] - 2026-04-11
+
+### Fixed
+
+- Updated the tracked `.claude/skills`, `.gemini/skills`, and `.github/skills` symlink targets to point at `.copilot-skill-catalog`, so fresh clones expose the unified multi-root authoring catalog before running any local repair step.
+
 ## [0.60.1] - 2026-04-11
 
 ### Fixed

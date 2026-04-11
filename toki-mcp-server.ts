@@ -541,7 +541,7 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
 
 // ==================== MCP Server Setup ====================
 
-const server = new McpServer({ name: 'risutoki', version: '0.60.1' });
+const server = new McpServer({ name: 'risutoki', version: '0.60.2' });
 
 // Collect RegisteredTool handles for annotation patching via public API.
 // Each server.tool() return is stored so we avoid accessing _registeredTools.
