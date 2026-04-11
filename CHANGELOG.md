@@ -9,6 +9,12 @@
 
 ---
 
+## [0.60.3] - 2026-04-11
+
+### Fixed
+
+- Switched `sync:skills` link detection from `existsSync` to `lstatSync`, so Windows installs no longer try to recreate already-present `.copilot-skill-catalog` links during `npm ci`.
+
 ## [0.60.2] - 2026-04-11
 
 ### Fixed

@@ -107,6 +107,28 @@ describe('skill link sync', () => {
     }
   });
 
+  it('keeps existing links stable even if existsSync would misreport them as missing', () => {
+    const root = makeProjectRoot();
+    ensureProjectSkillLinks(root, { platform: process.platform });
+    const specs = getProjectSkillLinkSpecs(root);
+    const originalExistsSync = fs.existsSync.bind(fs);
+    const existsSpy = vi.spyOn(fs, 'existsSync').mockImplementation((entryPath) => {
+      const entry = String(entryPath);
+      if (specs.some((spec) => spec.linkPath === entry)) {
+        return false;
+      }
+
+      return originalExistsSync(entryPath);
+    });
+
+    try {
+      const results = ensureProjectSkillLinks(root, { platform: process.platform });
+      expect(results.map((result) => result.status)).toEqual(['ok', 'ok', 'ok']);
+    } finally {
+      existsSpy.mockRestore();
+    }
+  });
+
   it('refuses to replace unexpected real directories', () => {
     const root = makeProjectRoot();
     const specs = getProjectSkillLinkSpecs(root);

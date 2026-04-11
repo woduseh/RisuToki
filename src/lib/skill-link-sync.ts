@@ -112,7 +112,15 @@ function rebuildCopilotSkillCatalog(projectRoot: string, platform: NodeJS.Platfo
 function repairProjectSkillLink(spec: ProjectSkillLinkSpec, platform: NodeJS.Platform | string): SkillLinkStatus {
   fs.mkdirSync(path.dirname(spec.linkPath), { recursive: true });
 
-  if (!fs.existsSync(spec.linkPath)) {
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(spec.linkPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      throw error;
+    }
+
     createDirectoryLink(spec.linkPath, spec.sourcePath, spec.relativeTarget, platform);
     return 'created';
   }
@@ -121,7 +129,6 @@ function repairProjectSkillLink(spec: ProjectSkillLinkSpec, platform: NodeJS.Pla
     return 'ok';
   }
 
-  const stat = fs.lstatSync(spec.linkPath);
   if (stat.isSymbolicLink()) {
     fs.rmSync(spec.linkPath, { recursive: true, force: true });
     createDirectoryLink(spec.linkPath, spec.sourcePath, spec.relativeTarget, platform);
