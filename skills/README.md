@@ -50,7 +50,7 @@ The MCP `list_skills` response currently exposes `name`, `description`, `tags`, 
 
 `npm run sync:skills` rebuilds `.copilot-skill-catalog/` from the tracked skill roots above so `.claude/skills`, `.gemini/skills`, and `.github/skills` all see the same unified catalog.
 
-The catalog is repo-global. The current authoring workflow is scoped by the nearest `risu/{scope}/AGENTS.md`, not by per-directory skill availability.
+The catalog is **repo-root scoped**: CLI skill discovery always resolves from the repository-root skill directories, not from nested per-subdirectory catalogs. Placing a `skills/` folder inside a subtree does not make those skills visible independently. The current authoring workflow is scoped by the nearest `risu/{scope}/AGENTS.md`, which decides which skills from the global catalog are relevant to the task at hand.
 
 ## How to use
 

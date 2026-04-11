@@ -32,7 +32,7 @@
 
 1. **At the start of every session**, read `read_skill("project-workflow")` first. It contains a summary of MCP rules and project rules. Load `MCP_WORKFLOW.md` and `PROJECT_RULES.md` from that skill when you need full detail.
 2. **Keep docs in sync.** When MCP tools, routing, or workflows change, update `AGENTS.md`, `docs/`, and `skills/` together.
-3. **Bump version + changelog every task.** Update `package.json` version and add a `CHANGELOG.md` entry for every change.
+3. **Bump version + changelog when RisuToki itself changes.** Update `package.json` version and add a `CHANGELOG.md` entry for changes to tracked source code, product docs, or workflow/tooling files. **Do not** bump versions for pure authoring work (creating or editing `.charx`/`.risum`/`.risup` content under `risu/`) or for documentation-only edits that do not affect product behavior.
 4. **When syntax is unclear, read the skill docs first.** For detailed MCP tool-selection guidance, see `read_skill("using-mcp-tools")`.
 5. **Treat root instructions as product-first.** When working under `risu/`, let the nearest `risu/{scope}/AGENTS.md` choose the authoring workflow. Do not preload unrelated artifact guidance from the repo root.
 

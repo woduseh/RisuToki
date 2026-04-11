@@ -303,6 +303,8 @@ This repository now ships skills from multiple tracked roots:
 
 `.claude/skills`, `.gemini/skills`, and `.github/skills` are the paths each CLI looks for. Locally, `npm run sync:skills` rebuilds a generated `.copilot-skill-catalog/` from the tracked skill roots above, then repairs those three paths as directory links to that aggregate catalog. On Windows the app tries a real symlink first and falls back to a junction if permissions do not allow it, keeping the git working tree clean.
 
+> **Skill discovery is repo-root scoped.** All supported CLIs (Copilot CLI, Claude Code, Gemini CLI) resolve project skills from the repository-root `.github/skills` (or `.claude/skills`, `.gemini/skills`) directory. Placing a `skills/` folder in a subdirectory (e.g. `risu/bot/.github/skills/`) does **not** create a subtree-specific skill catalog — the CLI still exposes only the repo-root set regardless of the current working directory. Subtree scoping is handled by `AGENTS.md` routing: the nearest `risu/{scope}/AGENTS.md` decides which skills from the global catalog are relevant to the current task.
+
 If a Windows git checkout turns those links into plain text placeholder files (`../skills`) or the generated catalog looks empty, run `npm run sync:skills`. This also runs automatically during the `prepare` phase of `npm install` (and is silently skipped if no tracked skill roots exist).
 
 ### Built-in Skill Map

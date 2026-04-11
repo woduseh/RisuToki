@@ -186,12 +186,16 @@ For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](..
 - `read_skill("using-mcp-tools", "TOOL_REFERENCE.md")` — Full MCP tool catalog summary
 - `read_skill("using-mcp-tools", "FILE_STRUCTURES.md")` — Quick structure pointers
 
+### Skill Discovery Scope
+
+Skill discovery is **repo-root scoped**. CLIs resolve project skills from the repository-root `.github/skills` (or `.claude/skills`, `.gemini/skills`) directory only. Nested skill directories placed inside subdirectories do not create subtree-specific catalogs — `list_skills` always returns the same repo-wide set regardless of the agent's working directory. Subtree scoping is handled by `AGENTS.md` routing: the nearest `risu/{scope}/AGENTS.md` decides which skills from the global catalog are relevant.
+
 ### When the Skills Folder Appears Empty
 
-If `list_skills` returns nothing, one or more tracked skill roots may be missing or the generated CLI catalog may need repair. Check the following:
+If `list_skills` returns nothing, the generated CLI catalog may need repair. Check the following:
 
 1. `npm run sync:skills`
-2. The tracked skill roots in the current worktree: `skills/`, `risu/common/skills/`, `risu/{bot,prompts,modules,plugins}/skills/`
+2. The source skill roots that feed the catalog: `skills/`, `risu/common/skills/`, `risu/{bot,prompts,modules,plugins}/skills/`
 3. The generated `.copilot-skill-catalog/`
 4. Symlink state of `.claude/skills`, `.gemini/skills`, `.github/skills`
 

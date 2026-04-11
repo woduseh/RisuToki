@@ -4,9 +4,9 @@ Rules and workflows that apply across the entire project.
 
 ---
 
-## 1. Documentation and versioning (mandatory)
+## 1. Documentation and versioning (mandatory for repo changes)
 
-Every feature improvement or bug fix **must** include the following updates.
+Every feature improvement or bug fix **that modifies tracked RisuToki source code, product docs, or workflow/tooling files** must include the following updates.
 
 1. **`package.json` version bump** — follow [Semantic Versioning](https://semver.org/)
    - `MAJOR` (x.0.0): breaking changes
@@ -19,7 +19,13 @@ Every feature improvement or bug fix **must** include the following updates.
 4. **`AGENTS.md` and related routing docs update**
    - When MCP tools, fields, workflows, or Copilot routing change, update `AGENTS.md`, `docs/`, `skills/README.md`, and the affected `skills/*` files together
 
-These rules apply **automatically to every task**, even without an explicit reminder.
+These rules apply **automatically** when the task changes the repo itself — even without an explicit reminder.
+
+> **Scope exclusions.** The following do **not** require version bumps or changelog entries:
+>
+> - Pure authoring work — creating or editing `.charx` / `.risum` / `.risup` content via the MCP tool (e.g., bot/prompt/module/plugin authoring under `risu/`).
+> - Documentation-only edits that do not alter product behavior or tool contracts.
+> - Importing, organizing, or referencing guide files that are not part of the product surface.
 
 ---
 

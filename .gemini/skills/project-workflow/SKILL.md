@@ -61,7 +61,9 @@ Load these via `read_skill("project-workflow", "MCP_WORKFLOW.md")` and `read_ski
 
 ## Project Rules — Quick Reference
 
-### Versioning & Documentation (mandatory every task)
+### Versioning & Documentation (mandatory when the repo itself changes)
+
+These apply when a task modifies tracked RisuToki source, product docs, or tooling — **not** for pure authoring work (`.charx`/`.risum`/`.risup` content) or documentation-only edits.
 
 1. **`package.json` version bump** — semver
 2. **`CHANGELOG.md`** — Keep a Changelog format, newest entry at top
