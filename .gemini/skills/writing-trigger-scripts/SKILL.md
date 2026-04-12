@@ -9,6 +9,8 @@ related_tools: ['list_triggers', 'read_trigger', 'write_trigger', 'add_trigger']
 
 Triggers are event-driven scripts that execute automatically on specific chat events (send, receive, button click). They enable variable manipulation, UI changes, prompt control, and complex game systems.
 
+> **Mode boundary:** In current RisuAI authoring flow, structured trigger scripts and Lua script mode are treated as separate modes. Lua is stored as a `triggerlua` entry in the first trigger slot, but the editor/UI and MCP accessors use that first-slot wrapper as the dedicated Lua mode. If the artifact is in Lua mode, do **not** treat it as a normal mixed trigger list — use [writing-lua-scripts](../writing-lua-scripts/SKILL.md) instead of trying to combine Lua with separate V1/V2 trigger entries.
+
 ## Trigger Script Types
 
 ### V2 (GUI-based)
@@ -18,6 +20,8 @@ Built through RisuAI's GUI menus. Simple to configure, no coding required, but l
 ### Lua (Scripting)
 
 Lua 5.4 engine. Best for complex logic, LLM integration, and dynamic systems. See the [writing-lua-scripts](../writing-lua-scripts/SKILL.md) skill for full Lua API reference.
+
+When Lua mode is active, treat it as the alternative to structured trigger scripts, not as one trigger flavor to mix freely into a larger trigger stack.
 
 ## Processing Pipeline
 
@@ -136,4 +140,5 @@ end
 3. **Use `listenEdit("editRequest", ...)` for prompt tweaks** — modifies AI input without changing history.
 4. **Event functions must be global** — `function onStart(id) end`, not inside other scopes.
 5. **Don't mix CBS and Lua logic** — CBS isn't parsed inside Lua. Use Lua API functions (`getChatVar`, `getState`) instead.
-6. **Mind the pipeline order** — triggers run before regex scripts. Design accordingly.
+6. **Choose Lua mode or structured trigger mode** — if the first trigger is a `triggerlua` wrapper, treat the artifact as being in Lua mode and edit it through the Lua workflow rather than mixing in separate V1/V2 trigger entries.
+7. **Mind the pipeline order** — triggers run before regex scripts. Design accordingly.

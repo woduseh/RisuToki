@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-0.60.5-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.61.4-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -309,16 +309,17 @@ If a Windows git checkout turns those links into plain text placeholder files (`
 
 ### Built-in Skill Map
 
-| Category              | Key Skills                                                                                                                                                           | Purpose                                                        |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **Onboarding**        | `project-workflow`                                                                                                                                                   | Project rules and MCP workflow onboarding at session start     |
-| **Tool Selection**    | `using-mcp-tools`                                                                                                                                                    | MCP tool selection, large-field editing, batch-first principle |
-| **Shared Syntax/Ref** | `file-structure-reference`, `writing-cbs-syntax`, `writing-lua-scripts`, `writing-lorebooks`, `writing-regex-scripts`, `writing-html-css`, `writing-trigger-scripts` | Shared authoring mechanics across RisuAI artifact types        |
-| **Asset Prompting**   | `writing-asset-prompts`, `writing-danbooru-tags`                                                                                                                     | Character image prompt composition and Danbooru tag cleanup    |
-| **Bot Authoring**     | `authoring-characters`, `authoring-lorebook-bots`, `writing-arca-html`                                                                                               | `.charx` composition, lorebook-driven bot design, intro pages  |
-| **Preset Authoring**  | `writing-risup-presets`                                                                                                                                              | `.risup` prompt/preset composition and promptTemplate workflow |
-| **Module Authoring**  | `writing-risum-modules`                                                                                                                                              | `.risum` module composition, merge order, and toggle design    |
-| **Plugin Authoring**  | `writing-plugins-v3`                                                                                                                                                 | RisuAI plugin v3 sandbox/API authoring                         |
+| Category                | Key Skills                                                                                                                                                           | Purpose                                                                    |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| **Onboarding**          | `project-workflow`                                                                                                                                                   | Project rules and MCP workflow onboarding at session start                 |
+| **Tool Selection**      | `using-mcp-tools`                                                                                                                                                    | MCP tool selection, large-field editing, batch-first principle             |
+| **Shared Syntax/Ref**   | `file-structure-reference`, `writing-cbs-syntax`, `writing-lua-scripts`, `writing-lorebooks`, `writing-regex-scripts`, `writing-html-css`, `writing-trigger-scripts` | Shared authoring mechanics across RisuAI artifact types                    |
+| **Shared Presentation** | `writing-arca-html`                                                                                                                                                  | Restricted WYSIWYG intro/profile HTML for paste targets like Arca.live     |
+| **Asset Prompting**     | `writing-asset-prompts`, `writing-danbooru-tags`                                                                                                                     | Character image prompt composition and Danbooru tag cleanup                |
+| **Bot Authoring**       | `authoring-characters`, `authoring-self-introduction-sheets`, `authoring-lorebook-bots`                                                                              | `.charx` composition, self-introduction sheets, lorebook-driven bot design |
+| **Preset Authoring**    | `writing-risup-presets`                                                                                                                                              | `.risup` prompt/preset composition and promptTemplate workflow             |
+| **Module Authoring**    | `writing-risum-modules`                                                                                                                                              | `.risum` module composition, merge order, and toggle design                |
+| **Plugin Authoring**    | `writing-plugins-v3`                                                                                                                                                 | RisuAI plugin v3 sandbox/API authoring                                     |
 
 ### MCP Tool Catalogue
 

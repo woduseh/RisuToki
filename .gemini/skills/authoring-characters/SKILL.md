@@ -9,7 +9,7 @@ related_tools: ['read_field', 'write_field', 'read_lorebook']
 
 > **This guide is a toolkit, not a checklist.** Use the parts that sharpen output and ignore the rest. The goal is not "completing the template" — it is giving the model a character it can perform consistently. Real bots succeed through many different architectures; the patterns here are strong defaults, not the only valid paths.
 >
-> **Use this skill when the character itself is the main design problem.** For lorebook-driven bots where the always-on description is mostly a tonal frame and the heavy lifting lives in lorebooks, use [authoring-lorebook-bots](../authoring-lorebook-bots/).
+> **Use this skill when the character itself is the main design problem and you want to design that character explicitly.** For self-introduction monologue sheets that keep the factual skeleton light and let the model infer more through voice, use [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/). For lorebook-driven bots where the always-on description is mostly a tonal frame and the heavy lifting lives in lorebooks, use [authoring-lorebook-bots](../authoring-lorebook-bots/).
 
 ## Route by Bot Shape
 
@@ -172,6 +172,8 @@ Use [BOT_SCALES.md](BOT_SCALES.md) for the scale-specific version of that handof
 
 Use this as a default structure, not a mandatory format. Reorder, merge, or skip sections when the character's design demands it.
 
+If you do **not** want an explicit scaffolded sheet here at all — if you want the description to be a factual profile plus a character-voiced self-introduction monologue that leaves more to inference — switch to [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) instead of forcing that architecture into this format.
+
 ```markdown
 ### Basic Information
 
@@ -254,13 +256,7 @@ It should **not**:
 - Resolve emotional tension immediately
 - Dictate the user's feelings or actions
 
-> **Alternate opener shapes.** The single-scene opener is not the only valid pattern. Depending on bot architecture, other shapes can work equally well:
->
-> - **Scenario bank** — a branching library of openings (e.g. random or user-selected) that each drop the user into a different situation.
-> - **Setup router** — the opening message guides the user through choices (setting, relationship, tone) before the first real scene begins.
-> - **Minimal placeholder** — when the bot's depth lives in lorebook or system layers, the opener can be brief and functional rather than a showcase.
->
-> These are advanced alternatives, not replacements for the default. Use them when the bot's design genuinely calls for them.
+> **Alternate opener shapes exist.** If the bot needs a scenario bank, setup router, or minimal placeholder opener because the real depth lives in lorebook or system layers, use [authoring-lorebook-bots](../authoring-lorebook-bots/) for the architecture-specific opener patterns instead of maintaining a second taxonomy here.
 
 If the bot is world-heavy or multi-character, pair this with [authoring-lorebook-bots](../authoring-lorebook-bots/).
 

@@ -11,20 +11,22 @@ Lorebooks are collections of context entries injected into the AI prompt **only 
 
 ## Entry Fields
 
-| Field                     | Description                                                                                                    |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `key`                     | Comma-separated activation keywords. Empty = never keyword-triggered.                                          |
-| `comment`                 | Management name. Also used by Lua `getLoreBooks(id, commentFilter)`.                                           |
-| `content`                 | Text sent to AI. Supports CBS `{{}}` syntax.                                                                   |
-| `insertorder`             | Higher = placed later in prompt. Low-order entries are **cut first** when hitting token limits.                |
-| `alwaysActive`            | If `true`, always injected regardless of keyword match.                                                        |
-| `selective` + `secondkey` | When both set, **both** key and secondkey must match to activate.                                              |
-| `mode`                    | `normal` \| `constant` \| `multiple` \| `child` \| `folder`                                                    |
-| `useRegex`                | Interpret `key` as regex pattern.                                                                              |
-| `folder`                  | Reference to parent folder. `"folder:UUID"` format — must match the folder entry's **`key`** field (NOT `id`). |
-| `activationPercent`       | Activation probability 0–100. Default 100.                                                                     |
+| Field                     | Description                                                                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `key`                     | Comma-separated activation keywords. Empty = never keyword-triggered. Keywords do **not** need to be globally unique across entries. |
+| `comment`                 | Management name. Also used by Lua `getLoreBooks(id, commentFilter)`.                                                                 |
+| `content`                 | Text sent to AI. Supports CBS `{{}}` syntax.                                                                                         |
+| `insertorder`             | Higher = placed later in prompt. Low-order entries are **cut first** when hitting token limits.                                      |
+| `alwaysActive`            | If `true`, always injected regardless of keyword match.                                                                              |
+| `selective` + `secondkey` | When both set, **both** key and secondkey must match to activate.                                                                    |
+| `mode`                    | `normal` \| `constant` \| `multiple` \| `child` \| `folder`                                                                          |
+| `useRegex`                | Interpret `key` as regex pattern.                                                                                                    |
+| `folder`                  | Reference to parent folder. `"folder:UUID"` format — must match the folder entry's **`key`** field (NOT `id`).                       |
+| `activationPercent`       | Activation probability 0–100. Default 100.                                                                                           |
 
 **Zero-token pattern:** `key=""` + `alwaysActive=false` → entry is completely skipped. Use for data storage accessed only by Lua.
+
+**Keyword overlap note:** Lorebook trigger keywords are not unique IDs. Multiple entries can share the same trigger when you want layered activation or different slices of context to wake up together. That said, overlapping keywords are still worth reviewing intentionally — `validate_lorebook_keys` reports duplicates as a quality signal because many duplicate triggers are accidental rather than planned.
 
 ## Mode Values
 
@@ -129,8 +131,9 @@ You are a battle-hardened veteran of many conflicts.
 4. **Match description voice** — Write entries in the same tone as the bot description to avoid tonal whiplash.
 5. **Signal density over token count** — The question isn't "how long?" but "does every sentence change LLM output?" A cohesive 600-token entry with high signal density outperforms 3 scattered 200-token fragments. Split only when narrative coherence breaks, not at an arbitrary token threshold.
 6. **Natural trigger keywords** — Choose words that naturally appear when the info is relevant.
-7. **Layer secrets by trigger depth** — Deep secrets should be triggered by words that only appear after trust is built, not by the character's name.
-8. **Watch alwaysActive budget** — Every alwaysActive entry competes for attention on every turn. Reserve always-on for core world rules and system instructions; move detailed content to keyword triggers.
+7. **Duplicate triggers are allowed, but should be deliberate** — Shared keywords can be useful for layered activation, but accidental overlap can make the lorebook noisy. Treat `validate_lorebook_keys` duplicate reports as review prompts, not as proof the file is invalid.
+8. **Layer secrets by trigger depth** — Deep secrets should be triggered by words that only appear after trust is built, not by the character's name.
+9. **Watch alwaysActive budget** — Every alwaysActive entry competes for attention on every turn. Reserve always-on for core world rules and system instructions; move detailed content to keyword triggers.
 
 ## Lorebook–Lua Integration
 

@@ -14,7 +14,7 @@ Use this file when the main question is **how to distribute description vs loreb
 | **2–4 recurring characters**             | Group tension, thumbnails, scene mode   | Full profiles, pair dynamics, scene management      |
 | **10+ cast / world bot**                 | World tone, POV rules, core cast only   | Roster, factions, locations, relationships, secrets |
 
-If the question is "how do I write this character well?" start with `authoring-characters`.
+If the question is "how do I write this character well?" start with `authoring-characters` for an explicit scaffolded sheet, or `authoring-self-introduction-sheets` for the self-introduction monologue method.
 
 ---
 

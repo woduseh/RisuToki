@@ -14,7 +14,7 @@ Use this file after reading `SKILL.md` when the main problem is **how much chara
 | **2–4 recurring characters**             | Give each character a diagnostic identity and shared group tension | Hold deeper backstory, pair dynamics, situational behavior  | Voice collision and cast blur                   |
 | **10+ world/cast**                       | Frame the world, roster, POV rules, and only the core cast         | Carry most character detail, relationships, and progression | Attention collapse, info-dumps, trigger pileups |
 
-If the architecture is lorebook-heavy, pair this with `authoring-lorebook-bots`.
+If the architecture is lorebook-heavy, pair this with `authoring-lorebook-bots`. If you want a minimal factual profile plus a self-introduction monologue instead of an explicit scaffolded sheet, use `authoring-self-introduction-sheets`.
 
 ---
 

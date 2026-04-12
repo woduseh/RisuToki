@@ -9,6 +9,8 @@ related_tools: ['write_field', 'replace_in_field', 'insert_in_field']
 
 This skill covers designing rich, visually engaging HTML content for **restricted WYSIWYG editors** — specifically platforms like **Arca.live (아카라이브)** that strip most CSS features. The goal is to create immersive visual experiences within severe technical constraints.
 
+> **Routing note.** Use this skill for HTML that will be pasted into restricted WYSIWYG targets like Arca.live. For HTML/CSS that lives inside RisuAI surfaces such as `backgroundEmbedding`, regex HTML, or CBS-styled panels, use `writing-html-css` instead.
+
 ## Core Philosophy
 
 **BE CREATIVE AND ADAPTIVE.** Every character, worldview, and concept deserves a unique visual identity. Don't default to templates — deeply understand the content's theme, mood, and personality, then design something that captures its essence.

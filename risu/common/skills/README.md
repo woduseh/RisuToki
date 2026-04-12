@@ -12,6 +12,7 @@ LLM-optimized skill bundles for reusable authoring domains.
 | [writing-lorebooks](writing-lorebooks/)               | Lorebook entry structure and activation rules   | `SKILL.md`                      |
 | [writing-regex-scripts](writing-regex-scripts/)       | Regex script types and output patterns          | `SKILL.md`                      |
 | [writing-html-css](writing-html-css/)                 | HTML/CSS constraints and UI patterns            | `SKILL.md`                      |
+| [writing-arca-html](writing-arca-html/)               | Restricted WYSIWYG HTML for Arca.live           | `SKILL.md`                      |
 | [writing-trigger-scripts](writing-trigger-scripts/)   | Trigger execution model and automation planning | `SKILL.md`                      |
 | [writing-asset-prompts](writing-asset-prompts/)       | Asset prompt pipeline for character imagery     | `SKILL.md`                      |
 | [writing-danbooru-tags](writing-danbooru-tags/)       | Danbooru tag discovery and validation           | `SKILL.md`                      |

@@ -13,17 +13,18 @@
 
 ## Shared syntax skills
 
-| Topic           | Skill                                    |
-| --------------- | ---------------------------------------- |
-| File structures | `read_skill("file-structure-reference")` |
-| CBS templates   | `read_skill("writing-cbs-syntax")`       |
-| Lorebooks       | `read_skill("writing-lorebooks")`        |
-| Regex scripts   | `read_skill("writing-regex-scripts")`    |
-| Lua scripting   | `read_skill("writing-lua-scripts")`      |
-| HTML/CSS        | `read_skill("writing-html-css")`         |
-| Trigger scripts | `read_skill("writing-trigger-scripts")`  |
-| Asset prompts   | `read_skill("writing-asset-prompts")`    |
-| Danbooru tags   | `read_skill("writing-danbooru-tags")`    |
+| Topic             | Skill                                    |
+| ----------------- | ---------------------------------------- |
+| File structures   | `read_skill("file-structure-reference")` |
+| CBS templates     | `read_skill("writing-cbs-syntax")`       |
+| Lorebooks         | `read_skill("writing-lorebooks")`        |
+| Regex scripts     | `read_skill("writing-regex-scripts")`    |
+| Lua scripting     | `read_skill("writing-lua-scripts")`      |
+| HTML/CSS          | `read_skill("writing-html-css")`         |
+| Arca/WYSIWYG HTML | `read_skill("writing-arca-html")`        |
+| Trigger scripts   | `read_skill("writing-trigger-scripts")`  |
+| Asset prompts     | `read_skill("writing-asset-prompts")`    |
+| Danbooru tags     | `read_skill("writing-danbooru-tags")`    |
 
 ## Mandatory rules
 

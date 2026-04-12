@@ -9,6 +9,44 @@
 
 ---
 
+## [0.61.4] - 2026-04-12
+
+### Changed
+
+- Moved `writing-arca-html` from `risu/bot/skills/` to `risu/common/skills/` so it is routed as a shared formatting/presentation skill instead of a bot-local composition skill.
+- Updated bot/common/root routing and discovery docs so Arca/WYSIWYG HTML is now documented alongside the shared skill set.
+
+## [0.61.3] - 2026-04-12
+
+### Changed
+
+- Tightened the bot-skill routing docs after a multi-agent review: reduced duplicated opener taxonomy between the character and lorebook skills, softened lorebook-skill wording that overstated its boundary against single-character authoring, and clarified that the self-introduction skill is adapted from its reference docs rather than subordinate to them.
+- Reorganized bot-skill discovery docs so `writing-arca-html` is clearly presented as an on-demand presentation skill, and clarified in its skill guide that RisuAI surface HTML/CSS work should use `writing-html-css` instead.
+
+## [0.61.2] - 2026-04-12
+
+### Changed
+
+- Renamed the self-introduction skill companion file from `GENERATION_PROMPTS.md` to `GENERATION_GUIDANCE.md` so the filename matches its guidance-oriented content, and updated all in-repo references accordingly.
+
+## [0.61.1] - 2026-04-12
+
+### Changed
+
+- Clarified in the shared `writing-lua-scripts` and `writing-trigger-scripts` skills that current RisuAI authoring/tooling treats Lua mode and structured trigger-script mode as separate workflows, even though Lua is persisted as a `triggerlua` wrapper in the first trigger slot.
+
+## [0.61.0] - 2026-04-12
+
+### Added
+
+- Added a new `authoring-self-introduction-sheets` bot skill with companion structure and generation guidance for inference-first self-introduction character-sheet authoring.
+- Added polished English reference docs for the self-introduction character-sheet methodology alongside the existing Korean originals under `risu/bot/docs/자기소개형 캐릭터 시트/`.
+
+### Changed
+
+- Updated bot-authoring routing and skill boundaries so `authoring-characters`, `authoring-self-introduction-sheets`, and `authoring-lorebook-bots` now form an explicit three-way split between scaffolded character sheets, self-introduction monologue sheets, and lorebook-driven architecture.
+- Updated README and bot-skill discovery docs to expose the new skill and cross-link the source/reference material.
+
 ## [0.60.5] - 2026-04-11
 
 ### Added

@@ -9,6 +9,8 @@ related_tools: ['list_lua', 'read_lua', 'write_lua', 'add_lua_section']
 
 RisuAI uses **Lua 5.4** trigger scripts to add interactivity to characters (`.charx`) and modules (`.risum`). Scripts live in the `lua` field, organized into sections delimited by `-- ===== sectionName =====`. Every API function takes a `triggerId` (the chat session ID) as its first argument.
 
+> **Authoring-mode boundary:** In current RisuAI authoring flow, Lua mode and structured trigger-script mode are treated as separate choices. Lua is persisted as a `triggerlua` wrapper in the first trigger slot, and the editor/MCP accessors treat that first-slot wrapper as "the Lua script" mode. In practice, do **not** plan to mix a Lua script with separate V1/V2 trigger entries in the same card or module — choose one mode or the other.
+
 ## Event Functions
 
 | Function               | Fires When                                   | Typical Use                                       |
@@ -126,15 +128,16 @@ end
 
 ## Critical Gotchas
 
-| Issue                         | Detail                                                                                                                                                                                                                            |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Index mismatch**            | `getChatLength` is 1-based count; `getChat`/`setChat` are 0-based. Last message = `getChatLength(id) - 1`.                                                                                                                        |
-| **Async :await()**            | `LLM`, `simpleLLM`, `axLLM`, `alertInput`, `alertSelect`, `alertConfirm`, `getTokens`, `hash`, `sleep`, `request`, `generateImage`, `loadLoreBooks`, `similarity`, `getCharacterImage`, `getPersonaImage` all require `:await()`. |
-| **Safe context**              | Write functions (`setChatVar`, `setChat`, `addChat`, etc.) only work inside event callbacks, not at top-level or in `listenEdit(editRequest)`.                                                                                    |
-| **lowLevelAccess**            | `request`, `generateImage`, `similarity` require the `lowLevelAccess` flag enabled on the module/character.                                                                                                                       |
-| **stopChat bug**              | `stopChat(id)` is currently broken — do not use.                                                                                                                                                                                  |
-| **Lua patterns**              | Lua uses `%` for escapes (not `\`). Use `str:find("text", 1, true)` for literal search.                                                                                                                                           |
-| **upsertLocalLoreBook delay** | Lorebook entries created via `upsertLocalLoreBook` only appear in the AI prompt on the **next** turn.                                                                                                                             |
+| Issue                         | Detail                                                                                                                                                                                                                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Index mismatch**            | `getChatLength` is 1-based count; `getChat`/`setChat` are 0-based. Last message = `getChatLength(id) - 1`.                                                                                                                                                                                       |
+| **Async :await()**            | `LLM`, `simpleLLM`, `axLLM`, `alertInput`, `alertSelect`, `alertConfirm`, `getTokens`, `hash`, `sleep`, `request`, `generateImage`, `loadLoreBooks`, `similarity`, `getCharacterImage`, `getPersonaImage` all require `:await()`.                                                                |
+| **Safe context**              | Write functions (`setChatVar`, `setChat`, `addChat`, etc.) only work inside event callbacks, not at top-level or in `listenEdit(editRequest)`.                                                                                                                                                   |
+| **lowLevelAccess**            | `request`, `generateImage`, `similarity` require the `lowLevelAccess` flag enabled on the module/character.                                                                                                                                                                                      |
+| **stopChat bug**              | `stopChat(id)` is currently broken — do not use.                                                                                                                                                                                                                                                 |
+| **Lua patterns**              | Lua uses `%` for escapes (not `\`). Use `str:find("text", 1, true)` for literal search.                                                                                                                                                                                                          |
+| **upsertLocalLoreBook delay** | Lorebook entries created via `upsertLocalLoreBook` only appear in the AI prompt on the **next** turn.                                                                                                                                                                                            |
+| **Mode exclusivity**          | Treat Lua mode and structured trigger-script mode as mutually exclusive authoring paths. Although Lua is stored as `triggerlua` inside the trigger array, current editor/tooling flows expect that wrapper to stand in for the whole Lua mode rather than coexist with separate trigger entries. |
 
 ## Practical Examples
 

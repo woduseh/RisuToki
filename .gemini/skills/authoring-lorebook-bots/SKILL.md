@@ -9,17 +9,17 @@ related_tools: ['list_lorebook', 'read_lorebook', 'write_lorebook']
 
 > **Use this skill when the description is not supposed to carry everything.** In many bots the description provides the persistent frame — tone, world pressure, core cast thumbnail, and narrative direction — while the lorebook provides conditional detail. In lorebook-heavy bots the balance can shift further: the description's job becomes partly to teach the model how to read and use the lorebook itself.
 >
-> **If the main problem is one character's internal engine, voice, and contradictions, use [authoring-characters](../authoring-characters/).** This skill starts where single-character sheet-writing stops and architecture begins.
+> **If the main problem is one character's internal engine, voice, and contradictions, use [authoring-characters](../authoring-characters/). If you want that core character to be written through the self-introduction monologue method instead of an explicit scaffolded sheet, use [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/).** This skill sits beside character-writing and focuses on architecture: what stays always-on, what becomes conditional, and how that depth is surfaced in play.
 
 ## Route by Bot Shape
 
 Most bots fall somewhere along this spectrum. These are common shapes, not a closed set — your bot's needs may call for a different balance.
 
-| Bot shape                                       | Description job                                    | Lorebook job                                                           | Pair with                                                                |
-| ----------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **Single-character bot with optional lorebook** | Keep the character strong even without entries     | Add state, reaction, deep reveal, or world support                     | [authoring-characters](../authoring-characters/)                         |
-| **2–4 recurring characters**                    | Establish tone, group tension, and cast thumbnails | Carry pair dynamics, deeper profiles, and scene-specific behavior      | [authoring-characters](../authoring-characters/) for per-character voice |
-| **10+ cast / world bot**                        | Frame the world, POV rules, and only the core cast | Carry most character/world detail, activation rules, and secret layers | [authoring-characters](../authoring-characters/) only for the core cast  |
+| Bot shape                                       | Description job                                    | Lorebook job                                                           | Pair with                                                                                                                                                |
+| ----------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Single-character bot with optional lorebook** | Keep the character strong even without entries     | Add state, reaction, deep reveal, or world support                     | [authoring-characters](../authoring-characters/) or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/)                         |
+| **2–4 recurring characters**                    | Establish tone, group tension, and cast thumbnails | Carry pair dynamics, deeper profiles, and scene-specific behavior      | [authoring-characters](../authoring-characters/) or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for per-character voice |
+| **10+ cast / world bot**                        | Frame the world, POV rules, and only the core cast | Carry most character/world detail, activation rules, and secret layers | [authoring-characters](../authoring-characters/) or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for the core cast       |
 
 For scale-specific recipes, use [BOT_SCALES.md](BOT_SCALES.md). For entry design and activation logic, use [LOREBOOK_ARCHITECTURE.md](LOREBOOK_ARCHITECTURE.md).
 
@@ -119,7 +119,7 @@ In lorebook-heavy bots, this teaching role can become the description's primary 
 
 ---
 
-## Role Boundary vs. `authoring-characters`
+## Role Boundary vs. Character-Writing Skills
 
 Use **authoring-characters** for:
 
@@ -130,6 +130,13 @@ Use **authoring-characters** for:
 - silence rules
 - narration lens
 - deep per-character performance
+
+Use **authoring-self-introduction-sheets** for:
+
+- factual profile + self-introduction monologue sheets
+- inference-first character writing
+- characters whose omissions, evasions, and tone should do more of the work
+- a core sheet that is meant to feel like meeting a person rather than reading a scaffold
 
 Use **this skill** for:
 
@@ -142,7 +149,7 @@ Use **this skill** for:
 
 In practice:
 
-- write the **core cast well** with `authoring-characters`
+- write the **core cast well** with `authoring-characters` or `authoring-self-introduction-sheets`
 - decide **how much of that survives in always-on text** with this skill
 
 ---
@@ -276,7 +283,7 @@ Do not:
 - dump three active lorebook entries at once
 - explain the world before anyone has acted in it
 
-If the opening scene depends on one core character landing with protagonist-grade voice, build that character's sheet in [authoring-characters](../authoring-characters/) first.
+If the opening scene depends on one core character landing with protagonist-grade voice, build that character's sheet first in [authoring-characters](../authoring-characters/) for an explicit scaffolded sheet or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for the self-introduction monologue method.
 
 > **Alternate firstMessage shapes.** An atmospheric scene opener is the most common shape, but bots can validly use other patterns:
 >
@@ -397,4 +404,4 @@ Deliver:
 (Recommended entry groups, trigger logic, and what belongs there)
 ```
 
-If the user also needs a protagonist-grade character sheet for the core cast, pair this skill with [authoring-characters](../authoring-characters/).
+If the user also needs a protagonist-grade character sheet for the core cast, pair this skill with [authoring-characters](../authoring-characters/) for explicit scaffolded sheets or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for the self-introduction monologue method.
