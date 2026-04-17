@@ -149,6 +149,7 @@ export interface McpApiDeps {
 
   // charx-io helpers
   openExternalDocument: (filePath: string) => any;
+  saveExternalDocument: (filePath: string, fileType: SupportedFileType, data: any) => void;
   normalizeTriggerScripts: (data: any) => any;
   extractPrimaryLua: (scripts: any) => string;
   mergePrimaryLua: (scripts: any, lua: string) => any;
@@ -162,6 +163,7 @@ export interface McpApiDeps {
 
   // session metadata
   getSessionStatus?: () => Promise<McpSessionStatus> | McpSessionStatus;
+  getCurrentFilePath?: () => string | null;
 }
 
 export interface McpApiServer {
@@ -991,6 +993,482 @@ function buildLuaListResponse(luaCode: string, parseLuaSections: (lua: string) =
   };
 }
 
+function buildCssListResponse(
+  cssCode: string,
+  parseCssSections: (css: string) => CssCacheEntry,
+): Record<string, unknown> {
+  const { sections } = parseCssSections(cssCode);
+  return {
+    count: sections.length,
+    sections: sections.map((section, index) => ({
+      index,
+      name: section.name,
+      contentSize: section.content.length,
+    })),
+  };
+}
+
+function buildGreetingListResponse(arr: string[], greetingType: string, url: URL): Record<string, unknown> {
+  const fieldName = getGreetingFieldName(greetingType);
+  let items = arr.map((content, index) => ({
+    index,
+    contentSize: content.length,
+    preview: getGreetingPreview(content),
+  }));
+
+  const filterParam = url.searchParams.get('filter');
+  if (filterParam) {
+    const q = filterParam.toLowerCase();
+    items = items.filter((entry) => (arr[entry.index] || '').toLowerCase().includes(q));
+  }
+
+  const contentFilterParam = url.searchParams.get('content_filter');
+  if (contentFilterParam) {
+    const q = contentFilterParam.toLowerCase();
+    items = items.filter((entry) => (arr[entry.index] || '').toLowerCase().includes(q));
+    items = items.map((entry) => {
+      const rawContent = arr[entry.index] || '';
+      const lowered = rawContent.toLowerCase();
+      const matchPos = lowered.indexOf(q);
+      if (matchPos >= 0) {
+        const start = Math.max(0, matchPos - 50);
+        const end = Math.min(rawContent.length, matchPos + q.length + 50);
+        return {
+          ...entry,
+          contentMatch: (start > 0 ? '…' : '') + rawContent.slice(start, end) + (end < rawContent.length ? '…' : ''),
+        };
+      }
+      return entry;
+    });
+  }
+
+  return {
+    type: greetingType,
+    field: fieldName,
+    count: items.length,
+    total: arr.length,
+    items,
+  };
+}
+
+function buildTriggerListResponse(triggerScripts: unknown): Record<string, unknown> {
+  const scripts = Array.isArray(triggerScripts) ? triggerScripts : [];
+  return {
+    count: scripts.length,
+    items: scripts.map((script: any, index: number) => ({
+      index,
+      comment: script.comment || '',
+      type: script.type || '',
+      conditionCount: Array.isArray(script.conditions) ? script.conditions.length : 0,
+      effectCount: Array.isArray(script.effect) ? script.effect.length : 0,
+      lowLevelAccess: !!script.lowLevelAccess,
+    })),
+  };
+}
+
+function buildFieldInventory(
+  currentData: Record<string, unknown>,
+  deps: Pick<McpApiDeps, 'stringifyTriggerScripts'>,
+): { fileType: SupportedFileType; fields: Record<string, unknown>[] } {
+  const fileType: SupportedFileType =
+    currentData._fileType === 'risum' || currentData._fileType === 'risup' ? currentData._fileType : 'charx';
+  const isRisum = fileType === 'risum';
+  const isRisup = fileType === 'risup';
+  const isCharx = !isRisum && !isRisup;
+
+  const fieldNames = [
+    'name',
+    'description',
+    'firstMessage',
+    'globalNote',
+    'css',
+    'defaultVariables',
+    'triggerScripts',
+    'lua',
+  ];
+  const fields: Record<string, unknown>[] = fieldNames.map((fieldName) => {
+    const value =
+      fieldName === 'triggerScripts'
+        ? deps.stringifyTriggerScripts(currentData.triggerScripts)
+        : currentData[fieldName] || '';
+    const length = typeof value === 'string' ? value.length : String(value).length;
+    return {
+      name: fieldName,
+      size: length,
+      sizeKB: `${(length / 1024).toFixed(1)}KB`,
+    };
+  });
+
+  fields.push({
+    name: 'alternateGreetings',
+    count: Array.isArray(currentData.alternateGreetings) ? currentData.alternateGreetings.length : 0,
+    type: 'array',
+  });
+  if (isCharx) {
+    fields.push({
+      name: 'groupOnlyGreetings',
+      count: Array.isArray((currentData as any).groupOnlyGreetings)
+        ? (currentData as any).groupOnlyGreetings.length
+        : 0,
+      type: 'array',
+    });
+  }
+  fields.push({
+    name: 'lorebook',
+    count: Array.isArray(currentData.lorebook) ? currentData.lorebook.length : 0,
+    type: 'array',
+  });
+  fields.push({ name: 'regex', count: Array.isArray(currentData.regex) ? currentData.regex.length : 0, type: 'array' });
+
+  if (isCharx) {
+    const charxStringFields = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
+    for (const fieldName of charxStringFields) {
+      fields.push({ name: fieldName, size: String(currentData[fieldName] || '').length, type: 'string' });
+    }
+    const charxReadOnlyFields = ['personality', 'scenario', 'nickname', 'additionalText', 'license'];
+    for (const fieldName of charxReadOnlyFields) {
+      const value = String(currentData[fieldName] || '');
+      if (value.length > 0) {
+        fields.push({ name: fieldName, size: value.length, type: 'string (read-only)' });
+      }
+    }
+    const readOnlyArrayFields = [
+      { name: 'tags', data: currentData.tags },
+      { name: 'source', data: currentData.source },
+    ];
+    for (const field of readOnlyArrayFields) {
+      const arr = Array.isArray(field.data) ? field.data : [];
+      if (arr.length > 0) {
+        fields.push({ name: field.name, count: arr.length, type: 'array (read-only)' });
+      }
+    }
+    fields.push({ name: 'creationDate', value: currentData.creationDate ?? 0, type: 'number (read-only)' });
+    fields.push({ name: 'modificationDate', value: currentData.modificationDate ?? 0, type: 'number (read-only)' });
+  }
+
+  if (isRisum) {
+    const risumStringFields = [
+      'cjs',
+      'backgroundEmbedding',
+      'moduleNamespace',
+      'customModuleToggle',
+      'mcpUrl',
+      'moduleId',
+      'moduleName',
+      'moduleDescription',
+    ];
+    for (const fieldName of risumStringFields) {
+      fields.push({ name: fieldName, size: String(currentData[fieldName] || '').length, type: 'string' });
+    }
+    fields.push({ name: 'lowLevelAccess', value: !!currentData.lowLevelAccess, type: 'boolean' });
+    fields.push({ name: 'hideIcon', value: !!currentData.hideIcon, type: 'boolean' });
+  }
+
+  if (isRisup) {
+    const risupStringFields = [
+      'mainPrompt',
+      'jailbreak',
+      'aiModel',
+      'subModel',
+      'apiType',
+      'promptTemplate',
+      'presetBias',
+      'formatingOrder',
+      'presetImage',
+      'thinkingType',
+      'adaptiveThinkingEffort',
+      'instructChatTemplate',
+      'JinjaTemplate',
+      'customPromptTemplateToggle',
+      'templateDefaultVariables',
+      'moduleIntergration',
+      'jsonSchema',
+      'extractJson',
+      'groupTemplate',
+      'groupOtherBotRole',
+      'autoSuggestPrompt',
+      'autoSuggestPrefix',
+      'localStopStrings',
+      'systemContentReplacement',
+      'systemRoleReplacement',
+    ];
+    for (const fieldName of risupStringFields) {
+      fields.push({ name: fieldName, size: String(currentData[fieldName] || '').length, type: 'string' });
+    }
+    const risupNumberFields = [
+      'temperature',
+      'maxContext',
+      'maxResponse',
+      'frequencyPenalty',
+      'presencePenalty',
+      'top_p',
+      'top_k',
+      'repetition_penalty',
+      'min_p',
+      'top_a',
+      'reasonEffort',
+      'thinkingTokens',
+      'verbosity',
+    ];
+    for (const fieldName of risupNumberFields) {
+      fields.push({ name: fieldName, value: currentData[fieldName] ?? 0, type: 'number' });
+    }
+    const risupBoolFields = [
+      'promptPreprocess',
+      'useInstructPrompt',
+      'jsonSchemaEnabled',
+      'strictJsonSchema',
+      'autoSuggestClean',
+      'outputImageModal',
+      'fallbackWhenBlankResponse',
+    ];
+    for (const fieldName of risupBoolFields) {
+      fields.push({ name: fieldName, value: !!currentData[fieldName], type: 'boolean' });
+    }
+  }
+
+  return { fileType, fields };
+}
+
+function sameDocumentPath(a: string, b: string): boolean {
+  const normalizedA = path.normalize(a);
+  const normalizedB = path.normalize(b);
+  if (process.platform === 'win32') {
+    return normalizedA.toLowerCase() === normalizedB.toLowerCase();
+  }
+  return normalizedA === normalizedB;
+}
+
+async function getCurrentSessionFilePath(
+  deps: Pick<McpApiDeps, 'getCurrentFilePath' | 'getSessionStatus'>,
+): Promise<string | null> {
+  if (typeof deps.getCurrentFilePath === 'function') {
+    return deps.getCurrentFilePath();
+  }
+  if (typeof deps.getSessionStatus === 'function') {
+    const status = await deps.getSessionStatus();
+    return status?.currentFilePath ?? null;
+  }
+  return null;
+}
+
+type ExternalFieldKind = 'string' | 'boolean' | 'number' | 'string-array' | 'triggerScripts' | 'lorebook' | 'regex';
+
+interface ExternalFieldAccess {
+  allowed: boolean;
+  kind?: ExternalFieldKind;
+  readOnly?: boolean;
+  message?: string;
+  suggestion?: string;
+}
+
+function getExternalFieldAccess(currentData: Record<string, unknown>, fieldName: string): ExternalFieldAccess {
+  const rules = getFieldAccessRules(currentData);
+  const fileType: SupportedFileType =
+    currentData._fileType === 'risum' || currentData._fileType === 'risup' ? currentData._fileType : 'charx';
+
+  if (fieldName === 'groupOnlyGreetings') {
+    if (fileType !== 'charx') {
+      return {
+        allowed: false,
+        message: `Unknown field: ${fieldName} ${getUnknownFieldHint(rules)}`,
+        suggestion: 'inspect_external_file 또는 probe_greetings로 사용 가능한 표면을 다시 확인하세요.',
+      };
+    }
+    return { allowed: true, kind: 'string-array' };
+  }
+
+  if (fieldName === 'lorebook') {
+    if (fileType === 'risup') {
+      return {
+        allowed: false,
+        message: '"lorebook" 표면은 risup 프리셋에서 지원되지 않습니다.',
+        suggestion: 'inspect_external_file 또는 probe_risup_prompt_items로 사용 가능한 risup 표면을 확인하세요.',
+      };
+    }
+    return { allowed: true, kind: 'lorebook' };
+  }
+
+  if (fieldName === 'regex') {
+    return { allowed: true, kind: 'regex' };
+  }
+
+  if (rules.readOnlyFields.includes(fieldName) || rules.deprecatedFields.includes(fieldName)) {
+    return {
+      allowed: false,
+      readOnly: true,
+      message: `"${fieldName}" 필드는 읽기 전용입니다.`,
+      suggestion: '이 필드는 수정할 수 없습니다.',
+    };
+  }
+
+  if (!rules.allowedFields.includes(fieldName)) {
+    return {
+      allowed: false,
+      message: `Unknown field: ${fieldName} ${getUnknownFieldHint(rules)}`,
+      suggestion: 'probe_field_batch 또는 inspect_external_file로 허용된 필드를 다시 확인하세요.',
+    };
+  }
+
+  if (fieldName === 'triggerScripts') return { allowed: true, kind: 'triggerScripts' };
+  if (fieldName === 'alternateGreetings') return { allowed: true, kind: 'string-array' };
+  if (BOOLEAN_FIELD_NAMES.includes(fieldName)) return { allowed: true, kind: 'boolean' };
+  if (NUMBER_FIELD_NAMES.includes(fieldName)) return { allowed: true, kind: 'number' };
+  return { allowed: true, kind: 'string' };
+}
+
+function isExternalReadableStringField(currentData: Record<string, unknown>, fieldName: string): boolean {
+  const rules = getFieldAccessRules(currentData);
+  if (!rules.allowedFields.includes(fieldName)) return false;
+  if (BOOLEAN_FIELD_NAMES.includes(fieldName) || NUMBER_FIELD_NAMES.includes(fieldName)) return false;
+  return !['alternateGreetings', 'triggerScripts', 'lorebook', 'regex'].includes(fieldName);
+}
+
+function getExternalFieldMeasure(
+  currentData: Record<string, unknown>,
+  fieldName: string,
+  deps: Pick<McpApiDeps, 'stringifyTriggerScripts'>,
+): number {
+  if (fieldName === 'triggerScripts') {
+    return deps.stringifyTriggerScripts(currentData.triggerScripts).length;
+  }
+  const value = currentData[fieldName];
+  if (Array.isArray(value)) return value.length;
+  if (typeof value === 'string') return value.length;
+  if (typeof value === 'boolean' || typeof value === 'number') return String(value).length;
+  return 0;
+}
+
+function applyExternalFieldMutation(
+  currentData: Record<string, unknown>,
+  fieldName: string,
+  content: unknown,
+  deps: Pick<
+    McpApiDeps,
+    'normalizeTriggerScripts' | 'extractPrimaryLua' | 'mergePrimaryLua' | 'stringifyTriggerScripts'
+  >,
+):
+  | { success: true; size: number }
+  | { success: false; message: string; suggestion: string; details?: Record<string, unknown> } {
+  const access = getExternalFieldAccess(currentData, fieldName);
+  if (!access.allowed || !access.kind) {
+    return {
+      success: false,
+      message: access.message || `Unsupported field: ${fieldName}`,
+      suggestion: access.suggestion || 'inspect_external_file로 허용된 표면을 다시 확인하세요.',
+    };
+  }
+
+  if (access.kind === 'string-array') {
+    if (!Array.isArray(content)) {
+      return {
+        success: false,
+        message: `"${fieldName}" must be an array of strings`,
+        suggestion: '문자열 배열 형태로 값을 다시 보내세요.',
+      };
+    }
+    currentData[fieldName] = content.map((item) => String(item));
+    return { success: true, size: getExternalFieldMeasure(currentData, fieldName, deps) };
+  }
+
+  if (access.kind === 'lorebook') {
+    if (!Array.isArray(content)) {
+      return {
+        success: false,
+        message: '"lorebook" must be an array of lorebook entries',
+        suggestion: 'lorebook 전체 배열을 JSON 배열 형태로 다시 보내세요.',
+      };
+    }
+    const nextLorebook = canonicalizeLorebookFolderRefs(cloneJson(content as Record<string, unknown>[]));
+    currentData.lorebook = nextLorebook;
+    return { success: true, size: getExternalFieldMeasure(currentData, fieldName, deps) };
+  }
+
+  if (access.kind === 'regex') {
+    if (!Array.isArray(content)) {
+      return {
+        success: false,
+        message: '"regex" must be an array of regex entries',
+        suggestion: 'regex 전체 배열을 JSON 배열 형태로 다시 보내세요.',
+      };
+    }
+    const nextRegex = cloneJson(content as Record<string, unknown>[]);
+    for (const entry of nextRegex) {
+      if (entry && typeof entry === 'object') {
+        normalizeRegexType(entry);
+      }
+    }
+    currentData.regex = nextRegex;
+    return { success: true, size: getExternalFieldMeasure(currentData, fieldName, deps) };
+  }
+
+  if (access.kind === 'boolean') {
+    if (typeof content !== 'boolean') {
+      return {
+        success: false,
+        message: `"${fieldName}"는 boolean 타입이어야 합니다.`,
+        suggestion: `"${fieldName}" 값을 true 또는 false 로 전달하세요.`,
+      };
+    }
+    currentData[fieldName] = content;
+    return { success: true, size: getExternalFieldMeasure(currentData, fieldName, deps) };
+  }
+
+  if (access.kind === 'number') {
+    if (typeof content !== 'number') {
+      return {
+        success: false,
+        message: `"${fieldName}"는 number 타입이어야 합니다.`,
+        suggestion: `"${fieldName}" 값을 숫자로 전달하세요.`,
+      };
+    }
+    currentData[fieldName] = content;
+    return { success: true, size: getExternalFieldMeasure(currentData, fieldName, deps) };
+  }
+
+  if (access.kind === 'triggerScripts') {
+    try {
+      currentData.triggerScripts = deps.normalizeTriggerScripts(content);
+      currentData.lua = deps.extractPrimaryLua(currentData.triggerScripts);
+      return { success: true, size: getExternalFieldMeasure(currentData, fieldName, deps) };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+        suggestion: 'triggerScripts JSON 구조와 스크립트 배열 형식을 확인하세요.',
+      };
+    }
+  }
+
+  if (typeof content !== 'string') {
+    return {
+      success: false,
+      message: `"${fieldName}" must be a string`,
+      suggestion: '문자열 형태로 값을 다시 보내세요.',
+    };
+  }
+
+  const risupStructuredFieldError = getRisupStructuredFieldError(fieldName, content);
+  if (risupStructuredFieldError) {
+    return {
+      success: false,
+      message: `Invalid ${fieldName}: ${risupStructuredFieldError}`,
+      suggestion: getRisupStructuredFieldSuggestion(fieldName),
+      details: { parseError: risupStructuredFieldError },
+    };
+  }
+
+  let normalizedContent = content;
+  if (fieldName === 'css') {
+    normalizedContent = normalizedContent.replace(/^\s*<style[^>]*>\s*/i, '').replace(/\s*<\/style>\s*$/i, '');
+  }
+  currentData[fieldName] = normalizedContent;
+  if (fieldName === 'lua') {
+    currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua as string);
+  }
+  return { success: true, size: getExternalFieldMeasure(currentData, fieldName, deps) };
+}
+
 function hasTraversalSegments(rawPath: string): boolean {
   return rawPath.split(/[\\/]+/).some((segment) => segment === '..');
 }
@@ -1397,6 +1875,977 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         });
       }
 
+      // ----------------------------------------------------------------
+      // POST /probe/css — list CSS sections from an unopened file
+      // ----------------------------------------------------------------
+      if (parts[0] === 'probe' && parts[1] === 'css' && !parts[2] && req.method === 'POST') {
+        const probe = await readProbeDocumentRequest(req, res, 'probe/css', 'probe css', 'probe:css');
+        if (!probe) return;
+        const probeCssPayload = buildCssListResponse(String(probe.data.css || ''), deps.parseCssSections);
+        return jsonResSuccess(res, probeCssPayload, {
+          toolName: 'probe_css',
+          summary: `Probed CSS from external file (${(probeCssPayload as any).count ?? 0} sections)`,
+          artifacts: { count: (probeCssPayload as any).count ?? 0 },
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /probe/greetings/:type — list greetings from an unopened file
+      // ----------------------------------------------------------------
+      if (parts[0] === 'probe' && parts[1] === 'greetings' && parts[2] && !parts[3] && req.method === 'POST') {
+        const greetingType = decodeURIComponent(parts[2]);
+        if (greetingType !== 'alternate' && greetingType !== 'groupOnly') {
+          return mcpError(res, 400, {
+            action: 'probe greetings',
+            message: 'type must be "alternate" or "groupOnly"',
+            suggestion: 'probe_greetings는 alternate 또는 groupOnly 타입만 지원합니다.',
+            target: 'probe:greetings',
+          });
+        }
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          `probe/greetings/${greetingType}`,
+          'probe greetings',
+          `probe:greetings:${greetingType}`,
+        );
+        if (!probe) return;
+        if (greetingType === 'groupOnly' && probe.fileType !== 'charx') {
+          return mcpError(res, 400, {
+            action: 'probe greetings',
+            message: 'groupOnly greetings are only available for .charx cards.',
+            suggestion: 'alternate greetings를 읽거나 .charx 파일을 대상으로 다시 시도하세요.',
+            target: `probe:greetings:${greetingType}`,
+          });
+        }
+        const greetings =
+          greetingType === 'groupOnly'
+            ? ((probe.data as Record<string, unknown>).groupOnlyGreetings as string[]) || []
+            : (probe.data.alternateGreetings as string[]) || [];
+        const probeGreetingPayload = buildGreetingListResponse(greetings, greetingType, url);
+        return jsonResSuccess(res, probeGreetingPayload, {
+          toolName: 'probe_greetings',
+          summary: `Probed ${greetingType} greetings from external file (${(probeGreetingPayload as any).count ?? 0} items)`,
+          artifacts: { count: (probeGreetingPayload as any).count ?? 0, type: greetingType },
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /probe/triggers — list triggers from an unopened file
+      // ----------------------------------------------------------------
+      if (parts[0] === 'probe' && parts[1] === 'triggers' && !parts[2] && req.method === 'POST') {
+        const probe = await readProbeDocumentRequest(req, res, 'probe/triggers', 'probe triggers', 'probe:triggers');
+        if (!probe) return;
+        const probeTriggerPayload = buildTriggerListResponse(probe.data.triggerScripts);
+        return jsonResSuccess(res, probeTriggerPayload, {
+          toolName: 'probe_triggers',
+          summary: `Probed triggers from external file (${(probeTriggerPayload as any).count ?? 0} items)`,
+          artifacts: { count: (probeTriggerPayload as any).count ?? 0 },
+        });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /probe/risup/prompt-items — list risup prompt items from an unopened file
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'probe' &&
+        parts[1] === 'risup' &&
+        parts[2] === 'prompt-items' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          'probe/risup/prompt-items',
+          'probe risup prompt items',
+          'probe:risup:promptTemplate',
+        );
+        if (!probe) return;
+        if (probe.fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'probe risup prompt items',
+            message: 'Target file is not a risup preset.',
+            suggestion: '.risup 파일을 대상으로 다시 시도하세요.',
+            target: 'probe:risup:promptTemplate',
+          });
+        }
+        const rawText = typeof probe.data.promptTemplate === 'string' ? probe.data.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'probe risup prompt items',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'external_write_field 또는 open_file 후 write_field로 promptTemplate을 수정하세요.',
+            target: 'probe:risup:promptTemplate',
+            details: { parseError: model.parseError },
+          });
+        }
+        const items = model.items.map((item, index) => {
+          const entry: Record<string, unknown> = {
+            index,
+            id: item.id ?? null,
+            type: item.type ?? null,
+            supported: item.supported,
+            preview: promptItemPreview(item),
+          };
+          if (item.supported && item.name !== undefined) {
+            entry.name = item.name;
+          }
+          return entry;
+        });
+        return jsonResSuccess(
+          res,
+          {
+            count: model.items.length,
+            state: model.state,
+            hasUnsupportedContent: model.hasUnsupportedContent,
+            items,
+          },
+          {
+            toolName: 'probe_risup_prompt_items',
+            summary: `Probed ${model.items.length} risup prompt items (state: ${model.state})`,
+            artifacts: { count: model.items.length, state: model.state },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /probe/risup/formating-order — read risup formating order from an unopened file
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'probe' &&
+        parts[1] === 'risup' &&
+        parts[2] === 'formating-order' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          'probe/risup/formating-order',
+          'probe risup formating order',
+          'probe:risup:formatingOrder',
+        );
+        if (!probe) return;
+        if (probe.fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'probe risup formating order',
+            message: 'Target file is not a risup preset.',
+            suggestion: '.risup 파일을 대상으로 다시 시도하세요.',
+            target: 'probe:risup:formatingOrder',
+          });
+        }
+        const rawText = typeof probe.data.formatingOrder === 'string' ? probe.data.formatingOrder : '';
+        const model = parseFormatingOrder(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'probe risup formating order',
+            message: `Invalid formatingOrder: ${model.parseError}`,
+            suggestion: 'external_write_field 또는 open_file 후 write_field로 formatingOrder를 수정하세요.',
+            target: 'probe:risup:formatingOrder',
+            details: { parseError: model.parseError },
+          });
+        }
+        const items = model.items.map((item, index) => ({ index, token: item.token, known: item.known }));
+        const promptModel = parsePromptTemplate(
+          typeof probe.data.promptTemplate === 'string' ? probe.data.promptTemplate : '',
+        );
+        const warnings = promptModel.state !== 'invalid' ? collectFormatingOrderWarnings(promptModel, model) : [];
+        return jsonResSuccess(
+          res,
+          { state: model.state, items, warnings },
+          {
+            toolName: 'probe_risup_formating_order',
+            summary: `Probed risup formating order (${items.length} tokens, state: ${model.state})`,
+            artifacts: { count: items.length, state: model.state },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /external/inspect — inspect an unopened file without switching the UI document
+      // ----------------------------------------------------------------
+      if (parts[0] === 'external' && parts[1] === 'inspect' && !parts[2] && req.method === 'POST') {
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          'external/inspect',
+          'inspect external file',
+          'external:file',
+        );
+        if (!probe) return;
+        const inventory = buildFieldInventory(probe.data, deps);
+        const cssSections = buildCssListResponse(String(probe.data.css || ''), deps.parseCssSections);
+        const luaSections = buildLuaListResponse(String(probe.data.lua || ''), deps.parseLuaSections);
+        return jsonResSuccess(
+          res,
+          {
+            file_path: probe.filePath,
+            file_type: probe.fileType,
+            name: String(probe.data.name || path.basename(probe.filePath)),
+            fieldCount: inventory.fields.length,
+            fields: inventory.fields,
+            surfaceCounts: {
+              lorebook: Array.isArray(probe.data.lorebook) ? probe.data.lorebook.length : 0,
+              regex: Array.isArray(probe.data.regex) ? probe.data.regex.length : 0,
+              alternateGreetings: Array.isArray(probe.data.alternateGreetings)
+                ? probe.data.alternateGreetings.length
+                : 0,
+              groupOnlyGreetings:
+                probe.fileType === 'charx' && Array.isArray((probe.data as Record<string, unknown>).groupOnlyGreetings)
+                  ? ((probe.data as Record<string, unknown>).groupOnlyGreetings as unknown[]).length
+                  : 0,
+              triggerScripts: Array.isArray(probe.data.triggerScripts) ? probe.data.triggerScripts.length : 0,
+              cssSections: (cssSections as { count?: number }).count ?? 0,
+              luaSections: (luaSections as { count?: number }).count ?? 0,
+              risupPromptItems:
+                probe.fileType === 'risup'
+                  ? (() => {
+                      const model = parsePromptTemplate(
+                        typeof probe.data.promptTemplate === 'string' ? probe.data.promptTemplate : '',
+                      );
+                      return model.state === 'invalid' ? null : model.items.length;
+                    })()
+                  : null,
+            },
+          },
+          {
+            toolName: 'inspect_external_file',
+            summary: `Inspected ${path.basename(probe.filePath)} (${inventory.fileType})`,
+            artifacts: { fileType: inventory.fileType, fieldCount: inventory.fields.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /external/field/batch-write — write multiple fields in an unopened file
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'external' &&
+        parts[1] === 'field' &&
+        parts[2] === 'batch-write' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          'external/field/batch-write',
+          'external batch write field',
+          'external:field:batch-write',
+        );
+        if (!probe) return;
+
+        const currentFilePath = await getCurrentSessionFilePath(deps);
+        if (currentFilePath && sameDocumentPath(currentFilePath, probe.filePath)) {
+          return mcpError(res, 409, {
+            action: 'external batch write field',
+            message: 'The requested file is already open in the UI session.',
+            suggestion:
+              '현재 열린 문서는 external_* 대신 기존 write_field_batch 같은 active-document 도구를 사용하세요.',
+            target: 'external:field:batch-write',
+          });
+        }
+
+        const parsed = parseBody(res, probe.body as Record<string, unknown>, fieldBatchWriteSchema, {
+          action: 'external batch write field',
+          target: 'external:field:batch-write',
+          suggestion:
+            'entries 를 { field, content } 객체 배열로 전달하세요. 예: { "file_path": "...", "entries": [{ "field": "name", "content": "새 이름" }] }',
+        });
+        if (!parsed) return;
+        const entries = parsed.entries;
+        if (entries.length === 0) {
+          return mcpError(res, 400, {
+            action: 'external batch write field',
+            message: 'entries must be a non-empty array of {field, content}',
+            suggestion:
+              'entries 를 { field, content } 객체 배열로 전달하세요. 예: { "file_path": "...", "entries": [{ "field": "name", "content": "새 이름" }] }',
+            target: 'external:field:batch-write',
+          });
+        }
+        if (entries.length > MAX_FIELD_BATCH) {
+          return mcpError(res, 400, {
+            action: 'external batch write field',
+            message: `Maximum ${MAX_FIELD_BATCH} entries per batch`,
+            suggestion: `요청을 ${MAX_FIELD_BATCH}개 이하의 항목으로 나누어 여러 번 호출하세요.`,
+            target: 'external:field:batch-write',
+          });
+        }
+
+        const draftData = deps.openExternalDocument(probe.filePath) as Record<string, unknown>;
+        const validatedEntries: Array<{ field: string; oldSize: number; newSize: number }> = [];
+        for (const entry of entries) {
+          const field = entry.field;
+          if (!field || entry.content === undefined) {
+            return mcpError(res, 400, {
+              action: 'external batch write field',
+              message: '각 항목에 "field"와 "content"가 필요합니다.',
+              suggestion: '각 항목을 { "field": "<필드명>", "content": <값> } 형태로 전달하세요.',
+              target: 'external:field:batch-write',
+            });
+          }
+          const oldSize = getExternalFieldMeasure(draftData, field, deps);
+          const applied = applyExternalFieldMutation(draftData, field, entry.content, deps);
+          if (!applied.success) {
+            return mcpError(res, 400, {
+              action: 'external batch write field',
+              message: applied.message,
+              suggestion: applied.suggestion,
+              target: `external:field:${field}`,
+              details: applied.details,
+            });
+          }
+          validatedEntries.push({ field, oldSize, newSize: applied.size });
+        }
+
+        const summary = validatedEntries
+          .map((entry) => `${entry.field}: ${entry.oldSize} -> ${entry.newSize}`)
+          .join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 외부 파일 배치 수정 요청',
+          `AI 어시스턴트가 UI에 열리지 않은 파일을 수정하려 합니다.\n파일: ${probe.filePath}\n항목 수: ${validatedEntries.length}\n${summary}`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'external batch write field',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'external:field:batch-write',
+          });
+        }
+
+        const release = await acquireFieldMutex(`external:${probe.filePath}`);
+        try {
+          for (const entry of entries) {
+            const applied = applyExternalFieldMutation(probe.data, entry.field, entry.content, deps);
+            if (!applied.success) {
+              return mcpError(res, 400, {
+                action: 'external batch write field',
+                message: applied.message,
+                suggestion: applied.suggestion,
+                target: `external:field:${entry.field}`,
+                details: applied.details,
+              });
+            }
+          }
+          deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data);
+          logMcpMutation('external batch write field', 'external:field:batch-write', {
+            filePath: probe.filePath,
+            count: validatedEntries.length,
+          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              file_path: probe.filePath,
+              file_type: probe.fileType,
+              updated: validatedEntries,
+            },
+            {
+              toolName: 'external_write_field_batch',
+              summary: `Updated ${validatedEntries.length} field(s) in ${path.basename(probe.filePath)}`,
+              artifacts: { count: validatedEntries.length, fileType: probe.fileType },
+            },
+          );
+        } catch (error) {
+          return mcpError(
+            res,
+            500,
+            {
+              action: 'external batch write field',
+              message: error instanceof Error ? error.message : String(error),
+              suggestion: '대상 파일이 저장 가능한 상태인지 확인한 뒤 다시 시도하세요.',
+              target: 'external:field:batch-write',
+            },
+            error,
+          );
+        } finally {
+          release();
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /external/field/:name — write a field in an unopened file
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'external' &&
+        parts[1] === 'field' &&
+        parts[2] &&
+        !parts[3] &&
+        parts[2] !== 'batch-write' &&
+        req.method === 'POST'
+      ) {
+        const fieldName = decodeURIComponent(parts[2]);
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          `external/field/${fieldName}`,
+          'external write field',
+          `external:field:${fieldName}`,
+        );
+        if (!probe) return;
+
+        const currentFilePath = await getCurrentSessionFilePath(deps);
+        if (currentFilePath && sameDocumentPath(currentFilePath, probe.filePath)) {
+          return mcpError(res, 409, {
+            action: 'external write field',
+            message: 'The requested file is already open in the UI session.',
+            suggestion: '현재 열린 문서는 external_* 대신 기존 write_field 도구를 사용하세요.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+
+        if (!Object.prototype.hasOwnProperty.call(probe.body, 'content')) {
+          return mcpError(res, 400, {
+            action: 'external write field',
+            message: 'content is required',
+            suggestion: '{ "file_path": "...", "content": ... } 형식으로 값을 전달하세요.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+
+        const oldSize = getExternalFieldMeasure(probe.data, fieldName, deps);
+        const applied = applyExternalFieldMutation(
+          probe.data,
+          fieldName,
+          (probe.body as Record<string, unknown>).content,
+          deps,
+        );
+        if (!applied.success) {
+          return mcpError(res, 400, {
+            action: 'external write field',
+            message: applied.message,
+            suggestion: applied.suggestion,
+            target: `external:field:${fieldName}`,
+            details: applied.details,
+          });
+        }
+
+        const allowed = await deps.askRendererConfirm(
+          'MCP 외부 파일 수정 요청',
+          `AI 어시스턴트가 UI에 열리지 않은 파일을 수정하려 합니다.\n파일: ${probe.filePath}\n필드: ${fieldName}\n크기: ${oldSize} -> ${applied.size}`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'external write field',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+
+        const release = await acquireFieldMutex(`external:${probe.filePath}:${fieldName}`);
+        try {
+          deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data);
+          logMcpMutation('external write field', `external:field:${fieldName}`, {
+            filePath: probe.filePath,
+            oldSize,
+            newSize: applied.size,
+          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              file_path: probe.filePath,
+              file_type: probe.fileType,
+              field: fieldName,
+              oldSize,
+              newSize: applied.size,
+            },
+            {
+              toolName: 'external_write_field',
+              summary: `Updated "${fieldName}" in ${path.basename(probe.filePath)} (${oldSize}->${applied.size})`,
+              artifacts: { fieldName, oldSize, newSize: applied.size, fileType: probe.fileType },
+            },
+          );
+        } catch (error) {
+          return mcpError(
+            res,
+            500,
+            {
+              action: 'external write field',
+              message: error instanceof Error ? error.message : String(error),
+              suggestion: '대상 파일이 저장 가능한 상태인지 확인한 뒤 다시 시도하세요.',
+              target: `external:field:${fieldName}`,
+            },
+            error,
+          );
+        } finally {
+          release();
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /external/field/:name/search — search a text field in an unopened file
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'external' &&
+        parts[1] === 'field' &&
+        parts[2] &&
+        parts[3] === 'search' &&
+        !parts[4] &&
+        req.method === 'POST'
+      ) {
+        const fieldName = decodeURIComponent(parts[2]);
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          `external/field/${fieldName}/search`,
+          'external search in field',
+          `external:field:${fieldName}`,
+        );
+        if (!probe) return;
+        if (!isExternalReadableStringField(probe.data, fieldName)) {
+          return mcpError(res, 400, {
+            action: 'external search in field',
+            message: `"${fieldName}" 필드는 외부 문자열 검색을 지원하지 않습니다.`,
+            suggestion:
+              '문자열 타입 필드에만 사용 가능합니다. 구조화된 표면은 probe_* 또는 external_write_field를 사용하세요.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+        const parsed = parseBody(res, probe.body as Record<string, unknown>, searchBodySchema, {
+          action: 'external search in field',
+          target: `external:field:${fieldName}`,
+          suggestion: 'query 문자열을 포함한 요청 본문을 보내세요.',
+        });
+        if (!parsed) return;
+
+        const content = normalizeLF(
+          typeof probe.data[fieldName] === 'string'
+            ? (probe.data[fieldName] as string)
+            : String(probe.data[fieldName] ?? ''),
+        );
+        const queryStr = normalizeLF(String(parsed.query));
+        const contextChars = Math.max(0, Math.min(Number(parsed.context_chars) || 100, 500));
+        const maxMatches = Math.max(1, Math.min(Number(parsed.max_matches) || 20, 100));
+        const useRegex = !!parsed.regex;
+        const flags = parsed.flags ?? (useRegex ? 'gi' : undefined);
+
+        try {
+          const result = searchTextBlock(content, {
+            query: queryStr,
+            regex: useRegex,
+            flags,
+            contextChars,
+            maxMatches,
+          });
+          return jsonResSuccess(
+            res,
+            {
+              file_path: probe.filePath,
+              field: fieldName,
+              query: result.query,
+              totalMatches: result.totalMatches,
+              returnedMatches: result.returnedMatches,
+              fieldLength: result.contentLength,
+              matches: result.matches,
+            },
+            {
+              toolName: 'external_search_in_field',
+              summary: `Found ${result.totalMatches} match(es) in "${fieldName}" from ${path.basename(probe.filePath)}`,
+              artifacts: { fieldName, totalMatches: result.totalMatches },
+            },
+          );
+        } catch (error) {
+          return mcpError(res, 400, {
+            action: 'external search in field',
+            message: `Invalid regex: ${error instanceof Error ? error.message : String(error)}`,
+            target: `external:field:${fieldName}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /external/field/:name/range — read part of a text field in an unopened file
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'external' &&
+        parts[1] === 'field' &&
+        parts[2] &&
+        parts[3] === 'range' &&
+        !parts[4] &&
+        req.method === 'POST'
+      ) {
+        const fieldName = decodeURIComponent(parts[2]);
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          `external/field/${fieldName}/range`,
+          'external read field range',
+          `external:field:${fieldName}`,
+        );
+        if (!probe) return;
+        if (!isExternalReadableStringField(probe.data, fieldName)) {
+          return mcpError(res, 400, {
+            action: 'external read field range',
+            message: `"${fieldName}" 필드는 외부 범위 읽기를 지원하지 않습니다.`,
+            suggestion: '문자열 타입 필드에만 사용 가능합니다.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+        const content =
+          typeof probe.data[fieldName] === 'string'
+            ? (probe.data[fieldName] as string)
+            : String(probe.data[fieldName] ?? '');
+        const MAX_RANGE_LENGTH = 10000;
+        const offset = Math.max(0, Number((probe.body as Record<string, unknown>).offset) || 0);
+        const length = Math.max(
+          1,
+          Math.min(Number((probe.body as Record<string, unknown>).length) || 2000, MAX_RANGE_LENGTH),
+        );
+        const slice = content.slice(offset, offset + length);
+        return jsonResSuccess(
+          res,
+          {
+            file_path: probe.filePath,
+            field: fieldName,
+            offset,
+            length: slice.length,
+            requestedLength: length,
+            totalLength: content.length,
+            content: slice,
+          },
+          {
+            toolName: 'external_read_field_range',
+            summary: `Read ${slice.length} chars from "${fieldName}" in ${path.basename(probe.filePath)}`,
+            artifacts: { fieldName, offset, length: slice.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /external/field/:name/replace — replace text in an unopened file field
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'external' &&
+        parts[1] === 'field' &&
+        parts[2] &&
+        parts[3] === 'replace' &&
+        !parts[4] &&
+        req.method === 'POST'
+      ) {
+        const fieldName = decodeURIComponent(parts[2]);
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          `external/field/${fieldName}/replace`,
+          'external replace in field',
+          `external:field:${fieldName}`,
+        );
+        if (!probe) return;
+
+        const currentFilePath = await getCurrentSessionFilePath(deps);
+        if (currentFilePath && sameDocumentPath(currentFilePath, probe.filePath)) {
+          return mcpError(res, 409, {
+            action: 'external replace in field',
+            message: 'The requested file is already open in the UI session.',
+            suggestion: '현재 열린 문서는 external_* 대신 기존 replace_in_field 도구를 사용하세요.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+        if (!isExternalReadableStringField(probe.data, fieldName)) {
+          return mcpError(res, 400, {
+            action: 'external replace in field',
+            message: `"${fieldName}" 필드는 외부 문자열 치환을 지원하지 않습니다.`,
+            suggestion: '문자열 타입 필드에만 사용 가능합니다. 구조화된 표면은 external_write_field를 사용하세요.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+        const parsed = parseBody(res, probe.body as Record<string, unknown>, replaceBodySchema, {
+          action: 'external replace in field',
+          target: `external:field:${fieldName}`,
+          suggestion: 'find 문자열 또는 정규식을 포함한 요청 본문을 보내세요.',
+        });
+        if (!parsed) return;
+
+        const release = await acquireFieldMutex(`external:${probe.filePath}:${fieldName}`);
+        try {
+          const content = normalizeLF(String(probe.data[fieldName] ?? ''));
+          const findStr = normalizeLF(parsed.find);
+          const replaceStr = parsed.replace !== undefined ? normalizeLF(parsed.replace) : '';
+          const useRegex = !!parsed.regex;
+          const flags = parsed.flags || 'g';
+          const dryRun = !!(parsed.dry_run ?? parsed.dryRun);
+          let newContent: string;
+          let matchCount: number;
+          const matchPositions: Array<{ position: number; match: string }> = [];
+
+          if (useRegex) {
+            const re = new RegExp(findStr, flags);
+            if (dryRun) {
+              let match: RegExpExecArray | null;
+              const reExec = new RegExp(findStr, flags.includes('g') ? flags : flags + 'g');
+              while ((match = reExec.exec(content)) !== null) {
+                matchPositions.push({ position: match.index, match: match[0] });
+                if (!reExec.global) break;
+              }
+              matchCount = matchPositions.length;
+            } else {
+              const matches = content.match(re);
+              matchCount = matches ? matches.length : 0;
+            }
+            newContent = content.replace(re, replaceStr);
+          } else {
+            matchCount = 0;
+            let searchFrom = 0;
+            while (true) {
+              const pos = content.indexOf(findStr, searchFrom);
+              if (pos === -1) break;
+              matchCount++;
+              if (dryRun) matchPositions.push({ position: pos, match: findStr });
+              searchFrom = pos + findStr.length;
+            }
+            newContent = content.split(findStr).join(replaceStr);
+          }
+
+          if (matchCount === 0) {
+            return mcpNoOp(
+              res,
+              {
+                action: 'external replace in field',
+                message: '일치하는 항목 없음',
+                suggestion: 'external_search_in_field로 현재 내용을 다시 확인하고 find/regex/flags를 조정하세요.',
+                target: `external:field:${fieldName}`,
+              },
+              {
+                matchCount: 0,
+                ...(dryRun ? { dryRun: true } : {}),
+              },
+            );
+          }
+
+          if (dryRun) {
+            const contextChars = 60;
+            const maxPreviewMatches = 30;
+            const previews = matchPositions.slice(0, maxPreviewMatches).map((mp) => {
+              const before = content.substring(Math.max(0, mp.position - contextChars), mp.position);
+              const after = content.substring(
+                mp.position + mp.match.length,
+                mp.position + mp.match.length + contextChars,
+              );
+              return { position: mp.position, match: mp.match.substring(0, 200), before, after };
+            });
+            return jsonResSuccess(
+              res,
+              {
+                dryRun: true,
+                file_path: probe.filePath,
+                field: fieldName,
+                matchCount,
+                fieldLength: content.length,
+                previews,
+                newSize: newContent.length,
+              },
+              {
+                toolName: 'external_replace_in_field',
+                summary: `Dry-run: ${matchCount} match(es) in "${fieldName}" from ${path.basename(probe.filePath)}`,
+                artifacts: { matchCount, fieldLength: content.length },
+              },
+            );
+          }
+
+          const allowed = await deps.askRendererConfirm(
+            'MCP 외부 파일 치환 요청',
+            `AI 어시스턴트가 UI에 열리지 않은 파일의 "${fieldName}" 필드에서 ${matchCount}건 치환하려 합니다.\n파일: ${probe.filePath}\n찾기: ${findStr.substring(0, 80)}${findStr.length > 80 ? '...' : ''}\n바꾸기: ${replaceStr.substring(0, 80)}${replaceStr.length > 80 ? '...' : ''}`,
+          );
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'external replace in field',
+              message: '사용자가 거부했습니다',
+              rejected: true,
+              suggestion: '앱에서 치환 요청을 허용한 뒤 다시 시도하세요.',
+              target: `external:field:${fieldName}`,
+            });
+          }
+
+          probe.data[fieldName] = newContent;
+          if (fieldName === 'lua') {
+            probe.data.triggerScripts = deps.mergePrimaryLua(probe.data.triggerScripts, String(probe.data.lua || ''));
+          }
+          deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data);
+          logMcpMutation('external replace in field', `external:field:${fieldName}`, {
+            filePath: probe.filePath,
+            matchCount,
+          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              file_path: probe.filePath,
+              field: fieldName,
+              matchCount,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'external_replace_in_field',
+              summary: `Replaced ${matchCount} match(es) in "${fieldName}" from ${path.basename(probe.filePath)}`,
+              artifacts: { fieldName, matchCount, oldSize: content.length, newSize: newContent.length },
+            },
+          );
+        } catch (error) {
+          return mcpError(
+            res,
+            500,
+            {
+              action: 'external replace in field',
+              message: error instanceof Error ? error.message : String(error),
+              suggestion: '대상 파일이 저장 가능한 상태인지 확인한 뒤 다시 시도하세요.',
+              target: `external:field:${fieldName}`,
+            },
+            error,
+          );
+        } finally {
+          release();
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /external/field/:name/insert — insert text into an unopened file field
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'external' &&
+        parts[1] === 'field' &&
+        parts[2] &&
+        parts[3] === 'insert' &&
+        !parts[4] &&
+        req.method === 'POST'
+      ) {
+        const fieldName = decodeURIComponent(parts[2]);
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          `external/field/${fieldName}/insert`,
+          'external insert in field',
+          `external:field:${fieldName}`,
+        );
+        if (!probe) return;
+
+        const currentFilePath = await getCurrentSessionFilePath(deps);
+        if (currentFilePath && sameDocumentPath(currentFilePath, probe.filePath)) {
+          return mcpError(res, 409, {
+            action: 'external insert in field',
+            message: 'The requested file is already open in the UI session.',
+            suggestion: '현재 열린 문서는 external_* 대신 기존 insert_in_field 도구를 사용하세요.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+        if (!isExternalReadableStringField(probe.data, fieldName)) {
+          return mcpError(res, 400, {
+            action: 'external insert in field',
+            message: `"${fieldName}" 필드는 외부 텍스트 삽입을 지원하지 않습니다.`,
+            suggestion: '문자열 타입 필드에만 사용 가능합니다. 구조화된 표면은 external_write_field를 사용하세요.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+        const parsed = parseBody(res, probe.body as Record<string, unknown>, insertBodySchema, {
+          action: 'external insert in field',
+          target: `external:field:${fieldName}`,
+          suggestion: '삽입할 content를 요청 본문에 포함하세요.',
+        });
+        if (!parsed) return;
+
+        const release = await acquireFieldMutex(`external:${probe.filePath}:${fieldName}`);
+        try {
+          const oldContent = normalizeLF(String(probe.data[fieldName] ?? ''));
+          const position = parsed.position || 'end';
+          const insertContent = normalizeLF(parsed.content);
+          let newContent: string;
+
+          if (position === 'end') {
+            newContent = oldContent + '\n' + insertContent;
+          } else if (position === 'start') {
+            newContent = insertContent + '\n' + oldContent;
+          } else if ((position === 'after' || position === 'before') && parsed.anchor) {
+            const anchorPos = oldContent.indexOf(normalizeLF(parsed.anchor));
+            if (anchorPos === -1) {
+              return mcpNoOp(res, {
+                action: 'external insert in field',
+                message: `앵커 문자열을 찾을 수 없음: ${parsed.anchor.substring(0, 80)}`,
+                suggestion:
+                  'external_read_field_range 또는 external_search_in_field로 현재 내용을 확인한 뒤 anchor를 다시 지정하세요.',
+                target: `external:field:${fieldName}`,
+              });
+            }
+            if (position === 'after') {
+              const insertAt = anchorPos + normalizeLF(parsed.anchor).length;
+              newContent = oldContent.slice(0, insertAt) + '\n' + insertContent + oldContent.slice(insertAt);
+            } else {
+              newContent = oldContent.slice(0, anchorPos) + insertContent + '\n' + oldContent.slice(anchorPos);
+            }
+          } else {
+            return mcpError(res, 400, {
+              action: 'external insert in field',
+              message: 'position이 "after" 또는 "before"일 때 anchor가 필요합니다',
+              suggestion: '{ "position": "after", "anchor": "기준 텍스트" } 형식으로 anchor를 전달하세요.',
+              target: `external:field:${fieldName}`,
+            });
+          }
+
+          const preview = parsed.content.substring(0, 100) + (parsed.content.length > 100 ? '...' : '');
+          const allowed = await deps.askRendererConfirm(
+            'MCP 외부 파일 삽입 요청',
+            `AI 어시스턴트가 UI에 열리지 않은 파일의 "${fieldName}" 필드에 내용을 삽입하려 합니다.\n파일: ${probe.filePath}\n위치: ${position}${parsed.anchor ? ' "' + parsed.anchor.substring(0, 40) + '"' : ''}\n내용: ${preview}`,
+          );
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'external insert in field',
+              message: '사용자가 거부했습니다',
+              rejected: true,
+              suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+              target: `external:field:${fieldName}`,
+            });
+          }
+
+          probe.data[fieldName] = newContent;
+          if (fieldName === 'lua') {
+            probe.data.triggerScripts = deps.mergePrimaryLua(probe.data.triggerScripts, String(probe.data.lua || ''));
+          }
+          deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data);
+          logMcpMutation('external insert in field', `external:field:${fieldName}`, {
+            filePath: probe.filePath,
+            position,
+            oldSize: oldContent.length,
+            newSize: newContent.length,
+          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              file_path: probe.filePath,
+              field: fieldName,
+              position,
+              oldSize: oldContent.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'external_insert_in_field',
+              summary: `Inserted into "${fieldName}" in ${path.basename(probe.filePath)} (${oldContent.length}->${newContent.length})`,
+              artifacts: { oldSize: oldContent.length, newSize: newContent.length, position },
+            },
+          );
+        } catch (error) {
+          return mcpError(
+            res,
+            500,
+            {
+              action: 'external insert in field',
+              message: error instanceof Error ? error.message : String(error),
+              suggestion: '대상 파일이 저장 가능한 상태인지 확인한 뒤 다시 시도하세요.',
+              target: `external:field:${fieldName}`,
+            },
+            error,
+          );
+        } finally {
+          release();
+        }
+      }
+
       if (req.method === 'POST' && url.pathname === '/open-file') {
         const request = await resolveExternalDocumentRequest(req, res, 'open-file', 'open file', 'open:file');
         if (!request) return;
@@ -1493,161 +2942,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // GET /fields
       // ----------------------------------------------------------------
       if (req.method === 'GET' && parts[0] === 'fields' && !parts[1]) {
-        const fileType = currentData._fileType || 'charx';
-        const isRisum = fileType === 'risum';
-        const isRisup = fileType === 'risup';
-        const isCharx = !isRisum && !isRisup;
-
-        const fieldNames = [
-          'name',
-          'description',
-          'firstMessage',
-          'globalNote',
-          'css',
-          'defaultVariables',
-          'triggerScripts',
-          'lua',
-        ];
-        const fields: Record<string, unknown>[] = fieldNames.map((f) => {
-          const val =
-            f === 'triggerScripts' ? deps.stringifyTriggerScripts(currentData.triggerScripts) : currentData[f] || '';
-          const len = typeof val === 'string' ? val.length : String(val).length;
-          return {
-            name: f,
-            size: len,
-            sizeKB: (len / 1024).toFixed(1) + 'KB',
-          };
-        });
-        fields.push({
-          name: 'alternateGreetings',
-          count: (currentData.alternateGreetings || []).length,
-          type: 'array',
-        });
-        fields.push({ name: 'lorebook', count: (currentData.lorebook || []).length, type: 'array' });
-        fields.push({ name: 'regex', count: (currentData.regex || []).length, type: 'array' });
-
-        // Charx card.data fields
-        if (isCharx) {
-          const charxStringFields = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
-          for (const f of charxStringFields) {
-            fields.push({ name: f, size: ((currentData[f] as string) || '').length, type: 'string' });
-          }
-          // Read-only charx fields (RisuAI deprecated/passthrough — editing disabled, data preserved in file I/O)
-          const charxReadOnlyFields = ['personality', 'scenario', 'nickname', 'additionalText', 'license'];
-          for (const f of charxReadOnlyFields) {
-            const val = (currentData[f] as string) || '';
-            if (val.length > 0) {
-              fields.push({ name: f, size: val.length, type: 'string (read-only)' });
-            }
-          }
-          const readOnlyArrayFields = [
-            { name: 'tags', data: currentData.tags },
-            { name: 'source', data: currentData.source },
-          ];
-          for (const af of readOnlyArrayFields) {
-            const arr = (af.data as string[]) || [];
-            if (arr.length > 0) {
-              fields.push({ name: af.name, count: arr.length, type: 'array (read-only)' });
-            }
-          }
-          fields.push({ name: 'creationDate', value: currentData.creationDate ?? 0, type: 'number (read-only)' });
-          fields.push({
-            name: 'modificationDate',
-            value: currentData.modificationDate ?? 0,
-            type: 'number (read-only)',
-          });
-        }
-
-        // Risum module-specific fields
-        if (isRisum) {
-          const risumStringFields = [
-            'cjs',
-            'backgroundEmbedding',
-            'moduleNamespace',
-            'customModuleToggle',
-            'mcpUrl',
-            'moduleId',
-            'moduleName',
-            'moduleDescription',
-          ];
-          for (const f of risumStringFields) {
-            fields.push({ name: f, size: ((currentData[f] as string) || '').length, type: 'string' });
-          }
-          fields.push({ name: 'lowLevelAccess', value: !!currentData.lowLevelAccess, type: 'boolean' });
-          fields.push({ name: 'hideIcon', value: !!currentData.hideIcon, type: 'boolean' });
-        }
-
-        // Risup preset-specific fields
-        if (isRisup) {
-          const risupStringFields = [
-            'mainPrompt',
-            'jailbreak',
-            'aiModel',
-            'subModel',
-            'apiType',
-            'promptTemplate',
-            'presetBias',
-            'formatingOrder',
-            'presetImage',
-            'thinkingType',
-            'adaptiveThinkingEffort',
-            'instructChatTemplate',
-            'JinjaTemplate',
-            'customPromptTemplateToggle',
-            'templateDefaultVariables',
-            'moduleIntergration',
-            'jsonSchema',
-            'extractJson',
-            'groupTemplate',
-            'groupOtherBotRole',
-            'autoSuggestPrompt',
-            'autoSuggestPrefix',
-            'localStopStrings',
-            'systemContentReplacement',
-            'systemRoleReplacement',
-          ];
-          for (const f of risupStringFields) {
-            fields.push({ name: f, size: ((currentData[f] as string) || '').length, type: 'string' });
-          }
-          const risupNumberFields = [
-            'temperature',
-            'maxContext',
-            'maxResponse',
-            'frequencyPenalty',
-            'presencePenalty',
-            'top_p',
-            'top_k',
-            'repetition_penalty',
-            'min_p',
-            'top_a',
-            'reasonEffort',
-            'thinkingTokens',
-            'verbosity',
-          ];
-          for (const f of risupNumberFields) {
-            fields.push({ name: f, value: currentData[f] ?? 0, type: 'number' });
-          }
-          const risupBoolFields = [
-            'promptPreprocess',
-            'useInstructPrompt',
-            'jsonSchemaEnabled',
-            'strictJsonSchema',
-            'autoSuggestClean',
-            'outputImageModal',
-            'fallbackWhenBlankResponse',
-          ];
-          for (const f of risupBoolFields) {
-            fields.push({ name: f, value: !!currentData[f], type: 'boolean' });
-          }
-        }
-
+        const inventory = buildFieldInventory(currentData, deps);
         return jsonResSuccess(
           res,
-          { fileType, fields },
+          { fileType: inventory.fileType, fields: inventory.fields },
           {
             toolName: 'list_fields',
-            summary: `Listed ${fields.length} fields (${fileType})`,
-            artifacts: { count: fields.length, fileType },
+            summary: `Listed ${inventory.fields.length} fields (${inventory.fileType})`,
+            artifacts: { count: inventory.fields.length, fileType: inventory.fileType },
           },
         );
       }

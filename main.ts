@@ -178,6 +178,7 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     detectCssBlockOpen: (line: string) => boolean;
     detectCssBlockClose: (line: string) => boolean;
     openExternalDocument: (filePath: string) => CharxData;
+    saveExternalDocument: (filePath: string, fileType: 'charx' | 'risum' | 'risup', data: CharxData) => void;
     normalizeTriggerScripts: (data: unknown) => unknown;
     extractPrimaryLua: (scripts: unknown) => string;
     mergePrimaryLua: (scripts: unknown, lua: string) => unknown;
@@ -185,6 +186,7 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     getSkillRoots: () => string[];
     getUserDataPath: () => string;
     getSessionStatus: () => Promise<McpSessionStatus>;
+    getCurrentFilePath: () => string | null;
   }) => McpApiServer;
 };
 
@@ -812,6 +814,17 @@ app.whenReady().then(() => {
     detectCssBlockOpen,
     detectCssBlockClose,
     openExternalDocument: openDocumentByPath,
+    saveExternalDocument: (filePath, fileType, data) => {
+      if (fileType === 'risum') {
+        saveRisum(filePath, data);
+        return;
+      }
+      if (fileType === 'risup') {
+        saveRisup(filePath, data);
+        return;
+      }
+      saveCharx(filePath, data);
+    },
     normalizeTriggerScripts,
     extractPrimaryLua: extractPrimaryLuaFromTriggerScripts,
     mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,
@@ -820,6 +833,7 @@ app.whenReady().then(() => {
       resolveSkillRootDirs(app.isPackaged ? process.resourcesPath! : __dirname).map((root) => root.absolutePath),
     getUserDataPath: () => app.getPath('userData'),
     getSessionStatus: getCurrentMcpSessionStatus,
+    getCurrentFilePath: () => mainState.currentFilePath,
   });
   apiToken = mcpApi.token;
 

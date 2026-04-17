@@ -22,6 +22,7 @@
 export const TOOL_FAMILIES = [
   'field',
   'probe',
+  'external',
   'lorebook',
   'regex',
   'greeting',
@@ -69,6 +70,7 @@ export const NO_CONFIRMATION_TOOL_NAMES = ['open_file', 'snapshot_field'] as con
 
 export const DRY_RUN_TOOL_NAMES = [
   'replace_in_field',
+  'external_replace_in_field',
   'replace_in_field_batch',
   'replace_block_in_field',
   'replace_block_in_lorebook',
@@ -135,7 +137,21 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   probe_lorebook: { family: 'probe', hints: RO_IDEMPOTENT },
   probe_regex: { family: 'probe', hints: RO_IDEMPOTENT },
   probe_lua: { family: 'probe', hints: RO_IDEMPOTENT },
+  probe_css: { family: 'probe', hints: RO_IDEMPOTENT },
+  probe_greetings: { family: 'probe', hints: RO_IDEMPOTENT },
+  probe_triggers: { family: 'probe', hints: RO_IDEMPOTENT },
+  probe_risup_prompt_items: { family: 'probe', hints: RO_IDEMPOTENT },
+  probe_risup_formating_order: { family: 'probe', hints: RO_IDEMPOTENT },
   open_file: { family: 'probe', hints: WRITE },
+
+  // ── External unopened-file editing ─────────────────────────────────────
+  inspect_external_file: { family: 'external', hints: OPEN_WORLD_RO },
+  external_write_field: { family: 'external', hints: OPEN_WORLD_WRITE },
+  external_write_field_batch: { family: 'external', hints: OPEN_WORLD_WRITE },
+  external_search_in_field: { family: 'external', hints: OPEN_WORLD_RO },
+  external_read_field_range: { family: 'external', hints: OPEN_WORLD_RO },
+  external_replace_in_field: { family: 'external', hints: OPEN_WORLD_WRITE },
+  external_insert_in_field: { family: 'external', hints: OPEN_WORLD_WRITE },
 
   // ── Lorebook ───────────────────────────────────────────────────────────
   list_lorebook: { family: 'lorebook', hints: RO_IDEMPOTENT },

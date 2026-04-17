@@ -9,6 +9,17 @@
 
 ---
 
+## [0.61.5] - 2026-04-17
+
+### Added
+
+- Added unopened-file MCP inspection and direct path-based editing routes so `.charx`, `.risum`, and `.risup` files can now be queried and edited by absolute path without switching the active UI document.
+- Added missing unopened-file probe readers for CSS, greetings, triggers, and risup prompt/formating-order surfaces, plus a lightweight `inspect_external_file` summary route.
+
+### Changed
+
+- Updated MCP taxonomy, workflow docs, and skill guidance so unopened-file work now distinguishes read-only `probe_*` tools from direct path-based `external_*` mutation/search routes, including the rule that external writes reject the currently active UI document.
+
 ## [0.61.4] - 2026-04-12
 
 ### Changed

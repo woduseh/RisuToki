@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { openCharx, openRisum, openRisup, saveCharx, type CharxData } from '../charx-io';
+import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../charx-io';
 import { resolveSkillRootDirs } from './content-roots';
 import { parsePromptTemplate, parsePromptTemplateFromText, serializePromptTemplateToText } from './risup-prompt-model';
 
@@ -45,6 +45,18 @@ function openExternalDocumentForTest(filePath: string): CharxData {
   if (filePath.endsWith('.risum')) return openRisum(filePath);
   if (filePath.endsWith('.risup')) return openRisup(filePath);
   return openCharx(filePath);
+}
+
+function saveExternalDocumentForTest(filePath: string, data: SearchFixture | CharxData): void {
+  if (filePath.endsWith('.risum')) {
+    saveRisum(filePath, data as unknown as CharxData);
+    return;
+  }
+  if (filePath.endsWith('.risup')) {
+    saveRisup(filePath, data as unknown as CharxData);
+    return;
+  }
+  saveCharx(filePath, data as unknown as CharxData);
 }
 
 interface SearchFixture {
@@ -127,6 +139,106 @@ function createSearchFixture(): SearchFixture {
   };
 }
 
+function createExternalCharxFixture(overrides: Partial<CharxData> = {}): { dir: string; filePath: string } {
+  const dir = fs.mkdtempSync(path.join(TEST_DIR, 'external-charx-'));
+  const filePath = path.join(dir, 'external.charx');
+  const data = {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'External Char',
+    description: 'External description text.',
+    personality: '',
+    scenario: '',
+    creatorcomment: '',
+    tags: [],
+    exampleMessage: '',
+    systemPrompt: '',
+    creator: '',
+    characterVersion: '1.0.0',
+    nickname: '',
+    source: [],
+    creationDate: 0,
+    modificationDate: 0,
+    additionalText: '',
+    license: '',
+    firstMessage: 'Hello external.',
+    alternateGreetings: ['Alt external'],
+    groupOnlyGreetings: ['Group external'],
+    globalNote: 'External note.',
+    css: '/* section: main */',
+    defaultVariables: 'mode=external',
+    lua: '-- ===== main =====\nprint("external")\n',
+    triggerScripts: [
+      {
+        comment: 'main',
+        type: 'start',
+        conditions: [],
+        effect: [{ type: 'triggerlua', code: '-- ===== main =====\nprint("external")\n' }],
+        lowLevelAccess: false,
+      },
+    ],
+    lorebook: [
+      {
+        comment: 'External Lore',
+        key: 'alpha',
+        secondkey: '',
+        content: 'Lore body',
+        insertorder: 100,
+        alwaysActive: false,
+        selective: false,
+        mode: 'normal',
+      },
+    ],
+    regex: [{ comment: 'External Regex', type: 'editoutput', find: 'foo', replace: 'bar', flag: 'g' }],
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {},
+    },
+    ...overrides,
+  } as CharxData;
+  saveCharx(filePath, data);
+  return { dir, filePath };
+}
+
+function createExternalRisumFixture(overrides: SearchFixture = {}): { dir: string; filePath: string } {
+  const dir = fs.mkdtempSync(path.join(TEST_DIR, 'external-risum-'));
+  const filePath = path.join(dir, 'external.risum');
+  saveRisum(filePath, {
+    _fileType: 'risum',
+    name: 'External Module',
+    description: 'Module description',
+    moduleName: 'External Module',
+    moduleNamespace: 'external.module',
+    lowLevelAccess: false,
+    hideIcon: false,
+    lorebook: [],
+    regex: [],
+    ...overrides,
+  } as unknown as CharxData);
+  return { dir, filePath };
+}
+
+function createExternalRisupFixture(overrides: SearchFixture = {}): { dir: string; filePath: string } {
+  const dir = fs.mkdtempSync(path.join(TEST_DIR, 'external-risup-'));
+  const filePath = path.join(dir, 'external.risup');
+  saveRisup(filePath, {
+    _fileType: 'risup',
+    name: 'External Preset',
+    promptTemplate: JSON.stringify([{ type: 'plain', type2: 'normal', text: 'External preset', role: 'system' }]),
+    formatingOrder: JSON.stringify(['main', 'description']),
+    presetBias: '[]',
+    localStopStrings: '[]',
+    ...overrides,
+  } as unknown as CharxData);
+  return { dir, filePath };
+}
+
 function closeServer(server: http.Server): Promise<void> {
   return new Promise((resolve, reject) => {
     server.close((error) => {
@@ -171,6 +283,7 @@ async function startTestApiServer(
   overrides?: TestDepsOverrides,
 ) {
   let activeData: SearchFixture | CharxData | null = currentData;
+  let activeFilePath: string | null = overrides?.getSessionStatus?.().currentFilePath ?? null;
   const modulePath = './mcp-api-server.ts';
   const { startApiServer } = (await import(modulePath)) as { startApiServer: StartApiServer };
   let resolvePort!: (port: number) => void;
@@ -186,6 +299,7 @@ async function startTestApiServer(
       overrides?.requestRendererOpenFile ??
       (async (request) => {
         activeData = openExternalDocumentForTest(request.filePath);
+        activeFilePath = request.filePath;
         const openedName =
           activeData && typeof activeData === 'object' && 'name' in activeData
             ? String((activeData as { name?: unknown }).name || 'Untitled')
@@ -216,6 +330,8 @@ async function startTestApiServer(
     detectCssBlockOpen,
     detectCssBlockClose,
     openExternalDocument: overrides?.openExternalDocument ?? openExternalDocumentForTest,
+    saveExternalDocument: (filePath: string, _fileType: 'charx' | 'risum' | 'risup', data: SearchFixture | CharxData) =>
+      saveExternalDocumentForTest(filePath, data),
     normalizeTriggerScripts: (data: unknown) => data,
     extractPrimaryLua: () => '',
     mergePrimaryLua: (scripts: unknown, lua: string) => {
@@ -230,6 +346,7 @@ async function startTestApiServer(
           ? [skillRoots]
           : resolveSkillRootDirs(path.join(__dirname, '..', '..')).map((root) => root.absolutePath),
     getUserDataPath: () => overrides?.userDataPath ?? path.join(os.tmpdir(), 'risutoki-mcp-api-test-user-data'),
+    getCurrentFilePath: () => activeFilePath,
     getSessionStatus:
       overrides?.getSessionStatus ??
       (() => ({
@@ -489,6 +606,196 @@ describe('MCP API search routes', () => {
       });
     } finally {
       await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API external unopened-file routes', () => {
+  it('inspects unopened charx files and exposes missing probe surfaces', async () => {
+    const fixture = createExternalCharxFixture();
+    const api = await startTestApiServer(null, [], undefined, {
+      parseLuaSections: (lua) => [{ name: 'main', content: lua }],
+      parseCssSections: (css) => ({ sections: [{ name: 'main', content: css }], prefix: '', suffix: '' }),
+    });
+
+    try {
+      const inspect = await postJson<Record<string, unknown>>(api.port, api.token, '/external/inspect', {
+        file_path: fixture.filePath,
+      });
+      expect(inspect.status).toBe(200);
+      expect(inspect.data).toMatchObject({
+        file_path: fixture.filePath,
+        file_type: 'charx',
+        name: 'External Char',
+      });
+      expect(inspect.data.surfaceCounts).toMatchObject({
+        lorebook: 1,
+        regex: 1,
+        alternateGreetings: 1,
+        groupOnlyGreetings: 1,
+        triggerScripts: 1,
+        cssSections: 1,
+        luaSections: 1,
+      });
+
+      const css = await postJson<{ count: number }>(api.port, api.token, '/probe/css', {
+        file_path: fixture.filePath,
+      });
+      expect(css.status).toBe(200);
+      expect(css.data.count).toBe(1);
+
+      const greetings = await postJson<{ type: string; count: number }>(
+        api.port,
+        api.token,
+        '/probe/greetings/alternate',
+        {
+          file_path: fixture.filePath,
+        },
+      );
+      expect(greetings.status).toBe(200);
+      expect(greetings.data).toMatchObject({ type: 'alternate', count: 1 });
+
+      const triggers = await postJson<{ count: number }>(api.port, api.token, '/probe/triggers', {
+        file_path: fixture.filePath,
+      });
+      expect(triggers.status).toBe(200);
+      expect(triggers.data.count).toBe(1);
+    } finally {
+      await closeServer(api.server);
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  it('probes unopened risup prompt items and formating order', async () => {
+    const fixture = createExternalRisupFixture();
+    const api = await startTestApiServer(null);
+
+    try {
+      const promptItems = await postJson<{ count: number; state: string }>(
+        api.port,
+        api.token,
+        '/probe/risup/prompt-items',
+        {
+          file_path: fixture.filePath,
+        },
+      );
+      expect(promptItems.status).toBe(200);
+      expect(promptItems.data).toMatchObject({ count: 1, state: 'valid' });
+
+      const formatingOrder = await postJson<{ state: string; items: Array<{ token: string }> }>(
+        api.port,
+        api.token,
+        '/probe/risup/formating-order',
+        {
+          file_path: fixture.filePath,
+        },
+      );
+      expect(formatingOrder.status).toBe(200);
+      expect(formatingOrder.data.state).toBe('valid');
+      expect(formatingOrder.data.items.map((item) => item.token)).toEqual(['main', 'description']);
+    } finally {
+      await closeServer(api.server);
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  it('writes unopened charx structured fields and persists them to disk', async () => {
+    const fixture = createExternalCharxFixture();
+    const api = await startTestApiServer(null);
+
+    try {
+      const response = await postJson<{ success: boolean; field: string; newSize: number }>(
+        api.port,
+        api.token,
+        '/external/field/groupOnlyGreetings',
+        {
+          file_path: fixture.filePath,
+          content: ['Group external', 'Second group line'],
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(response.data).toMatchObject({ success: true, field: 'groupOnlyGreetings', newSize: 2 });
+
+      const reopened = openCharx(fixture.filePath);
+      expect(reopened.groupOnlyGreetings).toEqual(['Group external', 'Second group line']);
+    } finally {
+      await closeServer(api.server);
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  it('writes unopened risum and risup files without switching the active document', async () => {
+    const risumFixture = createExternalRisumFixture();
+    const risupFixture = createExternalRisupFixture();
+    const api = await startTestApiServer(null);
+
+    try {
+      const risumRes = await postJson<{ success: boolean; updated: Array<{ field: string }> }>(
+        api.port,
+        api.token,
+        '/external/field/batch-write',
+        {
+          file_path: risumFixture.filePath,
+          entries: [
+            { field: 'moduleName', content: 'Updated Module' },
+            { field: 'lowLevelAccess', content: true },
+          ],
+        },
+      );
+      expect(risumRes.status).toBe(200);
+      expect(risumRes.data.success).toBe(true);
+      expect(risumRes.data.updated.map((entry) => entry.field)).toEqual(['moduleName', 'lowLevelAccess']);
+
+      const reopenedRisum = openRisum(risumFixture.filePath);
+      expect(reopenedRisum.moduleName).toBe('Updated Module');
+      expect(reopenedRisum.lowLevelAccess).toBe(true);
+
+      const risupRes = await postJson<{ success: boolean; field: string }>(
+        api.port,
+        api.token,
+        '/external/field/formatingOrder',
+        {
+          file_path: risupFixture.filePath,
+          content: '["main","chats"]',
+        },
+      );
+      expect(risupRes.status).toBe(200);
+      expect(risupRes.data).toMatchObject({ success: true, field: 'formatingOrder' });
+
+      const reopenedRisup = openRisup(risupFixture.filePath);
+      expect(reopenedRisup.formatingOrder).toBe('["main","chats"]');
+    } finally {
+      await closeServer(api.server);
+      fs.rmSync(risumFixture.dir, { recursive: true, force: true });
+      fs.rmSync(risupFixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects external writes when the target file is already active in the UI session', async () => {
+    const fixture = createExternalCharxFixture();
+    const api = await startTestApiServer(createSearchFixture(), [], undefined, {
+      getSessionStatus: () => ({
+        currentFilePath: fixture.filePath,
+        currentFileType: 'charx',
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: null,
+      }),
+    });
+
+    try {
+      const response = await postJson<Record<string, unknown>>(api.port, api.token, '/external/field/description', {
+        file_path: fixture.filePath,
+        content: 'Should be blocked',
+      });
+      expect(response.status).toBe(409);
+      expect(response.data).toMatchObject({
+        error: 'The requested file is already open in the UI session.',
+        target: 'external:field:description',
+      });
+    } finally {
+      await closeServer(api.server);
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
     }
   });
 });

@@ -30,7 +30,7 @@ Notes:
 - `details` should carry small machine-readable facts, not large payloads
 - Stale-index conflicts return `409` with family-specific `details.expected_*` / `details.actual_*` fields (for example `expected_comment`, `expected_preview`, or `expected_type`), so the caller can refresh the relevant list route deterministically before retrying
 - `mcpError()` broadcasts failure status to the renderer UI
-- `No file open` applies only to routes that require the active main document; `session_status`, `probe_*`, and `reference*` routes remain available without one
+- `No file open` applies only to routes that require the active main document; `session_status`, `probe_*`, `external_*`, and `reference*` routes remain available without one
 
 ### Recovery metadata (additive, v0.38.9+)
 

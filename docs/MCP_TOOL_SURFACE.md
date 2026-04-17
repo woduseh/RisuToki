@@ -69,10 +69,18 @@ If this file and code diverge, the TypeScript source wins.
 ### `probe`
 
 - **Use when:** inspecting or switching to unopened `.charx`, `.risum`, or `.risup` files by absolute path
-- **Tools:** `probe_field`, `probe_field_batch`, `probe_lorebook`, `probe_regex`, `probe_lua`, `open_file`
+- **Tools:** `probe_field`, `probe_field_batch`, `probe_lorebook`, `probe_regex`, `probe_lua`, `probe_css`, `probe_greetings`, `probe_triggers`, `probe_risup_prompt_items`, `probe_risup_formating_order`, `open_file`
 - **Hints:** probes are RO/idempotent; `open_file` mutates the active document state
 - **Next actions:** `open_file`, `probe_field`, `probe_lorebook`
-- **Boundary:** prefer this family when the file is not already open; once opened, switch back to the live document families
+- **Boundary:** prefer this family when the file is not already open and you only need read-only access; once opened, switch back to the live document families
+
+### `external`
+
+- **Use when:** inspecting or editing unopened `.charx`, `.risum`, or `.risup` files by absolute path **without** switching the active UI document
+- **Tools:** `inspect_external_file`, `external_search_in_field`, `external_read_field_range`, `external_write_field`, `external_write_field_batch`, `external_replace_in_field`, `external_insert_in_field`
+- **Hints:** inspect/search/range are RO/open-world; write/replace/insert routes are open-world writes with confirmation, and `external_replace_in_field` also supports `dry_run`
+- **Next actions:** `inspect_external_file`, `probe_field`, `external_search_in_field`, `external_write_field`
+- **Boundary:** this family intentionally bypasses the active editor session. If the target file is already the active UI document, these routes reject and you must use the existing active-document tools instead
 
 ### `lorebook`
 

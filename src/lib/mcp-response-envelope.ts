@@ -52,6 +52,7 @@ export interface McpErrorInfo {
 export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
   field: ['list_fields', 'read_field', 'search_in_field', 'write_field'],
   probe: ['open_file', 'probe_field', 'probe_lorebook'],
+  external: ['inspect_external_file', 'probe_field', 'external_search_in_field', 'external_write_field'],
   lorebook: ['list_lorebook', 'read_lorebook', 'write_lorebook', 'validate_lorebook_keys'],
   regex: ['list_regex', 'read_regex', 'write_regex'],
   greeting: ['list_greetings', 'read_greeting', 'write_greeting'],
@@ -100,6 +101,14 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
  */
 export const TOOL_NEXT_ACTIONS: Partial<Record<keyof typeof TOOL_TAXONOMY, string[]>> = {
   open_file: ['session_status', 'list_fields', 'list_references'],
+  inspect_external_file: [
+    'probe_field',
+    'probe_lorebook',
+    'probe_css',
+    'probe_greetings',
+    'external_search_in_field',
+    'external_write_field',
+  ],
   read_field: ['search_in_field', 'read_field_range', 'get_field_stats', 'snapshot_field', 'write_field'],
   write_field: ['read_field', 'search_in_field', 'get_field_stats', 'snapshot_field'],
   read_field_batch: ['search_in_field', 'read_field_range', 'write_field_batch', 'snapshot_field'],
@@ -196,6 +205,7 @@ function createArtifacts(
 const TARGET_PREFIX_TO_FAMILY: Record<string, ToolFamily> = {
   field: 'field',
   probe: 'probe',
+  external: 'external',
   open: 'probe',
   lorebook: 'lorebook',
   regex: 'regex',

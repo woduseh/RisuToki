@@ -602,7 +602,7 @@ server.tool(
 
 server.tool(
   'probe_field',
-  '에디터에 열지 않은 .charx/.risum/.risup 파일에서 작은 필드 하나를 읽습니다. 절대 file_path가 필요하며 읽기 전용입니다. ⚠️ lorebook/regex/lua는 probe_lorebook/probe_regex/probe_lua를 우선 사용하세요. css/greetings/triggers 같은 구조화 표면은 가능하면 open_file 후 전용 도구로 읽는 편이 안전합니다.',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일에서 작은 필드 하나를 읽습니다. 절대 file_path가 필요하며 읽기 전용입니다. ⚠️ lorebook/regex/lua/css/greetings/triggers/risup prompt 표면은 대응하는 probe_* 전용 도구를 우선 사용하세요.',
   {
     file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
     field: z.string().describe('읽을 필드 이름'),
@@ -660,6 +660,191 @@ server.tool(
     file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
   },
   async ({ file_path }) => textResult(await apiRequest('POST', '/probe/lua', { file_path })),
+);
+
+server.tool(
+  'probe_css',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 CSS 섹션 목록을 읽습니다. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+  },
+  async ({ file_path }) => textResult(await apiRequest('POST', '/probe/css', { file_path })),
+);
+
+server.tool(
+  'probe_greetings',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 greetings 목록을 읽습니다. type은 alternate 또는 groupOnly. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    type: z.enum(['alternate', 'groupOnly']).describe('greeting 종류'),
+    filter: z.string().optional().describe('미리보기 텍스트 필터'),
+    content_filter: z.string().optional().describe('본문(content) 검색 필터'),
+  },
+  async ({ file_path, type, filter, content_filter }) => {
+    const params = new URLSearchParams();
+    if (filter) params.set('filter', filter);
+    if (content_filter) params.set('content_filter', content_filter);
+    const qs = params.toString();
+    return textResult(
+      await apiRequest(
+        'POST',
+        qs ? `/probe/greetings/${encodeURIComponent(type)}?${qs}` : `/probe/greetings/${encodeURIComponent(type)}`,
+        {
+          file_path,
+        },
+      ),
+    );
+  },
+);
+
+server.tool(
+  'probe_triggers',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 trigger 목록을 읽습니다. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+  },
+  async ({ file_path }) => textResult(await apiRequest('POST', '/probe/triggers', { file_path })),
+);
+
+server.tool(
+  'probe_risup_prompt_items',
+  '에디터에 열지 않은 .risup 파일의 prompt item 목록을 읽습니다. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .risup 파일의 절대 경로'),
+  },
+  async ({ file_path }) => textResult(await apiRequest('POST', '/probe/risup/prompt-items', { file_path })),
+);
+
+server.tool(
+  'probe_risup_formating_order',
+  '에디터에 열지 않은 .risup 파일의 formatingOrder 토큰과 경고를 읽습니다. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .risup 파일의 절대 경로'),
+  },
+  async ({ file_path }) => textResult(await apiRequest('POST', '/probe/risup/formating-order', { file_path })),
+);
+
+server.tool(
+  'inspect_external_file',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 필드 인벤토리와 구조화 표면 개수를 빠르게 요약합니다. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+  },
+  async ({ file_path }) => textResult(await apiRequest('POST', '/external/inspect', { file_path })),
+);
+
+server.tool(
+  'external_write_field',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 필드 값을 file_path 기준으로 직접 수정합니다. 현재 UI에 열려 있는 동일 파일은 거부되며, lorebook/regex/triggerScripts/groupOnlyGreetings 같은 구조화 표면도 raw field 단위로 갱신할 수 있습니다. 사용자 확인 필요.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    field: z.string().describe('수정할 필드 이름'),
+    content: z
+      .union([z.string(), z.array(z.unknown()), z.boolean(), z.number()])
+      .describe('새 값. 문자열/배열/boolean/number를 허용하며 구조화 표면은 JSON 배열 형태를 사용합니다.'),
+  },
+  async ({ file_path, field, content }) =>
+    textResult(await apiRequest('POST', `/external/field/${encodeURIComponent(field)}`, { file_path, content })),
+);
+
+server.tool(
+  'external_write_field_batch',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 여러 필드를 한 번에 수정합니다. 현재 UI에 열려 있는 동일 파일은 거부됩니다. 최대 20개 항목. 사용자 확인 필요.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    entries: z
+      .array(z.object({ field: z.string(), content: z.unknown() }))
+      .max(20)
+      .describe('수정할 항목 배열 [{ field, content }]'),
+  },
+  async ({ file_path, entries }) =>
+    textResult(await apiRequest('POST', '/external/field/batch-write', { file_path, entries })),
+);
+
+server.tool(
+  'external_search_in_field',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 문자열 필드를 검색합니다. 수정 없는 읽기 전용입니다.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    field: z.string().describe('검색할 문자열 필드 이름'),
+    query: z.string().describe('검색할 문자열 또는 정규식 패턴'),
+    context_chars: z.number().optional().describe('매치 전후에 표시할 문자 수 (기본: 100, 최대: 500)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부'),
+    flags: z.string().optional().describe('정규식 플래그'),
+    max_matches: z.number().optional().describe('최대 반환 매치 수 (기본: 20, 최대: 100)'),
+  },
+  async ({ file_path, field, query, context_chars, regex, flags, max_matches }) =>
+    textResult(
+      await apiRequest('POST', `/external/field/${encodeURIComponent(field)}/search`, {
+        file_path,
+        query,
+        context_chars,
+        regex,
+        flags,
+        max_matches,
+      }),
+    ),
+);
+
+server.tool(
+  'external_read_field_range',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 문자열 필드 일부만 읽습니다. 큰 필드를 직접 열지 않고 필요한 범위만 확인할 때 사용합니다. 읽기 전용.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    field: z.string().describe('읽을 문자열 필드 이름'),
+    offset: z.number().optional().describe('시작 오프셋 (기본: 0)'),
+    length: z.number().optional().describe('읽을 길이 (기본: 2000, 최대: 10000)'),
+  },
+  async ({ file_path, field, offset, length }) =>
+    textResult(
+      await apiRequest('POST', `/external/field/${encodeURIComponent(field)}/range`, { file_path, offset, length }),
+    ),
+);
+
+server.tool(
+  'external_replace_in_field',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 문자열 필드에서 서버 측 치환을 수행합니다. current UI 문서와 같은 파일은 거부됩니다. dry_run: true로 미리보기 가능. 사용자 확인 필요.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    field: z.string().describe('치환할 문자열 필드 이름'),
+    find: z.string().describe('찾을 문자열 또는 정규식 패턴'),
+    replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
+    regex: z.boolean().optional().describe('정규식 모드 여부'),
+    flags: z.string().optional().describe('정규식 플래그'),
+    dry_run: z.boolean().optional().describe('true이면 실제 저장 없이 매치 결과만 반환'),
+  },
+  async ({ file_path, field, find, replace, regex, flags, dry_run }) =>
+    textResult(
+      await apiRequest('POST', `/external/field/${encodeURIComponent(field)}/replace`, {
+        file_path,
+        find,
+        replace,
+        regex,
+        flags,
+        dry_run,
+      }),
+    ),
+);
+
+server.tool(
+  'external_insert_in_field',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 문자열 필드에 텍스트를 삽입합니다. current UI 문서와 같은 파일은 거부됩니다. 사용자 확인 필요.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    field: z.string().describe('삽입할 문자열 필드 이름'),
+    content: z.string().describe('삽입할 텍스트'),
+    position: z.enum(['end', 'start', 'after', 'before']).optional().describe('삽입 위치'),
+    anchor: z.string().optional().describe('position이 after/before일 때 기준 문자열'),
+  },
+  async ({ file_path, field, content, position, anchor }) =>
+    textResult(
+      await apiRequest('POST', `/external/field/${encodeURIComponent(field)}/insert`, {
+        file_path,
+        content,
+        position,
+        anchor,
+      }),
+    ),
 );
 
 server.tool(

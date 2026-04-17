@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
-import { openCharx, openRisum, openRisup, saveCharx, type CharxData } from '../src/charx-io';
+import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../src/charx-io';
 import { startApiServer } from '../src/lib/mcp-api-server';
 
 function parseLuaSections() {
@@ -22,8 +22,10 @@ function detectLuaSection() {
   return null;
 }
 
-function parseCssSections() {
-  return { sections: [], prefix: '', suffix: '' };
+function parseCssSections(css: string) {
+  return css.trim().length > 0
+    ? { sections: [{ name: 'main', content: css }], prefix: '', suffix: '' }
+    : { sections: [], prefix: '', suffix: '' };
 }
 
 function combineCssSections() {
@@ -46,6 +48,18 @@ function openExternalDocumentForTest(filePath: string): CharxData {
   if (filePath.endsWith('.risum')) return openRisum(filePath);
   if (filePath.endsWith('.risup')) return openRisup(filePath);
   return openCharx(filePath);
+}
+
+function saveExternalDocumentForTest(filePath: string, data: CharxData): void {
+  if (filePath.endsWith('.risum')) {
+    saveRisum(filePath, data as unknown as CharxData);
+    return;
+  }
+  if (filePath.endsWith('.risup')) {
+    saveRisup(filePath, data as unknown as CharxData);
+    return;
+  }
+  saveCharx(filePath, data);
 }
 
 interface SearchFixture {
@@ -191,6 +205,7 @@ async function startTestApiServer(currentData: SearchFixture) {
   });
   const mcpStatuses: McpStatusPayload[] = [];
   let activeData: SearchFixture | CharxData | null = currentData;
+  let activeFilePath: string | null = null;
 
   const api = startApiServer({
     getCurrentData: () => activeData,
@@ -198,6 +213,7 @@ async function startTestApiServer(currentData: SearchFixture) {
     askRendererConfirm: async () => true,
     requestRendererOpenFile: async (request) => {
       activeData = openExternalDocumentForTest(request.filePath);
+      activeFilePath = request.filePath;
       const openedName =
         activeData && typeof activeData === 'object' && 'name' in activeData
           ? String((activeData as { name?: unknown }).name || 'Untitled')
@@ -226,6 +242,7 @@ async function startTestApiServer(currentData: SearchFixture) {
     detectCssBlockOpen,
     detectCssBlockClose,
     openExternalDocument: openExternalDocumentForTest,
+    saveExternalDocument: (filePath, _fileType, data) => saveExternalDocumentForTest(filePath, data),
     normalizeTriggerScripts: (data: unknown) => data,
     extractPrimaryLua: () => '',
     mergePrimaryLua: (scripts: unknown, lua: string) => {
@@ -235,6 +252,7 @@ async function startTestApiServer(currentData: SearchFixture) {
     stringifyTriggerScripts: (scripts: unknown) => JSON.stringify(scripts),
     getSkillRoots: () => [path.join(__dirname, '..', 'skills')],
     getUserDataPath: () => path.join(os.tmpdir(), 'risutoki-mcp-search-all-tests'),
+    getCurrentFilePath: () => activeFilePath,
   });
 
   const port = await portPromise;
@@ -339,7 +357,25 @@ function assertSurfaceSummary(
       tools.tools.some((tool) => tool.name === 'search_all_fields'),
       'search_all_fields should be registered before the route contract is implemented',
     );
-    for (const toolName of ['probe_field', 'probe_field_batch', 'probe_lorebook', 'probe_regex', 'probe_lua']) {
+    for (const toolName of [
+      'probe_field',
+      'probe_field_batch',
+      'probe_lorebook',
+      'probe_regex',
+      'probe_lua',
+      'probe_css',
+      'probe_greetings',
+      'probe_triggers',
+      'probe_risup_prompt_items',
+      'probe_risup_formating_order',
+      'inspect_external_file',
+      'external_write_field',
+      'external_write_field_batch',
+      'external_search_in_field',
+      'external_read_field_range',
+      'external_replace_in_field',
+      'external_insert_in_field',
+    ]) {
       assert.ok(
         tools.tools.some((tool) => tool.name === toolName),
         `${toolName} should be registered`,
@@ -358,6 +394,11 @@ function assertSurfaceSummary(
     assert.ok(openFileTool, 'open_file should be registered');
     assert.equal(openFileTool._meta?.['risutoki/requiresConfirmation'], false);
     assert.equal(openFileTool._meta?.['risutoki/supportsDryRun'], false);
+
+    const externalReplace = tools.tools.find((tool) => tool.name === 'external_replace_in_field');
+    assert.ok(externalReplace, 'external_replace_in_field should be registered');
+    assert.equal(externalReplace._meta?.['risutoki/requiresConfirmation'], true);
+    assert.equal(externalReplace._meta?.['risutoki/supportsDryRun'], true);
 
     const listFields = tools.tools.find((tool) => tool.name === 'list_fields');
     assert.ok(listFields, 'list_fields should be registered');
@@ -550,6 +591,99 @@ function assertSurfaceSummary(
       sections?: unknown[];
     };
     assert.ok(Array.isArray(probeLuaJson.sections), 'probe_lua should return a sections array');
+
+    const probeCss = await client.callTool({
+      name: 'probe_css',
+      arguments: {
+        file_path: probeFixture.filePath,
+      },
+    });
+    const probeCssText = extractTextContent(probeCss.content);
+    assert.ok(!probeCss.isError, `probe_css should succeed: ${probeCssText}`);
+    const probeCssJson = JSON.parse(probeCssText) as {
+      count?: number;
+    };
+    assert.equal(probeCssJson.count, 1);
+
+    const probeGreetings = await client.callTool({
+      name: 'probe_greetings',
+      arguments: {
+        file_path: probeFixture.filePath,
+        type: 'alternate',
+      },
+    });
+    const probeGreetingsText = extractTextContent(probeGreetings.content);
+    assert.ok(!probeGreetings.isError, `probe_greetings should succeed: ${probeGreetingsText}`);
+    const probeGreetingsJson = JSON.parse(probeGreetingsText) as {
+      count?: number;
+      type?: string;
+    };
+    assert.equal(probeGreetingsJson.type, 'alternate');
+    assert.equal(probeGreetingsJson.count, 1);
+
+    const probeTriggers = await client.callTool({
+      name: 'probe_triggers',
+      arguments: {
+        file_path: probeFixture.filePath,
+      },
+    });
+    const probeTriggersText = extractTextContent(probeTriggers.content);
+    assert.ok(!probeTriggers.isError, `probe_triggers should succeed: ${probeTriggersText}`);
+    const probeTriggersJson = JSON.parse(probeTriggersText) as {
+      count?: number;
+    };
+    assert.equal(probeTriggersJson.count, 1);
+
+    const inspectExternal = await client.callTool({
+      name: 'inspect_external_file',
+      arguments: {
+        file_path: probeFixture.filePath,
+      },
+    });
+    const inspectExternalText = extractTextContent(inspectExternal.content);
+    assert.ok(!inspectExternal.isError, `inspect_external_file should succeed: ${inspectExternalText}`);
+    const inspectExternalJson = JSON.parse(inspectExternalText) as {
+      file_path?: string;
+      file_type?: string;
+      surfaceCounts?: { lorebook?: number; regex?: number };
+    };
+    assert.equal(inspectExternalJson.file_path, probeFixture.filePath);
+    assert.equal(inspectExternalJson.file_type, 'charx');
+    assert.equal(inspectExternalJson.surfaceCounts?.lorebook, 2);
+    assert.equal(inspectExternalJson.surfaceCounts?.regex, 1);
+
+    const externalSearch = await client.callTool({
+      name: 'external_search_in_field',
+      arguments: {
+        file_path: probeFixture.filePath,
+        field: 'description',
+        query: 'description',
+      },
+    });
+    const externalSearchText = extractTextContent(externalSearch.content);
+    assert.ok(!externalSearch.isError, `external_search_in_field should succeed: ${externalSearchText}`);
+    const externalSearchJson = JSON.parse(externalSearchText) as {
+      totalMatches?: number;
+      field?: string;
+    };
+    assert.equal(externalSearchJson.field, 'description');
+    assert.equal(externalSearchJson.totalMatches, 1);
+
+    const externalRange = await client.callTool({
+      name: 'external_read_field_range',
+      arguments: {
+        file_path: probeFixture.filePath,
+        field: 'description',
+        offset: 0,
+        length: 5,
+      },
+    });
+    const externalRangeText = extractTextContent(externalRange.content);
+    assert.ok(!externalRange.isError, `external_read_field_range should succeed: ${externalRangeText}`);
+    const externalRangeJson = JSON.parse(externalRangeText) as {
+      content?: string;
+    };
+    assert.equal(externalRangeJson.content, 'Probe');
 
     const openFile = await client.callTool({
       name: 'open_file',

@@ -70,7 +70,7 @@ Tool-list metadata:
 
 Current coverage summary:
 
-- **`mcpError()`** covers regex, greetings, lua/css sections, field/lorebook, reference, charx/risum asset, risup reorder/formating-order, skills file-read validation, unopened-file probe/open, and the global `Unauthorized` / `No file open` guards.
+- **`mcpError()`** covers regex, greetings, lua/css sections, field/lorebook, reference, charx/risum asset, risup reorder/formating-order, skills file-read validation, unopened-file probe/open/direct-path external editing, and the global `Unauthorized` / `No file open` guards.
 - **`mcpNoOp()`** covers recoverable no-match / anchor-miss / batch-partial cases in field, lorebook, regex, lua, and css mutation paths.
 - **`mcpSuccess()`** covers most success paths and provides deterministic `next_actions`; `validate_cbs` remains the intentional exception because it preserves its existing structured `summary` object.
 

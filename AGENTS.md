@@ -54,3 +54,5 @@ Use `list_skills` to see the repo-global catalog, then load only the skills that
 - The nearest `risu/{scope}/AGENTS.md` decides which authoring workflow should be treated as primary in the current subtree.
 
 If no main file is open but reference files are loaded, start with `session_status` or `list_references`, then narrow large reference text with `search_in_reference_field` / `read_reference_field_range` before drilling into `list_reference_*` / `read_reference_*`.
+
+For unopened `.charx` / `.risum` / `.risup` files, use `inspect_external_file` + `probe_*` for read-only inspection and `external_*` when you need direct absolute-path edits without switching the active UI document.

@@ -18,6 +18,7 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 - If you need several regex/greeting/trigger items, switch to `read_regex_batch`, `read_greeting_batch`, or `read_trigger_batch` instead of looping single reads.
 - Do **not** use `write_field` for `lua` / `css` / greetings / triggers when dedicated write tools already exist.
 - For risup prompt editing, prefer `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_prompt_item_batch`, `export_risup_prompt_to_text`, `copy_risup_prompt_items_as_text`, `diff_risup_prompt`, and `read_risup_formating_order`. For reuse across sessions, switch to `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `save_risup_prompt_snippet`, and `insert_risup_prompt_snippet`.
+- For unopened files, start with `inspect_external_file` + the relevant `probe_*` reader, then use `external_search_in_field` / `external_read_field_range` / `external_write_field*` only when you must keep the current UI document untouched.
 - Before risky edits or after interruptions, call `session_status` to inspect the active document, dirty/autosave state, recovery metadata, snapshot totals, and compact structured-surface counts.
 - Prefer response `next_actions` over guessing; high-traffic tools may return narrower follow-up suggestions than the family default.
 - Check tool `_meta` from `tools/list` when choosing a write route: `risutoki/requiresConfirmation` means an approval gate is expected, and `risutoki/supportsDryRun` means a preview-first flow exists.
@@ -25,7 +26,7 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 ## Session-Awareness Workflow
 
 1. Call `session_status` when resuming after a crash, taking over an unknown session, or before risky writes.
-2. If `loaded` is `false`, switch to `probe_*` or `open_file` before using edit routes that require an active document.
+2. If `loaded` is `false`, switch to `inspect_external_file` / `probe_*` / `external_*` for direct absolute-path work, or `open_file` before using edit routes that require an active document.
 3. If `pendingRecovery`, `dirtyFields`, autosave settings, or `surfaceSummary` look unexpected, stabilize the session first instead of guessing from partial field reads.
 
 ## Large-Field Workflow
