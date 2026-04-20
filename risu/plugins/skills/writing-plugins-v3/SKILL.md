@@ -247,8 +247,6 @@ Plugins can be written in TypeScript. RisuAI transpiles plugin TS with Sucrase (
 
 ## Smoke Tests
 
-Use these prompts to verify the skill produces correct guidance:
+Prompts targeting RisuAI-specific gotchas:
 
-1. "Write a plugin that registers a settings button, opens a fullscreen container with a form, and saves the input to `pluginStorage`."
-2. "Create a plugin that adds a custom provider using `addProvider()`."
-3. "My plugin's `SafeElement.setTextContent()` isn't updating — what could be wrong?"
+1. "My plugin's `SafeElement.setTextContent()` isn't updating — what could be wrong?"

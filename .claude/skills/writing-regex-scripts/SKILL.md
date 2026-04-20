@@ -158,8 +158,6 @@ flag:    (applied to system message)
 
 ## Smoke Tests
 
-Use these prompts to verify the skill produces correct guidance:
+Prompts targeting RisuAI-specific gotchas:
 
-1. "Write an `editDisplay` regex that appends a styled HP bar using CBS variables `{{getvar::hp}}` and `{{getvar::max_hp}}` to the end of each AI message."
-2. "Create an `editRequest` regex that injects a system instruction at the top of every prompt."
-3. "I have a regex with CBS in the find field but it's not matching — what's wrong?"
+1. "I have a regex with CBS in the find field but it's not matching — what's wrong?"

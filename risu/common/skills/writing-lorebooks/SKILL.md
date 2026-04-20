@@ -7,7 +7,7 @@ related_tools: ['list_lorebook', 'read_lorebook', 'write_lorebook', 'validate_lo
 
 # Writing Lorebook Entries
 
-Lorebooks are collections of context entries injected into the AI prompt **only when their keywords match** the conversation, enabling efficient token management for world-building, character details, and game systems.
+Lorebooks are collections of context entries injected into the AI prompt **only when their keywords match** the conversation, enabling targeted context injection for world-building, character details, and game systems.
 
 ## Entry Fields
 
@@ -137,14 +137,14 @@ You are a battle-hardened veteran of many conflicts.
 
 ## Critical Gotchas
 
-| Issue                                             | Detail                                                                                                                                                                                                                 |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Folder identity is `key`, not `id`**            | Folder entries use the `key` field (format `"folder:<UUID>"`) as their identity. Child entries reference this `key` value in their `folder` field. Using the entry's `id` instead will silently fail to group entries. |
-| **`alwaysActive` + empty key still costs tokens** | An entry with `alwaysActive: true` is injected every turn even if `key` is empty. This is intentional but often accidental — review always-on entries for token budget impact.                                         |
-| **`comment` field renaming breaks Lua**           | Lua's `getLoreBooks(id, commentFilter)` matches against the `comment` field. Renaming a comment without updating corresponding Lua calls silently breaks the integration.                                              |
-| **`upsertLocalLoreBook` takes effect next turn**  | Lorebook entries created or updated via Lua `upsertLocalLoreBook` are not included in the current turn's prompt — they appear on the next turn only.                                                                   |
-| **Decorator stacking order matters**              | `@@role` and `@@depth` must come before content text. Placing decorators after the first line of content causes them to be treated as literal text in the prompt.                                                      |
-| **Recursive search can cause loops**              | With "Recursive search" enabled, entry A's content can trigger entry B, and B's content can trigger A. Large mutual-trigger chains consume the token budget rapidly with no visible error.                             |
+| Issue                                             | Detail                                                                                                                                                                                                                                         |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Folder identity is `key`, not `id`**            | Folder entries use the `key` field (format `"folder:<UUID>"`) as their identity. Child entries reference this `key` value in their `folder` field. Using the entry's `id` instead will silently fail to group entries.                         |
+| **`alwaysActive` + empty key still costs tokens** | An entry with `alwaysActive: true` is injected every turn even if `key` is empty. This is intentional but often accidental — review always-on entries for signal dilution — unnecessary always-on content reduces model focus on what matters. |
+| **`comment` field renaming breaks Lua**           | Lua's `getLoreBooks(id, commentFilter)` matches against the `comment` field. Renaming a comment without updating corresponding Lua calls silently breaks the integration.                                                                      |
+| **`upsertLocalLoreBook` takes effect next turn**  | Lorebook entries created or updated via Lua `upsertLocalLoreBook` are not included in the current turn's prompt — they appear on the next turn only.                                                                                           |
+| **Decorator stacking order matters**              | `@@role` and `@@depth` must come before content text. Placing decorators after the first line of content causes them to be treated as literal text in the prompt.                                                                              |
+| **Recursive search can cause loops**              | With "Recursive search" enabled, entry A's content can trigger entry B, and B's content can trigger A. Large mutual-trigger chains inject cascading irrelevant content with no visible error.                                                  |
 
 ## Lorebook–Lua Integration
 
@@ -171,8 +171,6 @@ upsertLocalLoreBook(id, "castle-lore", "A vast castle with...", {
 
 ## Smoke Tests
 
-Use these prompts to verify the skill produces correct guidance:
+Prompts targeting RisuAI-specific gotchas:
 
-1. "Create a lorebook folder structure with 3 character entries and 2 location entries, using proper UUID folder keys."
-2. "Write a lorebook entry that only activates after message 5, at depth 0, with role `system`."
-3. "My Lua script calls `getLoreBooks()` but returns empty — the entry exists. What could be wrong?"
+1. "My Lua script calls `getLoreBooks()` but returns empty — the entry exists. What could be wrong?"

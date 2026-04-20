@@ -153,8 +153,7 @@ CBS is processed **before** HTML rendering, enabling dynamic class names and con
 
 ## Smoke Tests
 
-Use these prompts to verify the skill produces correct guidance:
+Prompts targeting RisuAI-specific gotchas:
 
-1. "Create a status panel with HP/MP bars in `backgroundEmbedding` CSS and a lorebook entry for the HTML, using CBS variables."
-2. "Why is my flex layout broken when I use `{{#when}}` blocks inside a div?"
-3. "Write CSS for a `.card.active` compound class selector that works in RisuAI."
+1. "Why is my flex layout broken when I use `{{#when}}` blocks inside a div?"
+2. "Write CSS for a `.card.active` compound class selector that works in RisuAI."

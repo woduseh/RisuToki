@@ -181,8 +181,6 @@ Prefer soft-apply for distribution and reusable authoring.
 
 ## Smoke Tests
 
-Use these prompts to verify the skill produces correct guidance:
+Prompts targeting RisuAI-specific gotchas:
 
-1. "Create a .risum module that adds a 'game difficulty' toggle and injects different system prompts based on the setting."
-2. "Design a module with CSS styling for a character status panel — make sure it won't collide with other modules."
-3. "When should I use a module vs a preset vs a plugin for reusable behavior?"
+1. "Design a module with CSS styling for a character status panel — make sure it won't collide with other modules."

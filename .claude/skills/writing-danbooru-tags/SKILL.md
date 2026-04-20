@@ -50,10 +50,3 @@ Then add a short natural-language summary only if the target model benefits from
 | Skill                   | Relationship                                                                  |
 | ----------------------- | ----------------------------------------------------------------------------- |
 | `writing-asset-prompts` | Use for the full 6-step prompt pipeline after validating tags with this skill |
-
-## Smoke Tests
-
-Use these prompts to verify the skill produces correct guidance:
-
-1. "Check if these tags are valid: `long_hair`, `silver_eyes`, `military_uniform`, `night_sky`."
-2. "Find Danbooru tags for a character with heterochromia wearing a lab coat."

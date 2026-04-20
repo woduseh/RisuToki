@@ -382,11 +382,3 @@ Deliver:
 ```
 
 If the user also needs a protagonist-grade character sheet for the core cast, pair this skill with [authoring-characters](../authoring-characters/) for explicit scaffolded sheets or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for the self-introduction monologue method.
-
-## Smoke Tests
-
-Use these prompts to verify the skill produces correct guidance:
-
-1. "Write a description for a fantasy academy bot with 12 students, 3 teachers, and a headmaster — lorebook-driven with a cast router in `firstMessage`."
-2. "Design the lorebook folder structure for a detective noir bot with 5 suspects and 8 location entries."
-3. "The user wants to add a new NPC to an existing lorebook-driven bot — where should the entry go and what fields need updating?"

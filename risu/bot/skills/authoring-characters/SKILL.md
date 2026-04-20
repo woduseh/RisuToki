@@ -349,11 +349,3 @@ Deliver:
 ```
 
 If the user is building a lorebook-driven or cast-heavy bot, point them to [authoring-lorebook-bots](../authoring-lorebook-bots/).
-
-## Smoke Tests
-
-Use these prompts to verify the skill produces correct guidance:
-
-1. "Create a character sheet for a morally grey alchemist — solo character, complex personality, with emotional depth markers."
-2. "Refactor this 800-word character description to fit the scale guidelines for a duo-bot supporting character."
-3. "The character's personality feels flat despite detailed traits — diagnose and suggest structural improvements."

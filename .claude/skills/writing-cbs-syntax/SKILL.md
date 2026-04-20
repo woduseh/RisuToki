@@ -228,11 +228,3 @@ Remaining HP: {{calc::{{getvar::enemy_hp}}-{{getvar::damage}}}}
 | `writing-html-css`      | CBS tags work inside HTML attributes and content in `backgroundEmbedding` and lorebook entries |
 | `writing-regex-scripts` | CBS is used in regex OUT fields; requires `<cbs>` flag in the find field                       |
 | `writing-lorebooks`     | Lorebook `content` fields support full CBS syntax for dynamic context injection                |
-
-## Smoke Tests
-
-Use these prompts to verify the skill produces correct guidance:
-
-1. "Write a CBS conditional that shows different text based on whether `{{getvar::trust}}` is above or below 50."
-2. "Create a CBS inventory display using `{{foreach}}` over a JSON array variable."
-3. "What's the difference between `{{pick}}` and `{{random}}`? When should I use each?"

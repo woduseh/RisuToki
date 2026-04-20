@@ -220,8 +220,6 @@ See [API_REFERENCE.md](./API_REFERENCE.md) for the complete function listing org
 
 ## Smoke Tests
 
-Use these prompts to verify the skill produces correct guidance:
+Prompts targeting RisuAI-specific gotchas:
 
-1. "Write a Lua HP system: initialize HP on `onStart`, reduce on `onOutput` when damage keywords appear, show an alert when HP reaches 0."
-2. "Create a Lua script that calls an LLM to summarize the last 5 messages and stores the result in a chat variable."
-3. "My `upsertLocalLoreBook` entry doesn't appear in the AI's response — what's going on?"
+1. "My `upsertLocalLoreBook` entry doesn't appear in the AI's response — what's going on?"

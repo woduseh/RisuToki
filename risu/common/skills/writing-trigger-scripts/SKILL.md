@@ -150,11 +150,3 @@ end
 | `writing-lua-scripts`   | Lua is one of two trigger authoring modes — use for complex state and async operations |
 | `writing-regex-scripts` | Regex scripts run after triggers in the pipeline; understand the handoff               |
 | `writing-lorebooks`     | Triggers can manipulate lorebook variables that control entry activation               |
-
-## Smoke Tests
-
-Use these prompts to verify the skill produces correct guidance:
-
-1. "Set up a trigger that runs on chat start (`onStart`) to initialize game variables, and another on each AI output (`onOutput`) to update a turn counter."
-2. "Should I use a Lua trigger or a V2 GUI trigger for this task? I need to call an LLM mid-conversation."
-3. "Create a manual button trigger that lets the user roll a d20 and displays the result."

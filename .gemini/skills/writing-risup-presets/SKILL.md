@@ -298,8 +298,6 @@ Load these on demand instead of duplicating their syntax here:
 
 ## Smoke Tests
 
-Use these prompts to verify the skill produces correct guidance:
+Prompts targeting RisuAI-specific gotchas:
 
-1. "Create a preset with a custom prompt template that includes a character card block, 3 example dialogues, and a jailbreak section."
-2. "Set up structured output for JSON responses with `max_tokens: 2000` and `temperature: 0.7`."
-3. "What's the difference between `formatingOrder` and `promptTemplate`?"
+1. "What's the difference between `formatingOrder` and `promptTemplate`?"

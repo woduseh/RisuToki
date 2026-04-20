@@ -271,11 +271,3 @@ These guidelines exist to help you create amazing, unique designs. **Don't defau
 | Skill              | Relationship                                                                                        |
 | ------------------ | --------------------------------------------------------------------------------------------------- |
 | `writing-html-css` | For HTML/CSS inside RisuAI surfaces (`backgroundEmbedding`, regex, lorebooks) — not WYSIWYG targets |
-
-## Smoke Tests
-
-Use these prompts to verify the skill produces correct guidance:
-
-1. "Design a cyberpunk hacker character introduction page for Arca.live with neon glow effects and a terminal aesthetic."
-2. "Create a fantasy knight profile with collapsible backstory section and an attribute stats table."
-3. "My `background-color` on a content div isn't showing in dark mode — how do I fix this?"

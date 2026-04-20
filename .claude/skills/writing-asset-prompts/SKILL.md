@@ -88,10 +88,3 @@ Generates standing (profile) illustration prompts for character assets from char
 | Skill                   | Relationship                                                              |
 | ----------------------- | ------------------------------------------------------------------------- |
 | `writing-danbooru-tags` | Use to validate and search Danbooru tags before including them in prompts |
-
-## Smoke Tests
-
-Use these prompts to verify the skill produces correct guidance:
-
-1. "Generate a standing illustration prompt for a melancholic vampire girl in a gothic dress, with a minimalist dark background."
-2. "Write an asset prompt for a cheerful catgirl barista — include all 6 pipeline steps."
