@@ -209,3 +209,19 @@ end)
 ## API Reference
 
 See [API_REFERENCE.md](./API_REFERENCE.md) for the complete function listing organized by category, including parameter details, return types, and async/permission markers.
+
+## Related Skills
+
+| Skill                     | Relationship                                                                              |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `writing-lorebooks`       | Lua manipulates lorebooks via `getLoreBooks()` and `upsertLocalLoreBook()`                |
+| `writing-trigger-scripts` | Lua scripts are one of two trigger authoring modes (Lua mode vs V2 GUI mode)              |
+| `writing-cbs-syntax`      | CBS variables (`getvar`/`setvar`) interoperate with Lua state (`getChatVar`/`setChatVar`) |
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Write a Lua HP system: initialize HP on `onStart`, reduce on `onOutput` when damage keywords appear, show an alert when HP reaches 0."
+2. "Create a Lua script that calls an LLM to summarize the last 5 messages and stores the result in a chat variable."
+3. "My `upsertLocalLoreBook` entry doesn't appear in the AI's response — what's going on?"

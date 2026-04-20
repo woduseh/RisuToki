@@ -105,3 +105,20 @@ Use this skill when you need the **shape of the data**, not the editing workflow
 | `editoutput`  | After AI output, before storing        |
 | `editdisplay` | During rendering only                  |
 | `editrequest` | After prompt assembly, before API send |
+
+## Related Skills
+
+| Skill                   | Relationship                                                                                        |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `writing-lorebooks`     | Lorebook entry field shapes are documented here; editing workflow in `writing-lorebooks`            |
+| `writing-regex-scripts` | Regex item field shapes are documented here; scripting workflow in `writing-regex-scripts`          |
+| `writing-lua-scripts`   | Lua accesses fields documented here via API functions                                               |
+| `writing-html-css`      | HTML/CSS fields like `backgroundEmbedding` are documented here; styling rules in `writing-html-css` |
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "What fields does a lorebook entry have? Show me the complete JSON shape."
+2. "What's the difference between a `.charx`, `.risum`, and `.risup` file?"
+3. "List all the fields in a regex script item and explain what each one does."

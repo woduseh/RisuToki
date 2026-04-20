@@ -1,6 +1,6 @@
 ---
 name: authoring-lorebook-bots
-description: 'Writes lorebook-driven bot descriptions that frame tone, core cast, and scene logic while deeper world and character detail lives in lorebooks.'
+description: 'Use when writing a lorebook-driven bot description that frames tone, core cast, and scene logic while deeper world and character detail lives in lorebooks.'
 tags: ['authoring', 'lorebook', 'roleplay']
 related_tools: ['list_lorebook', 'read_lorebook', 'write_lorebook']
 ---
@@ -121,36 +121,13 @@ In lorebook-heavy bots, this teaching role can become the description's primary 
 
 ## Role Boundary vs. Character-Writing Skills
 
-Use **authoring-characters** for:
+| Concern                                                               | Skill                                | Focus               |
+| --------------------------------------------------------------------- | ------------------------------------ | ------------------- |
+| Deep per-character engine (voice, contradictions, mask/leak, speech)  | `authoring-characters`               | Character internals |
+| Self-introduction monologue sheets (inference-first, omission-driven) | `authoring-self-introduction-sheets` | Character via voice |
+| Description framing, cast compression, lorebook activation strategy   | **this skill**                       | Architecture        |
 
-- wound as scene
-- Want vs. Need
-- mask/leak
-- speech system
-- silence rules
-- narration lens
-- deep per-character performance
-
-Use **authoring-self-introduction-sheets** for:
-
-- factual profile + self-introduction monologue sheets
-- inference-first character writing
-- characters whose omissions, evasions, and tone should do more of the work
-- a core sheet that is meant to feel like meeting a person rather than reading a scaffold
-
-Use **this skill** for:
-
-- description-level world framing
-- cast compression
-- roster logic
-- what stays always-on vs conditional
-- lorebook activation strategy
-- relationship / scene / world architecture
-
-In practice:
-
-- write the **core cast well** with `authoring-characters` or `authoring-self-introduction-sheets`
-- decide **how much of that survives in always-on text** with this skill
+In practice: write the **core cast** with a character skill, then decide **how much survives in always-on text** with this skill.
 
 ---
 
@@ -405,3 +382,11 @@ Deliver:
 ```
 
 If the user also needs a protagonist-grade character sheet for the core cast, pair this skill with [authoring-characters](../authoring-characters/) for explicit scaffolded sheets or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for the self-introduction monologue method.
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Write a description for a fantasy academy bot with 12 students, 3 teachers, and a headmaster — lorebook-driven with a cast router in `firstMessage`."
+2. "Design the lorebook folder structure for a detective noir bot with 5 suspects and 8 location entries."
+3. "The user wants to add a new NPC to an existing lorebook-driven bot — where should the entry go and what fields need updating?"

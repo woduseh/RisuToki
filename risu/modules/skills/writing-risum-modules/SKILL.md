@@ -1,6 +1,6 @@
 ---
 name: writing-risum-modules
-description: 'Guides composing RisuAI .risum modules — namespace, lowLevelAccess, cjs, backgroundEmbedding, customModuleToggle, and when to choose a module over a bot, preset, or plugin. Use when creating, editing, or reviewing module-level design decisions.'
+description: 'Use when creating, editing, or reviewing RisuAI .risum module design decisions — namespace, lowLevelAccess, backgroundEmbedding, customModuleToggle, and when to choose a module over a bot, preset, or plugin.'
 tags: ['module', 'risum', 'composition', 'architecture']
 related_tools:
   [
@@ -146,6 +146,17 @@ That makes presets and modules complementary: a preset can turn on the modules i
 
 Prefer soft-apply for distribution and reusable authoring.
 
+## Critical Gotchas
+
+| Issue                                               | Detail                                                                                                                                                                                                     |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`lowLevelAccess` widens trust for ALL consumers** | Setting `lowLevelAccess: true` grants Lua network/LLM capabilities to every character that enables the module, not just the author's own bots. This triggers an import warning for users.                  |
+| **CSS class collisions with bot styles**            | Multiple modules and the character's own `backgroundEmbedding` all concatenate into one CSS scope. Use unique `x-risu-` prefixed class names (e.g., `x-risu-mymod-panel`) to avoid silent style overrides. |
+| **`cjs` field is effectively deprecated**           | The `cjs` slot exists on the interface but the module pipeline no longer uses it. Do not build new logic around it — use Lua triggers instead.                                                             |
+| **Merge order means modules run last**              | Module lorebooks, regex, and triggers are appended after character-level content. A module regex cannot intercept text before the character's own scripts process it.                                      |
+| **`upsertLocalLoreBook` delay**                     | Lorebook entries created in module Lua via `upsertLocalLoreBook` only appear in the prompt on the next turn, not the current one.                                                                          |
+| **`namespace` aliasing is one-way**                 | If module A's `id` matches module B's `namespace`, both activate when B is enabled. But enabling A directly does not activate B.                                                                           |
+
 ## Shared syntax — common skills
 
 | Topic            | Skill                      |
@@ -157,3 +168,21 @@ Prefer soft-apply for distribution and reusable authoring.
 | HTML/CSS styling | `writing-html-css`         |
 | Trigger scripts  | `writing-trigger-scripts`  |
 | File structures  | `file-structure-reference` |
+
+## Module Authoring Checklist
+
+- [ ] `namespace` is unique — collisions silently merge unrelated modules
+- [ ] `lowLevelAccess` decision is intentional — grants Lua network/LLM to ALL consumers
+- [ ] CSS classes use unique `x-risu-` prefixed names (e.g., `x-risu-mymod-panel`) to avoid collisions
+- [ ] `customModuleToggle` lines are registered for any user-facing settings
+- [ ] Lorebook entries use high `insertorder` values since modules merge last
+- [ ] `cjs` field is not used (deprecated — use Lua triggers instead)
+- [ ] Tested with soft-apply (enable module ID), not hard-apply
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Create a .risum module that adds a 'game difficulty' toggle and injects different system prompts based on the setting."
+2. "Design a module with CSS styling for a character status panel — make sure it won't collide with other modules."
+3. "When should I use a module vs a preset vs a plugin for reusable behavior?"

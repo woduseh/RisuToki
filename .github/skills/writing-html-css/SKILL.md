@@ -131,3 +131,30 @@ CBS is processed **before** HTML rendering, enabling dynamic class names and con
 3. **Remember `x-risu-`** for chained class selectors.
 4. **Use CBS for dynamic content** — variables, conditionals, and computed values work inside HTML attributes and content.
 5. **Keep styles simple** — complex CSS animations and transitions work but can impact chat scrolling performance.
+
+## Critical Gotchas
+
+| Issue                                           | Detail                                                                                                                                                                                                               |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Empty lines break layouts**                   | A single blank line between HTML tags causes the markdown parser to wrap elements in `<p>` tags and insert phantom margins, completely destroying flex/grid layouts. This is the #1 failure mode.                    |
+| **`x-risu-` prefix for chained selectors only** | `.status.active` must be written as `.status.x-risu-active` in CSS. But parent-child selectors (`.parent .child`) work normally — the prefix is only required when two classes are chained without a space.          |
+| **No `:root` selector**                         | CSS custom properties declared on `:root` won't work. Declare them on a container class instead (e.g., `.my-theme`).                                                                                                 |
+| **All selectors are scoped to `.chattext`**     | The CSS processor prepends `.chattext` to every selector. This means `:root` declarations and any selector expecting document-level scope will silently fail. Design all selectors relative to the chat container.   |
+| **CBS evaluates before HTML rendering**         | CBS `{{}}` tags in HTML are replaced with their values before the HTML is parsed. If a CBS variable contains raw HTML, it will be rendered — this can be useful but also dangerous if the variable holds user input. |
+| **Regex OUT inherits these constraints**        | HTML injected via `editDisplay` regex scripts must follow the same minification and prefix rules. The regex OUT field is not a CSS-free zone.                                                                        |
+
+## Related Skills
+
+| Skill                   | Relationship                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `writing-cbs-syntax`    | CBS `{{}}` tags work inside HTML attributes and content for dynamic rendering       |
+| `writing-regex-scripts` | Regex `editDisplay` OUT fields inject HTML that must follow these rules             |
+| `writing-arca-html`     | For HTML destined for WYSIWYG editors (not RisuAI surfaces), use this skill instead |
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Create a status panel with HP/MP bars in `backgroundEmbedding` CSS and a lorebook entry for the HTML, using CBS variables."
+2. "Why is my flex layout broken when I use `{{#when}}` blocks inside a div?"
+3. "Write CSS for a `.card.active` compound class selector that works in RisuAI."

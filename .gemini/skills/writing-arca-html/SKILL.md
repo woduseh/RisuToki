@@ -149,8 +149,6 @@ Layout must be **purely vertical** (mobile-friendly). No side-by-side columns. S
 
 ### Color & Atmosphere
 
-Match colors to the content's personality:
-
 | Mood                    | Palette Direction                                |
 | ----------------------- | ------------------------------------------------ |
 | Mysterious / Dark       | Deep purples, muted blues, silver accents        |
@@ -160,50 +158,20 @@ Match colors to the content's personality:
 | Fantasy / Medieval      | Gold, parchment tones, ornate borders            |
 | Horror                  | Deep reds on black, heavy shadows, tight spacing |
 
-### Typography as Design
+### Technique Quick Reference
 
-Vary dramatically to create visual hierarchy:
-
-```html
-<!-- Large impact title -->
-<div
-  style="font-size: 48px; font-weight: 900; letter-spacing: -1px; color: #e8dfc0; text-shadow: 0 2px 8px rgba(0,0,0,0.5);"
->
-  TITLE
-</div>
-
-<!-- Subtitle with spacing -->
-<div style="font-size: 13px; letter-spacing: 4px; text-transform: uppercase; color: #a09480;">Subtitle Text</div>
-
-<!-- Body text optimized for reading -->
-<div style="font-size: 14px; line-height: 1.8; color: #c8bfa0;">Body content with comfortable line height...</div>
-```
-
-### Borders as Design Elements
-
-Ultra-thick borders (8–12px) work as visual accents, not just dividers:
+| Technique                 | Implementation                                                                     | Notes                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Typography hierarchy**  | Vary `font-size` (48→13px), `letter-spacing`, `text-shadow`, `text-transform`      | Large title → spaced uppercase subtitle → comfortable body (`line-height: 1.8`) |
+| **Borders as accents**    | `border-left: 8px solid #color` for cards; nest `border` divs for depth            | Replaces `background-color` which is stripped on content containers             |
+| **Gradient simulation**   | Stack empty `<div>` with `height: 2-4px` and sequential colors (see example below) | Only way to simulate `linear-gradient` within constraints                       |
+| **Collapsible sections**  | `<details>` + `<summary>` with styled text                                         | Reliable interactive element; style the `<summary>` for visual consistency      |
+| **Decorative separators** | `<div>` with `height`+`background-color`, `border-top: dashed`, or symbol text     | Use `◆ ◇ ◆` centered text for thematic breaks                                   |
+| **Background patterns**   | Alternating-color empty divs or `inline-block` `<span>` elements                   | Creates texture/rhythm; use sparingly above content sections                    |
+| **Tables for data**       | `<table>` with inline `border-collapse`, styled `<td>` padding/borders             | Best option for stats, attributes, and comparison data                          |
 
 ```html
-<!-- Accent card with thick left border -->
-<div style="border-left: 8px solid #6a4fa0; padding: 16px 20px; margin: 12px 0;">
-  <div style="color: #d4c0f0; font-weight: 700;">Character Name</div>
-  <div style="color: #a090c0; font-size: 13px;">Description text</div>
-</div>
-
-<!-- Nested borders for depth illusion -->
-<div style="border: 3px solid #3a3020; border-radius: 16px; padding: 4px;">
-  <div style="border: 1px solid #2a2620; border-radius: 12px; padding: 20px;">
-    <div style="color: #c8bfa0;">Layered card content</div>
-  </div>
-</div>
-```
-
-### Gradient Effects with Stacked Divs
-
-Since CSS `linear-gradient` doesn't work on content containers, simulate gradients with stacked empty divs:
-
-```html
-<!-- Warm glow arc (symmetric gradient simulation) -->
+<!-- Gradient simulation with stacked empty divs -->
 <div style="height: 2px; background-color: #1a1614;"></div>
 <div style="height: 2px; background-color: #2a2218;"></div>
 <div style="height: 2px; background-color: #3a3020;"></div>
@@ -213,97 +181,16 @@ Since CSS `linear-gradient` doesn't work on content containers, simulate gradien
 <div style="height: 2px; background-color: #1a1614;"></div>
 ```
 
-### Collapsible Sections
+### Theme & Character Design Direction
 
-`<details>` and `<summary>` work reliably:
-
-```html
-<details style="margin: 12px 0;">
-  <summary style="color: #d4a843; font-weight: 700; font-size: 16px; cursor: pointer; padding: 8px 0;">
-    ▸ Click to expand
-  </summary>
-  <div style="padding: 12px 0 0 16px; color: #c8bfa0;">Hidden content revealed on click.</div>
-</details>
-```
-
-### Decorative Separators
-
-```html
-<!-- Gold line divider -->
-<div style="height: 2px; background-color: #d4a843; margin: 24px 0;"></div>
-
-<!-- Dotted divider via border -->
-<div style="border-top: 2px dashed #3a3020; margin: 20px 0;"></div>
-
-<!-- Diamond separator with text -->
-<div style="text-align: center; color: #a09480; font-size: 18px; margin: 20px 0;">◆ ◇ ◆</div>
-```
-
-### Background Patterns with Repeating Divs
-
-Create texture and visual rhythm by repeating styled empty divs:
-
-```html
-<!-- Striped pattern (alternating dark/darker) -->
-<div style="height: 4px; background-color: #1a1a2e;"></div>
-<div style="height: 4px; background-color: #16162a;"></div>
-<div style="height: 4px; background-color: #1a1a2e;"></div>
-<div style="height: 4px; background-color: #16162a;"></div>
-
-<!-- Checkerboard-like accent strip using inline-block -->
-<div style="height: 8px;">
-  <span style="display: inline-block; width: 25%; height: 8px; background-color: #2a1a3e;"></span>
-  <span style="display: inline-block; width: 25%; height: 8px; background-color: #3a2a4e;"></span>
-  <span style="display: inline-block; width: 25%; height: 8px; background-color: #2a1a3e;"></span>
-  <span style="display: inline-block; width: 25%; height: 8px; background-color: #3a2a4e;"></span>
-</div>
-```
-
-### Tables for Structured Data
-
-Tables work well for stats, attributes, or comparison data:
-
-```html
-<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-  <tr>
-    <td style="padding: 10px; border-bottom: 1px solid #2a2620; color: #a09480; font-size: 12px;">ATTRIBUTE</td>
-    <td style="padding: 10px; border-bottom: 1px solid #2a2620; color: #e8dfc0; font-weight: 700;">VALUE</td>
-  </tr>
-  <tr>
-    <td style="padding: 10px; color: #a09480; font-size: 12px;">Height</td>
-    <td style="padding: 10px; color: #c8bfa0;">175cm</td>
-  </tr>
-</table>
-```
-
----
-
-## Theme-Specific Design Ideas
-
-| Theme                       | Key Techniques                                                                                 |
-| --------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Cyberpunk / Tech**        | Neon `text-shadow` glow, monospace `font-family`, terminal-style borders, cyan/magenta accents |
-| **Fantasy / Medieval**      | Gold borders, serif fonts, ornate diamond separators, parchment-warm text colors               |
-| **Horror / Dark**           | Deep red accents, heavy `box-shadow`, claustrophobic small padding, sparse layout              |
-| **Cute / Kawaii**           | Pastel border colors, large `border-radius`, playful emoji accents, generous padding           |
-| **Minimalist**              | Thin borders, lots of whitespace, subtle gray accents, clean sans-serif                        |
-| **Retro / Vintage**         | Muted earth tones, serif typography, period-appropriate decorative elements                    |
-| **Academy / Institutional** | Navy/gold palette, structured tables, formal typography, shield-like bordered sections         |
-| **Social Media / Platform** | Match platform aesthetics (Twitter, Instagram, Discord UI), platform-specific color schemes    |
-
-### Creative Thinking Examples
-
-Go beyond generic themes — design for the **specific character or concept**:
-
-| Character Type              | Design Approach                                                                                |
-| --------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Hikikomori**              | Dark room aesthetic — dim lighting effects with multiple `text-shadow` and `box-shadow` layers |
-| **Fantasy Knight**          | Shield-shaped sections with metallic-looking thick borders and gold accents                    |
-| **AI / Android**            | Glitch effects using misaligned text (`letter-spacing`), color shifts, monospace fonts         |
-| **Historical Figure**       | Period-appropriate typography (serif fonts, formal spacing), decorative border elements        |
-| **Social Media Persona**    | Authentic platform UI recreation — match real app colors, card layouts, username styles        |
-| **Cyberpunk Hacker**        | Terminal-style monospace blocks with neon `text-shadow` glow on dark backgrounds               |
-| **Studio Ghibli Character** | Soft watercolor-like pastel borders, generous whitespace, warm earth-tone text colors          |
+| Category               | Examples                         | Key Techniques                                                                                 |
+| ---------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------- |
+| **Cyberpunk / Tech**   | Hacker, Android, AI              | Neon `text-shadow` glow, monospace `font-family`, cyan/magenta accents                         |
+| **Fantasy / Medieval** | Knight, Historical Figure        | Gold borders, serif fonts, ornate diamond separators, parchment text                           |
+| **Horror / Dark**      | Dark settings, suspense          | Deep red accents, heavy `box-shadow`, claustrophobic small padding                             |
+| **Cute / Kawaii**      | Cheerful characters              | Pastel border colors, large `border-radius`, emoji accents, generous padding                   |
+| **Minimalist**         | Clean, modern designs            | Thin borders, whitespace, subtle gray accents, sans-serif                                      |
+| **Character-specific** | Hikikomori, Ghibli, Social Media | Match the character's world — dim room aesthetics, soft watercolors, or platform UI recreation |
 
 ---
 
@@ -378,3 +265,17 @@ Go beyond generic themes — design for the **specific character or concept**:
 ## Remember
 
 These guidelines exist to help you create amazing, unique designs. **Don't default to templates.** Every project should look different because every character and world IS different. Be bold, be creative, and make something memorable.
+
+## Related Skills
+
+| Skill              | Relationship                                                                                        |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| `writing-html-css` | For HTML/CSS inside RisuAI surfaces (`backgroundEmbedding`, regex, lorebooks) — not WYSIWYG targets |
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Design a cyberpunk hacker character introduction page for Arca.live with neon glow effects and a terminal aesthetic."
+2. "Create a fantasy knight profile with collapsible backstory section and an attribute stats table."
+3. "My `background-color` on a content div isn't showing in dark mode — how do I fix this?"

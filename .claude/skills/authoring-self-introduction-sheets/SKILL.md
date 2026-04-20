@@ -157,3 +157,11 @@ This skill is adapted from these English reference docs:
 
 - [Self-Introduction Character Sheet](../../docs/%EC%9E%90%EA%B8%B0%EC%86%8C%EA%B0%9C%ED%98%95%20%EC%BA%90%EB%A6%AD%ED%84%B0%20%EC%8B%9C%ED%8A%B8/Self-Introduction%20Character%20Sheet.md)
 - [Self-Introduction Character Sheet Guide](../../docs/%EC%9E%90%EA%B8%B0%EC%86%8C%EA%B0%9C%ED%98%95%20%EC%BA%90%EB%A6%AD%ED%84%B0%20%EC%8B%9C%ED%8A%B8/Self-Introduction%20Character%20Sheet%20Guide.md)
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Write a self-introduction sheet for a jaded detective who hides warmth behind sarcasm."
+2. "Convert this third-person character profile into a self-introduction monologue format."
+3. "The character's voice in the self-introduction sounds generic — how do I add personality through tone and evasion?"

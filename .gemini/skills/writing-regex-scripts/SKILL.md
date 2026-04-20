@@ -29,7 +29,7 @@ Regex scripts intercept and transform text at different stages of the chat pipel
 | `editdisplay` | During screen rendering                 | UI elements, status bars, visual effects (doesn't modify data) |
 | `editrequest` | After prompt assembly → before API call | Prompt injection, token optimization (doesn't modify chat log) |
 
-**Pipeline order:** CBS parse → Trigger scripts → CBS re-parse → Regex scripts (with internal CBS)
+**Pipeline order:** Trigger scripts (Lua) → CBS parse → Regex scripts (with internal CBS re-parse)
 
 ## Regex Flags
 
@@ -136,3 +136,30 @@ flag:    (applied to system message)
 4. **Order Flag matters** — when multiple scripts target the same type, higher order runs first.
 5. **Test regex patterns carefully** — overly broad patterns can cause unintended replacements.
 6. **CBS is processed before regex** in the main pipeline, but CBS inside regex OUT fields is processed when the regex runs.
+
+## Critical Gotchas
+
+| Issue                                         | Detail                                                                                                                                                           |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OUT field HTML must be single-line**        | The RisuAI markdown parser wraps newlines between HTML/CBS tags in `<p>` tags, breaking flex/grid layouts. Always minify injected HTML into one continuous line. |
+| **CBS not parsed in `find` field by default** | CBS `{{}}` syntax in the IN (find) field requires the "IN CBS Parsing" special flag to be enabled. Without it, `{{getvar::x}}` is treated as literal text.       |
+| **`editDisplay` doesn't reach the model**     | Display-type scripts only affect rendering — the AI never sees the transformed output. Don't use `editDisplay` to inject instructions the model needs.           |
+| **`editRequest` doesn't modify chat log**     | Request-type scripts change what the API receives but don't alter saved messages. Users won't see request-level changes in the chat UI.                          |
+| **Capture groups reset per match**            | With the `g` flag, `$1` refers to the capture group of each individual match, not a persistent value across all matches.                                         |
+| **`@@inject` writes permanently**             | The `@@inject` OUT prefix inserts content into the chat log. Unlike `editDisplay`, this modification is saved and persists across sessions.                      |
+
+## Related Skills
+
+| Skill                     | Relationship                                                                |
+| ------------------------- | --------------------------------------------------------------------------- |
+| `writing-cbs-syntax`      | CBS `{{}}` tags are used heavily in regex OUT fields for dynamic content    |
+| `writing-html-css`        | HTML in `editDisplay` OUT fields must follow RisuAI's rendering constraints |
+| `writing-trigger-scripts` | Triggers execute before regex in the pipeline; understand execution order   |
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Write an `editDisplay` regex that appends a styled HP bar using CBS variables `{{getvar::hp}}` and `{{getvar::max_hp}}` to the end of each AI message."
+2. "Create an `editRequest` regex that injects a system instruction at the top of every prompt."
+3. "I have a regex with CBS in the find field but it's not matching — what's wrong?"

@@ -1,6 +1,6 @@
 ---
 name: writing-risup-presets
-description: 'Guides composing RisuAI .risup presets — promptTemplate, formatingOrder, toggle syntax, module integration, structured output, sampling, and when to choose a preset over a bot, module, or plugin. Use when creating, editing, or reviewing preset-level prompt/system/model settings.'
+description: 'Use when creating, editing, or reviewing RisuAI .risup preset prompt/system/model settings — promptTemplate, formatingOrder, toggle syntax, module integration, structured output, and sampling.'
 tags: ['preset', 'risup', 'prompt', 'template']
 related_tools:
   [
@@ -295,3 +295,11 @@ Load these on demand instead of duplicating their syntax here:
 | CBS inside prompt text                  | `writing-cbs-syntax`       |
 | File structures / JSON shapes           | `file-structure-reference` |
 | Module pairing for `moduleIntergration` | `writing-risum-modules`    |
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Create a preset with a custom prompt template that includes a character card block, 3 example dialogues, and a jailbreak section."
+2. "Set up structured output for JSON responses with `max_tokens: 2000` and `temperature: 0.7`."
+3. "What's the difference between `formatingOrder` and `promptTemplate`?"

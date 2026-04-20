@@ -77,3 +77,10 @@ These apply when a task modifies tracked RisuToki source, product docs, or tooli
 - No packaging in PR — only on tag release
 
 > Complete versioning rules, CI workflow, and guide locations: [`PROJECT_RULES.md`](PROJECT_RULES.md)
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "I changed a MCP tool handler — what version bump and CI checks do I need?"
+2. "Walk me through the onboarding steps for a new session working on RisuToki."

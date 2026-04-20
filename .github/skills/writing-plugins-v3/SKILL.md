@@ -1,6 +1,6 @@
 ---
 name: writing-plugins-v3
-description: 'Guides writing RisuAI Plugin API v3.0 scripts. Covers metadata headers, iframe sandbox model, all-async API usage, SafeElement/SafeDocument wrappers, storage tiers, UI registration, provider/MCP integration, security boundaries, and permissions. Use when creating, editing, or reviewing plugin .js/.ts files.'
+description: 'Use when creating, editing, or reviewing RisuAI Plugin API v3.0 .js/.ts files. Covers metadata headers, iframe sandbox model, all-async API, SafeElement/SafeDocument wrappers, storage tiers, UI registration, provider/MCP integration, security boundaries, and permissions.'
 tags: ['plugin', 'v3', 'sandbox', 'api', 'javascript']
 artifact_types: ['plugin-v3']
 canonical_sources:
@@ -217,3 +217,38 @@ Plugins can be written in TypeScript. RisuAI transpiles plugin TS with Sucrase (
 4. Keep metadata stable, especially `//@name`.
 5. Prefer official APIs (`registerSetting`, `registerButton`, `registerMCP`) over DOM hacks.
 6. Respect permission prompts and fail explicitly when access is denied.
+
+## Pre-Submission Checklist
+
+- [ ] `//@api 3.0` declared in metadata header
+- [ ] `//@name` is unique and will not change after release
+- [ ] All `risuai.*` and `SafeElement` calls use `await`
+- [ ] Top-level logic wrapped in async IIFE with `try/catch`
+- [ ] `onUnload(...)` cleans up listeners, intervals, and registered UI
+- [ ] Only `x-` prefixed attributes used on host DOM elements
+- [ ] `pluginStorage` used for durable state (not raw `localStorage`)
+- [ ] `//@allowed-ipc` declared on both sides if using plugin IPC
+
+## Debugging Checklist
+
+- [ ] Check browser console for `postMessage` errors (common with missing `await`)
+- [ ] Verify permissions are granted — `getRootDocument()` requires `mainDom`
+- [ ] Confirm `SafeElement` wrappers — direct DOM methods don't work cross-boundary
+- [ ] Test `showContainer()` / `hideContainer()` lifecycle for UI panels
+- [ ] Check that `//@arg` values are being read correctly (string vs int types)
+
+## Related Skills
+
+| Skill                | Relationship                                                             |
+| -------------------- | ------------------------------------------------------------------------ |
+| `writing-html-css`   | Host DOM manipulation via `SafeElement` follows RisuAI's CSS constraints |
+| `writing-cbs-syntax` | Plugins can hook into CBS via `addRisuReplacer` for custom template tags |
+| `writing-lorebooks`  | Plugins can access lorebook data through the database API                |
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Write a plugin that registers a settings button, opens a fullscreen container with a form, and saves the input to `pluginStorage`."
+2. "Create a plugin that adds a custom provider using `addProvider()`."
+3. "My plugin's `SafeElement.setTextContent()` isn't updating — what could be wrong?"

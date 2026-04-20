@@ -135,6 +135,17 @@ You are a battle-hardened veteran of many conflicts.
 8. **Layer secrets by trigger depth** — Deep secrets should be triggered by words that only appear after trust is built, not by the character's name.
 9. **Watch alwaysActive budget** — Every alwaysActive entry competes for attention on every turn. Reserve always-on for core world rules and system instructions; move detailed content to keyword triggers.
 
+## Critical Gotchas
+
+| Issue                                             | Detail                                                                                                                                                                                                                 |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Folder identity is `key`, not `id`**            | Folder entries use the `key` field (format `"folder:<UUID>"`) as their identity. Child entries reference this `key` value in their `folder` field. Using the entry's `id` instead will silently fail to group entries. |
+| **`alwaysActive` + empty key still costs tokens** | An entry with `alwaysActive: true` is injected every turn even if `key` is empty. This is intentional but often accidental — review always-on entries for token budget impact.                                         |
+| **`comment` field renaming breaks Lua**           | Lua's `getLoreBooks(id, commentFilter)` matches against the `comment` field. Renaming a comment without updating corresponding Lua calls silently breaks the integration.                                              |
+| **`upsertLocalLoreBook` takes effect next turn**  | Lorebook entries created or updated via Lua `upsertLocalLoreBook` are not included in the current turn's prompt — they appear on the next turn only.                                                                   |
+| **Decorator stacking order matters**              | `@@role` and `@@depth` must come before content text. Placing decorators after the first line of content causes them to be treated as literal text in the prompt.                                                      |
+| **Recursive search can cause loops**              | With "Recursive search" enabled, entry A's content can trigger entry B, and B's content can trigger A. Large mutual-trigger chains consume the token budget rapidly with no visible error.                             |
+
 ## Lorebook–Lua Integration
 
 ```lua
@@ -149,3 +160,19 @@ upsertLocalLoreBook(id, "castle-lore", "A vast castle with...", {
 ```
 
 **Important:** `upsertLocalLoreBook` entries are injected **next turn**, not the current one.
+
+## Related Skills
+
+| Skill                     | Relationship                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------ |
+| `writing-cbs-syntax`      | CBS `{{}}` syntax is fully supported inside lorebook `content` fields          |
+| `writing-lua-scripts`     | Lua accesses lorebooks via `getLoreBooks()` and `upsertLocalLoreBook()`        |
+| `writing-trigger-scripts` | Triggers can activate lorebook entries and manipulate variables they reference |
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Create a lorebook folder structure with 3 character entries and 2 location entries, using proper UUID folder keys."
+2. "Write a lorebook entry that only activates after message 5, at depth 0, with role `system`."
+3. "My Lua script calls `getLoreBooks()` but returns empty — the entry exists. What could be wrong?"

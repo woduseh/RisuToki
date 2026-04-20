@@ -1,5 +1,7 @@
 # Character Authoring by Bot Scale
 
+> See also: [Lorebook Bot Architecture by Scale](../../authoring-lorebook-bots/BOT_SCALES.md) for description vs lorebook distribution decisions.
+
 Use this file after reading `SKILL.md` when the main problem is **how much character depth to keep in the description at a given bot scale**.
 
 > The scale recipes below are strong defaults drawn from real reference bots. They are not the only way to build at each scale — treat them as starting points, not constraints.

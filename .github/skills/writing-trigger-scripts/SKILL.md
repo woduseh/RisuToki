@@ -142,3 +142,19 @@ end
 5. **Don't mix CBS and Lua logic** — CBS isn't parsed inside Lua. Use Lua API functions (`getChatVar`, `getState`) instead.
 6. **Choose Lua mode or structured trigger mode** — if the first trigger is a `triggerlua` wrapper, treat the artifact as being in Lua mode and edit it through the Lua workflow rather than mixing in separate V1/V2 trigger entries.
 7. **Mind the pipeline order** — triggers run before regex scripts. Design accordingly.
+
+## Related Skills
+
+| Skill                   | Relationship                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| `writing-lua-scripts`   | Lua is one of two trigger authoring modes — use for complex state and async operations |
+| `writing-regex-scripts` | Regex scripts run after triggers in the pipeline; understand the handoff               |
+| `writing-lorebooks`     | Triggers can manipulate lorebook variables that control entry activation               |
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Set up a trigger that runs on chat start (`onStart`) to initialize game variables, and another on each AI output (`onOutput`) to update a turn counter."
+2. "Should I use a Lua trigger or a V2 GUI trigger for this task? I need to call an LLM mid-conversation."
+3. "Create a manual button trigger that lets the user roll a d20 and displays the result."

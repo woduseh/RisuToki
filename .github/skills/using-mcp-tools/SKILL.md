@@ -115,3 +115,10 @@ This catches silent failures like:
 - `read_skill("using-mcp-tools", "FILE_STRUCTURES.md")` — exact schemas and shapes
 - `docs/MCP_TOOL_SURFACE.md` — canonical MCP family map, tool boundaries, and deterministic follow-up actions
 - `docs/MCP_ERROR_CONTRACT.md` — repo-wide success / error / no-op response contract
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "I need to edit a 3000-character lorebook content field — which MCP tool should I use and why?"
+2. "List the correct tool sequence for reading an external `.charx` file's lorebook entries."

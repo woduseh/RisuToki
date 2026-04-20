@@ -207,20 +207,32 @@ Remaining HP: {{calc::{{getvar::enemy_hp}}-{{getvar::damage}}}}
 
 ---
 
-## Key Gotchas
+## Critical Gotchas
 
-1. **Nesting:** CBS evaluates inside-out. `{{calc::{{getvar::a}}+{{getvar::b}}}}` — inner `getvar` resolves first, then `calc` runs on the result.
-
-2. **runVar vs display:** `setvar`/`addvar` silently do nothing in display-only contexts. If variables aren't updating, check the evaluation context.
-
-3. **Comparisons return `1`/`0`:** Not booleans. `{{equal::a::a}}` → `"1"` (string). Use with `#when` or `and`/`or`.
-
-4. **`pick` vs `random`:** `pick` is hash-based (deterministic per message — stable on page refresh). `random` is truly random (changes on every render).
-
-5. **`::` is the separator.** To output a literal `:` inside CBS, use `{{:}}`. For `{` and `}`, use `{{decbo}}` and `{{decbc}}`.
-
-6. **Array format:** Arrays in CBS are JSON strings: `["a","b"]`. Most array functions accept both `[bracketed]` JSON and variadic `::` args.
-
-7. **Empty string = falsy** in `#when`. `{{#when::}}` is false. `{{#when::0}}` is also false.
+| Issue                                                   | Detail                                                                                                                |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Inside-out nesting**                                  | `{{calc::{{getvar::a}}+{{getvar::b}}}}` — inner `getvar` resolves first, then `calc` runs on the result.              |
+| **`setvar`/`addvar` silently fail in display contexts** | Write operations do nothing in display-only evaluation. If variables aren't updating, check the evaluation context.   |
+| **Comparisons return `"1"`/`"0"` strings**              | Not booleans. `{{equal::a::a}}` → `"1"`. Use with `#when` or `and`/`or`, not as raw values.                           |
+| **`pick` vs `random`**                                  | `pick` is hash-based (deterministic per message, stable on refresh). `random` is truly random (changes every render). |
+| **`::` is the separator**                               | To output a literal `:`, use `{{:}}`. For `{` and `}`, use `{{decbo}}` and `{{decbc}}`.                               |
+| **Array format**                                        | Arrays are JSON strings: `["a","b"]`. Most array functions accept both `[bracketed]` JSON and variadic `::` args.     |
+| **Empty string = falsy**                                | In `#when`: `{{#when::}}` is false. `{{#when::0}}` is also false.                                                     |
 
 > **Complete tag reference** with all 170+ tags, aliases, and descriptions → **REFERENCE.md**
+
+## Related Skills
+
+| Skill                   | Relationship                                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------------- |
+| `writing-html-css`      | CBS tags work inside HTML attributes and content in `backgroundEmbedding` and lorebook entries |
+| `writing-regex-scripts` | CBS is used in regex OUT fields; requires `<cbs>` flag in the find field                       |
+| `writing-lorebooks`     | Lorebook `content` fields support full CBS syntax for dynamic context injection                |
+
+## Smoke Tests
+
+Use these prompts to verify the skill produces correct guidance:
+
+1. "Write a CBS conditional that shows different text based on whether `{{getvar::trust}}` is above or below 50."
+2. "Create a CBS inventory display using `{{foreach}}` over a JSON array variable."
+3. "What's the difference between `{{pick}}` and `{{random}}`? When should I use each?"
