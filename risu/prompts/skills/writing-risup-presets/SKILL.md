@@ -16,6 +16,10 @@ related_tools:
     'export_risup_prompt_to_text',
     'list_risup_prompt_snippets',
     'read_risup_prompt_snippet',
+    'validate_risup_prompt_import',
+    'batch_delete_risup_prompt_items',
+    'import_risup_prompt_from_text',
+    'copy_risup_prompt_items_as_text',
   ]
 artifact_types: ['risup']
 canonical_sources:
@@ -176,6 +180,111 @@ Use this when the prompt architecture is stable but the provider needs:
 - different reasoning controls
 
 Do **not** hide those changes inside a module or bot. Keep them inside the preset so the request contract stays explicit.
+
+## MD-to-risup Migration Workflow
+
+When migrating a prompt from a Markdown source document into a `.risup` promptTemplate:
+
+### Source MD format convention
+
+Each prompt item is represented by a heading of the form:
+
+```
+## N · type · role · type2
+```
+
+where **N** is the 1-based item index, **type** is the prompt item type (e.g. `plain`, `jailbreak`, `chat`), **role** is the ChatML role (`system`, `user`, `assistant`), and **type2** is the subtype (`main`, `normal`, `globalNote`, etc.). The body under the heading becomes the item's `text` field.
+
+### CBS cross-section pitfalls
+
+If CBS `{{#when}}…{{/when}}` blocks span across item boundaries in the source document, they **break** when split into separate prompt items because each item is resolved independently at runtime.
+
+**Rebalancing strategy:** every prompt item must be CBS-self-contained — each `{{#when}}` must have its matching `{{/when}}` within the same item. When splitting, duplicate or restructure the conditional wrappers so no block crosses an item boundary.
+
+### Code fence prefill extraction
+
+Code fences in the source MD that represent assistant prefill (e.g. `{"type": "prefill", …}` or raw JSON/XML intended as the start of the assistant turn) must be extracted into **separate** prompt items with `type: "plain"`, `role: "assistant"`, and `type2: "normal"`.
+
+Do not leave prefill content merged into a system-role item.
+
+## Prefill Pattern Guide
+
+Different providers use different conventions for assistant-turn prefill:
+
+| Provider   | Pattern                                              | Notes                                                          |
+| ---------- | ---------------------------------------------------- | -------------------------------------------------------------- |
+| **Claude** | `<invoke>…</invoke>` XML tag, or direct JSON prefill | Used for tool-use steering and structured first-token guidance |
+| **Gemini** | `function_call` object                               | Mirrors Gemini's native function-calling prefill format        |
+| **GPT**    | `tool_calls` array                                   | Matches OpenAI tool-call prefill convention                    |
+
+Prefill items should always use:
+
+```json
+{ "type": "plain", "role": "assistant", "type2": "normal", "text": "…" }
+```
+
+Place them at the position where the assistant turn should begin (typically after the last user/system block).
+
+## Multi-Preset Verification Checklist
+
+When maintaining multiple related presets (e.g. provider variants of the same prompt architecture):
+
+1. **Item count and type sequence** — all variants should have the same number of items in the same type order unless a provider legitimately requires a different structure.
+2. **Toggle name/value consistency** — toggles referenced in CBS blocks must exist in every variant's `customPromptTemplateToggle`. A toggle present in one preset but missing in another causes silent CBS evaluation failures.
+3. **`formatingOrder` cross-verification** — token lists should match across variants. A missing `lorebook` or `authorNote` token in one variant silently drops that content.
+4. **Automated comparison** — use `diff_risup_prompt` with one preset open and the other loaded as a reference to surface structural differences.
+5. **Post-import validation** — after `import_risup_prompt_from_text`, use `validate_risup_prompt_import` to confirm content integrity (round-trip fidelity, item count, CBS balance).
+
+## Chat Item Range Rules
+
+Chat-type prompt items use `rangeStart` and `rangeEnd` to slice the conversation history:
+
+| Field        | Allowed values       | Meaning                                                         |
+| ------------ | -------------------- | --------------------------------------------------------------- |
+| `rangeStart` | Non-negative integer | Index of the first message to include (0 = first message)       |
+| `rangeEnd`   | `"end"`              | Include all remaining messages from `rangeStart` onward         |
+|              | Non-negative integer | Stop at message index N (exclusive)                             |
+|              | Negative integer     | Exclude the last \|N\| messages (e.g. `-2` = all except last 2) |
+
+Examples:
+
+```jsonc
+// All messages
+{ "type": "chat", "rangeStart": 0, "rangeEnd": "end" }
+
+// First 10 messages only
+{ "type": "chat", "rangeStart": 0, "rangeEnd": 10 }
+
+// Everything except the last 3 messages
+{ "type": "chat", "rangeStart": 0, "rangeEnd": -3 }
+
+// Only the last 3 messages (pair with the above)
+{ "type": "chat", "rangeStart": -3, "rangeEnd": "end" }
+```
+
+When using multiple chat items to split the history (e.g. cache boundary), ensure ranges are non-overlapping and jointly cover the full history.
+
+## Toggle Migration Guide
+
+When adding, deleting, or renaming toggles in a preset:
+
+### Update all CBS references
+
+Every CBS `{{#when toggle_NAME …}}` block that references the old toggle name must be updated. A renamed toggle with stale CBS references silently evaluates as unset (value `""`), which usually means the conditional body is skipped.
+
+### `customPromptTemplateToggle` field structure
+
+Toggle declarations are **newline-separated** lines in a single string field. Each line follows a specific syntax depending on the control type (checkbox, select, text, etc.). Edit via:
+
+```
+replace_in_field("customPromptTemplateToggle", find, replace)
+```
+
+### Cross-check workflow
+
+1. **Discover all toggle references:** `list_cbs_toggles` scans every CBS-bearing field and returns which toggles are used and where.
+2. **Find stale references after rename/delete:** `search_all_fields` with the old toggle name to locate CBS blocks that still reference a renamed or deleted toggle.
+3. **Batch-update CBS blocks:** use `replace_in_field` or `replace_in_lorebook_batch` to rewrite `toggle_OldName` → `toggle_NewName` across all affected fields.
 
 ## Shared/reference skills
 

@@ -170,6 +170,7 @@ export const STRING_MUTATION_FIELD_NAMES = [
   'autoSuggestPrefix',
   'systemContentReplacement',
   'systemRoleReplacement',
+  'customPromptTemplateToggle',
 ];
 
 export const STRING_MUTATION_READ_ONLY_FIELD_NAMES = [...CHARX_READ_ONLY_FIELD_NAMES, ...RISUM_READ_ONLY_FIELD_NAMES];

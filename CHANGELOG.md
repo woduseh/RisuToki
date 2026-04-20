@@ -9,6 +9,26 @@
 
 ---
 
+## [0.62.0] - 2026-04-18
+
+### Added
+
+- New MCP tool `validate_risup_prompt_import` — verifies that imported prompt text matches current `promptTemplate` content by comparing serialized item blocks with ID normalization. Catches silent import mismatches.
+- New MCP tool `batch_delete_risup_prompt_items` — deletes multiple prompt items in one confirmed operation with `expected_types`/`expected_previews` stale-index guards.
+- `add_risup_prompt_item` and `add_risup_prompt_item_batch` now accept optional `insertAt` parameter for positional insertion instead of always appending.
+- `validate_cbs` now accepts optional `file_path` parameter to validate CBS in external files without switching the active document.
+
+### Fixed
+
+- `rangeEnd` in chat prompt items now accepts negative integers (e.g., `-2`) during text-format import/parse, matching the upstream `number | 'end'` type contract.
+- `customPromptTemplateToggle` is now included in `STRING_MUTATION_FIELD_NAMES`, enabling `replace_in_field`, `insert_in_field`, and `search_in_field` on this field.
+
+### Changed
+
+- Enhanced `writing-risup-presets` skill with MD-to-risup migration workflow, prefill patterns, multi-preset verification checklist, chat range rules, and toggle migration guide.
+- Enhanced `using-mcp-tools` skill with import verification workflow, batch delete guidance, and insertAt usage.
+- Updated MCP docs (`MCP_TOOL_SURFACE.md`, `MCP_WORKFLOW.md`) to reflect new tools and parameter additions.
+
 ## [0.61.5] - 2026-04-17
 
 ### Added

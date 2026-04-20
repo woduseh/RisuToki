@@ -18,6 +18,7 @@ export interface CbsEntry {
 
 export interface CbsRouteDeps {
   getCurrentData: () => Record<string, unknown> | null;
+  openExternalDocument?: (filePath: string) => Record<string, unknown>;
   readJsonBody: (
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -159,7 +160,31 @@ export async function handleCbsRoute(
   }
 
   if (parts[1] === 'validate' && !parts[2] && req.method === 'GET') {
-    const currentData = requireCurrentData(res, deps, 'cbs/validate');
+    const filePath = url.searchParams.get('file_path') || undefined;
+    let currentData: Record<string, unknown> | null;
+
+    if (filePath) {
+      if (!deps.openExternalDocument) {
+        deps.mcpError(res, 500, {
+          action: 'cbs/validate',
+          target: 'cbs',
+          message: 'External document loading not available',
+        });
+        return true;
+      }
+      try {
+        currentData = deps.openExternalDocument(filePath);
+      } catch (error) {
+        deps.mcpError(res, 400, {
+          action: 'cbs/validate',
+          target: 'cbs',
+          message: `Failed to load external file: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        return true;
+      }
+    } else {
+      currentData = requireCurrentData(res, deps, 'cbs/validate');
+    }
     if (!currentData) return true;
 
     const fieldFilter = url.searchParams.get('field') || undefined;

@@ -27,7 +27,7 @@ import {
   validateFormatingOrderText,
   type PromptItemModel,
 } from './risup-prompt-model';
-import { diffRisupPromptData } from './risup-prompt-compare';
+import { diffRisupPromptData, diffRisupPromptWithText } from './risup-prompt-compare';
 import { listSkillCatalogEntries, resolveSkillCatalogFile } from './skill-catalog';
 import {
   canonicalizeRisupPromptSnippetText,
@@ -11222,6 +11222,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (
         await handleCbsRoute(req, res, parts, url, {
           getCurrentData: deps.getCurrentData,
+          openExternalDocument: deps.openExternalDocument,
           readJsonBody,
           broadcastStatus,
           jsonRes,
@@ -11475,9 +11476,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (validation.model.supported && !hasExplicitPromptItemId(body.item)) {
           validation.model.id = '';
         }
-        const newItems = [...model.items, validation.model];
+        const newItems: PromptItemModel[] = [...model.items];
+        let newIdx: number;
+        if (body.insertAt !== undefined) {
+          const insertAt = body.insertAt;
+          if (!Number.isInteger(insertAt) || insertAt < 0 || insertAt > model.items.length) {
+            return mcpError(res, 400, {
+              action: 'add risup prompt item',
+              message: `insertAt (${insertAt}) is out of range [0, ${model.items.length}]`,
+              suggestion: `0 ~ ${model.items.length} 사이의 정수를 사용하세요.`,
+              target: 'risup:promptTemplate',
+            });
+          }
+          newItems.splice(insertAt, 0, validation.model);
+          newIdx = insertAt;
+        } else {
+          newItems.push(validation.model);
+          newIdx = newItems.length - 1;
+        }
         const newText = serializePromptTemplate({ items: newItems });
-        const newIdx = newItems.length - 1;
 
         const allowed = await deps.askRendererConfirm(
           'MCP 추가 요청',
@@ -11584,9 +11601,26 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           (entry): entry is { index: number; model: PromptItemModel } => 'model' in entry,
         );
         const models = validEntries.map((entry) => entry.model);
-        const newItems = [...model.items, ...models];
+        const newItems: PromptItemModel[] = [...model.items];
+        let insertStart: number;
+        if (body.insertAt !== undefined) {
+          const insertAt = body.insertAt;
+          if (!Number.isInteger(insertAt) || insertAt < 0 || insertAt > model.items.length) {
+            return mcpError(res, 400, {
+              action: 'batch add risup prompt items',
+              message: `insertAt (${insertAt}) is out of range [0, ${model.items.length}]`,
+              suggestion: `0 ~ ${model.items.length} 사이의 정수를 사용하세요.`,
+              target: 'risup:promptTemplate',
+            });
+          }
+          newItems.splice(insertAt, 0, ...models);
+          insertStart = insertAt;
+        } else {
+          insertStart = newItems.length;
+          newItems.push(...models);
+        }
         const newText = serializePromptTemplate({ items: newItems });
-        const indices = models.map((_, offset) => model.items.length + offset);
+        const indices = models.map((_, offset) => insertStart + offset);
         const summary = models
           .map((entry, offset) => `  [${indices[offset]}] type: ${entry.type ?? 'unknown'}`)
           .join('\n');
@@ -11839,6 +11873,126 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `risup:promptTemplate:${idx}`,
           });
         }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item/batch-delete — delete multiple prompt items
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] === 'batch-delete' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'batch delete risup prompt items',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'batch delete risup prompt items',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-item/batch-delete', broadcastStatus);
+        if (!body) return;
+        const indices: number[] = body.indices;
+        if (!Array.isArray(indices) || indices.length === 0) {
+          return mcpError(res, 400, {
+            action: 'batch delete risup prompt items',
+            message: 'indices must be a non-empty array of numbers',
+            suggestion: '{ "indices": [0, 2, 5] } 형식으로 전달하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        if (indices.length > MAX_RISUP_PROMPT_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch delete risup prompt items',
+            message: `Maximum ${MAX_RISUP_PROMPT_BATCH} indices per batch`,
+            suggestion: `요청을 ${MAX_RISUP_PROMPT_BATCH}개 이하의 인덱스로 나누어 여러 번 호출하세요.`,
+            target: 'risup:promptTemplate',
+          });
+        }
+        const indexSet = new Set(indices);
+        if (indexSet.size !== indices.length) {
+          return mcpError(res, 400, {
+            action: 'batch delete risup prompt items',
+            message: 'Duplicate indices detected',
+            suggestion: '중복 없는 인덱스 배열을 사용하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        for (let i = 0; i < indices.length; i++) {
+          const idx = indices[i];
+          if (!Number.isInteger(idx) || idx < 0 || idx >= model.items.length) {
+            return mcpError(res, 400, {
+              action: 'batch delete risup prompt items',
+              message: `Index ${idx} out of range (0–${model.items.length - 1})`,
+              suggestion: 'list_risup_prompt_items로 유효한 index를 확인하세요.',
+              target: 'risup:promptTemplate',
+            });
+          }
+          const expected_types: string[] | undefined = body.expected_types;
+          const expected_previews: string[] | undefined = body.expected_previews;
+          if (
+            !ensureRisupPromptExpectedIdentity(
+              res,
+              idx,
+              model.items[idx],
+              expected_types?.[i],
+              expected_previews?.[i],
+              'batch delete risup prompt items',
+              `risup:promptTemplate:${idx}`,
+              mcpError,
+            )
+          ) {
+            return;
+          }
+        }
+        const deletedSummary = indices
+          .map((idx) => `  [${idx}] type: ${model.items[idx]?.type ?? 'unknown'}`)
+          .join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 삭제 요청',
+          `AI 어시스턴트가 promptTemplate의 항목 ${indices.length}개를 일괄 삭제하려 합니다.\n\n${deletedSummary.substring(0, 500)}${deletedSummary.length > 500 ? '\n...' : ''}`,
+        );
+        if (allowed) {
+          const newItems = model.items.filter((_, i) => !indexSet.has(i));
+          const newText = serializePromptTemplate({ items: newItems });
+          currentData.promptTemplate = newText;
+          const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
+          logMcpMutation('batch delete risup prompt items', 'risup:promptTemplate', {
+            count: indices.length,
+            indices,
+          });
+          deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: indices, count: indices.length, orderWarnings },
+            {
+              toolName: 'batch_delete_risup_prompt_items',
+              summary: `Batch deleted ${indices.length} prompt items`,
+              artifacts: { count: indices.length },
+            },
+          );
+        }
+        return mcpError(res, 403, {
+          action: 'batch delete risup prompt items',
+          message: '사용자가 거부했습니다',
+          rejected: true,
+          suggestion: '앱에서 일괄 삭제 요청을 허용한 뒤 다시 시도하세요.',
+          target: 'risup:promptTemplate',
+        });
       }
 
       // ----------------------------------------------------------------
@@ -12663,6 +12817,72 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           suggestion: '앱에서 가져오기 요청을 허용한 뒤 다시 시도하세요.',
           target: 'risup:promptTemplate',
         });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-text/verify — validate import result
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-text' &&
+        parts[2] === 'verify' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'validate risup prompt import',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+
+        const body = await readJsonBody(req, res, 'risup/prompt-text/verify', broadcastStatus);
+        if (!body) return;
+
+        const text = typeof body.text === 'string' ? body.text : undefined;
+        if (!text) {
+          return mcpError(res, 400, {
+            action: 'validate risup prompt import',
+            message: '"text" (string) is required',
+            target: 'risup:promptTemplate',
+          });
+        }
+
+        const rawText = typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '';
+        const model = parsePromptTemplate(rawText);
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'validate risup prompt import',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            target: 'risup:promptTemplate',
+          });
+        }
+
+        const result = diffRisupPromptWithText(model, text);
+
+        if (result.error) {
+          return mcpError(res, 400, {
+            action: 'validate risup prompt import',
+            message: `Failed to parse source text: ${result.error}`,
+            target: 'risup:promptTemplate',
+          });
+        }
+
+        return jsonResSuccess(
+          res,
+          { items: result.items, summary: result.summary },
+          {
+            toolName: 'validate_risup_prompt_import',
+            summary:
+              result.summary.mismatched === 0
+                ? `All ${result.summary.total} item(s) match`
+                : `${result.summary.mismatched} of ${result.summary.total} item(s) differ`,
+            artifacts: result.summary,
+          },
+        );
       }
 
       // ----------------------------------------------------------------

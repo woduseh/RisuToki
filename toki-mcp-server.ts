@@ -2496,12 +2496,19 @@ server.tool(
       .boolean()
       .optional()
       .describe('Test all toggle combinations for resolve errors (max 1024 combos). Default: false.'),
+    file_path: z
+      .string()
+      .optional()
+      .describe(
+        'Absolute path to an external .charx/.risum/.risup file. When provided, validates CBS in that file instead of the current document.',
+      ),
   },
-  async ({ field, lorebook_index, all_combos }) => {
+  async ({ field, lorebook_index, all_combos, file_path }) => {
     const params = new URLSearchParams();
     if (field) params.set('field', field);
     if (lorebook_index !== undefined) params.set('lorebook_index', String(lorebook_index));
     if (all_combos) params.set('all_combos', 'true');
+    if (file_path) params.set('file_path', file_path);
     const qs = params.toString();
     const result = await apiRequest('GET', `/cbs/validate${qs ? '?' + qs : ''}`);
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
@@ -2672,8 +2679,9 @@ server.tool(
       .describe(
         'Item object to add. Must be a supported type. Example: { "type": "jailbreak", "type2": "normal", "text": "...", "role": "system" }',
       ),
+    insertAt: z.number().optional().describe('Zero-based insertion position. Default: append to the end.'),
   },
-  async ({ item }) => textResult(await apiRequest('POST', '/risup/prompt-item/add', { item })),
+  async ({ item, insertAt }) => textResult(await apiRequest('POST', '/risup/prompt-item/add', { item, insertAt })),
 );
 
 server.tool(
@@ -2684,8 +2692,10 @@ server.tool(
       .array(z.record(z.string(), z.unknown()))
       .max(50)
       .describe('Prompt item objects to append [{...}, {...}] (maximum 50).'),
+    insertAt: z.number().optional().describe('Zero-based insertion position. Default: append to the end.'),
   },
-  async ({ items }) => textResult(await apiRequest('POST', '/risup/prompt-item/batch-add', { items })),
+  async ({ items, insertAt }) =>
+    textResult(await apiRequest('POST', '/risup/prompt-item/batch-add', { items, insertAt })),
 );
 
 server.tool(
@@ -2706,6 +2716,32 @@ server.tool(
   },
   async ({ index, expected_type, expected_preview }) =>
     textResult(await apiRequest('POST', `/risup/prompt-item/${index}/delete`, { expected_type, expected_preview })),
+);
+
+server.tool(
+  'batch_delete_risup_prompt_items',
+  'Deletes multiple prompt items from the risup promptTemplate by indices in a single confirmed operation. Optional expected_types / expected_previews arrays (same order as indices) guard against stale indices. Requires user confirmation. Successful responses may include additive "orderWarnings".',
+  {
+    indices: z.array(z.number()).max(50).describe('Zero-based indices of prompt items to delete (maximum 50).'),
+    expected_types: z
+      .array(z.string())
+      .max(50)
+      .optional()
+      .describe('Optional stale-index guard: expected types aligned with indices array order.'),
+    expected_previews: z
+      .array(z.string())
+      .max(50)
+      .optional()
+      .describe('Optional stale-index guard: expected previews aligned with indices array order.'),
+  },
+  async ({ indices, expected_types, expected_previews }) =>
+    textResult(
+      await apiRequest('POST', '/risup/prompt-item/batch-delete', {
+        indices,
+        expected_types,
+        expected_previews,
+      }),
+    ),
 );
 
 server.tool(
@@ -2849,6 +2885,15 @@ server.tool(
     identifier: z.string().describe('Snippet id or exact snippet name from list_risup_prompt_snippets.'),
   },
   async ({ identifier }) => textResult(await apiRequest('POST', '/risup/prompt-snippets/delete', { identifier })),
+);
+
+server.tool(
+  'validate_risup_prompt_import',
+  'Validates that the current promptTemplate matches the expected text after import_risup_prompt_from_text. Compares each item by serialized text (ignoring generated IDs) and reports match/mismatch per item. Read-only — no mutation.',
+  {
+    text: z.string().describe('The same structured prompt text that was passed to import_risup_prompt_from_text.'),
+  },
+  async ({ text }) => textResult(await apiRequest('POST', '/risup/prompt-text/verify', { text })),
 );
 
 // ==================== Prompt ====================

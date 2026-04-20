@@ -184,12 +184,13 @@ If this file and code diverge, the TypeScript source wins.
 ### `risup-prompt`
 
 - **Use when:** reading or editing structured `.risup` prompt items, formatting order, prompt-vs-reference comparison, and persistent reusable prompt snippets
-- **Tools:** `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_prompt_item`, `read_risup_prompt_item_batch`, `write_risup_prompt_item`, `write_risup_prompt_item_batch`, `add_risup_prompt_item`, `add_risup_prompt_item_batch`, `delete_risup_prompt_item`, `reorder_risup_prompt_items`, `read_risup_formating_order`, `write_risup_formating_order`, `diff_risup_prompt`, `export_risup_prompt_to_text`, `copy_risup_prompt_items_as_text`, `import_risup_prompt_from_text`, `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `save_risup_prompt_snippet`, `insert_risup_prompt_snippet`, `delete_risup_prompt_snippet`
-- **Hints:** list/search/read/diff/export are RO/idempotent; persistent snippet list/read are open-world reads; writes/adds/reorders/import/save/insert mutate; prompt-item delete and snippet delete are destructive
-- **Next actions:** `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_formating_order`, `diff_risup_prompt`, `export_risup_prompt_to_text`, `import_risup_prompt_from_text`, `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `save_risup_prompt_snippet`, `insert_risup_prompt_snippet`
+- **Tools:** `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_prompt_item`, `read_risup_prompt_item_batch`, `write_risup_prompt_item`, `write_risup_prompt_item_batch`, `add_risup_prompt_item`, `add_risup_prompt_item_batch`, `delete_risup_prompt_item`, `batch_delete_risup_prompt_items`, `reorder_risup_prompt_items`, `read_risup_formating_order`, `write_risup_formating_order`, `diff_risup_prompt`, `export_risup_prompt_to_text`, `copy_risup_prompt_items_as_text`, `import_risup_prompt_from_text`, `validate_risup_prompt_import`, `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `save_risup_prompt_snippet`, `insert_risup_prompt_snippet`, `delete_risup_prompt_snippet`
+- **Hints:** list/search/read/diff/export/validate are RO/idempotent; persistent snippet list/read are open-world reads; writes/adds/reorders/import/save/insert mutate; prompt-item delete, batch-delete, and snippet delete are destructive
+- **Next actions:** `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_formating_order`, `diff_risup_prompt`, `export_risup_prompt_to_text`, `import_risup_prompt_from_text`, `validate_risup_prompt_import`, `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `save_risup_prompt_snippet`, `insert_risup_prompt_snippet`
 - **Boundary:** prefer this structured surface over raw `promptTemplate` / `formatingOrder` field writes whenever possible
-- **Guard coverage:** indexed prompt-item writes support optional `expected_type` / `expected_preview` stale-index guards
+- **Guard coverage:** indexed prompt-item writes support optional `expected_type` / `expected_preview` stale-index guards; `batch_delete_risup_prompt_items` supports `expected_types` / `expected_previews` aligned with its `indices` array
 - **Batch result shape:** prompt-item batch add/write success payloads include per-item `results[]`
+- **insertAt:** `add_risup_prompt_item` and `add_risup_prompt_item_batch` accept an optional `insertAt` parameter for positional insertion instead of appending
 
 ### `skill`
 

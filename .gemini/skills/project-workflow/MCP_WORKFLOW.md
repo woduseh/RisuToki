@@ -2,8 +2,8 @@
 
 This guide covers tool selection, read rules, workflow patterns, and operational caveats for editing `.charx` / `.risum` / `.risup` files through MCP tools.
 
-For tool-family definitions and boundary rules see [`docs/MCP_TOOL_SURFACE.md`](../../docs/MCP_TOOL_SURFACE.md).
-For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](../../docs/MCP_ERROR_CONTRACT.md).
+For tool-family definitions and boundary rules see [`docs/MCP_TOOL_SURFACE.md`](MCP_TOOL_SURFACE.md).
+For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](MCP_ERROR_CONTRACT.md).
 
 ---
 
@@ -141,6 +141,9 @@ For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](..
 - `export_risup_prompt_to_text` / `copy_risup_prompt_items_as_text` / `import_risup_prompt_from_text` provide a text serializer path for whole-template review and block-level reuse without exposing raw JSON arrays. The format preserves supported-item IDs, supported-item extra JSON fields, and unsupported/raw items; use `dry_run` before applying large imports, and prefer `mode: "append"` when pasting copied blocks into an existing template.
 - `list_risup_prompt_snippets` / `read_risup_prompt_snippet` / `save_risup_prompt_snippet` / `insert_risup_prompt_snippet` / `delete_risup_prompt_snippet` add a persistent, sidecar-backed snippet library on top of that serializer. `save_risup_prompt_snippet` can take either existing serializer text or current promptTemplate indices, while `insert_risup_prompt_snippet` reuses append-style insertion with fresh ids and `dry_run`.
 - `diff_risup_prompt` compares the active `.risup` preset against a loaded reference `.risup` file using serializer-backed `promptTemplate` line summaries plus `formatingOrder` token/warning diffs. Use it before importing blocks or rewriting order when you need a prompt-specific compare step instead of noisy raw JSON field diffs.
+- `validate_risup_prompt_import` verifies that an import text matches the current `promptTemplate` content by comparing serialized item blocks with ID normalization. Call it immediately after `import_risup_prompt_from_text` with the same source text to catch silent mismatches from ID renormalization, content truncation, or unsupported item coercion.
+- `batch_delete_risup_prompt_items` deletes multiple prompt items in one confirmed operation. It accepts `indices`, optional `expected_types` / `expected_previews` arrays (aligned with `indices` order), and uses `Set`-based filtering for deletion. Prefer it over repeated `delete_risup_prompt_item` calls.
+- `add_risup_prompt_item` and `add_risup_prompt_item_batch` accept an optional `insertAt` parameter for positional insertion (0-based, `0 <= insertAt <= items.length`), matching the pattern from `insert_risup_prompt_snippet`.
 - The risup fallback write surface is not an unrestricted passthrough. `write_field`, `write_field_batch`, and autosave apply the same validation boundary as the UI save path for `promptTemplate`, `formatingOrder`, `presetBias`, and `localStopStrings`. Malformed JSON or unexpected shapes are immediately rejected with a 400 or an autosave failure.
 
 ### Autosave / Recovery
@@ -161,7 +164,7 @@ For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](..
 - `src/lib/mcp-tool-taxonomy.ts` is the single source of truth that classifies 120 tools into 19 families. When you add or remove a tool, update this file as well. `mcp-tool-taxonomy.test.ts` enforces bidirectional completeness (no orphans, no phantoms) and behavioral-hint consistency.
 - MCP SDK `ToolAnnotations` (readOnlyHint, destructiveHint, idempotentHint, openWorldHint) are automatically patched after registration via `RegisteredTool.update()`.
 
-> For the full error/no-op/success response contract see [`docs/MCP_ERROR_CONTRACT.md`](../../docs/MCP_ERROR_CONTRACT.md).
+> For the full error/no-op/success response contract see [`docs/MCP_ERROR_CONTRACT.md`](MCP_ERROR_CONTRACT.md).
 
 ---
 

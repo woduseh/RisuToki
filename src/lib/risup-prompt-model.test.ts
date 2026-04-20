@@ -29,6 +29,7 @@ const JAILBREAK = { type: 'jailbreak', type2: 'normal', text: 'bypass', role: 'u
 const COT = { type: 'cot', type2: 'main', text: 'think', role: 'system' };
 const CHAT_END = { type: 'chat', rangeStart: 0, rangeEnd: 'end' };
 const CHAT_NUMERIC = { type: 'chat', rangeStart: 5, rangeEnd: 10 };
+const CHAT_NEGATIVE_END = { type: 'chat', rangeStart: 0, rangeEnd: -2 };
 const PERSONA = { type: 'persona' };
 const DESCRIPTION_FMT = { type: 'description', innerFormat: 'Format: {{description}}' };
 const AUTHORNOTE = { type: 'authornote' };
@@ -196,6 +197,15 @@ describe('parsePromptTemplate', () => {
     const item = m.items[0];
     if (item.supported && item.type === 'chat') {
       expect(item.rangeEnd).toBe('end');
+    }
+  });
+
+  it('parses chat items with negative rangeEnd', () => {
+    const m = parsePromptTemplate(stringify([CHAT_NEGATIVE_END]));
+    const item = m.items[0];
+    if (item.supported && item.type === 'chat') {
+      expect(item.rangeStart).toBe(0);
+      expect(item.rangeEnd).toBe(-2);
     }
   });
 
@@ -388,6 +398,15 @@ describe('serializePromptTemplate', () => {
     expect(parsed[0]['id']).toBeTruthy();
   });
 
+  it('round-trips a chat item with negative rangeEnd', () => {
+    const original = stringify([CHAT_NEGATIVE_END]);
+    const m = parsePromptTemplate(original);
+    const result = serializePromptTemplate(m);
+    const parsed = JSON.parse(result) as Record<string, unknown>[];
+    expect(parsed[0]).toMatchObject(CHAT_NEGATIVE_END);
+    expect(parsed[0]['id']).toBeTruthy();
+  });
+
   it('round-trips typed items', () => {
     const original = stringify([PERSONA, DESCRIPTION_FMT]);
     const m = parsePromptTemplate(original);
@@ -531,6 +550,23 @@ describe('promptTemplate text format', () => {
     expect(parsedSubset.items).toHaveLength(2);
     expect(parsedSubset.items[0].type).toBe('cache');
     expect(parsedSubset.items[1].type).toBe('plain');
+  });
+
+  it('round-trips a chat item with negative rangeEnd through text format', () => {
+    const items = [CHAT_NEGATIVE_END];
+    const model = parsePromptTemplate(stringify(items));
+    const text = serializePromptTemplateToText(model);
+    const parsed = parsePromptTemplateFromText(text);
+
+    expect(parsed.state).toBe('valid');
+    expect(parsed.items).toHaveLength(1);
+    const item = parsed.items[0];
+    if (item.supported && item.type === 'chat') {
+      expect(item.rangeStart).toBe(0);
+      expect(item.rangeEnd).toBe(-2);
+    } else {
+      throw new Error('Expected a supported chat item');
+    }
   });
 });
 

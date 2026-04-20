@@ -161,6 +161,7 @@ describe('string mutation field support', () => {
       'autoSuggestPrefix',
       'systemContentReplacement',
       'systemRoleReplacement',
+      'customPromptTemplateToggle',
     ]);
     expect(STRING_MUTATION_READ_ONLY_FIELD_NAMES).toEqual([
       ...CHARX_READ_ONLY_FIELD_NAMES,

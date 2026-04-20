@@ -281,6 +281,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   add_risup_prompt_item: { family: 'risup-prompt', hints: WRITE },
   add_risup_prompt_item_batch: { family: 'risup-prompt', hints: WRITE },
   delete_risup_prompt_item: { family: 'risup-prompt', hints: DESTRUCTIVE },
+  batch_delete_risup_prompt_items: { family: 'risup-prompt', hints: DESTRUCTIVE },
   reorder_risup_prompt_items: { family: 'risup-prompt', hints: WRITE_IDEMPOTENT },
   read_risup_formating_order: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
   write_risup_formating_order: { family: 'risup-prompt', hints: WRITE_IDEMPOTENT },
@@ -293,6 +294,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   save_risup_prompt_snippet: { family: 'risup-prompt', hints: OPEN_WORLD_WRITE },
   insert_risup_prompt_snippet: { family: 'risup-prompt', hints: OPEN_WORLD_WRITE },
   delete_risup_prompt_snippet: { family: 'risup-prompt', hints: { ...DESTRUCTIVE, openWorldHint: true } },
+  validate_risup_prompt_import: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
 
   // ── Skill / Docs ───────────────────────────────────────────────────────
   list_skills: { family: 'skill', hints: RO_IDEMPOTENT },

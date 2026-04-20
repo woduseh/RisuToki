@@ -2,6 +2,8 @@ import {
   collectFormatingOrderWarnings,
   parseFormatingOrder,
   parsePromptTemplate,
+  parsePromptTemplateFromText,
+  serializePromptItemToTextBlock,
   serializePromptTemplateToText,
 } from './risup-prompt-model';
 
@@ -152,4 +154,76 @@ export function diffRisupPromptData(
     promptTemplate,
     formatingOrder,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Import verification (P1)
+// ---------------------------------------------------------------------------
+
+export interface VerifyImportItemResult {
+  index: number;
+  match: boolean;
+  diff?: {
+    reason?: string;
+    expected_preview?: string;
+    actual_preview?: string;
+  };
+}
+
+export interface VerifyImportResult {
+  items: VerifyImportItemResult[];
+  summary: { total: number; matched: number; mismatched: number };
+  error?: string;
+}
+
+function stripIdLine(textBlock: string): string {
+  return textBlock.replace(/^id: .+$/m, 'id: (normalized)');
+}
+
+export function diffRisupPromptWithText(
+  currentPromptModel: ReturnType<typeof parsePromptTemplate>,
+  sourceText: string,
+): VerifyImportResult {
+  const expected = parsePromptTemplateFromText(sourceText);
+  if (expected.state === 'invalid') {
+    return {
+      items: [],
+      summary: { total: 0, matched: 0, mismatched: 0 },
+      error: expected.parseError ?? 'Failed to parse source text',
+    };
+  }
+
+  const maxLen = Math.max(expected.items.length, currentPromptModel.items.length);
+  const items: VerifyImportItemResult[] = [];
+
+  for (let i = 0; i < maxLen; i++) {
+    if (i >= expected.items.length) {
+      items.push({ index: i, match: false, diff: { reason: 'extra in current' } });
+      continue;
+    }
+    if (i >= currentPromptModel.items.length) {
+      items.push({ index: i, match: false, diff: { reason: 'missing in current' } });
+      continue;
+    }
+
+    const expectedText = stripIdLine(serializePromptItemToTextBlock(expected.items[i]));
+    const actualText = stripIdLine(serializePromptItemToTextBlock(currentPromptModel.items[i]));
+    const match = expectedText === actualText;
+
+    items.push(
+      match
+        ? { index: i, match: true }
+        : {
+            index: i,
+            match: false,
+            diff: {
+              expected_preview: expectedText.slice(0, 200),
+              actual_preview: actualText.slice(0, 200),
+            },
+          },
+    );
+  }
+
+  const matched = items.filter((x) => x.match).length;
+  return { items, summary: { total: maxLen, matched, mismatched: maxLen - matched } };
 }

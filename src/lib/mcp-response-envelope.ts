@@ -138,6 +138,8 @@ export const TOOL_NEXT_ACTIONS: Partial<Record<keyof typeof TOOL_TAXONOMY, strin
   write_risup_prompt_item_batch: ['list_risup_prompt_items', 'read_risup_formating_order', 'diff_risup_prompt'],
   add_risup_prompt_item: ['list_risup_prompt_items', 'read_risup_formating_order', 'diff_risup_prompt'],
   add_risup_prompt_item_batch: ['list_risup_prompt_items', 'read_risup_formating_order', 'diff_risup_prompt'],
+  validate_risup_prompt_import: ['list_risup_prompt_items', 'export_risup_prompt_to_text'],
+  batch_delete_risup_prompt_items: ['list_risup_prompt_items', 'read_risup_formating_order'],
 };
 
 // ────────────────────────────────────────────────────────────────────────────

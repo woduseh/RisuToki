@@ -22,6 +22,9 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 - Before risky edits or after interruptions, call `session_status` to inspect the active document, dirty/autosave state, recovery metadata, snapshot totals, and compact structured-surface counts.
 - Prefer response `next_actions` over guessing; high-traffic tools may return narrower follow-up suggestions than the family default.
 - Check tool `_meta` from `tools/list` when choosing a write route: `risutoki/requiresConfirmation` means an approval gate is expected, and `risutoki/supportsDryRun` means a preview-first flow exists.
+- After using `import_risup_prompt_from_text`, call `validate_risup_prompt_import` with the same source text to verify all items were imported correctly. This catches silent mismatches from ID renormalization and content truncation.
+- For deleting multiple risup prompt items at once, prefer `batch_delete_risup_prompt_items` over repeated `delete_risup_prompt_item` calls.
+- When adding risup prompt items at a specific position (not at the end), use the `insertAt` parameter on `add_risup_prompt_item` or `add_risup_prompt_item_batch` instead of add + reorder.
 
 ## Session-Awareness Workflow
 
@@ -54,6 +57,7 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 - Greeting writes/deletes: carry the latest `list_greetings` preview into `expected_preview` (or `expected_previews` for `batch_delete_greeting`).
 - Risup prompt-item writes/deletes: carry the latest `list_risup_prompt_items` `type` and, when available, `preview` into `expected_type` / `expected_preview`.
 - Treat `409` stale-index responses as a refresh signal: re-list the family, then retry with fresh identity values.
+- Batch delete of risup prompt items: carry `list_risup_prompt_items` types into `expected_types` and previews into `expected_previews`, aligned with the `indices` array order.
 
 ## Regex / Reference Workflow
 
@@ -80,8 +84,24 @@ If the task touches multiple sibling items, prefer:
 - `read_reference_risup_prompt_item_batch`
 - `write_risup_prompt_item_batch`
 - `add_risup_prompt_item_batch`
+- `batch_delete_risup_prompt_items`
+- `add_risup_prompt_item_batch` (with `insertAt`)
 
 This reduces repeated confirmation prompts and keeps edits coherent.
+
+## Import Verification Workflow
+
+After using `import_risup_prompt_from_text`, always verify the result:
+
+1. `validate_risup_prompt_import` with the same source text — confirms each item matches by content (IDs are normalized before comparison).
+2. If mismatches are found, inspect the reported indices with `read_risup_prompt_item_batch`.
+3. Use `export_risup_prompt_to_text` to get a clean export for manual comparison.
+
+This catches silent failures like:
+
+- Content truncation during parsing
+- Unsupported item types that get stored as raw JSON
+- Item ordering changes from parse/serialize round-trips
 
 ## Context Budget Cues
 

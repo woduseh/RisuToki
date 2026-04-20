@@ -1,7 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { parseFormatingOrder, parsePromptTemplate } from './risup-prompt-model';
-import { diffRisupFormatingOrders, diffRisupPromptData, summarizeTextLineDiff } from './risup-prompt-compare';
+import { parseFormatingOrder, parsePromptTemplate, serializePromptTemplateToText } from './risup-prompt-model';
+import {
+  diffRisupFormatingOrders,
+  diffRisupPromptData,
+  diffRisupPromptWithText,
+  summarizeTextLineDiff,
+} from './risup-prompt-compare';
 
 describe('risup prompt compare helpers', () => {
   it('summarizes changed text lines', () => {
@@ -61,5 +66,82 @@ describe('risup prompt compare helpers', () => {
     expect(result.reordered).toBe(false);
     expect(result.addedTokens).toEqual(['authorNote']);
     expect(result.removedTokens).toEqual(['chats']);
+  });
+});
+
+describe('diffRisupPromptWithText (import verification)', () => {
+  const ITEMS = [
+    { type: 'plain', type2: 'normal', text: 'hello', role: 'system' },
+    { type: 'jailbreak', type2: 'normal', text: 'bypass', role: 'user' },
+  ];
+
+  it('reports all items as matching when content is identical', () => {
+    const model = parsePromptTemplate(JSON.stringify(ITEMS));
+    const text = serializePromptTemplateToText(model);
+    const result = diffRisupPromptWithText(model, text);
+
+    expect(result.error).toBeUndefined();
+    expect(result.summary.total).toBe(2);
+    expect(result.summary.matched).toBe(2);
+    expect(result.summary.mismatched).toBe(0);
+    expect(result.items.every((i) => i.match)).toBe(true);
+  });
+
+  it('detects content mismatch', () => {
+    const model = parsePromptTemplate(JSON.stringify(ITEMS));
+    const altItems = [
+      { type: 'plain', type2: 'normal', text: 'DIFFERENT', role: 'system' },
+      { type: 'jailbreak', type2: 'normal', text: 'bypass', role: 'user' },
+    ];
+    const altModel = parsePromptTemplate(JSON.stringify(altItems));
+    const text = serializePromptTemplateToText(altModel);
+    const result = diffRisupPromptWithText(model, text);
+
+    expect(result.summary.mismatched).toBe(1);
+    expect(result.items[0].match).toBe(false);
+    expect(result.items[1].match).toBe(true);
+  });
+
+  it('reports extra items in current', () => {
+    const model = parsePromptTemplate(JSON.stringify(ITEMS));
+    const singleItem = [{ type: 'plain', type2: 'normal', text: 'hello', role: 'system' }];
+    const singleModel = parsePromptTemplate(JSON.stringify(singleItem));
+    const text = serializePromptTemplateToText(singleModel);
+    const result = diffRisupPromptWithText(model, text);
+
+    expect(result.summary.total).toBe(2);
+    expect(result.summary.mismatched).toBe(1);
+    expect(result.items[1].diff?.reason).toBe('extra in current');
+  });
+
+  it('reports missing items in current', () => {
+    const singleItem = [{ type: 'plain', type2: 'normal', text: 'hello', role: 'system' }];
+    const model = parsePromptTemplate(JSON.stringify(singleItem));
+    const fullModel = parsePromptTemplate(JSON.stringify(ITEMS));
+    const text = serializePromptTemplateToText(fullModel);
+    const result = diffRisupPromptWithText(model, text);
+
+    expect(result.summary.total).toBe(2);
+    expect(result.summary.mismatched).toBe(1);
+    expect(result.items[1].diff?.reason).toBe('missing in current');
+  });
+
+  it('matches items even when IDs differ (post-import)', () => {
+    const model = parsePromptTemplate(JSON.stringify(ITEMS));
+    const text = serializePromptTemplateToText(model);
+    // Re-parse (will generate new IDs) and verify still matches
+    const reimportedModel = parsePromptTemplate(JSON.stringify(ITEMS));
+    const result = diffRisupPromptWithText(reimportedModel, text);
+
+    expect(result.summary.matched).toBe(2);
+    expect(result.summary.mismatched).toBe(0);
+  });
+
+  it('returns error for invalid source text', () => {
+    const model = parsePromptTemplate(JSON.stringify(ITEMS));
+    const result = diffRisupPromptWithText(model, '### [invalid-block ###');
+
+    expect(result.error).toBeDefined();
+    expect(result.summary.total).toBe(0);
   });
 });

@@ -576,6 +576,13 @@ function parsePromptTextNonNegativeInteger(value: string, key: string): { value?
   return { value: Number.parseInt(value, 10) };
 }
 
+function parsePromptTextInteger(value: string, key: string): { value?: number; error?: string } {
+  if (!/^-?\d+$/.test(value)) {
+    return { error: `"${key}" must be an integer.` };
+  }
+  return { value: Number.parseInt(value, 10) };
+}
+
 function readPromptTextExtraJson(meta: Map<string, string>): { value?: JsonRecord; error?: string } {
   if (!meta.has('extra-json')) {
     return {};
@@ -649,7 +656,7 @@ function readPromptTextBody(
   return { body: bodyLines.join('\n'), nextIndex };
 }
 
-function serializePromptItemToTextBlock(item: PromptItemModel): string {
+export function serializePromptItemToTextBlock(item: PromptItemModel): string {
   const lines: string[] = [];
   if (!item.supported) {
     lines.push('### [raw] ###');
@@ -877,7 +884,7 @@ function buildPromptItemFromTextBlock(
       if (rangeEndRaw === 'end') {
         raw['rangeEnd'] = 'end';
       } else {
-        const rangeEnd = parsePromptTextNonNegativeInteger(rangeEndRaw, 'rangeEnd');
+        const rangeEnd = parsePromptTextInteger(rangeEndRaw, 'rangeEnd');
         if (rangeEnd.error) {
           return { error: `Block ${blockIndex}: ${rangeEnd.error}` };
         }
