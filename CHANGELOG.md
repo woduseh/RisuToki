@@ -9,6 +9,21 @@
 
 ---
 
+## [0.62.1] - 2026-04-20
+
+### Fixed
+
+- MCP error envelope preservation: `apiRequest()` now resolves (never rejects) with the full structured error body from `mcp-api-server.ts`, so agents receive `suggestion`, `retryable`, `next_actions`, and `details` instead of a flattened string.
+- Infrastructure error differentiation: `ECONNREFUSED` (editor not running, 503), request timeouts (504), and network failures (502) now return distinct `isError: true` responses with actionable `suggestion` and `retryable: true`.
+- Server version sync: `McpServer` version is now injected at build time via esbuild `--define` instead of being hardcoded, eliminating version drift.
+
+### Changed
+
+- MCP tool responses now use compact JSON (`JSON.stringify(data)` instead of `JSON.stringify(data, null, 2)`), saving ~30% tokens on all 166 tool responses.
+- Added MCP standard logging via `server.sendLoggingMessage()` for startup, tag DB loading, and API infrastructure errors.
+- `build:mcp` script now uses `build/build-mcp.js` wrapper for cross-platform esbuild invocation with `__APP_VERSION__` injection.
+- Updated `docs/MCP_ERROR_CONTRACT.md` to document error envelope preservation and infrastructure error differentiation.
+
 ## [0.62.0] - 2026-04-18
 
 ### Added

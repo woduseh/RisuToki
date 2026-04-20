@@ -1,6 +1,6 @@
 {
   "name": "risutoki",
-  "version": "0.62.0",
+  "version": "0.62.1",
   "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
   "main": "main.js",
   "scripts": {
@@ -13,7 +13,7 @@
     "typecheck": "vue-tsc --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.node-libs.json --noEmit",
     "build:node-libs": "tsc -p tsconfig.node-libs.json",
     "sync:skills": "npm run build:node-libs && node src/lib/skill-link-sync.js",
-    "build:mcp": "esbuild toki-mcp-server.ts --bundle --platform=node --format=cjs --outfile=toki-mcp-server.js --target=node20",
+    "build:mcp": "node build/build-mcp.js",
     "build:preload": "esbuild preload.ts --bundle --platform=node --format=cjs --outfile=preload.js --external:electron --target=node20 && esbuild popout-preload.ts --bundle --platform=node --format=cjs --outfile=popout-preload.js --external:electron --target=node20",
     "test-rpack": "node test/test-rpack.js",
     "test-charx": "node test/test-charx.js",

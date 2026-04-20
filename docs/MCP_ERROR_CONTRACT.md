@@ -87,13 +87,14 @@ Intentional exception:
 
 ## 5. Agent recovery playbook
 
-1. If `status >= 400`, treat the result as a hard failure. Check `retryable` to decide whether to retry after delay. Read `suggestion` first, then inspect `details` or `rejected`. Use `next_actions` to discover recovery tools. For indexed-write `409` stale-index conflicts, refresh the relevant family list route and carry the latest `comment`, `preview`, or `type` value forward as the matching `expected_*` guard.
-2. If `status === 200` and `success === false`, treat the result as a no-op (`retryable` is always `false`). Use the preserved route-local fields to recover:
+1. If `status >= 400`, treat the result as a hard failure. The MCP protocol-level `isError` flag is set to `true`, and the full structured error envelope (action, target, error, suggestion, retryable, next*actions, details) is preserved end-to-end from the API server through the MCP stdio transport. Check `retryable` to decide whether to retry after delay. Read `suggestion` first, then inspect `details` or `rejected`. Use `next_actions` to discover recovery tools. For indexed-write `409` stale-index conflicts, refresh the relevant family list route and carry the latest `comment`, `preview`, or `type` value forward as the matching `expected*\*` guard.
+2. Infrastructure errors (editor not running, network failure, timeout) return `isError: true` with HTTP-style status codes (`502`, `503`, `504`), a human-readable `error` message, and `retryable: true`. These are distinct from domain errors and should be retried after verifying the RisuToki editor is running.
+3. If `status === 200` and `success === false`, treat the result as a no-op (`retryable` is always `false`). Use the preserved route-local fields to recover:
    - `matchCount: 0` means the search string or regex needs adjustment
    - `startAnchorFoundAt` means the start anchor matched, but the end anchor did not
    - `results[]` shows which batch replacements were skipped
    - `errors[]` shows which batch insert items need repair
-3. If the result is a success envelope, prefer `next_actions` over free-form guessing. High-traffic tools may narrow the family defaults to a smaller per-tool set. Check `artifacts.byte_size` before asking for more data: if the response is already large, switch to narrower reads (`list_*`, `search_in_field`, `read_field_range`, per-item reads, or probes) instead of dumping adjacent surfaces. Successful lorebook, regex, greeting, and risup batch mutations may include `results[]` for per-entry verification without an immediate re-read.
+4. If the result is a success envelope, prefer `next_actions` over free-form guessing. High-traffic tools may narrow the family defaults to a smaller per-tool set. Check `artifacts.byte_size` before asking for more data: if the response is already large, switch to narrower reads (`list_*`, `search_in_field`, `read_field_range`, per-item reads, or probes) instead of dumping adjacent surfaces. Successful lorebook, regex, greeting, and risup batch mutations may include `results[]` for per-entry verification without an immediate re-read.
 
 ## 6. Contributor rule
 

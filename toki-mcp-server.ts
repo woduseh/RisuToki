@@ -26,6 +26,8 @@ if (!TOKI_PORT || !TOKI_TOKEN) {
   process.exit(1);
 }
 
+declare const __APP_VERSION__: string;
+
 interface DanbooruTag {
   id: number;
   name: string;
@@ -152,9 +154,9 @@ function loadTags(): void {
     }
     tagsByCount = Array.from(tagMap.values()).sort((a, b) => b.count - a.count);
     tagsLoaded = true;
-    process.stderr.write(`[toki-mcp] Loaded ${tagMap.size} Danbooru tags\n`);
+    mcpLog('info', `Loaded ${tagMap.size} Danbooru tags`);
   } catch (err) {
-    process.stderr.write(`[toki-mcp] Failed to load tags: ${err}\n`);
+    mcpLog('warning', `Failed to load tags: ${err}`);
   }
 }
 
@@ -485,14 +487,33 @@ loadTags();
 
 // ==================== Helper ====================
 
+/** Sentinel key marking an API or infrastructure error resolved (not thrown) by apiRequest(). */
+const API_ERROR_KEY = '__apiError' as const;
+
+interface ApiErrorResult {
+  [API_ERROR_KEY]: true;
+  status: number;
+  [key: string]: unknown;
+}
+
+function isApiError(data: unknown): data is ApiErrorResult {
+  return !!data && typeof data === 'object' && (data as Record<string, unknown>)[API_ERROR_KEY] === true;
+}
+
 function textResult(data: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  if (isApiError(data)) {
+    // Strip the sentinel key before serialising — agents see the clean error envelope.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [API_ERROR_KEY]: _sentinel, ...rest } = data;
+    return { content: [{ type: 'text' as const, text: JSON.stringify(rest) }], isError: true as const };
+  }
+  return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
 }
 
 // ==================== HTTP Client ====================
 
 async function apiRequest(method: string, urlPath: string, body?: Record<string, unknown>): Promise<unknown> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const payload = body ? JSON.stringify(body) : null;
     const headers: Record<string, string | number> = {
       Authorization: `Bearer ${TOKI_TOKEN}`,
@@ -518,20 +539,54 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
         try {
           const parsed = JSON.parse(data);
           if (res.statusCode && res.statusCode >= 400) {
-            reject(new Error(parsed.error || `HTTP ${res.statusCode}`));
+            // Preserve the full structured error envelope from mcp-api-server
+            // (action, target, suggestion, retryable, next_actions, details, etc.)
+            resolve({ [API_ERROR_KEY]: true, status: res.statusCode, ...parsed });
           } else {
             resolve(parsed);
           }
         } catch {
-          reject(new Error(`Invalid response: ${data}`));
+          resolve({
+            [API_ERROR_KEY]: true,
+            status: res.statusCode ?? 502,
+            error: `Invalid JSON response from API server`,
+            suggestion: 'This may indicate a server-side crash. Check RisuToki editor logs.',
+          });
         }
       });
     });
 
-    req.on('error', (err) => reject(err));
+    req.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ECONNREFUSED') {
+        mcpLog('error', 'API connection refused — RisuToki editor not running');
+        resolve({
+          [API_ERROR_KEY]: true,
+          status: 503,
+          error: 'RisuToki editor is not running',
+          suggestion: 'Start the RisuToki editor application, then retry.',
+          retryable: true,
+        });
+      } else {
+        mcpLog('error', `API network error: ${err.message}`);
+        resolve({
+          [API_ERROR_KEY]: true,
+          status: 502,
+          error: `Network error: ${err.message}`,
+          suggestion: 'Check that RisuToki editor is running and accessible.',
+          retryable: true,
+        });
+      }
+    });
     req.setTimeout(120000, () => {
       req.destroy();
-      reject(new Error('Request timeout'));
+      mcpLog('error', `API request timed out: ${method} ${urlPath}`);
+      resolve({
+        [API_ERROR_KEY]: true,
+        status: 504,
+        error: 'Request timed out after 120 seconds',
+        suggestion: 'For large data, try narrowing the scope (e.g. use field ranges or smaller batch sizes).',
+        retryable: true,
+      });
     });
 
     if (payload) req.write(payload);
@@ -541,7 +596,10 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
 
 // ==================== MCP Server Setup ====================
 
-const server = new McpServer({ name: 'risutoki', version: '0.60.5' });
+const server = new McpServer({
+  name: 'risutoki',
+  version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0',
+});
 
 // Collect RegisteredTool handles for annotation patching via public API.
 // Each server.tool() return is stored so we avoid accessing _registeredTools.
@@ -2929,10 +2987,30 @@ server.prompt(
 
 // ==================== Start ====================
 
+/** Whether the MCP transport is connected (logging available). */
+let mcpConnected = false;
+
+/**
+ * Send a structured log via MCP logging protocol when connected,
+ * otherwise fall back to stderr.
+ */
+function mcpLog(level: 'debug' | 'info' | 'warning' | 'error', message: string, data?: Record<string, unknown>): void {
+  const text = data ? `${message} ${JSON.stringify(data)}` : message;
+  if (mcpConnected) {
+    server.sendLoggingMessage({ level, data: text }).catch(() => {});
+  } else {
+    process.stderr.write(`[toki-mcp] ${level}: ${text}\n`);
+  }
+}
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write(`[toki-mcp] started (SDK), API at 127.0.0.1:${TOKI_PORT}\n`);
+  mcpConnected = true;
+  mcpLog('info', `risutoki MCP server started`, {
+    version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0',
+    api: `127.0.0.1:${TOKI_PORT}`,
+  });
 }
 
 main().catch((err) => {
