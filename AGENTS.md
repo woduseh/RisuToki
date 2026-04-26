@@ -45,7 +45,7 @@
 | `project-workflow` | Project rules, MCP workflow, onboarding guide (includes `MCP_WORKFLOW.md` + `PROJECT_RULES.md`) |
 | `using-mcp-tools`  | Tool selection, large-field editing, batch-first principles                                     |
 
-Use `list_skills` to see the repo-global catalog, then load only the skills that match the current subtree and task.
+Use `list_skills` to see the repo-global catalog, then load only the skills that match the current subtree and task. Codex discovers that repo-local catalog through the generated `.agents/skills` link created by `npm run sync:skills` (or `npm install` via `prepare`); Copilot CLI, Claude Code, and Gemini CLI use `.github/skills`, `.claude/skills`, and `.gemini/skills`.
 
 ## Authoring routing note
 
@@ -55,4 +55,4 @@ Use `list_skills` to see the repo-global catalog, then load only the skills that
 
 If no main file is open but reference files are loaded, start with `session_status` or `list_references`, then narrow large reference text with `search_in_reference_field` / `read_reference_field_range` before drilling into `list_reference_*` / `read_reference_*`.
 
-For unopened `.charx` / `.risum` / `.risup` files, use `inspect_external_file` + `probe_*` for read-only inspection and `external_*` when you need direct absolute-path edits without switching the active UI document.
+For unopened `.charx` / `.risum` / `.risup` files, use `inspect_external_file` + `probe_*` for read-only inspection and `external_*` when you need direct absolute-path edits without switching the active UI document. If a dedicated family cannot reach the needed content, use `list_surfaces` / `read_surface` / `patch_surface` for the active document or `external_read_surface` / `external_patch_surface` for unopened files.

@@ -61,10 +61,18 @@ If this file and code diverge, the TypeScript source wins.
 ### `session`
 
 - **Use when:** inspecting the current document, dirty/autosave state, recovery status, snapshot totals, and compact structured-surface counts before resuming work or making risky edits
-- **Tools:** `session_status`
-- **Hints:** RO, idempotent
+- **Tools:** `session_status`, `save_current_file`
+- **Hints:** `session_status` is RO/idempotent; `save_current_file` writes the current document to disk
 - **Next actions:** `session_status`, `open_file`, `list_snapshots`
 - **Boundary:** this family reports editor/runtime state rather than document content and remains available even when no file is open; use the returned `surfaceSummary` to decide whether follow-up `list_*` reads are needed
+
+### `surface`
+
+- **Use when:** a specialized family cannot reach the needed `.charx`, `.risum`, or `.risup` content and you need JSON Pointer based fallback reads or edits on the active document
+- **Tools:** `list_surfaces`, `read_surface`, `patch_surface`, `replace_in_surface`
+- **Hints:** list/read are RO/idempotent; patch/replace mutate with confirmation and support `dry_run`
+- **Next actions:** `list_surfaces`, `read_surface`, `patch_surface`, `replace_in_surface`
+- **Boundary:** prefer specialized tools for lorebook, regex, greetings, triggers, Lua/CSS, assets, and risup prompt items. Use `patch_surface` for unsupported shapes or cross-surface edits, carrying the document-level `expected_hash` from `list_surfaces` or root `read_surface` when stale-write protection matters.
 
 ### `probe`
 
@@ -77,8 +85,8 @@ If this file and code diverge, the TypeScript source wins.
 ### `external`
 
 - **Use when:** inspecting or editing unopened `.charx`, `.risum`, or `.risup` files by absolute path **without** switching the active UI document
-- **Tools:** `inspect_external_file`, `external_search_in_field`, `external_read_field_range`, `external_write_field`, `external_write_field_batch`, `external_replace_in_field`, `external_insert_in_field`
-- **Hints:** inspect/search/range are RO/open-world; write/replace/insert routes are open-world writes with confirmation, and `external_replace_in_field` also supports `dry_run`
+- **Tools:** `inspect_external_file`, `external_search_in_field`, `external_read_field_range`, `external_write_field`, `external_write_field_batch`, `external_replace_in_field`, `external_insert_in_field`, `external_read_surface`, `external_patch_surface`
+- **Hints:** inspect/search/range/surface-read are RO/open-world; write/replace/insert/surface-patch routes are open-world writes with confirmation, and replace/surface-patch routes support `dry_run`
 - **Next actions:** `inspect_external_file`, `probe_field`, `external_search_in_field`, `external_write_field`
 - **Boundary:** this family intentionally bypasses the active editor session. If the target file is already the active UI document, these routes reject and you must use the existing active-document tools instead
 

@@ -2,8 +2,8 @@
 
 This guide covers tool selection, read rules, workflow patterns, and operational caveats for editing `.charx` / `.risum` / `.risup` files through MCP tools.
 
-For tool-family definitions and boundary rules see [`docs/MCP_TOOL_SURFACE.md`](MCP_TOOL_SURFACE.md).
-For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](MCP_ERROR_CONTRACT.md).
+For tool-family definitions and boundary rules see [`docs/MCP_TOOL_SURFACE.md`](../../docs/MCP_TOOL_SURFACE.md).
+For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](../../docs/MCP_ERROR_CONTRACT.md).
 
 ---
 
@@ -164,7 +164,7 @@ For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](MC
 - `src/lib/mcp-tool-taxonomy.ts` is the single source of truth that classifies 120 tools into 19 families. When you add or remove a tool, update this file as well. `mcp-tool-taxonomy.test.ts` enforces bidirectional completeness (no orphans, no phantoms) and behavioral-hint consistency.
 - MCP SDK `ToolAnnotations` (readOnlyHint, destructiveHint, idempotentHint, openWorldHint) are automatically patched after registration via `RegisteredTool.update()`.
 
-> For the full error/no-op/success response contract see [`docs/MCP_ERROR_CONTRACT.md`](MCP_ERROR_CONTRACT.md).
+> For the full error/no-op/success response contract see [`docs/MCP_ERROR_CONTRACT.md`](../../docs/MCP_ERROR_CONTRACT.md).
 
 ---
 
@@ -193,7 +193,7 @@ For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](MC
 
 ### Skill Discovery Scope
 
-Skill discovery is **repo-root scoped**. CLIs resolve project skills from the repository-root `.github/skills` (or `.claude/skills`, `.gemini/skills`) directory only. Nested skill directories placed inside subdirectories do not create subtree-specific catalogs — `list_skills` always returns the same repo-wide set regardless of the agent's working directory. Subtree scoping is handled by `AGENTS.md` routing: the nearest `risu/{scope}/AGENTS.md` decides which skills from the global catalog are relevant.
+RisuToki's generated unified skill catalog is **repo-root scoped**. Copilot CLI, Claude Code, and Gemini CLI resolve project skills from the repository-root `.github/skills`, `.claude/skills`, and `.gemini/skills` links. Codex resolves project skills through `.agents/skills`; Codex itself can scan that directory from the current working directory up to the repository root, but this repo provisions only a generated repository-root `.agents/skills` link after `npm run sync:skills` (or `npm install`, via `prepare`). Nested skill directories placed inside subdirectories do not create subtree-specific catalogs in this repo — `list_skills` always returns the same repo-wide set regardless of the agent's working directory. Subtree scoping is handled by `AGENTS.md` routing: the nearest `risu/{scope}/AGENTS.md` decides which skills from the global catalog are relevant.
 
 ### When the Skills Folder Appears Empty
 
@@ -202,7 +202,7 @@ If `list_skills` returns nothing, the generated CLI catalog may need repair. Che
 1. `npm run sync:skills`
 2. The source skill roots that feed the catalog: `skills/`, `risu/common/skills/`, `risu/{bot,prompts,modules,plugins}/skills/`
 3. The generated `.copilot-skill-catalog/`
-4. Symlink state of `.claude/skills`, `.gemini/skills`, `.github/skills`
+4. Symlink/junction state of `.agents/skills`, `.claude/skills`, `.gemini/skills`, `.github/skills`
 
 If it is still empty, fall back to `docs/`, the local `risu/{artifact}/README.md` / `AGENTS.md`, and the codebase itself.
 

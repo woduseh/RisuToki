@@ -31,10 +31,10 @@ Every host call crosses an iframe `postMessage` boundary, so **all `risuai.*` me
 
 ## Supporting files
 
-| File                                                 | Contents                            |
-| ---------------------------------------------------- | ----------------------------------- |
-| [`../docs/API_QUICKREF.md`](../docs/API_QUICKREF.md) | API categories and method reminders |
-| [`../docs/MIGRATION.md`](../docs/MIGRATION.md)       | v2.x → v3.0 migration steps         |
+| File                                                    | Contents                            |
+| ------------------------------------------------------- | ----------------------------------- |
+| [`../docs/API_QUICKREF.md`](../../docs/API_QUICKREF.md) | API categories and method reminders |
+| [`../docs/MIGRATION.md`](../../docs/MIGRATION.md)       | v2.x → v3.0 migration steps         |
 
 ## Mental model
 

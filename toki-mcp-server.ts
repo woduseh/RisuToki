@@ -922,6 +922,99 @@ server.tool(
 );
 
 server.tool(
+  'save_current_file',
+  '현재 에디터 문서를 현재 파일 경로에 저장합니다. 경로가 없는 새 문서라면 앱의 Save As 흐름을 사용합니다.',
+  {},
+  async () => textResult(await apiRequest('POST', '/document/save', {})),
+);
+
+server.tool(
+  'list_surfaces',
+  '현재 문서에서 MCP가 JSON Pointer로 읽고 편집할 수 있는 top-level surface 목록과 hash를 반환합니다.',
+  {},
+  async () => textResult(await apiRequest('GET', '/surfaces')),
+);
+
+server.tool(
+  'read_surface',
+  '현재 문서의 임의 JSON surface를 JSON Pointer path로 읽습니다. 예: "/", "/regex/0/comment", "/alternateGreetings/0".',
+  {
+    path: z.string().optional().describe('JSON Pointer path. 생략 또는 빈 문자열이면 전체 문서 root를 읽습니다.'),
+  },
+  async ({ path }) => textResult(await apiRequest('POST', '/surface/read', { path })),
+);
+
+server.tool(
+  'patch_surface',
+  '현재 문서의 임의 JSON surface에 JSON Patch(add/replace/remove)를 적용합니다. dry_run과 expected_hash를 지원합니다. 사용자 확인 필요.',
+  {
+    operations: z
+      .array(
+        z.object({
+          op: z.enum(['add', 'replace', 'remove']).describe('JSON Patch operation'),
+          path: z.string().describe('JSON Pointer path'),
+          value: z.unknown().optional().describe('add/replace에서 쓸 값'),
+        }),
+      )
+      .min(1)
+      .max(100)
+      .describe('JSON Patch operation 배열'),
+    expected_hash: z.string().optional().describe('선택: 전체 현재 문서 hash. 다르면 409로 중단됩니다.'),
+    dry_run: z.boolean().optional().describe('true이면 실제 적용 없이 변경 요약과 hash만 반환합니다.'),
+  },
+  async ({ operations, expected_hash, dry_run }) =>
+    textResult(await apiRequest('POST', '/surface/patch', { operations, expected_hash, dry_run })),
+);
+
+server.tool(
+  'replace_in_surface',
+  '현재 문서의 JSON surface 아래 모든 문자열 값에서 텍스트를 치환합니다. 대형 구조를 직접 덤프하지 않고 path 단위로 처리합니다. 사용자 확인 필요.',
+  {
+    path: z.string().describe('JSON Pointer path. 예: "/regex/0", "/lorebook/3/content"'),
+    find: z.string().describe('찾을 문자열 또는 regex 패턴'),
+    replace: z.string().optional().describe('바꿀 문자열. 생략 시 빈 문자열'),
+    regex: z.boolean().optional().describe('정규식 모드 여부'),
+    flags: z.string().optional().describe('정규식 flags'),
+    dry_run: z.boolean().optional().describe('true이면 실제 변경 없이 매치 수만 반환합니다.'),
+  },
+  async ({ path, find, replace, regex, flags, dry_run }) =>
+    textResult(await apiRequest('POST', '/surface/replace', { path, find, replace, regex, flags, dry_run })),
+);
+
+server.tool(
+  'external_read_surface',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 임의 JSON surface를 JSON Pointer path로 읽습니다. current UI 문서와 같은 파일은 거부됩니다.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    path: z.string().optional().describe('JSON Pointer path. 생략 또는 빈 문자열이면 전체 문서 root를 읽습니다.'),
+  },
+  async ({ file_path, path }) => textResult(await apiRequest('POST', '/external/surface/read', { file_path, path })),
+);
+
+server.tool(
+  'external_patch_surface',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 임의 JSON surface에 JSON Patch(add/replace/remove)를 적용합니다. current UI 문서와 같은 파일은 거부됩니다. 사용자 확인 필요.',
+  {
+    file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
+    operations: z
+      .array(
+        z.object({
+          op: z.enum(['add', 'replace', 'remove']).describe('JSON Patch operation'),
+          path: z.string().describe('JSON Pointer path'),
+          value: z.unknown().optional().describe('add/replace에서 쓸 값'),
+        }),
+      )
+      .min(1)
+      .max(100)
+      .describe('JSON Patch operation 배열'),
+    expected_hash: z.string().optional().describe('선택: 전체 외부 문서 hash. 다르면 409로 중단됩니다.'),
+    dry_run: z.boolean().optional().describe('true이면 실제 저장 없이 변경 요약과 hash만 반환합니다.'),
+  },
+  async ({ file_path, operations, expected_hash, dry_run }) =>
+    textResult(await apiRequest('POST', '/external/surface/patch', { file_path, operations, expected_hash, dry_run })),
+);
+
+server.tool(
   'replace_in_field',
   '필드의 내용에서 문자열 치환을 수행합니다. 대형 필드를 전체 읽지 않고 서버에서 직접 처리합니다. 문자열 타입 필드만 지원 (배열/boolean/number/triggerScripts 제외). regex: true + flags 옵션으로 정규식 지원. ⚠️ 검색만 하려면 search_in_field를 사용하세요 — replace를 생략하면 빈 문자열(=삭제)이 적용됩니다. dry_run: true로 실제 변경 없이 매치 결과만 미리 확인 가능. 사용자 확인 필요.',
   {

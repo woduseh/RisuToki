@@ -91,6 +91,7 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
   cbs: ['validate_cbs', 'simulate_cbs', 'diff_cbs'],
   snapshot: ['list_snapshots', 'snapshot_field', 'restore_snapshot'],
   search: ['search_in_field', 'search_all_fields', 'read_field'],
+  surface: ['list_surfaces', 'read_surface', 'patch_surface', 'replace_in_surface'],
   'lorebook-io': ['list_lorebook', 'export_lorebook_to_files', 'import_lorebook_from_files'],
   session: ['session_status', 'open_file', 'list_references', 'list_snapshots'],
 };

@@ -55,8 +55,8 @@ These rules apply **automatically** when the task changes the repo itself — ev
 | `risu/common/docs/`, `risu/{bot,prompts,modules,plugins}/docs/`         | Bundled authoring docs and quick references                                            |
 | `guides/`                                                               | Default writable guide location for imported/user-authored guides                      |
 | `.copilot-skill-catalog/`                                               | Generated aggregate CLI skill catalog rebuilt from the tracked skill roots             |
-| `.claude/skills`, `.gemini/skills`, `.github/skills`                    | Local CLI search paths that point to `.copilot-skill-catalog/`                         |
+| `.agents/skills`, `.claude/skills`, `.gemini/skills`, `.github/skills`  | Local CLI search paths that point to `.copilot-skill-catalog/`                         |
 
-> `npm run sync:skills` rebuilds `.copilot-skill-catalog/` from `skills/` plus the tracked `risu/*/skills/` roots, then repairs the CLI directory links. It prefers real symlinks on Windows and falls back to junctions when symlinks are not available. It silently skips if no tracked skill roots exist.
+> `npm run sync:skills` rebuilds `.copilot-skill-catalog/` from `skills/` plus the tracked `risu/*/skills/` roots, then repairs the CLI discovery links (`.agents/skills`, `.claude/skills`, `.gemini/skills`, `.github/skills`). It prefers real symlinks on Windows and falls back to junctions when symlinks are not available. It silently skips if no tracked skill roots exist.
 
 ---

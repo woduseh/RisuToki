@@ -39,6 +39,7 @@ export const TOOL_FAMILIES = [
   'cbs',
   'snapshot',
   'search',
+  'surface',
   'lorebook-io',
   'session',
 ] as const;
@@ -66,7 +67,7 @@ export const TOOL_MUTATION_META_KEYS = {
   supportsDryRun: 'risutoki/supportsDryRun',
 } as const;
 
-export const NO_CONFIRMATION_TOOL_NAMES = ['open_file', 'snapshot_field'] as const;
+export const NO_CONFIRMATION_TOOL_NAMES = ['open_file', 'save_current_file', 'snapshot_field'] as const;
 
 export const DRY_RUN_TOOL_NAMES = [
   'replace_in_field',
@@ -79,6 +80,9 @@ export const DRY_RUN_TOOL_NAMES = [
   'import_lorebook_from_files',
   'import_risup_prompt_from_text',
   'insert_risup_prompt_snippet',
+  'patch_surface',
+  'replace_in_surface',
+  'external_patch_surface',
 ] as const;
 
 const NO_CONFIRMATION_TOOL_NAME_SET = new Set<string>(NO_CONFIRMATION_TOOL_NAMES);
@@ -130,6 +134,13 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
 
   // ── Session ────────────────────────────────────────────────────────────
   session_status: { family: 'session', hints: RO_IDEMPOTENT },
+  save_current_file: { family: 'session', hints: WRITE },
+
+  // ── Surface ────────────────────────────────────────────────────────────
+  list_surfaces: { family: 'surface', hints: RO_IDEMPOTENT },
+  read_surface: { family: 'surface', hints: RO_IDEMPOTENT },
+  patch_surface: { family: 'surface', hints: WRITE },
+  replace_in_surface: { family: 'surface', hints: WRITE },
 
   // ── Probe / Open ───────────────────────────────────────────────────────
   probe_field: { family: 'probe', hints: RO_IDEMPOTENT },
@@ -152,6 +163,8 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   external_read_field_range: { family: 'external', hints: OPEN_WORLD_RO },
   external_replace_in_field: { family: 'external', hints: OPEN_WORLD_WRITE },
   external_insert_in_field: { family: 'external', hints: OPEN_WORLD_WRITE },
+  external_read_surface: { family: 'external', hints: OPEN_WORLD_RO },
+  external_patch_surface: { family: 'external', hints: OPEN_WORLD_WRITE },
 
   // ── Lorebook ───────────────────────────────────────────────────────────
   list_lorebook: { family: 'lorebook', hints: RO_IDEMPOTENT },

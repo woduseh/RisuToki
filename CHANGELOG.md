@@ -9,6 +9,29 @@
 
 ---
 
+## [0.64.0] - 2026-04-26
+
+### Added
+
+- Added MCP surface tools for JSON Pointer based document inspection and edits: `list_surfaces`, `read_surface`, `patch_surface`, and `replace_in_surface`.
+- Added unopened-file surface tools `external_read_surface` and `external_patch_surface`, with the same active-file rejection policy as other `external_*` mutation routes.
+- Added `save_current_file` so agents can explicitly persist the active document after MCP edits.
+
+### Changed
+
+- Updated MCP taxonomy, response next-actions, workflow docs, and skill guidance to include the new surface-editing fallback layer for `.charx`, `.risum`, and `.risup` files.
+
+## [0.63.0] - 2026-04-22
+
+### Added
+
+- Added native Codex repo-skill discovery support to `npm run sync:skills` by repairing a repo-local `.agents/skills` link alongside the existing Claude, Gemini, and Copilot CLI paths.
+
+### Changed
+
+- Expanded `skill-link-sync` coverage so placeholder repair, stable re-sync, blocked-`realpath` handling, junction fallback, and unexpected-directory protection all cover the Codex path too.
+- Updated `README.md`, `AGENTS.md`, `docs/`, and `skills/` workflow docs to document the Codex `.agents/skills` discovery path while keeping the existing `AGENTS.md` + MCP fallback guidance.
+
 ## [0.62.1] - 2026-04-20
 
 ### Fixed

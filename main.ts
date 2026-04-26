@@ -166,6 +166,7 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     getReferenceFiles: () => ReferenceRecord[];
     askRendererConfirm: (title: string, message: string) => Promise<boolean>;
     requestRendererOpenFile: (request: RendererOpenFileRequest) => Promise<RendererOpenFileResponse>;
+    saveCurrentDocument?: () => Promise<SaveResult>;
     broadcastToAll: (channel: string, ...args: unknown[]) => void;
     broadcastMcpStatus: (payload: Record<string, unknown>) => void;
     onListening: (port: number) => void;
@@ -799,6 +800,7 @@ app.whenReady().then(() => {
     getReferenceFiles: () => mainState.referenceFiles,
     askRendererConfirm,
     requestRendererOpenFile,
+    saveCurrentDocument: () => saveCurrentDocumentFromMcp(),
     broadcastToAll,
     broadcastMcpStatus,
     onListening(port: number) {
@@ -1052,6 +1054,28 @@ ipcMain.handle('open-file-path', async (_event, filePath: string) => {
     throw err;
   }
 });
+
+async function saveCurrentDocumentFromMcp(): Promise<SaveResult> {
+  if (!mainState.currentData) return { success: false, error: 'No file open' };
+  if (!mainState.currentFilePath) {
+    return saveCurrentFileAs({});
+  }
+  try {
+    invalidateAssetsMapCache();
+    if (mcpApi) mcpApi.invalidateSectionCaches();
+    if (mainState.currentData._fileType === 'risum') {
+      saveRisum(mainState.currentFilePath, mainState.currentData);
+    } else if (mainState.currentData._fileType === 'risup') {
+      saveRisup(mainState.currentFilePath, mainState.currentData);
+    } else {
+      saveCharx(mainState.currentFilePath, mainState.currentData);
+    }
+    if (recoveryManager) recoveryManager.clearAutosavePaths();
+    return { success: true, path: mainState.currentFilePath };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
 
 // Save to current path
 async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promise<SaveResult> {

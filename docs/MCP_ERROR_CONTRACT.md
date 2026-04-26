@@ -22,6 +22,7 @@ Typical cases:
 4. no active document
 5. renderer-side rejection or conflict (`rejected`, `409`)
 6. stale-index guard conflicts on guarded indexed writes using `expected_comment`, `expected_preview`, or `expected_type`
+7. stale document hash conflicts on surface patch writes using `expected_hash`
 
 Notes:
 
@@ -29,6 +30,7 @@ Notes:
 - `suggestion` should tell the agent what to do next
 - `details` should carry small machine-readable facts, not large payloads
 - Stale-index conflicts return `409` with family-specific `details.expected_*` / `details.actual_*` fields (for example `expected_comment`, `expected_preview`, or `expected_type`), so the caller can refresh the relevant list route deterministically before retrying
+- Surface patch hash conflicts return `409` with `details.expected_hash` / `details.actual_hash`; refresh with `list_surfaces`, `read_surface`, or `external_read_surface` before retrying
 - `mcpError()` broadcasts failure status to the renderer UI
 - `No file open` applies only to routes that require the active main document; `session_status`, `probe_*`, `external_*`, and `reference*` routes remain available without one
 

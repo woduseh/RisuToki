@@ -19,6 +19,8 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 - Do **not** use `write_field` for `lua` / `css` / greetings / triggers when dedicated write tools already exist.
 - For risup prompt editing, prefer `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_prompt_item_batch`, `export_risup_prompt_to_text`, `copy_risup_prompt_items_as_text`, `diff_risup_prompt`, and `read_risup_formating_order`. For reuse across sessions, switch to `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `save_risup_prompt_snippet`, and `insert_risup_prompt_snippet`.
 - For unopened files, start with `inspect_external_file` + the relevant `probe_*` reader, then use `external_search_in_field` / `external_read_field_range` / `external_write_field*` only when you must keep the current UI document untouched.
+- When a specialized tool cannot reach the required content, use the surface fallback: `list_surfaces` → `read_surface` → `patch_surface` or `replace_in_surface`. Prefer `dry_run` and carry the document-level `expected_hash` for risky edits.
+- For unopened files with unsupported shapes, use `external_read_surface` / `external_patch_surface`; these still reject the active UI document.
 - Before risky edits or after interruptions, call `session_status` to inspect the active document, dirty/autosave state, recovery metadata, snapshot totals, and compact structured-surface counts.
 - Prefer response `next_actions` over guessing; high-traffic tools may return narrower follow-up suggestions than the family default.
 - Check tool `_meta` from `tools/list` when choosing a write route: `risutoki/requiresConfirmation` means an approval gate is expected, and `risutoki/supportsDryRun` means a preview-first flow exists.
@@ -88,6 +90,14 @@ If the task touches multiple sibling items, prefer:
 - `add_risup_prompt_item_batch` (with `insertAt`)
 
 This reduces repeated confirmation prompts and keeps edits coherent.
+
+## Surface Fallback Workflow
+
+1. Prefer dedicated families first: lorebook, regex, greetings, triggers, Lua/CSS, assets, and risup prompt tools.
+2. If the content is not reachable through those families, call `list_surfaces` and inspect only the needed JSON Pointer path with `read_surface`.
+3. Use `patch_surface` for structural `add` / `replace` / `remove`, or `replace_in_surface` for recursive string replacement under a path.
+4. Use `dry_run: true` before broad edits and pass `expected_hash` from `list_surfaces` or a root `read_surface` response when retry safety matters.
+5. After active-document surface edits that must persist immediately, call `save_current_file`.
 
 ## Import Verification Workflow
 

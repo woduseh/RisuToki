@@ -20,9 +20,9 @@ function makeProjectRoot() {
     'utf8',
   );
 
-  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
-  fs.mkdirSync(path.join(root, '.gemini'), { recursive: true });
-  fs.mkdirSync(path.join(root, '.github'), { recursive: true });
+  for (const projectSkillDir of ['.agents', '.claude', '.gemini', '.github']) {
+    fs.mkdirSync(path.join(root, projectSkillDir), { recursive: true });
+  }
 
   return root;
 }
@@ -31,9 +31,9 @@ function makeProjectRootWithoutSkills() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-skill-links-missing-'));
   tempRoots.push(root);
 
-  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
-  fs.mkdirSync(path.join(root, '.gemini'), { recursive: true });
-  fs.mkdirSync(path.join(root, '.github'), { recursive: true });
+  for (const projectSkillDir of ['.agents', '.claude', '.gemini', '.github']) {
+    fs.mkdirSync(path.join(root, projectSkillDir), { recursive: true });
+  }
 
   return root;
 }
@@ -59,6 +59,12 @@ function canCreateWindowsDirectorySymlink() {
   }
 }
 
+function getCodexSkillSpec(specs: ReturnType<typeof getProjectSkillLinkSpecs>) {
+  const codexSpec = specs.find((spec) => spec.linkPath.endsWith(path.join('.agents', 'skills')));
+  expect(codexSpec).toBeDefined();
+  return codexSpec!;
+}
+
 afterEach(() => {
   for (const root of tempRoots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
@@ -78,13 +84,15 @@ describe('skill link sync', () => {
     const root = makeProjectRoot();
     const specs = getProjectSkillLinkSpecs(root);
 
-    fs.writeFileSync(specs[0].linkPath, specs[0].relativeTarget, 'utf8');
-    fs.writeFileSync(specs[1].linkPath, specs[1].relativeTarget.replace(/\//g, '\\') + '\n', 'utf8');
-    fs.writeFileSync(specs[2].linkPath, specs[2].relativeTarget + '\n', 'utf8');
+    specs.forEach((spec, index) => {
+      const placeholderContent =
+        index === 1 ? spec.relativeTarget.replace(/\//g, '\\') + '\n' : spec.relativeTarget + '\n';
+      fs.writeFileSync(spec.linkPath, placeholderContent, 'utf8');
+    });
 
     const results = ensureProjectSkillLinks(root, { platform: 'win32' });
 
-    expect(results.map((result) => result.status)).toEqual(['repaired', 'repaired', 'repaired']);
+    expect(results.map((result) => result.status)).toEqual(specs.map(() => 'repaired'));
 
     for (const spec of specs) {
       expect(fs.lstatSync(spec.linkPath).isSymbolicLink()).toBe(true);
@@ -98,7 +106,7 @@ describe('skill link sync', () => {
     const results = ensureProjectSkillLinks(root, { platform: process.platform });
     const specs = getProjectSkillLinkSpecs(root);
 
-    expect(results.map((result) => result.status)).toEqual(['ok', 'ok', 'ok']);
+    expect(results.map((result) => result.status)).toEqual(specs.map(() => 'ok'));
 
     for (const spec of specs) {
       expect(fs.realpathSync.native(spec.linkPath)).toBe(fs.realpathSync.native(spec.sourcePath));
@@ -123,7 +131,7 @@ describe('skill link sync', () => {
 
     try {
       const results = ensureProjectSkillLinks(root, { platform: process.platform });
-      expect(results.map((result) => result.status)).toEqual(['ok', 'ok', 'ok']);
+      expect(results.map((result) => result.status)).toEqual(specs.map(() => 'ok'));
     } finally {
       existsSpy.mockRestore();
     }
@@ -147,7 +155,7 @@ describe('skill link sync', () => {
 
     try {
       const results = ensureProjectSkillLinks(root, { platform: 'win32' });
-      expect(results.map((result) => result.status)).toEqual(['ok', 'ok', 'ok']);
+      expect(results.map((result) => result.status)).toEqual(specs.map(() => 'ok'));
     } finally {
       realpathNativeSpy.mockRestore();
     }
@@ -156,9 +164,10 @@ describe('skill link sync', () => {
   it('refuses to replace unexpected real directories', () => {
     const root = makeProjectRoot();
     const specs = getProjectSkillLinkSpecs(root);
+    const codexSpec = getCodexSkillSpec(specs);
 
-    fs.mkdirSync(specs[0].linkPath, { recursive: true });
-    fs.writeFileSync(path.join(specs[0].linkPath, 'stale.txt'), 'stale copy', 'utf8');
+    fs.mkdirSync(codexSpec.linkPath, { recursive: true });
+    fs.writeFileSync(path.join(codexSpec.linkPath, 'stale.txt'), 'stale copy', 'utf8');
 
     expect(() => ensureProjectSkillLinks(root, { platform: process.platform })).toThrow(
       'Refusing to replace existing directory',
@@ -169,9 +178,9 @@ describe('skill link sync', () => {
     const root = makeProjectRoot();
     const specs = getProjectSkillLinkSpecs(root);
 
-    fs.writeFileSync(specs[0].linkPath, specs[0].relativeTarget, 'utf8');
-    fs.writeFileSync(specs[1].linkPath, specs[1].relativeTarget, 'utf8');
-    fs.writeFileSync(specs[2].linkPath, specs[2].relativeTarget, 'utf8');
+    for (const spec of specs) {
+      fs.writeFileSync(spec.linkPath, spec.relativeTarget, 'utf8');
+    }
 
     ensureProjectSkillLinks(root, { platform: 'win32' });
 
@@ -185,9 +194,9 @@ describe('skill link sync', () => {
     const root = makeProjectRoot();
     const specs = getProjectSkillLinkSpecs(root);
 
-    fs.writeFileSync(specs[0].linkPath, specs[0].relativeTarget, 'utf8');
-    fs.writeFileSync(specs[1].linkPath, specs[1].relativeTarget, 'utf8');
-    fs.writeFileSync(specs[2].linkPath, specs[2].relativeTarget, 'utf8');
+    for (const spec of specs) {
+      fs.writeFileSync(spec.linkPath, spec.relativeTarget, 'utf8');
+    }
 
     const originalSymlinkSync = fs.symlinkSync.bind(fs);
     const symlinkSpy = vi.spyOn(fs, 'symlinkSync').mockImplementation((target, pathArg, type) => {
@@ -208,8 +217,8 @@ describe('skill link sync', () => {
       const firstResults = ensureProjectSkillLinks(root, { platform: 'win32' });
       const secondResults = ensureProjectSkillLinks(root, { platform: 'win32' });
 
-      expect(firstResults.map((result) => result.status)).toEqual(['repaired', 'repaired', 'repaired']);
-      expect(secondResults.map((result) => result.status)).toEqual(['ok', 'ok', 'ok']);
+      expect(firstResults.map((result) => result.status)).toEqual(specs.map(() => 'repaired'));
+      expect(secondResults.map((result) => result.status)).toEqual(specs.map(() => 'ok'));
 
       for (const spec of specs) {
         expect(fs.realpathSync.native(spec.linkPath)).toBe(fs.realpathSync.native(spec.sourcePath));

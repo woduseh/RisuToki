@@ -48,6 +48,9 @@ Thumbs.db
 .gemini/*
 !.gemini/skills
 
+# Codex repo-local skills link
+.agents/
+
 # Generated Copilot skill catalog
 .copilot-skill-catalog/
 

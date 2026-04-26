@@ -128,6 +128,8 @@ export interface McpApiDeps {
   askRendererConfirm: (title: string, message: string) => Promise<boolean>;
   /** Ask the renderer to switch the active document to a specific external file path. */
   requestRendererOpenFile: (request: RendererOpenFileRequest) => Promise<RendererOpenFileResponse>;
+  /** Ask the app to save the current document. */
+  saveCurrentDocument?: () => Promise<{ success: boolean; path?: string; error?: string }>;
   /** Broadcast an IPC message to all windows (main + popouts). */
   broadcastToAll: (channel: string, ...args: any[]) => void;
   /** Broadcast an MCP status event to the renderer. */
@@ -178,6 +180,7 @@ export interface McpApiServer {
 // ---------------------------------------------------------------------------
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_SURFACE_REPLACE_MATCHES = 1000;
 
 export interface RendererOpenFileRequest {
   filePath: string;
@@ -638,6 +641,259 @@ function pickAllowedFields(source: Record<string, unknown>, allowed: Set<string>
     if (allowed.has(key)) result[key] = source[key];
   }
   return result;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function hashSurface(value: unknown): string {
+  return crypto.createHash('sha256').update(stableJson(value)).digest('hex');
+}
+
+function measureSurface(value: unknown): { type: string; byteSize: number; count?: number; preview?: string } {
+  if (Array.isArray(value))
+    return { type: 'array', byteSize: Buffer.byteLength(stableJson(value)), count: value.length };
+  if (value && typeof value === 'object') {
+    return { type: 'object', byteSize: Buffer.byteLength(stableJson(value)), count: Object.keys(value).length };
+  }
+  if (typeof value === 'string') {
+    return {
+      type: 'string',
+      byteSize: Buffer.byteLength(value),
+      preview: value.slice(0, 120) + (value.length > 120 ? '…' : ''),
+    };
+  }
+  return { type: value === null ? 'null' : typeof value, byteSize: Buffer.byteLength(stableJson(value)) };
+}
+
+function parseJsonPointer(pointer: string | undefined): string[] {
+  if (!pointer || pointer === '/') return [];
+  if (!pointer.startsWith('/')) throw new Error('path must be a JSON Pointer beginning with "/"');
+  return pointer
+    .slice(1)
+    .split('/')
+    .map((part) => part.replace(/~1/g, '/').replace(/~0/g, '~'));
+}
+
+function assertSafePointerToken(token: string): void {
+  if (token === '__proto__' || token === 'prototype' || token === 'constructor') {
+    throw new Error(`Unsafe path token: ${token}`);
+  }
+}
+
+function getPointerValue(root: unknown, pointer: string | undefined): unknown {
+  let current = root;
+  for (const token of parseJsonPointer(pointer)) {
+    assertSafePointerToken(token);
+    if (Array.isArray(current)) {
+      const index = Number(token);
+      if (!Number.isInteger(index) || index < 0 || index >= current.length) {
+        throw new Error(`Array index out of range: ${token}`);
+      }
+      current = current[index];
+      continue;
+    }
+    if (!current || typeof current !== 'object' || !(token in (current as Record<string, unknown>))) {
+      throw new Error(`Path not found: ${pointer}`);
+    }
+    current = (current as Record<string, unknown>)[token];
+  }
+  return current;
+}
+
+function getPointerParent(root: unknown, pointer: string): { parent: unknown; key: string } {
+  const tokens = parseJsonPointer(pointer);
+  if (tokens.length === 0) throw new Error('Cannot mutate the document root with this operation');
+  const key = tokens[tokens.length - 1];
+  assertSafePointerToken(key);
+  const parentPointer = tokens
+    .slice(0, -1)
+    .map((token) => token.replace(/~/g, '~0').replace(/\//g, '~1'))
+    .join('/');
+  return { parent: getPointerValue(root, parentPointer ? `/${parentPointer}` : ''), key };
+}
+
+function setPointerValue(root: unknown, pointer: string, value: unknown, allowAdd: boolean): void {
+  const { parent, key } = getPointerParent(root, pointer);
+  if (Array.isArray(parent)) {
+    if (key === '-') {
+      if (!allowAdd) throw new Error('"-" array append is only valid for add operations');
+      parent.push(value);
+      return;
+    }
+    const index = Number(key);
+    if (!Number.isInteger(index) || index < 0 || index > parent.length || (!allowAdd && index >= parent.length)) {
+      throw new Error(`Array index out of range: ${key}`);
+    }
+    if (allowAdd && index === parent.length) parent.push(value);
+    else parent[index] = value;
+    return;
+  }
+  if (!parent || typeof parent !== 'object') throw new Error('Parent path is not an object or array');
+  if (!allowAdd && !(key in (parent as Record<string, unknown>))) throw new Error(`Path not found: ${pointer}`);
+  (parent as Record<string, unknown>)[key] = value;
+}
+
+function removePointerValue(root: unknown, pointer: string): unknown {
+  const { parent, key } = getPointerParent(root, pointer);
+  if (Array.isArray(parent)) {
+    const index = Number(key);
+    if (!Number.isInteger(index) || index < 0 || index >= parent.length)
+      throw new Error(`Array index out of range: ${key}`);
+    return parent.splice(index, 1)[0];
+  }
+  if (!parent || typeof parent !== 'object' || !(key in (parent as Record<string, unknown>))) {
+    throw new Error(`Path not found: ${pointer}`);
+  }
+  const record = parent as Record<string, unknown>;
+  const old = record[key];
+  delete record[key];
+  return old;
+}
+
+function clonePatchValue(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  return cloneJson(value);
+}
+
+function applySurfacePatch(
+  target: Record<string, unknown>,
+  operations: unknown[],
+): {
+  changed: number;
+  touchedTopLevel: string[];
+} {
+  const touched = new Set<string>();
+  let changed = 0;
+  for (const rawOp of operations) {
+    if (!rawOp || typeof rawOp !== 'object') throw new Error('Each patch operation must be an object');
+    const op = rawOp as Record<string, unknown>;
+    const kind = op.op;
+    const pathValue = op.path;
+    if (kind !== 'add' && kind !== 'replace' && kind !== 'remove') {
+      throw new Error('Unsupported patch op. Use add, replace, or remove.');
+    }
+    if (typeof pathValue !== 'string') throw new Error('Patch operation path must be a string');
+    const topLevel = parseJsonPointer(pathValue)[0];
+    if (topLevel) touched.add(topLevel);
+    if (kind === 'remove') {
+      removePointerValue(target, pathValue);
+    } else {
+      if (!('value' in op)) throw new Error(`${kind} operation requires a value`);
+      setPointerValue(target, pathValue, clonePatchValue(op.value), kind === 'add');
+    }
+    changed++;
+  }
+  return { changed, touchedTopLevel: [...touched] };
+}
+
+function buildSurfaceList(data: Record<string, unknown>, fileType: SupportedFileType): Record<string, unknown>[] {
+  const rules = getFieldAccessRules(data);
+  const names = new Set<string>([
+    ...rules.allowedFields,
+    'lorebook',
+    'regex',
+    'alternateGreetings',
+    'groupOnlyGreetings',
+    'triggerScripts',
+    'lua',
+    'css',
+    'assets',
+    'cardAssets',
+    'risumAssets',
+    '_risuExt',
+    '_moduleData',
+  ]);
+  if (fileType === 'risup') {
+    names.add('promptTemplate');
+    names.add('formatingOrder');
+    names.add('presetBias');
+    names.add('localStopStrings');
+  }
+  return [...names]
+    .filter((name) => Object.prototype.hasOwnProperty.call(data, name))
+    .sort()
+    .map((name) => {
+      const value = data[name];
+      const measure = measureSurface(value);
+      return {
+        name,
+        path: `/${name}`,
+        ...measure,
+        hash: hashSurface(value),
+        dedicatedToolFamily:
+          name === 'lorebook'
+            ? 'lorebook'
+            : name === 'regex'
+              ? 'regex'
+              : name === 'triggerScripts'
+                ? 'trigger'
+                : name === 'lua'
+                  ? 'lua'
+                  : name === 'css'
+                    ? 'css'
+                    : name === 'promptTemplate' || name === 'formatingOrder'
+                      ? 'risup-prompt'
+                      : name === 'alternateGreetings' || name === 'groupOnlyGreetings'
+                        ? 'greeting'
+                        : undefined,
+      };
+    });
+}
+
+function replaceStringInSurface(
+  value: unknown,
+  find: string,
+  replacement: string,
+  regexMode: boolean,
+  flags?: string,
+): {
+  next: unknown;
+  matches: number;
+} {
+  let matches = 0;
+  const pattern = regexMode ? new RegExp(find, flags || 'g') : null;
+  const visit = (node: unknown): unknown => {
+    if (typeof node === 'string') {
+      if (regexMode) {
+        const re = new RegExp(pattern!.source, pattern!.flags.includes('g') ? pattern!.flags : `${pattern!.flags}g`);
+        const localMatches = [...node.matchAll(re)].length;
+        matches += localMatches;
+        if (matches > MAX_SURFACE_REPLACE_MATCHES)
+          throw new Error(`Too many matches (>${MAX_SURFACE_REPLACE_MATCHES})`);
+        return node.replace(re, replacement);
+      }
+      const localMatches = find ? node.split(find).length - 1 : 0;
+      matches += localMatches;
+      if (matches > MAX_SURFACE_REPLACE_MATCHES) throw new Error(`Too many matches (>${MAX_SURFACE_REPLACE_MATCHES})`);
+      return find ? node.split(find).join(replacement) : node;
+    }
+    if (Array.isArray(node)) return node.map(visit);
+    if (node && typeof node === 'object') {
+      const next: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(node as Record<string, unknown>)) next[key] = visit(child);
+      return next;
+    }
+    return node;
+  };
+  return { next: visit(value), matches };
+}
+
+function inferDocumentFileType(data: Record<string, unknown>, fallback?: SupportedFileType | null): SupportedFileType {
+  if (fallback === 'risum' || fallback === 'risup' || fallback === 'charx') return fallback;
+  if (data._fileType === 'risum' || data._fileType === 'risup') return data._fileType;
+  return 'charx';
 }
 
 function getLorebookEntryComment(entry: Record<string, unknown> | undefined): string {
@@ -2924,6 +3180,176 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
       }
 
+      // ----------------------------------------------------------------
+      // POST /external/surface/read — JSON Pointer read from an unopened file
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'external' &&
+        parts[1] === 'surface' &&
+        parts[2] === 'read' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          'external/surface/read',
+          'external read surface',
+          'external:surface:read',
+        );
+        if (!probe) return;
+        const currentFilePath = deps.getCurrentFilePath ? deps.getCurrentFilePath() : null;
+        if (currentFilePath && sameDocumentPath(currentFilePath, probe.filePath)) {
+          return mcpError(res, 409, {
+            action: 'external read surface',
+            message: 'The requested file is already open in the UI session.',
+            suggestion: '현재 열린 문서는 read_surface를 사용하세요.',
+            target: 'external:surface:read',
+          });
+        }
+        const pointer = typeof probe.body.path === 'string' ? probe.body.path : '';
+        try {
+          const value = getPointerValue(probe.data, pointer);
+          return jsonResSuccess(
+            res,
+            {
+              file_path: probe.filePath,
+              file_type: probe.fileType,
+              path: pointer || '/',
+              value,
+              hash: hashSurface(value),
+              ...measureSurface(value),
+            },
+            {
+              toolName: 'external_read_surface',
+              summary: `Read surface ${pointer || '/'} from ${path.basename(probe.filePath)}`,
+            },
+          );
+        } catch (error) {
+          return mcpError(res, 400, {
+            action: 'external read surface',
+            message: error instanceof Error ? error.message : String(error),
+            suggestion: 'list_surfaces 또는 inspect_external_file로 대상 path를 확인하세요.',
+            target: `external:surface:${pointer || '/'}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /external/surface/patch — JSON Patch an unopened file
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'external' &&
+        parts[1] === 'surface' &&
+        parts[2] === 'patch' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const probe = await readProbeDocumentRequest(
+          req,
+          res,
+          'external/surface/patch',
+          'external patch surface',
+          'external:surface:patch',
+        );
+        if (!probe) return;
+        const currentFilePath = deps.getCurrentFilePath ? deps.getCurrentFilePath() : null;
+        if (currentFilePath && sameDocumentPath(currentFilePath, probe.filePath)) {
+          return mcpError(res, 409, {
+            action: 'external patch surface',
+            message: 'The requested file is already open in the UI session.',
+            suggestion: '현재 열린 문서는 patch_surface를 사용하세요.',
+            target: 'external:surface:patch',
+          });
+        }
+        const operations = Array.isArray(probe.body.operations) ? probe.body.operations : null;
+        if (!operations || operations.length === 0) {
+          return mcpError(res, 400, {
+            action: 'external patch surface',
+            message: 'operations must be a non-empty JSON Patch array',
+            suggestion:
+              '{ "file_path": "...", "operations": [{ "op": "replace", "path": "/name", "value": "..." }] } 형태로 전달하세요.',
+            target: 'external:surface:patch',
+          });
+        }
+        const expectedHash = typeof probe.body.expected_hash === 'string' ? probe.body.expected_hash : undefined;
+        const beforeHash = hashSurface(probe.data);
+        if (expectedHash && expectedHash !== beforeHash) {
+          return mcpError(res, 409, {
+            action: 'external patch surface',
+            message: 'Stale external document hash',
+            suggestion: 'external_read_surface로 최신 hash를 확인한 뒤 다시 시도하세요.',
+            target: 'external:surface:patch',
+            details: { expected_hash: expectedHash, actual_hash: beforeHash },
+          });
+        }
+        const draft = cloneJson(probe.data) as Record<string, unknown>;
+        try {
+          const result = applySurfacePatch(draft, operations);
+          const afterHash = hashSurface(draft);
+          if (probe.body.dry_run === true) {
+            return jsonResSuccess(
+              res,
+              {
+                dry_run: true,
+                file_path: probe.filePath,
+                changed: result.changed,
+                touched: result.touchedTopLevel,
+                before_hash: beforeHash,
+                after_hash: afterHash,
+              },
+              {
+                toolName: 'external_patch_surface',
+                summary: `Dry-run: patch ${result.changed} operation(s) in ${path.basename(probe.filePath)}`,
+              },
+            );
+          }
+          const allowed = await deps.askRendererConfirm(
+            'MCP 외부 surface 수정 요청',
+            `AI 어시스턴트가 UI에 열리지 않은 파일의 surface를 수정하려 합니다.\n파일: ${probe.filePath}\n작업 수: ${result.changed}\n대상: ${result.touchedTopLevel.join(', ') || '/'}`,
+          );
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'external patch surface',
+              message: '사용자가 거부했습니다',
+              rejected: true,
+              suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+              target: 'external:surface:patch',
+            });
+          }
+          deps.saveExternalDocument(probe.filePath, probe.fileType, draft);
+          logMcpMutation('external patch surface', 'external:surface:patch', {
+            filePath: probe.filePath,
+            changed: result.changed,
+            touched: result.touchedTopLevel,
+          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              file_path: probe.filePath,
+              file_type: probe.fileType,
+              changed: result.changed,
+              touched: result.touchedTopLevel,
+              before_hash: beforeHash,
+              after_hash: afterHash,
+            },
+            {
+              toolName: 'external_patch_surface',
+              summary: `Patched ${result.changed} operation(s) in ${path.basename(probe.filePath)}`,
+              artifacts: { count: result.changed, fileType: probe.fileType },
+            },
+          );
+        } catch (error) {
+          return mcpError(res, 400, {
+            action: 'external patch surface',
+            message: error instanceof Error ? error.message : String(error),
+            suggestion: 'JSON Pointer path와 patch operation을 확인하세요.',
+            target: 'external:surface:patch',
+          });
+        }
+      }
+
       const isSessionStatusRoute = parts[0] === 'session' && parts[1] === 'status' && !parts[2] && req.method === 'GET';
       const isReferenceRoute = parts[0] === 'references' || parts[0] === 'reference';
       const isRisupPromptSnippetRoute = parts[0] === 'risup' && parts[1] === 'prompt-snippets';
@@ -2936,6 +3362,264 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           suggestion:
             'open_file를 사용하거나 에디터에서 파일을 먼저 연 뒤 다시 시도하세요. 참고 자료가 로드되어 있다면 list_references는 파일 없이도 사용 가능합니다.',
         });
+      }
+
+      // ----------------------------------------------------------------
+      // GET /surfaces — list current document editable JSON surfaces
+      // ----------------------------------------------------------------
+      if (req.method === 'GET' && parts[0] === 'surfaces' && !parts[1]) {
+        const status = deps.getSessionStatus ? await deps.getSessionStatus() : null;
+        const fileType = inferDocumentFileType(currentData, status?.currentFileType);
+        const surfaces = buildSurfaceList(currentData, fileType);
+        return jsonResSuccess(
+          res,
+          { fileType, count: surfaces.length, document_hash: hashSurface(currentData), surfaces },
+          {
+            toolName: 'list_surfaces',
+            summary: `Listed ${surfaces.length} editable surface(s) (${fileType})`,
+            artifacts: { count: surfaces.length, fileType },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /surface/read — JSON Pointer read from current document
+      // ----------------------------------------------------------------
+      if (parts[0] === 'surface' && parts[1] === 'read' && !parts[2] && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'surface/read', broadcastStatus);
+        if (!body) return;
+        const pointer = typeof body.path === 'string' ? body.path : '';
+        try {
+          const value = getPointerValue(currentData, pointer);
+          return jsonResSuccess(
+            res,
+            { path: pointer || '/', value, hash: hashSurface(value), ...measureSurface(value) },
+            {
+              toolName: 'read_surface',
+              summary: `Read surface ${pointer || '/'}`,
+            },
+          );
+        } catch (error) {
+          return mcpError(res, 400, {
+            action: 'read surface',
+            message: error instanceof Error ? error.message : String(error),
+            suggestion: 'list_surfaces로 대상 path를 확인하세요.',
+            target: `surface:${pointer || '/'}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /surface/patch — JSON Patch current document
+      // ----------------------------------------------------------------
+      if (parts[0] === 'surface' && parts[1] === 'patch' && !parts[2] && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'surface/patch', broadcastStatus);
+        if (!body) return;
+        const operations = Array.isArray(body.operations) ? body.operations : null;
+        if (!operations || operations.length === 0) {
+          return mcpError(res, 400, {
+            action: 'patch surface',
+            message: 'operations must be a non-empty JSON Patch array',
+            suggestion: '{ "operations": [{ "op": "replace", "path": "/name", "value": "..." }] } 형태로 전달하세요.',
+            target: 'surface:patch',
+          });
+        }
+        const expectedHash = typeof body.expected_hash === 'string' ? body.expected_hash : undefined;
+        const beforeHash = hashSurface(currentData);
+        if (expectedHash && expectedHash !== beforeHash) {
+          return mcpError(res, 409, {
+            action: 'patch surface',
+            message: 'Stale current document hash',
+            suggestion: 'read_surface 또는 list_surfaces로 최신 hash를 확인한 뒤 다시 시도하세요.',
+            target: 'surface:patch',
+            details: { expected_hash: expectedHash, actual_hash: beforeHash },
+          });
+        }
+        const draft = cloneJson(currentData) as Record<string, unknown>;
+        try {
+          const result = applySurfacePatch(draft, operations);
+          const afterHash = hashSurface(draft);
+          if (body.dry_run === true) {
+            return jsonResSuccess(
+              res,
+              {
+                dry_run: true,
+                changed: result.changed,
+                touched: result.touchedTopLevel,
+                before_hash: beforeHash,
+                after_hash: afterHash,
+              },
+              {
+                toolName: 'patch_surface',
+                summary: `Dry-run: patch ${result.changed} operation(s)`,
+              },
+            );
+          }
+          const allowed = await deps.askRendererConfirm(
+            'MCP surface 수정 요청',
+            `AI 어시스턴트가 현재 문서의 surface를 수정하려 합니다.\n작업 수: ${result.changed}\n대상: ${result.touchedTopLevel.join(', ') || '/'}`,
+          );
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'patch surface',
+              message: '사용자가 거부했습니다',
+              rejected: true,
+              suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+              target: 'surface:patch',
+            });
+          }
+          Object.keys(currentData).forEach((key) => delete currentData[key]);
+          Object.assign(currentData, draft);
+          for (const field of result.touchedTopLevel) {
+            deps.broadcastToAll('data-updated', field, currentData[field]);
+          }
+          if (result.touchedTopLevel.includes('assets') && deps.invalidateAssetsMapCache) {
+            deps.invalidateAssetsMapCache();
+          }
+          logMcpMutation('patch surface', 'surface:patch', {
+            changed: result.changed,
+            touched: result.touchedTopLevel,
+          });
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              changed: result.changed,
+              touched: result.touchedTopLevel,
+              before_hash: beforeHash,
+              after_hash: afterHash,
+            },
+            {
+              toolName: 'patch_surface',
+              summary: `Patched ${result.changed} operation(s)`,
+              artifacts: { count: result.changed },
+            },
+          );
+        } catch (error) {
+          return mcpError(res, 400, {
+            action: 'patch surface',
+            message: error instanceof Error ? error.message : String(error),
+            suggestion: 'JSON Pointer path와 patch operation을 확인하세요.',
+            target: 'surface:patch',
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /surface/replace — replace text recursively under a JSON surface
+      // ----------------------------------------------------------------
+      if (parts[0] === 'surface' && parts[1] === 'replace' && !parts[2] && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'surface/replace', broadcastStatus);
+        if (!body) return;
+        if (typeof body.path !== 'string' || typeof body.find !== 'string') {
+          return mcpError(res, 400, {
+            action: 'replace in surface',
+            message: 'path and find must be strings',
+            suggestion: '{ "path": "/regex/0", "find": "...", "replace": "..." } 형태로 전달하세요.',
+            target: 'surface:replace',
+          });
+        }
+        const replacement = typeof body.replace === 'string' ? body.replace : '';
+        try {
+          const beforeHash = hashSurface(currentData);
+          const oldValue = getPointerValue(currentData, body.path);
+          const { next, matches } = replaceStringInSurface(
+            oldValue,
+            body.find,
+            replacement,
+            body.regex === true,
+            typeof body.flags === 'string' ? body.flags : undefined,
+          );
+          const afterHash = hashSurface(next);
+          if (body.dry_run === true) {
+            return jsonResSuccess(
+              res,
+              { dry_run: true, path: body.path, matchCount: matches, before_hash: beforeHash, value_hash: afterHash },
+              {
+                toolName: 'replace_in_surface',
+                summary: `Dry-run: ${matches} match(es) under ${body.path}`,
+                artifacts: { matchCount: matches },
+              },
+            );
+          }
+          if (matches === 0) {
+            return mcpNoOp(res, {
+              action: 'replace in surface',
+              message: 'No matches found',
+              suggestion: 'read_surface로 현재 값을 확인한 뒤 find 문자열을 다시 지정하세요.',
+              target: `surface:${body.path}`,
+            });
+          }
+          const allowed = await deps.askRendererConfirm(
+            'MCP surface 치환 요청',
+            `AI 어시스턴트가 현재 문서의 ${body.path} surface에서 ${matches}건 치환하려 합니다.`,
+          );
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'replace in surface',
+              message: '사용자가 거부했습니다',
+              rejected: true,
+              suggestion: '앱에서 치환 요청을 허용한 뒤 다시 시도하세요.',
+              target: `surface:${body.path}`,
+            });
+          }
+          setPointerValue(currentData, body.path, next, false);
+          const topLevel = parseJsonPointer(body.path)[0];
+          if (topLevel) deps.broadcastToAll('data-updated', topLevel, currentData[topLevel]);
+          return jsonResSuccess(
+            res,
+            {
+              success: true,
+              path: body.path,
+              matchCount: matches,
+              before_hash: beforeHash,
+              after_hash: hashSurface(currentData),
+            },
+            {
+              toolName: 'replace_in_surface',
+              summary: `Replaced ${matches} match(es) under ${body.path}`,
+              artifacts: { matchCount: matches },
+            },
+          );
+        } catch (error) {
+          return mcpError(res, 400, {
+            action: 'replace in surface',
+            message: error instanceof Error ? error.message : String(error),
+            suggestion: 'path, find, regex flags를 확인하세요.',
+            target: `surface:${String(body.path || '/')}`,
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /document/save — save current document to disk
+      // ----------------------------------------------------------------
+      if (parts[0] === 'document' && parts[1] === 'save' && !parts[2] && req.method === 'POST') {
+        if (!deps.saveCurrentDocument) {
+          return mcpError(res, 501, {
+            action: 'save current document',
+            message: 'Current document save is not available in this runtime.',
+            suggestion: '에디터 UI의 저장 기능을 사용하거나 open_file(save_current=true)를 사용하세요.',
+            target: 'document:save',
+          });
+        }
+        const result = await deps.saveCurrentDocument();
+        if (!result.success) {
+          return mcpError(res, 500, {
+            action: 'save current document',
+            message: result.error || 'Failed to save current document',
+            suggestion: '현재 파일 경로와 저장 권한을 확인하세요.',
+            target: 'document:save',
+          });
+        }
+        return jsonResSuccess(
+          res,
+          { success: true, path: result.path ?? null },
+          {
+            toolName: 'save_current_file',
+            summary: `Saved current document${result.path ? ` to ${path.basename(result.path)}` : ''}`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------

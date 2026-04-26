@@ -73,6 +73,16 @@ interface SearchFixture {
     id?: string;
     activationPercent?: number;
   }>;
+  regex?: Array<{
+    comment?: string;
+    type?: string;
+    find?: string;
+    replace?: string;
+    in?: string | string[];
+    out?: string | string[];
+    flag?: string;
+    ableFlag?: string;
+  }>;
   [key: string]: unknown;
 }
 
@@ -606,6 +616,137 @@ describe('MCP API search routes', () => {
       });
     } finally {
       await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API surface routes', () => {
+  it('lists, reads, and patches current document surfaces by JSON Pointer', async () => {
+    const currentData: SearchFixture = {
+      name: 'Surface Bot',
+      firstMessage: 'Hello',
+      regex: [{ comment: 'Old Regex', find: 'foo', replace: 'bar' }],
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const list = await getJson<{
+        count: number;
+        document_hash: string;
+        surfaces: Array<{ name: string; hash: string }>;
+      }>(api.port, api.token, '/surfaces');
+      expect(list.status).toBe(200);
+      expect(list.data.surfaces.some((surface) => surface.name === 'regex')).toBe(true);
+
+      const read = await postJson<{ value: string; hash: string }>(api.port, api.token, '/surface/read', {
+        path: '/regex/0/comment',
+      });
+      expect(read.status).toBe(200);
+      expect(read.data.value).toBe('Old Regex');
+
+      const dryRun = await postJson<{ dry_run: boolean; changed: number }>(api.port, api.token, '/surface/patch', {
+        expected_hash: list.data.document_hash,
+        dry_run: true,
+        operations: [{ op: 'replace', path: '/regex/0/comment', value: 'New Regex' }],
+      });
+      expect(dryRun.status).toBe(200);
+      expect(dryRun.data.dry_run).toBe(true);
+      expect(currentData.regex?.[0]?.comment).toBe('Old Regex');
+
+      const patched = await postJson<{ success: boolean; touched: string[] }>(api.port, api.token, '/surface/patch', {
+        expected_hash: list.data.document_hash,
+        operations: [{ op: 'replace', path: '/regex/0/comment', value: 'New Regex' }],
+      });
+      expect(patched.status).toBe(200);
+      expect(patched.data.success).toBe(true);
+      expect(patched.data.touched).toContain('regex');
+      expect(currentData.regex?.[0]?.comment).toBe('New Regex');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('replaces text recursively under a current document surface', async () => {
+    const currentData: SearchFixture = {
+      lorebook: [{ comment: 'Alpha', content: 'Hinano says hello. Hinano smiles.' }],
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const replaced = await postJson<{ success: boolean; matchCount: number }>(
+        api.port,
+        api.token,
+        '/surface/replace',
+        {
+          path: '/lorebook/0',
+          find: 'Hinano',
+          replace: 'Hina',
+        },
+      );
+      expect(replaced.status).toBe(200);
+      expect(replaced.data.success).toBe(true);
+      expect(replaced.data.matchCount).toBe(2);
+      expect(currentData.lorebook?.[0]?.content).toBe('Hina says hello. Hina smiles.');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('patches unopened external file surfaces and rejects the active file path', async () => {
+    const fixture = createExternalCharxFixture({
+      regex: [{ comment: 'External Old', type: 'editoutput', find: 'a', replace: 'b', flag: 'g' }],
+    });
+    const api = await startTestApiServer(null, [], undefined, {
+      getSessionStatus: () => ({
+        currentFilePath: null,
+        currentFileType: null,
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: null,
+      }),
+    });
+
+    try {
+      const read = await postJson<{ value: string }>(api.port, api.token, '/external/surface/read', {
+        file_path: fixture.filePath,
+        path: '/regex/0/comment',
+      });
+      expect(read.status).toBe(200);
+      expect(read.data.value).toBe('External Old');
+
+      const patched = await postJson<{ success: boolean }>(api.port, api.token, '/external/surface/patch', {
+        file_path: fixture.filePath,
+        operations: [{ op: 'replace', path: '/regex/0/comment', value: 'External New' }],
+      });
+      expect(patched.status).toBe(200);
+      expect(patched.data.success).toBe(true);
+      expect((openCharx(fixture.filePath) as unknown as SearchFixture).regex?.[0]?.comment).toBe('External New');
+    } finally {
+      await closeServer(api.server);
+    }
+
+    const activeApi = await startTestApiServer({ name: 'Active' }, [], undefined, {
+      getSessionStatus: () => ({
+        currentFilePath: fixture.filePath,
+        currentFileType: 'charx',
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: null,
+      }),
+    });
+    try {
+      const rejected = await postJson<Record<string, unknown>>(
+        activeApi.port,
+        activeApi.token,
+        '/external/surface/patch',
+        {
+          file_path: fixture.filePath,
+          operations: [{ op: 'replace', path: '/name', value: 'Blocked' }],
+        },
+      );
+      expect(rejected.status).toBe(409);
+    } finally {
+      await closeServer(activeApi.server);
     }
   });
 });

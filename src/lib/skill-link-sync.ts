@@ -3,7 +3,7 @@ import path from 'node:path';
 import { getCopilotSkillCatalogPath, resolveSkillRootDirs } from './content-roots';
 import { listSkillCatalogEntries } from './skill-catalog';
 
-const PROJECT_SKILL_DIRS = ['.claude', '.gemini', '.github'] as const;
+const PROJECT_SKILL_DIRS = ['.agents', '.claude', '.gemini', '.github'] as const;
 const LEGACY_PLACEHOLDER_TARGETS = ['../skills', '..\\skills'] as const;
 
 export type SkillLinkStatus = 'created' | 'repaired' | 'ok';

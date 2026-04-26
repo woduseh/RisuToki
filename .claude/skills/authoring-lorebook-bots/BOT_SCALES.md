@@ -1,6 +1,6 @@
 # Lorebook Bot Architecture by Scale
 
-> See also: [Character Authoring by Bot Scale](../../authoring-characters/BOT_SCALES.md) for per-character depth decisions at each scale.
+> See also: [Character Authoring by Bot Scale](../authoring-characters/BOT_SCALES.md) for per-character depth decisions at each scale.
 
 Use this file when the main question is **how to distribute description vs lorebook responsibility at a given bot scale**.
 
