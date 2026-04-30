@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-0.64.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.65.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -58,6 +58,7 @@ npm run test:evals   # Deterministic agent/harness eval scenarios
 npm test             # Node regression tests + Vitest
 npm run build        # lint + typecheck + test + Electron + Vite build
 npm run dist:all     # Windows NSIS + portable build
+npm run mcp:standalone -- --file C:\path\to\card.charx --allow-writes
 ```
 
 ### Developer Documentation
@@ -285,6 +286,34 @@ This is a core feature of RisuToki. When you launch an AI CLI from the terminal,
 | Gemini CLI         | `~/.gemini/settings.json`    | `AGENTS.md` auto-generated + project guide merged |
 
 > All four CLI config files are created automatically at app startup and cleaned up on exit.
+
+### Standalone MCP Server
+
+RisuToki MCP can also run without launching the desktop app. This is useful for external clients such as Codex App when you want file-backed `.charx` / `.risum` / `.risup` tools but do not need the editor UI.
+
+```bash
+npm run build:mcp
+node toki-mcp-server.js --standalone --file C:\path\to\card.charx --allow-writes
+```
+
+For Codex App, point the MCP server at the built script:
+
+```toml
+[mcp_servers.risutoki]
+command = "node"
+args = ["C:/path/to/RisuToki/toki-mcp-server.js", "--standalone", "--allow-writes"]
+```
+
+Useful options:
+
+| Option            | Description                                                                 |
+| ----------------- | --------------------------------------------------------------------------- |
+| `--file <path>`   | Load a `.charx`, `.risum`, or `.risup` as the active document at startup    |
+| `--ref <path>`    | Load a read-only reference file; repeat for multiple references             |
+| `--allow-writes`  | Permit write tools in headless mode; omitted means mutation requests reject |
+| `--user-data-dir` | Override the standalone sidecar state directory                             |
+
+Environment variable equivalents are `RISUTOKI_MCP_FILE`, `RISUTOKI_MCP_REFS` (path-delimited), `RISUTOKI_MCP_ALLOW_WRITES`, and `RISUTOKI_MCP_USER_DATA_DIR`.
 
 ### Unified Skill Catalog
 

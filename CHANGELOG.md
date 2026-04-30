@@ -9,6 +9,17 @@
 
 ---
 
+## [0.65.0] - 2026-05-01
+
+### Added
+
+- Added standalone RisuToki MCP mode via `toki-mcp-server.js --standalone`, allowing Codex and other MCP clients to use file-backed `.charx` / `.risum` / `.risup` tools without launching the Electron app.
+- Added headless MCP runtime support for `--file`, repeated `--ref`, `--allow-writes`, and `--user-data-dir` options.
+
+### Changed
+
+- Documented app-backed versus standalone MCP operation in README, MCP workflow docs, and agent routing guidance.
+
 ## [0.64.0] - 2026-04-26
 
 ### Added

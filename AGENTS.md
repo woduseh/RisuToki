@@ -22,6 +22,7 @@
 | [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)                   | MCP tool routing and read-rule source of truth                 |
 | [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)           | Tool families, boundaries, behavior hints                      |
 | [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md)       | Error / no-op / success response contracts                     |
+| `toki-mcp-server.js --standalone`                                | File-backed MCP runtime for Codex/CLI use without Electron     |
 | [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)                 | Versioning and CI rules                                        |
 | [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                       | TypeScript source navigation map                               |
 | [`docs/README.md`](docs/README.md)                               | Full knowledge-base index                                      |

@@ -15,6 +15,8 @@
     "src/rpack.ts",
     "src/lib/shared-utils.ts",
     "src/lib/mcp-api-server.ts",
+    "src/lib/mcp-headless-server.ts",
+    "src/lib/mcp-section-parser.ts",
     "src/lib/mcp-search.ts",
     "src/lib/mcp-config.ts",
     "src/lib/agents-md-manager.ts",

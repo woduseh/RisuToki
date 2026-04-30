@@ -30,6 +30,7 @@ If this file and code diverge, the TypeScript source wins.
 - High-traffic tools may return narrower per-tool `next_actions` than the family default; trust the response metadata first, then fall back to the family map when no override is present.
 - `tools/list` exposes additive per-tool `_meta` for mutation-capable tools: `risutoki/requiresConfirmation` and `risutoki/supportsDryRun`. Use these to prefer preview-first routes when available and to anticipate approval pauses before mutating.
 - Indexed mutation tools now accept additive stale-index guards across the structured families: carry the latest `comment` into `expected_comment` for lorebook/regex/trigger writes, the latest `preview` into `expected_preview` or `expected_previews` for greeting writes/deletes, and the latest `type` / `preview` into `expected_type` / `expected_preview` for risup prompt-item writes. Mismatches fail with `409` plus family-specific `details.expected_*` / `details.actual_*` fields instead of silently touching the wrong entry.
+- The same tool surface can run app-backed or standalone. In standalone mode (`toki-mcp-server.js --standalone`), the active document is file-backed via `--file`/`open_file`, references come from repeated `--ref`, and mutation routes require `--allow-writes`.
 
 ## Family map
 

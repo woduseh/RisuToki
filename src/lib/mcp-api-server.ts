@@ -14275,7 +14275,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
   server.listen(0, '127.0.0.1', () => {
     const addr = server.address();
     const port = typeof addr === 'object' && addr ? addr.port : 0;
-    console.log(`[main] MCP API server on 127.0.0.1:${port}`);
+    console.error(`[main] MCP API server on 127.0.0.1:${port}`);
     deps.onListening(port);
   });
 

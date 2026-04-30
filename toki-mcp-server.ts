@@ -16,15 +16,11 @@ import path = require('path');
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { startHeadlessMcpApiServer } from './src/lib/mcp-headless-server';
 import { getToolMeta, TOOL_TAXONOMY } from './src/lib/mcp-tool-taxonomy';
 
-const TOKI_PORT = process.env.TOKI_PORT;
-const TOKI_TOKEN = process.env.TOKI_TOKEN;
-
-if (!TOKI_PORT || !TOKI_TOKEN) {
-  process.stderr.write('[toki-mcp] ERROR: TOKI_PORT and TOKI_TOKEN env vars required\n');
-  process.exit(1);
-}
+let TOKI_PORT = process.env.TOKI_PORT;
+let TOKI_TOKEN = process.env.TOKI_TOKEN;
 
 declare const __APP_VERSION__: string;
 
@@ -3097,12 +3093,76 @@ function mcpLog(level: 'debug' | 'info' | 'warning' | 'error', message: string, 
 }
 
 async function main() {
+  if (process.argv.includes('--standalone')) {
+    const runtime = await startHeadlessFromArgs(process.argv.slice(2));
+    TOKI_PORT = String(runtime.port);
+    TOKI_TOKEN = runtime.token;
+    process.env.TOKI_PORT = TOKI_PORT;
+    process.env.TOKI_TOKEN = TOKI_TOKEN;
+  }
+
+  if (!TOKI_PORT || !TOKI_TOKEN) {
+    process.stderr.write('[toki-mcp] ERROR: TOKI_PORT and TOKI_TOKEN env vars required\n');
+    process.stderr.write('[toki-mcp] Hint: run with --standalone to use file-backed mode without the RisuToki app.\n');
+    process.exit(1);
+  }
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   mcpConnected = true;
   mcpLog('info', `risutoki MCP server started`, {
     version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0',
     api: `127.0.0.1:${TOKI_PORT}`,
+  });
+}
+
+function readArgValue(args: string[], name: string): string | undefined {
+  const inlinePrefix = `${name}=`;
+  const inline = args.find((arg) => arg.startsWith(inlinePrefix));
+  if (inline) return inline.slice(inlinePrefix.length);
+  const index = args.indexOf(name);
+  if (index >= 0 && index + 1 < args.length) return args[index + 1];
+  return undefined;
+}
+
+function readRepeatedArgValues(args: string[], name: string): string[] {
+  const values: string[] = [];
+  const inlinePrefix = `${name}=`;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith(inlinePrefix)) {
+      values.push(arg.slice(inlinePrefix.length));
+      continue;
+    }
+    if (arg === name && i + 1 < args.length) {
+      values.push(args[i + 1]);
+      i++;
+    }
+  }
+  return values;
+}
+
+function hasFlag(args: string[], name: string): boolean {
+  return args.includes(name);
+}
+
+async function startHeadlessFromArgs(args: string[]) {
+  const filePath = readArgValue(args, '--file') ?? process.env.RISUTOKI_MCP_FILE;
+  const referencePaths = [
+    ...readRepeatedArgValues(args, '--ref'),
+    ...(process.env.RISUTOKI_MCP_REFS ? process.env.RISUTOKI_MCP_REFS.split(path.delimiter).filter(Boolean) : []),
+  ];
+  const allowWrites =
+    hasFlag(args, '--allow-writes') ||
+    process.env.RISUTOKI_MCP_ALLOW_WRITES === '1' ||
+    process.env.RISUTOKI_MCP_ALLOW_WRITES === 'true';
+  const userDataPath = readArgValue(args, '--user-data-dir') ?? process.env.RISUTOKI_MCP_USER_DATA_DIR;
+  return startHeadlessMcpApiServer({
+    filePath,
+    referencePaths,
+    allowWrites,
+    userDataPath,
+    baseRoot: __dirname,
   });
 }
 

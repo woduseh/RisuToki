@@ -53,6 +53,11 @@ Load these via `read_skill("project-workflow", "MCP_WORKFLOW.md")` and `read_ski
 4. **Search before replace** — in large fields, locate with `search_in_field` first.
 5. **Snapshot before risky edits** — use `snapshot_field` for safety.
 
+### Runtime Modes
+
+- App-backed MCP is started by the Electron app and works against the active editor document.
+- Standalone MCP is started with `node toki-mcp-server.js --standalone` and works against files supplied by `--file`, `open_file`, and repeated `--ref`; pass `--allow-writes` when mutation tools should be permitted.
+
 > Complete tool routing map, workflow patterns, and caveats: [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)
 >
 > For **detailed MCP tool-selection guidance** (batch-first patterns, large-field editing, context-budget sizing), load the companion skill: `read_skill("using-mcp-tools")`.
