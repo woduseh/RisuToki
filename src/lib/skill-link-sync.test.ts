@@ -65,6 +65,29 @@ function getCodexSkillSpec(specs: ReturnType<typeof getProjectSkillLinkSpecs>) {
   return codexSpec!;
 }
 
+function copyDirectoryAsPlainFiles(sourcePath: string, targetPath: string) {
+  fs.mkdirSync(targetPath, { recursive: true });
+
+  for (const entryName of fs.readdirSync(sourcePath)) {
+    const sourceEntryPath = path.join(sourcePath, entryName);
+    const targetEntryPath = path.join(targetPath, entryName);
+    const stat = fs.statSync(sourceEntryPath);
+
+    if (stat.isDirectory()) {
+      copyDirectoryAsPlainFiles(sourceEntryPath, targetEntryPath);
+      continue;
+    }
+
+    if (stat.isFile()) {
+      fs.mkdirSync(path.dirname(targetEntryPath), { recursive: true });
+      fs.writeFileSync(targetEntryPath, fs.readFileSync(sourceEntryPath));
+      continue;
+    }
+
+    throw new Error(`Unsupported filesystem entry in test fixture copy: ${sourceEntryPath}`);
+  }
+}
+
 afterEach(() => {
   for (const root of tempRoots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
@@ -144,10 +167,7 @@ describe('skill link sync', () => {
 
     for (const spec of specs) {
       fs.rmSync(spec.linkPath, { recursive: true, force: true });
-      fs.cpSync(spec.sourcePath, spec.linkPath, {
-        dereference: true,
-        recursive: true,
-      });
+      copyDirectoryAsPlainFiles(spec.sourcePath, spec.linkPath);
     }
 
     const results = ensureProjectSkillLinks(root, { platform: process.platform });
@@ -162,10 +182,7 @@ describe('skill link sync', () => {
     const codexSpec = getCodexSkillSpec(specs);
 
     fs.rmSync(codexSpec.linkPath, { recursive: true, force: true });
-    fs.cpSync(codexSpec.sourcePath, codexSpec.linkPath, {
-      dereference: true,
-      recursive: true,
-    });
+    copyDirectoryAsPlainFiles(codexSpec.sourcePath, codexSpec.linkPath);
     fs.writeFileSync(path.join(codexSpec.linkPath, 'authoring-characters', 'SKILL.md'), '# stale copy\n', 'utf8');
 
     const results = ensureProjectSkillLinks(root, { platform: process.platform });
