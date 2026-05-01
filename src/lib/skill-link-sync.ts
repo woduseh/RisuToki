@@ -22,6 +22,8 @@ export interface EnsureProjectSkillLinksOptions {
   readonly platform?: NodeJS.Platform | string;
 }
 
+type ManagedDirectoryCopyState = 'exact' | 'repairable' | 'unexpected';
+
 function normalizeRelativeTarget(value: string) {
   return value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
 }
@@ -102,6 +104,65 @@ function createDirectoryLink(
   fs.symlinkSync(relativeTarget, linkPath, 'dir');
 }
 
+function collectDirectoryFileManifest(
+  rootPath: string,
+  options: { readonly followLinks: boolean },
+  currentPath = rootPath,
+  manifest = new Map<string, Buffer>(),
+) {
+  for (const entryName of fs.readdirSync(currentPath)) {
+    const entryPath = path.join(currentPath, entryName);
+    const stat = options.followLinks ? fs.statSync(entryPath) : fs.lstatSync(entryPath);
+
+    if (stat.isDirectory()) {
+      collectDirectoryFileManifest(rootPath, options, entryPath, manifest);
+      continue;
+    }
+
+    if (stat.isFile()) {
+      manifest.set(normalizeRelativeTarget(path.relative(rootPath, entryPath)), fs.readFileSync(entryPath));
+      continue;
+    }
+
+    throw new Error(`Unsupported filesystem entry inside managed skills directory at ${entryPath}`);
+  }
+
+  return manifest;
+}
+
+function getManagedDirectoryCopyState(directoryPath: string, sourcePath: string): ManagedDirectoryCopyState {
+  const sourceManifest = collectDirectoryFileManifest(sourcePath, { followLinks: true });
+  const directoryManifest = collectDirectoryFileManifest(directoryPath, { followLinks: false });
+
+  for (const relativePath of directoryManifest.keys()) {
+    if (!sourceManifest.has(relativePath)) {
+      return 'unexpected';
+    }
+  }
+
+  if (directoryManifest.size !== sourceManifest.size) {
+    return 'repairable';
+  }
+
+  for (const [relativePath, sourceContent] of sourceManifest) {
+    const directoryContent = directoryManifest.get(relativePath);
+    if (!directoryContent || !directoryContent.equals(sourceContent)) {
+      return 'repairable';
+    }
+  }
+
+  return 'exact';
+}
+
+function rebuildManagedDirectoryCopy(directoryPath: string, sourcePath: string) {
+  fs.rmSync(directoryPath, { recursive: true, force: true });
+  fs.cpSync(sourcePath, directoryPath, {
+    dereference: true,
+    force: true,
+    recursive: true,
+  });
+}
+
 function rebuildCopilotSkillCatalog(projectRoot: string, platform: NodeJS.Platform | string) {
   const skillRoots = resolveSkillRootDirs(projectRoot);
   if (skillRoots.length === 0) {
@@ -159,7 +220,17 @@ function repairProjectSkillLink(spec: ProjectSkillLinkSpec, platform: NodeJS.Pla
   }
 
   if (stat.isDirectory()) {
-    throw new Error(`Refusing to replace existing directory at ${spec.linkPath}`);
+    const managedCopyState = getManagedDirectoryCopyState(spec.linkPath, spec.sourcePath);
+    if (managedCopyState === 'unexpected') {
+      throw new Error(`Refusing to replace existing directory at ${spec.linkPath}`);
+    }
+
+    if (managedCopyState === 'exact') {
+      return 'ok';
+    }
+
+    rebuildManagedDirectoryCopy(spec.linkPath, spec.sourcePath);
+    return 'repaired';
   }
 
   throw new Error(`Unsupported filesystem entry at ${spec.linkPath}`);

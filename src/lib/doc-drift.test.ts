@@ -243,6 +243,8 @@ describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
     'expected_previews',
     'expected_type',
     'expected_types',
+    'expected_hash',
+    'actual_hash',
     'dry_run',
   ]);
 

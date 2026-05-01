@@ -27,8 +27,10 @@ This map is for source navigation. It is not a full API reference.
 ## MCP and agent harness
 
 - `src/lib/mcp-api-server.ts` — MCP HTTP route handling and response contracts
+- `src/lib/mcp-headless-server.ts` — standalone/file-backed MCP session bootstrap and lifecycle
 - `src/lib/mcp-cbs-routes.ts` — extracted CBS route-family helpers and dispatcher
 - `src/lib/mcp-field-access.ts` — MCP field name sets, document-type access rules, and field-read payload builders
+- `src/lib/mcp-section-parser.ts` — standalone MCP section parsing and external-document helpers
 - `src/lib/mcp-tool-taxonomy.ts` — tool-family single source of truth
 - `src/lib/mcp-response-envelope.ts` — additive success envelope, deterministic `next_actions`, and success-response size metadata
 - `src/lib/mcp-search.ts` — search behavior for MCP search tools

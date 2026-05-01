@@ -20,6 +20,11 @@
 
 - Documented app-backed versus standalone MCP operation in README, MCP workflow docs, and agent routing guidance.
 
+### Fixed
+
+- Fixed `npm run sync:skills` so Windows CI and release installs no longer fail when `.claude/skills`, `.gemini/skills`, or `.github/skills` already exist as checked-out managed directories instead of repairable links.
+- Managed skill discovery directories now refresh in place when they are safe catalog copies, while still refusing unexpected real directories.
+
 ## [0.64.0] - 2026-04-26
 
 ### Added

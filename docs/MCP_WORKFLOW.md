@@ -201,7 +201,7 @@ RisuToki MCP has two runtime modes:
 
 ### Skill Discovery Scope
 
-RisuToki's generated unified skill catalog is **repo-root scoped**. Copilot CLI, Claude Code, and Gemini CLI resolve project skills from the repository-root `.github/skills`, `.claude/skills`, and `.gemini/skills` links. Codex resolves project skills through `.agents/skills`; Codex itself can scan that directory from the current working directory up to the repository root, but this repo provisions only a generated repository-root `.agents/skills` link after `npm run sync:skills` (or `npm install`, via `prepare`). Nested skill directories placed inside subdirectories do not create subtree-specific catalogs in this repo — `list_skills` always returns the same repo-wide set regardless of the agent's working directory. Subtree scoping is handled by `AGENTS.md` routing: the nearest `risu/{scope}/AGENTS.md` decides which skills from the global catalog are relevant.
+RisuToki's generated unified skill catalog is **repo-root scoped**. Copilot CLI, Claude Code, and Gemini CLI resolve project skills from the repository-root `.github/skills`, `.claude/skills`, and `.gemini/skills` discovery paths. Codex resolves project skills through `.agents/skills`; Codex itself can scan that directory from the current working directory up to the repository root, but this repo provisions only a generated repository-root `.agents/skills` path after `npm run sync:skills` (or `npm install`, via `prepare`). Nested skill directories placed inside subdirectories do not create subtree-specific catalogs in this repo — `list_skills` always returns the same repo-wide set regardless of the agent's working directory. Subtree scoping is handled by `AGENTS.md` routing: the nearest `risu/{scope}/AGENTS.md` decides which skills from the global catalog are relevant.
 
 ### When the Skills Folder Appears Empty
 
@@ -210,7 +210,7 @@ If `list_skills` returns nothing, the generated CLI catalog may need repair. Che
 1. `npm run sync:skills`
 2. The source skill roots that feed the catalog: `skills/`, `risu/common/skills/`, `risu/{bot,prompts,modules,plugins}/skills/`
 3. The generated `.copilot-skill-catalog/`
-4. Symlink/junction state of `.agents/skills`, `.claude/skills`, `.gemini/skills`, `.github/skills`
+4. Symlink/junction or managed-directory state of `.agents/skills`, `.claude/skills`, `.gemini/skills`, `.github/skills`
 
 If it is still empty, fall back to `docs/`, the local `risu/{artifact}/README.md` / `AGENTS.md`, and the codebase itself.
 

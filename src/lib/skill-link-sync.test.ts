@@ -137,6 +137,47 @@ describe('skill link sync', () => {
     }
   });
 
+  it('accepts already-synced managed directory copies', () => {
+    const root = makeProjectRoot();
+    ensureProjectSkillLinks(root, { platform: process.platform });
+    const specs = getProjectSkillLinkSpecs(root);
+
+    for (const spec of specs) {
+      fs.rmSync(spec.linkPath, { recursive: true, force: true });
+      fs.cpSync(spec.sourcePath, spec.linkPath, {
+        dereference: true,
+        recursive: true,
+      });
+    }
+
+    const results = ensureProjectSkillLinks(root, { platform: process.platform });
+
+    expect(results.map((result) => result.status)).toEqual(specs.map(() => 'ok'));
+  });
+
+  it('repairs stale managed directory copies', () => {
+    const root = makeProjectRoot();
+    ensureProjectSkillLinks(root, { platform: process.platform });
+    const specs = getProjectSkillLinkSpecs(root);
+    const codexSpec = getCodexSkillSpec(specs);
+
+    fs.rmSync(codexSpec.linkPath, { recursive: true, force: true });
+    fs.cpSync(codexSpec.sourcePath, codexSpec.linkPath, {
+      dereference: true,
+      recursive: true,
+    });
+    fs.writeFileSync(path.join(codexSpec.linkPath, 'authoring-characters', 'SKILL.md'), '# stale copy\n', 'utf8');
+
+    const results = ensureProjectSkillLinks(root, { platform: process.platform });
+
+    expect(results.map((result) => result.status)).toEqual(
+      specs.map((spec) => (spec.linkPath === codexSpec.linkPath ? 'repaired' : 'ok')),
+    );
+    expect(fs.readFileSync(path.join(codexSpec.linkPath, 'authoring-characters', 'SKILL.md'), 'utf8')).not.toBe(
+      '# stale copy\n',
+    );
+  });
+
   windowsSymlinkIt('accepts already-correct Windows symlinks when realpath is blocked', () => {
     const root = makeProjectRoot();
     ensureProjectSkillLinks(root, { platform: 'win32' });
