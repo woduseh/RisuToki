@@ -113,13 +113,14 @@ function collectDirectoryFileManifest(
   for (const entryName of fs.readdirSync(currentPath)) {
     const entryPath = path.join(currentPath, entryName);
     const stat = options.followLinks ? fs.statSync(entryPath) : fs.lstatSync(entryPath);
+    const effectiveStat = !options.followLinks && stat.isSymbolicLink() ? fs.statSync(entryPath) : stat;
 
-    if (stat.isDirectory()) {
+    if (effectiveStat.isDirectory()) {
       collectDirectoryFileManifest(rootPath, options, entryPath, manifest);
       continue;
     }
 
-    if (stat.isFile()) {
+    if (effectiveStat.isFile()) {
       manifest.set(normalizeRelativeTarget(path.relative(rootPath, entryPath)), fs.readFileSync(entryPath));
       continue;
     }
