@@ -6222,6 +6222,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const replaceStr: string = body.replace !== undefined ? normalizeLF(body.replace) : '';
         const useRegex = !!body.regex;
         const flags: string = body.flags || 'g';
+        const dryRun = !!(body.dry_run ?? body.dryRun);
 
         let newContent: string;
         let matchCount: number;
@@ -6257,6 +6258,26 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         const fieldLabel = targetField === 'content' ? '' : ` [${targetField}]`;
+        if (dryRun) {
+          return jsonResSuccess(
+            res,
+            {
+              dryRun: true,
+              index: idx,
+              comment: entryName,
+              field: targetField,
+              matchCount,
+              oldSize: content.length,
+              newSize: newContent.length,
+            },
+            {
+              toolName: 'replace_in_lorebook',
+              summary: `Dry-run: ${matchCount} match(es) in lorebook entry [${idx}] "${entryName}"`,
+              artifacts: { matchCount, oldSize: content.length, newSize: newContent.length },
+            },
+          );
+        }
+
         const allowed = await deps.askRendererConfirm(
           'MCP 치환 요청',
           `AI 어시스턴트가 로어북 항목 "${entryName}" (index ${idx})${fieldLabel}에서 ${matchCount}건 치환하려 합니다.\n찾기: ${findStr.substring(0, 80)}${findStr.length > 80 ? '...' : ''}\n바꾸기: ${replaceStr.substring(0, 80)}${replaceStr.length > 80 ? '...' : ''}`,

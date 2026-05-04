@@ -579,6 +579,129 @@ describe('facade v1 contract schemas', () => {
     ).toBe(false);
   });
 
+  it('keeps legacy facade content selectors valid while adding authoring selector extensions', () => {
+    const legacy = validateBody(
+      {
+        target: { kind: 'active' },
+        selectors: [
+          { family: 'field', field: 'description' },
+          { family: 'surface', path: 'data/lorebook/0/content' },
+          { family: 'lorebook', index: 1 },
+          { family: 'regex', indices: [0, 2] },
+          { family: 'greeting', index: 0 },
+          { family: 'risup-prompt', index: 3 },
+        ],
+      },
+      facadeV1ReadContentBodySchema,
+    );
+
+    expect(legacy.success).toBe(true);
+
+    const extended = validateBody(
+      {
+        target: { kind: 'active' },
+        selectors: [
+          { family: 'greeting', greeting_type: 'alternate', index: 0, fields: ['name', 'content'] },
+          { family: 'greeting', greeting_type: 'group', indices: [0, 1], fields: ['name'] },
+          { family: 'regex', index: 1, entry_field: 'out' },
+          { family: 'risup-prompt', index: 2, prompt_type: 'plain', item_field: 'text' },
+        ],
+      },
+      facadeV1ReadContentBodySchema,
+    );
+
+    expect(extended.success).toBe(true);
+    if (extended.success) {
+      expect(extended.data.selectors?.[0]).toMatchObject({
+        family: 'greeting',
+        greeting_type: 'alternate',
+        fields: ['name', 'content'],
+      });
+      expect(extended.data.selectors?.[1]).toMatchObject({ family: 'greeting', greeting_type: 'group' });
+      expect(extended.data.selectors?.[2]).toMatchObject({ family: 'regex', entry_field: 'out' });
+      expect(extended.data.selectors?.[3]).toMatchObject({
+        family: 'risup-prompt',
+        prompt_type: 'plain',
+        item_field: 'text',
+      });
+    }
+  });
+
+  it('rejects invalid structured authoring selector values', () => {
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          selectors: [{ family: 'greeting', greeting_type: 'primary' }],
+        },
+        facadeV1ReadContentBodySchema,
+      ).success,
+    ).toBe(false);
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          selectors: [{ family: 'regex', entry_field: '' }],
+        },
+        facadeV1ReadContentBodySchema,
+      ).success,
+    ).toBe(false);
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          selectors: [{ family: 'risup-prompt', prompt_type: '' }],
+        },
+        facadeV1ReadContentBodySchema,
+      ).success,
+    ).toBe(false);
+  });
+
+  it('accepts structured regex and risup prompt preview selectors with guards', () => {
+    const result = validateBody(
+      {
+        target: { kind: 'active' },
+        operations: [
+          {
+            op: 'replace_text',
+            selector: { family: 'regex', index: 1, entry_field: 'out' },
+            find: 'old output',
+            replace: 'new output',
+            regex: false,
+            guards: [{ name: 'expected_regex_comment', value: 'stable regex' }],
+          },
+          {
+            op: 'write_content',
+            selector: { family: 'risup-prompt', index: 2, prompt_type: 'plain', item_field: 'text' },
+            content: 'Updated prompt text',
+            guards: [{ name: 'expected_prompt_type', value: 'plain' }],
+          },
+        ],
+        dry_run: true,
+      },
+      facadeV1PreviewEditBodySchema,
+    );
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.operations[0].selector).toMatchObject({
+        family: 'regex',
+        index: 1,
+        entry_field: 'out',
+      });
+      expect(result.data.operations[1].selector).toMatchObject({
+        family: 'risup-prompt',
+        index: 2,
+        prompt_type: 'plain',
+        item_field: 'text',
+      });
+      expect(result.data.operations[1].guards?.[0]).toMatchObject({
+        name: 'expected_prompt_type',
+        value: 'plain',
+      });
+    }
+  });
+
   it('codifies preview-token-first mutation flow with propagated guards', () => {
     const preview = validateBody(
       {

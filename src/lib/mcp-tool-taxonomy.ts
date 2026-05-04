@@ -73,6 +73,9 @@ export type ToolSurfaceProfileName = (typeof TOOL_SURFACE_PROFILE_NAMES)[number]
 
 export const DEFAULT_TOOL_SURFACE_PROFILE: ToolSurfaceProfileName = 'facade-first';
 
+export const TOOL_WORKFLOW_STAGES = ['discover', 'read', 'search', 'validate', 'preview', 'apply'] as const;
+export type ToolWorkflowStage = (typeof TOOL_WORKFLOW_STAGES)[number];
+
 export const TOOL_SURFACE_PROFILE_ALIASES = {
   advanced: 'advanced-full',
   full: 'advanced-full',
@@ -182,6 +185,7 @@ export interface ToolMeta {
   staleGuardDetails: readonly StaleGuardDetail[];
   surfaceKind?: ToolSurfaceKind;
   recommendation?: ToolRecommendation;
+  workflowStages?: readonly ToolWorkflowStage[];
   requiresConfirmation?: boolean;
   supportsDryRun?: boolean;
 }
@@ -201,6 +205,7 @@ export const TOOL_META_KEYS = {
   staleGuardDetails: 'risutoki/staleGuardDetails',
   surfaceKind: 'risutoki/surfaceKind',
   recommendation: 'risutoki/recommendation',
+  workflowStages: 'risutoki/workflowStages',
   profiles: 'risutoki/profiles',
   defaultProfile: 'risutoki/defaultProfile',
   requiresConfirmation: 'risutoki/requiresConfirmation',
@@ -757,6 +762,57 @@ export function getToolMutationMeta(name: string): MutationMeta | undefined {
   };
 }
 
+function toolNameHasSegment(name: string, segment: string): boolean {
+  return name.split('_').includes(segment);
+}
+
+export function getToolWorkflowStages(name: string): readonly ToolWorkflowStage[] {
+  const entry = TOOL_TAXONOMY[name];
+  if (!entry) return [];
+
+  const stages = new Set<ToolWorkflowStage>();
+
+  if (
+    name === 'list_tool_profiles' ||
+    name.startsWith('inspect_') ||
+    name.startsWith('list_') ||
+    name.startsWith('session_')
+  ) {
+    stages.add('discover');
+  }
+  if (
+    name === 'read_content' ||
+    name === 'load_guidance' ||
+    toolNameHasSegment(name, 'read') ||
+    name.startsWith('probe_')
+  ) {
+    stages.add('read');
+  }
+  if (toolNameHasSegment(name, 'search')) {
+    stages.add('search');
+  }
+  if (
+    toolNameHasSegment(name, 'validate') ||
+    toolNameHasSegment(name, 'diff') ||
+    toolNameHasSegment(name, 'simulate')
+  ) {
+    stages.add('validate');
+  }
+
+  if (entry.hints.readOnlyHint !== true) {
+    if (name === 'preview_edit' || DRY_RUN_TOOL_NAME_SET.has(name)) {
+      stages.add('preview');
+    }
+    if (name !== 'preview_edit') {
+      stages.add('apply');
+    }
+  } else if (stages.size === 0) {
+    stages.add('read');
+  }
+
+  return TOOL_WORKFLOW_STAGES.filter((stage) => stages.has(stage));
+}
+
 export function resolveToolSurfaceProfileName(name: string | undefined): ToolSurfaceProfileName | undefined {
   if (!name) return DEFAULT_TOOL_SURFACE_PROFILE;
   const normalized = name.trim().toLowerCase();
@@ -798,6 +854,7 @@ export interface ToolSurfaceProfileCatalogTool {
   family: ToolFamily;
   surfaceKind: ToolSurfaceKind;
   recommendation: ToolRecommendation;
+  workflowStages: readonly ToolWorkflowStage[];
   readOnly: boolean;
 }
 
@@ -837,6 +894,7 @@ export function buildToolSurfaceProfileCatalog(profileName?: string): ToolSurfac
       family: entry.family,
       surfaceKind: entry.surfaceKind ?? 'granular',
       recommendation: entry.recommendation ?? 'advanced',
+      workflowStages: getToolWorkflowStages(name),
       readOnly: entry.hints.readOnlyHint === true,
     };
   });
@@ -876,6 +934,7 @@ export function getToolMeta(name: string): Record<string, unknown> | undefined {
     [TOOL_META_KEYS.staleGuardDetails]: TOOL_STALE_GUARD_DETAILS[name] ?? [],
     [TOOL_META_KEYS.surfaceKind]: TOOL_TAXONOMY[name]?.surfaceKind ?? 'granular',
     [TOOL_META_KEYS.recommendation]: TOOL_TAXONOMY[name]?.recommendation ?? 'advanced',
+    [TOOL_META_KEYS.workflowStages]: getToolWorkflowStages(name),
     [TOOL_META_KEYS.profiles]: getToolProfilesForTool(name),
     [TOOL_META_KEYS.defaultProfile]: DEFAULT_TOOL_SURFACE_PROFILE,
   };

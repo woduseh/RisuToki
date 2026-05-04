@@ -634,6 +634,9 @@ const facadeEditOperationSchema = z.object({
   content: z.unknown().optional(),
   find: z.string().min(1).optional(),
   replace: z.string().optional(),
+  regex: z.boolean().optional(),
+  flags: z.string().optional(),
+  field: z.string().optional(),
   guards: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
 });
 
@@ -687,10 +690,141 @@ function route(tool: string, method: string, routePath: string): FacadeRoute {
 }
 
 function selectorTarget(selector: FacadeV1ContentSelector): string {
+  if (selector.family === 'lorebook') {
+    if (selector.index !== undefined) return `lorebook:${selector.index}${selector.field ? `:${selector.field}` : ''}`;
+    if (selector.indices)
+      return `lorebook:[${selector.indices.join(',')}]${selector.field ? `:${selector.field}` : ''}`;
+    return 'lorebook';
+  }
+  if (selector.family === 'greeting') {
+    const type = selector.greeting_type ?? 'unknown';
+    if (selector.index !== undefined) return `greeting:${type}:${selector.index}`;
+    if (selector.indices) return `greeting:${type}:[${selector.indices.join(',')}]`;
+    return `greeting:${type}`;
+  }
+  if (selector.family === 'regex' || selector.family === 'risup-prompt') {
+    if (selector.index !== undefined) return `${selector.family}:${selector.index}`;
+    if (selector.indices) return `${selector.family}:[${selector.indices.join(',')}]`;
+    return selector.family;
+  }
   if (selector.family === 'surface' || selector.path) return `surface:${selector.path ?? '/'}`;
   if (selector.field) return `field:${selector.field}`;
   if (selector.family && selector.index !== undefined) return `${selector.family}:${selector.index}`;
   return selector.family ?? 'document';
+}
+
+function selectorFamily(selector: FacadeV1ContentSelector): string {
+  if (selector.family) return selector.family;
+  if (selector.path) return 'surface';
+  if (selector.field) return 'field';
+  return 'document';
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function hasRisupPromptImportContext(operation: FacadeV1EditOperation): boolean {
+  const content = operation.content;
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return false;
+  const keys = Object.keys(content);
+  return keys.some((key) => ['import', 'imported', 'source', 'source_text', 'sourcePath', 'source_path'].includes(key));
+}
+
+function applyEditPostEditMetadata(entry: FacadePreviewEntry): {
+  nextActions: string[];
+  artifacts: Record<string, unknown>;
+} {
+  const editedFamilies = uniqueStrings(entry.operations.map((operation) => selectorFamily(operation.selector))).sort();
+  const touchedSelectors = entry.operations.map((operation) => operation.selector);
+  const hasImportContext = entry.operations.some(
+    (operation) => selectorFamily(operation.selector) === 'risup-prompt' && hasRisupPromptImportContext(operation),
+  );
+  const nextActions: string[] = [];
+  const postEditValidation: Array<Record<string, unknown>> = [];
+  const recommendedReads: Array<Record<string, unknown>> = [];
+  const recommendedDiffs: Array<Record<string, unknown>> = [];
+
+  if (editedFamilies.includes('lorebook')) {
+    nextActions.push('validate_content', 'read_content', 'diff_lorebook');
+    postEditValidation.push({
+      family: 'lorebook',
+      tools: ['validate_content'],
+      reason: 'Check active lorebook key hygiene after lorebook mutations.',
+    });
+    recommendedReads.push({
+      family: 'lorebook',
+      tool: 'read_content',
+      target: entry.target,
+      selectors: touchedSelectors.filter((selector) => selectorFamily(selector) === 'lorebook'),
+    });
+    recommendedDiffs.push({
+      family: 'lorebook',
+      tool: 'diff_lorebook',
+      selectors: touchedSelectors.filter((selector) => selectorFamily(selector) === 'lorebook'),
+      note: 'Run when a reference lorebook entry is available for comparison.',
+    });
+  }
+
+  if (editedFamilies.includes('risup-prompt')) {
+    nextActions.push('read_content', 'diff_risup_prompt');
+    if (hasImportContext) nextActions.push('validate_risup_prompt_import');
+    postEditValidation.push({
+      family: 'risup-prompt',
+      tools: hasImportContext ? ['validate_risup_prompt_import'] : [],
+      reason: hasImportContext
+        ? 'Import/source context was present; verify the imported prompt structure.'
+        : 'No import/source context was detected, so readback and diff are the safe follow-ups.',
+    });
+    recommendedReads.push({
+      family: 'risup-prompt',
+      tool: 'read_content',
+      target: entry.target,
+      selectors: touchedSelectors.filter((selector) => selectorFamily(selector) === 'risup-prompt'),
+    });
+    recommendedDiffs.push({
+      family: 'risup-prompt',
+      tool: 'diff_risup_prompt',
+    });
+  }
+
+  if (editedFamilies.some((family) => family === 'field' || family === 'surface')) {
+    nextActions.push('read_content', 'search_document');
+    recommendedReads.push({
+      family: 'field-surface',
+      tool: 'read_content',
+      target: entry.target,
+      selectors: touchedSelectors.filter((selector) => {
+        const family = selectorFamily(selector);
+        return family === 'field' || family === 'surface';
+      }),
+    });
+  }
+
+  for (const family of editedFamilies) {
+    if (!['field', 'surface', 'lorebook', 'risup-prompt'].includes(family)) {
+      nextActions.push('read_content', 'search_document');
+      recommendedReads.push({
+        family,
+        tool: 'read_content',
+        target: entry.target,
+        selectors: touchedSelectors.filter((selector) => selectorFamily(selector) === family),
+        note: 'Unsupported facade edit family; use readback/search before choosing granular validators.',
+      });
+    }
+  }
+
+  if (nextActions.length === 0) nextActions.push('read_content', 'search_document');
+
+  return {
+    nextActions: uniqueStrings(nextActions),
+    artifacts: {
+      edited_families: editedFamilies,
+      post_edit_validation: postEditValidation,
+      recommended_reads: recommendedReads,
+      recommended_diffs: recommendedDiffs,
+    },
+  };
 }
 
 function facadeEnvelope(
@@ -766,6 +900,76 @@ async function readFacadeSelector(
   selector: FacadeV1ContentSelector,
 ): Promise<{ data: unknown; routes: FacadeRoute[] } | ApiErrorResult> {
   if (target.kind === 'active') {
+    if (selector.family === 'lorebook') {
+      if (selector.index !== undefined) {
+        const lorebookRoute = `/lorebook/${selector.index}`;
+        const data = await apiRequest('GET', lorebookRoute);
+        return isApiError(data) ? data : { data, routes: [route('read_lorebook', 'GET', lorebookRoute)] };
+      }
+      if (selector.indices) {
+        const data = await apiRequest('POST', '/lorebook/batch', {
+          indices: selector.indices,
+          ...(selector.field ? { fields: [selector.field] } : {}),
+        });
+        return isApiError(data) ? data : { data, routes: [route('read_lorebook_batch', 'POST', '/lorebook/batch')] };
+      }
+      const data = await apiRequest('GET', '/lorebook');
+      return isApiError(data) ? data : { data, routes: [route('list_lorebook', 'GET', '/lorebook')] };
+    }
+    if (selector.family === 'regex') {
+      if (selector.index !== undefined) {
+        const regexRoute = `/regex/${selector.index}`;
+        const data = await apiRequest('GET', regexRoute);
+        return isApiError(data) ? data : { data, routes: [route('read_regex', 'GET', regexRoute)] };
+      }
+      if (selector.indices) {
+        const data = await apiRequest('POST', '/regex/batch', { indices: selector.indices });
+        return isApiError(data) ? data : { data, routes: [route('read_regex_batch', 'POST', '/regex/batch')] };
+      }
+      const data = await apiRequest('GET', '/regex');
+      return isApiError(data) ? data : { data, routes: [route('list_regex', 'GET', '/regex')] };
+    }
+    if (selector.family === 'greeting') {
+      if (!selector.greeting_type) {
+        return facadeApiError(
+          400,
+          'Unsupported greeting selector',
+          'read_content greeting selectors require greeting_type="alternate" or "group"; the facade will not guess between alternateGreetings and groupOnlyGreetings.',
+          { selector },
+        );
+      }
+      const type = encodeURIComponent(selector.greeting_type);
+      if (selector.index !== undefined) {
+        const greetingRoute = `/greeting/${type}/${selector.index}`;
+        const data = await apiRequest('GET', greetingRoute);
+        return isApiError(data) ? data : { data, routes: [route('read_greeting', 'GET', greetingRoute)] };
+      }
+      if (selector.indices) {
+        const greetingRoute = `/greeting/${type}/batch`;
+        const data = await apiRequest('POST', greetingRoute, { indices: selector.indices });
+        return isApiError(data) ? data : { data, routes: [route('read_greeting_batch', 'POST', greetingRoute)] };
+      }
+      const greetingRoute = `/greetings/${type}`;
+      const data = await apiRequest('GET', greetingRoute);
+      return isApiError(data) ? data : { data, routes: [route('list_greetings', 'GET', greetingRoute)] };
+    }
+    if (selector.family === 'risup-prompt') {
+      if (selector.index !== undefined) {
+        const promptRoute = `/risup/prompt-item/${selector.index}`;
+        const data = await apiRequest('GET', promptRoute);
+        return isApiError(data) ? data : { data, routes: [route('read_risup_prompt_item', 'GET', promptRoute)] };
+      }
+      if (selector.indices) {
+        const data = await apiRequest('POST', '/risup/prompt-item/batch', { indices: selector.indices });
+        return isApiError(data)
+          ? data
+          : { data, routes: [route('read_risup_prompt_item_batch', 'POST', '/risup/prompt-item/batch')] };
+      }
+      const data = await apiRequest('GET', '/risup/prompt-items');
+      return isApiError(data)
+        ? data
+        : { data, routes: [route('list_risup_prompt_items', 'GET', '/risup/prompt-items')] };
+    }
     if (selector.family === 'surface' || selector.path) {
       const pathValue = selector.path ?? '/';
       const data = await apiRequest('POST', '/surface/read', { path: pathValue });
@@ -779,6 +983,14 @@ async function readFacadeSelector(
   }
 
   if (target.kind === 'external') {
+    if (selector.family === 'lorebook') {
+      return facadeApiError(
+        400,
+        'External lorebook selectors are not supported by read_content yet',
+        'Use inspect_external_file/probe_lorebook or open the file, then retry with target.kind="active".',
+        { selector },
+      );
+    }
     if (selector.family === 'surface' || selector.path) {
       const data = await apiRequest('POST', '/external/surface/read', {
         file_path: target.file_path,
@@ -798,6 +1010,90 @@ async function readFacadeSelector(
   if (target.kind === 'reference') {
     const index = await resolveReferenceIndex(target);
     if (typeof index !== 'number') return index;
+    if (selector.family === 'lorebook') {
+      if (selector.index !== undefined) {
+        const lorebookRoute = `/reference/${index}/lorebook/${selector.index}`;
+        const data = await apiRequest('GET', lorebookRoute);
+        return isApiError(data) ? data : { data, routes: [route('read_reference_lorebook', 'GET', lorebookRoute)] };
+      }
+      if (selector.indices) {
+        const data = await apiRequest('POST', `/reference/${index}/lorebook/batch`, {
+          indices: selector.indices,
+          ...(selector.field ? { fields: [selector.field] } : {}),
+        });
+        return isApiError(data)
+          ? data
+          : {
+              data,
+              routes: [route('read_reference_lorebook_batch', 'POST', `/reference/${index}/lorebook/batch`)],
+            };
+      }
+      const lorebookRoute = `/reference/${index}/lorebook`;
+      const data = await apiRequest('GET', lorebookRoute);
+      return isApiError(data) ? data : { data, routes: [route('list_reference_lorebook', 'GET', lorebookRoute)] };
+    }
+    if (selector.family === 'regex') {
+      if (selector.index !== undefined) {
+        const regexRoute = `/reference/${index}/regex/${selector.index}`;
+        const data = await apiRequest('GET', regexRoute);
+        return isApiError(data) ? data : { data, routes: [route('read_reference_regex', 'GET', regexRoute)] };
+      }
+      if (selector.indices) {
+        const regexRoute = `/reference/${index}/regex/batch`;
+        const data = await apiRequest('POST', regexRoute, { indices: selector.indices });
+        return isApiError(data) ? data : { data, routes: [route('read_reference_regex_batch', 'POST', regexRoute)] };
+      }
+      const regexRoute = `/reference/${index}/regex`;
+      const data = await apiRequest('GET', regexRoute);
+      return isApiError(data) ? data : { data, routes: [route('list_reference_regex', 'GET', regexRoute)] };
+    }
+    if (selector.family === 'greeting') {
+      if (!selector.greeting_type) {
+        return facadeApiError(
+          400,
+          'Unsupported greeting selector',
+          'read_content greeting selectors require greeting_type="alternate" or "group"; the facade will not guess between alternateGreetings and groupOnlyGreetings.',
+          { selector },
+        );
+      }
+      const type = encodeURIComponent(selector.greeting_type);
+      if (selector.index !== undefined) {
+        const greetingRoute = `/reference/${index}/greeting/${type}/${selector.index}`;
+        const data = await apiRequest('GET', greetingRoute);
+        return isApiError(data) ? data : { data, routes: [route('read_reference_greeting', 'GET', greetingRoute)] };
+      }
+      if (selector.indices) {
+        const greetingRoute = `/reference/${index}/greeting/${type}/batch`;
+        const data = await apiRequest('POST', greetingRoute, { indices: selector.indices });
+        return isApiError(data)
+          ? data
+          : { data, routes: [route('read_reference_greeting_batch', 'POST', greetingRoute)] };
+      }
+      const greetingRoute = `/reference/${index}/greetings/${type}`;
+      const data = await apiRequest('GET', greetingRoute);
+      return isApiError(data) ? data : { data, routes: [route('list_reference_greetings', 'GET', greetingRoute)] };
+    }
+    if (selector.family === 'risup-prompt') {
+      if (selector.index !== undefined) {
+        const promptRoute = `/reference/${index}/risup/prompt-item/${selector.index}`;
+        const data = await apiRequest('GET', promptRoute);
+        return isApiError(data)
+          ? data
+          : { data, routes: [route('read_reference_risup_prompt_item', 'GET', promptRoute)] };
+      }
+      if (selector.indices) {
+        const promptRoute = `/reference/${index}/risup/prompt-items/batch`;
+        const data = await apiRequest('POST', promptRoute, { indices: selector.indices });
+        return isApiError(data)
+          ? data
+          : { data, routes: [route('read_reference_risup_prompt_item_batch', 'POST', promptRoute)] };
+      }
+      const promptRoute = `/reference/${index}/risup/prompt-items`;
+      const data = await apiRequest('GET', promptRoute);
+      return isApiError(data)
+        ? data
+        : { data, routes: [route('list_reference_risup_prompt_items', 'GET', promptRoute)] };
+    }
     if (selector.field) {
       const fieldRoute = `/reference/${index}/${encodeURIComponent(selector.field)}`;
       const data = await apiRequest('GET', fieldRoute);
@@ -808,7 +1104,7 @@ async function readFacadeSelector(
   return facadeApiError(
     400,
     `Unsupported read_content selector for target kind "${target.kind}"`,
-    'First-wave read_content supports field and surface selectors for active/external targets, and field selectors for references.',
+    'read_content supports active/reference lorebook, regex, greeting, and risup-prompt selectors; field and surface selectors remain available for active/external targets.',
     { selector },
   );
 }
@@ -857,6 +1153,15 @@ function guardValue(guards: FacadeV1Guard[] | undefined, name: string): unknown 
   return guards?.find((guard) => guard.name === name)?.value;
 }
 
+function lorebookReplaceField(operation: FacadeV1EditOperation): string | undefined {
+  return operation.field ?? operation.selector.field;
+}
+
+function lorebookExpectedComment(guards: FacadeV1Guard[] | undefined): string | undefined {
+  const value = guardValue(guards, 'expected_comment');
+  return typeof value === 'string' ? value : undefined;
+}
+
 async function previewFacadeOperation(
   target: FacadeV1Target,
   operation: FacadeV1EditOperation,
@@ -872,6 +1177,57 @@ async function previewFacadeOperation(
   }
 
   const touched = [selectorTarget(operation.selector)];
+  if (
+    target.kind === 'active' &&
+    operation.op === 'replace_text' &&
+    operation.selector.family === 'lorebook' &&
+    operation.selector.index !== undefined
+  ) {
+    if (!operation.find) {
+      return facadeApiError(400, 'replace_text requires find', 'Provide operations[].find.');
+    }
+    const lorebookRoute = `/lorebook/${operation.selector.index}/replace`;
+    const data = await apiRequest('POST', lorebookRoute, {
+      find: operation.find,
+      replace: typeof operation.replace === 'string' ? operation.replace : '',
+      regex: operation.regex,
+      flags: operation.flags,
+      field: lorebookReplaceField(operation),
+      expected_comment: lorebookExpectedComment(operation.guards),
+      dry_run: true,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('replace_in_lorebook', 'POST', lorebookRoute)],
+          touched,
+          requiredGuards: operation.guards ?? [],
+        };
+  }
+
+  if (
+    operation.op === 'replace_text' &&
+    operation.selector.family === 'lorebook' &&
+    operation.selector.index !== undefined
+  ) {
+    return facadeApiError(
+      400,
+      'preview_edit lorebook replacement supports active targets only',
+      'Use target.kind="active" for lorebook replace_text, or open the external/reference document first.',
+      { operation },
+    );
+  }
+
+  if (operation.selector.family === 'lorebook') {
+    return facadeApiError(
+      400,
+      'Unsupported preview lorebook operation',
+      'preview_edit supports active lorebook replace_text only when selector.index is provided; write_content and broad lorebook edits remain unsupported.',
+      { operation },
+    );
+  }
+
   if (operation.op === 'replace_text' && operation.selector.field) {
     if (!operation.find) {
       return facadeApiError(400, 'replace_text requires find', 'Provide operations[].find.');
@@ -971,6 +1327,52 @@ async function applyFacadeOperation(
 ): Promise<{ data: unknown; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
   const touched = [selectorTarget(operation.selector)];
   const guards = guardValues && guardValues.length > 0 ? guardValues : operation.guards;
+  if (
+    target.kind === 'active' &&
+    operation.op === 'replace_text' &&
+    operation.selector.family === 'lorebook' &&
+    operation.selector.index !== undefined
+  ) {
+    const lorebookRoute = `/lorebook/${operation.selector.index}/replace`;
+    const data = await apiRequest('POST', lorebookRoute, {
+      find: operation.find,
+      replace: typeof operation.replace === 'string' ? operation.replace : '',
+      regex: operation.regex,
+      flags: operation.flags,
+      field: lorebookReplaceField(operation),
+      expected_comment: lorebookExpectedComment(guards),
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('replace_in_lorebook', 'POST', lorebookRoute)],
+          touched,
+        };
+  }
+
+  if (
+    operation.op === 'replace_text' &&
+    operation.selector.family === 'lorebook' &&
+    operation.selector.index !== undefined
+  ) {
+    return facadeApiError(
+      400,
+      'apply_edit lorebook replacement supports active targets only',
+      'Use target.kind="active" for lorebook replace_text, or open the external/reference document first.',
+      { operation },
+    );
+  }
+
+  if (operation.selector.family === 'lorebook') {
+    return facadeApiError(
+      400,
+      'Unsupported apply lorebook operation',
+      'apply_edit supports active lorebook replace_text only when selector.index is provided; write_content and broad lorebook edits remain unsupported.',
+      { operation },
+    );
+  }
+
   if (operation.op === 'replace_text' && operation.selector.field) {
     const fieldRoute =
       target.kind === 'external'
@@ -1254,7 +1656,19 @@ server.tool(
     let data: unknown;
     let routes: FacadeRoute[];
     const body = { query, regex, flags, context_chars, max_matches };
-    if (target.kind === 'active') {
+    if (target.kind === 'active' && field === 'risup-prompt') {
+      if (regex) {
+        return textResult(
+          facadeApiError(
+            400,
+            'Unsupported risup-prompt search selector',
+            'Active risup-prompt facade search routes only literal substring queries to search_in_risup_prompt_items; omit regex or use the granular tool directly.',
+          ),
+        );
+      }
+      data = await apiRequest('POST', '/risup/prompt-items/search', { query });
+      routes = [route('search_in_risup_prompt_items', 'POST', '/risup/prompt-items/search')];
+    } else if (target.kind === 'active') {
       data = await apiRequest('POST', '/search-all', {
         query,
         regex,
@@ -1481,6 +1895,7 @@ server.tool(
       touchedTargets.push(...applied.touched);
     }
     facadePreviewStore.delete(preview_token);
+    const postEdit = applyEditPostEditMetadata(entry);
     return textResult(
       facadeEnvelope(
         'apply_edit',
@@ -1495,11 +1910,12 @@ server.tool(
           operation_digest,
         },
         `Applied ${results.length} facade edit operation(s)`,
-        ['read_content', 'search_document'],
+        postEdit.nextActions,
         {
           count: results.length,
           routed_tools: routes.map((routeEntry) => routeEntry.tool),
           touched_targets: touchedTargets,
+          ...postEdit.artifacts,
         },
         max_bytes,
       ),

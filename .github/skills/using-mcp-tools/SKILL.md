@@ -65,6 +65,22 @@ Use granular tools as advanced/legacy routes only when at least one criterion ap
 
 Deprecation is staged and non-breaking today: current facade tools advertise `risutoki/surfaceKind=facade` and `risutoki/recommendation=preferred`; granular tools remain `surfaceKind=granular` with `recommendation=advanced` unless a future parity review marks a covered route `legacy`. Do not assume removal until a later warning window documents deprecation hints, first-party docs/evals no longer depend on the granular route, and release notes announce the change. Known gaps still requiring granular tools include validators outside active lorebook keys, item/asset/file management, structured item editors, deletes, imports/exports, external surface patches, and broad batch operations. Track parity with `src/lib/mcp-request-schemas.test.ts`, `src/lib/mcp-tool-taxonomy.test.ts`, `src/lib/doc-drift.test.ts`, `test/test-mcp-search-all.ts`, and the matrix in `docs/MCP_TOOL_SURFACE.md`.
 
+## Task-Intent Playbooks
+
+Default sequence for every edit intent: readonly analysis → preview or dry-run → apply → validation. Start facade-first, then record why any granular fallback is needed.
+
+- **Lorebook cleanup:** `inspect_document` → `search_document` / bounded `read_content`; use `list_lorebook` → `read_lorebook_batch` for entry metadata or stale-index guards. Preview with `replace_in_lorebook_batch(dry_run=true)` or `preview_edit`, apply with batch lorebook tools carrying `expected_comment`, then run `validate_lorebook_keys` and targeted re-reads. If comments changed, check Lua `getLoreBooks()` searches.
+- **Regex / greeting edits:** inspect first, then `list_regex` / `read_regex_batch` or `list_greetings` / `read_greeting_batch`; avoid raw array dumps. Apply through indexed regex/greeting tools or batch tools with `expected_comment` / `expected_preview`, then re-read changed indices and preview affected output when relevant.
+- **`.risup` prompt edits:** use `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_prompt_item_batch`, `read_risup_formating_order`, and `diff_risup_prompt` before edits. Prefer serializer/snippet dry-runs for large changes, apply with risup batch/import/snippet tools carrying `expected_type` / `expected_preview`, then run `validate_risup_prompt_import` after imports and targeted prompt/order re-reads.
+- **CBS / Danbooru validation:** load the matching syntax skill first, locate text with facade search/read, and validate before changing it with `validate_cbs`, `simulate_cbs`, `diff_cbs`, `validate_danbooru_tags`, or `search_danbooru_tags`. Re-run the same validators and preview/render if visible output can change.
+- **Reference sync / diff:** use `inspect_document` for loaded reference state, facade reference read/search for covered text, and `diff_lorebook` / `diff_risup_prompt` for purpose-built comparisons. References are read-only: preview/dry-run and apply changes only to the active or explicit external target, then re-run the diff or focused reference comparison.
+
+## Validation Rules
+
+- Validate with the same lens that found the issue: facade follow-up read/search, family-specific re-read, diff, validator, or preview.
+- For import/diff workflows, preserve the source text or reference identity until validation completes so mismatches can be reproduced.
+- Treat stale-index `409` as a successful safety catch, not a failure: re-list, refresh guards, preview/dry-run again if the target shifted, then retry.
+
 ## Session-Awareness Workflow
 
 1. Call `inspect_document` first for covered session/active/reference/external preflight. Use `session_status` when you need exact dirty/autosave/recovery fields, full reference inventory, or legacy runtime diagnostics.

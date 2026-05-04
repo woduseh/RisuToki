@@ -15,10 +15,12 @@ import {
   TOOL_SURFACE_PROFILE_CONTRACTS,
   TOOL_SURFACE_PROFILE_NAMES,
   TOOL_SURFACE_KINDS,
+  TOOL_WORKFLOW_STAGES,
   DEFAULT_TOOL_SURFACE_PROFILE,
   buildToolSurfaceProfileCatalog,
   getToolProfilesForTool,
   getToolSurfaceProfileContract,
+  getToolWorkflowStages,
   listToolsForSurfaceProfile,
   resolveToolSurfaceProfileName,
   getToolFamily,
@@ -345,11 +347,13 @@ describe('MCP Tool Taxonomy', () => {
         [TOOL_META_KEYS.staleGuardDetails]: [],
         [TOOL_META_KEYS.surfaceKind]: 'granular',
         [TOOL_META_KEYS.recommendation]: 'advanced',
+        [TOOL_META_KEYS.workflowStages]: ['discover'],
       }),
     );
     expect(getToolMeta('write_lorebook')).toEqual(
       expect.objectContaining({
         [TOOL_META_KEYS.family]: 'lorebook',
+        [TOOL_META_KEYS.workflowStages]: ['apply'],
         [TOOL_META_KEYS.requiresConfirmation]: true,
         [TOOL_META_KEYS.supportsDryRun]: false,
       }),
@@ -524,6 +528,75 @@ describe('MCP Tool Taxonomy', () => {
         [TOOL_META_KEYS.defaultProfile]: 'facade-first',
       }),
     );
+  });
+
+  it('derives workflow stages for facade read, validation, preview, and apply flows', () => {
+    expect(TOOL_WORKFLOW_STAGES).toEqual(['discover', 'read', 'search', 'validate', 'preview', 'apply']);
+    expect(getToolWorkflowStages('inspect_document')).toEqual(['discover']);
+    expect(getToolWorkflowStages('read_content')).toEqual(['read']);
+    expect(getToolWorkflowStages('search_document')).toEqual(['search']);
+    expect(getToolWorkflowStages('validate_content')).toEqual(['validate']);
+    expect(getToolWorkflowStages('preview_edit')).toEqual(['preview']);
+    expect(getToolWorkflowStages('apply_edit')).toEqual(['apply']);
+    expect(getToolWorkflowStages('write_lorebook')).toEqual(['apply']);
+    expect(getToolWorkflowStages('replace_in_field')).toEqual(['preview', 'apply']);
+  });
+
+  it('exposes workflow stages in tool metadata and profile catalogs', () => {
+    expect(getToolMeta('inspect_document')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.workflowStages]: ['discover'],
+      }),
+    );
+    expect(getToolMeta('read_content')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.workflowStages]: ['read'],
+      }),
+    );
+    expect(getToolMeta('search_document')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.workflowStages]: ['search'],
+      }),
+    );
+    expect(getToolMeta('validate_content')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.workflowStages]: ['validate'],
+      }),
+    );
+    expect(getToolMeta('preview_edit')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.workflowStages]: ['preview'],
+      }),
+    );
+    expect(getToolMeta('apply_edit')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.workflowStages]: ['apply'],
+      }),
+    );
+    expect(getToolMeta('write_lorebook')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.workflowStages]: ['apply'],
+      }),
+    );
+
+    const facadeCatalog = buildToolSurfaceProfileCatalog();
+    expect(facadeCatalog?.tools.find((tool) => tool.name === 'inspect_document')).toEqual(
+      expect.objectContaining({ workflowStages: ['discover'], readOnly: true }),
+    );
+    expect(facadeCatalog?.tools.find((tool) => tool.name === 'preview_edit')).toEqual(
+      expect.objectContaining({ workflowStages: ['preview'], readOnly: false }),
+    );
+    expect(facadeCatalog?.tools.find((tool) => tool.name === 'apply_edit')).toEqual(
+      expect.objectContaining({ workflowStages: ['apply'], readOnly: false }),
+    );
+  });
+
+  it('readonly profile tools never advertise preview or apply workflow stages', () => {
+    for (const name of ALL_TOOL_NAMES) {
+      if (!getToolProfilesForTool(name).includes('readonly')) continue;
+      expect(getToolWorkflowStages(name), `${name} readonly workflow stages`).not.toContain('preview');
+      expect(getToolWorkflowStages(name), `${name} readonly workflow stages`).not.toContain('apply');
+    }
   });
 
   it('structured stale guard details stay aligned with legacy guard names', () => {

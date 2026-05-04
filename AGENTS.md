@@ -9,25 +9,25 @@
 
 Only `project-workflow` is mandatory at session start. Load the other references when the current task actually needs that layer.
 
-| Order | Topic                                       | How to load                                                                                                                                                                    |
-| ----- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | **Onboarding, project rules, MCP workflow** | `read_skill("project-workflow")` — for full detail, follow up with `read_skill("project-workflow", "MCP_WORKFLOW.md")` or `read_skill("project-workflow", "PROJECT_RULES.md")` |
-| 2     | **MCP tool selection, large fields, batch** | `read_skill("using-mcp-tools")` before concrete MCP reads/writes                                                                                                               |
-| 3     | **Product/editor code work**                | `docs/analysis/ARCHITECTURE.md`, `docs/MODULE_MAP.md`, `CONTRIBUTING.md`                                                                                                       |
-| 4     | **Authoring work under `risu/`**            | Read the nearest `risu/{common,bot,prompts,modules,plugins}/AGENTS.md` or `README.md`; use it as the active authoring router for the current subtree                           |
+| Order | Topic                                              | How to load                                                                                                                                                                    |
+| ----- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1     | **Onboarding, project rules, MCP workflow**        | `read_skill("project-workflow")` — for full detail, follow up with `read_skill("project-workflow", "MCP_WORKFLOW.md")` or `read_skill("project-workflow", "PROJECT_RULES.md")` |
+| 2     | **MCP tool selection, task playbooks, validation** | `read_skill("using-mcp-tools")` before concrete MCP reads/writes                                                                                                               |
+| 3     | **Product/editor code work**                       | `docs/analysis/ARCHITECTURE.md`, `docs/MODULE_MAP.md`, `CONTRIBUTING.md`                                                                                                       |
+| 4     | **Authoring work under `risu/`**                   | Read the nearest `risu/{common,bot,prompts,modules,plugins}/AGENTS.md` or `README.md`; use it as the active authoring router for the current subtree                           |
 
 ### Additional repo-local references (may not be available outside the repo)
 
-| Document                                                         | Contents                                                       |
-| ---------------------------------------------------------------- | -------------------------------------------------------------- |
-| [`docs/analysis/ARCHITECTURE.md`](docs/analysis/ARCHITECTURE.md) | Runtime architecture, process boundaries, hotspots (canonical) |
-| [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)                   | MCP tool routing and read-rule source of truth                 |
-| [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)           | Tool families, boundaries, behavior hints                      |
-| [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md)       | Error / no-op / success response contracts                     |
-| `toki-mcp-server.js --standalone`                                | File-backed MCP runtime for Codex/CLI use without Electron     |
-| [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)                 | Versioning and CI rules                                        |
-| [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                       | TypeScript source navigation map                               |
-| [`docs/README.md`](docs/README.md)                               | Full knowledge-base index                                      |
+| Document                                                         | Contents                                                              |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [`docs/analysis/ARCHITECTURE.md`](docs/analysis/ARCHITECTURE.md) | Runtime architecture, process boundaries, hotspots (canonical)        |
+| [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)                   | MCP tool routing, read-rule, and task-intent playbook source of truth |
+| [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)           | Tool families, boundaries, behavior hints                             |
+| [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md)       | Error / no-op / success response contracts                            |
+| `toki-mcp-server.js --standalone`                                | File-backed MCP runtime for Codex/CLI use without Electron            |
+| [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)                 | Versioning and CI rules                                               |
+| [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                       | TypeScript source navigation map                                      |
+| [`docs/README.md`](docs/README.md)                               | Full knowledge-base index                                             |
 
 ---
 
@@ -46,7 +46,7 @@ Only `project-workflow` is mandatory at session start. Load the other references
 | Skill              | Purpose                                                                                         |
 | ------------------ | ----------------------------------------------------------------------------------------------- |
 | `project-workflow` | Project rules, MCP workflow, onboarding guide (includes `MCP_WORKFLOW.md` + `PROJECT_RULES.md`) |
-| `using-mcp-tools`  | Tool selection, large-field editing, batch-first principles                                     |
+| `using-mcp-tools`  | Tool selection, task-intent playbooks, validation, batch-first principles                       |
 
 Use `list_skills` to see the repo-global catalog, then load only the skills that match the current subtree and task. Codex discovers that repo-local catalog through the generated `.agents/skills` discovery path refreshed by `npm run sync:skills` (or `npm install` via `prepare`); Copilot CLI, Claude Code, and Gemini CLI use `.github/skills`, `.claude/skills`, and `.gemini/skills`.
 

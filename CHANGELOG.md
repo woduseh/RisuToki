@@ -9,6 +9,19 @@
 
 ---
 
+## [0.69.0] - 2026-05-05
+
+### Added
+
+- Added task-intent MCP playbooks for facade-first lorebook, regex/greeting, `.risup` prompt, CBS/Danbooru validation, and reference sync/diff workflows.
+- Added `risutoki/workflowStages` metadata so agents can distinguish discover/read/search/validate/preview/apply phases in tool catalogs.
+- Expanded facade `read_content` coverage for active/reference lorebook, regex, greeting, and `.risup` prompt selectors, plus lorebook `preview_edit`/`apply_edit` replace flows with stale comment guards.
+
+### Changed
+
+- Strengthened facade apply responses with family-aware post-edit validation guidance, recommended reads, and diff follow-ups.
+- Updated MCP workflow docs and skills to make readonly analysis, preview/dry-run, apply, and validation the default editing path.
+
 ## [0.68.1] - 2026-05-04
 
 ### Fixed

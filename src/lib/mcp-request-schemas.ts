@@ -280,6 +280,11 @@ export const facadeV1ContentSelectorSchema = z.object({
   field: z.string().min(1).optional(),
   index: z.number().int().nonnegative().optional(),
   indices: z.array(z.number().int().nonnegative()).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+  greeting_type: z.enum(['alternate', 'group']).optional(),
+  entry_field: z.string().min(1).optional(),
+  item_field: z.string().min(1).optional(),
+  prompt_type: z.string().min(1).optional(),
+  fields: z.array(z.string().min(1)).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
 });
 export type FacadeV1ContentSelector = z.infer<typeof facadeV1ContentSelectorSchema>;
 
@@ -322,6 +327,9 @@ const facadeV1EditOperationSchema = z.object({
   content: z.unknown().optional(),
   find: z.string().min(1).optional(),
   replace: z.string().optional(),
+  regex: boolish.optional(),
+  flags: lenientString,
+  field: z.string().min(1).optional(),
   guards: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
 });
 export type FacadeV1EditOperation = z.infer<typeof facadeV1EditOperationSchema>;

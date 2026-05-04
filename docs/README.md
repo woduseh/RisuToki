@@ -8,7 +8,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 | -------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------- |
 | starting a new session or onboarding                     | `read_skill("project-workflow")`                                             | `read_skill("using-mcp-tools")`                          |
 | working on authoring materials under `risu/`             | nearest `risu/{common,bot,prompts,modules,plugins}/AGENTS.md` or `README.md` | matching `risu/.../skills/` + `risu/.../docs/` surfaces  |
-| editing `.charx` / `.risum` / `.risup` through MCP       | `read_skill("using-mcp-tools")`                                              | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
+| editing `.charx` / `.risum` / `.risup` through MCP       | `read_skill("using-mcp-tools")` for task playbooks and validation rules      | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
 | recovering from an MCP tool failure or no-op             | `docs/MCP_ERROR_CONTRACT.md`                                                 | `docs/MCP_TOOL_SURFACE.md`                               |
 | changing application code                                | `CONTRIBUTING.md`                                                            | `docs/analysis/ARCHITECTURE.md`, `docs/MODULE_MAP.md`    |
 | checking project rules (versioning, CI, guide locations) | `read_skill("project-workflow")`                                             | `docs/PROJECT_RULES.md`                                  |
@@ -16,7 +16,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 
 ## Core documents
 
-- **`docs/MCP_WORKFLOW.md`** — MCP tool routing map, read rules, effective workflow patterns, operational caveats
+- **`docs/MCP_WORKFLOW.md`** — MCP tool routing map, read rules, task-intent playbooks, reference diff workflows, operational caveats
 - **`docs/MCP_TOOL_SURFACE.md`** — MCP family map, tool boundaries, behavior hints, and deterministic `next_actions`
 - **`docs/MCP_ERROR_CONTRACT.md`** — success / error / no-op response contracts and the recovery playbook
 - **`docs/PROJECT_RULES.md`** — versioning, CI/release workflow, and guide locations

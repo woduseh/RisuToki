@@ -213,7 +213,7 @@ function dogfoodCardData(name: string, description: string): CharxData {
     license: '',
     firstMessage: 'Facade hello.',
     alternateGreetings: ['Facade alternate hello.'],
-    groupOnlyGreetings: [],
+    groupOnlyGreetings: ['Facade group hello.'],
     globalNote: 'Destructive preview keeps this note until apply.',
     css: '',
     defaultVariables: '',
@@ -231,7 +231,7 @@ function dogfoodCardData(name: string, description: string): CharxData {
         mode: 'normal',
       },
     ],
-    regex: [],
+    regex: [{ comment: 'Facade Regex', type: 'editoutput', find: 'Facade', replace: 'Surface', flag: 'g' }],
     assets: [],
     xMeta: {},
     risumAssets: [],
@@ -257,6 +257,7 @@ function createDogfoodFixtures(): {
   externalFile: string;
   referenceRisum: string;
   referenceRisup: string;
+  referenceCharx: string;
   userDataDir: string;
 } {
   fs.mkdirSync(TEST_DIR, { recursive: true });
@@ -265,10 +266,12 @@ function createDogfoodFixtures(): {
   const externalFile = path.join(dir, 'external.charx');
   const referenceRisum = path.join(dir, 'reference.risum');
   const referenceRisup = path.join(dir, 'reference.risup');
+  const referenceCharx = path.join(dir, 'reference.charx');
   const userDataDir = path.join(dir, 'user-data');
 
   saveCharx(mainFile, dogfoodCardData('Facade Active', 'Alpha facade dogfood description.'));
   saveCharx(externalFile, dogfoodCardData('Facade External', 'External facade dogfood description.'));
+  saveCharx(referenceCharx, dogfoodCardData('Facade Reference Card', 'Reference charx facade dogfood description.'));
   saveRisum(referenceRisum, {
     _fileType: 'risum',
     name: 'Facade Reference Module',
@@ -277,8 +280,21 @@ function createDogfoodFixtures(): {
     moduleNamespace: 'facade.reference',
     lowLevelAccess: false,
     hideIcon: false,
-    lorebook: [],
-    regex: [],
+    lorebook: [
+      {
+        comment: 'Reference Facade Lore',
+        key: 'reference-facade',
+        secondkey: '',
+        content: 'Reference facade lore body.',
+        insertorder: 100,
+        alwaysActive: false,
+        selective: false,
+        mode: 'normal',
+      },
+    ],
+    alternateGreetings: ['Reference alternate hello.'],
+    groupOnlyGreetings: ['Reference group hello.'],
+    regex: [{ comment: 'Reference Regex', type: 'editoutput', find: 'Reference', replace: 'Mirror', flag: 'g' }],
   } as unknown as CharxData);
   saveRisup(referenceRisup, {
     _fileType: 'risup',
@@ -290,7 +306,7 @@ function createDogfoodFixtures(): {
     localStopStrings: '[]',
   } as unknown as CharxData);
 
-  return { dir, mainFile, externalFile, referenceRisum, referenceRisup, userDataDir };
+  return { dir, mainFile, externalFile, referenceRisum, referenceRisup, referenceCharx, userDataDir };
 }
 
 function closeServer(server: http.Server): Promise<void> {
@@ -440,6 +456,7 @@ function assertToolListMetadata(
     supportsDryRun?: boolean;
     surfaceKind?: string;
     recommendation?: string;
+    workflowStages?: string[];
     profiles?: string[];
     defaultProfile?: string;
   },
@@ -453,6 +470,9 @@ function assertToolListMetadata(
   }
   if (expected.recommendation !== undefined) {
     assert.equal(tool._meta?.['risutoki/recommendation'], expected.recommendation);
+  }
+  if (expected.workflowStages !== undefined) {
+    assert.deepEqual(tool._meta?.['risutoki/workflowStages'], expected.workflowStages);
   }
   if (expected.profiles !== undefined) {
     assert.deepEqual(tool._meta?.['risutoki/profiles'], expected.profiles);
@@ -550,6 +570,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
   const activeTarget = { kind: 'active' };
   const referenceTarget = { kind: 'reference', reference_id: '0' };
   const presetReferenceTarget = { kind: 'reference', reference_id: '1' };
+  const cardReferenceTarget = { kind: 'reference', reference_id: '2' };
   const externalTarget = { kind: 'external', file_path: fixture.externalFile };
   const facadeOnlyCalls: string[] = [];
   const metrics = {
@@ -567,7 +588,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
   try {
     runtime = await startStandaloneClient({
       file: fixture.mainFile,
-      refs: [fixture.referenceRisum, fixture.referenceRisup],
+      refs: [fixture.referenceRisum, fixture.referenceRisup, fixture.referenceCharx],
       userDataDir: fixture.userDataDir,
       allowWrites: true,
     });
@@ -606,6 +627,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       const tool = tools.tools.find((candidate) => candidate.name === name);
       assert.equal(tool?._meta?.['risutoki/surfaceKind'], 'facade');
       assert.equal(tool?._meta?.['risutoki/recommendation'], 'preferred');
+      assert.ok(Array.isArray(tool?._meta?.['risutoki/workflowStages']));
     }
 
     facadeOnlyCalls.push('inspect_document');
@@ -647,6 +669,71 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(readBefore), ['read_field']);
 
+    const lorebookReadBefore = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'lorebook', index: 0 }],
+    });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(lorebookReadBefore), ['read_lorebook']);
+    const lorebookReadItems = nestedArray(
+      nestedRecord(lorebookReadBefore.result, 'lorebook read result').items,
+      'lorebook read result.items',
+    );
+    const lorebookData = nestedRecord(
+      nestedRecord(lorebookReadItems[0], 'lorebook read item').data,
+      'lorebook read data',
+    );
+    assert.equal(nestedRecord(lorebookData.entry, 'lorebook entry').content, 'Facade lore body.');
+
+    const activeRegexReads = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'regex' }, { family: 'regex', index: 0 }, { family: 'regex', indices: [0] }],
+    });
+    assert.deepEqual(routedTools(activeRegexReads), ['list_regex', 'read_regex', 'read_regex_batch']);
+    const activeRegexItems = nestedArray(
+      nestedRecord(activeRegexReads.result, 'active regex read result').items,
+      'active regex read result.items',
+    );
+    const activeRegexData = nestedRecord(
+      nestedRecord(activeRegexItems[1], 'active regex item').data,
+      'active regex data',
+    );
+    assert.equal(nestedRecord(activeRegexData.entry, 'active regex entry').comment, 'Facade Regex');
+
+    const activeGreetingReads = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [
+        { family: 'greeting', greeting_type: 'alternate' },
+        { family: 'greeting', greeting_type: 'alternate', index: 0 },
+        { family: 'greeting', greeting_type: 'alternate', indices: [0] },
+        { family: 'greeting', greeting_type: 'group' },
+      ],
+    });
+    assert.deepEqual(routedTools(activeGreetingReads), [
+      'list_greetings',
+      'read_greeting',
+      'read_greeting_batch',
+      'list_greetings',
+    ]);
+    const activeGreetingItems = nestedArray(
+      nestedRecord(activeGreetingReads.result, 'active greeting read result').items,
+      'active greeting read result.items',
+    );
+    const activeGreetingData = nestedRecord(
+      nestedRecord(activeGreetingItems[1], 'active greeting item').data,
+      'active greeting data',
+    );
+    assert.equal(activeGreetingData.content, 'Facade alternate hello.');
+
+    const missingGreetingType = await callJson(
+      runtime,
+      'read_content',
+      { target: activeTarget, selectors: [{ family: 'greeting' }] },
+      { expectError: true },
+    );
+    assert.equal(missingGreetingType.status, 400);
+    assert.match(String(missingGreetingType.suggestion ?? ''), /greeting_type/);
+
     facadeOnlyCalls.push('validate_content');
     const validation = await callJson(runtime, 'validate_content', {
       target: activeTarget,
@@ -684,6 +771,79 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(apply), ['replace_in_field']);
 
+    const lorebookPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'lorebook', index: 0, field: 'content' },
+          find: 'Facade',
+          replace: 'Updated facade',
+          guards: [{ name: 'expected_comment', value: 'Facade Lore' }],
+        },
+      ],
+    });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(lorebookPreview), ['replace_in_lorebook']);
+    const lorebookPreviewResult = nestedRecord(lorebookPreview.result, 'lorebook preview result');
+    assert.ok(
+      nestedArray(lorebookPreviewResult.touched_targets, 'lorebook touched targets').includes('lorebook:0:content'),
+    );
+    assert.ok(
+      nestedArray(lorebookPreviewResult.guard_values, 'lorebook guard values').some(
+        (guard) => nestedRecord(guard, 'lorebook guard').name === 'expected_comment',
+      ),
+    );
+    const lorebookPreviewInfo = nestedRecord(lorebookPreview.preview, 'lorebook preview');
+    const lorebookApply = await callJson(runtime, 'apply_edit', {
+      preview_token: lorebookPreviewInfo.preview_token,
+      operation_digest: lorebookPreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(lorebookApply), ['replace_in_lorebook']);
+    assert.deepEqual(lorebookApply.next_actions, ['validate_content', 'read_content', 'diff_lorebook']);
+    const lorebookApplyArtifacts = nestedRecord(lorebookApply.artifacts, 'lorebook apply artifacts');
+    assert.deepEqual(lorebookApplyArtifacts.edited_families, ['lorebook']);
+    assert.ok(
+      nestedArray(lorebookApplyArtifacts.post_edit_validation, 'lorebook post-edit validation').some((item) => {
+        const validationItem = nestedRecord(item, 'lorebook post-edit validation item');
+        return (
+          validationItem.family === 'lorebook' &&
+          nestedArray(validationItem.tools, 'validation tools').includes('validate_content')
+        );
+      }),
+    );
+    assert.ok(
+      nestedArray(lorebookApplyArtifacts.recommended_reads, 'lorebook recommended reads').some(
+        (item) => nestedRecord(item, 'lorebook recommended read').tool === 'read_content',
+      ),
+    );
+    assert.ok(
+      nestedArray(lorebookApplyArtifacts.recommended_diffs, 'lorebook recommended diffs').some(
+        (item) => nestedRecord(item, 'lorebook recommended diff').tool === 'diff_lorebook',
+      ),
+    );
+
+    const staleLorebookPreview = await callJson(
+      runtime,
+      'preview_edit',
+      {
+        target: activeTarget,
+        operations: [
+          {
+            op: 'replace_text',
+            selector: { family: 'lorebook', index: 0, field: 'content' },
+            find: 'Updated facade',
+            replace: 'Stale facade',
+            guards: [{ name: 'expected_comment', value: 'Wrong Lore' }],
+          },
+        ],
+      },
+      { expectError: true },
+    );
+    assert.equal(staleLorebookPreview.status, 409);
+
     const save = await callJson(runtime, 'save_current_file', {});
     metrics.activeWorkflowCallCount += 1;
     assert.equal(save.success, true);
@@ -700,6 +860,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     const afterData = nestedRecord(nestedRecord(afterItems[0], 'read after item').data, 'read after item.data');
     assert.equal(afterData.content, persisted.description);
     assert.equal(persisted.description, 'Omega facade dogfood description.');
+    assert.equal((persisted.lorebook[0] as { content?: string } | undefined)?.content, 'Updated facade lore body.');
     metrics.finalArtifactEquality = true;
 
     const referenceInspect = await callJson(runtime, 'inspect_document', { target: referenceTarget });
@@ -715,6 +876,73 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     );
     const referenceData = nestedRecord(nestedRecord(referenceItems[0], 'reference read item').data, 'reference data');
     assert.equal(referenceData.content, openRisum(fixture.referenceRisum).description);
+    const referenceLorebookList = await callJson(runtime, 'read_content', {
+      target: referenceTarget,
+      selectors: [{ family: 'lorebook' }],
+    });
+    assert.deepEqual(routedTools(referenceLorebookList), ['list_reference_lorebook']);
+    const referenceLorebookRead = await callJson(runtime, 'read_content', {
+      target: referenceTarget,
+      selectors: [{ family: 'lorebook', index: 0 }],
+    });
+    assert.deepEqual(routedTools(referenceLorebookRead), ['read_reference_lorebook']);
+    const referenceLorebookItems = nestedArray(
+      nestedRecord(referenceLorebookRead.result, 'reference lorebook result').items,
+      'reference lorebook items',
+    );
+    const referenceLorebookData = nestedRecord(
+      nestedRecord(referenceLorebookItems[0], 'reference lorebook item').data,
+      'reference lorebook data',
+    );
+    assert.equal(
+      nestedRecord(referenceLorebookData.entry, 'reference lorebook entry').content,
+      'Reference facade lore body.',
+    );
+
+    const referenceRegexReads = await callJson(runtime, 'read_content', {
+      target: referenceTarget,
+      selectors: [{ family: 'regex' }, { family: 'regex', index: 0 }, { family: 'regex', indices: [0] }],
+    });
+    assert.deepEqual(routedTools(referenceRegexReads), [
+      'list_reference_regex',
+      'read_reference_regex',
+      'read_reference_regex_batch',
+    ]);
+    const referenceRegexItems = nestedArray(
+      nestedRecord(referenceRegexReads.result, 'reference regex read result').items,
+      'reference regex read result.items',
+    );
+    const referenceRegexData = nestedRecord(
+      nestedRecord(referenceRegexItems[1], 'reference regex item').data,
+      'reference regex data',
+    );
+    assert.equal(nestedRecord(referenceRegexData.entry, 'reference regex entry').comment, 'Reference Regex');
+
+    const referenceGreetingReads = await callJson(runtime, 'read_content', {
+      target: cardReferenceTarget,
+      selectors: [
+        { family: 'greeting', greeting_type: 'alternate' },
+        { family: 'greeting', greeting_type: 'alternate', index: 0 },
+        { family: 'greeting', greeting_type: 'alternate', indices: [0] },
+        { family: 'greeting', greeting_type: 'group' },
+      ],
+    });
+    assert.deepEqual(routedTools(referenceGreetingReads), [
+      'list_reference_greetings',
+      'read_reference_greeting',
+      'read_reference_greeting_batch',
+      'list_reference_greetings',
+    ]);
+    const referenceGreetingItems = nestedArray(
+      nestedRecord(referenceGreetingReads.result, 'reference greeting read result').items,
+      'reference greeting read result.items',
+    );
+    const referenceGreetingData = nestedRecord(
+      nestedRecord(referenceGreetingItems[1], 'reference greeting item').data,
+      'reference greeting data',
+    );
+    assert.equal(referenceGreetingData.content, 'Facade alternate hello.');
+
     const referenceSearch = await callJson(runtime, 'search_document', {
       target: referenceTarget,
       field: 'description',
@@ -735,6 +963,28 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'preset reference data',
     );
     assert.equal(presetReferenceData.content, openRisup(fixture.referenceRisup).description);
+    const presetPromptReads = await callJson(runtime, 'read_content', {
+      target: presetReferenceTarget,
+      selectors: [
+        { family: 'risup-prompt' },
+        { family: 'risup-prompt', index: 0 },
+        { family: 'risup-prompt', indices: [0] },
+      ],
+    });
+    assert.deepEqual(routedTools(presetPromptReads), [
+      'list_reference_risup_prompt_items',
+      'read_reference_risup_prompt_item',
+      'read_reference_risup_prompt_item_batch',
+    ]);
+    const presetPromptItems = nestedArray(
+      nestedRecord(presetPromptReads.result, 'preset prompt read result').items,
+      'preset prompt read result.items',
+    );
+    const presetPromptData = nestedRecord(
+      nestedRecord(presetPromptItems[1], 'preset prompt item').data,
+      'preset prompt data',
+    );
+    assert.equal(nestedRecord(presetPromptData.item, 'preset prompt data.item').text, 'Preset facade prompt');
 
     facadeOnlyCalls.push('load_guidance');
     const guidance = await callJson(runtime, 'load_guidance', {
@@ -840,11 +1090,32 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       selectors: [{ family: 'field', field: 'description' }],
     });
     assert.deepEqual(routedTools(recoveredRead), ['read_field']);
+    const openedPreset = await callJson(recoveryRuntime, 'open_file', { file_path: fixture.referenceRisup });
+    assert.equal(openedPreset.file_type, 'risup');
+    const activePresetPromptReads = await callJson(recoveryRuntime, 'read_content', {
+      target: activeTarget,
+      selectors: [
+        { family: 'risup-prompt' },
+        { family: 'risup-prompt', index: 0 },
+        { family: 'risup-prompt', indices: [0] },
+      ],
+    });
+    assert.deepEqual(routedTools(activePresetPromptReads), [
+      'list_risup_prompt_items',
+      'read_risup_prompt_item',
+      'read_risup_prompt_item_batch',
+    ]);
+    const activePresetSearch = await callJson(recoveryRuntime, 'search_document', {
+      target: activeTarget,
+      field: 'risup-prompt',
+      query: 'Preset',
+    });
+    assert.deepEqual(routedTools(activePresetSearch), ['search_in_risup_prompt_items']);
 
     const wrongTools = ['read_field', 'write_field', 'replace_in_field', 'patch_surface'];
     metrics.wrongToolAvoidance = facadeOnlyCalls.every((name) => !wrongTools.includes(name));
     assert.equal(metrics.wrongToolAvoidance, true);
-    assert.equal(metrics.activeWorkflowCallCount, 7);
+    assert.equal(metrics.activeWorkflowCallCount, 10);
     assert.equal(metrics.granularFallbackFrequency, 0);
     assert.equal(metrics.staleGuardReuse, true);
     assert.equal(metrics.finalArtifactEquality, true);
@@ -941,12 +1212,14 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       ],
       requiresConfirmation: true,
       supportsDryRun: false,
+      workflowStages: ['apply'],
     });
     assertToolListMetadata(tools.tools, 'replace_in_field', {
       family: 'field',
       staleGuards: [],
       requiresConfirmation: true,
       supportsDryRun: true,
+      workflowStages: ['preview', 'apply'],
     });
     assertToolListMetadata(tools.tools, 'open_file', {
       family: 'probe',
@@ -959,6 +1232,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       staleGuards: [],
       requiresConfirmation: true,
       supportsDryRun: true,
+      workflowStages: ['preview', 'apply'],
     });
     for (const toolName of [
       'inspect_document',
@@ -980,6 +1254,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       staleGuards: [],
       surfaceKind: 'facade',
       recommendation: 'preferred',
+      workflowStages: ['discover'],
       profiles: ['facade-first', 'authoring', 'advanced-full', 'readonly'],
       defaultProfile: 'facade-first',
     });
@@ -988,6 +1263,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       staleGuards: [],
       surfaceKind: 'facade',
       recommendation: 'preferred',
+      workflowStages: ['discover'],
       profiles: ['facade-first', 'authoring', 'advanced-full', 'readonly'],
       defaultProfile: 'facade-first',
     });
@@ -998,6 +1274,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       supportsDryRun: true,
       surfaceKind: 'facade',
       recommendation: 'preferred',
+      workflowStages: ['preview'],
       profiles: ['facade-first', 'authoring', 'advanced-full'],
       defaultProfile: 'facade-first',
     });
@@ -1008,6 +1285,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       supportsDryRun: false,
       surfaceKind: 'facade',
       recommendation: 'preferred',
+      workflowStages: ['apply'],
       profiles: ['facade-first', 'authoring', 'advanced-full'],
       defaultProfile: 'facade-first',
     });
