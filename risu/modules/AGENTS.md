@@ -2,14 +2,14 @@
 
 > Thin routing file. Full content lives in the linked skills and docs.
 
-## What to read
+## What to read / when
 
-| Order | Topic                        | How to load                           |
-| ----- | ---------------------------- | ------------------------------------- |
-| 1     | Project rules & MCP workflow | `read_skill("project-workflow")`      |
-| 2     | MCP tool selection           | `read_skill("using-mcp-tools")`       |
-| 3     | **Module composition**       | `read_skill("writing-risum-modules")` |
-| 4     | Module field reference       | `risu/modules/docs/MODULE_FIELDS.md`  |
+| Order | Topic                        | How to load                                             |
+| ----- | ---------------------------- | ------------------------------------------------------- |
+| 1     | Project rules & MCP workflow | `read_skill("project-workflow")`                        |
+| 2     | MCP tool selection           | `read_skill("using-mcp-tools")` before MCP reads/writes |
+| 3     | **Module composition**       | `read_skill("writing-risum-modules")`                   |
+| 4     | Module field reference       | `risu/modules/docs/MODULE_FIELDS.md`                    |
 
 ## Shared syntax (load on demand)
 
@@ -30,6 +30,7 @@
 3. Module-specific fields (`namespace`, `lowLevelAccess`, `backgroundEmbedding`, `customModuleToggle`) are documented in `writing-risum-modules`. Do not guess semantics — read the skill.
 4. **`cjs` is reserved but unused.** Do not write runtime logic into it.
 5. **Prefer soft-apply** (enable module ID) over hard-apply (`applyModule`) — soft is reversible.
-6. Prefix CSS classes with `x-risu-` inside `backgroundEmbedding` to avoid collisions across modules.
+6. Use unique module-specific source CSS class names inside `backgroundEmbedding`; RisuAI adds `x-risu-` prefixes at render time.
 7. Local `.risum` work products in this directory stay ignored. Only routing/docs/skills surfaces are tracked here.
 8. Bot, preset, and plugin composition workflows are separate. Do not treat them as the default path in this subtree unless the task explicitly bridges artifacts.
+9. Use `writing-risum-modules` as the primary skill first; load shared syntax skills only when the module actually contains that surface.

@@ -13,3 +13,4 @@ LLM-optimized skills for writing and reviewing `.risum` modules.
 1. Load the module composition skill first.
 2. If the module contains lorebooks, regex, Lua, triggers, or CSS, load the corresponding shared skill from `../../common/skills/`.
 3. Treat module-specific fields (`namespace`, `lowLevelAccess`, `customModuleToggle`, `backgroundEmbedding`) as composition concerns, not generic field trivia.
+4. Treat `SKILL.md` as the execution summary; open `risu/modules/docs/MODULE_FIELDS.md` only when exact field inventory is needed.

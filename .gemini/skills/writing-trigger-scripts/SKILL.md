@@ -7,6 +7,14 @@ related_tools: ['list_triggers', 'read_trigger', 'write_trigger', 'add_trigger']
 
 # Writing Trigger Scripts
 
+## Agent Operating Contract
+
+- **Use when:** planning or debugging structured RisuAI trigger scripts, event types, trigger order, manual/button triggers, or V2 GUI trigger behavior.
+- **Do not use when:** the user chose Lua mode, regex scripts, CBS-only logic, or plugin JavaScript.
+- **Read first:** this `SKILL.md`; it distinguishes trigger mode from Lua and regex.
+- **Load deeper only if:** the trigger body needs Lua (`writing-lua-scripts`), CBS (`writing-cbs-syntax`), or regex output integration.
+- **Output/validation contract:** choose one trigger mode deliberately, preserve execution order, use `list_triggers`/`read_trigger_batch`, and avoid mixing Lua first-slot wrapper assumptions into V2 trigger entries.
+
 Triggers are event-driven scripts that execute automatically on specific chat events (send, receive, button click). They enable variable manipulation, UI changes, prompt control, and complex game systems.
 
 > **Mode boundary:** In current RisuAI authoring flow, structured trigger scripts and Lua script mode are treated as separate modes. Lua is stored as a `triggerlua` entry in the first trigger slot, but the editor/UI and MCP accessors use that first-slot wrapper as the dedicated Lua mode. If the artifact is in Lua mode, do **not** treat it as a normal mixed trigger list — use [writing-lua-scripts](../writing-lua-scripts/SKILL.md) instead of trying to combine Lua with separate V1/V2 trigger entries.
@@ -25,28 +33,25 @@ When Lua mode is active, treat it as the alternative to structured trigger scrip
 
 ## Processing Pipeline
 
-```
-CBS parse (variable substitution)
-    ↓
-Trigger scripts execute
-    ↓
-CBS parse (re-evaluation)
-    ↓
-Regex scripts (with internal CBS)
-```
+There is no single global pipeline that fits every event. The important boundaries are:
+
+- `onInput` runs when the user presses send, before the new user message is appended.
+- `onStart` runs during request construction before the AI call.
+- `editInput` / `editOutput` / `editDisplay` pass through Lua edit listeners before regex processing for that same edit mode.
+- Regex processing performs a CBS parse before matching and another CBS parse after replacement.
 
 **Important:** CBS `{{}}` is **not parsed inside trigger script logic**. You cannot write `if {{getvar::hp}} > 10 then` in Lua. CBS only works in strings that get output to chat or data fields.
 
 ## Event Types
 
-| Event       | Lua Function   | listenEdit Event | When It Fires                                     |
-| ----------- | -------------- | ---------------- | ------------------------------------------------- |
-| **Start**   | `onStart(id)`  | `editRequest`    | User presses send, before prompt generation       |
-| **Input**   | `onInput(id)`  | `editInput`      | User input confirmed, after prompt generation     |
-| **Output**  | `onOutput(id)` | `editOutput`     | AI response received                              |
-| **Display** | —              | `editDisplay`    | Screen rendering (UI-only, no data change)        |
-| **Request** | —              | `editRequest`    | Before API send (prompt-only, no chat log change) |
-| **Manual**  | Named function | —                | Button click or explicit call                     |
+| Event       | Lua Function   | listenEdit Event | When It Fires                                            |
+| ----------- | -------------- | ---------------- | -------------------------------------------------------- |
+| **Start**   | `onStart(id)`  | `editRequest`    | User presses send, before prompt generation              |
+| **Input**   | `onInput(id)`  | `editInput`      | User input confirmed, before the new message is appended |
+| **Output**  | `onOutput(id)` | `editOutput`     | AI response received                                     |
+| **Display** | —              | `editDisplay`    | Screen rendering (UI-only, no data change)               |
+| **Request** | —              | `editRequest`    | Before API send (prompt-only, no chat log change)        |
+| **Manual**  | Named function | —                | Button click or explicit call                            |
 
 ## Event Details
 
@@ -79,12 +84,12 @@ end
 
 ### Input (onInput)
 
-Fires when user input is confirmed. Runs **after prompt generation**, so it does NOT affect the current prompt.
+Fires when user input is confirmed, before the new user message is appended and before prompt generation. It is useful for pre-send validation/cancellation and state checks. Use `editInput` when you need to transform the actual submitted text.
 
 ```lua
 function onInput(id)
   local msg = getUserLastMessage(id)
-  -- Process user input after it's been sent
+  -- This is the previous user message; use editInput to transform the new text.
 end
 ```
 
@@ -150,3 +155,10 @@ end
 | `writing-lua-scripts`   | Lua is one of two trigger authoring modes — use for complex state and async operations |
 | `writing-regex-scripts` | Regex scripts run after triggers in the pipeline; understand the handoff               |
 | `writing-lorebooks`     | Triggers can manipulate lorebook variables that control entry activation               |
+
+## Smoke Tests
+
+| Prompt                                                           | Expected routing                                                                            | Expected output                                          | Forbidden behavior                                        |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------- |
+| "Plan a manual trigger button that updates chat state."          | Primary: `writing-trigger-scripts`; load `writing-cbs-syntax` only if button CBS is needed. | Trigger type, event flow, and state update plan.         | Defaulting to Lua mode without confirming it is desired.  |
+| "This card has a `triggerlua` first entry; add another trigger." | Primary: `writing-lua-scripts`, not this skill.                                             | Guidance to edit Lua mode rather than mix trigger modes. | Adding separate V1/V2 trigger entries beside Lua wrapper. |

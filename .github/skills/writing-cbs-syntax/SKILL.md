@@ -7,11 +7,21 @@ related_tools: ['validate_cbs', 'list_cbs_toggles', 'simulate_cbs', 'diff_cbs']
 
 # CBS — Custom Bracket Syntax
 
-CBS is `{{tag::arg1::arg2}}` template syntax evaluated at runtime in RisuAI. Tags can nest: `{{calc::{{getvar::hp}}+10}}`.
+## Agent Operating Contract
 
-**Where it works:** `firstMessage`, `description`, `globalNote`, `lorebook content`, `backgroundEmbedding`, `alternateGreetings`, regex `replace` (OUT), `defaultVariables`, and any field that runs through the CBS parser.
+- **Use when:** CBS syntax, toggles, variables, conditionals, loops, or runtime visibility affect the requested edit or diagnosis.
+- **Do not use when:** the task is general prompt prose, lorebook structure without CBS, Lua code, or HTML/CSS styling without template tags.
+- **Read first:** this `SKILL.md`; it is the quick-reference and gotcha layer.
+- **Load deeper only if:** a tag is not listed here, exact aliases matter, or you need the closed 170+ tag catalog in `REFERENCE.md`.
+- **Output/validation contract:** preserve literal CBS syntax, validate braces/nesting, state whether a tag is model-visible or display-only, and use `validate_cbs`/`simulate_cbs` when available.
 
-**Evaluation order:** Inner `{{…}}` tags resolve first (inside-out), then outer tags consume the result.
+CBS is `{{tag::arg1::arg2}}` template syntax evaluated at runtime in RisuAI. Tags can nest: `{{calc::{{getvar::hp}}+10}}`. Unknown tags are left as literal text, so use the closed tag catalog in `REFERENCE.md`.
+
+Source-grounded areas: tag registration and parser/runVar behavior are checked against `Risuai/src/ts/cbs.ts` and `Risuai/src/ts/parser/parser.svelte.ts`.
+
+**Where it works:** `description`, `personality`, `scenario`, `exampleMessage`, `firstMessage`, persona, `mainPrompt`, `jailbreak`, `globalNote`, `authornote`, lorebook content, `backgroundEmbedding`, `alternateGreetings`, regex `replace` (OUT), `defaultVariables`, triggers/modules, chat input, and any field that runs through the CBS parser.
+
+**Evaluation order:** Inner `{{...}}` tags resolve first (inside-out), then outer tags consume the result. Everything is a string; booleans are `"1"`/`"0"` and arrays/objects are JSON strings.
 
 > Full 170+ tag catalog → see **REFERENCE.md** in this directory.
 
@@ -42,6 +52,8 @@ CBS is `{{tag::arg1::arg2}}` template syntax evaluated at runtime in RisuAI. Tag
 | `replace`       | `{{replace::str::find::repl}}`   | String replace (all matches)                         |
 | `contains`      | `{{contains::str::sub}}`         | `1` if substring found                               |
 | `lastmessage`   | `{{lastmessage}}`                | Last chat message (any role)                         |
+| `metadata`      | `{{metadata::version}}`          | RisuAI/runtime/model metadata                        |
+| `position`      | `{{position::name}}`             | Position marker for `@@position name` decorators     |
 | `description`   | `{{description}}`                | Character description field                          |
 | `personality`   | `{{personality}}`                | Character personality field                          |
 | `time`          | `{{time}}`                       | Current local time `H:M:S`                           |
@@ -78,14 +90,9 @@ CBS is `{{tag::arg1::arg2}}` template syntax evaluated at runtime in RisuAI. Tag
 
 ### runVar Context
 
-`setvar`, `addvar`, and `setdefaultvar` only execute in **runVar** contexts:
+`setvar`, `addvar`, and `setdefaultvar` only execute when the caller runs CBS with **runVar** enabled. In current upstream prompt flow, that is explicitly used while parsing current chat messages during generation. Do not assume lorebook content, first messages, or display-only rendering can mutate variables unless the specific caller/tool confirms runVar.
 
-- Lorebook content when `mode: "normal"` or `mode: "constant"` and the entry activates
-- `firstMessage` on initial greeting
-- `defaultVariables` field (always runs on chat init)
-- Regex `replace` with `editoutput` or `editinput` type
-
-They are **silently ignored** in display-only contexts (e.g., `editdisplay` regex, pure rendering).
+When runVar is not enabled, variable-write tags produce no mutation and may return no visible output. If variables are not updating, first verify the evaluation surface before changing the CBS expression.
 
 ---
 
@@ -101,13 +108,15 @@ They are **silently ignored** in display-only contexts (e.g., `editdisplay` rege
 {{/when}}
 ```
 
-**Operators:** `is`, `isnot`, `>`, `<`, `>=`, `<=`, `and`, `or`, `not`
+**Operators:** `is`, `isnot`, `>`, `<`, `>=`, `<=`, `and`, `or`, `not`, `keep`, `legacy`
 
 **Variable shortcuts:**
 
 - `{{#when::var::hp}}` — true if variable `hp` exists
 - `{{#when::hp::vis::0}}` — true if variable `hp` equals `0`
 - `{{#when::hp::visnot::0}}` — true if variable `hp` does NOT equal `0`
+- `{{#when::toggle::nsfw}}` — true if global toggle `nsfw` is enabled
+- `{{#when::nsfw::tis::on}}` / `{{#when::nsfw::tisnot::off}}` — compare toggle values
 
 ### Inline expression (? operator)
 
@@ -125,6 +134,20 @@ They are **silently ignored** in display-only contexts (e.g., `editdisplay` rege
 ```
 
 The array argument must be a JSON array (string `["a","b","c"]`). Use `{{makearray::…}}` or `{{getvar::…}}` that holds an array.
+
+### Functions and code blocks
+
+```
+{{#func status name}}
+  {{return::Status for {{tempvar::name}}: {{getvar::status}}}}
+{{/func}}
+
+{{#code}}
+  Whitespace and escape sequences are normalized here.
+{{/code}}
+```
+
+`#if`, `#if_pure`, and `#pure` still parse for compatibility but are deprecated. Prefer `#when`, `#when::keep::...`, and `#puredisplay`.
 
 ### Comments
 
@@ -156,6 +179,20 @@ The array argument must be a JSON array (string `["a","b","c"]`). Use `{{makearr
 {{filter::[arr]::nonempty}}                    → remove empty strings
 {{range::[5]}}                                 → [0,1,2,3,4]
 ```
+
+---
+
+## Metadata and Display-Only Tags
+
+```
+{{metadata::version}}       → RisuAI version
+{{metadata::modelname}}     → current model display name
+{{metadata::risutype}}      → local | node | web
+{{position::persona_slot}}  → marker for @@position persona_slot
+{{inlayeddata::image-id}}   → image markup that can be included in multimodal request data
+```
+
+Display-oriented tags such as `asset`, `emotion`, `audio`, `bg`, `bgm`, `video`, `image`, `img`, `button`, `risu`, `comment`, `tex`, `ruby`, `codeblock`, `inlay`, and `inlayed` are for rendered UI. Do not rely on them to shape model-visible prompt text unless the reference explicitly says they are request-visible (notably `inlayeddata`).
 
 ---
 
@@ -214,10 +251,12 @@ Remaining HP: {{calc::{{getvar::enemy_hp}}-{{getvar::damage}}}}
 | **Inside-out nesting**                                  | `{{calc::{{getvar::a}}+{{getvar::b}}}}` — inner `getvar` resolves first, then `calc` runs on the result.              |
 | **`setvar`/`addvar` silently fail in display contexts** | Write operations do nothing in display-only evaluation. If variables aren't updating, check the evaluation context.   |
 | **Comparisons return `"1"`/`"0"` strings**              | Not booleans. `{{equal::a::a}}` → `"1"`. Use with `#when` or `and`/`or`, not as raw values.                           |
+| **`#when` truthiness**                                  | Literal `"1"` and `"true"` are truthy. Empty strings and `"0"` are false.                                             |
 | **`pick` vs `random`**                                  | `pick` is hash-based (deterministic per message, stable on refresh). `random` is truly random (changes every render). |
 | **`::` is the separator**                               | To output a literal `:`, use `{{:}}`. For `{` and `}`, use `{{decbo}}` and `{{decbc}}`.                               |
 | **Array format**                                        | Arrays are JSON strings: `["a","b"]`. Most array functions accept both `[bracketed]` JSON and variadic `::` args.     |
 | **Empty string = falsy**                                | In `#when`: `{{#when::}}` is false. `{{#when::0}}` is also false.                                                     |
+| **Display-only output**                                 | HTML/media tags are usually render-time UI, not clean prompt text. Use plain text for model instructions.             |
 
 > **Complete tag reference** with all 170+ tags, aliases, and descriptions → **REFERENCE.md**
 
@@ -228,3 +267,10 @@ Remaining HP: {{calc::{{getvar::enemy_hp}}-{{getvar::damage}}}}
 | `writing-html-css`      | CBS tags work inside HTML attributes and content in `backgroundEmbedding` and lorebook entries |
 | `writing-regex-scripts` | CBS is used in regex OUT fields; requires `<cbs>` flag in the find field                       |
 | `writing-lorebooks`     | Lorebook `content` fields support full CBS syntax for dynamic context injection                |
+
+## Smoke Tests
+
+| Prompt                                                   | Expected routing                                                                       | Expected output                                    | Forbidden behavior                                                  |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| "Fix this broken `{{#when}}` block in a lorebook entry." | Primary: `writing-cbs-syntax`; pair with `writing-lorebooks` only for entry placement. | Corrected CBS with validation notes.               | Loading `REFERENCE.md` before checking the quick-reference/gotchas. |
+| "Rename this preset toggle and update references."       | Primary: `writing-risup-presets`; load this skill for CBS reference updates.           | Toggle migration plan plus updated CBS references. | Renaming the toggle without scanning CBS-bearing fields.            |

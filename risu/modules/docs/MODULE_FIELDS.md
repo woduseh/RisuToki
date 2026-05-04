@@ -43,7 +43,7 @@ When `true`, triggers/Lua in the module gain restricted capabilities such as net
 - Injected into `.chattext`
 - CBS is evaluated inside the embedding
 - Multiple active modules concatenate their embeddings
-- Prefer `x-risu-` class prefixes to avoid collisions
+- Use unique module-specific source class names to avoid collisions; RisuAI adds `x-risu-` prefixes at render time
 
 ### `customModuleToggle`
 

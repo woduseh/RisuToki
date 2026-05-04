@@ -7,6 +7,14 @@ related_tools: ['search_danbooru_tags', 'validate_danbooru_tags', 'read_lorebook
 
 # Writing Asset Prompts (Anima Model)
 
+## Agent Operating Contract
+
+- **Use when:** the user needs a character standing-image prompt optimized for the Anima model.
+- **Do not use when:** the task is actual image generation/editing, Danbooru tag validation alone, or non-character visual design.
+- **Read first:** this `SKILL.md`; it contains the complete 6-step prompt pipeline.
+- **Load deeper only if:** tags must be validated or searched (`writing-danbooru-tags`) or the character source lives in lorebook/description fields.
+- **Output/validation contract:** return the requested prompt format with character-defining visual details, minimal background, and no unsupported or unverified tag claims.
+
 Generates standing (profile) illustration prompts for character assets from character descriptions, optimized for the **Anima** image generation model.
 
 ## Core Principles
@@ -88,3 +96,10 @@ Generates standing (profile) illustration prompts for character assets from char
 | Skill                   | Relationship                                                              |
 | ----------------------- | ------------------------------------------------------------------------- |
 | `writing-danbooru-tags` | Use to validate and search Danbooru tags before including them in prompts |
+
+## Smoke Tests
+
+| Prompt                                                     | Expected routing                                                                                    | Expected output                                       | Forbidden behavior                                  |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------- |
+| "Turn this character sheet into an Anima standing prompt." | Primary: `writing-asset-prompts`; load `writing-danbooru-tags` only if tag validation is requested. | 6-part standing-image prompt with minimal background. | Generating the image instead of writing the prompt. |
+| "Check whether these Danbooru tags are valid."             | Primary: `writing-danbooru-tags`, not this skill.                                                   | Tag validation/search result.                         | Rewriting the whole art prompt unnecessarily.       |

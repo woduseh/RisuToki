@@ -7,6 +7,14 @@ related_tools: ['validate_danbooru_tags', 'search_danbooru_tags', 'get_popular_d
 
 # Writing Danbooru Tags
 
+## Agent Operating Contract
+
+- **Use when:** the task is validating, searching, or composing Danbooru-style tags for RisuAI image prompts.
+- **Do not use when:** the user wants a full character art prompt without tag validation/search, or actual image generation.
+- **Read first:** this `SKILL.md`; it is a compact tool workflow.
+- **Load deeper only if:** the tag set comes from a character art prompt (`writing-asset-prompts`) or an artifact field must be read first.
+- **Output/validation contract:** keep only tags that materially affect the image, report invalid/ambiguous tags, and avoid inventing tags without search/validation.
+
 Use this skill when a user needs **tag-based image prompts** for character art, or when you need to verify whether a Danbooru tag exists before suggesting it.
 
 ## Available MCP Tools
@@ -50,3 +58,10 @@ Then add a short natural-language summary only if the target model benefits from
 | Skill                   | Relationship                                                                  |
 | ----------------------- | ----------------------------------------------------------------------------- |
 | `writing-asset-prompts` | Use for the full 6-step prompt pipeline after validating tags with this skill |
+
+## Smoke Tests
+
+| Prompt                                                     | Expected routing                                                      | Expected output                           | Forbidden behavior                                               |
+| ---------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------- |
+| "Validate these Danbooru tags before I save the prompt."   | Primary: `writing-danbooru-tags`.                                     | Valid/invalid/ambiguous tag report.       | Treating unvalidated guesses as valid tags.                      |
+| "Make a complete Anima standing prompt from this profile." | Primary: `writing-asset-prompts`; use this skill only for validation. | Full prompt plus optional tag validation. | Returning only a flat tag list when the user asked for a prompt. |

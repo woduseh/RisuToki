@@ -9,6 +9,13 @@
 
 ---
 
+## [0.65.1] - 2026-05-04
+
+### Fixed
+
+- Updated Skill routing docs to use model-neutral agent operating contracts, reduce unnecessary preload guidance, and keep detailed MCP tool choice centralized in `using-mcp-tools`.
+- Updated RisuAI-dependent authoring skill references to match upstream Lua lifecycle/access semantics, CBS `runVar` behavior, lorebook folder references, regex special actions, HTML/CSS class scoping, and related Lua/CBS reference details.
+
 ## [0.65.0] - 2026-05-01
 
 ### Added

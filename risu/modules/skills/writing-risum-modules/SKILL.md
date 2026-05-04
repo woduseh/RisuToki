@@ -4,15 +4,16 @@ description: 'Use when creating, editing, or reviewing RisuAI .risum module desi
 tags: ['module', 'risum', 'composition', 'architecture']
 related_tools:
   [
-    'list_fields',
-    'read_field',
-    'write_field',
+    'session_status',
+    'read_field_batch',
+    'write_field_batch',
     'list_lorebook',
-    'read_lorebook',
+    'read_lorebook_batch',
+    'write_lorebook_batch',
     'list_regex',
-    'read_regex',
+    'read_regex_batch',
     'list_triggers',
-    'read_trigger',
+    'read_trigger_batch',
     'list_lua',
     'read_lua',
   ]
@@ -21,6 +22,14 @@ canonical_sources: ['Risuai/src/ts/process/modules.ts', 'Risuai/src/ts/process/p
 ---
 
 # Writing .risum Modules
+
+## Agent Operating Contract
+
+- **Use when:** the task concerns `.risum` module composition, module-specific fields, enable scope, merge behavior, or whether a feature should be a module.
+- **Do not use when:** the artifact should be a bot, preset, plugin, or only needs shared syntax editing.
+- **Read first:** this `SKILL.md`; it is the module decision and field-behavior layer.
+- **Load deeper only if:** the module contains lorebooks, regex, Lua, CBS, HTML/CSS, or triggers that need shared syntax rules.
+- **Output/validation contract:** make namespace and `lowLevelAccess` decisions explicit, prefer soft-apply, avoid `cjs`, and validate merge/enable behavior against the module checklist.
 
 A **module** is a reusable behavior pack that attaches lorebooks, regex scripts, trigger scripts, CSS, and optional Lua to any character or chat without modifying the character itself.
 
@@ -75,7 +84,7 @@ Key constraints:
 - selectors are scoped to the chat container
 - CBS is evaluated inside the embedding
 - multiple modules concatenate their embeddings
-- collisions are easy, so use `x-risu-` prefixes consistently
+- collisions are easy, so use unique module-specific source class names
 
 ### `customModuleToggle`
 
@@ -148,14 +157,14 @@ Prefer soft-apply for distribution and reusable authoring.
 
 ## Critical Gotchas
 
-| Issue                                               | Detail                                                                                                                                                                                                     |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`lowLevelAccess` widens trust for ALL consumers** | Setting `lowLevelAccess: true` grants Lua network/LLM capabilities to every character that enables the module, not just the author's own bots. This triggers an import warning for users.                  |
-| **CSS class collisions with bot styles**            | Multiple modules and the character's own `backgroundEmbedding` all concatenate into one CSS scope. Use unique `x-risu-` prefixed class names (e.g., `x-risu-mymod-panel`) to avoid silent style overrides. |
-| **`cjs` field is effectively deprecated**           | The `cjs` slot exists on the interface but the module pipeline no longer uses it. Do not build new logic around it — use Lua triggers instead.                                                             |
-| **Merge order means modules run last**              | Module lorebooks, regex, and triggers are appended after character-level content. A module regex cannot intercept text before the character's own scripts process it.                                      |
-| **`upsertLocalLoreBook` delay**                     | Lorebook entries created in module Lua via `upsertLocalLoreBook` only appear in the prompt on the next turn, not the current one.                                                                          |
-| **`namespace` aliasing is one-way**                 | If module A's `id` matches module B's `namespace`, both activate when B is enabled. But enabling A directly does not activate B.                                                                           |
+| Issue                                               | Detail                                                                                                                                                                                                        |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`lowLevelAccess` widens trust for ALL consumers** | Setting `lowLevelAccess: true` grants Lua network/LLM capabilities to every character that enables the module, not just the author's own bots. This triggers an import warning for users.                     |
+| **CSS class collisions with bot styles**            | Multiple modules and the character's own `backgroundEmbedding` all concatenate into one CSS scope. Use unique module-specific source class names (e.g., `mymod-panel`); RisuAI adds `x-risu-` at render time. |
+| **`cjs` field is effectively deprecated**           | The `cjs` slot exists on the interface but the module pipeline no longer uses it. Do not build new logic around it — use Lua triggers instead.                                                                |
+| **Merge order means modules run last**              | Module lorebooks, regex, and triggers are appended after character-level content. A module regex cannot intercept text before the character's own scripts process it.                                         |
+| **`upsertLocalLoreBook` delay**                     | Lorebook entries created in module Lua via `upsertLocalLoreBook` only appear in the prompt on the next turn, not the current one.                                                                             |
+| **`namespace` aliasing is one-way**                 | If module A's `id` matches module B's `namespace`, both activate when B is enabled. But enabling A directly does not activate B.                                                                              |
 
 ## Shared syntax — common skills
 
@@ -173,7 +182,7 @@ Prefer soft-apply for distribution and reusable authoring.
 
 - [ ] `namespace` is unique — collisions silently merge unrelated modules
 - [ ] `lowLevelAccess` decision is intentional — grants Lua network/LLM to ALL consumers
-- [ ] CSS classes use unique `x-risu-` prefixed names (e.g., `x-risu-mymod-panel`) to avoid collisions
+- [ ] CSS classes use unique module-specific source names (e.g., `mymod-panel`) to avoid collisions
 - [ ] `customModuleToggle` lines are registered for any user-facing settings
 - [ ] Lorebook entries use high `insertorder` values since modules merge last
 - [ ] `cjs` field is not used (deprecated — use Lua triggers instead)
@@ -181,6 +190,7 @@ Prefer soft-apply for distribution and reusable authoring.
 
 ## Smoke Tests
 
-Prompts targeting RisuAI-specific gotchas:
-
-1. "Design a module with CSS styling for a character status panel — make sure it won't collide with other modules."
+| Prompt                                                           | Expected routing                                                                                           | Expected output                                                                       | Forbidden behavior                             |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| "Design a module with CSS styling for a character status panel." | Primary: `writing-risum-modules`; load `writing-html-css` for CSS rules.                                   | Module field plan with namespace, backgroundEmbedding, toggles, and collision checks. | Treating the module as a bot or preset.        |
+| "Should this reusable prompt format be a module or preset?"      | Primary: `writing-risup-presets` if request assembly is central; otherwise this skill for runtime content. | Clear artifact choice and rationale.                                                  | Putting model/sampling settings into a module. |

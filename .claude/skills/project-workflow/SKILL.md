@@ -7,6 +7,14 @@ related_tools: ['list_skills', 'read_skill', 'list_fields', 'read_field_batch', 
 
 # Project Workflow
 
+## Agent Operating Contract
+
+- **Use when:** starting a RisuToki session, checking project rules, choosing whether to load MCP workflow details, or preparing repo/documentation changes.
+- **Do not use when:** the task only needs an artifact-specific authoring skill after project rules are already known.
+- **Read first:** this `SKILL.md` at session start; it is the lightweight orientation layer.
+- **Load deeper only if:** MCP routing details are needed (`MCP_WORKFLOW.md`) or versioning/CI/release rules affect the change (`PROJECT_RULES.md`).
+- **Output/validation contract:** route to the smallest relevant skill set, keep docs/versioning rules in sync, and treat `using-mcp-tools` as the detailed MCP tool-choice source of truth.
+
 This skill is the agent-facing entrypoint for **project-level guidance** that every coding agent should know before making changes. It covers two areas:
 
 1. **MCP workflow** — tool selection, read rules, workflow patterns, and caveats
@@ -29,29 +37,17 @@ Load these via `read_skill("project-workflow", "MCP_WORKFLOW.md")` and `read_ski
 
 ---
 
-## MCP Tool Routing — Quick Reference
+## MCP Tool Routing — Startup Pointer
 
-| Category                 | Preferred tools                                                                                                                                                                                                                                   | When                                                 |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| **Fields**               | `list_fields`, `read_field`, `read_field_batch`, `write_field`, `write_field_batch`                                                                                                                                                               | Small text field full read/write                     |
-| **Large fields**         | `search_in_field`, `read_field_range`, `replace_in_field`, `replace_in_field_batch`                                                                                                                                                               | Partial edits in 10+ KB fields                       |
-| **Unopened files**       | `inspect_external_file`, `probe_field`, `probe_field_batch`, `probe_lorebook`, `probe_regex`, `probe_lua`, `probe_css`, `probe_greetings`, `probe_triggers`, `probe_risup_prompt_items`, `probe_risup_formating_order`, `external_*`, `open_file` | Reading or editing files not yet opened in editor    |
-| **Lua / CSS**            | `list_lua` / `list_css` → `read_lua` / `read_css`                                                                                                                                                                                                 | Section-level read/write                             |
-| **Lorebook**             | `list_lorebook` → `read_lorebook` / `read_lorebook_batch`                                                                                                                                                                                         | Browse, compare, batch edit                          |
-| **Regex**                | `list_regex` → `read_regex` → targeted writes                                                                                                                                                                                                     | Entry-level operations                               |
-| **Greetings / Triggers** | `list_greetings` / `list_triggers` → per-item tools                                                                                                                                                                                               | Individual editing                                   |
-| **risup prompts**        | `list_risup_prompt_items`, `read_risup_prompt_item`, `read_risup_formating_order`                                                                                                                                                                 | Structured prompt editing                            |
-| **References**           | `list_references`, `read_reference_field_batch`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_*` → `read_reference_*`                                                                                               | Read-only comparisons, even without a main file open |
-| **Skills**               | `list_skills`, `read_skill`                                                                                                                                                                                                                       | On-demand guide loading                              |
+This skill only orients you. Before concrete MCP reads or writes, load `using-mcp-tools` and treat it as the detailed source of truth for structured surfaces, batch workflows, stale-index guards, and large-field edits.
 
-### Critical Read Rules
+Startup principles:
 
-1. **Never** `read_field` these surfaces — use dedicated list→read tools instead:
-   - `lua`, `css`, `alternateGreetings`, `triggerScripts`, `promptTemplate`/`formatingOrder`
-2. **Batch first** — use batch tools when editing multiple entries.
-3. **Probe or external-write before open** — use `inspect_external_file` + `probe_*` for unopened reads, `external_*` for direct path-based edits that must not switch the UI document, and `open_file` only when you need the active-document families.
-4. **Search before replace** — in large fields, locate with `search_in_field` first.
-5. **Snapshot before risky edits** — use `snapshot_field` for safety.
+1. Prefer dedicated structured tools over broad field dumps for Lua, CSS, greetings, lorebooks, regex, triggers, and risup prompt structures.
+2. Batch related reads/writes instead of looping single-item tools.
+3. Probe unopened files before switching the active UI document.
+4. Search/range-read before replacing large fields.
+5. Snapshot or use dry-run/hash guards before risky edits.
 
 ### Runtime Modes
 
@@ -60,7 +56,7 @@ Load these via `read_skill("project-workflow", "MCP_WORKFLOW.md")` and `read_ski
 
 > Complete tool routing map, workflow patterns, and caveats: [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)
 >
-> For **detailed MCP tool-selection guidance** (batch-first patterns, large-field editing, context-budget sizing), load the companion skill: `read_skill("using-mcp-tools")`.
+> For **detailed MCP tool-selection guidance** (batch-first patterns, large-field editing, context-budget sizing), load `read_skill("using-mcp-tools")` when the task reaches an MCP read/write decision.
 
 ---
 
@@ -85,7 +81,7 @@ These apply when a task modifies tracked RisuToki source, product docs, or tooli
 
 ## Smoke Tests
 
-Use these prompts to verify the skill produces correct guidance:
-
-1. "I changed a MCP tool handler — what version bump and CI checks do I need?"
-2. "Walk me through the onboarding steps for a new session working on RisuToki."
+| Prompt                                                                     | Expected routing                                                                           | Expected output                             | Forbidden behavior                                                |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- | ----------------------------------------------------------------- |
+| "I changed a MCP tool handler; what version bump and CI checks do I need?" | Primary: `project-workflow`; load `PROJECT_RULES.md` for full detail.                      | Versioning/docs/CI guidance.                | Guessing release rules without loading project rules when needed. |
+| "Walk me through onboarding for a RisuToki session."                       | Primary: `project-workflow`; load `using-mcp-tools` only before concrete MCP reads/writes. | Minimal startup order and routing guidance. | Preloading every authoring skill.                                 |

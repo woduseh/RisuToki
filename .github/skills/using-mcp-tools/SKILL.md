@@ -7,6 +7,14 @@ related_tools: ['session_status', 'search_all_fields', 'write_field_batch', 'rea
 
 # Using MCP Tools Safely
 
+## Agent Operating Contract
+
+- **Use when:** deciding which RisuToki MCP reader/writer/search/batch/surface tool should touch an active document, reference, or unopened file.
+- **Do not use when:** the task is pure creative drafting with no artifact read/write route.
+- **Read first:** this `SKILL.md`; it is the detailed MCP tool-choice source of truth.
+- **Load deeper only if:** the complete catalog is needed (`TOOL_REFERENCE.md`) or exact JSON/file shapes are needed (`FILE_STRUCTURES.md` / `file-structure-reference`).
+- **Output/validation contract:** choose list/search/probe before broad reads, prefer batch tools, carry stale-index guards, use dry-run/hash support for risky surface edits, and avoid generic field dumps for structured surfaces.
+
 This skill is about **tool choice**, not syntax. Read it before making broad edits.
 
 ## Quick Read Rules
@@ -85,7 +93,6 @@ If the task touches multiple sibling items, prefer:
 - `read_reference_regex_batch`
 - `read_reference_risup_prompt_item_batch`
 - `write_risup_prompt_item_batch`
-- `add_risup_prompt_item_batch`
 - `batch_delete_risup_prompt_items`
 - `add_risup_prompt_item_batch` (with `insertAt`)
 
@@ -128,7 +135,7 @@ This catches silent failures like:
 
 ## Smoke Tests
 
-Use these prompts to verify the skill produces correct guidance:
-
-1. "I need to edit a 3000-character lorebook content field — which MCP tool should I use and why?"
-2. "List the correct tool sequence for reading an external `.charx` file's lorebook entries."
+| Prompt                                                                                     | Expected routing                                                                        | Expected output                                                  | Forbidden behavior                                           |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------ |
+| "I need to edit a 3000-character lorebook content field; which MCP tool should I use?"     | Primary: `using-mcp-tools`; pair with `writing-lorebooks` only for entry content rules. | Search/range or batch lorebook workflow with stale-index guards. | Using broad `read_field`/`write_field` for lorebook entries. |
+| "List the correct tool sequence for reading an external `.charx` file's lorebook entries." | Primary: `using-mcp-tools`.                                                             | `inspect_external_file` then relevant `probe_*`/external route.  | Opening or mutating the active UI document unnecessarily.    |

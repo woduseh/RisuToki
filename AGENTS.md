@@ -5,12 +5,14 @@
 
 ---
 
-## What to read at session start
+## What to read at session start / on demand
+
+Only `project-workflow` is mandatory at session start. Load the other references when the current task actually needs that layer.
 
 | Order | Topic                                       | How to load                                                                                                                                                                    |
 | ----- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1     | **Onboarding, project rules, MCP workflow** | `read_skill("project-workflow")` — for full detail, follow up with `read_skill("project-workflow", "MCP_WORKFLOW.md")` or `read_skill("project-workflow", "PROJECT_RULES.md")` |
-| 2     | **MCP tool selection, large fields, batch** | `read_skill("using-mcp-tools")`                                                                                                                                                |
+| 2     | **MCP tool selection, large fields, batch** | `read_skill("using-mcp-tools")` before concrete MCP reads/writes                                                                                                               |
 | 3     | **Product/editor code work**                | `docs/analysis/ARCHITECTURE.md`, `docs/MODULE_MAP.md`, `CONTRIBUTING.md`                                                                                                       |
 | 4     | **Authoring work under `risu/`**            | Read the nearest `risu/{common,bot,prompts,modules,plugins}/AGENTS.md` or `README.md`; use it as the active authoring router for the current subtree                           |
 

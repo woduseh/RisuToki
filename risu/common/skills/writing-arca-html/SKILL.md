@@ -2,10 +2,18 @@
 name: writing-arca-html
 description: 'Guides writing HTML for limited WYSIWYG editors like Arca.live (아카라이브). Covers strict technical constraints (no CSS/JS, inline-only styling, no positioning/flexbox/grid/animations), creative design techniques within those limits, background wrapping strategies, and comment syntax. Use when creating introduction pages, character profiles, or any rich HTML content destined for paste into a WYSIWYG editor that strips advanced CSS.'
 tags: ['html', 'wysiwyg', 'arca']
-related_tools: ['write_field', 'replace_in_field', 'insert_in_field']
+related_tools: ['search_in_field', 'read_field_range', 'replace_in_field', 'replace_in_field_batch']
 ---
 
 # Writing HTML for Limited WYSIWYG Editors
+
+## Agent Operating Contract
+
+- **Use when:** the output will be pasted into a restricted WYSIWYG target such as Arca.live and must survive stripped CSS/JS.
+- **Do not use when:** the HTML/CSS lives in RisuAI `backgroundEmbedding`, regex display output, CBS panels, or normal web/app code.
+- **Read first:** this `SKILL.md`; constraints and validation rules come before templates.
+- **Load deeper only if:** a project-specific character/profile reference is needed to choose visual identity.
+- **Output/validation contract:** produce inline-only HTML with no CSS/JS blocks; verify forbidden properties, background-color behavior, comment syntax, and dark-background readability before delivery.
 
 This skill covers designing rich, visually engaging HTML content for **restricted WYSIWYG editors** — specifically platforms like **Arca.live (아카라이브)** that strip most CSS features. The goal is to create immersive visual experiences within severe technical constraints.
 
@@ -265,6 +273,13 @@ Layout must be **purely vertical** (mobile-friendly). No side-by-side columns. S
 ## Remember
 
 These guidelines exist to help you create amazing, unique designs. **Don't default to templates.** Every project should look different because every character and world IS different. Be bold, be creative, and make something memorable.
+
+## Smoke Tests
+
+| Prompt                                                         | Expected routing                                                                                | Expected output                                           | Forbidden behavior                                                     |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| "Make an Arca.live intro page for this character."             | Primary: `writing-arca-html`; load character notes only as content reference.                   | Inline-only HTML that survives WYSIWYG stripping.         | Using `<style>`, JavaScript, flex/grid, positioning, or HTML comments. |
+| "Convert this CSS panel into something I can paste into Arca." | Primary: `writing-arca-html`; use `writing-html-css` only to understand the source constraints. | A constrained WYSIWYG-safe rewrite plus validation notes. | Preserving unsupported CSS because it worked in RisuAI.                |
 
 ## Related Skills
 

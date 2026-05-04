@@ -71,7 +71,7 @@ These variables persist across messages within one chat session.
 | `setdefaultvar` | —       | `{{setdefaultvar::name::default}}` | Set only if undefined                      | **Yes**         |
 | `getglobalvar`  | —       | `{{getglobalvar::name}}`           | Read global variable (shared across chats) | No              |
 
-> **runVar context:** Lorebook activation, firstMessage, defaultVariables, editoutput/editinput regex. Silently ignored in display-only contexts.
+> **runVar context:** `setvar`, `addvar`, and `setdefaultvar` only execute when the caller runs CBS with runVar enabled. In current upstream prompt flow this is explicit for current chat message parsing during generation; do not assume lorebook, first-message, regex, or display-only surfaces mutate variables without verifying the caller.
 
 ---
 

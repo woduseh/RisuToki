@@ -4,9 +4,10 @@ Complete API for Lua 5.4 trigger scripts in RisuAI `.charx` and `.risum` files.
 
 **Legend:**
 
-- ⚡ = Async — must call `:await()` on the result
+- ⚡ = Direct async host call — must call `:await()` on the result
+- ✅ = Lua wrapper awaits internally — do **not** call `:await()` on the wrapper result
 - 🔒 = Requires `lowLevelAccess` enabled on the module/character
-- All functions take `triggerId` (aliased `id`) as the first parameter unless noted otherwise
+- Most functions take the lifecycle access key (`id`) as the first parameter unless noted otherwise. This `id` is not the chat session ID.
 
 ---
 
@@ -14,12 +15,12 @@ Complete API for Lua 5.4 trigger scripts in RisuAI `.charx` and `.risum` files.
 
 These are **defined** by the script author, **called** by the engine.
 
-| Function                     | Description                                                                                                                                                                         |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `onInput(id)`                | Called when the user sends a message (after prompt assembly).                                                                                                                       |
-| `onStart(id)`                | Called when the prompt is being built (before the AI call).                                                                                                                         |
-| `onOutput(id)`               | Called after the AI response is received.                                                                                                                                           |
-| `listenEdit(type, callback)` | Registers a text-transform listener. `type`: `"editInput"`, `"editOutput"`, `"editRequest"`, `"editDisplay"`. Callback signature: `function(id, data) ... return modifiedData end`. |
+| Function                     | Description                                                                                                                                                                      |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `onInput(id)`                | Called when the user presses send, before the new user message is appended and before prompt assembly.                                                                           |
+| `onStart(id)`                | Called when the prompt is being built (before the AI call).                                                                                                                      |
+| `onOutput(id)`               | Called after the AI response is received.                                                                                                                                        |
+| `listenEdit(type, callback)` | Registers an edit listener. `type`: `"editInput"`, `"editOutput"`, `"editRequest"`, `"editDisplay"`. Callback signature: `function(id, data, meta) ... return modifiedData end`. |
 
 **Button callbacks** — defined as global functions, invoked by HTML attributes:
 
@@ -35,23 +36,23 @@ These are **defined** by the script author, **called** by the engine.
 
 ### Individual Messages
 
-| Function                             | Description                                                   |
-| ------------------------------------ | ------------------------------------------------------------- |
-| `getChat(id, index)`                 | Get message at 0-based `index`. Returns `string`.             |
-| `setChat(id, index, value)`          | Set message content at 0-based `index`.                       |
-| `setChatRole(id, index, role)`       | Change the role (`"user"` or `"char"`) of message at `index`. |
-| `addChat(id, role, value)`           | Append a new message. `role`: `"user"` or `"char"`.           |
-| `insertChat(id, index, role, value)` | Insert a message at `index`, shifting later messages down.    |
-| `removeChat(id, index)`              | Remove the message at `index`.                                |
+| Function                             | Description                                                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `getChat(id, index)`                 | Get message at 0-based `index`. Negative indices follow JS `Array.at` semantics. Returns a message table or `nil`. |
+| `setChat(id, index, value)`          | Set message content at 0-based `index`.                                                                            |
+| `setChatRole(id, index, role)`       | Change the role (`"user"` or `"char"`) of message at `index`.                                                      |
+| `addChat(id, role, value)`           | Append a new message. `role`: `"user"` or `"char"`.                                                                |
+| `insertChat(id, index, role, value)` | Insert a message at `index`, shifting later messages down.                                                         |
+| `removeChat(id, index)`              | Remove the message at `index`.                                                                                     |
 
 ### Batch Operations
 
-| Function                   | Description                                                                                  |
-| -------------------------- | -------------------------------------------------------------------------------------------- |
-| `getFullChat(id)`          | Returns the entire chat array.                                                               |
-| `setFullChat(id, value)`   | Replaces the entire chat array.                                                              |
-| `cutChat(id, start, end_)` | Trims the chat to messages in range `[start, end_)`.                                         |
-| `getChatLength(id)`        | Returns the message count (**1-based count**). Last message index = `getChatLength(id) - 1`. |
+| Function                   | Description                                                                                                    |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `getFullChat(id)`          | Returns the entire chat array.                                                                                 |
+| `setFullChat(id, value)`   | Replaces the entire chat array.                                                                                |
+| `cutChat(id, start, end_)` | Trims the chat to messages in range `[start, end_)`.                                                           |
+| `getChatLength(id)`        | Returns the message count. Last message index = `getChatLength(id) - 1`; `-1` also refers to the last message. |
 
 ### Last Message Shortcuts
 
@@ -74,7 +75,7 @@ These are **defined** by the script author, **called** by the engine.
 | `getState(id, name)`         | Read a state value. Tables are auto-deserialized from JSON.       |
 | `setState(id, name, value)`  | Write a state value. Tables are auto-serialized to JSON.          |
 
-> **Safe context**: `setChatVar` and other write functions work only inside `onInput`, `onOutput`, `listenEdit(editInput)`, `listenEdit(editOutput)`, `listenEdit(editDisplay)`. They do **not** work at the top-level, in `onStart`, or in `listenEdit(editRequest)`.
+> **Safe context**: write functions work only during callbacks with a valid runtime `id`. All modes except `editDisplay` receive Safe access. `editDisplay` has display-only access for `setChatVar`, but alerts, state writes, chat edits, and low-level APIs require Safe/low-level access. Top-level code has no valid access key.
 
 ---
 
@@ -93,27 +94,27 @@ These are **defined** by the script author, **called** by the engine.
 
 ### Images
 
-| Function                   | Description                                           |
-| -------------------------- | ----------------------------------------------------- |
-| ⚡ `getCharacterImage(id)` | Returns the character's avatar image (base64 or URL). |
+| Function                   | Description                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| ✅ `getCharacterImage(id)` | Returns `{{inlayed::<id>}}` markup for the current character image, or `""`. |
 
 ### Persona (User)
 
-| Function                    | Description                         |
-| --------------------------- | ----------------------------------- |
-| `getPersonaName(id)`        | Get the user's persona name.        |
-| `getPersonaDescription(id)` | Get the user's persona description. |
-| ⚡ `getPersonaImage(id)`    | Get the user's persona image.       |
+| Function                    | Description                                                        |
+| --------------------------- | ------------------------------------------------------------------ |
+| `getPersonaName(id)`        | Get the user's persona name.                                       |
+| `getPersonaDescription(id)` | Get the user's persona description, CBS-parsed.                    |
+| ✅ `getPersonaImage(id)`    | Returns `{{inlayed::<id>}}` markup for the persona image, or `""`. |
 
 ---
 
 ## 5. AI Model Calls (LLM)
 
-| Function                               | Description                                                                                                                                       |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ⚡ `LLM(id, prompt, useMultimodal?)`   | Call the main model. `prompt`: array of `{ role, content }`. Returns `LLMResult`. Set `useMultimodal = true` to enable `{{inlay::*}}` image tags. |
-| ⚡ `simpleLLM(id, prompt)`             | Call the main model with a plain string prompt. Returns `LLMResult`.                                                                              |
-| ⚡ `axLLM(id, prompt, useMultimodal?)` | Call the auxiliary/sub model. Same interface as `LLM`. Returns `LLMResult`.                                                                       |
+| Function                                            | Description                                                                                                                                                                                                 |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅ 🔒 `LLM(id, prompt, useMultimodal?, options?)`   | Call the main model. `prompt`: array of `{ role, content }`. Returns `LLMResult`. Set `useMultimodal = true` to extract `{{inlay::*}}` image tags; `options.streaming = true` enables streaming collection. |
+| ⚡ 🔒 `simpleLLM(id, prompt)`                       | Call the main model with a plain string prompt. Returns `LLMResult`.                                                                                                                                        |
+| ✅ 🔒 `axLLM(id, prompt, useMultimodal?, options?)` | Call the auxiliary/sub model. Same interface as `LLM`. Returns `LLMResult`.                                                                                                                                 |
 
 **`LLMResult`**: `{ success: boolean, result: string }`
 
@@ -121,7 +122,7 @@ These are **defined** by the script author, **called** by the engine.
 local res = LLM(id, {
     { role = "system", content = "You are a helpful narrator." },
     { role = "user",   content = "Describe the room." }
-}):await()
+})
 
 if res.success then
     addChat(id, "char", res.result)
@@ -132,23 +133,23 @@ end
 
 ## 6. Lorebook
 
-| Function                                           | Description                                                                                                                                                                                                                      |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `getLoreBooks(id, search)`                         | Search lorebook entries by `comment` (partial match). Returns array of entries.                                                                                                                                                  |
-| ⚡ `loadLoreBooks(id)`                             | Reload/refresh all lorebook entries.                                                                                                                                                                                             |
-| `upsertLocalLoreBook(id, name, content, options?)` | Create or update a local lorebook entry. `name`: unique ID string. `options`: `{ key = {"kw1","kw2"}, alwaysActive = false, ... }`. **Note:** Newly created entries appear in the AI prompt on the **next** turn (1-turn delay). |
+| Function                                           | Description                                                                                                                                                                                                                                                            |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getLoreBooks(id, search)`                         | Search local-chat lore, character global lore, and module lorebooks where `comment == search`. Returns matching entries with CBS-parsed content.                                                                                                                       |
+| ✅ 🔒 `loadLoreBooks(id)`                          | Loads currently active lorebook prompt entries, filtered to fit context. The raw `loadLoreBooksMain(id, reserve)` can be awaited manually when you need a reserve token budget.                                                                                        |
+| `upsertLocalLoreBook(id, name, content, options?)` | Create or replace a chat-local lorebook entry whose `comment == name`. `options`: `{ alwaysActive = false, insertOrder = 100, key = "", secondKey = "", regex = false }`. **Note:** Newly created entries appear in the AI prompt on the **next** turn (1-turn delay). |
 
 ---
 
 ## 7. UI Alerts
 
-| Function                     | Description                                                                     |
-| ---------------------------- | ------------------------------------------------------------------------------- |
-| `alertNormal(id, value)`     | Show an info notification.                                                      |
-| `alertError(id, value)`      | Show an error notification.                                                     |
-| ⚡ `alertInput(id, value)`   | Show a text input dialog. Returns the entered string.                           |
-| ⚡ `alertSelect(id, value)`  | Show a selection dialog. `value`: array of strings. Returns the selected index. |
-| ⚡ `alertConfirm(id, value)` | Show a yes/no confirmation dialog. Returns `boolean`.                           |
+| Function                     | Description                                                                               |
+| ---------------------------- | ----------------------------------------------------------------------------------------- |
+| `alertNormal(id, value)`     | Show an info notification.                                                                |
+| `alertError(id, value)`      | Show an error notification.                                                               |
+| ⚡ `alertInput(id, value)`   | Show a text input dialog. Returns the entered string.                                     |
+| ⚡ `alertSelect(id, value)`  | Show a selection dialog. `value`: array of strings. Returns the selected string or `nil`. |
+| ⚡ `alertConfirm(id, value)` | Show a yes/no confirmation dialog. Returns `boolean`.                                     |
 
 ---
 
@@ -174,9 +175,9 @@ end
 
 ### CBS Parsing
 
-| Function         | Description                                                                         |
-| ---------------- | ----------------------------------------------------------------------------------- |
-| `cbs(id, value)` | Process CBS (Custom Bracket Syntax) tags in `value` and return the resolved string. |
+| Function     | Description                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------- |
+| `cbs(value)` | Process CBS (Custom Bracket Syntax) tags in `value` and return the resolved string. No `id` argument. |
 
 ### Sleep
 
@@ -194,27 +195,27 @@ end
 
 ## 9. Network
 
-| Function                 | Description                                                                                                   |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| ⚡ 🔒 `request(id, url)` | HTTP GET request. **URL limit: 120 characters. Rate limit: 5 requests/minute.** Returns response body string. |
+| Function                 | Description                                                                                                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ⚡ 🔒 `request(id, url)` | HTTP GET request. **HTTPS only, URL limit: 120 characters, 5 requests/minute, RisuAI domains blocked.** Returns a JSON string `{status, data}`; decode it with `json.decode`. |
 
 ---
 
 ## 10. Media
 
-| Function                                    | Description                                                                                          |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| ⚡ 🔒 `generateImage(id, value, negValue?)` | Generate an image from a text prompt. `negValue` is an optional negative prompt. Returns image data. |
+| Function                                    | Description                                                                                                                           |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| ⚡ 🔒 `generateImage(id, value, negValue?)` | Generate an image from a text prompt. `negValue` is an optional negative prompt. Returns `{{inlay::<id>}}` markup or an error string. |
 
 ---
 
 ## 11. Chat Control
 
-| Function                | Description                                                           |
-| ----------------------- | --------------------------------------------------------------------- |
-| `stopChat(id)`          | ⚠️ **Currently bugged** — do not use. Intended to stop AI generation. |
-| `reloadDisplay(id)`     | Force the UI to re-render all messages.                               |
-| `reloadChat(id, index)` | Force re-render of a specific message at `index`.                     |
+| Function                | Description                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `stopChat(id)`          | Cancel the in-progress send from a safe callback. Returning literal `false` from `onInput`/`onOutput`/`onStart` has the same effect. |
+| `reloadDisplay(id)`     | Force the UI to re-render all messages.                                                                                              |
+| `reloadChat(id, index)` | Force re-render of a specific message at `index`.                                                                                    |
 
 ---
 
@@ -230,18 +231,16 @@ end
 
 ## 13. Async Helpers
 
-| Function          | Description                                                                                          |
-| ----------------- | ---------------------------------------------------------------------------------------------------- |
-| `async(callback)` | Wraps a Lua function into an async context (coroutine → Promise). The callback receives `triggerId`. |
-| `promise:await()` | Blocks the coroutine until the async operation completes and returns the result.                     |
+| Function          | Description                                                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| `async(callback)` | Wraps a Lua function into an async context (coroutine → Promise) and forwards the original callback arguments. |
+| `promise:await()` | Blocks the coroutine until the async operation completes and returns the result.                               |
 
 ```lua
--- Wrap multiple async calls
-async(function(id)
-    local tokens = getTokens(id, "hello world"):await()
-    local res = simpleLLM(id, "Count: " .. tokens):await()
-    alertNormal(id, res.result)
-end)
+listenEdit('editOutput', async(function(id, value, meta)
+    local tokens = getTokens(id, value):await()
+    return value .. "\n[tokens: " .. tokens .. "]"
+end))
 ```
 
 ---

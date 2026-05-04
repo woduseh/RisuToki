@@ -50,18 +50,16 @@
 
 ## CSS 클래스 네이밍 규칙
 
-연속된 클래스 선택자(`.class.subclass`) 사용 시 파싱 엔진의 접두사 처리 규칙을 따라야 합니다.
-
-리스는 렌더링 시 **모든 클래스에 `x-risu-` 접두사를 자동으로 붙입니다.** 클래스가 붙어있으면 이를 제대로 반환하지 못합니다. 따라서 CSS 정의 시, 붙어있는 클래스에는 **수동으로 접두사를 명시**해야 합니다.
+리스는 렌더링 시 HTML class 속성과 CSS class 선택자에 **`x-risu-` 접두사를 자동으로 붙이고**, 스타일 규칙을 `.chattext` 아래로 스코프합니다. 일반적인 원본 HTML/CSS에서는 수동 접두사를 섞지 말고, 충돌을 피할 수 있는 고유한 원본 클래스명을 사용하세요.
 
 ```css
-/* 잘못된 사용: 접두사 누락 */
+/* 정상: 렌더링 시 자동으로 접두사/스코프가 적용됨 */
 .status.active {
   color: green;
 }
 
-/* 올바른 사용: x-risu- 접두사 추가 */
-.status.x-risu-active {
+/* 이미 렌더링된 런타임 마크업을 직접 겨냥할 때만 명시적으로 사용 */
+.x-risu-status.x-risu-active {
   color: green;
 }
 
@@ -86,8 +84,7 @@ HTML에서는 평소처럼 `class="status active"`로 작성하면 됩니다.
     border-radius: 12px;
     color: white;
   }
-  /* 클래스가 붙어있으므로 x-risu- 추가 */
-  .status-panel.x-risu-stat {
+  .status-panel.stat {
     display: flex;
     justify-content: space-between;
   }

@@ -25,4 +25,8 @@ LLM-optimized skill bundles for reusable authoring domains.
 - module composition → `../../modules/skills/`
 - plugin authoring → `../../plugins/skills/`
 
-Load a shared syntax skill first when you need exact field or surface behavior, then load the artifact-specific skill for composition guidance.
+Load a shared syntax skill first when exact syntax, schema, or surface behavior is the main task. For bot, preset, module, or plugin composition work, follow the nearest artifact router first and add shared syntax skills only after a concrete need appears.
+
+## Agent routing note
+
+Pick the smallest primary syntax skill first. Do not preload CBS, Lua, regex, lorebook, HTML/CSS, and trigger guidance together unless the current surface actually combines them. Each `SKILL.md` starts with an operating contract and points to deeper references only when needed.

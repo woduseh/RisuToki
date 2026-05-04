@@ -2,6 +2,7 @@
 name: writing-plugins-v3
 description: 'Use when creating, editing, or reviewing RisuAI Plugin API v3.0 .js/.ts files. Covers metadata headers, iframe sandbox model, all-async API, SafeElement/SafeDocument wrappers, storage tiers, UI registration, provider/MCP integration, security boundaries, and permissions.'
 tags: ['plugin', 'v3', 'sandbox', 'api', 'javascript']
+related_tools: ['read_field_batch', 'write_field_batch', 'list_lorebook', 'read_lorebook_batch']
 artifact_types: ['plugin-v3']
 canonical_sources:
   [
@@ -15,6 +16,14 @@ canonical_sources:
 ---
 
 # Writing RisuAI Plugins (API v3.0)
+
+## Agent Operating Contract
+
+- **Use when:** creating, editing, reviewing, or debugging RisuAI Plugin API v3.0 JavaScript/TypeScript files.
+- **Do not use when:** the task is `.charx`, `.risum`, `.risup`, Lua trigger, regex, or CBS authoring without plugin API code.
+- **Read first:** this `SKILL.md`; it captures the async iframe model and metadata requirements.
+- **Load deeper only if:** official API quick reference, migration notes, or generated UI/CBS/lorebook integration is directly needed.
+- **Output/validation contract:** keep `//@api 3.0`, await all `risuai.*`/`SafeElement` calls, respect sandbox permissions, and include cleanup/error handling.
 
 RisuAI plugins are JavaScript/TypeScript extensions that run inside a **sandboxed iframe**. API v3.0 is the current recommended surface for new plugins.
 
@@ -247,6 +256,7 @@ Plugins can be written in TypeScript. RisuAI transpiles plugin TS with Sucrase (
 
 ## Smoke Tests
 
-Prompts targeting RisuAI-specific gotchas:
-
-1. "My plugin's `SafeElement.setTextContent()` isn't updating — what could be wrong?"
+| Prompt                                                          | Expected routing                                                                 | Expected output                                             | Forbidden behavior                                                 |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ |
+| "My plugin's `SafeElement.setTextContent()` is not updating."   | Primary: `writing-plugins-v3`.                                                   | Async/SafeElement/postMessage diagnosis.                    | Treating `SafeElement` like a synchronous DOM node.                |
+| "Build a plugin that adds a settings panel and custom CBS tag." | Primary: `writing-plugins-v3`; load `writing-cbs-syntax` only for tag semantics. | Metadata, async entrypoint, UI registration, replacer plan. | Escaping the iframe sandbox or using host DOM directly by default. |

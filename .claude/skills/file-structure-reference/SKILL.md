@@ -2,10 +2,19 @@
 name: file-structure-reference
 description: 'Reference for RisuAI .charx, .risum, and .risup file structures plus lorebook and regex item schemas. Use when you need exact field names, file-type boundaries, or JSON shapes before reading or writing content.'
 tags: ['reference', 'charx', 'risum', 'risup']
-related_tools: ['list_fields', 'read_field', 'read_lorebook', 'read_regex']
+related_tools:
+  ['list_fields', 'read_field_batch', 'list_lorebook', 'read_lorebook_batch', 'list_regex', 'read_regex_batch']
 ---
 
 # File Structure Reference
+
+## Agent Operating Contract
+
+- **Use when:** exact `.charx`, `.risum`, `.risup`, lorebook, or regex field names/shapes affect the answer or edit route.
+- **Do not use when:** the task is creative composition, prose revision, or UI design with no schema uncertainty.
+- **Read first:** this `SKILL.md`; it is intentionally a compact schema map.
+- **Load deeper only if:** `using-mcp-tools` points to `FILE_STRUCTURES.md` for MCP route selection or an artifact-specific skill needs format details.
+- **Output/validation contract:** cite the relevant field shape and choose the narrowest dedicated MCP surface before proposing or making edits.
 
 Use this skill when you need the **shape of the data**, not the editing workflow.
 
@@ -117,8 +126,8 @@ Use this skill when you need the **shape of the data**, not the editing workflow
 
 ## Smoke Tests
 
-Use these prompts to verify the skill produces correct guidance:
-
-1. "What fields does a lorebook entry have? Show me the complete JSON shape."
-2. "What's the difference between a `.charx`, `.risum`, and `.risup` file?"
-3. "List all the fields in a regex script item and explain what each one does."
+| Prompt                                                                     | Expected routing                                                                              | Expected output                         | Forbidden behavior                                             |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------- |
+| "What fields does a lorebook entry have? Show me the complete JSON shape." | Primary: `file-structure-reference`; load `writing-lorebooks` only for editing workflow.      | Lorebook item shape and field meanings. | Recommending generic writes as the default edit route.         |
+| "What's the difference between `.charx`, `.risum`, and `.risup`?"          | Primary: `file-structure-reference`.                                                          | File-type boundary summary.             | Loading composition skills before a target artifact is chosen. |
+| "List all regex script item fields and explain them."                      | Primary: `file-structure-reference`; load `writing-regex-scripts` only for behavior patterns. | Regex item schema.                      | Treating schema lookup as a full regex authoring task.         |

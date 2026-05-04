@@ -2,10 +2,26 @@
 name: authoring-lorebook-bots
 description: 'Use when writing a lorebook-driven bot description that frames tone, core cast, and scene logic while deeper world and character detail lives in lorebooks.'
 tags: ['authoring', 'lorebook', 'roleplay']
-related_tools: ['list_lorebook', 'read_lorebook', 'write_lorebook']
+related_tools:
+  [
+    'session_status',
+    'list_lorebook',
+    'read_lorebook_batch',
+    'write_lorebook_batch',
+    'replace_in_lorebook_batch',
+    'validate_lorebook_keys',
+  ]
 ---
 
 # Bot Description for Lorebook-Driven Bots
+
+## Agent Operating Contract
+
+- **Use when:** the main task is deciding what belongs in always-on description versus conditional lorebook entries for a cast-heavy, world-heavy, or lorebook-driven bot.
+- **Do not use when:** the main task is one character's inner engine/voice, a self-introduction sheet, raw lorebook syntax, or non-bot artifact work.
+- **Read first:** this `SKILL.md` only. Treat it as the architecture guide; load character-writing skills only for characters that need full voice scaffolding.
+- **Load deeper only if:** entry activation/structure is the hard part (`LOREBOOK_ARCHITECTURE.md`) or cast size changes the design economics (`BOT_SCALES.md`).
+- **Output/validation contract:** produce a description/lorebook distribution plan or revised bot frame; verify tone survives without lorebook, details activate conditionally, and the description is not a pasted database.
 
 > **Use this skill when the description is not supposed to carry everything.** In many bots the description provides the persistent frame — tone, world pressure, core cast thumbnail, and narrative direction — while the lorebook provides conditional detail. In lorebook-heavy bots the balance can shift further: the description's job becomes partly to teach the model how to read and use the lorebook itself.
 >
@@ -382,3 +398,10 @@ Deliver:
 ```
 
 If the user also needs a protagonist-grade character sheet for the core cast, pair this skill with [authoring-characters](../authoring-characters/) for explicit scaffolded sheets or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for the self-introduction monologue method.
+
+## Smoke Tests
+
+| Prompt                                                                     | Expected routing                                                                                      | Expected output                                              | Forbidden behavior                                                  |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
+| "This world bot has too much lore in description; split it into lorebook." | Primary: `authoring-lorebook-bots`; load `LOREBOOK_ARCHITECTURE.md` if entry grouping is requested.   | Always-on frame plus conditional lorebook architecture.      | Rewriting every lore detail into the description again.             |
+| "Make a four-person relationship bot where secrets reveal gradually."      | Primary: `authoring-lorebook-bots`; pair with `authoring-characters` only for full lead voice sheets. | Description frame, relationship-entry plan, reveal triggers. | Preloading syntax skills unless CBS/Lua/regex is explicitly needed. |

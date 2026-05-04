@@ -2,10 +2,18 @@
 name: authoring-characters
 description: 'Use when creating, refactoring, or diagnosing a character description for LLM roleplay, especially when you need stronger behavior, voice, or scale-aware guidance for solo, ensemble, or large-cast bots.'
 tags: ['authoring', 'character', 'roleplay']
-related_tools: ['read_field', 'write_field', 'read_lorebook']
+related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list_lorebook', 'read_lorebook_batch']
 ---
 
 # Character Description Authoring
+
+## Agent Operating Contract
+
+- **Use when:** the main task is explicit character design, character-sheet refactoring, voice/behavior diagnosis, or scale-aware solo/ensemble roleplay character authoring.
+- **Do not use when:** the user wants a self-introduction monologue sheet, a lorebook-first architecture, RisuAI syntax help, or pure HTML/CSS/Lua/CBS work.
+- **Read first:** this `SKILL.md` only. Use the route table below to decide whether this is the primary skill before loading sibling skills.
+- **Load deeper only if:** cast size is the hard part (`BOT_SCALES.md`), speech mechanics need focused repair (`SPEECH_SYSTEM.md`), or you are validating a completed draft (`VALIDATION.md`).
+- **Output/validation contract:** produce a performance-ready character brief, not a filled template; verify core engine, contradiction, pressure response, voice, scale fit, and whether details belong in lorebook instead of always-on description.
 
 > **This guide is a toolkit, not a checklist.** Use the parts that sharpen output and ignore the rest. The goal is not "completing the template" — it is giving the model a character it can perform consistently. Real bots succeed through many different architectures; the patterns here are strong defaults, not the only valid paths.
 >
@@ -349,3 +357,10 @@ Deliver:
 ```
 
 If the user is building a lorebook-driven or cast-heavy bot, point them to [authoring-lorebook-bots](../authoring-lorebook-bots/).
+
+## Smoke Tests
+
+| Prompt                                                                | Expected routing                                                                                         | Expected output                                                | Forbidden behavior                                                       |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| "Refactor this solo partner bot; the voice drifts after 20 turns."    | Primary: `authoring-characters`; load `SPEECH_SYSTEM.md` only if the draft needs detailed speech repair. | Diagnosis plus revised behavior/voice/pressure sections.       | Loading lorebook/preset/module skills before confirming they are needed. |
+| "I have a 12-character school cast and only the leads feel distinct." | Primary: `authoring-characters`; pair with `authoring-lorebook-bots` only for roster architecture.       | Scale-aware lead sheets and compressed anchors for minor cast. | Giving every minor cast member protagonist-depth always-on text.         |

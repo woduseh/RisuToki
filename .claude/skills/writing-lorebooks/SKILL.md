@@ -2,12 +2,30 @@
 name: writing-lorebooks
 description: 'Guides writing and structuring lorebook entries for RisuAI charx and risum files. Covers keyword activation, insertion order, decorator syntax (@@depth, @@role, @@position, etc.), folder organization, CBS integration, and conditional activation. Use when creating, editing, or organizing lorebook entries.'
 tags: ['lorebook', 'reference', 'worldbuilding']
-related_tools: ['list_lorebook', 'read_lorebook', 'write_lorebook', 'validate_lorebook_keys']
+related_tools:
+  [
+    'session_status',
+    'list_lorebook',
+    'read_lorebook_batch',
+    'write_lorebook_batch',
+    'replace_in_lorebook_batch',
+    'validate_lorebook_keys',
+  ]
 ---
 
 # Writing Lorebook Entries
 
+## Agent Operating Contract
+
+- **Use when:** writing, editing, organizing, validating, or diagnosing lorebook entries, folders, activation keys, decorators, or insertion behavior.
+- **Do not use when:** the main problem is bot-level description/lorebook distribution, character voice design, or preset request assembly.
+- **Read first:** this `SKILL.md`; it is the entry-level structure and gotcha layer.
+- **Load deeper only if:** CBS appears in `content`, Lua accesses entries by comment, or a bot architecture skill needs entry groups.
+- **Output/validation contract:** preserve entry identity, use batch/index guards for multiple edits, validate keyword/folder behavior, and keep model-visible content concise.
+
 Lorebooks are collections of context entries injected into the AI prompt **only when their keywords match** the conversation, enabling targeted context injection for world-building, character details, and game systems.
+
+Source-grounded areas: fields, folder refs, decorators, and prompt loading are checked against `Risuai/src/ts/process/lorebook.svelte.ts` and `Risuai/src/ts/storage/database.svelte.ts`.
 
 ## Entry Fields
 
@@ -21,7 +39,7 @@ Lorebooks are collections of context entries injected into the AI prompt **only 
 | `selective` + `secondkey` | When both set, **both** key and secondkey must match to activate.                                                                    |
 | `mode`                    | `normal` \| `constant` \| `multiple` \| `child` \| `folder`                                                                          |
 | `useRegex`                | Interpret `key` as regex pattern.                                                                                                    |
-| `folder`                  | Reference to parent folder. `"folder:UUID"` format — must match the folder entry's **`key`** field (NOT `id`).                       |
+| `folder`                  | Reference to parent folder. RisuToki normalizes this as `"folder:UUID"` and resolves it against the folder entry's key.              |
 | `activationPercent`       | Activation probability 0–100. Default 100.                                                                                           |
 
 **Zero-token pattern:** `key=""` + `alwaysActive=false` → entry is completely skipped. Use for data storage accessed only by Lua.
@@ -40,15 +58,15 @@ Lorebooks are collections of context entries injected into the AI prompt **only 
 
 ## Folder Management
 
-**IMPORTANT:** Folder identity is stored in the **`key`** field (format `"folder:<UUID v4>"`), NOT in the `id` field.
+**IMPORTANT:** Folder identity is stored in the folder entry's **`key`** field, not in the `id` field. RisuToki tools normalize folder refs as `"folder:<UUID v4>"`; upstream RisuAI-created folders may store the key with an internal private prefix before `folder:<UUID>`, so use RisuToki folder tools/helpers instead of hand-copying raw keys when possible.
 
-- **Create folder:** `add_lorebook({ comment: "FolderName", mode: "folder", key: "folder:<UUID v4>", content: "" })`
-  - Generate a proper UUID v4 for each folder (e.g., `"folder:35c826ba-36aa-46ac-abb3-c2d93714be6b"`)
+- **Create folder:** use the dedicated folder/lorebook tool when available, or create an entry with `mode: "folder"` and a normalized folder key.
+  - Generate a proper UUID v4 for each folder (e.g., `"folder:35c826ba-36aa-46ac-abb3-c2d93714be6b"` after RisuToki normalization)
 - **Move to folder:** `write_lorebook(index, { folder: "folder:<UUID>" })` — must match the folder entry's `key` value
 - **Remove from folder:** `write_lorebook(index, { folder: "" })`
 
 ```json
-// Folder entry
+// Folder entry after RisuToki normalization
 { "key": "folder:35c826ba-36aa-46ac-abb3-c2d93714be6b", "comment": "🌍 World", "mode": "folder", "content": "" }
 
 // Child entry (folder field matches parent's key)
@@ -137,14 +155,14 @@ You are a battle-hardened veteran of many conflicts.
 
 ## Critical Gotchas
 
-| Issue                                             | Detail                                                                                                                                                                                                                                         |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Folder identity is `key`, not `id`**            | Folder entries use the `key` field (format `"folder:<UUID>"`) as their identity. Child entries reference this `key` value in their `folder` field. Using the entry's `id` instead will silently fail to group entries.                         |
-| **`alwaysActive` + empty key still costs tokens** | An entry with `alwaysActive: true` is injected every turn even if `key` is empty. This is intentional but often accidental — review always-on entries for signal dilution — unnecessary always-on content reduces model focus on what matters. |
-| **`comment` field renaming breaks Lua**           | Lua's `getLoreBooks(id, commentFilter)` matches against the `comment` field. Renaming a comment without updating corresponding Lua calls silently breaks the integration.                                                                      |
-| **`upsertLocalLoreBook` takes effect next turn**  | Lorebook entries created or updated via Lua `upsertLocalLoreBook` are not included in the current turn's prompt — they appear on the next turn only.                                                                                           |
-| **Decorator stacking order matters**              | `@@role` and `@@depth` must come before content text. Placing decorators after the first line of content causes them to be treated as literal text in the prompt.                                                                              |
-| **Recursive search can cause loops**              | With "Recursive search" enabled, entry A's content can trigger entry B, and B's content can trigger A. Large mutual-trigger chains inject cascading irrelevant content with no visible error.                                                  |
+| Issue                                             | Detail                                                                                                                                                                                                                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Folder identity is `key`, not `id`**            | Folder entries use the `key` field as their identity. RisuToki normalizes refs as `"folder:<UUID>"`, while upstream RisuAI may store an internal private prefix before that marker. Using the entry's `id` instead will silently fail to group entries. |
+| **`alwaysActive` + empty key still costs tokens** | An entry with `alwaysActive: true` is injected every turn even if `key` is empty. This is intentional but often accidental — review always-on entries for signal dilution — unnecessary always-on content reduces model focus on what matters.          |
+| **`comment` field renaming breaks Lua**           | Lua's `getLoreBooks(id, commentFilter)` matches against the `comment` field. Renaming a comment without updating corresponding Lua calls silently breaks the integration.                                                                               |
+| **`upsertLocalLoreBook` takes effect next turn**  | Lorebook entries created or updated via Lua `upsertLocalLoreBook` are not included in the current turn's prompt — they appear on the next turn only.                                                                                                    |
+| **Decorator stacking order matters**              | `@@role` and `@@depth` must come before content text. Placing decorators after the first line of content causes them to be treated as literal text in the prompt.                                                                                       |
+| **Recursive search can cause loops**              | With "Recursive search" enabled, entry A's content can trigger entry B, and B's content can trigger A. Large mutual-trigger chains inject cascading irrelevant content with no visible error.                                                           |
 
 ## Lorebook–Lua Integration
 
@@ -171,6 +189,7 @@ upsertLocalLoreBook(id, "castle-lore", "A vast castle with...", {
 
 ## Smoke Tests
 
-Prompts targeting RisuAI-specific gotchas:
-
-1. "My Lua script calls `getLoreBooks()` but returns empty — the entry exists. What could be wrong?"
+| Prompt                                                                      | Expected routing                                                                     | Expected output                                                                          | Forbidden behavior                                           |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| "My Lua script calls `getLoreBooks()` but returns empty; the entry exists." | Primary: `writing-lorebooks`; load `writing-lua-scripts` only for API details.       | Diagnosis covering comment filters, folder identity, activation, and next-turn behavior. | Bulk-reading the whole lorebook through generic field reads. |
+| "Organize these 20 entries into folders and fix duplicate triggers."        | Primary: `writing-lorebooks`; use batch lorebook tools and `validate_lorebook_keys`. | Folder plan plus guarded batch edits.                                                    | Moving entries by folder `id` instead of folder `key`.       |

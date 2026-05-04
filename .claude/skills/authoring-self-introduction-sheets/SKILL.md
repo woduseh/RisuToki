@@ -2,10 +2,18 @@
 name: authoring-self-introduction-sheets
 description: 'Use when writing a character through a self-introduction monologue: factual profile plus character-voiced introduction that lets the model infer personality through tone, evasions, and omission rather than explicit behavioral scaffolding.'
 tags: ['authoring', 'self-introduction', 'monologue', 'roleplay']
-related_tools: ['read_field', 'write_field', 'read_lorebook']
+related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list_lorebook', 'read_lorebook_batch']
 ---
 
 # Self-Introduction Character Sheets
+
+## Agent Operating Contract
+
+- **Use when:** the user wants a factual profile plus character-voiced self-introduction where personality is inferred through voice, omission, and framing.
+- **Do not use when:** the user wants explicit behavioral scaffolding, lorebook-first architecture, or syntax/tool help.
+- **Read first:** this `SKILL.md`; it contains the method boundary and output shape.
+- **Load deeper only if:** the sheet structure itself is unclear (`SHEET_STRUCTURE.md`) or you need generation prompts that preserve the method (`GENERATION_GUIDANCE.md`).
+- **Output/validation contract:** deliver a concise factual profile and a character-voiced monologue; verify it does not explain the character from outside when the voice can reveal it.
 
 > **Use this skill when the description should feel like meeting a person, not reading a fully scaffolded spec.** The factual frame stays explicit, but more of the character work is carried by voice, pacing, omission, and self-presentation.
 >
@@ -157,3 +165,10 @@ This skill is adapted from these English reference docs:
 
 - [Self-Introduction Character Sheet](../../docs/%EC%9E%90%EA%B8%B0%EC%86%8C%EA%B0%9C%ED%98%95%20%EC%BA%90%EB%A6%AD%ED%84%B0%20%EC%8B%9C%ED%8A%B8/Self-Introduction%20Character%20Sheet.md)
 - [Self-Introduction Character Sheet Guide](../../docs/%EC%9E%90%EA%B8%B0%EC%86%8C%EA%B0%9C%ED%98%95%20%EC%BA%90%EB%A6%AD%ED%84%B0%20%EC%8B%9C%ED%8A%B8/Self-Introduction%20Character%20Sheet%20Guide.md)
+
+## Smoke Tests
+
+| Prompt                                                             | Expected routing                                                                             | Expected output                                                    | Forbidden behavior                                 |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------- |
+| "Write this character as a self-introduction sheet."               | Primary: `authoring-self-introduction-sheets`.                                               | Factual profile plus first-person/character-voiced introduction.   | Converting it into an explicit trait checklist.    |
+| "This monologue feels too explanatory; make it infer personality." | Primary: `authoring-self-introduction-sheets`; load `GENERATION_GUIDANCE.md` only if needed. | Revised monologue with more voice, evasions, and selective detail. | Adding out-of-character analysis inside the sheet. |

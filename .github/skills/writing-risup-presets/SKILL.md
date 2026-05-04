@@ -34,6 +34,14 @@ canonical_sources:
 
 # Writing .risup Presets
 
+## Agent Operating Contract
+
+- **Use when:** the task concerns `.risup` preset composition, request assembly, `promptTemplate`, `formatingOrder`, toggles, structured output, sampling, or module pairing.
+- **Do not use when:** the artifact should be a bot, module, plugin, or only needs shared CBS prose editing.
+- **Read first:** this `SKILL.md`; it is the preset decision and structured prompt workflow layer.
+- **Load deeper only if:** field inventory is needed (`risu/prompts/docs/PRESET_FIELDS.md`), CBS syntax is unclear (`writing-cbs-syntax`), or module pairing affects `moduleIntergration`.
+- **Output/validation contract:** use structured risup prompt tools, avoid bulk-reading `promptTemplate`, verify `formatingOrder` against prompt items, and run import/diff/toggle validation after structural changes.
+
 A **preset** is a reusable request-assembly pack. It controls model selection, sampling, prompt formatting, structured output, and optional module pairing **without** editing the character itself.
 
 ## When to use a preset
@@ -298,6 +306,7 @@ Load these on demand instead of duplicating their syntax here:
 
 ## Smoke Tests
 
-Prompts targeting RisuAI-specific gotchas:
-
-1. "What's the difference between `formatingOrder` and `promptTemplate`?"
+| Prompt                                                                 | Expected routing                                                                | Expected output                                  | Forbidden behavior                                         |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------- |
+| "What's the difference between `formatingOrder` and `promptTemplate`?" | Primary: `writing-risup-presets`.                                               | Clear distinction plus structured tool sequence. | Bulk-reading or rewriting raw `promptTemplate` JSON first. |
+| "Compare these two preset variants and migrate toggles safely."        | Primary: `writing-risup-presets`; load `writing-cbs-syntax` for CBS references. | Diff/import/toggle validation workflow.          | Renaming toggles without scanning CBS-bearing fields.      |

@@ -13,3 +13,4 @@ LLM-optimized skills for writing and reviewing RisuAI plugin v3 scripts.
 1. Load the plugin authoring skill first.
 2. Open `../docs/API_QUICKREF.md` when you need a category-level API reminder.
 3. Open `../docs/MIGRATION.md` when touching legacy plugin code.
+4. Load shared syntax skills only when the plugin emits or transforms that syntax directly.
