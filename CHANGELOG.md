@@ -9,6 +9,13 @@
 
 ---
 
+## [0.68.1] - 2026-05-04
+
+### Fixed
+
+- Fixed Codex startup failures caused by invalid non-boolean values left under `.codex/config.toml` `[features]`, including stale local MCP URL entries such as `url = "http://localhost:.../mcp"`.
+- Hardened Codex MCP config block replacement and cleanup so RisuToki-managed TOML sections do not glue adjacent tables together.
+
 ## [0.68.0] - 2026-05-04
 
 ### Added

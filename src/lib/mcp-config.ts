@@ -16,6 +16,12 @@ export interface McpConfigDeps {
   isPackaged: () => boolean;
 }
 
+export interface CodexMcpConfigOptions {
+  serverPath: string;
+  port: number | string;
+  token: string;
+}
+
 // ---------------------------------------------------------------------------
 // Internal state
 // ---------------------------------------------------------------------------
@@ -47,6 +53,74 @@ function getRisutokiMcpServerConfig(): Record<string, any> | null {
       TOKI_TOKEN: token,
     },
   };
+}
+
+function toTomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+const CODEX_MANAGED_BLOCK_PATTERN =
+  /\n?# --- RisuToki MCP \(auto-generated, do not edit\) ---[\s\S]*?# --- \/RisuToki MCP ---[^\S\r\n]*(?:\r?\n)?/g;
+
+export function removeManagedCodexMcpBlock(content: string): string {
+  return content.replace(CODEX_MANAGED_BLOCK_PATTERN, '\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function isTomlTableHeader(line: string): boolean {
+  return /^\s*\[[^\]]+\]\s*(?:#.*)?$/.test(line);
+}
+
+function isFeatureBooleanAssignment(line: string): boolean {
+  const assignment = line.match(/^\s*[^#=\s][^=]*=\s*(.+?)\s*$/);
+  if (!assignment) return true;
+  return /^(?:true|false)\s*(?:#.*)?$/i.test(assignment[1]);
+}
+
+export function sanitizeCodexFeatures(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const sanitized: string[] = [];
+  let inFeatures = false;
+
+  for (const line of lines) {
+    if (isTomlTableHeader(line)) {
+      inFeatures = /^\s*\[features\]\s*(?:#.*)?$/.test(line);
+      sanitized.push(line);
+      continue;
+    }
+
+    if (inFeatures && !isFeatureBooleanAssignment(line)) {
+      continue;
+    }
+
+    sanitized.push(line);
+  }
+
+  return sanitized.join('\n');
+}
+
+function buildCodexMcpBlock(options: CodexMcpConfigOptions): string {
+  const serverPath = options.serverPath.replace(/\\/g, '/');
+  return [
+    '# --- RisuToki MCP (auto-generated, do not edit) ---',
+    '[mcp_servers.risutoki]',
+    `command = ${toTomlString('node')}`,
+    `args = [${toTomlString(serverPath)}]`,
+    '',
+    '[mcp_servers.risutoki.env]',
+    `TOKI_PORT = ${toTomlString(String(options.port))}`,
+    `TOKI_TOKEN = ${toTomlString(options.token)}`,
+    '# --- /RisuToki MCP ---',
+  ].join('\n');
+}
+
+export function buildCodexMcpConfigToml(existing: string, options: CodexMcpConfigOptions): string {
+  const preserved = sanitizeCodexFeatures(removeManagedCodexMcpBlock(existing)).trimEnd();
+  const block = buildCodexMcpBlock(options);
+  return `${preserved ? `${preserved}\n\n` : ''}${block}\n`;
+}
+
+export function cleanupCodexMcpConfigToml(content: string): string {
+  return removeManagedCodexMcpBlock(content).trimEnd() + '\n';
 }
 
 export function upsertJsonMcpConfig(configPath: string): string | null {
@@ -134,30 +208,20 @@ function writeCodexMcpConfig(): string | null {
   if (!fs.existsSync(codexDir)) fs.mkdirSync(codexDir, { recursive: true });
   const configPath = path.join(codexDir, 'config.toml');
 
-  let serverPath = getMcpServerPath();
-  serverPath = serverPath.replace(/\\/g, '/');
-
-  const risutokiBlock = [
-    '',
-    '# --- RisuToki MCP (auto-generated, do not edit) ---',
-    '[mcp_servers.risutoki]',
-    `command = "node"`,
-    `args = ["${serverPath}"]`,
-    '',
-    '[mcp_servers.risutoki.env]',
-    `TOKI_PORT = "${port}"`,
-    `TOKI_TOKEN = "${token}"`,
-    '# --- /RisuToki MCP ---',
-    '',
-  ].join('\n');
-
   let existing = '';
   if (fs.existsSync(configPath)) {
     existing = fs.readFileSync(configPath, 'utf-8');
-    existing = existing.replace(/\n?# --- RisuToki MCP \(auto-generated.*?\n# --- \/RisuToki MCP ---\n?/s, '');
   }
 
-  fs.writeFileSync(configPath, existing.trimEnd() + '\n' + risutokiBlock, 'utf-8');
+  fs.writeFileSync(
+    configPath,
+    buildCodexMcpConfigToml(existing, {
+      serverPath: getMcpServerPath(),
+      port,
+      token,
+    }),
+    'utf-8',
+  );
   console.log('[main] Codex MCP config written:', configPath);
   return configPath;
 }
@@ -167,8 +231,7 @@ export function cleanupCodexMcpConfig(): void {
     const configPath = path.join(os.homedir(), '.codex', 'config.toml');
     if (!fs.existsSync(configPath)) return;
     const content = fs.readFileSync(configPath, 'utf-8');
-    const cleaned = content.replace(/\n?# --- RisuToki MCP \(auto-generated.*?\n# --- \/RisuToki MCP ---\n?/s, '');
-    fs.writeFileSync(configPath, cleaned, 'utf-8');
+    fs.writeFileSync(configPath, cleanupCodexMcpConfigToml(content), 'utf-8');
     console.log('[main] Codex MCP config cleaned up');
   } catch (e: any) {
     console.warn('[main] Codex MCP config cleanup failed:', e.message);
