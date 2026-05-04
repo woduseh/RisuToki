@@ -19,7 +19,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { startHeadlessMcpApiServer } from './src/lib/mcp-headless-server';
-import { getToolMeta, TOOL_TAXONOMY } from './src/lib/mcp-tool-taxonomy';
+import { buildToolSurfaceProfileCatalog, getToolMeta, TOOL_TAXONOMY } from './src/lib/mcp-tool-taxonomy';
 import { mcpSuccess } from './src/lib/mcp-response-envelope';
 import {
   FACADE_V1_CONTRACT_ID,
@@ -813,6 +813,46 @@ async function readFacadeSelector(
   );
 }
 
+async function validateFacadeSelectors(
+  target: FacadeV1Target,
+  selectors: FacadeV1ContentSelector[] | undefined,
+): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touchedTargets: string[] } | ApiErrorResult> {
+  if (target.kind !== 'active') {
+    return facadeApiError(
+      400,
+      `Unsupported validate_content target kind "${target.kind}"`,
+      'Second-wave validate_content currently validates active-document lorebook key hygiene. Use inspect_document/read_content for external or reference preflight.',
+    );
+  }
+
+  const actualSelectors = selectors && selectors.length > 0 ? selectors : [{ family: 'lorebook' }];
+  const unsupported = actualSelectors.find((selector) => selector.family !== 'lorebook');
+  if (unsupported) {
+    return facadeApiError(
+      400,
+      'Unsupported validate_content selector',
+      'Second-wave validate_content supports lorebook selectors only; keep granular validators for CBS, Danbooru, and risup import verification.',
+      { selector: unsupported },
+    );
+  }
+
+  const data = await apiRequest('GET', '/lorebook/validate');
+  if (isApiError(data)) return data;
+  const routes = [route('validate_lorebook_keys', 'GET', '/lorebook/validate')];
+  return {
+    result: {
+      validations: [{ selector: { family: 'lorebook' }, data }],
+      routed_legacy: routes,
+      touched_targets: ['lorebook'],
+      remaining_gaps: [
+        'Structured item edit facade, asset management, import/export, and broad validator aggregation remain granular/advanced routes.',
+      ],
+    },
+    routes,
+    touchedTargets: ['lorebook'],
+  };
+}
+
 function guardValue(guards: FacadeV1Guard[] | undefined, name: string): unknown {
   return guards?.find((guard) => guard.name === name)?.value;
 }
@@ -823,11 +863,11 @@ async function previewFacadeOperation(
 ): Promise<
   { data: unknown; routes: FacadeRoute[]; touched: string[]; requiredGuards: FacadeV1Guard[] } | ApiErrorResult
 > {
-  if (target.kind !== 'active') {
+  if (target.kind !== 'active' && target.kind !== 'external') {
     return facadeApiError(
       400,
-      'preview_edit first wave only supports active-document edits',
-      'Use granular external tools for unopened-file edits for now.',
+      'preview_edit supports active-document edits and second-wave external field edits',
+      'Use active or external targets, or granular tools for unsupported target kinds.',
     );
   }
 
@@ -836,8 +876,12 @@ async function previewFacadeOperation(
     if (!operation.find) {
       return facadeApiError(400, 'replace_text requires find', 'Provide operations[].find.');
     }
-    const fieldRoute = `/field/${encodeURIComponent(operation.selector.field)}/replace`;
+    const fieldRoute =
+      target.kind === 'external'
+        ? `/external/field/${encodeURIComponent(operation.selector.field)}/replace`
+        : `/field/${encodeURIComponent(operation.selector.field)}/replace`;
     const data = await apiRequest('POST', fieldRoute, {
+      ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
       find: operation.find,
       replace: typeof operation.replace === 'string' ? operation.replace : '',
       dry_run: true,
@@ -846,7 +890,9 @@ async function previewFacadeOperation(
       ? data
       : {
           data,
-          routes: [route('replace_in_field', 'POST', fieldRoute)],
+          routes: [
+            route(target.kind === 'external' ? 'external_replace_in_field' : 'replace_in_field', 'POST', fieldRoute),
+          ],
           touched,
           requiredGuards: operation.guards ?? [],
         };
@@ -864,13 +910,29 @@ async function previewFacadeOperation(
         newSize:
           typeof operation.content === 'string' ? operation.content.length : JSON.stringify(operation.content).length,
       },
-      routes: [...read.routes, route('write_field', 'POST', `/field/${encodeURIComponent(operation.selector.field)}`)],
+      routes: [
+        ...read.routes,
+        route(
+          target.kind === 'external' ? 'external_write_field' : 'write_field',
+          'POST',
+          target.kind === 'external'
+            ? `/external/field/${encodeURIComponent(operation.selector.field)}`
+            : `/field/${encodeURIComponent(operation.selector.field)}`,
+        ),
+      ],
       touched,
       requiredGuards: operation.guards ?? [],
     };
   }
 
   if (operation.op === 'patch_surface') {
+    if (target.kind !== 'active') {
+      return facadeApiError(
+        400,
+        'External patch_surface is not in the second-wave facade scope',
+        'Use external_patch_surface as an advanced granular route with expected_hash until manage_file/structured item facade work lands.',
+      );
+    }
     const operations = Array.isArray(operation.content) ? operation.content : undefined;
     if (!operations) {
       return facadeApiError(
@@ -897,31 +959,63 @@ async function previewFacadeOperation(
   return facadeApiError(
     400,
     `Unsupported preview operation: ${operation.op}`,
-    'First-wave preview_edit supports field replace_text, field write_content, and active patch_surface.',
+    'preview_edit supports active/external field replace_text, active/external field write_content, and active patch_surface.',
     { operation },
   );
 }
 
 async function applyFacadeOperation(
+  target: FacadeV1Target,
   operation: FacadeV1EditOperation,
   guardValues?: FacadeV1Guard[],
 ): Promise<{ data: unknown; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
   const touched = [selectorTarget(operation.selector)];
   const guards = guardValues && guardValues.length > 0 ? guardValues : operation.guards;
   if (operation.op === 'replace_text' && operation.selector.field) {
-    const fieldRoute = `/field/${encodeURIComponent(operation.selector.field)}/replace`;
+    const fieldRoute =
+      target.kind === 'external'
+        ? `/external/field/${encodeURIComponent(operation.selector.field)}/replace`
+        : `/field/${encodeURIComponent(operation.selector.field)}/replace`;
     const data = await apiRequest('POST', fieldRoute, {
+      ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
       find: operation.find,
       replace: typeof operation.replace === 'string' ? operation.replace : '',
     });
-    return isApiError(data) ? data : { data, routes: [route('replace_in_field', 'POST', fieldRoute)], touched };
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [
+            route(target.kind === 'external' ? 'external_replace_in_field' : 'replace_in_field', 'POST', fieldRoute),
+          ],
+          touched,
+        };
   }
   if (operation.op === 'write_content' && operation.selector.field) {
-    const fieldRoute = `/field/${encodeURIComponent(operation.selector.field)}`;
-    const data = await apiRequest('POST', fieldRoute, { content: operation.content });
-    return isApiError(data) ? data : { data, routes: [route('write_field', 'POST', fieldRoute)], touched };
+    const fieldRoute =
+      target.kind === 'external'
+        ? `/external/field/${encodeURIComponent(operation.selector.field)}`
+        : `/field/${encodeURIComponent(operation.selector.field)}`;
+    const data = await apiRequest('POST', fieldRoute, {
+      ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
+      content: operation.content,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route(target.kind === 'external' ? 'external_write_field' : 'write_field', 'POST', fieldRoute)],
+          touched,
+        };
   }
   if (operation.op === 'patch_surface') {
+    if (target.kind !== 'active') {
+      return facadeApiError(
+        400,
+        'External patch_surface is not in the second-wave facade scope',
+        'Use external_patch_surface as an advanced granular route with expected_hash.',
+      );
+    }
     const operations = Array.isArray(operation.content) ? operation.content : undefined;
     const data = await apiRequest('POST', '/surface/patch', {
       operations,
@@ -932,7 +1026,7 @@ async function applyFacadeOperation(
   return facadeApiError(
     400,
     `Unsupported apply operation: ${operation.op}`,
-    'Re-run preview_edit with supported first-wave operations.',
+    'Re-run preview_edit with supported facade operations.',
   );
 }
 
@@ -1064,8 +1158,52 @@ server.tool(
 );
 
 server.tool(
+  'list_tool_profiles',
+  'Preferred read-only catalog facade for MCP tool surface profiles. Returns a compact profile-specific tool list while tools/list remains unfiltered for legacy compatibility. Use profile="advanced-full" (aliases "advanced" or "full") as the granular escape hatch.',
+  {
+    profile: z
+      .string()
+      .optional()
+      .describe(
+        'Profile catalog to return. Defaults to facade-first. Valid profiles: facade-first, authoring, readonly, advanced-full; aliases: advanced, full.',
+      ),
+  },
+  async ({ profile }) => {
+    const catalog = buildToolSurfaceProfileCatalog(profile);
+    if (!catalog) {
+      return textResult(
+        facadeApiError(
+          400,
+          `Unknown tool profile: ${profile}`,
+          'Use facade-first, authoring, readonly, advanced-full, or aliases advanced/full.',
+        ),
+      );
+    }
+    return textResult(
+      mcpSuccess(
+        {
+          profile: catalog,
+        },
+        {
+          toolName: 'list_tool_profiles',
+          summary: `Returned ${catalog.counts.profileTools} tools for ${catalog.resolvedProfile} profile`,
+          nextActions: catalog.legacyEscapeHatch ? ['list_tool_profiles', 'tools/list'] : ['tools/list'],
+          artifacts: {
+            profile: catalog.resolvedProfile,
+            filtering_status: catalog.filteringStatus,
+            tools_list_behavior: catalog.toolsListBehavior,
+            tool_count: catalog.counts.profileTools,
+            all_tool_count: catalog.counts.allTools,
+          },
+        },
+      ),
+    );
+  },
+);
+
+server.tool(
   'read_content',
-  'Preferred facade v1 bounded reader. Reads selected field/surface content by routing to existing granular tools and returns routed legacy names. First wave supports field/surface selectors for active/external targets and field selectors for references.',
+  'Preferred facade v1 bounded reader. Reads selected field/surface content by routing to existing granular tools and returns routed legacy names. Supports field/surface selectors for active/external targets and field selectors for references.',
   {
     target: facadeV1TargetSchema.describe('Explicit facade target discriminator.'),
     selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
@@ -1105,7 +1243,7 @@ server.tool(
   {
     target: facadeV1TargetSchema.describe('Explicit facade target discriminator.'),
     query: z.string().min(1),
-    field: z.string().optional().describe('Required for external/reference targets in the first wave.'),
+    field: z.string().optional().describe('Required for external/reference targets.'),
     regex: z.boolean().optional(),
     flags: z.string().optional(),
     context_chars: z.number().optional(),
@@ -1140,7 +1278,7 @@ server.tool(
         facadeApiError(
           400,
           `Unsupported search_document target kind "${target.kind}"`,
-          'First-wave search_document supports active targets directly; external/reference targets require a field argument.',
+          'search_document supports active targets directly; external/reference targets require a field argument.',
         ),
       );
     }
@@ -1161,11 +1299,80 @@ server.tool(
 );
 
 server.tool(
+  'validate_content',
+  'Preferred facade v1 validation entrypoint. Second wave validates active-document lorebook key hygiene by routing to validate_lorebook_keys and reports known remaining facade gaps.',
+  {
+    target: facadeV1TargetSchema.describe(
+      'Explicit facade target discriminator. Second wave supports active lorebook validation.',
+    ),
+    selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  async ({ target, selectors, max_bytes }) => {
+    const validation = await validateFacadeSelectors(target, selectors);
+    if (isApiError(validation)) return textResult(validation);
+    return textResult(
+      facadeEnvelope(
+        'validate_content',
+        'read-only',
+        target,
+        validation.result,
+        `Validated ${validation.touchedTargets.join(', ')} facade content`,
+        ['read_content', 'preview_edit'],
+        {
+          routed_tools: validation.routes.map((entry) => entry.tool),
+          touched_targets: validation.touchedTargets,
+        },
+        max_bytes,
+      ),
+    );
+  },
+);
+
+server.tool(
+  'load_guidance',
+  'Preferred facade v1 guidance loader. Reads the skill catalog or a skill document through existing list_skills/read_skill routes with bounded facade metadata.',
+  {
+    target: z
+      .object({
+        kind: z.literal('guidance'),
+        skill: z.string().min(1).optional(),
+        document: z.string().min(1).optional(),
+      })
+      .refine((d) => d.skill !== undefined || d.document !== undefined, {
+        message: 'guidance target requires skill or document',
+        path: ['skill'],
+      }),
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  async ({ target, max_bytes }) => {
+    const routePath = target.skill
+      ? `/skills/${encodeURIComponent(target.skill)}${target.document ? `/${encodeURIComponent(target.document)}` : ''}`
+      : '/skills';
+    const data = await apiRequest('GET', routePath);
+    if (isApiError(data)) return textResult(data);
+    const routes = [route(target.skill ? 'read_skill' : 'list_skills', 'GET', routePath)];
+    return textResult(
+      facadeEnvelope(
+        'load_guidance',
+        'read-only',
+        target,
+        { guidance: data, routed_legacy: routes, touched_targets: ['guidance'] },
+        target.skill ? `Loaded guidance for ${target.skill}` : 'Loaded guidance catalog',
+        ['read_content', 'search_document'],
+        { routed_tools: routes.map((entry) => entry.tool), touched_targets: ['guidance'] },
+        max_bytes,
+      ),
+    );
+  },
+);
+
+server.tool(
   'preview_edit',
   'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active-document field replace/write or surface patch operations. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
   {
     target: facadeV1TargetSchema.describe(
-      'Explicit facade target discriminator. First wave mutating previews support active only.',
+      'Explicit facade target discriminator. Supports active edits and second-wave external field replace/write previews.',
     ),
     operations: z.array(facadeEditOperationSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems),
     dry_run: z.boolean().optional(),
@@ -1267,7 +1474,7 @@ server.tool(
     const routes: FacadeRoute[] = [];
     const touchedTargets: string[] = [];
     for (const operation of entry.operations) {
-      const applied = await applyFacadeOperation(operation, guard_values);
+      const applied = await applyFacadeOperation(entry.target, operation, guard_values);
       if (isApiError(applied)) return textResult(applied);
       results.push({ operation: operation.op, selector: operation.selector, data: applied.data });
       routes.push(...applied.routes);

@@ -2,7 +2,16 @@
 name: using-mcp-tools
 description: 'Workflow guide for choosing RisuToki MCP tools safely. Use when deciding which read or write surface fits a task, especially for session state, large fields, lorebooks, regex, references, or batch edits.'
 tags: ['workflow', 'mcp', 'editing']
-related_tools: ['inspect_document', 'read_content', 'search_document', 'preview_edit', 'apply_edit', 'read_skill']
+related_tools:
+  [
+    'inspect_document',
+    'list_tool_profiles',
+    'read_content',
+    'search_document',
+    'preview_edit',
+    'apply_edit',
+    'read_skill',
+  ]
 ---
 
 # Using MCP Tools Safely
@@ -33,27 +42,28 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 - For unopened files with unsupported shapes, use `external_read_surface` / `external_patch_surface`; these still reject the active UI document.
 - Before risky edits or after interruptions, call `inspect_document` for facade-covered session/active preflight; use `session_status` when you need exact dirty/autosave/recovery metadata, snapshot totals, or compact structured-surface counts.
 - Prefer response `next_actions` over guessing; high-traffic tools may return narrower follow-up suggestions than the family default.
-- Check tool `_meta` from `tools/list` when choosing a route: `risutoki/surfaceKind=facade` plus `risutoki/recommendation=preferred` is the default for new covered workflows, `recommendation=advanced` marks granular escape hatches, `family` identifies the workflow family, `staleGuards` keeps the legacy flat guard-name list, `staleGuardDetails` gives guard `payloadPath`, list/read source operations, retry guidance, and batch alignment hints, `requiresConfirmation` means an approval gate is expected, and `supportsDryRun` means a preview-first flow exists.
-- Facade v1 is additive and preferred where implemented: use `inspect_document`, `read_content`, `search_document`, `preview_edit`, and `apply_edit` for bounded first-wave workflows; keep granular tools as advanced/legacy routes for precision or unsupported cases. `validate_content`, `load_guidance`, and item/asset/file management remain future facade work. Facade mutating flows are preview-token-first (`preview_edit` before `apply_edit`) and must propagate stale guards from granular `risutoki/staleGuardDetails`.
+- Call `list_tool_profiles` when you need a compact profile catalog: default `facade-first`, `authoring`, `readonly`, or `advanced-full` (aliases `advanced` / `full`) for the complete granular escape hatch. `tools/list` stays unfiltered for MCP compatibility, so legacy fallback tools remain accessible.
+- Check tool `_meta` from `tools/list` when choosing a route or when the catalog facade is unavailable: `risutoki/profiles` and `risutoki/defaultProfile=facade-first` define the profile contract, `risutoki/surfaceKind=facade` plus `risutoki/recommendation=preferred` is the default for new covered workflows, `recommendation=advanced` marks granular escape hatches, `family` identifies the workflow family, `staleGuards` keeps the legacy flat guard-name list, `staleGuardDetails` gives guard `payloadPath`, list/read source operations, retry guidance, and batch alignment hints, `requiresConfirmation` means an approval gate is expected, and `supportsDryRun` means a preview-first flow exists.
+- Facade v1 is additive and preferred where implemented: use `inspect_document`, `list_tool_profiles`, `read_content`, `search_document`, `preview_edit`, `apply_edit`, `validate_content`, and `load_guidance` for bounded facade/catalog workflows; keep granular tools as advanced/legacy routes for precision or unsupported cases. `validate_content` is currently focused on active lorebook key validation, `load_guidance` covers skill catalog/document reads, and item/asset/file management remain future facade work. Facade mutating flows are preview-token-first (`preview_edit` before `apply_edit`) and must propagate stale guards from granular `risutoki/staleGuardDetails`.
 - After using `import_risup_prompt_from_text`, call `validate_risup_prompt_import` with the same source text to verify all items were imported correctly. This catches silent mismatches from ID renormalization and content truncation.
 - For deleting multiple risup prompt items at once, prefer `batch_delete_risup_prompt_items` over repeated `delete_risup_prompt_item` calls.
 - When adding risup prompt items at a specific position (not at the end), use the `insertAt` parameter on `add_risup_prompt_item` or `add_risup_prompt_item_batch` instead of add + reorder.
 
 ## Facade-First Migration Guide
 
-First-wave facade tools replace common legacy/granular workflows where they have explicit parity:
+Implemented facade tools replace common legacy/granular workflows where they have explicit parity:
 
-| Legacy/granular workflow                                                                                 | Prefer facade                    | Keep granular when                                                                                                                                             |
-| -------------------------------------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Session/external/reference preflight via `session_status`, `inspect_external_file`, or `list_references` | `inspect_document`               | Exact legacy response fields, recovery/debug detail, or full reference inventory are required.                                                                 |
-| Active/external field and surface reads via `read_field*`, `read_surface`, probes, or external readers   | `read_content`                   | You need structured item editors, stats/export, raw hashes, unsupported JSON Pointer shapes, or exact batch compatibility.                                     |
-| Reference field reads via `read_reference_field*`                                                        | `read_content`                   | You need dedicated reference lorebook/regex/Lua/CSS/greeting/trigger/risup item structure.                                                                     |
-| Active/external/reference text search via `search_*` field tools                                         | `search_document`                | A specialized family search or legacy result shape is required.                                                                                                |
-| Active field write/replace or active surface patch                                                       | `preview_edit` then `apply_edit` | You need inserts, block replacements, batch writes, deletes, snapshots, external mutations, asset operations, item management, or unsupported patch semantics. |
+| Legacy/granular workflow                                                                                 | Prefer facade                    | Keep granular when                                                                                                                                                   |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session/external/reference preflight via `session_status`, `inspect_external_file`, or `list_references` | `inspect_document`               | Exact legacy response fields, recovery/debug detail, or full reference inventory are required.                                                                       |
+| Active/external field and surface reads via `read_field*`, `read_surface`, probes, or external readers   | `read_content`                   | You need structured item editors, stats/export, raw hashes, unsupported JSON Pointer shapes, or exact batch compatibility.                                           |
+| Reference field reads via `read_reference_field*`                                                        | `read_content`                   | You need dedicated reference lorebook/regex/Lua/CSS/greeting/trigger/risup item structure.                                                                           |
+| Active/external/reference text search via `search_*` field tools                                         | `search_document`                | A specialized family search or legacy result shape is required.                                                                                                      |
+| Active/external field write/replace or active surface patch                                              | `preview_edit` then `apply_edit` | You need inserts, block replacements, batch writes, deletes, snapshots, external surface patches, asset operations, item management, or unsupported patch semantics. |
 
 Use granular tools as advanced/legacy routes only when at least one criterion applies: an escape hatch for unsupported facade selectors/operations, an exact structured editor is required, the operation is outside first-wave facade scope, or you are debugging/maintaining legacy client compatibility.
 
-Deprecation is staged and non-breaking today: current facade tools advertise `risutoki/surfaceKind=facade` and `risutoki/recommendation=preferred`; granular tools remain `surfaceKind=granular` with `recommendation=advanced` unless a future parity review marks a covered route `legacy`. Do not assume removal until a later warning window documents deprecation hints, first-party docs/evals no longer depend on the granular route, and release notes announce the change. Known gaps still requiring granular tools include `validate_content`, standalone `load_guidance`, item/asset/file management, structured item editors, deletes, imports/exports, external mutations, and broad batch operations. Track parity with `src/lib/mcp-request-schemas.test.ts`, `src/lib/mcp-tool-taxonomy.test.ts`, `src/lib/doc-drift.test.ts`, `test/test-mcp-search-all.ts`, and the matrix in `docs/MCP_TOOL_SURFACE.md`.
+Deprecation is staged and non-breaking today: current facade tools advertise `risutoki/surfaceKind=facade` and `risutoki/recommendation=preferred`; granular tools remain `surfaceKind=granular` with `recommendation=advanced` unless a future parity review marks a covered route `legacy`. Do not assume removal until a later warning window documents deprecation hints, first-party docs/evals no longer depend on the granular route, and release notes announce the change. Known gaps still requiring granular tools include validators outside active lorebook keys, item/asset/file management, structured item editors, deletes, imports/exports, external surface patches, and broad batch operations. Track parity with `src/lib/mcp-request-schemas.test.ts`, `src/lib/mcp-tool-taxonomy.test.ts`, `src/lib/doc-drift.test.ts`, `test/test-mcp-search-all.ts`, and the matrix in `docs/MCP_TOOL_SURFACE.md`.
 
 ## Session-Awareness Workflow
 

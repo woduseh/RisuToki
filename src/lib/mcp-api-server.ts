@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { handleCbsRoute } from './mcp-cbs-routes';
+import { handleProbeRoute, type ProbeDocumentRequest } from './mcp-probe-routes';
 import { fileStatMetadata, handleSessionStatusRoute } from './mcp-session-routes';
 import {
   buildFolderInfoMap,
@@ -2054,12 +2055,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     routePath: string,
     action: string,
     target: string,
-  ): Promise<{
-    body: ExternalDocumentBody;
-    data: Record<string, unknown>;
-    filePath: string;
-    fileType: SupportedFileType;
-  } | null> {
+  ): Promise<ProbeDocumentRequest | null> {
     const request = await resolveExternalDocumentRequest(req, res, routePath, action, target);
     if (!request) return null;
 
@@ -2099,320 +2095,24 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     const parts = url.pathname.split('/').filter(Boolean);
 
     try {
-      // ----------------------------------------------------------------
-      // POST /probe/field/:name — read a field from an unopened file
-      // ----------------------------------------------------------------
       if (
-        parts[0] === 'probe' &&
-        parts[1] === 'field' &&
-        parts[2] &&
-        !parts[3] &&
-        parts[2] !== 'batch' &&
-        req.method === 'POST'
+        await handleProbeRoute(req, res, parts, url, {
+          parseLuaSections: deps.parseLuaSections,
+          parseCssSections: deps.parseCssSections,
+          stringifyTriggerScripts: deps.stringifyTriggerScripts,
+          readProbeDocumentRequest,
+          mcpError,
+          jsonResSuccess,
+          buildLorebookListResponse,
+          buildRegexListResponse,
+          buildLuaListResponse,
+          buildCssListResponse,
+          buildGreetingListResponse,
+          buildTriggerListResponse,
+          promptItemPreview,
+        })
       ) {
-        const fieldName = decodeURIComponent(parts[2]);
-        const probe = await readProbeDocumentRequest(
-          req,
-          res,
-          `probe/field/${fieldName}`,
-          'probe field',
-          `probe:field:${fieldName}`,
-        );
-        if (!probe) return;
-        const rules = getFieldAccessRules(probe.data);
-        if (!rules.allowedFields.includes(fieldName)) {
-          return mcpError(res, 400, {
-            action: 'probe field',
-            message: `Unknown field: ${fieldName} ${getUnknownFieldHint(rules)}`,
-            suggestion: 'probe_field_batch 또는 list_fields 로 허용된 필드를 다시 확인하세요.',
-            target: `probe:field:${fieldName}`,
-          });
-        }
-        const probePayload = buildFieldReadResponsePayload(probe.data, fieldName, deps);
-        return jsonResSuccess(res, probePayload, {
-          toolName: 'probe_field',
-          summary: `Probed field "${fieldName}" from external file`,
-        });
-      }
-
-      // ----------------------------------------------------------------
-      // POST /probe/field/batch — read multiple fields from an unopened file
-      // ----------------------------------------------------------------
-      if (parts[0] === 'probe' && parts[1] === 'field' && parts[2] === 'batch' && !parts[3] && req.method === 'POST') {
-        const probe = await readProbeDocumentRequest(
-          req,
-          res,
-          'probe/field/batch',
-          'probe field batch',
-          'probe:field:batch',
-        );
-        if (!probe) return;
-        const fields = probe.body.fields;
-        if (!Array.isArray(fields) || fields.length === 0) {
-          return mcpError(res, 400, {
-            action: 'probe field batch',
-            message: 'fields must be a non-empty string array',
-            suggestion:
-              'fields 를 문자열 배열로 전달하세요. 예: { "file_path": "...", "fields": ["name", "description"] }',
-            target: 'probe:field:batch',
-          });
-        }
-        if (!fields.every((field): field is string => typeof field === 'string')) {
-          return mcpError(res, 400, {
-            action: 'probe field batch',
-            message: 'fields must be a non-empty string array — every element must be a string',
-            suggestion: 'fields 배열의 모든 항목이 문자열인지 확인하세요.',
-            target: 'probe:field:batch',
-          });
-        }
-        if (fields.length > MAX_FIELD_BATCH) {
-          return mcpError(res, 400, {
-            action: 'probe field batch',
-            message: `Maximum ${MAX_FIELD_BATCH} fields per batch`,
-            suggestion: `요청을 ${MAX_FIELD_BATCH}개 이하의 필드로 나누어 여러 번 호출하세요.`,
-            target: 'probe:field:batch',
-          });
-        }
-        const results = buildFieldBatchReadResults(probe.data, fields, deps);
-        return jsonResSuccess(
-          res,
-          { count: results.length, fields: results },
-          {
-            toolName: 'probe_field_batch',
-            summary: `Probed ${results.length} field(s) from external file`,
-            artifacts: { count: results.length },
-          },
-        );
-      }
-
-      // ----------------------------------------------------------------
-      // POST /probe/lorebook — list lorebook entries from an unopened file
-      // ----------------------------------------------------------------
-      if (parts[0] === 'probe' && parts[1] === 'lorebook' && !parts[2] && req.method === 'POST') {
-        const probe = await readProbeDocumentRequest(req, res, 'probe/lorebook', 'probe lorebook', 'probe:lorebook');
-        if (!probe) return;
-        const probeLbPayload = buildLorebookListResponse((probe.data.lorebook as Record<string, unknown>[]) || [], url);
-        return jsonResSuccess(res, probeLbPayload, {
-          toolName: 'probe_lorebook',
-          summary: `Probed lorebook from external file (${(probeLbPayload as any).count ?? 0} entries)`,
-          artifacts: { count: (probeLbPayload as any).count ?? 0 },
-        });
-      }
-
-      // ----------------------------------------------------------------
-      // POST /probe/regex — list regex entries from an unopened file
-      // ----------------------------------------------------------------
-      if (parts[0] === 'probe' && parts[1] === 'regex' && !parts[2] && req.method === 'POST') {
-        const probe = await readProbeDocumentRequest(req, res, 'probe/regex', 'probe regex', 'probe:regex');
-        if (!probe) return;
-        const probeRxPayload = buildRegexListResponse((probe.data.regex as Record<string, unknown>[]) || []);
-        return jsonResSuccess(res, probeRxPayload, {
-          toolName: 'probe_regex',
-          summary: `Probed regex from external file (${(probeRxPayload as any).count ?? 0} entries)`,
-          artifacts: { count: (probeRxPayload as any).count ?? 0 },
-        });
-      }
-
-      // ----------------------------------------------------------------
-      // POST /probe/lua — list Lua sections from an unopened file
-      // ----------------------------------------------------------------
-      if (parts[0] === 'probe' && parts[1] === 'lua' && !parts[2] && req.method === 'POST') {
-        const probe = await readProbeDocumentRequest(req, res, 'probe/lua', 'probe lua', 'probe:lua');
-        if (!probe) return;
-        const probeLuaPayload = buildLuaListResponse(String(probe.data.lua || ''), deps.parseLuaSections);
-        return jsonResSuccess(res, probeLuaPayload, {
-          toolName: 'probe_lua',
-          summary: `Probed Lua from external file (${(probeLuaPayload as any).count ?? 0} sections)`,
-          artifacts: { count: (probeLuaPayload as any).count ?? 0 },
-        });
-      }
-
-      // ----------------------------------------------------------------
-      // POST /probe/css — list CSS sections from an unopened file
-      // ----------------------------------------------------------------
-      if (parts[0] === 'probe' && parts[1] === 'css' && !parts[2] && req.method === 'POST') {
-        const probe = await readProbeDocumentRequest(req, res, 'probe/css', 'probe css', 'probe:css');
-        if (!probe) return;
-        const probeCssPayload = buildCssListResponse(String(probe.data.css || ''), deps.parseCssSections);
-        return jsonResSuccess(res, probeCssPayload, {
-          toolName: 'probe_css',
-          summary: `Probed CSS from external file (${(probeCssPayload as any).count ?? 0} sections)`,
-          artifacts: { count: (probeCssPayload as any).count ?? 0 },
-        });
-      }
-
-      // ----------------------------------------------------------------
-      // POST /probe/greetings/:type — list greetings from an unopened file
-      // ----------------------------------------------------------------
-      if (parts[0] === 'probe' && parts[1] === 'greetings' && parts[2] && !parts[3] && req.method === 'POST') {
-        const greetingType = decodeURIComponent(parts[2]);
-        if (greetingType !== 'alternate' && greetingType !== 'groupOnly') {
-          return mcpError(res, 400, {
-            action: 'probe greetings',
-            message: 'type must be "alternate" or "groupOnly"',
-            suggestion: 'probe_greetings는 alternate 또는 groupOnly 타입만 지원합니다.',
-            target: 'probe:greetings',
-          });
-        }
-        const probe = await readProbeDocumentRequest(
-          req,
-          res,
-          `probe/greetings/${greetingType}`,
-          'probe greetings',
-          `probe:greetings:${greetingType}`,
-        );
-        if (!probe) return;
-        if (greetingType === 'groupOnly' && probe.fileType !== 'charx') {
-          return mcpError(res, 400, {
-            action: 'probe greetings',
-            message: 'groupOnly greetings are only available for .charx cards.',
-            suggestion: 'alternate greetings를 읽거나 .charx 파일을 대상으로 다시 시도하세요.',
-            target: `probe:greetings:${greetingType}`,
-          });
-        }
-        const greetings =
-          greetingType === 'groupOnly'
-            ? ((probe.data as Record<string, unknown>).groupOnlyGreetings as string[]) || []
-            : (probe.data.alternateGreetings as string[]) || [];
-        const probeGreetingPayload = buildGreetingListResponse(greetings, greetingType, url);
-        return jsonResSuccess(res, probeGreetingPayload, {
-          toolName: 'probe_greetings',
-          summary: `Probed ${greetingType} greetings from external file (${(probeGreetingPayload as any).count ?? 0} items)`,
-          artifacts: { count: (probeGreetingPayload as any).count ?? 0, type: greetingType },
-        });
-      }
-
-      // ----------------------------------------------------------------
-      // POST /probe/triggers — list triggers from an unopened file
-      // ----------------------------------------------------------------
-      if (parts[0] === 'probe' && parts[1] === 'triggers' && !parts[2] && req.method === 'POST') {
-        const probe = await readProbeDocumentRequest(req, res, 'probe/triggers', 'probe triggers', 'probe:triggers');
-        if (!probe) return;
-        const probeTriggerPayload = buildTriggerListResponse(probe.data.triggerScripts);
-        return jsonResSuccess(res, probeTriggerPayload, {
-          toolName: 'probe_triggers',
-          summary: `Probed triggers from external file (${(probeTriggerPayload as any).count ?? 0} items)`,
-          artifacts: { count: (probeTriggerPayload as any).count ?? 0 },
-        });
-      }
-
-      // ----------------------------------------------------------------
-      // POST /probe/risup/prompt-items — list risup prompt items from an unopened file
-      // ----------------------------------------------------------------
-      if (
-        parts[0] === 'probe' &&
-        parts[1] === 'risup' &&
-        parts[2] === 'prompt-items' &&
-        !parts[3] &&
-        req.method === 'POST'
-      ) {
-        const probe = await readProbeDocumentRequest(
-          req,
-          res,
-          'probe/risup/prompt-items',
-          'probe risup prompt items',
-          'probe:risup:promptTemplate',
-        );
-        if (!probe) return;
-        if (probe.fileType !== 'risup') {
-          return mcpError(res, 400, {
-            action: 'probe risup prompt items',
-            message: 'Target file is not a risup preset.',
-            suggestion: '.risup 파일을 대상으로 다시 시도하세요.',
-            target: 'probe:risup:promptTemplate',
-          });
-        }
-        const rawText = typeof probe.data.promptTemplate === 'string' ? probe.data.promptTemplate : '';
-        const model = parsePromptTemplate(rawText);
-        if (model.state === 'invalid') {
-          return mcpError(res, 400, {
-            action: 'probe risup prompt items',
-            message: `Invalid promptTemplate: ${model.parseError}`,
-            suggestion: 'external_write_field 또는 open_file 후 write_field로 promptTemplate을 수정하세요.',
-            target: 'probe:risup:promptTemplate',
-            details: { parseError: model.parseError },
-          });
-        }
-        const items = model.items.map((item, index) => {
-          const entry: Record<string, unknown> = {
-            index,
-            id: item.id ?? null,
-            type: item.type ?? null,
-            supported: item.supported,
-            preview: promptItemPreview(item),
-          };
-          if (item.supported && item.name !== undefined) {
-            entry.name = item.name;
-          }
-          return entry;
-        });
-        return jsonResSuccess(
-          res,
-          {
-            count: model.items.length,
-            state: model.state,
-            hasUnsupportedContent: model.hasUnsupportedContent,
-            items,
-          },
-          {
-            toolName: 'probe_risup_prompt_items',
-            summary: `Probed ${model.items.length} risup prompt items (state: ${model.state})`,
-            artifacts: { count: model.items.length, state: model.state },
-          },
-        );
-      }
-
-      // ----------------------------------------------------------------
-      // POST /probe/risup/formating-order — read risup formating order from an unopened file
-      // ----------------------------------------------------------------
-      if (
-        parts[0] === 'probe' &&
-        parts[1] === 'risup' &&
-        parts[2] === 'formating-order' &&
-        !parts[3] &&
-        req.method === 'POST'
-      ) {
-        const probe = await readProbeDocumentRequest(
-          req,
-          res,
-          'probe/risup/formating-order',
-          'probe risup formating order',
-          'probe:risup:formatingOrder',
-        );
-        if (!probe) return;
-        if (probe.fileType !== 'risup') {
-          return mcpError(res, 400, {
-            action: 'probe risup formating order',
-            message: 'Target file is not a risup preset.',
-            suggestion: '.risup 파일을 대상으로 다시 시도하세요.',
-            target: 'probe:risup:formatingOrder',
-          });
-        }
-        const rawText = typeof probe.data.formatingOrder === 'string' ? probe.data.formatingOrder : '';
-        const model = parseFormatingOrder(rawText);
-        if (model.state === 'invalid') {
-          return mcpError(res, 400, {
-            action: 'probe risup formating order',
-            message: `Invalid formatingOrder: ${model.parseError}`,
-            suggestion: 'external_write_field 또는 open_file 후 write_field로 formatingOrder를 수정하세요.',
-            target: 'probe:risup:formatingOrder',
-            details: { parseError: model.parseError },
-          });
-        }
-        const items = model.items.map((item, index) => ({ index, token: item.token, known: item.known }));
-        const promptModel = parsePromptTemplate(
-          typeof probe.data.promptTemplate === 'string' ? probe.data.promptTemplate : '',
-        );
-        const warnings = promptModel.state !== 'invalid' ? collectFormatingOrderWarnings(promptModel, model) : [];
-        return jsonResSuccess(
-          res,
-          { state: model.state, items, warnings },
-          {
-            toolName: 'probe_risup_formating_order',
-            summary: `Probed risup formating order (${items.length} tokens, state: ${model.state})`,
-            artifacts: { count: items.length, state: model.state },
-          },
-        );
+        return;
       }
 
       // ----------------------------------------------------------------

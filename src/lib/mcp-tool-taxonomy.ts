@@ -68,6 +68,114 @@ export type ToolSurfaceKind = (typeof TOOL_SURFACE_KINDS)[number];
 export const TOOL_RECOMMENDATIONS = ['preferred', 'advanced', 'legacy'] as const;
 export type ToolRecommendation = (typeof TOOL_RECOMMENDATIONS)[number];
 
+export const TOOL_SURFACE_PROFILE_NAMES = ['facade-first', 'authoring', 'advanced-full', 'readonly'] as const;
+export type ToolSurfaceProfileName = (typeof TOOL_SURFACE_PROFILE_NAMES)[number];
+
+export const DEFAULT_TOOL_SURFACE_PROFILE: ToolSurfaceProfileName = 'facade-first';
+
+export const TOOL_SURFACE_PROFILE_ALIASES = {
+  advanced: 'advanced-full',
+  full: 'advanced-full',
+} as const satisfies Record<string, ToolSurfaceProfileName>;
+
+export type ToolSurfaceProfileFilteringStatus = 'catalog-facade';
+
+export interface ToolSurfaceProfileContract {
+  name: ToolSurfaceProfileName;
+  aliases: readonly string[];
+  default: boolean;
+  readonly: boolean;
+  filteringStatus: ToolSurfaceProfileFilteringStatus;
+  includedCategories: readonly string[];
+  excludedCategories: readonly string[];
+  legacyEscapeHatch: ToolSurfaceProfileName | false;
+  clientRequest: readonly string[];
+  discovery: readonly string[];
+  description: string;
+}
+
+const PROFILE_METADATA_DISCOVERY = [
+  'tools/list _meta risutoki/profiles',
+  'tools/list _meta risutoki/defaultProfile',
+  'list_tool_profiles profile-specific catalog facade',
+  'docs/MCP_TOOL_SURFACE.md profile catalog',
+] as const;
+
+const PROFILE_CLIENT_REQUEST = [
+  'Call list_tool_profiles with the exact profile name for a compact profile-specific catalog.',
+  'Keep tools/list unfiltered for MCP client compatibility and use advanced-full as the escape hatch.',
+] as const;
+
+export const TOOL_SURFACE_PROFILE_CONTRACTS: readonly ToolSurfaceProfileContract[] = [
+  {
+    name: 'facade-first',
+    aliases: [],
+    default: true,
+    readonly: false,
+    filteringStatus: 'catalog-facade',
+    includedCategories: ['facade preferred tools'],
+    excludedCategories: ['granular tools from the compact facade-first catalog unless advanced-full is requested'],
+    legacyEscapeHatch: 'advanced-full',
+    clientRequest: PROFILE_CLIENT_REQUEST,
+    discovery: PROFILE_METADATA_DISCOVERY,
+    description:
+      'Default planning profile. Prefer first-wave facade tools for covered inspect/read/search/preview/apply workflows and switch to advanced-full for granular escape hatches.',
+  },
+  {
+    name: 'authoring',
+    aliases: [],
+    default: false,
+    readonly: false,
+    filteringStatus: 'catalog-facade',
+    includedCategories: [
+      'facade preferred tools',
+      'field/surface/search',
+      'structured authoring families',
+      'reference/skill/cbs/danbooru guidance',
+      'asset item families',
+    ],
+    excludedCategories: ['external direct file mutation', 'session/file-open controls', 'snapshots', 'imports/exports'],
+    legacyEscapeHatch: 'advanced-full',
+    clientRequest: PROFILE_CLIENT_REQUEST,
+    discovery: PROFILE_METADATA_DISCOVERY,
+    description:
+      'Authoring-focused profile for editing content structures while keeping direct file/session administration as an advanced escape hatch.',
+  },
+  {
+    name: 'advanced-full',
+    aliases: ['advanced', 'full'],
+    default: false,
+    readonly: false,
+    filteringStatus: 'catalog-facade',
+    includedCategories: ['all registered tools', 'all granular fallback tools', 'legacy compatibility routes'],
+    excludedCategories: [],
+    legacyEscapeHatch: false,
+    clientRequest: PROFILE_CLIENT_REQUEST,
+    discovery: PROFILE_METADATA_DISCOVERY,
+    description:
+      'Complete compatibility profile. Use when facade-first or authoring cannot express the task, when exact legacy payloads matter, or during debugging/parity work.',
+  },
+  {
+    name: 'readonly',
+    aliases: [],
+    default: false,
+    readonly: true,
+    filteringStatus: 'catalog-facade',
+    includedCategories: ['tools annotated readOnlyHint=true'],
+    excludedCategories: [
+      'preview_edit',
+      'apply_edit',
+      'all mutating or destructive tools',
+      'session/file-open mutations',
+    ],
+    legacyEscapeHatch: 'advanced-full',
+    clientRequest: PROFILE_CLIENT_REQUEST,
+    discovery: PROFILE_METADATA_DISCOVERY,
+    description:
+      'Inspection-only profile. The catalog includes only readOnlyHint=true tools; preview and apply flows are excluded.',
+  },
+];
+
 export interface ToolMeta {
   family: ToolFamily;
   staleGuards: readonly string[];
@@ -93,6 +201,8 @@ export const TOOL_META_KEYS = {
   staleGuardDetails: 'risutoki/staleGuardDetails',
   surfaceKind: 'risutoki/surfaceKind',
   recommendation: 'risutoki/recommendation',
+  profiles: 'risutoki/profiles',
+  defaultProfile: 'risutoki/defaultProfile',
   requiresConfirmation: 'risutoki/requiresConfirmation',
   supportsDryRun: 'risutoki/supportsDryRun',
 } as const;
@@ -124,6 +234,25 @@ export const DRY_RUN_TOOL_NAMES = [
 
 const NO_CONFIRMATION_TOOL_NAME_SET = new Set<string>(NO_CONFIRMATION_TOOL_NAMES);
 const DRY_RUN_TOOL_NAME_SET = new Set<string>(DRY_RUN_TOOL_NAMES);
+
+const AUTHORING_PROFILE_FAMILIES = new Set<ToolFamily>([
+  'field',
+  'search',
+  'surface',
+  'lorebook',
+  'regex',
+  'greeting',
+  'trigger',
+  'lua',
+  'css',
+  'reference',
+  'charx-asset',
+  'risum-asset',
+  'risup-prompt',
+  'skill',
+  'danbooru',
+  'cbs',
+]);
 
 export const TOOL_STALE_GUARD_NAMES: Record<string, readonly string[]> = {
   patch_surface: ['expected_hash'],
@@ -370,10 +499,13 @@ export interface ToolEntry {
 export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   // ── Facade v1 (preferred additive tools) ───────────────────────────────
   inspect_document: { family: 'session', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
+  list_tool_profiles: { family: 'session', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
   read_content: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
   search_document: { family: 'search', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
   preview_edit: { family: 'surface', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
   apply_edit: { family: 'surface', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
+  validate_content: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
+  load_guidance: { family: 'skill', hints: OPEN_WORLD_RO, surfaceKind: 'facade', recommendation: 'preferred' },
 
   // ── Field ──────────────────────────────────────────────────────────────
   list_fields: { family: 'field', hints: RO_IDEMPOTENT },
@@ -625,6 +757,114 @@ export function getToolMutationMeta(name: string): MutationMeta | undefined {
   };
 }
 
+export function resolveToolSurfaceProfileName(name: string | undefined): ToolSurfaceProfileName | undefined {
+  if (!name) return DEFAULT_TOOL_SURFACE_PROFILE;
+  const normalized = name.trim().toLowerCase();
+  if ((TOOL_SURFACE_PROFILE_NAMES as readonly string[]).includes(normalized)) {
+    return normalized as ToolSurfaceProfileName;
+  }
+  return TOOL_SURFACE_PROFILE_ALIASES[normalized as keyof typeof TOOL_SURFACE_PROFILE_ALIASES];
+}
+
+export function getToolSurfaceProfileContract(name: string): ToolSurfaceProfileContract | undefined {
+  const resolved = resolveToolSurfaceProfileName(name);
+  if (!resolved) return undefined;
+  return TOOL_SURFACE_PROFILE_CONTRACTS.find((profile) => profile.name === resolved);
+}
+
+export function getToolProfilesForTool(name: string): readonly ToolSurfaceProfileName[] {
+  const entry = TOOL_TAXONOMY[name];
+  if (!entry) return [];
+
+  const profiles = new Set<ToolSurfaceProfileName>(['advanced-full']);
+  const surfaceKind = entry.surfaceKind ?? 'granular';
+
+  if (surfaceKind === 'facade') {
+    profiles.add('facade-first');
+    profiles.add('authoring');
+  }
+  if (AUTHORING_PROFILE_FAMILIES.has(entry.family)) {
+    profiles.add('authoring');
+  }
+  if (entry.hints.readOnlyHint === true) {
+    profiles.add('readonly');
+  }
+
+  return TOOL_SURFACE_PROFILE_NAMES.filter((profile) => profiles.has(profile));
+}
+
+export interface ToolSurfaceProfileCatalogTool {
+  name: string;
+  family: ToolFamily;
+  surfaceKind: ToolSurfaceKind;
+  recommendation: ToolRecommendation;
+  readOnly: boolean;
+}
+
+export interface ToolSurfaceProfileCatalog {
+  defaultProfile: ToolSurfaceProfileName;
+  requestedProfile: string | undefined;
+  resolvedProfile: ToolSurfaceProfileName;
+  filteringStatus: ToolSurfaceProfileFilteringStatus;
+  toolsListBehavior: 'unfiltered-compatible';
+  legacyEscapeHatch: ToolSurfaceProfileName | false;
+  aliases: typeof TOOL_SURFACE_PROFILE_ALIASES;
+  profiles: readonly ToolSurfaceProfileContract[];
+  tools: readonly ToolSurfaceProfileCatalogTool[];
+  counts: {
+    profileTools: number;
+    allTools: number;
+    hiddenFromToolsList: 0;
+  };
+  requestPath: readonly string[];
+}
+
+export function listToolsForSurfaceProfile(profileName?: string): readonly string[] {
+  const resolved = resolveToolSurfaceProfileName(profileName);
+  if (!resolved) return [];
+  return ALL_TOOL_NAMES.filter((name) => getToolProfilesForTool(name).includes(resolved));
+}
+
+export function buildToolSurfaceProfileCatalog(profileName?: string): ToolSurfaceProfileCatalog | undefined {
+  const resolved = resolveToolSurfaceProfileName(profileName);
+  if (!resolved) return undefined;
+  const contract = getToolSurfaceProfileContract(resolved);
+  if (!contract) return undefined;
+  const tools = listToolsForSurfaceProfile(resolved).map((name) => {
+    const entry = TOOL_TAXONOMY[name];
+    return {
+      name,
+      family: entry.family,
+      surfaceKind: entry.surfaceKind ?? 'granular',
+      recommendation: entry.recommendation ?? 'advanced',
+      readOnly: entry.hints.readOnlyHint === true,
+    };
+  });
+  return {
+    defaultProfile: DEFAULT_TOOL_SURFACE_PROFILE,
+    requestedProfile: profileName,
+    resolvedProfile: resolved,
+    filteringStatus: contract.filteringStatus,
+    toolsListBehavior: 'unfiltered-compatible',
+    legacyEscapeHatch: contract.legacyEscapeHatch,
+    aliases: TOOL_SURFACE_PROFILE_ALIASES,
+    profiles: TOOL_SURFACE_PROFILE_CONTRACTS,
+    tools,
+    counts: {
+      profileTools: tools.length,
+      allTools: ALL_TOOL_NAMES.length,
+      hiddenFromToolsList: 0,
+    },
+    requestPath: [
+      `Call list_tool_profiles with profile="${resolved}" to get this compact catalog.`,
+      'Use the returned tool names for local planning; tools/list remains unfiltered for client compatibility.',
+      contract.legacyEscapeHatch
+        ? `Escalate to ${contract.legacyEscapeHatch} when this profile cannot express the workflow.`
+        : 'This profile is the full legacy-compatible tool surface.',
+    ],
+  };
+}
+
 /** Build the MCP `_meta` payload for a tool, if it exposes mutation capability metadata. */
 export function getToolMeta(name: string): Record<string, unknown> | undefined {
   const family = getToolFamily(name);
@@ -636,6 +876,8 @@ export function getToolMeta(name: string): Record<string, unknown> | undefined {
     [TOOL_META_KEYS.staleGuardDetails]: TOOL_STALE_GUARD_DETAILS[name] ?? [],
     [TOOL_META_KEYS.surfaceKind]: TOOL_TAXONOMY[name]?.surfaceKind ?? 'granular',
     [TOOL_META_KEYS.recommendation]: TOOL_TAXONOMY[name]?.recommendation ?? 'advanced',
+    [TOOL_META_KEYS.profiles]: getToolProfilesForTool(name),
+    [TOOL_META_KEYS.defaultProfile]: DEFAULT_TOOL_SURFACE_PROFILE,
   };
   if (mutationMeta) {
     meta[TOOL_META_KEYS.requiresConfirmation] = mutationMeta.requiresConfirmation;

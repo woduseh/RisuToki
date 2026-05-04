@@ -11,7 +11,16 @@ import {
   TOOL_META_KEYS,
   TOOL_RECOMMENDATIONS,
   TOOL_STALE_GUARD_DETAILS,
+  TOOL_SURFACE_PROFILE_ALIASES,
+  TOOL_SURFACE_PROFILE_CONTRACTS,
+  TOOL_SURFACE_PROFILE_NAMES,
   TOOL_SURFACE_KINDS,
+  DEFAULT_TOOL_SURFACE_PROFILE,
+  buildToolSurfaceProfileCatalog,
+  getToolProfilesForTool,
+  getToolSurfaceProfileContract,
+  listToolsForSurfaceProfile,
+  resolveToolSurfaceProfileName,
   getToolFamily,
   getToolAnnotations,
   getToolMeta,
@@ -369,7 +378,16 @@ describe('MCP Tool Taxonomy', () => {
     expect(TOOL_SURFACE_KINDS).toEqual(['facade', 'granular']);
     expect(TOOL_RECOMMENDATIONS).toEqual(['preferred', 'advanced', 'legacy']);
 
-    const facadeNames = new Set(['inspect_document', 'read_content', 'search_document', 'preview_edit', 'apply_edit']);
+    const facadeNames = new Set([
+      'inspect_document',
+      'list_tool_profiles',
+      'read_content',
+      'search_document',
+      'preview_edit',
+      'apply_edit',
+      'validate_content',
+      'load_guidance',
+    ]);
     for (const name of ALL_TOOL_NAMES) {
       const meta = getToolMeta(name);
       expect(meta?.[TOOL_META_KEYS.surfaceKind], `${name} surface kind mismatch`).toBe(
@@ -379,6 +397,133 @@ describe('MCP Tool Taxonomy', () => {
         facadeNames.has(name) ? 'preferred' : 'advanced',
       );
     }
+  });
+
+  it('defines the tool surface profile contract with the catalog facade instead of unsafe server filtering', () => {
+    expect(TOOL_SURFACE_PROFILE_NAMES).toEqual(['facade-first', 'authoring', 'advanced-full', 'readonly']);
+    expect(DEFAULT_TOOL_SURFACE_PROFILE).toBe('facade-first');
+    expect(TOOL_SURFACE_PROFILE_ALIASES).toEqual({ advanced: 'advanced-full', full: 'advanced-full' });
+    expect(resolveToolSurfaceProfileName(undefined)).toBe('facade-first');
+    expect(resolveToolSurfaceProfileName('full')).toBe('advanced-full');
+    expect(resolveToolSurfaceProfileName('ADVANCED')).toBe('advanced-full');
+    expect(resolveToolSurfaceProfileName('unknown')).toBeUndefined();
+
+    const contractsByName = new Map(TOOL_SURFACE_PROFILE_CONTRACTS.map((profile) => [profile.name, profile]));
+    expect([...contractsByName.keys()]).toEqual(TOOL_SURFACE_PROFILE_NAMES);
+    expect(contractsByName.get('facade-first')).toEqual(
+      expect.objectContaining({
+        default: true,
+        filteringStatus: 'catalog-facade',
+        legacyEscapeHatch: 'advanced-full',
+      }),
+    );
+    expect(contractsByName.get('readonly')).toEqual(
+      expect.objectContaining({
+        readonly: true,
+        filteringStatus: 'catalog-facade',
+      }),
+    );
+    expect(getToolSurfaceProfileContract('advanced')).toBe(contractsByName.get('advanced-full'));
+  });
+
+  it('profile metadata keeps facade-first preferred and advanced-full as the granular escape hatch', () => {
+    for (const name of [
+      'inspect_document',
+      'list_tool_profiles',
+      'read_content',
+      'search_document',
+      'preview_edit',
+      'apply_edit',
+      'validate_content',
+      'load_guidance',
+    ]) {
+      expect(getToolProfilesForTool(name), `${name} should be in facade-first`).toContain('facade-first');
+      expect(getToolProfilesForTool(name), `${name} should remain available in advanced-full`).toContain(
+        'advanced-full',
+      );
+    }
+
+    expect(getToolProfilesForTool('write_lorebook')).toEqual(expect.arrayContaining(['authoring', 'advanced-full']));
+    expect(getToolProfilesForTool('write_lorebook')).not.toContain('facade-first');
+    expect(getToolProfilesForTool('write_lorebook')).not.toContain('readonly');
+
+    for (const name of ALL_TOOL_NAMES) {
+      expect(getToolProfilesForTool(name), `${name} should be available through advanced-full`).toContain(
+        'advanced-full',
+      );
+    }
+  });
+
+  it('builds profile-specific catalogs while leaving advanced-full as the complete escape hatch', () => {
+    const facadeCatalog = buildToolSurfaceProfileCatalog();
+    expect(facadeCatalog).toEqual(
+      expect.objectContaining({
+        defaultProfile: 'facade-first',
+        resolvedProfile: 'facade-first',
+        filteringStatus: 'catalog-facade',
+        toolsListBehavior: 'unfiltered-compatible',
+        legacyEscapeHatch: 'advanced-full',
+      }),
+    );
+    expect(facadeCatalog?.tools.map((tool) => tool.name)).toEqual(listToolsForSurfaceProfile('facade-first'));
+    expect(facadeCatalog?.tools.map((tool) => tool.name)).toEqual([
+      'apply_edit',
+      'inspect_document',
+      'list_tool_profiles',
+      'load_guidance',
+      'preview_edit',
+      'read_content',
+      'search_document',
+      'validate_content',
+    ]);
+    expect(facadeCatalog?.counts.allTools).toBe(ALL_TOOL_NAMES.length);
+    expect(facadeCatalog?.counts.hiddenFromToolsList).toBe(0);
+    expect(facadeCatalog?.counts.profileTools).toBeLessThan(facadeCatalog?.counts.allTools ?? 0);
+
+    const fullCatalog = buildToolSurfaceProfileCatalog('full');
+    expect(fullCatalog?.resolvedProfile).toBe('advanced-full');
+    expect(fullCatalog?.legacyEscapeHatch).toBe(false);
+    expect(fullCatalog?.tools.map((tool) => tool.name)).toEqual(ALL_TOOL_NAMES);
+    expect(listToolsForSurfaceProfile('unknown')).toEqual([]);
+    expect(buildToolSurfaceProfileCatalog('unknown')).toBeUndefined();
+  });
+
+  it('readonly profile includes only readOnlyHint tools and excludes preview/apply mutations', () => {
+    expect(getToolProfilesForTool('inspect_document')).toContain('readonly');
+    expect(getToolProfilesForTool('list_tool_profiles')).toContain('readonly');
+    expect(getToolProfilesForTool('read_content')).toContain('readonly');
+    expect(getToolProfilesForTool('search_document')).toContain('readonly');
+    expect(getToolProfilesForTool('validate_content')).toContain('readonly');
+    expect(getToolProfilesForTool('load_guidance')).toContain('readonly');
+    expect(getToolProfilesForTool('preview_edit')).not.toContain('readonly');
+    expect(getToolProfilesForTool('apply_edit')).not.toContain('readonly');
+
+    for (const name of ALL_TOOL_NAMES) {
+      if (!getToolProfilesForTool(name).includes('readonly')) continue;
+      expect(getToolAnnotations(name)?.readOnlyHint, `${name} is in readonly profile`).toBe(true);
+      expect(getToolAnnotations(name)?.destructiveHint, `${name} is in readonly profile`).not.toBe(true);
+    }
+  });
+
+  it('tool metadata exposes profile membership and default profile for client-side catalog fallback', () => {
+    expect(getToolMeta('inspect_document')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.profiles]: ['facade-first', 'authoring', 'advanced-full', 'readonly'],
+        [TOOL_META_KEYS.defaultProfile]: 'facade-first',
+      }),
+    );
+    expect(getToolMeta('apply_edit')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.profiles]: ['facade-first', 'authoring', 'advanced-full'],
+        [TOOL_META_KEYS.defaultProfile]: 'facade-first',
+      }),
+    );
+    expect(getToolMeta('write_lorebook')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.profiles]: ['authoring', 'advanced-full'],
+        [TOOL_META_KEYS.defaultProfile]: 'facade-first',
+      }),
+    );
   });
 
   it('structured stale guard details stay aligned with legacy guard names', () => {

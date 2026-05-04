@@ -7,17 +7,17 @@ For the canonical repo-wide family map and response-contract coverage, see:
 
 ## Critical Rules
 
-- Prefer facade v1 tools for covered inspect/read/search/preview/apply workflows: `inspect_document`, `read_content`, `search_document`, `preview_edit`, and `apply_edit`.
+- Prefer facade v1 tools for profile discovery and covered inspect/read/search/preview/apply workflows: `list_tool_profiles`, `inspect_document`, `read_content`, `search_document`, `preview_edit`, and `apply_edit`.
 - Treat granular tools as advanced/legacy fallbacks for unsupported facade selectors/operations, exact structured editors, direct external mutations, batch/deletes/imports/exports/assets, or compatibility/debugging.
 - Do not use `read_field` or `write_field` for `lua`, `css`, greetings, triggers, or structured `.risup` prompt surfaces when dedicated tools already exist.
 - Prefer batch tools over loops of repeated single-item writes, and prefer batch readers when inspecting several sibling items.
 - Trust response `next_actions` and `artifacts.byte_size`; facade and high-traffic granular tools may narrow the family defaults to a smaller, safer follow-up set.
-- Use tool `_meta` preference hints from `tools/list`: `risutoki/surfaceKind=facade` / `risutoki/recommendation=preferred` should win for covered workflows; granular tools default to `recommendation=advanced` unless a future migration marks them `legacy`.
+- Use `list_tool_profiles` for a compact profile-specific catalog (`facade-first`, `authoring`, `advanced-full`, `readonly`) while keeping `tools/list` unfiltered for compatibility. If the catalog facade is unavailable, use tool `_meta` preference/profile hints from `tools/list`: `risutoki/profiles` declares membership, `risutoki/defaultProfile=facade-first` declares the planning default, and `risutoki/surfaceKind=facade` / `risutoki/recommendation=preferred` should win for covered workflows; granular tools default to `recommendation=advanced` unless a future migration marks them `legacy`.
 - For indexed mutations, reuse the latest family identity fields as stale-index guards: lorebook/regex/trigger use `expected_comment`, greetings use `expected_preview` / `expected_previews`, and risup prompt items use `expected_type` plus optional `expected_preview`. Lorebook `replace_in_lorebook_batch` also supports `dry_run` preview.
 
 ## Categories
 
-- **Facade v1 (preferred)** — `inspect_document`, `read_content`, `search_document`, `preview_edit`, `apply_edit`
+- **Facade v1 (preferred)** — `list_tool_profiles`, `inspect_document`, `read_content`, `search_document`, `preview_edit`, `apply_edit`
 - **Fields (granular/advanced)** — `list_fields`, `read_field`, `read_field_batch`, `write_field`, `write_field_batch`
 - **Field search/edit (granular/advanced)** — `search_in_field`, `read_field_range`, `replace_in_field`, `replace_in_field_batch`, `replace_block_in_field`, `insert_in_field`
 - **Session state (granular diagnostics)** — `session_status`
@@ -68,7 +68,7 @@ Success-envelope observation fields:
 
 Tool-list metadata:
 
-- `tools/list` includes `_meta['risutoki/surfaceKind']` and `_meta['risutoki/recommendation']`; choose facade/preferred tools first for covered workflows, and treat granular/advanced tools as escape hatches.
+- `list_tool_profiles` returns the compact on-demand profile catalog. `tools/list` remains unfiltered and includes `_meta['risutoki/profiles']`, `_meta['risutoki/defaultProfile']`, `_meta['risutoki/surfaceKind']`, and `_meta['risutoki/recommendation']`; choose facade/preferred tools first for covered workflows, and treat `advanced-full` / granular tools as escape hatches.
 - `tools/list` may include `_meta['risutoki/requiresConfirmation']` and `_meta['risutoki/supportsDryRun']` on mutation-capable tools.
 - Prefer `preview_edit` → `apply_edit` for covered active edits; otherwise prefer granular tools with `supportsDryRun=true` when you want a preview-first workflow before committing a mutation.
 - Indexed-write guard support is broader than the current `_meta` surface: pass the latest `comment`, `preview`, or `type` values from the family list/read route when you want stale-index protection on lorebook, regex, greeting, trigger, or risup prompt-item writes.

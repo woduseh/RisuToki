@@ -993,7 +993,8 @@ body {
   overflow: hidden;
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  gap: 8px;
+  padding: 0 8px 0 12px;
   background: linear-gradient(135deg, #4a90d9 0%, #6fb3f2 100%);
   color: #fff;
   font-size: 12px;
@@ -1009,6 +1010,38 @@ body {
 
 #statusbar.status-error {
   background: linear-gradient(135deg, #d95f72 0%, #f28a9a 100%);
+}
+
+#status-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#status-dismiss {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+#status-dismiss:hover,
+#status-dismiss:focus-visible {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.75);
+  outline: 2px solid rgba(255, 255, 255, 0.75);
+  outline-offset: 1px;
 }
 
 /* ===== Scrollbar ===== */

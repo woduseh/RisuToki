@@ -9,6 +9,23 @@
 
 ---
 
+## [0.68.0] - 2026-05-04
+
+### Added
+
+- Added dogfood MCP eval coverage for facade workflows, compact profile catalogs, external edit support, and guidance-loading behavior.
+- Added `list_tool_profiles`, `validate_content`, and `load_guidance` facade tooling for profile-scoped discovery, content validation, and workflow guidance loading.
+- Added external-file edit support to the facade preview/apply path.
+
+### Changed
+
+- Extracted unopened-file probe handling into dedicated MCP route helpers and updated module routing docs, lint, and TypeScript build coverage.
+- Synced MCP facade/profile guidance across AGENTS, docs, and generated skill copies.
+
+### Fixed
+
+- Polished status-bar dismissal styling and interaction coverage so transient UI status messages can be cleared cleanly.
+
 ## [0.67.0] - 2026-05-04
 
 ### Added

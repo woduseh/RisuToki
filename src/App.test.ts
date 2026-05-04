@@ -170,10 +170,17 @@ describe('App shell', () => {
     expect(bar.classes()).toContain('visible');
     expect(bar.classes()).toContain('status-error');
     expect(bar.classes()).toContain('sticky');
+    expect(wrapper.get('#status-dismiss').attributes('aria-label')).toBe('상태 메시지 닫기');
 
     vi.advanceTimersByTime(5000);
     await nextTick();
     expect(bar.classes()).toContain('visible');
+
+    await wrapper.get('#status-dismiss').trigger('click');
+    await nextTick();
+
+    expect(store.statusText).toBe('');
+    expect(bar.classes()).not.toContain('visible');
   });
 
   it('renders an additive restored-session badge in the file label', async () => {

@@ -51,6 +51,17 @@ describe('app.css – accessibility preferences', () => {
   });
 });
 
+describe('app.css – status bar affordances', () => {
+  it('keeps long status text clipped beside the dismiss affordance', () => {
+    expect(css).toMatch(/#status-text\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;[^}]*\}/s);
+  });
+
+  it('styles the status dismiss button and visible focus state', () => {
+    expect(css).toMatch(/#status-dismiss\s*\{[^}]*border-radius:\s*999px;[^}]*cursor:\s*pointer;[^}]*\}/s);
+    expect(css).toMatch(/#status-dismiss:hover,\s*#status-dismiss:focus-visible\s*\{[^}]*outline:\s*2px/s);
+  });
+});
+
 describe('app.css – preview layout', () => {
   it('defines the fixed overlay shell needed to surface the preview above the app', () => {
     expect(css).toMatch(

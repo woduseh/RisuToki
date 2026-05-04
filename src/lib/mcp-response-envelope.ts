@@ -104,6 +104,8 @@ export const TOOL_NEXT_ACTIONS: Partial<Record<keyof typeof TOOL_TAXONOMY, strin
   inspect_document: ['read_content', 'search_document', 'preview_edit'],
   read_content: ['search_document', 'preview_edit'],
   search_document: ['read_content', 'preview_edit'],
+  validate_content: ['read_content', 'preview_edit'],
+  load_guidance: ['inspect_document', 'read_content'],
   preview_edit: ['apply_edit', 'read_content'],
   apply_edit: ['read_content', 'search_document'],
   open_file: ['session_status', 'list_fields', 'list_references'],

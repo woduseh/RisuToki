@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
-import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -9,6 +8,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../src/charx-io';
 import { startApiServer } from '../src/lib/mcp-api-server';
+
+const TEST_DIR = path.join(__dirname, '_mcp-search-tmp');
 
 function parseLuaSections() {
   return [];
@@ -105,7 +106,8 @@ function createSearchFixture(): SearchFixture {
 }
 
 function createProbeFixture(): { dir: string; filePath: string } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-probe-mcp-'));
+  fs.mkdirSync(TEST_DIR, { recursive: true });
+  const dir = fs.mkdtempSync(path.join(TEST_DIR, 'probe-mcp-'));
   const filePath = path.join(dir, 'probe-test.charx');
   const data: CharxData = {
     spec: 'chara_card_v3',
@@ -189,6 +191,108 @@ function createProbeFixture(): { dir: string; filePath: string } {
   return { dir, filePath };
 }
 
+function dogfoodCardData(name: string, description: string): CharxData {
+  return {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name,
+    description,
+    personality: 'Facade-first',
+    scenario: 'Standalone MCP dogfood scenario.',
+    creatorcomment: 'Executable facade dogfood fixture',
+    tags: ['facade', 'dogfood'],
+    exampleMessage: '',
+    systemPrompt: '',
+    creator: '',
+    characterVersion: '1.0.0',
+    nickname: '',
+    source: [],
+    creationDate: 0,
+    modificationDate: 0,
+    additionalText: '',
+    license: '',
+    firstMessage: 'Facade hello.',
+    alternateGreetings: ['Facade alternate hello.'],
+    groupOnlyGreetings: [],
+    globalNote: 'Destructive preview keeps this note until apply.',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [
+      {
+        comment: 'Facade Lore',
+        key: 'facade',
+        secondkey: '',
+        content: 'Facade lore body.',
+        insertorder: 100,
+        alwaysActive: false,
+        selective: false,
+        mode: 'normal',
+      },
+    ],
+    regex: [],
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {
+        extensions: { risuai: {} },
+        character_book: { entries: [] },
+        assets: [],
+      },
+    },
+    _moduleData: null,
+    _presetData: null,
+  };
+}
+
+function createDogfoodFixtures(): {
+  dir: string;
+  mainFile: string;
+  externalFile: string;
+  referenceRisum: string;
+  referenceRisup: string;
+  userDataDir: string;
+} {
+  fs.mkdirSync(TEST_DIR, { recursive: true });
+  const dir = fs.mkdtempSync(path.join(TEST_DIR, 'facade-dogfood-'));
+  const mainFile = path.join(dir, 'active.charx');
+  const externalFile = path.join(dir, 'external.charx');
+  const referenceRisum = path.join(dir, 'reference.risum');
+  const referenceRisup = path.join(dir, 'reference.risup');
+  const userDataDir = path.join(dir, 'user-data');
+
+  saveCharx(mainFile, dogfoodCardData('Facade Active', 'Alpha facade dogfood description.'));
+  saveCharx(externalFile, dogfoodCardData('Facade External', 'External facade dogfood description.'));
+  saveRisum(referenceRisum, {
+    _fileType: 'risum',
+    name: 'Facade Reference Module',
+    description: 'Reference risum facade dogfood description.',
+    moduleName: 'Facade Reference Module',
+    moduleNamespace: 'facade.reference',
+    lowLevelAccess: false,
+    hideIcon: false,
+    lorebook: [],
+    regex: [],
+  } as unknown as CharxData);
+  saveRisup(referenceRisup, {
+    _fileType: 'risup',
+    name: 'Facade Reference Preset',
+    description: 'Reference risup facade dogfood description.',
+    promptTemplate: JSON.stringify([{ type: 'plain', type2: 'normal', text: 'Preset facade prompt', role: 'system' }]),
+    formatingOrder: JSON.stringify(['main', 'description']),
+    presetBias: '[]',
+    localStopStrings: '[]',
+  } as unknown as CharxData);
+
+  return { dir, mainFile, externalFile, referenceRisum, referenceRisup, userDataDir };
+}
+
 function closeServer(server: http.Server): Promise<void> {
   return new Promise((resolve, reject) => {
     server.close((error) => {
@@ -251,7 +355,7 @@ async function startTestApiServer(currentData: SearchFixture) {
     },
     stringifyTriggerScripts: (scripts: unknown) => JSON.stringify(scripts),
     getSkillRoots: () => [path.join(__dirname, '..', 'skills')],
-    getUserDataPath: () => path.join(os.tmpdir(), 'risutoki-mcp-search-all-tests'),
+    getUserDataPath: () => path.join(TEST_DIR, 'api-user-data'),
     getCurrentFilePath: () => activeFilePath,
   });
 
@@ -336,6 +440,8 @@ function assertToolListMetadata(
     supportsDryRun?: boolean;
     surfaceKind?: string;
     recommendation?: string;
+    profiles?: string[];
+    defaultProfile?: string;
   },
 ) {
   const tool = tools.find((candidate) => candidate.name === toolName);
@@ -348,11 +454,413 @@ function assertToolListMetadata(
   if (expected.recommendation !== undefined) {
     assert.equal(tool._meta?.['risutoki/recommendation'], expected.recommendation);
   }
+  if (expected.profiles !== undefined) {
+    assert.deepEqual(tool._meta?.['risutoki/profiles'], expected.profiles);
+  }
+  if (expected.defaultProfile !== undefined) {
+    assert.equal(tool._meta?.['risutoki/defaultProfile'], expected.defaultProfile);
+  }
   if (expected.staleGuardDetails !== undefined) {
     assert.deepEqual(tool._meta?.['risutoki/staleGuardDetails'], expected.staleGuardDetails);
   }
   assert.equal(tool._meta?.['risutoki/requiresConfirmation'], expected.requiresConfirmation);
   assert.equal(tool._meta?.['risutoki/supportsDryRun'], expected.supportsDryRun);
+}
+
+type McpCallJson = Record<string, unknown>;
+
+interface StandaloneClientRuntime {
+  client: Client;
+  stderrChunks: string[];
+  close: () => Promise<void>;
+}
+
+async function startStandaloneClient(options: {
+  file?: string;
+  refs?: string[];
+  userDataDir: string;
+  allowWrites?: boolean;
+}): Promise<StandaloneClientRuntime> {
+  const args = [
+    path.join(__dirname, '..', 'toki-mcp-server.js'),
+    '--standalone',
+    '--user-data-dir',
+    options.userDataDir,
+  ];
+  if (options.allowWrites) args.push('--allow-writes');
+  if (options.file) args.push('--file', options.file);
+  for (const ref of options.refs ?? []) args.push('--ref', ref);
+
+  const client = new Client({ name: 'mcp-facade-dogfood-test', version: '1.0.0' }, { capabilities: {} });
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args,
+    cwd: path.join(__dirname, '..'),
+    stderr: 'pipe',
+  });
+  const stderrChunks: string[] = [];
+  const stderrStream = transport.stderr;
+  if (stderrStream) stderrStream.on('data', (chunk) => stderrChunks.push(String(chunk)));
+  await client.connect(transport);
+
+  return {
+    client,
+    stderrChunks,
+    close: async () => {
+      await client.close().catch(() => undefined);
+    },
+  };
+}
+
+async function callJson(
+  runtime: StandaloneClientRuntime,
+  name: string,
+  args: Record<string, unknown>,
+  options: { expectError?: boolean } = {},
+): Promise<McpCallJson> {
+  const result = await runtime.client.callTool({ name, arguments: args });
+  const text = extractTextContent(result.content);
+  if (options.expectError) {
+    assert.equal(result.isError, true, `${name} should return a structured MCP error`);
+  } else {
+    assert.ok(!result.isError, `${name} should succeed: ${text}`);
+  }
+  return JSON.parse(text) as McpCallJson;
+}
+
+function nestedRecord(value: unknown, label: string): McpCallJson {
+  assert.ok(value && typeof value === 'object' && !Array.isArray(value), `${label} should be an object`);
+  return value as McpCallJson;
+}
+
+function nestedArray(value: unknown, label: string): unknown[] {
+  assert.ok(Array.isArray(value), `${label} should be an array`);
+  return value;
+}
+
+function routedTools(envelope: McpCallJson): string[] {
+  const artifacts = nestedRecord(envelope.artifacts, 'artifacts');
+  const tools = artifacts.routed_tools;
+  assert.ok(Array.isArray(tools), 'artifacts.routed_tools should be present for facade metrics');
+  return tools.map(String);
+}
+
+async function runStandaloneFacadeDogfood(): Promise<void> {
+  const fixture = createDogfoodFixtures();
+  const activeTarget = { kind: 'active' };
+  const referenceTarget = { kind: 'reference', reference_id: '0' };
+  const presetReferenceTarget = { kind: 'reference', reference_id: '1' };
+  const externalTarget = { kind: 'external', file_path: fixture.externalFile };
+  const facadeOnlyCalls: string[] = [];
+  const metrics = {
+    toolListByteCost: 0,
+    facadeToolListByteCost: 0,
+    activeWorkflowCallCount: 0,
+    wrongToolAvoidance: true,
+    granularFallbackFrequency: 0,
+    staleGuardReuse: false,
+    finalArtifactEquality: false,
+  };
+
+  let runtime: StandaloneClientRuntime | null = null;
+  let recoveryRuntime: StandaloneClientRuntime | null = null;
+  try {
+    runtime = await startStandaloneClient({
+      file: fixture.mainFile,
+      refs: [fixture.referenceRisum, fixture.referenceRisup],
+      userDataDir: fixture.userDataDir,
+      allowWrites: true,
+    });
+
+    const tools = await runtime.client.listTools();
+    metrics.toolListByteCost = Buffer.byteLength(JSON.stringify(tools.tools), 'utf-8');
+    metrics.facadeToolListByteCost = Buffer.byteLength(
+      JSON.stringify(
+        tools.tools.filter((tool) =>
+          [
+            'inspect_document',
+            'list_tool_profiles',
+            'read_content',
+            'search_document',
+            'preview_edit',
+            'apply_edit',
+            'validate_content',
+            'load_guidance',
+          ].includes(tool.name),
+        ),
+      ),
+      'utf-8',
+    );
+    assert.ok(metrics.toolListByteCost > metrics.facadeToolListByteCost);
+
+    for (const name of [
+      'inspect_document',
+      'list_tool_profiles',
+      'search_document',
+      'read_content',
+      'preview_edit',
+      'apply_edit',
+      'validate_content',
+      'load_guidance',
+    ]) {
+      const tool = tools.tools.find((candidate) => candidate.name === name);
+      assert.equal(tool?._meta?.['risutoki/surfaceKind'], 'facade');
+      assert.equal(tool?._meta?.['risutoki/recommendation'], 'preferred');
+    }
+
+    facadeOnlyCalls.push('inspect_document');
+    const profileCatalog = await callJson(runtime, 'list_tool_profiles', { profile: 'facade-first' });
+    const profile = nestedRecord(profileCatalog.profile, 'profile catalog');
+    assert.equal(profile.resolvedProfile, 'facade-first');
+    assert.equal(profile.toolsListBehavior, 'unfiltered-compatible');
+    const profileTools = nestedArray(profile.tools, 'profile catalog.tools');
+    assert.ok(profileTools.length < tools.tools.length, 'facade-first profile catalog should be compact');
+    assert.ok(profileTools.some((tool) => nestedRecord(tool, 'profile tool').name === 'inspect_document'));
+    const fullProfileCatalog = await callJson(runtime, 'list_tool_profiles', { profile: 'full' });
+    const fullProfile = nestedRecord(fullProfileCatalog.profile, 'full profile catalog');
+    assert.equal(fullProfile.resolvedProfile, 'advanced-full');
+    assert.equal(nestedArray(fullProfile.tools, 'full profile tools').length, tools.tools.length);
+
+    const inspect = await callJson(runtime, 'inspect_document', { target: activeTarget, max_bytes: 32000 });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(inspect), ['session_status', 'list_fields', 'list_surfaces']);
+    const inspectResult = nestedRecord(inspect.result, 'inspect result');
+    const surfaces = nestedRecord(inspectResult.surfaces, 'inspect result.surfaces');
+    const rootHash = String(surfaces.document_hash ?? '');
+    assert.ok(rootHash.length > 0, 'active inspect should expose document_hash for stale guard reuse');
+
+    facadeOnlyCalls.push('search_document');
+    const search = await callJson(runtime, 'search_document', {
+      target: activeTarget,
+      query: 'Alpha',
+      context_chars: 12,
+      max_matches: 5,
+    });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(search), ['search_all_fields']);
+
+    facadeOnlyCalls.push('read_content');
+    const readBefore = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(readBefore), ['read_field']);
+
+    facadeOnlyCalls.push('validate_content');
+    const validation = await callJson(runtime, 'validate_content', {
+      target: activeTarget,
+      selectors: [{ family: 'lorebook' }],
+    });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(validation), ['validate_lorebook_keys']);
+    const validationResult = nestedRecord(validation.result, 'validation result');
+    const validations = nestedArray(validationResult.validations, 'validation result.validations');
+    const lorebookValidation = nestedRecord(nestedRecord(validations[0], 'validation item').data, 'validation data');
+    assert.equal(lorebookValidation.issueCount, 0);
+
+    facadeOnlyCalls.push('preview_edit');
+    const preview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'field', field: 'description' },
+          find: 'Alpha',
+          replace: 'Omega',
+        },
+      ],
+    });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(preview), ['replace_in_field']);
+    const previewInfo = nestedRecord(preview.preview, 'preview');
+
+    facadeOnlyCalls.push('apply_edit');
+    const apply = await callJson(runtime, 'apply_edit', {
+      preview_token: previewInfo.preview_token,
+      operation_digest: previewInfo.operation_digest,
+      target: activeTarget,
+    });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(apply), ['replace_in_field']);
+
+    const save = await callJson(runtime, 'save_current_file', {});
+    metrics.activeWorkflowCallCount += 1;
+    assert.equal(save.success, true);
+
+    const persisted = openCharx(fixture.mainFile);
+    const readAfter = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    const afterItems = nestedArray(
+      nestedRecord(readAfter.result, 'read after result').items,
+      'read after result.items',
+    );
+    const afterData = nestedRecord(nestedRecord(afterItems[0], 'read after item').data, 'read after item.data');
+    assert.equal(afterData.content, persisted.description);
+    assert.equal(persisted.description, 'Omega facade dogfood description.');
+    metrics.finalArtifactEquality = true;
+
+    const referenceInspect = await callJson(runtime, 'inspect_document', { target: referenceTarget });
+    assert.deepEqual(routedTools(referenceInspect), ['list_references']);
+    const referenceRead = await callJson(runtime, 'read_content', {
+      target: referenceTarget,
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    assert.deepEqual(routedTools(referenceRead), ['read_reference_field']);
+    const referenceItems = nestedArray(
+      nestedRecord(referenceRead.result, 'reference read result').items,
+      'reference read result.items',
+    );
+    const referenceData = nestedRecord(nestedRecord(referenceItems[0], 'reference read item').data, 'reference data');
+    assert.equal(referenceData.content, openRisum(fixture.referenceRisum).description);
+    const referenceSearch = await callJson(runtime, 'search_document', {
+      target: referenceTarget,
+      field: 'description',
+      query: 'risum',
+    });
+    assert.deepEqual(routedTools(referenceSearch), ['search_in_reference_field']);
+    const presetReferenceRead = await callJson(runtime, 'read_content', {
+      target: presetReferenceTarget,
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    assert.deepEqual(routedTools(presetReferenceRead), ['read_reference_field']);
+    const presetReferenceItems = nestedArray(
+      nestedRecord(presetReferenceRead.result, 'preset reference read result').items,
+      'preset reference read result.items',
+    );
+    const presetReferenceData = nestedRecord(
+      nestedRecord(presetReferenceItems[0], 'preset reference read item').data,
+      'preset reference data',
+    );
+    assert.equal(presetReferenceData.content, openRisup(fixture.referenceRisup).description);
+
+    facadeOnlyCalls.push('load_guidance');
+    const guidance = await callJson(runtime, 'load_guidance', {
+      target: { kind: 'guidance', skill: 'using-mcp-tools' },
+      max_bytes: 4096,
+    });
+    assert.deepEqual(routedTools(guidance), ['read_skill']);
+
+    const externalInspect = await callJson(runtime, 'inspect_document', { target: externalTarget });
+    assert.deepEqual(routedTools(externalInspect), ['inspect_external_file']);
+    const externalRead = await callJson(runtime, 'read_content', {
+      target: externalTarget,
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    assert.deepEqual(routedTools(externalRead), ['probe_field']);
+    facadeOnlyCalls.push('preview_edit');
+    const externalPreview = await callJson(runtime, 'preview_edit', {
+      target: externalTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'field', field: 'description' },
+          find: 'External',
+          replace: 'Edited external',
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(externalPreview), ['external_replace_in_field']);
+    const externalPreviewInfo = nestedRecord(externalPreview.preview, 'external preview');
+    facadeOnlyCalls.push('apply_edit');
+    const externalApply = await callJson(runtime, 'apply_edit', {
+      preview_token: externalPreviewInfo.preview_token,
+      operation_digest: externalPreviewInfo.operation_digest,
+      target: externalTarget,
+    });
+    assert.deepEqual(routedTools(externalApply), ['external_replace_in_field']);
+    assert.equal(openCharx(fixture.externalFile).description, 'Edited external facade dogfood description.');
+
+    const refreshedInspect = await callJson(runtime, 'inspect_document', { target: activeTarget, max_bytes: 32000 });
+    const refreshedSurfaces = nestedRecord(
+      nestedRecord(refreshedInspect.result, 'refreshed inspect result').surfaces,
+      'refreshed inspect surfaces',
+    );
+    const refreshedRootHash = String(refreshedSurfaces.document_hash ?? '');
+    assert.ok(refreshedRootHash.length > 0 && refreshedRootHash !== rootHash);
+
+    const destructivePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'patch_surface',
+          selector: { family: 'surface', path: '/' },
+          content: [{ op: 'remove', path: '/globalNote' }],
+          guards: [
+            {
+              name: 'expected_hash',
+              value: refreshedRootHash,
+              payloadPath: '/expected_hash',
+              sourceOperations: ['inspect_document'],
+              sourceResultPath: '/result/surfaces/document_hash',
+            },
+          ],
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(destructivePreview), ['patch_surface']);
+    assert.equal(openCharx(fixture.mainFile).globalNote, 'Destructive preview keeps this note until apply.');
+    const destructivePreviewInfo = nestedRecord(destructivePreview.preview, 'destructive preview');
+    assert.deepEqual(destructivePreviewInfo.required_guards, [
+      {
+        name: 'expected_hash',
+        value: refreshedRootHash,
+        payloadPath: '/expected_hash',
+        sourceOperations: ['inspect_document'],
+        sourceResultPath: '/result/surfaces/document_hash',
+      },
+    ]);
+    metrics.staleGuardReuse = true;
+
+    recoveryRuntime = await startStandaloneClient({
+      refs: [fixture.referenceRisum],
+      userDataDir: path.join(fixture.dir, 'recovery-user-data'),
+    });
+    const sessionInspect = await callJson(recoveryRuntime, 'inspect_document', { target: { kind: 'session' } });
+    assert.deepEqual(routedTools(sessionInspect), ['session_status']);
+    const noActiveRead = await callJson(
+      recoveryRuntime,
+      'read_content',
+      { target: activeTarget, selectors: [{ family: 'field', field: 'description' }] },
+      { expectError: true },
+    );
+    assert.equal(noActiveRead.status, 400);
+    assert.equal(noActiveRead.target, 'document:current');
+    const recoveryExternalInspect = await callJson(recoveryRuntime, 'inspect_document', {
+      target: { kind: 'external', file_path: fixture.mainFile },
+    });
+    assert.deepEqual(routedTools(recoveryExternalInspect), ['inspect_external_file']);
+    const opened = await callJson(recoveryRuntime, 'open_file', { file_path: fixture.mainFile });
+    assert.equal(opened.file_path, fixture.mainFile);
+    assert.equal(opened.file_type, 'charx');
+    const recoveredRead = await callJson(recoveryRuntime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    assert.deepEqual(routedTools(recoveredRead), ['read_field']);
+
+    const wrongTools = ['read_field', 'write_field', 'replace_in_field', 'patch_surface'];
+    metrics.wrongToolAvoidance = facadeOnlyCalls.every((name) => !wrongTools.includes(name));
+    assert.equal(metrics.wrongToolAvoidance, true);
+    assert.equal(metrics.activeWorkflowCallCount, 7);
+    assert.equal(metrics.granularFallbackFrequency, 0);
+    assert.equal(metrics.staleGuardReuse, true);
+    assert.equal(metrics.finalArtifactEquality, true);
+  } catch (error) {
+    const stderrText = [runtime, recoveryRuntime]
+      .flatMap((candidate) => candidate?.stderrChunks ?? [])
+      .join('')
+      .trim();
+    const detail =
+      error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error, null, 2);
+    throw new Error(stderrText ? `${detail}\n\nStandalone MCP stderr:\n${stderrText}` : detail);
+  } finally {
+    if (recoveryRuntime) await recoveryRuntime.close();
+    if (runtime) await runtime.close();
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
 }
 
 (async function run() {
@@ -452,7 +960,16 @@ function assertToolListMetadata(
       requiresConfirmation: true,
       supportsDryRun: true,
     });
-    for (const toolName of ['inspect_document', 'read_content', 'search_document', 'preview_edit', 'apply_edit']) {
+    for (const toolName of [
+      'inspect_document',
+      'list_tool_profiles',
+      'read_content',
+      'search_document',
+      'preview_edit',
+      'apply_edit',
+      'validate_content',
+      'load_guidance',
+    ]) {
       assert.ok(
         tools.tools.some((tool) => tool.name === toolName),
         `${toolName} should be registered as a first-wave facade tool`,
@@ -463,6 +980,16 @@ function assertToolListMetadata(
       staleGuards: [],
       surfaceKind: 'facade',
       recommendation: 'preferred',
+      profiles: ['facade-first', 'authoring', 'advanced-full', 'readonly'],
+      defaultProfile: 'facade-first',
+    });
+    assertToolListMetadata(tools.tools, 'list_tool_profiles', {
+      family: 'session',
+      staleGuards: [],
+      surfaceKind: 'facade',
+      recommendation: 'preferred',
+      profiles: ['facade-first', 'authoring', 'advanced-full', 'readonly'],
+      defaultProfile: 'facade-first',
     });
     assertToolListMetadata(tools.tools, 'preview_edit', {
       family: 'surface',
@@ -471,6 +998,8 @@ function assertToolListMetadata(
       supportsDryRun: true,
       surfaceKind: 'facade',
       recommendation: 'preferred',
+      profiles: ['facade-first', 'authoring', 'advanced-full'],
+      defaultProfile: 'facade-first',
     });
     assertToolListMetadata(tools.tools, 'apply_edit', {
       family: 'surface',
@@ -479,6 +1008,8 @@ function assertToolListMetadata(
       supportsDryRun: false,
       surfaceKind: 'facade',
       recommendation: 'preferred',
+      profiles: ['facade-first', 'authoring', 'advanced-full'],
+      defaultProfile: 'facade-first',
     });
 
     const fieldSearch = await client.callTool({
@@ -876,6 +1407,8 @@ function assertToolListMetadata(
     assert.equal(currentFieldAfterOpenJson.content, 'Probe description field.');
 
     console.log('search_all_fields MCP smoke test passed');
+    await runStandaloneFacadeDogfood();
+    console.log('facade-first standalone MCP dogfood eval passed');
   } catch (error) {
     const stderrText = stderrChunks.join('').trim();
     const detail =

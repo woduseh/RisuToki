@@ -29,14 +29,34 @@ If this file and code diverge, the TypeScript source wins.
 - Agents should treat larger `artifacts.byte_size` values as a cue to keep follow-up reads narrow: search first, then read ranges/items/sections instead of broad dumps.
 - High-traffic tools may return narrower per-tool `next_actions` than the family default; trust the response metadata first, then fall back to the family map when no override is present.
 - `tools/list` exposes additive per-tool `_meta` for agent planning: every tool includes `risutoki/family`, legacy `risutoki/staleGuards`, and structured `risutoki/staleGuardDetails`; mutation-capable tools also include `risutoki/requiresConfirmation` and `risutoki/supportsDryRun`. Use these to choose family-specific workflows, carry stale guards, prefer preview-first routes when available, and anticipate approval pauses before mutating.
-- `tools/list` also exposes additive taxonomy preference metadata: granular tools use `risutoki/surfaceKind=granular` and `risutoki/recommendation=advanced`; implemented facade tools use `surfaceKind=facade` and `recommendation=preferred`. No existing granular tool is removed or renamed by facade v1.
+- `tools/list` also exposes additive taxonomy preference/profile metadata: granular tools use `risutoki/surfaceKind=granular` and `risutoki/recommendation=advanced`; implemented facade/catalog tools use `surfaceKind=facade` and `recommendation=preferred`; every tool reports `risutoki/profiles` plus `risutoki/defaultProfile=facade-first`. No existing granular tool is removed or renamed by facade v1.
 - `risutoki/staleGuardDetails` describes each guard with `name`, `payloadPath`, `sourceOperations`, `sourceResultPath`, retry guidance, and (for aligned batch arrays or nested batch payloads) `alignedWithPath`. Prefer this structured metadata over guessing from the flat guard-name list; keep using `risutoki/staleGuards` only for backward-compatible clients.
 - Indexed mutation tools now accept additive stale-index guards across the structured families: carry the latest `comment` into `expected_comment` for lorebook/regex/trigger writes, the latest `preview` into `expected_preview` or `expected_previews` for greeting writes/deletes, and the latest `type` / `preview` into `expected_type` / `expected_preview` for risup prompt-item writes. Mismatches fail with `409` plus family-specific `details.expected_*` / `details.actual_*` fields instead of silently touching the wrong entry.
 - The same tool surface can run app-backed or standalone. In standalone mode (`toki-mcp-server.js --standalone`), the active document is file-backed via `--file`/`open_file`, references come from repeated `--ref`, and mutation routes require `--allow-writes`.
 
+## Tool surface profile contract
+
+The executable profile contract lives in `src/lib/mcp-tool-taxonomy.ts`. RisuToki uses an on-demand catalog facade instead of MCP `tools/list` filtering because not all clients can safely request alternate lists or recover from a filtered catalog. Call `list_tool_profiles` for a compact profile-specific catalog, and keep `tools/list` unfiltered so fallback/legacy tools remain reachable.
+
+| Profile         | Default | Included categories                                                                                                                                                              | Excluded / restricted categories                                                                                       | Escape hatch / discovery                                                                                                                   |
+| --------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `facade-first`  | Yes     | Implemented facade/catalog tools: `inspect_document`, `list_tool_profiles`, `read_content`, `search_document`, `preview_edit`, `apply_edit`, `validate_content`, `load_guidance` | `tools/list` remains unfiltered; the compact catalog omits granular routes unless the client requests `advanced-full`. | Use `advanced-full` when the facade cannot express the target, selector, operation, bounds, response detail, or compatibility requirement. |
+| `authoring`     | No      | Facade tools plus field/surface/search, structured authoring families, reference/skill/CBS/Danbooru guidance                                                                     | Direct external mutation, session/file-open controls, snapshots, imports/exports, and broad administrative workflows.  | Use `advanced-full` for direct file/session administration or unsupported authoring shapes.                                                |
+| `advanced-full` | No      | All registered tools, all granular fallback tools, and legacy compatibility routes                                                                                               | None.                                                                                                                  | Canonical legacy escape hatch; aliases `advanced` and `full` resolve here.                                                                 |
+| `readonly`      | No      | Only tools with `readOnlyHint=true`, including the read-only first-wave facade tools                                                                                             | `preview_edit`, `apply_edit`, every mutating/destructive tool, and session/file-open mutations.                        | Request `advanced-full` only after leaving read-only mode intentionally.                                                                   |
+
+Client request/discovery rules:
+
+1. Profile names are stable strings: `facade-first`, `authoring`, `advanced-full`, and `readonly`; `advanced` / `full` are aliases for `advanced-full`.
+2. The default is `facade-first` for planning and prompt guidance, but `tools/list` still returns the full tool catalog for compatibility.
+3. Profile membership is discoverable per tool through `_meta['risutoki/profiles']`; `_meta['risutoki/defaultProfile']` tells clients the default planning profile.
+4. Preferred low-context path: call `list_tool_profiles` with `profile="facade-first"` (or `authoring`/`readonly`) and use the returned names for planning. Request `profile="advanced-full"` or alias `advanced`/`full` when a granular escape hatch is needed.
+5. If a client cannot call `list_tool_profiles`, it can still use the metadata fallback: keep the full `tools/list`, sort/prefer tools in the requested profile from `_meta`, and use `advanced-full` as the documented escape hatch.
+6. Any future server-side filtering must preserve the `readonly` restriction (`readOnlyHint=true` only) and must make `advanced-full` available before hiding granular tools from `facade-first`.
+
 ## Facade implementation status
 
-Facade v1 now has a focused first-wave implementation for `inspect_document`, `read_content`, `search_document`, `preview_edit`, and `apply_edit`. These tools compose existing HTTP routes and report routed_legacy, touched_targets, guard values/previews where applicable, and facade `next_actions`. Granular tools remain available as advanced routes for precise/manual workflows and unsupported facade cases.
+Facade v1 now has a focused implementation for `inspect_document`, `list_tool_profiles`, `read_content`, `search_document`, `preview_edit`, `apply_edit`, `validate_content`, and `load_guidance`. These tools compose existing HTTP routes (except `list_tool_profiles`, which is taxonomy-only) and report routed_legacy, touched_targets, guard values/previews where applicable, and facade `next_actions`. Granular tools remain available as advanced routes for precise/manual workflows and unsupported facade cases.
 
 ### First-wave facade replacement matrix
 
@@ -64,7 +84,7 @@ Agents should still choose granular tools when one of these criteria is true:
 
 1. **Escape hatch:** the facade cannot express the target, selector, operation, bounds, or response detail needed for the task.
 2. **Exact structured editor:** lorebook, regex, greetings, triggers, Lua/CSS sections, risup prompt items, assets, CBS, snippets, imports/exports, and reference item readers still require their dedicated families unless the facade row above explicitly covers the case.
-3. **Unsupported facade operation:** first-wave facade edits are active field write/replace and active surface patch only; inserts, block replacements, batch item writes, deletes, asset compression, external mutations, and item/file management stay granular.
+3. **Unsupported facade operation:** facade edits cover active field write/replace, active surface patch, and unopened external field write/replace. Inserts, block replacements, batch item writes, deletes, asset compression, external surface patches, and item/file management stay granular.
 4. **Debugging and compatibility:** use granular tools to reproduce legacy client behavior, inspect raw stale guards/hashes, compare payloads during parity work, or keep older automation stable during the compatibility window.
 
 ### Deprecation stages and compatibility window
@@ -81,7 +101,7 @@ No first-wave granular tool is currently scheduled for removal. Treat this as a 
 ### Parity status, known gaps, and coverage references
 
 - **Implemented parity:** first-wave read/search/preview/apply routes compose existing HTTP routes and report routed_legacy, touched_targets, guard values/previews, facade bounds/truncation metadata, and facade `next_actions`.
-- **Known gaps:** `validate_content`, standalone `load_guidance`, item management (`manage_items`), asset management (`manage_assets`), file management (`manage_file`), structured item editors, deletes, imports/exports, external mutations, and broad batch operations remain outside first-wave facade scope.
+- **Known gaps:** `validate_content` is intentionally limited to active lorebook key validation, `load_guidance` covers skill catalog/document reads only, and item management (`manage_items`), asset management (`manage_assets`), file management (`manage_file`), structured item editors, deletes, imports/exports, external surface patches, and broad batch operations remain outside facade scope.
 - **Test/eval references:** request-shape contract coverage lives in `src/lib/mcp-request-schemas.test.ts`; taxonomy/profile metadata and agent eval fixture coverage live in `src/lib/mcp-tool-taxonomy.test.ts`; doc/tool drift guards live in `src/lib/doc-drift.test.ts`; runtime MCP facade smoke coverage lives in `test/test-mcp-search-all.ts`.
 - **Safe fade-out tracking:** before marking a granular route legacy or removal-candidate, add or update parity tests that compare facade output with the legacy route, keep stale-guard/dry-run coverage, update this matrix, update `skills/using-mcp-tools/SKILL.md`, regenerate skill copies, and run targeted doc-drift/taxonomy/MCP smoke tests.
 
@@ -103,17 +123,17 @@ Facade v1 is a **new preferred layer** over the existing granular surface. It is
 
 The executable contract lives in `src/lib/mcp-request-schemas.ts` and `src/lib/mcp-request-schemas.test.ts`.
 
-### First-wave facade tools
+### Implemented facade tools
 
-| Tool               | Mutability | Purpose                                                                                                                                         |
-| ------------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inspect_document` | read-only  | **Implemented.** Summarize active/session, external, reference, or guidance targets before choosing a route.                                    |
-| `read_content`     | read-only  | **Implemented.** Read bounded field/surface content through explicit selectors (active/external field+surface, reference fields in first wave). |
-| `search_document`  | read-only  | **Implemented.** Search active documents, or a specified external/reference field.                                                              |
-| `preview_edit`     | preview    | **Implemented.** Produce a dry-run/read-only preview token for active field replace/write and active surface patch operations.                  |
-| `apply_edit`       | mutating   | **Implemented.** Apply a prior `preview_edit` by `preview_token` + `operation_digest`, carrying guard values forward.                           |
-| `validate_content` | read-only  | Future v1 contract tool; not registered in the first implementation wave.                                                                       |
-| `load_guidance`    | read-only  | Future v1 contract tool; guidance reads are currently reachable through `inspect_document` with `target.kind="guidance"`.                       |
+| Tool               | Mutability | Purpose                                                                                                                                                         |
+| ------------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect_document` | read-only  | **Implemented.** Summarize active/session, external, reference, or guidance targets before choosing a route.                                                    |
+| `read_content`     | read-only  | **Implemented.** Read bounded field/surface content through explicit selectors (active/external field+surface, reference fields in first wave).                 |
+| `search_document`  | read-only  | **Implemented.** Search active documents, or a specified external/reference field.                                                                              |
+| `preview_edit`     | preview    | **Implemented.** Produce a dry-run/read-only preview token for active/external field replace/write and active surface patch operations.                         |
+| `apply_edit`       | mutating   | **Implemented.** Apply a prior `preview_edit` by `preview_token` + `operation_digest`, carrying guard values forward.                                           |
+| `validate_content` | read-only  | **Implemented (focused second wave).** Validates active-document lorebook key hygiene by routing to `validate_lorebook_keys`; other validators remain granular. |
+| `load_guidance`    | read-only  | **Implemented (focused second wave).** Loads the skill catalog or a specific skill document by routing to `list_skills` / `read_skill`.                         |
 
 Future facade candidates are documented but not part of first-wave v1: `manage_items`, `manage_assets`, and `manage_file`.
 

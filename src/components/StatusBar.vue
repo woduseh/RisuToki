@@ -6,6 +6,10 @@ const store = useAppStore();
 const visible = ref(false);
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
+function dismissStatus(): void {
+  store.clearStatus();
+}
+
 const statusClasses = computed(() => ({
   visible: visible.value,
   'status-info': store.statusKind === 'info',
@@ -44,5 +48,15 @@ onBeforeUnmount(() => {
 <template>
   <div id="statusbar" :class="statusClasses" role="status" aria-live="polite" aria-atomic="true">
     <span id="status-text">{{ store.statusText }}</span>
+    <button
+      v-if="store.statusText"
+      id="status-dismiss"
+      type="button"
+      title="상태 메시지 닫기"
+      aria-label="상태 메시지 닫기"
+      @click="dismissStatus"
+    >
+      ×
+    </button>
   </div>
 </template>
