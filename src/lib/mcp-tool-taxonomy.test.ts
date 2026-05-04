@@ -579,16 +579,38 @@ describe('MCP Tool Taxonomy', () => {
       }),
     );
 
-    const facadeCatalog = buildToolSurfaceProfileCatalog();
-    expect(facadeCatalog?.tools.find((tool) => tool.name === 'inspect_document')).toEqual(
-      expect.objectContaining({ workflowStages: ['discover'], readOnly: true }),
-    );
-    expect(facadeCatalog?.tools.find((tool) => tool.name === 'preview_edit')).toEqual(
-      expect.objectContaining({ workflowStages: ['preview'], readOnly: false }),
-    );
-    expect(facadeCatalog?.tools.find((tool) => tool.name === 'apply_edit')).toEqual(
-      expect.objectContaining({ workflowStages: ['apply'], readOnly: false }),
-    );
+    const representativeStages = [
+      ['inspect_document', ['discover']],
+      ['read_content', ['read']],
+      ['search_document', ['search']],
+      ['validate_content', ['validate']],
+      ['preview_edit', ['preview']],
+      ['apply_edit', ['apply']],
+    ] as const;
+    for (const profileName of ['facade-first', 'authoring'] as const) {
+      const catalog = buildToolSurfaceProfileCatalog(profileName);
+      for (const [toolName, workflowStages] of representativeStages) {
+        expect(
+          catalog?.tools.find((tool) => tool.name === toolName),
+          `${profileName}:${toolName}`,
+        ).toEqual(
+          expect.objectContaining({
+            workflowStages,
+            readOnly: getToolAnnotations(toolName)?.readOnlyHint === true,
+          }),
+        );
+      }
+    }
+
+    const readonlyCatalog = buildToolSurfaceProfileCatalog('readonly');
+    for (const [toolName, workflowStages] of representativeStages.slice(0, 4)) {
+      expect(
+        readonlyCatalog?.tools.find((tool) => tool.name === toolName),
+        `readonly:${toolName}`,
+      ).toEqual(expect.objectContaining({ workflowStages, readOnly: true }));
+    }
+    expect(readonlyCatalog?.tools.some((tool) => tool.name === 'preview_edit')).toBe(false);
+    expect(readonlyCatalog?.tools.some((tool) => tool.name === 'apply_edit')).toBe(false);
   });
 
   it('readonly profile tools never advertise preview or apply workflow stages', () => {

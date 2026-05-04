@@ -638,6 +638,42 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     const profileTools = nestedArray(profile.tools, 'profile catalog.tools');
     assert.ok(profileTools.length < tools.tools.length, 'facade-first profile catalog should be compact');
     assert.ok(profileTools.some((tool) => nestedRecord(tool, 'profile tool').name === 'inspect_document'));
+    const assertProfileToolWorkflowStages = (catalogTools: unknown[], toolName: string, workflowStages: string[]) => {
+      const tool = catalogTools.find((candidate) => nestedRecord(candidate, 'profile tool').name === toolName);
+      assert.deepEqual(
+        nestedRecord(tool, `${toolName} profile catalog entry`).workflowStages,
+        workflowStages,
+        `${toolName} compact catalog entry should include workflowStages`,
+      );
+    };
+    const facadeWorkflowStageExamples = [
+      ['inspect_document', ['discover']],
+      ['read_content', ['read']],
+      ['search_document', ['search']],
+      ['validate_content', ['validate']],
+      ['preview_edit', ['preview']],
+      ['apply_edit', ['apply']],
+    ] as const;
+    for (const [toolName, workflowStages] of facadeWorkflowStageExamples) {
+      assertProfileToolWorkflowStages(profileTools, toolName, [...workflowStages]);
+    }
+    const readonlyProfileCatalog = await callJson(runtime, 'list_tool_profiles', { profile: 'readonly' });
+    const readonlyProfile = nestedRecord(readonlyProfileCatalog.profile, 'readonly profile catalog');
+    const readonlyProfileTools = nestedArray(readonlyProfile.tools, 'readonly profile catalog.tools');
+    for (const [toolName, workflowStages] of [
+      ['inspect_document', ['discover']],
+      ['read_content', ['read']],
+      ['search_document', ['search']],
+      ['validate_content', ['validate']],
+    ] as const) {
+      assertProfileToolWorkflowStages(readonlyProfileTools, toolName, [...workflowStages]);
+    }
+    const authoringProfileCatalog = await callJson(runtime, 'list_tool_profiles', { profile: 'authoring' });
+    const authoringProfile = nestedRecord(authoringProfileCatalog.profile, 'authoring profile catalog');
+    const authoringProfileTools = nestedArray(authoringProfile.tools, 'authoring profile catalog.tools');
+    for (const [toolName, workflowStages] of facadeWorkflowStageExamples) {
+      assertProfileToolWorkflowStages(authoringProfileTools, toolName, [...workflowStages]);
+    }
     const fullProfileCatalog = await callJson(runtime, 'list_tool_profiles', { profile: 'full' });
     const fullProfile = nestedRecord(fullProfileCatalog.profile, 'full profile catalog');
     assert.equal(fullProfile.resolvedProfile, 'advanced-full');

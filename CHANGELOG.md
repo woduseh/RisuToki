@@ -9,6 +9,13 @@
 
 ---
 
+## [0.69.1] - 2026-05-05
+
+### Changed
+
+- Hardened `list_tool_profiles` regression coverage so compact catalog entries expose `workflowStages` for facade-first, readonly, and authoring workflows.
+- Synchronized MCP workflow docs so the facade quick map includes `validate_content` and `load_guidance`, removed stale fixed tool-count wording, and clarified reference structured item read boundaries.
+
 ## [0.69.0] - 2026-05-05
 
 ### Added
