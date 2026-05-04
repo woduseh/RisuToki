@@ -41,6 +41,10 @@ const { normalizePromptTemplateForStorage, serializePromptTemplate } = require('
 const { cloneJson } = require('./lib/shared-utils') as {
   cloneJson: <T>(value: T) => T;
 };
+const { writeFileAtomicSync, writePathAtomicSync } = require('./lib/atomic-write') as {
+  writeFileAtomicSync: (filePath: string, data: string | NodeJS.ArrayBufferView) => void;
+  writePathAtomicSync: (filePath: string, writeTempPath: (tempPath: string) => void) => void;
+};
 
 const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_FILE_SIZE: number = 200 * 1024 * 1024; // 200 MB
@@ -673,8 +677,7 @@ export function saveCharx(filePath: string, data: CharxData): void {
     zip.addFile(`x_meta/${name}.json`, Buffer.from(JSON.stringify(meta), 'utf-8'));
   }
 
-  // Write ZIP
-  zip.writeZip(filePath);
+  writePathAtomicSync(filePath, (tempPath) => zip.writeZip(tempPath));
 }
 
 // ---------------------------------------------------------------------------
@@ -788,7 +791,7 @@ export function saveRisum(filePath: string, data: CharxData): void {
   mod.lorebook = data.lorebook || [];
 
   const risumBuf: Buffer = buildRisum(moduleJson, data.risumAssets || []);
-  fs.writeFileSync(filePath, risumBuf);
+  writeFileAtomicSync(filePath, risumBuf);
 }
 
 // ---------------------------------------------------------------------------
@@ -1173,7 +1176,7 @@ export function saveRisup(filePath: string, data: CharxData): void {
   // Step 5: RPack encode
   const encoded = rpackEncode(compressed);
 
-  fs.writeFileSync(filePath, encoded);
+  writeFileAtomicSync(filePath, encoded);
 }
 
 // ---------------------------------------------------------------------------

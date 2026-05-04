@@ -36,7 +36,7 @@ export const DEFAULT_SLOT_SIZES: Record<LayoutSlot, number> = {
   right: 260,
   'far-right': 350,
   top: 250,
-  bottom: 250
+  bottom: 250,
 };
 
 export const POS_LABELS: Record<PanelPosition | 'hide', string> = {
@@ -48,7 +48,20 @@ export const POS_LABELS: Record<PanelPosition | 'hide', string> = {
   bottom: '하단',
   sidebar: '사이드바',
   _popout: '팝아웃',
-  hide: '숨김'
+  hide: '숨김',
+};
+
+const RESIZER_STEP = 10;
+const RESIZER_FAST_STEP = 50;
+const RESIZER_MIN = 100;
+
+const SLOT_RESIZER_LABELS: Record<LayoutSlot, string> = {
+  'far-left': '좌끝 패널 크기 조절',
+  left: '좌측 패널 크기 조절',
+  right: '우측 패널 크기 조절',
+  'far-right': '우끝 패널 크기 조절',
+  top: '상단 패널 크기 조절',
+  bottom: '하단 패널 크기 조절',
 };
 
 export function createDefaultLayoutState(): LayoutState {
@@ -59,16 +72,20 @@ export function createDefaultLayoutState(): LayoutState {
     itemsVisible: true,
     terminalVisible: true,
     avatarVisible: true,
-    slotSizes: { ...DEFAULT_SLOT_SIZES }
+    slotSizes: { ...DEFAULT_SLOT_SIZES },
   };
 }
 
-export function applyStoredLayoutState(target: LayoutState, stored: Partial<LayoutState> | null | undefined): LayoutState {
+export function applyStoredLayoutState(
+  target: LayoutState,
+  stored: Partial<LayoutState> | null | undefined,
+): LayoutState {
   if (!stored) return target;
 
   const migrated = { ...stored } as Partial<LayoutState> & { sidebarPos?: LayoutSlot; sidebarVisible?: boolean };
   if (migrated.sidebarPos && !migrated.itemsPos) migrated.itemsPos = migrated.sidebarPos;
-  if (migrated.sidebarVisible !== undefined && migrated.itemsVisible === undefined) migrated.itemsVisible = migrated.sidebarVisible;
+  if (migrated.sidebarVisible !== undefined && migrated.itemsVisible === undefined)
+    migrated.itemsVisible = migrated.sidebarVisible;
 
   if (migrated.itemsPos) target.itemsPos = migrated.itemsPos;
   if (migrated.refsPos && migrated.refsPos !== '_popout') target.refsPos = migrated.refsPos;
@@ -88,7 +105,7 @@ export function createLayoutManager({
   onRefit,
   onStatus,
   saveState,
-  state
+  state,
 }: {
   documentRef?: Document;
   onRefit: () => void;
@@ -113,7 +130,7 @@ export function createLayoutManager({
       right: null,
       'far-right': null,
       top: null,
-      bottom: null
+      bottom: null,
     },
     resizers: {
       'far-left': null,
@@ -121,12 +138,13 @@ export function createLayoutManager({
       right: null,
       'far-right': null,
       top: null,
-      bottom: null
-    }
+      bottom: null,
+    },
   };
 
   let refitTimer: ReturnType<typeof setTimeout> | null = null;
   const resizerHandlers: Partial<Record<LayoutSlot, (event: MouseEvent) => void>> = {};
+  const resizerKeyHandlers: Partial<Record<LayoutSlot, (event: KeyboardEvent) => void>> = {};
 
   function cacheElements(): void {
     if (elements._ready) return;
@@ -162,14 +180,51 @@ export function createLayoutManager({
   function initSlotResizers(): void {
     for (const slotName of SLOT_IDS) {
       const resizer = elements.resizers[slotName];
-      if (!resizer || !resizer.classList.contains('active')) continue;
+      if (!resizer) continue;
 
       const previousHandler = resizerHandlers[slotName];
       if (previousHandler) {
         resizer.removeEventListener('mousedown', previousHandler);
+        delete resizerHandlers[slotName];
+      }
+      const previousKeyHandler = resizerKeyHandlers[slotName];
+      if (previousKeyHandler) {
+        resizer.removeEventListener('keydown', previousKeyHandler);
+        delete resizerKeyHandlers[slotName];
       }
 
       const isVertical = V_SLOTS.has(slotName);
+      const isActive = resizer.classList.contains('active');
+      const currentSize = state.slotSizes[slotName] || DEFAULT_SLOT_SIZES[slotName];
+      resizer.setAttribute('role', 'separator');
+      resizer.setAttribute('aria-orientation', isVertical ? 'vertical' : 'horizontal');
+      resizer.setAttribute('aria-label', SLOT_RESIZER_LABELS[slotName]);
+      resizer.setAttribute('aria-valuemin', String(RESIZER_MIN));
+      resizer.setAttribute('aria-valuenow', String(currentSize));
+      resizer.setAttribute('aria-valuetext', `${currentSize}px`);
+      resizer.tabIndex = isActive ? 0 : -1;
+      if (!isActive) continue;
+
+      const applySize = (newSize: number): void => {
+        const slot = getSlotElement(slotName);
+        if (!slot) return;
+        const size = Math.max(RESIZER_MIN, newSize);
+        if (isVertical) {
+          slot.style.width = `${size}px`;
+        } else {
+          slot.style.height = `${size}px`;
+        }
+        state.slotSizes[slotName] = size;
+        resizer.setAttribute('aria-valuenow', String(size));
+        resizer.setAttribute('aria-valuetext', `${size}px`);
+      };
+
+      const getDirection = (): number => {
+        if (isVertical && (slotName === 'right' || slotName === 'far-right')) return -1;
+        if (!isVertical && slotName === 'bottom') return -1;
+        return 1;
+      };
+
       const handler = (event: MouseEvent): void => {
         event.preventDefault();
         const slot = getSlotElement(slotName);
@@ -177,23 +232,12 @@ export function createLayoutManager({
 
         const startPos = isVertical ? event.clientX : event.clientY;
         const startSize = isVertical ? slot.getBoundingClientRect().width : slot.getBoundingClientRect().height;
-        const growsReverse = slotName === 'right' || slotName === 'far-right';
-        const growsReverseVertical = slotName === 'bottom';
+        const direction = getDirection();
 
         resizer.classList.add('dragging');
         const onMove = (moveEvent: MouseEvent): void => {
           const delta = isVertical ? moveEvent.clientX - startPos : moveEvent.clientY - startPos;
-          let direction = 1;
-          if (isVertical && growsReverse) direction = -1;
-          if (!isVertical && growsReverseVertical) direction = -1;
-
-          const newSize = Math.max(100, startSize + delta * direction);
-          if (isVertical) {
-            slot.style.width = `${newSize}px`;
-          } else {
-            slot.style.height = `${newSize}px`;
-          }
-          state.slotSizes[slotName] = newSize;
+          applySize(startSize + delta * direction);
         };
 
         const onUp = (): void => {
@@ -208,8 +252,21 @@ export function createLayoutManager({
         documentRef.addEventListener('mouseup', onUp);
       };
 
+      const keyHandler = (event: KeyboardEvent): void => {
+        const relevantKeys = isVertical ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
+        if (!relevantKeys.includes(event.key)) return;
+        event.preventDefault();
+        const baseDelta = event.shiftKey ? RESIZER_FAST_STEP : RESIZER_STEP;
+        const signedDelta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? baseDelta : -baseDelta;
+        applySize((state.slotSizes[slotName] || DEFAULT_SLOT_SIZES[slotName]) + signedDelta * getDirection());
+        saveState();
+        onRefit();
+      };
+
       resizerHandlers[slotName] = handler;
+      resizerKeyHandlers[slotName] = keyHandler;
       resizer.addEventListener('mousedown', handler);
+      resizer.addEventListener('keydown', keyHandler);
     }
   }
 
@@ -225,7 +282,7 @@ export function createLayoutManager({
       sidebarExpand,
       sidebarRefs,
       splitResizer,
-      termBtn
+      termBtn,
     } = elements;
 
     if (!sidebar || !refsPanel || !bottomArea || !refsSection || !splitResizer || !refsPanelContent) {
@@ -250,7 +307,7 @@ export function createLayoutManager({
       right: [],
       'far-right': [],
       top: [],
-      bottom: []
+      bottom: [],
     };
 
     if (state.itemsVisible) {
@@ -400,6 +457,6 @@ export function createLayoutManager({
     state,
     toggleAvatar,
     toggleSidebar,
-    toggleTerminal
+    toggleTerminal,
   };
 }

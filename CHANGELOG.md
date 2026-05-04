@@ -9,6 +9,73 @@
 
 ---
 
+## [0.67.0] - 2026-05-04
+
+### Added
+
+- Added facade-first MCP public workflow tooling and docs for migration from legacy route names.
+- Added session integrity metadata to MCP responses so agents can verify active-document state and stale-guard context.
+
+### Changed
+
+- Routed MCP documentation and skills around the public facade surface while preserving legacy migration guidance.
+- Extracted internal MCP session-status route handling into dedicated helpers for clearer API-server boundaries.
+
+### Fixed
+
+- Improved keyboard focus and resizer accessibility behavior across the UI.
+
+## [0.66.0] - 2026-05-04
+
+### Added
+
+- Added structured MCP stale-guard metadata via `risutoki/staleGuardDetails`, including guard names, payload paths, source-operation hints, retry guidance, and batch alignment details while preserving the existing `risutoki/staleGuards` array.
+- Added MCP safety contracts for Lua/CSS section `expected_hash` and `expected_preview` writes, asset `expected_path` mutations, and `compress_assets_webp` dry-run previews.
+- Added real MCP SDK smoke/eval coverage for `tools/list` metadata visibility, stale-guard refresh/retry behavior, destructive previews, and external-file safety boundaries.
+- Added keyboard-accessible menu-bar semantics and focused UI accessibility coverage for ARIA-labelled icon controls, sidebar expand behavior, focus-visible affordances, and reduced-motion preferences.
+
+### Changed
+
+- Reference manifest restore now preserves temporarily missing or failed reference paths instead of immediately pruning and persisting a shortened manifest.
+- Autosave cleanup now checks recovery sidecar provenance before deleting sidecar-backed autosaves in shared custom autosave directories.
+
+### Fixed
+
+- Dialog-based open-file failures now surface as user-visible errors instead of looking like user cancellation.
+- Hardened recovery/autosave failure-mode handling for malformed records, invalid provenance, untitled autosave policy, sidecar write failures, and bounded renderer session-status waits.
+
+## [0.65.4] - 2026-05-04
+
+### Changed
+
+- `.charx`, `.risum`, and `.risup` saves now write through same-directory temp files before renaming into place, reducing the risk of corrupting the existing document on write failure.
+
+### Fixed
+
+- Fixed Save As and first-save flows so the active document path and window title are updated only after the target file is written successfully.
+
+## [0.65.3] - 2026-05-04
+
+### Changed
+
+- Ignored repo-local LLM agent work directories such as `.codex/`, `.codex-work/`, `output/`, and `tmp/` so transient agent artifacts no longer appear as untracked workspace noise.
+
+## [0.65.2] - 2026-05-04
+
+### Added
+
+- Added a shared atomic-write helper and tests for same-directory temp-file writes followed by rename.
+- Added MCP `tools/list` metadata for `risutoki/family` and `risutoki/staleGuards` so agents can discover workflow families and optional stale-guard parameters without reading docs first.
+
+### Changed
+
+- Reference manifest persistence, autosave recovery sidecars, and session recovery records now use atomic-write paths where available.
+- Updated MCP tool-surface docs and MCP workflow skill guidance for the expanded `tools/list` metadata.
+
+### Fixed
+
+- Fixed MCP skill frontmatter parsing for indented YAML flow arrays, restoring built-in skill metadata such as `file-structure-reference` related tools.
+
 ## [0.65.1] - 2026-05-04
 
 ### Fixed

@@ -28,15 +28,126 @@ If this file and code diverge, the TypeScript source wins.
 - `validate_cbs` is the intentional success-envelope exception because it keeps its existing structured `summary` object.
 - Agents should treat larger `artifacts.byte_size` values as a cue to keep follow-up reads narrow: search first, then read ranges/items/sections instead of broad dumps.
 - High-traffic tools may return narrower per-tool `next_actions` than the family default; trust the response metadata first, then fall back to the family map when no override is present.
-- `tools/list` exposes additive per-tool `_meta` for mutation-capable tools: `risutoki/requiresConfirmation` and `risutoki/supportsDryRun`. Use these to prefer preview-first routes when available and to anticipate approval pauses before mutating.
+- `tools/list` exposes additive per-tool `_meta` for agent planning: every tool includes `risutoki/family`, legacy `risutoki/staleGuards`, and structured `risutoki/staleGuardDetails`; mutation-capable tools also include `risutoki/requiresConfirmation` and `risutoki/supportsDryRun`. Use these to choose family-specific workflows, carry stale guards, prefer preview-first routes when available, and anticipate approval pauses before mutating.
+- `tools/list` also exposes additive taxonomy preference metadata: granular tools use `risutoki/surfaceKind=granular` and `risutoki/recommendation=advanced`; implemented facade tools use `surfaceKind=facade` and `recommendation=preferred`. No existing granular tool is removed or renamed by facade v1.
+- `risutoki/staleGuardDetails` describes each guard with `name`, `payloadPath`, `sourceOperations`, `sourceResultPath`, retry guidance, and (for aligned batch arrays or nested batch payloads) `alignedWithPath`. Prefer this structured metadata over guessing from the flat guard-name list; keep using `risutoki/staleGuards` only for backward-compatible clients.
 - Indexed mutation tools now accept additive stale-index guards across the structured families: carry the latest `comment` into `expected_comment` for lorebook/regex/trigger writes, the latest `preview` into `expected_preview` or `expected_previews` for greeting writes/deletes, and the latest `type` / `preview` into `expected_type` / `expected_preview` for risup prompt-item writes. Mismatches fail with `409` plus family-specific `details.expected_*` / `details.actual_*` fields instead of silently touching the wrong entry.
 - The same tool surface can run app-backed or standalone. In standalone mode (`toki-mcp-server.js --standalone`), the active document is file-backed via `--file`/`open_file`, references come from repeated `--ref`, and mutation routes require `--allow-writes`.
 
+## Facade implementation status
+
+Facade v1 now has a focused first-wave implementation for `inspect_document`, `read_content`, `search_document`, `preview_edit`, and `apply_edit`. These tools compose existing HTTP routes and report routed_legacy, touched_targets, guard values/previews where applicable, and facade `next_actions`. Granular tools remain available as advanced routes for precise/manual workflows and unsupported facade cases.
+
+### First-wave facade replacement matrix
+
+Use this table when migrating prompts, agent recipes, or eval fixtures away from legacy/granular routing. The replacement is intentionally facade-first, not facade-only: if a row names a gap or precision case, keep the granular route until facade parity is explicit.
+
+| Legacy/granular family or workflow                                                 | Preferred first-wave facade route                                    | Parity status                                                   | Keep granular route when                                                                                                 |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `session_status` before reads/writes                                               | `inspect_document` with `target.kind="session"`                      | Implemented for session overview and no-file-open routing.      | You need exact dirty-field, autosave, recovery, or runtime fields not surfaced by the facade summary.                    |
+| `inspect_external_file` preflight                                                  | `inspect_document` with `target.kind="external"`                     | Implemented for unopened file inspection.                       | You need the original external-file response shape for debugging or compatibility.                                       |
+| `list_references` discovery                                                        | `inspect_document` with `target.kind="reference"`                    | Implemented for bounded reference inspection.                   | You need the full legacy reference list or exact reference identifiers before a specialized reference read.              |
+| `list_fields`, `read_field`, `read_field_batch`, `read_field_range`                | `read_content` selectors against active fields                       | Implemented for bounded active field reads.                     | You need field stats/export, exact batch payload compatibility, or a structured family should be used instead.           |
+| `list_surfaces`, `read_surface`                                                    | `read_content` selectors against active surfaces                     | Implemented for bounded active surface reads.                   | You need unsupported JSON Pointer shapes, root hashes, or surface-debug payloads beyond facade bounds.                   |
+| `probe_field`, `probe_field_batch`, `external_read_field_range`                    | `read_content` selectors against external fields                     | Implemented for bounded unopened-file field reads.              | You need probe-specific summaries, external writes, or unsupported external content shapes.                              |
+| `external_read_surface`                                                            | `read_content` selectors against external surfaces                   | Implemented for bounded unopened-file surface reads.            | You need hash-level surface debugging or unsupported external JSON Pointer operations.                                   |
+| `read_reference_field`, `read_reference_field_batch`, `read_reference_field_range` | `read_content` selectors against reference fields                    | Implemented for first-wave reference field reads.               | You need reference lorebook/regex/Lua/CSS/greeting/trigger/risup item structure; use dedicated `read_reference_*` tools. |
+| `search_all_fields`, `search_in_field`                                             | `search_document` with `target.kind="active"`                        | Implemented for active-document search.                         | You need legacy result shape compatibility or a narrow structured-family search that the facade does not expose.         |
+| `external_search_in_field`                                                         | `search_document` with `target.kind="external"` and field selector   | Implemented for external field search.                          | You need external-family diagnostics or unsupported file/search scopes.                                                  |
+| `search_in_reference_field`                                                        | `search_document` with `target.kind="reference"` and field selector  | Implemented for reference field search.                         | You need specialized reference item searches rather than flat field text.                                                |
+| `replace_in_field`, `write_field` on active fields                                 | `preview_edit` then `apply_edit` for active field operations         | Implemented for preview-token-first active field write/replace. | You need insert/block replace, batch field writes, snapshots, or exact legacy write semantics.                           |
+| `patch_surface` on active surfaces                                                 | `preview_edit` then `apply_edit` for active surface patch operations | Implemented for preview-token-first active surface patch.       | You need `replace_in_surface`, cross-surface workflows, root-hash diagnostics, or unsupported patch shapes.              |
+
+### Legacy and advanced use criteria
+
+Agents should still choose granular tools when one of these criteria is true:
+
+1. **Escape hatch:** the facade cannot express the target, selector, operation, bounds, or response detail needed for the task.
+2. **Exact structured editor:** lorebook, regex, greetings, triggers, Lua/CSS sections, risup prompt items, assets, CBS, snippets, imports/exports, and reference item readers still require their dedicated families unless the facade row above explicitly covers the case.
+3. **Unsupported facade operation:** first-wave facade edits are active field write/replace and active surface patch only; inserts, block replacements, batch item writes, deletes, asset compression, external mutations, and item/file management stay granular.
+4. **Debugging and compatibility:** use granular tools to reproduce legacy client behavior, inspect raw stale guards/hashes, compare payloads during parity work, or keep older automation stable during the compatibility window.
+
+### Deprecation stages and compatibility window
+
+| Stage                               | Metadata/profile signal                                                                                                                                                       | Agent behavior                                                                                          | Removal readiness                                                                                                              |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Stage 0 — additive facade (current) | Facade tools advertise `risutoki/surfaceKind=facade` and `risutoki/recommendation=preferred`; granular tools default to `surfaceKind=granular` and `recommendation=advanced`. | Prefer first-wave facade rows for new workflows; keep granular routes for criteria above.               | Not removable. Granular tools are required for unsupported operations and backward compatibility.                              |
+| Stage 1 — soft legacy               | Covered granular routes may move from `recommendation=advanced` to `recommendation=legacy` after parity evidence exists.                                                      | New prompts should avoid legacy-covered routes unless a legacy-use criterion is documented in the task. | Only routes with facade parity, eval coverage, and migration docs can be marked soft legacy.                                   |
+| Stage 2 — warning window            | Tool descriptions or metadata may emit deprecation hints while tools still function.                                                                                          | Clients should log/update workflows and keep fallback tests until replacements are verified.            | Requires at least one release cycle with warnings and no uncovered first-party usage.                                          |
+| Stage 3 — removal candidate         | Covered routes are no longer required by first-party docs, skills, evals, or smoke tests.                                                                                     | Use facade only, except for explicitly retained advanced tools outside the covered matrix.              | Removal requires coordinator approval, changelog/release notes, migration notes, and passing full MCP/doc-drift/eval coverage. |
+
+No first-wave granular tool is currently scheduled for removal. Treat this as a migration guide and future fade-out checklist, not as a breaking-change announcement.
+
+### Parity status, known gaps, and coverage references
+
+- **Implemented parity:** first-wave read/search/preview/apply routes compose existing HTTP routes and report routed_legacy, touched_targets, guard values/previews, facade bounds/truncation metadata, and facade `next_actions`.
+- **Known gaps:** `validate_content`, standalone `load_guidance`, item management (`manage_items`), asset management (`manage_assets`), file management (`manage_file`), structured item editors, deletes, imports/exports, external mutations, and broad batch operations remain outside first-wave facade scope.
+- **Test/eval references:** request-shape contract coverage lives in `src/lib/mcp-request-schemas.test.ts`; taxonomy/profile metadata and agent eval fixture coverage live in `src/lib/mcp-tool-taxonomy.test.ts`; doc/tool drift guards live in `src/lib/doc-drift.test.ts`; runtime MCP facade smoke coverage lives in `test/test-mcp-search-all.ts`.
+- **Safe fade-out tracking:** before marking a granular route legacy or removal-candidate, add or update parity tests that compare facade output with the legacy route, keep stale-guard/dry-run coverage, update this matrix, update `skills/using-mcp-tools/SKILL.md`, regenerate skill copies, and run targeted doc-drift/taxonomy/MCP smoke tests.
+
+Agent eval coverage still keeps comparison fixtures for the earlier proposed compact names `mcp_session`, `mcp_read`, and `mcp_edit`; those names remain fixtures only and are not registered MCP tools:
+
+| Scenario                          | Current granular baseline                                                                                       | Proposed future facade target                                     | Metrics captured                                                               |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Active/external/reference routing | `session_status`, active reads, `inspect_external_file` / `external_*`, `list_references` / `read_reference_*`  | `mcp_read` with explicit active/external/reference target routing | Tool-list byte cost, call count, wrong-tool avoidance, final artifact equality |
+| Batch vs single edit choice       | `list_lorebook` → `replace_in_lorebook_batch` → `read_lorebook_batch`                                           | `mcp_edit` batch plan/apply/verify                                | Call count, wrong-tool avoidance, final artifact equality                      |
+| Stale-guard refresh/retry         | Guarded write returns `409`, refreshes through `staleGuardDetails.sourceOperations`, retries with current guard | `mcp_edit` guarded write with facade-managed refresh/retry        | Call count, stale recovery, final artifact equality                            |
+| Dry-run-first destructive edit    | `compress_assets_webp` with `dry_run: true`, then apply, then verify assets                                     | `mcp_edit` preview-required apply flow                            | Call count, dry-run compliance, final artifact equality                        |
+| No-file-open workflow             | `session_status` / `list_references` before `open_file`, then active reads                                      | `mcp_session` no-file-open recovery plus routed read              | Call count, wrong-tool avoidance, final artifact equality                      |
+
+The executable fixture lives in `src/lib/mcp-tool-taxonomy.test.ts` under `agent eval: facade-first baseline fixtures`; real MCP client smoke coverage for facade visibility, read-only routing, and preview/apply lives in `test/test-mcp-search-all.ts`.
+
+## Additive facade v1 public contract
+
+Facade v1 is a **new preferred layer** over the existing granular surface. It is additive: existing tools stay available as advanced granular routes for precise/manual workflows and backward-compatible clients.
+
+The executable contract lives in `src/lib/mcp-request-schemas.ts` and `src/lib/mcp-request-schemas.test.ts`.
+
+### First-wave facade tools
+
+| Tool               | Mutability | Purpose                                                                                                                                         |
+| ------------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect_document` | read-only  | **Implemented.** Summarize active/session, external, reference, or guidance targets before choosing a route.                                    |
+| `read_content`     | read-only  | **Implemented.** Read bounded field/surface content through explicit selectors (active/external field+surface, reference fields in first wave). |
+| `search_document`  | read-only  | **Implemented.** Search active documents, or a specified external/reference field.                                                              |
+| `preview_edit`     | preview    | **Implemented.** Produce a dry-run/read-only preview token for active field replace/write and active surface patch operations.                  |
+| `apply_edit`       | mutating   | **Implemented.** Apply a prior `preview_edit` by `preview_token` + `operation_digest`, carrying guard values forward.                           |
+| `validate_content` | read-only  | Future v1 contract tool; not registered in the first implementation wave.                                                                       |
+| `load_guidance`    | read-only  | Future v1 contract tool; guidance reads are currently reachable through `inspect_document` with `target.kind="guidance"`.                       |
+
+Future facade candidates are documented but not part of first-wave v1: `manage_items`, `manage_assets`, and `manage_file`.
+
+### Target discriminators
+
+Every facade request uses an explicit `target.kind` discriminator:
+
+- `active` — the current editor document.
+- `external` — an unopened file by `file_path`.
+- `reference` — a loaded reference by `reference_id` or `file_path`; read-only.
+- `guidance` — skill/docs material by `skill` or `document`; read-only.
+- `session` — current MCP/editor session state.
+
+### Preview and guard flow
+
+Mutations are preview-token-first:
+
+1. `preview_edit` accepts bounded `operations[]`, returns a `facade-preview-v1.*` `preview_token`, an `operation_digest`, and `required_guards`.
+2. `apply_edit` requires the preview token, operation digest, target, and current guard values.
+3. Guard metadata must be propagated from granular `risutoki/staleGuardDetails` into preview/apply plans. Stale apply attempts should fail with the existing structured `409` recovery pattern and refresh from `sourceOperations`.
+
+### Envelope and bounds
+
+Facade success responses use the additive envelope shape: `status: 200`, `summary`, `next_actions`, `artifacts.byte_size`, and a `facade` object containing `contract: "risutoki.facade.v1"`, `version: "v1"`, `tool`, `mutability`, target metadata, and truncation/bounds metadata. Responses preserve existing top-level payload compatibility and add facade metadata rather than wrapping everything under `data`.
+
+First-wave requests are bounded by contract: at most 50 selectors/operations/guard entries, at most 100 search matches, and `max_bytes <= 65536`. Truncated responses must say so in facade metadata and guide agents to narrower follow-up reads.
+
 ## Family map
+
+The family sections below describe the underlying granular tool surface. For first-wave inspect/read/search/preview/apply cases, route through the facade replacement matrix above first; use these families when a granular advanced/legacy criterion applies.
 
 ### `field`
 
-- **Use when:** reading or editing scalar/live document fields on the active file
+- **Use when:** advanced/legacy fallback for reading or editing scalar/live document fields on the active file when `read_content` or `preview_edit` / `apply_edit` are not sufficient
 - **Tools:** `list_fields`, `read_field`, `read_field_batch`, `write_field`, `write_field_batch`, `replace_in_field`, `replace_in_field_batch`, `replace_block_in_field`, `insert_in_field`, `read_field_range`, `get_field_stats`, `export_field_to_file`
 - **Hints:** RO/idempotent reads; write mutations for write/replace/insert; `export_field_to_file` is open-world
 - **Next actions:** `list_fields`, `read_field`, `search_in_field`, `write_field`
@@ -45,7 +156,7 @@ If this file and code diverge, the TypeScript source wins.
 
 ### `search`
 
-- **Use when:** locating text before deciding what to read or edit
+- **Use when:** advanced/legacy fallback for locating text before deciding what to read or edit when `search_document` cannot provide the needed selector or result shape
 - **Tools:** `search_in_field`, `search_all_fields`
 - **Hints:** RO, idempotent
 - **Next actions:** `search_in_field`, `search_all_fields`, `read_field`
@@ -61,15 +172,15 @@ If this file and code diverge, the TypeScript source wins.
 
 ### `session`
 
-- **Use when:** inspecting the current document, dirty/autosave state, recovery status, snapshot totals, and compact structured-surface counts before resuming work or making risky edits
+- **Use when:** advanced runtime diagnostics for the current document, dirty/autosave state, recovery status, lightweight stat-based integrity metadata, snapshot totals, and compact structured-surface counts when `inspect_document` is not detailed enough
 - **Tools:** `session_status`, `save_current_file`
 - **Hints:** `session_status` is RO/idempotent; `save_current_file` writes the current document to disk
 - **Next actions:** `session_status`, `open_file`, `list_snapshots`
-- **Boundary:** this family reports editor/runtime state rather than document content and remains available even when no file is open; use the returned `surfaceSummary` to decide whether follow-up `list_*` reads are needed
+- **Boundary:** this family reports editor/runtime state rather than document content and remains available even when no file is open; use `integrity.activeFile` / `integrity.references` `mtimeMs`, `size`, and unavailable reasons to detect outside file changes before retrying, and use the returned `surfaceSummary` to decide whether follow-up `list_*` reads are needed
 
 ### `surface`
 
-- **Use when:** a specialized family cannot reach the needed `.charx`, `.risum`, or `.risup` content and you need JSON Pointer based fallback reads or edits on the active document
+- **Use when:** advanced JSON Pointer fallback when facade selectors and specialized families cannot reach the needed `.charx`, `.risum`, or `.risup` content on the active document
 - **Tools:** `list_surfaces`, `read_surface`, `patch_surface`, `replace_in_surface`
 - **Hints:** list/read are RO/idempotent; patch/replace mutate with confirmation and support `dry_run`
 - **Next actions:** `list_surfaces`, `read_surface`, `patch_surface`, `replace_in_surface`
@@ -77,7 +188,7 @@ If this file and code diverge, the TypeScript source wins.
 
 ### `probe`
 
-- **Use when:** inspecting or switching to unopened `.charx`, `.risum`, or `.risup` files by absolute path
+- **Use when:** advanced read-only probes or active-document switching for unopened `.charx`, `.risum`, or `.risup` files by absolute path when facade external targets are insufficient
 - **Tools:** `probe_field`, `probe_field_batch`, `probe_lorebook`, `probe_regex`, `probe_lua`, `probe_css`, `probe_greetings`, `probe_triggers`, `probe_risup_prompt_items`, `probe_risup_formating_order`, `open_file`
 - **Hints:** probes are RO/idempotent; `open_file` mutates the active document state
 - **Next actions:** `open_file`, `probe_field`, `probe_lorebook`
@@ -85,7 +196,7 @@ If this file and code diverge, the TypeScript source wins.
 
 ### `external`
 
-- **Use when:** inspecting or editing unopened `.charx`, `.risum`, or `.risup` files by absolute path **without** switching the active UI document
+- **Use when:** advanced direct-path inspection or mutation of unopened `.charx`, `.risum`, or `.risup` files **without** switching the active UI document, especially for external writes not covered by facade v1
 - **Tools:** `inspect_external_file`, `external_search_in_field`, `external_read_field_range`, `external_write_field`, `external_write_field_batch`, `external_replace_in_field`, `external_insert_in_field`, `external_read_surface`, `external_patch_surface`
 - **Hints:** inspect/search/range/surface-read are RO/open-world; write/replace/insert/surface-patch routes are open-world writes with confirmation, and replace/surface-patch routes support `dry_run`
 - **Next actions:** `inspect_external_file`, `probe_field`, `external_search_in_field`, `external_write_field`
@@ -160,11 +271,11 @@ If this file and code diverge, the TypeScript source wins.
 
 ### `reference`
 
-- **Use when:** reading loaded reference files without mutating them, including reference-only sessions with no active main document
+- **Use when:** advanced structured reads of loaded reference files without mutating them, including reference-only sessions with no active main document, when facade reference reads/searches are not sufficient
 - **Tools:** `list_references`, `read_reference_field`, `read_reference_field_batch`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_greetings`, `read_reference_greeting`, `read_reference_greeting_batch`, `list_reference_triggers`, `read_reference_trigger`, `read_reference_trigger_batch`, `list_reference_lorebook`, `read_reference_lorebook`, `read_reference_lorebook_batch`, `list_reference_regex`, `read_reference_regex`, `read_reference_regex_batch`, `list_reference_lua`, `read_reference_lua`, `read_reference_lua_batch`, `list_reference_css`, `read_reference_css`, `read_reference_css_batch`, `list_reference_risup_prompt_items`, `read_reference_risup_prompt_item`, `read_reference_risup_prompt_item_batch`, `read_reference_risup_formating_order`
 - **Hints:** RO, idempotent
 - **Next actions:** `list_references`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_greetings`, `list_reference_triggers`, `list_reference_lorebook`, `list_reference_risup_prompt_items`
-- **Boundary:** this family is read-only by design; start with `list_references` to discover loaded `.charx` / `.risum` / `.risup` references, use search/range readers before dumping large text fields, and switch to `read_reference_*_batch` instead of looping single reads when comparing several sibling items
+- **Boundary:** this family is read-only by design; start with facade `inspect_document` / `read_content` / `search_document` for covered reference discovery, reads, and search. Use `list_references` for the full legacy inventory, search/range readers for exact legacy result shapes, and `read_reference_*_batch` instead of looping single reads when comparing several sibling structured items
 
 ### `charx-asset`
 

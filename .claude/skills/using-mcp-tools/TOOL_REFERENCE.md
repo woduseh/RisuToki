@@ -7,16 +7,20 @@ For the canonical repo-wide family map and response-contract coverage, see:
 
 ## Critical Rules
 
+- Prefer facade v1 tools for covered inspect/read/search/preview/apply workflows: `inspect_document`, `read_content`, `search_document`, `preview_edit`, and `apply_edit`.
+- Treat granular tools as advanced/legacy fallbacks for unsupported facade selectors/operations, exact structured editors, direct external mutations, batch/deletes/imports/exports/assets, or compatibility/debugging.
 - Do not use `read_field` or `write_field` for `lua`, `css`, greetings, triggers, or structured `.risup` prompt surfaces when dedicated tools already exist.
 - Prefer batch tools over loops of repeated single-item writes, and prefer batch readers when inspecting several sibling items.
-- Trust response `next_actions` and `artifacts.byte_size`; high-traffic tools may narrow the family defaults to a smaller, safer follow-up set.
+- Trust response `next_actions` and `artifacts.byte_size`; facade and high-traffic granular tools may narrow the family defaults to a smaller, safer follow-up set.
+- Use tool `_meta` preference hints from `tools/list`: `risutoki/surfaceKind=facade` / `risutoki/recommendation=preferred` should win for covered workflows; granular tools default to `recommendation=advanced` unless a future migration marks them `legacy`.
 - For indexed mutations, reuse the latest family identity fields as stale-index guards: lorebook/regex/trigger use `expected_comment`, greetings use `expected_preview` / `expected_previews`, and risup prompt items use `expected_type` plus optional `expected_preview`. Lorebook `replace_in_lorebook_batch` also supports `dry_run` preview.
 
 ## Categories
 
-- **Fields** — `list_fields`, `read_field`, `read_field_batch`, `write_field`, `write_field_batch`
-- **Field search/edit** — `search_in_field`, `read_field_range`, `replace_in_field`, `replace_in_field_batch`, `replace_block_in_field`, `insert_in_field`
-- **Session state** — `session_status`
+- **Facade v1 (preferred)** — `inspect_document`, `read_content`, `search_document`, `preview_edit`, `apply_edit`
+- **Fields (granular/advanced)** — `list_fields`, `read_field`, `read_field_batch`, `write_field`, `write_field_batch`
+- **Field search/edit (granular/advanced)** — `search_in_field`, `read_field_range`, `replace_in_field`, `replace_in_field_batch`, `replace_block_in_field`, `insert_in_field`
+- **Session state (granular diagnostics)** — `session_status`
 - **Field safety** — `snapshot_field`, `list_snapshots`, `restore_snapshot`, `get_field_stats`, `search_all_fields`
 - **Lua** — `list_lua`, `read_lua`, `read_lua_batch`, `write_lua`, `replace_in_lua`, `insert_in_lua`, `add_lua_section`
 - **CSS** — `list_css`, `read_css`, `read_css_batch`, `write_css`, `replace_in_css`, `insert_in_css`, `add_css_section`
@@ -27,7 +31,7 @@ For the canonical repo-wide family map and response-contract coverage, see:
 - **Greetings** — `list_greetings`, `read_greeting`, `read_greeting_batch`, `write_greeting`, `add_greeting`, `delete_greeting`, `batch_delete_greeting`, `batch_write_greeting`, `reorder_greetings`
 - **Triggers** — `list_triggers`, `read_trigger`, `read_trigger_batch`, `write_trigger`, `add_trigger`, `delete_trigger`
 - **Risup prompt tools** — `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_prompt_item`, `read_risup_prompt_item_batch`, `write_risup_prompt_item`, `write_risup_prompt_item_batch`, `add_risup_prompt_item`, `add_risup_prompt_item_batch`, `delete_risup_prompt_item`, `reorder_risup_prompt_items`, `read_risup_formating_order`, `write_risup_formating_order`, `diff_risup_prompt`, `export_risup_prompt_to_text`, `copy_risup_prompt_items_as_text`, `import_risup_prompt_from_text`, `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `save_risup_prompt_snippet`, `insert_risup_prompt_snippet`, `delete_risup_prompt_snippet`
-- **References** — `list_references`, `read_reference_field`, `read_reference_field_batch`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_greetings`, `read_reference_greeting`, `read_reference_greeting_batch`, `list_reference_triggers`, `read_reference_trigger`, `read_reference_trigger_batch`, `list_reference_lorebook`, `read_reference_lorebook`, `read_reference_lorebook_batch`, `list_reference_lua`, `read_reference_lua`, `read_reference_lua_batch`, `list_reference_css`, `read_reference_css`, `read_reference_css_batch`, `list_reference_regex`, `read_reference_regex`, `read_reference_regex_batch`, `list_reference_risup_prompt_items`, `read_reference_risup_prompt_item`, `read_reference_risup_prompt_item_batch`, `read_reference_risup_formating_order`
+- **References (granular/advanced)** — `list_references`, `read_reference_field`, `read_reference_field_batch`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_greetings`, `read_reference_greeting`, `read_reference_greeting_batch`, `list_reference_triggers`, `read_reference_trigger`, `read_reference_trigger_batch`, `list_reference_lorebook`, `read_reference_lorebook`, `read_reference_lorebook_batch`, `list_reference_lua`, `read_reference_lua`, `read_reference_lua_batch`, `list_reference_css`, `read_reference_css`, `read_reference_css_batch`, `list_reference_regex`, `read_reference_regex`, `read_reference_regex_batch`, `list_reference_risup_prompt_items`, `read_reference_risup_prompt_item`, `read_reference_risup_prompt_item_batch`, `read_reference_risup_formating_order`
 - **Assets** — `list_charx_assets`, `read_charx_asset`, `add_charx_asset`, `delete_charx_asset`, `rename_charx_asset`, `list_risum_assets`, `read_risum_asset`, `add_risum_asset`, `delete_risum_asset`, `compress_assets_webp`
 - **Danbooru** — `tag_db_status`, `validate_danbooru_tags`, `search_danbooru_tags`, `get_popular_danbooru_tags`
 - **CBS validation** — `validate_cbs`, `list_cbs_toggles`, `simulate_cbs`, `diff_cbs`
@@ -64,8 +68,9 @@ Success-envelope observation fields:
 
 Tool-list metadata:
 
+- `tools/list` includes `_meta['risutoki/surfaceKind']` and `_meta['risutoki/recommendation']`; choose facade/preferred tools first for covered workflows, and treat granular/advanced tools as escape hatches.
 - `tools/list` may include `_meta['risutoki/requiresConfirmation']` and `_meta['risutoki/supportsDryRun']` on mutation-capable tools.
-- Prefer tools with `supportsDryRun=true` when you want a preview-first workflow before committing a mutation.
+- Prefer `preview_edit` → `apply_edit` for covered active edits; otherwise prefer granular tools with `supportsDryRun=true` when you want a preview-first workflow before committing a mutation.
 - Indexed-write guard support is broader than the current `_meta` surface: pass the latest `comment`, `preview`, or `type` values from the family list/read route when you want stale-index protection on lorebook, regex, greeting, trigger, or risup prompt-item writes.
 
 Current coverage summary:
@@ -76,9 +81,9 @@ Current coverage summary:
 
 Context-budget rule:
 
-- Read `artifacts.byte_size` before requesting adjacent content. If the success response is already large, prefer narrower follow-up tools (`list_*`, `search_in_field`, `read_field_range`, item/section reads, or `probe_*`) instead of broader dumps.
-- Use `session_status` before risky writes or after interruptions; it is the read-only exception that still works without an open document. Check its `surfaceSummary` first so you can skip unnecessary `list_*` calls on empty structured surfaces. When `loaded` is `false` but references exist, use `list_references` to begin working with reference materials.
-- When several write tools could solve the task, inspect tool `_meta` first so you know which one supports `dry_run` and which one will pause for confirmation.
+- Read `artifacts.byte_size` before requesting adjacent content. If the success response is already large, prefer narrower facade follow-ups (`search_document`, bounded `read_content`) or granular tools (`list_*`, `search_in_field`, `read_field_range`, item/section reads, or `probe_*`) instead of broader dumps.
+- Use `inspect_document` before risky writes or after interruptions when the facade summary is enough; use `session_status` for exact legacy runtime diagnostics. Check surface summaries first so you can skip unnecessary `list_*` calls on empty structured surfaces. When `loaded` is `false` but references exist, use facade reference targets first, or `list_references` when you need the full legacy inventory.
+- When several write tools could solve the task, inspect tool `_meta` first so you know which route is facade/preferred, which supports `dry_run`, and which will pause for confirmation.
 - Prefer `list_reference_greetings` / `read_reference_greeting` / `read_reference_greeting_batch` and `list_reference_triggers` / `read_reference_trigger` / `read_reference_trigger_batch` over `read_reference_field("alternateGreetings")`, `read_reference_field("groupOnlyGreetings")`, or `read_reference_field("triggerScripts")`.
 - Run `npm run test:evals` when changing MCP contracts or workflow routing and you want the deterministic harness scenarios only.
 
@@ -87,5 +92,6 @@ The top-level `error` field remains present for MCP bridge compatibility.
 ## Important Anti-Patterns
 
 - Never use `replace_in_field` as a search tool. A missing replacement can become deletion.
+- Never bypass a covered facade route without an unsupported-selector, structured-editor, or compatibility reason.
 - Never dump large structured fields when section/item tools exist.
 - Prefer batch writes when touching multiple neighbors.

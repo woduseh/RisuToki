@@ -29,6 +29,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-api-server.ts` — MCP HTTP route handling and response contracts
 - `src/lib/mcp-headless-server.ts` — standalone/file-backed MCP session bootstrap and lifecycle
 - `src/lib/mcp-cbs-routes.ts` — extracted CBS route-family helpers and dispatcher
+- `src/lib/mcp-session-routes.ts` — extracted session-status route helpers and dispatcher
 - `src/lib/mcp-field-access.ts` — MCP field name sets, document-type access rules, and field-read payload builders
 - `src/lib/mcp-section-parser.ts` — standalone MCP section parsing and external-document helpers
 - `src/lib/mcp-tool-taxonomy.ts` — tool-family single source of truth
@@ -153,6 +154,7 @@ This map is for source navigation. It is not a full API reference.
 ## Shared infrastructure
 
 - `src/lib/shared-utils.ts` — clone, MIME, and normalizeLF shared utilities
+- `src/lib/atomic-write.ts` — same-directory temp-file + rename helpers for crash-safer state and document writes
 - `src/lib/preload-api.ts` — typed renderer API surface
 - `src/lib/ipc-confirm.ts` — confirmation IPC helpers
 - `src/lib/action-registry.ts` — command registry

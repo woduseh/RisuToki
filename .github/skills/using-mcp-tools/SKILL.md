@@ -2,7 +2,7 @@
 name: using-mcp-tools
 description: 'Workflow guide for choosing RisuToki MCP tools safely. Use when deciding which read or write surface fits a task, especially for session state, large fields, lorebooks, regex, references, or batch edits.'
 tags: ['workflow', 'mcp', 'editing']
-related_tools: ['session_status', 'search_all_fields', 'write_field_batch', 'read_lorebook_batch', 'read_skill']
+related_tools: ['inspect_document', 'read_content', 'search_document', 'preview_edit', 'apply_edit', 'read_skill']
 ---
 
 # Using MCP Tools Safely
@@ -13,12 +13,14 @@ related_tools: ['session_status', 'search_all_fields', 'write_field_batch', 'rea
 - **Do not use when:** the task is pure creative drafting with no artifact read/write route.
 - **Read first:** this `SKILL.md`; it is the detailed MCP tool-choice source of truth.
 - **Load deeper only if:** the complete catalog is needed (`TOOL_REFERENCE.md`) or exact JSON/file shapes are needed (`FILE_STRUCTURES.md` / `file-structure-reference`).
-- **Output/validation contract:** choose list/search/probe before broad reads, prefer batch tools, carry stale-index guards, use dry-run/hash support for risky surface edits, and avoid generic field dumps for structured surfaces.
+- **Output/validation contract:** route inspect/read/search/preview/apply workflows through facade tools first when covered, document any granular fallback reason, carry stale-index guards, use preview/dry-run support for risky edits, and avoid generic field dumps for structured surfaces.
 
 This skill is about **tool choice**, not syntax. Read it before making broad edits.
 
 ## Quick Read Rules
 
+- Facade v1 is the default for covered workflows: use `inspect_document`, `read_content`, `search_document`, and `preview_edit` → `apply_edit` before legacy/granular inspect/read/search/write routes.
+- Use granular tools only as advanced/legacy fallbacks for unsupported facade selectors/operations, exact structured editors, direct external mutations, batch/deletes/imports/exports/assets, or compatibility/debugging.
 - Do **not** use `read_field("lua")`; use `list_lua` → `read_lua(index)`.
 - Do **not** use `read_field("css")`; use `list_css` → `read_css(index)`.
 - Do **not** dump `alternateGreetings`; use `list_greetings("alternate")`.
@@ -26,28 +28,45 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 - If you need several regex/greeting/trigger items, switch to `read_regex_batch`, `read_greeting_batch`, or `read_trigger_batch` instead of looping single reads.
 - Do **not** use `write_field` for `lua` / `css` / greetings / triggers when dedicated write tools already exist.
 - For risup prompt editing, prefer `list_risup_prompt_items`, `search_in_risup_prompt_items`, `read_risup_prompt_item_batch`, `export_risup_prompt_to_text`, `copy_risup_prompt_items_as_text`, `diff_risup_prompt`, and `read_risup_formating_order`. For reuse across sessions, switch to `list_risup_prompt_snippets`, `read_risup_prompt_snippet`, `save_risup_prompt_snippet`, and `insert_risup_prompt_snippet`.
-- For unopened files, start with `inspect_external_file` + the relevant `probe_*` reader, then use `external_search_in_field` / `external_read_field_range` / `external_write_field*` only when you must keep the current UI document untouched.
-- When a specialized tool cannot reach the required content, use the surface fallback: `list_surfaces` → `read_surface` → `patch_surface` or `replace_in_surface`. Prefer `dry_run` and carry the document-level `expected_hash` for risky edits.
+- For unopened files, start with facade `inspect_document` / `read_content` when covered; use `inspect_external_file` + the relevant `probe_*` reader for probe-specific summaries, then use `external_search_in_field` / `external_read_field_range` / `external_write_field*` only when you need granular result shapes or direct external mutations.
+- When facade selectors and specialized tools cannot reach the required content, use the surface fallback: `list_surfaces` → `read_surface` → `patch_surface` or `replace_in_surface`. Prefer `dry_run` and carry the document-level `expected_hash` for risky edits.
 - For unopened files with unsupported shapes, use `external_read_surface` / `external_patch_surface`; these still reject the active UI document.
-- Before risky edits or after interruptions, call `session_status` to inspect the active document, dirty/autosave state, recovery metadata, snapshot totals, and compact structured-surface counts.
+- Before risky edits or after interruptions, call `inspect_document` for facade-covered session/active preflight; use `session_status` when you need exact dirty/autosave/recovery metadata, snapshot totals, or compact structured-surface counts.
 - Prefer response `next_actions` over guessing; high-traffic tools may return narrower follow-up suggestions than the family default.
-- Check tool `_meta` from `tools/list` when choosing a write route: `risutoki/requiresConfirmation` means an approval gate is expected, and `risutoki/supportsDryRun` means a preview-first flow exists.
+- Check tool `_meta` from `tools/list` when choosing a route: `risutoki/surfaceKind=facade` plus `risutoki/recommendation=preferred` is the default for new covered workflows, `recommendation=advanced` marks granular escape hatches, `family` identifies the workflow family, `staleGuards` keeps the legacy flat guard-name list, `staleGuardDetails` gives guard `payloadPath`, list/read source operations, retry guidance, and batch alignment hints, `requiresConfirmation` means an approval gate is expected, and `supportsDryRun` means a preview-first flow exists.
+- Facade v1 is additive and preferred where implemented: use `inspect_document`, `read_content`, `search_document`, `preview_edit`, and `apply_edit` for bounded first-wave workflows; keep granular tools as advanced/legacy routes for precision or unsupported cases. `validate_content`, `load_guidance`, and item/asset/file management remain future facade work. Facade mutating flows are preview-token-first (`preview_edit` before `apply_edit`) and must propagate stale guards from granular `risutoki/staleGuardDetails`.
 - After using `import_risup_prompt_from_text`, call `validate_risup_prompt_import` with the same source text to verify all items were imported correctly. This catches silent mismatches from ID renormalization and content truncation.
 - For deleting multiple risup prompt items at once, prefer `batch_delete_risup_prompt_items` over repeated `delete_risup_prompt_item` calls.
 - When adding risup prompt items at a specific position (not at the end), use the `insertAt` parameter on `add_risup_prompt_item` or `add_risup_prompt_item_batch` instead of add + reorder.
 
+## Facade-First Migration Guide
+
+First-wave facade tools replace common legacy/granular workflows where they have explicit parity:
+
+| Legacy/granular workflow                                                                                 | Prefer facade                    | Keep granular when                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Session/external/reference preflight via `session_status`, `inspect_external_file`, or `list_references` | `inspect_document`               | Exact legacy response fields, recovery/debug detail, or full reference inventory are required.                                                                 |
+| Active/external field and surface reads via `read_field*`, `read_surface`, probes, or external readers   | `read_content`                   | You need structured item editors, stats/export, raw hashes, unsupported JSON Pointer shapes, or exact batch compatibility.                                     |
+| Reference field reads via `read_reference_field*`                                                        | `read_content`                   | You need dedicated reference lorebook/regex/Lua/CSS/greeting/trigger/risup item structure.                                                                     |
+| Active/external/reference text search via `search_*` field tools                                         | `search_document`                | A specialized family search or legacy result shape is required.                                                                                                |
+| Active field write/replace or active surface patch                                                       | `preview_edit` then `apply_edit` | You need inserts, block replacements, batch writes, deletes, snapshots, external mutations, asset operations, item management, or unsupported patch semantics. |
+
+Use granular tools as advanced/legacy routes only when at least one criterion applies: an escape hatch for unsupported facade selectors/operations, an exact structured editor is required, the operation is outside first-wave facade scope, or you are debugging/maintaining legacy client compatibility.
+
+Deprecation is staged and non-breaking today: current facade tools advertise `risutoki/surfaceKind=facade` and `risutoki/recommendation=preferred`; granular tools remain `surfaceKind=granular` with `recommendation=advanced` unless a future parity review marks a covered route `legacy`. Do not assume removal until a later warning window documents deprecation hints, first-party docs/evals no longer depend on the granular route, and release notes announce the change. Known gaps still requiring granular tools include `validate_content`, standalone `load_guidance`, item/asset/file management, structured item editors, deletes, imports/exports, external mutations, and broad batch operations. Track parity with `src/lib/mcp-request-schemas.test.ts`, `src/lib/mcp-tool-taxonomy.test.ts`, `src/lib/doc-drift.test.ts`, `test/test-mcp-search-all.ts`, and the matrix in `docs/MCP_TOOL_SURFACE.md`.
+
 ## Session-Awareness Workflow
 
-1. Call `session_status` when resuming after a crash, taking over an unknown session, or before risky writes.
-2. If `loaded` is `false`, switch to `inspect_external_file` / `probe_*` / `external_*` for direct absolute-path work, or `open_file` before using edit routes that require an active document.
+1. Call `inspect_document` first for covered session/active/reference/external preflight. Use `session_status` when you need exact dirty/autosave/recovery fields, full reference inventory, or legacy runtime diagnostics.
+2. If no active document is loaded, use facade external/reference targets when covered; switch to `inspect_external_file` / `probe_*` / `external_*` for probe-specific summaries or direct absolute-path edits, or `open_file` before using edit routes that require an active document.
 3. If `pendingRecovery`, `dirtyFields`, autosave settings, or `surfaceSummary` look unexpected, stabilize the session first instead of guessing from partial field reads.
 
 ## Large-Field Workflow
 
-1. Use `search_in_field` to locate the exact area first.
-2. Use `read_field_range` only for the span you need.
-3. Use `replace_in_field`, `replace_in_field_batch`, or `replace_block_in_field` for targeted edits.
-4. Use `snapshot_field` before risky edits.
+1. Use `search_document` or bounded `read_content` first when the facade can express the target and bounds.
+2. Use granular `search_in_field` / `read_field_range` only for unsupported selectors or exact legacy range/search payloads.
+3. For covered active field write/replace operations, use `preview_edit` → `apply_edit`; use `replace_in_field`, `replace_in_field_batch`, `insert_in_field`, or `replace_block_in_field` for unsupported insert/batch/block semantics.
+4. Use `snapshot_field` before risky granular field edits.
 
 ## Lorebook Workflow
 
@@ -66,6 +85,7 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 - Lorebook / regex / trigger writes: carry the latest list/read `comment` into `expected_comment`.
 - Greeting writes/deletes: carry the latest `list_greetings` preview into `expected_preview` (or `expected_previews` for `batch_delete_greeting`).
 - Risup prompt-item writes/deletes: carry the latest `list_risup_prompt_items` `type` and, when available, `preview` into `expected_type` / `expected_preview`.
+- For batch tools, prefer `risutoki/staleGuardDetails` from `tools/list` to find nested paths such as `/entries/*/expected_comment` or aligned arrays such as `/expected_types/*` with `/indices/*`.
 - Treat `409` stale-index responses as a refresh signal: re-list the family, then retry with fresh identity values.
 - Batch delete of risup prompt items: carry `list_risup_prompt_items` types into `expected_types` and previews into `expected_previews`, aligned with the `indices` array order.
 
@@ -135,7 +155,7 @@ This catches silent failures like:
 
 ## Smoke Tests
 
-| Prompt                                                                                     | Expected routing                                                                        | Expected output                                                  | Forbidden behavior                                           |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------ |
-| "I need to edit a 3000-character lorebook content field; which MCP tool should I use?"     | Primary: `using-mcp-tools`; pair with `writing-lorebooks` only for entry content rules. | Search/range or batch lorebook workflow with stale-index guards. | Using broad `read_field`/`write_field` for lorebook entries. |
-| "List the correct tool sequence for reading an external `.charx` file's lorebook entries." | Primary: `using-mcp-tools`.                                                             | `inspect_external_file` then relevant `probe_*`/external route.  | Opening or mutating the active UI document unnecessarily.    |
+| Prompt                                                                                     | Expected routing                                                                        | Expected output                                                                                                        | Forbidden behavior                                           |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| "I need to edit a 3000-character lorebook content field; which MCP tool should I use?"     | Primary: `using-mcp-tools`; pair with `writing-lorebooks` only for entry content rules. | Prefer facade `read_content` / `preview_edit` when covered; otherwise batch lorebook workflow with stale-index guards. | Using broad `read_field`/`write_field` for lorebook entries. |
+| "List the correct tool sequence for reading an external `.charx` file's lorebook entries." | Primary: `using-mcp-tools`.                                                             | `inspect_document` / `read_content` if covered; otherwise `inspect_external_file` then relevant `probe_*` route.       | Opening or mutating the active UI document unnecessarily.    |

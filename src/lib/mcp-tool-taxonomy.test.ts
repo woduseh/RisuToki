@@ -8,11 +8,17 @@ import {
   ALL_TOOL_NAMES,
   DRY_RUN_TOOL_NAMES,
   NO_CONFIRMATION_TOOL_NAMES,
+  TOOL_META_KEYS,
+  TOOL_RECOMMENDATIONS,
+  TOOL_STALE_GUARD_DETAILS,
+  TOOL_SURFACE_KINDS,
   getToolFamily,
   getToolAnnotations,
+  getToolMeta,
   getToolMutationMeta,
   getToolsByFamily,
 } from './mcp-tool-taxonomy';
+import type { StaleGuardDetail } from './mcp-tool-taxonomy';
 import { FAMILY_NEXT_ACTIONS } from './mcp-response-envelope';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -42,6 +48,111 @@ const registeredTools = extractRegisteredToolNames();
 const registeredToolBlocks = extractRegisteredToolBlocks();
 const noConfirmationToolSet = new Set<string>(NO_CONFIRMATION_TOOL_NAMES);
 const dryRunToolSet = new Set<string>(DRY_RUN_TOOL_NAMES);
+
+type BaselineMetricName =
+  | 'tool-list-byte-cost'
+  | 'tool-call-count'
+  | 'wrong-tool-avoidance'
+  | 'dry-run-compliance'
+  | 'stale-recovery'
+  | 'final-artifact-equality';
+
+interface FacadeBaselineScenario {
+  id: string;
+  proposedFacadeTool: 'mcp_read' | 'mcp_edit' | 'mcp_session';
+  currentGranularWorkflow: readonly string[];
+  expectedFacadeWorkflow: readonly string[];
+  currentToolCallCount: number;
+  expectedFacadeToolCallCount: number;
+  metrics: readonly BaselineMetricName[];
+  wrongToolAvoidance: readonly string[];
+  dryRunRequired?: boolean;
+  staleRecoveryRequired?: boolean;
+  finalArtifactEquality?: string;
+}
+
+const PROPOSED_FACADE_TOOL_FIXTURE = [
+  { name: 'mcp_session', purpose: 'Summarize session/no-file-open state and route open/recovery choices.' },
+  { name: 'mcp_read', purpose: 'Read active, external, and reference targets through one routed facade.' },
+  { name: 'mcp_edit', purpose: 'Plan, dry-run, guard, apply, and verify active/external mutations.' },
+] as const;
+
+const FACADE_BASELINE_SCENARIOS: readonly FacadeBaselineScenario[] = [
+  {
+    id: 'active-external-reference-routing',
+    proposedFacadeTool: 'mcp_read',
+    currentGranularWorkflow: [
+      'session_status',
+      'read_field',
+      'inspect_external_file',
+      'external_search_in_field',
+      'list_references',
+      'read_reference_field',
+    ],
+    expectedFacadeWorkflow: ['mcp_session', 'mcp_read:active', 'mcp_read:external', 'mcp_read:reference'],
+    currentToolCallCount: 6,
+    expectedFacadeToolCallCount: 4,
+    metrics: ['tool-list-byte-cost', 'tool-call-count', 'wrong-tool-avoidance', 'final-artifact-equality'],
+    wrongToolAvoidance: ['external tools must not target the active document', 'reference tools must stay read-only'],
+    finalArtifactEquality: 'active/external/reference reads return the same target text as granular routes',
+  },
+  {
+    id: 'batch-vs-single-edit-choice',
+    proposedFacadeTool: 'mcp_edit',
+    currentGranularWorkflow: ['list_lorebook', 'replace_in_lorebook_batch', 'read_lorebook_batch'],
+    expectedFacadeWorkflow: ['mcp_edit:plan-batch', 'mcp_edit:apply-batch', 'mcp_read:verify-batch'],
+    currentToolCallCount: 3,
+    expectedFacadeToolCallCount: 3,
+    metrics: ['tool-call-count', 'wrong-tool-avoidance', 'final-artifact-equality'],
+    wrongToolAvoidance: ['choose replace_in_lorebook_batch instead of looping replace_in_lorebook'],
+    finalArtifactEquality: 'batched replacements equal the per-entry final lorebook content',
+  },
+  {
+    id: 'stale-guard-refresh-retry',
+    proposedFacadeTool: 'mcp_edit',
+    currentGranularWorkflow: ['list_lua', 'write_lua:409', 'read_lua', 'write_lua:retry', 'read_lua:verify'],
+    expectedFacadeWorkflow: ['mcp_edit:guarded-write', 'mcp_edit:auto-refresh-retry', 'mcp_read:verify'],
+    currentToolCallCount: 5,
+    expectedFacadeToolCallCount: 3,
+    metrics: ['tool-call-count', 'stale-recovery', 'final-artifact-equality'],
+    wrongToolAvoidance: ['refresh with staleGuardDetails sourceOperations before retrying'],
+    staleRecoveryRequired: true,
+    finalArtifactEquality: 'retry uses refreshed expected_hash and writes only the intended section',
+  },
+  {
+    id: 'dry-run-first-destructive-edit',
+    proposedFacadeTool: 'mcp_edit',
+    currentGranularWorkflow: [
+      'list_charx_assets',
+      'compress_assets_webp:dry_run',
+      'compress_assets_webp:apply',
+      'list_charx_assets:verify',
+    ],
+    expectedFacadeWorkflow: ['mcp_edit:preview-required', 'mcp_edit:apply-after-preview', 'mcp_read:verify'],
+    currentToolCallCount: 4,
+    expectedFacadeToolCallCount: 3,
+    metrics: ['tool-call-count', 'dry-run-compliance', 'final-artifact-equality'],
+    wrongToolAvoidance: ['do not apply lossy asset compression before dry_run preview'],
+    dryRunRequired: true,
+    finalArtifactEquality:
+      'dry-run leaves assets unchanged; committed compression matches the previewed final artifact',
+  },
+  {
+    id: 'no-file-open-workflow',
+    proposedFacadeTool: 'mcp_session',
+    currentGranularWorkflow: ['session_status', 'list_references', 'open_file', 'list_fields'],
+    expectedFacadeWorkflow: ['mcp_session:no-file-open', 'mcp_read:references', 'mcp_session:open-file'],
+    currentToolCallCount: 4,
+    expectedFacadeToolCallCount: 3,
+    metrics: ['tool-call-count', 'wrong-tool-avoidance', 'final-artifact-equality'],
+    wrongToolAvoidance: ['avoid active-document reads until open_file succeeds'],
+    finalArtifactEquality: 'post-open active reads match the opened artifact',
+  },
+];
+
+function jsonByteLength(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value), 'utf-8');
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Tests
@@ -217,6 +328,102 @@ describe('MCP Tool Taxonomy', () => {
     }
   });
 
+  it('tool metadata exposes family for read and write tools', () => {
+    expect(getToolMeta('list_fields')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.family]: 'field',
+        [TOOL_META_KEYS.staleGuards]: [],
+        [TOOL_META_KEYS.staleGuardDetails]: [],
+        [TOOL_META_KEYS.surfaceKind]: 'granular',
+        [TOOL_META_KEYS.recommendation]: 'advanced',
+      }),
+    );
+    expect(getToolMeta('write_lorebook')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.family]: 'lorebook',
+        [TOOL_META_KEYS.requiresConfirmation]: true,
+        [TOOL_META_KEYS.supportsDryRun]: false,
+      }),
+    );
+  });
+
+  it('tool metadata exposes stale guard parameter names', () => {
+    expect(getToolMeta('write_lorebook')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.staleGuards]: ['expected_comment'],
+      }),
+    );
+    expect(getToolMeta('patch_surface')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.staleGuards]: ['expected_hash'],
+      }),
+    );
+    expect(getToolMeta('batch_delete_risup_prompt_items')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.staleGuards]: ['expected_types', 'expected_previews'],
+      }),
+    );
+  });
+
+  it('tool metadata classifies facade tools as preferred and granular tools as advanced', () => {
+    expect(TOOL_SURFACE_KINDS).toEqual(['facade', 'granular']);
+    expect(TOOL_RECOMMENDATIONS).toEqual(['preferred', 'advanced', 'legacy']);
+
+    const facadeNames = new Set(['inspect_document', 'read_content', 'search_document', 'preview_edit', 'apply_edit']);
+    for (const name of ALL_TOOL_NAMES) {
+      const meta = getToolMeta(name);
+      expect(meta?.[TOOL_META_KEYS.surfaceKind], `${name} surface kind mismatch`).toBe(
+        facadeNames.has(name) ? 'facade' : 'granular',
+      );
+      expect(meta?.[TOOL_META_KEYS.recommendation], `${name} recommendation mismatch`).toBe(
+        facadeNames.has(name) ? 'preferred' : 'advanced',
+      );
+    }
+  });
+
+  it('structured stale guard details stay aligned with legacy guard names', () => {
+    for (const name of ALL_TOOL_NAMES) {
+      const meta = getToolMeta(name);
+      const staleGuards = meta?.[TOOL_META_KEYS.staleGuards] as readonly string[];
+      const staleGuardDetails = meta?.[TOOL_META_KEYS.staleGuardDetails] as readonly StaleGuardDetail[];
+      expect(
+        staleGuardDetails.map((detail) => detail.name),
+        `${name} structured stale guards should match legacy names`,
+      ).toEqual(staleGuards);
+      expect(TOOL_STALE_GUARD_DETAILS[name] ?? []).toEqual(staleGuardDetails);
+    }
+  });
+
+  it('structured stale guard details describe nested batch guard payloads', () => {
+    const details = getToolMeta('write_lorebook_batch')?.[
+      TOOL_META_KEYS.staleGuardDetails
+    ] as readonly StaleGuardDetail[];
+
+    expect(details).toEqual([
+      expect.objectContaining({
+        name: 'expected_comment',
+        payloadPath: '/entries/*/expected_comment',
+        alignedWithPath: '/entries/*/index',
+        sourceOperations: ['list_lorebook', 'read_lorebook'],
+        retry: expect.stringContaining('On 409'),
+      }),
+    ]);
+  });
+
+  it('structured stale guard details describe single-entry guard payloads', () => {
+    const details = getToolMeta('write_lorebook')?.[TOOL_META_KEYS.staleGuardDetails] as readonly StaleGuardDetail[];
+
+    expect(details).toEqual([
+      expect.objectContaining({
+        name: 'expected_comment',
+        payloadPath: '/expected_comment',
+        sourceOperations: ['list_lorebook', 'read_lorebook'],
+        sourceResultPath: '/entries/*/comment or /comment',
+        retry: expect.stringContaining('refresh'),
+      }),
+    ]);
+  });
+
   it('tools marked as requiring confirmation say so in the registered description', () => {
     for (const name of ALL_TOOL_NAMES) {
       const meta = getToolMutationMeta(name);
@@ -297,5 +504,100 @@ describe('agent eval: validation workflows stay discovery-first', () => {
     for (const toolName of FAMILY_NEXT_ACTIONS.cbs) {
       expect(toolName.startsWith('write_') || toolName.startsWith('delete_')).toBe(false);
     }
+  });
+});
+
+describe('agent eval: facade-first baseline fixtures', () => {
+  it('keeps proposed facade names as future fixtures, not registered granular tools', () => {
+    const currentNames = new Set(ALL_TOOL_NAMES);
+    for (const facadeTool of PROPOSED_FACADE_TOOL_FIXTURE) {
+      expect(currentNames.has(facadeTool.name), `${facadeTool.name} should remain unimplemented in this baseline`).toBe(
+        false,
+      );
+      expect(facadeTool.purpose.length).toBeGreaterThan(20);
+    }
+  });
+
+  it('captures comparison-friendly routing and safety metrics for the facade migration', () => {
+    const requiredScenarioIds = [
+      'active-external-reference-routing',
+      'batch-vs-single-edit-choice',
+      'stale-guard-refresh-retry',
+      'dry-run-first-destructive-edit',
+      'no-file-open-workflow',
+    ];
+    expect(FACADE_BASELINE_SCENARIOS.map((scenario) => scenario.id)).toEqual(requiredScenarioIds);
+
+    for (const scenario of FACADE_BASELINE_SCENARIOS) {
+      expect(scenario.currentToolCallCount).toBe(scenario.currentGranularWorkflow.length);
+      expect(scenario.expectedFacadeToolCallCount).toBe(scenario.expectedFacadeWorkflow.length);
+      expect(scenario.expectedFacadeToolCallCount).toBeLessThanOrEqual(scenario.currentToolCallCount);
+      expect(scenario.metrics).toContain('tool-call-count');
+      expect(scenario.finalArtifactEquality, `${scenario.id} should define final artifact equality`).toEqual(
+        expect.any(String),
+      );
+
+      for (const workflowStep of scenario.currentGranularWorkflow) {
+        const toolName = workflowStep.split(':')[0];
+        expect(ALL_TOOL_NAMES, `${scenario.id} references missing current tool ${toolName}`).toContain(toolName);
+      }
+    }
+  });
+
+  it('measures current tool-list byte cost against the proposed compact facade fixture', () => {
+    const currentToolListFixture = ALL_TOOL_NAMES.map((name) => ({
+      name,
+      annotations: getToolAnnotations(name),
+      meta: getToolMeta(name),
+    }));
+    const currentByteCost = jsonByteLength(currentToolListFixture);
+    const facadeByteCost = jsonByteLength(PROPOSED_FACADE_TOOL_FIXTURE);
+
+    expect(currentToolListFixture.length).toBeGreaterThan(100);
+    expect(PROPOSED_FACADE_TOOL_FIXTURE.length).toBe(3);
+    expect(currentByteCost).toBeGreaterThan(facadeByteCost);
+    expect(Math.ceil(currentByteCost / 4)).toBeGreaterThan(Math.ceil(facadeByteCost / 4));
+  });
+
+  it('flags wrong-tool avoidance and batch preference before facade tools exist', () => {
+    const routingScenario = FACADE_BASELINE_SCENARIOS.find(
+      (scenario) => scenario.id === 'active-external-reference-routing',
+    );
+    expect(routingScenario?.wrongToolAvoidance).toEqual(
+      expect.arrayContaining([
+        'external tools must not target the active document',
+        'reference tools must stay read-only',
+      ]),
+    );
+    expect(getToolAnnotations('read_reference_field')?.readOnlyHint).toBe(true);
+    expect(getToolAnnotations('external_write_field')?.openWorldHint).toBe(true);
+
+    const batchScenario = FACADE_BASELINE_SCENARIOS.find((scenario) => scenario.id === 'batch-vs-single-edit-choice');
+    expect(batchScenario?.currentGranularWorkflow).toContain('replace_in_lorebook_batch');
+    expect(batchScenario?.currentGranularWorkflow).not.toContain('replace_in_lorebook');
+    expect(getToolMutationMeta('replace_in_lorebook_batch')?.supportsDryRun).toBe(true);
+  });
+
+  it('requires dry-run compliance and stale recovery metadata for risky baseline workflows', () => {
+    const dryRunScenario = FACADE_BASELINE_SCENARIOS.find(
+      (scenario) => scenario.id === 'dry-run-first-destructive-edit',
+    );
+    expect(dryRunScenario?.dryRunRequired).toBe(true);
+    expect(dryRunScenario?.metrics).toContain('dry-run-compliance');
+    expect(getToolMutationMeta('compress_assets_webp')?.supportsDryRun).toBe(true);
+    expect(getToolAnnotations('compress_assets_webp')?.destructiveHint).toBe(true);
+
+    const staleScenario = FACADE_BASELINE_SCENARIOS.find((scenario) => scenario.id === 'stale-guard-refresh-retry');
+    expect(staleScenario?.staleRecoveryRequired).toBe(true);
+    expect(staleScenario?.metrics).toContain('stale-recovery');
+    expect(getToolMeta('write_lua')?.[TOOL_META_KEYS.staleGuardDetails]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'expected_hash',
+          sourceOperations: ['list_lua', 'read_lua'],
+          retry: expect.stringContaining('refresh'),
+        }),
+      ]),
+    );
   });
 });

@@ -27,13 +27,16 @@ function getRegisteredHandler(name: string) {
 }
 
 function makeDeps(overrides: Partial<AutosaveManagerDeps> = {}): AutosaveManagerDeps {
+  const defaultGetCurrentFilePath = () => makeTestPath('data', 'test.charx');
+  const getCurrentFilePath = overrides.getCurrentFilePath ?? defaultGetCurrentFilePath;
   return {
     getCurrentData: () => ({ _fileType: 'charx', name: 'TestChar' }),
-    getCurrentFilePath: () => makeTestPath('data', 'test.charx'),
+    getCurrentFilePath,
     getMainWindow: () => null,
     saveCharx: vi.fn(),
     saveRisum: vi.fn(),
     saveRisup: vi.fn(),
+    readFileSync: vi.fn(() => JSON.stringify({ sourceFilePath: getCurrentFilePath() })),
     writeFileSync: vi.fn(),
     mkdirSync: vi.fn(),
     readdirSync: vi.fn().mockReturnValue([]),
@@ -169,6 +172,27 @@ describe('autosave-manager', () => {
       );
     });
 
+    it('uses atomic sidecar writes when available', async () => {
+      const writeFileSync = vi.fn();
+      const writeFileAtomicSync = vi.fn();
+      const d = makeDeps({
+        getCurrentData: () => ({ _fileType: 'charx', name: 'MyChar' }),
+        getCurrentFilePath: () => makeTestPath('data', 'char.charx'),
+        writeFileSync,
+        writeFileAtomicSync,
+      });
+      initAutosaveManager(d);
+      const handler = getRegisteredHandler('autosave-file');
+
+      await handler({}, { description: 'updated' });
+
+      expect(writeFileAtomicSync).toHaveBeenCalledWith(
+        expect.stringContaining('.toki-recovery.json'),
+        expect.stringContaining('"dirtyFields"'),
+      );
+      expect(writeFileSync).not.toHaveBeenCalled();
+    });
+
     it('sidecar contains expected provenance fields', async () => {
       const localWriteFileSync = vi.fn();
       const d = makeDeps({
@@ -249,6 +273,34 @@ describe('autosave-manager', () => {
       expect(sidecarJson.dirtyFields).not.toContain('_autosaveDir');
       expect(sidecarJson.dirtyFields).toContain('name');
       expect((saveCharx.mock.calls[0][0] as string).startsWith(customDir + path.sep)).toBe(true);
+    });
+
+    it('records null source path for untitled autosaves written to an explicit autosave directory', async () => {
+      const localWriteFileSync = vi.fn();
+      const saveCharx = vi.fn();
+      const customDir = makeTestPath('untitled-autosaves');
+      const d = makeDeps({
+        getCurrentData: () => ({ _fileType: 'charx', name: 'Untitled Draft' }),
+        getCurrentFilePath: () => null,
+        saveCharx,
+        writeFileSync: localWriteFileSync,
+      });
+      initAutosaveManager(d);
+      const handler = getRegisteredHandler('autosave-file');
+
+      const result = await handler({}, { description: 'draft body', _autosaveDir: customDir });
+
+      expect(result.success).toBe(true);
+      expect(saveCharx).toHaveBeenCalledWith(expect.stringContaining(`${customDir}${path.sep}`), expect.anything());
+      const sidecarJson = JSON.parse(localWriteFileSync.mock.calls[0][1] as string);
+      expect(sidecarJson).toEqual(
+        expect.objectContaining({
+          sourceFilePath: null,
+          sourceFileType: 'charx',
+          autosavePath: expect.stringContaining('Untitled Draft_autosave_'),
+          dirtyFields: ['description'],
+        }),
+      );
     });
   });
 
@@ -351,6 +403,104 @@ describe('autosave-manager', () => {
       handler(null, makeTestPath('custom'));
 
       expect(unlinkSync).toHaveBeenCalledTimes(4);
+    });
+
+    it('skips sidecar-backed autosaves for a different source file in a shared custom dir', () => {
+      const customDir = makeTestPath('shared-autosaves');
+      const currentFilePath = makeTestPath('project-a', 'char.charx');
+      const matchingPayload = 'char_autosave_20250102T120000.charx';
+      const matchingSidecar = `${matchingPayload}.toki-recovery.json`;
+      const otherPayload = 'char_autosave_20250101T120000.charx';
+      const otherSidecar = `${otherPayload}.toki-recovery.json`;
+      const legacyPayload = 'char_autosave_20250100T120000.charx';
+      const readdirSync = vi
+        .fn()
+        .mockReturnValue([matchingPayload, matchingSidecar, otherPayload, otherSidecar, legacyPayload]);
+      const readFileSync = vi.fn((filePath: string) => {
+        if (filePath.endsWith(matchingSidecar)) {
+          return JSON.stringify({ sourceFilePath: currentFilePath });
+        }
+        return JSON.stringify({ sourceFilePath: makeTestPath('project-b', 'char.charx') });
+      });
+      const unlinkSync = vi.fn();
+
+      const d = makeDeps({
+        getCurrentFilePath: () => currentFilePath,
+        readdirSync,
+        readFileSync,
+        unlinkSync,
+      });
+      initAutosaveManager(d);
+      const handler = getRegisteredHandler('cleanup-autosave');
+
+      handler(null, customDir);
+
+      expect(unlinkSync).toHaveBeenCalledWith(path.join(customDir, matchingPayload));
+      expect(unlinkSync).toHaveBeenCalledWith(path.join(customDir, matchingSidecar));
+      expect(unlinkSync).toHaveBeenCalledWith(path.join(customDir, legacyPayload));
+      expect(unlinkSync).not.toHaveBeenCalledWith(path.join(customDir, otherPayload));
+      expect(unlinkSync).not.toHaveBeenCalledWith(path.join(customDir, otherSidecar));
+    });
+
+    it('skips sidecar-backed autosaves when the sidecar is malformed', () => {
+      const payload = 'char_autosave_20250101T120000.charx';
+      const sidecar = `${payload}.toki-recovery.json`;
+      const unlinkSync = vi.fn();
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        const d = makeDeps({
+          getCurrentFilePath: () => makeTestPath('data', 'char.charx'),
+          readdirSync: vi.fn().mockReturnValue([payload, sidecar]),
+          readFileSync: vi.fn(() => '{not json'),
+          unlinkSync,
+        });
+        initAutosaveManager(d);
+        const handler = getRegisteredHandler('cleanup-autosave');
+
+        handler(null);
+
+        expect(unlinkSync).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(
+          '[main] Skipping autosave cleanup with unreadable sidecar:',
+          sidecar,
+          expect.any(SyntaxError),
+        );
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('skips sidecar-backed autosaves when the sidecar cannot be read', () => {
+      const payload = 'char_autosave_20250101T120000.charx';
+      const sidecar = `${payload}.toki-recovery.json`;
+      const readError = new Error('permission denied');
+      const unlinkSync = vi.fn();
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        const d = makeDeps({
+          getCurrentFilePath: () => makeTestPath('data', 'char.charx'),
+          readdirSync: vi.fn().mockReturnValue([payload, sidecar]),
+          readFileSync: vi.fn(() => {
+            throw readError;
+          }),
+          unlinkSync,
+        });
+        initAutosaveManager(d);
+        const handler = getRegisteredHandler('cleanup-autosave');
+
+        handler(null);
+
+        expect(unlinkSync).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(
+          '[main] Skipping autosave cleanup with unreadable sidecar:',
+          sidecar,
+          readError,
+        );
+      } finally {
+        warnSpy.mockRestore();
+      }
     });
   });
 
@@ -491,6 +641,40 @@ describe('autosave-manager', () => {
           }),
         );
         expect(unlinkSync).toHaveBeenCalledWith(expect.stringMatching(/_autosave_.*\.charx$/));
+        expect(unlinkSync).toHaveBeenCalledWith(expect.stringContaining('.toki-recovery.json'));
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+
+    it('cleans up the autosave artifact when atomic sidecar writing fails', async () => {
+      const unlinkSync = vi.fn();
+      const writeFileSync = vi.fn();
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        const d = makeDeps({
+          getCurrentData: () => ({ _fileType: 'risum', name: 'MyModule' }),
+          getCurrentFilePath: () => makeTestPath('data', 'module.risum'),
+          writeFileSync,
+          writeFileAtomicSync: vi.fn(() => {
+            throw new Error('atomic sidecar denied');
+          }),
+          unlinkSync,
+        });
+        initAutosaveManager(d);
+        const handler = getRegisteredHandler('autosave-file');
+
+        const result = await handler({}, { description: 'updated' });
+
+        expect(result).toEqual(
+          expect.objectContaining({
+            success: false,
+            error: expect.stringMatching(/atomic sidecar denied/i),
+          }),
+        );
+        expect(writeFileSync).not.toHaveBeenCalled();
+        expect(unlinkSync).toHaveBeenCalledWith(expect.stringMatching(/_autosave_.*\.risum$/));
         expect(unlinkSync).toHaveBeenCalledWith(expect.stringContaining('.toki-recovery.json'));
       } finally {
         errorSpy.mockRestore();

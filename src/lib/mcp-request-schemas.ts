@@ -182,6 +182,232 @@ export const externalDocumentBodySchema = z
 export type ExternalDocumentBody = z.infer<typeof externalDocumentBodySchema>;
 
 // ---------------------------------------------------------------------------
+// Additive MCP facade v1 public contract
+// ---------------------------------------------------------------------------
+
+export const FACADE_V1_CONTRACT_ID = 'risutoki.facade.v1' as const;
+
+export const FACADE_V1_LIMITS = {
+  maxBatchItems: 50,
+  maxBytes: 64 * 1024,
+  maxMatches: 100,
+} as const;
+
+export const FACADE_V1_TARGET_KINDS = ['active', 'external', 'reference', 'guidance', 'session'] as const;
+export type FacadeV1TargetKind = (typeof FACADE_V1_TARGET_KINDS)[number];
+
+export const FACADE_V1_TOOL_NAMES = [
+  'inspect_document',
+  'read_content',
+  'search_document',
+  'preview_edit',
+  'apply_edit',
+  'validate_content',
+  'load_guidance',
+] as const;
+export type FacadeV1ToolName = (typeof FACADE_V1_TOOL_NAMES)[number];
+
+export const FACADE_V1_FUTURE_TOOL_NAMES = ['manage_items', 'manage_assets', 'manage_file'] as const;
+
+export type FacadeV1ToolMutability = 'read-only' | 'preview' | 'mutating';
+
+export interface FacadeV1ToolContract {
+  name: string;
+  lifecycle: 'v1' | 'future-candidate';
+  mutability: FacadeV1ToolMutability;
+  preference: 'preferred';
+}
+
+export const FACADE_V1_TOOL_CONTRACTS: readonly FacadeV1ToolContract[] = [
+  { name: 'inspect_document', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
+  { name: 'read_content', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
+  { name: 'search_document', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
+  { name: 'preview_edit', lifecycle: 'v1', mutability: 'preview', preference: 'preferred' },
+  { name: 'apply_edit', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
+  { name: 'validate_content', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
+  { name: 'load_guidance', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
+  { name: 'manage_items', lifecycle: 'future-candidate', mutability: 'mutating', preference: 'preferred' },
+  { name: 'manage_assets', lifecycle: 'future-candidate', mutability: 'mutating', preference: 'preferred' },
+  { name: 'manage_file', lifecycle: 'future-candidate', mutability: 'mutating', preference: 'preferred' },
+];
+
+export function getFacadeV1ToolContract(name: string): FacadeV1ToolContract | undefined {
+  return FACADE_V1_TOOL_CONTRACTS.find((tool) => tool.name === name);
+}
+
+const facadeMaxBytesSchema = z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional();
+
+export const facadeV1TargetSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('active'),
+    document: z.literal('current').optional(),
+  }),
+  z.object({
+    kind: z.literal('external'),
+    file_path: z.string().min(1),
+  }),
+  z
+    .object({
+      kind: z.literal('reference'),
+      reference_id: z.string().min(1).optional(),
+      file_path: z.string().min(1).optional(),
+    })
+    .refine((d) => d.reference_id !== undefined || d.file_path !== undefined, {
+      message: 'reference target requires reference_id or file_path',
+      path: ['reference_id'],
+    }),
+  z
+    .object({
+      kind: z.literal('guidance'),
+      skill: z.string().min(1).optional(),
+      document: z.string().min(1).optional(),
+    })
+    .refine((d) => d.skill !== undefined || d.document !== undefined, {
+      message: 'guidance target requires skill or document',
+      path: ['skill'],
+    }),
+  z.object({
+    kind: z.literal('session'),
+  }),
+]);
+export type FacadeV1Target = z.infer<typeof facadeV1TargetSchema>;
+
+export const facadeV1ContentSelectorSchema = z.object({
+  family: z
+    .enum(['field', 'surface', 'lorebook', 'regex', 'greeting', 'trigger', 'lua', 'css', 'asset', 'risup-prompt'])
+    .optional(),
+  path: z.string().min(1).optional(),
+  field: z.string().min(1).optional(),
+  index: z.number().int().nonnegative().optional(),
+  indices: z.array(z.number().int().nonnegative()).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+});
+export type FacadeV1ContentSelector = z.infer<typeof facadeV1ContentSelectorSchema>;
+
+export const facadeV1GuardSchema = z.object({
+  name: z.string().min(1),
+  value: z.unknown(),
+  payloadPath: z.string().min(1).optional(),
+  sourceOperations: z.array(z.string().min(1)).optional(),
+  sourceResultPath: z.string().min(1).optional(),
+});
+export type FacadeV1Guard = z.infer<typeof facadeV1GuardSchema>;
+
+export const facadeV1InspectDocumentBodySchema = z.object({
+  target: facadeV1TargetSchema,
+  max_bytes: facadeMaxBytesSchema,
+});
+export type FacadeV1InspectDocumentBody = z.infer<typeof facadeV1InspectDocumentBodySchema>;
+
+export const facadeV1ReadContentBodySchema = z.object({
+  target: facadeV1TargetSchema,
+  selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+  max_bytes: facadeMaxBytesSchema,
+});
+export type FacadeV1ReadContentBody = z.infer<typeof facadeV1ReadContentBodySchema>;
+
+export const facadeV1SearchDocumentBodySchema = z.object({
+  target: facadeV1TargetSchema,
+  query: z.string().min(1),
+  regex: boolish.optional(),
+  flags: lenientString,
+  context_chars: lenientNumber,
+  max_matches: z.number().int().positive().max(FACADE_V1_LIMITS.maxMatches).optional(),
+  max_bytes: facadeMaxBytesSchema,
+});
+export type FacadeV1SearchDocumentBody = z.infer<typeof facadeV1SearchDocumentBodySchema>;
+
+const facadeV1EditOperationSchema = z.object({
+  op: z.enum(['write_content', 'replace_text', 'insert_text', 'delete_item', 'patch_surface']),
+  selector: facadeV1ContentSelectorSchema,
+  content: z.unknown().optional(),
+  find: z.string().min(1).optional(),
+  replace: z.string().optional(),
+  guards: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+});
+export type FacadeV1EditOperation = z.infer<typeof facadeV1EditOperationSchema>;
+
+export const facadeV1PreviewEditBodySchema = z
+  .object({
+    target: facadeV1TargetSchema,
+    operations: z.array(facadeV1EditOperationSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems),
+    dry_run: boolish.optional(),
+    dryRun: boolish.optional(),
+    max_bytes: facadeMaxBytesSchema,
+  })
+  .refine((d) => !hasDryRunConflict(d), DRY_RUN_CONFLICT_MSG);
+export type FacadeV1PreviewEditBody = z.infer<typeof facadeV1PreviewEditBodySchema>;
+
+export const facadeV1PreviewTokenSchema = z
+  .string()
+  .regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/, 'Invalid facade preview token');
+
+export const facadeV1ApplyEditBodySchema = z.object({
+  preview_token: facadeV1PreviewTokenSchema,
+  operation_digest: z.string().min(16),
+  target: facadeV1TargetSchema,
+  guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+  max_bytes: facadeMaxBytesSchema,
+});
+export type FacadeV1ApplyEditBody = z.infer<typeof facadeV1ApplyEditBodySchema>;
+
+export const facadeV1ValidateContentBodySchema = z.object({
+  target: facadeV1TargetSchema,
+  selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+  max_bytes: facadeMaxBytesSchema,
+});
+export type FacadeV1ValidateContentBody = z.infer<typeof facadeV1ValidateContentBodySchema>;
+
+export const facadeV1LoadGuidanceBodySchema = z.object({
+  target: z
+    .object({
+      kind: z.literal('guidance'),
+      skill: z.string().min(1).optional(),
+      document: z.string().min(1).optional(),
+    })
+    .refine((d) => d.skill !== undefined || d.document !== undefined, {
+      message: 'guidance target requires skill or document',
+      path: ['skill'],
+    }),
+  max_bytes: facadeMaxBytesSchema,
+});
+export type FacadeV1LoadGuidanceBody = z.infer<typeof facadeV1LoadGuidanceBodySchema>;
+
+export const facadeV1SuccessEnvelopeSchema = z
+  .object({
+    status: z.literal(200),
+    summary: z.string().min(1),
+    next_actions: z.array(z.string()),
+    artifacts: z
+      .object({
+        byte_size: z.number().int().nonnegative(),
+      })
+      .catchall(z.unknown()),
+    facade: z
+      .object({
+        contract: z.literal(FACADE_V1_CONTRACT_ID),
+        version: z.literal('v1'),
+        tool: z.enum(FACADE_V1_TOOL_NAMES),
+        mutability: z.enum(['read-only', 'preview', 'mutating']),
+        target: facadeV1TargetSchema.optional(),
+        truncated: z.boolean().optional(),
+        max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+      })
+      .catchall(z.unknown()),
+    result: z.unknown().optional(),
+    preview: z
+      .object({
+        preview_token: facadeV1PreviewTokenSchema,
+        operation_digest: z.string().min(16),
+        expires_at: z.string().min(1),
+        required_guards: z.array(facadeV1GuardSchema).optional(),
+      })
+      .catchall(z.unknown())
+      .optional(),
+  })
+  .catchall(z.unknown());
+export type FacadeV1SuccessEnvelope = z.infer<typeof facadeV1SuccessEnvelopeSchema>;
+
+// ---------------------------------------------------------------------------
 // Validation helper
 // ---------------------------------------------------------------------------
 

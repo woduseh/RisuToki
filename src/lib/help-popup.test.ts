@@ -38,12 +38,30 @@ describe('help popup', () => {
   });
 
   it('closes on Escape', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
     showHelpPopup();
     expect(getOverlay()).not.toBeNull();
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
     expect(getOverlay()).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('traps Tab and Shift+Tab inside the help dialog', () => {
+    showHelpPopup();
+    const overlay = getOverlay()!;
+    const closeBtn = overlay.querySelector('.help-popup-header button') as HTMLButtonElement;
+    const syntaxBtn = overlay.querySelector('#btn-syntax-ref') as HTMLButtonElement;
+
+    closeBtn.focus();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true }));
+    expect(document.activeElement).toBe(syntaxBtn);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    expect(document.activeElement).toBe(closeBtn);
   });
 
   it('does not close the settings popup when help is opened', () => {

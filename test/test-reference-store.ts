@@ -5,6 +5,7 @@ import {
   upsertReferenceRecord,
   removeReferenceRecord,
   serializeReferenceManifest,
+  serializeReferenceManifestPaths,
   parseReferenceManifest,
   validateReferenceManifestPaths,
   getRefFileType,
@@ -53,6 +54,19 @@ import {
   assert.deepEqual(parseReferenceManifest(manifest), [
     normalizeReferencePath('C:\\refs\\a.charx'),
     normalizeReferencePath('C:\\refs\\b.charx'),
+  ]);
+})();
+
+(function testManifestPathSerializationPreservesUnloadedPaths() {
+  const manifest = serializeReferenceManifestPaths([
+    'C:\\refs\\available.charx',
+    'C:\\refs\\missing.risum',
+    'C:\\refs\\missing.risum',
+  ]);
+
+  assert.deepEqual(parseReferenceManifest(manifest), [
+    normalizeReferencePath('C:\\refs\\available.charx'),
+    normalizeReferencePath('C:\\refs\\missing.risum'),
   ]);
 })();
 

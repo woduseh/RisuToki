@@ -139,18 +139,22 @@ export function removeReferenceRecord(
   return records.filter((entry) => entry.fileName !== fileName);
 }
 
-export function serializeReferenceManifest(records: ReferenceRecord[]): ReferenceManifest {
+export function serializeReferenceManifestPaths(pathsToPersist: string[]): ReferenceManifest {
   const paths: string[] = [];
   const seen = new Set<string>();
 
-  for (const record of records) {
-    const identity = getReferenceIdentity(record);
+  for (const filePath of pathsToPersist) {
+    const identity = normalizeReferencePath(filePath);
     if (!identity || seen.has(identity)) continue;
     seen.add(identity);
     paths.push(identity);
   }
 
   return { version: 1, paths };
+}
+
+export function serializeReferenceManifest(records: ReferenceRecord[]): ReferenceManifest {
+  return serializeReferenceManifestPaths(records.map((record) => getReferenceIdentity(record)));
 }
 
 export function parseReferenceManifest(value: unknown): string[] {

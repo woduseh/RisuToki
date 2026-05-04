@@ -125,6 +125,21 @@ interface TestSessionStatus {
   lastRestored: TestLastRestoredStatus | null;
   pendingRecovery: TestPendingRecoveryStatus | null;
   renderer: TestRendererSessionStatus | null;
+  referenceManifestStatus?: { level: 'info' | 'warn' | 'error'; message: string; detail?: string } | null;
+}
+
+interface TestSessionStatusPayload {
+  document: Record<string, unknown>;
+  references: {
+    manifestStatus: unknown;
+    files: unknown[];
+  };
+  integrity: {
+    activeFile: Record<string, unknown>;
+    save: Record<string, unknown>;
+    dirty: Record<string, unknown>;
+    referenceManifest: Record<string, unknown>;
+  };
 }
 
 function createSearchFixture(): SearchFixture {
@@ -259,7 +274,7 @@ function closeServer(server: http.Server): Promise<void> {
 }
 
 interface TestDepsOverrides {
-  getSessionStatus?: () => TestSessionStatus;
+  getSessionStatus?: () => TestSessionStatus | Promise<TestSessionStatus>;
   parseLuaSections?: (lua: string) => Array<{ name: string; content: string }>;
   parseCssSections?: (css: string) => {
     sections: Array<{ name: string; content: string }>;
@@ -287,13 +302,15 @@ interface TestDepsOverrides {
 }
 
 async function startTestApiServer(
-  currentData: SearchFixture | null,
-  referenceFiles: Array<{ fileName: string; data: SearchFixture }> = [],
+  currentData: SearchFixture | CharxData | null,
+  referenceFiles: Array<{ id?: string; fileName: string; filePath?: string; data: SearchFixture | CharxData }> = [],
   skillRoots?: string | string[],
   overrides?: TestDepsOverrides,
 ) {
   let activeData: SearchFixture | CharxData | null = currentData;
-  let activeFilePath: string | null = overrides?.getSessionStatus?.().currentFilePath ?? null;
+  const initialStatus = overrides?.getSessionStatus?.();
+  let activeFilePath: string | null =
+    initialStatus && !(initialStatus instanceof Promise) ? initialStatus.currentFilePath : null;
   const modulePath = './mcp-api-server.ts';
   const { startApiServer } = (await import(modulePath)) as { startApiServer: StartApiServer };
   let resolvePort!: (port: number) => void;
@@ -754,6 +771,7 @@ describe('MCP API surface routes', () => {
 describe('MCP API external unopened-file routes', () => {
   it('inspects unopened charx files and exposes missing probe surfaces', async () => {
     const fixture = createExternalCharxFixture();
+    const fixtureStat = fs.statSync(fixture.filePath);
     const api = await startTestApiServer(null, [], undefined, {
       parseLuaSections: (lua) => [{ name: 'main', content: lua }],
       parseCssSections: (css) => ({ sections: [{ name: 'main', content: css }], prefix: '', suffix: '' }),
@@ -768,6 +786,13 @@ describe('MCP API external unopened-file routes', () => {
         file_path: fixture.filePath,
         file_type: 'charx',
         name: 'External Char',
+      });
+      expect(inspect.data.integrity).toEqual({
+        path: fixture.filePath,
+        exists: true,
+        mtimeMs: fixtureStat.mtimeMs,
+        size: fixtureStat.size,
+        unavailableReason: null,
       });
       expect(inspect.data.surfaceCounts).toMatchObject({
         lorebook: 1,
@@ -933,6 +958,34 @@ describe('MCP API external unopened-file routes', () => {
       expect(response.data).toMatchObject({
         error: 'The requested file is already open in the UI session.',
         target: 'external:field:description',
+      });
+    } finally {
+      await closeServer(api.server);
+      fs.rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects external batch writes when the target file is already active in the UI session', async () => {
+    const fixture = createExternalCharxFixture();
+    const api = await startTestApiServer(createSearchFixture(), [], undefined, {
+      getSessionStatus: () => ({
+        currentFilePath: fixture.filePath,
+        currentFileType: 'charx',
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: null,
+      }),
+    });
+
+    try {
+      const response = await postJson<Record<string, unknown>>(api.port, api.token, '/external/field/batch-write', {
+        file_path: fixture.filePath,
+        entries: [{ field: 'description', content: 'Should be blocked' }],
+      });
+      expect(response.status).toBe(409);
+      expect(response.data).toMatchObject({
+        error: 'The requested file is already open in the UI session.',
+        target: 'external:field:batch-write',
       });
     } finally {
       await closeServer(api.server);
@@ -2696,6 +2749,50 @@ related_tools: ['search_all_fields', 'write_field_batch']
     }
   });
 
+  it('parses indented YAML flow arrays on the line after the key', async () => {
+    const skillsDir = path.join(TEST_DIR, 'skills-yaml-flow-next-line');
+    await fs.promises.rm(skillsDir, { recursive: true, force: true });
+    await writeSkillFixture(skillsDir, 'yaml-flow-next-line-skill', {
+      'SKILL.md': `---
+name: yaml-flow-next-line-skill
+description: 'Parses YAML flow arrays on the following line'
+tags:
+  ['workflow', 'metadata']
+related_tools:
+  [
+    'list_fields',
+    'read_field_batch',
+  ]
+---
+
+# YAML Flow Next Line Skill
+`,
+    });
+
+    const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
+
+    try {
+      const response = await getJson<{
+        skills: Array<{
+          name: string;
+          tags: string[];
+          relatedTools: string[];
+        }>;
+      }>(api.port, api.token, '/skills');
+
+      expect(response.status).toBe(200);
+      expect(response.data.skills).toEqual([
+        expect.objectContaining({
+          name: 'yaml-flow-next-line-skill',
+          tags: ['workflow', 'metadata'],
+          relatedTools: ['list_fields', 'read_field_batch'],
+        }),
+      ]);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('discovers the extracted built-in reference skills', async () => {
     const api = await startTestApiServer(createSearchFixture());
 
@@ -2716,12 +2813,12 @@ related_tools: ['search_all_fields', 'write_field_batch']
           expect.objectContaining({
             name: 'file-structure-reference',
             tags: expect.arrayContaining(['reference', 'charx']),
-            relatedTools: expect.arrayContaining(['list_fields', 'read_field']),
+            relatedTools: expect.arrayContaining(['list_fields', 'read_field_batch']),
           }),
           expect.objectContaining({
             name: 'using-mcp-tools',
             tags: expect.arrayContaining(['workflow', 'mcp']),
-            relatedTools: expect.arrayContaining(['search_all_fields', 'write_field_batch']),
+            relatedTools: expect.arrayContaining(['inspect_document', 'read_content', 'apply_edit']),
           }),
           expect.objectContaining({
             name: 'writing-danbooru-tags',
@@ -4529,6 +4626,64 @@ describe('MCP API structured error envelopes — asset routes', () => {
       await closeServer(api.server);
     }
   });
+
+  it('delete_charx_asset rejects stale expected_path with 409 envelope', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      assets: [{ path: 'assets/other/image/original.png', data: Buffer.from('asset-bytes') }],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/asset/0/delete', {
+        expected_path: 'assets/other/image/other.png',
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.status).toBe(409);
+      expect(res.data.retryable).toBe(true);
+      expect(res.data.next_actions).toEqual(expect.arrayContaining(['list_charx_assets', 'read_charx_asset']));
+      expect(res.data.error).toContain('Stale asset index 0');
+      expect(res.data.details).toEqual(
+        expect.objectContaining({
+          expected_path: 'assets/other/image/other.png',
+          actual_path: 'assets/other/image/original.png',
+        }),
+      );
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('compress_assets_webp dry_run returns a destructive preview without mutating assets', async () => {
+    const assetPath = 'assets/other/image/original.png';
+    const bytes = Buffer.from('not-a-real-png');
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      assets: [{ path: assetPath, data: Buffer.from(bytes) }],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/assets/compress-webp', {
+        dry_run: true,
+        quality: 75,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data.dry_run).toBe(true);
+      expect(res.data.stats).toEqual(
+        expect.objectContaining({
+          total: 1,
+          convertible: 1,
+          skipped: 0,
+          originalSize: bytes.length,
+        }),
+      );
+      expect(res.data.preview).toEqual([
+        expect.objectContaining({ index: 0, path: assetPath, newPath: 'assets/other/image/original.webp' }),
+      ]);
+      expect((fixture.assets as Array<{ path: string; data: Buffer }>)[0].path).toBe(assetPath);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
 });
 
 describe('MCP API structured error envelopes — risum-asset routes', () => {
@@ -4554,6 +4709,36 @@ describe('MCP API structured error envelopes — risum-asset routes', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'risum-asset:add');
       expect(res.data).toHaveProperty('error', 'name과 base64 데이터가 필요합니다.');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('delete_risum_asset rejects stale expected_path with 409 envelope', async () => {
+    const fixture: SearchFixture = {
+      _fileType: 'risum',
+      risumAssets: [Buffer.from('fake-audio')],
+      cardAssets: [],
+      _moduleData: {
+        module: {
+          assets: [['theme', '', 'assets/audio/theme.mp3']],
+        },
+      },
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/risum-asset/0/delete', {
+        expected_path: 'assets/audio/other.mp3',
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.status).toBe(409);
+      expect(res.data.error).toContain('Stale asset index 0');
+      expect(res.data.details).toEqual(
+        expect.objectContaining({
+          expected_path: 'assets/audio/other.mp3',
+          actual_path: 'assets/audio/theme.mp3',
+        }),
+      );
     } finally {
       await closeServer(api.server);
     }
@@ -5734,7 +5919,33 @@ describe('MCP API success response envelope', () => {
       expect(res.data.references).toEqual({
         count: 0,
         files: [],
+        manifestStatus: null,
       });
+      expect(res.data.integrity).toEqual(
+        expect.objectContaining({
+          dirty: expect.objectContaining({
+            known: true,
+            hasUnsavedChanges: true,
+            dirtyFieldCount: 2,
+            dirtyFields: ['description', 'firstMessage'],
+          }),
+          autosave: expect.objectContaining({
+            available: true,
+            enabled: true,
+            interval: 120000,
+            dir: 'C:\\autosave',
+          }),
+          recovery: expect.objectContaining({
+            lastRestoredAvailable: true,
+            pendingRecoveryAvailable: true,
+          }),
+          referenceManifest: {
+            available: false,
+            status: null,
+            unavailableReason: 'reference_manifest_status_unavailable',
+          },
+        }),
+      );
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
@@ -5774,7 +5985,24 @@ describe('MCP API success response envelope', () => {
       expect(res.data.references).toEqual({
         count: 0,
         files: [],
+        manifestStatus: null,
       });
+      expect(res.data.integrity).toEqual(
+        expect.objectContaining({
+          activeFile: {
+            path: null,
+            fileType: null,
+            exists: null,
+            mtimeMs: null,
+            size: null,
+            unavailableReason: 'no_file_path',
+          },
+          dirty: expect.objectContaining({
+            known: true,
+            hasUnsavedChanges: false,
+          }),
+        }),
+      );
       expect(res.data.renderer).toEqual({
         autosaveDir: 'C:\\autosave',
         autosaveEnabled: false,
@@ -5797,6 +6025,195 @@ describe('MCP API success response envelope', () => {
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('session_status integrity reports stat metadata for an open file', async () => {
+    const fixture = createExternalCharxFixture({ name: 'Integrity Card' });
+    const data = openExternalDocumentForTest(fixture.filePath);
+    const expectedStat = fs.statSync(fixture.filePath);
+    const api = await startTestApiServer(data, [], undefined, {
+      getSessionStatus: () => ({
+        currentFilePath: fixture.filePath,
+        currentFileType: 'charx',
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: {
+          autosaveDir: path.join(TEST_DIR, 'autosave'),
+          autosaveEnabled: true,
+          autosaveInterval: 60000,
+          dirtyFieldCount: 0,
+          dirtyFields: [],
+          documentSwitchInProgress: false,
+          hasUnsavedChanges: false,
+        },
+      }),
+    });
+    try {
+      const res = await getJson<TestSessionStatusPayload>(api.port, api.token, '/session/status');
+
+      expect(res.status).toBe(200);
+      expect(res.data.document).toEqual({
+        filePath: fixture.filePath,
+        fileType: 'charx',
+        name: 'Integrity Card',
+      });
+      expect(res.data.integrity.activeFile).toEqual({
+        path: fixture.filePath,
+        fileType: 'charx',
+        exists: true,
+        mtimeMs: expectedStat.mtimeMs,
+        size: expectedStat.size,
+        unavailableReason: null,
+      });
+      expect(res.data.integrity.save).toEqual({
+        lastSavedAt: new Date(expectedStat.mtimeMs).toISOString(),
+        mtimeMs: expectedStat.mtimeMs,
+        unavailableReason: null,
+      });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('session_status integrity reports missing active file with a clear reason', async () => {
+    const missingPath = path.join(TEST_DIR, 'missing-integrity.charx');
+    const api = await startTestApiServer({ ...createSearchFixture(), name: 'Missing Integrity Card' }, [], undefined, {
+      getSessionStatus: () => ({
+        currentFilePath: missingPath,
+        currentFileType: 'charx',
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: null,
+      }),
+    });
+    try {
+      const res = await getJson<TestSessionStatusPayload>(api.port, api.token, '/session/status');
+
+      expect(res.status).toBe(200);
+      expect(res.data.integrity.activeFile).toEqual({
+        path: missingPath,
+        fileType: 'charx',
+        exists: false,
+        mtimeMs: null,
+        size: null,
+        unavailableReason: 'file_missing',
+      });
+      expect(res.data.integrity.dirty).toEqual({
+        known: false,
+        hasUnsavedChanges: null,
+        dirtyFieldCount: null,
+        dirtyFields: [],
+        unavailableReason: 'renderer_status_unavailable',
+      });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('session_status integrity reports reference file stats and manifest status', async () => {
+    const refFixture = createExternalRisupFixture();
+    const refStat = fs.statSync(refFixture.filePath);
+    const api = await startTestApiServer(
+      null,
+      [
+        {
+          id: 'preset-ref',
+          fileName: path.basename(refFixture.filePath),
+          filePath: refFixture.filePath,
+          data: openExternalDocumentForTest(refFixture.filePath),
+        },
+        {
+          id: 'missing-ref',
+          fileName: 'missing-ref.charx',
+          filePath: path.join(TEST_DIR, 'missing-ref.charx'),
+          data: createSearchFixture(),
+        },
+      ],
+      undefined,
+      {
+        getSessionStatus: () => ({
+          currentFilePath: null,
+          currentFileType: null,
+          lastRestored: null,
+          pendingRecovery: null,
+          renderer: null,
+          referenceManifestStatus: {
+            level: 'warn',
+            message: 'Manifest includes unavailable references.',
+            detail: 'One reference file could not be restored.',
+          },
+        }),
+      },
+    );
+    try {
+      const res = await getJson<TestSessionStatusPayload>(api.port, api.token, '/session/status');
+
+      expect(res.status).toBe(200);
+      expect(res.data.references.manifestStatus).toEqual({
+        level: 'warn',
+        message: 'Manifest includes unavailable references.',
+        detail: 'One reference file could not be restored.',
+      });
+      expect(res.data.references.files).toEqual([
+        expect.objectContaining({
+          index: 0,
+          id: 'preset-ref',
+          filePath: refFixture.filePath,
+          fileType: 'risup',
+          exists: true,
+          mtimeMs: refStat.mtimeMs,
+          size: refStat.size,
+          unavailableReason: null,
+        }),
+        expect.objectContaining({
+          index: 1,
+          id: 'missing-ref',
+          filePath: path.join(TEST_DIR, 'missing-ref.charx'),
+          fileType: 'charx',
+          exists: false,
+          mtimeMs: null,
+          size: null,
+          unavailableReason: 'file_missing',
+        }),
+      ]);
+      expect(res.data.integrity.referenceManifest).toEqual({
+        available: true,
+        status: {
+          level: 'warn',
+          message: 'Manifest includes unavailable references.',
+          detail: 'One reference file could not be restored.',
+        },
+        unavailableReason: null,
+      });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('session_status remains available when renderer session state times out', async () => {
+    const api = await startTestApiServer({ ...createSearchFixture(), name: 'Timeout Card' }, [], undefined, {
+      getSessionStatus: () => new Promise<TestSessionStatus>(() => {}),
+    });
+    try {
+      const startedAt = Date.now();
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+
+      expect(Date.now() - startedAt).toBeLessThan(2000);
+      expect(res.status).toBe(200);
+      expect(res.data.loaded).toBe(true);
+      expect(res.data.document).toEqual({
+        filePath: null,
+        fileType: 'charx',
+        name: 'Timeout Card',
+      });
+      expect(res.data.renderer).toBeNull();
+      expect(res.data.recovery).toEqual({
+        lastRestored: null,
+        pendingRecovery: null,
+      });
     } finally {
       await closeServer(api.server);
     }
@@ -6190,6 +6607,109 @@ describe('MCP API success response envelope', () => {
         expect(read.status).toBe(200);
         expect((read.data.entry as Record<string, unknown>).content).toBe('Lore alpha entry updated by agent eval.');
         expectMcpSuccessArtifacts(read.data);
+      } finally {
+        await closeServer(api.server);
+      }
+    });
+
+    it('facade baseline: active/external/reference routing stays explicit and byte-measurable', async () => {
+      const externalFixture = createExternalCharxFixture();
+      const api = await startTestApiServer(createSearchFixture(), [
+        {
+          fileName: 'reference.charx',
+          data: {
+            description: 'Reference description for facade baseline.',
+            firstMessage: 'Reference hello.',
+          },
+        },
+      ]);
+      const workflow: string[] = [];
+      try {
+        workflow.push('read_field');
+        const activeRead = await getJson<Record<string, unknown>>(api.port, api.token, '/field/description');
+        expect(activeRead.status).toBe(200);
+        expect(activeRead.data.content).toBe('Field Alpha is searchable.');
+
+        workflow.push('inspect_external_file');
+        const externalInspect = await postJson<Record<string, unknown>>(api.port, api.token, '/external/inspect', {
+          file_path: externalFixture.filePath,
+        });
+        expect(externalInspect.status).toBe(200);
+        expect(externalInspect.data.name).toBe('External Char');
+
+        workflow.push('external_search_in_field');
+        const externalSearch = await postJson<Record<string, unknown>>(
+          api.port,
+          api.token,
+          '/external/field/description/search',
+          {
+            file_path: externalFixture.filePath,
+            query: 'External',
+          },
+        );
+        expect(externalSearch.status).toBe(200);
+        expect(externalSearch.data.totalMatches).toBe(1);
+
+        workflow.push('list_references');
+        const references = await getJson<Record<string, unknown>>(api.port, api.token, '/references');
+        expect(references.status).toBe(200);
+        expect(references.data.count).toBe(1);
+
+        workflow.push('read_reference_field');
+        const referenceRead = await getJson<Record<string, unknown>>(api.port, api.token, '/reference/0/description');
+        expect(referenceRead.status).toBe(200);
+        expect(referenceRead.data.content).toBe('Reference description for facade baseline.');
+
+        expect(workflow).toEqual([
+          'read_field',
+          'inspect_external_file',
+          'external_search_in_field',
+          'list_references',
+          'read_reference_field',
+        ]);
+        for (const res of [activeRead, externalInspect, externalSearch, references, referenceRead]) {
+          expectMcpSuccessArtifacts(res.data);
+        }
+      } finally {
+        await closeServer(api.server);
+        fs.rmSync(externalFixture.dir, { recursive: true, force: true });
+      }
+    });
+
+    it('facade baseline: dry-run-first batch edit preserves then matches final artifact', async () => {
+      const fixture = createSearchFixture();
+      const api = await startTestApiServer(fixture);
+      try {
+        const workflow = ['list_lorebook', 'replace_in_lorebook_batch:dry_run', 'replace_in_lorebook_batch:apply'];
+        const listed = await getJson<Record<string, unknown>>(api.port, api.token, '/lorebook');
+        expect(listed.status).toBe(200);
+        expect(listed.data.count).toBe(2);
+
+        const dryRun = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/batch-replace', {
+          replacements: [{ index: 0, find: 'alpha', replace: 'facade baseline', expected_comment: 'Bridge lore' }],
+          dry_run: true,
+        });
+        expect(dryRun.status).toBe(200);
+        expect(dryRun.data.dryRun).toBe(true);
+        expect(fixture.lorebook?.[0]?.content).toBe('Lore alpha entry.');
+
+        const applied = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/batch-replace', {
+          replacements: [{ index: 0, find: 'alpha', replace: 'facade baseline', expected_comment: 'Bridge lore' }],
+        });
+        expect(applied.status).toBe(200);
+        expect(applied.data.success).toBe(true);
+
+        workflow.push('read_lorebook_batch:verify');
+        const verified = await postJson<Record<string, unknown>>(api.port, api.token, '/lorebook/batch', {
+          indices: [0],
+        });
+        expect(verified.status).toBe(200);
+        expect(((verified.data.entries as Record<string, unknown>[])[0].entry as Record<string, unknown>).content).toBe(
+          'Lore facade baseline entry.',
+        );
+        expect(workflow).toHaveLength(4);
+        expectMcpSuccessArtifacts(applied.data);
+        expectMcpSuccessArtifacts(verified.data);
       } finally {
         await closeServer(api.server);
       }
@@ -6839,6 +7359,9 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       // Original fields preserved
       expect(typeof res.data.count).toBe('number');
       expect(Array.isArray(res.data.sections)).toBe(true);
+      const firstSection = (res.data.sections as Array<Record<string, unknown>>)[0];
+      expect(firstSection.preview).toBe('print("hello")');
+      expect(typeof firstSection.hash).toBe('string');
       // Envelope fields present
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
@@ -6859,6 +7382,8 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       expect(res.data.index).toBe(0);
       expect(typeof res.data.name).toBe('string');
       expect(typeof res.data.content).toBe('string');
+      expect(res.data.preview).toBe('print("hello")');
+      expect(typeof res.data.hash).toBe('string');
       // Envelope fields present
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
@@ -6884,6 +7409,27 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('agent eval: write_lua rejects stale expected_hash with refresh-retry metadata', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/lua/0', {
+        content: 'print("updated")',
+        expected_hash: 'not-current',
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.status).toBe(409);
+      expect(res.data.retryable).toBe(true);
+      expect(res.data.next_actions).toEqual(expect.arrayContaining(['list_lua', 'read_lua']));
+      expect(res.data.error).toContain('Stale Lua section index 0');
+      expect(res.data.details).toEqual(
+        expect.objectContaining({ expected_hash: 'not-current', actual_hash: expect.any(String) }),
+      );
     } finally {
       await closeServer(api.server);
     }
@@ -6984,6 +7530,9 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       // Original fields preserved
       expect(typeof res.data.count).toBe('number');
       expect(Array.isArray(res.data.sections)).toBe(true);
+      const firstSection = (res.data.sections as Array<Record<string, unknown>>)[0];
+      expect(firstSection.preview).toBe('body { color: red; }');
+      expect(typeof firstSection.hash).toBe('string');
       // Envelope fields present
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
@@ -7004,6 +7553,8 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       expect(res.data.index).toBe(0);
       expect(typeof res.data.name).toBe('string');
       expect(typeof res.data.content).toBe('string');
+      expect(res.data.preview).toBe('body { color: red; }');
+      expect(typeof res.data.hash).toBe('string');
       // Envelope fields present
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
@@ -7029,6 +7580,23 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('write_css rejects stale expected_preview with 409 envelope', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/css-section/0', {
+        content: 'body { color: blue; }',
+        expected_preview: 'body { color: green; }',
+      });
+      expect(res.status).toBe(409);
+      expect(res.data.status).toBe(409);
+      expect(res.data.target).toBe('css-section:0');
+      expect(res.data.error).toContain('Stale CSS section index 0');
     } finally {
       await closeServer(api.server);
     }

@@ -142,12 +142,30 @@ export function initSidebarSplitResizer(deps: SplitResizerDeps): void {
   let startItemsH = 0;
   let startRefsH = 0;
 
-  const onMove = (e: MouseEvent) => {
-    const dy = e.clientY - startY;
-    const newItemsH = Math.max(60, startItemsH + dy);
-    const newRefsH = Math.max(60, startRefsH - dy);
+  const updateResizerValue = () => {
+    resizer.setAttribute('aria-valuenow', String(itemsSection.offsetHeight));
+    resizer.setAttribute('aria-valuetext', `${itemsSection.offsetHeight}px`);
+  };
+
+  const resizeSections = (itemsHeight: number, refsHeight: number) => {
+    const newItemsH = Math.max(60, itemsHeight);
+    const newRefsH = Math.max(60, refsHeight);
     itemsSection.style.flex = `0 0 ${newItemsH}px`;
     refsSection.style.flex = `0 0 ${newRefsH}px`;
+    resizer.setAttribute('aria-valuenow', String(newItemsH));
+    resizer.setAttribute('aria-valuetext', `${newItemsH}px`);
+  };
+
+  resizer.setAttribute('role', 'separator');
+  resizer.setAttribute('aria-orientation', 'horizontal');
+  resizer.setAttribute('aria-label', '항목과 참고자료 패널 크기 조절');
+  resizer.setAttribute('aria-valuemin', '60');
+  resizer.tabIndex = 0;
+  updateResizerValue();
+
+  const onMove = (e: MouseEvent) => {
+    const dy = e.clientY - startY;
+    resizeSections(startItemsH + dy, startRefsH - dy);
   };
   const onUp = () => {
     document.body.style.cursor = '';
@@ -162,6 +180,13 @@ export function initSidebarSplitResizer(deps: SplitResizerDeps): void {
     document.body.style.cursor = 'ns-resize';
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
+  });
+  resizer.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const step = e.shiftKey ? 50 : 10;
+    const delta = e.key === 'ArrowDown' ? step : -step;
+    resizeSections(itemsSection.offsetHeight + delta, refsSection.offsetHeight - delta);
   });
 
   // --- Refs section buttons ---

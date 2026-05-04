@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { handleCbsRoute } from './mcp-cbs-routes';
+import { fileStatMetadata, handleSessionStatusRoute } from './mcp-session-routes';
 import {
   buildFolderInfoMap,
   canonicalizeLorebookFolderRefs,
@@ -111,12 +112,19 @@ export interface McpRendererSessionStatus {
   hasUnsavedChanges: boolean;
 }
 
+export interface McpReferenceManifestStatus {
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  detail?: string;
+}
+
 export interface McpSessionStatus {
   currentFilePath: string | null;
   currentFileType: 'charx' | 'risum' | 'risup' | null;
   lastRestored: McpLastRestoredStatus | null;
   pendingRecovery: McpPendingRecoveryStatus | null;
   renderer: McpRendererSessionStatus | null;
+  referenceManifestStatus?: McpReferenceManifestStatus | null;
 }
 
 export interface McpApiDeps {
@@ -257,8 +265,9 @@ function parseFrontmatterString(block: string, key: string): string {
 
 function parseInlineStringArray(block: string, key: string): string[] {
   const match = block.match(new RegExp(`^${key}:\\s*(\\[[^\\n]*\\])\\s*$`, 'm'));
-  if (!match) return [];
-  const rawArray = match[1].trim();
+  const indentedMatch = block.match(new RegExp(`^${key}:\\s*\\r?\\n((?:[ \\t]+[^\\n]*\\r?\\n?)+)`, 'm'));
+  const rawArray = (match?.[1] ?? indentedMatch?.[1]?.replace(/\r?\n/g, ' ') ?? '').trim();
+  if (!rawArray) return [];
   try {
     const parsed = JSON.parse(rawArray) as unknown;
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
@@ -1038,6 +1047,89 @@ function ensureGreetingExpectedPreview(
   });
 }
 
+function getSectionPreview(content: string): string {
+  return content.slice(0, 100) + (content.length > 100 ? '…' : '');
+}
+
+function getSectionHash(content: string): string {
+  return hashSurface(normalizeLF(content));
+}
+
+function buildSectionReadPayload(index: number, section: Section): Record<string, unknown> {
+  return {
+    index,
+    name: section.name,
+    content: section.content,
+    contentSize: section.content.length,
+    preview: getSectionPreview(section.content),
+    hash: getSectionHash(section.content),
+  };
+}
+
+function ensureSectionExpectedIdentity(
+  res: http.ServerResponse,
+  family: 'lua' | 'css',
+  index: number,
+  section: Section,
+  expectedHash: unknown,
+  expectedPreview: unknown,
+  action: string,
+  target: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): boolean {
+  const label = family === 'lua' ? 'Lua section' : 'CSS section';
+  const suggestion =
+    family === 'lua'
+      ? 'list_lua 또는 read_lua로 최신 index/hash/preview를 다시 확인한 뒤 다시 시도하세요.'
+      : 'list_css 또는 read_css로 최신 index/hash/preview를 다시 확인한 뒤 다시 시도하세요.';
+  if (
+    !ensureExpectedStringMatch(res, index, getSectionHash(section.content), expectedHash, {
+      parameterName: 'expected_hash',
+      actualKey: 'actual_hash',
+      resourceLabel: label,
+      identityLabel: 'hash',
+      action,
+      target,
+      suggestion,
+      onError,
+    })
+  ) {
+    return false;
+  }
+  return ensureExpectedStringMatch(res, index, getSectionPreview(section.content), expectedPreview, {
+    parameterName: 'expected_preview',
+    actualKey: 'actual_preview',
+    resourceLabel: label,
+    identityLabel: 'preview',
+    action,
+    target,
+    suggestion,
+    onError,
+  });
+}
+
+function ensureAssetExpectedPath(
+  res: http.ServerResponse,
+  index: number,
+  actualPath: string,
+  expectedPath: unknown,
+  action: string,
+  target: string,
+  suggestion: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): boolean {
+  return ensureExpectedStringMatch(res, index, actualPath, expectedPath, {
+    parameterName: 'expected_path',
+    actualKey: 'actual_path',
+    resourceLabel: 'asset',
+    identityLabel: 'path',
+    action,
+    target,
+    suggestion,
+    onError,
+  });
+}
+
 function getPromptItemType(item: PromptItemModel): string {
   return item.type ?? 'unknown';
 }
@@ -1245,6 +1337,8 @@ function buildLuaListResponse(luaCode: string, parseLuaSections: (lua: string) =
       index,
       name: section.name,
       contentSize: section.content.length,
+      preview: getSectionPreview(section.content),
+      hash: getSectionHash(section.content),
     })),
   };
 }
@@ -1260,6 +1354,8 @@ function buildCssListResponse(
       index,
       name: section.name,
       contentSize: section.content.length,
+      preview: getSectionPreview(section.content),
+      hash: getSectionHash(section.content),
     })),
   };
 }
@@ -2334,11 +2430,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const inventory = buildFieldInventory(probe.data, deps);
         const cssSections = buildCssListResponse(String(probe.data.css || ''), deps.parseCssSections);
         const luaSections = buildLuaListResponse(String(probe.data.lua || ''), deps.parseLuaSections);
+        const stat = fileStatMetadata(probe.filePath);
         return jsonResSuccess(
           res,
           {
             file_path: probe.filePath,
             file_type: probe.fileType,
+            integrity: {
+              path: stat.path,
+              exists: stat.exists,
+              mtimeMs: stat.mtimeMs,
+              size: stat.size,
+              unavailableReason: stat.unavailableReason,
+            },
             name: String(probe.data.name || path.basename(probe.filePath)),
             fieldCount: inventory.fields.length,
             fields: inventory.fields,
@@ -4920,120 +5024,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // GET /session/status — inspect the current MCP-visible session state
       // ----------------------------------------------------------------
-      if (parts[0] === 'session' && parts[1] === 'status' && !parts[2] && req.method === 'GET') {
-        const status = deps.getSessionStatus ? await deps.getSessionStatus() : null;
-        const snapshotSummary = [...fieldSnapshots.entries()]
-          .filter(([, snaps]) => snaps.length > 0)
-          .map(([field, snaps]) => ({ field, count: snaps.length }))
-          .sort((a, b) => a.field.localeCompare(b.field));
-        const totalSnapshots = snapshotSummary.reduce((sum, entry) => sum + entry.count, 0);
-        const documentName =
-          currentData &&
-          typeof currentData === 'object' &&
-          typeof currentData.name === 'string' &&
-          currentData.name.trim()
-            ? currentData.name
-            : null;
-        const documentFileType =
-          status?.currentFileType ??
-          (currentData &&
-          typeof currentData === 'object' &&
-          (currentData._fileType === 'risum' || currentData._fileType === 'risup')
-            ? currentData._fileType
-            : currentData
-              ? 'charx'
-              : null);
-        const loaded = !!currentData;
-        const surfaceSummary = loaded
-          ? (() => {
-              const lorebookCount = Array.isArray(currentData.lorebook) ? currentData.lorebook.length : 0;
-              const regexCount = Array.isArray(currentData.regex) ? currentData.regex.length : 0;
-              const alternateGreetingCount = Array.isArray(currentData.alternateGreetings)
-                ? currentData.alternateGreetings.length
-                : 0;
-              const groupGreetingCount = Array.isArray(currentData.groupOnlyGreetings)
-                ? currentData.groupOnlyGreetings.length
-                : 0;
-              const normalizedTriggers = deps.normalizeTriggerScripts(currentData.triggerScripts || []);
-              const triggerCount = Array.isArray(normalizedTriggers) ? normalizedTriggers.length : 0;
-              const luaCode = typeof currentData.lua === 'string' ? currentData.lua : '';
-              const cssCode = typeof currentData.css === 'string' ? currentData.css : '';
-              const luaSectionCount = luaCode.trim() ? luaCache.get(luaCode).length : 0;
-              const cssSectionCount = cssCode.trim() ? cssCache.get(cssCode).sections.length : 0;
-              let risupPromptItemCount: number | null = null;
-              let risupPromptState: 'empty' | 'invalid' | 'valid' | null = null;
-              if (documentFileType === 'risup') {
-                const promptModel = parsePromptTemplate(
-                  typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '',
-                );
-                risupPromptItemCount = promptModel.items.length;
-                risupPromptState = promptModel.state;
-              }
-              return {
-                lorebookCount,
-                regexCount,
-                alternateGreetingCount,
-                groupGreetingCount,
-                triggerCount,
-                luaSectionCount,
-                cssSectionCount,
-                risupPromptItemCount,
-                risupPromptState,
-              };
-            })()
-          : null;
-
-        // Reference summary
-        const refFiles = deps.getReferenceFiles();
-        const refsSummary = refFiles.map((r: any, i: number) => ({
-          index: i,
-          id: r.id || r.filePath || r.fileName,
-          fileName: r.fileName,
-          fileType: getRefFileType(r),
-        }));
-
-        return jsonResSuccess(
-          res,
-          {
-            loaded,
-            document: {
-              filePath: status?.currentFilePath ?? null,
-              fileType: documentFileType,
-              name: documentName,
-            },
-            renderer: status?.renderer ?? null,
-            recovery: {
-              lastRestored: status?.lastRestored ?? null,
-              pendingRecovery: status?.pendingRecovery ?? null,
-            },
-            snapshots: {
-              byField: snapshotSummary,
-              totalFields: snapshotSummary.length,
-              totalSnapshots,
-            },
-            surfaceSummary,
-            references: {
-              count: refsSummary.length,
-              files: refsSummary,
-            },
-          },
-          {
-            toolName: 'session_status',
-            summary: loaded
-              ? `Session status for "${documentName ?? 'Untitled'}" (${totalSnapshots} snapshot${totalSnapshots === 1 ? '' : 's'}, ${refsSummary.length} ref${refsSummary.length === 1 ? '' : 's'})`
-              : refsSummary.length > 0
-                ? `No document loaded but ${refsSummary.length} reference file(s) available — use list_references to inspect`
-                : `Session status (no document loaded, no references)`,
-            nextActions: !loaded && refsSummary.length > 0 ? ['list_references', 'open_file'] : undefined,
-            artifacts: {
-              filePath: status?.currentFilePath ?? null,
-              loaded,
-              totalSnapshots,
-              referenceCount: refsSummary.length,
-              hasSurfaceSummary: !!surfaceSummary,
-            },
-          },
-        );
+      if (
+        await handleSessionStatusRoute(req, res, parts, currentData as Record<string, unknown> | null, fieldSnapshots, {
+          getCurrentFilePath: deps.getCurrentFilePath,
+          getReferenceFiles: deps.getReferenceFiles,
+          getSessionStatus: deps.getSessionStatus,
+          normalizeTriggerScripts: deps.normalizeTriggerScripts,
+          getCssSectionCount: (css) => cssCache.get(css).sections.length,
+          getLuaSectionCount: (lua) => luaCache.get(lua).length,
+          jsonResSuccess,
+        })
+      ) {
+        return;
       }
 
       // ----------------------------------------------------------------
@@ -8556,14 +8558,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lua:${idx}`,
           });
         }
-        return jsonResSuccess(
-          res,
-          { index: idx, name: sections[idx].name, content: sections[idx].content },
-          {
-            toolName: 'read_lua',
-            summary: `Read Lua section [${idx}] "${sections[idx].name}" (${sections[idx].content.length} chars)`,
-          },
-        );
+        return jsonResSuccess(res, buildSectionReadPayload(idx, sections[idx]), {
+          toolName: 'read_lua',
+          summary: `Read Lua section [${idx}] "${sections[idx].name}" (${sections[idx].content.length} chars)`,
+        });
       }
 
       // ----------------------------------------------------------------
@@ -8593,7 +8591,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const sections = luaCache.get(currentData.lua);
         const result = indices.map((idx: number) => {
           if (typeof idx !== 'number' || idx < 0 || idx >= sections.length) return null;
-          return { index: idx, name: sections[idx].name, content: sections[idx].content };
+          return buildSectionReadPayload(idx, sections[idx]);
         });
         return jsonResSuccess(
           res,
@@ -8688,6 +8686,36 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lua:${idx}`,
           });
         }
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'lua',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'write lua section',
+            `lua:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'css',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'write css section',
+            `css-section:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const sectionName = sections[idx].name;
         const oldSize = sections[idx].content.length;
         const newSize = body.content.length;
@@ -8751,6 +8779,51 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             suggestion: 'find 문자열 또는 정규식을 포함한 요청 본문을 보내세요.',
             target: `lua:${idx}`,
           });
+        }
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'lua',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'replace lua section content',
+            `lua:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'css',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'replace css section content',
+            `css-section:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'css',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'replace css section content',
+            `css-section:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
         }
         const sectionName = sections[idx].name;
         const content = normalizeLF(sections[idx].content);
@@ -8853,6 +8926,51 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lua:${idx}`,
           });
         }
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'lua',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'insert lua section content',
+            `lua:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'css',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'insert css section content',
+            `css-section:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'css',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'insert css section content',
+            `css-section:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const sectionName = sections[idx].name;
         const oldContent = normalizeLF(sections[idx].content);
         let newContent: string;
@@ -8951,10 +9069,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'css-section' && !parts[1] && req.method === 'GET') {
         const { sections } = cssCache.get(currentData.css);
-        const result = sections.map((s, i) => ({
-          index: i,
-          name: s.name,
-          contentSize: s.content.length,
+        const result = sections.map((section, index) => ({
+          index,
+          name: section.name,
+          contentSize: section.content.length,
+          preview: getSectionPreview(section.content),
+          hash: getSectionHash(section.content),
         }));
         return jsonResSuccess(
           res,
@@ -8981,14 +9101,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `css-section:${idx}`,
           });
         }
-        return jsonResSuccess(
-          res,
-          { index: idx, name: sections[idx].name, content: sections[idx].content },
-          {
-            toolName: 'read_css',
-            summary: `Read CSS section [${idx}] "${sections[idx].name}" (${sections[idx].content.length} chars)`,
-          },
-        );
+        return jsonResSuccess(res, buildSectionReadPayload(idx, sections[idx]), {
+          toolName: 'read_css',
+          summary: `Read CSS section [${idx}] "${sections[idx].name}" (${sections[idx].content.length} chars)`,
+        });
       }
 
       // ----------------------------------------------------------------
@@ -9018,7 +9134,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const { sections } = cssCache.get(currentData.css);
         const result = indices.map((idx: number) => {
           if (typeof idx !== 'number' || idx < 0 || idx >= sections.length) return null;
-          return { index: idx, name: sections[idx].name, content: sections[idx].content };
+          return buildSectionReadPayload(idx, sections[idx]);
         });
         return jsonResSuccess(
           res,
@@ -9110,6 +9226,21 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             suggestion: 'content 필드를 포함한 요청 본문을 보내세요.',
             target: `css-section:${idx}`,
           });
+        }
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'css',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'write css section',
+            `css-section:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
         }
         const sectionName = sections[idx].name;
         const oldSize = sections[idx].content.length;
@@ -11082,7 +11213,23 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `asset:${idx}`,
           });
         }
+        const body = await readJsonBody(req, res, `asset/${idx}/delete`, broadcastStatus);
+        if (!body) return;
         const assetToDelete = assets[idx];
+        if (
+          !ensureAssetExpectedPath(
+            res,
+            idx,
+            assetToDelete.path,
+            body.expected_path,
+            'delete_asset',
+            `asset:${idx}`,
+            'list_assets 또는 GET /assets 로 최신 index/path를 다시 확인하세요.',
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const allowed = await deps.askRendererConfirm(
           'MCP 에셋 삭제 요청',
           `AI 어시스턴트가 에셋 "${assetToDelete.path}"을(를) 삭제하려 합니다. 허용하시겠습니까?`,
@@ -11140,6 +11287,20 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const asset = assets[idx];
         const oldPath = asset.path;
+        if (
+          !ensureAssetExpectedPath(
+            res,
+            idx,
+            oldPath,
+            body.expected_path,
+            'rename_asset',
+            `asset:${idx}`,
+            'list_assets 또는 GET /assets 로 최신 index/path를 다시 확인하세요.',
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const allowed = await deps.askRendererConfirm(
           'MCP 에셋 이름 변경 요청',
           `AI 어시스턴트가 에셋 "${oldPath}"의 이름을 "${newName}"(으)로 변경하려 합니다. 허용하시겠습니까?`,
@@ -11230,6 +11391,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             res,
             {
               ok: true,
+              ...(body.dry_run === true || body.dryRun === true ? { dry_run: true, preview: [] } : {}),
               message: 'No convertible assets found.',
               stats: {
                 total: assets.length,
@@ -11252,6 +11414,36 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         const totalSize = assets.reduce((s, a) => s + a.data.length, 0);
+        const preview = convertible.map((a) => ({
+          index: assets.indexOf(a),
+          path: a.path,
+          size: a.data.length,
+          newPath: a.path.replace(/\.[^.]+$/, '.webp'),
+        }));
+        if (body.dry_run === true || body.dryRun === true) {
+          return jsonResSuccess(
+            res,
+            {
+              ok: true,
+              dry_run: true,
+              quality,
+              recompressWebp,
+              stats: {
+                total: assets.length,
+                convertible: convertible.length,
+                skipped: assets.length - convertible.length,
+                originalSize: totalSize,
+              },
+              preview,
+            },
+            {
+              toolName: 'compress_assets_webp',
+              summary: `Dry-run: ${convertible.length} asset(s) would be considered for WebP compression`,
+              artifacts: { total: assets.length, convertible: convertible.length, dry_run: true },
+            },
+          );
+        }
+
         const allowed = await deps.askRendererConfirm(
           'WebP 에셋 압축',
           `${convertible.length}개 이미지를 WebP (품질 ${quality})로 변환합니다.\n` +
@@ -11864,8 +12056,25 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             ?.assets as unknown[]) ||
           ((currentData._moduleData as Record<string, unknown>)?.assets as unknown[]) ||
           [];
+        const body = await readJsonBody(req, res, `risum-asset/${idx}/delete`, broadcastStatus);
+        if (!body) return;
         const meta = Array.isArray(modAssets[idx]) ? (modAssets[idx] as string[]) : null;
         const deleteName = meta?.[0] || `asset_${idx}`;
+        const deletePath = meta?.[2] || deleteName;
+        if (
+          !ensureAssetExpectedPath(
+            res,
+            idx,
+            deletePath,
+            body.expected_path,
+            'delete_risum_asset',
+            `risum-asset:${idx}`,
+            'list_risum_assets 또는 GET /risum-assets 로 최신 index/path를 다시 확인하세요.',
+            mcpError,
+          )
+        ) {
+          return;
+        }
         const allowed = await deps.askRendererConfirm(
           'MCP 리슘 에셋 삭제 요청',
           `AI 어시스턴트가 리슘 에셋 "${deleteName}"을(를) 삭제하려 합니다. 허용하시겠습니까?`,

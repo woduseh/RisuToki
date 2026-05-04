@@ -16,6 +16,7 @@ import * as path from 'path';
 import { resolveSkillRootDirs } from './content-roots';
 import { ALL_TOOL_NAMES, TOOL_FAMILIES } from './mcp-tool-taxonomy';
 import { FAMILY_NEXT_ACTIONS } from './mcp-response-envelope';
+import { FACADE_V1_FUTURE_TOOL_NAMES, FACADE_V1_TOOL_NAMES } from './mcp-request-schemas';
 import { listSkillCatalogEntries } from './skill-catalog';
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -219,6 +220,7 @@ describe('MODULE_MAP ↔ src/lib coverage', () => {
 
 describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
   const taxonomySet = new Set(ALL_TOOL_NAMES);
+  const declaredFacadeNames = new Set<string>([...FACADE_V1_TOOL_NAMES, ...FACADE_V1_FUTURE_TOOL_NAMES]);
   const surfaceToolNames = extractToolSurfaceToolNames();
   const surfacePath = path.join(DOCS_DIR, 'MCP_TOOL_SURFACE.md');
   const errorContractPath = path.join(DOCS_DIR, 'MCP_ERROR_CONTRACT.md');
@@ -235,8 +237,16 @@ describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
     'mcpSuccess',
     'mcpError',
     'mcpNoOp',
+    'mcp_session',
+    'mcp_read',
+    'mcp_edit',
     'artifacts.byte_size',
     '_meta',
+    'file_path',
+    'reference_id',
+    'preview_token',
+    'operation_digest',
+    'required_guards',
     'expected_comment',
     'expected_comments',
     'expected_preview',
@@ -250,7 +260,8 @@ describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
 
   it('every tool name in MCP_TOOL_SURFACE.md exists in taxonomy', () => {
     const orphans = surfaceToolNames.filter(
-      (name) => !taxonomySet.has(name) && !KNOWN_NON_TOOLS.has(name) && name.includes('_'),
+      (name) =>
+        !taxonomySet.has(name) && !declaredFacadeNames.has(name) && !KNOWN_NON_TOOLS.has(name) && name.includes('_'),
     );
     expect(orphans, 'MCP_TOOL_SURFACE.md references tools not in TOOL_TAXONOMY').toEqual([]);
   });

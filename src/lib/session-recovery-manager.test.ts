@@ -82,6 +82,21 @@ describe('SessionRecoveryManager', () => {
       expect(parsed.sourceFileType).toBe('charx');
     });
 
+    it('uses atomic record writes when available', async () => {
+      const writeFileSync = vi.fn();
+      const writeFileAtomicSync = vi.fn();
+      deps = makeDeps({ writeFileSync, writeFileAtomicSync });
+      const manager = createSessionRecoveryManager(deps);
+
+      await manager.markDocumentActive(SOURCE_PATH, 'charx');
+
+      expect(writeFileAtomicSync).toHaveBeenCalledWith(
+        expect.stringContaining('session-recovery.json'),
+        expect.stringContaining('"cleanExit":false'),
+      );
+      expect(writeFileSync).not.toHaveBeenCalled();
+    });
+
     it('sets latestAutosavePath and latestAutosaveMetaPath to null initially', async () => {
       const manager = createSessionRecoveryManager(deps);
       await manager.markDocumentActive(SOURCE_PATH, 'charx');
@@ -229,6 +244,7 @@ describe('SessionRecoveryManager', () => {
     it('returns null when the original source file no longer exists', async () => {
       const record = makeRecord();
       const provenance = makeProvenance();
+      const unlinkSync = vi.fn();
 
       deps = makeDeps({
         readFileSync: vi.fn((p: string) => {
@@ -237,12 +253,15 @@ describe('SessionRecoveryManager', () => {
           return '{}';
         }),
         existsSync: vi.fn((p: string) => p !== SOURCE_PATH),
+        unlinkSync,
       });
 
       const manager = createSessionRecoveryManager(deps);
       const candidate = await manager.getPendingRecovery();
 
       expect(candidate).toBeNull();
+      expect(deps.writeFileSync).not.toHaveBeenCalled();
+      expect(unlinkSync).not.toHaveBeenCalled();
     });
 
     it('returns null when the autosave artifact no longer exists', async () => {
@@ -286,6 +305,71 @@ describe('SessionRecoveryManager', () => {
         readFileSync: vi.fn((p: string) => {
           if (p === RECORD_PATH) return JSON.stringify(record);
           if (p === SIDECAR_PATH) return '<<<not json>>>';
+          return '{}';
+        }),
+        existsSync: vi.fn(() => true),
+      });
+
+      const manager = createSessionRecoveryManager(deps);
+      const candidate = await manager.getPendingRecovery();
+
+      expect(candidate).toBeNull();
+    });
+
+    it('returns null when the recovery record JSON is malformed', async () => {
+      deps = makeDeps({
+        readFileSync: vi.fn((p: string) => {
+          if (p === RECORD_PATH) return '{"latestAutosavePath":';
+          return '{}';
+        }),
+        existsSync: vi.fn(() => true),
+      });
+
+      const manager = createSessionRecoveryManager(deps);
+      const candidate = await manager.getPendingRecovery();
+
+      expect(candidate).toBeNull();
+      expect(deps.statSync).not.toHaveBeenCalled();
+    });
+
+    it('returns null for invalid recovery record shapes without probing arbitrary paths', async () => {
+      const invalidRecord = {
+        sourceFilePath: SOURCE_PATH,
+        sourceFileType: 'charx',
+        latestAutosavePath: { path: AUTOSAVE_PATH },
+        latestAutosaveMetaPath: SIDECAR_PATH,
+        cleanExit: false,
+        updatedAt: '2026-04-01T10:00:00.000Z',
+      };
+
+      deps = makeDeps({
+        readFileSync: vi.fn((p: string) => {
+          if (p === RECORD_PATH) return JSON.stringify(invalidRecord);
+          return '{}';
+        }),
+        existsSync: vi.fn(() => true),
+      });
+
+      const manager = createSessionRecoveryManager(deps);
+      const candidate = await manager.getPendingRecovery();
+
+      expect(candidate).toBeNull();
+      expect(deps.existsSync).toHaveBeenCalledWith(RECORD_PATH);
+      expect(deps.existsSync).not.toHaveBeenCalledWith(SOURCE_PATH);
+      expect(deps.existsSync).not.toHaveBeenCalledWith(AUTOSAVE_PATH);
+    });
+
+    it('returns null when the sidecar has an invalid provenance shape', async () => {
+      const record = makeRecord();
+      const invalidProvenance = {
+        ...makeProvenance(),
+        dirtyFields: 'description',
+      };
+
+      deps = makeDeps({
+        readFileSync: vi.fn((p: string) => {
+          if (p === RECORD_PATH) return JSON.stringify(record);
+          if (p === SIDECAR_PATH) return JSON.stringify(invalidProvenance);
           return '{}';
         }),
         existsSync: vi.fn(() => true),

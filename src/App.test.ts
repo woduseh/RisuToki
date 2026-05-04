@@ -3,6 +3,7 @@ import { nextTick } from 'vue';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import App from './App.vue';
+import MenuBar from './components/MenuBar.vue';
 import { useAppStore } from './stores/app-store';
 
 describe('App shell', () => {
@@ -26,6 +27,42 @@ describe('App shell', () => {
     expect(wrapper.text()).toContain('Claude Code 시작');
     expect(wrapper.text()).toContain('GitHub Copilot CLI 시작');
     expect(wrapper.text()).toContain('Codex 시작');
+  });
+
+  it('opens, navigates, and closes the menu bar from the keyboard with ARIA semantics', async () => {
+    const wrapper = mount(MenuBar, { attachTo: document.body });
+
+    try {
+      const menubar = wrapper.get('#menubar');
+      const fileButton = wrapper.get('[data-menu-button="file"]');
+
+      expect(menubar.attributes('role')).toBe('menubar');
+      expect(fileButton.element.tagName).toBe('BUTTON');
+      expect(fileButton.attributes('role')).toBe('menuitem');
+      expect(fileButton.attributes('aria-haspopup')).toBe('menu');
+
+      await fileButton.trigger('keydown', { key: 'Enter' });
+      await nextTick();
+
+      expect(fileButton.attributes('aria-expanded')).toBe('true');
+      expect(wrapper.get('#menu-dropdown-file').attributes('role')).toBe('menu');
+
+      const entries = wrapper.get('#menu-dropdown-file').findAll('[data-menu-entry]');
+      expect(entries.length).toBeGreaterThan(1);
+      expect(document.activeElement).toBe(entries[0].element);
+
+      await entries[0].trigger('keydown', { key: 'ArrowDown' });
+      expect(document.activeElement).toBe(entries[1].element);
+
+      await entries[1].trigger('keydown', { key: 'Escape' });
+      await nextTick();
+
+      expect(fileButton.attributes('aria-expanded')).toBe('false');
+      expect(wrapper.find('#menu-dropdown-file').exists()).toBe(false);
+      expect(document.activeElement).toBe(fileButton.element);
+    } finally {
+      wrapper.unmount();
+    }
   });
 
   it('renders the dark-mode title variant from store', () => {
@@ -91,10 +128,20 @@ describe('App shell', () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } });
 
     expect(wrapper.get('#btn-sidebar-collapse').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-refs-extpopout').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-refs-separate').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-refs-collapse').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-refs-close').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-refs-panel-popout').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-refs-panel-dock').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-avatar-collapse').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-rp-mode').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-bgm').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-chat-mode').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-terminal-bg').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-terminal-toggle').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#sidebar-expand').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#sidebar-expand').element.tagName).toBe('BUTTON');
   });
 
   it('renders the help affordance as a real button with an accessible label', () => {

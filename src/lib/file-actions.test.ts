@@ -182,7 +182,7 @@ describe('file-actions', () => {
   describe('handleOpen', () => {
     it('loads file and updates UI', async () => {
       const fileData = { name: 'Opened' };
-      installTokiAPI({ openFile: vi.fn().mockResolvedValue(fileData) });
+      installTokiAPI({ openFile: vi.fn().mockResolvedValue({ success: true, data: fileData }) });
       const deps = makeDeps();
 
       await handleOpen(deps);
@@ -193,12 +193,22 @@ describe('file-actions', () => {
     });
 
     it('resets status when user cancels', async () => {
-      installTokiAPI({ openFile: vi.fn().mockResolvedValue(null) });
+      installTokiAPI({ openFile: vi.fn().mockResolvedValue({ success: false, canceled: true }) });
       const deps = makeDeps();
 
       await handleOpen(deps);
 
       expect(deps.setStatus).toHaveBeenCalledWith('준비');
+      expect(deps.setFileData).not.toHaveBeenCalled();
+    });
+
+    it('reports dialog-open result errors without treating them as cancel', async () => {
+      installTokiAPI({ openFile: vi.fn().mockResolvedValue({ success: false, error: 'parse fail' }) });
+      const deps = makeDeps();
+
+      await handleOpen(deps);
+
+      expect(deps.setStatus).toHaveBeenCalledWith('열기 실패: parse fail');
       expect(deps.setFileData).not.toHaveBeenCalled();
     });
 
@@ -251,7 +261,7 @@ describe('file-actions', () => {
       store.setRestoredSessionLabel('자동복원');
       store.showRestoredSessionStatus('자동 저장에서 복원됨');
       const fileData = { name: 'Opened' };
-      installTokiAPI({ openFile: vi.fn().mockResolvedValue(fileData) });
+      installTokiAPI({ openFile: vi.fn().mockResolvedValue({ success: true, data: fileData }) });
       const deps = makeDeps();
 
       await handleOpen(deps);
@@ -264,7 +274,7 @@ describe('file-actions', () => {
       const store = useAppStore();
       store.setRestoredSessionLabel('자동복원');
       store.showRestoredSessionStatus('자동 저장에서 복원됨');
-      installTokiAPI({ openFile: vi.fn().mockResolvedValue(null) });
+      installTokiAPI({ openFile: vi.fn().mockResolvedValue({ success: false, canceled: true }) });
       const deps = makeDeps();
 
       await handleOpen(deps);
@@ -307,6 +317,19 @@ describe('file-actions', () => {
       await handleSave(deps);
 
       expect(deps.setStatus).toHaveBeenCalledWith('저장 실패: perm denied');
+    });
+
+    it('reports thrown save errors and keeps dirty state for retry', async () => {
+      installTokiAPI({
+        saveFile: vi.fn().mockRejectedValue(new Error('disk offline')),
+      });
+      const deps = makeDeps();
+      deps.tabMgr.dirtyFields.add('description');
+
+      await handleSave(deps);
+
+      expect(deps.setStatus).toHaveBeenCalledWith('저장 실패: disk offline');
+      expect(deps.tabMgr.dirtyFields.has('description')).toBe(true);
     });
 
     it('blocks saving risup files with invalid json-backed preset fields', async () => {
@@ -447,6 +470,32 @@ describe('file-actions', () => {
       await handleSaveAs(deps);
 
       expect(deps.setStatus).toHaveBeenCalledWith('저장 취소');
+    });
+
+    it('reports save-as result errors without treating them as cancel', async () => {
+      installTokiAPI({
+        saveFileAs: vi.fn().mockResolvedValue({ success: false, error: 'cannot write target' }),
+      });
+      const deps = makeDeps();
+      deps.tabMgr.dirtyFields.add('description');
+
+      await handleSaveAs(deps);
+
+      expect(deps.setStatus).toHaveBeenCalledWith('저장 실패: cannot write target');
+      expect(deps.tabMgr.dirtyFields.has('description')).toBe(true);
+    });
+
+    it('reports thrown save-as errors and keeps dirty state for retry', async () => {
+      installTokiAPI({
+        saveFileAs: vi.fn().mockRejectedValue(new Error('dialog bridge failed')),
+      });
+      const deps = makeDeps();
+      deps.tabMgr.dirtyFields.add('description');
+
+      await handleSaveAs(deps);
+
+      expect(deps.setStatus).toHaveBeenCalledWith('저장 실패: dialog bridge failed');
+      expect(deps.tabMgr.dirtyFields.has('description')).toBe(true);
     });
 
     it('blocks save-as for risup files with invalid json-backed preset fields', async () => {

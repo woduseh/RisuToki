@@ -91,6 +91,11 @@ interface McpOpenFileResponse {
   suggestion?: string;
 }
 
+type OpenFileResult =
+  | { success: true; data: Record<string, unknown> }
+  | { success: false; canceled: true }
+  | { success: false; canceled?: false; error: string };
+
 interface McpRendererSessionStatusIpc {
   autosaveDir: string;
   autosaveEnabled: boolean;
@@ -176,7 +181,7 @@ interface ReferenceRecord {
 
 interface TokiAPI {
   newFile: () => Promise<Record<string, unknown>>;
-  openFile: () => Promise<Record<string, unknown> | null>;
+  openFile: () => Promise<OpenFileResult>;
   openFilePath: (filePath: string) => Promise<Record<string, unknown>>;
   openReference: () => Promise<ReferenceRecord | ReferenceRecord[] | null>;
   openReferencePath: (filePath: string) => Promise<ReferenceRecord | null>;

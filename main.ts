@@ -8,6 +8,7 @@ import * as os from 'os';
 // Type-only imports from local TypeScript modules (erased at compile time)
 import type { CharxData } from './src/charx-io';
 import type { McpApiServer, Section, CssCacheEntry, McpSessionStatus } from './src/lib/mcp-api-server';
+import { writeFileAtomicSync } from './src/lib/atomic-write';
 import { resolveSkillRootDirs } from './src/lib/content-roots';
 import { markRecoveryDocumentActiveForPath, syncRecoveryAfterExplicitSave } from './src/lib/session-recovery-main';
 
@@ -65,6 +66,11 @@ interface SaveResult {
   path?: string;
   error?: string;
 }
+
+type OpenFileResult =
+  | { success: true; data: Record<string, unknown> }
+  | { success: false; canceled: true }
+  | { success: false; canceled?: false; error: string };
 
 interface RendererOpenFileRequest {
   filePath: string;
@@ -133,14 +139,14 @@ const {
   normalizeReferencePath,
   upsertReferenceRecord,
   removeReferenceRecord,
-  serializeReferenceManifest,
+  serializeReferenceManifestPaths,
   parseReferenceManifest,
   validateReferenceManifestPaths,
 } = require('./src/lib/reference-store') as {
   normalizeReferencePath: (filePath: string) => string;
   upsertReferenceRecord: (records: ReferenceRecord[], record: ReferenceRecord) => ReferenceRecord[];
   removeReferenceRecord: (records: ReferenceRecord[], identifier: string) => ReferenceRecord[];
-  serializeReferenceManifest: (records: ReferenceRecord[]) => { version: number; paths: string[] };
+  serializeReferenceManifestPaths: (paths: string[]) => { version: number; paths: string[] };
   parseReferenceManifest: (value: unknown) => string[];
   validateReferenceManifestPaths: (
     paths: string[],
@@ -277,7 +283,9 @@ const { initAutosaveManager } = require('./src/lib/autosave-manager') as {
     saveCharx: (filePath: string, data: CharxData) => void;
     saveRisum: (filePath: string, data: CharxData) => void;
     saveRisup: (filePath: string, data: CharxData) => void;
+    readFileSync: (filePath: string, encoding: BufferEncoding) => string;
     writeFileSync: (filePath: string, data: string) => void;
+    writeFileAtomicSync?: (filePath: string, data: string) => void;
     mkdirSync: (dirPath: string, options?: { recursive: boolean }) => void;
     readdirSync: (dirPath: string) => string[];
     unlinkSync: (filePath: string) => void;
@@ -297,6 +305,7 @@ const { createSessionRecoveryManager } = require('./src/lib/session-recovery-man
   createSessionRecoveryManager: (deps: {
     readFileSync: (path: string, encoding: BufferEncoding) => string;
     writeFileSync: (path: string, data: string) => void;
+    writeFileAtomicSync?: (path: string, data: string) => void;
     existsSync: (path: string) => boolean;
     statSync: (path: string) => { mtimeMs: number };
     unlinkSync: (path: string) => void;
@@ -508,6 +517,7 @@ async function getCurrentMcpSessionStatus(): Promise<McpSessionStatus> {
         }
       : null,
     renderer: rendererResponse.success ? (rendererResponse.renderer ?? null) : null,
+    referenceManifestStatus: mainState.referenceManifestStatus,
   };
 }
 
@@ -515,18 +525,48 @@ async function getCurrentMcpSessionStatus(): Promise<McpSessionStatus> {
 // Reference file helpers
 // ---------------------------------------------------------------------------
 
+let referenceManifestPaths: string[] = [];
+
 function getReferenceStatePath(): string {
   return path.join(app.getPath('userData'), 'reference-files.json');
+}
+
+function getReferencePathsForPersist(): string[] {
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  const addPath = (filePath: string | undefined): void => {
+    const identity = normalizeReferencePath(filePath || '');
+    if (!identity || seen.has(identity)) return;
+    seen.add(identity);
+    paths.push(identity);
+  };
+
+  for (const filePath of referenceManifestPaths) addPath(filePath);
+  for (const record of mainState.referenceFiles) addPath(record.filePath);
+  return paths;
+}
+
+function rememberReferenceManifestPath(filePath: string): void {
+  referenceManifestPaths = serializeReferenceManifestPaths([...referenceManifestPaths, filePath]).paths;
+}
+
+function forgetReferenceManifestPath(filePath: string): boolean {
+  const identity = normalizeReferencePath(filePath);
+  if (!identity) return false;
+  const next = referenceManifestPaths.filter((entry) => normalizeReferencePath(entry) !== identity);
+  const removed = next.length !== referenceManifestPaths.length;
+  referenceManifestPaths = next;
+  return removed;
 }
 
 function persistReferenceFiles(): void {
   try {
     const statePath = getReferenceStatePath();
     fs.mkdirSync(path.dirname(statePath), { recursive: true });
-    const data = JSON.stringify(serializeReferenceManifest(mainState.referenceFiles), null, 2);
-    fs.promises.writeFile(statePath, data, 'utf8').catch((error) => {
-      console.error('[main] async persist references failed:', error);
-    });
+    const manifest = serializeReferenceManifestPaths(getReferencePathsForPersist());
+    const data = JSON.stringify(manifest, null, 2);
+    writeFileAtomicSync(statePath, data, { encoding: 'utf8' });
+    referenceManifestPaths = manifest.paths;
   } catch (error) {
     console.error('[main] failed to persist references:', error);
   }
@@ -550,6 +590,7 @@ function restoreReferenceRecord(filePath: string): ReferenceRecord {
 }
 
 function addReferenceRecord(ref: ReferenceRecord): void {
+  rememberReferenceManifestPath(ref.filePath);
   mainState.setReferenceFiles(
     upsertReferenceRecord(mainState.referenceFiles, {
       ...ref,
@@ -585,12 +626,17 @@ function loadPersistedReferenceFiles(): void {
     const persisted: unknown = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     const restored: ReferenceRecord[] = [];
     const issues: ReferenceManifestIssue[] = [];
-    const { validPaths, issues: manifestIssues } = validateReferenceManifestPaths(parseReferenceManifest(persisted), {
-      existsSync: (fp: string) => fs.existsSync(fp),
+    referenceManifestPaths = parseReferenceManifest(persisted);
+    const { validPaths, issues: manifestIssues } = validateReferenceManifestPaths(referenceManifestPaths, {
+      existsSync: () => true,
     });
     issues.push(...manifestIssues);
 
     for (const refPath of validPaths) {
+      if (!fs.existsSync(refPath)) {
+        issues.push({ filePath: refPath, reason: 'missing-file' });
+        continue;
+      }
       try {
         restored.push(restoreReferenceRecord(refPath));
       } catch (error) {
@@ -604,16 +650,16 @@ function loadPersistedReferenceFiles(): void {
     }
 
     mainState.setReferenceFiles(restored);
-    persistReferenceFiles();
     if (issues.length > 0) {
       mainState.setReferenceManifestStatus({
         level: 'warn',
-        message: `참고 파일 ${issues.length}개를 복원하지 못해 목록에서 정리했습니다.`,
+        message: `참고 파일 ${issues.length}개를 복원하지 못했습니다. 저장된 목록은 유지됩니다.`,
         detail: issues.slice(0, 3).map(describeReferenceManifestIssue).join(' | '),
       });
     }
   } catch (error) {
     console.error('[main] failed to load persisted references:', error);
+    referenceManifestPaths = [];
     mainState.setReferenceFiles([]);
     mainState.setReferenceManifestStatus({
       level: 'error',
@@ -884,7 +930,9 @@ app.whenReady().then(() => {
     saveCharx,
     saveRisum,
     saveRisup,
+    readFileSync: (filePath, encoding) => fs.readFileSync(filePath, encoding),
     writeFileSync: (filePath, data) => fs.writeFileSync(filePath, data),
+    writeFileAtomicSync: (filePath, data) => writeFileAtomicSync(filePath, data, { encoding: 'utf8' }),
     mkdirSync: (dirPath, options) => fs.mkdirSync(dirPath, options),
     readdirSync: (dirPath) => fs.readdirSync(dirPath),
     unlinkSync: (filePath) => fs.unlinkSync(filePath),
@@ -902,6 +950,7 @@ app.whenReady().then(() => {
   recoveryManager = createSessionRecoveryManager({
     readFileSync: (p, enc) => fs.readFileSync(p, enc),
     writeFileSync: (p, data) => fs.writeFileSync(p, data),
+    writeFileAtomicSync: (p, data) => writeFileAtomicSync(p, data, { encoding: 'utf8' }),
     existsSync: (p) => fs.existsSync(p),
     statSync: (p) => fs.statSync(p),
     unlinkSync: (p) => fs.unlinkSync(p),
@@ -1024,7 +1073,7 @@ ipcMain.handle('new-file', async () => {
 });
 
 // Open file dialog + parse charx
-ipcMain.handle('open-file', async () => {
+ipcMain.handle('open-file', async (): Promise<OpenFileResult> => {
   try {
     const result = await dialog.showOpenDialog(mainWindow!, {
       filters: [
@@ -1035,11 +1084,14 @@ ipcMain.handle('open-file', async () => {
       ],
       properties: ['openFile'],
     });
-    if (result.canceled || !result.filePaths[0]) return null;
-    return openDocumentIntoWorkspace(result.filePaths[0]);
+    if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true };
+    return { success: true, data: openDocumentIntoWorkspace(result.filePaths[0]) };
   } catch (err) {
     console.error('[main] open-file error:', err);
-    return null;
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 });
 
@@ -1081,6 +1133,8 @@ async function saveCurrentDocumentFromMcp(): Promise<SaveResult> {
 async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promise<SaveResult> {
   try {
     applyUpdates(mainState.currentData!, updatedFields);
+    invalidateAssetsMapCache();
+    if (mcpApi) mcpApi.invalidateSectionCaches();
 
     const fileType = mainState.currentData!._fileType;
     let filters: { name: string; extensions: string[] }[];
@@ -1102,14 +1156,14 @@ async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promis
     });
     if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' };
 
-    mainState.setCurrentDocument(result.filePath, mainState.currentData!);
     if (fileType === 'risum') {
-      saveRisum(mainState.currentFilePath!, mainState.currentData!);
+      saveRisum(result.filePath, mainState.currentData!);
     } else if (fileType === 'risup') {
-      saveRisup(mainState.currentFilePath!, mainState.currentData!);
+      saveRisup(result.filePath, mainState.currentData!);
     } else {
-      saveCharx(mainState.currentFilePath!, mainState.currentData!);
+      saveCharx(result.filePath, mainState.currentData!);
     }
+    mainState.setCurrentDocument(result.filePath, mainState.currentData!);
     mainWindow!.setTitle(`RisuToki - ${path.basename(mainState.currentFilePath!)}`);
     return { success: true, path: mainState.currentFilePath! };
   } catch (error) {
@@ -1120,10 +1174,6 @@ async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promis
 ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown>) => {
   if (!mainState.currentData) return { success: false, error: 'No file open' };
   try {
-    applyUpdates(mainState.currentData, updatedFields);
-    invalidateAssetsMapCache();
-    if (mcpApi) mcpApi.invalidateSectionCaches();
-
     if (!mainState.currentFilePath) {
       const result = await saveCurrentFileAs(updatedFields);
       syncRecoveryAfterExplicitSave(recoveryManager, result).catch((e) =>
@@ -1131,6 +1181,11 @@ ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown
       );
       return result;
     }
+
+    applyUpdates(mainState.currentData, updatedFields);
+    invalidateAssetsMapCache();
+    if (mcpApi) mcpApi.invalidateSectionCaches();
+
     if (mainState.currentData._fileType === 'risum') {
       saveRisum(mainState.currentFilePath, mainState.currentData);
     } else if (mainState.currentData._fileType === 'risup') {
@@ -1211,7 +1266,8 @@ ipcMain.handle('open-reference-path', async (_event, filePath: string) => {
 // Remove reference file
 ipcMain.handle('remove-reference', (_event, fileIdentifier: string) => {
   const next = removeReferenceRecord(mainState.referenceFiles, fileIdentifier);
-  if (next.length === mainState.referenceFiles.length) {
+  const removedFromManifest = forgetReferenceManifestPath(fileIdentifier);
+  if (next.length === mainState.referenceFiles.length && !removedFromManifest) {
     return true;
   }
   mainState.setReferenceFiles(next);
@@ -1222,9 +1278,10 @@ ipcMain.handle('remove-reference', (_event, fileIdentifier: string) => {
 
 // Remove all reference files
 ipcMain.handle('remove-all-references', () => {
-  if (mainState.referenceFiles.length === 0) {
+  if (mainState.referenceFiles.length === 0 && referenceManifestPaths.length === 0) {
     return true;
   }
+  referenceManifestPaths = [];
   mainState.setReferenceFiles([]);
   persistReferenceFiles();
   broadcastRefsDataChanged();

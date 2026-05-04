@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { createTreeItem, createFolderItem, updateSidebarActive } from './sidebar-builder';
+import { describe, expect, it, vi } from 'vitest';
+import { createTreeItem, createFolderItem, initSidebarSplitResizer, updateSidebarActive } from './sidebar-builder';
 
 describe('createTreeItem', () => {
   it('creates a div with correct class, dataset, icon and label', () => {
@@ -95,5 +95,39 @@ describe('updateSidebarActive', () => {
     updateSidebarActive('unknown', [{ id: 'tab1', label: 'alpha' }]);
 
     expect(document.querySelector('.tree-item')!.classList.contains('active')).toBe(false);
+  });
+});
+
+describe('initSidebarSplitResizer', () => {
+  it('adds separator semantics and arrow-key resizing', () => {
+    document.body.innerHTML = `
+      <div id="sidebar-items-section"></div>
+      <div id="sidebar-split-resizer"></div>
+      <div id="sidebar-refs-section"></div>
+      <div id="sidebar-refs"></div>
+    `;
+    const itemsSection = document.getElementById('sidebar-items-section') as HTMLElement;
+    const refsSection = document.getElementById('sidebar-refs-section') as HTMLElement;
+    const resizer = document.getElementById('sidebar-split-resizer') as HTMLElement;
+    Object.defineProperty(itemsSection, 'offsetHeight', { configurable: true, value: 120 });
+    Object.defineProperty(refsSection, 'offsetHeight', { configurable: true, value: 100 });
+
+    initSidebarSplitResizer({
+      moveRefs: vi.fn(),
+      popOutPanel: vi.fn(),
+      dockPanel: vi.fn(),
+      isPanelPoppedOut: vi.fn().mockReturnValue(false),
+      showContextMenu: vi.fn(),
+    });
+
+    expect(resizer.getAttribute('role')).toBe('separator');
+    expect(resizer.getAttribute('aria-orientation')).toBe('horizontal');
+    expect(resizer.tabIndex).toBe(0);
+
+    resizer.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', shiftKey: true }));
+
+    expect(itemsSection.style.flex).toBe('0 0 170px');
+    expect(refsSection.style.flex).toBe('0 0 60px');
+    expect(resizer.getAttribute('aria-valuenow')).toBe('170');
   });
 });

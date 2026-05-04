@@ -26,6 +26,7 @@ import {
 export interface SessionRecoveryManagerDeps<TDocument extends Record<string, unknown> = Record<string, unknown>> {
   readFileSync(path: string, encoding: BufferEncoding): string;
   writeFileSync(path: string, data: string): void;
+  writeFileAtomicSync?: (path: string, data: string) => void;
   existsSync(path: string): boolean;
   statSync(path: string): { mtimeMs: number };
   unlinkSync(path: string): void;
@@ -79,7 +80,8 @@ export function createSessionRecoveryManager<TDocument extends Record<string, un
   }
 
   function writeRecord(record: SessionRecoveryRecord): void {
-    deps.writeFileSync(recordPath, JSON.stringify(record));
+    const writer = deps.writeFileAtomicSync ?? deps.writeFileSync;
+    writer(recordPath, JSON.stringify(record));
     currentRecord = record;
   }
 
@@ -87,7 +89,8 @@ export function createSessionRecoveryManager<TDocument extends Record<string, un
     try {
       if (!deps.existsSync(recordPath)) return null;
       const raw = deps.readFileSync(recordPath, 'utf-8');
-      return JSON.parse(raw) as SessionRecoveryRecord;
+      const parsed = JSON.parse(raw) as unknown;
+      return isSessionRecoveryRecord(parsed) ? parsed : null;
     } catch {
       return null;
     }
@@ -104,10 +107,46 @@ export function createSessionRecoveryManager<TDocument extends Record<string, un
   function readProvenance(sidecarPath: string): AutosaveProvenance | null {
     try {
       const raw = deps.readFileSync(sidecarPath, 'utf-8');
-      return JSON.parse(raw) as AutosaveProvenance;
+      const parsed = JSON.parse(raw) as unknown;
+      return isAutosaveProvenance(parsed) ? parsed : null;
     } catch {
       return null;
     }
+  }
+
+  function isRecoveryFileType(value: unknown): value is RecoveryFileType {
+    return value === 'charx' || value === 'risum' || value === 'risup';
+  }
+
+  function isNullableString(value: unknown): value is string | null {
+    return value === null || typeof value === 'string';
+  }
+
+  function isSessionRecoveryRecord(value: unknown): value is SessionRecoveryRecord {
+    if (!value || typeof value !== 'object') return false;
+    const record = value as Partial<SessionRecoveryRecord>;
+    return (
+      isNullableString(record.sourceFilePath) &&
+      (record.sourceFileType === null || isRecoveryFileType(record.sourceFileType)) &&
+      isNullableString(record.latestAutosavePath) &&
+      isNullableString(record.latestAutosaveMetaPath) &&
+      typeof record.cleanExit === 'boolean' &&
+      typeof record.updatedAt === 'string'
+    );
+  }
+
+  function isAutosaveProvenance(value: unknown): value is AutosaveProvenance {
+    if (!value || typeof value !== 'object') return false;
+    const provenance = value as Partial<AutosaveProvenance>;
+    return (
+      isNullableString(provenance.sourceFilePath) &&
+      isRecoveryFileType(provenance.sourceFileType) &&
+      typeof provenance.autosavePath === 'string' &&
+      typeof provenance.savedAt === 'string' &&
+      Array.isArray(provenance.dirtyFields) &&
+      provenance.dirtyFields.every((field) => typeof field === 'string') &&
+      typeof provenance.appVersion === 'string'
+    );
   }
 
   // ── Public API ────────────────────────────────────────────────────

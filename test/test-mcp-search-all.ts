@@ -325,6 +325,36 @@ function assertSurfaceSummary(
   }
 }
 
+function assertToolListMetadata(
+  tools: Array<{ name: string; _meta?: Record<string, unknown> }>,
+  toolName: string,
+  expected: {
+    family: string;
+    staleGuards: string[];
+    staleGuardDetails?: Array<Record<string, unknown>>;
+    requiresConfirmation?: boolean;
+    supportsDryRun?: boolean;
+    surfaceKind?: string;
+    recommendation?: string;
+  },
+) {
+  const tool = tools.find((candidate) => candidate.name === toolName);
+  assert.ok(tool, `${toolName} should be registered`);
+  assert.equal(tool._meta?.['risutoki/family'], expected.family);
+  assert.deepEqual(tool._meta?.['risutoki/staleGuards'], expected.staleGuards);
+  if (expected.surfaceKind !== undefined) {
+    assert.equal(tool._meta?.['risutoki/surfaceKind'], expected.surfaceKind);
+  }
+  if (expected.recommendation !== undefined) {
+    assert.equal(tool._meta?.['risutoki/recommendation'], expected.recommendation);
+  }
+  if (expected.staleGuardDetails !== undefined) {
+    assert.deepEqual(tool._meta?.['risutoki/staleGuardDetails'], expected.staleGuardDetails);
+  }
+  assert.equal(tool._meta?.['risutoki/requiresConfirmation'], expected.requiresConfirmation);
+  assert.equal(tool._meta?.['risutoki/supportsDryRun'], expected.supportsDryRun);
+}
+
 (async function run() {
   const api = await startTestApiServer(createSearchFixture());
   let probeFixture: { dir: string; filePath: string } | null = null;
@@ -385,24 +415,71 @@ function assertSurfaceSummary(
       tools.tools.some((tool) => tool.name === 'open_file'),
       'open_file should be registered',
     );
-    const replaceInField = tools.tools.find((tool) => tool.name === 'replace_in_field');
-    assert.ok(replaceInField, 'replace_in_field should be registered');
-    assert.equal(replaceInField._meta?.['risutoki/requiresConfirmation'], true);
-    assert.equal(replaceInField._meta?.['risutoki/supportsDryRun'], true);
-
-    const openFileTool = tools.tools.find((tool) => tool.name === 'open_file');
-    assert.ok(openFileTool, 'open_file should be registered');
-    assert.equal(openFileTool._meta?.['risutoki/requiresConfirmation'], false);
-    assert.equal(openFileTool._meta?.['risutoki/supportsDryRun'], false);
-
-    const externalReplace = tools.tools.find((tool) => tool.name === 'external_replace_in_field');
-    assert.ok(externalReplace, 'external_replace_in_field should be registered');
-    assert.equal(externalReplace._meta?.['risutoki/requiresConfirmation'], true);
-    assert.equal(externalReplace._meta?.['risutoki/supportsDryRun'], true);
-
-    const listFields = tools.tools.find((tool) => tool.name === 'list_fields');
-    assert.ok(listFields, 'list_fields should be registered');
-    assert.equal(listFields._meta, undefined);
+    assertToolListMetadata(tools.tools, 'list_fields', {
+      family: 'field',
+      staleGuards: [],
+    });
+    assertToolListMetadata(tools.tools, 'write_lorebook', {
+      family: 'lorebook',
+      staleGuards: ['expected_comment'],
+      staleGuardDetails: [
+        {
+          name: 'expected_comment',
+          payloadPath: '/expected_comment',
+          sourceOperations: ['list_lorebook', 'read_lorebook'],
+          sourceResultPath: '/entries/*/comment or /comment',
+          retry: 'On 409, refresh with the source operation(s), then retry with current guard value(s).',
+        },
+      ],
+      requiresConfirmation: true,
+      supportsDryRun: false,
+    });
+    assertToolListMetadata(tools.tools, 'replace_in_field', {
+      family: 'field',
+      staleGuards: [],
+      requiresConfirmation: true,
+      supportsDryRun: true,
+    });
+    assertToolListMetadata(tools.tools, 'open_file', {
+      family: 'probe',
+      staleGuards: [],
+      requiresConfirmation: false,
+      supportsDryRun: false,
+    });
+    assertToolListMetadata(tools.tools, 'external_replace_in_field', {
+      family: 'external',
+      staleGuards: [],
+      requiresConfirmation: true,
+      supportsDryRun: true,
+    });
+    for (const toolName of ['inspect_document', 'read_content', 'search_document', 'preview_edit', 'apply_edit']) {
+      assert.ok(
+        tools.tools.some((tool) => tool.name === toolName),
+        `${toolName} should be registered as a first-wave facade tool`,
+      );
+    }
+    assertToolListMetadata(tools.tools, 'inspect_document', {
+      family: 'session',
+      staleGuards: [],
+      surfaceKind: 'facade',
+      recommendation: 'preferred',
+    });
+    assertToolListMetadata(tools.tools, 'preview_edit', {
+      family: 'surface',
+      staleGuards: [],
+      requiresConfirmation: false,
+      supportsDryRun: true,
+      surfaceKind: 'facade',
+      recommendation: 'preferred',
+    });
+    assertToolListMetadata(tools.tools, 'apply_edit', {
+      family: 'surface',
+      staleGuards: [],
+      requiresConfirmation: true,
+      supportsDryRun: false,
+      surfaceKind: 'facade',
+      recommendation: 'preferred',
+    });
 
     const fieldSearch = await client.callTool({
       name: 'search_in_field',
@@ -511,6 +588,82 @@ function assertSurfaceSummary(
       returnedMatches: 1,
       firstMatch: 'alpha',
     });
+
+    const inspectFacade = await client.callTool({
+      name: 'inspect_document',
+      arguments: {
+        target: { kind: 'active' },
+      },
+    });
+    const inspectFacadeText = extractTextContent(inspectFacade.content);
+    assert.ok(!inspectFacade.isError, `inspect_document should succeed: ${inspectFacadeText}`);
+    const inspectFacadeJson = JSON.parse(inspectFacadeText) as {
+      facade?: { tool?: string };
+      result?: { routed_legacy?: Array<{ tool?: string }> };
+    };
+    assert.equal(inspectFacadeJson.facade?.tool, 'inspect_document');
+    assert.ok(
+      inspectFacadeJson.result?.routed_legacy?.some((entry) => entry.tool === 'session_status'),
+      'inspect_document should report routed session_status legacy route',
+    );
+
+    const previewFacade = await client.callTool({
+      name: 'preview_edit',
+      arguments: {
+        target: { kind: 'active' },
+        operations: [
+          {
+            op: 'replace_text',
+            selector: { family: 'field', field: 'description' },
+            find: 'Field Alpha',
+            replace: 'Field Beta',
+          },
+        ],
+        dry_run: true,
+      },
+    });
+    const previewFacadeText = extractTextContent(previewFacade.content);
+    assert.ok(!previewFacade.isError, `preview_edit should succeed: ${previewFacadeText}`);
+    const previewFacadeJson = JSON.parse(previewFacadeText) as {
+      preview?: { preview_token?: string; operation_digest?: string };
+      result?: { routed_legacy?: Array<{ tool?: string }>; touched_targets?: string[] };
+    };
+    assert.ok(previewFacadeJson.preview?.preview_token, 'preview_edit should return a preview token');
+    assert.ok(previewFacadeJson.preview?.operation_digest, 'preview_edit should return an operation digest');
+    assert.ok(previewFacadeJson.result?.touched_targets?.includes('field:description'));
+    assert.ok(previewFacadeJson.result?.routed_legacy?.some((entry) => entry.tool === 'replace_in_field'));
+
+    const applyFacade = await client.callTool({
+      name: 'apply_edit',
+      arguments: {
+        target: { kind: 'active' },
+        preview_token: previewFacadeJson.preview.preview_token,
+        operation_digest: previewFacadeJson.preview.operation_digest,
+      },
+    });
+    const applyFacadeText = extractTextContent(applyFacade.content);
+    assert.ok(!applyFacade.isError, `apply_edit should succeed: ${applyFacadeText}`);
+    const applyFacadeJson = JSON.parse(applyFacadeText) as {
+      facade?: { tool?: string };
+      result?: { routed_legacy?: Array<{ tool?: string }>; touched_targets?: string[] };
+    };
+    assert.equal(applyFacadeJson.facade?.tool, 'apply_edit');
+    assert.ok(applyFacadeJson.result?.routed_legacy?.some((entry) => entry.tool === 'replace_in_field'));
+    assert.ok(applyFacadeJson.result?.touched_targets?.includes('field:description'));
+
+    const readFacade = await client.callTool({
+      name: 'read_content',
+      arguments: {
+        target: { kind: 'active' },
+        selectors: [{ family: 'field', field: 'description' }],
+      },
+    });
+    const readFacadeText = extractTextContent(readFacade.content);
+    assert.ok(!readFacade.isError, `read_content should succeed: ${readFacadeText}`);
+    const readFacadeJson = JSON.parse(readFacadeText) as {
+      result?: { items?: Array<{ data?: { content?: string } }> };
+    };
+    assert.equal(readFacadeJson.result?.items?.[0]?.data?.content, 'Field Beta is searchable.');
 
     const probeField = await client.callTool({
       name: 'probe_field',

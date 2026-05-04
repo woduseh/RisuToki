@@ -21,7 +21,9 @@ export interface AutosaveManagerDeps {
   saveCharx: (filePath: string, data: any) => void;
   saveRisum: (filePath: string, data: any) => void;
   saveRisup: (filePath: string, data: any) => void;
+  readFileSync: (filePath: string, encoding: BufferEncoding) => string;
   writeFileSync: (filePath: string, data: string) => void;
+  writeFileAtomicSync?: (filePath: string, data: string) => void;
   mkdirSync: (dirPath: string, options?: { recursive: boolean }) => void;
   readdirSync: (dirPath: string) => string[];
   unlinkSync: (filePath: string) => void;
@@ -75,6 +77,11 @@ function buildProvenance(params: {
   };
 }
 
+function writeJsonSidecar(filePath: string, data: string): void {
+  const writer = deps.writeFileAtomicSync ?? deps.writeFileSync;
+  writer(filePath, data);
+}
+
 /**
  * Matches autosave artifact files: `{base}_autosave_{timestamp}.{ext}`
  * and their sidecar files: `{base}_autosave_{timestamp}.{ext}.toki-recovery.json`
@@ -89,6 +96,25 @@ function isAutosaveArtifact(fileName: string, basePrefix: string): boolean {
     }
   }
   return false;
+}
+
+function isAutosavePayload(fileName: string): boolean {
+  return [...AUTOSAVE_EXTENSIONS].some((ext) => fileName.endsWith(ext));
+}
+
+function getAutosavePayloadFileName(fileName: string): string | null {
+  const payloadFileName = fileName.endsWith(SIDECAR_SUFFIX) ? fileName.slice(0, -SIDECAR_SUFFIX.length) : fileName;
+  return isAutosavePayload(payloadFileName) ? payloadFileName : null;
+}
+
+function sourcePathsMatch(a: string, b: string): boolean {
+  return path.normalize(a) === path.normalize(b);
+}
+
+function readCleanupSidecarSourceFilePath(sidecarPath: string): string | null {
+  const raw = deps.readFileSync(sidecarPath, 'utf-8');
+  const parsed = JSON.parse(raw) as Partial<AutosaveProvenance>;
+  return typeof parsed.sourceFilePath === 'string' ? parsed.sourceFilePath : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +165,7 @@ export function initAutosaveManager(d: AutosaveManagerDeps): void {
         autosavePath,
         dirtyFields,
       });
-      deps.writeFileSync(sidecarPath, JSON.stringify(provenance, null, 2));
+      writeJsonSidecar(sidecarPath, JSON.stringify(provenance, null, 2));
 
       if (deps.onAutosaveSuccess) deps.onAutosaveSuccess(autosavePath, sidecarPath);
 
@@ -168,14 +194,49 @@ export function initAutosaveManager(d: AutosaveManagerDeps): void {
     const base = path.basename(currentFilePath, path.extname(currentFilePath));
     const prefix = `${base}_autosave_`;
     try {
-      const files = deps
-        .readdirSync(dir)
-        .filter((f: string) => isAutosaveArtifact(f, prefix))
-        .sort()
-        .reverse();
-      for (const f of files) {
-        deps.unlinkSync(path.join(dir, f));
-        console.log('[main] Autosave cleaned:', f);
+      const cleanupGroups = new Map<string, { payloadFileName: string | null; sidecarFileName: string | null }>();
+      const files = deps.readdirSync(dir).filter((f: string) => isAutosaveArtifact(f, prefix));
+      for (const fileName of files) {
+        const payloadFileName = getAutosavePayloadFileName(fileName);
+        if (!payloadFileName) continue;
+        const group = cleanupGroups.get(payloadFileName) ?? { payloadFileName: null, sidecarFileName: null };
+        if (fileName.endsWith(SIDECAR_SUFFIX)) {
+          group.sidecarFileName = fileName;
+        } else {
+          group.payloadFileName = fileName;
+        }
+        cleanupGroups.set(payloadFileName, group);
+      }
+
+      const groups = [...cleanupGroups.entries()].sort(([a], [b]) => b.localeCompare(a));
+      for (const [, group] of groups) {
+        if (group.sidecarFileName) {
+          const sidecarPath = path.join(dir, group.sidecarFileName);
+          let sourceFilePath: string | null = null;
+          try {
+            sourceFilePath = readCleanupSidecarSourceFilePath(sidecarPath);
+          } catch (e: unknown) {
+            console.warn('[main] Skipping autosave cleanup with unreadable sidecar:', group.sidecarFileName, e);
+            continue;
+          }
+
+          if (!sourceFilePath) {
+            console.warn(
+              '[main] Skipping autosave cleanup with missing sidecar sourceFilePath:',
+              group.sidecarFileName,
+            );
+            continue;
+          }
+          if (!sourcePathsMatch(sourceFilePath, currentFilePath)) {
+            continue;
+          }
+        }
+
+        const filesToDelete = [group.payloadFileName, group.sidecarFileName].filter((f): f is string => f !== null);
+        for (const f of filesToDelete) {
+          deps.unlinkSync(path.join(dir, f));
+          console.log('[main] Autosave cleaned:', f);
+        }
       }
       return true;
     } catch (e: unknown) {

@@ -51,6 +51,12 @@ Thumbs.db
 # Codex repo-local skills link
 .agents/
 
+# Repo-local LLM agent work directories
+.codex/
+.codex-work/
+output/
+tmp/
+
 # Generated Copilot skill catalog
 .copilot-skill-catalog/
 

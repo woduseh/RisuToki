@@ -31,6 +31,51 @@ export interface SettingsCallbacks {
 
 let closeSettingsOverlay: (() => void) | null = null;
 
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusableElements(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) => element.tabIndex >= 0 && !isHiddenFromKeyboard(element, root),
+  );
+}
+
+function isHiddenFromKeyboard(element: HTMLElement, root: HTMLElement): boolean {
+  let current: HTMLElement | null = element;
+  while (current && current !== root) {
+    if (current.hidden || current.getAttribute('aria-hidden') === 'true' || current.style.display === 'none')
+      return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+
+function trapTabKey(event: KeyboardEvent, dialog: HTMLElement): void {
+  const focusable = getFocusableElements(dialog);
+  if (focusable.length === 0) {
+    event.preventDefault();
+    dialog.focus();
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+
+  if (event.shiftKey) {
+    if (active === first || !dialog.contains(active)) {
+      event.preventDefault();
+      last.focus();
+    }
+    return;
+  }
+
+  if (active === last || !dialog.contains(active)) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 function createToggle(isOn: boolean): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.className = 'settings-toggle' + (isOn ? ' on' : '');
@@ -59,6 +104,7 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   popup.setAttribute('role', 'dialog');
   popup.setAttribute('aria-modal', 'true');
   popup.setAttribute('aria-label', '설정');
+  popup.tabIndex = -1;
 
   const header = document.createElement('div');
   header.className = 'help-popup-header';
@@ -260,10 +306,15 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
 
   let closed = false;
   const onKey = (e: KeyboardEvent): void => {
-    if (e.key !== 'Escape') return;
     if (document.body.lastElementChild !== overlay) return;
-    e.preventDefault();
-    close();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+      return;
+    }
+    if (e.key === 'Tab') {
+      trapTabKey(e, popup);
+    }
   };
   const close = (): void => {
     if (closed) return;

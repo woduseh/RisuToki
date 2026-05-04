@@ -90,11 +90,34 @@ describe('settings popup', () => {
   });
 
   it('closes on Escape', () => {
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
     showSettingsPopup(makeState(), makeCallbacks());
     expect(getOverlay()).not.toBeNull();
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
     expect(getOverlay()).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('traps Tab and Shift+Tab inside the settings dialog', () => {
+    showSettingsPopup(makeState(), makeCallbacks());
+    const overlay = getOverlay()!;
+    const closeBtn = overlay.querySelector('.help-popup-header button') as HTMLButtonElement;
+    const visibleFocusable = Array.from(
+      overlay.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => el.closest<HTMLElement>('.settings-row')?.style.display !== 'none');
+    const last = visibleFocusable[visibleFocusable.length - 1];
+
+    closeBtn.focus();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true }));
+    expect(document.activeElement).toBe(last);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    expect(document.activeElement).toBe(closeBtn);
   });
 });

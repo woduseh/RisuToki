@@ -43,6 +43,14 @@ describe('app.css – preview diagnostics', () => {
   });
 });
 
+describe('app.css – accessibility preferences', () => {
+  it('honors reduced-motion preferences for transitions and animations', () => {
+    expect(css).toMatch(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)/);
+    expect(css).toMatch(/transition-duration:\s*0\.001ms\s*!important/);
+    expect(css).toMatch(/animation-duration:\s*0\.001ms\s*!important/);
+  });
+});
+
 describe('app.css – preview layout', () => {
   it('defines the fixed overlay shell needed to surface the preview above the app', () => {
     expect(css).toMatch(

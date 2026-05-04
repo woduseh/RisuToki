@@ -30,6 +30,17 @@ export interface OpenPathOptions {
   targetLabel?: string;
 }
 
+type OpenFileResult =
+  | { success: true; data: Record<string, unknown> }
+  | { success: false; canceled: true }
+  | { success: false; canceled?: false; error: string };
+
+type OpenDocumentLoaderResult = Record<string, unknown> | OpenFileResult | null;
+
+function isOpenFileResult(value: OpenDocumentLoaderResult): value is OpenFileResult {
+  return !!value && typeof value === 'object' && 'success' in value && typeof value.success === 'boolean';
+}
+
 function syncEditorToActiveTab(deps: FileActionDeps): void {
   const editor = deps.getEditorInstance();
   const { tabMgr } = deps;
@@ -125,14 +136,18 @@ async function confirmDocumentReplacement(
 async function openDocumentWithLoader(
   deps: FileActionDeps,
   targetLabel: string,
-  loader: () => Promise<Record<string, unknown> | null>,
+  loader: () => Promise<OpenDocumentLoaderResult>,
   options?: OpenPathOptions,
 ): Promise<Record<string, unknown> | null> {
   if (!(await confirmDocumentReplacement(deps, targetLabel, options))) return null;
   deps.setStatus('파일 열기 중...');
   options?.onLoadStateChange?.(true);
   try {
-    const data = await loader();
+    const result = await loader();
+    const data = isOpenFileResult(result) ? (result.success ? result.data : null) : result;
+    if (isOpenFileResult(result) && !result.success && !result.canceled) {
+      throw new Error(result.error);
+    }
     if (!data) {
       deps.setStatus('준비');
       return null;
@@ -205,18 +220,22 @@ export async function handleSave(deps: FileActionDeps): Promise<void> {
     deps.setStatus(validationMessage);
     return;
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await (window as any).tokiAPI.saveFile(fileData);
-  if (result.success) {
-    deps.tabMgr.dirtyFields.clear();
-    deps.tabMgr.renderTabs();
-    deps.buildSidebar();
-    store.clearRestoredSessionState();
-    deps.setStatus('저장 완료');
+  try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).tokiAPI.cleanupAutosave(deps.getAutosaveDir() || undefined);
-  } else {
-    deps.setStatus(`저장 실패: ${result.error}`);
+    const result = await (window as any).tokiAPI.saveFile(fileData);
+    if (result.success) {
+      deps.tabMgr.dirtyFields.clear();
+      deps.tabMgr.renderTabs();
+      deps.buildSidebar();
+      store.clearRestoredSessionState();
+      deps.setStatus('저장 완료');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).tokiAPI.cleanupAutosave(deps.getAutosaveDir() || undefined);
+    } else {
+      deps.setStatus(`저장 실패: ${result.error}`);
+    }
+  } catch (err) {
+    deps.setStatus(`저장 실패: ${(err as Error).message}`);
   }
 }
 
@@ -230,15 +249,21 @@ export async function handleSaveAs(deps: FileActionDeps): Promise<void> {
     deps.setStatus(validationMessage);
     return;
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await (window as any).tokiAPI.saveFileAs(fileData);
-  if (result.success) {
-    deps.tabMgr.dirtyFields.clear();
-    deps.tabMgr.renderTabs();
-    deps.buildSidebar();
-    store.clearRestoredSessionState();
-    deps.setStatus(`저장 완료: ${result.path}`);
-  } else {
-    deps.setStatus(`저장 취소`);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (window as any).tokiAPI.saveFileAs(fileData);
+    if (result.success) {
+      deps.tabMgr.dirtyFields.clear();
+      deps.tabMgr.renderTabs();
+      deps.buildSidebar();
+      store.clearRestoredSessionState();
+      deps.setStatus(`저장 완료: ${result.path}`);
+    } else if (result.error) {
+      deps.setStatus(`저장 실패: ${result.error}`);
+    } else {
+      deps.setStatus(`저장 취소`);
+    }
+  } catch (err) {
+    deps.setStatus(`저장 실패: ${(err as Error).message}`);
   }
 }

@@ -62,12 +62,47 @@ export interface MutationMeta {
   supportsDryRun: boolean;
 }
 
-export const TOOL_MUTATION_META_KEYS = {
+export const TOOL_SURFACE_KINDS = ['facade', 'granular'] as const;
+export type ToolSurfaceKind = (typeof TOOL_SURFACE_KINDS)[number];
+
+export const TOOL_RECOMMENDATIONS = ['preferred', 'advanced', 'legacy'] as const;
+export type ToolRecommendation = (typeof TOOL_RECOMMENDATIONS)[number];
+
+export interface ToolMeta {
+  family: ToolFamily;
+  staleGuards: readonly string[];
+  staleGuardDetails: readonly StaleGuardDetail[];
+  surfaceKind?: ToolSurfaceKind;
+  recommendation?: ToolRecommendation;
+  requiresConfirmation?: boolean;
+  supportsDryRun?: boolean;
+}
+
+export interface StaleGuardDetail {
+  name: string;
+  payloadPath: string;
+  sourceOperations: readonly string[];
+  sourceResultPath: string;
+  alignedWithPath?: string;
+  retry: string;
+}
+
+export const TOOL_META_KEYS = {
+  family: 'risutoki/family',
+  staleGuards: 'risutoki/staleGuards',
+  staleGuardDetails: 'risutoki/staleGuardDetails',
+  surfaceKind: 'risutoki/surfaceKind',
+  recommendation: 'risutoki/recommendation',
   requiresConfirmation: 'risutoki/requiresConfirmation',
   supportsDryRun: 'risutoki/supportsDryRun',
 } as const;
 
-export const NO_CONFIRMATION_TOOL_NAMES = ['open_file', 'save_current_file', 'snapshot_field'] as const;
+export const TOOL_MUTATION_META_KEYS = {
+  requiresConfirmation: TOOL_META_KEYS.requiresConfirmation,
+  supportsDryRun: TOOL_META_KEYS.supportsDryRun,
+} as const;
+
+export const NO_CONFIRMATION_TOOL_NAMES = ['open_file', 'save_current_file', 'snapshot_field', 'preview_edit'] as const;
 
 export const DRY_RUN_TOOL_NAMES = [
   'replace_in_field',
@@ -83,10 +118,232 @@ export const DRY_RUN_TOOL_NAMES = [
   'patch_surface',
   'replace_in_surface',
   'external_patch_surface',
+  'compress_assets_webp',
+  'preview_edit',
 ] as const;
 
 const NO_CONFIRMATION_TOOL_NAME_SET = new Set<string>(NO_CONFIRMATION_TOOL_NAMES);
 const DRY_RUN_TOOL_NAME_SET = new Set<string>(DRY_RUN_TOOL_NAMES);
+
+export const TOOL_STALE_GUARD_NAMES: Record<string, readonly string[]> = {
+  patch_surface: ['expected_hash'],
+  external_patch_surface: ['expected_hash'],
+
+  write_lorebook: ['expected_comment'],
+  write_lorebook_batch: ['expected_comment'],
+  clone_lorebook: ['expected_comment'],
+  delete_lorebook: ['expected_comment'],
+  batch_delete_lorebook: ['expected_comments'],
+  replace_in_lorebook: ['expected_comment'],
+  insert_in_lorebook: ['expected_comment'],
+  replace_block_in_lorebook: ['expected_comment'],
+  replace_in_lorebook_batch: ['expected_comment'],
+  insert_in_lorebook_batch: ['expected_comment'],
+
+  write_regex: ['expected_comment'],
+  write_regex_batch: ['expected_comment'],
+  delete_regex: ['expected_comment'],
+  replace_in_regex: ['expected_comment'],
+  insert_in_regex: ['expected_comment'],
+
+  write_greeting: ['expected_preview'],
+  batch_write_greeting: ['expected_preview'],
+  delete_greeting: ['expected_preview'],
+  batch_delete_greeting: ['expected_previews'],
+
+  write_trigger: ['expected_comment'],
+  delete_trigger: ['expected_comment'],
+
+  write_lua: ['expected_hash', 'expected_preview'],
+  replace_in_lua: ['expected_hash', 'expected_preview'],
+  insert_in_lua: ['expected_hash', 'expected_preview'],
+
+  write_css: ['expected_hash', 'expected_preview'],
+  replace_in_css: ['expected_hash', 'expected_preview'],
+  insert_in_css: ['expected_hash', 'expected_preview'],
+
+  delete_charx_asset: ['expected_path'],
+  rename_charx_asset: ['expected_path'],
+  delete_risum_asset: ['expected_path'],
+
+  write_risup_prompt_item: ['expected_type', 'expected_preview'],
+  write_risup_prompt_item_batch: ['expected_type', 'expected_preview'],
+  delete_risup_prompt_item: ['expected_type', 'expected_preview'],
+  batch_delete_risup_prompt_items: ['expected_types', 'expected_previews'],
+};
+
+const RETRY_WITH_REFRESH = 'On 409, refresh with the source operation(s), then retry with current guard value(s).';
+
+const STALE_GUARD_SOURCES = {
+  surfaceHash: {
+    sourceOperations: ['list_surfaces', 'read_surface'],
+    sourceResultPath: '/hash',
+    retry: RETRY_WITH_REFRESH,
+  },
+  externalSurfaceHash: {
+    sourceOperations: ['external_read_surface'],
+    sourceResultPath: '/hash',
+    retry: RETRY_WITH_REFRESH,
+  },
+  lorebookComment: {
+    sourceOperations: ['list_lorebook', 'read_lorebook'],
+    sourceResultPath: '/entries/*/comment or /comment',
+    retry: RETRY_WITH_REFRESH,
+  },
+  regexComment: {
+    sourceOperations: ['list_regex', 'read_regex'],
+    sourceResultPath: '/entries/*/comment or /comment',
+    retry: RETRY_WITH_REFRESH,
+  },
+  greetingPreview: {
+    sourceOperations: ['list_greetings', 'read_greeting'],
+    sourceResultPath: '/greetings/*/preview or /preview',
+    retry: RETRY_WITH_REFRESH,
+  },
+  triggerComment: {
+    sourceOperations: ['list_triggers', 'read_trigger'],
+    sourceResultPath: '/triggers/*/comment or /comment',
+    retry: RETRY_WITH_REFRESH,
+  },
+  luaSectionHash: {
+    sourceOperations: ['list_lua', 'read_lua'],
+    sourceResultPath: '/sections/*/hash or /hash',
+    retry: RETRY_WITH_REFRESH,
+  },
+  luaSectionPreview: {
+    sourceOperations: ['list_lua', 'read_lua'],
+    sourceResultPath: '/sections/*/preview or /preview',
+    retry: RETRY_WITH_REFRESH,
+  },
+  cssSectionHash: {
+    sourceOperations: ['list_css', 'read_css'],
+    sourceResultPath: '/sections/*/hash or /hash',
+    retry: RETRY_WITH_REFRESH,
+  },
+  cssSectionPreview: {
+    sourceOperations: ['list_css', 'read_css'],
+    sourceResultPath: '/sections/*/preview or /preview',
+    retry: RETRY_WITH_REFRESH,
+  },
+  charxAssetPath: {
+    sourceOperations: ['list_charx_assets', 'read_charx_asset'],
+    sourceResultPath: '/assets/*/path or /path',
+    retry: RETRY_WITH_REFRESH,
+  },
+  risumAssetPath: {
+    sourceOperations: ['list_risum_assets', 'read_risum_asset'],
+    sourceResultPath: '/assets/*/path or /path',
+    retry: RETRY_WITH_REFRESH,
+  },
+  risupPromptType: {
+    sourceOperations: ['list_risup_prompt_items', 'read_risup_prompt_item'],
+    sourceResultPath: '/items/*/type or /type',
+    retry: RETRY_WITH_REFRESH,
+  },
+  risupPromptPreview: {
+    sourceOperations: ['list_risup_prompt_items', 'read_risup_prompt_item'],
+    sourceResultPath: '/items/*/preview or /preview',
+    retry: RETRY_WITH_REFRESH,
+  },
+} as const satisfies Record<string, Omit<StaleGuardDetail, 'name' | 'payloadPath' | 'alignedWithPath'>>;
+
+function staleGuardDetail(
+  name: string,
+  payloadPath: string,
+  source: Omit<StaleGuardDetail, 'name' | 'payloadPath' | 'alignedWithPath'>,
+  alignedWithPath?: string,
+): StaleGuardDetail {
+  return {
+    name,
+    payloadPath,
+    ...source,
+    ...(alignedWithPath ? { alignedWithPath } : {}),
+  };
+}
+
+const expectedHash = (payloadPath = '/expected_hash') =>
+  staleGuardDetail('expected_hash', payloadPath, STALE_GUARD_SOURCES.surfaceHash);
+const expectedComment = (payloadPath = '/expected_comment', alignedWithPath?: string) =>
+  staleGuardDetail('expected_comment', payloadPath, STALE_GUARD_SOURCES.lorebookComment, alignedWithPath);
+const expectedRegexComment = (payloadPath = '/expected_comment', alignedWithPath?: string) =>
+  staleGuardDetail('expected_comment', payloadPath, STALE_GUARD_SOURCES.regexComment, alignedWithPath);
+const expectedGreetingPreview = (payloadPath = '/expected_preview', alignedWithPath?: string) =>
+  staleGuardDetail('expected_preview', payloadPath, STALE_GUARD_SOURCES.greetingPreview, alignedWithPath);
+const expectedTriggerComment = () =>
+  staleGuardDetail('expected_comment', '/expected_comment', STALE_GUARD_SOURCES.triggerComment);
+const expectedLuaHash = () => staleGuardDetail('expected_hash', '/expected_hash', STALE_GUARD_SOURCES.luaSectionHash);
+const expectedLuaPreview = () =>
+  staleGuardDetail('expected_preview', '/expected_preview', STALE_GUARD_SOURCES.luaSectionPreview);
+const expectedCssHash = () => staleGuardDetail('expected_hash', '/expected_hash', STALE_GUARD_SOURCES.cssSectionHash);
+const expectedCssPreview = () =>
+  staleGuardDetail('expected_preview', '/expected_preview', STALE_GUARD_SOURCES.cssSectionPreview);
+const expectedCharxAssetPath = () =>
+  staleGuardDetail('expected_path', '/expected_path', STALE_GUARD_SOURCES.charxAssetPath);
+const expectedRisumAssetPath = () =>
+  staleGuardDetail('expected_path', '/expected_path', STALE_GUARD_SOURCES.risumAssetPath);
+const expectedRisupType = (payloadPath = '/expected_type', alignedWithPath?: string) =>
+  staleGuardDetail('expected_type', payloadPath, STALE_GUARD_SOURCES.risupPromptType, alignedWithPath);
+const expectedRisupPreview = (payloadPath = '/expected_preview', alignedWithPath?: string) =>
+  staleGuardDetail('expected_preview', payloadPath, STALE_GUARD_SOURCES.risupPromptPreview, alignedWithPath);
+
+export const TOOL_STALE_GUARD_DETAILS: Record<string, readonly StaleGuardDetail[]> = {
+  patch_surface: [expectedHash()],
+  external_patch_surface: [
+    staleGuardDetail('expected_hash', '/expected_hash', STALE_GUARD_SOURCES.externalSurfaceHash),
+  ],
+
+  write_lorebook: [expectedComment()],
+  write_lorebook_batch: [expectedComment('/entries/*/expected_comment', '/entries/*/index')],
+  clone_lorebook: [expectedComment()],
+  delete_lorebook: [expectedComment()],
+  batch_delete_lorebook: [
+    staleGuardDetail('expected_comments', '/expected_comments/*', STALE_GUARD_SOURCES.lorebookComment, '/indices/*'),
+  ],
+  replace_in_lorebook: [expectedComment()],
+  insert_in_lorebook: [expectedComment()],
+  replace_block_in_lorebook: [expectedComment()],
+  replace_in_lorebook_batch: [expectedComment('/entries/*/expected_comment', '/entries/*/index')],
+  insert_in_lorebook_batch: [expectedComment('/entries/*/expected_comment', '/entries/*/index')],
+
+  write_regex: [expectedRegexComment()],
+  write_regex_batch: [expectedRegexComment('/entries/*/expected_comment', '/entries/*/index')],
+  delete_regex: [expectedRegexComment()],
+  replace_in_regex: [expectedRegexComment()],
+  insert_in_regex: [expectedRegexComment()],
+
+  write_greeting: [expectedGreetingPreview()],
+  batch_write_greeting: [expectedGreetingPreview('/writes/*/expected_preview', '/writes/*/index')],
+  delete_greeting: [expectedGreetingPreview()],
+  batch_delete_greeting: [
+    staleGuardDetail('expected_previews', '/expected_previews/*', STALE_GUARD_SOURCES.greetingPreview, '/indices/*'),
+  ],
+
+  write_trigger: [expectedTriggerComment()],
+  delete_trigger: [expectedTriggerComment()],
+
+  write_lua: [expectedLuaHash(), expectedLuaPreview()],
+  replace_in_lua: [expectedLuaHash(), expectedLuaPreview()],
+  insert_in_lua: [expectedLuaHash(), expectedLuaPreview()],
+
+  write_css: [expectedCssHash(), expectedCssPreview()],
+  replace_in_css: [expectedCssHash(), expectedCssPreview()],
+  insert_in_css: [expectedCssHash(), expectedCssPreview()],
+
+  delete_charx_asset: [expectedCharxAssetPath()],
+  rename_charx_asset: [expectedCharxAssetPath()],
+  delete_risum_asset: [expectedRisumAssetPath()],
+
+  write_risup_prompt_item: [expectedRisupType(), expectedRisupPreview()],
+  write_risup_prompt_item_batch: [
+    expectedRisupType('/writes/*/expected_type', '/writes/*/index'),
+    expectedRisupPreview('/writes/*/expected_preview', '/writes/*/index'),
+  ],
+  delete_risup_prompt_item: [expectedRisupType(), expectedRisupPreview()],
+  batch_delete_risup_prompt_items: [
+    staleGuardDetail('expected_types', '/expected_types/*', STALE_GUARD_SOURCES.risupPromptType, '/indices/*'),
+    staleGuardDetail('expected_previews', '/expected_previews/*', STALE_GUARD_SOURCES.risupPromptPreview, '/indices/*'),
+  ],
+};
 
 const RO_IDEMPOTENT: BehaviorHints = { readOnlyHint: true, idempotentHint: true };
 const WRITE: BehaviorHints = { readOnlyHint: false };
@@ -102,6 +359,8 @@ const OPEN_WORLD_WRITE: BehaviorHints = { readOnlyHint: false, openWorldHint: tr
 export interface ToolEntry {
   family: ToolFamily;
   hints: BehaviorHints;
+  surfaceKind?: ToolSurfaceKind;
+  recommendation?: ToolRecommendation;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -109,6 +368,13 @@ export interface ToolEntry {
 // ────────────────────────────────────────────────────────────────────────────
 
 export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
+  // ── Facade v1 (preferred additive tools) ───────────────────────────────
+  inspect_document: { family: 'session', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
+  read_content: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
+  search_document: { family: 'search', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
+  preview_edit: { family: 'surface', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
+  apply_edit: { family: 'surface', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
+
   // ── Field ──────────────────────────────────────────────────────────────
   list_fields: { family: 'field', hints: RO_IDEMPOTENT },
   read_field: { family: 'field', hints: RO_IDEMPOTENT },
@@ -361,12 +627,21 @@ export function getToolMutationMeta(name: string): MutationMeta | undefined {
 
 /** Build the MCP `_meta` payload for a tool, if it exposes mutation capability metadata. */
 export function getToolMeta(name: string): Record<string, unknown> | undefined {
+  const family = getToolFamily(name);
+  if (!family) return undefined;
   const mutationMeta = getToolMutationMeta(name);
-  if (!mutationMeta) return undefined;
-  return {
-    [TOOL_MUTATION_META_KEYS.requiresConfirmation]: mutationMeta.requiresConfirmation,
-    [TOOL_MUTATION_META_KEYS.supportsDryRun]: mutationMeta.supportsDryRun,
+  const meta: Record<string, unknown> = {
+    [TOOL_META_KEYS.family]: family,
+    [TOOL_META_KEYS.staleGuards]: TOOL_STALE_GUARD_NAMES[name] ?? [],
+    [TOOL_META_KEYS.staleGuardDetails]: TOOL_STALE_GUARD_DETAILS[name] ?? [],
+    [TOOL_META_KEYS.surfaceKind]: TOOL_TAXONOMY[name]?.surfaceKind ?? 'granular',
+    [TOOL_META_KEYS.recommendation]: TOOL_TAXONOMY[name]?.recommendation ?? 'advanced',
   };
+  if (mutationMeta) {
+    meta[TOOL_META_KEYS.requiresConfirmation] = mutationMeta.requiresConfirmation;
+    meta[TOOL_META_KEYS.supportsDryRun] = mutationMeta.supportsDryRun;
+  }
+  return meta;
 }
 
 /**

@@ -73,13 +73,14 @@ function handleAction(action: string) {
               id="btn-refs-extpopout"
               class="panel-collapse-btn"
               title="팝아웃 (외부 창)"
+              aria-label="참고자료 팝아웃"
               data-popout-panel="refs"
             >
               ↗
             </button>
-            <button id="btn-refs-separate" class="panel-collapse-btn" title="분리">⧉</button>
-            <button id="btn-refs-collapse" class="panel-collapse-btn" title="접기">▼</button>
-            <button id="btn-refs-close" class="panel-collapse-btn" title="닫기">✕</button>
+            <button id="btn-refs-separate" class="panel-collapse-btn" title="분리" aria-label="참고자료 분리">⧉</button>
+            <button id="btn-refs-collapse" class="panel-collapse-btn" title="접기" aria-label="참고자료 접기">▼</button>
+            <button id="btn-refs-close" class="panel-collapse-btn" title="닫기" aria-label="참고자료 닫기">✕</button>
           </div>
         </div>
         <div id="sidebar-refs"></div>
@@ -94,11 +95,19 @@ function handleAction(action: string) {
             id="btn-refs-panel-popout"
             class="panel-collapse-btn"
             title="팝아웃 (외부 창)"
+            aria-label="참고자료 팝아웃"
             data-popout-panel="refs"
           >
             ↗
           </button>
-          <button id="btn-refs-panel-dock" class="panel-collapse-btn" title="사이드바로 복귀">⇲</button>
+          <button
+            id="btn-refs-panel-dock"
+            class="panel-collapse-btn"
+            title="사이드바로 복귀"
+            aria-label="참고자료 사이드바로 복귀"
+          >
+            ⇲
+          </button>
         </div>
       </div>
       <div id="refs-panel-content" class="refs-panel-content"></div>
@@ -154,7 +163,13 @@ function handleAction(action: string) {
             >
               {{ store.bgmEnabled ? '🔊' : '🔇' }}
             </button>
-            <button id="btn-chat-mode" title="채팅 모드" style="display: none" @click="handleAction('chat-mode')">
+            <button
+              id="btn-chat-mode"
+              title="채팅 모드"
+              aria-label="채팅 모드"
+              style="display: none"
+              @click="handleAction('chat-mode')"
+            >
               💭
             </button>
             <button
@@ -179,15 +194,16 @@ function handleAction(action: string) {
       </div>
     </div>
 
-    <div
+    <button
       id="sidebar-expand"
+      type="button"
       title="사이드바 열기"
       aria-label="사이드바 열기"
       style="display: none"
       @click="handleAction('sidebar-expand')"
     >
       ▶
-    </div>
+    </button>
   </div>
 
   <StatusBar />

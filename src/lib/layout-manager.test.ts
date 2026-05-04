@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  createDefaultLayoutState,
-  createLayoutManager
-} from './layout-manager';
+import { createDefaultLayoutState, createLayoutManager } from './layout-manager';
 
 function createLayoutDom() {
   document.body.innerHTML = `
@@ -45,7 +42,7 @@ describe('layout manager refs sync', () => {
       state,
       saveState,
       onRefit,
-      onStatus: vi.fn()
+      onStatus: vi.fn(),
     });
 
     layoutManager.rebuild();
@@ -62,6 +59,39 @@ describe('layout manager refs sync', () => {
 
     expect(refsPanelContent.textContent).toContain('Guide');
     expect(sidebarRefs.childElementCount).toBe(0);
+    expect(saveState).toHaveBeenCalled();
+    expect(onRefit).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('adds separator semantics and arrow-key resizing to active slot resizers', () => {
+    vi.useFakeTimers();
+    createLayoutDom();
+
+    const state = createDefaultLayoutState();
+    const saveState = vi.fn();
+    const onRefit = vi.fn();
+
+    const layoutManager = createLayoutManager({
+      state,
+      saveState,
+      onRefit,
+      onStatus: vi.fn(),
+    });
+
+    layoutManager.rebuild();
+    vi.runOnlyPendingTimers();
+
+    const leftResizer = document.getElementById('resizer-left') as HTMLElement;
+    expect(leftResizer.getAttribute('role')).toBe('separator');
+    expect(leftResizer.getAttribute('aria-orientation')).toBe('vertical');
+    expect(leftResizer.getAttribute('aria-label')).toContain('좌측');
+    expect(leftResizer.tabIndex).toBe(0);
+
+    leftResizer.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+
+    expect(state.slotSizes.left).toBe(270);
+    expect(leftResizer.getAttribute('aria-valuenow')).toBe('270');
     expect(saveState).toHaveBeenCalled();
     expect(onRefit).toHaveBeenCalled();
     vi.useRealTimers();

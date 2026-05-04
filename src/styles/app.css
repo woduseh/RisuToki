@@ -67,6 +67,9 @@ body {
   font-size: 13px;
   font-weight: 600;
   color: #ffffff;
+  background: transparent;
+  border: 0;
+  font-family: inherit;
   cursor: pointer;
   user-select: none;
   border-radius: var(--radius-sm);
@@ -75,6 +78,7 @@ body {
 }
 
 .menu-label:hover,
+.menu-label:focus-visible,
 .menu-item.open .menu-label {
   background: rgba(255, 255, 255, 0.2);
 }
@@ -103,9 +107,14 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: calc(100% - 12px);
   padding: 7px 16px 7px 14px;
   font-size: 12px;
   color: var(--text-primary);
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  text-align: left;
   cursor: pointer;
   white-space: nowrap;
   border-radius: var(--radius-sm);
@@ -113,7 +122,8 @@ body {
   transition: background 0.12s;
 }
 
-.menu-action:hover {
+.menu-action:hover,
+.menu-action:focus-visible {
   background: var(--accent);
   color: #fff;
 }
@@ -124,7 +134,8 @@ body {
   font-size: 11px;
 }
 
-.menu-action:hover .menu-shortcut {
+.menu-action:hover .menu-shortcut,
+.menu-action:focus-visible .menu-shortcut {
   color: rgba(255, 255, 255, 0.7);
 }
 
@@ -143,19 +154,27 @@ body {
 /* Submenu (hover-expand) */
 .menu-sub {
   position: relative;
+  margin: 1px 6px;
+}
+.menu-sub-trigger {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
   padding: 7px 16px 7px 14px;
   font-size: 12px;
   color: var(--text-primary);
-  cursor: default;
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
   white-space: nowrap;
   border-radius: var(--radius-sm);
-  margin: 1px 6px;
   transition: background 0.12s;
 }
-.menu-sub:hover {
+.menu-sub:hover > .menu-sub-trigger,
+.menu-sub-trigger:focus-visible {
   background: var(--accent);
   color: #fff;
 }
@@ -164,7 +183,8 @@ body {
   font-size: 10px;
   opacity: 0.7;
 }
-.menu-sub:hover .menu-arrow {
+.menu-sub:hover .menu-arrow,
+.menu-sub-trigger:focus-visible .menu-arrow {
   opacity: 1;
   color: #fff;
 }
@@ -183,7 +203,8 @@ body {
     0 2px 8px rgba(0, 0, 0, 0.08);
   z-index: 201;
 }
-.menu-sub:hover > .menu-submenu {
+.menu-sub:hover > .menu-submenu,
+.menu-sub:focus-within > .menu-submenu {
   display: block;
 }
 
@@ -261,9 +282,12 @@ body {
   cursor: row-resize;
 }
 .slot-resizer:hover,
+.slot-resizer:focus-visible,
 .slot-resizer.dragging {
   background: var(--accent);
   border-radius: 2px;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* ===== Sidebar (Items Panel) ===== */
@@ -598,9 +622,12 @@ body {
 }
 
 .resizer:hover,
+.resizer:focus-visible,
 .resizer.active {
   background: var(--accent);
   border-radius: 2px;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .resizer-h {
@@ -1469,9 +1496,15 @@ body {
   color: var(--text-highlight);
 }
 
-#sidebar-expand:hover {
+#sidebar-expand:hover,
+#sidebar-expand:focus-visible {
   background: var(--accent-light);
   color: var(--accent);
+}
+
+#sidebar-expand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* ===== Help Popup (MomoTalk style) ===== */
@@ -2588,4 +2621,15 @@ body.dark-mode ::-webkit-scrollbar-thumb {
 
 body.dark-mode ::-webkit-scrollbar-thumb:hover {
   background: #4a90d9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }

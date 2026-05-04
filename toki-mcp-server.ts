@@ -12,12 +12,27 @@ import https = require('https');
 import fs = require('fs');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import path = require('path');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import crypto = require('crypto');
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { startHeadlessMcpApiServer } from './src/lib/mcp-headless-server';
 import { getToolMeta, TOOL_TAXONOMY } from './src/lib/mcp-tool-taxonomy';
+import { mcpSuccess } from './src/lib/mcp-response-envelope';
+import {
+  FACADE_V1_CONTRACT_ID,
+  FACADE_V1_LIMITS,
+  facadeV1ContentSelectorSchema,
+  facadeV1GuardSchema,
+  facadeV1TargetSchema,
+  type FacadeV1ContentSelector,
+  type FacadeV1EditOperation,
+  type FacadeV1Guard,
+  type FacadeV1Target,
+  type FacadeV1ToolMutability,
+} from './src/lib/mcp-request-schemas';
 
 let TOKI_PORT = process.env.TOKI_PORT;
 let TOKI_TOKEN = process.env.TOKI_TOKEN;
@@ -590,6 +605,337 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
   });
 }
 
+// ==================== Facade v1 Helpers ====================
+
+const FACADE_PREVIEW_TTL_MS = 10 * 60 * 1000;
+
+interface FacadeRoute {
+  tool: string;
+  method: string;
+  route: string;
+}
+
+interface FacadePreviewEntry {
+  token: string;
+  operationDigest: string;
+  target: FacadeV1Target;
+  operations: FacadeV1EditOperation[];
+  routes: FacadeRoute[];
+  touchedTargets: string[];
+  requiredGuards: FacadeV1Guard[];
+  expiresAtMs: number;
+}
+
+const facadePreviewStore = new Map<string, FacadePreviewEntry>();
+
+const facadeEditOperationSchema = z.object({
+  op: z.enum(['write_content', 'replace_text', 'insert_text', 'delete_item', 'patch_surface']),
+  selector: facadeV1ContentSelectorSchema,
+  content: z.unknown().optional(),
+  find: z.string().min(1).optional(),
+  replace: z.string().optional(),
+  guards: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+});
+
+function facadeApiError(
+  status: number,
+  error: string,
+  suggestion: string,
+  details?: Record<string, unknown>,
+): ApiErrorResult {
+  return {
+    [API_ERROR_KEY]: true as const,
+    status,
+    error,
+    suggestion,
+    ...(details ? { details } : {}),
+  };
+}
+
+function cleanupFacadePreviews(): void {
+  const now = Date.now();
+  for (const [token, entry] of facadePreviewStore.entries()) {
+    if (entry.expiresAtMs <= now) facadePreviewStore.delete(token);
+  }
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function operationDigest(target: FacadeV1Target, operations: FacadeV1EditOperation[]): string {
+  return crypto.createHash('sha256').update(stableJson({ target, operations })).digest('hex');
+}
+
+function makePreviewToken(): string {
+  return `facade-preview-v1.${crypto.randomBytes(18).toString('base64url')}`;
+}
+
+function sameTarget(a: FacadeV1Target, b: FacadeV1Target): boolean {
+  return stableJson(a) === stableJson(b);
+}
+
+function route(tool: string, method: string, routePath: string): FacadeRoute {
+  return { tool, method, route: routePath };
+}
+
+function selectorTarget(selector: FacadeV1ContentSelector): string {
+  if (selector.family === 'surface' || selector.path) return `surface:${selector.path ?? '/'}`;
+  if (selector.field) return `field:${selector.field}`;
+  if (selector.family && selector.index !== undefined) return `${selector.family}:${selector.index}`;
+  return selector.family ?? 'document';
+}
+
+function facadeEnvelope(
+  tool: string,
+  mutability: FacadeV1ToolMutability,
+  target: FacadeV1Target | undefined,
+  result: Record<string, unknown>,
+  summary: string,
+  nextActions: string[],
+  artifacts: Record<string, unknown> = {},
+  maxBytes?: number,
+) {
+  let truncated = false;
+  let finalResult: Record<string, unknown> = result;
+  if (maxBytes && Buffer.byteLength(JSON.stringify(result), 'utf8') > maxBytes) {
+    truncated = true;
+    finalResult = {
+      truncated: true,
+      preview: JSON.stringify(result).slice(0, Math.max(0, maxBytes - 256)),
+      original_byte_size: Buffer.byteLength(JSON.stringify(result), 'utf8'),
+    };
+  }
+
+  return mcpSuccess(
+    {
+      facade: {
+        contract: FACADE_V1_CONTRACT_ID,
+        version: 'v1',
+        tool,
+        mutability,
+        ...(target ? { target } : {}),
+        ...(maxBytes ? { max_bytes: maxBytes } : {}),
+        ...(truncated ? { truncated: true } : {}),
+      },
+      result: finalResult,
+    },
+    {
+      toolName: tool,
+      summary,
+      nextActions,
+      artifacts: { ...artifacts, ...(truncated ? { truncated: true } : {}) },
+    },
+  );
+}
+
+async function resolveReferenceIndex(target: FacadeV1Target): Promise<number | ApiErrorResult> {
+  if (target.kind !== 'reference')
+    return facadeApiError(400, 'Target is not a reference', 'Use target.kind="reference".');
+  if (target.reference_id && /^\d+$/.test(target.reference_id)) return Number(target.reference_id);
+  const refs = await apiRequest('GET', '/references');
+  if (isApiError(refs)) return refs;
+  const files = Array.isArray((refs as Record<string, unknown>).files)
+    ? ((refs as Record<string, unknown>).files as Array<Record<string, unknown>>)
+    : [];
+  const index = files.findIndex((ref, i) => {
+    const candidates = [String(i), ref.id, ref.filePath, ref.file_path, ref.fileName, ref.name].filter(
+      (value): value is string => typeof value === 'string',
+    );
+    return candidates.includes(target.reference_id ?? '') || candidates.includes(target.file_path ?? '');
+  });
+  if (index < 0) {
+    return facadeApiError(
+      404,
+      'Reference target not found',
+      'Call list_references, then retry with reference_id as its index.',
+    );
+  }
+  return index;
+}
+
+async function readFacadeSelector(
+  target: FacadeV1Target,
+  selector: FacadeV1ContentSelector,
+): Promise<{ data: unknown; routes: FacadeRoute[] } | ApiErrorResult> {
+  if (target.kind === 'active') {
+    if (selector.family === 'surface' || selector.path) {
+      const pathValue = selector.path ?? '/';
+      const data = await apiRequest('POST', '/surface/read', { path: pathValue });
+      return isApiError(data) ? data : { data, routes: [route('read_surface', 'POST', '/surface/read')] };
+    }
+    if (selector.field) {
+      const fieldRoute = `/field/${encodeURIComponent(selector.field)}`;
+      const data = await apiRequest('GET', fieldRoute);
+      return isApiError(data) ? data : { data, routes: [route('read_field', 'GET', fieldRoute)] };
+    }
+  }
+
+  if (target.kind === 'external') {
+    if (selector.family === 'surface' || selector.path) {
+      const data = await apiRequest('POST', '/external/surface/read', {
+        file_path: target.file_path,
+        path: selector.path ?? '/',
+      });
+      return isApiError(data)
+        ? data
+        : { data, routes: [route('external_read_surface', 'POST', '/external/surface/read')] };
+    }
+    if (selector.field) {
+      const fieldRoute = `/probe/field/${encodeURIComponent(selector.field)}`;
+      const data = await apiRequest('POST', fieldRoute, { file_path: target.file_path });
+      return isApiError(data) ? data : { data, routes: [route('probe_field', 'POST', fieldRoute)] };
+    }
+  }
+
+  if (target.kind === 'reference') {
+    const index = await resolveReferenceIndex(target);
+    if (typeof index !== 'number') return index;
+    if (selector.field) {
+      const fieldRoute = `/reference/${index}/${encodeURIComponent(selector.field)}`;
+      const data = await apiRequest('GET', fieldRoute);
+      return isApiError(data) ? data : { data, routes: [route('read_reference_field', 'GET', fieldRoute)] };
+    }
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported read_content selector for target kind "${target.kind}"`,
+    'First-wave read_content supports field and surface selectors for active/external targets, and field selectors for references.',
+    { selector },
+  );
+}
+
+function guardValue(guards: FacadeV1Guard[] | undefined, name: string): unknown {
+  return guards?.find((guard) => guard.name === name)?.value;
+}
+
+async function previewFacadeOperation(
+  target: FacadeV1Target,
+  operation: FacadeV1EditOperation,
+): Promise<
+  { data: unknown; routes: FacadeRoute[]; touched: string[]; requiredGuards: FacadeV1Guard[] } | ApiErrorResult
+> {
+  if (target.kind !== 'active') {
+    return facadeApiError(
+      400,
+      'preview_edit first wave only supports active-document edits',
+      'Use granular external tools for unopened-file edits for now.',
+    );
+  }
+
+  const touched = [selectorTarget(operation.selector)];
+  if (operation.op === 'replace_text' && operation.selector.field) {
+    if (!operation.find) {
+      return facadeApiError(400, 'replace_text requires find', 'Provide operations[].find.');
+    }
+    const fieldRoute = `/field/${encodeURIComponent(operation.selector.field)}/replace`;
+    const data = await apiRequest('POST', fieldRoute, {
+      find: operation.find,
+      replace: typeof operation.replace === 'string' ? operation.replace : '',
+      dry_run: true,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('replace_in_field', 'POST', fieldRoute)],
+          touched,
+          requiredGuards: operation.guards ?? [],
+        };
+  }
+
+  if (operation.op === 'write_content' && operation.selector.field) {
+    const read = await readFacadeSelector(target, operation.selector);
+    if (isApiError(read)) return read;
+    const oldContent = (read.data as Record<string, unknown>).content;
+    return {
+      data: {
+        dryRun: true,
+        field: operation.selector.field,
+        oldSize: typeof oldContent === 'string' ? oldContent.length : JSON.stringify(oldContent).length,
+        newSize:
+          typeof operation.content === 'string' ? operation.content.length : JSON.stringify(operation.content).length,
+      },
+      routes: [...read.routes, route('write_field', 'POST', `/field/${encodeURIComponent(operation.selector.field)}`)],
+      touched,
+      requiredGuards: operation.guards ?? [],
+    };
+  }
+
+  if (operation.op === 'patch_surface') {
+    const operations = Array.isArray(operation.content) ? operation.content : undefined;
+    if (!operations) {
+      return facadeApiError(
+        400,
+        'patch_surface requires content as a JSON Patch array',
+        'Set operations[].content to [{ "op": "replace", "path": "/name", "value": "..." }].',
+      );
+    }
+    const data = await apiRequest('POST', '/surface/patch', {
+      operations,
+      dry_run: true,
+      expected_hash: guardValue(operation.guards, 'expected_hash'),
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('patch_surface', 'POST', '/surface/patch')],
+          touched,
+          requiredGuards: operation.guards ?? [],
+        };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported preview operation: ${operation.op}`,
+    'First-wave preview_edit supports field replace_text, field write_content, and active patch_surface.',
+    { operation },
+  );
+}
+
+async function applyFacadeOperation(
+  operation: FacadeV1EditOperation,
+  guardValues?: FacadeV1Guard[],
+): Promise<{ data: unknown; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  const touched = [selectorTarget(operation.selector)];
+  const guards = guardValues && guardValues.length > 0 ? guardValues : operation.guards;
+  if (operation.op === 'replace_text' && operation.selector.field) {
+    const fieldRoute = `/field/${encodeURIComponent(operation.selector.field)}/replace`;
+    const data = await apiRequest('POST', fieldRoute, {
+      find: operation.find,
+      replace: typeof operation.replace === 'string' ? operation.replace : '',
+    });
+    return isApiError(data) ? data : { data, routes: [route('replace_in_field', 'POST', fieldRoute)], touched };
+  }
+  if (operation.op === 'write_content' && operation.selector.field) {
+    const fieldRoute = `/field/${encodeURIComponent(operation.selector.field)}`;
+    const data = await apiRequest('POST', fieldRoute, { content: operation.content });
+    return isApiError(data) ? data : { data, routes: [route('write_field', 'POST', fieldRoute)], touched };
+  }
+  if (operation.op === 'patch_surface') {
+    const operations = Array.isArray(operation.content) ? operation.content : undefined;
+    const data = await apiRequest('POST', '/surface/patch', {
+      operations,
+      expected_hash: guardValue(guards, 'expected_hash'),
+    });
+    return isApiError(data) ? data : { data, routes: [route('patch_surface', 'POST', '/surface/patch')], touched };
+  }
+  return facadeApiError(
+    400,
+    `Unsupported apply operation: ${operation.op}`,
+    'Re-run preview_edit with supported first-wave operations.',
+  );
+}
+
 // ==================== MCP Server Setup ====================
 
 const server = new McpServer({
@@ -608,6 +954,351 @@ server.tool = ((...args: unknown[]) => {
   }
   return result;
 }) as typeof server.tool;
+
+// ===== Facade v1 Tools =====
+
+server.tool(
+  'inspect_document',
+  'Preferred facade v1 read-only entrypoint. Summarizes the active document/session, an external file, a loaded reference, or available guidance, and returns the routed legacy routes used.',
+  {
+    target: facadeV1TargetSchema.describe('Explicit facade target discriminator.'),
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  async ({ target, max_bytes }) => {
+    if (target.kind === 'active' || target.kind === 'session') {
+      const session = await apiRequest('GET', '/session/status');
+      if (isApiError(session)) return textResult(session);
+      const routes = [route('session_status', 'GET', '/session/status')];
+      const result: Record<string, unknown> = { session, routed_legacy: routes, touched_targets: ['session'] };
+      if (target.kind === 'active') {
+        const fields = await apiRequest('GET', '/fields');
+        if (isApiError(fields)) return textResult(fields);
+        const surfaces = await apiRequest('GET', '/surfaces');
+        if (isApiError(surfaces)) return textResult(surfaces);
+        routes.push(route('list_fields', 'GET', '/fields'), route('list_surfaces', 'GET', '/surfaces'));
+        result.fields = fields;
+        result.surfaces = surfaces;
+        result.touched_targets = ['active'];
+      }
+      return textResult(
+        facadeEnvelope(
+          'inspect_document',
+          'read-only',
+          target,
+          result,
+          target.kind === 'active' ? 'Inspected active document facade target' : 'Inspected session facade target',
+          ['read_content', 'search_document', 'preview_edit'],
+          { routed_tools: routes.map((entry) => entry.tool), touched_targets: result.touched_targets },
+          max_bytes,
+        ),
+      );
+    }
+
+    if (target.kind === 'external') {
+      const data = await apiRequest('POST', '/external/inspect', { file_path: target.file_path });
+      if (isApiError(data)) return textResult(data);
+      const routes = [route('inspect_external_file', 'POST', '/external/inspect')];
+      return textResult(
+        facadeEnvelope(
+          'inspect_document',
+          'read-only',
+          target,
+          { external: data, routed_legacy: routes, touched_targets: [`external:${target.file_path}`] },
+          'Inspected external document facade target',
+          ['read_content', 'search_document'],
+          { routed_tools: routes.map((entry) => entry.tool), touched_targets: [`external:${target.file_path}`] },
+          max_bytes,
+        ),
+      );
+    }
+
+    if (target.kind === 'reference') {
+      const index = await resolveReferenceIndex(target);
+      if (typeof index !== 'number') return textResult(index);
+      const refs = await apiRequest('GET', '/references');
+      if (isApiError(refs)) return textResult(refs);
+      const routes = [route('list_references', 'GET', '/references')];
+      return textResult(
+        facadeEnvelope(
+          'inspect_document',
+          'read-only',
+          target,
+          { reference_index: index, references: refs, routed_legacy: routes, touched_targets: [`reference:${index}`] },
+          `Inspected reference ${index} facade target`,
+          ['read_content', 'search_document'],
+          { routed_tools: routes.map((entry) => entry.tool), touched_targets: [`reference:${index}`] },
+          max_bytes,
+        ),
+      );
+    }
+
+    if (target.kind === 'guidance') {
+      const routePath = target.skill
+        ? `/skills/${encodeURIComponent(target.skill)}${target.document ? `/${encodeURIComponent(target.document)}` : ''}`
+        : '/skills';
+      const data = await apiRequest('GET', routePath);
+      if (isApiError(data)) return textResult(data);
+      const routes = [route(target.skill ? 'read_skill' : 'list_skills', 'GET', routePath)];
+      return textResult(
+        facadeEnvelope(
+          'inspect_document',
+          'read-only',
+          target,
+          { guidance: data, routed_legacy: routes, touched_targets: ['guidance'] },
+          'Inspected guidance facade target',
+          ['read_content'],
+          { routed_tools: routes.map((entry) => entry.tool), touched_targets: ['guidance'] },
+          max_bytes,
+        ),
+      );
+    }
+
+    return textResult(
+      facadeApiError(
+        400,
+        'Unsupported inspect_document target',
+        'Use active, external, reference, guidance, or session.',
+      ),
+    );
+  },
+);
+
+server.tool(
+  'read_content',
+  'Preferred facade v1 bounded reader. Reads selected field/surface content by routing to existing granular tools and returns routed legacy names. First wave supports field/surface selectors for active/external targets and field selectors for references.',
+  {
+    target: facadeV1TargetSchema.describe('Explicit facade target discriminator.'),
+    selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  async ({ target, selectors, max_bytes }) => {
+    const actualSelectors: FacadeV1ContentSelector[] =
+      selectors && selectors.length > 0 ? selectors : [{ family: 'surface', path: '/' }];
+    const results: unknown[] = [];
+    const routes: FacadeRoute[] = [];
+    const touchedTargets: string[] = [];
+    for (const selector of actualSelectors) {
+      const read = await readFacadeSelector(target, selector);
+      if (isApiError(read)) return textResult(read);
+      results.push({ selector, data: read.data });
+      routes.push(...read.routes);
+      touchedTargets.push(selectorTarget(selector));
+    }
+    return textResult(
+      facadeEnvelope(
+        'read_content',
+        'read-only',
+        target,
+        { items: results, routed_legacy: routes, touched_targets: touchedTargets },
+        `Read ${results.length} facade selector(s)`,
+        ['search_document', 'preview_edit'],
+        { count: results.length, routed_tools: routes.map((entry) => entry.tool), touched_targets: touchedTargets },
+        max_bytes,
+      ),
+    );
+  },
+);
+
+server.tool(
+  'search_document',
+  'Preferred facade v1 search entrypoint. Searches an active document via search_all_fields, an external field via external_search_in_field, or a reference field via search_in_reference_field.',
+  {
+    target: facadeV1TargetSchema.describe('Explicit facade target discriminator.'),
+    query: z.string().min(1),
+    field: z.string().optional().describe('Required for external/reference targets in the first wave.'),
+    regex: z.boolean().optional(),
+    flags: z.string().optional(),
+    context_chars: z.number().optional(),
+    max_matches: z.number().int().positive().max(FACADE_V1_LIMITS.maxMatches).optional(),
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  async ({ target, query, field, regex, flags, context_chars, max_matches, max_bytes }) => {
+    let data: unknown;
+    let routes: FacadeRoute[];
+    const body = { query, regex, flags, context_chars, max_matches };
+    if (target.kind === 'active') {
+      data = await apiRequest('POST', '/search-all', {
+        query,
+        regex,
+        flags,
+        context_chars,
+        max_matches_per_field: max_matches,
+      });
+      routes = [route('search_all_fields', 'POST', '/search-all')];
+    } else if (target.kind === 'external' && field) {
+      const routePath = `/external/field/${encodeURIComponent(field)}/search`;
+      data = await apiRequest('POST', routePath, { ...body, file_path: target.file_path });
+      routes = [route('external_search_in_field', 'POST', routePath)];
+    } else if (target.kind === 'reference' && field) {
+      const index = await resolveReferenceIndex(target);
+      if (typeof index !== 'number') return textResult(index);
+      const routePath = `/reference/${index}/field/${encodeURIComponent(field)}/search`;
+      data = await apiRequest('POST', routePath, body);
+      routes = [route('search_in_reference_field', 'POST', routePath)];
+    } else {
+      return textResult(
+        facadeApiError(
+          400,
+          `Unsupported search_document target kind "${target.kind}"`,
+          'First-wave search_document supports active targets directly; external/reference targets require a field argument.',
+        ),
+      );
+    }
+    if (isApiError(data)) return textResult(data);
+    return textResult(
+      facadeEnvelope(
+        'search_document',
+        'read-only',
+        target,
+        { search: data, routed_legacy: routes, touched_targets: field ? [`field:${field}`] : ['active'] },
+        `Searched facade target for "${query}"`,
+        ['read_content', 'preview_edit'],
+        { routed_tools: routes.map((entry) => entry.tool), touched_targets: field ? [`field:${field}`] : ['active'] },
+        max_bytes,
+      ),
+    );
+  },
+);
+
+server.tool(
+  'preview_edit',
+  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active-document field replace/write or surface patch operations. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
+  {
+    target: facadeV1TargetSchema.describe(
+      'Explicit facade target discriminator. First wave mutating previews support active only.',
+    ),
+    operations: z.array(facadeEditOperationSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems),
+    dry_run: z.boolean().optional(),
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  async ({ target, operations, max_bytes }) => {
+    cleanupFacadePreviews();
+    const previews: unknown[] = [];
+    const routes: FacadeRoute[] = [];
+    const touchedTargets: string[] = [];
+    const requiredGuards: FacadeV1Guard[] = [];
+    for (const operation of operations) {
+      const preview = await previewFacadeOperation(target, operation);
+      if (isApiError(preview)) return textResult(preview);
+      previews.push({ operation: operation.op, selector: operation.selector, data: preview.data });
+      routes.push(...preview.routes);
+      touchedTargets.push(...preview.touched);
+      requiredGuards.push(...preview.requiredGuards);
+    }
+    const digest = operationDigest(target, operations);
+    const token = makePreviewToken();
+    const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
+    facadePreviewStore.set(token, {
+      token,
+      operationDigest: digest,
+      target,
+      operations,
+      routes,
+      touchedTargets,
+      requiredGuards,
+      expiresAtMs,
+    });
+    return textResult(
+      mcpSuccess(
+        {
+          facade: {
+            contract: FACADE_V1_CONTRACT_ID,
+            version: 'v1',
+            tool: 'preview_edit',
+            mutability: 'preview',
+            target,
+            ...(max_bytes ? { max_bytes } : {}),
+          },
+          result: { previews, routed_legacy: routes, touched_targets: touchedTargets, guard_values: requiredGuards },
+          preview: {
+            preview_token: token,
+            operation_digest: digest,
+            expires_at: new Date(expiresAtMs).toISOString(),
+            required_guards: requiredGuards,
+          },
+        },
+        {
+          toolName: 'preview_edit',
+          summary: `Previewed ${operations.length} facade edit operation(s)`,
+          nextActions: ['apply_edit', 'read_content'],
+          artifacts: {
+            count: operations.length,
+            routed_tools: routes.map((entry) => entry.tool),
+            touched_targets: touchedTargets,
+          },
+        },
+      ),
+    );
+  },
+);
+
+server.tool(
+  'apply_edit',
+  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior. Requires user confirmation through the routed legacy mutation.',
+  {
+    preview_token: z.string().regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/),
+    operation_digest: z.string().min(16),
+    target: facadeV1TargetSchema.describe('Must match the target used for preview_edit.'),
+    guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  async ({ preview_token, operation_digest, target, guard_values, max_bytes }) => {
+    cleanupFacadePreviews();
+    const entry = facadePreviewStore.get(preview_token);
+    if (!entry) {
+      return textResult(
+        facadeApiError(
+          404,
+          'Unknown or expired preview token',
+          'Run preview_edit again, then retry apply_edit with the new token.',
+        ),
+      );
+    }
+    if (entry.operationDigest !== operation_digest || !sameTarget(entry.target, target)) {
+      return textResult(
+        facadeApiError(
+          409,
+          'Preview token does not match operation digest or target',
+          'Use the exact operation_digest and target returned by preview_edit.',
+        ),
+      );
+    }
+    const results: unknown[] = [];
+    const routes: FacadeRoute[] = [];
+    const touchedTargets: string[] = [];
+    for (const operation of entry.operations) {
+      const applied = await applyFacadeOperation(operation, guard_values);
+      if (isApiError(applied)) return textResult(applied);
+      results.push({ operation: operation.op, selector: operation.selector, data: applied.data });
+      routes.push(...applied.routes);
+      touchedTargets.push(...applied.touched);
+    }
+    facadePreviewStore.delete(preview_token);
+    return textResult(
+      facadeEnvelope(
+        'apply_edit',
+        'mutating',
+        target,
+        {
+          applied: results,
+          routed_legacy: routes,
+          touched_targets: touchedTargets,
+          guard_values: guard_values ?? entry.requiredGuards,
+          preview_token,
+          operation_digest,
+        },
+        `Applied ${results.length} facade edit operation(s)`,
+        ['read_content', 'search_document'],
+        {
+          count: results.length,
+          routed_tools: routes.map((routeEntry) => routeEntry.tool),
+          touched_targets: touchedTargets,
+        },
+        max_bytes,
+      ),
+    );
+  },
+);
 
 // ===== Field Tools =====
 
@@ -1893,38 +2584,51 @@ server.tool(
 
 server.tool(
   'write_lua',
-  '특정 인덱스의 Lua 섹션 코드를 교체합니다. 사용자 확인 필요. 섹션 전체 코드를 content로 전달하세요.',
+  '특정 인덱스의 Lua 섹션 코드를 교체합니다. optional expected_hash / expected_preview로 stale index를 감지할 수 있습니다. 사용자 확인 필요. 섹션 전체 코드를 content로 전달하세요.',
   {
     index: z.number().describe('Lua 섹션 인덱스'),
     content: z.string().describe('새로운 섹션 코드 (전체 교체)'),
+    expected_hash: z.string().optional().describe('선택사항: list_lua/read_lua에서 본 현재 hash와 다르면 409 반환'),
+    expected_preview: z
+      .string()
+      .optional()
+      .describe('선택사항: list_lua/read_lua에서 본 현재 preview와 다르면 409 반환'),
   },
-  async ({ index, content }) => textResult(await apiRequest('POST', `/lua/${index}`, { content })),
+  async ({ index, content, expected_hash, expected_preview }) =>
+    textResult(await apiRequest('POST', `/lua/${index}`, { content, expected_hash, expected_preview })),
 );
 
 server.tool(
   'replace_in_lua',
-  'Lua 섹션 내에서 문자열 치환을 수행합니다. 대용량 섹션을 통째로 읽고 쓸 필요 없이 서버에서 직접 치환합니다. 사용자 확인 필요.',
+  'Lua 섹션 내에서 문자열 치환을 수행합니다. optional expected_hash / expected_preview로 stale index를 감지할 수 있습니다. 대용량 섹션을 통째로 읽고 쓸 필요 없이 서버에서 직접 치환합니다. 사용자 확인 필요.',
   {
     index: z.number().describe('Lua 섹션 인덱스 (list_lua 결과 참조)'),
     find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
     replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
     regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false = 일반 문자열 매칭)'),
     flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+    expected_hash: z.string().optional().describe('선택사항: list_lua/read_lua에서 본 현재 hash와 다르면 409 반환'),
+    expected_preview: z
+      .string()
+      .optional()
+      .describe('선택사항: list_lua/read_lua에서 본 현재 preview와 다르면 409 반환'),
   },
-  async ({ index, find, replace, regex, flags }) =>
+  async ({ index, find, replace, regex, flags, expected_hash, expected_preview }) =>
     textResult(
       await apiRequest('POST', `/lua/${index}/replace`, {
         find,
         replace: replace || '',
         regex: regex || false,
         flags: flags || 'g',
+        expected_hash,
+        expected_preview,
       }),
     ),
 );
 
 server.tool(
   'insert_in_lua',
-  'Lua 섹션에 코드를 삽입합니다. 전체를 읽지 않고 특정 위치에 추가. position: "end"(기본, 끝에 추가), "start"(앞에 추가), "after"(anchor 뒤에 삽입), "before"(anchor 앞에 삽입). 사용자 확인 필요.',
+  'Lua 섹션에 코드를 삽입합니다. optional expected_hash / expected_preview로 stale index를 감지할 수 있습니다. 전체를 읽지 않고 특정 위치에 추가. position: "end"(기본, 끝에 추가), "start"(앞에 추가), "after"(anchor 뒤에 삽입), "before"(anchor 앞에 삽입). 사용자 확인 필요.',
   {
     index: z.number().describe('Lua 섹션 인덱스'),
     content: z.string().describe('삽입할 코드'),
@@ -1933,13 +2637,20 @@ server.tool(
       .optional()
       .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
     anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+    expected_hash: z.string().optional().describe('선택사항: list_lua/read_lua에서 본 현재 hash와 다르면 409 반환'),
+    expected_preview: z
+      .string()
+      .optional()
+      .describe('선택사항: list_lua/read_lua에서 본 현재 preview와 다르면 409 반환'),
   },
-  async ({ index, content, position, anchor }) =>
+  async ({ index, content, position, anchor, expected_hash, expected_preview }) =>
     textResult(
       await apiRequest('POST', `/lua/${index}/insert`, {
         content,
         position: position || 'end',
         anchor: anchor || '',
+        expected_hash,
+        expected_preview,
       }),
     ),
 );
@@ -1981,38 +2692,51 @@ server.tool(
 
 server.tool(
   'write_css',
-  '특정 인덱스의 CSS 섹션 코드를 교체합니다. 사용자 확인 필요. 섹션 전체 코드를 content로 전달하세요.',
+  '특정 인덱스의 CSS 섹션 코드를 교체합니다. optional expected_hash / expected_preview로 stale index를 감지할 수 있습니다. 사용자 확인 필요. 섹션 전체 코드를 content로 전달하세요.',
   {
     index: z.number().describe('CSS 섹션 인덱스'),
     content: z.string().describe('새로운 섹션 코드 (전체 교체)'),
+    expected_hash: z.string().optional().describe('선택사항: list_css/read_css에서 본 현재 hash와 다르면 409 반환'),
+    expected_preview: z
+      .string()
+      .optional()
+      .describe('선택사항: list_css/read_css에서 본 현재 preview와 다르면 409 반환'),
   },
-  async ({ index, content }) => textResult(await apiRequest('POST', `/css-section/${index}`, { content })),
+  async ({ index, content, expected_hash, expected_preview }) =>
+    textResult(await apiRequest('POST', `/css-section/${index}`, { content, expected_hash, expected_preview })),
 );
 
 server.tool(
   'replace_in_css',
-  'CSS 섹션 내에서 문자열 치환을 수행합니다. 대용량 섹션을 통째로 읽고 쓸 필요 없이 서버에서 직접 치환합니다. 사용자 확인 필요.',
+  'CSS 섹션 내에서 문자열 치환을 수행합니다. optional expected_hash / expected_preview로 stale index를 감지할 수 있습니다. 대용량 섹션을 통째로 읽고 쓸 필요 없이 서버에서 직접 치환합니다. 사용자 확인 필요.',
   {
     index: z.number().describe('CSS 섹션 인덱스 (list_css 결과 참조)'),
     find: z.string().describe('찾을 문자열 (또는 regex: true일 때 정규식 패턴)'),
     replace: z.string().optional().describe('바꿀 문자열 (기본: 빈 문자열 = 삭제)'),
     regex: z.boolean().optional().describe('정규식 모드 여부 (기본: false = 일반 문자열 매칭)'),
     flags: z.string().optional().describe('정규식 플래그 (기본: "g"). regex: true일 때만 사용'),
+    expected_hash: z.string().optional().describe('선택사항: list_css/read_css에서 본 현재 hash와 다르면 409 반환'),
+    expected_preview: z
+      .string()
+      .optional()
+      .describe('선택사항: list_css/read_css에서 본 현재 preview와 다르면 409 반환'),
   },
-  async ({ index, find, replace, regex, flags }) =>
+  async ({ index, find, replace, regex, flags, expected_hash, expected_preview }) =>
     textResult(
       await apiRequest('POST', `/css-section/${index}/replace`, {
         find,
         replace: replace || '',
         regex: regex || false,
         flags: flags || 'g',
+        expected_hash,
+        expected_preview,
       }),
     ),
 );
 
 server.tool(
   'insert_in_css',
-  'CSS 섹션에 코드를 삽입합니다. 전체를 읽지 않고 특정 위치에 추가. position: "end"(기본, 끝에 추가), "start"(앞에 추가), "after"(anchor 뒤에 삽입), "before"(anchor 앞에 삽입). 사용자 확인 필요.',
+  'CSS 섹션에 코드를 삽입합니다. optional expected_hash / expected_preview로 stale index를 감지할 수 있습니다. 전체를 읽지 않고 특정 위치에 추가. position: "end"(기본, 끝에 추가), "start"(앞에 추가), "after"(anchor 뒤에 삽입), "before"(anchor 앞에 삽입). 사용자 확인 필요.',
   {
     index: z.number().describe('CSS 섹션 인덱스'),
     content: z.string().describe('삽입할 코드'),
@@ -2021,13 +2745,20 @@ server.tool(
       .optional()
       .describe('삽입 위치: "end"(기본), "start", "after", "before"'),
     anchor: z.string().optional().describe('position이 "after"/"before"일 때 기준 문자열'),
+    expected_hash: z.string().optional().describe('선택사항: list_css/read_css에서 본 현재 hash와 다르면 409 반환'),
+    expected_preview: z
+      .string()
+      .optional()
+      .describe('선택사항: list_css/read_css에서 본 현재 preview와 다르면 409 반환'),
   },
-  async ({ index, content, position, anchor }) =>
+  async ({ index, content, position, anchor, expected_hash, expected_preview }) =>
     textResult(
       await apiRequest('POST', `/css-section/${index}/insert`, {
         content,
         position: position || 'end',
         anchor: anchor || '',
+        expected_hash,
+        expected_preview,
       }),
     ),
 );
@@ -2381,9 +3112,16 @@ server.tool(
 
 server.tool(
   'delete_risum_asset',
-  '.risum 파일의 내장 에셋을 삭제합니다. 사용자 확인 필요.',
-  { index: z.number().describe('삭제할 에셋 인덱스') },
-  async ({ index }) => textResult(await apiRequest('POST', `/risum-asset/${index}/delete`)),
+  '.risum 파일의 내장 에셋을 삭제합니다. optional expected_path로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('삭제할 에셋 인덱스'),
+    expected_path: z
+      .string()
+      .optional()
+      .describe('선택사항: list_risum_assets/read_risum_asset에서 본 현재 path와 다르면 409 반환'),
+  },
+  async ({ index, expected_path }) =>
+    textResult(await apiRequest('POST', `/risum-asset/${index}/delete`, { expected_path })),
 );
 
 // ===== Charx Asset Tools =====
@@ -2413,26 +3151,37 @@ server.tool(
 
 server.tool(
   'delete_charx_asset',
-  '.charx 파일의 내장 에셋을 삭제합니다. 사용자 확인 필요.',
-  { index: z.number().describe('삭제할 에셋 인덱스') },
-  async ({ index }) => textResult(await apiRequest('POST', `/asset/${index}/delete`)),
+  '.charx 파일의 내장 에셋을 삭제합니다. optional expected_path로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
+  {
+    index: z.number().describe('삭제할 에셋 인덱스'),
+    expected_path: z
+      .string()
+      .optional()
+      .describe('선택사항: list_charx_assets/read_charx_asset에서 본 현재 path와 다르면 409 반환'),
+  },
+  async ({ index, expected_path }) => textResult(await apiRequest('POST', `/asset/${index}/delete`, { expected_path })),
 );
 
 server.tool(
   'rename_charx_asset',
-  '.charx 파일의 내장 에셋 이름을 변경합니다. 사용자 확인 필요.',
+  '.charx 파일의 내장 에셋 이름을 변경합니다. optional expected_path로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
     index: z.number().describe('에셋 인덱스 (list_charx_assets 결과 참조)'),
     newName: z.string().describe('새 파일명 (확장자 포함, 예: new_name.png)'),
+    expected_path: z
+      .string()
+      .optional()
+      .describe('선택사항: list_charx_assets/read_charx_asset에서 본 현재 path와 다르면 409 반환'),
   },
-  async ({ index, newName }) => textResult(await apiRequest('POST', `/asset/${index}/rename`, { newName })),
+  async ({ index, newName, expected_path }) =>
+    textResult(await apiRequest('POST', `/asset/${index}/rename`, { newName, expected_path })),
 );
 
 // ===== Asset Compression =====
 
 server.tool(
   'compress_assets_webp',
-  '모든 이미지 에셋을 WebP 손실 압축으로 변환합니다. PNG, JPEG, GIF 등을 WebP로 변환하여 파일 크기를 줄입니다. SVG는 건너뛰며, WebP가 원본보다 크면 원본을 유지합니다. 사용자 확인 필요.',
+  '모든 이미지 에셋을 WebP 손실 압축으로 변환합니다. dry_run으로 변환 후보를 미리 볼 수 있습니다. PNG, JPEG, GIF 등을 WebP로 변환하여 파일 크기를 줄입니다. SVG는 건너뛰며, WebP가 원본보다 크면 원본을 유지합니다. 사용자 확인 필요.',
   {
     quality: z
       .number()
@@ -2441,11 +3190,13 @@ server.tool(
       .optional()
       .describe('WebP 품질 (0-100, 기본: 80). 높을수록 화질 좋지만 파일 큼'),
     recompress_webp: z.boolean().optional().describe('이미 WebP인 파일도 재압축할지 (기본: false)'),
+    dry_run: z.boolean().optional().describe('true면 실제 압축 없이 변환 후보 preview만 반환'),
   },
-  async ({ quality, recompress_webp }) => {
+  async ({ quality, recompress_webp, dry_run }) => {
     const body: Record<string, unknown> = {};
     if (quality !== undefined) body.quality = quality;
     if (recompress_webp !== undefined) body.recompressWebp = recompress_webp;
+    if (dry_run !== undefined) body.dry_run = dry_run;
     return textResult(await apiRequest('POST', '/assets/compress-webp', body));
   },
 );

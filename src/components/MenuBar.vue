@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 
 interface MenuItem {
   label: string;
@@ -145,6 +145,61 @@ function toggleMenu(menuId: string) {
   openMenu.value = openMenu.value === menuId ? null : menuId;
 }
 
+async function openMenuAndFocusFirst(menuId: string) {
+  openMenu.value = menuId;
+  await nextTick();
+  focusFirstMenuEntry(menuId);
+}
+
+function focusMenuButton(menuId: string) {
+  const button = document.querySelector<HTMLButtonElement>(`[data-menu-button="${menuId}"]`);
+  button?.focus();
+}
+
+function focusMenuByOffset(menuId: string, offset: number) {
+  const currentIndex = menus.findIndex((menu) => menu.id === menuId);
+  if (currentIndex < 0) return;
+  const nextMenu = menus[(currentIndex + offset + menus.length) % menus.length];
+  if (!nextMenu) return;
+  if (openMenu.value !== null) {
+    openMenu.value = nextMenu.id;
+  }
+  nextTick(() => focusMenuButton(nextMenu.id));
+}
+
+function getFocusableMenuEntries(menuRoot: Element): HTMLElement[] {
+  return Array.from(menuRoot.querySelectorAll<HTMLElement>('[data-menu-entry]')).filter(
+    (entry) => !entry.hasAttribute('disabled') && entry.getAttribute('aria-disabled') !== 'true',
+  );
+}
+
+function focusFirstMenuEntry(menuId: string) {
+  const menuRoot = document.querySelector<HTMLElement>(`[data-menu="${menuId}"]`);
+  const firstEntry = menuRoot ? getFocusableMenuEntries(menuRoot)[0] : undefined;
+  firstEntry?.focus();
+}
+
+function focusAdjacentMenuEntry(current: HTMLElement, offset: number) {
+  const menuRoot = current.closest('[role="menu"]');
+  if (!menuRoot) return;
+  const entries = getFocusableMenuEntries(menuRoot);
+  const currentIndex = entries.indexOf(current);
+  if (currentIndex < 0) return;
+  entries[(currentIndex + offset + entries.length) % entries.length]?.focus();
+}
+
+function focusSubmenuEntry(current: HTMLElement) {
+  const submenu = current.parentElement?.querySelector<HTMLElement>(':scope > [role="menu"]');
+  const firstEntry = submenu ? getFocusableMenuEntries(submenu)[0] : undefined;
+  firstEntry?.focus();
+}
+
+function focusParentSubmenu(current: HTMLElement) {
+  const parentSubmenu = current.closest('.menu-sub');
+  const parentTrigger = parentSubmenu?.querySelector<HTMLElement>(':scope > [data-menu-entry]');
+  parentTrigger?.focus();
+}
+
 function onMenuEnter(menuId: string) {
   if (openMenu.value !== null) {
     openMenu.value = menuId;
@@ -167,8 +222,62 @@ function closeMenus() {
   openMenu.value = null;
 }
 
+function closeMenusAndFocus(menuId: string) {
+  openMenu.value = null;
+  nextTick(() => focusMenuButton(menuId));
+}
+
 function onSettingsClick() {
   emit('action', 'settings');
+}
+
+function onMenuButtonKeydown(event: KeyboardEvent, menuId: string) {
+  switch (event.key) {
+    case 'Enter':
+    case ' ':
+    case 'ArrowDown':
+      event.preventDefault();
+      openMenuAndFocusFirst(menuId);
+      break;
+    case 'Escape':
+      event.preventDefault();
+      closeMenusAndFocus(menuId);
+      break;
+    case 'ArrowRight':
+      event.preventDefault();
+      focusMenuByOffset(menuId, 1);
+      break;
+    case 'ArrowLeft':
+      event.preventDefault();
+      focusMenuByOffset(menuId, -1);
+      break;
+  }
+}
+
+function onMenuEntryKeydown(event: KeyboardEvent, menuId: string) {
+  const current = event.currentTarget as HTMLElement;
+  switch (event.key) {
+    case 'ArrowDown':
+      event.preventDefault();
+      focusAdjacentMenuEntry(current, 1);
+      break;
+    case 'ArrowUp':
+      event.preventDefault();
+      focusAdjacentMenuEntry(current, -1);
+      break;
+    case 'ArrowRight':
+      event.preventDefault();
+      focusSubmenuEntry(current);
+      break;
+    case 'ArrowLeft':
+      event.preventDefault();
+      focusParentSubmenu(current);
+      break;
+    case 'Escape':
+      event.preventDefault();
+      closeMenusAndFocus(menuId);
+      break;
+  }
 }
 
 function onClickOutside() {
@@ -193,7 +302,7 @@ defineExpose({ closeMenus });
 </script>
 
 <template>
-  <div id="menubar" @mouseleave="hoveringMenu = false">
+  <div id="menubar" role="menubar" aria-label="주 메뉴" @mouseleave="hoveringMenu = false">
     <div
       v-for="menu in menus"
       :key="menu.id"
@@ -202,32 +311,81 @@ defineExpose({ closeMenus });
       @click.stop="toggleMenu(menu.id)"
       @mouseenter="onMenuEnter(menu.id)"
     >
-      <span class="menu-label">{{ menu.label }}</span>
-      <div v-if="openMenu === menu.id" class="menu-dropdown" @click.stop>
+      <button
+        :id="`menu-button-${menu.id}`"
+        type="button"
+        class="menu-label"
+        role="menuitem"
+        aria-haspopup="menu"
+        :aria-expanded="openMenu === menu.id"
+        :aria-controls="`menu-dropdown-${menu.id}`"
+        :data-menu-button="menu.id"
+        @click.stop="toggleMenu(menu.id)"
+        @keydown="onMenuButtonKeydown($event, menu.id)"
+      >
+        {{ menu.label }}
+      </button>
+      <div
+        v-if="openMenu === menu.id"
+        :id="`menu-dropdown-${menu.id}`"
+        class="menu-dropdown"
+        role="menu"
+        :aria-labelledby="`menu-button-${menu.id}`"
+        :data-menu="menu.id"
+        @click.stop
+      >
         <template v-for="(item, i) in menu.items" :key="i">
-          <div v-if="isSeparator(item)" class="menu-sep"></div>
+          <div v-if="isSeparator(item)" class="menu-sep" role="separator"></div>
           <div v-else-if="isSubMenu(item)" class="menu-sub">
-            <span>{{ item.label }}</span
-            ><span class="menu-arrow">▸</span>
-            <div class="menu-submenu">
+            <button
+              type="button"
+              class="menu-sub-trigger"
+              role="menuitem"
+              aria-haspopup="menu"
+              data-menu-entry
+              @keydown="onMenuEntryKeydown($event, menu.id)"
+            >
+              <span>{{ item.label }}</span>
+              <span class="menu-arrow">▸</span>
+            </button>
+            <div class="menu-submenu" role="menu" :aria-label="item.label">
               <template v-for="(child, j) in item.children" :key="j">
-                <div v-if="isSeparator(child)" class="menu-sep"></div>
-                <div v-else class="menu-action" @click="handleAction(child.action)">
+                <div v-if="isSeparator(child)" class="menu-sep" role="separator"></div>
+                <button
+                  v-else
+                  type="button"
+                  class="menu-action"
+                  role="menuitem"
+                  data-menu-entry
+                  @click="handleAction(child.action)"
+                  @keydown="onMenuEntryKeydown($event, menu.id)"
+                >
                   {{ child.label }}
                   <span v-if="child.shortcut" class="menu-shortcut">{{ child.shortcut }}</span>
-                </div>
+                </button>
               </template>
             </div>
           </div>
-          <div v-else class="menu-action" :class="{ disabled: isItemDisabled(item) }" @click="handleAction(item.action, item)">
+          <button
+            v-else
+            type="button"
+            class="menu-action"
+            role="menuitem"
+            :class="{ disabled: isItemDisabled(item) }"
+            :disabled="isItemDisabled(item)"
+            :aria-disabled="isItemDisabled(item)"
+            data-menu-entry
+            @click="handleAction(item.action, item)"
+            @keydown="onMenuEntryKeydown($event, menu.id)"
+          >
             {{ item.label }}
             <span v-if="item.shortcut" class="menu-shortcut">{{ item.shortcut }}</span>
-          </div>
+          </button>
         </template>
       </div>
     </div>
-    <div class="menu-item" @click="onSettingsClick">
-      <span class="menu-label">설정</span>
+    <div class="menu-item">
+      <button type="button" class="menu-label" role="menuitem" @click="onSettingsClick">설정</button>
     </div>
     <span style="flex: 1; -webkit-app-region: drag"></span>
     <slot name="file-label"></slot>

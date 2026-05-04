@@ -4,6 +4,18 @@ import {
   blockReplaceBodySchema,
   batchReplaceBodySchema,
   externalDocumentBodySchema,
+  FACADE_V1_CONTRACT_ID,
+  FACADE_V1_FUTURE_TOOL_NAMES,
+  FACADE_V1_LIMITS,
+  FACADE_V1_TOOL_CONTRACTS,
+  FACADE_V1_TOOL_NAMES,
+  facadeV1ApplyEditBodySchema,
+  facadeV1InspectDocumentBodySchema,
+  facadeV1PreviewEditBodySchema,
+  facadeV1ReadContentBodySchema,
+  facadeV1SearchDocumentBodySchema,
+  facadeV1SuccessEnvelopeSchema,
+  getFacadeV1ToolContract,
   fieldBatchReadSchema,
   fieldBatchWriteSchema,
   insertBodySchema,
@@ -480,5 +492,169 @@ describe('externalDocumentBodySchema', () => {
 
   it('rejects missing file_path', () => {
     expect(validateBody({}, externalDocumentBodySchema).success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Facade v1 public contract
+// ---------------------------------------------------------------------------
+
+describe('facade v1 contract schemas', () => {
+  it('defines a smaller first-wave facade tool set and future candidates', () => {
+    expect(FACADE_V1_TOOL_NAMES).toEqual([
+      'inspect_document',
+      'read_content',
+      'search_document',
+      'preview_edit',
+      'apply_edit',
+      'validate_content',
+      'load_guidance',
+    ]);
+    expect(FACADE_V1_FUTURE_TOOL_NAMES).toEqual(['manage_items', 'manage_assets', 'manage_file']);
+
+    const readOnly = FACADE_V1_TOOL_CONTRACTS.filter(
+      (tool) => tool.lifecycle === 'v1' && tool.mutability === 'read-only',
+    ).map((tool) => tool.name);
+    expect(readOnly).toEqual([
+      'inspect_document',
+      'read_content',
+      'search_document',
+      'validate_content',
+      'load_guidance',
+    ]);
+    expect(getFacadeV1ToolContract('preview_edit')?.mutability).toBe('preview');
+    expect(getFacadeV1ToolContract('apply_edit')?.mutability).toBe('mutating');
+    expect(getFacadeV1ToolContract('manage_assets')?.lifecycle).toBe('future-candidate');
+  });
+
+  it('uses explicit target discriminators for active, external, reference, guidance, and session routes', () => {
+    const targets = [
+      { kind: 'active', document: 'current' },
+      { kind: 'external', file_path: 'C:\\fixtures\\bot.charx' },
+      { kind: 'reference', reference_id: 'ref-1' },
+      { kind: 'guidance', skill: 'using-mcp-tools' },
+      { kind: 'session' },
+    ];
+
+    for (const target of targets) {
+      expect(validateBody({ target }, facadeV1InspectDocumentBodySchema).success).toBe(true);
+    }
+    expect(validateBody({ target: { kind: 'reference' } }, facadeV1InspectDocumentBodySchema).success).toBe(false);
+    expect(validateBody({ target: { kind: 'external' } }, facadeV1InspectDocumentBodySchema).success).toBe(false);
+  });
+
+  it('bounds read/search batches and max_bytes for context-safe facade calls', () => {
+    const tooManySelectors = Array.from({ length: FACADE_V1_LIMITS.maxBatchItems + 1 }, (_, index) => ({
+      family: 'field',
+      field: `field_${index}`,
+    }));
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          selectors: tooManySelectors,
+        },
+        facadeV1ReadContentBodySchema,
+      ).success,
+    ).toBe(false);
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          query: 'needle',
+          max_matches: FACADE_V1_LIMITS.maxMatches + 1,
+        },
+        facadeV1SearchDocumentBodySchema,
+      ).success,
+    ).toBe(false);
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          max_bytes: FACADE_V1_LIMITS.maxBytes + 1,
+        },
+        facadeV1ReadContentBodySchema,
+      ).success,
+    ).toBe(false);
+  });
+
+  it('codifies preview-token-first mutation flow with propagated guards', () => {
+    const preview = validateBody(
+      {
+        target: { kind: 'active' },
+        operations: [
+          {
+            op: 'replace_text',
+            selector: { family: 'lorebook', index: 2 },
+            find: 'old',
+            replace: 'new',
+            guards: [
+              {
+                name: 'expected_comment',
+                value: 'stable comment',
+                payloadPath: '/operations/*/guards/*',
+                sourceOperations: ['list_lorebook', 'read_lorebook'],
+                sourceResultPath: '/entries/*/comment or /comment',
+              },
+            ],
+          },
+        ],
+        dry_run: true,
+      },
+      facadeV1PreviewEditBodySchema,
+    );
+    expect(preview.success).toBe(true);
+
+    const apply = validateBody(
+      {
+        preview_token: 'facade-preview-v1.abcdef0123456789',
+        operation_digest: '0123456789abcdef',
+        target: { kind: 'active' },
+        guard_values: [{ name: 'expected_comment', value: 'stable comment' }],
+      },
+      facadeV1ApplyEditBodySchema,
+    );
+    expect(apply.success).toBe(true);
+
+    expect(
+      validateBody(
+        {
+          preview_token: 'missing-prefix',
+          operation_digest: '0123456789abcdef',
+          target: { kind: 'active' },
+        },
+        facadeV1ApplyEditBodySchema,
+      ).success,
+    ).toBe(false);
+  });
+
+  it('locks the additive facade success envelope shape', () => {
+    const result = validateBody(
+      {
+        status: 200,
+        summary: 'Previewed 1 edit',
+        next_actions: ['apply_edit', 'read_content'],
+        artifacts: { byte_size: 512, operation_count: 1 },
+        facade: {
+          contract: FACADE_V1_CONTRACT_ID,
+          version: 'v1',
+          tool: 'preview_edit',
+          mutability: 'preview',
+          target: { kind: 'active' },
+          truncated: false,
+          max_bytes: FACADE_V1_LIMITS.maxBytes,
+        },
+        preview: {
+          preview_token: 'facade-preview-v1.abcdef0123456789',
+          operation_digest: '0123456789abcdef',
+          expires_at: '2026-01-01T00:00:00.000Z',
+          required_guards: [{ name: 'expected_hash', value: 'abc123' }],
+        },
+      },
+      facadeV1SuccessEnvelopeSchema,
+    );
+
+    expect(result.success).toBe(true);
   });
 });
