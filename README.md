@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-0.65.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-0.69.3-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -54,7 +54,7 @@ npm run dev
 npm run dev          # Vite + Electron dev mode
 npm run lint         # ESLint
 npm run typecheck    # Vue + TypeScript type checking
-npm run test:evals   # Deterministic agent/harness eval scenarios
+npm run test:evals   # Deterministic agent/harness eval scenarios, including src/lib/mcp-agent-workflow-eval.test.ts
 npm test             # Node regression tests + Vitest
 npm run build        # lint + typecheck + test + Electron + Vite build
 npm run dist:all     # Windows NSIS + portable build
@@ -67,6 +67,7 @@ npm run mcp:standalone -- --file C:\path\to\card.charx --allow-writes
 - `AGENTS.md` + local `risu/*/AGENTS.md` routers — Product-first root routing plus subtree-specific authoring guidance
 - `docs/MCP_WORKFLOW.md` — MCP tool selection, read rules, and workflow patterns
 - `docs/MCP_TOOL_SURFACE.md` — MCP tool families, boundaries, and follow-up action map
+- `src/lib/mcp-agent-workflow-eval.test.ts` — Real-artifact workflow eval matrix for route choice, bounded reads, guards, preview/apply, and validation coverage
 - `docs/MCP_ERROR_CONTRACT.md` — MCP success/error/no-op response contract and agent recovery rules
 - `docs/PROJECT_RULES.md` — Project rules (versioning, CI, and guide locations)
 - `docs/MODULE_MAP.md` — TypeScript source navigation module map
@@ -374,6 +375,7 @@ When an AI CLI starts, the MCP server connects automatically so the AI can read 
 
 - `write` / `add` / `delete` calls trigger a **MomoTalk-style confirmation popup** (a "Allow all for this session" toggle lets you skip it).
 - Changes made by the AI CLI are reflected in the editor in real time.
+- Facade-first tools (`inspect_document`, `read_content`, `search_document`, `preview_edit`, `apply_edit`, `validate_content`) cover bounded read/search plus preview-token-first active/external field edits, active surface patches, active lorebook text replacement, and active indexed regex/greeting/risup prompt item writes/deletes with stale guards.
 - For unopened files, the recommended flow is to `probe_*` first, use `external_*` when the active UI document must stay unchanged, then `open_file` only when active-document tools are needed.
 - Route-local `4xx/409` errors across regex, greetings, Lua/CSS sections, fields, lorebook, references, assets, risup reorder/formating-order, skill-file reads, and unopened-file probe/open validation carry structured fields (`action`, `target`, `status`, `suggestion`, `retryable`, `next_actions`) so the AI CLI can diagnose and recover automatically. Global `Unauthorized` / `No file open` guards and HTTP-200 `success: false` no-op paths provide the same recovery metadata. Success responses include `artifacts.byte_size` as a context-budget hint, and high-traffic tools can now narrow `next_actions` below the family default so agents are steered toward smaller follow-up reads or safer specialized tools. `session_status` also exposes a compact `surfaceSummary` (lorebook/regex/greetings/triggers/Lua/CSS/risup prompt counts) so agents can skip empty-surface discovery loops. The full contract is documented in `docs/MCP_ERROR_CONTRACT.md`.
 - Lorebook folders are tracked by the canonical `key` of the folder entry (`folder:UUID`). Child entries normalize their `folder` value to the same `folder:UUID` form. Legacy bare-UUID / `id`-based folder data is auto-upgraded on read.

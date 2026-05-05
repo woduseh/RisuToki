@@ -18,16 +18,17 @@ Only `project-workflow` is mandatory at session start. Load the other references
 
 ### Additional repo-local references (may not be available outside the repo)
 
-| Document                                                         | Contents                                                              |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------- |
-| [`docs/analysis/ARCHITECTURE.md`](docs/analysis/ARCHITECTURE.md) | Runtime architecture, process boundaries, hotspots (canonical)        |
-| [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)                   | MCP tool routing, read-rule, and task-intent playbook source of truth |
-| [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)           | Tool families, boundaries, behavior hints                             |
-| [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md)       | Error / no-op / success response contracts                            |
-| `toki-mcp-server.js --standalone`                                | File-backed MCP runtime for Codex/CLI use without Electron            |
-| [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)                 | Versioning and CI rules                                               |
-| [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                       | TypeScript source navigation map                                      |
-| [`docs/README.md`](docs/README.md)                               | Full knowledge-base index                                             |
+| Document                                                                             | Contents                                                                                       |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| [`docs/analysis/ARCHITECTURE.md`](docs/analysis/ARCHITECTURE.md)                     | Runtime architecture, process boundaries, hotspots (canonical)                                 |
+| [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)                                       | MCP tool routing, read-rule, and task-intent playbook source of truth                          |
+| [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)                               | Tool families, boundaries, behavior hints                                                      |
+| [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md)                           | Error / no-op / success response contracts                                                     |
+| [`src/lib/mcp-agent-workflow-eval.test.ts`](src/lib/mcp-agent-workflow-eval.test.ts) | Real-artifact workflow eval matrix for `.charx`, `.risup`, `.risum`, and Plugin API v3 routing |
+| `toki-mcp-server.js --standalone`                                                    | File-backed MCP runtime for Codex/CLI use without Electron                                     |
+| [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)                                     | Versioning and CI rules                                                                        |
+| [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                                           | TypeScript source navigation map                                                               |
+| [`docs/README.md`](docs/README.md)                                                   | Full knowledge-base index                                                                      |
 
 ---
 
@@ -56,7 +57,7 @@ Use `list_skills` to see the repo-global catalog, then load only the skills that
 - Artifact-local authoring routers live in `risu/{bot,prompts,modules,plugins}/AGENTS.md`.
 - The nearest `risu/{scope}/AGENTS.md` decides which authoring workflow should be treated as primary in the current subtree.
 
-Facade v1 first-wave MCP tools (`list_tool_profiles`, `inspect_document`, `read_content`, `search_document`, `preview_edit`, `apply_edit`) are preferred for compact profile discovery plus bounded inspect/read/search/preview/apply workflows when their selectors cover the task. Treat granular tools as advanced/legacy escape hatches for unsupported structured families, direct external mutations, broad batch/deletes/imports/exports/assets, exact legacy response shapes, or precision/debug work.
+Facade v1 MCP tools (`list_tool_profiles`, `inspect_document`, `read_content`, `search_document`, `preview_edit`, `apply_edit`, `validate_content`, `load_guidance`) are preferred for compact profile discovery plus bounded inspect/read/search/preview/apply/validate workflows when their selectors cover the task. Current facade mutations cover active/external field write/replace, active surface patch, active lorebook text replacement, and active indexed regex/greeting/risup prompt item writes/deletes. Treat granular tools as advanced/legacy escape hatches for unsupported structured families, direct external surface mutation, broad batch/add/reorder/import/export/asset workflows, exact legacy response shapes, or precision/debug work.
 
 If no main file is open but reference files are loaded, start with facade `inspect_document` / `read_content` / `search_document` when covered; use `session_status` or `list_references` only for full legacy inventories or runtime diagnostics, then narrow large reference text with `search_in_reference_field` / `read_reference_field_range` before drilling into `list_reference_*` / `read_reference_*`.
 

@@ -301,7 +301,10 @@ function createDogfoodFixtures(): {
     _fileType: 'risup',
     name: 'Facade Reference Preset',
     description: 'Reference risup facade dogfood description.',
-    promptTemplate: JSON.stringify([{ type: 'plain', type2: 'normal', text: 'Preset facade prompt', role: 'system' }]),
+    promptTemplate: JSON.stringify([
+      { type: 'plain', type2: 'normal', text: 'Preset facade prompt', role: 'system' },
+      { type: 'plain', type2: 'normal', text: 'Preset removable prompt', role: 'system' },
+    ]),
     formatingOrder: JSON.stringify(['main', 'description']),
     presetBias: '[]',
     localStopStrings: '[]',
@@ -607,6 +610,161 @@ function routedTools(envelope: McpCallJson): string[] {
   const tools = artifacts.routed_tools;
   assert.ok(Array.isArray(tools), 'artifacts.routed_tools should be present for facade metrics');
   return tools.map(String);
+}
+
+type RealCorpusFamily = 'charx' | 'risup' | 'risum';
+
+interface RealCorpusFacadeCase {
+  family: RealCorpusFamily;
+  filePath: string;
+  field: string;
+  content: string;
+  query: string;
+}
+
+function collectRealCorpusFiles(rootRelative: string, extension: string, limit = 80): string[] {
+  const root = path.join(__dirname, '..', rootRelative);
+  const files: string[] = [];
+  if (!fs.existsSync(root)) return files;
+
+  function walk(dir: string): void {
+    if (files.length >= limit) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (files.length >= limit) return;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (entry.name.toLowerCase().endsWith(extension)) files.push(fullPath);
+    }
+  }
+
+  walk(root);
+  return files.sort();
+}
+
+function firstSearchQuery(content: string): string {
+  const compact = content.replace(/\s+/g, ' ').trim();
+  return compact.match(/\S{2,24}/u)?.[0] ?? compact.slice(0, Math.min(compact.length, 24));
+}
+
+function firstStringField(data: unknown, fields: readonly string[]): { field: string; content: string } | null {
+  if (!data || typeof data !== 'object') return null;
+  const record = data as Record<string, unknown>;
+  for (const field of fields) {
+    const value = record[field];
+    if (typeof value !== 'string') continue;
+    const content = value.trim();
+    if (content.length > 0) return { field, content };
+  }
+  return null;
+}
+
+function findRealCorpusCase(
+  family: RealCorpusFamily,
+  rootRelative: string,
+  extension: string,
+  opener: (filePath: string) => unknown,
+  preferredFields: readonly string[],
+): RealCorpusFacadeCase | null {
+  for (const filePath of collectRealCorpusFiles(rootRelative, extension)) {
+    try {
+      const field = firstStringField(opener(filePath), preferredFields);
+      if (!field) continue;
+      const query = firstSearchQuery(field.content);
+      if (!query) continue;
+      return { family, filePath, field: field.field, content: field.content, query };
+    } catch {
+      // Keep scanning the ignored local corpus; one malformed artifact should not mask other real fixtures.
+    }
+  }
+  return null;
+}
+
+function buildRealCorpusFacadeCases(): RealCorpusFacadeCase[] {
+  return [
+    findRealCorpusCase('charx', 'risu/bot', '.charx', openCharx, ['description', 'firstMessage', 'name']),
+    findRealCorpusCase('risup', 'risu/prompts', '.risup', openRisup, [
+      'description',
+      'name',
+      'mainPrompt',
+      'promptTemplate',
+    ]),
+    findRealCorpusCase('risum', 'risu/modules', '.risum', openRisum, [
+      'description',
+      'moduleDescription',
+      'moduleName',
+      'name',
+    ]),
+  ].filter((candidate): candidate is RealCorpusFacadeCase => candidate !== null);
+}
+
+async function runStandaloneRealCorpusFacadeReadEval(): Promise<void> {
+  const cases = buildRealCorpusFacadeCases();
+  if (cases.length === 0) {
+    console.log('real-corpus facade external read eval skipped: no ignored local artifacts found');
+    return;
+  }
+
+  const missingFamilies = (['charx', 'risup', 'risum'] as const).filter(
+    (family) => !cases.some((candidate) => candidate.family === family),
+  );
+  assert.deepEqual(missingFamilies, [], 'local real corpus should include charx, risup, and risum facade cases');
+
+  const userDataDir = fs.mkdtempSync(path.join(TEST_DIR, 'real-corpus-facade-'));
+  let runtime: StandaloneClientRuntime | null = null;
+  try {
+    runtime = await startStandaloneClient({ userDataDir });
+
+    for (const testCase of cases) {
+      const target = { kind: 'external', file_path: testCase.filePath };
+      const inspect = await callJson(runtime, 'inspect_document', { target, max_bytes: 65536 });
+      assert.deepEqual(routedTools(inspect), ['inspect_external_file']);
+      const external = nestedRecord(
+        nestedRecord(inspect.result, `${testCase.family} inspect result`).external,
+        'external inspect payload',
+      );
+      assert.equal(external.file_type, testCase.family);
+
+      const read = await callJson(runtime, 'read_content', {
+        target,
+        selectors: [{ family: 'field', field: testCase.field }],
+        max_bytes: 8192,
+      });
+      assert.deepEqual(routedTools(read), ['probe_field']);
+      const readItems = nestedArray(nestedRecord(read.result, `${testCase.family} read result`).items, 'read items');
+      const readData = nestedRecord(nestedRecord(readItems[0], 'read item').data, 'read data');
+      assert.equal(readData.field, testCase.field);
+      assert.equal(readData.content, testCase.content);
+
+      const search = await callJson(runtime, 'search_document', {
+        target,
+        field: testCase.field,
+        query: testCase.query,
+        context_chars: 24,
+        max_matches: 3,
+        max_bytes: 8192,
+      });
+      assert.deepEqual(routedTools(search), ['external_search_in_field']);
+      const searchData = nestedRecord(
+        nestedRecord(search.result, `${testCase.family} search result`).search,
+        'search data',
+      );
+      assert.equal(searchData.field, testCase.field);
+      assert.ok(Number(searchData.totalMatches) > 0, `${testCase.family} external search should find its query`);
+    }
+
+    console.log(`real-corpus facade external read eval passed (${cases.length} files)`);
+  } catch (error) {
+    const stderrText = runtime?.stderrChunks.join('').trim();
+    const detail =
+      error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error, null, 2);
+    throw new Error(stderrText ? `${detail}\n\nReal-corpus standalone MCP stderr:\n${stderrText}` : detail);
+  } finally {
+    if (runtime) await runtime.close();
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+  }
 }
 
 async function runStandaloneFacadeDogfood(): Promise<void> {
@@ -942,6 +1100,143 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     );
     assert.equal(staleLorebookPreview.status, 409);
 
+    facadeOnlyCalls.push('preview_edit');
+    const regexWritePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'write_content',
+          selector: { family: 'regex', index: 0 },
+          content: {
+            comment: 'Facade Regex',
+            type: 'editoutput',
+            find: 'Updated Regex Find',
+            replace: 'Updated Regex Replace',
+            flag: 'g',
+          },
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(regexWritePreview), ['read_regex', 'write_regex']);
+    const regexGuardValues = nestedArray(
+      nestedRecord(regexWritePreview.result, 'regex write preview result').guard_values,
+      'regex write guard values',
+    );
+    assert.ok(
+      regexGuardValues.some((guard) => nestedRecord(guard, 'regex guard').name === 'expected_comment'),
+      'regex write preview should derive expected_comment',
+    );
+    const regexWritePreviewInfo = nestedRecord(regexWritePreview.preview, 'regex write preview');
+    facadeOnlyCalls.push('apply_edit');
+    const regexWriteApply = await callJson(runtime, 'apply_edit', {
+      preview_token: regexWritePreviewInfo.preview_token,
+      operation_digest: regexWritePreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(regexWriteApply), ['write_regex']);
+    const staleRegexPreview = await callJson(
+      runtime,
+      'preview_edit',
+      {
+        target: activeTarget,
+        operations: [
+          {
+            op: 'write_content',
+            selector: { family: 'regex', index: 0 },
+            content: { comment: 'Facade Regex', type: 'editoutput', find: 'X', replace: 'Y', flag: 'g' },
+            guards: [{ name: 'expected_comment', value: 'Wrong Regex' }],
+          },
+        ],
+      },
+      { expectError: true },
+    );
+    assert.equal(staleRegexPreview.status, 409);
+
+    facadeOnlyCalls.push('preview_edit');
+    const greetingWritePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'write_content',
+          selector: { family: 'greeting', greeting_type: 'alternate', index: 0 },
+          content: 'Updated facade alternate hello.',
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(greetingWritePreview), ['read_greeting', 'write_greeting']);
+    const greetingGuardValues = nestedArray(
+      nestedRecord(greetingWritePreview.result, 'greeting write preview result').guard_values,
+      'greeting write guard values',
+    );
+    assert.ok(
+      greetingGuardValues.some((guard) => nestedRecord(guard, 'greeting guard').name === 'expected_preview'),
+      'greeting write preview should derive expected_preview',
+    );
+    const greetingWritePreviewInfo = nestedRecord(greetingWritePreview.preview, 'greeting write preview');
+    facadeOnlyCalls.push('apply_edit');
+    const greetingWriteApply = await callJson(runtime, 'apply_edit', {
+      preview_token: greetingWritePreviewInfo.preview_token,
+      operation_digest: greetingWritePreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(greetingWriteApply), ['write_greeting']);
+
+    facadeOnlyCalls.push('preview_edit');
+    const regexDeletePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'delete_item',
+          selector: { family: 'regex', index: 0 },
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(regexDeletePreview), ['read_regex', 'delete_regex']);
+    const regexDeleteGuards = nestedArray(
+      nestedRecord(regexDeletePreview.result, 'regex delete preview result').guard_values,
+      'regex delete guard values',
+    );
+    assert.ok(
+      regexDeleteGuards.some((guard) => nestedRecord(guard, 'regex delete guard').name === 'expected_comment'),
+      'regex delete preview should derive expected_comment',
+    );
+    const regexDeletePreviewInfo = nestedRecord(regexDeletePreview.preview, 'regex delete preview');
+    facadeOnlyCalls.push('apply_edit');
+    const regexDeleteApply = await callJson(runtime, 'apply_edit', {
+      preview_token: regexDeletePreviewInfo.preview_token,
+      operation_digest: regexDeletePreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(regexDeleteApply), ['delete_regex']);
+
+    facadeOnlyCalls.push('preview_edit');
+    const greetingDeletePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'delete_item',
+          selector: { family: 'greeting', greeting_type: 'alternate', index: 0 },
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(greetingDeletePreview), ['read_greeting', 'delete_greeting']);
+    const greetingDeleteGuards = nestedArray(
+      nestedRecord(greetingDeletePreview.result, 'greeting delete preview result').guard_values,
+      'greeting delete guard values',
+    );
+    assert.ok(
+      greetingDeleteGuards.some((guard) => nestedRecord(guard, 'greeting delete guard').name === 'expected_preview'),
+      'greeting delete preview should derive expected_preview',
+    );
+    const greetingDeletePreviewInfo = nestedRecord(greetingDeletePreview.preview, 'greeting delete preview');
+    facadeOnlyCalls.push('apply_edit');
+    const greetingDeleteApply = await callJson(runtime, 'apply_edit', {
+      preview_token: greetingDeletePreviewInfo.preview_token,
+      operation_digest: greetingDeletePreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(greetingDeleteApply), ['delete_greeting']);
+
     const save = await callJson(runtime, 'save_current_file', {});
     metrics.activeWorkflowCallCount += 1;
     assert.equal(save.success, true);
@@ -959,6 +1254,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assert.equal(afterData.content, persisted.description);
     assert.equal(persisted.description, 'Omega facade dogfood description.');
     assert.equal((persisted.lorebook[0] as { content?: string } | undefined)?.content, 'Updated facade lore body.');
+    assert.equal(persisted.regex.length, 0);
+    assert.equal(persisted.alternateGreetings.length, 0);
     metrics.finalArtifactEquality = true;
 
     const referenceInspect = await callJson(runtime, 'inspect_document', { target: referenceTarget });
@@ -1165,6 +1462,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     recoveryRuntime = await startStandaloneClient({
       refs: [fixture.referenceRisum],
       userDataDir: path.join(fixture.dir, 'recovery-user-data'),
+      allowWrites: true,
     });
     const sessionInspect = await callJson(recoveryRuntime, 'inspect_document', { target: { kind: 'session' } });
     assert.deepEqual(routedTools(sessionInspect), ['session_status']);
@@ -1215,6 +1513,100 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       query: 'Preset',
     });
     assert.deepEqual(routedTools(activePresetSearch), ['search_in_risup_prompt_items']);
+    const activePresetValidation = await callJson(recoveryRuntime, 'validate_content', {
+      target: activeTarget,
+      selectors: [{ family: 'risup-prompt' }, { field: 'formatingOrder' }],
+    });
+    assert.deepEqual(routedTools(activePresetValidation), ['list_risup_prompt_items', 'read_risup_formating_order']);
+    const activePresetValidationItems = nestedArray(
+      nestedRecord(activePresetValidation.result, 'active preset validation result').validations,
+      'active preset validations',
+    );
+    assert.equal(activePresetValidationItems.length, 2);
+    facadeOnlyCalls.push('preview_edit');
+    const promptItemPreview = await callJson(recoveryRuntime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'write_content',
+          selector: { family: 'risup-prompt', index: 0 },
+          content: {
+            type: 'plain',
+            type2: 'normal',
+            text: 'Updated preset facade prompt',
+            role: 'system',
+          },
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(promptItemPreview), ['read_risup_prompt_item', 'write_risup_prompt_item']);
+    const promptItemGuards = nestedArray(
+      nestedRecord(promptItemPreview.result, 'prompt item preview result').guard_values,
+      'prompt item guard values',
+    );
+    assert.ok(
+      promptItemGuards.some((guard) => nestedRecord(guard, 'prompt item guard').name === 'expected_type'),
+      'prompt item preview should derive expected_type',
+    );
+    const promptItemPreviewInfo = nestedRecord(promptItemPreview.preview, 'prompt item preview');
+    facadeOnlyCalls.push('apply_edit');
+    const promptItemApply = await callJson(recoveryRuntime, 'apply_edit', {
+      preview_token: promptItemPreviewInfo.preview_token,
+      operation_digest: promptItemPreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(promptItemApply), ['write_risup_prompt_item']);
+    assert.ok(nestedArray(promptItemApply.next_actions, 'prompt item next actions').includes('validate_content'));
+    const promptItemReadAfter = await callJson(recoveryRuntime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'risup-prompt', index: 0 }],
+    });
+    assert.deepEqual(routedTools(promptItemReadAfter), ['read_risup_prompt_item']);
+    const promptItemReadAfterItems = nestedArray(
+      nestedRecord(promptItemReadAfter.result, 'prompt item read after result').items,
+      'prompt item read after items',
+    );
+    const promptItemReadAfterData = nestedRecord(
+      nestedRecord(promptItemReadAfterItems[0], 'prompt item read after item').data,
+      'prompt item read after data',
+    );
+    assert.equal(
+      nestedRecord(promptItemReadAfterData.item, 'prompt item read after data.item').text,
+      'Updated preset facade prompt',
+    );
+    facadeOnlyCalls.push('preview_edit');
+    const promptItemDeletePreview = await callJson(recoveryRuntime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'delete_item',
+          selector: { family: 'risup-prompt', index: 1 },
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(promptItemDeletePreview), ['read_risup_prompt_item', 'delete_risup_prompt_item']);
+    const promptItemDeleteGuards = nestedArray(
+      nestedRecord(promptItemDeletePreview.result, 'prompt item delete preview result').guard_values,
+      'prompt item delete guard values',
+    );
+    assert.ok(
+      promptItemDeleteGuards.some((guard) => nestedRecord(guard, 'prompt item delete guard').name === 'expected_type'),
+      'prompt item delete preview should derive expected_type',
+    );
+    const promptItemDeletePreviewInfo = nestedRecord(promptItemDeletePreview.preview, 'prompt item delete preview');
+    facadeOnlyCalls.push('apply_edit');
+    const promptItemDeleteApply = await callJson(recoveryRuntime, 'apply_edit', {
+      preview_token: promptItemDeletePreviewInfo.preview_token,
+      operation_digest: promptItemDeletePreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(promptItemDeleteApply), ['delete_risup_prompt_item']);
+    const promptItemsAfterDelete = await callJson(recoveryRuntime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'risup-prompt' }],
+    });
+    assert.deepEqual(routedTools(promptItemsAfterDelete), ['list_risup_prompt_items']);
+    assert.equal(JSON.stringify(promptItemsAfterDelete.result).includes('Preset removable prompt'), false);
 
     const wrongTools = ['read_field', 'write_field', 'replace_in_field', 'patch_surface'];
     metrics.wrongToolAvoidance = facadeOnlyCalls.every((name) => !wrongTools.includes(name));
@@ -1827,6 +2219,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     console.log('search_all_fields MCP smoke test passed');
     await runStandaloneFacadeDogfood();
     console.log('facade-first standalone MCP dogfood eval passed');
+    await runStandaloneRealCorpusFacadeReadEval();
   } catch (error) {
     const stderrText = stderrChunks.join('').trim();
     const detail =

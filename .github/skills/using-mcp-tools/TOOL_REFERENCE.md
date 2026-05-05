@@ -8,7 +8,7 @@ For the canonical repo-wide family map and response-contract coverage, see:
 ## Critical Rules
 
 - Prefer facade v1 tools for profile discovery and covered inspect/read/search/preview/apply workflows: `list_tool_profiles`, `inspect_document`, `read_content`, `search_document`, `preview_edit`, `apply_edit`, `validate_content`, and `load_guidance`.
-- Treat granular tools as advanced/legacy fallbacks for unsupported facade selectors/operations, exact structured editors, direct external mutations, batch/deletes/imports/exports/assets, or compatibility/debugging.
+- Treat granular tools as advanced/legacy fallbacks for unsupported facade selectors/operations, exact structured editors, direct external mutations, batch/add/reorder/import/export/asset workflows, or compatibility/debugging.
 - Do not use `read_field` or `write_field` for `lua`, `css`, greetings, triggers, or structured `.risup` prompt surfaces when dedicated tools already exist.
 - Prefer batch tools over loops of repeated single-item writes, and prefer batch readers when inspecting several sibling items.
 - Trust response `next_actions` and `artifacts.byte_size`; facade and high-traffic granular tools may narrow the family defaults to a smaller, safer follow-up set.
@@ -72,8 +72,8 @@ Tool-list metadata:
 - `list_tool_profiles` returns the compact on-demand profile catalog. It includes `runtime` metadata (`serverVersion`, `appVersion`, `packageVersion`, `buildTime`, `commit`, `runtimeMode`, and `skew`) plus `health` metadata (`facadeTools`, `readonlyTools`, `advancedTools`, `allTools`, `missingWorkflowStages`, `unknownRecommendation`, and `unknownSurfaceKind`). Treat `runtime.skew.detected` or non-empty catalog health arrays as a signal to verify the running MCP process before trusting a workflow.
 - `tools/list` remains unfiltered and includes `_meta['risutoki/profiles']`, `_meta['risutoki/defaultProfile']`, `_meta['risutoki/surfaceKind']`, `_meta['risutoki/recommendation']`, and `_meta['risutoki/workflowStages']`; choose facade/preferred tools first for covered workflows, and treat `advanced-full` / granular tools as escape hatches.
 - `tools/list` may include `_meta['risutoki/requiresConfirmation']` and `_meta['risutoki/supportsDryRun']` on mutation-capable tools.
-- Prefer `preview_edit` → `apply_edit` for covered active edits; otherwise prefer granular tools with `supportsDryRun=true` when you want a preview-first workflow before committing a mutation.
-- Indexed-write guard support is broader than the current `_meta` surface: pass the latest `comment`, `preview`, or `type` values from the family list/read route when you want stale-index protection on lorebook, regex, greeting, trigger, or risup prompt-item writes.
+- Prefer `preview_edit` → `apply_edit` for covered edits, including active/external field writes, active surface patches, active lorebook text replacement, and active indexed regex/greeting/risup prompt item writes/deletes; otherwise prefer granular tools with `supportsDryRun=true` when you want a preview-first workflow before committing a mutation.
+- Indexed write/delete guard support is broader than the current `_meta` surface: pass the latest `comment`, `preview`, or `type` values from the family list/read route when you want stale-index protection on lorebook, regex, greeting, trigger, or risup prompt-item mutations.
 
 Current coverage summary:
 
@@ -87,7 +87,7 @@ Context-budget rule:
 - Use `inspect_document` before risky writes or after interruptions when the facade summary is enough; use `session_status` for exact legacy runtime diagnostics. Check surface summaries first so you can skip unnecessary `list_*` calls on empty structured surfaces. When `loaded` is `false` but references exist, use facade reference targets first, or `list_references` when you need the full legacy inventory.
 - When several write tools could solve the task, inspect tool `_meta` first so you know which route is facade/preferred, which supports `dry_run`, and which will pause for confirmation.
 - Prefer `list_reference_greetings` / `read_reference_greeting` / `read_reference_greeting_batch` and `list_reference_triggers` / `read_reference_trigger` / `read_reference_trigger_batch` over `read_reference_field("alternateGreetings")`, `read_reference_field("groupOnlyGreetings")`, or `read_reference_field("triggerScripts")`.
-- Run `npm run test:evals` when changing MCP contracts or workflow routing and you want the deterministic harness scenarios only.
+- Run `npm run test:evals` when changing MCP contracts or workflow routing and you want the deterministic harness scenarios only; this includes the real-artifact route matrix in `src/lib/mcp-agent-workflow-eval.test.ts`.
 
 The top-level `error` field remains present for MCP bridge compatibility.
 

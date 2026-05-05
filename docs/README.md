@@ -10,6 +10,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 | working on authoring materials under `risu/`             | nearest `risu/{common,bot,prompts,modules,plugins}/AGENTS.md` or `README.md` | matching `risu/.../skills/` + `risu/.../docs/` surfaces  |
 | editing `.charx` / `.risum` / `.risup` through MCP       | `read_skill("using-mcp-tools")` for task playbooks and validation rules      | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
 | recovering from an MCP tool failure or no-op             | `docs/MCP_ERROR_CONTRACT.md`                                                 | `docs/MCP_TOOL_SURFACE.md`                               |
+| checking real-artifact workflow eval coverage            | `src/lib/mcp-agent-workflow-eval.test.ts`                                    | `docs/MCP_TOOL_SURFACE.md`                               |
 | changing application code                                | `CONTRIBUTING.md`                                                            | `docs/analysis/ARCHITECTURE.md`, `docs/MODULE_MAP.md`    |
 | checking project rules (versioning, CI, guide locations) | `read_skill("project-workflow")`                                             | `docs/PROJECT_RULES.md`                                  |
 | tracing a past feature or design decision                | `docs/analysis/ARCHITECTURE.md`                                              | `CHANGELOG.md`                                           |
@@ -19,6 +20,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 - **`docs/MCP_WORKFLOW.md`** — MCP tool routing map, read rules, task-intent playbooks, reference diff workflows, operational caveats
 - **`docs/MCP_TOOL_SURFACE.md`** — MCP family map, tool boundaries, behavior hints, and deterministic `next_actions`
 - **`docs/MCP_ERROR_CONTRACT.md`** — success / error / no-op response contracts and the recovery playbook
+- **`src/lib/mcp-agent-workflow-eval.test.ts`** — deterministic agent workflow eval matrix for `.charx`, `.risup`, `.risum`, and Plugin API v3 route choice against the local `risu/` corpus
 - **`docs/PROJECT_RULES.md`** — versioning, CI/release workflow, and guide locations
 - **`docs/MODULE_MAP.md`** — source navigation map for the active TypeScript codebase
 - **`docs/analysis/ARCHITECTURE.md`** — **canonical** TypeScript runtime architecture, process boundaries, ownership rules, and large-module hotspots
@@ -29,7 +31,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 - Root `skills/` now holds product/editor skills only. Shared and artifact-specific authoring skills live under `risu/common/skills/` and `risu/{bot,prompts,modules,plugins}/skills/`.
 - Built-in authoring docs live under `risu/common/docs/` and `risu/{bot,prompts,modules,plugins}/docs/`.
 - Success envelopes expose `artifacts.byte_size`; use it as a context-budget cue before asking for adjacent content.
-- `npm run test:evals` runs the deterministic harness scenarios that pin recovery metadata, taxonomy invariants, Lua section workflows, and context-budget sizing.
+- `npm run test:evals` runs the deterministic harness scenarios that pin recovery metadata, taxonomy invariants, Lua section workflows, context-budget sizing, and the real-artifact workflow matrix in `src/lib/mcp-agent-workflow-eval.test.ts`.
 - `guides/` is the default writable guide location for imported/user-created guide files and may be empty in the repo.
 - When both `.ts` and `.js` siblings exist under `src/lib/`, prefer the `.ts` source. The `.js` file is generated output.
 - When a `.test.ts` sits next to a module, treat it as the nearest executable behavior spec.

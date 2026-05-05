@@ -34,7 +34,7 @@ These rules apply **automatically** when the task changes the repo itself — ev
 - PR / push validation uses a **two-stage** process: Ubuntu validate + Windows build.
   - Ubuntu: `npm run lint`, `npm run typecheck`, `npm test`
   - Windows: `npm run build:electron`, `npm run build:renderer`
-- When changing MCP contracts, taxonomy, or section-parsing behavior, run `npm run test:evals` (deterministic harness scenarios) before the full validation suite.
+- When changing MCP contracts, taxonomy, section-parsing behavior, or workflow routing expectations, run `npm run test:evals` (deterministic harness scenarios plus `src/lib/mcp-agent-workflow-eval.test.ts`) before the full validation suite.
 - PRs do **not** run packaging (`electron-builder`); packaging runs only in the tag-release workflow.
 - Dependency updates are monitored weekly via `Dependabot` for npm and GitHub Actions.
 

@@ -791,14 +791,14 @@ function applyEditPostEditMetadata(entry: FacadePreviewEntry): {
   }
 
   if (editedFamilies.includes('risup-prompt')) {
-    nextActions.push('read_content', 'diff_risup_prompt');
+    nextActions.push('validate_content', 'read_content', 'diff_risup_prompt');
     if (hasImportContext) nextActions.push('validate_risup_prompt_import');
     postEditValidation.push({
       family: 'risup-prompt',
-      tools: hasImportContext ? ['validate_risup_prompt_import'] : [],
+      tools: hasImportContext ? ['validate_content', 'validate_risup_prompt_import'] : ['validate_content'],
       reason: hasImportContext
         ? 'Import/source context was present; verify the imported prompt structure.'
-        : 'No import/source context was detected, so readback and diff are the safe follow-ups.',
+        : 'Check promptTemplate/formatingOrder structure, then read back the edited item.',
     });
     recommendedReads.push({
       family: 'risup-prompt',
@@ -1141,35 +1141,64 @@ async function validateFacadeSelectors(
     return facadeApiError(
       400,
       `Unsupported validate_content target kind "${target.kind}"`,
-      'Second-wave validate_content currently validates active-document lorebook key hygiene. Use inspect_document/read_content for external or reference preflight.',
+      'validate_content currently validates active-document lorebook key hygiene plus risup promptTemplate/formatingOrder structure. Use inspect_document/read_content for external or reference preflight.',
     );
   }
 
-  const actualSelectors = selectors && selectors.length > 0 ? selectors : [{ family: 'lorebook' }];
-  const unsupported = actualSelectors.find((selector) => selector.family !== 'lorebook');
-  if (unsupported) {
+  const actualSelectors: FacadeV1ContentSelector[] =
+    selectors && selectors.length > 0 ? selectors : [{ family: 'lorebook' }];
+  const validations: Array<{ selector: FacadeV1ContentSelector; data: unknown }> = [];
+  const routes: FacadeRoute[] = [];
+  const touchedTargets: string[] = [];
+
+  for (const selector of actualSelectors) {
+    if (selector.family === 'lorebook') {
+      const data = await apiRequest('GET', '/lorebook/validate');
+      if (isApiError(data)) return data;
+      validations.push({ selector, data });
+      routes.push(route('validate_lorebook_keys', 'GET', '/lorebook/validate'));
+      touchedTargets.push('lorebook');
+      continue;
+    }
+
+    if (selector.family === 'risup-prompt' || selector.field === 'promptTemplate') {
+      const data = await apiRequest('GET', '/risup/prompt-items');
+      if (isApiError(data)) return data;
+      validations.push({ selector, data });
+      routes.push(route('list_risup_prompt_items', 'GET', '/risup/prompt-items'));
+      touchedTargets.push('risup:promptTemplate');
+      continue;
+    }
+
+    if (selector.field === 'formatingOrder') {
+      const data = await apiRequest('GET', '/risup/formating-order');
+      if (isApiError(data)) return data;
+      validations.push({ selector, data });
+      routes.push(route('read_risup_formating_order', 'GET', '/risup/formating-order'));
+      touchedTargets.push('risup:formatingOrder');
+      continue;
+    }
+
     return facadeApiError(
       400,
       'Unsupported validate_content selector',
-      'Second-wave validate_content supports lorebook selectors only; keep granular validators for CBS, Danbooru, and risup import verification.',
-      { selector: unsupported },
+      'validate_content supports active lorebook, risup-prompt, promptTemplate, and formatingOrder selectors; keep granular validators for CBS, Danbooru, imports, diffs, and structured item mutations.',
+      { selector },
     );
   }
 
-  const data = await apiRequest('GET', '/lorebook/validate');
-  if (isApiError(data)) return data;
-  const routes = [route('validate_lorebook_keys', 'GET', '/lorebook/validate')];
+  const uniqueTouchedTargets = uniqueStrings(touchedTargets);
   return {
     result: {
-      validations: [{ selector: { family: 'lorebook' }, data }],
+      validations,
       routed_legacy: routes,
-      touched_targets: ['lorebook'],
+      touched_targets: uniqueTouchedTargets,
       remaining_gaps: [
-        'Structured item edit facade, asset management, import/export, and broad validator aggregation remain granular/advanced routes.',
+        'CBS, Danbooru, imports, diffs, structured item edit facade, asset management, and broad validator aggregation remain granular/advanced routes.',
       ],
     },
     routes,
-    touchedTargets: ['lorebook'],
+    touchedTargets: uniqueTouchedTargets,
   };
 }
 
@@ -1177,13 +1206,80 @@ function guardValue(guards: FacadeV1Guard[] | undefined, name: string): unknown 
   return guards?.find((guard) => guard.name === name)?.value;
 }
 
+function stringGuardValue(guards: FacadeV1Guard[] | undefined, name: string): string | undefined {
+  const value = guardValue(guards, name);
+  return typeof value === 'string' ? value : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+function recordString(value: Record<string, unknown> | undefined, key: string): string | undefined {
+  const item = value?.[key];
+  return typeof item === 'string' ? item : undefined;
+}
+
+function findIndexedRecord(value: unknown, index: number, depth = 0): Record<string, unknown> | undefined {
+  if (depth > 5) return undefined;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findIndexedRecord(item, index, depth + 1);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  const recordValue = asRecord(value);
+  if (!recordValue) return undefined;
+  if (Number(recordValue.index) === index) return recordValue;
+
+  for (const key of ['entry', 'item', 'entries', 'items', 'results', 'greetings', 'data']) {
+    const found = findIndexedRecord(recordValue[key], index, depth + 1);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function mergeGuards(
+  existingGuards: FacadeV1Guard[] | undefined,
+  derivedGuards: Array<FacadeV1Guard | undefined>,
+): FacadeV1Guard[] {
+  const merged = [...(existingGuards ?? [])];
+  for (const guard of derivedGuards) {
+    if (!guard) continue;
+    if (!merged.some((candidate) => candidate.name === guard.name)) merged.push(guard);
+  }
+  return merged;
+}
+
+function guardConflict(
+  guards: FacadeV1Guard[] | undefined,
+  guardName: string,
+  currentValue: string | undefined,
+  target: string,
+): ApiErrorResult | undefined {
+  const expectedValue = stringGuardValue(guards, guardName);
+  if (expectedValue === undefined || currentValue === undefined || expectedValue === currentValue) return undefined;
+  return facadeApiError(
+    409,
+    `Stale guard mismatch for ${guardName}`,
+    'Refresh the item list/read result, then run preview_edit again with the current guard value.',
+    { target, guard: guardName, expected: expectedValue, actual: currentValue },
+  );
+}
+
 function lorebookReplaceField(operation: FacadeV1EditOperation): string | undefined {
   return operation.field ?? operation.selector.field;
 }
 
 function lorebookExpectedComment(guards: FacadeV1Guard[] | undefined): string | undefined {
-  const value = guardValue(guards, 'expected_comment');
-  return typeof value === 'string' ? value : undefined;
+  return stringGuardValue(guards, 'expected_comment');
+}
+
+function replacementString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  return JSON.stringify(value);
 }
 
 async function previewFacadeOperation(
@@ -1248,6 +1344,360 @@ async function previewFacadeOperation(
       400,
       'Unsupported preview lorebook operation',
       'preview_edit supports active lorebook replace_text only when selector.index is provided; write_content and broad lorebook edits remain unsupported.',
+      { operation },
+    );
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'regex' &&
+    operation.selector.index !== undefined
+  ) {
+    const regexRoute = `/regex/${operation.selector.index}`;
+    const read = await apiRequest('GET', regexRoute);
+    if (isApiError(read)) return read;
+    const indexedRecord = findIndexedRecord(read, operation.selector.index);
+    const currentComment = recordString(asRecord(indexedRecord?.entry) ?? indexedRecord, 'comment');
+    const conflict = guardConflict(
+      operation.guards,
+      'expected_comment',
+      currentComment,
+      `regex:${operation.selector.index}`,
+    );
+    if (conflict) return conflict;
+    return {
+      data: {
+        dryRun: true,
+        index: operation.selector.index,
+        currentComment,
+        updatedKeys: Object.keys(asRecord(operation.content) ?? {}),
+      },
+      routes: [route('read_regex', 'GET', regexRoute), route('write_regex', 'POST', regexRoute)],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentComment === undefined
+          ? undefined
+          : {
+              name: 'expected_comment',
+              value: currentComment,
+              payloadPath: '/expected_comment',
+              sourceOperations: ['read_regex'],
+              sourceResultPath: '/entry/comment',
+            },
+      ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'greeting' &&
+    operation.selector.index !== undefined
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting write selector',
+        'preview_edit greeting writes require greeting_type="alternate" or "group".',
+        { operation },
+      );
+    }
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const greetingRoute = `/greeting/${greetingType}/${operation.selector.index}`;
+    const read = await apiRequest('GET', greetingRoute);
+    if (isApiError(read)) return read;
+    const currentContent =
+      typeof (read as Record<string, unknown>).content === 'string'
+        ? ((read as Record<string, unknown>).content as string)
+        : undefined;
+    const currentPreview = currentContent?.slice(0, 100);
+    const conflict = guardConflict(
+      operation.guards,
+      'expected_preview',
+      currentPreview,
+      `greeting:${operation.selector.greeting_type}:${operation.selector.index}`,
+    );
+    if (conflict) return conflict;
+    const newContent = replacementString(operation.content);
+    return {
+      data: {
+        dryRun: true,
+        type: operation.selector.greeting_type,
+        index: operation.selector.index,
+        oldSize: currentContent?.length ?? 0,
+        newSize: newContent.length,
+      },
+      routes: [route('read_greeting', 'GET', greetingRoute), route('write_greeting', 'POST', greetingRoute)],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentPreview === undefined
+          ? undefined
+          : {
+              name: 'expected_preview',
+              value: currentPreview,
+              payloadPath: '/expected_preview',
+              sourceOperations: ['read_greeting'],
+              sourceResultPath: '/content',
+            },
+      ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.index !== undefined
+  ) {
+    const promptRoute = `/risup/prompt-item/${operation.selector.index}`;
+    const read = await apiRequest('GET', promptRoute);
+    if (isApiError(read)) return read;
+    const readRecord = asRecord(read);
+    const currentType = recordString(readRecord, 'type') ?? recordString(asRecord(readRecord?.item), 'type');
+    const currentPreview = recordString(readRecord, 'preview');
+    const typeConflict = guardConflict(
+      operation.guards,
+      'expected_type',
+      currentType,
+      `risup-prompt:${operation.selector.index}`,
+    );
+    if (typeConflict) return typeConflict;
+    const previewConflict = guardConflict(
+      operation.guards,
+      'expected_preview',
+      currentPreview,
+      `risup-prompt:${operation.selector.index}`,
+    );
+    if (previewConflict) return previewConflict;
+    const item = asRecord(operation.content);
+    if (!item) {
+      return facadeApiError(
+        400,
+        'risup-prompt write_content requires an item object',
+        'Set operations[].content to the replacement prompt item object.',
+        { operation },
+      );
+    }
+    return {
+      data: {
+        dryRun: true,
+        index: operation.selector.index,
+        currentType,
+        currentPreview,
+        replacementType: recordString(item, 'type'),
+      },
+      routes: [
+        route('read_risup_prompt_item', 'GET', promptRoute),
+        route('write_risup_prompt_item', 'POST', promptRoute),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentType === undefined
+          ? undefined
+          : {
+              name: 'expected_type',
+              value: currentType,
+              payloadPath: '/expected_type',
+              sourceOperations: ['read_risup_prompt_item'],
+              sourceResultPath: '/type',
+            },
+        currentPreview === undefined
+          ? undefined
+          : {
+              name: 'expected_preview',
+              value: currentPreview,
+              payloadPath: '/expected_preview',
+              sourceOperations: ['read_risup_prompt_item'],
+              sourceResultPath: '/preview',
+            },
+      ]),
+    };
+  }
+
+  if (
+    operation.op === 'write_content' &&
+    ['regex', 'greeting', 'risup-prompt'].includes(operation.selector.family ?? '')
+  ) {
+    return facadeApiError(
+      400,
+      'Indexed structured writes require an active target and selector.index',
+      'Open the document, select target.kind="active", and provide selector.index plus any stale guard values.',
+      { operation },
+    );
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'regex' &&
+    operation.selector.index !== undefined
+  ) {
+    const regexRoute = `/regex/${operation.selector.index}`;
+    const read = await apiRequest('GET', regexRoute);
+    if (isApiError(read)) return read;
+    const indexedRecord = findIndexedRecord(read, operation.selector.index);
+    const currentComment = recordString(asRecord(indexedRecord?.entry) ?? indexedRecord, 'comment');
+    const conflict = guardConflict(
+      operation.guards,
+      'expected_comment',
+      currentComment,
+      `regex:${operation.selector.index}`,
+    );
+    if (conflict) return conflict;
+    return {
+      data: {
+        dryRun: true,
+        operation: 'delete_item',
+        index: operation.selector.index,
+        currentComment,
+      },
+      routes: [
+        route('read_regex', 'GET', regexRoute),
+        route('delete_regex', 'POST', `/regex/${operation.selector.index}/delete`),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentComment === undefined
+          ? undefined
+          : {
+              name: 'expected_comment',
+              value: currentComment,
+              payloadPath: '/expected_comment',
+              sourceOperations: ['read_regex'],
+              sourceResultPath: '/entry/comment',
+            },
+      ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'greeting' &&
+    operation.selector.index !== undefined
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting delete selector',
+        'preview_edit greeting deletes require greeting_type="alternate" or "group".',
+        { operation },
+      );
+    }
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const greetingRoute = `/greeting/${greetingType}/${operation.selector.index}`;
+    const read = await apiRequest('GET', greetingRoute);
+    if (isApiError(read)) return read;
+    const currentContent =
+      typeof (read as Record<string, unknown>).content === 'string'
+        ? ((read as Record<string, unknown>).content as string)
+        : undefined;
+    const currentPreview = currentContent?.slice(0, 100);
+    const conflict = guardConflict(
+      operation.guards,
+      'expected_preview',
+      currentPreview,
+      `greeting:${operation.selector.greeting_type}:${operation.selector.index}`,
+    );
+    if (conflict) return conflict;
+    return {
+      data: {
+        dryRun: true,
+        operation: 'delete_item',
+        type: operation.selector.greeting_type,
+        index: operation.selector.index,
+        oldSize: currentContent?.length ?? 0,
+      },
+      routes: [
+        route('read_greeting', 'GET', greetingRoute),
+        route('delete_greeting', 'POST', `/greeting/${greetingType}/${operation.selector.index}/delete`),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentPreview === undefined
+          ? undefined
+          : {
+              name: 'expected_preview',
+              value: currentPreview,
+              payloadPath: '/expected_preview',
+              sourceOperations: ['read_greeting'],
+              sourceResultPath: '/content',
+            },
+      ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.index !== undefined
+  ) {
+    const promptRoute = `/risup/prompt-item/${operation.selector.index}`;
+    const read = await apiRequest('GET', promptRoute);
+    if (isApiError(read)) return read;
+    const readRecord = asRecord(read);
+    const currentType = recordString(readRecord, 'type') ?? recordString(asRecord(readRecord?.item), 'type');
+    const currentPreview = recordString(readRecord, 'preview');
+    const typeConflict = guardConflict(
+      operation.guards,
+      'expected_type',
+      currentType,
+      `risup-prompt:${operation.selector.index}`,
+    );
+    if (typeConflict) return typeConflict;
+    const previewConflict = guardConflict(
+      operation.guards,
+      'expected_preview',
+      currentPreview,
+      `risup-prompt:${operation.selector.index}`,
+    );
+    if (previewConflict) return previewConflict;
+    return {
+      data: {
+        dryRun: true,
+        operation: 'delete_item',
+        index: operation.selector.index,
+        currentType,
+        currentPreview,
+      },
+      routes: [
+        route('read_risup_prompt_item', 'GET', promptRoute),
+        route('delete_risup_prompt_item', 'POST', `/risup/prompt-item/${operation.selector.index}/delete`),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentType === undefined
+          ? undefined
+          : {
+              name: 'expected_type',
+              value: currentType,
+              payloadPath: '/expected_type',
+              sourceOperations: ['read_risup_prompt_item'],
+              sourceResultPath: '/type',
+            },
+        currentPreview === undefined
+          ? undefined
+          : {
+              name: 'expected_preview',
+              value: currentPreview,
+              payloadPath: '/expected_preview',
+              sourceOperations: ['read_risup_prompt_item'],
+              sourceResultPath: '/preview',
+            },
+      ]),
+    };
+  }
+
+  if (
+    operation.op === 'delete_item' &&
+    ['regex', 'greeting', 'risup-prompt'].includes(operation.selector.family ?? '')
+  ) {
+    return facadeApiError(
+      400,
+      'Indexed structured deletes require an active target and selector.index',
+      'Open the document, select target.kind="active", and provide selector.index plus any stale guard values.',
       { operation },
     );
   }
@@ -1339,7 +1789,7 @@ async function previewFacadeOperation(
   return facadeApiError(
     400,
     `Unsupported preview operation: ${operation.op}`,
-    'preview_edit supports active/external field replace_text, active/external field write_content, and active patch_surface.',
+    'preview_edit supports active/external field replace_text, active/external field write_content, active indexed regex/greeting/risup-prompt write_content/delete_item, and active patch_surface.',
     { operation },
   );
 }
@@ -1393,6 +1843,153 @@ async function applyFacadeOperation(
       400,
       'Unsupported apply lorebook operation',
       'apply_edit supports active lorebook replace_text only when selector.index is provided; write_content and broad lorebook edits remain unsupported.',
+      { operation },
+    );
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'regex' &&
+    operation.selector.index !== undefined
+  ) {
+    const data = asRecord(operation.content);
+    if (!data) {
+      return facadeApiError(
+        400,
+        'regex write_content requires an object',
+        'Set operations[].content to the partial regex entry data to write.',
+        { operation },
+      );
+    }
+    const regexRoute = `/regex/${operation.selector.index}`;
+    const applied = await apiRequest('POST', regexRoute, {
+      ...data,
+      expected_comment: stringGuardValue(guards, 'expected_comment'),
+    });
+    return isApiError(applied)
+      ? applied
+      : { data: applied, routes: [route('write_regex', 'POST', regexRoute)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'greeting' &&
+    operation.selector.index !== undefined
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting write selector',
+        'apply_edit greeting writes require greeting_type="alternate" or "group".',
+        { operation },
+      );
+    }
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const greetingRoute = `/greeting/${greetingType}/${operation.selector.index}`;
+    const data = await apiRequest('POST', greetingRoute, {
+      content: replacementString(operation.content),
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(data) ? data : { data, routes: [route('write_greeting', 'POST', greetingRoute)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.index !== undefined
+  ) {
+    const item = asRecord(operation.content);
+    if (!item) {
+      return facadeApiError(
+        400,
+        'risup-prompt write_content requires an item object',
+        'Set operations[].content to the replacement prompt item object.',
+        { operation },
+      );
+    }
+    const promptRoute = `/risup/prompt-item/${operation.selector.index}`;
+    const data = await apiRequest('POST', promptRoute, {
+      item,
+      expected_type: stringGuardValue(guards, 'expected_type'),
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(data) ? data : { data, routes: [route('write_risup_prompt_item', 'POST', promptRoute)], touched };
+  }
+
+  if (
+    operation.op === 'write_content' &&
+    ['regex', 'greeting', 'risup-prompt'].includes(operation.selector.family ?? '')
+  ) {
+    return facadeApiError(
+      400,
+      'Indexed structured writes require an active target and selector.index',
+      'Open the document, select target.kind="active", and provide selector.index plus any stale guard values.',
+      { operation },
+    );
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'regex' &&
+    operation.selector.index !== undefined
+  ) {
+    const regexRoute = `/regex/${operation.selector.index}/delete`;
+    const data = await apiRequest('POST', regexRoute, {
+      expected_comment: stringGuardValue(guards, 'expected_comment'),
+    });
+    return isApiError(data) ? data : { data, routes: [route('delete_regex', 'POST', regexRoute)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'greeting' &&
+    operation.selector.index !== undefined
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting delete selector',
+        'apply_edit greeting deletes require greeting_type="alternate" or "group".',
+        { operation },
+      );
+    }
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const greetingRoute = `/greeting/${greetingType}/${operation.selector.index}/delete`;
+    const data = await apiRequest('POST', greetingRoute, {
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(data) ? data : { data, routes: [route('delete_greeting', 'POST', greetingRoute)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.index !== undefined
+  ) {
+    const promptRoute = `/risup/prompt-item/${operation.selector.index}/delete`;
+    const data = await apiRequest('POST', promptRoute, {
+      expected_type: stringGuardValue(guards, 'expected_type'),
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(data)
+      ? data
+      : { data, routes: [route('delete_risup_prompt_item', 'POST', promptRoute)], touched };
+  }
+
+  if (
+    operation.op === 'delete_item' &&
+    ['regex', 'greeting', 'risup-prompt'].includes(operation.selector.family ?? '')
+  ) {
+    return facadeApiError(
+      400,
+      'Indexed structured deletes require an active target and selector.index',
+      'Open the document, select target.kind="active", and provide selector.index plus any stale guard values.',
       { operation },
     );
   }
@@ -1914,7 +2511,7 @@ server.tool(
 
 server.tool(
   'preview_edit',
-  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active-document field replace/write or surface patch operations. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
+  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, active surface patches, and active indexed regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
   {
     target: facadeV1TargetSchema.describe(
       'Explicit facade target discriminator. Supports active edits and second-wave external field replace/write previews.',
@@ -1932,6 +2529,7 @@ server.tool(
     for (const operation of operations) {
       const preview = await previewFacadeOperation(target, operation);
       if (isApiError(preview)) return textResult(preview);
+      if (preview.requiredGuards.length > 0) operation.guards = preview.requiredGuards;
       previews.push({ operation: operation.op, selector: operation.selector, data: preview.data });
       routes.push(...preview.routes);
       touchedTargets.push(...preview.touched);
@@ -1986,7 +2584,7 @@ server.tool(
 
 server.tool(
   'apply_edit',
-  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior. Requires user confirmation through the routed legacy mutation.',
+  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior for active/external fields, active surface patches, and active indexed regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
   {
     preview_token: z.string().regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/),
     operation_digest: z.string().min(16),

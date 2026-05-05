@@ -9,6 +9,19 @@
 
 ---
 
+## [0.69.3] - 2026-05-05
+
+### Added
+
+- Added `src/lib/mcp-agent-workflow-eval.test.ts`, a deterministic real-artifact workflow eval matrix covering `.charx`, `.risup`, `.risum`, and Plugin API v3 route selection, bounded reads, stale guards, preview/dry-run policy, wrong-target avoidance, and post-edit validation metrics.
+- Added real local corpus MCP smoke coverage in `test/test-mcp-search-all.ts` that exercises `inspect_document` -> bounded `read_content` -> `search_document` facade routing against ignored `.charx`, `.risup`, and `.risum` artifacts when available.
+- Added facade `preview_edit` / `apply_edit` coverage for active indexed regex, greeting, and `.risup` prompt item write/delete operations, deriving the existing stale guards from focused item reads before applying through guarded granular writers.
+
+### Changed
+
+- Synced MCP workflow docs, AGENTS routing, skills guidance, and validation script references so `npm run test:evals` includes the real-artifact workflow matrix.
+- Expanded `validate_content` facade validation from lorebook-only coverage to also route active `.risup` promptTemplate and formatingOrder checks through existing prompt/order readers.
+
 ## [0.69.2] - 2026-05-05
 
 ### Added

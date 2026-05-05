@@ -74,7 +74,7 @@ These apply when a task modifies tracked RisuToki source, product docs, or tooli
 ### CI / Validation
 
 - PR validation: Ubuntu (`lint` + `typecheck` + `test`) + Windows (`build:electron` + `build:renderer`)
-- MCP contract changes → run `npm run test:evals` first
+- MCP contract or workflow-routing changes → run `npm run test:evals` first; it includes `src/lib/mcp-agent-workflow-eval.test.ts`
 - No packaging in PR — only on tag release
 
 > Complete versioning rules, CI workflow, and guide locations: [`PROJECT_RULES.md`](PROJECT_RULES.md)
