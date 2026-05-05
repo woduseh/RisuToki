@@ -1,4 +1,5 @@
 import { normalizeLF } from './shared-utils';
+import { isHiddenField } from './mcp-field-access';
 
 export const SEARCHABLE_TEXT_FIELDS = [
   'name',
@@ -339,6 +340,7 @@ export function searchAllTextSurfaces(
   const surfaces: SearchSurface[] = [];
 
   for (const field of SEARCHABLE_TEXT_FIELDS) {
+    if (isHiddenField(data, field)) continue;
     const fieldSurface = searchFieldSurface(data, field, normalizedOptions);
     if (fieldSurface) surfaces.push(fieldSurface);
   }
@@ -349,17 +351,6 @@ export function searchAllTextSurfaces(
       const greetingSurface = searchGreetingSurface(
         alternateGreetings[index],
         'alternateGreetings',
-        index,
-        normalizedOptions,
-      );
-      if (greetingSurface) surfaces.push(greetingSurface);
-    }
-
-    const groupOnlyGreetings = Array.isArray(data.groupOnlyGreetings) ? data.groupOnlyGreetings : [];
-    for (let index = 0; index < groupOnlyGreetings.length; index++) {
-      const greetingSurface = searchGreetingSurface(
-        groupOnlyGreetings[index],
-        'groupOnlyGreetings',
         index,
         normalizedOptions,
       );

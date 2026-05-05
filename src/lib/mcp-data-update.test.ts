@@ -61,18 +61,18 @@ describe('MCP data update planner', () => {
     });
   });
 
-  it('refreshes open risup group tabs when preset fields change', () => {
+  it('refreshes open risup group tabs when editable preset fields change', () => {
     expect(
-      planMcpDataUpdate('mainPrompt', [
-        { id: 'risup_prompts', getValue: () => ({ mainPrompt: 'old' }) },
+      planMcpDataUpdate('promptTemplate', [
+        { id: 'risup_templates', getValue: () => ({ promptTemplate: '[]' }) },
         { id: 'regex_0', getValue: () => ({}) },
       ]),
     ).toEqual({
-      backupTabIds: ['risup_prompts'],
+      backupTabIds: ['risup_templates'],
       refreshTabIds: [],
       refreshIndexedPrefixes: ['risup_'],
       refreshSidebar: false,
-      statusMessage: 'AI 어시스턴트가 mainPrompt 필드를 수정했습니다',
+      statusMessage: 'AI 어시스턴트가 promptTemplate 필드를 수정했습니다',
       updateFileLabel: false,
     });
 

@@ -85,6 +85,15 @@ export interface RisupFieldGroup {
   hidden?: boolean;
 }
 
+export const RISUP_LEGACY_FIELD_IDS: readonly RisupFieldId[] = [
+  'mainPrompt',
+  'jailbreak',
+  'globalNote',
+  'useInstructPrompt',
+  'instructChatTemplate',
+  'JinjaTemplate',
+];
+
 const groups: readonly RisupFieldGroup[] = [
   {
     id: 'basic',
@@ -197,18 +206,38 @@ const groups: readonly RisupFieldGroup[] = [
 ] as const;
 
 const fieldMap = new Map<RisupFieldId, RisupFieldDefinition>();
+const editableFieldMap = new Map<RisupFieldId, RisupFieldDefinition>();
+const legacyFieldIdSet = new Set<string>(RISUP_LEGACY_FIELD_IDS);
 
 for (const group of groups) {
   for (const field of group.fields) {
     fieldMap.set(field.id, field);
+    if (!legacyFieldIdSet.has(field.id)) {
+      editableFieldMap.set(field.id, field);
+    }
   }
 }
 
 export const RISUP_FIELD_GROUPS = groups;
+export const RISUP_EDITABLE_FIELD_IDS: readonly RisupFieldId[] = [...editableFieldMap.keys()];
 export const RISUP_JSON_FIELD_IDS: RisupFieldId[] = groups
   .flatMap((group) => group.fields)
   .filter((field) => field.editor === 'json')
   .map((field) => field.id);
+export const RISUP_DISABLEABLE_NUMBER_FIELD_IDS: readonly RisupFieldId[] = [
+  'temperature',
+  'frequencyPenalty',
+  'presencePenalty',
+  'top_p',
+  'top_k',
+  'min_p',
+  'top_a',
+  'repetition_penalty',
+  'reasonEffort',
+  'thinkingTokens',
+  'verbosity',
+];
+const disableableNumberFieldIdSet = new Set<string>(RISUP_DISABLEABLE_NUMBER_FIELD_IDS);
 
 export function getRisupFieldGroup(id: string): RisupFieldGroup | undefined {
   return groups.find((group) => group.id === id);
@@ -223,5 +252,9 @@ export function getRisupFieldDefinition(id: string): RisupFieldDefinition | unde
 }
 
 export function isRisupEditableFieldId(id: string): id is RisupFieldId {
-  return fieldMap.has(id as RisupFieldId);
+  return editableFieldMap.has(id as RisupFieldId);
+}
+
+export function isRisupDisableableNumberFieldId(id: string): id is RisupFieldId {
+  return disableableNumberFieldIdSet.has(id);
 }

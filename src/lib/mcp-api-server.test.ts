@@ -550,19 +550,13 @@ describe('MCP API search routes', () => {
         regex: false,
         contextChars: 12,
         maxMatchesPerSurface: 5,
-        totalMatches: 5,
+        totalMatches: 4,
       });
 
       const surfaces = (response.data.surfaces ?? []) as SearchSurface[];
-      expect(surfaces).toHaveLength(5);
+      expect(surfaces).toHaveLength(4);
       expect(surfaces.map((surface) => surface.target).sort()).toEqual(
-        [
-          'field:description',
-          'field:firstMessage',
-          'greeting:alternate:0',
-          'greeting:groupOnly:0',
-          'lorebook:0',
-        ].sort(),
+        ['field:description', 'field:firstMessage', 'greeting:alternate:0', 'lorebook:0'].sort(),
       );
 
       const surfacesByTarget = mapSurfacesByTarget(surfaces);
@@ -592,16 +586,6 @@ describe('MCP API search routes', () => {
         totalMatches: 1,
         returnedMatches: 1,
         matches: [{ match: 'Alpha' }],
-      });
-      expect(surfacesByTarget.get('greeting:groupOnly:0')).toMatchObject({
-        surfaceType: 'greeting',
-        target: 'greeting:groupOnly:0',
-        field: 'groupOnlyGreetings',
-        greetingType: 'groupOnly',
-        index: 0,
-        totalMatches: 1,
-        returnedMatches: 1,
-        matches: [{ match: 'alpha' }],
       });
       expect(surfacesByTarget.get('lorebook:0')).toMatchObject({
         surfaceType: 'lorebook',
@@ -633,7 +617,7 @@ describe('MCP API search routes', () => {
       expect(response.data).toMatchObject({
         query: 'alpha',
         regex: false,
-        totalMatches: 5,
+        totalMatches: 4,
       });
     } finally {
       await closeServer(api.server);
@@ -802,11 +786,13 @@ describe('MCP API external unopened-file routes', () => {
         lorebook: 1,
         regex: 1,
         alternateGreetings: 1,
-        groupOnlyGreetings: 1,
         triggerScripts: 1,
         cssSections: 1,
         luaSections: 1,
       });
+      expect(inspect.data.hiddenFieldWarnings).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'groupOnlyGreetings', count: 1 })]),
+      );
 
       const css = await postJson<{ count: number }>(api.port, api.token, '/probe/css', {
         file_path: fixture.filePath,
@@ -869,25 +855,21 @@ describe('MCP API external unopened-file routes', () => {
     }
   });
 
-  it('writes unopened charx structured fields and persists them to disk', async () => {
+  it('rejects unopened charx writes to deprecated group-only greetings', async () => {
     const fixture = createExternalCharxFixture();
     const api = await startTestApiServer(null);
 
     try {
-      const response = await postJson<{ success: boolean; field: string; newSize: number }>(
-        api.port,
-        api.token,
-        '/external/field/groupOnlyGreetings',
-        {
-          file_path: fixture.filePath,
-          content: ['Group external', 'Second group line'],
-        },
-      );
-      expect(response.status).toBe(200);
-      expect(response.data).toMatchObject({ success: true, field: 'groupOnlyGreetings', newSize: 2 });
+      const response = await postJson<McpErrorEnvelope>(api.port, api.token, '/external/field/groupOnlyGreetings', {
+        file_path: fixture.filePath,
+        content: ['Group external', 'Second group line'],
+      });
+      expect(response.status).toBe(400);
+      expect(response.data.target).toBe('external:field:groupOnlyGreetings');
+      expect(response.data.error).toContain('deprecated');
 
       const reopened = openCharx(fixture.filePath);
-      expect(reopened.groupOnlyGreetings).toEqual(['Group external', 'Second group line']);
+      expect(reopened.groupOnlyGreetings).toEqual(['Group external']);
     } finally {
       await closeServer(api.server);
       fs.rmSync(fixture.dir, { recursive: true, force: true });
@@ -3771,6 +3753,135 @@ describe('MCP API structured error envelopes — field routes', () => {
     }
   });
 
+  it('rejects direct field writes to risup legacy prompt fields', async () => {
+    const fixture: SearchFixture = { _fileType: 'risup', mainPrompt: 'legacy', promptTemplate: '[]' };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/mainPrompt', {
+        content: 'new legacy prompt',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('action', 'update field');
+      expect(res.data).toHaveProperty('target', 'field:mainPrompt');
+      expect(res.data.error).toContain('읽기 전용');
+      expect(fixture.mainPrompt).toBe('legacy');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects risum cjs field writes while allowing lowLevelAccess to remain editable', async () => {
+    const fixture: SearchFixture = { _fileType: 'risum', cjs: 'old', lowLevelAccess: false };
+    const api = await startTestApiServer(fixture);
+    try {
+      const cjsRes = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/cjs', {
+        content: 'module.exports = {}',
+      });
+      expect(cjsRes.status).toBe(400);
+      expect(cjsRes.data).toHaveProperty('target', 'field:cjs');
+      expect(cjsRes.data.error).toContain('읽기 전용');
+      expect(fixture.cjs).toBe('old');
+
+      const lowLevelRes = await postJson<{ success: boolean; results: Array<{ field: string }> }>(
+        api.port,
+        api.token,
+        '/field/batch-write',
+        {
+          entries: [{ field: 'lowLevelAccess', content: true }],
+        },
+      );
+      expect(lowLevelRes.status).toBe(200);
+      expect(lowLevelRes.data.success).toBe(true);
+      expect(fixture.lowLevelAccess).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('hides deprecated fields from direct reads, batch reads, field inventory, and root surfaces', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      personality: 'legacy personality',
+      groupOnlyGreetings: ['hidden group greeting'],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const fieldRead = await getJson<McpErrorEnvelope>(api.port, api.token, '/field/personality');
+      expect(fieldRead.status).toBe(400);
+      expect(fieldRead.data.error).toContain('숨겨집니다');
+
+      const fields = await getJson<{
+        fields: Array<{ name: string }>;
+        hiddenFieldWarnings: Array<Record<string, unknown>>;
+      }>(api.port, api.token, '/fields');
+      expect(fields.status).toBe(200);
+      expect(fields.data.fields.map((field) => field.name)).not.toContain('personality');
+      expect(fields.data.hiddenFieldWarnings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ field: 'personality', size: 'legacy personality'.length }),
+          expect.objectContaining({ field: 'groupOnlyGreetings', count: 1 }),
+        ]),
+      );
+
+      const batch = await postJson<{ fields: Array<Record<string, unknown>> }>(api.port, api.token, '/field/batch', {
+        fields: ['name', 'personality'],
+      });
+      expect(batch.status).toBe(200);
+      expect(batch.data.fields).toEqual([
+        expect.objectContaining({ field: 'name', content: '' }),
+        expect.objectContaining({ field: 'personality', hidden: true }),
+      ]);
+
+      const root = await postJson<{ value: Record<string, unknown> }>(api.port, api.token, '/surface/read', {
+        path: '/',
+      });
+      expect(root.status).toBe(200);
+      expect(root.data.value).not.toHaveProperty('personality');
+      expect(root.data.value).not.toHaveProperty('groupOnlyGreetings');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects surface mutations that target deprecated or reserved fields', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      groupOnlyGreetings: ['group-only'],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/surface/patch', {
+        operations: [{ op: 'replace', path: '/groupOnlyGreetings/0', value: 'changed' }],
+        dry_run: true,
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('target', 'surface:groupOnlyGreetings');
+      expect(res.data.error).toContain('deprecated');
+      expect(fixture.groupOnlyGreetings).toEqual(['group-only']);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects group-only greeting mutation routes', async () => {
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      groupOnlyGreetings: ['group-only'],
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const res = await postJson<McpErrorEnvelope>(api.port, api.token, '/greeting/group/0', {
+        content: 'changed',
+      });
+      expect(res.status).toBe(400);
+      expect(res.data).toHaveProperty('target', 'greeting:group');
+      expect(res.data.error).toContain('deprecated');
+      expect(fixture.groupOnlyGreetings).toEqual(['group-only']);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('returns unknown-field envelope for POST /field/batch-write with moduleId on charx', async () => {
     const fixture: SearchFixture = createSearchFixture();
     const api = await startTestApiServer(fixture);
@@ -4895,9 +5006,8 @@ describe('MCP API structured error envelopes — global guards', () => {
       expect(alternateList.data.count).toBe(1);
 
       const groupEntry = await getJson<Record<string, unknown>>(api.port, api.token, '/reference/0/greeting/group/0');
-      expect(groupEntry.status).toBe(200);
-      expect(groupEntry.data.type).toBe('group');
-      expect(groupEntry.data.content).toBe('group-only reference');
+      expect(groupEntry.status).toBe(400);
+      expect(groupEntry.data.error).toContain('숨겨집니다');
 
       const triggerList = await getJson<Record<string, unknown>>(api.port, api.token, '/reference/0/triggers');
       expect(triggerList.status).toBe(200);
@@ -5913,13 +6023,15 @@ describe('MCP API success response envelope', () => {
         lorebookCount: 2,
         regexCount: 0,
         alternateGreetingCount: 2,
-        groupGreetingCount: 1,
         triggerCount: 0,
         luaSectionCount: 0,
         cssSectionCount: 0,
         risupPromptItemCount: null,
         risupPromptState: null,
       });
+      expect(res.data.hiddenFieldWarnings).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'groupOnlyGreetings', count: 1 })]),
+      );
       expect(res.data.references).toEqual({
         count: 0,
         files: [],
@@ -6302,7 +6414,6 @@ describe('MCP API success response envelope', () => {
         lorebookCount: 0,
         regexCount: 1,
         alternateGreetingCount: 1,
-        groupGreetingCount: 0,
         triggerCount: 1,
         luaSectionCount: 1,
         cssSectionCount: 1,

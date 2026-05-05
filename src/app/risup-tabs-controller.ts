@@ -1,4 +1,5 @@
 import type { CharxData } from '../stores/app-store';
+import { getRisupFieldGroup } from '../lib/risup-fields';
 
 export interface RisupTabLike {
   id: string;
@@ -48,8 +49,14 @@ export interface FindActiveRisupTabOptions<TTab extends RisupTabLike = RisupTabL
   openTabs: readonly TTab[];
 }
 
+function isHiddenRisupTabId(tabId: string | null | undefined): boolean {
+  if (!tabId?.startsWith('risup_')) return false;
+  const groupId = tabId.slice('risup_'.length);
+  return !!getRisupFieldGroup(groupId)?.hidden;
+}
+
 export function findActiveRisupTab<TTab extends RisupTabLike>(options: FindActiveRisupTabOptions<TTab>): TTab | null {
-  if (!options.activeTabId?.startsWith('risup_')) {
+  if (!options.activeTabId?.startsWith('risup_') || isHiddenRisupTabId(options.activeTabId)) {
     return null;
   }
 
@@ -58,7 +65,7 @@ export function findActiveRisupTab<TTab extends RisupTabLike>(options: FindActiv
 
 export function getRisupSidebarBackupTargets(
   currentGroupId: string,
-  groups: readonly RisupSidebarGroupLike[],
+  _groups: readonly RisupSidebarGroupLike[],
   hasBackups: (backupKey: string) => boolean,
 ): RisupSidebarBackupTarget[] {
   const targets: RisupSidebarBackupTarget[] = [];
@@ -66,23 +73,6 @@ export function getRisupSidebarBackupTargets(
 
   if (hasBackups(currentBackupKey)) {
     targets.push({ backupKey: currentBackupKey, label: '백업 불러오기' });
-  }
-
-  if (currentGroupId !== 'templates') {
-    return targets;
-  }
-
-  for (const group of groups) {
-    if (!group.hidden) {
-      continue;
-    }
-
-    const backupKey = `risup_${group.id}`;
-    if (!hasBackups(backupKey)) {
-      continue;
-    }
-
-    targets.push({ backupKey, label: `${group.label} 백업 불러오기` });
   }
 
   return targets;
@@ -113,6 +103,9 @@ export function backupActiveRisupRestoreDraft<TTab extends RisupTabLike>(
   if (!activeTab?.getValue || !options.activeTabId?.startsWith('risup_') || options.activeTabId !== activeTab.id) {
     return;
   }
+  if (isHiddenRisupTabId(options.activeTabId)) {
+    return;
+  }
 
   options.createBackup(activeTab.id, activeTab.getValue());
 }
@@ -133,6 +126,9 @@ export function restoreRisupTabsControllerBackup<TTab extends RisupTabLike>(
 
   const content = options.backupContent as Record<string, unknown>;
   const restoreTab = options.tab ?? null;
+  if (isHiddenRisupTabId(options.activeTabId) || isHiddenRisupTabId(restoreTab?.id)) {
+    return false;
+  }
 
   if (restoreTab?.setValue) {
     restoreTab.setValue(content);

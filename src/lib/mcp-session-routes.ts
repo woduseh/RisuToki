@@ -3,6 +3,7 @@ import * as http from 'http';
 
 import { parsePromptTemplate } from './risup-prompt-model';
 import { getRefFileType } from './reference-store';
+import { collectHiddenFieldWarnings, isHiddenField } from './mcp-field-access';
 import type { McpSuccessOptions } from './mcp-response-envelope';
 import type { McpApiDeps, McpSessionStatus } from './mcp-api-server';
 
@@ -93,6 +94,7 @@ export async function handleSessionStatusRoute(
   const status = await getSessionStatusWithTimeout(deps.getSessionStatus);
   const runtime = deps.getRuntimeInfo?.() ?? status?.runtime ?? null;
   const snapshotSummary = [...fieldSnapshots.entries()]
+    .filter(([field]) => !currentData || !isHiddenField(currentData, field))
     .filter(([, snaps]) => snaps.length > 0)
     .map(([field, snaps]) => ({ field, count: snaps.length }))
     .sort((a, b) => a.field.localeCompare(b.field));
@@ -117,9 +119,6 @@ export async function handleSessionStatusRoute(
         const alternateGreetingCount = Array.isArray(currentData.alternateGreetings)
           ? currentData.alternateGreetings.length
           : 0;
-        const groupGreetingCount = Array.isArray(currentData.groupOnlyGreetings)
-          ? currentData.groupOnlyGreetings.length
-          : 0;
         const normalizedTriggers = deps.normalizeTriggerScripts(currentData.triggerScripts || []);
         const triggerCount = Array.isArray(normalizedTriggers) ? normalizedTriggers.length : 0;
         const luaCode = typeof currentData.lua === 'string' ? currentData.lua : '';
@@ -139,7 +138,6 @@ export async function handleSessionStatusRoute(
           lorebookCount,
           regexCount,
           alternateGreetingCount,
-          groupGreetingCount,
           triggerCount,
           luaSectionCount,
           cssSectionCount,
@@ -256,6 +254,7 @@ export async function handleSessionStatusRoute(
         totalSnapshots,
       },
       surfaceSummary,
+      hiddenFieldWarnings: currentData ? collectHiddenFieldWarnings(currentData) : [],
       references: {
         count: refsSummary.length,
         files: refsSummary,

@@ -669,6 +669,7 @@ function facadeApiError(
   error: string,
   suggestion: string,
   details?: Record<string, unknown>,
+  nextActions?: string[],
 ): ApiErrorResult {
   return {
     [API_ERROR_KEY]: true as const,
@@ -676,7 +677,14 @@ function facadeApiError(
     error,
     suggestion,
     ...(details ? { details } : {}),
+    ...(nextActions ? { next_actions: nextActions } : {}),
   };
+}
+
+function isReadOnlyFacadeFieldPayload(data: unknown): boolean {
+  if (!data || typeof data !== 'object') return false;
+  const record = data as Record<string, unknown>;
+  return record.readOnly === true || record.deprecated === true;
 }
 
 function cleanupFacadePreviews(): void {
@@ -1138,10 +1146,26 @@ async function validateFacadeSelectors(
   selectors: FacadeV1ContentSelector[] | undefined,
 ): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touchedTargets: string[] } | ApiErrorResult> {
   if (target.kind !== 'active') {
+    if (selectors?.some((selector) => selector.family === 'plugin-v3') && target.kind === 'external') {
+      const scan = scanPluginV3Source(target.file_path);
+      if (isApiError(scan)) return scan;
+      return {
+        result: {
+          validations: [{ selector: selectors[0], data: scan }],
+          routed_legacy: [],
+          touched_targets: [`plugin-v3:${target.file_path}`],
+          source_workflow: true,
+        },
+        routes: [],
+        touchedTargets: [`plugin-v3:${target.file_path}`],
+      };
+    }
     return facadeApiError(
       400,
       `Unsupported validate_content target kind "${target.kind}"`,
-      'validate_content currently validates active-document lorebook key hygiene plus risup promptTemplate/formatingOrder structure. Use inspect_document/read_content for external or reference preflight.',
+      'validate_content supports active-document validators plus external Plugin v3 source scans. Use inspect_document/read_content for other external or reference preflight.',
+      undefined,
+      ['inspect_document', 'read_content'],
     );
   }
 
@@ -1170,6 +1194,105 @@ async function validateFacadeSelectors(
       continue;
     }
 
+    if (selector.family === 'regex') {
+      const list = await apiRequest('GET', '/regex');
+      if (isApiError(list)) return list;
+      const listEntries = Array.isArray(asRecord(list)?.entries)
+        ? (asRecord(list)?.entries as Record<string, unknown>[])
+        : [];
+      const indices =
+        selector.index !== undefined
+          ? [selector.index]
+          : (selector.indices ?? listEntries.map((entry) => Number(entry.index)));
+      const data = await apiRequest('POST', '/regex/batch', { indices });
+      if (isApiError(data)) return data;
+      validations.push({ selector, data: validateRegexEntries(data) });
+      routes.push(route('list_regex', 'GET', '/regex'), route('read_regex_batch', 'POST', '/regex/batch'));
+      touchedTargets.push(selector.index !== undefined || selector.indices ? selectorTarget(selector) : 'regex');
+      continue;
+    }
+
+    if (selector.family === 'cbs' || (selector.field && selector.field.toLowerCase().includes('cbs'))) {
+      const params = new URLSearchParams();
+      if (selector.field) params.set('field', selector.field);
+      if (selector.index !== undefined) params.set('lorebook_index', String(selector.index));
+      const qs = params.toString();
+      const data = await apiRequest('GET', `/cbs/validate${qs ? '?' + qs : ''}`);
+      if (isApiError(data)) return data;
+      validations.push({ selector, data });
+      routes.push(route('validate_cbs', 'GET', `/cbs/validate${qs ? '?' + qs : ''}`));
+      touchedTargets.push(selectorTarget(selector));
+      continue;
+    }
+
+    if (selector.family === 'danbooru') {
+      const tags = selectorTags(selector);
+      if (tags.length === 0) {
+        return facadeApiError(
+          400,
+          'Danbooru validation requires tags',
+          'Provide selector.tags (preferred) or selector.fields as the Danbooru tags to validate.',
+          { selector },
+          ['validate_danbooru_tags'],
+        );
+      }
+      ensureTagsLoaded();
+      const data = await validateTags(tags, true);
+      validations.push({
+        selector,
+        data: {
+          summary: `${data.filter((result) => result.valid).length}/${tags.length} tags valid`,
+          results: data,
+        },
+      });
+      routes.push(route('validate_danbooru_tags', 'MCP', 'mcp://validate_danbooru_tags'));
+      touchedTargets.push('danbooru');
+      continue;
+    }
+
+    if (selector.family === 'plugin-v3') {
+      return facadeApiError(
+        400,
+        'Plugin v3 validation is a source workflow',
+        'Use target.kind="external" with the .js/.ts plugin source file, then call load_guidance for writing-plugins-v3.',
+        { selector },
+        ['load_guidance', 'validate_content'],
+      );
+    }
+
+    if (selector.family === 'risum') {
+      const fields = selector.fields ?? [
+        'moduleNamespace',
+        'namespace',
+        'lowLevelAccess',
+        'backgroundEmbedding',
+        'customModuleToggle',
+        'mcpUrl',
+        'cjs',
+      ];
+      const data = await apiRequest('POST', '/field/batch', { fields });
+      if (isApiError(data)) return data;
+      const record = asRecord(data);
+      const results = Array.isArray(record?.results) ? record.results : [];
+      validations.push({
+        selector,
+        data: {
+          fields,
+          fields_result: data,
+          consistency: {
+            ok: true,
+            warnings: results
+              .map((result) => asRecord(result))
+              .filter((result) => result?.ok === false || result?.error)
+              .map((result) => ({ field: result?.field, error: result?.error ?? 'missing or unreadable' })),
+          },
+        },
+      });
+      routes.push(route('read_field_batch', 'POST', '/field/batch'));
+      touchedTargets.push('risum');
+      continue;
+    }
+
     if (selector.field === 'formatingOrder') {
       const data = await apiRequest('GET', '/risup/formating-order');
       if (isApiError(data)) return data;
@@ -1182,8 +1305,9 @@ async function validateFacadeSelectors(
     return facadeApiError(
       400,
       'Unsupported validate_content selector',
-      'validate_content supports active lorebook, risup-prompt, promptTemplate, and formatingOrder selectors; keep granular validators for CBS, Danbooru, imports, diffs, and structured item mutations.',
+      'validate_content supports active lorebook, regex, CBS, Danbooru, risup-prompt, risum semantic fields, promptTemplate, and formatingOrder selectors; keep granular validators for imports, diffs, simulations, and unsupported source shapes.',
       { selector },
+      ['validate_cbs', 'validate_danbooru_tags', 'read_content'],
     );
   }
 
@@ -1194,7 +1318,7 @@ async function validateFacadeSelectors(
       routed_legacy: routes,
       touched_targets: uniqueTouchedTargets,
       remaining_gaps: [
-        'CBS, Danbooru, imports, diffs, structured item edit facade, asset management, and broad validator aggregation remain granular/advanced routes.',
+        'CBS simulation/diff, imports, prompt diffs, add/reorder item facade, asset management, and unsupported source shapes remain granular/advanced routes.',
       ],
     },
     routes,
@@ -1218,6 +1342,184 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 function recordString(value: Record<string, unknown> | undefined, key: string): string | undefined {
   const item = value?.[key];
   return typeof item === 'string' ? item : undefined;
+}
+
+function recordNumber(value: Record<string, unknown> | undefined, key: string): number | undefined {
+  const item = value?.[key];
+  return typeof item === 'number' && Number.isInteger(item) ? item : undefined;
+}
+
+function buildGuard(
+  name: string,
+  value: string,
+  payloadPath: string,
+  sourceOperations: string[],
+  sourceResultPath: string,
+): FacadeV1Guard {
+  return { name, value, payloadPath, sourceOperations, sourceResultPath };
+}
+
+function normalizeBatchEntries(
+  operation: FacadeV1EditOperation,
+  payloadKey: 'data' | 'content' | 'item',
+): Array<Record<string, unknown>> | ApiErrorResult {
+  const indices = operation.selector.indices;
+  if (!indices || indices.length === 0) {
+    return facadeApiError(
+      400,
+      'Batch structured edits require selector.indices',
+      'Provide selector.indices with the active item indexes and align content entries to those indexes.',
+      { operation },
+      ['read_content', 'preview_edit'],
+    );
+  }
+
+  const content = operation.content;
+  const contentRecord = asRecord(content);
+  const rawEntries =
+    (contentRecord && Array.isArray(contentRecord.entries) && contentRecord.entries) ||
+    (contentRecord && Array.isArray(contentRecord.writes) && contentRecord.writes) ||
+    (Array.isArray(content) && content);
+
+  if (!rawEntries || rawEntries.length !== indices.length) {
+    return facadeApiError(
+      400,
+      'Batch structured edit content must align with selector.indices',
+      'Use content.entries/content.writes or a content array with the same length and order as selector.indices.',
+      { selector: operation.selector },
+      ['read_content', 'preview_edit'],
+    );
+  }
+
+  return rawEntries.map((entry, position) => {
+    const record = asRecord(entry);
+    if (!record) return { index: indices[position], [payloadKey]: entry };
+    const index = recordNumber(record, 'index') ?? indices[position];
+    if (
+      payloadKey in record ||
+      'expected_comment' in record ||
+      'expected_preview' in record ||
+      'expected_type' in record
+    ) {
+      return { ...record, index };
+    }
+    return { index, [payloadKey]: record };
+  });
+}
+
+function itemByIndex(
+  data: unknown,
+  collectionKey: 'entries' | 'items',
+  index: number,
+): Record<string, unknown> | undefined {
+  const collection = asRecord(data)?.[collectionKey];
+  if (!Array.isArray(collection)) return undefined;
+  for (const item of collection) {
+    const record = asRecord(item);
+    if (recordNumber(record, 'index') === index) return record;
+  }
+  return undefined;
+}
+
+function rewriteOperationBatchContent(
+  operation: FacadeV1EditOperation,
+  collectionKey: 'entries' | 'writes',
+  entries: Array<Record<string, unknown>>,
+): void {
+  operation.content = { ...(asRecord(operation.content) ?? {}), [collectionKey]: entries };
+}
+
+function selectorTags(selector: FacadeV1ContentSelector): string[] {
+  const selectorRecord = selector as FacadeV1ContentSelector & { tags?: string[] };
+  if (Array.isArray(selectorRecord.tags)) return selectorRecord.tags.filter((tag) => typeof tag === 'string');
+  if (Array.isArray(selector.fields)) return selector.fields.filter((tag) => typeof tag === 'string');
+  return [];
+}
+
+function validateRegexEntries(data: unknown): Record<string, unknown> {
+  const entries = Array.isArray(asRecord(data)?.entries) ? (asRecord(data)?.entries as unknown[]) : [];
+  const results = entries.map((entry) => {
+    const record = asRecord(entry);
+    const index = recordNumber(record, 'index');
+    const regexEntry = asRecord(record?.entry) ?? record;
+    const find = recordString(regexEntry, 'find') ?? '';
+    const flag = recordString(regexEntry, 'flag') ?? '';
+    const regexMode = flag.length > 0 || regexEntry?.type === 'editoutput' || regexEntry?.type === 'editinput';
+    if (!find) return { index, ok: false, warning: 'empty find pattern' };
+    if (!regexMode) return { index, ok: true, mode: 'literal' };
+    try {
+      new RegExp(find, flag.replace(/[^dgimsuvy]/g, ''));
+      return { index, ok: true, mode: 'regex' };
+    } catch (error) {
+      return { index, ok: false, error: (error as Error).message, pattern: find, flag };
+    }
+  });
+  return {
+    count: results.length,
+    ok: results.every((result) => result.ok === true),
+    results,
+  };
+}
+
+function scanPluginV3Source(filePath: string): Record<string, unknown> | ApiErrorResult {
+  if (!filePath.endsWith('.js') && !filePath.endsWith('.ts')) {
+    return facadeApiError(
+      400,
+      'Plugin v3 validation expects a source file',
+      'Pass target.kind="external" with a .js or .ts Plugin API v3 source file path.',
+      { file_path: filePath },
+      ['load_guidance', 'read_content'],
+    );
+  }
+  let source: string;
+  try {
+    source = fs.readFileSync(filePath, 'utf-8');
+  } catch (error) {
+    return facadeApiError(
+      404,
+      'Plugin source file could not be read',
+      'Check the filesystem path and permissions, then retry validate_content.',
+      { file_path: filePath, error: (error as Error).message },
+      ['load_guidance'],
+    );
+  }
+  const headerMatch = source.match(/^\s*(?:\/\*\*?([\s\S]*?)\*\/|\/\/\s*(.+)(?:\r?\n\/\/\s*(.+))*)/);
+  const header = headerMatch ? headerMatch[0].slice(0, 2000) : '';
+  const permissionMatches = [...source.matchAll(/permissions?\s*[:=]\s*(\[[\s\S]*?\])/g)].map((match) => match[1]);
+  const apiCalls = [...source.matchAll(/\brisuai\.[A-Za-z0-9_.]+/g)].map((match) => match[0]);
+  const registrations = [...source.matchAll(/\b(register(?:UI|Provider|Mcp|MCP)|add(?:Button|Panel|Provider))/g)].map(
+    (match) => match[0],
+  );
+  const unsafePatterns = [
+    ['eval', /\beval\s*\(/],
+    ['Function constructor', /\bnew\s+Function\s*\(/],
+    ['document global', /\bdocument\./],
+    ['window global', /\bwindow\./],
+  ]
+    .filter(([, pattern]) => (pattern as RegExp).test(source))
+    .map(([name]) => name);
+  return {
+    source_file: filePath,
+    metadata_header: {
+      present: header.length > 0,
+      preview: header,
+      has_plugin_v3_marker: /plugin\s*(api)?\s*v?3|apiVersion\s*[:=]\s*['"]?3/i.test(header + source.slice(0, 4000)),
+    },
+    permissions: {
+      declarations: permissionMatches,
+      count: permissionMatches.length,
+    },
+    api_scan: {
+      risuai_calls: uniqueStrings(apiCalls).slice(0, 100),
+      registrations: uniqueStrings(registrations),
+      unsafe_patterns: unsafePatterns,
+    },
+    guidance: {
+      route: 'load_guidance',
+      skill: 'writing-plugins-v3',
+      note: '.js/.ts Plugin v3 files are source files, not .charx/.risum/.risup MCP artifacts.',
+    },
+  };
 }
 
 function findIndexedRecord(value: unknown, index: number, depth = 0): Record<string, unknown> | undefined {
@@ -1248,7 +1550,9 @@ function mergeGuards(
   const merged = [...(existingGuards ?? [])];
   for (const guard of derivedGuards) {
     if (!guard) continue;
-    if (!merged.some((candidate) => candidate.name === guard.name)) merged.push(guard);
+    if (!merged.some((candidate) => candidate.name === guard.name && candidate.payloadPath === guard.payloadPath)) {
+      merged.push(guard);
+    }
   }
   return merged;
 }
@@ -1282,6 +1586,10 @@ function replacementString(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function greetingPreview(content: string): string {
+  return content.slice(0, 100) + (content.length > 100 ? '…' : '');
+}
+
 async function previewFacadeOperation(
   target: FacadeV1Target,
   operation: FacadeV1EditOperation,
@@ -1297,6 +1605,18 @@ async function previewFacadeOperation(
   }
 
   const touched = [selectorTarget(operation.selector)];
+  if (
+    operation.selector.family === 'greeting' &&
+    operation.selector.greeting_type === 'group' &&
+    (operation.op === 'write_content' || operation.op === 'delete_item')
+  ) {
+    return facadeApiError(
+      400,
+      'groupOnlyGreetings is read-only',
+      'groupOnlyGreetings is deprecated and kept only for compatibility reads. Use alternate greetings or supported current fields instead.',
+      { selector: operation.selector },
+    );
+  }
   if (
     target.kind === 'active' &&
     operation.op === 'replace_text' &&
@@ -1352,6 +1672,70 @@ async function previewFacadeOperation(
     target.kind === 'active' &&
     operation.op === 'write_content' &&
     operation.selector.family === 'regex' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    const entries = normalizeBatchEntries(operation, 'data');
+    if (isApiError(entries)) return entries;
+    const read = await apiRequest('POST', '/regex/batch', { indices: operation.selector.indices });
+    if (isApiError(read)) return read;
+    const requiredGuards: FacadeV1Guard[] = [];
+    const enrichedEntries: Array<Record<string, unknown>> = [];
+    const previews: Array<Record<string, unknown>> = [];
+    for (const [position, entry] of entries.entries()) {
+      const idx = recordNumber(entry, 'index');
+      const data = asRecord(entry.data);
+      if (idx === undefined || !data) {
+        return facadeApiError(
+          400,
+          'Invalid regex batch write entry',
+          'Each regex batch entry must provide an index and data object.',
+          { entry, position },
+          ['read_regex_batch', 'preview_edit'],
+        );
+      }
+      const currentRecord = itemByIndex(read, 'entries', idx);
+      const currentComment = recordString(asRecord(currentRecord?.entry) ?? currentRecord, 'comment');
+      const expectedComment = recordString(entry, 'expected_comment');
+      if (expectedComment !== undefined && currentComment !== undefined && expectedComment !== currentComment) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_comment',
+          'Re-list/read regex entries, then run preview_edit again with current expected_comment values.',
+          { target: `regex:${idx}`, guard: 'expected_comment', expected: expectedComment, actual: currentComment },
+          ['list_regex', 'read_regex_batch', 'preview_edit'],
+        );
+      }
+      enrichedEntries.push({ ...entry, data, expected_comment: currentComment });
+      previews.push({ index: idx, currentComment, updatedKeys: Object.keys(data) });
+      if (currentComment !== undefined) {
+        requiredGuards.push(
+          buildGuard(
+            'expected_comment',
+            currentComment,
+            `/entries/${position}/expected_comment`,
+            ['read_regex_batch'],
+            `/entries/${position}/entry/comment`,
+          ),
+        );
+      }
+    }
+    rewriteOperationBatchContent(operation, 'entries', enrichedEntries);
+    return {
+      data: { dryRun: true, operation: 'write_content', count: enrichedEntries.length, entries: previews },
+      routes: [
+        route('read_regex_batch', 'POST', '/regex/batch'),
+        route('write_regex_batch', 'POST', '/regex/batch-write'),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, requiredGuards),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'regex' &&
     operation.selector.index !== undefined
   ) {
     const regexRoute = `/regex/${operation.selector.index}`;
@@ -1393,6 +1777,92 @@ async function previewFacadeOperation(
     target.kind === 'active' &&
     operation.op === 'write_content' &&
     operation.selector.family === 'greeting' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting batch write selector',
+        'preview_edit greeting batch writes require greeting_type="alternate" or "group".',
+        { operation },
+        ['list_greetings', 'read_greeting_batch', 'preview_edit'],
+      );
+    }
+    const writes = normalizeBatchEntries(operation, 'content');
+    if (isApiError(writes)) return writes;
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const readRoute = `/greeting/${greetingType}/batch`;
+    const read = await apiRequest('POST', readRoute, { indices: operation.selector.indices });
+    if (isApiError(read)) return read;
+    const requiredGuards: FacadeV1Guard[] = [];
+    const enrichedWrites: Array<Record<string, unknown>> = [];
+    const previews: Array<Record<string, unknown>> = [];
+    for (const [position, write] of writes.entries()) {
+      const idx = recordNumber(write, 'index');
+      const currentContent = idx === undefined ? undefined : recordString(itemByIndex(read, 'items', idx), 'content');
+      const currentPreview = currentContent === undefined ? undefined : greetingPreview(currentContent);
+      const expectedPreview = recordString(write, 'expected_preview');
+      if (idx === undefined) {
+        return facadeApiError(
+          400,
+          'Invalid greeting batch write entry',
+          'Each greeting batch write entry must align to an index.',
+          { write, position },
+          ['read_greeting_batch', 'preview_edit'],
+        );
+      }
+      if (expectedPreview !== undefined && currentPreview !== undefined && expectedPreview !== currentPreview) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_preview',
+          'Re-list/read greetings, then run preview_edit again with current expected_preview values.',
+          {
+            target: `greeting:${operation.selector.greeting_type}:${idx}`,
+            guard: 'expected_preview',
+            expected: expectedPreview,
+            actual: currentPreview,
+          },
+          ['list_greetings', 'read_greeting_batch', 'preview_edit'],
+        );
+      }
+      const newContent = replacementString(write.content);
+      enrichedWrites.push({ ...write, content: newContent, expected_preview: currentPreview });
+      previews.push({ index: idx, oldSize: currentContent?.length ?? 0, newSize: newContent.length });
+      if (currentPreview !== undefined) {
+        requiredGuards.push(
+          buildGuard(
+            'expected_preview',
+            currentPreview,
+            `/writes/${position}/expected_preview`,
+            ['read_greeting_batch'],
+            `/items/${position}/content`,
+          ),
+        );
+      }
+    }
+    rewriteOperationBatchContent(operation, 'writes', enrichedWrites);
+    return {
+      data: {
+        dryRun: true,
+        operation: 'write_content',
+        type: operation.selector.greeting_type,
+        count: enrichedWrites.length,
+        writes: previews,
+      },
+      routes: [
+        route('read_greeting_batch', 'POST', readRoute),
+        route('batch_write_greeting', 'POST', `/greeting/${greetingType}/batch-write`),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, requiredGuards),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'greeting' &&
     operation.selector.index !== undefined
   ) {
     if (!operation.selector.greeting_type) {
@@ -1411,7 +1881,7 @@ async function previewFacadeOperation(
       typeof (read as Record<string, unknown>).content === 'string'
         ? ((read as Record<string, unknown>).content as string)
         : undefined;
-    const currentPreview = currentContent?.slice(0, 100);
+    const currentPreview = currentContent === undefined ? undefined : greetingPreview(currentContent);
     const conflict = guardConflict(
       operation.guards,
       'expected_preview',
@@ -1441,6 +1911,95 @@ async function previewFacadeOperation(
               sourceResultPath: '/content',
             },
       ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    const writes = normalizeBatchEntries(operation, 'item');
+    if (isApiError(writes)) return writes;
+    const list = await apiRequest('GET', '/risup/prompt-items');
+    if (isApiError(list)) return list;
+    const requiredGuards: FacadeV1Guard[] = [];
+    const enrichedWrites: Array<Record<string, unknown>> = [];
+    const previews: Array<Record<string, unknown>> = [];
+    for (const [position, write] of writes.entries()) {
+      const idx = recordNumber(write, 'index');
+      const item = asRecord(write.item);
+      if (idx === undefined || !item) {
+        return facadeApiError(
+          400,
+          'Invalid risup prompt batch write entry',
+          'Each risup prompt batch write entry must provide an index and item object.',
+          { write, position },
+          ['list_risup_prompt_items', 'read_risup_prompt_item_batch', 'preview_edit'],
+        );
+      }
+      const currentRecord = itemByIndex(list, 'items', idx);
+      const currentType = recordString(currentRecord, 'type');
+      const currentPreview = recordString(currentRecord, 'preview');
+      const expectedType = recordString(write, 'expected_type');
+      const expectedPreview = recordString(write, 'expected_preview');
+      if (expectedType !== undefined && currentType !== undefined && expectedType !== currentType) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_type',
+          'Re-list/read risup prompt items, then run preview_edit again with current expected_type values.',
+          { target: `risup-prompt:${idx}`, guard: 'expected_type', expected: expectedType, actual: currentType },
+          ['list_risup_prompt_items', 'read_risup_prompt_item_batch', 'preview_edit'],
+        );
+      }
+      if (expectedPreview !== undefined && currentPreview !== undefined && expectedPreview !== currentPreview) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_preview',
+          'Re-list/read risup prompt items, then run preview_edit again with current expected_preview values.',
+          {
+            target: `risup-prompt:${idx}`,
+            guard: 'expected_preview',
+            expected: expectedPreview,
+            actual: currentPreview,
+          },
+          ['list_risup_prompt_items', 'read_risup_prompt_item_batch', 'preview_edit'],
+        );
+      }
+      enrichedWrites.push({ ...write, item, expected_type: currentType, expected_preview: currentPreview });
+      previews.push({ index: idx, currentType, currentPreview, replacementType: recordString(item, 'type') });
+      if (currentType !== undefined)
+        requiredGuards.push(
+          buildGuard(
+            'expected_type',
+            currentType,
+            `/writes/${position}/expected_type`,
+            ['list_risup_prompt_items'],
+            `/items/${position}/type`,
+          ),
+        );
+      if (currentPreview !== undefined)
+        requiredGuards.push(
+          buildGuard(
+            'expected_preview',
+            currentPreview,
+            `/writes/${position}/expected_preview`,
+            ['list_risup_prompt_items'],
+            `/items/${position}/preview`,
+          ),
+        );
+    }
+    rewriteOperationBatchContent(operation, 'writes', enrichedWrites);
+    return {
+      data: { dryRun: true, operation: 'write_content', count: enrichedWrites.length, writes: previews },
+      routes: [
+        route('list_risup_prompt_items', 'GET', '/risup/prompt-items'),
+        route('write_risup_prompt_item_batch', 'POST', '/risup/prompt-item/batch-write'),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, requiredGuards),
     };
   }
 
@@ -1531,6 +2090,22 @@ async function previewFacadeOperation(
     target.kind === 'active' &&
     operation.op === 'delete_item' &&
     operation.selector.family === 'regex' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    return facadeApiError(
+      400,
+      'Unsupported batch regex delete',
+      'Regex batch delete has no promoted facade route yet; use delete_regex per item with current expected_comment guards.',
+      { operation },
+      ['list_regex', 'read_regex_batch', 'delete_regex'],
+    );
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'regex' &&
     operation.selector.index !== undefined
   ) {
     const regexRoute = `/regex/${operation.selector.index}`;
@@ -1575,6 +2150,83 @@ async function previewFacadeOperation(
     target.kind === 'active' &&
     operation.op === 'delete_item' &&
     operation.selector.family === 'greeting' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting batch delete selector',
+        'preview_edit greeting batch deletes require greeting_type="alternate" or "group".',
+        { operation },
+        ['list_greetings', 'read_greeting_batch', 'preview_edit'],
+      );
+    }
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const readRoute = `/greeting/${greetingType}/batch`;
+    const read = await apiRequest('POST', readRoute, { indices: operation.selector.indices });
+    if (isApiError(read)) return read;
+    const contentRecord = asRecord(operation.content);
+    const expectedPreviews = Array.isArray(contentRecord?.expected_previews)
+      ? contentRecord.expected_previews
+      : undefined;
+    const requiredGuards: FacadeV1Guard[] = [];
+    const enrichedExpectedPreviews: string[] = [];
+    const previews: Array<Record<string, unknown>> = [];
+    for (const [position, idx] of operation.selector.indices.entries()) {
+      const currentContent = recordString(itemByIndex(read, 'items', idx), 'content');
+      const currentPreview = currentContent === undefined ? undefined : greetingPreview(currentContent);
+      const expectedPreview =
+        expectedPreviews && typeof expectedPreviews[position] === 'string' ? expectedPreviews[position] : undefined;
+      if (expectedPreview !== undefined && currentPreview !== undefined && expectedPreview !== currentPreview) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_preview',
+          'Re-list/read greetings, then run preview_edit again with current expected_preview values.',
+          {
+            target: `greeting:${operation.selector.greeting_type}:${idx}`,
+            guard: 'expected_preview',
+            expected: expectedPreview,
+            actual: currentPreview,
+          },
+          ['list_greetings', 'read_greeting_batch', 'preview_edit'],
+        );
+      }
+      enrichedExpectedPreviews.push(currentPreview ?? '');
+      previews.push({ index: idx, preview: currentPreview, oldSize: currentContent?.length ?? 0 });
+      if (currentPreview !== undefined)
+        requiredGuards.push(
+          buildGuard(
+            'expected_previews',
+            currentPreview,
+            `/expected_previews/${position}`,
+            ['read_greeting_batch'],
+            `/items/${position}/content`,
+          ),
+        );
+    }
+    operation.content = { ...(contentRecord ?? {}), expected_previews: enrichedExpectedPreviews };
+    return {
+      data: {
+        dryRun: true,
+        operation: 'delete_item',
+        type: operation.selector.greeting_type,
+        count: operation.selector.indices.length,
+        deletes: previews,
+      },
+      routes: [
+        route('read_greeting_batch', 'POST', readRoute),
+        route('batch_delete_greeting', 'POST', `/greeting/${greetingType}/batch-delete`),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, requiredGuards),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'greeting' &&
     operation.selector.index !== undefined
   ) {
     if (!operation.selector.greeting_type) {
@@ -1593,7 +2245,7 @@ async function previewFacadeOperation(
       typeof (read as Record<string, unknown>).content === 'string'
         ? ((read as Record<string, unknown>).content as string)
         : undefined;
-    const currentPreview = currentContent?.slice(0, 100);
+    const currentPreview = currentContent === undefined ? undefined : greetingPreview(currentContent);
     const conflict = guardConflict(
       operation.guards,
       'expected_preview',
@@ -1625,6 +2277,95 @@ async function previewFacadeOperation(
               sourceResultPath: '/content',
             },
       ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    const list = await apiRequest('GET', '/risup/prompt-items');
+    if (isApiError(list)) return list;
+    const contentRecord = asRecord(operation.content);
+    const expectedTypes = Array.isArray(contentRecord?.expected_types) ? contentRecord.expected_types : undefined;
+    const expectedPreviews = Array.isArray(contentRecord?.expected_previews)
+      ? contentRecord.expected_previews
+      : undefined;
+    const requiredGuards: FacadeV1Guard[] = [];
+    const enrichedExpectedTypes: string[] = [];
+    const enrichedExpectedPreviews: string[] = [];
+    const previews: Array<Record<string, unknown>> = [];
+    for (const [position, idx] of operation.selector.indices.entries()) {
+      const currentRecord = itemByIndex(list, 'items', idx);
+      const currentType = recordString(currentRecord, 'type');
+      const currentPreview = recordString(currentRecord, 'preview');
+      const expectedType =
+        expectedTypes && typeof expectedTypes[position] === 'string' ? expectedTypes[position] : undefined;
+      const expectedPreview =
+        expectedPreviews && typeof expectedPreviews[position] === 'string' ? expectedPreviews[position] : undefined;
+      if (expectedType !== undefined && currentType !== undefined && expectedType !== currentType) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_type',
+          'Re-list/read risup prompt items, then run preview_edit again with current expected_type values.',
+          { target: `risup-prompt:${idx}`, guard: 'expected_type', expected: expectedType, actual: currentType },
+          ['list_risup_prompt_items', 'read_risup_prompt_item_batch', 'preview_edit'],
+        );
+      }
+      if (expectedPreview !== undefined && currentPreview !== undefined && expectedPreview !== currentPreview) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_preview',
+          'Re-list/read risup prompt items, then run preview_edit again with current expected_preview values.',
+          {
+            target: `risup-prompt:${idx}`,
+            guard: 'expected_preview',
+            expected: expectedPreview,
+            actual: currentPreview,
+          },
+          ['list_risup_prompt_items', 'read_risup_prompt_item_batch', 'preview_edit'],
+        );
+      }
+      enrichedExpectedTypes.push(currentType ?? '');
+      enrichedExpectedPreviews.push(currentPreview ?? '');
+      previews.push({ index: idx, currentType, currentPreview });
+      if (currentType !== undefined)
+        requiredGuards.push(
+          buildGuard(
+            'expected_types',
+            currentType,
+            `/expected_types/${position}`,
+            ['list_risup_prompt_items'],
+            `/items/${position}/type`,
+          ),
+        );
+      if (currentPreview !== undefined)
+        requiredGuards.push(
+          buildGuard(
+            'expected_previews',
+            currentPreview,
+            `/expected_previews/${position}`,
+            ['list_risup_prompt_items'],
+            `/items/${position}/preview`,
+          ),
+        );
+    }
+    operation.content = {
+      ...(contentRecord ?? {}),
+      expected_types: enrichedExpectedTypes,
+      expected_previews: enrichedExpectedPreviews,
+    };
+    return {
+      data: { dryRun: true, operation: 'delete_item', count: operation.selector.indices.length, deletes: previews },
+      routes: [
+        route('list_risup_prompt_items', 'GET', '/risup/prompt-items'),
+        route('batch_delete_risup_prompt_items', 'POST', '/risup/prompt-item/batch-delete'),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, requiredGuards),
     };
   }
 
@@ -1731,6 +2472,14 @@ async function previewFacadeOperation(
   if (operation.op === 'write_content' && operation.selector.field) {
     const read = await readFacadeSelector(target, operation.selector);
     if (isApiError(read)) return read;
+    if (isReadOnlyFacadeFieldPayload(read.data)) {
+      return facadeApiError(
+        400,
+        `"${operation.selector.field}" is read-only`,
+        'This field is deprecated, reserved, or compatibility-only. Use supported current fields or structured tools instead.',
+        { selector: operation.selector },
+      );
+    }
     const oldContent = (read.data as Record<string, unknown>).content;
     return {
       data: {
@@ -1851,6 +2600,26 @@ async function applyFacadeOperation(
     target.kind === 'active' &&
     operation.op === 'write_content' &&
     operation.selector.family === 'regex' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    const entries = normalizeBatchEntries(operation, 'data');
+    if (isApiError(entries)) return entries;
+    const payloadEntries = entries.map((entry) => ({
+      index: recordNumber(entry, 'index'),
+      data: asRecord(entry.data) ?? {},
+      expected_comment: recordString(entry, 'expected_comment'),
+    }));
+    const data = await apiRequest('POST', '/regex/batch-write', { entries: payloadEntries });
+    return isApiError(data)
+      ? data
+      : { data, routes: [route('write_regex_batch', 'POST', '/regex/batch-write')], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'regex' &&
     operation.selector.index !== undefined
   ) {
     const data = asRecord(operation.content);
@@ -1876,6 +2645,35 @@ async function applyFacadeOperation(
     target.kind === 'active' &&
     operation.op === 'write_content' &&
     operation.selector.family === 'greeting' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting batch write selector',
+        'preview_edit greeting batch writes require greeting_type="alternate" or "group".',
+        { operation },
+        ['list_greetings', 'read_greeting_batch', 'preview_edit'],
+      );
+    }
+    const writes = normalizeBatchEntries(operation, 'content');
+    if (isApiError(writes)) return writes;
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const payloadWrites = writes.map((write) => ({
+      index: recordNumber(write, 'index'),
+      content: replacementString(write.content),
+      expected_preview: recordString(write, 'expected_preview'),
+    }));
+    const routePath = `/greeting/${greetingType}/batch-write`;
+    const data = await apiRequest('POST', routePath, { writes: payloadWrites });
+    return isApiError(data) ? data : { data, routes: [route('batch_write_greeting', 'POST', routePath)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'greeting' &&
     operation.selector.index !== undefined
   ) {
     if (!operation.selector.greeting_type) {
@@ -1893,6 +2691,27 @@ async function applyFacadeOperation(
       expected_preview: stringGuardValue(guards, 'expected_preview'),
     });
     return isApiError(data) ? data : { data, routes: [route('write_greeting', 'POST', greetingRoute)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    const writes = normalizeBatchEntries(operation, 'item');
+    if (isApiError(writes)) return writes;
+    const payloadWrites = writes.map((write) => ({
+      index: recordNumber(write, 'index'),
+      item: asRecord(write.item) ?? {},
+      expected_type: recordString(write, 'expected_type'),
+      expected_preview: recordString(write, 'expected_preview'),
+    }));
+    const data = await apiRequest('POST', '/risup/prompt-item/batch-write', { writes: payloadWrites });
+    return isApiError(data)
+      ? data
+      : { data, routes: [route('write_risup_prompt_item_batch', 'POST', '/risup/prompt-item/batch-write')], touched };
   }
 
   if (
@@ -1948,6 +2767,32 @@ async function applyFacadeOperation(
     target.kind === 'active' &&
     operation.op === 'delete_item' &&
     operation.selector.family === 'greeting' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting batch delete selector',
+        'preview_edit greeting batch deletes require greeting_type="alternate" or "group".',
+        { operation },
+        ['list_greetings', 'read_greeting_batch', 'preview_edit'],
+      );
+    }
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const contentRecord = asRecord(operation.content);
+    const routePath = `/greeting/${greetingType}/batch-delete`;
+    const data = await apiRequest('POST', routePath, {
+      indices: operation.selector.indices,
+      expected_previews: contentRecord?.expected_previews,
+    });
+    return isApiError(data) ? data : { data, routes: [route('batch_delete_greeting', 'POST', routePath)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'greeting' &&
     operation.selector.index !== undefined
   ) {
     if (!operation.selector.greeting_type) {
@@ -1964,6 +2809,28 @@ async function applyFacadeOperation(
       expected_preview: stringGuardValue(guards, 'expected_preview'),
     });
     return isApiError(data) ? data : { data, routes: [route('delete_greeting', 'POST', greetingRoute)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.indices &&
+    operation.selector.indices.length > 0
+  ) {
+    const contentRecord = asRecord(operation.content);
+    const data = await apiRequest('POST', '/risup/prompt-item/batch-delete', {
+      indices: operation.selector.indices,
+      expected_types: contentRecord?.expected_types,
+      expected_previews: contentRecord?.expected_previews,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('batch_delete_risup_prompt_items', 'POST', '/risup/prompt-item/batch-delete')],
+          touched,
+        };
   }
 
   if (
@@ -2442,10 +3309,10 @@ server.tool(
 
 server.tool(
   'validate_content',
-  'Preferred facade v1 validation entrypoint. Second wave validates active-document lorebook key hygiene by routing to validate_lorebook_keys and reports known remaining facade gaps.',
+  'Preferred facade v1 validation entrypoint. Validates active lorebook, regex, CBS, Danbooru tags, risup prompt/order, risum semantic fields, and external Plugin v3 source scans where facade selectors provide enough context.',
   {
     target: facadeV1TargetSchema.describe(
-      'Explicit facade target discriminator. Second wave supports active lorebook validation.',
+      'Explicit facade target discriminator. Supports active artifact validation and external Plugin v3 source scans.',
     ),
     selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
@@ -2488,21 +3355,31 @@ server.tool(
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
   },
   async ({ target, max_bytes }) => {
-    const routePath = target.skill
-      ? `/skills/${encodeURIComponent(target.skill)}${target.document ? `/${encodeURIComponent(target.document)}` : ''}`
+    const requestedSkill =
+      target.skill === 'plugin-v3' || target.skill === 'plugins-v3' || target.document === 'plugin-v3'
+        ? 'writing-plugins-v3'
+        : target.skill;
+    const routePath = requestedSkill
+      ? `/skills/${encodeURIComponent(requestedSkill)}${target.document && target.document !== 'plugin-v3' ? `/${encodeURIComponent(target.document)}` : ''}`
       : '/skills';
     const data = await apiRequest('GET', routePath);
     if (isApiError(data)) return textResult(data);
-    const routes = [route(target.skill ? 'read_skill' : 'list_skills', 'GET', routePath)];
+    const routes = [route(requestedSkill ? 'read_skill' : 'list_skills', 'GET', routePath)];
     return textResult(
       facadeEnvelope(
         'load_guidance',
         'read-only',
         target,
         { guidance: data, routed_legacy: routes, touched_targets: ['guidance'] },
-        target.skill ? `Loaded guidance for ${target.skill}` : 'Loaded guidance catalog',
+        requestedSkill ? `Loaded guidance for ${requestedSkill}` : 'Loaded guidance catalog',
         ['read_content', 'search_document'],
-        { routed_tools: routes.map((entry) => entry.tool), touched_targets: ['guidance'] },
+        {
+          routed_tools: routes.map((entry) => entry.tool),
+          touched_targets: ['guidance'],
+          ...(requestedSkill === 'writing-plugins-v3'
+            ? { source_workflow: true, note: '.js/.ts plugin files are source files, not MCP artifacts.' }
+            : {}),
+        },
         max_bytes,
       ),
     );
@@ -2511,7 +3388,7 @@ server.tool(
 
 server.tool(
   'preview_edit',
-  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, active surface patches, and active indexed regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
+  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, active surface patches, active indexed and safe batch regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
   {
     target: facadeV1TargetSchema.describe(
       'Explicit facade target discriminator. Supports active edits and second-wave external field replace/write previews.',
@@ -2584,7 +3461,7 @@ server.tool(
 
 server.tool(
   'apply_edit',
-  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior for active/external fields, active surface patches, and active indexed regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
+  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior for active/external fields, active surface patches, and active indexed/batch regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
   {
     preview_token: z.string().regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/),
     operation_digest: z.string().min(16),
@@ -2670,13 +3547,13 @@ server.tool(
 
 server.tool(
   'write_field',
-  '작은 활성 문서 필드에 새 내용을 씁니다. ⚠️ lua/css는 write_lua/write_css, alternateGreetings/groupOnlyGreetings는 write_greeting/batch_write_greeting, triggerScripts는 write_trigger를 우선 사용하세요. `.risup`의 promptTemplate/formatingOrder는 전용 risup prompt 도구를 우선 사용하고, write_field는 unsupported raw shape fallback일 때만 쓰는 편이 안전합니다. 가능한 필드는 list_fields로 확인하세요. 사용자 확인 필요.',
+  '작은 활성 문서 필드에 새 내용을 씁니다. ⚠️ lua/css는 write_lua/write_css, alternateGreetings는 write_greeting/batch_write_greeting, triggerScripts는 write_trigger를 우선 사용하세요. groupOnlyGreetings 및 비권장/예약/레거시 필드는 읽기 전용입니다. `.risup`의 promptTemplate/formatingOrder는 전용 risup prompt 도구를 우선 사용하고, write_field는 unsupported raw shape fallback일 때만 쓰는 편이 안전합니다. 가능한 필드는 list_fields로 확인하세요. 사용자 확인 필요.',
   {
     field: z.string().describe('필드 이름'),
     content: z
       .union([z.string(), z.array(z.string()), z.boolean(), z.number()])
       .describe(
-        '새로운 내용. alternateGreetings/groupOnlyGreetings/tags/source는 문자열 배열, triggerScripts는 JSON 문자열, boolean 필드는 boolean, number 필드는 number, 나머지는 문자열',
+        '새로운 내용. alternateGreetings는 문자열 배열, triggerScripts는 JSON 문자열, boolean 필드는 boolean, number 필드는 number, 나머지는 문자열. 비권장/예약/레거시 필드는 수정할 수 없습니다.',
       ),
   },
   async ({ field, content }) =>
@@ -3181,7 +4058,7 @@ server.tool(
 
 server.tool(
   'write_field_batch',
-  '여러 작은 필드의 내용을 한 번에 수정합니다. 한 번의 확인으로 모든 필드를 동시에 업데이트합니다. ⚠️ lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts와 `.risup` promptTemplate/formatingOrder 같은 구조화 표면은 전용 도구를 우선 사용하세요. characterVersion + defaultVariables 같이 여러 소형 필드를 함께 바꿀 때 유용합니다. 사용자 확인 필요.',
+  '여러 작은 필드의 내용을 한 번에 수정합니다. 한 번의 확인으로 모든 필드를 동시에 업데이트합니다. ⚠️ lua/css/alternateGreetings/triggerScripts와 `.risup` promptTemplate/formatingOrder 같은 구조화 표면은 전용 도구를 우선 사용하세요. groupOnlyGreetings 및 비권장/예약/레거시 필드는 읽기 전용입니다. characterVersion + defaultVariables 같이 여러 소형 필드를 함께 바꿀 때 유용합니다. 사용자 확인 필요.',
   {
     entries: z
       .array(
@@ -3749,9 +4626,9 @@ server.tool(
 
 server.tool(
   'write_greeting',
-  '특정 인덱스의 인사말을 수정합니다. optional expected_preview로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
+  '특정 인덱스의 alternate 인사말을 수정합니다. groupOnlyGreetings(type="group")는 deprecated 호환 필드라 읽기 전용입니다. optional expected_preview로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
-    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    type: z.enum(['alternate']).describe('"alternate"만 지원. "group"은 읽기 전용'),
     index: z.number().describe('인사말 인덱스'),
     content: z.string().describe('새로운 인사말 텍스트'),
     expected_preview: z.string().optional().describe('선택사항: list_greetings에서 본 현재 preview와 다르면 409 반환'),
@@ -3762,9 +4639,9 @@ server.tool(
 
 server.tool(
   'add_greeting',
-  '새 인사말을 추가합니다. 사용자 확인 필요.',
+  '새 alternate 인사말을 추가합니다. groupOnlyGreetings(type="group")는 deprecated 호환 필드라 읽기 전용입니다. 사용자 확인 필요.',
   {
-    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    type: z.enum(['alternate']).describe('"alternate"만 지원. "group"은 읽기 전용'),
     content: z.string().describe('인사말 텍스트'),
   },
   async ({ type, content }) => textResult(await apiRequest('POST', `/greeting/${type}/add`, { content })),
@@ -3772,9 +4649,9 @@ server.tool(
 
 server.tool(
   'delete_greeting',
-  '특정 인덱스의 인사말을 삭제합니다. optional expected_preview로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
+  '특정 인덱스의 alternate 인사말을 삭제합니다. groupOnlyGreetings(type="group")는 deprecated 호환 필드라 읽기 전용입니다. optional expected_preview로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
-    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    type: z.enum(['alternate']).describe('"alternate"만 지원. "group"은 읽기 전용'),
     index: z.number().describe('삭제할 인사말 인덱스'),
     expected_preview: z.string().optional().describe('선택사항: list_greetings에서 본 현재 preview와 다르면 409 반환'),
   },
@@ -3784,9 +4661,9 @@ server.tool(
 
 server.tool(
   'batch_delete_greeting',
-  '여러 인사말을 한 번에 삭제합니다. 인덱스를 내림차순 처리하여 시프트 문제를 방지합니다. optional expected_previews를 함께 보내면 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
+  '여러 alternate 인사말을 한 번에 삭제합니다. groupOnlyGreetings(type="group")는 deprecated 호환 필드라 읽기 전용입니다. 인덱스를 내림차순 처리하여 시프트 문제를 방지합니다. optional expected_previews를 함께 보내면 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
-    type: z.enum(['alternate', 'group']).describe('"alternate" 또는 "group"'),
+    type: z.enum(['alternate']).describe('"alternate"만 지원. "group"은 읽기 전용'),
     indices: z.array(z.number()).describe('삭제할 인사말 인덱스 배열 (예: [0, 2, 5])'),
     expected_previews: z
       .array(z.string())
@@ -3801,9 +4678,9 @@ server.tool(
 
 server.tool(
   'batch_write_greeting',
-  '여러 인사말을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 각 항목에 optional expected_preview를 넣으면 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
+  '여러 alternate 인사말을 한 번에 수정합니다. groupOnlyGreetings(type="group")는 deprecated 호환 필드라 읽기 전용입니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 각 항목에 optional expected_preview를 넣으면 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
-    type: z.enum(['alternate', 'group']).describe('"alternate" (추가 첫 메시지) 또는 "group" (그룹 전용)'),
+    type: z.enum(['alternate']).describe('"alternate"만 지원. "group"은 읽기 전용'),
     writes: z
       .array(
         z.object({

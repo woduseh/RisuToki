@@ -2,7 +2,7 @@ import { ensureBlueArchiveMonacoTheme } from './monaco-loader';
 import { defineDarkMonacoTheme } from './dark-mode';
 import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
 import { getFolderRef, normalizeFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
-import { getRisupFieldGroup } from './risup-fields';
+import { getRisupFieldGroup, isRisupDisableableNumberFieldId } from './risup-fields';
 import { coerceRisupInputValue, validateRisupDraftFields, type RisupFormTabInfo } from './risup-form-editor';
 import { createFormatingOrderEditor, createPromptTemplateEditor } from './risup-prompt-editor';
 import { createCustomPromptTemplateToggleEditor } from './risup-toggle-editor';
@@ -41,6 +41,8 @@ interface FallbackEditor {
 }
 
 type FormEditor = MonacoEditor | FallbackEditor;
+const RISUP_DISABLED_NUMBER_SENTINEL = -1000;
+const RISUP_DISABLED_NUMBER_LABEL = '비활성화';
 
 // ── Tab-like interface used by showLoreEditor / showRegexEditor ──
 
@@ -748,20 +750,46 @@ export function showRisupEditor(tabInfo: RisupFormTabInfo): void {
     label.textContent = field.label;
     const input = document.createElement('input');
     input.className = 'form-input' + (field.editor === 'number' ? ' form-number' : '');
-    input.type = field.editor === 'number' ? 'number' : 'text';
+    const isDisableableNumberField = field.editor === 'number' && isRisupDisableableNumberFieldId(field.id);
+    const isDisabledNumberSentinel = isDisableableNumberField && data[field.id] === RISUP_DISABLED_NUMBER_SENTINEL;
+    input.type = field.editor === 'number' && !isDisabledNumberSentinel ? 'number' : 'text';
     input.value =
       field.editor === 'number'
         ? data[field.id] == null
           ? ''
-          : String(data[field.id])
+          : isDisabledNumberSentinel
+            ? RISUP_DISABLED_NUMBER_LABEL
+            : String(data[field.id])
         : typeof data[field.id] === 'string'
           ? (data[field.id] as string)
           : '';
     if (field.step) input.step = field.step;
     if (field.placeholder) input.placeholder = field.placeholder;
+    const showDisabledNumberState = (): void => {
+      input.type = 'text';
+      input.value = RISUP_DISABLED_NUMBER_LABEL;
+    };
+    const showNumericNumberState = (): void => {
+      input.type = 'number';
+      if (field.step) input.step = field.step;
+    };
     if (readonly) {
       input.readOnly = true;
     } else {
+      if (isDisableableNumberField) {
+        input.addEventListener('focus', () => {
+          if (input.value === RISUP_DISABLED_NUMBER_LABEL) {
+            showNumericNumberState();
+            input.value = '';
+          }
+        });
+        input.addEventListener('blur', () => {
+          const nextValue = coerceRisupInputValue(field.editor, input.value);
+          if (data[field.id] === RISUP_DISABLED_NUMBER_SENTINEL && nextValue === undefined) {
+            showDisabledNumberState();
+          }
+        });
+      }
       input.addEventListener('input', () => {
         if (field.editor === 'number') {
           if (!input.value.trim()) {
@@ -781,6 +809,21 @@ export function showRisupEditor(tabInfo: RisupFormTabInfo): void {
     }
     row.appendChild(label);
     row.appendChild(input);
+    if (isDisableableNumberField) {
+      const disableButton = document.createElement('button');
+      disableButton.type = 'button';
+      disableButton.className = 'form-disable-number-btn';
+      disableButton.textContent = RISUP_DISABLED_NUMBER_LABEL;
+      disableButton.disabled = readonly;
+      disableButton.setAttribute('aria-label', `${field.label} 비활성화`);
+      if (!readonly) {
+        disableButton.addEventListener('click', () => {
+          applyFieldChange(field.id, RISUP_DISABLED_NUMBER_SENTINEL);
+          showDisabledNumberState();
+        });
+      }
+      row.appendChild(disableButton);
+    }
     body.appendChild(row);
   }
 

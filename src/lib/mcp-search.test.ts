@@ -51,7 +51,7 @@ function mapSurfacesByTarget(surfaces: SurfaceSummary[]) {
 }
 
 describe('searchAllTextSurfaces', () => {
-  it('searches matching string fields, greetings, and lorebook content surfaces including read-only group greetings', async () => {
+  it('searches matching string fields, alternate greetings, and lorebook content while hiding group greetings', async () => {
     const result = await runSearch(createCrossSurfaceFixture(), {
       query: 'alpha',
       includeGreetings: true,
@@ -65,12 +65,12 @@ describe('searchAllTextSurfaces', () => {
       regex: false,
       contextChars: 12,
       maxMatchesPerSurface: 5,
-      totalMatches: 5,
+      totalMatches: 4,
     });
 
-    expect(result.surfaces).toHaveLength(5);
+    expect(result.surfaces).toHaveLength(4);
     expect(result.surfaces.map((surface: { target: string }) => surface.target).sort()).toEqual(
-      ['field:description', 'field:firstMessage', 'greeting:alternate:0', 'greeting:groupOnly:0', 'lorebook:0'].sort(),
+      ['field:description', 'field:firstMessage', 'greeting:alternate:0', 'lorebook:0'].sort(),
     );
 
     const surfacesByTarget = mapSurfacesByTarget(result.surfaces);
@@ -100,16 +100,6 @@ describe('searchAllTextSurfaces', () => {
       totalMatches: 1,
       returnedMatches: 1,
       matches: [{ match: 'Alpha' }],
-    });
-    expect(surfacesByTarget.get('greeting:groupOnly:0')).toMatchObject({
-      surfaceType: 'greeting',
-      target: 'greeting:groupOnly:0',
-      field: 'groupOnlyGreetings',
-      greetingType: 'groupOnly',
-      index: 0,
-      totalMatches: 1,
-      returnedMatches: 1,
-      matches: [{ match: 'alpha' }],
     });
     expect(surfacesByTarget.get('lorebook:0')).toMatchObject({
       surfaceType: 'lorebook',

@@ -1,4 +1,4 @@
-import { RISUP_FIELD_GROUPS } from './risup-fields';
+import { RISUP_EDITABLE_FIELD_IDS } from './risup-fields';
 
 export interface DirtyTabLike {
   getValue?: () => unknown;
@@ -23,9 +23,6 @@ const DIRECT_VALUE_FIELDS = new Set([
   'characterVersion',
 ]);
 
-const RISUP_EDITABLE_FIELD_IDS = [
-  ...new Set(RISUP_FIELD_GROUPS.flatMap((group) => group.fields.map((field) => field.id))),
-];
 const RISUP_EXTRA_AUTOSAVE_FIELDS = ['description'];
 
 export function hasDirtyTabWithPrefix(dirtyFields: Iterable<string>, prefix: string): boolean {

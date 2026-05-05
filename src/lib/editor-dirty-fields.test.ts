@@ -47,7 +47,7 @@ describe('editor dirty field helpers', () => {
     });
   });
 
-  it('collects the full risup payload when a risup form tab is dirty even if no risup tab is open', () => {
+  it('collects editable risup payload when a risup form tab is dirty even if no risup tab is open', () => {
     const fields = collectDirtyEditorFields({
       dirtyFields: new Set(['risup_prompts']),
       fileData: {
@@ -68,8 +68,6 @@ describe('editor dirty field helpers', () => {
     expect(fields).toMatchObject({
       name: 'Preset',
       description: 'Preset description',
-      mainPrompt: 'legacy prompt',
-      jailbreak: 'legacy jailbreak',
       promptTemplate: '[{"role":"system","text":"hello"}]',
       formatingOrder: '["main"]',
       customPromptTemplateToggle: 'line 1\nline 2',
@@ -77,6 +75,8 @@ describe('editor dirty field helpers', () => {
       aiModel: 'gemini',
       temperature: 0.7,
     });
+    expect(fields).not.toHaveProperty('mainPrompt');
+    expect(fields).not.toHaveProperty('jailbreak');
   });
 
   it('keeps direct field values autosave-visible even after their tabs are closed', () => {

@@ -274,7 +274,22 @@ export type FacadeV1Target = z.infer<typeof facadeV1TargetSchema>;
 
 export const facadeV1ContentSelectorSchema = z.object({
   family: z
-    .enum(['field', 'surface', 'lorebook', 'regex', 'greeting', 'trigger', 'lua', 'css', 'asset', 'risup-prompt'])
+    .enum([
+      'field',
+      'surface',
+      'lorebook',
+      'regex',
+      'greeting',
+      'trigger',
+      'lua',
+      'css',
+      'asset',
+      'risup-prompt',
+      'cbs',
+      'danbooru',
+      'plugin-v3',
+      'risum',
+    ])
     .optional(),
   path: z.string().min(1).optional(),
   field: z.string().min(1).optional(),
@@ -285,6 +300,7 @@ export const facadeV1ContentSelectorSchema = z.object({
   item_field: z.string().min(1).optional(),
   prompt_type: z.string().min(1).optional(),
   fields: z.array(z.string().min(1)).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+  tags: z.array(z.string().min(1)).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
 });
 export type FacadeV1ContentSelector = z.infer<typeof facadeV1ContentSelectorSchema>;
 

@@ -9,6 +9,64 @@
 
 ---
 
+## [0.70.7] - 2026-05-06
+
+### Changed
+
+- Localized `.risup` prompt template item type, role, and Type2 labels to RisuAI-style Korean names, and compacted role/Type2 controls onto one row.
+
+## [0.70.6] - 2026-05-06
+
+### Changed
+
+- Restyled the `.risup` numeric field `비활성화` action so it matches the surrounding form controls instead of using the browser default button appearance.
+
+## [0.70.5] - 2026-05-06
+
+### Changed
+
+- Added a `비활성화` button for RisuAI disableable `.risup` numeric fields so the editor can set those values back to the stored `-1000` disabled sentinel directly.
+
+## [0.70.4] - 2026-05-05
+
+### Changed
+
+- Updated the `.risup` form editor so RisuAI disableable numeric fields stored as `-1000` display as `비활성화` instead of showing the raw sentinel value, while preserving serialized numeric values.
+
+## [0.70.3] - 2026-05-05
+
+### Changed
+
+- Updated the `.risup` prompt template editor so named prompt items show their `name` in the list summary instead of a prompt text preview, while unnamed items keep the existing content-preview fallback.
+
+## [0.70.2] - 2026-05-05
+
+### Changed
+
+- Hid deprecated `.charx` fields, `.risup` legacy prompt fields, and reserved `.risum` `cjs` from normal MCP reads, probes, surface reads, searches, field inventories, reference reads, and facade read/search routes.
+- Added value-safe hidden-field warnings in MCP inspection/session responses and the editor sidebar so existing compatibility values are visible by field name/count/size without exposing their content.
+- Removed normal editor access to hidden `.risup` legacy prompt tabs and backup menu entries while keeping file serialization compatibility; `lowLevelAccess` remains visible and editable.
+
+## [0.70.1] - 2026-05-05
+
+### Changed
+
+- Removed edit support for deprecated `.charx` fields, `.risup` legacy prompt fields, and reserved `.risum` `cjs` while preserving read compatibility.
+- Blocked MCP field writes, text replacements/inserts, surface patches, external writes, facade previews, and group-only greeting mutations for those non-editable fields; `lowLevelAccess` remains editable.
+
+## [0.70.0] - 2026-05-05
+
+### Added
+
+- Added facade `preview_edit` / `apply_edit` coverage for active regex, greeting, and `.risup` prompt batch writes, plus guarded active greeting and `.risup` prompt batch deletes.
+- Added facade `validate_content` support for regex compile/sanity checks, CBS validation, Danbooru tag validation, `.risum` semantic field consistency, and external Plugin v3 source scans.
+- Added standalone MCP fixture coverage for facade batch preview tokens, guarded apply, stale guard conflicts, focused post-apply reads, and intended-entry diffs.
+
+### Changed
+
+- Updated MCP workflow evals so implemented batch edit tasks route facade-first while unsupported add/reorder and ambiguous batch workflows stay granular.
+- Synced MCP facade docs, skills, and AGENTS guidance for batch coverage, validator routing, Plugin v3 source workflows, and granular fallback rules.
+
 ## [0.69.3] - 2026-05-05
 
 ### Added

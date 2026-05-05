@@ -1881,6 +1881,39 @@ body {
   border-color: var(--accent);
 }
 
+.form-disable-number-btn {
+  flex-shrink: 0;
+  min-width: 68px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--accent-light);
+  color: var(--accent-hover);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.form-disable-number-btn:hover,
+.form-disable-number-btn:focus-visible {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text-highlight);
+  outline: none;
+}
+
+.form-disable-number-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .form-select {
   padding: 5px 8px;
   border: 1px solid var(--border-color);
@@ -2083,6 +2116,20 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.prompt-editor-inline-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.prompt-editor-inline-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .prompt-field-label {

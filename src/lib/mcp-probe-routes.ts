@@ -10,6 +10,7 @@ import {
   buildFieldBatchReadResults,
   buildFieldReadResponsePayload,
   getFieldAccessRules,
+  getHiddenFieldInfo,
   getUnknownFieldHint,
   MAX_FIELD_BATCH,
   type SupportedFileType,
@@ -55,6 +56,17 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? (value as string[]) : [];
 }
 
+function hiddenFieldError(fieldName: string, data: Record<string, unknown>): McpErrorInfo | null {
+  const hidden = getHiddenFieldInfo(data, fieldName);
+  if (!hidden) return null;
+  return {
+    action: 'probe field',
+    message: `"${fieldName}" 필드는 ${hidden.reason}라 일반 조회에서 숨겨집니다.`,
+    suggestion: hidden.suggestion,
+    target: `probe:field:${fieldName}`,
+  };
+}
+
 export async function handleProbeRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -81,6 +93,11 @@ export async function handleProbeRoute(
     );
     if (!probe) return true;
     const rules = getFieldAccessRules(probe.data);
+    const hiddenError = hiddenFieldError(fieldName, probe.data);
+    if (hiddenError) {
+      deps.mcpError(res, 400, hiddenError);
+      return true;
+    }
     if (!rules.allowedFields.includes(fieldName)) {
       deps.mcpError(res, 400, {
         action: 'probe field',
@@ -239,10 +256,19 @@ export async function handleProbeRoute(
       });
       return true;
     }
-    const greetings =
-      greetingType === 'groupOnly'
-        ? stringArray(probe.data.groupOnlyGreetings)
-        : stringArray(probe.data.alternateGreetings);
+    if (greetingType === 'groupOnly') {
+      const hidden = getHiddenFieldInfo(probe.data, 'groupOnlyGreetings');
+      deps.mcpError(res, 400, {
+        action: 'probe greetings',
+        message: hidden
+          ? `"groupOnlyGreetings" 필드는 ${hidden.reason}라 일반 조회에서 숨겨집니다.`
+          : 'groupOnly greetings are hidden from normal reads.',
+        suggestion: hidden?.suggestion ?? 'alternate greetings를 읽거나 최신 그룹 대화 구조를 사용하세요.',
+        target: `probe:greetings:${greetingType}`,
+      });
+      return true;
+    }
+    const greetings = stringArray(probe.data.alternateGreetings);
     const probeGreetingPayload = deps.buildGreetingListResponse(greetings, greetingType, url);
     const count = payloadCount(probeGreetingPayload);
     deps.jsonResSuccess(res, probeGreetingPayload, {

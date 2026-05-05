@@ -39,6 +39,68 @@ describe('createPromptTemplateEditor', () => {
     handle.dispose();
   });
 
+  it('uses prompt item names for list summaries before prompt text previews', () => {
+    const container = document.createElement('div');
+    const template = JSON.stringify([
+      {
+        type: 'plain',
+        type2: 'normal',
+        text: '## Execution Mode\n{{#when::mode::tis::2}} content that should stay in details',
+        role: 'system',
+        name: 'Execution Mode & Identity',
+      },
+      {
+        type: 'chatML',
+        text: 'ChatML text preview should not be the row label',
+        name: 'Named ChatML',
+      },
+      {
+        type: 'authornote',
+        defaultText: 'Author note preview should not be the row label',
+        name: 'Named Author Note',
+      },
+    ]);
+    const handle = createPromptTemplateEditor(container, template, null);
+
+    const summaries = [...container.querySelectorAll<HTMLElement>('.prompt-editor-summary')].map(
+      (el) => el.textContent,
+    );
+    expect(summaries).toEqual(['Execution Mode & Identity', 'Named ChatML', 'Named Author Note']);
+    expect(container.querySelector<HTMLTextAreaElement>('[data-field="text"]')?.value).toContain('## Execution Mode');
+    handle.dispose();
+  });
+
+  it('keeps prompt text previews for unnamed prompt items', () => {
+    const container = document.createElement('div');
+    const template = JSON.stringify([
+      { type: 'plain', type2: 'normal', text: 'Hello unnamed prompt item', role: 'system' },
+    ]);
+    const handle = createPromptTemplateEditor(container, template, null);
+
+    expect(container.querySelector<HTMLElement>('.prompt-editor-summary')?.textContent).toBe(
+      'Hello unnamed prompt item',
+    );
+    handle.dispose();
+  });
+
+  it('renders RisuAI-style Korean labels for prompt type, role, and type2 controls', () => {
+    const container = document.createElement('div');
+    const template = JSON.stringify([{ type: 'plain', type2: 'main', text: 'Hello', role: 'system' }]);
+    const handle = createPromptTemplateEditor(container, template, vi.fn());
+
+    const typeSelect = container.querySelector<HTMLSelectElement>('[data-field="type"]');
+    const roleSelect = container.querySelector<HTMLSelectElement>('[data-field="role"]');
+    const type2Select = container.querySelector<HTMLSelectElement>('[data-field="type2"]');
+
+    expect(typeSelect?.selectedOptions[0]?.textContent).toBe('일반 프롬프트');
+    expect([...typeSelect!.options].map((option) => option.textContent)).toContain('탈옥 프롬프트');
+    expect(roleSelect?.selectedOptions[0]?.textContent).toBe('시스템');
+    expect(type2Select?.selectedOptions[0]?.textContent).toBe('메인');
+    expect(container.querySelector('.prompt-editor-inline-row')?.contains(roleSelect!)).toBe(true);
+    expect(container.querySelector('.prompt-editor-inline-row')?.contains(type2Select!)).toBe(true);
+    handle.dispose();
+  });
+
   it('calls onChange with serialized JSON when a text field changes', () => {
     const container = document.createElement('div');
     const template = JSON.stringify([{ type: 'plain', type2: 'normal', text: 'Hello', role: 'system' }]);
@@ -139,6 +201,9 @@ describe('createPromptTemplateEditor', () => {
     const menu = document.querySelector('.ctx-menu');
     expect(menu).toBeTruthy();
     expect(document.querySelectorAll('.ctx-item').length).toBe(12);
+    expect([...document.querySelectorAll<HTMLElement>('.ctx-item')].map((entry) => entry.textContent)).toContain(
+      '캐시',
+    );
     handle.dispose();
   });
 
@@ -150,7 +215,7 @@ describe('createPromptTemplateEditor', () => {
     const addButton = container.querySelector<HTMLButtonElement>('[data-action="add-item"]');
     expect(addButton).toBeTruthy();
     addButton!.click();
-    clickContextMenuItem('cache');
+    clickContextMenuItem('캐시');
 
     expect(onChange).toHaveBeenCalled();
     const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as Array<{ type: string }>;
@@ -389,7 +454,7 @@ describe('createPromptTemplateEditor', () => {
     const insertButtons = container.querySelectorAll<HTMLButtonElement>('[data-action="insert-item-below"]');
     expect(insertButtons.length).toBe(2);
     insertButtons[0].click();
-    clickContextMenuItem('chat');
+    clickContextMenuItem('채팅');
 
     const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as Array<{
       id: string;
@@ -427,7 +492,7 @@ describe('createPromptTemplateEditor', () => {
 
     const addButton = container.querySelector<HTMLButtonElement>('[data-action="add-item"]');
     addButton!.click();
-    clickContextMenuItem('plain');
+    clickContextMenuItem('일반 프롬프트');
 
     const newValue = JSON.parse(onChange.mock.calls[0][0] as string) as { id: string }[];
     expect(newValue.length).toBe(1);

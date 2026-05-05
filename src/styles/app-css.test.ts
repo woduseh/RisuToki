@@ -62,6 +62,23 @@ describe('app.css – status bar affordances', () => {
   });
 });
 
+describe('app.css – form editor controls', () => {
+  it('styles the risup numeric disable action as a themed form control', () => {
+    expect(css).toMatch(/\.form-disable-number-btn\s*\{[^}]*background:\s*var\(--accent-light\);[^}]*\}/s);
+    expect(css).toMatch(/\.form-disable-number-btn:hover,\s*\.form-disable-number-btn:focus-visible\s*\{/);
+    expect(css).toMatch(/\.form-disable-number-btn:disabled\s*\{/);
+  });
+});
+
+describe('app.css – risup prompt editor layout', () => {
+  it('keeps compact prompt metadata controls on one row', () => {
+    expect(css).toMatch(
+      /\.prompt-editor-inline-row\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[^}]*\}/s,
+    );
+    expect(css).toMatch(/\.prompt-editor-inline-field\s*\{[^}]*flex-direction:\s*column;[^}]*\}/s);
+  });
+});
+
 describe('app.css – preview layout', () => {
   it('defines the fixed overlay shell needed to surface the preview above the app', () => {
     expect(css).toMatch(

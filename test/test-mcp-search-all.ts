@@ -948,15 +948,9 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
         { family: 'greeting', greeting_type: 'alternate' },
         { family: 'greeting', greeting_type: 'alternate', index: 0 },
         { family: 'greeting', greeting_type: 'alternate', indices: [0] },
-        { family: 'greeting', greeting_type: 'group' },
       ],
     });
-    assert.deepEqual(routedTools(activeGreetingReads), [
-      'list_greetings',
-      'read_greeting',
-      'read_greeting_batch',
-      'list_greetings',
-    ]);
+    assert.deepEqual(routedTools(activeGreetingReads), ['list_greetings', 'read_greeting', 'read_greeting_batch']);
     const activeGreetingItems = nestedArray(
       nestedRecord(activeGreetingReads.result, 'active greeting read result').items,
       'active greeting read result.items',
@@ -1106,18 +1100,24 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       operations: [
         {
           op: 'write_content',
-          selector: { family: 'regex', index: 0 },
+          selector: { family: 'regex', indices: [0] },
           content: {
-            comment: 'Facade Regex',
-            type: 'editoutput',
-            find: 'Updated Regex Find',
-            replace: 'Updated Regex Replace',
-            flag: 'g',
+            entries: [
+              {
+                data: {
+                  comment: 'Facade Regex',
+                  type: 'editoutput',
+                  find: 'Updated Regex Find',
+                  replace: 'Updated Regex Replace',
+                  flag: 'g',
+                },
+              },
+            ],
           },
         },
       ],
     });
-    assert.deepEqual(routedTools(regexWritePreview), ['read_regex', 'write_regex']);
+    assert.deepEqual(routedTools(regexWritePreview), ['read_regex_batch', 'write_regex_batch']);
     const regexGuardValues = nestedArray(
       nestedRecord(regexWritePreview.result, 'regex write preview result').guard_values,
       'regex write guard values',
@@ -1133,7 +1133,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       operation_digest: regexWritePreviewInfo.operation_digest,
       target: activeTarget,
     });
-    assert.deepEqual(routedTools(regexWriteApply), ['write_regex']);
+    assert.deepEqual(routedTools(regexWriteApply), ['write_regex_batch']);
     const staleRegexPreview = await callJson(
       runtime,
       'preview_edit',
@@ -1158,12 +1158,12 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       operations: [
         {
           op: 'write_content',
-          selector: { family: 'greeting', greeting_type: 'alternate', index: 0 },
-          content: 'Updated facade alternate hello.',
+          selector: { family: 'greeting', greeting_type: 'alternate', indices: [0] },
+          content: { writes: [{ content: 'Updated facade alternate hello.' }] },
         },
       ],
     });
-    assert.deepEqual(routedTools(greetingWritePreview), ['read_greeting', 'write_greeting']);
+    assert.deepEqual(routedTools(greetingWritePreview), ['read_greeting_batch', 'batch_write_greeting']);
     const greetingGuardValues = nestedArray(
       nestedRecord(greetingWritePreview.result, 'greeting write preview result').guard_values,
       'greeting write guard values',
@@ -1179,7 +1179,23 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       operation_digest: greetingWritePreviewInfo.operation_digest,
       target: activeTarget,
     });
-    assert.deepEqual(routedTools(greetingWriteApply), ['write_greeting']);
+    assert.deepEqual(routedTools(greetingWriteApply), ['batch_write_greeting']);
+    const staleGreetingBatchPreview = await callJson(
+      runtime,
+      'preview_edit',
+      {
+        target: activeTarget,
+        operations: [
+          {
+            op: 'delete_item',
+            selector: { family: 'greeting', greeting_type: 'alternate', indices: [0] },
+            content: { expected_previews: ['Wrong Greeting Preview'] },
+          },
+        ],
+      },
+      { expectError: true },
+    );
+    assert.equal(staleGreetingBatchPreview.status, 409);
 
     facadeOnlyCalls.push('preview_edit');
     const regexDeletePreview = await callJson(runtime, 'preview_edit', {
@@ -1215,18 +1231,18 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       operations: [
         {
           op: 'delete_item',
-          selector: { family: 'greeting', greeting_type: 'alternate', index: 0 },
+          selector: { family: 'greeting', greeting_type: 'alternate', indices: [0] },
         },
       ],
     });
-    assert.deepEqual(routedTools(greetingDeletePreview), ['read_greeting', 'delete_greeting']);
+    assert.deepEqual(routedTools(greetingDeletePreview), ['read_greeting_batch', 'batch_delete_greeting']);
     const greetingDeleteGuards = nestedArray(
       nestedRecord(greetingDeletePreview.result, 'greeting delete preview result').guard_values,
       'greeting delete guard values',
     );
     assert.ok(
-      greetingDeleteGuards.some((guard) => nestedRecord(guard, 'greeting delete guard').name === 'expected_preview'),
-      'greeting delete preview should derive expected_preview',
+      greetingDeleteGuards.some((guard) => nestedRecord(guard, 'greeting delete guard').name === 'expected_previews'),
+      'greeting batch delete preview should derive expected_previews',
     );
     const greetingDeletePreviewInfo = nestedRecord(greetingDeletePreview.preview, 'greeting delete preview');
     facadeOnlyCalls.push('apply_edit');
@@ -1235,7 +1251,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       operation_digest: greetingDeletePreviewInfo.operation_digest,
       target: activeTarget,
     });
-    assert.deepEqual(routedTools(greetingDeleteApply), ['delete_greeting']);
+    assert.deepEqual(routedTools(greetingDeleteApply), ['batch_delete_greeting']);
 
     const save = await callJson(runtime, 'save_current_file', {});
     metrics.activeWorkflowCallCount += 1;
@@ -1319,14 +1335,12 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
         { family: 'greeting', greeting_type: 'alternate' },
         { family: 'greeting', greeting_type: 'alternate', index: 0 },
         { family: 'greeting', greeting_type: 'alternate', indices: [0] },
-        { family: 'greeting', greeting_type: 'group' },
       ],
     });
     assert.deepEqual(routedTools(referenceGreetingReads), [
       'list_reference_greetings',
       'read_reference_greeting',
       'read_reference_greeting_batch',
-      'list_reference_greetings',
     ]);
     const referenceGreetingItems = nestedArray(
       nestedRecord(referenceGreetingReads.result, 'reference greeting read result').items,
@@ -1529,17 +1543,23 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       operations: [
         {
           op: 'write_content',
-          selector: { family: 'risup-prompt', index: 0 },
+          selector: { family: 'risup-prompt', indices: [0] },
           content: {
-            type: 'plain',
-            type2: 'normal',
-            text: 'Updated preset facade prompt',
-            role: 'system',
+            writes: [
+              {
+                item: {
+                  type: 'plain',
+                  type2: 'normal',
+                  text: 'Updated preset facade prompt',
+                  role: 'system',
+                },
+              },
+            ],
           },
         },
       ],
     });
-    assert.deepEqual(routedTools(promptItemPreview), ['read_risup_prompt_item', 'write_risup_prompt_item']);
+    assert.deepEqual(routedTools(promptItemPreview), ['list_risup_prompt_items', 'write_risup_prompt_item_batch']);
     const promptItemGuards = nestedArray(
       nestedRecord(promptItemPreview.result, 'prompt item preview result').guard_values,
       'prompt item guard values',
@@ -1555,7 +1575,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       operation_digest: promptItemPreviewInfo.operation_digest,
       target: activeTarget,
     });
-    assert.deepEqual(routedTools(promptItemApply), ['write_risup_prompt_item']);
+    assert.deepEqual(routedTools(promptItemApply), ['write_risup_prompt_item_batch']);
     assert.ok(nestedArray(promptItemApply.next_actions, 'prompt item next actions').includes('validate_content'));
     const promptItemReadAfter = await callJson(recoveryRuntime, 'read_content', {
       target: activeTarget,
@@ -1580,18 +1600,21 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       operations: [
         {
           op: 'delete_item',
-          selector: { family: 'risup-prompt', index: 1 },
+          selector: { family: 'risup-prompt', indices: [1] },
         },
       ],
     });
-    assert.deepEqual(routedTools(promptItemDeletePreview), ['read_risup_prompt_item', 'delete_risup_prompt_item']);
+    assert.deepEqual(routedTools(promptItemDeletePreview), [
+      'list_risup_prompt_items',
+      'batch_delete_risup_prompt_items',
+    ]);
     const promptItemDeleteGuards = nestedArray(
       nestedRecord(promptItemDeletePreview.result, 'prompt item delete preview result').guard_values,
       'prompt item delete guard values',
     );
     assert.ok(
-      promptItemDeleteGuards.some((guard) => nestedRecord(guard, 'prompt item delete guard').name === 'expected_type'),
-      'prompt item delete preview should derive expected_type',
+      promptItemDeleteGuards.some((guard) => nestedRecord(guard, 'prompt item delete guard').name === 'expected_types'),
+      'prompt item batch delete preview should derive expected_types',
     );
     const promptItemDeletePreviewInfo = nestedRecord(promptItemDeletePreview.preview, 'prompt item delete preview');
     facadeOnlyCalls.push('apply_edit');
@@ -1600,7 +1623,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       operation_digest: promptItemDeletePreviewInfo.operation_digest,
       target: activeTarget,
     });
-    assert.deepEqual(routedTools(promptItemDeleteApply), ['delete_risup_prompt_item']);
+    assert.deepEqual(routedTools(promptItemDeleteApply), ['batch_delete_risup_prompt_items']);
     const promptItemsAfterDelete = await callJson(recoveryRuntime, 'read_content', {
       target: activeTarget,
       selectors: [{ family: 'risup-prompt' }],
@@ -1872,11 +1895,11 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       surfaces?: Array<{ target?: string; [key: string]: unknown }>;
     };
 
-    assert.equal(parsed.totalMatches, 5);
-    assert.equal(parsed.surfaces?.length, 5);
+    assert.equal(parsed.totalMatches, 4);
+    assert.equal(parsed.surfaces?.length, 4);
     assert.deepEqual(
       parsed.surfaces?.map((surface) => surface.target).sort(),
-      ['field:description', 'field:firstMessage', 'greeting:alternate:0', 'greeting:groupOnly:0', 'lorebook:0'].sort(),
+      ['field:description', 'field:firstMessage', 'greeting:alternate:0', 'lorebook:0'].sort(),
     );
 
     const surfacesByTarget = mapSurfacesByTarget(parsed.surfaces ?? []);
@@ -1905,16 +1928,6 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       totalMatches: 1,
       returnedMatches: 1,
       firstMatch: 'Alpha',
-    });
-    assertSurfaceSummary(surfacesByTarget.get('greeting:groupOnly:0'), {
-      surfaceType: 'greeting',
-      target: 'greeting:groupOnly:0',
-      field: 'groupOnlyGreetings',
-      greetingType: 'groupOnly',
-      index: 0,
-      totalMatches: 1,
-      returnedMatches: 1,
-      firstMatch: 'alpha',
     });
     assertSurfaceSummary(surfacesByTarget.get('lorebook:0'), {
       surfaceType: 'lorebook',

@@ -150,27 +150,61 @@ function appendInvalidRawEditor(
 type UpdateItemFn = (index: number, updater: (item: PromptItemModel) => PromptItemModel) => void;
 
 const ROLE_OPTIONS = [
-  { value: 'system', label: 'system' },
-  { value: 'user', label: 'user' },
-  { value: 'bot', label: 'bot' },
+  { value: 'system', label: '시스템' },
+  { value: 'user', label: '유저' },
+  { value: 'bot', label: '봇' },
 ];
 const TYPE2_OPTIONS = [
-  { value: 'normal', label: 'normal' },
-  { value: 'globalNote', label: 'globalNote' },
-  { value: 'main', label: 'main' },
+  { value: 'normal', label: '일반' },
+  { value: 'globalNote', label: '글로벌 노트' },
+  { value: 'main', label: '메인' },
 ];
 const CACHE_ROLE_OPTIONS = [
-  { value: 'user', label: 'user' },
-  { value: 'assistant', label: 'assistant' },
-  { value: 'system', label: 'system' },
-  { value: 'all', label: 'all' },
+  { value: 'user', label: '유저' },
+  { value: 'assistant', label: '어시스턴트' },
+  { value: 'system', label: '시스템' },
+  { value: 'all', label: '전체' },
 ];
-const PROMPT_TYPE_OPTIONS = SUPPORTED_PROMPT_ITEM_TYPES.map((type) => ({ value: type, label: type }));
+const PROMPT_TYPE_LABELS: Record<SupportedPromptItemType, string> = {
+  plain: '일반 프롬프트',
+  jailbreak: '탈옥 프롬프트',
+  cot: '생각의 사슬',
+  chatML: 'ChatML',
+  persona: '페르소나',
+  description: '캐릭터 설명',
+  lorebook: '로어북',
+  postEverything: '최후 삽입',
+  memory: '메모리',
+  authornote: '작가 노트',
+  chat: '채팅',
+  cache: '캐시',
+};
+const PROMPT_TYPE_OPTIONS = SUPPORTED_PROMPT_ITEM_TYPES.map((type) => ({
+  value: type,
+  label: PROMPT_TYPE_LABELS[type],
+}));
 const PROMPT_ADD_MENU_GROUPS: SupportedPromptItemType[][] = [
   ['plain', 'jailbreak', 'cot', 'chatML'],
   ['persona', 'description', 'lorebook', 'postEverything', 'memory'],
   ['authornote', 'chat', 'cache'],
 ];
+
+function promptTypeLabel(type: string | undefined): string {
+  return type && type in PROMPT_TYPE_LABELS ? PROMPT_TYPE_LABELS[type as SupportedPromptItemType] : (type ?? 'unknown');
+}
+
+function optionLabel(options: { value: string; label: string }[], value: string): string {
+  return options.find((option) => option.value === value)?.label ?? value;
+}
+
+function appendInlineSelectField(row: HTMLElement, labelText: string, select: HTMLSelectElement): void {
+  const field = document.createElement('div');
+  field.className = 'prompt-editor-inline-field';
+  const label = makeLabel(labelText);
+  field.appendChild(label);
+  field.appendChild(select);
+  row.appendChild(field);
+}
 
 function showPromptAddMenu(anchor: HTMLElement, onSelect: (type: SupportedPromptItemType) => void): void {
   const rect = anchor.getBoundingClientRect();
@@ -179,7 +213,7 @@ function showPromptAddMenu(anchor: HTMLElement, onSelect: (type: SupportedPrompt
     const group = PROMPT_ADD_MENU_GROUPS[groupIndex];
     for (const type of group) {
       menuItems.push({
-        label: type,
+        label: PROMPT_TYPE_LABELS[type],
         action: () => {
           onSelect(type);
         },
@@ -195,6 +229,10 @@ function showPromptAddMenu(anchor: HTMLElement, onSelect: (type: SupportedPrompt
 function previewText(text: string | undefined): string {
   const normalized = (text ?? '').replace(/\s+/g, ' ').trim();
   return normalized.length > 48 ? `${normalized.slice(0, 48)}...` : normalized;
+}
+
+function promptItemNameSummary(item: PromptItemModel): string {
+  return item.supported && 'name' in item ? previewText(item.name) : '';
 }
 
 function normalizePromptSearchQuery(query: string): string {
@@ -225,6 +263,9 @@ function promptItemSummary(item: PromptItemModel): string {
     return `지원되지 않는 ${item.type ?? 'unknown'} 항목`;
   }
 
+  const nameSummary = promptItemNameSummary(item);
+  if (nameSummary) return nameSummary;
+
   switch (item.type) {
     case 'plain':
     case 'jailbreak':
@@ -238,11 +279,11 @@ function promptItemSummary(item: PromptItemModel): string {
     case 'memory':
       return previewText(item.innerFormat ?? item.name) || '(비어 있음)';
     case 'authornote':
-      return previewText(item.defaultText ?? item.innerFormat ?? item.name) || '(비어 있음)';
+      return previewText(item.defaultText ?? item.innerFormat) || '(비어 있음)';
     case 'chat':
-      return `range ${item.rangeStart}..${item.rangeEnd}${item.name ? ` • ${item.name}` : ''}`;
+      return `range ${item.rangeStart}..${item.rangeEnd}`;
     case 'cache':
-      return `${item.name || '(이름 없음)'} • depth ${item.depth} • ${item.role}`;
+      return `${item.name || '(이름 없음)'} • depth ${item.depth} • ${optionLabel(CACHE_ROLE_OPTIONS, item.role)}`;
   }
 }
 
@@ -260,7 +301,7 @@ function renderItemFields(
   if (!item.supported) {
     const warn = document.createElement('div');
     warn.className = 'prompt-item-unsupported prompt-editor-message';
-    warn.textContent = `⚠ 지원하지 않는 항목 (type: ${item.type ?? 'unknown'})`;
+    warn.textContent = `⚠ 지원하지 않는 항목 (type: ${promptTypeLabel(item.type)})`;
     container.appendChild(warn);
     const ta = makeTextarea(JSON.stringify(item.rawValue, null, 2), true, () => undefined, undefined, 4);
     ta.classList.add('prompt-editor-raw');
@@ -285,8 +326,11 @@ function renderItemFields(
           5,
         ),
       );
-      container.appendChild(makeLabel('역할'));
-      container.appendChild(
+      const metaRow = document.createElement('div');
+      metaRow.className = 'prompt-editor-inline-row';
+      appendInlineSelectField(
+        metaRow,
+        '역할',
         makeSelect(
           ROLE_OPTIONS,
           plain.role,
@@ -297,8 +341,9 @@ function renderItemFields(
           'role',
         ),
       );
-      container.appendChild(makeLabel('type2'));
-      container.appendChild(
+      appendInlineSelectField(
+        metaRow,
+        'Type2',
         makeSelect(
           TYPE2_OPTIONS,
           plain.type2,
@@ -309,6 +354,7 @@ function renderItemFields(
           'type2',
         ),
       );
+      container.appendChild(metaRow);
       container.appendChild(makeLabel('이름 (선택)'));
       container.appendChild(
         makeInput(
@@ -506,8 +552,11 @@ function renderItemFields(
           'depth',
         ),
       );
-      container.appendChild(makeLabel('역할'));
-      container.appendChild(
+      const metaRow = document.createElement('div');
+      metaRow.className = 'prompt-editor-inline-row';
+      appendInlineSelectField(
+        metaRow,
+        '역할',
         makeSelect(
           CACHE_ROLE_OPTIONS,
           cache.role,
@@ -518,6 +567,7 @@ function renderItemFields(
           'role',
         ),
       );
+      container.appendChild(metaRow);
       break;
     }
   }
@@ -764,7 +814,7 @@ export function createPromptTemplateEditor(
       } else {
         const typeLabel = document.createElement('span');
         typeLabel.className = 'prompt-item-type prompt-editor-type-label';
-        typeLabel.textContent = item.type ?? '(알 수 없음)';
+        typeLabel.textContent = promptTypeLabel(item.type);
         header.appendChild(typeLabel);
       }
 

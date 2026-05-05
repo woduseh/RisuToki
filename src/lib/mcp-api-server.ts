@@ -65,9 +65,13 @@ import {
   SUPPORTED_EXTERNAL_FILE_TYPES,
   buildFieldBatchReadResults,
   buildFieldReadResponsePayload,
+  collectHiddenFieldWarnings,
   getFieldAccessRules,
+  getHiddenFieldInfo,
   getStringMutationFieldStatus,
   getUnknownFieldHint,
+  isHiddenField,
+  redactHiddenFields,
   type SupportedFileType,
 } from './mcp-field-access';
 
@@ -484,10 +488,24 @@ function buildReferenceFieldReadPayload(
   }
 
   const rules = getFieldAccessRules(refData);
+  if (isHiddenField(refData, fieldName)) {
+    return null;
+  }
   if (!rules.allowedFields.includes(fieldName)) {
     return null;
   }
   return buildFieldReadResponsePayload(refData, fieldName, deps);
+}
+
+function referenceDataWithFileType(ref: {
+  data?: unknown;
+  fileName?: unknown;
+  filePath?: unknown;
+}): Record<string, unknown> {
+  const data =
+    ref.data && typeof ref.data === 'object' && !Array.isArray(ref.data) ? (ref.data as Record<string, unknown>) : {};
+  if (data._fileType === 'risum' || data._fileType === 'risup') return data;
+  return { ...data, _fileType: getRefFileType(ref as Parameters<typeof getRefFileType>[0]) };
 }
 
 function getRisupStructuredFieldError(fieldName: string, content: unknown): string | null {
@@ -725,6 +743,79 @@ function getPointerValue(root: unknown, pointer: string | undefined): unknown {
   return current;
 }
 
+function getFieldMutationBlock(
+  currentData: Record<string, unknown>,
+  fieldName: string,
+): { message: string; suggestion: string } | null {
+  const rules = getFieldAccessRules(currentData);
+  if (rules.readOnlyFields.includes(fieldName)) {
+    return {
+      message: `"${fieldName}" 필드는 읽기 전용입니다.`,
+      suggestion: '이 필드는 비권장/예약 호환 필드이거나 시스템 관리 필드라 수정할 수 없습니다.',
+    };
+  }
+  if (rules.deprecatedFields.includes(fieldName)) {
+    return {
+      message: `"${fieldName}" 필드는 deprecated/비권장 필드라 수정할 수 없습니다.`,
+      suggestion: '최신 필드나 전용 구조화 도구를 사용하고 이 필드는 호환 읽기 용도로만 유지하세요.',
+    };
+  }
+  return null;
+}
+
+function getHiddenFieldReadBlock(
+  currentData: Record<string, unknown>,
+  fieldName: string,
+): { message: string; suggestion: string; category: string } | null {
+  const hidden = getHiddenFieldInfo(currentData, fieldName);
+  if (!hidden) return null;
+  return {
+    category: hidden.category,
+    message: `"${fieldName}" 필드는 ${hidden.reason}라 일반 조회에서 숨겨집니다.`,
+    suggestion: hidden.suggestion,
+  };
+}
+
+function getSurfaceReadBlock(
+  currentData: Record<string, unknown>,
+  pointer: string,
+): { fieldName: string; message: string; suggestion: string; category: string } | null {
+  const topLevel = parseJsonPointer(pointer)[0];
+  if (!topLevel) return null;
+  const block = getHiddenFieldReadBlock(currentData, topLevel);
+  return block ? { fieldName: topLevel, ...block } : null;
+}
+
+function getSurfaceMutationBlock(
+  currentData: Record<string, unknown>,
+  pointer: string,
+): { fieldName: string; message: string; suggestion: string } | null {
+  const topLevel = parseJsonPointer(pointer)[0];
+  if (!topLevel) {
+    return {
+      fieldName: '/',
+      message: '문서 루트 surface는 직접 수정할 수 없습니다.',
+      suggestion: '비권장/읽기 전용 필드 보호를 위해 수정 가능한 top-level path를 지정하세요.',
+    };
+  }
+  const block = getFieldMutationBlock(currentData, topLevel);
+  return block ? { fieldName: topLevel, ...block } : null;
+}
+
+function getSurfacePatchMutationBlock(
+  currentData: Record<string, unknown>,
+  operations: unknown[],
+): { fieldName: string; message: string; suggestion: string } | null {
+  for (const rawOp of operations) {
+    if (!rawOp || typeof rawOp !== 'object') continue;
+    const pathValue = (rawOp as Record<string, unknown>).path;
+    if (typeof pathValue !== 'string') continue;
+    const block = getSurfaceMutationBlock(currentData, pathValue);
+    if (block) return block;
+  }
+  return null;
+}
+
 function getPointerParent(root: unknown, pointer: string): { parent: unknown; key: string } {
   const tokens = parseJsonPointer(pointer);
   if (tokens.length === 0) throw new Error('Cannot mutate the document root with this operation');
@@ -813,12 +904,17 @@ function applySurfacePatch(
 
 function buildSurfaceList(data: Record<string, unknown>, fileType: SupportedFileType): Record<string, unknown>[] {
   const rules = getFieldAccessRules(data);
+  const surfaceWritableFields = rules.allowedFields.filter(
+    (field) =>
+      !rules.readOnlyFields.includes(field) &&
+      !rules.deprecatedFields.includes(field) &&
+      !rules.hiddenFields.includes(field),
+  );
   const names = new Set<string>([
-    ...rules.allowedFields,
+    ...surfaceWritableFields,
     'lorebook',
     'regex',
     'alternateGreetings',
-    'groupOnlyGreetings',
     'triggerScripts',
     'lua',
     'css',
@@ -828,6 +924,9 @@ function buildSurfaceList(data: Record<string, unknown>, fileType: SupportedFile
     '_risuExt',
     '_moduleData',
   ]);
+  for (const hiddenField of rules.hiddenFields) {
+    names.delete(hiddenField);
+  }
   if (fileType === 'risup') {
     names.add('promptTemplate');
     names.add('formatingOrder');
@@ -1425,7 +1524,7 @@ function buildTriggerListResponse(triggerScripts: unknown): Record<string, unkno
 function buildFieldInventory(
   currentData: Record<string, unknown>,
   deps: Pick<McpApiDeps, 'stringifyTriggerScripts'>,
-): { fileType: SupportedFileType; fields: Record<string, unknown>[] } {
+): { fileType: SupportedFileType; fields: Record<string, unknown>[]; hiddenFieldWarnings: Record<string, unknown>[] } {
   const fileType: SupportedFileType =
     currentData._fileType === 'risum' || currentData._fileType === 'risup' ? currentData._fileType : 'charx';
   const isRisum = fileType === 'risum';
@@ -1460,15 +1559,6 @@ function buildFieldInventory(
     count: Array.isArray(currentData.alternateGreetings) ? currentData.alternateGreetings.length : 0,
     type: 'array',
   });
-  if (isCharx) {
-    fields.push({
-      name: 'groupOnlyGreetings',
-      count: Array.isArray((currentData as any).groupOnlyGreetings)
-        ? (currentData as any).groupOnlyGreetings.length
-        : 0,
-      type: 'array',
-    });
-  }
   fields.push({
     name: 'lorebook',
     count: Array.isArray(currentData.lorebook) ? currentData.lorebook.length : 0,
@@ -1481,30 +1571,12 @@ function buildFieldInventory(
     for (const fieldName of charxStringFields) {
       fields.push({ name: fieldName, size: String(currentData[fieldName] || '').length, type: 'string' });
     }
-    const charxReadOnlyFields = ['personality', 'scenario', 'nickname', 'additionalText', 'license'];
-    for (const fieldName of charxReadOnlyFields) {
-      const value = String(currentData[fieldName] || '');
-      if (value.length > 0) {
-        fields.push({ name: fieldName, size: value.length, type: 'string (read-only)' });
-      }
-    }
-    const readOnlyArrayFields = [
-      { name: 'tags', data: currentData.tags },
-      { name: 'source', data: currentData.source },
-    ];
-    for (const field of readOnlyArrayFields) {
-      const arr = Array.isArray(field.data) ? field.data : [];
-      if (arr.length > 0) {
-        fields.push({ name: field.name, count: arr.length, type: 'array (read-only)' });
-      }
-    }
     fields.push({ name: 'creationDate', value: currentData.creationDate ?? 0, type: 'number (read-only)' });
     fields.push({ name: 'modificationDate', value: currentData.modificationDate ?? 0, type: 'number (read-only)' });
   }
 
   if (isRisum) {
     const risumStringFields = [
-      'cjs',
       'backgroundEmbedding',
       'moduleNamespace',
       'customModuleToggle',
@@ -1522,8 +1594,6 @@ function buildFieldInventory(
 
   if (isRisup) {
     const risupStringFields = [
-      'mainPrompt',
-      'jailbreak',
       'aiModel',
       'subModel',
       'apiType',
@@ -1533,8 +1603,6 @@ function buildFieldInventory(
       'presetImage',
       'thinkingType',
       'adaptiveThinkingEffort',
-      'instructChatTemplate',
-      'JinjaTemplate',
       'customPromptTemplateToggle',
       'templateDefaultVariables',
       'moduleIntergration',
@@ -1571,7 +1639,6 @@ function buildFieldInventory(
     }
     const risupBoolFields = [
       'promptPreprocess',
-      'useInstructPrompt',
       'jsonSchemaEnabled',
       'strictJsonSchema',
       'autoSuggestClean',
@@ -1583,7 +1650,25 @@ function buildFieldInventory(
     }
   }
 
-  return { fileType, fields };
+  const rules = getFieldAccessRules(currentData);
+  const visibleFields = fields.filter(
+    (field) => typeof field.name !== 'string' || !rules.hiddenFields.includes(field.name),
+  );
+  for (const field of visibleFields) {
+    if (typeof field.name !== 'string') continue;
+    if (rules.readOnlyFields.includes(field.name) || rules.deprecatedFields.includes(field.name)) {
+      const type = typeof field.type === 'string' ? field.type : 'unknown';
+      if (!type.includes('read-only')) {
+        field.type = `${type} (read-only)`;
+      }
+    }
+  }
+
+  return {
+    fileType,
+    fields: visibleFields,
+    hiddenFieldWarnings: collectHiddenFieldWarnings(currentData).map((warning) => ({ ...warning })),
+  };
 }
 
 function sameDocumentPath(a: string, b: string): boolean {
@@ -1623,6 +1708,16 @@ function getExternalFieldAccess(currentData: Record<string, unknown>, fieldName:
   const fileType: SupportedFileType =
     currentData._fileType === 'risum' || currentData._fileType === 'risup' ? currentData._fileType : 'charx';
 
+  const mutationBlock = getFieldMutationBlock(currentData, fieldName);
+  if (mutationBlock) {
+    return {
+      allowed: false,
+      readOnly: true,
+      message: mutationBlock.message,
+      suggestion: mutationBlock.suggestion,
+    };
+  }
+
   if (fieldName === 'groupOnlyGreetings') {
     if (fileType !== 'charx') {
       return {
@@ -1631,7 +1726,12 @@ function getExternalFieldAccess(currentData: Record<string, unknown>, fieldName:
         suggestion: 'inspect_external_file 또는 probe_greetings로 사용 가능한 표면을 다시 확인하세요.',
       };
     }
-    return { allowed: true, kind: 'string-array' };
+    return {
+      allowed: false,
+      readOnly: true,
+      message: `"${fieldName}" 필드는 deprecated/비권장 필드라 수정할 수 없습니다.`,
+      suggestion: 'groupOnlyGreetings는 호환 읽기 용도로만 유지됩니다. alternateGreetings를 사용하세요.',
+    };
   }
 
   if (fieldName === 'lorebook') {
@@ -1647,15 +1747,6 @@ function getExternalFieldAccess(currentData: Record<string, unknown>, fieldName:
 
   if (fieldName === 'regex') {
     return { allowed: true, kind: 'regex' };
-  }
-
-  if (rules.readOnlyFields.includes(fieldName) || rules.deprecatedFields.includes(fieldName)) {
-    return {
-      allowed: false,
-      readOnly: true,
-      message: `"${fieldName}" 필드는 읽기 전용입니다.`,
-      suggestion: '이 필드는 수정할 수 없습니다.',
-    };
   }
 
   if (!rules.allowedFields.includes(fieldName)) {
@@ -1675,6 +1766,7 @@ function getExternalFieldAccess(currentData: Record<string, unknown>, fieldName:
 
 function isExternalReadableStringField(currentData: Record<string, unknown>, fieldName: string): boolean {
   const rules = getFieldAccessRules(currentData);
+  if (isHiddenField(currentData, fieldName)) return false;
   if (!rules.allowedFields.includes(fieldName)) return false;
   if (BOOLEAN_FIELD_NAMES.includes(fieldName) || NUMBER_FIELD_NAMES.includes(fieldName)) return false;
   return !['alternateGreetings', 'triggerScripts', 'lorebook', 'regex'].includes(fieldName);
@@ -2149,16 +2241,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             name: String(probe.data.name || path.basename(probe.filePath)),
             fieldCount: inventory.fields.length,
             fields: inventory.fields,
+            hiddenFieldWarnings: inventory.hiddenFieldWarnings,
             surfaceCounts: {
               lorebook: Array.isArray(probe.data.lorebook) ? probe.data.lorebook.length : 0,
               regex: Array.isArray(probe.data.regex) ? probe.data.regex.length : 0,
               alternateGreetings: Array.isArray(probe.data.alternateGreetings)
                 ? probe.data.alternateGreetings.length
                 : 0,
-              groupOnlyGreetings:
-                probe.fileType === 'charx' && Array.isArray((probe.data as Record<string, unknown>).groupOnlyGreetings)
-                  ? ((probe.data as Record<string, unknown>).groupOnlyGreetings as unknown[]).length
-                  : 0,
               triggerScripts: Array.isArray(probe.data.triggerScripts) ? probe.data.triggerScripts.length : 0,
               cssSections: (cssSections as { count?: number }).count ?? 0,
               luaSections: (luaSections as { count?: number }).count ?? 0,
@@ -2462,6 +2551,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           `external:field:${fieldName}`,
         );
         if (!probe) return;
+        const hiddenBlock = getHiddenFieldReadBlock(probe.data, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'external search in field',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `external:field:${fieldName}`,
+          });
+        }
         if (!isExternalReadableStringField(probe.data, fieldName)) {
           return mcpError(res, 400, {
             action: 'external search in field',
@@ -2543,6 +2641,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           `external:field:${fieldName}`,
         );
         if (!probe) return;
+        const hiddenBlock = getHiddenFieldReadBlock(probe.data, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'external read field range',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `external:field:${fieldName}`,
+          });
+        }
         if (!isExternalReadableStringField(probe.data, fieldName)) {
           return mcpError(res, 400, {
             action: 'external read field range',
@@ -2608,6 +2715,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             action: 'external replace in field',
             message: 'The requested file is already open in the UI session.',
             suggestion: '현재 열린 문서는 external_* 대신 기존 replace_in_field 도구를 사용하세요.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+        const writeAccess = getExternalFieldAccess(probe.data, fieldName);
+        if (!writeAccess.allowed || writeAccess.kind !== 'string') {
+          return mcpError(res, 400, {
+            action: 'external replace in field',
+            message: writeAccess.message || `"${fieldName}" 필드는 외부 문자열 치환을 지원하지 않습니다.`,
+            suggestion:
+              writeAccess.suggestion ||
+              '문자열 타입의 수정 가능한 필드에만 사용 가능합니다. 구조화된 표면은 external_write_field를 사용하세요.',
             target: `external:field:${fieldName}`,
           });
         }
@@ -2795,6 +2913,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             action: 'external insert in field',
             message: 'The requested file is already open in the UI session.',
             suggestion: '현재 열린 문서는 external_* 대신 기존 insert_in_field 도구를 사용하세요.',
+            target: `external:field:${fieldName}`,
+          });
+        }
+        const writeAccess = getExternalFieldAccess(probe.data, fieldName);
+        if (!writeAccess.allowed || writeAccess.kind !== 'string') {
+          return mcpError(res, 400, {
+            action: 'external insert in field',
+            message: writeAccess.message || `"${fieldName}" 필드는 외부 텍스트 삽입을 지원하지 않습니다.`,
+            suggestion:
+              writeAccess.suggestion ||
+              '문자열 타입의 수정 가능한 필드에만 사용 가능합니다. 구조화된 표면은 external_write_field를 사용하세요.',
             target: `external:field:${fieldName}`,
           });
         }
@@ -3015,8 +3144,18 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const pointer = typeof probe.body.path === 'string' ? probe.body.path : '';
+        const hiddenBlock = getSurfaceReadBlock(probe.data, pointer);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'external read surface',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `external:surface:${hiddenBlock.fieldName}`,
+          });
+        }
         try {
-          const value = getPointerValue(probe.data, pointer);
+          const value =
+            pointer && pointer !== '/' ? getPointerValue(probe.data, pointer) : redactHiddenFields(probe.data);
           return jsonResSuccess(
             res,
             {
@@ -3025,6 +3164,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               path: pointer || '/',
               value,
               hash: hashSurface(value),
+              hiddenFieldWarnings: collectHiddenFieldWarnings(probe.data),
               ...measureSurface(value),
             },
             {
@@ -3088,6 +3228,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             suggestion: 'external_read_surface로 최신 hash를 확인한 뒤 다시 시도하세요.',
             target: 'external:surface:patch',
             details: { expected_hash: expectedHash, actual_hash: beforeHash },
+          });
+        }
+        const mutationBlock = getSurfacePatchMutationBlock(probe.data, operations);
+        if (mutationBlock) {
+          return mcpError(res, 400, {
+            action: 'external patch surface',
+            message: mutationBlock.message,
+            suggestion: mutationBlock.suggestion,
+            target: `external:surface:${mutationBlock.fieldName}`,
           });
         }
         const draft = cloneJson(probe.data) as Record<string, unknown>;
@@ -3180,7 +3329,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const surfaces = buildSurfaceList(currentData, fileType);
         return jsonResSuccess(
           res,
-          { fileType, count: surfaces.length, document_hash: hashSurface(currentData), surfaces },
+          {
+            fileType,
+            count: surfaces.length,
+            document_hash: hashSurface(currentData),
+            surfaces,
+            hiddenFieldWarnings: collectHiddenFieldWarnings(currentData),
+          },
           {
             toolName: 'list_surfaces',
             summary: `Listed ${surfaces.length} editable surface(s) (${fileType})`,
@@ -3196,11 +3351,27 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const body = await readJsonBody(req, res, 'surface/read', broadcastStatus);
         if (!body) return;
         const pointer = typeof body.path === 'string' ? body.path : '';
+        const hiddenBlock = getSurfaceReadBlock(currentData, pointer);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'read surface',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `surface:${hiddenBlock.fieldName}`,
+          });
+        }
         try {
-          const value = getPointerValue(currentData, pointer);
+          const value =
+            pointer && pointer !== '/' ? getPointerValue(currentData, pointer) : redactHiddenFields(currentData);
           return jsonResSuccess(
             res,
-            { path: pointer || '/', value, hash: hashSurface(value), ...measureSurface(value) },
+            {
+              path: pointer || '/',
+              value,
+              hash: hashSurface(value),
+              hiddenFieldWarnings: collectHiddenFieldWarnings(currentData),
+              ...measureSurface(value),
+            },
             {
               toolName: 'read_surface',
               summary: `Read surface ${pointer || '/'}`,
@@ -3240,6 +3411,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             suggestion: 'read_surface 또는 list_surfaces로 최신 hash를 확인한 뒤 다시 시도하세요.',
             target: 'surface:patch',
             details: { expected_hash: expectedHash, actual_hash: beforeHash },
+          });
+        }
+        const mutationBlock = getSurfacePatchMutationBlock(currentData, operations);
+        if (mutationBlock) {
+          return mcpError(res, 400, {
+            action: 'patch surface',
+            message: mutationBlock.message,
+            suggestion: mutationBlock.suggestion,
+            target: `surface:${mutationBlock.fieldName}`,
           });
         }
         const draft = cloneJson(currentData) as Record<string, unknown>;
@@ -3324,6 +3504,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             message: 'path and find must be strings',
             suggestion: '{ "path": "/regex/0", "find": "...", "replace": "..." } 형태로 전달하세요.',
             target: 'surface:replace',
+          });
+        }
+        const mutationBlock = getSurfaceMutationBlock(currentData, body.path);
+        if (mutationBlock) {
+          return mcpError(res, 400, {
+            action: 'replace in surface',
+            message: mutationBlock.message,
+            suggestion: mutationBlock.suggestion,
+            target: `surface:${mutationBlock.fieldName}`,
           });
         }
         const replacement = typeof body.replace === 'string' ? body.replace : '';
@@ -3436,7 +3625,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const inventory = buildFieldInventory(currentData, deps);
         return jsonResSuccess(
           res,
-          { fileType: inventory.fileType, fields: inventory.fields },
+          {
+            fileType: inventory.fileType,
+            fields: inventory.fields,
+            hiddenFieldWarnings: inventory.hiddenFieldWarnings,
+          },
           {
             toolName: 'list_fields',
             summary: `Listed ${inventory.fields.length} fields (${inventory.fileType})`,
@@ -3451,8 +3644,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       if (parts[0] === 'field' && parts[1] && !parts[2] && !FIELD_RESERVED_PATHS.includes(parts[1])) {
         const fieldName = decodeURIComponent(parts[1]);
         const rules = getFieldAccessRules(currentData);
+        const hiddenBlock = getHiddenFieldReadBlock(currentData, fieldName);
 
-        if (!rules.allowedFields.includes(fieldName)) {
+        if (!hiddenBlock && !rules.allowedFields.includes(fieldName)) {
           const action = req.method === 'GET' ? 'read field' : 'update field';
           return mcpError(res, 400, {
             action,
@@ -3463,6 +3657,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (req.method === 'GET') {
+          if (hiddenBlock) {
+            return mcpError(res, 400, {
+              action: 'read field',
+              message: hiddenBlock.message,
+              suggestion: hiddenBlock.suggestion,
+              target: `field:${fieldName}`,
+            });
+          }
           const readPayload = buildFieldReadResponsePayload(currentData, fieldName, deps);
           return jsonResSuccess(res, readPayload, {
             toolName: 'read_field',
@@ -3472,6 +3674,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         if (req.method === 'POST') {
+          if (hiddenBlock) {
+            const mutationBlock = getFieldMutationBlock(currentData, fieldName) ?? hiddenBlock;
+            return mcpError(res, 400, {
+              action: 'update field',
+              message: mutationBlock.message,
+              suggestion: mutationBlock.suggestion,
+              target: `field:${fieldName}`,
+            });
+          }
           // Read-only fields check
           if (rules.readOnlyFields.includes(fieldName)) {
             return mcpError(res, 400, {
@@ -3869,7 +4080,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'replace' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName, currentData);
         if (mutationFieldStatus === 'read-only') {
           return mcpError(res, 400, {
             action: 'replace in field',
@@ -4033,7 +4244,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'block-replace' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName, currentData);
         if (mutationFieldStatus === 'read-only') {
           return mcpError(res, 400, {
             action: 'block replace in field',
@@ -4188,7 +4399,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'insert' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName, currentData);
         if (mutationFieldStatus === 'read-only') {
           return mcpError(res, 400, {
             action: 'insert in field',
@@ -4306,7 +4517,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'batch-replace' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
-        const mutationFieldStatus = getStringMutationFieldStatus(fieldName);
+        const mutationFieldStatus = getStringMutationFieldStatus(fieldName, currentData);
         if (mutationFieldStatus === 'read-only') {
           return mcpError(res, 400, {
             action: 'batch replace in field',
@@ -4517,6 +4728,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'search' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
+        const hiddenBlock = getHiddenFieldReadBlock(currentData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'search in field',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `field:${fieldName}`,
+          });
+        }
         if (!SEARCHABLE_TEXT_FIELDS.includes(fieldName as (typeof SEARCHABLE_TEXT_FIELDS)[number])) {
           return mcpError(res, 400, {
             action: 'search in field',
@@ -4581,6 +4801,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'range' && !parts[3] && req.method === 'GET') {
         const fieldName = decodeURIComponent(parts[1]);
+        const hiddenBlock = getHiddenFieldReadBlock(currentData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'read field range',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `field:${fieldName}`,
+          });
+        }
         const rangeReadableFields = [
           'name',
           'description',
@@ -4664,6 +4893,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'snapshot' && !parts[3] && req.method === 'POST') {
         const fieldName = decodeURIComponent(parts[1]);
+        const hiddenBlock = getHiddenFieldReadBlock(currentData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'snapshot field',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `field:${fieldName}`,
+          });
+        }
         const content = currentData[fieldName];
         if (content === undefined) {
           return mcpError(res, 400, {
@@ -4708,6 +4946,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'field' && parts[1] && parts[2] === 'snapshots' && !parts[3] && req.method === 'GET') {
         const fieldName = decodeURIComponent(parts[1]);
+        const hiddenBlock = getHiddenFieldReadBlock(currentData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'list snapshots',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `field:${fieldName}`,
+          });
+        }
         const snaps = fieldSnapshots.get(fieldName) || [];
         return jsonResSuccess(
           res,
@@ -7354,6 +7601,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `greetings:${greetingType}`,
           });
         }
+        const hiddenBlock = getHiddenFieldReadBlock(currentData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'list greetings',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `greetings:${greetingType}`,
+          });
+        }
         const arr: string[] = currentData[fieldName] || [];
         let items = arr.map((g: string, i: number) => {
           const entry: Record<string, unknown> = {
@@ -7418,6 +7674,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `greeting:${greetingType}`,
           });
         }
+        const hiddenBlock = getHiddenFieldReadBlock(currentData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'read greeting',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `greeting:${greetingType}`,
+          });
+        }
         const arr: string[] = currentData[fieldName] || [];
         const idx = parseInt(parts[2], 10);
         if (isNaN(idx) || idx < 0 || idx >= arr.length) {
@@ -7449,6 +7714,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             action: 'batch read greetings',
             message: `Unknown greeting type: "${greetingType}"`,
             suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}:batch`,
+          });
+        }
+        const hiddenBlock = getHiddenFieldReadBlock(currentData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'batch read greetings',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
             target: `greeting:${greetingType}:batch`,
           });
         }
@@ -7500,6 +7774,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             action: 'add greeting',
             message: `Unknown greeting type: "${greetingType}"`,
             suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}:add`,
+          });
+        }
+        const mutationBlock = getFieldMutationBlock(currentData, fieldName);
+        if (mutationBlock) {
+          return mcpError(res, 400, {
+            action: 'add greeting',
+            message: mutationBlock.message,
+            suggestion: mutationBlock.suggestion,
             target: `greeting:${greetingType}:add`,
           });
         }
@@ -7557,6 +7840,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             action: 'batch write greetings',
             message: `Unknown greeting type: "${greetingType}"`,
             suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}:batch-write`,
+          });
+        }
+        const mutationBlock = getFieldMutationBlock(currentData, fieldName);
+        if (mutationBlock) {
+          return mcpError(res, 400, {
+            action: 'batch write greetings',
+            message: mutationBlock.message,
+            suggestion: mutationBlock.suggestion,
             target: `greeting:${greetingType}:batch-write`,
           });
         }
@@ -7654,6 +7946,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `greeting:${greetingType}:reorder`,
           });
         }
+        const mutationBlock = getFieldMutationBlock(currentData, fieldName);
+        if (mutationBlock) {
+          return mcpError(res, 400, {
+            action: 'reorder greetings',
+            message: mutationBlock.message,
+            suggestion: mutationBlock.suggestion,
+            target: `greeting:${greetingType}:reorder`,
+          });
+        }
         const body = await readJsonBody(req, res, `greeting/${greetingType}/reorder`, broadcastStatus);
         if (!body) return;
         const newOrder: number[] = body.order;
@@ -7726,6 +8027,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             action: 'write greeting',
             message: `Unknown greeting type: "${greetingType}"`,
             suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}`,
+          });
+        }
+        const mutationBlock = getFieldMutationBlock(currentData, fieldName);
+        if (mutationBlock) {
+          return mcpError(res, 400, {
+            action: 'write greeting',
+            message: mutationBlock.message,
+            suggestion: mutationBlock.suggestion,
             target: `greeting:${greetingType}`,
           });
         }
@@ -7809,6 +8119,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `greeting:${greetingType}`,
           });
         }
+        const mutationBlock = getFieldMutationBlock(currentData, fieldName);
+        if (mutationBlock) {
+          return mcpError(res, 400, {
+            action: 'delete greeting',
+            message: mutationBlock.message,
+            suggestion: mutationBlock.suggestion,
+            target: `greeting:${greetingType}`,
+          });
+        }
         const arr: string[] = currentData[fieldName] || [];
         const idx = parseInt(parts[2], 10);
         if (isNaN(idx) || idx < 0 || idx >= arr.length) {
@@ -7875,6 +8194,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             action: 'batch delete greetings',
             message: `Unknown greeting type: "${greetingType}"`,
             suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}`,
+          });
+        }
+        const mutationBlock = getFieldMutationBlock(currentData, fieldName);
+        if (mutationBlock) {
+          return mcpError(res, 400, {
+            action: 'batch delete greetings',
+            message: mutationBlock.message,
+            suggestion: mutationBlock.suggestion,
             target: `greeting:${greetingType}`,
           });
         }
@@ -9229,10 +9557,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const refFiles = deps.getReferenceFiles();
         const refs = refFiles.map((r: any, i: number) => {
           const fileType = getRefFileType(r);
+          const refData = referenceDataWithFileType(r);
           const refId = r.id || r.filePath || r.fileName;
           const fields: Record<string, unknown>[] = [];
           const pushStringField = (name: string) => {
-            const value = r.data?.[name];
+            if (isHiddenField(refData, name)) return;
+            const value = refData[name];
             if (typeof value === 'string' && value) {
               fields.push({ name, size: value.length });
             }
@@ -9242,11 +9572,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           pushStringField('css');
           // Shared scalar fields
           for (const sf of REF_SCALAR_FIELDS) {
-            const val = r.data[sf.id];
+            if (isHiddenField(refData, sf.id)) continue;
+            const val = refData[sf.id];
             if (sf.isArray) {
               if (Array.isArray(val) && val.length > 0) fields.push({ name: sf.id, count: val.length, type: 'array' });
             } else if (sf.id === 'triggerScripts') {
-              if (val && val !== '[]') fields.push({ name: sf.id, size: val.length });
+              if (typeof val === 'string' && val !== '[]') fields.push({ name: sf.id, size: val.length });
             } else if (val) {
               fields.push({ name: sf.id, size: typeof val === 'string' ? val.length : 0 });
             }
@@ -9276,6 +9607,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             fileName: r.fileName,
             fileType,
             fields,
+            hiddenFieldWarnings: collectHiddenFieldWarnings(refData),
           };
         });
         return jsonResSuccess(
@@ -9320,6 +9652,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const ref = refFiles[idx];
+        const hiddenBlock = getHiddenFieldReadBlock(referenceDataWithFileType(ref), fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'list reference greetings',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `reference:${idx}:greetings:${greetingType}`,
+          });
+        }
         const arr: string[] = Array.isArray(ref.data[fieldName]) ? ref.data[fieldName] : [];
         let items = arr.map((g: string, i: number) => ({
           index: i,
@@ -9420,6 +9761,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const ref = refFiles[idx];
+        const hiddenBlock = getHiddenFieldReadBlock(referenceDataWithFileType(ref), fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'batch read reference greetings',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `reference:${idx}:greeting:${greetingType}:batch`,
+          });
+        }
         const arr: string[] = Array.isArray(ref.data[fieldName]) ? ref.data[fieldName] : [];
         const items = indices.map((entryIdx: number) => {
           if (typeof entryIdx !== 'number' || entryIdx < 0 || entryIdx >= arr.length) return null;
@@ -9477,6 +9827,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
         const ref = refFiles[idx];
+        const hiddenBlock = getHiddenFieldReadBlock(referenceDataWithFileType(ref), fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'read reference greeting',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `reference:${idx}:greeting:${greetingType}`,
+          });
+        }
         const arr: string[] = Array.isArray(ref.data[fieldName]) ? ref.data[fieldName] : [];
         const entryIdx = parseInt(parts[4], 10);
         if (isNaN(entryIdx) || entryIdx < 0 || entryIdx >= arr.length) {
@@ -10286,9 +10645,19 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         const ref = refFiles[idx];
-        const refData = (ref.data || {}) as Record<string, unknown>;
+        const refData = referenceDataWithFileType(ref);
         const rules = getFieldAccessRules(refData);
         const results = fields.map((fieldName) => {
+          const hidden = getHiddenFieldInfo(refData, fieldName);
+          if (hidden) {
+            return {
+              field: fieldName,
+              hidden: true,
+              category: hidden.category,
+              error: `Hidden deprecated/reserved/legacy field: ${fieldName}`,
+              suggestion: hidden.suggestion,
+            };
+          }
           const payload = buildReferenceFieldReadPayload(refData, fieldName, deps);
           if (payload) {
             return payload;
@@ -10347,7 +10716,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (!parsed) return;
 
         const ref = refFiles[idx];
-        const refData = (ref.data || {}) as Record<string, unknown>;
+        const refData = referenceDataWithFileType(ref);
+        const hiddenBlock = getHiddenFieldReadBlock(refData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'search in reference field',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `reference:${idx}:field:${fieldName}:search`,
+          });
+        }
         const content = normalizeLF(
           typeof refData[fieldName] === 'string' ? refData[fieldName] : String(refData[fieldName] ?? ''),
         );
@@ -10424,7 +10802,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         const ref = refFiles[idx];
-        const refData = (ref.data || {}) as Record<string, unknown>;
+        const refData = referenceDataWithFileType(ref);
+        const hiddenBlock = getHiddenFieldReadBlock(refData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'read reference field range',
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `reference:${idx}:field:${fieldName}:range`,
+          });
+        }
         const content = typeof refData[fieldName] === 'string' ? refData[fieldName] : String(refData[fieldName] ?? '');
         const MAX_RANGE_LENGTH = 10000;
         const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
@@ -10482,7 +10869,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
 
-        const refData = (ref.data || {}) as Record<string, unknown>;
+        const refData = referenceDataWithFileType(ref);
         const rawText = typeof refData.promptTemplate === 'string' ? refData.promptTemplate : '';
         const model = parsePromptTemplate(rawText);
         if (model.state === 'invalid') {
@@ -10580,7 +10967,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
 
-        const refData = (ref.data || {}) as Record<string, unknown>;
+        const refData = referenceDataWithFileType(ref);
         const rawText = typeof refData.promptTemplate === 'string' ? refData.promptTemplate : '';
         const model = parsePromptTemplate(rawText);
         if (model.state === 'invalid') {
@@ -10658,7 +11045,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
 
-        const refData = (ref.data || {}) as Record<string, unknown>;
+        const refData = referenceDataWithFileType(ref);
         const rawText = typeof refData.promptTemplate === 'string' ? refData.promptTemplate : '';
         const model = parsePromptTemplate(rawText);
         if (model.state === 'invalid') {
@@ -10775,6 +11162,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const ref = refFiles[idx];
         const refData = (ref.data || {}) as Record<string, unknown>;
         const rules = getFieldAccessRules(refData);
+        const hiddenBlock = getHiddenFieldReadBlock(refData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: 'read reference field',
+            target: `reference:${idx}:${fieldName}`,
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+          });
+        }
         const payload = buildReferenceFieldReadPayload(refData, fieldName, deps);
         if (!payload) {
           return mcpError(res, 400, {

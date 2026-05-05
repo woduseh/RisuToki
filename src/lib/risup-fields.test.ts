@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   RISUP_FIELD_GROUPS,
+  RISUP_DISABLEABLE_NUMBER_FIELD_IDS,
+  RISUP_LEGACY_FIELD_IDS,
   RISUP_JSON_FIELD_IDS,
   getRisupFieldGroup,
   getVisibleRisupFieldGroups,
+  isRisupDisableableNumberFieldId,
   isRisupEditableFieldId,
 } from './risup-fields';
 
@@ -45,6 +48,10 @@ describe('risup field metadata', () => {
 
   it('moves useInstructPrompt/instructChatTemplate/JinjaTemplate to the legacy prompts group', () => {
     const promptsFields = getRisupFieldGroup('prompts')?.fields.map((f) => f.id) ?? [];
+    expect(promptsFields).toEqual([...RISUP_LEGACY_FIELD_IDS]);
+    expect(promptsFields).toContain('mainPrompt');
+    expect(promptsFields).toContain('jailbreak');
+    expect(promptsFields).toContain('globalNote');
     expect(promptsFields).toContain('useInstructPrompt');
     expect(promptsFields).toContain('instructChatTemplate');
     expect(promptsFields).toContain('JinjaTemplate');
@@ -71,14 +78,12 @@ describe('risup field metadata', () => {
     expect(getRisupFieldGroup('templates')).toBeDefined();
   });
 
-  it('defines unique editable fields for risup groups without charx-only fields', () => {
+  it('defines unique risup fields without charx-only fields while excluding legacy fields from editing', () => {
     const ids = RISUP_FIELD_GROUPS.flatMap((group) => group.fields.map((field) => field.id));
 
     expect(ids).toEqual(
       expect.arrayContaining([
         'name',
-        'mainPrompt',
-        'globalNote',
         'aiModel',
         'temperature',
         'promptTemplate',
@@ -92,6 +97,11 @@ describe('risup field metadata', () => {
     expect(ids).not.toContain('lorebook');
     expect(ids).not.toContain('triggerScripts');
     expect(new Set(ids).size).toBe(ids.length);
+    for (const fieldId of RISUP_LEGACY_FIELD_IDS) {
+      expect(ids).toContain(fieldId);
+      expect(isRisupEditableFieldId(fieldId)).toBe(false);
+    }
+    expect(isRisupEditableFieldId('promptTemplate')).toBe(true);
   });
 
   it('exposes known groups and json-backed fields that need validation', () => {
@@ -105,5 +115,29 @@ describe('risup field metadata', () => {
     for (const fieldId of RISUP_JSON_FIELD_IDS) {
       expect(isRisupEditableFieldId(fieldId)).toBe(true);
     }
+  });
+
+  it('tracks RisuAI disableable numeric fields separately from regular numeric fields', () => {
+    const fieldById = new Map(RISUP_FIELD_GROUPS.flatMap((group) => group.fields).map((field) => [field.id, field]));
+
+    expect(RISUP_DISABLEABLE_NUMBER_FIELD_IDS).toEqual([
+      'temperature',
+      'frequencyPenalty',
+      'presencePenalty',
+      'top_p',
+      'top_k',
+      'min_p',
+      'top_a',
+      'repetition_penalty',
+      'reasonEffort',
+      'thinkingTokens',
+      'verbosity',
+    ]);
+    for (const fieldId of RISUP_DISABLEABLE_NUMBER_FIELD_IDS) {
+      expect(fieldById.get(fieldId)?.editor).toBe('number');
+      expect(isRisupDisableableNumberFieldId(fieldId)).toBe(true);
+    }
+    expect(isRisupDisableableNumberFieldId('maxContext')).toBe(false);
+    expect(isRisupDisableableNumberFieldId('maxResponse')).toBe(false);
   });
 });

@@ -31,6 +31,21 @@ vi.mock('./risup-fields', () => ({
     icon: '⚙️',
     fields: [],
   })),
+  isRisupDisableableNumberFieldId: vi.fn((id: string) =>
+    [
+      'temperature',
+      'frequencyPenalty',
+      'presencePenalty',
+      'top_p',
+      'top_k',
+      'min_p',
+      'top_a',
+      'repetition_penalty',
+      'reasonEffort',
+      'thinkingTokens',
+      'verbosity',
+    ].includes(id),
+  ),
 }));
 vi.mock('./risup-form-editor', () => ({
   coerceRisupInputValue: vi.fn((_, v: unknown) => v),
@@ -317,5 +332,157 @@ describe('showRisupEditor validation boxes', () => {
     expect(mockToggleEditor).toHaveBeenCalledTimes(1);
     const container = document.getElementById('editor-container')!;
     expect(container.querySelector('.toggle-template-editor-container')).not.toBeNull();
+  });
+
+  it('shows disabled-sentinel risup number values as 비활성화 for disableable fields', async () => {
+    const { validateRisupDraftFields: mockValidate } = await import('./risup-form-editor');
+    const { getRisupFieldGroup: mockGetGroup } = await import('./risup-fields');
+    vi.mocked(mockGetGroup).mockReturnValue({
+      id: 'parameters',
+      label: '기본 파라미터',
+      icon: '🎛',
+      fields: [{ id: 'temperature', label: '온도', editor: 'number', step: '0.1' }],
+    });
+    vi.mocked(mockValidate).mockReturnValue([]);
+
+    const deps = createDeps();
+    initFormEditor(deps);
+    showRisupEditor(
+      makeRisupTab({
+        _risupGroupId: 'parameters',
+        getValue: () => ({ temperature: -1000 }),
+      }),
+    );
+
+    const input = document.querySelector<HTMLInputElement>('.form-number')!;
+    expect(input.value).toBe('비활성화');
+    expect(input.type).toBe('text');
+  });
+
+  it('keeps normal risup number values numeric for disableable fields', async () => {
+    const { validateRisupDraftFields: mockValidate } = await import('./risup-form-editor');
+    const { getRisupFieldGroup: mockGetGroup } = await import('./risup-fields');
+    vi.mocked(mockGetGroup).mockReturnValue({
+      id: 'parameters',
+      label: '기본 파라미터',
+      icon: '🎛',
+      fields: [{ id: 'temperature', label: '온도', editor: 'number', step: '0.1' }],
+    });
+    vi.mocked(mockValidate).mockReturnValue([]);
+
+    const deps = createDeps();
+    initFormEditor(deps);
+    showRisupEditor(
+      makeRisupTab({
+        _risupGroupId: 'parameters',
+        getValue: () => ({ temperature: 0.8 }),
+      }),
+    );
+
+    const input = document.querySelector<HTMLInputElement>('.form-number')!;
+    expect(input.value).toBe('0.8');
+    expect(input.type).toBe('number');
+    expect(document.querySelector<HTMLButtonElement>('.form-disable-number-btn')?.textContent).toBe('비활성화');
+  });
+
+  it('keeps -1000 literal for non-disableable risup number fields', async () => {
+    const { validateRisupDraftFields: mockValidate } = await import('./risup-form-editor');
+    const { getRisupFieldGroup: mockGetGroup } = await import('./risup-fields');
+    vi.mocked(mockGetGroup).mockReturnValue({
+      id: 'parameters',
+      label: '기본 파라미터',
+      icon: '🎛',
+      fields: [{ id: 'maxContext', label: '최대 컨텍스트', editor: 'number', step: '1' }],
+    });
+    vi.mocked(mockValidate).mockReturnValue([]);
+
+    const deps = createDeps();
+    initFormEditor(deps);
+    showRisupEditor(
+      makeRisupTab({
+        _risupGroupId: 'parameters',
+        getValue: () => ({ maxContext: -1000 }),
+      }),
+    );
+
+    const input = document.querySelector<HTMLInputElement>('.form-number')!;
+    expect(input.value).toBe('-1000');
+    expect(input.type).toBe('number');
+    expect(document.querySelector('.form-disable-number-btn')).toBeNull();
+  });
+
+  it('sets a disableable risup number field to -1000 when the disable button is clicked', async () => {
+    const { validateRisupDraftFields: mockValidate } = await import('./risup-form-editor');
+    const { getRisupFieldGroup: mockGetGroup } = await import('./risup-fields');
+    vi.mocked(mockGetGroup).mockReturnValue({
+      id: 'parameters',
+      label: '기본 파라미터',
+      icon: '🎛',
+      fields: [{ id: 'temperature', label: '온도', editor: 'number', step: '0.1' }],
+    });
+    vi.mocked(mockValidate).mockReturnValue([]);
+
+    const data = { temperature: 0.8 };
+    const setValue = vi.fn();
+    const deps = createDeps();
+    initFormEditor(deps);
+    showRisupEditor(
+      makeRisupTab({
+        _risupGroupId: 'parameters',
+        getValue: () => data,
+        setValue,
+      }),
+    );
+
+    const input = document.querySelector<HTMLInputElement>('.form-number')!;
+    const disableButton = document.querySelector<HTMLButtonElement>('.form-disable-number-btn')!;
+    disableButton.click();
+
+    expect(data.temperature).toBe(-1000);
+    expect(setValue).toHaveBeenCalledWith(data);
+    expect(input.value).toBe('비활성화');
+    expect(input.type).toBe('text');
+  });
+
+  it('changes a disabled-sentinel risup number field back to a real number', async () => {
+    const { coerceRisupInputValue: mockCoerce, validateRisupDraftFields: mockValidate } =
+      await import('./risup-form-editor');
+    const { getRisupFieldGroup: mockGetGroup } = await import('./risup-fields');
+    vi.mocked(mockCoerce).mockImplementation((kind, value) => {
+      if (kind === 'number') {
+        const next = Number.parseFloat(String(value));
+        return Number.isFinite(next) ? next : undefined;
+      }
+      return String(value);
+    });
+    vi.mocked(mockGetGroup).mockReturnValue({
+      id: 'parameters',
+      label: '기본 파라미터',
+      icon: '🎛',
+      fields: [{ id: 'temperature', label: '온도', editor: 'number', step: '0.1' }],
+    });
+    vi.mocked(mockValidate).mockReturnValue([]);
+
+    const data = { temperature: -1000 };
+    const setValue = vi.fn();
+    const deps = createDeps();
+    initFormEditor(deps);
+    showRisupEditor(
+      makeRisupTab({
+        _risupGroupId: 'parameters',
+        getValue: () => data,
+        setValue,
+      }),
+    );
+
+    const input = document.querySelector<HTMLInputElement>('.form-number')!;
+    input.dispatchEvent(new Event('focus'));
+    expect(input.value).toBe('');
+
+    input.value = '0.9';
+    input.dispatchEvent(new Event('input'));
+
+    expect(data.temperature).toBe(0.9);
+    expect(setValue).toHaveBeenCalledWith(data);
   });
 });

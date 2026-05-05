@@ -12,16 +12,22 @@ import {
   NUMBER_FIELD_NAMES,
   RISUM_FIELD_NAMES,
   RISUM_READ_ONLY_FIELD_NAMES,
+  RISUM_RESERVED_FIELD_NAMES,
   RISUP_FIELD_NAMES,
+  RISUP_LEGACY_FIELD_NAMES,
   STRING_MUTATION_FIELD_NAMES,
   STRING_MUTATION_READ_ONLY_FIELD_NAMES,
   SUPPORTED_EXTERNAL_FILE_TYPES,
   buildFieldBatchReadResults,
   buildFieldReadResponsePayload,
+  collectHiddenFieldWarnings,
   getDocumentTypeFlags,
   getFieldAccessRules,
+  getHiddenFieldInfo,
   getStringMutationFieldStatus,
   getUnknownFieldHint,
+  isHiddenField,
+  redactHiddenFields,
 } from './mcp-field-access';
 
 describe('field access constants', () => {
@@ -32,7 +38,16 @@ describe('field access constants', () => {
     expect(CHARX_DEPRECATED_FIELD_NAMES.length).toBeGreaterThan(0);
     expect(RISUM_FIELD_NAMES.length).toBeGreaterThan(0);
     expect(RISUM_READ_ONLY_FIELD_NAMES.length).toBeGreaterThan(0);
+    expect(RISUM_RESERVED_FIELD_NAMES).toEqual(['cjs']);
     expect(RISUP_FIELD_NAMES.length).toBeGreaterThan(0);
+    expect(RISUP_LEGACY_FIELD_NAMES).toEqual([
+      'mainPrompt',
+      'jailbreak',
+      'globalNote',
+      'useInstructPrompt',
+      'instructChatTemplate',
+      'JinjaTemplate',
+    ]);
     expect(ARRAY_FIELD_NAMES.length).toBeGreaterThan(0);
     expect(BOOLEAN_FIELD_NAMES.length).toBeGreaterThan(0);
     expect(NUMBER_FIELD_NAMES.length).toBeGreaterThan(0);
@@ -82,6 +97,7 @@ describe('getFieldAccessRules', () => {
       ...CHARX_DEPRECATED_FIELD_NAMES.filter((field) => field !== 'groupOnlyGreetings'),
     ]);
     expect(rules.deprecatedFields).toEqual(CHARX_DEPRECATED_FIELD_NAMES);
+    expect(rules.hiddenFields).toEqual(CHARX_DEPRECATED_FIELD_NAMES);
     expect(rules.readOnlyFields).not.toContain('groupOnlyGreetings');
     expect(rules.allowedFields).not.toContain('groupOnlyGreetings');
     for (const field of rules.readOnlyFields) {
@@ -94,8 +110,9 @@ describe('getFieldAccessRules', () => {
     expect(rules.allowedFields).toContain('moduleNamespace');
     expect(rules.allowedFields).not.toContain('personality');
     expect(rules.allowedFields).not.toContain('mainPrompt');
-    expect(rules.readOnlyFields).toEqual(RISUM_READ_ONLY_FIELD_NAMES);
+    expect(rules.readOnlyFields).toEqual([...RISUM_READ_ONLY_FIELD_NAMES, ...RISUM_RESERVED_FIELD_NAMES]);
     expect(rules.deprecatedFields).toEqual([]);
+    expect(rules.hiddenFields).toEqual(RISUM_RESERVED_FIELD_NAMES);
     for (const field of rules.readOnlyFields) {
       expect(rules.allowedFields).toContain(field);
     }
@@ -106,11 +123,36 @@ describe('getFieldAccessRules', () => {
     expect(rules.allowedFields).toContain('mainPrompt');
     expect(rules.allowedFields).not.toContain('moduleNamespace');
     expect(rules.allowedFields).not.toContain('personality');
-    expect(rules.readOnlyFields).toEqual([]);
+    expect(rules.readOnlyFields).toEqual(RISUP_LEGACY_FIELD_NAMES);
     expect(rules.deprecatedFields).toEqual([]);
+    expect(rules.hiddenFields).toEqual(RISUP_LEGACY_FIELD_NAMES);
     for (const field of rules.readOnlyFields) {
       expect(rules.allowedFields).toContain(field);
     }
+  });
+});
+
+describe('hidden deprecated field policy', () => {
+  it('classifies document-specific hidden fields without hiding lowLevelAccess', () => {
+    expect(getHiddenFieldInfo({ name: 'Card' }, 'personality')).toMatchObject({ category: 'deprecated' });
+    expect(getHiddenFieldInfo({ _fileType: 'risum' }, 'cjs')).toMatchObject({ category: 'reserved' });
+    expect(getHiddenFieldInfo({ _fileType: 'risup' }, 'mainPrompt')).toMatchObject({ category: 'legacy' });
+    expect(isHiddenField({ _fileType: 'risum' }, 'lowLevelAccess')).toBe(false);
+  });
+
+  it('summarizes non-empty hidden values without returning content', () => {
+    const warnings = collectHiddenFieldWarnings({
+      name: 'Card',
+      personality: 'hidden text',
+      groupOnlyGreetings: ['secret greeting'],
+      tags: [],
+    });
+    expect(warnings).toEqual([
+      expect.objectContaining({ field: 'personality', category: 'deprecated', size: 11 }),
+      expect.objectContaining({ field: 'groupOnlyGreetings', category: 'deprecated', count: 1 }),
+    ]);
+    expect(JSON.stringify(warnings)).not.toContain('secret greeting');
+    expect(redactHiddenFields({ name: 'Card', personality: 'hidden text' })).toEqual({ name: 'Card' });
   });
 });
 
@@ -137,20 +179,15 @@ describe('string mutation field support', () => {
       'systemPrompt',
       'creator',
       'characterVersion',
-      'cjs',
       'backgroundEmbedding',
       'moduleNamespace',
       'customModuleToggle',
       'mcpUrl',
       'moduleName',
       'moduleDescription',
-      'mainPrompt',
-      'jailbreak',
       'aiModel',
       'subModel',
       'apiType',
-      'instructChatTemplate',
-      'JinjaTemplate',
       'templateDefaultVariables',
       'moduleIntergration',
       'jsonSchema',
@@ -166,6 +203,7 @@ describe('string mutation field support', () => {
     expect(STRING_MUTATION_READ_ONLY_FIELD_NAMES).toEqual([
       ...CHARX_READ_ONLY_FIELD_NAMES,
       ...RISUM_READ_ONLY_FIELD_NAMES,
+      ...RISUM_RESERVED_FIELD_NAMES,
     ]);
   });
 
@@ -173,9 +211,12 @@ describe('string mutation field support', () => {
     expect(getStringMutationFieldStatus('description')).toBe('ok');
     expect(getStringMutationFieldStatus('creationDate')).toBe('read-only');
     expect(getStringMutationFieldStatus('moduleId')).toBe('read-only');
+    expect(getStringMutationFieldStatus('cjs')).toBe('read-only');
     expect(getStringMutationFieldStatus('alternateGreetings')).toBe('unsupported');
     expect(getStringMutationFieldStatus('lowLevelAccess')).toBe('unsupported');
     expect(getStringMutationFieldStatus('promptTemplate')).toBe('unsupported');
+    expect(getStringMutationFieldStatus('globalNote', { _fileType: 'risup' })).toBe('read-only');
+    expect(getStringMutationFieldStatus('globalNote', { _fileType: 'charx' })).toBe('ok');
   });
 });
 
@@ -237,13 +278,14 @@ describe('buildFieldBatchReadResults', () => {
   it('returns per-field payloads for known fields and errors for unknown ones', () => {
     expect(
       buildFieldBatchReadResults(
-        { name: 'Card', description: 'Desc', alternateGreetings: ['Hi'] },
-        ['name', 'alternateGreetings', 'moduleNamespace'],
+        { name: 'Card', description: 'Desc', alternateGreetings: ['Hi'], personality: 'old' },
+        ['name', 'alternateGreetings', 'personality', 'moduleNamespace'],
         { stringifyTriggerScripts: JSON.stringify },
       ),
     ).toEqual([
       { field: 'name', content: 'Card' },
       { field: 'alternateGreetings', content: ['Hi'], type: 'array' },
+      expect.objectContaining({ field: 'personality', hidden: true, category: 'deprecated' }),
       { field: 'moduleNamespace', error: 'Unknown field: moduleNamespace' },
     ]);
   });

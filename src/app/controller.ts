@@ -120,6 +120,7 @@ import {
   type RisupFieldGroupId,
 } from '../lib/risup-fields';
 import { getCharxInfoItems } from '../lib/charx-sidebar-fields';
+import { collectHiddenFieldWarnings } from '../lib/mcp-field-access';
 import { isTriggerScriptsLuaMode } from '../lib/trigger-script-model';
 import { initKeyboard } from './keyboard-shortcuts';
 import {
@@ -731,7 +732,7 @@ function buildAltGreetTabState(index: number): Record<string, unknown> | null {
 
 function buildRisupTabState(groupId: string, _tab: Tab): Record<string, unknown> | null {
   const group = getRisupFieldGroup(groupId);
-  if (!fileData || !group) return null;
+  if (!fileData || !group || group.hidden) return null;
 
   return {
     id: `risup_${group.id}`,
@@ -750,7 +751,10 @@ function buildRisupTabState(groupId: string, _tab: Tab): Record<string, unknown>
 
 function openRisupGroupTab(groupId: RisupFieldGroupId): void {
   const group = getRisupFieldGroup(groupId);
-  if (!group) return;
+  if (!group || group.hidden) {
+    setStatus('비권장/레거시 프롬프트 필드는 편집기에서 열 수 없습니다.');
+    return;
+  }
   const tabState = buildRisupTabState(groupId, {
     id: `risup_${groupId}`,
     label: group.label,
@@ -977,6 +981,23 @@ function buildRisupSidebar(tree: HTMLElement): void {
   initSidebarDnD(getDndDeps());
 }
 
+function appendHiddenFieldWarnings(tree: HTMLElement): void {
+  if (!fileData) return;
+  const warnings = collectHiddenFieldWarnings(fileData as unknown as Record<string, unknown>);
+  if (warnings.length === 0) return;
+
+  tree.appendChild(createSectionHeader('숨겨진 비권장 값'));
+  for (const warning of warnings) {
+    const detail =
+      warning.count !== undefined
+        ? `${warning.field} · ${warning.category} · ${warning.count}개`
+        : `${warning.field} · ${warning.category} · ${warning.size ?? 0}자`;
+    const el = createTreeItem(detail, '⚠️', 0);
+    el.title = `${warning.reason}\n${warning.suggestion}\n값은 호환성을 위해 보존되지만 편집기와 MCP 일반 조회에서는 숨겨집니다.`;
+    tree.appendChild(el);
+  }
+}
+
 function buildSidebar(): void {
   destroyAllSortables();
   const tree = document.getElementById('sidebar-tree')!;
@@ -990,6 +1011,7 @@ function buildSidebar(): void {
   const isRisum = fileData._fileType === 'risum';
   const isRisup = fileData._fileType === 'risup';
   const isCharx = !isRisum && !isRisup;
+  appendHiddenFieldWarnings(tree);
 
   if (isRisup) {
     buildRisupSidebar(tree);

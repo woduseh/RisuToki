@@ -10,6 +10,7 @@ function makeRisupFileData(overrides: Record<string, unknown> = {}) {
   return {
     name: 'MyPreset',
     mainPrompt: 'You are a helpful assistant.',
+    promptTemplate: '',
     temperature: 0.8,
     ...overrides,
   };
@@ -32,17 +33,17 @@ function makeRisupTab(
 describe('backupActiveRisupRestoreDraft', () => {
   it('backs up the current state of the active risup form tab', () => {
     const fileData = makeRisupFileData();
-    const tab = makeRisupTab('risup_prompts', fileData);
+    const tab = makeRisupTab('risup_templates', fileData);
     const createBackup = vi.fn();
 
     backupActiveRisupRestoreDraft({
-      activeTabId: 'risup_prompts',
+      activeTabId: 'risup_templates',
       createBackup,
       tab,
     });
 
     expect(createBackup).toHaveBeenCalledTimes(1);
-    expect(createBackup).toHaveBeenCalledWith('risup_prompts', fileData);
+    expect(createBackup).toHaveBeenCalledWith('risup_templates', fileData);
   });
 
   it('does not back up when the active tab is a different tab', () => {
@@ -228,19 +229,17 @@ describe('restoreRisupTabsControllerBackup — closed tab', () => {
     expect(result).toBe(false);
   });
 
-  it('preserves compatibility: risup_templates and risup_prompts both restore correctly', () => {
-    for (const tabId of ['risup_templates', 'risup_prompts']) {
-      const fileData = makeRisupFileData();
-      const result = restoreRisupTabsControllerBackup({
-        activeTabId: null,
-        activateTab: vi.fn(),
-        backupContent: { mainPrompt: `from ${tabId}` },
-        fileData: fileData as never,
-      });
+  it('keeps closed-tab restore available for visible risup groups', () => {
+    const fileData = makeRisupFileData();
+    const result = restoreRisupTabsControllerBackup({
+      activeTabId: null,
+      activateTab: vi.fn(),
+      backupContent: { promptTemplate: 'restored template' },
+      fileData: fileData as never,
+    });
 
-      expect(result).toBe(true);
-      expect(fileData.mainPrompt).toBe(`from ${tabId}`);
-    }
+    expect(result).toBe(true);
+    expect(fileData.promptTemplate).toBe('restored template');
   });
 });
 
@@ -250,45 +249,45 @@ describe('restoreRisupTabsControllerBackup — open tab', () => {
   });
 
   it('calls setValue and activateTab when the open tab is active', () => {
-    const fileData = makeRisupFileData({ mainPrompt: 'before' });
-    const tab = makeRisupTab('risup_prompts', fileData);
+    const fileData = makeRisupFileData({ promptTemplate: 'before' });
+    const tab = makeRisupTab('risup_templates', fileData);
     const activateTab = vi.fn();
 
     const result = restoreRisupTabsControllerBackup({
-      activeTabId: 'risup_prompts',
+      activeTabId: 'risup_templates',
       activateTab,
-      backupContent: { mainPrompt: 'restored' },
+      backupContent: { promptTemplate: 'restored' },
       fileData: fileData as never,
       tab,
     });
 
     expect(result).toBe(true);
-    expect(fileData.mainPrompt).toBe('restored');
+    expect(fileData.promptTemplate).toBe('restored');
     expect(activateTab).toHaveBeenCalledTimes(1);
     expect(activateTab).toHaveBeenCalledWith(tab);
   });
 
   it('calls setValue but does NOT call activateTab for an open but inactive tab', () => {
-    const fileData = makeRisupFileData({ mainPrompt: 'before' });
-    const tab = makeRisupTab('risup_prompts', fileData);
+    const fileData = makeRisupFileData({ temperature: 0.8 });
+    const tab = makeRisupTab('risup_parameters', fileData);
     const activateTab = vi.fn();
 
     const result = restoreRisupTabsControllerBackup({
       activeTabId: 'risup_templates', // different tab is active
       activateTab,
-      backupContent: { mainPrompt: 'restored' },
+      backupContent: { temperature: 0.5 },
       fileData: fileData as never,
       tab,
     });
 
     expect(result).toBe(true);
-    expect(fileData.mainPrompt).toBe('restored');
+    expect(fileData.temperature).toBe(0.5);
     expect(activateTab).not.toHaveBeenCalled();
   });
 
   it('rerenders the active risup form when restoring a different risup tab that shares the preset object', () => {
-    const fileData = makeRisupFileData({ mainPrompt: 'before', promptTemplate: '{}' });
-    const requestedTab = makeRisupTab('risup_prompts', fileData);
+    const fileData = makeRisupFileData({ temperature: 0.8, promptTemplate: '{}' });
+    const requestedTab = makeRisupTab('risup_parameters', fileData);
     const activeTab = makeRisupTab('risup_templates', fileData);
     const activateTab = vi.fn();
 
@@ -296,13 +295,13 @@ describe('restoreRisupTabsControllerBackup — open tab', () => {
       activeTabId: 'risup_templates',
       activeTab,
       activateTab,
-      backupContent: { mainPrompt: 'restored' },
+      backupContent: { temperature: 0.5 },
       fileData: fileData as never,
       tab: requestedTab,
     } as never);
 
     expect(result).toBe(true);
-    expect(fileData.mainPrompt).toBe('restored');
+    expect(fileData.temperature).toBe(0.5);
     expect(activateTab).toHaveBeenCalledTimes(1);
     expect(activateTab).toHaveBeenCalledWith(activeTab);
   });
@@ -327,7 +326,7 @@ describe('restoreRisupTabsControllerBackup — open tab', () => {
 });
 
 describe('getRisupSidebarBackupTargets', () => {
-  it('keeps hidden legacy risup backups reachable from the visible templates menu', () => {
+  it('does not expose hidden legacy risup backups from visible group menus', () => {
     const getRisupSidebarBackupTargets = (
       risupTabsController as {
         getRisupSidebarBackupTargets?: (
@@ -352,7 +351,7 @@ describe('getRisupSidebarBackupTargets', () => {
         ],
         (backupKey) => backupKey === 'risup_prompts',
       ),
-    ).toEqual([{ backupKey: 'risup_prompts', label: '레거시 프롬프트 백업 불러오기' }]);
+    ).toEqual([]);
   });
 });
 
