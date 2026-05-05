@@ -105,7 +105,7 @@ describe('buildRefsSidebar race-condition guard', () => {
 
     await buildRefsSidebar(container, deps);
 
-    expect(container.querySelector('[data-label="제작자 노트"]')).not.toBeNull();
+    expect(container.querySelector('[data-label="제작자 코멘트"]')).not.toBeNull();
     expect(container.querySelector('[data-label="캐릭터 버전"]')).not.toBeNull();
     expect(container.querySelector('[data-label="인사말 1"]')).not.toBeNull();
     expect(container.querySelector('[data-label="트리거 스크립트"]')).not.toBeNull();

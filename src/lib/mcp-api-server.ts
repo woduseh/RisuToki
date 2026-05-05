@@ -1567,7 +1567,7 @@ function buildFieldInventory(
   fields.push({ name: 'regex', count: Array.isArray(currentData.regex) ? currentData.regex.length : 0, type: 'array' });
 
   if (isCharx) {
-    const charxStringFields = ['creatorcomment', 'exampleMessage', 'systemPrompt', 'creator', 'characterVersion'];
+    const charxStringFields = ['creatorcomment', 'exampleMessage', 'creator', 'characterVersion'];
     for (const fieldName of charxStringFields) {
       fields.push({ name: fieldName, size: String(currentData[fieldName] || '').length, type: 'string' });
     }
@@ -1615,6 +1615,25 @@ function buildFieldInventory(
       'localStopStrings',
       'systemContentReplacement',
       'systemRoleReplacement',
+      'promptSettings',
+      'customAPIFormat',
+      'openrouterProvider',
+      'seperateParameters',
+      'fallbackModels',
+      'seperateModels',
+      'modelTools',
+      'customFlags',
+      'dynamicOutput',
+      'deepseekThinkingType',
+      'deepseekReasoningEffort',
+      'proxyRequestModel',
+      'openrouterRequestModel',
+      'customProxyRequestModel',
+      'reverseProxyOobaArgs',
+      'koboldURL',
+      'forceReplaceUrl',
+      'textgenWebUIStreamURL',
+      'textgenWebUIBlockingURL',
     ];
     for (const fieldName of risupStringFields) {
       fields.push({ name: fieldName, size: String(currentData[fieldName] || '').length, type: 'string' });
@@ -1633,6 +1652,7 @@ function buildFieldInventory(
       'reasonEffort',
       'thinkingTokens',
       'verbosity',
+      'localNetworkTimeoutSec',
     ];
     for (const fieldName of risupNumberFields) {
       fields.push({ name: fieldName, value: currentData[fieldName] ?? 0, type: 'number' });
@@ -1644,6 +1664,9 @@ function buildFieldInventory(
       'autoSuggestClean',
       'outputImageModal',
       'fallbackWhenBlankResponse',
+      'seperateParametersEnabled',
+      'enableCustomFlags',
+      'localNetworkMode',
     ];
     for (const fieldName of risupBoolFields) {
       fields.push({ name: fieldName, value: !!currentData[fieldName], type: 'boolean' });

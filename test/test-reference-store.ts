@@ -126,7 +126,7 @@ import {
   const ids = REF_SCALAR_FIELDS.map((f) => f.id);
   assert.ok(ids.includes('globalNote'));
   assert.ok(ids.includes('alternateGreetings'));
-  assert.ok(ids.includes('groupOnlyGreetings'));
+  assert.ok(!ids.includes('groupOnlyGreetings'));
   assert.ok(ids.includes('defaultVariables'));
   assert.ok(ids.includes('description'));
   // isArray flag

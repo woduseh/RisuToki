@@ -41,8 +41,12 @@ Use this skill when you need the **shape of the data**, not the editing workflow
 | `lua`                | Lua trigger script source   |
 | `alternateGreetings` | Additional greeting array   |
 | `triggerScripts`     | Structured trigger data     |
+| `exampleMessage`     | Example dialogue            |
+| `creator`            | Creator                     |
 | `creatorcomment`     | Creator note                |
 | `characterVersion`   | Character version           |
+
+Compatibility-only `.charx` fields such as `systemPrompt`, `personality`, `scenario`, `nickname`, `source`, `additionalText`, `license`, and `groupOnlyGreetings` should be preserved when round-tripping existing files, but they are not normal RisuToki editor/MCP content surfaces.
 
 ## risum Core Fields
 
@@ -50,11 +54,14 @@ Use this skill when you need the **shape of the data**, not the editing workflow
 | --------------------- | ---------------------------------- |
 | `name`                | Module name                        |
 | `description`         | Module description                 |
-| `cjs`                 | CommonJS code                      |
+| `cjs`                 | Reserved CommonJS slot; hidden     |
 | `lua`                 | Lua trigger script source          |
 | `backgroundEmbedding` | Shared HTML/CSS background surface |
 | `lowLevelAccess`      | Enables restricted Lua APIs        |
+| `hideIcon`            | Hides the character icon in chat   |
 | `moduleNamespace`     | Module namespace                   |
+| `customModuleToggle`  | Module toggle definition text      |
+| `mcpUrl`              | External MCP endpoint URL          |
 | `moduleId`            | Read-only module UUID              |
 
 ## risup Core Groups
@@ -67,6 +74,8 @@ Use this skill when you need the **shape of the data**, not the editing workflow
 | Sampling                    | `temperature`, `top_p`, `top_k`, `repetition_penalty`                                        |
 | Reasoning                   | `reasonEffort`, `thinkingTokens`, `thinkingType`                                             |
 | JSON schema                 | `jsonSchemaEnabled`, `jsonSchema`, `strictJsonSchema`                                        |
+| Provider/endpoint           | `proxyRequestModel`, `openrouterRequestModel`, `koboldURL`, `forceReplaceUrl`                |
+| Advanced JSON               | `promptSettings`, `customAPIFormat`, `openrouterProvider`, `customFlags`, `dynamicOutput`    |
 
 ## Lorebook Item Shape
 

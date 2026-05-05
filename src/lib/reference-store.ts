@@ -33,7 +33,6 @@ export const REF_SCALAR_FIELDS: readonly RefScalarFieldDef[] = [
   { id: 'firstMessage', label: '첫 메시지', lang: 'html' },
   { id: 'triggerScripts', label: '트리거 스크립트', lang: 'json' },
   { id: 'alternateGreetings', label: '추가 첫 메시지', lang: 'json', isArray: true },
-  { id: 'groupOnlyGreetings', label: '그룹 전용 인사말', lang: 'json', isArray: true },
   { id: 'description', label: '설명', lang: 'plaintext' },
   { id: 'defaultVariables', label: '기본 변수', lang: 'plaintext' },
 ] as const;

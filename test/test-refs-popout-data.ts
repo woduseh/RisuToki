@@ -38,8 +38,8 @@ import { buildRefsPopoutData } from '../src/lib/refs-popout-data';
   assert.ok(result.refs.some((entry) => entry.id === 'ref_0_triggerScripts'));
   assert.ok(result.refs.some((entry) => entry.label === '추가 첫 메시지' && entry.isFolder));
   assert.ok(result.refs.some((entry) => entry.id === 'ref_0_greeting_alternate_0'));
-  assert.ok(result.refs.some((entry) => entry.label === '그룹 전용 인사말' && entry.isFolder));
-  assert.ok(result.refs.some((entry) => entry.id === 'ref_0_greeting_group_0'));
+  assert.ok(!result.refs.some((entry) => entry.label === '그룹 전용 인사말' && entry.isFolder));
+  assert.ok(!result.refs.some((entry) => entry.id === 'ref_0_greeting_group_0'));
   assert.ok(result.refs.some((entry) => entry.id === 'ref_0_defaultVariables'));
   assert.ok(result.refs.some((entry) => entry.id === 'ref_0_creatorcomment'));
   assert.ok(result.refs.some((entry) => entry.id === 'ref_0_lb_1'));
@@ -61,7 +61,7 @@ import { buildRefsPopoutData } from '../src/lib/refs-popout-data';
   );
 })();
 
-(function testPopoutDataIncludesGroupOnlyGreetings() {
+(function testPopoutDataHidesGroupOnlyGreetings() {
   const result = buildRefsPopoutData({ builtIn: [], session: [] }, [
     {
       fileName: 'card.charx',
@@ -71,8 +71,8 @@ import { buildRefsPopoutData } from '../src/lib/refs-popout-data';
     },
   ]);
   assert.ok(
-    result.refs.some((entry) => entry.id === 'ref_0_greeting_group_0'),
-    'groupOnlyGreetings entry should appear in popout',
+    !result.refs.some((entry) => entry.id === 'ref_0_greeting_group_0'),
+    'groupOnlyGreetings entry should be hidden in popout',
   );
 })();
 

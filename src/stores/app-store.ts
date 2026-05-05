@@ -105,6 +105,29 @@ export interface CharxData {
   fallbackWhenBlankResponse?: boolean;
   systemContentReplacement?: string;
   systemRoleReplacement?: string;
+  promptSettings?: string;
+  customAPIFormat?: string;
+  openrouterProvider?: string;
+  seperateParametersEnabled?: boolean;
+  seperateParameters?: string;
+  fallbackModels?: string;
+  seperateModels?: string;
+  modelTools?: string;
+  customFlags?: string;
+  enableCustomFlags?: boolean;
+  dynamicOutput?: string;
+  deepseekThinkingType?: string;
+  deepseekReasoningEffort?: string;
+  proxyRequestModel?: string;
+  openrouterRequestModel?: string;
+  customProxyRequestModel?: string;
+  reverseProxyOobaArgs?: string;
+  koboldURL?: string;
+  forceReplaceUrl?: string;
+  textgenWebUIStreamURL?: string;
+  textgenWebUIBlockingURL?: string;
+  localNetworkMode?: boolean;
+  localNetworkTimeoutSec?: number;
 
   [key: string]: unknown;
 }

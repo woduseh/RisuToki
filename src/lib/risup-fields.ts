@@ -54,7 +54,30 @@ export type RisupFieldId =
   | 'verbosity'
   | 'fallbackWhenBlankResponse'
   | 'systemContentReplacement'
-  | 'systemRoleReplacement';
+  | 'systemRoleReplacement'
+  | 'promptSettings'
+  | 'customAPIFormat'
+  | 'openrouterProvider'
+  | 'seperateParametersEnabled'
+  | 'seperateParameters'
+  | 'fallbackModels'
+  | 'seperateModels'
+  | 'modelTools'
+  | 'customFlags'
+  | 'enableCustomFlags'
+  | 'dynamicOutput'
+  | 'deepseekThinkingType'
+  | 'deepseekReasoningEffort'
+  | 'proxyRequestModel'
+  | 'openrouterRequestModel'
+  | 'customProxyRequestModel'
+  | 'reverseProxyOobaArgs'
+  | 'koboldURL'
+  | 'forceReplaceUrl'
+  | 'textgenWebUIStreamURL'
+  | 'textgenWebUIBlockingURL'
+  | 'localNetworkMode'
+  | 'localNetworkTimeoutSec';
 
 export type RisupFieldGroupId =
   | 'basic'
@@ -63,6 +86,8 @@ export type RisupFieldGroupId =
   | 'parameters'
   | 'sampling'
   | 'thinking'
+  | 'provider-endpoint'
+  | 'advanced'
   | 'templates'
   | 'json-schema'
   | 'misc';
@@ -158,6 +183,43 @@ const groups: readonly RisupFieldGroup[] = [
       { id: 'thinkingTokens', label: 'Thinking tokens', editor: 'number', step: '1' },
       { id: 'thinkingType', label: 'Thinking type', editor: 'text' },
       { id: 'adaptiveThinkingEffort', label: 'Adaptive thinking effort', editor: 'text' },
+      { id: 'deepseekThinkingType', label: 'Thinking Mode', editor: 'text' },
+      { id: 'deepseekReasoningEffort', label: 'Reasoning Effort', editor: 'text' },
+    ],
+  },
+  {
+    id: 'provider-endpoint',
+    label: 'Provider/Endpoint',
+    icon: '🔌',
+    fields: [
+      { id: 'proxyRequestModel', label: 'Proxy request model', editor: 'text' },
+      { id: 'openrouterRequestModel', label: 'OpenRouter request model', editor: 'text' },
+      { id: 'customProxyRequestModel', label: 'Custom proxy request model', editor: 'text' },
+      { id: 'reverseProxyOobaArgs', label: 'Reverse proxy Ooba args', editor: 'json', rows: 8 },
+      { id: 'koboldURL', label: 'Kobold URL', editor: 'text' },
+      { id: 'forceReplaceUrl', label: '요청 URL', editor: 'text' },
+      { id: 'textgenWebUIStreamURL', label: 'Textgen WebUI stream URL', editor: 'text' },
+      { id: 'textgenWebUIBlockingURL', label: 'Textgen WebUI blocking URL', editor: 'text' },
+      { id: 'localNetworkMode', label: 'Local network mode', editor: 'checkbox' },
+      { id: 'localNetworkTimeoutSec', label: 'Local network timeout sec', editor: 'number', step: '1' },
+    ],
+  },
+  {
+    id: 'advanced',
+    label: '고급 설정',
+    icon: '🛠',
+    fields: [
+      { id: 'promptSettings', label: 'Prompt settings', editor: 'json', rows: 8 },
+      { id: 'customAPIFormat', label: 'Custom API format', editor: 'json', rows: 6 },
+      { id: 'openrouterProvider', label: 'OpenRouter Provider', editor: 'json', rows: 6 },
+      { id: 'seperateParametersEnabled', label: '파라미터 분리 활성화', editor: 'checkbox' },
+      { id: 'seperateParameters', label: '파라미터 분리', editor: 'json', rows: 8 },
+      { id: 'fallbackModels', label: '대체 모델', editor: 'json', rows: 8 },
+      { id: 'seperateModels', label: '보조 모델 분리', editor: 'json', rows: 6 },
+      { id: 'modelTools', label: '도구', editor: 'json', rows: 5 },
+      { id: 'customFlags', label: '커스텀 플래그', editor: 'json', rows: 6 },
+      { id: 'enableCustomFlags', label: '커스텀 플래그 활성화', editor: 'checkbox' },
+      { id: 'dynamicOutput', label: '동적 출력', editor: 'json', rows: 8 },
     ],
   },
   {

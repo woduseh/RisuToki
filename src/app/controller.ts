@@ -998,6 +998,42 @@ function appendHiddenFieldWarnings(tree: HTMLElement): void {
   }
 }
 
+type RisumSidebarField = {
+  id: keyof Pick<
+    CharxData,
+    | 'moduleName'
+    | 'moduleDescription'
+    | 'moduleNamespace'
+    | 'lowLevelAccess'
+    | 'hideIcon'
+    | 'backgroundEmbedding'
+    | 'customModuleToggle'
+    | 'mcpUrl'
+  >;
+  label: string;
+  icon: string;
+  lang: string;
+  kind?: 'boolean';
+};
+
+const RISUM_MODULE_SIDEBAR_FIELDS: readonly RisumSidebarField[] = [
+  { id: 'moduleName', label: '모듈 이름', icon: '📦', lang: 'plaintext' },
+  { id: 'moduleDescription', label: '모듈 설명', icon: '📝', lang: 'plaintext' },
+  { id: 'moduleNamespace', label: '네임스페이스', icon: '#', lang: 'plaintext' },
+  { id: 'lowLevelAccess', label: '저수준 접근', icon: '🔓', lang: 'plaintext', kind: 'boolean' },
+  { id: 'hideIcon', label: '아이콘 숨김', icon: '◌', lang: 'plaintext', kind: 'boolean' },
+  { id: 'backgroundEmbedding', label: '배경 임베딩', icon: '🎨', lang: 'html' },
+  { id: 'customModuleToggle', label: '커스텀 토글', icon: '☑', lang: 'plaintext' },
+  { id: 'mcpUrl', label: 'MCP URL', icon: '🔌', lang: 'plaintext' },
+] as const;
+
+function parseBooleanEditorValue(value: unknown): boolean {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
 function buildSidebar(): void {
   destroyAllSortables();
   const tree = document.getElementById('sidebar-tree')!;
@@ -1193,6 +1229,41 @@ function buildSidebar(): void {
         e.stopPropagation();
         const items: ContextMenuItem[] = [createMcpCopyItem(`read_field("${item.field}")`)];
         appendBackupItems(items, item.id, e.clientX, e.clientY);
+        showContextMenu(e.clientX, e.clientY, items);
+      });
+      tree.appendChild(el);
+    }
+  }
+
+  // ---- Section: 모듈 정보 (risum only) ----
+  if (isRisum) {
+    tree.appendChild(createSectionHeader('모듈 정보'));
+
+    for (const item of RISUM_MODULE_SIDEBAR_FIELDS) {
+      const el = createTreeItem(item.label, item.icon, 0);
+      el.addEventListener('click', () => {
+        tabMgr.openTab(
+          String(item.id),
+          item.label,
+          item.lang,
+          () => {
+            const value = fileData![item.id];
+            return item.kind === 'boolean' ? String(!!value) : String(value ?? '');
+          },
+          (v: unknown) => {
+            if (item.kind === 'boolean') {
+              (fileData! as Record<string, unknown>)[item.id] = parseBooleanEditorValue(v);
+            } else {
+              (fileData! as Record<string, unknown>)[item.id] = v as string;
+            }
+          },
+        );
+      });
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const items: ContextMenuItem[] = [createMcpCopyItem(`read_field("${String(item.id)}")`)];
+        appendBackupItems(items, String(item.id), e.clientX, e.clientY);
         showContextMenu(e.clientX, e.clientY, items);
       });
       tree.appendChild(el);

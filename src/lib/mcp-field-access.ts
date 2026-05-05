@@ -32,10 +32,10 @@ export const CHARX_READ_ONLY_FIELD_NAMES = ['creationDate', 'modificationDate'];
 export const CHARX_DEPRECATED_FIELD_NAMES = [
   'personality',
   'scenario',
+  'systemPrompt',
   'nickname',
   'source',
   'additionalText',
-  'tags',
   'license',
   'groupOnlyGreetings',
 ];
@@ -101,6 +101,29 @@ export const RISUP_FIELD_NAMES = [
   'fallbackWhenBlankResponse',
   'systemContentReplacement',
   'systemRoleReplacement',
+  'promptSettings',
+  'customAPIFormat',
+  'openrouterProvider',
+  'seperateParametersEnabled',
+  'seperateParameters',
+  'fallbackModels',
+  'seperateModels',
+  'modelTools',
+  'customFlags',
+  'enableCustomFlags',
+  'dynamicOutput',
+  'deepseekThinkingType',
+  'deepseekReasoningEffort',
+  'proxyRequestModel',
+  'openrouterRequestModel',
+  'customProxyRequestModel',
+  'reverseProxyOobaArgs',
+  'koboldURL',
+  'forceReplaceUrl',
+  'textgenWebUIStreamURL',
+  'textgenWebUIBlockingURL',
+  'localNetworkMode',
+  'localNetworkTimeoutSec',
 ];
 
 export const RISUP_LEGACY_FIELD_NAMES = [
@@ -123,6 +146,9 @@ export const BOOLEAN_FIELD_NAMES = [
   'autoSuggestClean',
   'outputImageModal',
   'fallbackWhenBlankResponse',
+  'seperateParametersEnabled',
+  'enableCustomFlags',
+  'localNetworkMode',
 ];
 
 export const NUMBER_FIELD_NAMES = [
@@ -139,6 +165,7 @@ export const NUMBER_FIELD_NAMES = [
   'reasonEffort',
   'thinkingTokens',
   'verbosity',
+  'localNetworkTimeoutSec',
   'creationDate',
   'modificationDate',
 ];
@@ -153,7 +180,6 @@ export const STRING_MUTATION_FIELD_NAMES = [
   'lua',
   'creatorcomment',
   'exampleMessage',
-  'systemPrompt',
   'creator',
   'characterVersion',
   'backgroundEmbedding',
@@ -176,6 +202,25 @@ export const STRING_MUTATION_FIELD_NAMES = [
   'systemContentReplacement',
   'systemRoleReplacement',
   'customPromptTemplateToggle',
+  'promptSettings',
+  'customAPIFormat',
+  'openrouterProvider',
+  'seperateParameters',
+  'fallbackModels',
+  'seperateModels',
+  'modelTools',
+  'customFlags',
+  'dynamicOutput',
+  'reverseProxyOobaArgs',
+  'proxyRequestModel',
+  'openrouterRequestModel',
+  'customProxyRequestModel',
+  'koboldURL',
+  'forceReplaceUrl',
+  'textgenWebUIStreamURL',
+  'textgenWebUIBlockingURL',
+  'deepseekThinkingType',
+  'deepseekReasoningEffort',
 ];
 
 export const STRING_MUTATION_READ_ONLY_FIELD_NAMES = [

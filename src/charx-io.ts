@@ -231,6 +231,29 @@ export interface CharxData {
   fallbackWhenBlankResponse?: boolean;
   systemContentReplacement?: string;
   systemRoleReplacement?: string;
+  promptSettings?: string;
+  customAPIFormat?: string;
+  openrouterProvider?: string;
+  seperateParametersEnabled?: boolean;
+  seperateParameters?: string;
+  fallbackModels?: string;
+  seperateModels?: string;
+  modelTools?: string;
+  customFlags?: string;
+  enableCustomFlags?: boolean;
+  dynamicOutput?: string;
+  deepseekThinkingType?: string;
+  deepseekReasoningEffort?: string;
+  proxyRequestModel?: string;
+  openrouterRequestModel?: string;
+  customProxyRequestModel?: string;
+  reverseProxyOobaArgs?: string;
+  koboldURL?: string;
+  forceReplaceUrl?: string;
+  textgenWebUIStreamURL?: string;
+  textgenWebUIBlockingURL?: string;
+  localNetworkMode?: boolean;
+  localNetworkTimeoutSec?: number;
 
   // Assets
   assets: CharxAsset[];
@@ -842,6 +865,23 @@ function presetNum(preset: Record<string, unknown>, key: string, def?: number): 
   return typeof preset[key] === 'number' ? (preset[key] as number) : def;
 }
 
+function presetJson(preset: Record<string, unknown>, key: string, fallback: unknown): string | undefined {
+  if (!Object.prototype.hasOwnProperty.call(preset, key)) return undefined;
+  return JSON.stringify(preset[key] ?? fallback, null, 2);
+}
+
+function applyPresetJsonField(
+  preset: Record<string, unknown>,
+  data: CharxData,
+  field: keyof CharxData,
+  key = field,
+): void {
+  const value = data[field];
+  if (value === undefined) return;
+  if (typeof value !== 'string') return;
+  preset[key as string] = JSON.parse(value);
+}
+
 /** Extract preset fields from a botPreset object into CharxData. */
 function extractPresetFields(preset: Record<string, unknown>): Partial<CharxData> {
   return {
@@ -914,6 +954,30 @@ function extractPresetFields(preset: Record<string, unknown>): Partial<CharxData
       preset.fallbackWhenBlankResponse != null ? !!preset.fallbackWhenBlankResponse : undefined,
     systemContentReplacement: (preset.systemContentReplacement as string) || undefined,
     systemRoleReplacement: (preset.systemRoleReplacement as string) || undefined,
+    promptSettings: presetJson(preset, 'promptSettings', {}),
+    customAPIFormat: presetJson(preset, 'customAPIFormat', {}),
+    openrouterProvider: presetJson(preset, 'openrouterProvider', {}),
+    seperateParametersEnabled:
+      preset.seperateParametersEnabled != null ? !!preset.seperateParametersEnabled : undefined,
+    seperateParameters: presetJson(preset, 'seperateParameters', {}),
+    fallbackModels: presetJson(preset, 'fallbackModels', {}),
+    seperateModels: presetJson(preset, 'seperateModels', {}),
+    modelTools: presetJson(preset, 'modelTools', []),
+    customFlags: presetJson(preset, 'customFlags', []),
+    enableCustomFlags: preset.enableCustomFlags != null ? !!preset.enableCustomFlags : undefined,
+    dynamicOutput: presetJson(preset, 'dynamicOutput', null),
+    deepseekThinkingType: (preset.deepseekThinkingType as string) || undefined,
+    deepseekReasoningEffort: (preset.deepseekReasoningEffort as string) || undefined,
+    proxyRequestModel: (preset.proxyRequestModel as string) || undefined,
+    openrouterRequestModel: (preset.openrouterRequestModel as string) || undefined,
+    customProxyRequestModel: (preset.customProxyRequestModel as string) || undefined,
+    reverseProxyOobaArgs: presetJson(preset, 'reverseProxyOobaArgs', {}),
+    koboldURL: (preset.koboldURL as string) || undefined,
+    forceReplaceUrl: (preset.forceReplaceUrl as string) || undefined,
+    textgenWebUIStreamURL: (preset.textgenWebUIStreamURL as string) || undefined,
+    textgenWebUIBlockingURL: (preset.textgenWebUIBlockingURL as string) || undefined,
+    localNetworkMode: preset.localNetworkMode != null ? !!preset.localNetworkMode : undefined,
+    localNetworkTimeoutSec: presetNum(preset, 'localNetworkTimeoutSec'),
 
     // Regex & image (normalize types for RisuAI compatibility)
     regex: (() => {
@@ -1022,6 +1086,29 @@ function applyPresetFields(preset: Record<string, unknown>, data: CharxData): vo
   if (data.fallbackWhenBlankResponse !== undefined) preset.fallbackWhenBlankResponse = data.fallbackWhenBlankResponse;
   if (data.systemContentReplacement !== undefined) preset.systemContentReplacement = data.systemContentReplacement;
   if (data.systemRoleReplacement !== undefined) preset.systemRoleReplacement = data.systemRoleReplacement;
+  applyPresetJsonField(preset, data, 'promptSettings');
+  applyPresetJsonField(preset, data, 'customAPIFormat');
+  applyPresetJsonField(preset, data, 'openrouterProvider');
+  if (data.seperateParametersEnabled !== undefined) preset.seperateParametersEnabled = data.seperateParametersEnabled;
+  applyPresetJsonField(preset, data, 'seperateParameters');
+  applyPresetJsonField(preset, data, 'fallbackModels');
+  applyPresetJsonField(preset, data, 'seperateModels');
+  applyPresetJsonField(preset, data, 'modelTools');
+  applyPresetJsonField(preset, data, 'customFlags');
+  if (data.enableCustomFlags !== undefined) preset.enableCustomFlags = data.enableCustomFlags;
+  applyPresetJsonField(preset, data, 'dynamicOutput');
+  if (data.deepseekThinkingType !== undefined) preset.deepseekThinkingType = data.deepseekThinkingType;
+  if (data.deepseekReasoningEffort !== undefined) preset.deepseekReasoningEffort = data.deepseekReasoningEffort;
+  if (data.proxyRequestModel !== undefined) preset.proxyRequestModel = data.proxyRequestModel;
+  if (data.openrouterRequestModel !== undefined) preset.openrouterRequestModel = data.openrouterRequestModel;
+  if (data.customProxyRequestModel !== undefined) preset.customProxyRequestModel = data.customProxyRequestModel;
+  applyPresetJsonField(preset, data, 'reverseProxyOobaArgs');
+  if (data.koboldURL !== undefined) preset.koboldURL = data.koboldURL;
+  if (data.forceReplaceUrl !== undefined) preset.forceReplaceUrl = data.forceReplaceUrl;
+  if (data.textgenWebUIStreamURL !== undefined) preset.textgenWebUIStreamURL = data.textgenWebUIStreamURL;
+  if (data.textgenWebUIBlockingURL !== undefined) preset.textgenWebUIBlockingURL = data.textgenWebUIBlockingURL;
+  if (data.localNetworkMode !== undefined) preset.localNetworkMode = data.localNetworkMode;
+  if (data.localNetworkTimeoutSec !== undefined) preset.localNetworkTimeoutSec = data.localNetworkTimeoutSec;
 
   // Regex & image (normalize types for RisuAI compatibility)
   if (data.regex !== undefined) {

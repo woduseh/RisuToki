@@ -45,6 +45,23 @@ function validateRisupStructuredField(key: string, value: unknown): void {
   }
 }
 
+const RISUP_JSON_TEXT_FIELDS = new Set([
+  'promptTemplate',
+  'formatingOrder',
+  'presetBias',
+  'localStopStrings',
+  'promptSettings',
+  'customAPIFormat',
+  'openrouterProvider',
+  'seperateParameters',
+  'fallbackModels',
+  'seperateModels',
+  'modelTools',
+  'customFlags',
+  'dynamicOutput',
+  'reverseProxyOobaArgs',
+]);
+
 // ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
@@ -166,6 +183,29 @@ export function serializeForRenderer(data: any): Record<string, any> {
     if (data.fallbackWhenBlankResponse !== undefined) result.fallbackWhenBlankResponse = data.fallbackWhenBlankResponse;
     if (data.systemContentReplacement !== undefined) result.systemContentReplacement = data.systemContentReplacement;
     if (data.systemRoleReplacement !== undefined) result.systemRoleReplacement = data.systemRoleReplacement;
+    if (data.promptSettings !== undefined) result.promptSettings = data.promptSettings;
+    if (data.customAPIFormat !== undefined) result.customAPIFormat = data.customAPIFormat;
+    if (data.openrouterProvider !== undefined) result.openrouterProvider = data.openrouterProvider;
+    if (data.seperateParametersEnabled !== undefined) result.seperateParametersEnabled = data.seperateParametersEnabled;
+    if (data.seperateParameters !== undefined) result.seperateParameters = data.seperateParameters;
+    if (data.fallbackModels !== undefined) result.fallbackModels = data.fallbackModels;
+    if (data.seperateModels !== undefined) result.seperateModels = data.seperateModels;
+    if (data.modelTools !== undefined) result.modelTools = data.modelTools;
+    if (data.customFlags !== undefined) result.customFlags = data.customFlags;
+    if (data.enableCustomFlags !== undefined) result.enableCustomFlags = data.enableCustomFlags;
+    if (data.dynamicOutput !== undefined) result.dynamicOutput = data.dynamicOutput;
+    if (data.deepseekThinkingType !== undefined) result.deepseekThinkingType = data.deepseekThinkingType;
+    if (data.deepseekReasoningEffort !== undefined) result.deepseekReasoningEffort = data.deepseekReasoningEffort;
+    if (data.proxyRequestModel !== undefined) result.proxyRequestModel = data.proxyRequestModel;
+    if (data.openrouterRequestModel !== undefined) result.openrouterRequestModel = data.openrouterRequestModel;
+    if (data.customProxyRequestModel !== undefined) result.customProxyRequestModel = data.customProxyRequestModel;
+    if (data.reverseProxyOobaArgs !== undefined) result.reverseProxyOobaArgs = data.reverseProxyOobaArgs;
+    if (data.koboldURL !== undefined) result.koboldURL = data.koboldURL;
+    if (data.forceReplaceUrl !== undefined) result.forceReplaceUrl = data.forceReplaceUrl;
+    if (data.textgenWebUIStreamURL !== undefined) result.textgenWebUIStreamURL = data.textgenWebUIStreamURL;
+    if (data.textgenWebUIBlockingURL !== undefined) result.textgenWebUIBlockingURL = data.textgenWebUIBlockingURL;
+    if (data.localNetworkMode !== undefined) result.localNetworkMode = data.localNetworkMode;
+    if (data.localNetworkTimeoutSec !== undefined) result.localNetworkTimeoutSec = data.localNetworkTimeoutSec;
   }
   return result;
 }
@@ -268,18 +308,34 @@ export function applyUpdates(data: any, fields: any): void {
     'fallbackWhenBlankResponse',
     'systemContentReplacement',
     'systemRoleReplacement',
+    'promptSettings',
+    'customAPIFormat',
+    'openrouterProvider',
+    'seperateParametersEnabled',
+    'seperateParameters',
+    'fallbackModels',
+    'seperateModels',
+    'modelTools',
+    'customFlags',
+    'enableCustomFlags',
+    'dynamicOutput',
+    'deepseekThinkingType',
+    'deepseekReasoningEffort',
+    'proxyRequestModel',
+    'openrouterRequestModel',
+    'customProxyRequestModel',
+    'reverseProxyOobaArgs',
+    'koboldURL',
+    'forceReplaceUrl',
+    'textgenWebUIStreamURL',
+    'textgenWebUIBlockingURL',
+    'localNetworkMode',
+    'localNetworkTimeoutSec',
   ];
-  if (fields.promptTemplate !== undefined) {
-    validateRisupStructuredField('promptTemplate', fields.promptTemplate);
-  }
-  if (fields.formatingOrder !== undefined) {
-    validateRisupStructuredField('formatingOrder', fields.formatingOrder);
-  }
-  if (fields.presetBias !== undefined) {
-    validateRisupStructuredField('presetBias', fields.presetBias);
-  }
-  if (fields.localStopStrings !== undefined) {
-    validateRisupStructuredField('localStopStrings', fields.localStopStrings);
+  for (const fieldName of RISUP_JSON_TEXT_FIELDS) {
+    if (fields[fieldName] !== undefined) {
+      validateRisupStructuredField(fieldName, fields[fieldName]);
+    }
   }
   for (const key of allowed) {
     if (fields[key] !== undefined) {

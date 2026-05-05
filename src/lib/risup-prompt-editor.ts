@@ -189,7 +189,7 @@ const PROMPT_ADD_MENU_GROUPS: SupportedPromptItemType[][] = [
   ['authornote', 'chat', 'cache'],
 ];
 
-function promptTypeLabel(type: string | undefined): string {
+function promptTypeLabel(type: string | null | undefined): string {
   return type && type in PROMPT_TYPE_LABELS ? PROMPT_TYPE_LABELS[type as SupportedPromptItemType] : (type ?? 'unknown');
 }
 

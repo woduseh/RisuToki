@@ -9,6 +9,13 @@
 
 ---
 
+## [0.70.8] - 2026-05-06
+
+### Changed
+
+- Updated `.charx`, `.risum`, and `.risup` editor/MCP field exposure to hide legacy compatibility values while keeping round-trip preservation.
+- Added visible `.risum` module fields and expanded `.risup` advanced/provider JSON-backed settings with save-time JSON validation.
+
 ## [0.70.7] - 2026-05-06
 
 ### Changed

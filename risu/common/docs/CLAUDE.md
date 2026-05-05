@@ -27,26 +27,30 @@
 
 **charx 전용 필드:**
 
-- 기본: `globalNote`, `firstMessage`, `alternateGreetings`, `groupOnlyGreetings`, `css`, `defaultVariables`
-- 캐릭터 정보: `personality`, `scenario`, `exampleMessage`, `systemPrompt`, `creatorcomment`, `tags`
-- 메타데이터: `creator`, `characterVersion`, `nickname`, `source`, `additionalText`, `license`
+- 기본: `globalNote`, `firstMessage`, `alternateGreetings`, `css`, `defaultVariables`
+- 캐릭터 정보: `description`, `exampleMessage`, `creatorcomment`, `creator`, `characterVersion`
+- 보존 전용 legacy: `systemPrompt`, `personality`, `scenario`, `nickname`, `source`, `additionalText`, `license`, `groupOnlyGreetings`
 - 읽기전용: `creationDate`, `modificationDate`
 
 **risum 전용 필드:**
 
-- `cjs`, `lowLevelAccess`(boolean), `hideIcon`(boolean), `backgroundEmbedding`
+- `lowLevelAccess`(boolean), `hideIcon`(boolean), `backgroundEmbedding`
 - `moduleNamespace`, `customModuleToggle`, `mcpUrl`, `moduleName`, `moduleDescription`
+- 보존 전용 reserved: `cjs`
 - 읽기전용: `moduleId`
 
 **risup 전용 필드:**
 
-- 기본: `mainPrompt`, `jailbreak`, `aiModel`, `subModel`, `apiType`, `presetImage`
+- 기본: `aiModel`, `subModel`, `apiType`, `presetImage`
 - 생성 파라미터: `temperature`(number), `maxContext`(number), `maxResponse`(number), `frequencyPenalty`(number), `presencePenalty`(number), `top_p`(number), `top_k`(number), `repetition_penalty`(number), `min_p`(number), `top_a`(number)
-- 사고/추론: `reasonEffort`(number), `thinkingTokens`(number), `thinkingType`, `adaptiveThinkingEffort`
-- 템플릿: `instructChatTemplate`, `JinjaTemplate`, `customPromptTemplateToggle`, `templateDefaultVariables`, `moduleIntergration`, `useInstructPrompt`(boolean)
+- 사고/추론: `reasonEffort`(number), `thinkingTokens`(number), `thinkingType`, `adaptiveThinkingEffort`, `deepseekThinkingType`, `deepseekReasoningEffort`
+- 템플릿: `promptTemplate`(JSON), `formatingOrder`(JSON), `customPromptTemplateToggle`, `templateDefaultVariables`, `moduleIntergration`
 - JSON 스키마: `jsonSchemaEnabled`(boolean), `jsonSchema`, `strictJsonSchema`(boolean), `extractJson`
 - 그룹: `groupTemplate`, `groupOtherBotRole`
-- 기타: `promptPreprocess`(boolean), `promptTemplate`(JSON), `presetBias`(JSON), `formatingOrder`(JSON), `autoSuggestPrompt`, `autoSuggestPrefix`, `autoSuggestClean`(boolean), `localStopStrings`(JSON), `outputImageModal`(boolean), `verbosity`(number), `fallbackWhenBlankResponse`(boolean), `systemContentReplacement`, `systemRoleReplacement`
+- Provider/Endpoint: `proxyRequestModel`, `openrouterRequestModel`, `customProxyRequestModel`, `reverseProxyOobaArgs`(JSON), `koboldURL`, `forceReplaceUrl`, `textgenWebUIStreamURL`, `textgenWebUIBlockingURL`, `localNetworkMode`(boolean), `localNetworkTimeoutSec`(number)
+- 고급 JSON/기타: `promptSettings`(JSON), `customAPIFormat`(JSON), `openrouterProvider`(JSON), `seperateParametersEnabled`(boolean), `seperateParameters`(JSON), `fallbackModels`(JSON), `seperateModels`(JSON), `modelTools`(JSON), `customFlags`(JSON), `enableCustomFlags`(boolean), `dynamicOutput`(JSON)
+- 기타: `promptPreprocess`(boolean), `presetBias`(JSON), `autoSuggestPrompt`, `autoSuggestPrefix`, `autoSuggestClean`(boolean), `localStopStrings`(JSON), `outputImageModal`(boolean), `verbosity`(number), `fallbackWhenBlankResponse`(boolean), `systemContentReplacement`, `systemRoleReplacement`
+- 보존 전용 legacy prompt compatibility: `mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`
 
 ### Lua 섹션 (Lua Sections)
 
@@ -141,45 +145,45 @@ css 필드는 다중행 구분자로 여러 섹션으로 분할됨:
 | -------------------- | -------------------------- | --------------------------------------------------------- |
 | `name`               | 캐릭터 이름                |                                                           |
 | `description`        | 캐릭터 설명 (AI에 전달)    |                                                           |
-| `personality`        | 캐릭터 성격                |                                                           |
-| `scenario`           | 시나리오/배경              |                                                           |
+| `personality`        | 캐릭터 성격                | legacy 보존 전용                                          |
+| `scenario`           | 시나리오/배경              | legacy 보존 전용                                          |
 | `firstMessage`       | 첫 메시지 (CBS 사용 가능)  |                                                           |
 | `exampleMessage`     | 예시 대화                  | card.json의 `mes_example`                                 |
-| `systemPrompt`       | 시스템 프롬프트            | `post_history_instructions`와 별개                        |
+| `systemPrompt`       | 시스템 프롬프트            | legacy 보존 전용                                          |
 | `globalNote`         | 글로벌 노트                | 항상 AI에 전달됨. card.json의 `post_history_instructions` |
 | `css`                | CSS + HTML (UI/사이드패널) | `backgroundHTML` 영역                                     |
 | `defaultVariables`   | 기본 변수 초기값           | CBS `{{getvar}}`로 접근                                   |
 | `lua`                | Lua 트리거 스크립트        | RisuAI Lua 5.4 API                                        |
 | `alternateGreetings` | 추가 첫 메시지             | 문자열 배열                                               |
-| `groupOnlyGreetings` | 그룹 전용 인사말           | 문자열 배열                                               |
+| `groupOnlyGreetings` | 그룹 전용 인사말           | legacy 보존 전용 문자열 배열                              |
 | `tags`               | 태그                       | 문자열 배열                                               |
 | `creator`            | 제작자 이름                |                                                           |
 | `characterVersion`   | 캐릭터 버전                |                                                           |
-| `nickname`           | 닉네임 (표시명)            |                                                           |
-| `source`             | 소스 URL                   | 문자열 배열                                               |
+| `nickname`           | 닉네임 (표시명)            | legacy 보존 전용                                          |
+| `source`             | 소스 URL                   | legacy 보존 전용 문자열 배열                              |
 | `creatorcomment`     | 제작자 코멘트              | card.json의 `creator_notes`                               |
-| `additionalText`     | 추가 텍스트                |                                                           |
-| `license`            | 라이선스                   |                                                           |
+| `additionalText`     | 추가 텍스트                | legacy 보존 전용                                          |
+| `license`            | 라이선스                   | legacy 보존 전용                                          |
 
 ### risum — 모듈
 
-| 필드                                | 용도                                | 비고    |
-| ----------------------------------- | ----------------------------------- | ------- |
-| `name` / `moduleName`               | 모듈 이름                           |         |
-| `description` / `moduleDescription` | 모듈 설명                           |         |
-| `cjs`                               | CommonJS 코드                       |         |
-| `lua`                               | Lua 트리거 (triggerscript에서 추출) |         |
-| `lowLevelAccess`                    | 저수준 접근 활성화                  | boolean |
-| `hideIcon`                          | 아이콘 숨김                         | boolean |
-| `backgroundEmbedding`               | 배경 임베딩 HTML                    |         |
-| `moduleNamespace`                   | 모듈 네임스페이스                   |         |
-| `customModuleToggle`                | 커스텀 토글 스크립트                |         |
-| `mcpUrl`                            | MCP 서버 URL                        |         |
-| `moduleId`                          | 고유 ID (읽기전용)                  | UUID    |
+| 필드                                | 용도                                | 비고                     |
+| ----------------------------------- | ----------------------------------- | ------------------------ |
+| `name` / `moduleName`               | 모듈 이름                           |                          |
+| `description` / `moduleDescription` | 모듈 설명                           |                          |
+| `cjs`                               | Reserved CommonJS 슬롯              | 보존 전용/일반 편집 숨김 |
+| `lua`                               | Lua 트리거 (triggerscript에서 추출) |                          |
+| `lowLevelAccess`                    | 저수준 접근 활성화                  | boolean                  |
+| `hideIcon`                          | 아이콘 숨김                         | boolean                  |
+| `backgroundEmbedding`               | 배경 임베딩 HTML                    |                          |
+| `moduleNamespace`                   | 네임스페이스                        |                          |
+| `customModuleToggle`                | 커스텀 토글 스크립트                |                          |
+| `mcpUrl`                            | MCP 서버 URL                        |                          |
+| `moduleId`                          | 고유 ID (읽기전용)                  | UUID                     |
 
 ### risup — 프리셋
 
-프리셋 파일은 AI 모델과 생성 파라미터를 저장합니다. 복잡한 중첩 객체(ooba, NAISettings, customFlags 등)는 `_presetData`에 보존되지만 개별 편집은 불가합니다.
+프리셋 파일은 AI 모델과 생성 파라미터를 저장합니다. `promptTemplate`과 `formatingOrder`가 권장 prompt 편집 표면이며, 일부 고급 중첩 객체(`promptSettings`, `customAPIFormat`, `openrouterProvider`, `customFlags` 등)는 JSON 기반 편집기로 노출됩니다. 노출되지 않은 중첩 객체는 `_presetData`에 보존됩니다.
 
 핵심 필드만 나열합니다. 전체 목록은 `list_fields`로 확인하세요.
 
@@ -394,7 +398,7 @@ getTokens(id, "텍스트")         -- 비동기
 - 로어북 `key`가 비어있어도 `getLoreBooks()`의 comment 필터로 접근 가능 (DB 저장용)
 - 참고 자료(references)는 **읽기 전용** — 수정 불가, 레퍼런스로만 활용
 - `list_lorebook` 결과에서 `mode: "folder"`인 항목은 폴더 자체 (내용 없음)
-- risup의 복잡한 중첩 객체 (ooba, NAISettings, customFlags, openrouterProvider 등)는 보존되지만 개별 편집 불가
+- risup의 일부 복잡한 중첩 객체는 JSON 기반 편집기로 노출되며, 노출되지 않은 값은 보존 전용으로 round-trip됩니다.
 
 ---
 
