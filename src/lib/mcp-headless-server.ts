@@ -22,6 +22,7 @@ import {
   type McpSessionStatus,
   type RendererOpenFileRequest,
 } from './mcp-api-server';
+import { buildRuntimeMetadata, type RuntimeMetadata } from './mcp-runtime-contract';
 import {
   combineCssSections,
   combineLuaSections,
@@ -56,6 +57,16 @@ interface HeadlessReferenceFile {
   data: CharxData;
   name: string;
 }
+
+declare const __APP_VERSION__: string;
+declare const __PACKAGE_VERSION__: string;
+declare const __BUILD_TIME__: string | null;
+declare const __COMMIT__: string | null;
+
+const BUNDLED_APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : null;
+const BUNDLED_PACKAGE_VERSION = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : null;
+const BUNDLED_BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : null;
+const BUNDLED_COMMIT = typeof __COMMIT__ !== 'undefined' ? __COMMIT__ : null;
 
 function getFileType(filePath: string): SupportedFileType {
   const ext = path.extname(filePath).toLowerCase();
@@ -105,11 +116,44 @@ function loadReferences(referencePaths: readonly string[] | undefined): Headless
   });
 }
 
+function readPackageVersionNear(baseRoot: string): string | null {
+  let dir = path.resolve(baseRoot);
+  for (let depth = 0; depth < 6; depth++) {
+    const packagePath = path.join(dir, 'package.json');
+    if (fs.existsSync(packagePath)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(packagePath, 'utf8')) as { version?: unknown };
+        return typeof parsed.version === 'string' ? parsed.version : null;
+      } catch {
+        return null;
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+function buildHeadlessRuntimeInfo(baseRoot: string): RuntimeMetadata {
+  const packageVersion = BUNDLED_PACKAGE_VERSION ?? readPackageVersionNear(baseRoot) ?? BUNDLED_APP_VERSION ?? '0.0.0';
+  const appVersion = BUNDLED_APP_VERSION ?? packageVersion;
+  return buildRuntimeMetadata({
+    serverVersion: appVersion,
+    appVersion,
+    packageVersion,
+    buildTime: BUNDLED_BUILD_TIME,
+    commit: BUNDLED_COMMIT,
+    runtimeMode: 'standalone',
+  });
+}
+
 export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Promise<HeadlessMcpRuntime> {
   const log = options.log ?? ((message) => process.stderr.write(`[toki-mcp:standalone] ${message}\n`));
   const baseRoot = options.baseRoot ?? path.resolve(__dirname);
   const userDataPath = options.userDataPath ?? path.join(os.homedir(), '.risutoki', 'mcp-standalone');
   fs.mkdirSync(userDataPath, { recursive: true });
+  const runtime = buildHeadlessRuntimeInfo(baseRoot);
 
   let currentFilePath: string | null = options.filePath
     ? ensureAbsoluteExistingFile(options.filePath, 'file path')
@@ -182,6 +226,7 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
       stringifyTriggerScripts,
       getSkillRoots: () => resolveSkillRootDirs(baseRoot).map((root) => root.absolutePath),
       getUserDataPath: () => userDataPath,
+      getRuntimeInfo: () => runtime,
       getCurrentFilePath: () => currentFilePath,
       getSessionStatus: (): McpSessionStatus => ({
         currentFilePath,
@@ -189,6 +234,7 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
         lastRestored: null,
         pendingRecovery: null,
         renderer: null,
+        runtime,
       }),
     });
   });

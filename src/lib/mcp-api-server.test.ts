@@ -7,6 +7,7 @@ import * as path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../charx-io';
 import { resolveSkillRootDirs } from './content-roots';
+import type { RuntimeMetadata } from './mcp-runtime-contract';
 import { parsePromptTemplate, parsePromptTemplateFromText, serializePromptTemplateToText } from './risup-prompt-model';
 
 function parseLuaSections() {
@@ -126,6 +127,7 @@ interface TestSessionStatus {
   pendingRecovery: TestPendingRecoveryStatus | null;
   renderer: TestRendererSessionStatus | null;
   referenceManifestStatus?: { level: 'info' | 'warn' | 'error'; message: string; detail?: string } | null;
+  runtime?: RuntimeMetadata | null;
 }
 
 interface TestSessionStatusPayload {
@@ -275,6 +277,7 @@ function closeServer(server: http.Server): Promise<void> {
 
 interface TestDepsOverrides {
   getSessionStatus?: () => TestSessionStatus | Promise<TestSessionStatus>;
+  getRuntimeInfo?: () => RuntimeMetadata;
   parseLuaSections?: (lua: string) => Array<{ name: string; content: string }>;
   parseCssSections?: (css: string) => {
     sections: Array<{ name: string; content: string }>;
@@ -373,6 +376,7 @@ async function startTestApiServer(
           ? [skillRoots]
           : resolveSkillRootDirs(path.join(__dirname, '..', '..')).map((root) => root.absolutePath),
     getUserDataPath: () => overrides?.userDataPath ?? path.join(os.tmpdir(), 'risutoki-mcp-api-test-user-data'),
+    getRuntimeInfo: overrides?.getRuntimeInfo,
     getCurrentFilePath: () => activeFilePath,
     getSessionStatus:
       overrides?.getSessionStatus ??
@@ -5949,6 +5953,40 @@ describe('MCP API success response envelope', () => {
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('session_status exposes runtime metadata and flags version skew in summary artifacts', async () => {
+    const runtime: RuntimeMetadata = {
+      serverVersion: '0.69.1',
+      appVersion: '0.69.2',
+      packageVersion: '0.69.2',
+      buildTime: null,
+      commit: null,
+      runtimeMode: 'app-backed',
+      skew: {
+        detected: true,
+        warnings: ['serverVersion (0.69.1) differs from appVersion (0.69.2)'],
+      },
+    };
+    const api = await startTestApiServer(createSearchFixture(), [], undefined, {
+      getRuntimeInfo: () => runtime,
+    });
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/session/status');
+
+      expect(res.status).toBe(200);
+      expect(res.data.runtime).toEqual(runtime);
+      expect(res.data.summary).toContain('Runtime skew detected');
+      expect(res.data.artifacts).toEqual(
+        expect.objectContaining({
+          runtimeMode: 'app-backed',
+          runtimeSkewDetected: true,
+          runtimeSkewWarnings: runtime.skew.warnings,
+        }),
+      );
     } finally {
       await closeServer(api.server);
     }

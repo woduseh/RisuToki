@@ -8,6 +8,7 @@ import * as os from 'os';
 // Type-only imports from local TypeScript modules (erased at compile time)
 import type { CharxData } from './src/charx-io';
 import type { McpApiServer, Section, CssCacheEntry, McpSessionStatus } from './src/lib/mcp-api-server';
+import type { RuntimeMetadata } from './src/lib/mcp-runtime-contract';
 import { writeFileAtomicSync } from './src/lib/atomic-write';
 import { resolveSkillRootDirs } from './src/lib/content-roots';
 import { markRecoveryDocumentActiveForPath, syncRecoveryAfterExplicitSave } from './src/lib/session-recovery-main';
@@ -166,6 +167,17 @@ const { createMainStateStore } = require('./src/lib/main-state-store') as {
   createMainStateStore: () => MainStateStore;
 };
 
+const { buildRuntimeMetadata } = require('./src/lib/mcp-runtime-contract') as {
+  buildRuntimeMetadata: (input: {
+    serverVersion: string;
+    appVersion: string;
+    packageVersion: string;
+    buildTime: string | null;
+    commit: string | null;
+    runtimeMode: 'app-backed' | 'standalone';
+  }) => RuntimeMetadata;
+};
+
 const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server') as {
   startApiServer: (deps: {
     getCurrentData: () => CharxData | null;
@@ -194,6 +206,7 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     getUserDataPath: () => string;
     getSessionStatus: () => Promise<McpSessionStatus>;
     getCurrentFilePath: () => string | null;
+    getRuntimeInfo: () => RuntimeMetadata;
   }) => McpApiServer;
 };
 
@@ -519,6 +532,18 @@ async function getCurrentMcpSessionStatus(): Promise<McpSessionStatus> {
     renderer: rendererResponse.success ? (rendererResponse.renderer ?? null) : null,
     referenceManifestStatus: mainState.referenceManifestStatus,
   };
+}
+
+function getAppBackedRuntimeInfo(): RuntimeMetadata {
+  const appVersion = app.getVersion();
+  return buildRuntimeMetadata({
+    serverVersion: appVersion,
+    appVersion,
+    packageVersion: appVersion,
+    buildTime: null,
+    commit: null,
+    runtimeMode: 'app-backed',
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -882,6 +907,7 @@ app.whenReady().then(() => {
     getUserDataPath: () => app.getPath('userData'),
     getSessionStatus: getCurrentMcpSessionStatus,
     getCurrentFilePath: () => mainState.currentFilePath,
+    getRuntimeInfo: getAppBackedRuntimeInfo,
   });
   apiToken = mcpApi.token;
 

@@ -53,6 +53,7 @@ export interface SessionRouteDeps {
   getCurrentFilePath?: McpApiDeps['getCurrentFilePath'];
   getReferenceFiles: McpApiDeps['getReferenceFiles'];
   getSessionStatus?: McpApiDeps['getSessionStatus'];
+  getRuntimeInfo?: McpApiDeps['getRuntimeInfo'];
   normalizeTriggerScripts: McpApiDeps['normalizeTriggerScripts'];
   getCssSectionCount: (css: string) => number;
   getLuaSectionCount: (lua: string) => number;
@@ -90,6 +91,7 @@ export async function handleSessionStatusRoute(
   }
 
   const status = await getSessionStatusWithTimeout(deps.getSessionStatus);
+  const runtime = deps.getRuntimeInfo?.() ?? status?.runtime ?? null;
   const snapshotSummary = [...fieldSnapshots.entries()]
     .filter(([, snaps]) => snaps.length > 0)
     .map(([field, snaps]) => ({ field, count: snaps.length }))
@@ -169,6 +171,7 @@ export async function handleSessionStatusRoute(
     };
   });
   const referenceManifestStatus = status?.referenceManifestStatus ?? null;
+  const runtimeSkew = runtime?.skew.detected ? runtime.skew.warnings : [];
   const integrity = {
     activeFile: {
       path: activeFileStat.path,
@@ -230,6 +233,7 @@ export async function handleSessionStatusRoute(
       files: refsSummary,
     },
   };
+  const summaryWarning = runtimeSkew.length > 0 ? ` Runtime skew detected: ${runtimeSkew.join('; ')}` : '';
 
   deps.jsonResSuccess(
     res,
@@ -245,6 +249,7 @@ export async function handleSessionStatusRoute(
         lastRestored: status?.lastRestored ?? null,
         pendingRecovery: status?.pendingRecovery ?? null,
       },
+      runtime,
       snapshots: {
         byField: snapshotSummary,
         totalFields: snapshotSummary.length,
@@ -261,10 +266,10 @@ export async function handleSessionStatusRoute(
     {
       toolName: 'session_status',
       summary: loaded
-        ? `Session status for "${documentName ?? 'Untitled'}" (${totalSnapshots} snapshot${totalSnapshots === 1 ? '' : 's'}, ${refsSummary.length} ref${refsSummary.length === 1 ? '' : 's'})`
+        ? `Session status for "${documentName ?? 'Untitled'}" (${totalSnapshots} snapshot${totalSnapshots === 1 ? '' : 's'}, ${refsSummary.length} ref${refsSummary.length === 1 ? '' : 's'})${summaryWarning}`
         : refsSummary.length > 0
-          ? `No document loaded but ${refsSummary.length} reference file(s) available — use list_references to inspect`
-          : `Session status (no document loaded, no references)`,
+          ? `No document loaded but ${refsSummary.length} reference file(s) available — use list_references to inspect${summaryWarning}`
+          : `Session status (no document loaded, no references)${summaryWarning}`,
       nextActions: !loaded && refsSummary.length > 0 ? ['list_references', 'open_file'] : undefined,
       artifacts: {
         filePath: status?.currentFilePath ?? null,
@@ -272,6 +277,9 @@ export async function handleSessionStatusRoute(
         totalSnapshots,
         referenceCount: refsSummary.length,
         hasSurfaceSummary: !!surfaceSummary,
+        runtimeMode: runtime?.runtimeMode ?? null,
+        runtimeSkewDetected: runtime?.skew.detected ?? false,
+        runtimeSkewWarnings: runtimeSkew,
       },
     },
   );

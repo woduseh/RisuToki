@@ -3,6 +3,17 @@
 const { execFileSync } = require('child_process');
 const version = require('../package.json').version;
 
+function readCommit() {
+  try {
+    return execFileSync('git', ['rev-parse', '--short=12', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+const buildTime = new Date().toISOString();
+const commit = readCommit();
+
 execFileSync(
   process.execPath,
   [
@@ -14,6 +25,9 @@ execFileSync(
     '--outfile=toki-mcp-server.js',
     '--target=node20',
     `--define:__APP_VERSION__=${JSON.stringify(version)}`,
+    `--define:__PACKAGE_VERSION__=${JSON.stringify(version)}`,
+    `--define:__BUILD_TIME__=${JSON.stringify(buildTime)}`,
+    `--define:__COMMIT__=${JSON.stringify(commit)}`,
   ],
   { stdio: 'inherit' },
 );

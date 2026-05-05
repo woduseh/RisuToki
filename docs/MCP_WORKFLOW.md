@@ -75,12 +75,14 @@ RisuToki MCP has two runtime modes:
 
 ### Standard Sequence
 
-1. **Inspect/routability first** — Use `inspect_document` for active/session, external, reference, or guidance preflight when the target fits the facade contract.
+This sequence maps to additive `risutoki/workflowStages` metadata exposed by `tools/list` and `list_tool_profiles`. Stage meanings: `discover` = routing/catalog/list/session preflight, `read` = bounded content retrieval, `search` = query-based retrieval, `validate` = validators/diffs/simulators, `preview` = dry-run or preview-token generation, and `apply` = state-changing operations. The safe task order is **discover -> read/search -> validate/preview -> apply -> validate**; the final validation is a repeated workflow step after mutation.
+
+1. **Discover / routability first** — Use `inspect_document` for active/session, external, reference, or guidance preflight when the target fits the facade contract.
 2. **Read/search through the facade** — Use `read_content` and `search_document` with bounded selectors before reaching for legacy field/search/probe routes.
 3. **Choose a fallback only with a reason** — Switch to granular list/read/search tools for structured item editors, unsupported selectors, exact legacy response shapes, or broad batch workflows.
-4. **Preview before apply** — For covered active field/surface edits, call `preview_edit`, carry returned guards/tokens, then call `apply_edit`.
-5. **Use granular mutation families for gaps** — Inserts, block replacements, external mutations, deletes, imports/exports, assets, and structured item edits remain granular.
-6. **Validate** — Confirm results with facade follow-up reads, structured validators, reference comparison, or preview.
+4. **Validate/preview before apply** — Run relevant validators/diffs/simulators before risky changes, and for covered active field/surface edits call `preview_edit`, carrying returned guards/tokens into `apply_edit`.
+5. **Apply through the narrowest mutating route** — Use `apply_edit` for covered facade previews. Inserts, block replacements, external mutations, deletes, imports/exports, assets, and structured item edits remain granular.
+6. **Validate after apply** — Confirm results with facade follow-up reads, structured validators, reference comparison, or preview.
 
 ### Task-Intent Playbooks
 
@@ -192,6 +194,8 @@ Use these intent-based routes when a user describes the work rather than the exa
 
 - `src/lib/mcp-tool-taxonomy.ts` is the single source of truth that maps registered MCP tools into workflow families. When you add or remove a registered tool, update this file as well. `mcp-tool-taxonomy.test.ts` enforces bidirectional completeness (no orphans, no phantoms) and behavioral-hint consistency.
 - MCP SDK `ToolAnnotations` (readOnlyHint, destructiveHint, idempotentHint, openWorldHint) are automatically patched after registration via `RegisteredTool.update()`.
+- `risutoki/workflowStages` is additive planning metadata derived from taxonomy names and behavioral hints. Use it to sequence discover -> read/search -> validate/preview -> apply -> validate workflows, not as a substitute for tool-specific `next_actions` or stale-guard metadata.
+- Post-v0.69.2 facade backlog, explicitly outside v0.69.2 scope: expand `validate_content` selectors beyond active lorebook keys, and add mutating facade parity for regex, greeting, and risup prompt item workflows. Until then, keep using granular validators and dedicated regex/greeting/risup prompt mutation tools for those cases.
 
 > For the full error/no-op/success response contract see [`docs/MCP_ERROR_CONTRACT.md`](MCP_ERROR_CONTRACT.md).
 

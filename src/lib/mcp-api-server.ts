@@ -41,6 +41,7 @@ import {
   type RisupPromptSnippet,
 } from './risup-prompt-snippet-store';
 import { mcpSuccess, errorRecoveryMeta, type McpErrorInfo, type McpSuccessOptions } from './mcp-response-envelope';
+import type { RuntimeMetadata } from './mcp-runtime-contract';
 import { normalizeLF, extToMime, cloneJson } from './shared-utils';
 import { REF_SCALAR_FIELDS, REF_ALLOWED_READ_FIELDS, getGreetingFieldName, getRefFileType } from './reference-store';
 import {
@@ -126,6 +127,7 @@ export interface McpSessionStatus {
   pendingRecovery: McpPendingRecoveryStatus | null;
   renderer: McpRendererSessionStatus | null;
   referenceManifestStatus?: McpReferenceManifestStatus | null;
+  runtime?: RuntimeMetadata | null;
 }
 
 export interface McpApiDeps {
@@ -175,6 +177,7 @@ export interface McpApiDeps {
   // session metadata
   getSessionStatus?: () => Promise<McpSessionStatus> | McpSessionStatus;
   getCurrentFilePath?: () => string | null;
+  getRuntimeInfo?: () => RuntimeMetadata;
 }
 
 export interface McpApiServer {
@@ -4729,6 +4732,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           getCurrentFilePath: deps.getCurrentFilePath,
           getReferenceFiles: deps.getReferenceFiles,
           getSessionStatus: deps.getSessionStatus,
+          getRuntimeInfo: deps.getRuntimeInfo,
           normalizeTriggerScripts: deps.normalizeTriggerScripts,
           getCssSectionCount: (css) => cssCache.get(css).sections.length,
           getLuaSectionCount: (lua) => luaCache.get(lua).length,

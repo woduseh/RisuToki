@@ -8,6 +8,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../src/charx-io';
 import { startApiServer } from '../src/lib/mcp-api-server';
+import { buildRuntimeMetadata, type RuntimeMetadata } from '../src/lib/mcp-runtime-contract';
 
 const TEST_DIR = path.join(__dirname, '_mcp-search-tmp');
 
@@ -318,7 +319,7 @@ function closeServer(server: http.Server): Promise<void> {
   });
 }
 
-async function startTestApiServer(currentData: SearchFixture) {
+async function startTestApiServer(currentData: SearchFixture, options: { runtime?: RuntimeMetadata } = {}) {
   let resolvePort!: (port: number) => void;
   const portPromise = new Promise<number>((resolve) => {
     resolvePort = resolve;
@@ -373,6 +374,7 @@ async function startTestApiServer(currentData: SearchFixture) {
     getSkillRoots: () => [path.join(__dirname, '..', 'skills')],
     getUserDataPath: () => path.join(TEST_DIR, 'api-user-data'),
     getCurrentFilePath: () => activeFilePath,
+    ...(options.runtime ? { getRuntimeInfo: () => options.runtime as RuntimeMetadata } : {}),
   });
 
   const port = await portPromise;
@@ -538,7 +540,16 @@ async function callJson(
   args: Record<string, unknown>,
   options: { expectError?: boolean } = {},
 ): Promise<McpCallJson> {
-  const result = await runtime.client.callTool({ name, arguments: args });
+  return callClientJson(runtime.client, name, args, options);
+}
+
+async function callClientJson(
+  client: Client,
+  name: string,
+  args: Record<string, unknown>,
+  options: { expectError?: boolean } = {},
+): Promise<McpCallJson> {
+  const result = await client.callTool({ name, arguments: args });
   const text = extractTextContent(result.content);
   if (options.expectError) {
     assert.equal(result.isError, true, `${name} should return a structured MCP error`);
@@ -556,6 +567,39 @@ function nestedRecord(value: unknown, label: string): McpCallJson {
 function nestedArray(value: unknown, label: string): unknown[] {
   assert.ok(Array.isArray(value), `${label} should be an array`);
   return value;
+}
+
+function assertToolProfileRuntimeHealth(catalog: McpCallJson, expectedRuntime?: RuntimeMetadata): McpCallJson {
+  const runtime = nestedRecord(catalog.runtime, 'tool profile runtime');
+  assert.equal(typeof runtime.serverVersion, 'string');
+  assert.equal(typeof runtime.appVersion, 'string');
+  assert.equal(typeof runtime.packageVersion, 'string');
+  assert.ok(runtime.runtimeMode === 'standalone' || runtime.runtimeMode === 'app-backed');
+  const skew = nestedRecord(runtime.skew, 'tool profile runtime.skew');
+  assert.equal(typeof skew.detected, 'boolean');
+  const skewWarnings = nestedArray(skew.warnings, 'tool profile runtime.skew.warnings');
+  assert.ok(skewWarnings.every((warning) => typeof warning === 'string'));
+  if (expectedRuntime) assert.deepEqual(runtime, expectedRuntime);
+
+  const health = nestedRecord(catalog.health, 'tool profile health');
+  for (const field of ['facadeTools', 'readonlyTools', 'advancedTools', 'allTools'] as const) {
+    assert.equal(typeof health[field], 'number', `health.${field} should be numeric`);
+    assert.ok((health[field] as number) > 0, `health.${field} should be positive`);
+  }
+  assert.ok((health.advancedTools as number) <= (health.allTools as number));
+  nestedArray(health.missingWorkflowStages, 'health.missingWorkflowStages');
+  nestedArray(health.unknownRecommendation, 'health.unknownRecommendation');
+  nestedArray(health.unknownSurfaceKind, 'health.unknownSurfaceKind');
+
+  const artifacts = nestedRecord(catalog.artifacts, 'tool profile artifacts');
+  assert.equal(artifacts.runtime_mode, runtime.runtimeMode);
+  assert.equal(artifacts.runtime_skew_detected, skew.detected);
+  assert.deepEqual(artifacts.runtime_skew_warnings, skewWarnings);
+  assert.deepEqual(artifacts.catalog_health, health);
+  if (skew.detected) {
+    assert.match(String(catalog.summary), /Runtime skew detected/);
+  }
+  return runtime;
 }
 
 function routedTools(envelope: McpCallJson): string[] {
@@ -632,6 +676,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
 
     facadeOnlyCalls.push('inspect_document');
     const profileCatalog = await callJson(runtime, 'list_tool_profiles', { profile: 'facade-first' });
+    assertToolProfileRuntimeHealth(profileCatalog);
     const profile = nestedRecord(profileCatalog.profile, 'profile catalog');
     assert.equal(profile.resolvedProfile, 'facade-first');
     assert.equal(profile.toolsListBehavior, 'unfiltered-compatible');
@@ -660,6 +705,9 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     const readonlyProfileCatalog = await callJson(runtime, 'list_tool_profiles', { profile: 'readonly' });
     const readonlyProfile = nestedRecord(readonlyProfileCatalog.profile, 'readonly profile catalog');
     const readonlyProfileTools = nestedArray(readonlyProfile.tools, 'readonly profile catalog.tools');
+    const readonlyToolNames = readonlyProfileTools.map((tool) => nestedRecord(tool, 'readonly profile tool').name);
+    assert.ok(!readonlyToolNames.includes('preview_edit'), 'readonly profile should not expose preview_edit');
+    assert.ok(!readonlyToolNames.includes('apply_edit'), 'readonly profile should not expose apply_edit');
     for (const [toolName, workflowStages] of [
       ['inspect_document', ['discover']],
       ['read_content', ['read']],
@@ -781,6 +829,20 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     const validations = nestedArray(validationResult.validations, 'validation result.validations');
     const lorebookValidation = nestedRecord(nestedRecord(validations[0], 'validation item').data, 'validation data');
     assert.equal(lorebookValidation.issueCount, 0);
+
+    const applyWithoutPreview = await callJson(
+      runtime,
+      'apply_edit',
+      {
+        preview_token: 'facade-preview-v1.missingPreviewToken',
+        operation_digest: 'missing-preview-operation-digest',
+        target: activeTarget,
+      },
+      { expectError: true },
+    );
+    assert.equal(applyWithoutPreview.status, 404);
+    assert.match(String(applyWithoutPreview.error ?? ''), /Unknown or expired preview token/);
+    assert.match(String(applyWithoutPreview.suggestion ?? ''), /preview_edit/);
 
     facadeOnlyCalls.push('preview_edit');
     const preview = await callJson(runtime, 'preview_edit', {
@@ -1106,6 +1168,12 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     const sessionInspect = await callJson(recoveryRuntime, 'inspect_document', { target: { kind: 'session' } });
     assert.deepEqual(routedTools(sessionInspect), ['session_status']);
+    const sessionInspectRuntime = nestedRecord(
+      nestedRecord(nestedRecord(sessionInspect.result, 'session inspect result').session, 'session inspect session')
+        .runtime,
+      'session inspect runtime',
+    );
+    assert.equal(sessionInspectRuntime.runtimeMode, 'standalone');
     const noActiveRead = await callJson(
       recoveryRuntime,
       'read_content',
@@ -1171,7 +1239,15 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
 }
 
 (async function run() {
-  const api = await startTestApiServer(createSearchFixture());
+  const appRuntime = buildRuntimeMetadata({
+    serverVersion: 'api-placeholder',
+    appVersion: '99.69.2',
+    packageVersion: '99.69.2',
+    buildTime: null,
+    commit: null,
+    runtimeMode: 'app-backed',
+  });
+  const api = await startTestApiServer(createSearchFixture(), { runtime: appRuntime });
   let probeFixture: { dir: string; filePath: string } | null = null;
   const client = new Client({ name: 'mcp-search-smoke-test', version: '1.0.0' }, { capabilities: {} });
   const transport = new StdioClientTransport({
@@ -1303,6 +1379,31 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       profiles: ['facade-first', 'authoring', 'advanced-full', 'readonly'],
       defaultProfile: 'facade-first',
     });
+    const appBackedProfileCatalog = await callClientJson(client, 'list_tool_profiles', { profile: 'facade-first' });
+    const appBackedRuntime = assertToolProfileRuntimeHealth(appBackedProfileCatalog);
+    assert.equal(appBackedRuntime.appVersion, appRuntime.appVersion);
+    assert.equal(appBackedRuntime.packageVersion, appRuntime.packageVersion);
+    assert.notEqual(
+      appBackedRuntime.serverVersion,
+      appRuntime.serverVersion,
+      'list_tool_profiles should preserve the MCP process serverVersion instead of trusting the API placeholder',
+    );
+    assert.equal(nestedRecord(appBackedRuntime.skew, 'app-backed runtime skew').detected, true);
+    assert.ok(
+      nestedArray(
+        nestedRecord(appBackedRuntime.skew, 'app-backed runtime skew').warnings,
+        'app-backed skew warnings',
+      ).some((warning) => String(warning).includes('serverVersion') && String(warning).includes('appVersion')),
+    );
+    const appBackedSessionStatus = await callClientJson(client, 'session_status', {});
+    const appBackedSessionRuntime = nestedRecord(appBackedSessionStatus.runtime, 'app-backed session_status runtime');
+    assert.equal(appBackedSessionRuntime.appVersion, appRuntime.appVersion);
+    assert.notEqual(
+      appBackedSessionRuntime.serverVersion,
+      appRuntime.serverVersion,
+      'session_status should preserve the MCP process serverVersion instead of trusting the API placeholder',
+    );
+    assert.equal(nestedRecord(appBackedSessionRuntime.skew, 'app-backed session runtime skew').detected, true);
     assertToolListMetadata(tools.tools, 'preview_edit', {
       family: 'surface',
       staleGuards: [],
@@ -1444,13 +1545,16 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assert.ok(!inspectFacade.isError, `inspect_document should succeed: ${inspectFacadeText}`);
     const inspectFacadeJson = JSON.parse(inspectFacadeText) as {
       facade?: { tool?: string };
-      result?: { routed_legacy?: Array<{ tool?: string }> };
+      result?: { routed_legacy?: Array<{ tool?: string }>; session?: { runtime?: RuntimeMetadata } };
     };
     assert.equal(inspectFacadeJson.facade?.tool, 'inspect_document');
     assert.ok(
       inspectFacadeJson.result?.routed_legacy?.some((entry) => entry.tool === 'session_status'),
       'inspect_document should report routed session_status legacy route',
     );
+    const inspectRuntime = nestedRecord(inspectFacadeJson.result?.session?.runtime, 'inspect_document session runtime');
+    assert.equal(inspectRuntime.appVersion, appRuntime.appVersion);
+    assert.equal(nestedRecord(inspectRuntime.skew, 'inspect runtime skew').detected, true);
 
     const previewFacade = await client.callTool({
       name: 'preview_edit',

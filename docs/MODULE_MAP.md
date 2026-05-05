@@ -38,6 +38,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-search.ts` — search behavior for MCP search tools
 - `src/lib/mcp-data-update.ts` — shared MCP-side data update helpers
 - `src/lib/mcp-config.ts` — MCP configuration
+- `src/lib/mcp-runtime-contract.ts` — MCP build/runtime metadata and tool-catalog health summaries
 - `src/lib/mcp-request-schemas.ts` — MCP request parameter validation schemas
 - `src/lib/assistant-launch.ts` — assistant process launch flow
 - `src/lib/assistant-prompt.ts` — assistant bootstrap prompt assembly

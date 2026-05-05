@@ -9,6 +9,18 @@
 
 ---
 
+## [0.69.2] - 2026-05-05
+
+### Added
+
+- Exposed MCP runtime metadata in `list_tool_profiles` and `session_status`, including server/app/package versions, build time, commit, runtime mode, and version-skew warnings.
+- Added profile catalog health summaries so agents can detect missing workflow stage metadata or taxonomy drift from compact catalog responses.
+- Strengthened real MCP route smoke coverage for runtime metadata, catalog health, readonly profile safety, app-backed skew detection, and preview-token-first apply behavior.
+
+### Changed
+
+- Documented `workflowStages` semantics and the recommended `discover -> read/search -> validate/preview -> apply -> validate` flow across MCP workflow docs and skills.
+
 ## [0.69.1] - 2026-05-05
 
 ### Changed

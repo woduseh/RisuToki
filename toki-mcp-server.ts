@@ -19,7 +19,23 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { startHeadlessMcpApiServer } from './src/lib/mcp-headless-server';
-import { buildToolSurfaceProfileCatalog, getToolMeta, TOOL_TAXONOMY } from './src/lib/mcp-tool-taxonomy';
+import {
+  ALL_TOOL_NAMES,
+  buildToolSurfaceProfileCatalog,
+  getToolMeta,
+  getToolWorkflowStages,
+  TOOL_RECOMMENDATIONS,
+  TOOL_SURFACE_KINDS,
+  TOOL_TAXONOMY,
+} from './src/lib/mcp-tool-taxonomy';
+import {
+  buildRuntimeMetadata,
+  mergeRuntimeMetadata,
+  summarizeToolCatalogHealth,
+  type RuntimeMetadata,
+  type RuntimeMode,
+  type ToolCatalogHealthSummary,
+} from './src/lib/mcp-runtime-contract';
 import { mcpSuccess } from './src/lib/mcp-response-envelope';
 import {
   FACADE_V1_CONTRACT_ID,
@@ -38,6 +54,14 @@ let TOKI_PORT = process.env.TOKI_PORT;
 let TOKI_TOKEN = process.env.TOKI_TOKEN;
 
 declare const __APP_VERSION__: string;
+declare const __PACKAGE_VERSION__: string;
+declare const __BUILD_TIME__: string | null;
+declare const __COMMIT__: string | null;
+
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
+const PACKAGE_VERSION = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : APP_VERSION;
+const BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : null;
+const COMMIT = typeof __COMMIT__ !== 'undefined' ? __COMMIT__ : null;
 
 interface DanbooruTag {
   id: number;
@@ -1434,9 +1458,102 @@ async function applyFacadeOperation(
 
 // ==================== MCP Server Setup ====================
 
+function getRuntimeMode(): RuntimeMode {
+  return process.argv.includes('--standalone') ? 'standalone' : 'app-backed';
+}
+
+function getRuntimeMetadata(): RuntimeMetadata {
+  return buildRuntimeMetadata({
+    serverVersion: APP_VERSION,
+    appVersion: APP_VERSION,
+    packageVersion: PACKAGE_VERSION,
+    buildTime: BUILD_TIME,
+    commit: COMMIT,
+    runtimeMode: getRuntimeMode(),
+  });
+}
+
+function asRuntimeMetadata(value: unknown): RuntimeMetadata | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const skew = record.skew;
+  if (!skew || typeof skew !== 'object' || Array.isArray(skew)) return null;
+  const skewRecord = skew as Record<string, unknown>;
+  const { serverVersion, appVersion, packageVersion, buildTime, commit, runtimeMode } = record;
+  const { detected, warnings } = skewRecord;
+  if (
+    typeof serverVersion !== 'string' ||
+    typeof appVersion !== 'string' ||
+    typeof packageVersion !== 'string' ||
+    (buildTime !== null && typeof buildTime !== 'string') ||
+    (commit !== null && typeof commit !== 'string') ||
+    (runtimeMode !== 'app-backed' && runtimeMode !== 'standalone') ||
+    typeof detected !== 'boolean' ||
+    !Array.isArray(warnings) ||
+    !warnings.every((warning) => typeof warning === 'string')
+  ) {
+    return null;
+  }
+  return {
+    serverVersion,
+    appVersion,
+    packageVersion,
+    buildTime,
+    commit,
+    runtimeMode,
+    skew: {
+      detected,
+      warnings: warnings as string[],
+    },
+  };
+}
+
+async function getRuntimeMetadataForCatalog(): Promise<RuntimeMetadata> {
+  const session = await apiRequest('GET', '/session/status');
+  if (isApiError(session)) return getRuntimeMetadata();
+  return getRuntimeMetadataForApiSession(session);
+}
+
+function getRuntimeMetadataForApiSession(session: unknown): RuntimeMetadata {
+  const serverRuntime = getRuntimeMetadata();
+  if (!session || typeof session !== 'object' || Array.isArray(session)) return serverRuntime;
+  return mergeRuntimeMetadata(serverRuntime, asRuntimeMetadata((session as Record<string, unknown>).runtime));
+}
+
+function withMergedRuntimeMetadata(session: unknown): unknown {
+  if (!session || typeof session !== 'object' || Array.isArray(session)) return session;
+  return {
+    ...(session as Record<string, unknown>),
+    runtime: getRuntimeMetadataForApiSession(session),
+  };
+}
+
+function getToolCatalogHealthSummary(): ToolCatalogHealthSummary {
+  const facadeCatalog = buildToolSurfaceProfileCatalog('facade-first');
+  const readonlyCatalog = buildToolSurfaceProfileCatalog('readonly');
+  const advancedCatalog = buildToolSurfaceProfileCatalog('advanced-full');
+  return summarizeToolCatalogHealth({
+    facadeTools: facadeCatalog?.counts.profileTools ?? 0,
+    readonlyTools: readonlyCatalog?.counts.profileTools ?? 0,
+    advancedTools: advancedCatalog?.counts.profileTools ?? 0,
+    allTools: ALL_TOOL_NAMES.length,
+    validRecommendations: TOOL_RECOMMENDATIONS,
+    validSurfaceKinds: TOOL_SURFACE_KINDS,
+    tools: ALL_TOOL_NAMES.map((name) => {
+      const entry = TOOL_TAXONOMY[name];
+      return {
+        name,
+        recommendation: entry.recommendation ?? 'advanced',
+        surfaceKind: entry.surfaceKind ?? 'granular',
+        workflowStages: getToolWorkflowStages(name),
+      };
+    }),
+  });
+}
+
 const server = new McpServer({
   name: 'risutoki',
-  version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0',
+  version: APP_VERSION,
 });
 
 // Collect RegisteredTool handles for annotation patching via public API.
@@ -1464,8 +1581,13 @@ server.tool(
     if (target.kind === 'active' || target.kind === 'session') {
       const session = await apiRequest('GET', '/session/status');
       if (isApiError(session)) return textResult(session);
+      const sessionWithRuntime = withMergedRuntimeMetadata(session);
       const routes = [route('session_status', 'GET', '/session/status')];
-      const result: Record<string, unknown> = { session, routed_legacy: routes, touched_targets: ['session'] };
+      const result: Record<string, unknown> = {
+        session: sessionWithRuntime,
+        routed_legacy: routes,
+        touched_targets: ['session'],
+      };
       if (target.kind === 'active') {
         const fields = await apiRequest('GET', '/fields');
         if (isApiError(fields)) return textResult(fields);
@@ -1581,14 +1703,19 @@ server.tool(
         ),
       );
     }
+    const runtime = await getRuntimeMetadataForCatalog();
+    const health = getToolCatalogHealthSummary();
+    const skewSummary = runtime.skew.detected ? ` Runtime skew detected: ${runtime.skew.warnings.join('; ')}` : '';
     return textResult(
       mcpSuccess(
         {
           profile: catalog,
+          runtime,
+          health,
         },
         {
           toolName: 'list_tool_profiles',
-          summary: `Returned ${catalog.counts.profileTools} tools for ${catalog.resolvedProfile} profile`,
+          summary: `Returned ${catalog.counts.profileTools} tools for ${catalog.resolvedProfile} profile${skewSummary}`,
           nextActions: catalog.legacyEscapeHatch ? ['list_tool_profiles', 'tools/list'] : ['tools/list'],
           artifacts: {
             profile: catalog.resolvedProfile,
@@ -1596,6 +1723,10 @@ server.tool(
             tools_list_behavior: catalog.toolsListBehavior,
             tool_count: catalog.counts.profileTools,
             all_tool_count: catalog.counts.allTools,
+            runtime_mode: runtime.runtimeMode,
+            runtime_skew_detected: runtime.skew.detected,
+            runtime_skew_warnings: runtime.skew.warnings,
+            catalog_health: health,
           },
         },
       ),
@@ -2489,7 +2620,10 @@ server.tool(
   'session_status',
   '현재 MCP 세션 상태를 읽습니다. 열린 문서 경로/타입/이름, renderer dirty 상태, autosave 설정, recovery 메타데이터, 필드 스냅샷 요약, 로드된 참고 자료(references) 목록을 한 번에 확인할 수 있습니다. 메인 파일이 열려 있지 않아도 동작하며, 참고 자료가 있으면 list_references로 드릴다운하세요. 변경 전 상황 파악용 읽기 전용 도구입니다.',
   {},
-  async () => textResult(await apiRequest('GET', '/session/status')),
+  async () => {
+    const session = await apiRequest('GET', '/session/status');
+    return textResult(isApiError(session) ? session : withMergedRuntimeMetadata(session));
+  },
 );
 
 server.tool(
@@ -4484,8 +4618,15 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   mcpConnected = true;
+  const runtime = getRuntimeMetadata();
   mcpLog('info', `risutoki MCP server started`, {
-    version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0',
+    version: runtime.serverVersion,
+    appVersion: runtime.appVersion,
+    packageVersion: runtime.packageVersion,
+    buildTime: runtime.buildTime,
+    commit: runtime.commit,
+    runtimeMode: runtime.runtimeMode,
+    skew: runtime.skew,
     api: `127.0.0.1:${TOKI_PORT}`,
   });
 }
