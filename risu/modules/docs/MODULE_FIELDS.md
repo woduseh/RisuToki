@@ -5,24 +5,24 @@
 
 ## `RisuModule` interface
 
-| Field                 | Type                         | Default     | Description                                                  |
-| --------------------- | ---------------------------- | ----------- | ------------------------------------------------------------ |
-| `name`                | `string`                     | —           | Display name                                                 |
-| `description`         | `string`                     | —           | User-facing description                                      |
-| `id`                  | `string`                     | UUID        | Unique identifier                                            |
-| `lorebook`            | `loreBook[]`                 | `[]`        | Lorebook entries merged at runtime                           |
-| `regex`               | `customscript[]`             | `[]`        | Regex replacement scripts                                    |
-| `trigger`             | `triggerscript[]`            | `[]`        | Trigger scripts                                              |
-| `cjs`                 | `string`                     | `""`        | Reserved CommonJS slot; hidden in normal editor/MCP surfaces |
-| `lowLevelAccess`      | `boolean`                    | `false`     | Enables restricted Lua/network/LLM capabilities              |
-| `hideIcon`            | `boolean`                    | `false`     | Hides the character icon in chat                             |
-| `backgroundEmbedding` | `string`                     | `""`        | HTML/CSS injected into `.chattext`                           |
-| `namespace`           | `string`                     | `undefined` | Alias ID for grouped module loading                          |
-| `customModuleToggle`  | `string`                     | `""`        | Toggle UI definition text                                    |
-| `assets`              | `[string, string, string][]` | `[]`        | `[name, dataUrl, hash]` tuples                               |
-| `mcp`                 | `{ url: string }`            | `undefined` | External MCP endpoint; managed separately                    |
+| Field                 | Type                         | Default     | Description                                                     |
+| --------------------- | ---------------------------- | ----------- | --------------------------------------------------------------- |
+| `name`                | `string`                     | —           | Display name                                                    |
+| `description`         | `string`                     | —           | User-facing description                                         |
+| `id`                  | `string`                     | UUID        | Unique identifier                                               |
+| `lorebook`            | `loreBook[]`                 | `[]`        | Lorebook entries merged at runtime                              |
+| `regex`               | `customscript[]`             | `[]`        | Regex replacement scripts                                       |
+| `trigger`             | `triggerscript[]`            | `[]`        | Trigger scripts                                                 |
+| `cjs`                 | `string`                     | `""`        | Reserved CommonJS slot; hidden in normal editor/MCP surfaces    |
+| `lowLevelAccess`      | `boolean`                    | `false`     | Enables restricted Lua/network/LLM capabilities                 |
+| `hideIcon`            | `boolean`                    | `false`     | Hides the character icon in chat                                |
+| `backgroundEmbedding` | `string`                     | `""`        | HTML/CSS injected into `.chattext`                              |
+| `namespace`           | `string`                     | `undefined` | Alias ID for grouped module loading                             |
+| `customModuleToggle`  | `string`                     | `""`        | Toggle UI definition text                                       |
+| `assets`              | `[string, string, string][]` | `[]`        | `[name, dataUrl, hash]` tuples                                  |
+| `mcp`                 | `{ url: string }`            | `undefined` | External MCP endpoint; managed separately/read-only in RisuToki |
 
-RisuToki preserves `cjs` for round-trip compatibility, but treats it as a reserved/hidden/read-only field. New module runtime logic should use Lua triggers and supported module fields instead.
+RisuToki preserves `cjs` for round-trip compatibility, but treats it as a reserved/hidden/read-only field. RisuToki also preserves `mcp.url` as `mcpUrl`, but treats it as read-only because MCP modules are managed separately from normal module authoring. New module runtime logic should use Lua triggers and supported module fields instead.
 
 ## Field behavior notes
 
@@ -58,6 +58,8 @@ playerName=Player name=text
 =Gameplay=group
 =Section Break=divider
 ```
+
+RisuToki opens this field in the shared visual/raw toggle editor used for `.risup` custom prompt template toggles, while preserving the stored line syntax.
 
 Supported shapes:
 

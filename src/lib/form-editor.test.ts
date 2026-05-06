@@ -4,6 +4,8 @@ import {
   showLoreEditor,
   showRegexEditor,
   showRisupEditor,
+  showBooleanEditor,
+  showToggleTemplateEditor,
   disposeFormEditors,
   type FormTabInfo,
   type FormEditorDeps,
@@ -17,7 +19,14 @@ vi.mock('./dark-mode', () => ({
   defineDarkMonacoTheme: vi.fn(),
 }));
 vi.mock('./editor-activation', () => ({
-  NON_MONACO_EDITOR_TAB_TYPES: new Set(['_loreform', '_regexform', '_triggerform', '_risupform']),
+  NON_MONACO_EDITOR_TAB_TYPES: new Set([
+    '_booleanform',
+    '_loreform',
+    '_regexform',
+    '_risupform',
+    '_toggleform',
+    '_triggerform',
+  ]),
 }));
 vi.mock('./lorebook-folders', () => ({
   getFolderRef: vi.fn(() => ''),
@@ -91,8 +100,116 @@ function createDeps(): FormEditorDeps {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   document.body.innerHTML = '<div id="editor-container"></div>';
   disposeFormEditors();
+});
+
+describe('showBooleanEditor', () => {
+  it('writes true and false through radio options', () => {
+    const deps = createDeps();
+    initFormEditor(deps);
+    let value = false;
+
+    showBooleanEditor({
+      id: 'lowLevelAccess',
+      label: '저수준 접근',
+      language: '_booleanform',
+      getValue: () => value,
+      setValue: (nextValue: unknown) => {
+        value = nextValue as boolean;
+      },
+    });
+
+    const radios = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    expect(radios).toHaveLength(2);
+    expect(radios.map((radio) => radio.value)).toEqual(['true', 'false']);
+    expect(radios[1].checked).toBe(true);
+
+    radios[0].checked = true;
+    radios[0].dispatchEvent(new Event('change'));
+    expect(value).toBe(true);
+    expect(deps.tabMgr.markDirtyForTabId).toHaveBeenCalledWith('lowLevelAccess');
+
+    radios[1].checked = true;
+    radios[1].dispatchEvent(new Event('change'));
+    expect(value).toBe(false);
+  });
+
+  it('renders read-only boolean values without enabling inputs', () => {
+    const deps = createDeps();
+    initFormEditor(deps);
+
+    showBooleanEditor({
+      id: 'hideIcon',
+      label: '아이콘 숨김',
+      language: '_booleanform',
+      getValue: () => true,
+      setValue: null,
+    });
+
+    const radios = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    expect(radios[0].checked).toBe(true);
+    expect(radios.every((radio) => radio.disabled)).toBe(true);
+    expect(document.querySelector('.readonly-badge')?.textContent).toContain('읽기');
+  });
+});
+
+describe('showToggleTemplateEditor', () => {
+  it('uses the shared custom toggle editor and writes string changes', async () => {
+    const { createCustomPromptTemplateToggleEditor: mockToggleEditor } = await import('./risup-toggle-editor');
+    let disposeCalled = false;
+    vi.mocked(mockToggleEditor).mockImplementation((_container, _initial, onChange) => {
+      onChange?.('enabled=Enabled\nname=Name=text');
+      return {
+        dispose: () => {
+          disposeCalled = true;
+        },
+      };
+    });
+
+    const deps = createDeps();
+    initFormEditor(deps);
+    let value = 'enabled=Enabled';
+
+    showToggleTemplateEditor({
+      id: 'customModuleToggle',
+      label: '커스텀 토글',
+      language: '_toggleform',
+      getValue: () => value,
+      setValue: (nextValue: unknown) => {
+        value = nextValue as string;
+      },
+    });
+
+    expect(mockToggleEditor).toHaveBeenCalledTimes(1);
+    expect(mockToggleEditor).toHaveBeenCalledWith(expect.any(HTMLElement), 'enabled=Enabled', expect.any(Function));
+    expect(value).toBe('enabled=Enabled\nname=Name=text');
+    expect(deps.tabMgr.markDirtyForTabId).toHaveBeenCalledWith('customModuleToggle');
+    expect(document.querySelector('.toggle-template-editor-container')).not.toBeNull();
+
+    disposeFormEditors();
+    expect(disposeCalled).toBe(true);
+  });
+
+  it('passes null change handler for read-only toggle tabs', async () => {
+    const { createCustomPromptTemplateToggleEditor: mockToggleEditor } = await import('./risup-toggle-editor');
+    vi.mocked(mockToggleEditor).mockReturnValue({ dispose: vi.fn() });
+
+    const deps = createDeps();
+    initFormEditor(deps);
+
+    showToggleTemplateEditor({
+      id: 'ref_0_customModuleToggle',
+      label: '커스텀 토글',
+      language: '_toggleform',
+      getValue: () => 'enabled=Enabled',
+      setValue: null,
+    });
+
+    expect(mockToggleEditor).toHaveBeenCalledWith(expect.any(HTMLElement), 'enabled=Enabled', null);
+    expect(document.querySelector('.readonly-badge')?.textContent).toContain('읽기');
+  });
 });
 
 describe('form-editor read-only badge', () => {

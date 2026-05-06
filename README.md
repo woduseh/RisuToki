@@ -567,14 +567,19 @@ Encrypted AI preset file containing model settings, generation parameters, promp
 | Field                 | Description                              |
 | --------------------- | ---------------------------------------- |
 | `name`                | Module name                              |
-| `description`         | Module description                       |
+| `moduleDescription`   | Module description                       |
 | `lua`                 | Lua trigger scripts                      |
 | `triggerScripts`      | Structured trigger list/condition/effect |
-| `cjs`                 | CommonJS code                            |
 | `lowLevelAccess`      | Low-level access enabled (boolean)       |
+| `hideIcon`            | Hide chat icons when module is active    |
 | `backgroundEmbedding` | Background embedding HTML                |
+| `moduleNamespace`     | Module namespace/alias                   |
+| `customModuleToggle`  | Custom module toggle definitions         |
 | `lorebook[]`          | Lorebook entry array                     |
 | `regex[]`             | Regex script array                       |
+
+`mcpUrl` is preserved for compatibility with RisuAI MCP modules, but it is read-only in the normal editor/MCP mutation surfaces.
+`customModuleToggle` opens in the same visual/raw toggle editor used by preset template toggles, while preserving the stored line syntax.
 
 ### Editable Fields (risup)
 

@@ -1580,7 +1580,6 @@ function buildFieldInventory(
       'backgroundEmbedding',
       'moduleNamespace',
       'customModuleToggle',
-      'mcpUrl',
       'moduleId',
       'moduleName',
       'moduleDescription',
@@ -1588,6 +1587,7 @@ function buildFieldInventory(
     for (const fieldName of risumStringFields) {
       fields.push({ name: fieldName, size: String(currentData[fieldName] || '').length, type: 'string' });
     }
+    fields.push({ name: 'mcpUrl', size: String(currentData.mcpUrl || '').length, type: 'string (read-only)' });
     fields.push({ name: 'lowLevelAccess', value: !!currentData.lowLevelAccess, type: 'boolean' });
     fields.push({ name: 'hideIcon', value: !!currentData.hideIcon, type: 'boolean' });
   }

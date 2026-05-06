@@ -47,12 +47,11 @@ export const RISUM_FIELD_NAMES = [
   'backgroundEmbedding',
   'moduleNamespace',
   'customModuleToggle',
-  'mcpUrl',
   'moduleName',
   'moduleDescription',
 ];
 
-export const RISUM_READ_ONLY_FIELD_NAMES = ['moduleId'];
+export const RISUM_READ_ONLY_FIELD_NAMES = ['moduleId', 'mcpUrl'];
 export const RISUM_RESERVED_FIELD_NAMES = ['cjs'];
 
 export const RISUP_FIELD_NAMES = [
@@ -185,7 +184,6 @@ export const STRING_MUTATION_FIELD_NAMES = [
   'backgroundEmbedding',
   'moduleNamespace',
   'customModuleToggle',
-  'mcpUrl',
   'moduleName',
   'moduleDescription',
   'aiModel',

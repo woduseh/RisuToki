@@ -23,7 +23,6 @@ export const SEARCHABLE_TEXT_FIELDS = [
   'backgroundEmbedding',
   'moduleNamespace',
   'customModuleToggle',
-  'mcpUrl',
   'moduleName',
   'moduleDescription',
   'mainPrompt',

@@ -69,11 +69,13 @@ import {
   getFormEditors,
   initFormEditor,
   showLoreEditor,
+  showBooleanEditor,
+  showToggleTemplateEditor,
   showTriggerEditor,
   showRisupEditor,
   showRegexEditor,
 } from '../lib/form-editor';
-import type { FormTabInfo } from '../lib/form-editor';
+import type { BooleanFormTabInfo, FormTabInfo, ToggleFormTabInfo } from '../lib/form-editor';
 import type { RisupFormTabInfo } from '../lib/risup-form-editor';
 import { showConfirm, showCloseConfirm, showPrompt, showSessionRecoveryDialog } from '../lib/dialog';
 import { showContextMenu } from '../lib/context-menu';
@@ -490,6 +492,22 @@ function createOrSwitchEditor(tabInfo: Tab): void {
   if (tabInfo.language === '_loreform') {
     tabMgr.activeTabId = tabInfo.id;
     showLoreEditor(tabInfo as FormTabInfo);
+    tabMgr.renderTabs();
+    updateSidebarActive();
+    return;
+  }
+
+  if (tabInfo.language === '_booleanform') {
+    tabMgr.activeTabId = tabInfo.id;
+    showBooleanEditor(tabInfo as BooleanFormTabInfo);
+    tabMgr.renderTabs();
+    updateSidebarActive();
+    return;
+  }
+
+  if (tabInfo.language === '_toggleform') {
+    tabMgr.activeTabId = tabInfo.id;
+    showToggleTemplateEditor(tabInfo as ToggleFormTabInfo);
     tabMgr.renderTabs();
     updateSidebarActive();
     return;
@@ -1017,12 +1035,11 @@ type RisumSidebarField = {
     | 'hideIcon'
     | 'backgroundEmbedding'
     | 'customModuleToggle'
-    | 'mcpUrl'
   >;
   label: string;
   icon: string;
   lang: string;
-  kind?: 'boolean';
+  kind?: 'boolean' | 'toggle-template';
 };
 
 const RISUM_MODULE_SIDEBAR_FIELDS: readonly RisumSidebarField[] = [
@@ -1032,16 +1049,8 @@ const RISUM_MODULE_SIDEBAR_FIELDS: readonly RisumSidebarField[] = [
   { id: 'lowLevelAccess', label: '저수준 접근', icon: '🔓', lang: 'plaintext', kind: 'boolean' },
   { id: 'hideIcon', label: '아이콘 숨김', icon: '◌', lang: 'plaintext', kind: 'boolean' },
   { id: 'backgroundEmbedding', label: '배경 임베딩', icon: '🎨', lang: 'html' },
-  { id: 'customModuleToggle', label: '커스텀 토글', icon: '☑', lang: 'plaintext' },
-  { id: 'mcpUrl', label: 'MCP URL', icon: '🔌', lang: 'plaintext' },
+  { id: 'customModuleToggle', label: '커스텀 토글', icon: '☑', lang: 'plaintext', kind: 'toggle-template' },
 ] as const;
-
-function parseBooleanEditorValue(value: unknown): boolean {
-  const normalized = String(value ?? '')
-    .trim()
-    .toLowerCase();
-  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
-}
 
 function buildSidebar(): void {
   destroyAllSortables();
@@ -1254,14 +1263,13 @@ function buildSidebar(): void {
         tabMgr.openTab(
           String(item.id),
           item.label,
-          item.lang,
-          () => {
-            const value = fileData![item.id];
-            return item.kind === 'boolean' ? String(!!value) : String(value ?? '');
-          },
+          item.kind === 'boolean' ? '_booleanform' : item.kind === 'toggle-template' ? '_toggleform' : item.lang,
+          () => (item.kind === 'boolean' ? !!fileData![item.id] : String(fileData![item.id] ?? '')),
           (v: unknown) => {
             if (item.kind === 'boolean') {
-              (fileData! as Record<string, unknown>)[item.id] = parseBooleanEditorValue(v);
+              (fileData! as Record<string, unknown>)[item.id] = !!v;
+            } else if (item.kind === 'toggle-template') {
+              (fileData! as Record<string, unknown>)[item.id] = String(v ?? '');
             } else {
               (fileData! as Record<string, unknown>)[item.id] = v as string;
             }

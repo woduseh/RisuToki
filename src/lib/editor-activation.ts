@@ -3,7 +3,15 @@ export interface EditorActivationTabLike {
   language: string;
 }
 
-export const NON_MONACO_EDITOR_TAB_TYPES = new Set(['_image', '_loreform', '_regexform', '_risupform', '_triggerform']);
+export const NON_MONACO_EDITOR_TAB_TYPES = new Set([
+  '_image',
+  '_booleanform',
+  '_loreform',
+  '_regexform',
+  '_risupform',
+  '_toggleform',
+  '_triggerform',
+]);
 
 export function requiresMonacoEditor(language: string): boolean {
   return !NON_MONACO_EDITOR_TAB_TYPES.has(language);

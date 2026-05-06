@@ -41,6 +41,7 @@ interface FallbackEditor {
 }
 
 type FormEditor = MonacoEditor | FallbackEditor;
+type ManagedFormEditor = FormEditor | { dispose: () => void };
 const RISUP_DISABLED_NUMBER_SENTINEL = -1000;
 const RISUP_DISABLED_NUMBER_LABEL = '비활성화';
 
@@ -54,6 +55,16 @@ export interface FormTabInfo {
   setValue?: ((data: unknown) => void) | null;
   _lastValue?: string | null;
   _refLorebook?: Record<string, unknown>[];
+}
+
+export interface BooleanFormTabInfo extends FormTabInfo {
+  language: '_booleanform';
+  falseLabel?: string;
+  trueLabel?: string;
+}
+
+export interface ToggleFormTabInfo extends FormTabInfo {
+  language: '_toggleform';
 }
 
 export interface TriggerScriptsFormTabOptions {
@@ -134,7 +145,7 @@ export interface FormEditorDeps {
 
 // ── Module state ──
 
-let formEditors: FormEditor[] = [];
+let formEditors: ManagedFormEditor[] = [];
 let deps: FormEditorDeps | null = null;
 
 // IME composition guard — skip renderTabs() during CJK composition
@@ -159,7 +170,7 @@ export function disposeFormEditors(): void {
 }
 
 export function getFormEditors(): FormEditor[] {
-  return formEditors;
+  return formEditors.filter((editor): editor is FormEditor => 'updateOptions' in editor);
 }
 
 // ── Mini Monaco factory ──
@@ -1110,6 +1121,120 @@ export function showTriggerEditor(tabInfo: TriggerFormTabInfo): void {
   layout.appendChild(listPanel);
   layout.appendChild(detailPanel);
   body.appendChild(layout);
+
+  form.appendChild(header);
+  form.appendChild(body);
+  container.appendChild(form);
+}
+
+// ── Boolean form editor ──
+
+export function showBooleanEditor(tabInfo: BooleanFormTabInfo): void {
+  saveCurrentMonacoState(tabInfo);
+  const container = clearEditorContainer();
+
+  const readonly = !tabInfo.setValue;
+  const currentValue = !!tabInfo.getValue();
+
+  const form = document.createElement('div');
+  form.className = 'form-editor';
+
+  const header = document.createElement('div');
+  header.className = 'form-editor-header';
+  const headerTitle = document.createElement('span');
+  headerTitle.textContent = tabInfo.label;
+  header.appendChild(headerTitle);
+  if (readonly) {
+    const badge = document.createElement('span');
+    badge.className = 'readonly-badge';
+    badge.textContent = '[읽기 전용]';
+    headerTitle.appendChild(badge);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'form-editor-body';
+
+  const group = document.createElement('div');
+  group.className = 'form-checks';
+  group.setAttribute('role', 'radiogroup');
+  group.setAttribute('aria-label', tabInfo.label);
+
+  function addOption(value: boolean, labelText: string): void {
+    const item = document.createElement('label');
+    item.className = 'form-check-item';
+    item.style.cssText = 'display:flex;align-items:center;gap:8px;';
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = `boolean-${tabInfo.id}`;
+    input.value = value ? 'true' : 'false';
+    input.checked = currentValue === value;
+    input.disabled = readonly;
+    if (!readonly) {
+      input.addEventListener('change', () => {
+        if (!input.checked) return;
+        tabInfo.setValue!(value);
+        const d = deps!;
+        d.tabMgr.markDirtyForTabId(tabInfo.id);
+        d.tabMgr.renderTabs();
+      });
+    }
+    item.appendChild(input);
+    item.appendChild(document.createTextNode(labelText));
+    group.appendChild(item);
+  }
+
+  addOption(true, tabInfo.trueLabel || 'On');
+  addOption(false, tabInfo.falseLabel || 'Off');
+
+  body.appendChild(group);
+  form.appendChild(header);
+  form.appendChild(body);
+  container.appendChild(form);
+}
+
+// ── Toggle template form editor ──
+
+export function showToggleTemplateEditor(tabInfo: ToggleFormTabInfo): void {
+  saveCurrentMonacoState(tabInfo);
+  const container = clearEditorContainer();
+
+  const readonly = !tabInfo.setValue;
+  const value = typeof tabInfo.getValue() === 'string' ? (tabInfo.getValue() as string) : '';
+
+  const form = document.createElement('div');
+  form.className = 'form-editor';
+
+  const header = document.createElement('div');
+  header.className = 'form-editor-header';
+  const headerTitle = document.createElement('span');
+  headerTitle.textContent = tabInfo.label;
+  header.appendChild(headerTitle);
+  if (readonly) {
+    const badge = document.createElement('span');
+    badge.className = 'readonly-badge';
+    badge.textContent = '[읽기 전용]';
+    headerTitle.appendChild(badge);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'form-editor-body';
+  const editorContainer = document.createElement('div');
+  editorContainer.className = 'form-embedded-editor toggle-template-editor-container';
+  body.appendChild(editorContainer);
+
+  const handle = createCustomPromptTemplateToggleEditor(
+    editorContainer,
+    value,
+    readonly
+      ? null
+      : (nextValue) => {
+          tabInfo.setValue!(nextValue);
+          const d = deps!;
+          d.tabMgr.markDirtyForTabId(tabInfo.id);
+          d.tabMgr.renderTabs();
+        },
+  );
+  formEditors.push(handle);
 
   form.appendChild(header);
   form.appendChild(body);

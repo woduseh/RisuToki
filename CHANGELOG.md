@@ -9,6 +9,19 @@
 
 ---
 
+## [0.71.2] - 2026-05-06
+
+### Changed
+
+- Reused the visual/raw custom toggle editor for `.risum` `customModuleToggle` so module toggles can be edited with the same structured UI as preset template toggles.
+
+## [0.71.1] - 2026-05-06
+
+### Changed
+
+- Cleaned up the `.risum` module sidebar by removing the duplicate description entry, hiding MCP URL editing, and switching `lowLevelAccess` / `hideIcon` to on/off controls.
+- Made `.risum` `mcpUrl` read-only in normal MCP mutation and string-edit routes while preserving it during file round-trips.
+
 ## [0.71.0] - 2026-05-06
 
 ### Added

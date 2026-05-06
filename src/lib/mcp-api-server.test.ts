@@ -3770,8 +3770,13 @@ describe('MCP API structured error envelopes — field routes', () => {
     }
   });
 
-  it('rejects risum cjs field writes while allowing lowLevelAccess to remain editable', async () => {
-    const fixture: SearchFixture = { _fileType: 'risum', cjs: 'old', lowLevelAccess: false };
+  it('rejects risum reserved and MCP URL field writes while allowing lowLevelAccess to remain editable', async () => {
+    const fixture: SearchFixture = {
+      _fileType: 'risum',
+      cjs: 'old',
+      lowLevelAccess: false,
+      mcpUrl: 'http://localhost:3000/mcp',
+    };
     const api = await startTestApiServer(fixture);
     try {
       const cjsRes = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/cjs', {
@@ -3781,6 +3786,14 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(cjsRes.data).toHaveProperty('target', 'field:cjs');
       expect(cjsRes.data.error).toContain('읽기 전용');
       expect(fixture.cjs).toBe('old');
+
+      const mcpUrlRes = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/mcpUrl', {
+        content: 'http://localhost:3001/mcp',
+      });
+      expect(mcpUrlRes.status).toBe(400);
+      expect(mcpUrlRes.data).toHaveProperty('target', 'field:mcpUrl');
+      expect(mcpUrlRes.data.error).toContain('읽기 전용');
+      expect(fixture.mcpUrl).toBe('http://localhost:3000/mcp');
 
       const lowLevelRes = await postJson<{ success: boolean; results: Array<{ field: string }> }>(
         api.port,

@@ -92,14 +92,6 @@ const RISUM_ITEMS: readonly ReferenceUiItemDescriptor[] = [
     language: 'plaintext',
   },
   {
-    field: 'description',
-    icon: '📄',
-    key: 'description',
-    kind: 'field',
-    label: '설명',
-    language: 'plaintext',
-  },
-  {
     field: 'defaultVariables',
     icon: '⚙',
     key: 'defaultVariables',
@@ -137,7 +129,7 @@ const RISUM_ITEMS: readonly ReferenceUiItemDescriptor[] = [
     key: 'lowLevelAccess',
     kind: 'field',
     label: '저수준 접근',
-    language: 'plaintext',
+    language: '_booleanform',
   },
   {
     field: 'hideIcon',
@@ -145,7 +137,7 @@ const RISUM_ITEMS: readonly ReferenceUiItemDescriptor[] = [
     key: 'hideIcon',
     kind: 'field',
     label: '아이콘 숨김',
-    language: 'plaintext',
+    language: '_booleanform',
   },
   {
     field: 'backgroundEmbedding',
@@ -161,14 +153,6 @@ const RISUM_ITEMS: readonly ReferenceUiItemDescriptor[] = [
     key: 'customModuleToggle',
     kind: 'field',
     label: '커스텀 토글',
-    language: 'plaintext',
-  },
-  {
-    field: 'mcpUrl',
-    icon: '🔗',
-    key: 'mcpUrl',
-    kind: 'field',
-    label: 'MCP URL',
     language: 'plaintext',
   },
   { icon: '{}', key: 'lua', kind: 'lua', label: 'Lua' },

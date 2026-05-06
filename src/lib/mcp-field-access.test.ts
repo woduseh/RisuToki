@@ -181,7 +181,6 @@ describe('string mutation field support', () => {
       'backgroundEmbedding',
       'moduleNamespace',
       'customModuleToggle',
-      'mcpUrl',
       'moduleName',
       'moduleDescription',
       'aiModel',
@@ -230,6 +229,7 @@ describe('string mutation field support', () => {
     expect(getStringMutationFieldStatus('creationDate')).toBe('read-only');
     expect(getStringMutationFieldStatus('moduleId')).toBe('read-only');
     expect(getStringMutationFieldStatus('cjs')).toBe('read-only');
+    expect(getStringMutationFieldStatus('mcpUrl')).toBe('read-only');
     expect(getStringMutationFieldStatus('alternateGreetings')).toBe('unsupported');
     expect(getStringMutationFieldStatus('lowLevelAccess')).toBe('unsupported');
     expect(getStringMutationFieldStatus('promptTemplate')).toBe('unsupported');

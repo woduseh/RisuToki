@@ -30,7 +30,7 @@ This skill is about **tool choice**, not syntax. Read it before making broad edi
 
 - Facade v1 is the default for covered workflows: use `inspect_document`, `read_content`, `search_document`, and `preview_edit` → `apply_edit` before legacy/granular inspect/read/search/write routes.
 - Use granular tools only as advanced/legacy fallbacks for unsupported facade selectors/operations, exact structured editors, direct external mutations, add/reorder/import/export/asset workflows, unsupported batch workflows, or compatibility/debugging.
-- Deprecated `.charx` fields, `.risup` legacy prompt fields, reserved `.risum` `cjs`, and `groupOnlyGreetings` are hidden from normal MCP reads/searches/probes/surface reads. Use `hiddenFieldWarnings` in inspect/list/status responses only as a value-safe existence summary; do not try to recover the hidden content through granular routes. `.risum` `lowLevelAccess` remains visible/editable.
+- Deprecated `.charx` fields, `.risup` legacy prompt fields, reserved `.risum` `cjs`, and `groupOnlyGreetings` are hidden from normal MCP reads/searches/probes/surface reads. Use `hiddenFieldWarnings` in inspect/list/status responses only as a value-safe existence summary; do not try to recover the hidden content through granular routes. `.risum` `mcpUrl` is preserved but read-only in normal mutation/string-edit routes. `.risum` `lowLevelAccess` remains visible/editable.
 - Do **not** use `read_field("lua")`; use `list_lua` → `read_lua(index)`.
 - Do **not** use `read_field("css")`; use `list_css` → `read_css(index)`.
 - Do **not** dump `alternateGreetings`; use `list_greetings("alternate")`.
