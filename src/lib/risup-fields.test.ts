@@ -106,7 +106,15 @@ describe('risup field metadata', () => {
 
   it('exposes known groups and json-backed fields that need validation', () => {
     expect(getRisupFieldGroup('prompts')?.label).toBe('레거시 프롬프트');
+    expect(getRisupFieldGroup('provider-endpoint')?.label).toBe('프로바이더/엔드포인트');
     expect(getRisupFieldGroup('json-schema')?.label).toBe('JSON 스키마');
+
+    const providerFields = getRisupFieldGroup('provider-endpoint')?.fields ?? [];
+    expect(providerFields.find((field) => field.id === 'forceReplaceUrl')?.label).toBe('리버스 프록시 URL');
+    expect(providerFields.find((field) => field.id === 'localNetworkMode')?.label).toBe('로컬 네트워크 경유');
+    expect(getRisupFieldGroup('json-schema')?.fields.find((field) => field.id === 'extractJson')?.label).toBe(
+      '응답 JSON 추출 경로',
+    );
 
     // promptTemplate and formatingOrder now use structured editors — excluded from raw JSON validation
     expect(RISUP_JSON_FIELD_IDS).toEqual(expect.arrayContaining(['presetBias', 'localStopStrings']));

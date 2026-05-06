@@ -110,6 +110,13 @@ describe('buildRefsSidebar race-condition guard', () => {
     expect(container.querySelector('[data-label="인사말 1"]')).not.toBeNull();
     expect(container.querySelector('[data-label="트리거 스크립트"]')).not.toBeNull();
     expect([...container.querySelectorAll('.tree-item')].some((el) => el.textContent?.includes('기본'))).toBe(true);
+    expect(
+      [...container.querySelectorAll('.tree-item')].some((el) => el.textContent?.includes('프로바이더/엔드포인트')),
+    ).toBe(true);
+    expect([...container.querySelectorAll('.tree-item')].some((el) => el.textContent?.includes('JSON 스키마'))).toBe(
+      true,
+    );
+    expect(container.querySelector('[data-label="설명"]')).toBeNull();
   });
 });
 

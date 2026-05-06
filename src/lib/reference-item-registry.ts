@@ -171,14 +171,6 @@ const RISUP_ITEMS: readonly ReferenceUiItemDescriptor[] = [
       label: group.label,
     }),
   ),
-  {
-    field: 'description',
-    icon: '📄',
-    key: 'description',
-    kind: 'field',
-    label: '설명',
-    language: 'plaintext',
-  },
   { icon: '⚡', key: 'regex', kind: 'regex', label: '정규식' },
 ] as const;
 

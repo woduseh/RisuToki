@@ -9,6 +9,12 @@
 
 ---
 
+## [0.71.3] - 2026-05-06
+
+### Changed
+
+- Cleaned up the `.risup` reference sidebar by removing the unused description entry and clarifying provider/endpoint and JSON schema labels.
+
 ## [0.71.2] - 2026-05-06
 
 ### Changed
