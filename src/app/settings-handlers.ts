@@ -1,16 +1,20 @@
 import type { RpMode } from '../stores/app-store';
 import {
+  getDefaultRpModeForThemeId,
   getDefaultRpModeForDarkMode,
   writeBgmEnabled,
   writeBgmPath,
   writeDarkMode,
+  writeCustomTheme,
   writeRpMode,
+  writeThemeId,
 } from '../lib/app-settings';
-import { applyDarkMode } from '../lib/dark-mode';
+import { applyDarkMode, applyTheme } from '../lib/dark-mode';
 import { refreshAvatarForDarkMode } from '../lib/avatar-ui';
 import { isBgmEnabled, initBgm as initBgmModule, pauseBgm, setBgmEnabled, setBgmFilePath } from '../lib/bgm';
 import { setStatus } from '../lib/status-bar';
 import { showSettingsPopup as renderSettingsPopup } from '../lib/settings-popup';
+import { getTheme, isDarkTheme, type CustomThemePalette, type ThemeId } from '../lib/theme-registry';
 
 // ---------------------------------------------------------------------------
 // RP Mode
@@ -74,6 +78,8 @@ export function initBgmUi(bgmEnabled: boolean, bgmPath: string): void {
 export interface RpModeState {
   rpMode: RpMode;
   darkMode: boolean;
+  themeId?: ThemeId;
+  customTheme?: CustomThemePalette | null;
 }
 
 export function initRpModeButton(state: RpModeState, onUpdate: (mode: RpMode) => void): void {
@@ -84,7 +90,9 @@ export function initRpModeButton(state: RpModeState, onUpdate: (mode: RpMode) =>
   btn.addEventListener('click', () => {
     let newMode: RpMode;
     if (state.rpMode === 'off') {
-      newMode = getDefaultRpModeForDarkMode(state.darkMode) as RpMode;
+      newMode = state.themeId
+        ? (getDefaultRpModeForThemeId(state.themeId, state.customTheme) as RpMode)
+        : (getDefaultRpModeForDarkMode(state.darkMode) as RpMode);
     } else {
       newMode = 'off';
     }
@@ -107,6 +115,15 @@ export interface DarkModeDeps {
   setRpMode(mode: string): void;
   termThemeDark: unknown;
   termThemeLight: unknown;
+  themeId?: ThemeId;
+  customTheme?: CustomThemePalette | null;
+}
+
+export interface ThemeDeps extends DarkModeDeps {
+  getThemeId(): ThemeId;
+  getCustomTheme(): CustomThemePalette | null;
+  setThemeId(themeId: ThemeId): void;
+  setCustomTheme(theme: CustomThemePalette | null): void;
 }
 
 export function toggleDarkMode(darkMode: boolean, deps: DarkModeDeps): boolean {
@@ -140,6 +157,49 @@ export function refreshDarkModeUi(darkMode: boolean, deps: DarkModeDeps): void {
   }
   const rpBtn = document.getElementById('btn-rp-mode');
   if (rpBtn) updateRpButtonStyle(rpBtn, deps.getRpMode());
+}
+
+export function changeTheme(themeId: ThemeId, deps: ThemeDeps): void {
+  const customTheme = deps.getCustomTheme();
+  deps.setThemeId(themeId);
+  writeThemeId(themeId);
+  refreshThemeUi(themeId, customTheme, deps);
+  setStatus(`테마 변경: ${getTheme(themeId, customTheme).label}`);
+}
+
+export function updateCustomTheme(theme: CustomThemePalette | null, deps: ThemeDeps): void {
+  deps.setCustomTheme(theme);
+  writeCustomTheme(theme);
+  if (deps.getThemeId() === 'custom') {
+    refreshThemeUi('custom', theme, deps);
+  }
+}
+
+export function refreshThemeUi(themeId: ThemeId, customTheme: CustomThemePalette | null, deps: DarkModeDeps): void {
+  const theme = getTheme(themeId, customTheme);
+  applyTheme(themeId, customTheme, {
+    editorInstance: deps.getEditorInstance(),
+    formEditors: deps.getFormEditors(),
+  });
+
+  const titleEl = document.querySelector('.momo-title');
+  if (titleEl) titleEl.textContent = theme.talkTitle;
+  refreshAvatarForDarkMode(theme.mode === 'dark');
+
+  const term = deps.getTerminal();
+  if (term) {
+    term.options.theme = theme.terminal;
+  }
+
+  const rpMode = deps.getRpMode();
+  if (rpMode === 'toki' || rpMode === 'aris') {
+    const next = getDefaultRpModeForThemeId(themeId, customTheme);
+    deps.setRpMode(next);
+    writeRpMode(next);
+  }
+  const rpBtn = document.getElementById('btn-rp-mode');
+  if (rpBtn) updateRpButtonStyle(rpBtn, deps.getRpMode());
+  void isDarkTheme(themeId, customTheme);
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +250,8 @@ export interface SettingsPopupDeps {
     autosaveInterval: number;
     autosaveDir: string;
     darkMode: boolean;
+    themeId: ThemeId;
+    customTheme: CustomThemePalette | null;
     bgmEnabled: boolean;
     rpMode: string;
     rpCustomText: string;
@@ -200,6 +262,8 @@ export interface SettingsPopupDeps {
   onResetAutosaveDir(): void;
   onOpenAutosaveDir(): Promise<void>;
   onDarkModeToggle(): void;
+  onThemeChange(themeId: ThemeId): void;
+  onCustomThemeChange(theme: CustomThemePalette | null): void;
   onBgmToggle(enabled: boolean): void;
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
@@ -215,6 +279,8 @@ export function showSettingsPopup(deps: SettingsPopupDeps): void {
     onResetAutosaveDir: deps.onResetAutosaveDir,
     onOpenAutosaveDir: deps.onOpenAutosaveDir,
     onDarkModeToggle: deps.onDarkModeToggle,
+    onThemeChange: deps.onThemeChange,
+    onCustomThemeChange: deps.onCustomThemeChange,
     onBgmToggle: deps.onBgmToggle,
     onRpModeChange: deps.onRpModeChange,
     onRpCustomTextChange: deps.onRpCustomTextChange,

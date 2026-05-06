@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { Section } from '../lib/section-parser';
+import { getTalkTitleForTheme, type CustomThemePalette, type ThemeId } from '../lib/theme-registry';
 // Layout types available for future use via '../lib/layout-manager'
 
 // CharxData represents the loaded .charx file data
@@ -195,6 +196,8 @@ export const useAppStore = defineStore('app', () => {
 
   // === UI state ===
   const darkMode = ref(false);
+  const themeId = ref<ThemeId>('toki');
+  const customTheme = ref<CustomThemePalette | null>(null);
   const rpMode = ref<RpMode>('off');
   const rpCustomText = ref('');
   const bgmEnabled = ref(false);
@@ -224,7 +227,7 @@ export const useAppStore = defineStore('app', () => {
     const fileType = fileData.value._fileType || 'charx';
     return fileType === 'charx';
   });
-  const talkTitle = computed(() => (darkMode.value ? 'ArisTalk' : 'TokiTalk'));
+  const talkTitle = computed(() => getTalkTitleForTheme(themeId.value, customTheme.value));
   const rpLabel = computed(() => {
     if (rpMode.value === 'off') return 'OFF';
     if (rpMode.value === 'toki') return '토키';
@@ -278,6 +281,14 @@ export const useAppStore = defineStore('app', () => {
     darkMode.value = value;
   }
 
+  function setThemeId(value: ThemeId) {
+    themeId.value = value;
+  }
+
+  function setCustomTheme(value: CustomThemePalette | null) {
+    customTheme.value = value;
+  }
+
   function setRpMode(mode: RpMode) {
     rpMode.value = mode;
   }
@@ -315,6 +326,8 @@ export const useAppStore = defineStore('app', () => {
     monacoReady,
     activeTabId,
     darkMode,
+    themeId,
+    customTheme,
     rpMode,
     rpCustomText,
     bgmEnabled,
@@ -346,6 +359,8 @@ export const useAppStore = defineStore('app', () => {
     showRestoredSessionStatus,
     clearRestoredSessionState,
     setDarkMode,
+    setThemeId,
+    setCustomTheme,
     setRpMode,
     setMonacoReady,
     setActiveTabId,

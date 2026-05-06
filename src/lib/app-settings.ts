@@ -1,4 +1,13 @@
 import { parseStoredJson, storedAvatarStateSchema, storedLayoutStateSchema } from './stored-state-validation';
+import {
+  DEFAULT_CUSTOM_THEME_PALETTE,
+  getDefaultRpModeForTheme,
+  isDarkTheme,
+  normalizeThemeId,
+  parseCustomThemePalette,
+  type CustomThemePalette,
+  type ThemeId,
+} from './theme-registry';
 
 export type RpMode = 'off' | 'toki' | 'aris' | 'custom';
 
@@ -24,6 +33,8 @@ export interface StoredLayoutState {
 
 export interface AppSettingsSnapshot {
   darkMode: boolean;
+  themeId: ThemeId;
+  customTheme: CustomThemePalette | null;
   rpMode: RpMode;
   rpCustomText: string;
   bgmEnabled: boolean;
@@ -50,9 +61,11 @@ export const STORAGE_KEYS = {
   bgmEnabled: 'toki-bgm-enabled',
   bgmPath: 'toki-bgm-path',
   darkMode: 'toki-dark-mode',
+  customTheme: 'toki-custom-theme',
   layoutState: 'toki-layout-state',
   rpCustom: 'toki-rp-custom',
   rpMode: 'toki-rp-mode',
+  themeId: 'toki-theme-id',
 } as const;
 
 export const DEFAULT_AUTOSAVE_INTERVAL = 60_000;
@@ -75,6 +88,10 @@ export function getDefaultRpModeForDarkMode(darkMode: boolean): RpMode {
   return darkMode ? 'aris' : 'toki';
 }
 
+export function getDefaultRpModeForThemeId(themeId: ThemeId, customTheme?: CustomThemePalette | null): RpMode {
+  return getDefaultRpModeForTheme(themeId, customTheme);
+}
+
 export function normalizeRpMode(value: string | null, darkMode: boolean): RpMode {
   if (value === 'true') {
     return getDefaultRpModeForDarkMode(darkMode);
@@ -89,10 +106,15 @@ export function normalizeRpMode(value: string | null, darkMode: boolean): RpMode
 
 export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnapshot {
   const target = getDefaultStorage(storage);
-  const darkMode = parseBoolean(target.getItem(STORAGE_KEYS.darkMode));
+  const legacyDarkMode = parseBoolean(target.getItem(STORAGE_KEYS.darkMode));
+  const themeId = normalizeThemeId(target.getItem(STORAGE_KEYS.themeId), legacyDarkMode);
+  const customTheme = parseCustomThemePalette(target.getItem(STORAGE_KEYS.customTheme));
+  const darkMode = isDarkTheme(themeId, customTheme);
 
   return {
     darkMode,
+    themeId,
+    customTheme,
     rpMode: normalizeRpMode(target.getItem(STORAGE_KEYS.rpMode), darkMode),
     rpCustomText: target.getItem(STORAGE_KEYS.rpCustom) || '',
     bgmEnabled: parseBoolean(target.getItem(STORAGE_KEYS.bgmEnabled)),
@@ -130,8 +152,40 @@ export function syncBodyDarkMode(body: HTMLElement, darkMode: boolean): void {
   body.classList.toggle('dark-mode', darkMode);
 }
 
+export function syncBodyTheme(body: HTMLElement, themeId: ThemeId, customTheme?: CustomThemePalette | null): void {
+  body.dataset.theme = themeId;
+  syncBodyDarkMode(body, isDarkTheme(themeId, customTheme));
+}
+
 export function writeDarkMode(darkMode: boolean, storage?: StorageLike): void {
-  getDefaultStorage(storage).setItem(STORAGE_KEYS.darkMode, String(darkMode));
+  const target = getDefaultStorage(storage);
+  target.setItem(STORAGE_KEYS.darkMode, String(darkMode));
+  target.setItem(STORAGE_KEYS.themeId, darkMode ? 'aris' : 'toki');
+}
+
+export function writeThemeId(themeId: ThemeId, storage?: StorageLike): void {
+  const target = getDefaultStorage(storage);
+  target.setItem(STORAGE_KEYS.themeId, themeId);
+  target.setItem(
+    STORAGE_KEYS.darkMode,
+    String(isDarkTheme(themeId, parseCustomThemePalette(target.getItem(STORAGE_KEYS.customTheme)))),
+  );
+}
+
+export function writeCustomTheme(theme: CustomThemePalette | null, storage?: StorageLike): void {
+  const target = getDefaultStorage(storage);
+  if (!theme) {
+    target.removeItem(STORAGE_KEYS.customTheme);
+    return;
+  }
+  target.setItem(STORAGE_KEYS.customTheme, JSON.stringify(theme));
+  if (target.getItem(STORAGE_KEYS.themeId) === 'custom') {
+    target.setItem(STORAGE_KEYS.darkMode, String(isDarkTheme('custom', theme)));
+  }
+}
+
+export function getDefaultCustomTheme(): CustomThemePalette {
+  return { ...DEFAULT_CUSTOM_THEME_PALETTE };
 }
 
 export function writeRpMode(rpMode: RpMode, storage?: StorageLike): void {

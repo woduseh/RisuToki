@@ -49,8 +49,8 @@ body {
   display: flex;
   align-items: center;
   height: var(--toolbar-height);
-  background: linear-gradient(135deg, #4a90d9 0%, #6fb3f2 100%);
-  border-bottom: 2px solid #3a7bc8;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+  border-bottom: 2px solid var(--accent-hover);
   -webkit-app-region: drag;
   position: relative;
   z-index: 100;
@@ -897,7 +897,7 @@ body {
   justify-content: space-between;
   padding: 0 14px;
   height: 38px;
-  background: #fc96ab;
+  background: var(--pink);
   border-bottom: none;
   font-size: 12px;
   font-weight: 600;
@@ -1753,6 +1753,35 @@ body {
 .settings-btn:hover {
   background: var(--accent);
   color: #fff;
+}
+
+.custom-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.custom-theme-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.custom-theme-field input[type='color'] {
+  width: 34px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
 }
 
 /* ===== Drag-drop overlay ===== */

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_AUTOSAVE_INTERVAL,
   clearAutosaveDir,
+  getDefaultCustomTheme,
   normalizeRpMode,
   readAppSettingsSnapshot,
   readStoredLayoutState,
@@ -9,8 +10,10 @@ import {
   writeAutosaveEnabled,
   writeAutosaveInterval,
   writeDarkMode,
+  writeCustomTheme,
   writeLayoutState,
   writeRpMode,
+  writeThemeId,
 } from './app-settings';
 
 function createStorage() {
@@ -43,9 +46,59 @@ describe('app settings', () => {
   it('returns defaults for missing settings', () => {
     const snapshot = readAppSettingsSnapshot(createStorage());
     expect(snapshot.darkMode).toBe(false);
+    expect(snapshot.themeId).toBe('toki');
+    expect(snapshot.customTheme).toBeNull();
     expect(snapshot.autosaveInterval).toBe(DEFAULT_AUTOSAVE_INTERVAL);
     expect(snapshot.rpMode).toBe('off');
     expect(snapshot.layoutState).toBeNull();
+  });
+
+  it('maps legacy dark mode to the matching built-in theme id', () => {
+    const storage = createStorage();
+
+    writeDarkMode(true, storage);
+    expect(readAppSettingsSnapshot(storage).themeId).toBe('aris');
+    expect(readAppSettingsSnapshot(storage).darkMode).toBe(true);
+
+    writeDarkMode(false, storage);
+    expect(readAppSettingsSnapshot(storage).themeId).toBe('toki');
+    expect(readAppSettingsSnapshot(storage).darkMode).toBe(false);
+  });
+
+  it('prefers stored theme id over legacy dark mode', () => {
+    const storage = createStorage();
+    storage.setItem('toki-dark-mode', 'true');
+    writeThemeId('millennium', storage);
+
+    const snapshot = readAppSettingsSnapshot(storage);
+
+    expect(snapshot.themeId).toBe('millennium');
+    expect(snapshot.darkMode).toBe(false);
+  });
+
+  it('falls back safely when custom theme JSON is invalid', () => {
+    const storage = createStorage();
+    writeThemeId('custom', storage);
+    storage.setItem('toki-custom-theme', '{broken');
+
+    const snapshot = readAppSettingsSnapshot(storage);
+
+    expect(snapshot.themeId).toBe('custom');
+    expect(snapshot.customTheme).toBeNull();
+    expect(snapshot.darkMode).toBe(false);
+  });
+
+  it('persists a valid custom theme palette', () => {
+    const storage = createStorage();
+    const customTheme = { ...getDefaultCustomTheme(), mode: 'dark' as const, accent: '#123456' };
+
+    writeCustomTheme(customTheme, storage);
+    writeThemeId('custom', storage);
+
+    const snapshot = readAppSettingsSnapshot(storage);
+    expect(snapshot.themeId).toBe('custom');
+    expect(snapshot.customTheme?.accent).toBe('#123456');
+    expect(snapshot.darkMode).toBe(true);
   });
 
   it('writes and clears persisted settings through helpers', () => {

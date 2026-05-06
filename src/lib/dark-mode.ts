@@ -1,8 +1,10 @@
-import { syncBodyDarkMode } from './app-settings';
+import { syncBodyDarkMode, syncBodyTheme } from './app-settings';
 import { ensureBlueArchiveMonacoTheme } from './monaco-loader';
+import { getTheme, type CustomThemePalette, type ThemeId } from './theme-registry';
 
 type MonacoWindow = Window & {
   _baDarkThemeDefined?: boolean;
+  _risutokiThemeDefinitions?: Set<string>;
   monaco?: {
     editor: {
       defineTheme: (name: string, theme: unknown) => void;
@@ -39,7 +41,7 @@ const BLUE_ARCHIVE_DARK_THEME = {
     'minimap.background': '#141a31',
     'scrollbarSlider.background': '#2e3a5644',
     'scrollbarSlider.hoverBackground': '#4a90d966',
-  }
+  },
 };
 
 /**
@@ -55,15 +57,53 @@ export function defineDarkMonacoTheme(): void {
   w._baDarkThemeDefined = true;
 }
 
+export function defineAppMonacoTheme(themeId: ThemeId, customTheme?: CustomThemePalette | null): string {
+  const w = window as unknown as MonacoWindow;
+  const theme = getTheme(themeId, customTheme);
+  const monacoThemeId = `risutoki-${theme.id}`;
+  if (!w.monaco) return monacoThemeId;
+  ensureBlueArchiveMonacoTheme();
+  w._risutokiThemeDefinitions ??= new Set<string>();
+  if (!w._risutokiThemeDefinitions.has(monacoThemeId)) {
+    w.monaco.editor.defineTheme(monacoThemeId, theme.monaco);
+    w._risutokiThemeDefinitions.add(monacoThemeId);
+  }
+  return monacoThemeId;
+}
+
+export function applyTheme(
+  themeId: ThemeId,
+  customTheme?: CustomThemePalette | null,
+  options?: {
+    editorInstance?: { updateOptions: (opts: unknown) => void } | null;
+    formEditors?: Array<{ updateOptions: (opts: unknown) => void }>;
+  },
+): void {
+  void options;
+  const theme = getTheme(themeId, customTheme);
+  syncBodyTheme(document.body, themeId, customTheme);
+  for (const [key, value] of Object.entries(theme.cssVariables)) {
+    document.body.style.setProperty(key, value);
+  }
+
+  const w = window as unknown as MonacoWindow;
+  if (w.monaco) {
+    w.monaco.editor.setTheme(defineAppMonacoTheme(themeId, customTheme));
+  }
+}
+
 /**
  * Apply dark-mode CSS class on `document.body` and switch the global Monaco
  * editor theme.  The optional `options` bag is reserved for callers that hold
  * references to individual editor instances they want to update explicitly.
  */
-export function applyDarkMode(enabled: boolean, options?: {
-  editorInstance?: { updateOptions: (opts: unknown) => void } | null;
-  formEditors?: Array<{ updateOptions: (opts: unknown) => void }>;
-}): void {
+export function applyDarkMode(
+  enabled: boolean,
+  options?: {
+    editorInstance?: { updateOptions: (opts: unknown) => void } | null;
+    formEditors?: Array<{ updateOptions: (opts: unknown) => void }>;
+  },
+): void {
   void options; // reserved for future per-instance updates
   syncBodyDarkMode(document.body, enabled);
 

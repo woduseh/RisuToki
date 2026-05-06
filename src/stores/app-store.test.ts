@@ -69,6 +69,18 @@ describe('app-store reactive state', () => {
     expect(store.statusText).toBe('');
     expect(store.statusSticky).toBe(false);
   });
+
+  it('derives talk title from selected theme metadata', () => {
+    const store = useAppStore();
+
+    expect(store.talkTitle).toBe('TokiTalk');
+
+    store.setThemeId('aris');
+    expect(store.talkTitle).toBe('ArisTalk');
+
+    store.setThemeId('millennium');
+    expect(store.talkTitle).toBe('TokiTalk');
+  });
 });
 
 describe('app-store previewability', () => {

@@ -9,7 +9,7 @@ import {
   getXtermFitAddonUrl,
   getXtermRuntimeUrl,
   getXtermStylesheetUrl,
-  isDarkModeEnabled
+  isDarkModeEnabled,
 } from './asset-runtime';
 
 describe('asset runtime helpers', () => {
@@ -28,11 +28,20 @@ describe('asset runtime helpers', () => {
 
   it('derives the talk title from the stored dark mode setting', () => {
     localStorage.removeItem('toki-dark-mode');
+    localStorage.removeItem('toki-theme-id');
     expect(isDarkModeEnabled()).toBe(false);
     expect(getTalkTitle()).toBe('TokiTalk');
 
     localStorage.setItem('toki-dark-mode', 'true');
     expect(isDarkModeEnabled()).toBe(true);
     expect(getTalkTitle()).toBe('ArisTalk');
+  });
+
+  it('derives the talk title from the stored theme id when present', () => {
+    localStorage.setItem('toki-dark-mode', 'true');
+    localStorage.setItem('toki-theme-id', 'millennium');
+
+    expect(isDarkModeEnabled()).toBe(false);
+    expect(getTalkTitle()).toBe('TokiTalk');
   });
 });

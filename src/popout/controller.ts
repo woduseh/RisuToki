@@ -1,15 +1,15 @@
 import PreviewEngine from '../lib/preview-engine';
 import { escapePreviewHtml } from '../lib/preview-format';
 import {
-  getDefaultRpModeForDarkMode,
+  getDefaultRpModeForThemeId,
   readAppSettingsSnapshot,
   subscribeToAppSettings,
-  syncBodyDarkMode,
   writeRpMode,
 } from '../lib/app-settings';
 import type { AppSettingsSnapshot } from '../lib/app-settings';
 import { createDirectTerminalChatSession } from '../lib/chat-session';
 import { getTalkTitle, toMediaAsset } from '../lib/asset-runtime';
+import { applyTheme, defineAppMonacoTheme } from '../lib/dark-mode';
 import { loadMonacoRuntime } from '../lib/monaco-loader';
 import { buildPreviewDebugClipboardText, renderPreviewDebugHtml } from '../lib/preview-debug';
 import { createIframePreviewRuntime } from '../lib/preview-runtime';
@@ -17,8 +17,9 @@ import { createPreviewSession } from '../lib/preview-session';
 import type { PreviewCharData } from '../lib/preview-session';
 import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
-import { initializeTerminalUi, TERM_THEME_DARK, TERM_THEME_LIGHT } from '../lib/terminal-ui';
+import { initializeTerminalUi } from '../lib/terminal-ui';
 import type { TerminalUiHandle } from '../lib/terminal-ui';
+import { getTheme } from '../lib/theme-registry';
 import {
   applySelectedChoice,
   cleanTuiOutput,
@@ -41,15 +42,15 @@ const initialPopoutSettings = readAppSettingsSnapshot();
 let currentSettingsSnapshot = initialPopoutSettings;
 
 function isDarkModeEnabled(): boolean {
-  return currentSettingsSnapshot.darkMode;
+  return getTheme(currentSettingsSnapshot.themeId, currentSettingsSnapshot.customTheme).mode === 'dark';
 }
 
 function getPopoutTerminalTheme() {
-  return isDarkModeEnabled() ? TERM_THEME_DARK : TERM_THEME_LIGHT;
+  return getTheme(currentSettingsSnapshot.themeId, currentSettingsSnapshot.customTheme).terminal;
 }
 
-function getPopoutMonacoTheme(): 'blue-archive' | 'blue-archive-dark' {
-  return isDarkModeEnabled() ? 'blue-archive-dark' : 'blue-archive';
+function getPopoutMonacoTheme(): string {
+  return defineAppMonacoTheme(currentSettingsSnapshot.themeId, currentSettingsSnapshot.customTheme);
 }
 
 function createPopoutActionButton(
@@ -78,7 +79,7 @@ function setPopoutButtonActive(button: HTMLElement | null, active: boolean): voi
 
 function applyPopoutDarkMode(snapshot: AppSettingsSnapshot): void {
   currentSettingsSnapshot = snapshot;
-  syncBodyDarkMode(document.body, snapshot.darkMode);
+  applyTheme(snapshot.themeId, snapshot.customTheme);
 }
 
 export async function initPopoutRenderer(): Promise<void> {
@@ -270,7 +271,8 @@ function initPopoutRpMode(): () => void {
 
   const handleClick = () => {
     snapshot = readAppSettingsSnapshot();
-    const nextMode = snapshot.rpMode === 'off' ? getDefaultRpModeForDarkMode(snapshot.darkMode) : 'off';
+    const nextMode =
+      snapshot.rpMode === 'off' ? getDefaultRpModeForThemeId(snapshot.themeId, snapshot.customTheme) : 'off';
     writeRpMode(nextMode);
     updatePopoutRpStyle(btn, nextMode !== 'off');
   };
@@ -282,7 +284,7 @@ function initPopoutRpMode(): () => void {
     applyPopoutDarkMode(snapshot);
     const titleEl = document.querySelector('.momo-title');
     if (titleEl) {
-      titleEl.textContent = snapshot.darkMode ? 'ArisTalk' : 'TokiTalk';
+      titleEl.textContent = getTheme(snapshot.themeId, snapshot.customTheme).talkTitle;
     }
     if (popoutTerm) {
       popoutTerm.options.theme = getPopoutTerminalTheme();

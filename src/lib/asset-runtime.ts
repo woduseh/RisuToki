@@ -1,4 +1,5 @@
 import { readAppSettingsSnapshot } from './app-settings';
+import { getTalkTitleForTheme, isDarkTheme } from './theme-registry';
 
 function getBundledAssetUrl(baseDirectory: 'app-assets' | 'vendor', relativePath: string): string {
   const normalizedPath = relativePath.replace(/^\.\//, '');
@@ -38,11 +39,13 @@ export function getWasmoonRuntimeUrl(): string {
 }
 
 export function isDarkModeEnabled(): boolean {
-  return readAppSettingsSnapshot().darkMode;
+  const snapshot = readAppSettingsSnapshot();
+  return isDarkTheme(snapshot.themeId, snapshot.customTheme);
 }
 
-export function getTalkTitle(): 'ArisTalk' | 'TokiTalk' {
-  return isDarkModeEnabled() ? 'ArisTalk' : 'TokiTalk';
+export function getTalkTitle(): string {
+  const snapshot = readAppSettingsSnapshot();
+  return getTalkTitleForTheme(snapshot.themeId, snapshot.customTheme);
 }
 
 export const toMediaAsset = getMediaAssetUrl;

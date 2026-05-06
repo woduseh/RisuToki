@@ -9,6 +9,18 @@
 
 ---
 
+## [0.71.0] - 2026-05-06
+
+### Added
+
+- Added a theme preset system with Toki, Aris, MomoTalk, Millennium, Gehenna, Trinity, and a safe palette-based custom theme editor.
+
+## [0.70.9] - 2026-05-06
+
+### Changed
+
+- Improved the image asset viewer so images open fitted to the available editor area by default, with wheel zoom plus 화면 맞춤 and 실제 크기 controls.
+
 ## [0.70.8] - 2026-05-06
 
 ### Changed

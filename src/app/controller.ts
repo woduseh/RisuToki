@@ -23,6 +23,7 @@ import {
 } from '../lib/assistant-prompt';
 import {
   getDefaultRpModeForDarkMode,
+  getDefaultRpModeForThemeId,
   readAppSettingsSnapshot,
   readStoredLayoutState,
   subscribeToAppSettings,
@@ -37,7 +38,7 @@ import {
 } from '../lib/app-settings';
 import type { StoredLayoutState } from '../lib/app-settings';
 import { initTokiAvatar as initTokiAvatarUi, setTokiActive } from '../lib/avatar-ui';
-import { defineDarkMonacoTheme } from '../lib/dark-mode';
+import { defineAppMonacoTheme } from '../lib/dark-mode';
 import { showImageViewer as renderImageViewer } from '../lib/image-viewer';
 import { handleTerminalDataForBgm, isBgmEnabled, pauseBgm, setBgmEnabled, setBgmFilePath } from '../lib/bgm';
 import { ensureBlueArchiveMonacoTheme, loadMonacoRuntime } from '../lib/monaco-loader';
@@ -130,11 +131,15 @@ import {
   initBgmUi,
   toggleDarkMode as _toggleDarkMode,
   refreshDarkModeUi as _refreshDarkModeUi,
+  changeTheme as _changeTheme,
+  refreshThemeUi as _refreshThemeUi,
+  updateCustomTheme as _updateCustomTheme,
   startAutosave,
   stopAutosave,
   showSettingsPopup as _showSettingsPopup,
   handleTerminalBg,
 } from './settings-handlers';
+import { getTheme, type CustomThemePalette, type ThemeId } from '../lib/theme-registry';
 import {
   activateTriggerScriptsFormTab,
   applyTriggerScriptsControllerMcpUpdate,
@@ -197,8 +202,10 @@ async function syncReferenceFiles(): Promise<ReferenceFile[]> {
 
 // RP mode: 'off' | 'toki' | 'aris' | 'custom'
 // Migrate old boolean value
-// Dark mode (Risu theme)
+// Theme state. `darkMode` remains a derived legacy flag for existing branches.
 let darkMode = settingsSnapshot.darkMode;
+let themeId: ThemeId = settingsSnapshot.themeId;
+let customTheme: CustomThemePalette | null = settingsSnapshot.customTheme;
 
 // RP mode: 'off' | 'toki' | 'aris' | 'custom'
 // Migrate old boolean value
@@ -216,6 +223,8 @@ let rendererOpenRequestInProgress = false;
 function syncStoreState(): void {
   const store = useAppStore();
   store.setDarkMode(darkMode);
+  store.setThemeId(themeId);
+  store.setCustomTheme(customTheme);
   store.setRpMode(rpMode as RpMode);
   store.bgmEnabled = isBgmEnabled();
 }
@@ -428,7 +437,7 @@ function ensureMonacoEditorReady(): Promise<boolean> {
   setStatus('Monaco 에디터 로딩 중...');
   monacoLoadTask = loadMonaco()
     .then(() => {
-      if (darkMode) defineDarkMonacoTheme();
+      defineAppMonacoTheme(themeId, customTheme);
       flushPendingEditorActivation();
       setStatus('준비');
       return true;
@@ -537,7 +546,7 @@ function createOrSwitchEditor(tabInfo: Tab): void {
   tabMgr.pendingEditorTabId = null;
   ensureBlueArchiveMonacoTheme();
 
-  if (darkMode) defineDarkMonacoTheme();
+  const monacoThemeId = defineAppMonacoTheme(themeId, customTheme);
 
   const isReadOnly = !tabInfo.setValue;
   const initialValue = tabInfo.getValue() as string;
@@ -545,7 +554,7 @@ function createOrSwitchEditor(tabInfo: Tab): void {
   editorInstance = monaco.editor.create(container, {
     value: initialValue,
     language: tabInfo.language,
-    theme: darkMode ? 'blue-archive-dark' : 'blue-archive',
+    theme: monacoThemeId,
     fontSize: 14,
     minimap: { enabled: !isLargeFile },
     wordWrap: 'on',
@@ -1923,7 +1932,7 @@ async function initTerminal(): Promise<void> {
     rightClickSelectsWord: true,
     setActive: setTokiActive,
     shouldActivateOnData: () => shouldTreatTerminalDataAsActivity(lastUserInputTime),
-    theme: darkMode ? TERM_THEME_DARK : TERM_THEME_LIGHT,
+    theme: getTheme(themeId, customTheme).terminal,
     writeStatusToTerminal: true,
   });
   term = terminalUi.term;
@@ -2172,16 +2181,46 @@ function getDarkModeDeps() {
     },
     termThemeDark: TERM_THEME_DARK,
     termThemeLight: TERM_THEME_LIGHT,
+    themeId,
+    customTheme,
   };
 }
 
 function toggleDarkMode(): void {
   darkMode = _toggleDarkMode(darkMode, getDarkModeDeps());
+  themeId = darkMode ? 'aris' : 'toki';
+  customTheme = settingsSnapshot.customTheme;
   syncStoreState();
 }
 
 function refreshDarkModeUi(): void {
   _refreshDarkModeUi(darkMode, getDarkModeDeps());
+}
+
+function getThemeDeps() {
+  return {
+    ...getDarkModeDeps(),
+    getThemeId: () => themeId,
+    getCustomTheme: () => customTheme,
+    setThemeId: (nextThemeId: ThemeId) => {
+      themeId = nextThemeId;
+      darkMode = getTheme(themeId, customTheme).mode === 'dark';
+    },
+    setCustomTheme: (nextCustomTheme: CustomThemePalette | null) => {
+      customTheme = nextCustomTheme;
+      darkMode = getTheme(themeId, customTheme).mode === 'dark';
+    },
+  };
+}
+
+function changeTheme(nextThemeId: ThemeId): void {
+  _changeTheme(nextThemeId, getThemeDeps());
+  darkMode = getTheme(themeId, customTheme).mode === 'dark';
+  syncStoreState();
+}
+
+function refreshThemeUi(): void {
+  _refreshThemeUi(themeId, customTheme, getDarkModeDeps());
 }
 
 // ==================== BGM (Terminal Response Music) ====================
@@ -2223,6 +2262,8 @@ function showSettingsPopup(): void {
       autosaveInterval,
       autosaveDir,
       darkMode,
+      themeId,
+      customTheme,
       bgmEnabled: isBgmEnabled(),
       rpMode,
       rpCustomText,
@@ -2261,6 +2302,14 @@ function showSettingsPopup(): void {
     },
     onDarkModeToggle() {
       toggleDarkMode();
+    },
+    onThemeChange(nextThemeId) {
+      changeTheme(nextThemeId);
+    },
+    onCustomThemeChange(nextCustomTheme) {
+      _updateCustomTheme(nextCustomTheme, getThemeDeps());
+      darkMode = getTheme(themeId, customTheme).mode === 'dark';
+      syncStoreState();
     },
     onBgmToggle(enabled) {
       setBgmEnabled(enabled);
@@ -2542,16 +2591,18 @@ function openTabById(tabId: string): void {
 // ==================== Init ====================
 export async function initMainRenderer(): Promise<void> {
   subscribeToAppSettings((snapshot) => {
-    const darkModeChanged = snapshot.darkMode !== darkMode;
+    const themeChanged = snapshot.themeId !== themeId || snapshot.customTheme !== customTheme;
     darkMode = snapshot.darkMode;
+    themeId = snapshot.themeId;
+    customTheme = snapshot.customTheme;
     rpMode = snapshot.rpMode;
     rpCustomText = snapshot.rpCustomText;
     setBgmEnabled(snapshot.bgmEnabled);
     autosaveEnabled = snapshot.autosaveEnabled;
     autosaveInterval = snapshot.autosaveInterval;
     autosaveDir = snapshot.autosaveDir;
-    if (darkModeChanged) {
-      refreshDarkModeUi();
+    if (themeChanged) {
+      refreshThemeUi();
     }
     // Sync to Pinia store for reactive UI
     syncStoreState();

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PreviewSnapshot } from '../lib/preview-session';
+import type { ThemeId } from '../lib/theme-registry';
 
 function createSettingsSnapshot(overrides: Partial<ReturnType<typeof baseSettingsSnapshot>> = {}) {
   return {
@@ -11,6 +12,8 @@ function createSettingsSnapshot(overrides: Partial<ReturnType<typeof baseSetting
 function baseSettingsSnapshot() {
   return {
     darkMode: false,
+    themeId: 'toki' as ThemeId,
+    customTheme: null,
     rpMode: 'off',
     rpCustomText: '',
     bgmEnabled: false,
@@ -25,10 +28,9 @@ function baseSettingsSnapshot() {
 }
 
 const mockReadAppSettingsSnapshot = vi.fn(() => createSettingsSnapshot());
-const mockSyncBodyDarkMode = vi.fn();
 const mockSubscribeToAppSettings = vi.fn(() => () => {});
 const mockWriteRpMode = vi.fn();
-const mockGetDefaultRpModeForDarkMode = vi.fn(() => 'toki');
+const mockGetDefaultRpModeForThemeId = vi.fn(() => 'toki');
 const mockCreateDirectTerminalChatSession = vi.fn(() => ({
   handleTerminalData: vi.fn(),
   setActive: vi.fn(),
@@ -48,6 +50,13 @@ const mockEnsureWasmoon = vi.fn(async () => {});
 const mockReportRuntimeError = vi.fn();
 const mockTermThemeLight = { background: '#ffffff' };
 const mockTermThemeDark = { background: '#141a31' };
+const mockApplyTheme = vi.fn();
+const mockDefineAppMonacoTheme = vi.fn((themeId: string) => `risutoki-${themeId}`);
+const mockGetTheme = vi.fn((themeId: string) =>
+  themeId === 'aris'
+    ? { mode: 'dark', talkTitle: 'ArisTalk', terminal: mockTermThemeDark }
+    : { mode: 'light', talkTitle: 'TokiTalk', terminal: mockTermThemeLight },
+);
 const mockInitializeTerminalUi = vi.fn(async () => ({
   term: {
     focus: vi.fn(),
@@ -62,11 +71,19 @@ const mockInitializeTerminalUi = vi.fn(async () => ({
 const mockCreatePreviewSession = vi.fn();
 
 vi.mock('../lib/app-settings', () => ({
-  getDefaultRpModeForDarkMode: mockGetDefaultRpModeForDarkMode,
+  getDefaultRpModeForThemeId: mockGetDefaultRpModeForThemeId,
   readAppSettingsSnapshot: mockReadAppSettingsSnapshot,
   subscribeToAppSettings: mockSubscribeToAppSettings,
-  syncBodyDarkMode: mockSyncBodyDarkMode,
   writeRpMode: mockWriteRpMode,
+}));
+
+vi.mock('../lib/dark-mode', () => ({
+  applyTheme: mockApplyTheme,
+  defineAppMonacoTheme: mockDefineAppMonacoTheme,
+}));
+
+vi.mock('../lib/theme-registry', () => ({
+  getTheme: mockGetTheme,
 }));
 
 vi.mock('../lib/chat-session', () => ({
@@ -414,8 +431,8 @@ describe('popout controller renderer', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it('uses the dark Monaco theme for editor popouts when dark mode is enabled', async () => {
-    mockReadAppSettingsSnapshot.mockImplementation(() => createSettingsSnapshot({ darkMode: true }));
+  it('uses the selected dark Monaco theme for editor popouts when Aris is selected', async () => {
+    mockReadAppSettingsSnapshot.mockImplementation(() => createSettingsSnapshot({ darkMode: true, themeId: 'aris' }));
     (
       window as unknown as { popoutAPI: { getType: () => string; getEditorData: () => Promise<unknown> } }
     ).popoutAPI.getType = vi.fn(() => 'editor');
@@ -425,11 +442,13 @@ describe('popout controller renderer', () => {
 
     expect(
       (globalThis as unknown as { monaco: { editor: { create: ReturnType<typeof vi.fn> } } }).monaco.editor.create,
-    ).toHaveBeenCalledWith(expect.any(HTMLElement), expect.objectContaining({ theme: 'blue-archive-dark' }));
+    ).toHaveBeenCalledWith(expect.any(HTMLElement), expect.objectContaining({ theme: 'risutoki-aris' }));
   });
 
   it('uses dark terminal theme and class-based active buttons in terminal popout dark mode', async () => {
-    mockReadAppSettingsSnapshot.mockImplementation(() => createSettingsSnapshot({ darkMode: true, rpMode: 'aris' }));
+    mockReadAppSettingsSnapshot.mockImplementation(() =>
+      createSettingsSnapshot({ darkMode: true, themeId: 'aris', rpMode: 'aris' }),
+    );
     (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'terminal');
 
     const mod = await import('./controller');

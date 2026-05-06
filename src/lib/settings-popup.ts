@@ -1,3 +1,12 @@
+import {
+  BUILT_IN_THEMES,
+  CUSTOM_THEME_FIELDS,
+  DEFAULT_CUSTOM_THEME_PALETTE,
+  normalizeCustomThemePalette,
+  type CustomThemePalette,
+  type ThemeId,
+} from './theme-registry';
+
 /**
  * Settings popup dialog.
  *
@@ -11,6 +20,8 @@ export interface SettingsState {
   autosaveInterval: number;
   autosaveDir: string;
   darkMode: boolean;
+  themeId: ThemeId;
+  customTheme: CustomThemePalette | null;
   bgmEnabled: boolean;
   rpMode: string;
   rpCustomText: string;
@@ -23,6 +34,8 @@ export interface SettingsCallbacks {
   onResetAutosaveDir(): void;
   onOpenAutosaveDir(): Promise<void>;
   onDarkModeToggle(): void;
+  onThemeChange(themeId: ThemeId): void;
+  onCustomThemeChange(theme: CustomThemePalette | null): void;
   onBgmToggle(enabled: boolean): void;
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
@@ -204,18 +217,96 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   autoPathRow.appendChild(autoPathBtns);
   body.appendChild(autoPathRow);
 
-  // --- Dark Mode ---
-  const darkRow = document.createElement('div');
-  darkRow.className = 'settings-row';
-  const darkLeft = document.createElement('div');
-  darkLeft.innerHTML = '<div class="settings-label">다크 모드</div><div class="settings-desc">아리스 테마 (다크)</div>';
-  const darkToggle = createToggle(state.darkMode);
-  darkToggle.addEventListener('click', () => {
-    callbacks.onDarkModeToggle();
+  // --- Theme Preset ---
+  const themeRow = document.createElement('div');
+  themeRow.className = 'settings-row';
+  const themeLeft = document.createElement('div');
+  themeLeft.innerHTML =
+    '<div class="settings-label">테마</div><div class="settings-desc">프리셋 또는 커스텀 팔레트</div>';
+  const themeSelect = document.createElement('select');
+  themeSelect.className = 'settings-select';
+  const themeOptions = [
+    ...BUILT_IN_THEMES.map((theme) => ({ value: theme.id, label: theme.label })),
+    { value: 'custom', label: '커스텀' },
+  ];
+  for (const opt of themeOptions) {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    if (opt.value === state.themeId) o.selected = true;
+    themeSelect.appendChild(o);
+  }
+  themeRow.appendChild(themeLeft);
+  themeRow.appendChild(themeSelect);
+  body.appendChild(themeRow);
+
+  const customThemeRow = document.createElement('div');
+  customThemeRow.className = 'settings-row custom-theme-row';
+  customThemeRow.style.cssText = 'flex-direction:column;align-items:stretch;gap:8px;';
+  if (state.themeId !== 'custom') customThemeRow.style.display = 'none';
+  const customThemeLabel = document.createElement('div');
+  customThemeLabel.innerHTML = '<div class="settings-label">커스텀 팔레트</div>';
+  customThemeRow.appendChild(customThemeLabel);
+
+  let customThemeDraft = normalizeCustomThemePalette(state.customTheme) ?? { ...DEFAULT_CUSTOM_THEME_PALETTE };
+  const modeSelect = document.createElement('select');
+  modeSelect.className = 'settings-select';
+  for (const opt of [
+    { value: 'light', label: '라이트' },
+    { value: 'dark', label: '다크' },
+  ]) {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    if (customThemeDraft.mode === opt.value) o.selected = true;
+    modeSelect.appendChild(o);
+  }
+  modeSelect.addEventListener('change', () => {
+    customThemeDraft = { ...customThemeDraft, mode: modeSelect.value === 'dark' ? 'dark' : 'light' };
+    callbacks.onCustomThemeChange(customThemeDraft);
   });
-  darkRow.appendChild(darkLeft);
-  darkRow.appendChild(darkToggle);
-  body.appendChild(darkRow);
+  customThemeRow.appendChild(modeSelect);
+
+  const swatchGrid = document.createElement('div');
+  swatchGrid.className = 'custom-theme-grid';
+  for (const field of CUSTOM_THEME_FIELDS) {
+    const fieldWrap = document.createElement('label');
+    fieldWrap.className = 'custom-theme-field';
+    const label = document.createElement('span');
+    label.textContent = field.label;
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.value = customThemeDraft[field.key];
+    input.addEventListener('input', () => {
+      customThemeDraft = { ...customThemeDraft, [field.key]: input.value };
+      callbacks.onCustomThemeChange(customThemeDraft);
+    });
+    fieldWrap.appendChild(label);
+    fieldWrap.appendChild(input);
+    swatchGrid.appendChild(fieldWrap);
+  }
+  customThemeRow.appendChild(swatchGrid);
+
+  const customThemeBtns = document.createElement('div');
+  customThemeBtns.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;';
+  const resetThemeBtn = document.createElement('button');
+  resetThemeBtn.className = 'settings-btn';
+  resetThemeBtn.textContent = '초기화';
+  resetThemeBtn.addEventListener('click', () => {
+    customThemeDraft = { ...DEFAULT_CUSTOM_THEME_PALETTE };
+    callbacks.onCustomThemeChange(customThemeDraft);
+    close();
+    showSettingsPopup({ ...state, themeId: 'custom', customTheme: customThemeDraft }, callbacks);
+  });
+  customThemeBtns.appendChild(resetThemeBtn);
+  customThemeRow.appendChild(customThemeBtns);
+  body.appendChild(customThemeRow);
+
+  themeSelect.addEventListener('change', () => {
+    const nextThemeId = themeSelect.value as ThemeId;
+    callbacks.onThemeChange(nextThemeId);
+    customThemeRow.style.display = nextThemeId === 'custom' ? '' : 'none';
+  });
 
   // --- BGM ---
   const bgmRow = document.createElement('div');

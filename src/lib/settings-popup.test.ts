@@ -8,6 +8,8 @@ function makeState(overrides: Partial<SettingsState> = {}): SettingsState {
     autosaveInterval: 60000,
     autosaveDir: '',
     darkMode: false,
+    themeId: 'toki',
+    customTheme: null,
     bgmEnabled: false,
     rpMode: 'off',
     rpCustomText: '',
@@ -23,6 +25,8 @@ function makeCallbacks(overrides: Partial<SettingsCallbacks> = {}): SettingsCall
     onResetAutosaveDir: vi.fn(),
     onOpenAutosaveDir: vi.fn().mockResolvedValue(undefined),
     onDarkModeToggle: vi.fn(),
+    onThemeChange: vi.fn(),
+    onCustomThemeChange: vi.fn(),
     onBgmToggle: vi.fn(),
     onRpModeChange: vi.fn(),
     onRpCustomTextChange: vi.fn(),
@@ -40,9 +44,17 @@ function getRpSelect(overlay: HTMLElement): HTMLSelectElement {
   // (first is autosave interval)
   const selects = overlay.querySelectorAll<HTMLSelectElement>('select.settings-select');
   for (const s of selects) {
-    if (Array.from(s.options).some((o) => o.value === 'custom')) return s;
+    if (Array.from(s.options).some((o) => o.value === 'off')) return s;
   }
   throw new Error('RP select not found');
+}
+
+function getThemeSelect(overlay: HTMLElement): HTMLSelectElement {
+  const selects = overlay.querySelectorAll<HTMLSelectElement>('select.settings-select');
+  for (const s of selects) {
+    if (Array.from(s.options).some((o) => o.value === 'millennium')) return s;
+  }
+  throw new Error('Theme select not found');
 }
 
 describe('settings popup', () => {
@@ -65,6 +77,43 @@ describe('settings popup', () => {
     expect(optionValues).toContain('aris');
     expect(optionValues).toContain('custom');
     expect(optionValues).not.toContain('pluni');
+  });
+
+  it('renders theme presets and custom theme option', () => {
+    showSettingsPopup(makeState(), makeCallbacks());
+    const overlay = getOverlay()!;
+    const themeSelect = getThemeSelect(overlay);
+
+    const optionValues = Array.from(themeSelect.options).map((o) => o.value);
+    expect(optionValues).toEqual(['toki', 'aris', 'momotalk', 'millennium', 'gehenna', 'trinity', 'custom']);
+  });
+
+  it('calls theme callback when choosing a preset', () => {
+    const callbacks = makeCallbacks();
+    showSettingsPopup(makeState(), callbacks);
+    const overlay = getOverlay()!;
+    const themeSelect = getThemeSelect(overlay);
+
+    themeSelect.value = 'millennium';
+    themeSelect.dispatchEvent(new Event('change'));
+
+    expect(callbacks.onThemeChange).toHaveBeenCalledWith('millennium');
+  });
+
+  it('shows custom palette editor and persists palette edits', () => {
+    const callbacks = makeCallbacks();
+    showSettingsPopup(makeState({ themeId: 'custom' }), callbacks);
+    const overlay = getOverlay()!;
+    const customRow = overlay.querySelector<HTMLElement>('.custom-theme-row');
+    const colorInput = overlay.querySelector<HTMLInputElement>('.custom-theme-field input[type="color"]');
+
+    expect(customRow?.style.display).not.toBe('none');
+    expect(colorInput).toBeTruthy();
+
+    colorInput!.value = '#112233';
+    colorInput!.dispatchEvent(new Event('input'));
+
+    expect(callbacks.onCustomThemeChange).toHaveBeenCalledWith(expect.objectContaining({ background: '#112233' }));
   });
 
   it('shows edit button when rpMode is toki', () => {

@@ -418,7 +418,7 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 - First-message rendering avoids a forced scroll-to-bottom, so long cards can be read from the top right away.
 - The pop-out preview toolbar separates **Reset / Debug Panel / Dock to Main / Close** explicitly; both main and pop-out previews highlight the debug button when the panel is open.
 - IME composition in main and pop-out preview inputs does not trigger a send on Enter, preventing accidental submissions during CJK input.
-- Pop-out header buttons and the chat/debug surfaces share a common theme for light and dark modes, so button colors stay subdued in dark mode and the overall tone is consistent across editor, preview, and terminal pop-outs.
+- Pop-out header buttons and the chat/debug surfaces share the selected theme preset, so colors stay consistent across editor, preview, and terminal pop-outs.
 - In `npm run dev` mode, the preview bridge avoids conflicts with the sandbox iframe security policy — no `SecurityError` in the browser console.
 - `{{cbr}}` / `{{cnl}}` / `{{cnewline}}` render as actual line breaks. `chatindex`, `isfirstmsg`, and Lua `onOutput` follow the real message order.
 - During preview initialization an inline status banner appears: a timeout error if the iframe is not ready within 5 seconds, or a runtime error message (e.g., Lua trigger failure). While initializing, the input, send, and reset buttons are disabled.
@@ -432,6 +432,12 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 - Adjusts the AI CLI's response style.
 - The setting takes effect from the next CLI launch and persists across app restarts.
 - IME composition in the terminal pop-out chat input also does not trigger a send on Enter, reducing misfires during CJK input.
+
+### Theme Presets
+
+- Settings now provide Toki, Aris, MomoTalk, Millennium, Gehenna, Trinity, and Custom themes.
+- Custom themes are palette-based: background, surface, text, secondary text, accent, warning, pink, and border colors can be edited safely without arbitrary CSS.
+- Theme selection updates the app chrome, Monaco editors, terminal colors, pop-outs, and light/dark avatar behavior together.
 
 ### Avatar Panel
 
