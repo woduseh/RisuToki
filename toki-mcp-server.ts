@@ -1250,6 +1250,15 @@ async function validateFacadeSelectors(
       continue;
     }
 
+    if (selector.family === 'asset' || selector.field === 'exportCompatibility') {
+      const data = await apiRequest('GET', '/charx/export-compatibility');
+      if (isApiError(data)) return data;
+      validations.push({ selector, data });
+      routes.push(route('validate_charx_export_compatibility', 'GET', '/charx/export-compatibility'));
+      touchedTargets.push('charx:exportCompatibility');
+      continue;
+    }
+
     if (selector.family === 'plugin-v3') {
       return facadeApiError(
         400,
@@ -1305,7 +1314,7 @@ async function validateFacadeSelectors(
     return facadeApiError(
       400,
       'Unsupported validate_content selector',
-      'validate_content supports active lorebook, regex, CBS, Danbooru, risup-prompt, risum semantic fields, promptTemplate, and formatingOrder selectors; keep granular validators for imports, diffs, simulations, and unsupported source shapes.',
+      'validate_content supports active lorebook, regex, CBS, Danbooru, charx export compatibility, risup-prompt, risum semantic fields, promptTemplate, and formatingOrder selectors; keep granular validators for imports, diffs, simulations, and unsupported source shapes.',
       { selector },
       ['validate_cbs', 'validate_danbooru_tags', 'read_content'],
     );

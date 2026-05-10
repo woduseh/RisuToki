@@ -13,7 +13,7 @@ related_tools: ['list_regex', 'read_regex', 'write_regex', 'replace_in_regex']
 - **Do not use when:** the task is Lua callbacks, CBS-only logic, lorebook activation, or normal JavaScript regex outside RisuAI.
 - **Read first:** this `SKILL.md`; it contains the script fields, modification types, and gotchas.
 - **Load deeper only if:** OUT contains HTML/CSS (`writing-html-css`) or CBS (`writing-cbs-syntax`).
-- **Output/validation contract:** preserve find/replace fields exactly, carry indexed write guards, verify modification type and flags, and use `list_regex`/`read_regex_batch` for multi-entry work.
+- **Output/validation contract:** preserve regex text exactly, carry indexed write guards, verify modification type and flags, and use `list_regex`/`read_regex_batch` for multi-entry work. For raw `.charx` / `.risum` compatibility, remember RisuAI's canonical persisted fields are `in` / `out`; `find` / `replace` are RisuToki/MCP convenience aliases.
 
 Regex scripts intercept and transform text at different stages of the chat pipeline using JavaScript regular expressions. They enable everything from simple find-replace to complex UI rendering and prompt manipulation.
 
@@ -25,10 +25,14 @@ Source-grounded areas: edit-mode ordering, CBS parsing, special actions, and fla
 | ---------- | ----------------------------------------------------------- |
 | `comment`  | Script name for identification                              |
 | `type`     | When the script runs (see Modification Types below)         |
-| `find`     | JavaScript regex pattern (the IN field)                     |
-| `replace`  | Replacement text (the OUT field). Supports HTML and CBS.    |
+| `in`       | Canonical RisuAI JavaScript regex pattern field             |
+| `out`      | Canonical RisuAI replacement field. Supports HTML and CBS.  |
+| `find`     | RisuToki/MCP alias for `in`                                 |
+| `replace`  | RisuToki/MCP alias for `out`                                |
 | `flag`     | Regex flags + special flags                                 |
 | `ableFlag` | `true` = use custom flags; `false` = default (`g`, order 0) |
+
+`ableFlag: false` is not disabled. It means the script uses default flags/order; disabled entries are represented by `type: "disabled"`.
 
 ## Modification Types
 
@@ -157,6 +161,7 @@ flag:    (applied to system message)
 | **`editRequest` doesn't modify chat log**     | Request-type scripts change what the API receives but don't alter saved messages. Users won't see request-level changes in the chat UI.                                                                                       |
 | **Capture groups reset per match**            | With the `g` flag, `$1` refers to the capture group of each individual match, not a persistent value across all matches.                                                                                                      |
 | **`@@inject` saves current data**             | The `@@inject` OUT prefix is a special saved-message action: on match, it persists the current message data and removes the matched text from the returned display data. It is not a generic arbitrary OUT-payload insertion. |
+| **Raw export requires `in` / `out`**          | RisuAI reads regex bodies from canonical `in` / `out`. If raw entries contain only `find` / `replace`, run `.charx` export compatibility validation before upload and regenerate through RisuToki save if needed.             |
 
 ## Related Skills
 

@@ -34,6 +34,19 @@ const { validateCharxCardDocument, validateRisupEnvelope, validateRisupPresetPay
     };
     validateRisupPresetPayload: (preset: unknown) => Record<string, unknown>;
   };
+const { validateCharxExportCompatibilityFile, formatCharxExportCompatibilityFailure } =
+  require('./lib/charx-export-compatibility') as {
+    validateCharxExportCompatibilityFile: (filePath: string) => {
+      ok: boolean;
+      issues: Array<{ severity: string }>;
+      summary: string;
+    };
+    formatCharxExportCompatibilityFailure: (result: {
+      ok: boolean;
+      issues: Array<{ severity: string }>;
+      summary: string;
+    }) => string;
+  };
 const { normalizePromptTemplateForStorage, serializePromptTemplate } = require('./lib/risup-prompt-model') as {
   normalizePromptTemplateForStorage: (value: unknown) => { items: unknown[] };
   serializePromptTemplate: (model: { items: unknown[] }) => string;
@@ -76,6 +89,29 @@ function normalizeRegexType(entry: Record<string, unknown>): void {
   }
 }
 
+function normalizeRegexFields(entry: Record<string, unknown>): void {
+  if (entry.in === undefined && entry.find !== undefined) entry.in = entry.find;
+  if (entry.out === undefined && entry.replace !== undefined) entry.out = entry.replace;
+  if (entry.find === undefined && entry.in !== undefined) entry.find = entry.in;
+  if (entry.replace === undefined && entry.out !== undefined) entry.replace = entry.out;
+}
+
+function setOptionalStringField(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (typeof value === 'string' && value.length > 0) {
+    target[key] = value;
+  } else {
+    delete target[key];
+  }
+}
+
+function setOptionalArrayField(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (Array.isArray(value) && value.length > 0) {
+    target[key] = value;
+  } else {
+    delete target[key];
+  }
+}
+
 /**
  * Normalize all regex entries' type fields in-place.
  */
@@ -83,6 +119,7 @@ function normalizeRegexArray(regex: unknown[]): void {
   for (const entry of regex) {
     if (entry && typeof entry === 'object') {
       normalizeRegexType(entry as Record<string, unknown>);
+      normalizeRegexFields(entry as Record<string, unknown>);
     }
   }
 }
@@ -550,9 +587,9 @@ export function openCharx(filePath: string): CharxData {
 }
 
 /**
- * Save data back to .charx file
+ * Build a .charx ZIP from normalized document data.
  */
-export function saveCharx(filePath: string, data: CharxData): void {
+export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
   const zip = new AdmZip();
 
   // Build card.json
@@ -564,21 +601,21 @@ export function saveCharx(filePath: string, data: CharxData): void {
   const cardData = card.data as Record<string, unknown>;
   cardData.name = data.name;
   cardData.description = data.description;
-  cardData.personality = data.personality || '';
-  cardData.scenario = data.scenario || '';
   cardData.creator_notes = data.creatorcomment || '';
   cardData.tags = data.tags || [];
   cardData.mes_example = data.exampleMessage || '';
-  cardData.system_prompt = data.systemPrompt || '';
   cardData.creator = data.creator || '';
   cardData.character_version = data.characterVersion || '';
-  cardData.nickname = data.nickname || '';
-  cardData.source = data.source || [];
+  setOptionalStringField(cardData, 'personality', data.personality);
+  setOptionalStringField(cardData, 'scenario', data.scenario);
+  setOptionalStringField(cardData, 'system_prompt', data.systemPrompt);
+  setOptionalStringField(cardData, 'nickname', data.nickname);
+  setOptionalArrayField(cardData, 'source', data.source);
   if (data.creationDate) cardData.creation_date = data.creationDate;
   cardData.modification_date = Math.floor(Date.now() / 1000);
   cardData.first_mes = data.firstMessage;
   cardData.alternate_greetings = data.alternateGreetings || [];
-  cardData.group_only_greetings = data.groupOnlyGreetings || [];
+  setOptionalArrayField(cardData, 'group_only_greetings', data.groupOnlyGreetings);
   cardData.post_history_instructions = data.globalNote;
 
   // risuai extensions
@@ -588,12 +625,15 @@ export function saveCharx(filePath: string, data: CharxData): void {
   const risuExt = extensions.risuai as Record<string, unknown>;
   risuExt.backgroundHTML = data.css;
   risuExt.defaultVariables = data.defaultVariables;
-  if (data.additionalText !== undefined) risuExt.additionalText = data.additionalText;
-  if (data.license !== undefined) risuExt.license = data.license;
+  setOptionalStringField(risuExt, 'additionalText', data.additionalText);
+  setOptionalStringField(risuExt, 'license', data.license);
 
   // Remove trigger/script from card (they go in module.risum)
   delete risuExt.customScripts;
   delete risuExt.triggerscript;
+  const normalizedRegex = data.regex || [];
+  normalizeRegexArray(normalizedRegex as unknown[]);
+  risuExt.customScripts = normalizedRegex;
 
   // Lorebook → card.json (CCV3 format)
   if (!(cardData as Record<string, unknown>).character_book) {
@@ -677,9 +717,8 @@ export function saveCharx(filePath: string, data: CharxData): void {
     data.lua,
   );
 
-  // Regex (normalize types for RisuAI compatibility)
-  mod.regex = data.regex || [];
-  normalizeRegexArray(mod.regex as unknown[]);
+  // Regex (normalize types and find/replace aliases for RisuAI compatibility)
+  mod.regex = normalizedRegex;
 
   // Lorebook (risu format)
   mod.lorebook = data.lorebook || [];
@@ -700,7 +739,21 @@ export function saveCharx(filePath: string, data: CharxData): void {
     zip.addFile(`x_meta/${name}.json`, Buffer.from(JSON.stringify(meta), 'utf-8'));
   }
 
-  writePathAtomicSync(filePath, (tempPath) => zip.writeZip(tempPath));
+  return zip;
+}
+
+/**
+ * Save data back to .charx file
+ */
+export function saveCharx(filePath: string, data: CharxData): void {
+  const zip = buildCharxZip(data);
+  writePathAtomicSync(filePath, (tempPath) => {
+    fs.writeFileSync(tempPath, (zip as unknown as { toBuffer: () => Buffer }).toBuffer());
+    const compatibility = validateCharxExportCompatibilityFile(tempPath);
+    if (!compatibility.ok) {
+      throw new Error(`Invalid .charx export compatibility: ${formatCharxExportCompatibilityFailure(compatibility)}`);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

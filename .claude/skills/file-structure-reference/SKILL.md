@@ -46,7 +46,12 @@ Use this skill when you need the **shape of the data**, not the editing workflow
 | `creatorcomment`     | Creator note                |
 | `characterVersion`   | Character version           |
 
-Compatibility-only `.charx` fields such as `systemPrompt`, `personality`, `scenario`, `nickname`, `source`, `additionalText`, `license`, and `groupOnlyGreetings` should be preserved when round-tripping existing files, but they are not normal RisuToki editor/MCP content surfaces.
+Compatibility-only `.charx` fields such as `systemPrompt`, `personality`, `scenario`, `nickname`, `source`, `additionalText`, `license`, and `groupOnlyGreetings` should be preserved when round-tripping existing files, but they are not normal RisuToki editor/MCP content surfaces. Empty compatibility-only fields are omitted on `.charx` export/save so RisuAI does not show blank deprecated sections.
+
+### charx Export Mirrors
+
+- `.charx` archives contain both `card.json` and embedded `module.risum`. For RisuToki/RisuAI compatibility, `module.risum.module.lorebook` and `module.risum.module.regex` are the editor-visible source of truth and must stay mirrored into `card.json.data.character_book.entries` and `card.json.data.extensions.risuai.customScripts` on export.
+- Run export compatibility validation before RisuAI upload when the archive may have been edited outside RisuToki. It checks lorebook/regex mirror counts and content, canonical regex fields, empty compatibility-only fields, asset references, and 0-byte assets.
 
 ## risum Core Fields
 
@@ -108,12 +113,16 @@ Compatibility-only `.charx` fields such as `systemPrompt`, `personality`, `scena
 {
   "comment": "Script name",
   "type": "editdisplay",
+  "in": "pattern",
+  "out": "replacement",
   "find": "pattern",
   "replace": "replacement",
   "flag": "gi",
   "ableFlag": true
 }
 ```
+
+RisuAI's canonical persisted regex fields are `in` and `out`. RisuToki/MCP also expose `find` and `replace` as convenience aliases, but exported `.charx` / `.risum` data must include canonical `in` / `out`. `ableFlag` means "use custom flags"; `ableFlag: false` is not disabled. Disabled regex entries use `type: "disabled"`.
 
 ### Regex Types
 

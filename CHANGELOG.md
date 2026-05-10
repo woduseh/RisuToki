@@ -9,6 +9,28 @@
 
 ---
 
+## [0.71.6] - 2026-05-10
+
+### Added
+
+- Added `.charx` RisuAI export compatibility validation for card/module lorebook and regex mirrors, canonical regex `in` / `out` fields, empty deprecated card fields, broken card asset references, and 0-byte ZIP assets.
+
+### Changed
+
+- MCP `validate_content` can route active `.charx` export compatibility checks, and `session_status` now reports active-file drift when the file on disk changes after open or save.
+
+## [0.71.5] - 2026-05-10
+
+### Fixed
+
+- Omitted empty compatibility-only `.charx` fields such as personality, scenario, system prompt, nickname, source, group-only greetings, additional text, and license on save so RisuAI does not show blank deprecated sections after import.
+
+## [0.71.4] - 2026-05-10
+
+### Fixed
+
+- Fixed regex compatibility so `.charx` / `.risum` saves preserve RisuAI `in` / `out` fields and preview treats `ableFlag` as custom-flag control instead of disabling scripts.
+
 ## [0.71.3] - 2026-05-06
 
 ### Changed

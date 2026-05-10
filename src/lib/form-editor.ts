@@ -1271,17 +1271,10 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
     headerTitle.appendChild(badge);
   }
 
-  // Toggle (ableFlag)
+  // Toggle (active/disabled type)
   const toggle = document.createElement('div');
-  toggle.className = 'form-toggle' + (data.ableFlag !== false ? ' active' : '');
+  toggle.className = 'form-toggle' + ((data.type as string) !== 'disabled' ? ' active' : '');
   toggle.title = '활성화 토글';
-  if (!readonly) {
-    toggle.addEventListener('click', () => {
-      data.ableFlag = !toggle.classList.contains('active');
-      toggle.classList.toggle('active');
-      markDirty();
-    });
-  }
   header.appendChild(toggle);
 
   // Body
@@ -1335,9 +1328,23 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
     if (((data.type as string) || '').toLowerCase() === t.value.toLowerCase()) opt.selected = true;
     typeSelect.appendChild(opt);
   }
+  const syncRegexActiveToggle = (): void => {
+    toggle.classList.toggle('active', typeSelect.value !== 'disabled');
+  };
+  let previousRegexType = data.type && data.type !== 'disabled' ? (data.type as string) : 'editdisplay';
   if (!readonly) {
     typeSelect.addEventListener('change', () => {
       data.type = typeSelect.value;
+      if (typeSelect.value !== 'disabled') previousRegexType = typeSelect.value;
+      syncRegexActiveToggle();
+      markDirty();
+    });
+    toggle.addEventListener('click', () => {
+      const nextType = toggle.classList.contains('active') ? 'disabled' : previousRegexType;
+      if (nextType === 'disabled' && data.type && data.type !== 'disabled') previousRegexType = data.type as string;
+      data.type = nextType;
+      typeSelect.value = nextType;
+      syncRegexActiveToggle();
       markDirty();
     });
   }

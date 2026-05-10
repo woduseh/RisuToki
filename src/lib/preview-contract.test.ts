@@ -551,24 +551,24 @@ describe('preview pipeline contract: regex type routing', () => {
     expect(firstRegex?.type).toBe('editinput');
   });
 
-  it('disabled scripts (ableFlag=false) are included in snapshot but do not transform content', async () => {
+  it('ableFlag=false scripts stay active because ableFlag only controls custom flags', async () => {
     const engine = createRecordingEngine();
-    const disabledScript: PreviewRegexScript = {
+    const script: PreviewRegexScript = {
       type: 'editoutput',
-      comment: 'disabled',
+      comment: 'default-flags',
       find: 'Hello',
       replace: 'REPLACED',
       ableFlag: false,
     };
     const session = makeSession(engine, {
       firstMessage: 'Hello!',
-      regex: [disabledScript],
+      regex: [script],
     });
     await session.initialize();
 
-    // Script is in the snapshot for debug display
     expect(session.getSnapshot().scripts).toHaveLength(1);
     expect(session.getSnapshot().scripts[0].ableFlag).toBe(false);
+    expect(engine.calls.some((c) => c.op === 'processRegex' && c.type === 'editoutput')).toBe(true);
   });
 });
 
@@ -685,7 +685,7 @@ describe('preview pipeline contract: debug snapshot rendering', () => {
       loreMatches: [],
       scripts: [
         { type: 'editinput', comment: 'active-in', find: 'a', replace: 'b', ableFlag: true },
-        { type: 'editinput', comment: 'disabled-in', find: 'c', replace: 'd', ableFlag: false },
+        { type: 'disabled', comment: 'disabled-in', find: 'c', replace: 'd', ableFlag: false },
         { type: 'editoutput', comment: 'active-out', find: 'e', replace: 'f', ableFlag: true },
       ],
       defaultVariables: '',

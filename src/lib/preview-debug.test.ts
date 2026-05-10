@@ -190,8 +190,8 @@ describe('clipboard text: disabled regex count', () => {
       ...snapshot,
       scripts: [
         { type: 'editinput', comment: 'active', find: 'a', replace: 'b', ableFlag: true },
-        { type: 'editinput', comment: 'disabled', find: 'c', replace: 'd', ableFlag: false },
-        { type: 'editoutput', comment: 'disabled2', find: 'e', replace: 'f', ableFlag: false },
+        { type: 'disabled', comment: 'disabled', find: 'c', replace: 'd', ableFlag: false },
+        { type: 'disabled', comment: 'disabled2', find: 'e', replace: 'f', ableFlag: true },
       ],
     };
     const text = buildPreviewDebugClipboardText(snap, '00:00:00');
@@ -343,7 +343,7 @@ describe('regex tab: disabled scripts section', () => {
       ...snapshot,
       scripts: [
         { type: 'editinput', comment: 'active-script', find: 'x', replace: 'y', ableFlag: true },
-        { type: 'editinput', comment: 'disabled-script', find: 'a', replace: 'b', ableFlag: false },
+        { type: 'disabled', comment: 'disabled-script', find: 'a', replace: 'b', ableFlag: false },
       ],
     };
     const html = renderPreviewDebugHtml({ activeTab: 'regex', snapshot: snap });

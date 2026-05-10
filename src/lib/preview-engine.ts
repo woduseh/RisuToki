@@ -1680,9 +1680,10 @@ export const PreviewEngine: PreviewEngineModule = (() => {
   function processRegex(text: string, scripts: PreviewRegexScript[], mode: string): string {
     if (!scripts || !scripts.length) return text;
     const modeLower = mode.toLowerCase();
-    const filtered = scripts.filter(
-      (s) => (s.type || '').toLowerCase() === modeLower && s.ableFlag !== false && (s.find || s.in),
-    );
+    const filtered = scripts.filter((s) => {
+      const type = (s.type || '').toLowerCase();
+      return type === modeLower && type !== 'disabled' && (s.find || s.in);
+    });
     filtered.sort((a, b) => {
       const orderA = (a.replaceOrder as number | undefined) ?? extractOrder(String(a['flag'] ?? a['flags'] ?? ''));
       const orderB = (b.replaceOrder as number | undefined) ?? extractOrder(String(b['flag'] ?? b['flags'] ?? ''));
@@ -1692,7 +1693,7 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       try {
         const find = script.find || script.in || '';
         const replace = script.replace || script.out || '';
-        let flags = String(script['flag'] ?? script['flags'] ?? 'g')
+        let flags = String(script.ableFlag === true ? (script['flag'] ?? script['flags'] ?? 'g') : 'g')
           .split('')
           .filter((c) => 'gimsuy'.includes(c))
           .join('');

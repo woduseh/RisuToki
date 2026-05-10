@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 import type { CharxData } from '../charx-io';
 import {
@@ -95,6 +96,22 @@ function saveDocument(filePath: string, fileType: SupportedFileType, data: Charx
   saveCharx(filePath, data);
 }
 
+function captureFileBaseline(filePath: string): McpSessionStatus['activeFileBaseline'] {
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) return null;
+    return {
+      path: filePath,
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      sha256: crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex'),
+      capturedAt: new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function ensureAbsoluteExistingFile(filePath: string, label: string): string {
   const normalized = path.normalize(path.resolve(filePath));
   if (!fs.existsSync(normalized) || !fs.statSync(normalized).isFile()) {
@@ -159,6 +176,9 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
     ? ensureAbsoluteExistingFile(options.filePath, 'file path')
     : null;
   let currentData: CharxData | null = currentFilePath ? openDocument(currentFilePath) : null;
+  let currentFileBaseline: McpSessionStatus['activeFileBaseline'] = currentFilePath
+    ? captureFileBaseline(currentFilePath)
+    : null;
   const referenceFiles = loadReferences(options.referencePaths);
 
   let api: McpApiServer;
@@ -177,6 +197,7 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
             currentFilePath !== null && path.normalize(request.filePath) === path.normalize(currentFilePath);
           currentFilePath = path.normalize(request.filePath);
           currentData = openDocument(currentFilePath);
+          currentFileBaseline = captureFileBaseline(currentFilePath);
           api.invalidateSectionCaches();
           return {
             success: true,
@@ -197,6 +218,7 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
         if (!currentFilePath || !currentData) return { success: false, error: 'No file open' };
         try {
           saveDocument(currentFilePath, getFileType(currentFilePath), currentData);
+          currentFileBaseline = captureFileBaseline(currentFilePath);
           return { success: true, path: currentFilePath };
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -231,6 +253,7 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
       getSessionStatus: (): McpSessionStatus => ({
         currentFilePath,
         currentFileType: currentFilePath ? getFileType(currentFilePath) : null,
+        activeFileBaseline: currentFileBaseline,
         lastRestored: null,
         pendingRecovery: null,
         renderer: null,

@@ -5,6 +5,8 @@ import * as path from 'path';
 import { handleCbsRoute } from './mcp-cbs-routes';
 import { handleProbeRoute, type ProbeDocumentRequest } from './mcp-probe-routes';
 import { fileStatMetadata, handleSessionStatusRoute } from './mcp-session-routes';
+import { buildCharxZip, type CharxData } from '../charx-io';
+import { validateCharxExportCompatibilityZip } from './charx-export-compatibility';
 import {
   buildFolderInfoMap,
   canonicalizeLorebookFolderRefs,
@@ -124,9 +126,18 @@ export interface McpReferenceManifestStatus {
   detail?: string;
 }
 
+export interface McpActiveFileBaseline {
+  path: string;
+  mtimeMs: number;
+  size: number;
+  sha256: string;
+  capturedAt: string;
+}
+
 export interface McpSessionStatus {
   currentFilePath: string | null;
   currentFileType: 'charx' | 'risum' | 'risup' | null;
+  activeFileBaseline?: McpActiveFileBaseline | null;
   lastRestored: McpLastRestoredStatus | null;
   pendingRecovery: McpPendingRecoveryStatus | null;
   renderer: McpRendererSessionStatus | null;
@@ -1960,6 +1971,10 @@ function normalizeRegexType(entry: Record<string, unknown>): void {
     };
     entry.type = REGEX_TYPE_MAP[lower] || lower;
   }
+  if (entry.in === undefined && entry.find !== undefined) entry.in = entry.find;
+  if (entry.out === undefined && entry.replace !== undefined) entry.out = entry.replace;
+  if (entry.find === undefined && entry.in !== undefined) entry.find = entry.in;
+  if (entry.replace === undefined && entry.out !== undefined) entry.replace = entry.out;
 }
 
 // ---------------------------------------------------------------------------
@@ -5540,6 +5555,35 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             artifacts: { totalEntries, issueCount: issues.length },
           },
         );
+      }
+
+      // ----------------------------------------------------------------
+      // GET /charx/export-compatibility — validate RisuAI upload compatibility
+      // ----------------------------------------------------------------
+      if (parts[0] === 'charx' && parts[1] === 'export-compatibility' && !parts[2] && req.method === 'GET') {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'charx') {
+          return mcpError(res, 400, {
+            action: 'validate charx export compatibility',
+            message: 'RisuAI export compatibility validation is only available for .charx documents.',
+            suggestion: 'Open a .charx file or use a validator that matches the current document type.',
+            target: `document:${fileType}`,
+          });
+        }
+        const zip = buildCharxZip(cloneJson(currentData) as CharxData);
+        const result = validateCharxExportCompatibilityZip(zip);
+        const payload: Record<string, unknown> = { ...result };
+        return jsonResSuccess(res, payload, {
+          toolName: 'validate_charx_export_compatibility',
+          summary: result.summary,
+          artifacts: {
+            ok: result.ok,
+            issueCount: result.issueCount,
+            uploadRiskCount: result.counts['upload-risk'],
+            autoFixableCount: result.counts['auto-fixable'],
+            manualReviewCount: result.counts['manual-review'],
+          },
+        });
       }
 
       // ----------------------------------------------------------------

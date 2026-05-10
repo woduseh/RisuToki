@@ -3,6 +3,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as nodeCrypto from 'crypto';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../charx-io';
@@ -123,6 +124,13 @@ interface TestRendererSessionStatus {
 interface TestSessionStatus {
   currentFilePath: string | null;
   currentFileType: 'charx' | 'risum' | 'risup' | null;
+  activeFileBaseline?: {
+    path: string;
+    mtimeMs: number;
+    size: number;
+    sha256: string;
+    capturedAt: string;
+  } | null;
   lastRestored: TestLastRestoredStatus | null;
   pendingRecovery: TestPendingRecoveryStatus | null;
   renderer: TestRendererSessionStatus | null;
@@ -6152,14 +6160,14 @@ describe('MCP API success response envelope', () => {
       });
       expect(res.data.integrity).toEqual(
         expect.objectContaining({
-          activeFile: {
+          activeFile: expect.objectContaining({
             path: null,
             fileType: null,
             exists: null,
             mtimeMs: null,
             size: null,
             unavailableReason: 'no_file_path',
-          },
+          }),
           dirty: expect.objectContaining({
             known: true,
             hasUnsavedChanges: false,
@@ -6223,19 +6231,64 @@ describe('MCP API success response envelope', () => {
         fileType: 'charx',
         name: 'Integrity Card',
       });
-      expect(res.data.integrity.activeFile).toEqual({
-        path: fixture.filePath,
-        fileType: 'charx',
-        exists: true,
-        mtimeMs: expectedStat.mtimeMs,
-        size: expectedStat.size,
-        unavailableReason: null,
-      });
+      expect(res.data.integrity.activeFile).toEqual(
+        expect.objectContaining({
+          path: fixture.filePath,
+          fileType: 'charx',
+          exists: true,
+          mtimeMs: expectedStat.mtimeMs,
+          size: expectedStat.size,
+          unavailableReason: null,
+          matchesLoadedBaseline: null,
+          driftWarning: null,
+        }),
+      );
       expect(res.data.integrity.save).toEqual({
         lastSavedAt: new Date(expectedStat.mtimeMs).toISOString(),
         mtimeMs: expectedStat.mtimeMs,
         unavailableReason: null,
       });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('session_status integrity warns when the active file changed on disk after open', async () => {
+    const fixture = createExternalCharxFixture({ name: 'Drift Card' });
+    const data = openExternalDocumentForTest(fixture.filePath);
+    const openedStat = fs.statSync(fixture.filePath);
+    const openedHash = nodeCrypto.createHash('sha256').update(fs.readFileSync(fixture.filePath)).digest('hex');
+    fs.appendFileSync(fixture.filePath, Buffer.from('external-change'));
+    const currentStat = fs.statSync(fixture.filePath);
+    const api = await startTestApiServer(data, [], undefined, {
+      getSessionStatus: () => ({
+        currentFilePath: fixture.filePath,
+        currentFileType: 'charx',
+        activeFileBaseline: {
+          path: fixture.filePath,
+          mtimeMs: openedStat.mtimeMs,
+          size: openedStat.size,
+          sha256: openedHash,
+          capturedAt: new Date(openedStat.mtimeMs).toISOString(),
+        },
+        lastRestored: null,
+        pendingRecovery: null,
+        renderer: null,
+      }),
+    });
+    try {
+      const res = await getJson<TestSessionStatusPayload>(api.port, api.token, '/session/status');
+
+      expect(res.status).toBe(200);
+      expect(res.data.integrity.activeFile).toEqual(
+        expect.objectContaining({
+          path: fixture.filePath,
+          exists: true,
+          size: currentStat.size,
+          matchesLoadedBaseline: false,
+          driftWarning: 'Active document file has changed on disk since it was opened or last saved.',
+        }),
+      );
     } finally {
       await closeServer(api.server);
     }
@@ -6256,14 +6309,16 @@ describe('MCP API success response envelope', () => {
       const res = await getJson<TestSessionStatusPayload>(api.port, api.token, '/session/status');
 
       expect(res.status).toBe(200);
-      expect(res.data.integrity.activeFile).toEqual({
-        path: missingPath,
-        fileType: 'charx',
-        exists: false,
-        mtimeMs: null,
-        size: null,
-        unavailableReason: 'file_missing',
-      });
+      expect(res.data.integrity.activeFile).toEqual(
+        expect.objectContaining({
+          path: missingPath,
+          fileType: 'charx',
+          exists: false,
+          mtimeMs: null,
+          size: null,
+          unavailableReason: 'file_missing',
+        }),
+      );
       expect(res.data.integrity.dirty).toEqual({
         known: false,
         hasUnsavedChanges: null,
@@ -6271,6 +6326,46 @@ describe('MCP API success response envelope', () => {
         dirtyFields: [],
         unavailableReason: 'renderer_status_unavailable',
       });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('charx export compatibility route validates active in-memory export data', async () => {
+    const fixture = createExternalCharxFixture({ name: 'Export Compatible Card' });
+    const data = openExternalDocumentForTest(fixture.filePath);
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/charx/export-compatibility');
+
+      expect(res.status).toBe(200);
+      expect(res.data.ok).toBe(true);
+      expect(res.data.issueCount).toBe(0);
+      expect(res.data.metadata).toEqual(
+        expect.objectContaining({
+          ableFlagSemantics: expect.stringContaining('ableFlag=false'),
+        }),
+      );
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('charx export compatibility route reports upload-risk asset issues', async () => {
+    const fixture = createExternalCharxFixture({ name: 'Export Asset Issue Card' });
+    const data = openExternalDocumentForTest(fixture.filePath);
+    data.assets = [{ path: 'assets/icon/empty.png', data: Buffer.alloc(0) }];
+    data.cardAssets = [{ type: 'icon', uri: 'embeded://assets/icon/empty.png', name: 'main', ext: 'png' }];
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/charx/export-compatibility');
+
+      expect(res.status).toBe(200);
+      expect(res.data.ok).toBe(false);
+      expect(res.data.counts).toEqual(expect.objectContaining({ 'upload-risk': 1 }));
+      expect(res.data.issues).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'zero-byte-asset', category: 'upload-risk' })]),
+      );
     } finally {
       await closeServer(api.server);
     }

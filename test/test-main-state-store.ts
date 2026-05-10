@@ -4,8 +4,10 @@ import { createMainStateStore } from '../src/lib/main-state-store';
 (function testResetCurrentDocumentClearsPath() {
   const store = createMainStateStore();
   store.setCurrentDocument('C:\\bot.charx', { name: 'bot' });
+  store.setCurrentFileBaseline({ path: 'C:\\bot.charx' });
   store.resetCurrentDocument({ name: 'new' });
   assert.equal(store.currentFilePath, null);
+  assert.equal(store.currentFileBaseline, null);
   assert.deepEqual(store.currentData, { name: 'new' });
 })();
 

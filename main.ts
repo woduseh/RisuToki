@@ -4,6 +4,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import * as crypto from 'crypto';
 
 // Type-only imports from local TypeScript modules (erased at compile time)
 import type { CharxData } from './src/charx-io';
@@ -40,11 +41,13 @@ interface ReferenceManifestStatus {
 interface MainStateStore {
   currentFilePath: string | null;
   currentData: CharxData | null;
+  currentFileBaseline: Record<string, unknown> | null;
   referenceFiles: ReferenceRecord[];
   referenceManifestStatus: ReferenceManifestStatus | null;
   terminalCwd: string | null;
   resetCurrentDocument(data: CharxData): void;
   setCurrentDocument(filePath: string, data: CharxData): void;
+  setCurrentFileBaseline(baseline: Record<string, unknown> | null): void;
   setReferenceFiles(files: ReferenceRecord[]): void;
   setReferenceManifestStatus(status: ReferenceManifestStatus | null): void;
   setTerminalCwd(cwd: string | null): void;
@@ -376,6 +379,22 @@ function getDocumentFileType(data: CharxData): 'charx' | 'risum' | 'risup' {
   return 'charx';
 }
 
+function captureFileBaseline(filePath: string): Record<string, unknown> | null {
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) return null;
+    return {
+      path: filePath,
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      sha256: crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex'),
+      capturedAt: new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function sameDocumentPath(a: string, b: string): boolean {
   const normalizedA = path.normalize(a);
   const normalizedB = path.normalize(b);
@@ -387,6 +406,7 @@ function sameDocumentPath(a: string, b: string): boolean {
 
 function activateOpenedDocument(filePath: string, nextData: CharxData): Record<string, unknown> {
   mainState.setCurrentDocument(filePath, nextData);
+  mainState.setCurrentFileBaseline(captureFileBaseline(filePath));
   invalidateAssetsMapCache();
   if (mcpApi) mcpApi.invalidateSectionCaches();
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -511,6 +531,7 @@ async function getCurrentMcpSessionStatus(): Promise<McpSessionStatus> {
   return {
     currentFilePath: mainState.currentFilePath,
     currentFileType: mainState.currentData ? getDocumentFileType(mainState.currentData) : null,
+    activeFileBaseline: mainState.currentFileBaseline as McpSessionStatus['activeFileBaseline'],
     lastRestored: lastRestored
       ? {
           appVersion: lastRestored.appVersion,
@@ -808,6 +829,7 @@ function createWindow(): void {
       } else {
         saveCharx(mainState.currentFilePath, mainState.currentData);
       }
+      mainState.setCurrentFileBaseline(captureFileBaseline(mainState.currentFilePath));
       return { success: true, path: mainState.currentFilePath };
     } catch (error) {
       return { success: false, error: (error as Error).message };
@@ -1148,6 +1170,7 @@ async function saveCurrentDocumentFromMcp(): Promise<SaveResult> {
     } else {
       saveCharx(mainState.currentFilePath, mainState.currentData);
     }
+    mainState.setCurrentFileBaseline(captureFileBaseline(mainState.currentFilePath));
     if (recoveryManager) recoveryManager.clearAutosavePaths();
     return { success: true, path: mainState.currentFilePath };
   } catch (error) {
@@ -1190,6 +1213,7 @@ async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promis
       saveCharx(result.filePath, mainState.currentData!);
     }
     mainState.setCurrentDocument(result.filePath, mainState.currentData!);
+    mainState.setCurrentFileBaseline(captureFileBaseline(result.filePath));
     mainWindow!.setTitle(`RisuToki - ${path.basename(mainState.currentFilePath!)}`);
     return { success: true, path: mainState.currentFilePath! };
   } catch (error) {
@@ -1219,6 +1243,7 @@ ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown
     } else {
       saveCharx(mainState.currentFilePath, mainState.currentData);
     }
+    mainState.setCurrentFileBaseline(captureFileBaseline(mainState.currentFilePath));
     // After explicit save, clear stale autosave paths from recovery record
     if (recoveryManager) recoveryManager.clearAutosavePaths();
     return { success: true, path: mainState.currentFilePath };

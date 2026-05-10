@@ -97,8 +97,8 @@ export function buildPreviewDebugClipboardText(
   }
 
   // Regex with disabled count
-  const activeScripts = snapshot.scripts.filter((s) => s.ableFlag !== false);
-  const disabledScripts = snapshot.scripts.filter((s) => s.ableFlag === false);
+  const activeScripts = snapshot.scripts.filter((s) => s.type !== 'disabled');
+  const disabledScripts = snapshot.scripts.filter((s) => s.type === 'disabled');
   if (disabledScripts.length > 0) {
     lines.push(`[정규식] ${activeScripts.length}개 활성, ${disabledScripts.length}개 비활성`);
   } else {
@@ -238,7 +238,7 @@ export function renderPreviewDebugHtml({
 
     // Active scripts grouped by type
     for (const type of types) {
-      const filtered = snapshot.scripts.filter((script) => script.type === type && script.ableFlag !== false);
+      const filtered = snapshot.scripts.filter((script) => script.type === type);
       if (!filtered.length) continue;
 
       html += `<div style="font-weight:600;color:#4a90d9;margin:4px 0 2px;font-size:11px;">${type} (${filtered.length})</div>`;
@@ -253,7 +253,7 @@ export function renderPreviewDebugHtml({
     }
 
     // Disabled scripts section
-    const disabled = snapshot.scripts.filter((script) => script.ableFlag === false);
+    const disabled = snapshot.scripts.filter((script) => script.type === 'disabled');
     if (disabled.length > 0) {
       html += `<div style="font-weight:600;color:#666;margin:8px 0 2px;font-size:11px;">비활성 (${disabled.length})</div>`;
       html += `<table style="${TABLE_STYLE}${DISABLED_STYLE}"><tr><th style="${TH_STYLE}">이름</th><th style="${TH_STYLE}">유형</th><th style="${TH_STYLE}">찾기</th></tr>`;

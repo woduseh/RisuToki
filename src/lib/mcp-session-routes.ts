@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as http from 'http';
+import * as crypto from 'crypto';
 
 import { parsePromptTemplate } from './risup-prompt-model';
 import { getRefFileType } from './reference-store';
@@ -47,6 +48,15 @@ export function fileStatMetadata(filePath: string | null | undefined): {
       size: null,
       unavailableReason: code === 'ENOENT' ? 'file_missing' : `stat_unavailable${code ? `:${code}` : ''}`,
     };
+  }
+}
+
+function fileSha256(filePath: string | null | undefined): string | null {
+  if (!filePath) return null;
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+  } catch {
+    return null;
   }
 }
 
@@ -111,6 +121,23 @@ export async function handleSessionStatusRoute(
   const loaded = !!currentData;
   const activeFilePath = status?.currentFilePath ?? deps.getCurrentFilePath?.() ?? null;
   const activeFileStat = fileStatMetadata(activeFilePath);
+  const activeFileBaseline = status?.activeFileBaseline ?? null;
+  const activeFileCurrentHash =
+    activeFileBaseline && activeFileStat.exists === true && activeFileStat.unavailableReason === null
+      ? fileSha256(activeFilePath)
+      : null;
+  const activeFileBaselineMatches =
+    activeFileBaseline && activeFileStat.exists === true && activeFileCurrentHash
+      ? activeFileBaseline.path === activeFilePath &&
+        activeFileBaseline.size === activeFileStat.size &&
+        activeFileBaseline.sha256 === activeFileCurrentHash
+      : activeFileBaseline
+        ? false
+        : null;
+  const activeFileDriftWarning =
+    activeFileBaselineMatches === false
+      ? 'Active document file has changed on disk since it was opened or last saved.'
+      : null;
   const dirtyKnown = !!status?.renderer;
   const surfaceSummary = loaded
     ? (() => {
@@ -177,7 +204,11 @@ export async function handleSessionStatusRoute(
       exists: activeFileStat.exists,
       mtimeMs: activeFileStat.mtimeMs,
       size: activeFileStat.size,
+      sha256: activeFileCurrentHash,
       unavailableReason: activeFileStat.unavailableReason,
+      baseline: activeFileBaseline,
+      matchesLoadedBaseline: activeFileBaselineMatches,
+      driftWarning: activeFileDriftWarning,
     },
     dirty: dirtyKnown
       ? {
@@ -231,7 +262,11 @@ export async function handleSessionStatusRoute(
       files: refsSummary,
     },
   };
-  const summaryWarning = runtimeSkew.length > 0 ? ` Runtime skew detected: ${runtimeSkew.join('; ')}` : '';
+  const summaryWarnings = [
+    ...(runtimeSkew.length > 0 ? [`Runtime skew detected: ${runtimeSkew.join('; ')}`] : []),
+    ...(activeFileDriftWarning ? [activeFileDriftWarning] : []),
+  ];
+  const summaryWarning = summaryWarnings.length > 0 ? ` ${summaryWarnings.join(' ')}` : '';
 
   deps.jsonResSuccess(
     res,
@@ -279,6 +314,7 @@ export async function handleSessionStatusRoute(
         runtimeMode: runtime?.runtimeMode ?? null,
         runtimeSkewDetected: runtime?.skew.detected ?? false,
         runtimeSkewWarnings: runtimeSkew,
+        activeFileDriftDetected: activeFileBaselineMatches === false,
       },
     },
   );

@@ -7,6 +7,8 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { pack } from 'msgpackr';
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup } from '../src/charx-io';
+import { validateCharxExportCompatibilityFile } from '../src/lib/charx-export-compatibility';
+import { risuArrayToCCV3 } from '../src/lorebook-convert';
 import { buildRisum, rpackDecode, rpackEncode } from '../src/rpack';
 
 // Test data objects are intentionally partial — cast to any at call sites
@@ -18,6 +20,71 @@ const RISUP_TEST_IV = Buffer.alloc(12);
 function writeCharxCard(filePath: string, card: Record<string, unknown>): void {
   const zip = new AdmZip();
   zip.addFile('card.json', Buffer.from(JSON.stringify(card), 'utf8'));
+  zip.writeZip(filePath);
+}
+
+function readCharxCard(filePath: string): Record<string, any> {
+  const zip = new AdmZip(filePath);
+  const cardEntry = zip.getEntry('card.json');
+  assert.ok(cardEntry, 'card.json should exist');
+  return JSON.parse(cardEntry.getData().toString('utf8')) as Record<string, any>;
+}
+
+function writeCharxCompatibilityFixture(
+  filePath: string,
+  options: {
+    cardLorebook?: unknown[];
+    moduleLorebook?: unknown[];
+    cardRegex?: unknown[];
+    moduleRegex?: unknown[];
+    cardDataPatch?: Record<string, unknown>;
+    assets?: Array<{ path: string; data: Buffer }>;
+    cardAssets?: unknown[];
+  },
+): void {
+  const moduleLorebook = options.moduleLorebook ?? [
+    { comment: 'Lore A', key: 'lore', content: 'Module lore', insertorder: 100, mode: 'normal' },
+  ];
+  const moduleRegex = options.moduleRegex ?? [
+    { comment: 'Regex A', type: 'editoutput', in: 'foo', out: 'bar', find: 'foo', replace: 'bar', flag: 'g' },
+  ];
+  const card = {
+    spec: 'chara_card_v3',
+    spec_version: '3.0',
+    data: {
+      name: 'Compat Fixture',
+      description: '',
+      first_mes: '',
+      alternate_greetings: [],
+      post_history_instructions: '',
+      character_book: {
+        entries: options.cardLorebook ?? risuArrayToCCV3(moduleLorebook as Parameters<typeof risuArrayToCCV3>[0]),
+      },
+      extensions: {
+        risuai: {
+          customScripts: options.cardRegex ?? moduleRegex,
+        },
+      },
+      assets: options.cardAssets ?? [],
+      ...options.cardDataPatch,
+    },
+  };
+  const moduleData = {
+    type: 'risuModule',
+    module: {
+      name: 'Compat Module',
+      description: '',
+      id: 'module-compat',
+      trigger: [],
+      lorebook: moduleLorebook,
+      regex: moduleRegex,
+      assets: [],
+    },
+  };
+  const zip = new AdmZip();
+  zip.addFile('card.json', Buffer.from(JSON.stringify(card), 'utf8'));
+  zip.addFile('module.risum', buildRisum(moduleData));
+  for (const asset of options.assets ?? []) zip.addFile(asset.path, asset.data);
   zip.writeZip(filePath);
 }
 
@@ -138,6 +205,151 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   );
   assert.deepStrictEqual(reopened.assets[0].data, Buffer.from([1, 2, 3, 4]));
   assert.deepStrictEqual(reopened.risumAssets, data.risumAssets);
+  const compatibility = validateCharxExportCompatibilityFile(filePath);
+  assert.equal(compatibility.ok, true);
+  assert.equal(compatibility.issueCount, 0);
+})();
+
+(function testCharxOmitsEmptyCompatibilityFields() {
+  const filePath = path.join(tempDir, 'empty-compat-fields.charx');
+  const data = {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'No Empty Compat',
+    description: 'Character description',
+    personality: '',
+    scenario: '',
+    creatorcomment: '',
+    tags: [],
+    firstMessage: 'Hello',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    moduleId: 'module-empty-compat',
+    moduleName: 'Empty Compat Module',
+    moduleDescription: '',
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    systemPrompt: '',
+    nickname: '',
+    source: [],
+    additionalText: '',
+    license: '',
+    _risuExt: { additionalText: '', license: '' },
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {
+        personality: '',
+        scenario: '',
+        system_prompt: '',
+        nickname: '',
+        source: [],
+        group_only_greetings: [],
+        extensions: { risuai: { additionalText: '', license: '' } },
+        character_book: { entries: [] },
+        assets: [],
+      },
+    },
+    _moduleData: null,
+  };
+
+  saveCharx(filePath, data as any);
+  const cardData = readCharxCard(filePath).data;
+  const risuExt = cardData.extensions.risuai;
+
+  for (const key of ['personality', 'scenario', 'system_prompt', 'nickname', 'source', 'group_only_greetings']) {
+    assert.equal(Object.hasOwn(cardData, key), false, `${key} should be omitted when empty`);
+  }
+  assert.equal(Object.hasOwn(risuExt, 'additionalText'), false);
+  assert.equal(Object.hasOwn(risuExt, 'license'), false);
+})();
+
+(function testCharxExportCompatibilityDetectsLorebookMismatch() {
+  const filePath = path.join(tempDir, 'compat-lorebook-mismatch.charx');
+  const moduleLorebook = [{ comment: 'Lore A', key: 'lore', content: 'Old module lore', insertorder: 100 }];
+  const cardLorebook = risuArrayToCCV3(moduleLorebook);
+  cardLorebook[0].content = 'New card lore';
+  writeCharxCompatibilityFixture(filePath, { moduleLorebook, cardLorebook });
+
+  const result = validateCharxExportCompatibilityFile(filePath);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((item) => item.code === 'lorebook-content-mismatch'));
+})();
+
+(function testCharxExportCompatibilityDetectsRegexAliasOnlyFields() {
+  const filePath = path.join(tempDir, 'compat-regex-alias-only.charx');
+  const regex = [{ comment: 'Alias only', type: 'editoutput', find: 'foo', replace: 'bar', flag: 'g' }];
+  writeCharxCompatibilityFixture(filePath, { cardRegex: regex, moduleRegex: regex });
+
+  const result = validateCharxExportCompatibilityFile(filePath);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((item) => item.code === 'regex-missing-canonical-in'));
+  assert.ok(result.issues.some((item) => item.code === 'regex-missing-canonical-out'));
+})();
+
+(function testCharxExportCompatibilityDetectsRegexCardModuleMismatch() {
+  const filePath = path.join(tempDir, 'compat-regex-mismatch.charx');
+  writeCharxCompatibilityFixture(filePath, {
+    cardRegex: [{ comment: 'Regex A', type: 'editoutput', in: 'foo', out: 'card', find: 'foo', replace: 'card' }],
+    moduleRegex: [{ comment: 'Regex A', type: 'editoutput', in: 'foo', out: 'module', find: 'foo', replace: 'module' }],
+  });
+
+  const result = validateCharxExportCompatibilityFile(filePath);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((item) => item.code === 'regex-out-mismatch'));
+})();
+
+(function testCharxExportCompatibilityDetectsEmptyDeprecatedFields() {
+  const filePath = path.join(tempDir, 'compat-empty-deprecated.charx');
+  writeCharxCompatibilityFixture(filePath, {
+    cardDataPatch: {
+      personality: '',
+      scenario: '',
+      system_prompt: '',
+      nickname: '',
+      source: [],
+      group_only_greetings: [],
+      extensions: {
+        risuai: {
+          customScripts: [
+            { comment: 'Regex A', type: 'editoutput', in: 'foo', out: 'bar', find: 'foo', replace: 'bar' },
+          ],
+          additionalText: '',
+          license: '',
+        },
+      },
+    },
+  });
+
+  const result = validateCharxExportCompatibilityFile(filePath);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((item) => item.code === 'empty-compatibility-field'));
+})();
+
+(function testCharxExportCompatibilityDetectsZeroByteAsset() {
+  const filePath = path.join(tempDir, 'compat-zero-byte-asset.charx');
+  writeCharxCompatibilityFixture(filePath, {
+    assets: [{ path: 'assets/icon/main.png', data: Buffer.alloc(0) }],
+    cardAssets: [{ type: 'icon', uri: 'embeded://assets/icon/main.png', name: 'main', ext: 'png' }],
+  });
+
+  const result = validateCharxExportCompatibilityFile(filePath);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((item) => item.code === 'zero-byte-asset'));
 })();
 
 (function testCharxWithPrependedImageData() {
@@ -537,8 +749,6 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
     'Scenario injection should not concatenate raw strings onto editRequest arrays',
   );
 })();
-
-fs.rmSync(tempDir, { recursive: true, force: true });
 
 // ---- .risup round-trip test ----
 const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
@@ -1062,6 +1272,8 @@ fs.rmSync(errorTempDir, { recursive: true, force: true });
   const uris = (reopened.cardAssets as { uri: string }[]).map((a) => a.uri);
   assert.deepStrictEqual(uris, ['embeded://assets/icon/image/main.webp']);
 })();
+
+fs.rmSync(tempDir, { recursive: true, force: true });
 
 // ---- .risup compression compatibility tests ----
 const risupCompatTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-compat-'));

@@ -489,7 +489,7 @@ const WORKFLOW_EVAL_TASKS = [
       readOrSearch: ['read_charx_asset'],
       preview: [],
       apply: ['rename_charx_asset', 'delete_charx_asset'],
-      validate: ['list_charx_assets'],
+      validate: ['validate_content', 'list_charx_assets'],
       granularFallbackReason: 'Asset management is outside the current facade scope.',
     },
     safety: {
@@ -498,7 +498,7 @@ const WORKFLOW_EVAL_TASKS = [
       staleGuards: ['expected_path'],
       previewPolicy: 'not-supported',
       wrongTargetAvoidance: ['asset index and path must match the latest list_charx_assets result'],
-      postEditValidation: ['asset list re-read'],
+      postEditValidation: ['validate_content export compatibility', 'asset list re-read'],
     },
     metrics: {
       routeCorrect: true,

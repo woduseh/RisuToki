@@ -47,6 +47,7 @@ This map is for source navigation. It is not a full API reference.
 ## File formats and RisuAI document modeling
 
 - `src/charx-io.ts` — `.charx`, `.risum`, `.risup` serialization and loading
+- `src/lib/charx-export-compatibility.ts` — `.charx` RisuAI upload compatibility checks for card/module lorebook/regex mirrors and assets
 - `src/lib/data-serializer.ts` — normalized document serialization helpers
 - `src/lib/document-validation.ts` — document-shape validation
 - `src/lorebook-convert.ts` — lorebook conversion helpers
