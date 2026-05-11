@@ -52,7 +52,7 @@ Startup principles:
 ### Runtime Modes
 
 - App-backed MCP is started by the Electron app and works against the active editor document.
-- Standalone MCP is started with `node toki-mcp-server.js --standalone` and works against files supplied by `--file`, `open_file`, and repeated `--ref`; pass `--allow-writes` when mutation tools should be permitted.
+- Standalone MCP is started with `node toki-mcp-server.js --standalone` and works against files supplied by `--file`, `open_file`, and repeated `--ref`; pass `--allow-writes` when mutation tools should be permitted. `session_status` reports `allowWrites` / `userDataPath`, and process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log`.
 
 > Complete tool routing map, workflow patterns, and caveats: [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)
 >

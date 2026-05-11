@@ -192,7 +192,8 @@ Use these intent-based routes when a user describes the work rather than the exa
 ### Autosave / Recovery
 
 - After an abnormal shutdown the app may prompt to restore from an autosave on restart. If the user restores, the file label shows `[Auto-Restored]`, provenance is displayed in the status bar, and a `.toki-recovery.json` sidecar is written alongside the autosave file.
-- `session_status` can be called even when no document is open. It reports the current file path/type, renderer dirty/autosave state, pending recovery records, snapshot totals, loaded reference files, lightweight stat-based integrity metadata (`mtimeMs`/`size` plus unavailable reasons), reference-manifest status when available, and a compact `surfaceSummary` for the active document in a single response. When no main file is loaded but references exist, the summary directs you to `list_references`.
+- `session_status` can be called even when no document is open. It reports the current file path/type, renderer dirty/autosave state, pending recovery records, snapshot totals, loaded reference files, lightweight stat-based integrity metadata (`mtimeMs`/`size` plus unavailable reasons), reference-manifest status when available, standalone `allowWrites` / `userDataPath` runtime diagnostics, and a compact `surfaceSummary` for the active document in a single response. When no main file is loaded but references exist, the summary directs you to `list_references`.
+- Standalone MCP process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log`, including process start, stdio transport lifecycle, mutating tool start/success/error, sanitized API request/response metadata, and MCP logging failures. Tool/API logs record paths, timings, status codes, byte counts, and content type/length summaries only; they must not include field bodies.
 
 ### Preview
 

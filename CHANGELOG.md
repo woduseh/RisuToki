@@ -9,6 +9,24 @@
 
 ---
 
+## [0.71.8] - 2026-05-11
+
+### Fixed
+
+- Added transport-safe MCP diagnostics around mutating tool handlers, API requests, stdio lifecycle events, and MCP logging failures so Codex `Transport closed` failures can be isolated without logging field content bodies.
+- Hardened `preview_edit` and `apply_edit` with the same MCP error-result guard used by granular mutating tools.
+
+## [0.71.7] - 2026-05-11
+
+### Fixed
+
+- Hardened standalone MCP mutation handling so `write_field`, `write_field_batch`, lorebook writes, and `save_current_file` return MCP error results for unexpected handler failures instead of silently closing the stdio transport.
+- Added standalone MCP diagnostic logging to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` for process-level failures and tool handler exceptions.
+
+### Changed
+
+- `session_status` runtime metadata now reports standalone `allowWrites` and `userDataPath` so agents can verify whether `--allow-writes` is active from MCP responses.
+
 ## [0.71.6] - 2026-05-10
 
 ### Added

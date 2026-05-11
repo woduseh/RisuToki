@@ -11,10 +11,14 @@ describe('MCP runtime contract agent eval', () => {
       buildTime: '2026-01-01T00:00:00.000Z',
       commit: 'abc123',
       runtimeMode: 'standalone',
+      allowWrites: true,
+      userDataPath: 'C:\\Users\\test\\.risutoki\\mcp-standalone',
     });
 
     expect(metadata.skew).toEqual({ detected: false, warnings: [] });
     expect(metadata.runtimeMode).toBe('standalone');
+    expect(metadata.allowWrites).toBe(true);
+    expect(metadata.userDataPath).toBe('C:\\Users\\test\\.risutoki\\mcp-standalone');
   });
 
   it('detects version skew across runtime metadata fields', () => {
@@ -42,6 +46,8 @@ describe('MCP runtime contract agent eval', () => {
       buildTime: '2026-01-01T00:00:00.000Z',
       commit: 'server-sha',
       runtimeMode: 'app-backed',
+      allowWrites: true,
+      userDataPath: '/tmp/risutoki',
     });
     const appRuntime = buildRuntimeMetadata({
       serverVersion: '0.69.2',
@@ -65,6 +71,8 @@ describe('MCP runtime contract agent eval', () => {
         detected: true,
         warnings: ['serverVersion (0.69.1) differs from appVersion (0.69.2)'],
       },
+      allowWrites: true,
+      userDataPath: '/tmp/risutoki',
     });
   });
 

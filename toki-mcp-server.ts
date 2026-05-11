@@ -14,6 +14,8 @@ import fs = require('fs');
 import path = require('path');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import crypto = require('crypto');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import os = require('os');
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -535,6 +537,28 @@ function isApiError(data: unknown): data is ApiErrorResult {
   return !!data && typeof data === 'object' && (data as Record<string, unknown>)[API_ERROR_KEY] === true;
 }
 
+function summarizeValueForDiagnostic(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') return { type: 'string', length: value.length };
+  if (typeof value === 'number' || typeof value === 'boolean') return { type: typeof value };
+  if (Array.isArray(value)) return { type: 'array', length: value.length };
+  if (typeof value === 'object') {
+    return {
+      type: 'object',
+      keys: Object.keys(value as Record<string, unknown>).slice(0, 25),
+    };
+  }
+  return { type: typeof value };
+}
+
+function summarizeArgsForDiagnostic(args: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(args).map(([key, value]) => [key, summarizeValueForDiagnostic(value)]));
+}
+
+function byteLengthForDiagnostic(value: string | null): number {
+  return value ? Buffer.byteLength(value) : 0;
+}
+
 function textResult(data: unknown) {
   if (isApiError(data)) {
     // Strip the sentinel key before serialising — agents see the clean error envelope.
@@ -545,11 +569,54 @@ function textResult(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
 }
 
+function safeToolHandler<TArgs extends Record<string, unknown>>(
+  name: string,
+  handler: (args: TArgs) => Promise<ReturnType<typeof textResult>> | ReturnType<typeof textResult>,
+) {
+  return async (args: TArgs) => {
+    const startedAt = Date.now();
+    logProcessDiagnostic('toolStart', { tool: name, args: summarizeArgsForDiagnostic(args) });
+    try {
+      const result = await handler(args);
+      try {
+        JSON.stringify(result);
+      } catch (serializationError) {
+        logProcessDiagnostic('toolSerializationError', {
+          tool: name,
+          elapsedMs: Date.now() - startedAt,
+          error: serializationError,
+        });
+        return textResult({
+          [API_ERROR_KEY]: true,
+          status: 500,
+          error: `MCP tool result serialization failed: ${name}`,
+          tool: name,
+          message: serializationError instanceof Error ? serializationError.message : String(serializationError),
+        });
+      }
+      logProcessDiagnostic('toolSuccess', { tool: name, elapsedMs: Date.now() - startedAt, isError: !!result.isError });
+      return result;
+    } catch (error) {
+      logProcessDiagnostic('toolError', { tool: name, elapsedMs: Date.now() - startedAt, error });
+      return textResult({
+        [API_ERROR_KEY]: true,
+        status: 500,
+        error: `MCP tool handler failed: ${name}`,
+        tool: name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+}
+
 // ==================== HTTP Client ====================
 
 async function apiRequest(method: string, urlPath: string, body?: Record<string, unknown>): Promise<unknown> {
   return new Promise((resolve) => {
     const payload = body ? JSON.stringify(body) : null;
+    const payloadBytes = byteLengthForDiagnostic(payload);
+    const startedAt = Date.now();
+    logProcessDiagnostic('apiRequestStart', { method, path: urlPath, payloadBytes });
     const headers: Record<string, string | number> = {
       Authorization: `Bearer ${TOKI_TOKEN}`,
       'Content-Type': 'application/json',
@@ -571,8 +638,16 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
       res.on('data', (chunk) => chunks.push(chunk as string));
       res.on('end', () => {
         const data = chunks.join('');
+        const elapsedMs = Date.now() - startedAt;
         try {
           const parsed = JSON.parse(data);
+          logProcessDiagnostic('apiResponse', {
+            method,
+            path: urlPath,
+            status: res.statusCode ?? null,
+            elapsedMs,
+            responseBytes: Buffer.byteLength(data),
+          });
           if (res.statusCode && res.statusCode >= 400) {
             // Preserve the full structured error envelope from mcp-api-server
             // (action, target, suggestion, retryable, next_actions, details, etc.)
@@ -580,7 +655,15 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
           } else {
             resolve(parsed);
           }
-        } catch {
+        } catch (error) {
+          logProcessDiagnostic('apiInvalidJson', {
+            method,
+            path: urlPath,
+            status: res.statusCode ?? null,
+            elapsedMs,
+            responseBytes: Buffer.byteLength(data),
+            error,
+          });
           resolve({
             [API_ERROR_KEY]: true,
             status: res.statusCode ?? 502,
@@ -592,6 +675,13 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
     });
 
     req.on('error', (err: NodeJS.ErrnoException) => {
+      logProcessDiagnostic('apiNetworkError', {
+        method,
+        path: urlPath,
+        elapsedMs: Date.now() - startedAt,
+        code: err.code,
+        error: err,
+      });
       if (err.code === 'ECONNREFUSED') {
         mcpLog('error', 'API connection refused — RisuToki editor not running');
         resolve({
@@ -614,6 +704,12 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
     });
     req.setTimeout(120000, () => {
       req.destroy();
+      logProcessDiagnostic('apiTimeout', {
+        method,
+        path: urlPath,
+        elapsedMs: Date.now() - startedAt,
+        payloadBytes,
+      });
       mcpLog('error', `API request timed out: ${method} ${urlPath}`);
       resolve({
         [API_ERROR_KEY]: true,
@@ -2936,13 +3032,17 @@ function getRuntimeMode(): RuntimeMode {
 }
 
 function getRuntimeMetadata(): RuntimeMetadata {
+  const runtimeMode = getRuntimeMode();
+  const standaloneUserDataPath = getStandaloneUserDataPath();
   return buildRuntimeMetadata({
     serverVersion: APP_VERSION,
     appVersion: APP_VERSION,
     packageVersion: PACKAGE_VERSION,
     buildTime: BUILD_TIME,
     commit: COMMIT,
-    runtimeMode: getRuntimeMode(),
+    runtimeMode,
+    allowWrites: runtimeMode === 'standalone' ? getStandaloneAllowWrites() : undefined,
+    userDataPath: runtimeMode === 'standalone' ? standaloneUserDataPath : undefined,
   });
 }
 
@@ -2952,7 +3052,8 @@ function asRuntimeMetadata(value: unknown): RuntimeMetadata | null {
   const skew = record.skew;
   if (!skew || typeof skew !== 'object' || Array.isArray(skew)) return null;
   const skewRecord = skew as Record<string, unknown>;
-  const { serverVersion, appVersion, packageVersion, buildTime, commit, runtimeMode } = record;
+  const { serverVersion, appVersion, packageVersion, buildTime, commit, runtimeMode, allowWrites, userDataPath } =
+    record;
   const { detected, warnings } = skewRecord;
   if (
     typeof serverVersion !== 'string' ||
@@ -2961,6 +3062,8 @@ function asRuntimeMetadata(value: unknown): RuntimeMetadata | null {
     (buildTime !== null && typeof buildTime !== 'string') ||
     (commit !== null && typeof commit !== 'string') ||
     (runtimeMode !== 'app-backed' && runtimeMode !== 'standalone') ||
+    (allowWrites !== undefined && typeof allowWrites !== 'boolean') ||
+    (userDataPath !== undefined && userDataPath !== null && typeof userDataPath !== 'string') ||
     typeof detected !== 'boolean' ||
     !Array.isArray(warnings) ||
     !warnings.every((warning) => typeof warning === 'string')
@@ -2974,6 +3077,8 @@ function asRuntimeMetadata(value: unknown): RuntimeMetadata | null {
     buildTime,
     commit,
     runtimeMode,
+    allowWrites,
+    userDataPath: userDataPath ?? undefined,
     skew: {
       detected,
       warnings: warnings as string[],
@@ -3406,7 +3511,7 @@ server.tool(
     dry_run: z.boolean().optional(),
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
   },
-  async ({ target, operations, max_bytes }) => {
+  safeToolHandler('preview_edit', async ({ target, operations, max_bytes }) => {
     cleanupFacadePreviews();
     const previews: unknown[] = [];
     const routes: FacadeRoute[] = [];
@@ -3465,7 +3570,7 @@ server.tool(
         },
       ),
     );
-  },
+  }),
 );
 
 server.tool(
@@ -3478,7 +3583,7 @@ server.tool(
     guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
   },
-  async ({ preview_token, operation_digest, target, guard_values, max_bytes }) => {
+  safeToolHandler('apply_edit', async ({ preview_token, operation_digest, target, guard_values, max_bytes }) => {
     cleanupFacadePreviews();
     const entry = facadePreviewStore.get(preview_token);
     if (!entry) {
@@ -3535,7 +3640,7 @@ server.tool(
         max_bytes,
       ),
     );
-  },
+  }),
 );
 
 // ===== Field Tools =====
@@ -3565,8 +3670,9 @@ server.tool(
         '새로운 내용. alternateGreetings는 문자열 배열, triggerScripts는 JSON 문자열, boolean 필드는 boolean, number 필드는 number, 나머지는 문자열. 비권장/예약/레거시 필드는 수정할 수 없습니다.',
       ),
   },
-  async ({ field, content }) =>
-    textResult(await apiRequest('POST', `/field/${encodeURIComponent(field)}`, { content })),
+  safeToolHandler('write_field', async ({ field, content }) =>
+    textResult(await apiRequest('POST', `/field/${encodeURIComponent(String(field))}`, { content })),
+  ),
 );
 
 server.tool(
@@ -3850,7 +3956,7 @@ server.tool(
   'save_current_file',
   '현재 에디터 문서를 현재 파일 경로에 저장합니다. 경로가 없는 새 문서라면 앱의 Save As 흐름을 사용합니다.',
   {},
-  async () => textResult(await apiRequest('POST', '/document/save', {})),
+  safeToolHandler('save_current_file', async () => textResult(await apiRequest('POST', '/document/save', {}))),
 );
 
 server.tool(
@@ -4079,7 +4185,9 @@ server.tool(
       .max(20)
       .describe('수정할 필드 배열 [{field, content}, ...] (최대 20개)'),
   },
-  async ({ entries }) => textResult(await apiRequest('POST', '/field/batch-write', { entries })),
+  safeToolHandler('write_field_batch', async ({ entries }) =>
+    textResult(await apiRequest('POST', '/field/batch-write', { entries })),
+  ),
 );
 
 server.tool(
@@ -4218,7 +4326,9 @@ server.tool(
       .max(50)
       .describe('수정할 항목 배열 [{index, data}, ...] (최대 50개)'),
   },
-  async ({ entries }) => textResult(await apiRequest('POST', '/lorebook/batch-write', { entries })),
+  safeToolHandler('write_lorebook_batch', async ({ entries }) =>
+    textResult(await apiRequest('POST', '/lorebook/batch-write', { entries })),
+  ),
 );
 
 server.tool(
@@ -4279,7 +4389,9 @@ server.tool(
   'add_lorebook',
   '새 로어북 항목을 추가합니다. 사용자 확인 필요.',
   { data: z.record(z.string(), z.unknown()).describe('로어북 항목 데이터 (key, comment, content 등)') },
-  async ({ data }) => textResult(await apiRequest('POST', '/lorebook/add', data as Record<string, unknown>)),
+  safeToolHandler('add_lorebook', async ({ data }) =>
+    textResult(await apiRequest('POST', '/lorebook/add', data as Record<string, unknown>)),
+  ),
 );
 
 server.tool(
@@ -6071,6 +6183,71 @@ server.prompt(
 /** Whether the MCP transport is connected (logging available). */
 let mcpConnected = false;
 
+function getDefaultStandaloneUserDataPath(): string {
+  return path.join(os.homedir(), '.risutoki', 'mcp-standalone');
+}
+
+function getStandaloneUserDataPath(args = process.argv.slice(2)): string {
+  return (
+    readArgValue(args, '--user-data-dir') ??
+    process.env.RISUTOKI_MCP_USER_DATA_DIR ??
+    getDefaultStandaloneUserDataPath()
+  );
+}
+
+function getStandaloneAllowWrites(args = process.argv.slice(2)): boolean {
+  return (
+    hasFlag(args, '--allow-writes') ||
+    process.env.RISUTOKI_MCP_ALLOW_WRITES === '1' ||
+    process.env.RISUTOKI_MCP_ALLOW_WRITES === 'true'
+  );
+}
+
+function serializeDiagnosticValue(value: unknown): unknown {
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    };
+  }
+  return value;
+}
+
+function logProcessDiagnostic(event: string, data: Record<string, unknown> = {}): void {
+  const logPath = path.join(getStandaloneUserDataPath(), 'mcp-server.log');
+  const payload = {
+    timestamp: new Date().toISOString(),
+    pid: process.pid,
+    argv: process.argv,
+    runtimeMode: getRuntimeMode(),
+    event,
+    ...Object.fromEntries(Object.entries(data).map(([key, value]) => [key, serializeDiagnosticValue(value)])),
+  };
+  const line = `[toki-mcp] ${event} ${JSON.stringify(payload)}\n`;
+  try {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.appendFileSync(logPath, line, 'utf8');
+  } catch {
+    // Diagnostic logging must never be able to take down the transport.
+  }
+  process.stderr.write(line);
+}
+
+process.on('uncaughtException', (error) => {
+  logProcessDiagnostic('uncaughtException', { error });
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  logProcessDiagnostic('unhandledRejection', { reason });
+});
+process.on('beforeExit', (code) => {
+  logProcessDiagnostic('beforeExit', { code });
+});
+process.on('exit', (code) => {
+  logProcessDiagnostic('exit', { code });
+});
+
 /**
  * Send a structured log via MCP logging protocol when connected,
  * otherwise fall back to stderr.
@@ -6078,9 +6255,24 @@ let mcpConnected = false;
 function mcpLog(level: 'debug' | 'info' | 'warning' | 'error', message: string, data?: Record<string, unknown>): void {
   const text = data ? `${message} ${JSON.stringify(data)}` : message;
   if (mcpConnected) {
-    server.sendLoggingMessage({ level, data: text }).catch(() => {});
+    server.sendLoggingMessage({ level, data: text }).catch((error) => {
+      logProcessDiagnostic('mcpLoggingFailed', { level, message, error });
+    });
   } else {
     process.stderr.write(`[toki-mcp] ${level}: ${text}\n`);
+  }
+}
+
+function attachStdioDiagnostics(): void {
+  const streams = [
+    ['stdin', process.stdin],
+    ['stdout', process.stdout],
+  ] as const;
+  for (const [stream, target] of streams) {
+    target.on('error', (error) => logProcessDiagnostic('stdioEvent', { stream, event: 'error', error }));
+    target.on('close', () => logProcessDiagnostic('stdioEvent', { stream, event: 'close' }));
+    target.on('end', () => logProcessDiagnostic('stdioEvent', { stream, event: 'end' }));
+    target.on('finish', () => logProcessDiagnostic('stdioEvent', { stream, event: 'finish' }));
   }
 }
 
@@ -6099,10 +6291,24 @@ async function main() {
     process.exit(1);
   }
 
+  const runtime = getRuntimeMetadata();
+  logProcessDiagnostic('processStart', {
+    serverVersion: runtime.serverVersion,
+    appVersion: runtime.appVersion,
+    packageVersion: runtime.packageVersion,
+    buildTime: runtime.buildTime,
+    commit: runtime.commit,
+    runtimeMode: runtime.runtimeMode,
+    allowWrites: runtime.allowWrites,
+    userDataPath: runtime.userDataPath,
+    api: `127.0.0.1:${TOKI_PORT}`,
+  });
+  attachStdioDiagnostics();
   const transport = new StdioServerTransport();
+  logProcessDiagnostic('transportConnectStart');
   await server.connect(transport);
   mcpConnected = true;
-  const runtime = getRuntimeMetadata();
+  logProcessDiagnostic('transportConnected');
   mcpLog('info', `risutoki MCP server started`, {
     version: runtime.serverVersion,
     appVersion: runtime.appVersion,
@@ -6110,6 +6316,8 @@ async function main() {
     buildTime: runtime.buildTime,
     commit: runtime.commit,
     runtimeMode: runtime.runtimeMode,
+    allowWrites: runtime.allowWrites,
+    userDataPath: runtime.userDataPath,
     skew: runtime.skew,
     api: `127.0.0.1:${TOKI_PORT}`,
   });
@@ -6151,11 +6359,8 @@ async function startHeadlessFromArgs(args: string[]) {
     ...readRepeatedArgValues(args, '--ref'),
     ...(process.env.RISUTOKI_MCP_REFS ? process.env.RISUTOKI_MCP_REFS.split(path.delimiter).filter(Boolean) : []),
   ];
-  const allowWrites =
-    hasFlag(args, '--allow-writes') ||
-    process.env.RISUTOKI_MCP_ALLOW_WRITES === '1' ||
-    process.env.RISUTOKI_MCP_ALLOW_WRITES === 'true';
-  const userDataPath = readArgValue(args, '--user-data-dir') ?? process.env.RISUTOKI_MCP_USER_DATA_DIR;
+  const allowWrites = getStandaloneAllowWrites(args);
+  const userDataPath = getStandaloneUserDataPath(args);
   return startHeadlessMcpApiServer({
     filePath,
     referencePaths,
@@ -6166,6 +6371,7 @@ async function startHeadlessFromArgs(args: string[]) {
 }
 
 main().catch((err) => {
+  logProcessDiagnostic('fatal', { error: err });
   process.stderr.write(`[toki-mcp] fatal: ${err}\n`);
   process.exit(1);
 });

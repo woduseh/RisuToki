@@ -6099,6 +6099,8 @@ describe('MCP API success response envelope', () => {
       buildTime: null,
       commit: null,
       runtimeMode: 'app-backed',
+      allowWrites: true,
+      userDataPath: 'C:\\Users\\test\\.risutoki\\mcp-standalone',
       skew: {
         detected: true,
         warnings: ['serverVersion (0.69.1) differs from appVersion (0.69.2)'],
@@ -6116,6 +6118,8 @@ describe('MCP API success response envelope', () => {
       expect(res.data.artifacts).toEqual(
         expect.objectContaining({
           runtimeMode: 'app-backed',
+          allowWrites: true,
+          userDataPath: 'C:\\Users\\test\\.risutoki\\mcp-standalone',
           runtimeSkewDetected: true,
           runtimeSkewWarnings: runtime.skew.warnings,
         }),

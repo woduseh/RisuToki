@@ -152,7 +152,11 @@ function readPackageVersionNear(baseRoot: string): string | null {
   return null;
 }
 
-function buildHeadlessRuntimeInfo(baseRoot: string): RuntimeMetadata {
+function buildHeadlessRuntimeInfo(
+  baseRoot: string,
+  allowWrites: boolean | undefined,
+  userDataPath: string,
+): RuntimeMetadata {
   const packageVersion = BUNDLED_PACKAGE_VERSION ?? readPackageVersionNear(baseRoot) ?? BUNDLED_APP_VERSION ?? '0.0.0';
   const appVersion = BUNDLED_APP_VERSION ?? packageVersion;
   return buildRuntimeMetadata({
@@ -162,6 +166,8 @@ function buildHeadlessRuntimeInfo(baseRoot: string): RuntimeMetadata {
     buildTime: BUNDLED_BUILD_TIME,
     commit: BUNDLED_COMMIT,
     runtimeMode: 'standalone',
+    allowWrites: !!allowWrites,
+    userDataPath,
   });
 }
 
@@ -170,7 +176,7 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
   const baseRoot = options.baseRoot ?? path.resolve(__dirname);
   const userDataPath = options.userDataPath ?? path.join(os.homedir(), '.risutoki', 'mcp-standalone');
   fs.mkdirSync(userDataPath, { recursive: true });
-  const runtime = buildHeadlessRuntimeInfo(baseRoot);
+  const runtime = buildHeadlessRuntimeInfo(baseRoot, options.allowWrites, userDataPath);
 
   let currentFilePath: string | null = options.filePath
     ? ensureAbsoluteExistingFile(options.filePath, 'file path')

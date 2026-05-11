@@ -314,6 +314,8 @@ Useful options:
 | `--allow-writes`  | Permit write tools in headless mode; omitted means mutation requests reject |
 | `--user-data-dir` | Override the standalone sidecar state directory                             |
 
+Use `session_status` to verify the active standalone `allowWrites` and `userDataPath` values. Standalone process, stdio lifecycle, mutating tool, sanitized API request/response, and MCP logging diagnostics are written to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` without field content bodies.
+
 Environment variable equivalents are `RISUTOKI_MCP_FILE`, `RISUTOKI_MCP_REFS` (path-delimited), `RISUTOKI_MCP_ALLOW_WRITES`, and `RISUTOKI_MCP_USER_DATA_DIR`.
 
 ### Unified Skill Catalog

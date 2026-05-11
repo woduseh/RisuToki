@@ -205,9 +205,9 @@ The family sections below describe the underlying granular tool surface. For fir
 
 - **Use when:** advanced runtime diagnostics for the current document, dirty/autosave state, recovery status, lightweight stat-based integrity metadata, snapshot totals, and compact structured-surface counts when `inspect_document` is not detailed enough
 - **Tools:** `session_status`, `save_current_file`
-- **Hints:** `session_status` is RO/idempotent; `save_current_file` writes the current document to disk
+- **Hints:** `session_status` is RO/idempotent and includes standalone `allowWrites` / `userDataPath` runtime diagnostics; `save_current_file` writes the current document to disk
 - **Next actions:** `session_status`, `open_file`, `list_snapshots`
-- **Boundary:** this family reports editor/runtime state rather than document content and remains available even when no file is open; use `integrity.activeFile` / `integrity.references` `mtimeMs`, `size`, and unavailable reasons to detect outside file changes before retrying, and use the returned `surfaceSummary` to decide whether follow-up `list_*` reads are needed
+- **Boundary:** this family reports editor/runtime state rather than document content and remains available even when no file is open; standalone process diagnostics are written to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log`; use `integrity.activeFile` / `integrity.references` `mtimeMs`, `size`, and unavailable reasons to detect outside file changes before retrying, and use the returned `surfaceSummary` to decide whether follow-up `list_*` reads are needed
 
 ### `surface`
 

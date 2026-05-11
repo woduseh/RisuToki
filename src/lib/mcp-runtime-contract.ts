@@ -12,6 +12,8 @@ export interface RuntimeMetadataInput {
   buildTime: string | null;
   commit: string | null;
   runtimeMode: RuntimeMode;
+  allowWrites?: boolean;
+  userDataPath?: string | null;
 }
 
 export interface RuntimeMetadata extends RuntimeMetadataInput {
@@ -78,6 +80,8 @@ export function mergeRuntimeMetadata(
     buildTime: serverRuntime.buildTime,
     commit: serverRuntime.commit,
     runtimeMode: serverRuntime.runtimeMode,
+    allowWrites: serverRuntime.allowWrites ?? appRuntime.allowWrites,
+    userDataPath: serverRuntime.userDataPath ?? appRuntime.userDataPath ?? null,
   });
 }
 

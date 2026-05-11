@@ -312,6 +312,8 @@ export async function handleSessionStatusRoute(
         referenceCount: refsSummary.length,
         hasSurfaceSummary: !!surfaceSummary,
         runtimeMode: runtime?.runtimeMode ?? null,
+        allowWrites: runtime?.allowWrites ?? null,
+        userDataPath: runtime?.userDataPath ?? null,
         runtimeSkewDetected: runtime?.skew.detected ?? false,
         runtimeSkewWarnings: runtimeSkew,
         activeFileDriftDetected: activeFileBaselineMatches === false,

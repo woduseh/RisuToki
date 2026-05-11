@@ -546,6 +546,10 @@ async function callJson(
   return callClientJson(runtime.client, name, args, options);
 }
 
+function readStandaloneLog(userDataDir: string): string {
+  return fs.readFileSync(path.join(userDataDir, 'mcp-server.log'), 'utf-8');
+}
+
 async function callClientJson(
   client: Client,
   name: string,
@@ -1020,6 +1024,21 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(apply), ['replace_in_field']);
+    const diagnosticLog = readStandaloneLog(fixture.userDataDir);
+    for (const event of [
+      'processStart',
+      'transportConnectStart',
+      'transportConnected',
+      'toolStart',
+      'toolSuccess',
+      'apiRequestStart',
+      'apiResponse',
+    ]) {
+      assert.match(diagnosticLog, new RegExp(`\\b${event}\\b`), `standalone diagnostic log should include ${event}`);
+    }
+    assert.match(diagnosticLog, /"tool":"preview_edit"/);
+    assert.match(diagnosticLog, /"tool":"apply_edit"/);
+    assert.ok(!diagnosticLog.includes('Omega is searchable.'), 'diagnostic log must not include edited field bodies');
 
     const lorebookPreview = await callJson(runtime, 'preview_edit', {
       target: activeTarget,
