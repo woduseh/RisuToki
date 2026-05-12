@@ -53,6 +53,14 @@ export function formatBackupTime(date: Date): string {
   return `${mon}/${day} ${h}:${m}:${s}`;
 }
 
+function appendTextSpan(parent: HTMLElement, text: string, style: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.style.cssText = style;
+  span.textContent = text;
+  parent.appendChild(span);
+  return span;
+}
+
 export interface ShowBackupMenuOptions {
   setStatus: (message: string) => void;
   onRestore: (tabId: string, backupIdx: number) => void;
@@ -76,7 +84,9 @@ export function showBackupMenu(tabId: string, _x: number, _y: number, options: S
 
   const header = document.createElement('div');
   header.className = 'help-popup-header';
-  header.innerHTML = `<span>백업 불러오기 — ${tabId}</span>`;
+  const title = document.createElement('span');
+  title.textContent = `백업 불러오기 — ${tabId}`;
+  header.appendChild(title);
   const closeBtn = document.createElement('span');
   closeBtn.className = 'help-popup-close';
   closeBtn.textContent = '✕';
@@ -118,10 +128,17 @@ export function showBackupMenu(tabId: string, _x: number, _y: number, options: S
     const row = document.createElement('div');
     row.style.cssText =
       'display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;font-size:12px;color:var(--text-primary);border:1px solid var(--border-color);transition:background 0.15s;';
-    row.innerHTML =
-      `<span style="font-weight:700;min-width:28px;color:var(--accent);">v${ver}</span>` +
-      `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary);font-size:11px;">${snippet}</span>` +
-      `<span style="font-size:10px;color:var(--text-secondary);white-space:nowrap;">${lenStr} · ${formatBackupTime(backup.time)}</span>`;
+    appendTextSpan(row, `v${ver}`, 'font-weight:700;min-width:28px;color:var(--accent);');
+    appendTextSpan(
+      row,
+      snippet,
+      'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-secondary);font-size:11px;',
+    );
+    appendTextSpan(
+      row,
+      `${lenStr} · ${formatBackupTime(backup.time)}`,
+      'font-size:10px;color:var(--text-secondary);white-space:nowrap;',
+    );
 
     const idx = i;
     row.addEventListener('click', () => {

@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as nodeCrypto from 'crypto';
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../charx-io';
 import { resolveSkillRootDirs } from './content-roots';
 import type { RuntimeMetadata } from './mcp-runtime-contract';
@@ -295,6 +295,7 @@ interface TestDepsOverrides {
   openExternalDocument?: (filePath: string) => CharxData;
   userDataPath?: string;
   broadcastToAll?: (channel: string, ...args: unknown[]) => void;
+  invalidateAssetsMapCache?: () => void;
   requestRendererOpenFile?: (request: {
     filePath: string;
     fileType: 'charx' | 'risum' | 'risup';
@@ -385,6 +386,7 @@ async function startTestApiServer(
           : resolveSkillRootDirs(path.join(__dirname, '..', '..')).map((root) => root.absolutePath),
     getUserDataPath: () => overrides?.userDataPath ?? path.join(os.tmpdir(), 'risutoki-mcp-api-test-user-data'),
     getRuntimeInfo: overrides?.getRuntimeInfo,
+    invalidateAssetsMapCache: overrides?.invalidateAssetsMapCache,
     getCurrentFilePath: () => activeFilePath,
     getSessionStatus:
       overrides?.getSessionStatus ??
@@ -674,6 +676,31 @@ describe('MCP API surface routes', () => {
       expect(patched.data.success).toBe(true);
       expect(patched.data.touched).toContain('regex');
       expect(currentData.regex?.[0]?.comment).toBe('New Regex');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('invalidates asset map cache when surface patches touch asset source fields', async () => {
+    const currentData: SearchFixture = {
+      name: 'Asset Surface Bot',
+      cardAssets: [{ name: 'old', uri: 'embeded://assets/old.png', ext: 'png' }],
+      xMeta: {},
+      assets: [{ path: 'assets/old.png', data: Buffer.from('old') }],
+    };
+    const invalidateAssetsMapCache = vi.fn();
+    const api = await startTestApiServer(currentData, [], undefined, { invalidateAssetsMapCache });
+
+    try {
+      const list = await getJson<{ document_hash: string }>(api.port, api.token, '/surfaces');
+      const patched = await postJson<{ success: boolean; touched: string[] }>(api.port, api.token, '/surface/patch', {
+        expected_hash: list.data.document_hash,
+        operations: [{ op: 'replace', path: '/cardAssets/0/name', value: 'new' }],
+      });
+
+      expect(patched.status).toBe(200);
+      expect(patched.data.touched).toContain('cardAssets');
+      expect(invalidateAssetsMapCache).toHaveBeenCalledTimes(1);
     } finally {
       await closeServer(api.server);
     }

@@ -9,6 +9,14 @@
 
 ---
 
+## [0.71.9] - 2026-05-12
+
+### Fixed
+
+- Rendered backup restore menu titles and snippets as text nodes so saved editor content cannot be interpreted as HTML.
+- Invalidated preview asset maps when MCP surface patches touch any asset source field, not only `assets`.
+- Added missing `src/lib` files to lint coverage, including theme registry and image viewer tests.
+
 ## [0.71.8] - 2026-05-11
 
 ### Fixed

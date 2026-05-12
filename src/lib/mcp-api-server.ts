@@ -162,7 +162,7 @@ export interface McpApiDeps {
   broadcastMcpStatus: (payload: Record<string, unknown>) => void;
   /** Called once the HTTP server begins listening, providing the assigned port. */
   onListening: (port: number) => void;
-  /** Invalidate the cached assets map (call after mutating data.assets). */
+  /** Invalidate the cached assets map (call after mutating asset source fields). */
   invalidateAssetsMapCache?: () => void;
 
   // Section parsing
@@ -193,6 +193,12 @@ export interface McpApiDeps {
   getSessionStatus?: () => Promise<McpSessionStatus> | McpSessionStatus;
   getCurrentFilePath?: () => string | null;
   getRuntimeInfo?: () => RuntimeMetadata;
+}
+
+const ASSET_MAP_SOURCE_FIELDS = new Set(['assets', 'cardAssets', 'xMeta', '_risuExt', 'risumAssets', '_moduleData']);
+
+function touchesAssetMapSource(fields: readonly string[]): boolean {
+  return fields.some((field) => ASSET_MAP_SOURCE_FIELDS.has(field));
 }
 
 export interface McpApiServer {
@@ -3498,7 +3504,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           for (const field of result.touchedTopLevel) {
             deps.broadcastToAll('data-updated', field, currentData[field]);
           }
-          if (result.touchedTopLevel.includes('assets') && deps.invalidateAssetsMapCache) {
+          if (touchesAssetMapSource(result.touchedTopLevel) && deps.invalidateAssetsMapCache) {
             deps.invalidateAssetsMapCache();
           }
           logMcpMutation('patch surface', 'surface:patch', {
