@@ -169,6 +169,61 @@ export const searchAllBodySchema = z.object({
 export type SearchAllBody = z.infer<typeof searchAllBodySchema>;
 
 // ---------------------------------------------------------------------------
+// Asset request bodies
+// ---------------------------------------------------------------------------
+
+const assetFileNameSchema = z.string().min(1, 'fileName과 base64 데이터가 필요합니다.');
+const assetBase64Schema = z.string().min(1, 'fileName과 base64 데이터가 필요합니다.');
+const risumAssetNameSchema = z.string().min(1, 'name과 base64 데이터가 필요합니다.');
+const risumAssetBase64Schema = z.string().min(1, 'name과 base64 데이터가 필요합니다.');
+
+/** POST /asset/add  (add_charx_asset) */
+export const assetAddBodySchema = z.object({
+  fileName: assetFileNameSchema,
+  base64: assetBase64Schema,
+  folder: lenientString,
+});
+export type AssetAddBody = z.infer<typeof assetAddBodySchema>;
+
+/** POST /asset/:idx/delete  (delete_charx_asset) */
+export const assetDeleteBodySchema = z.object({
+  expected_path: lenientString,
+});
+export type AssetDeleteBody = z.infer<typeof assetDeleteBodySchema>;
+
+/** POST /asset/:idx/rename  (rename_charx_asset) */
+export const assetRenameBodySchema = z.object({
+  newName: z.string().min(1, '유효한 newName이 필요합니다.'),
+  expected_path: lenientString,
+});
+export type AssetRenameBody = z.infer<typeof assetRenameBodySchema>;
+
+/** POST /assets/compress-webp  (compress_assets_webp) */
+export const assetCompressWebpBodySchema = z
+  .object({
+    quality: lenientNumber,
+    recompressWebp: boolish.optional(),
+    dry_run: boolish.optional(),
+    dryRun: boolish.optional(),
+  })
+  .refine((d) => !hasDryRunConflict(d), DRY_RUN_CONFLICT_MSG);
+export type AssetCompressWebpBody = z.infer<typeof assetCompressWebpBodySchema>;
+
+/** POST /risum-asset/add  (add_risum_asset) */
+export const risumAssetAddBodySchema = z.object({
+  name: risumAssetNameSchema,
+  path: lenientString,
+  base64: risumAssetBase64Schema,
+});
+export type RisumAssetAddBody = z.infer<typeof risumAssetAddBodySchema>;
+
+/** POST /risum-asset/:idx/delete  (delete_risum_asset) */
+export const risumAssetDeleteBodySchema = z.object({
+  expected_path: lenientString,
+});
+export type RisumAssetDeleteBody = z.infer<typeof risumAssetDeleteBodySchema>;
+
+// ---------------------------------------------------------------------------
 // External document request bodies
 // ---------------------------------------------------------------------------
 

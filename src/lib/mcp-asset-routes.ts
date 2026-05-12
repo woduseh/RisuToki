@@ -1,6 +1,15 @@
 import type * as http from 'http';
+import type { ZodType } from 'zod';
 import type { McpErrorInfo, McpSuccessOptions } from './mcp-response-envelope';
 import type { McpApiDeps } from './mcp-api-server';
+import {
+  assetAddBodySchema,
+  assetCompressWebpBodySchema,
+  assetDeleteBodySchema,
+  assetRenameBodySchema,
+  risumAssetAddBodySchema,
+  risumAssetDeleteBodySchema,
+} from './mcp-request-schemas';
 
 type JsonBody = Record<string, unknown>;
 
@@ -13,13 +22,18 @@ interface AssetRouteDeps {
   askRendererConfirm: McpApiDeps['askRendererConfirm'];
   broadcastToAll: McpApiDeps['broadcastToAll'];
   invalidateAssetsMapCache?: McpApiDeps['invalidateAssetsMapCache'];
-  readBody: (req: http.IncomingMessage) => Promise<string>;
   readJsonBody: (
     req: http.IncomingMessage,
     res: http.ServerResponse,
     action: string,
     broadcastStatus: (payload: Record<string, unknown>) => void,
   ) => Promise<JsonBody | null>;
+  parseBody: <T>(
+    res: http.ServerResponse,
+    body: JsonBody,
+    schema: ZodType<T>,
+    meta: { action: string; target: string; suggestion?: string },
+  ) => T | null;
   broadcastStatus: (payload: Record<string, unknown>) => void;
   jsonResSuccess: (res: http.ServerResponse, payload: Record<string, unknown>, opts: McpSuccessOptions) => void;
   mcpError: (res: http.ServerResponse, status: number, info: McpErrorInfo, error?: unknown) => void;
@@ -107,18 +121,16 @@ export async function handleAssetRoute(
   }
 
   if (parts[0] === 'asset' && parts[1] === 'add' && req.method === 'POST') {
-    const body = JSON.parse(await deps.readBody(req)) as Record<string, string>;
-    const fileName: string = body.fileName || '';
-    const base64Data: string = body.base64 || '';
-    const folder: string = body.folder || 'other';
-    if (!fileName || !base64Data) {
-      deps.mcpError(res, 400, {
-        action: 'add_asset',
-        message: 'fileName과 base64 데이터가 필요합니다.',
-        target: 'asset:add',
-      });
-      return true;
-    }
+    const rawBody = await deps.readJsonBody(req, res, 'asset/add', deps.broadcastStatus);
+    if (!rawBody) return true;
+    const body = deps.parseBody(res, rawBody, assetAddBodySchema, {
+      action: 'add_asset',
+      target: 'asset:add',
+    });
+    if (!body) return true;
+    const fileName = body.fileName;
+    const base64Data = body.base64;
+    const folder = body.folder || 'other';
     if (!/^[a-zA-Z0-9가-힣._\- ]+$/.test(fileName)) {
       deps.mcpError(res, 400, {
         action: 'add_asset',
@@ -190,7 +202,12 @@ export async function handleAssetRoute(
       });
       return true;
     }
-    const body = await deps.readJsonBody(req, res, `asset/${idx}/delete`, deps.broadcastStatus);
+    const rawBody = await deps.readJsonBody(req, res, `asset/${idx}/delete`, deps.broadcastStatus);
+    if (!rawBody) return true;
+    const body = deps.parseBody(res, rawBody, assetDeleteBodySchema, {
+      action: 'delete_asset',
+      target: `asset:${idx}`,
+    });
     if (!body) return true;
     const assetToDelete = assets[idx];
     if (
@@ -252,9 +269,15 @@ export async function handleAssetRoute(
       });
       return true;
     }
-    const body = JSON.parse(await deps.readBody(req)) as Record<string, string>;
-    const newName: string = body.newName || '';
-    if (!newName || !/^[a-zA-Z0-9가-힣._\- ]+$/.test(newName)) {
+    const rawBody = await deps.readJsonBody(req, res, `asset/${idx}/rename`, deps.broadcastStatus);
+    if (!rawBody) return true;
+    const body = deps.parseBody(res, rawBody, assetRenameBodySchema, {
+      action: 'rename_asset',
+      target: `asset:${idx}`,
+    });
+    if (!body) return true;
+    const newName = body.newName;
+    if (!/^[a-zA-Z0-9가-힣._\- ]+$/.test(newName)) {
       deps.mcpError(res, 400, {
         action: 'rename_asset',
         message: '유효한 newName이 필요합니다.',
@@ -329,10 +352,15 @@ export async function handleAssetRoute(
       return true;
     }
 
-    const body = await deps.readJsonBody(req, res, 'assets/compress-webp', deps.broadcastStatus);
+    const rawBody = await deps.readJsonBody(req, res, 'assets/compress-webp', deps.broadcastStatus);
+    if (!rawBody) return true;
+    const body = deps.parseBody(res, rawBody, assetCompressWebpBodySchema, {
+      action: 'compress-webp',
+      target: 'assets',
+    });
     if (!body) return true;
 
-    const quality = typeof body.quality === 'number' ? body.quality : 80;
+    const quality = body.quality ?? 80;
     const recompressWebp = body.recompressWebp === true;
 
     let compressAssetsToWebP: typeof import('./image-compressor').compressAssetsToWebP;
@@ -561,19 +589,17 @@ export async function handleAssetRoute(
   }
 
   if (parts[0] === 'risum-asset' && parts[1] === 'add' && req.method === 'POST') {
-    const body = JSON.parse(await deps.readBody(req)) as Record<string, string>;
-    const assetName: string = body.name || '';
-    const assetPath: string = body.path || '';
-    const base64Data: string = body.base64 || '';
+    const rawBody = await deps.readJsonBody(req, res, 'risum-asset/add', deps.broadcastStatus);
+    if (!rawBody) return true;
+    const body = deps.parseBody(res, rawBody, risumAssetAddBodySchema, {
+      action: 'add_risum_asset',
+      target: 'risum-asset:add',
+    });
+    if (!body) return true;
+    const assetName = body.name;
+    const assetPath = body.path || '';
+    const base64Data = body.base64;
     const assetExt = ((assetPath || assetName).split('.').pop() || 'png').toLowerCase();
-    if (!assetName || !base64Data) {
-      deps.mcpError(res, 400, {
-        action: 'add_risum_asset',
-        message: 'name과 base64 데이터가 필요합니다.',
-        target: 'risum-asset:add',
-      });
-      return true;
-    }
     const allowed = await deps.askRendererConfirm(
       'MCP 리슘 에셋 추가 요청',
       `AI 어시스턴트가 리슘 에셋 "${assetName}"을(를) 추가하려 합니다. 허용하시겠습니까?`,
@@ -633,7 +659,12 @@ export async function handleAssetRoute(
       return true;
     }
     const modAssets = getRisumModuleAssets(currentData);
-    const body = await deps.readJsonBody(req, res, `risum-asset/${idx}/delete`, deps.broadcastStatus);
+    const rawBody = await deps.readJsonBody(req, res, `risum-asset/${idx}/delete`, deps.broadcastStatus);
+    if (!rawBody) return true;
+    const body = deps.parseBody(res, rawBody, risumAssetDeleteBodySchema, {
+      action: 'delete_risum_asset',
+      target: `risum-asset:${idx}`,
+    });
     if (!body) return true;
     const meta = Array.isArray(modAssets[idx]) ? (modAssets[idx] as string[]) : null;
     const deleteName = meta?.[0] || `asset_${idx}`;

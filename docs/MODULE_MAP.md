@@ -42,6 +42,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-config.ts` — MCP configuration
 - `src/lib/mcp-runtime-contract.ts` — MCP build/runtime metadata and tool-catalog health summaries
 - `src/lib/mcp-request-schemas.ts` — MCP request parameter validation schemas
+- `src/lib/mcp-api-test-harness.ts` — shared MCP HTTP test server harness for route-family tests
 - `src/lib/assistant-launch.ts` — assistant process launch flow
 - `src/lib/assistant-prompt.ts` — assistant bootstrap prompt assembly
 - `src/lib/agents-md-manager.ts` — runtime `AGENTS.md` generation

@@ -9,6 +9,14 @@
 
 ---
 
+## [0.71.12] - 2026-05-12
+
+### Changed
+
+- Unified charx/risum asset MCP route request parsing around shared Zod body schemas, including `compress_assets_webp` dry-run alias validation.
+- Split asset route compatibility and recovery tests into `src/lib/mcp-asset-routes.test.ts` with a shared MCP API test harness.
+- Replaced the long explicit lint file list with glob-based lint coverage and updated the architecture guard to understand approved globs.
+
 ## [0.71.11] - 2026-05-12
 
 ### Changed

@@ -14,31 +14,7 @@ const PACKAGE_JSON = path.join(ROOT, 'package.json');
 
 const KNOWN_STORE_RUNTIME_IMPORTS = new Set(['src/lib/file-actions.ts', 'src/lib/status-bar.ts']);
 
-const KNOWN_UNLINTED_LIB_FILES = new Set([
-  'src/lib/agents-md-manager.test.ts',
-  'src/lib/asset-manager.test.ts',
-  'src/lib/cbs-evaluator.ts',
-  'src/lib/cbs-extractor.test.ts',
-  'src/lib/cbs-extractor.ts',
-  'src/lib/cbs-parser.test.ts',
-  'src/lib/cbs-parser.ts',
-  'src/lib/help-popup.test.ts',
-  'src/lib/image-compressor.test.ts',
-  'src/lib/image-compressor.ts',
-  'src/lib/lorebook-folders.test.ts',
-  'src/lib/lorebook-folders.ts',
-  'src/lib/lorebook-io.test.ts',
-  'src/lib/lorebook-io.ts',
-  'src/lib/preview-contract.test.ts',
-  'src/lib/risup-prompt-model.test.ts',
-  'src/lib/risup-prompt-model.ts',
-  'src/lib/section-parser.ts',
-  'src/lib/settings-popup.test.ts',
-  'src/lib/sidebar-dnd.test.ts',
-  'src/lib/sidebar-refs.test.ts',
-  'src/lib/terminal-session-context.test.ts',
-  'src/lib/terminal-session-context.ts',
-]);
+const KNOWN_UNLINTED_LIB_FILES = new Set<string>();
 
 function listLibFiles(includeTests = true): string[] {
   const files: string[] = [];
@@ -69,11 +45,40 @@ function readRepoFile(relativePath: string): string {
   return fs.readFileSync(path.join(ROOT, relativePath), 'utf-8').replace(/\r\n/g, '\n');
 }
 
-function extractLintedLibFiles(): Set<string> {
+interface LintCoverage {
+  explicitFiles: Set<string>;
+  globs: string[];
+}
+
+function tokenizeLintScript(lintScript: string): string[] {
+  return [...lintScript.matchAll(/"([^"]+)"|'([^']+)'|(\S+)/g)].map((match) => match[1] ?? match[2] ?? match[3]);
+}
+
+function extractLintCoverage(): LintCoverage {
   const packageJson = JSON.parse(fs.readFileSync(PACKAGE_JSON, 'utf-8')) as { scripts?: { lint?: string } };
   const lintScript = packageJson.scripts?.lint ?? '';
-  const matches = lintScript.matchAll(/src\/lib\/[\w./-]+\.ts/g);
-  return new Set([...matches].map((match) => match[0]));
+  const tokens = tokenizeLintScript(lintScript);
+  const explicitFiles = new Set(tokens.filter((token) => /^src\/lib\/[\w./-]+\.ts$/.test(token)));
+  const globs = tokens.filter((token) => token.includes('*'));
+  return { explicitFiles, globs };
+}
+
+function lintGlobCoversLibFile(glob: string, filePath: string): boolean {
+  if (!filePath.startsWith('src/lib/') || !filePath.endsWith('.ts')) return false;
+  switch (glob) {
+    case 'src/**/*.ts':
+    case 'src/**/*.{ts,vue}':
+    case 'src/lib/**/*.ts':
+      return true;
+    case 'src/lib/*.ts':
+      return !filePath.slice('src/lib/'.length).includes('/');
+    default:
+      return false;
+  }
+}
+
+function isLintedLibFile(filePath: string, coverage: LintCoverage): boolean {
+  return coverage.explicitFiles.has(filePath) || coverage.globs.some((glob) => lintGlobCoversLibFile(glob, filePath));
 }
 
 type RuntimeDependencyGroup = 'app-popout' | 'stores';
@@ -334,19 +339,19 @@ describe('src/lib ownership guards', () => {
 });
 
 describe('src/lib lint coverage guard', () => {
-  const lintedFiles = extractLintedLibFiles();
+  const lintCoverage = extractLintCoverage();
   const actualLibFiles = listLibFiles(true);
 
   it('requires every src/lib TypeScript file to be linted or explicitly allowlisted', () => {
     const uncovered = actualLibFiles.filter(
-      (filePath) => !lintedFiles.has(filePath) && !KNOWN_UNLINTED_LIB_FILES.has(filePath),
+      (filePath) => !isLintedLibFile(filePath, lintCoverage) && !KNOWN_UNLINTED_LIB_FILES.has(filePath),
     );
     expect(uncovered, 'New src/lib files must be added to lint or KNOWN_UNLINTED_LIB_FILES').toEqual([]);
   });
 
   it('does not keep stale entries in the known unlinted allowlist', () => {
     const stale = [...KNOWN_UNLINTED_LIB_FILES].filter(
-      (filePath) => !actualLibFiles.includes(filePath) || lintedFiles.has(filePath),
+      (filePath) => !actualLibFiles.includes(filePath) || isLintedLibFile(filePath, lintCoverage),
     );
     expect(stale, 'KNOWN_UNLINTED_LIB_FILES should shrink when lint coverage expands').toEqual([]);
   });

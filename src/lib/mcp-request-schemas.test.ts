@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  assetAddBodySchema,
+  assetCompressWebpBodySchema,
+  assetDeleteBodySchema,
+  assetRenameBodySchema,
   blockReplaceBodySchema,
   batchReplaceBodySchema,
   externalDocumentBodySchema,
@@ -20,6 +24,8 @@ import {
   fieldBatchWriteSchema,
   insertBodySchema,
   replaceBodySchema,
+  risumAssetAddBodySchema,
+  risumAssetDeleteBodySchema,
   searchAllBodySchema,
   searchBodySchema,
   validateBody,
@@ -400,6 +406,62 @@ describe('searchBodySchema', () => {
     if (result.success) {
       expect(result.data.flags).toBeUndefined();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// asset request schemas
+// ---------------------------------------------------------------------------
+
+describe('asset request schemas', () => {
+  it('accepts charx asset add bodies and optional folder', () => {
+    const result = validateBody({ fileName: 'icon.png', base64: 'YWJj', folder: 'portrait' }, assetAddBodySchema);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.fileName).toBe('icon.png');
+      expect(result.data.folder).toBe('portrait');
+    }
+  });
+
+  it('rejects missing charx asset add fields', () => {
+    expect(validateBody({ base64: 'YWJj' }, assetAddBodySchema).success).toBe(false);
+    expect(validateBody({ fileName: 'icon.png' }, assetAddBodySchema).success).toBe(false);
+  });
+
+  it('accepts expected_path guards for charx delete and rename', () => {
+    expect(validateBody({ expected_path: 'assets/old.png' }, assetDeleteBodySchema).success).toBe(true);
+    const result = validateBody({ newName: 'new.png', expected_path: 'assets/old.png' }, assetRenameBodySchema);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.newName).toBe('new.png');
+  });
+
+  it('rejects missing charx rename newName', () => {
+    expect(validateBody({ expected_path: 'assets/old.png' }, assetRenameBodySchema).success).toBe(false);
+  });
+
+  it('coerces compress-webp options and rejects dry-run alias conflicts', () => {
+    const result = validateBody({ quality: '75', recompressWebp: 1, dry_run: true }, assetCompressWebpBodySchema);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.quality).toBe(75);
+      expect(result.data.recompressWebp).toBe(true);
+    }
+
+    const conflict = validateBody({ dry_run: true, dryRun: false }, assetCompressWebpBodySchema);
+    expect(conflict.success).toBe(false);
+    if (!conflict.success) expect(conflict.error).toContain('conflicting');
+  });
+
+  it('accepts risum asset add/delete bodies', () => {
+    const add = validateBody({ name: 'theme', path: 'assets/theme.mp3', base64: 'YWJj' }, risumAssetAddBodySchema);
+    expect(add.success).toBe(true);
+    const del = validateBody({ expected_path: 'assets/theme.mp3' }, risumAssetDeleteBodySchema);
+    expect(del.success).toBe(true);
+  });
+
+  it('rejects missing risum asset add fields', () => {
+    expect(validateBody({ base64: 'YWJj' }, risumAssetAddBodySchema).success).toBe(false);
+    expect(validateBody({ name: 'theme' }, risumAssetAddBodySchema).success).toBe(false);
   });
 });
 
