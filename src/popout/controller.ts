@@ -1,5 +1,4 @@
 import PreviewEngine from '../lib/preview-engine';
-import { escapePreviewHtml } from '../lib/preview-format';
 import {
   getDefaultRpModeForThemeId,
   readAppSettingsSnapshot,
@@ -617,7 +616,12 @@ async function buildRefsPopout(): Promise<void> {
         const el = document.createElement('div');
         el.className = 'tree-item indent-1';
         el.style.cursor = 'pointer';
-        el.innerHTML = `<span class="icon">·</span><span>${isSession ? '⏳ ' : ''}${escapePreviewHtml(fileName)}</span>`;
+        const icon = document.createElement('span');
+        icon.className = 'icon';
+        icon.textContent = '·';
+        const label = document.createElement('span');
+        label.textContent = isSession ? `⏳ ${fileName}` : fileName;
+        el.replaceChildren(icon, label);
         el.addEventListener('click', () => {
           selectedItemId = `guide_${fileName}`;
           window.popoutAPI.refsItemClick(`guide_${fileName}`);

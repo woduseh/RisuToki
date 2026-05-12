@@ -31,6 +31,8 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-cbs-routes.ts` — extracted CBS route-family helpers and dispatcher
 - `src/lib/mcp-probe-routes.ts` — extracted unopened-file probe route helpers and dispatcher
 - `src/lib/mcp-session-routes.ts` — extracted session-status route helpers and dispatcher
+- `src/lib/mcp-surface-routes.ts` — extracted active-document JSON surface route dispatcher
+- `src/lib/mcp-asset-routes.ts` — extracted charx/risum asset route dispatcher and WebP compression route
 - `src/lib/mcp-field-access.ts` — MCP field name sets, document-type access rules, and field-read payload builders
 - `src/lib/mcp-section-parser.ts` — standalone MCP section parsing and external-document helpers
 - `src/lib/mcp-tool-taxonomy.ts` — tool-family single source of truth

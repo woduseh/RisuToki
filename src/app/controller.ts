@@ -424,7 +424,10 @@ function initEditor(): void {
 function renderEditorEmptyState(message: string): void {
   const container = document.getElementById('editor-container')!;
   if (container) {
-    container.innerHTML = `<div class="empty-state">${message}</div>`;
+    const emptyState = document.createElement('div');
+    emptyState.className = 'empty-state';
+    emptyState.textContent = message;
+    container.replaceChildren(emptyState);
   }
 }
 

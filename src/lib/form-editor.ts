@@ -1432,7 +1432,10 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
   // Toggle button: "커스텀 플래그"
   const flagsToggleBtn = document.createElement('button');
   flagsToggleBtn.className = 'regex-flags-toggle-btn' + (hasAnyFlag ? ' active' : '');
-  flagsToggleBtn.innerHTML = `<span class="toggle-indicator">${hasAnyFlag ? '▼' : '▶'}</span> 커스텀 플래그`;
+  const flagsToggleIndicator = document.createElement('span');
+  flagsToggleIndicator.className = 'toggle-indicator';
+  flagsToggleIndicator.textContent = hasAnyFlag ? '▼' : '▶';
+  flagsToggleBtn.replaceChildren(flagsToggleIndicator, document.createTextNode(' 커스텀 플래그'));
   flagsPanel.appendChild(flagsToggleBtn);
 
   // Flag content wrapper

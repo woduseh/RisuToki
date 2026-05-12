@@ -95,11 +95,13 @@ Type definitions: the `TokiAPI` and `PopoutAPI` interfaces are declared in `src/
 
 ```
 main.ts (Electron main process)
-  └─ startApiServer(deps) → src/lib/mcp-api-server.ts (HTTP API, ~14,100 lines)
+  └─ startApiServer(deps) → src/lib/mcp-api-server.ts (HTTP API, ~13,825 lines)
         ├─ Reads/writes main-process in-memory document state via deps.getCurrentData()
         ├─ src/lib/mcp-cbs-routes.ts (CBS route-family dispatcher)
+        ├─ src/lib/mcp-surface-routes.ts (active-document surface route dispatcher, ~340 lines)
+        ├─ src/lib/mcp-asset-routes.ts (charx/risum asset route dispatcher, ~690 lines)
         ├─ src/lib/mcp-field-access.ts (field name / document type access policy)
-        ├─ src/lib/mcp-tool-taxonomy.ts (19 families, ~870 lines)
+        ├─ src/lib/mcp-tool-taxonomy.ts (19 families, ~960 lines)
         ├─ src/lib/mcp-response-envelope.ts (response formatting, ~265 lines)
        └─ src/lib/mcp-search.ts (full-text search, ~360 lines)
 
@@ -131,12 +133,12 @@ main.ts (Node/Electron)  ←✗→  src/app/controller.ts (Renderer/Vue)
 
 Modules under `src/lib/` can theoretically be used by either side, but in practice there is a clear ownership split:
 
-| Owner Layer       | Example Modules                                                                                                                                          |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Main process only | `terminal-manager.ts`, `session-recovery-main.ts`, `main-state-store.ts`, `mcp-config.ts`, `charx-io.ts`, `data-serializer.ts`, `document-validation.ts` |
-| Renderer only     | `layout-manager.ts`, `tab-manager.ts`, `sidebar-builder.ts`, `form-editor.ts`, `monaco-loader.ts`, `section-parser.ts`                                   |
-| Shared            | `shared-utils.ts`, `risup-prompt-model.ts`, `cbs-parser.ts`, `cbs-evaluator.ts`                                                                          |
-| MCP server only   | `mcp-api-server.ts`, `mcp-cbs-routes.ts`, `mcp-field-access.ts`, `mcp-tool-taxonomy.ts`, `mcp-response-envelope.ts`, `mcp-search.ts`                     |
+| Owner Layer       | Example Modules                                                                                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Main process only | `terminal-manager.ts`, `session-recovery-main.ts`, `main-state-store.ts`, `mcp-config.ts`, `charx-io.ts`, `data-serializer.ts`, `document-validation.ts`                             |
+| Renderer only     | `layout-manager.ts`, `tab-manager.ts`, `sidebar-builder.ts`, `form-editor.ts`, `monaco-loader.ts`, `section-parser.ts`                                                               |
+| Shared            | `shared-utils.ts`, `risup-prompt-model.ts`, `cbs-parser.ts`, `cbs-evaluator.ts`                                                                                                      |
+| MCP server only   | `mcp-api-server.ts`, `mcp-cbs-routes.ts`, `mcp-surface-routes.ts`, `mcp-asset-routes.ts`, `mcp-field-access.ts`, `mcp-tool-taxonomy.ts`, `mcp-response-envelope.ts`, `mcp-search.ts` |
 
 Note: `src/lib/section-parser.ts` itself is renderer-only, but MCP routes do not import it. Instead they use a parallel Lua/CSS section parser implementation (`parseLuaSections`, `combineLuaSections`, `parseCssSections`, etc.) passed in through `startApiServer()` deps by `main.ts`. Changes to section grammar currently need to be kept in sync across both paths.
 
@@ -248,22 +250,22 @@ Recovery flow: on startup, `get-pending-session-recovery` IPC → if a recovery 
 
 The following are the largest files in the project and the top candidates for future decomposition or refactoring.
 
-| Module                              | Lines       | Why It Is a Hotspot                                                                                                                                  |
-| ----------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`src/lib/mcp-api-server.ts`**     | **~14,100** | Houses the MCP HTTP tool surface in a single file. The largest file in the project; tool membership is maintained by the `mcp-tool-taxonomy.ts` SSOT |
-| **`toki-mcp-server.ts`**            | **~5,980**  | stdio MCP server + tool registration + Danbooru tag validation                                                                                       |
-| **`src/app/controller.ts`**         | **~2,820**  | Single orchestrator managing all main-window state, UI, and integrations                                                                             |
-| **`src/lib/preview-engine.ts`**     | **~2,460**  | Contains the entire CBS/regex/lorebook/Lua rendering pipeline                                                                                        |
-| **`main.ts`**                       | **~1,570**  | IPC channel registration, file I/O, and window management concentrated here                                                                          |
-| **`src/lib/form-editor.ts`**        | **~1,440**  | Shared form editor for all three file types                                                                                                          |
-| **`src/lib/risup-prompt-model.ts`** | **~1,240**  | RISUP promptTemplate parsing                                                                                                                         |
-| **`src/charx-io.ts`**               | **~1,170**  | Serialization/deserialization for all three file formats                                                                                             |
-| `src/lib/risup-prompt-editor.ts`    | ~1,050      | RISUP prompt editor                                                                                                                                  |
-| `src/lib/sidebar-refs.ts`           | ~820        | Reference panel builder                                                                                                                              |
-| `src/lib/lorebook-io.ts`            | ~660        | Lorebook import/export                                                                                                                               |
-| `src/lib/help-popup.ts`             | ~620        | Help/syntax reference overlay                                                                                                                        |
-| `src/lib/sidebar-actions.ts`        | ~570        | Sidebar item operations                                                                                                                              |
-| `src/lib/trigger-script-model.ts`   | ~540        | Trigger script parsing                                                                                                                               |
+| Module                              | Lines       | Why It Is a Hotspot                                                                                                                                                              |
+| ----------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`src/lib/mcp-api-server.ts`**     | **~13,825** | Houses most MCP HTTP tool routing, with surface and asset routes split into dedicated route-family dispatchers; tool membership is maintained by the `mcp-tool-taxonomy.ts` SSOT |
+| **`toki-mcp-server.ts`**            | **~5,980**  | stdio MCP server + tool registration + Danbooru tag validation                                                                                                                   |
+| **`src/app/controller.ts`**         | **~2,820**  | Single orchestrator managing all main-window state, UI, and integrations                                                                                                         |
+| **`src/lib/preview-engine.ts`**     | **~2,460**  | Contains the entire CBS/regex/lorebook/Lua rendering pipeline                                                                                                                    |
+| **`main.ts`**                       | **~1,570**  | IPC channel registration, file I/O, and window management concentrated here                                                                                                      |
+| **`src/lib/form-editor.ts`**        | **~1,440**  | Shared form editor for all three file types                                                                                                                                      |
+| **`src/lib/risup-prompt-model.ts`** | **~1,240**  | RISUP promptTemplate parsing                                                                                                                                                     |
+| **`src/charx-io.ts`**               | **~1,170**  | Serialization/deserialization for all three file formats                                                                                                                         |
+| `src/lib/risup-prompt-editor.ts`    | ~1,050      | RISUP prompt editor                                                                                                                                                              |
+| `src/lib/sidebar-refs.ts`           | ~820        | Reference panel builder                                                                                                                                                          |
+| `src/lib/lorebook-io.ts`            | ~660        | Lorebook import/export                                                                                                                                                           |
+| `src/lib/help-popup.ts`             | ~620        | Help/syntax reference overlay                                                                                                                                                    |
+| `src/lib/sidebar-actions.ts`        | ~570        | Sidebar item operations                                                                                                                                                          |
+| `src/lib/trigger-script-model.ts`   | ~540        | Trigger script parsing                                                                                                                                                           |
 
 ### Hotspot Handling Principles
 

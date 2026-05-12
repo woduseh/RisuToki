@@ -9,6 +9,21 @@
 
 ---
 
+## [0.71.11] - 2026-05-12
+
+### Changed
+
+- Extracted charx asset, risum asset, and WebP compression MCP routes into `src/lib/mcp-asset-routes.ts` while preserving existing HTTP paths and response envelopes.
+- Updated architecture/module docs and lint coverage for the new MCP asset route module.
+
+## [0.71.10] - 2026-05-12
+
+### Changed
+
+- Extracted active-document MCP surface routes into `src/lib/mcp-surface-routes.ts` while preserving existing HTTP paths and response envelopes.
+- Rendered targeted dynamic UI labels through text nodes instead of interpolated HTML.
+- Updated architecture/module docs and lint coverage for the new MCP route module.
+
 ## [0.71.9] - 2026-05-12
 
 ### Fixed
