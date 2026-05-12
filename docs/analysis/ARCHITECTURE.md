@@ -95,15 +95,15 @@ Type definitions: the `TokiAPI` and `PopoutAPI` interfaces are declared in `src/
 
 ```
 main.ts (Electron main process)
-  └─ startApiServer(deps) → src/lib/mcp-api-server.ts (HTTP API, ~9,200 lines)
+  └─ startApiServer(deps) → src/lib/mcp-api-server.ts (HTTP API, ~14,100 lines)
         ├─ Reads/writes main-process in-memory document state via deps.getCurrentData()
         ├─ src/lib/mcp-cbs-routes.ts (CBS route-family dispatcher)
         ├─ src/lib/mcp-field-access.ts (field name / document type access policy)
-        ├─ src/lib/mcp-tool-taxonomy.ts (19 families, ~234 lines)
-        ├─ src/lib/mcp-response-envelope.ts (response formatting, ~176 lines)
-       └─ src/lib/mcp-search.ts (full-text search, ~355 lines)
+        ├─ src/lib/mcp-tool-taxonomy.ts (19 families, ~870 lines)
+        ├─ src/lib/mcp-response-envelope.ts (response formatting, ~265 lines)
+       └─ src/lib/mcp-search.ts (full-text search, ~360 lines)
 
-toki-mcp-server.ts (separate child process, stdio transport, ~2,020 lines)
+toki-mcp-server.ts (separate child process, stdio transport, ~5,980 lines)
   └─ Connects to the above API over HTTP 127.0.0.1:${TOKI_PORT}
 ```
 
@@ -161,7 +161,7 @@ Vite builds the renderer bundle, `tsc` compiles main-process entry points and sh
 | `src/charx-io.ts`                | ~1,030 | Read/write `.charx`, `.risum`, `.risup`. Handles ZIP/gzip/deflate                                                                   |
 | `src/lib/data-serializer.ts`     | ~300   | Normalized JSON/binary serialization                                                                                                |
 | `src/lib/document-validation.ts` | ~90    | Document shape validation                                                                                                           |
-| `src/lib/risup-prompt-model.ts`  | ~700   | `.risup` promptTemplate parsing and model                                                                                           |
+| `src/lib/risup-prompt-model.ts`  | ~1,240 | `.risup` promptTemplate parsing and model                                                                                           |
 | `src/lib/section-parser.ts`      | ~210   | Renderer-side Lua/CSS section parsing (`===section===` syntax). MCP/main paths currently use a parallel implementation in `main.ts` |
 
 ### 3.2 Preview System (`.charx` Only)
@@ -174,7 +174,7 @@ The preview is a port of the RisuAI rendering pipeline that simulates CBS, regex
 | `src/lib/preview-session.ts`   | ~460   | Session lifecycle and state management                      |
 | `src/lib/preview-panel.ts`     | ~380   | Preview panel UI                                            |
 | `src/lib/preview-runtime.ts`   | ~320   | Runtime feedback (error/timeout banners)                    |
-| `src/lib/preview-format.ts`    | ~290   | Preview markdown/HTML formatting and document shell styling |
+| `src/lib/preview-format.ts`    | ~430   | Preview markdown/HTML formatting and document shell styling |
 | `src/lib/preview-debug.ts`     | ~230   | Debug trace view                                            |
 | `src/lib/preview-sanitizer.ts` | ~140   | HTML/XSS sanitization                                       |
 
@@ -213,22 +213,31 @@ Recovery flow: on startup, `get-pending-session-recovery` IPC → if a recovery 
 | `terminal-chat.ts`            | ~280  | TUI output cleanup, numbered-choice parsing    |
 | `chat-session.ts`             | ~330  | Chat message history state machine             |
 
-### 3.6 Editor, Layout, and Sidebar
+### 3.6 Theme System
+
+| Module              | Lines | Purpose                                                                 |
+| ------------------- | ----- | ----------------------------------------------------------------------- |
+| `theme-registry.ts` | ~500  | App theme presets, custom palette validation, and Monaco/terminal specs |
+| `dark-mode.ts`      | ~110  | Applies theme CSS variables and Monaco theme selection                  |
+| `settings-popup.ts` | ~390  | User-facing theme and custom palette controls                           |
+| `app-settings.ts`   | ~200  | Theme ID and custom palette persistence                                 |
+
+### 3.7 Editor, Layout, and Sidebar
 
 | Module               | Lines  | Purpose                                  |
 | -------------------- | ------ | ---------------------------------------- |
-| `form-editor.ts`     | ~1,270 | Shared form UI for CharX/Risum/RISUP     |
-| `layout-manager.ts`  | ~360   | Slot-based panel layout                  |
+| `form-editor.ts`     | ~1,440 | Shared form UI for CharX/Risum/RISUP     |
+| `layout-manager.ts`  | ~410   | Slot-based panel layout                  |
 | `tab-manager.ts`     | ~240   | Tab lifecycle (create/close/dirty state) |
-| `sidebar-builder.ts` | ~280   | Sidebar tree construction                |
+| `sidebar-builder.ts` | ~310   | Sidebar tree construction                |
 | `sidebar-actions.ts` | ~570   | Sidebar item operations                  |
-| `sidebar-refs.ts`    | ~700   | Reference panel                          |
+| `sidebar-refs.ts`    | ~820   | Reference panel                          |
 
-### 3.7 Assets and Media
+### 3.8 Assets and Media
 
 | Module                | Lines | Purpose                  |
 | --------------------- | ----- | ------------------------ |
-| `asset-manager.ts`    | ~510  | Asset catalog CRUD       |
+| `asset-manager.ts`    | ~460  | Asset catalog CRUD       |
 | `asset-runtime.ts`    | ~40   | Asset URL resolution     |
 | `image-compressor.ts` | ~270  | WebP compression         |
 | `avatar-ui.ts`        | ~300  | Avatar display/animation |
@@ -239,22 +248,22 @@ Recovery flow: on startup, `get-pending-session-recovery` IPC → if a recovery 
 
 The following are the largest files in the project and the top candidates for future decomposition or refactoring.
 
-| Module                            | Lines      | Why It Is a Hotspot                                                                                                                             |
-| --------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`src/lib/mcp-api-server.ts`**   | **~9,200** | Houses 120 HTTP tool endpoints in a single file. The largest file in the project (exact count is maintained by the `mcp-tool-taxonomy.ts` SSOT) |
-| **`src/app/controller.ts`**       | **~2,930** | Single orchestrator managing all main-window state, UI, and integrations                                                                        |
-| **`src/lib/preview-engine.ts`**   | **~2,460** | Contains the entire CBS/regex/lorebook/Lua rendering pipeline                                                                                   |
-| **`toki-mcp-server.ts`**          | **~2,020** | stdio MCP server + tool registration + Danbooru tag validation                                                                                  |
-| **`main.ts`**                     | **~1,340** | IPC channel registration, file I/O, and window management concentrated here                                                                     |
-| **`src/lib/form-editor.ts`**      | **~1,270** | Shared form editor for all three file types                                                                                                     |
-| **`src/charx-io.ts`**             | **~1,030** | Serialization/deserialization for all three file formats                                                                                        |
-| `src/lib/sidebar-refs.ts`         | ~700       | Reference panel builder                                                                                                                         |
-| `src/lib/risup-prompt-model.ts`   | ~700       | RISUP promptTemplate parsing                                                                                                                    |
-| `src/lib/risup-prompt-editor.ts`  | ~690       | RISUP prompt editor                                                                                                                             |
-| `src/lib/lorebook-io.ts`          | ~660       | Lorebook import/export                                                                                                                          |
-| `src/lib/sidebar-actions.ts`      | ~570       | Sidebar item operations                                                                                                                         |
-| `src/lib/help-popup.ts`           | ~570       | Help/syntax reference overlay                                                                                                                   |
-| `src/lib/trigger-script-model.ts` | ~540       | Trigger script parsing                                                                                                                          |
+| Module                              | Lines       | Why It Is a Hotspot                                                                                                                                  |
+| ----------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`src/lib/mcp-api-server.ts`**     | **~14,100** | Houses the MCP HTTP tool surface in a single file. The largest file in the project; tool membership is maintained by the `mcp-tool-taxonomy.ts` SSOT |
+| **`toki-mcp-server.ts`**            | **~5,980**  | stdio MCP server + tool registration + Danbooru tag validation                                                                                       |
+| **`src/app/controller.ts`**         | **~2,820**  | Single orchestrator managing all main-window state, UI, and integrations                                                                             |
+| **`src/lib/preview-engine.ts`**     | **~2,460**  | Contains the entire CBS/regex/lorebook/Lua rendering pipeline                                                                                        |
+| **`main.ts`**                       | **~1,570**  | IPC channel registration, file I/O, and window management concentrated here                                                                          |
+| **`src/lib/form-editor.ts`**        | **~1,440**  | Shared form editor for all three file types                                                                                                          |
+| **`src/lib/risup-prompt-model.ts`** | **~1,240**  | RISUP promptTemplate parsing                                                                                                                         |
+| **`src/charx-io.ts`**               | **~1,170**  | Serialization/deserialization for all three file formats                                                                                             |
+| `src/lib/risup-prompt-editor.ts`    | ~1,050      | RISUP prompt editor                                                                                                                                  |
+| `src/lib/sidebar-refs.ts`           | ~820        | Reference panel builder                                                                                                                              |
+| `src/lib/lorebook-io.ts`            | ~660        | Lorebook import/export                                                                                                                               |
+| `src/lib/help-popup.ts`             | ~620        | Help/syntax reference overlay                                                                                                                        |
+| `src/lib/sidebar-actions.ts`        | ~570        | Sidebar item operations                                                                                                                              |
+| `src/lib/trigger-script-model.ts`   | ~540        | Trigger script parsing                                                                                                                               |
 
 ### Hotspot Handling Principles
 

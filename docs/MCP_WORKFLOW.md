@@ -8,7 +8,7 @@ For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](MC
 RisuToki MCP has two runtime modes:
 
 - **App-backed mode**: the desktop app starts the local API, auto-writes CLI MCP configs, and tools operate on the active editor document plus loaded references.
-- **Standalone mode**: run `node toki-mcp-server.js --standalone [--file <path>] [--ref <path>] [--allow-writes]` to start a file-backed MCP server without Electron. Without `--allow-writes`, mutation tools reject at the confirmation gate while read/probe/search tools remain available.
+- **Standalone mode**: run `node toki-mcp-server.js --standalone [--file <path>] [--ref <path>] [--allow-writes]` to start a file-backed MCP server without Electron. Without `--allow-writes`, mutation tools reject at the confirmation gate while read/probe/search tools remain available. `session_status` reports `allowWrites` / `userDataPath`, and process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log`.
 
 **Facade-first rule:** for new agent workflows, start with `list_tool_profiles` for compact profile discovery, then `inspect_document`, `read_content`, `search_document`, and `preview_edit` → `apply_edit` when the selectors cover the task. Current facade mutation coverage includes active/external field write/replace, active surface patch, active lorebook text replacement, active indexed regex/greeting/risup prompt item writes/deletes, active regex/greeting/risup prompt batch writes, and active greeting/risup prompt batch deletes with stale guards. Use granular families as advanced/legacy escape hatches for unsupported selectors, exact structured editors, add/reorder workflows, imports/exports, assets, external surface mutation, or compatibility/debugging.
 

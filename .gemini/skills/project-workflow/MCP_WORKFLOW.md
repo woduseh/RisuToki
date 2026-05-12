@@ -14,6 +14,8 @@ RisuToki MCP has two runtime modes:
 
 **Hidden/read-only compatibility fields:** normal MCP read/search/probe/surface/facade routes hide deprecated `.charx` fields, `.risup` legacy prompt fields, reserved `.risum` `cjs`, and `groupOnlyGreetings` content. `inspect_document`, `list_fields`, `list_surfaces`, `session_status`, and external/reference inventories may return value-safe `hiddenFieldWarnings` with field names and count/size only; they do not expose hidden content. `.risum` `mcpUrl` is preserved but read-only in mutation/string-edit routes. `.risum` `lowLevelAccess` is not hidden and remains visible/editable.
 
+**`.charx` export compatibility:** before RisuAI upload or after risky asset/lorebook/regex edits, use `validate_content` with an active selector such as `family: "asset"` or `field: "exportCompatibility"`. This routes to `.charx` export compatibility validation and checks card/module lorebook and regex mirrors, canonical regex `in` / `out`, empty deprecated fields, card asset references, and 0-byte ZIP assets.
+
 ---
 
 ## 1. Quick Tool Routing Map
@@ -85,6 +87,8 @@ This sequence maps to additive `risutoki/workflowStages` metadata exposed by `to
 4. **Validate/preview before apply** — Run relevant validators/diffs/simulators before risky changes, and for covered facade edits call `preview_edit`, carrying returned guards/tokens into `apply_edit`.
 5. **Apply through the narrowest mutating route** — Use `apply_edit` for covered facade previews. Inserts, block replacements, batch item operations, add/reorder workflows, imports/exports, assets, and unsupported structured edits remain granular.
 6. **Validate after apply** — Confirm results with facade follow-up reads, structured validators, reference comparison, or preview.
+
+For `.charx` files that will be uploaded to RisuAI, include export compatibility validation in steps 4 and 6. `session_status` also reports `integrity.activeFile.matchesLoadedBaseline` and `driftWarning` when the active file on disk no longer matches the opened/last-saved baseline, so check it before trusting disk-backed validation.
 
 ### Real-Artifact Workflow Eval Matrix
 

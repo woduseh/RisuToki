@@ -106,6 +106,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/image-viewer.ts` — image preview helpers
 - `src/lib/monaco-loader.ts` — Monaco bootstrap
 - `src/lib/dark-mode.ts` — dark-mode state
+- `src/lib/theme-registry.ts` — app theme presets, custom palettes, and Monaco/terminal theme specs
 
 ## Terminal and chat
 
