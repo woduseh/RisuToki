@@ -42,6 +42,7 @@ describe('image viewer', () => {
     img.dispatchEvent(new Event('load'));
 
     expect(img.style.transform).toContain('scale(0.3933333333333333)');
+    expect(img.style.transform).toContain('translate(42.666666666666686px, 32px)');
     expect(wrapper.textContent).toContain('39%');
   });
 
@@ -57,6 +58,7 @@ describe('image viewer', () => {
 
     buttons[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(img.style.transform).toContain('scale(1)');
+    expect(img.style.transform).toContain('translate(-200px, -150px)');
     expect(wrapper.textContent).toContain('100%');
 
     buttons[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));

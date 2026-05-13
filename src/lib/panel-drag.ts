@@ -7,8 +7,12 @@ import type { ContextMenuItem } from './context-menu';
 export interface PanelDragDeps {
   moveItems(position: string): void;
   moveTerminal(position: string): void;
+  moveLoreManager(position: string): void;
+  moveAssetManager(position: string): void;
   toggleSidebar(): void;
   toggleTerminal(): void;
+  toggleLoreManager(): void;
+  toggleAssetManager(): void;
   isPanelPoppedOut(name: string): boolean;
   popOutPanel(name: string): void;
   dockPanel(name: string): void;
@@ -35,10 +39,23 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
   const draggables: DraggablePanel[] = [
     { el: document.querySelector('.sidebar-header')!, panel: 'sidebar', label: '항목' },
     { el: document.getElementById('terminal-header')!, panel: 'terminal', label: 'TokiTalk' },
+    {
+      el: document.querySelector('#lore-manager-panel .right-manager-header')!,
+      panel: 'lore-manager',
+      label: '로어북 관리자',
+    },
+    {
+      el: document.querySelector('#asset-manager-panel .right-manager-header')!,
+      panel: 'asset-manager',
+      label: '에셋 관리자',
+    },
   ].filter((d): d is DraggablePanel => d.el != null);
 
   for (const item of draggables) {
-    (item.el as HTMLElement).style.cursor = 'grab';
+    const headerEl = item.el as HTMLElement;
+    if (headerEl.dataset.panelDragInitialized === item.panel) continue;
+    headerEl.dataset.panelDragInitialized = item.panel;
+    headerEl.style.cursor = 'grab';
 
     // Pop-out button
     const popoutBtn = document.createElement('button');
@@ -66,6 +83,8 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
       e.stopPropagation();
       if (item.panel === 'sidebar') deps.toggleSidebar();
       else if (item.panel === 'terminal') deps.toggleTerminal();
+      else if (item.panel === 'lore-manager') deps.toggleLoreManager();
+      else if (item.panel === 'asset-manager') deps.toggleAssetManager();
     });
 
     if (item.panel === 'sidebar') {
@@ -81,6 +100,11 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
       if (headerRight && toggleBtn) {
         headerRight.insertBefore(popoutBtn, toggleBtn);
         toggleBtn.after(closeBtn);
+      }
+    } else if (item.panel === 'lore-manager' || item.panel === 'asset-manager') {
+      const actions = item.el.querySelector('.right-manager-actions');
+      if (actions) {
+        actions.appendChild(closeBtn);
       }
     }
 
@@ -100,8 +124,16 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
       me.preventDefault();
       me.stopPropagation();
 
-      const isPoppedOut = deps.isPanelPoppedOut(item.panel);
-      const moveFn = item.panel === 'sidebar' ? deps.moveItems : deps.moveTerminal;
+      const supportsPopout = item.panel === 'sidebar' || item.panel === 'terminal';
+      const isPoppedOut = supportsPopout && deps.isPanelPoppedOut(item.panel);
+      const moveFn =
+        item.panel === 'sidebar'
+          ? deps.moveItems
+          : item.panel === 'terminal'
+            ? deps.moveTerminal
+            : item.panel === 'lore-manager'
+              ? deps.moveLoreManager
+              : deps.moveAssetManager;
       const posItems: ContextMenuItem[] = [
         { label: '→ 좌측', action: () => moveFn('left') },
         { label: '→ 우측', action: () => moveFn('right') },
@@ -109,11 +141,16 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
         { label: '→ 우끝', action: () => moveFn('far-right') },
         { label: '→ 상단', action: () => moveFn('top') },
         { label: '→ 하단', action: () => moveFn('bottom') },
-        '---',
-        isPoppedOut
-          ? { label: '도킹 (복원)', action: () => deps.dockPanel(item.panel) }
-          : { label: '팝아웃 (분리)', action: () => deps.popOutPanel(item.panel) },
+        { label: '숨김', action: () => moveFn('hide') },
       ];
+      if (supportsPopout) {
+        posItems.push(
+          '---',
+          isPoppedOut
+            ? { label: '도킹 (복원)', action: () => deps.dockPanel(item.panel) }
+            : { label: '팝아웃 (분리)', action: () => deps.popOutPanel(item.panel) },
+        );
+      }
       deps.showContextMenu(me.clientX, me.clientY, posItems);
     });
   }
@@ -251,5 +288,9 @@ function applyPanelDrop(panelId: string, position: string, deps: PanelDragDeps):
     deps.moveItems(position);
   } else if (panelId === 'terminal') {
     deps.moveTerminal(position);
+  } else if (panelId === 'lore-manager') {
+    deps.moveLoreManager(position);
+  } else if (panelId === 'asset-manager') {
+    deps.moveAssetManager(position);
   }
 }

@@ -9,9 +9,13 @@ function createLayoutDom() {
     <div id="sidebar-refs-section"></div>
     <div id="sidebar-split-resizer"></div>
     <div id="refs-panel-content"></div>
+    <div id="lore-manager-panel"></div>
+    <div id="asset-manager-panel"></div>
     <div id="toki-avatar"></div>
     <button id="btn-terminal-toggle"></button>
     <button id="sidebar-expand"></button>
+    <button id="lore-manager-expand"></button>
+    <button id="asset-manager-expand"></button>
     <div id="sidebar-refs"></div>
     <div id="slot-far-left"></div>
     <div id="slot-left"></div>
@@ -45,6 +49,7 @@ describe('layout manager refs sync', () => {
       onStatus: vi.fn(),
     });
 
+    layoutManager.setManagerAvailability({ lore: true, asset: true });
     layoutManager.rebuild();
 
     const sidebarRefs = document.getElementById('sidebar-refs');
@@ -94,6 +99,62 @@ describe('layout manager refs sync', () => {
     expect(leftResizer.getAttribute('aria-valuenow')).toBe('270');
     expect(saveState).toHaveBeenCalled();
     expect(onRefit).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('places independent manager panels in their default slots and can move them', () => {
+    vi.useFakeTimers();
+    createLayoutDom();
+
+    const state = createDefaultLayoutState();
+    const layoutManager = createLayoutManager({
+      state,
+      saveState: vi.fn(),
+      onRefit: vi.fn(),
+      onStatus: vi.fn(),
+    });
+    layoutManager.setManagerAvailability({ lore: true, asset: true });
+
+    layoutManager.rebuild();
+    vi.runOnlyPendingTimers();
+
+    expect(document.getElementById('slot-right')?.contains(document.getElementById('lore-manager-panel'))).toBe(true);
+    expect(document.getElementById('slot-far-right')?.contains(document.getElementById('asset-manager-panel'))).toBe(
+      true,
+    );
+
+    layoutManager.moveLoreManager('bottom');
+    expect(state.loreManagerPos).toBe('bottom');
+    expect(document.getElementById('slot-bottom')?.contains(document.getElementById('lore-manager-panel'))).toBe(true);
+
+    layoutManager.moveAssetManager('hide');
+    expect(state.assetManagerVisible).toBe(false);
+    expect(document.getElementById('slot-far-right')?.contains(document.getElementById('asset-manager-panel'))).toBe(
+      false,
+    );
+    expect(document.getElementById('asset-manager-expand')?.style.display).toBe('block');
+    vi.useRealTimers();
+  });
+
+  it('hides manager panels and expand affordances when managers are unavailable', () => {
+    vi.useFakeTimers();
+    createLayoutDom();
+
+    const state = createDefaultLayoutState();
+    const layoutManager = createLayoutManager({
+      state,
+      saveState: vi.fn(),
+      onRefit: vi.fn(),
+      onStatus: vi.fn(),
+    });
+
+    layoutManager.setManagerAvailability({ lore: false, asset: false });
+    vi.runOnlyPendingTimers();
+
+    expect(document.getElementById('lore-manager-panel')?.style.display).toBe('none');
+    expect(document.getElementById('asset-manager-panel')?.style.display).toBe('none');
+    expect(document.getElementById('lore-manager-expand')?.style.display).toBe('none');
+    expect(document.getElementById('asset-manager-expand')?.style.display).toBe('none');
     vi.useRealTimers();
   });
 });

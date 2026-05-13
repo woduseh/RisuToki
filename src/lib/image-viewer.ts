@@ -50,7 +50,7 @@ export async function showImageViewer(container: HTMLElement, assetPath: string)
   const img = document.createElement('img');
   img.src = `data:${mime};base64,${base64}`;
   img.style.cssText =
-    'position:absolute;top:50%;left:50%;transform-origin:0 0;border:1px solid #c8d6e5;border-radius:6px;pointer-events:none;box-shadow:0 4px 16px rgba(74,144,217,0.12);';
+    'position:absolute;top:0;left:0;transform-origin:0 0;border:1px solid #c8d6e5;border-radius:6px;pointer-events:none;box-shadow:0 4px 16px rgba(74,144,217,0.12);';
   img.draggable = false;
   img.title = assetPath;
 
@@ -84,7 +84,11 @@ export async function showImageViewer(container: HTMLElement, assetPath: string)
   }
 
   function updateTransform(): void {
-    img.style.transform = `translate(calc(-50% + ${panX}px), calc(-50% + ${panY}px)) scale(${scale})`;
+    const naturalWidth = img.naturalWidth || img.width || 1;
+    const naturalHeight = img.naturalHeight || img.height || 1;
+    const centeredX = (wrapper.clientWidth - naturalWidth * scale) / 2 + panX;
+    const centeredY = (wrapper.clientHeight - naturalHeight * scale) / 2 + panY;
+    img.style.transform = `translate(${centeredX}px, ${centeredY}px) scale(${scale})`;
     info.textContent = `${assetPath} (${((base64!.length * 0.75) / 1024).toFixed(1)} KB) — ${Math.round(scale * 100)}%`;
     updateButtons();
   }

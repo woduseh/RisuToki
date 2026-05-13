@@ -120,8 +120,25 @@ describe('App shell', () => {
     await viewMenu!.trigger('click');
 
     expect(wrapper.text()).toContain('사이드바 토글');
+    expect(wrapper.text()).toContain('로어북 관리자');
+    expect(wrapper.text()).toContain('에셋 관리자');
     expect(wrapper.text()).toContain('프리뷰');
     expect(wrapper.text()).not.toContain('프리뷰 테스트');
+  });
+
+  it('uses type-neutral export wording for project-folder output', async () => {
+    const wrapper = mount(MenuBar, { attachTo: document.body });
+
+    try {
+      await wrapper.get('[data-menu-button="file"]').trigger('click');
+      await nextTick();
+
+      expect(wrapper.text()).toContain('파일로 내보내기');
+      expect(wrapper.text()).not.toContain('CharX로 내보내기');
+      expect(wrapper.text()).not.toContain('CharX로 재조립');
+    } finally {
+      wrapper.unmount();
+    }
   });
 
   it('adds aria labels to icon-only shell controls', () => {

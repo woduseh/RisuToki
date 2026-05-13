@@ -58,6 +58,8 @@ export function initPopoutManager(d: PopoutManagerDeps): void {
     const isEditor = panelType === 'editor';
     const isPreview = panelType === 'preview';
     const isRefs = panelType === 'refs';
+    const isLoreManager = panelType === 'lore-manager';
+    const isAssetManager = panelType === 'asset-manager';
     if ((isEditor || isPreview) && !requestId) {
       console.warn(`[main] missing popout payload requestId for ${panelType}`);
       return false;
@@ -72,7 +74,17 @@ export function initPopoutManager(d: PopoutManagerDeps): void {
       minHeight: isPreview ? 400 : 200,
       parent: mainWindow!,
       frame: false,
-      title: isEditor ? 'RisuToki' : isTerminal ? 'TokiTalk' : isRefs ? '참고자료' : '항목',
+      title: isEditor
+        ? 'RisuToki'
+        : isTerminal
+          ? 'TokiTalk'
+          : isRefs
+            ? '참고자료'
+            : isLoreManager
+              ? '로어북 관리자'
+              : isAssetManager
+                ? '에셋 관리자'
+                : '항목',
       icon: path.join(dirname, 'assets', 'icon.png'),
       webPreferences: {
         preload: path.join(dirname, 'popout-preload.js'),

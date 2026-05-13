@@ -313,6 +313,46 @@ function createDogfoodFixtures(): {
   return { dir, mainFile, externalFile, referenceRisum, referenceRisup, referenceCharx, userDataDir };
 }
 
+function createFolderWorkspaceMcpFixtures(dir: string): { risumFile: string; risupFile: string } {
+  const risumFile = path.join(dir, 'workspace-module.risum');
+  const risupFile = path.join(dir, 'workspace-preset.risup');
+
+  saveRisum(risumFile, {
+    _fileType: 'risum',
+    name: 'Workspace Module',
+    description: 'Workspace module description.',
+    moduleName: 'Workspace Module',
+    moduleDescription: 'Workspace module description.',
+    moduleNamespace: 'workspace.module',
+    lowLevelAccess: false,
+    hideIcon: false,
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    risumAssets: [Buffer.from('workspace-risum-asset')],
+  } as unknown as CharxData);
+
+  saveRisup(risupFile, {
+    _fileType: 'risup',
+    name: 'Workspace Preset',
+    mainPrompt: 'Workspace main prompt.',
+    jailbreak: 'Workspace jailbreak.',
+    globalNote: 'Workspace global note.',
+    _compressionMode: 'gzip',
+    _presetData: {
+      name: 'Workspace Preset',
+      mainPrompt: 'Workspace main prompt.',
+      jailbreak: 'Workspace jailbreak.',
+      globalNote: 'Workspace global note.',
+      openAIKey: 'must-not-survive',
+      proxyKey: 'must-not-survive',
+    },
+  } as unknown as CharxData);
+
+  return { risumFile, risupFile };
+}
+
 function closeServer(server: http.Server): Promise<void> {
   return new Promise((resolve, reject) => {
     server.close((error) => {
@@ -2247,6 +2287,48 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     };
     assert.equal(currentFieldAfterOpenJson.field, 'description');
     assert.equal(currentFieldAfterOpenJson.content, 'Probe description field.');
+
+    const workspaceFixtures = createFolderWorkspaceMcpFixtures(probeFixture.dir);
+    const risumProjectPath = path.join(probeFixture.dir, 'workspace-module-project');
+    const risumExtract = await callClientJson(client, 'extract_charx_to_project_folder', {
+      file_path: workspaceFixtures.risumFile,
+      project_path: risumProjectPath,
+    });
+    assert.equal(risumExtract.fileType, 'risum');
+    assert.equal(risumExtract.projectPath, risumProjectPath);
+    assert.ok(fs.existsSync(path.join(risumProjectPath, 'module.json')));
+    assert.ok(!fs.existsSync(path.join(risumProjectPath, 'card.json')));
+    const risumOutput = path.join(probeFixture.dir, 'workspace-module-output.risum');
+    const risumReassemble = await callClientJson(client, 'reassemble_project_folder_to_charx', {
+      project_path: risumProjectPath,
+      output_path: risumOutput,
+    });
+    assert.equal(risumReassemble.fileType, 'risum');
+    assert.equal(openRisum(risumOutput).moduleName, 'Workspace Module');
+
+    const risupProjectPath = path.join(probeFixture.dir, 'workspace-preset-project');
+    const risupExtract = await callClientJson(client, 'extract_charx_to_project_folder', {
+      file_path: workspaceFixtures.risupFile,
+      project_path: risupProjectPath,
+    });
+    assert.equal(risupExtract.fileType, 'risup');
+    assert.equal(risupExtract.projectPath, risupProjectPath);
+    assert.ok(fs.existsSync(path.join(risupProjectPath, 'preset.json')));
+    const extractedPreset = JSON.parse(fs.readFileSync(path.join(risupProjectPath, 'preset.json'), 'utf-8')) as Record<
+      string,
+      unknown
+    >;
+    assert.equal(extractedPreset.openAIKey, undefined);
+    assert.equal(extractedPreset.proxyKey, undefined);
+    const risupOutput = path.join(probeFixture.dir, 'workspace-preset-output.risup');
+    const risupReassemble = await callClientJson(client, 'reassemble_project_folder_to_charx', {
+      project_path: risupProjectPath,
+      output_path: risupOutput,
+    });
+    assert.equal(risupReassemble.fileType, 'risup');
+    const reopenedPreset = openRisup(risupOutput);
+    assert.equal(reopenedPreset.mainPrompt, 'Workspace main prompt.');
+    assert.equal((reopenedPreset._presetData as Record<string, unknown>).openAIKey, undefined);
 
     console.log('search_all_fields MCP smoke test passed');
     await runStandaloneFacadeDogfood();

@@ -102,6 +102,7 @@ import { setStatus } from '../lib/status-bar';
 import { showHelpPopup } from '../lib/help-popup';
 import { createSidebarActions } from '../lib/sidebar-actions';
 import { initSidebarDnD, destroyAllSortables } from '../lib/sidebar-dnd';
+import { initRightManagerPanel, renderRightManagerPanel } from '../lib/right-manager-panel';
 import {
   handleNew as _handleNew,
   handleOpen as _handleOpen,
@@ -183,9 +184,13 @@ interface MonacoEditorInstance {
 }
 
 let fileData: CharxData | null = null; // Current charx data
+let currentProjectPath: string | null = null;
 let editorInstance: MonacoEditorInstance | null = null; // Monaco editor instance
 let monacoReady = false;
 let monacoLoadTask: Promise<boolean> | null = null;
+const PROJECT_RAW_SYNC_DELAY_MS = 700;
+const projectRawSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const projectRawSyncState = new Map<string, 'syncing' | 'synced' | 'error'>();
 
 // IME composition guard — skip DOM-heavy side-effects during CJK composition
 let isComposing = false;
@@ -1045,6 +1050,13 @@ type RisumSidebarField = {
   kind?: 'boolean' | 'toggle-template';
 };
 
+interface ProjectTreeNode {
+  name: string;
+  type: 'directory' | 'file';
+  relativePath: string;
+  children?: ProjectTreeNode[];
+}
+
 const RISUM_MODULE_SIDEBAR_FIELDS: readonly RisumSidebarField[] = [
   { id: 'moduleName', label: '모듈 이름', icon: '📦', lang: 'plaintext' },
   { id: 'moduleDescription', label: '모듈 설명', icon: '📝', lang: 'plaintext' },
@@ -1055,6 +1067,150 @@ const RISUM_MODULE_SIDEBAR_FIELDS: readonly RisumSidebarField[] = [
   { id: 'customModuleToggle', label: '커스텀 토글', icon: '☑', lang: 'plaintext', kind: 'toggle-template' },
 ] as const;
 
+function projectFileLanguage(relativePath: string): string {
+  const lower = relativePath.toLowerCase();
+  if (lower.endsWith('.json')) return 'json';
+  if (lower.endsWith('.md')) return 'markdown';
+  if (lower.endsWith('.css')) return 'css';
+  if (lower.endsWith('.lua')) return 'lua';
+  return 'plaintext';
+}
+
+function projectFileIcon(relativePath: string): string {
+  const lower = relativePath.toLowerCase();
+  if (lower.match(/\.(png|jpg|jpeg|webp|gif)$/)) return '🖼';
+  if (lower.endsWith('.json')) return '{}';
+  if (lower.endsWith('.md')) return '📝';
+  return '·';
+}
+
+function validateProjectRawFile(relativePath: string, content: string): string | null {
+  if (!relativePath.toLowerCase().endsWith('.json')) return null;
+  try {
+    JSON.parse(content);
+    return null;
+  } catch (error) {
+    return (error as Error).message;
+  }
+}
+
+function getProjectRelativePathFromTabId(tabId: string): string | null {
+  return tabId.startsWith('project:') ? tabId.slice('project:'.length) : null;
+}
+
+async function reloadProjectAfterRawFileSync(tabId: string, relativePath: string): Promise<boolean> {
+  const result = await window.tokiAPI.reloadProjectFolder();
+  if (!result.success || !result.data) {
+    projectRawSyncState.set(tabId, 'error');
+    setStatus(`프로젝트 원본 파일 오류: ${result.error || '프로젝트를 다시 읽을 수 없습니다.'}`);
+    return false;
+  }
+  setCurrentFileData(result.data as CharxData);
+  currentProjectPath = result.projectPath || currentProjectPath;
+  buildSidebar();
+  projectRawSyncState.set(tabId, 'synced');
+  tabMgr.dirtyFields.delete(tabId);
+  tabMgr.renderTabs();
+  setStatus(`프로젝트 원본 파일 동기화됨: ${relativePath}`);
+  return true;
+}
+
+async function syncProjectRawFileTab(tabId: string, relativePath: string, content: string): Promise<boolean> {
+  const validationError = validateProjectRawFile(relativePath, content);
+  if (validationError) {
+    projectRawSyncState.set(tabId, 'error');
+    setStatus(`프로젝트 원본 파일 오류: ${relativePath} JSON 형식 오류 - ${validationError}`);
+    return false;
+  }
+
+  try {
+    projectRawSyncState.set(tabId, 'syncing');
+    await window.tokiAPI.writeProjectFile(relativePath, content);
+    return await reloadProjectAfterRawFileSync(tabId, relativePath);
+  } catch (error) {
+    projectRawSyncState.set(tabId, 'error');
+    setStatus(`프로젝트 원본 파일 오류: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+function scheduleProjectRawFileSync(tabId: string, relativePath: string, getContent: () => string): void {
+  const existing = projectRawSyncTimers.get(tabId);
+  if (existing) clearTimeout(existing);
+  projectRawSyncState.set(tabId, 'syncing');
+  const timer = setTimeout(() => {
+    projectRawSyncTimers.delete(tabId);
+    if (!tabMgr.findTab(tabId)) return;
+    void syncProjectRawFileTab(tabId, relativePath, getContent());
+  }, PROJECT_RAW_SYNC_DELAY_MS);
+  projectRawSyncTimers.set(tabId, timer);
+}
+
+async function flushProjectRawFileTab(tabId: string, content: string): Promise<boolean> {
+  const relativePath = getProjectRelativePathFromTabId(tabId);
+  if (!relativePath) return true;
+  const timer = projectRawSyncTimers.get(tabId);
+  if (timer) {
+    clearTimeout(timer);
+    projectRawSyncTimers.delete(tabId);
+  }
+  return syncProjectRawFileTab(tabId, relativePath, content);
+}
+
+function clearProjectRawSyncState(): void {
+  for (const timer of projectRawSyncTimers.values()) clearTimeout(timer);
+  projectRawSyncTimers.clear();
+  projectRawSyncState.clear();
+}
+
+async function openProjectFileTab(relativePath: string): Promise<void> {
+  const lower = relativePath.toLowerCase();
+  if (lower.match(/\.(png|jpg|jpeg|webp|gif)$/)) {
+    openImageTab(relativePath, relativePath.split('/').pop() || relativePath);
+    return;
+  }
+  let content = await window.tokiAPI.readProjectFile(relativePath);
+  const tabId = `project:${relativePath}`;
+  tabMgr.openTab(
+    tabId,
+    `[원본] ${relativePath}`,
+    projectFileLanguage(relativePath),
+    () => content,
+    (value) => {
+      content = String(value ?? '');
+      scheduleProjectRawFileSync(tabId, relativePath, () => content);
+    },
+  );
+}
+
+function appendProjectTreeNode(parent: HTMLElement, node: ProjectTreeNode, indent: number): void {
+  if (node.type === 'directory') {
+    const folder = createFolderItem(node.name, '📁', indent);
+    parent.appendChild(folder.header);
+    parent.appendChild(folder.children);
+    for (const child of node.children || []) appendProjectTreeNode(folder.children, child, indent + 1);
+    return;
+  }
+  const item = createTreeItem(node.name, projectFileIcon(node.relativePath), indent);
+  item.addEventListener('click', () => void openProjectFileTab(node.relativePath));
+  parent.appendChild(item);
+}
+
+async function appendProjectFilesSidebar(tree: HTMLElement): Promise<void> {
+  const projectTree = await window.tokiAPI.getProjectTree();
+  if (!projectTree) return;
+  tree.appendChild(createSectionHeader('고급'));
+  const folder = createFolderItem('프로젝트 원본 파일', '📁', 0);
+  folder.header.title = '고급: 폴더의 원본 파일을 직접 열어 편집합니다.';
+  tree.appendChild(folder.header);
+  tree.appendChild(folder.children);
+  const hint = document.createElement('div');
+  hint.className = 'project-raw-hint';
+  hint.textContent = '고급 원본 파일 · 일반 편집은 위 구조화 항목을 사용하세요';
+  folder.children.appendChild(hint);
+  for (const child of projectTree.children || []) appendProjectTreeNode(folder.children, child, 1);
+}
+
 function buildSidebar(): void {
   destroyAllSortables();
   const tree = document.getElementById('sidebar-tree')!;
@@ -1063,7 +1219,31 @@ function buildSidebar(): void {
   // Always build refs sidebar regardless of fileData
   buildRefsSidebar();
 
-  if (!fileData) return;
+  const managersAvailable = !!fileData && fileData._fileType !== 'risup';
+  if (managersAvailable) {
+    layoutManager.setManagerAvailability({ lore: true, asset: true });
+  } else {
+    if (fileData?._fileType === 'risup') {
+      moveLoreManager('hide');
+      moveAssetManager('hide');
+    }
+    layoutManager.setManagerAvailability({ lore: false, asset: false });
+  }
+
+  if (!fileData) {
+    const empty = document.createElement('div');
+    empty.className = 'sidebar-empty-state';
+    const title = document.createElement('div');
+    title.className = 'sidebar-empty-title';
+    title.textContent = '현재 열린 파일이 없습니다';
+    const hint = document.createElement('div');
+    hint.className = 'sidebar-empty-hint';
+    hint.textContent = '파일 > 열기 또는 Ctrl+O로 문서를 열어주세요';
+    empty.append(title, hint);
+    tree.appendChild(empty);
+    renderRightManagerPanel();
+    return;
+  }
 
   const isRisum = fileData._fileType === 'risum';
   const isRisup = fileData._fileType === 'risup';
@@ -1072,6 +1252,7 @@ function buildSidebar(): void {
 
   if (isRisup) {
     buildRisupSidebar(tree);
+    renderRightManagerPanel();
     return;
   }
 
@@ -1658,6 +1839,9 @@ function buildSidebar(): void {
   // Assets (images) folder — then initialize drag-and-drop
   buildAssetsSidebar(tree).then(() => {
     initSidebarDnD(getDndDeps());
+    renderRightManagerPanel();
+    initPanelDragDrop();
+    void appendProjectFilesSidebar(tree);
   });
 }
 
@@ -1756,6 +1940,76 @@ const {
   deleteAlternateGreeting,
   reorderAlternateGreetings,
 } = sidebarActions;
+
+function openLorebookEntry(idx: number): void {
+  if (!fileData?.lorebook || idx < 0 || idx >= fileData.lorebook.length) return;
+  const entry = fileData.lorebook[idx];
+  tabMgr.openTab(
+    `lore_${idx}`,
+    entry.comment || `entry_${idx}`,
+    '_loreform',
+    () => fileData!.lorebook[idx],
+    (v) => {
+      Object.assign(fileData!.lorebook[idx], v);
+    },
+  );
+}
+
+async function deleteLorebookMany(indices: number[]): Promise<void> {
+  if (!fileData?.lorebook || indices.length === 0) return;
+  const unique = [...new Set(indices)].filter((idx) => idx >= 0 && idx < fileData!.lorebook.length);
+  if (unique.length === 0) return;
+  if (!(await showConfirm(`선택한 로어북 ${unique.length}개 항목을 삭제하시겠습니까?`))) return;
+  const sorted = unique.sort((a, b) => b - a);
+  for (const idx of sorted) {
+    tabMgr.closeTab(`lore_${idx}`);
+    fileData.lorebook.splice(idx, 1);
+  }
+  tabMgr.markFieldDirty('lorebook');
+  tabMgr.shiftIndexedTabsAfterRemoval('lore_', sorted, buildLorebookTabState);
+  buildSidebar();
+  setStatus(`로어북 ${sorted.length}개 항목 삭제됨`);
+}
+
+async function moveLorebookManyToFolder(indices: number[], folderRef: string): Promise<void> {
+  if (!fileData?.lorebook || indices.length === 0) return;
+  const unique = [...new Set(indices)].filter((idx) => {
+    const entry = fileData!.lorebook[idx];
+    return entry && entry.mode !== 'folder';
+  });
+  if (unique.length === 0) return;
+  for (const idx of unique) {
+    fileData.lorebook[idx].folder = folderRef;
+  }
+  tabMgr.markFieldDirty('lorebook');
+  tabMgr.refreshIndexedTabs('lore_', buildLorebookTabState);
+  buildSidebar();
+  setStatus(`로어북 ${unique.length}개 항목 이동됨`);
+}
+
+async function renameAssetFromManager(assetPath: string, fileName: string): Promise<void> {
+  const newName = await showPrompt('새 파일명:', fileName);
+  if (!newName || newName === fileName) return;
+  const newPath = await window.tokiAPI.renameAsset(assetPath, newName);
+  if (!newPath) return;
+  buildSidebar();
+  setStatus(`에셋 이름 변경: ${newName}`);
+}
+
+async function deleteAssetsFromManager(paths: string[]): Promise<void> {
+  const unique = [...new Set(paths)];
+  if (unique.length === 0) return;
+  const preview = unique.map((path) => path.split('/').pop() || path).join('\n');
+  if (!(await showConfirm(`선택한 에셋 ${unique.length}개를 삭제하시겠습니까?\n\n${preview}`))) return;
+  const ok = await window.tokiAPI.deleteAssets(unique);
+  if (!ok) {
+    setStatus('에셋 삭제 실패');
+    return;
+  }
+  for (const path of unique) tabMgr.closeTab(`img_${path}`);
+  buildSidebar();
+  setStatus(`에셋 ${unique.length}개 삭제됨`);
+}
 
 // ==================== Drag-and-Drop Dependencies ====================
 
@@ -2025,6 +2279,14 @@ function moveTerminal(pos: LayoutSlot): void {
   layoutManager.moveTerminal(pos);
 }
 
+function moveLoreManager(pos: LayoutSlot | 'hide'): void {
+  layoutManager.moveLoreManager(pos);
+}
+
+function moveAssetManager(pos: LayoutSlot | 'hide'): void {
+  layoutManager.moveAssetManager(pos);
+}
+
 function moveRefs(pos: PanelPosition): void {
   layoutManager.moveRefs(pos);
 }
@@ -2051,6 +2313,7 @@ function setCurrentFileData(data: CharxData | null): void {
 }
 
 function resetDocumentWorkspace(): void {
+  clearProjectRawSyncState();
   tabMgr.reset();
   if (editorInstance) {
     editorInstance.dispose();
@@ -2088,16 +2351,70 @@ const fileActionDeps: FileActionDeps = {
 };
 
 async function handleNew(): Promise<void> {
-  return _handleNew(fileActionDeps);
+  await _handleNew(fileActionDeps);
+  currentProjectPath = null;
 }
 async function handleOpen(): Promise<void> {
-  return _handleOpen(fileActionDeps);
+  await _handleOpen(fileActionDeps);
+  currentProjectPath = null;
 }
+
+async function handleExtractDocumentProject(): Promise<void> {
+  const result = await window.tokiAPI.extractDocumentToProject();
+  if (!result.success) {
+    if (!result.canceled) setStatus(`프로젝트 추출 실패: ${result.error || '알 수 없는 오류'}`);
+    return;
+  }
+  setCurrentFileData(result.data as CharxData);
+  currentProjectPath = result.projectPath || null;
+  useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
+  tabMgr.reset();
+  buildSidebar();
+  await window.tokiAPI.watchProjectFolder();
+  setStatus(`프로젝트 폴더 열림: 구조화 편집을 기본으로 사용합니다. (${result.projectPath})`);
+}
+
+async function handleOpenProjectFolder(): Promise<void> {
+  const result = await window.tokiAPI.openProjectFolder();
+  if (!result.success) {
+    if (!result.canceled) setStatus(`프로젝트 열기 실패: ${result.error || '알 수 없는 오류'}`);
+    return;
+  }
+  setCurrentFileData(result.data as CharxData);
+  currentProjectPath = result.projectPath || null;
+  useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
+  tabMgr.reset();
+  buildSidebar();
+  await window.tokiAPI.watchProjectFolder();
+  setStatus(`프로젝트 폴더 열림: 구조화 편집을 기본으로 사용합니다. (${result.projectPath})`);
+}
+
+async function syncActiveProjectFileTab(): Promise<boolean> {
+  if (!tabMgr.activeTabId?.startsWith('project:') || !editorInstance) return true;
+  const tab = tabMgr.openTabs.find((entry) => entry.id === tabMgr.activeTabId);
+  if (!tab?.setValue) return true;
+  const ok = await flushProjectRawFileTab(tab.id, editorInstance.getValue());
+  if (ok) {
+    tabMgr.dirtyFields.delete(tab.id);
+    tabMgr.renderTabs();
+  }
+  return ok;
+}
+
 async function handleSave(): Promise<void> {
+  if (!(await syncActiveProjectFileTab())) return;
   return _handleSave(fileActionDeps);
 }
 async function handleSaveAs(): Promise<void> {
+  if (!(await syncActiveProjectFileTab())) return;
   return _handleSaveAs(fileActionDeps);
+}
+
+async function handleReassembleProjectDocument(): Promise<void> {
+  if (!(await syncActiveProjectFileTab())) return;
+  const fileData = fileActionDeps.getFileData();
+  const result = await window.tokiAPI.reassembleProjectDocument(fileData || undefined);
+  setStatus(result.success ? `파일 내보내기 완료: ${result.path}` : `파일 내보내기 실패: ${result.error}`);
 }
 
 // ==================== RP Mode ====================
@@ -2122,7 +2439,7 @@ function getAssistantDeps() {
     terminalInput: (text: string) => window.tokiAPI.terminalInput(text),
     setStatus,
     navigatorLike: window.navigator,
-    projectRoot: terminalSession.cwd,
+    projectRoot: currentProjectPath || terminalSession.cwd,
   };
 }
 
@@ -2413,8 +2730,12 @@ function initPanelDragDrop(): void {
   _initPanelDragDrop({
     moveItems,
     moveTerminal,
+    moveLoreManager,
+    moveAssetManager,
     toggleSidebar,
     toggleTerminal,
+    toggleLoreManager: () => layoutManager.toggleLoreManager(),
+    toggleAssetManager: () => layoutManager.toggleAssetManager(),
     isPanelPoppedOut,
     popOutPanel,
     dockPanel,
@@ -2627,8 +2948,13 @@ export async function initMainRenderer(): Promise<void> {
     // File
     new: () => handleNew(),
     open: () => handleOpen(),
+    'open-project-folder': () => handleOpenProjectFolder(),
+    'extract-document-project': () => handleExtractDocumentProject(),
+    'extract-charx-project': () => handleExtractDocumentProject(),
     save: () => handleSave(),
     'save-as': () => handleSaveAs(),
+    'reassemble-project-document': () => handleReassembleProjectDocument(),
+    'reassemble-project-charx': () => handleReassembleProjectDocument(),
     'close-tab': () => {
       if (tabMgr.activeTabId) void tabMgr.requestCloseTab(tabMgr.activeTabId);
     },
@@ -2657,6 +2983,8 @@ export async function initMainRenderer(): Promise<void> {
     'toggle-sidebar': () => toggleSidebar(),
     'toggle-terminal': () => toggleTerminal(),
     'toggle-avatar': () => toggleAvatar(),
+    'toggle-lore-manager': () => layoutManager.toggleLoreManager(),
+    'toggle-asset-manager': () => layoutManager.toggleAssetManager(),
     // Items position
     'items-left': () => moveItems('left'),
     'items-right': () => moveItems('right'),
@@ -2679,6 +3007,21 @@ export async function initMainRenderer(): Promise<void> {
     'terminal-far-left': () => moveTerminal('far-left'),
     'terminal-far-right': () => moveTerminal('far-right'),
     'terminal-top': () => moveTerminal('top'),
+    // Manager positions
+    'lore-manager-left': () => moveLoreManager('left'),
+    'lore-manager-right': () => moveLoreManager('right'),
+    'lore-manager-far-left': () => moveLoreManager('far-left'),
+    'lore-manager-far-right': () => moveLoreManager('far-right'),
+    'lore-manager-top': () => moveLoreManager('top'),
+    'lore-manager-bottom': () => moveLoreManager('bottom'),
+    'lore-manager-hide': () => moveLoreManager('hide'),
+    'asset-manager-left': () => moveAssetManager('left'),
+    'asset-manager-right': () => moveAssetManager('right'),
+    'asset-manager-far-left': () => moveAssetManager('far-left'),
+    'asset-manager-far-right': () => moveAssetManager('far-right'),
+    'asset-manager-top': () => moveAssetManager('top'),
+    'asset-manager-bottom': () => moveAssetManager('bottom'),
+    'asset-manager-hide': () => moveAssetManager('hide'),
     // Reset
     'layout-reset': () => resetLayout(),
     'zoom-in': () => {
@@ -2850,7 +3193,27 @@ export async function initMainRenderer(): Promise<void> {
     isTerminalReady: () => !!term,
     terminalInput: (text) => window.tokiAPI.terminalInput(text),
   });
-  initPanelDragDrop();
+  initRightManagerPanel({
+    getFileData: () => fileData,
+    getProjectPath: () => currentProjectPath,
+    openLorebookEntry,
+    addLorebookEntry: addNewLorebook,
+    addLorebookFolder: addNewLorebookFolder,
+    renameLorebook,
+    deleteLorebook,
+    deleteLorebookMany,
+    moveLorebookManyToFolder,
+    openImageTab,
+    addAssetFromDialog,
+    addAssetBuffer: (name, data, folder) => window.tokiAPI.addAssetBuffer(name, data, folder),
+    renameAsset: renameAssetFromManager,
+    deleteAssets: deleteAssetsFromManager,
+    getAssetList: () => window.tokiAPI.getAssetList(),
+    getAssetData: (path) => window.tokiAPI.getAssetData(path),
+    setStatus,
+    refresh: buildSidebar,
+    afterRender: initPanelDragDrop,
+  });
   // Refs panel dock button
   const refsPanelDockBtn = document.getElementById('btn-refs-panel-dock');
   if (refsPanelDockBtn) refsPanelDockBtn.addEventListener('click', () => moveRefs('sidebar'));
@@ -2938,6 +3301,24 @@ export async function initMainRenderer(): Promise<void> {
   // Listen for refs popout clicks → open tab in main editor
   window.tokiAPI.onPopoutRefsClick((tabId) => {
     openTabById(tabId);
+  });
+
+  window.tokiAPI.onProjectFolderChanged(async (payload) => {
+    if (tabMgr.dirtyFields.size > 0) {
+      setStatus(
+        `프로젝트 파일 변경 감지됨: ${payload.fileName || payload.path}. 저장되지 않은 탭이 있어 자동 반영하지 않았습니다.`,
+      );
+      return;
+    }
+    const result = await window.tokiAPI.reloadProjectFolder();
+    if (!result.success || !result.data) {
+      setStatus(`프로젝트 다시 불러오기 실패: ${result.error || '알 수 없는 오류'}`);
+      return;
+    }
+    setCurrentFileData(result.data as CharxData);
+    currentProjectPath = result.projectPath || currentProjectPath;
+    buildSidebar();
+    setStatus(`프로젝트 변경 반영됨: ${payload.fileName || payload.path}`);
   });
 
   // Listen for MCP data updates (AI assistant modified data via MCP server)

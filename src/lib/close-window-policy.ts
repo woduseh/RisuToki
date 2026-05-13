@@ -17,11 +17,31 @@ export interface CloseWindowPolicyResult {
   errorMessage: string | null;
 }
 
-export function resolveCloseWindowAction({
-  choice,
-  saveResult,
-}: CloseWindowPolicyInput): CloseWindowPolicyResult {
-  if (choice !== CLOSE_CHOICE_SAVE_AND_CLOSE && choice !== CLOSE_CHOICE_CLOSE_WITHOUT_SAVE && choice !== CLOSE_CHOICE_CANCEL) {
+export interface CloseWindowDirtyStatus {
+  success: boolean;
+  renderer?: {
+    hasUnsavedChanges: boolean;
+  } | null;
+}
+
+export function shouldPromptForUnsavedClose({
+  hasCurrentDocument,
+  status,
+}: {
+  hasCurrentDocument: boolean;
+  status: CloseWindowDirtyStatus | null;
+}): boolean {
+  if (!hasCurrentDocument) return false;
+  if (!status?.success || !status.renderer) return true;
+  return status.renderer.hasUnsavedChanges;
+}
+
+export function resolveCloseWindowAction({ choice, saveResult }: CloseWindowPolicyInput): CloseWindowPolicyResult {
+  if (
+    choice !== CLOSE_CHOICE_SAVE_AND_CLOSE &&
+    choice !== CLOSE_CHOICE_CLOSE_WITHOUT_SAVE &&
+    choice !== CLOSE_CHOICE_CANCEL
+  ) {
     return { action: 'stay', errorMessage: null };
   }
 

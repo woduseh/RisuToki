@@ -96,6 +96,22 @@ type OpenFileResult =
   | { success: false; canceled: true }
   | { success: false; canceled?: false; error: string };
 
+interface ProjectActionResult {
+  success: boolean;
+  canceled?: boolean;
+  data?: Record<string, unknown>;
+  path?: string;
+  projectPath?: string;
+  error?: string;
+}
+
+interface ProjectTreeNode {
+  name: string;
+  type: 'directory' | 'file';
+  relativePath: string;
+  children?: ProjectTreeNode[];
+}
+
 interface McpRendererSessionStatusIpc {
   autosaveDir: string;
   autosaveEnabled: boolean;
@@ -183,6 +199,19 @@ interface TokiAPI {
   newFile: () => Promise<Record<string, unknown>>;
   openFile: () => Promise<OpenFileResult>;
   openFilePath: (filePath: string) => Promise<Record<string, unknown>>;
+  extractDocumentToProject: () => Promise<ProjectActionResult>;
+  extractCharxToProject: () => Promise<ProjectActionResult>;
+  openProjectFolder: () => Promise<ProjectActionResult>;
+  reloadProjectFolder: () => Promise<ProjectActionResult>;
+  saveProjectFolder: (updatedFields: Record<string, unknown>) => Promise<SaveResult>;
+  reassembleProjectDocument: (updatedFields?: Record<string, unknown>) => Promise<SaveResult>;
+  reassembleProjectCharx: (updatedFields?: Record<string, unknown>) => Promise<SaveResult>;
+  getProjectPath: () => Promise<string | null>;
+  getProjectTree: () => Promise<ProjectTreeNode | null>;
+  readProjectFile: (relativePath: string) => Promise<string>;
+  writeProjectFile: (relativePath: string, content: string) => Promise<boolean>;
+  watchProjectFolder: () => Promise<boolean>;
+  unwatchProjectFolder: () => Promise<boolean>;
   openReference: () => Promise<ReferenceRecord | ReferenceRecord[] | null>;
   openReferencePath: (filePath: string) => Promise<ReferenceRecord | null>;
   listReferences: () => Promise<ReferenceRecord[]>;
@@ -211,6 +240,7 @@ interface TokiAPI {
   writeAgentsMd: (content: string, projectRoot?: string | null) => Promise<string>;
   cleanupAgentsMd: () => Promise<boolean>;
   onDataUpdated: (cb: DataUpdatedCallback) => void;
+  onProjectFolderChanged: (cb: (payload: { path: string; fileName?: string }) => void) => void;
   onMcpConfirmRequest: (cb: McpConfirmCallback) => void;
   sendMcpConfirmResponse: (id: number, allowed: boolean) => void;
   onMcpOpenFileRequest: (cb: (id: number, request: McpOpenFileRequest) => void) => void;
@@ -223,9 +253,10 @@ interface TokiAPI {
   getAssetList: () => Promise<AssetListEntry[]>;
   getAssetData: (assetPath: string) => Promise<string | null>;
   getAllAssetsMap: () => Promise<AssetsMapResult>;
-  addAsset: (targetFolder: string) => Promise<string | null>;
-  addAssetBuffer: (fileName: string, base64: string, targetFolder?: string) => Promise<string | null>;
+  addAsset: (targetFolder: string) => Promise<AssetListEntry[] | null>;
+  addAssetBuffer: (fileName: string, base64: string, targetFolder?: string) => Promise<AssetListEntry | null>;
   deleteAsset: (assetPath: string) => Promise<boolean>;
+  deleteAssets: (assetPaths: string[]) => Promise<boolean>;
   renameAsset: (oldPath: string, newName: string) => Promise<string | null>;
   reorderAsset: (fromPath: string, toIdx: number) => Promise<boolean>;
   compressAssetsWebp: (opts?: {

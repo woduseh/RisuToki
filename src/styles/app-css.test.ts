@@ -70,6 +70,21 @@ describe('app.css – form editor controls', () => {
   });
 });
 
+describe('app.css – project raw files', () => {
+  it('styles the advanced project raw-file hint separately from normal sidebar items', () => {
+    expect(css).toMatch(/\.project-raw-hint\s*\{/);
+    expect(css).toMatch(/\.project-raw-hint\s*\{[^}]*border:\s*1px dashed var\(--border-color\);[^}]*\}/s);
+  });
+});
+
+describe('app.css – manager panels', () => {
+  it('styles lorebook and asset managers as movable panels with edge expand buttons', () => {
+    expect(css).toMatch(/\.manager-panel\s*\{/);
+    expect(css).toMatch(/\.manager-expand\s*\{/);
+    expect(css).toMatch(/\.manager-expand-right\s*\{/);
+  });
+});
+
 describe('app.css – risup prompt editor layout', () => {
   it('keeps compact prompt metadata controls on one row', () => {
     expect(css).toMatch(

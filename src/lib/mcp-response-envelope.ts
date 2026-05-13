@@ -93,6 +93,7 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
   search: ['search_in_field', 'search_all_fields', 'read_field'],
   surface: ['list_surfaces', 'read_surface', 'patch_surface', 'replace_in_surface'],
   'lorebook-io': ['list_lorebook', 'export_lorebook_to_files', 'import_lorebook_from_files'],
+  'folder-workspace': ['extract_charx_to_project_folder', 'reassemble_project_folder_to_charx'],
   session: ['session_status', 'open_file', 'list_references', 'list_snapshots'],
 };
 

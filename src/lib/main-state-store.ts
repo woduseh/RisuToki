@@ -1,5 +1,6 @@
 export interface MainStateStore {
   currentFilePath: string | null;
+  currentProjectPath: string | null;
   currentData: Record<string, unknown> | null;
   currentFileBaseline: Record<string, unknown> | null;
   referenceFiles: Record<string, unknown>[];
@@ -13,6 +14,8 @@ export interface MainStateStore {
   terminalCwd: string | null;
   resetCurrentDocument(data: Record<string, unknown>): void;
   setCurrentDocument(filePath: string, data: Record<string, unknown>): void;
+  setCurrentProject(projectPath: string, data: Record<string, unknown>, sourceFilePath?: string | null): void;
+  clearCurrentProject(): void;
   setCurrentFileBaseline(baseline: Record<string, unknown> | null): void;
   setReferenceFiles(files: Record<string, unknown>[]): void;
   setReferenceManifestStatus(status: Record<string, unknown> | null): void;
@@ -23,6 +26,7 @@ export interface MainStateStore {
 export function createMainStateStore(): MainStateStore {
   return {
     currentFilePath: null,
+    currentProjectPath: null,
     currentData: null,
     currentFileBaseline: null,
     referenceFiles: [],
@@ -31,13 +35,25 @@ export function createMainStateStore(): MainStateStore {
 
     resetCurrentDocument(data) {
       this.currentFilePath = null;
+      this.currentProjectPath = null;
       this.currentData = data;
       this.currentFileBaseline = null;
     },
 
     setCurrentDocument(filePath, data) {
       this.currentFilePath = filePath;
+      this.currentProjectPath = null;
       this.currentData = data;
+    },
+
+    setCurrentProject(projectPath, data, sourceFilePath = null) {
+      this.currentProjectPath = projectPath;
+      this.currentFilePath = sourceFilePath;
+      this.currentData = data;
+    },
+
+    clearCurrentProject() {
+      this.currentProjectPath = null;
     },
 
     setCurrentFileBaseline(baseline) {

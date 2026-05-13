@@ -41,6 +41,7 @@ export const TOOL_FAMILIES = [
   'search',
   'surface',
   'lorebook-io',
+  'folder-workspace',
   'session',
 ] as const;
 
@@ -254,6 +255,7 @@ const AUTHORING_PROFILE_FAMILIES = new Set<ToolFamily>([
   'charx-asset',
   'risum-asset',
   'risup-prompt',
+  'folder-workspace',
   'skill',
   'danbooru',
   'cbs',
@@ -592,6 +594,10 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   // ── Lorebook I/O ───────────────────────────────────────────────────────
   export_lorebook_to_files: { family: 'lorebook-io', hints: OPEN_WORLD_WRITE },
   import_lorebook_from_files: { family: 'lorebook-io', hints: OPEN_WORLD_WRITE },
+
+  // ── Folder workspace I/O ───────────────────────────────────────────────
+  extract_charx_to_project_folder: { family: 'folder-workspace', hints: OPEN_WORLD_WRITE },
+  reassemble_project_folder_to_charx: { family: 'folder-workspace', hints: OPEN_WORLD_WRITE },
 
   // ── Regex ──────────────────────────────────────────────────────────────
   list_regex: { family: 'regex', hints: RO_IDEMPOTENT },

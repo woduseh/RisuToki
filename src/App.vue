@@ -46,6 +46,31 @@ function handleAction(action: string) {
     <div id="resizer-far-right" class="slot-resizer slot-resizer-v"></div>
     <div id="slot-far-right" class="layout-slot slot-v"></div>
 
+    <div id="lore-manager-panel" class="manager-panel"></div>
+    <div id="asset-manager-panel" class="manager-panel"></div>
+    <button
+      id="lore-manager-expand"
+      type="button"
+      class="manager-expand"
+      title="로어북 관리자 열기"
+      aria-label="로어북 관리자 열기"
+      style="display: none"
+      @click="handleAction('toggle-lore-manager')"
+    >
+      ▶
+    </button>
+    <button
+      id="asset-manager-expand"
+      type="button"
+      class="manager-expand"
+      title="에셋 관리자 열기"
+      aria-label="에셋 관리자 열기"
+      style="display: none"
+      @click="handleAction('toggle-asset-manager')"
+    >
+      ▶
+    </button>
+
     <div id="sidebar">
       <div id="sidebar-items-section" class="sidebar-section">
         <div class="sidebar-header">

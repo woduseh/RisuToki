@@ -5,6 +5,7 @@ import {
   CLOSE_CHOICE_CLOSE_WITHOUT_SAVE,
   CLOSE_CHOICE_SAVE_AND_CLOSE,
   resolveCloseWindowAction,
+  shouldPromptForUnsavedClose,
 } from './close-window-policy';
 
 describe('resolveCloseWindowAction', () => {
@@ -63,5 +64,49 @@ describe('resolveCloseWindowAction', () => {
       action: 'stay',
       errorMessage: null,
     });
+  });
+});
+
+describe('shouldPromptForUnsavedClose', () => {
+  test('does not prompt when no document is open', () => {
+    expect(
+      shouldPromptForUnsavedClose({
+        hasCurrentDocument: false,
+        status: { success: true, renderer: { hasUnsavedChanges: true } },
+      }),
+    ).toBe(false);
+  });
+
+  test('does not prompt when renderer reports no unsaved changes', () => {
+    expect(
+      shouldPromptForUnsavedClose({
+        hasCurrentDocument: true,
+        status: { success: true, renderer: { hasUnsavedChanges: false } },
+      }),
+    ).toBe(false);
+  });
+
+  test('prompts when renderer reports unsaved changes', () => {
+    expect(
+      shouldPromptForUnsavedClose({
+        hasCurrentDocument: true,
+        status: { success: true, renderer: { hasUnsavedChanges: true } },
+      }),
+    ).toBe(true);
+  });
+
+  test('prompts when renderer status is unavailable', () => {
+    expect(
+      shouldPromptForUnsavedClose({
+        hasCurrentDocument: true,
+        status: { success: false },
+      }),
+    ).toBe(true);
+    expect(
+      shouldPromptForUnsavedClose({
+        hasCurrentDocument: true,
+        status: null,
+      }),
+    ).toBe(true);
   });
 });

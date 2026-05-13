@@ -54,6 +54,7 @@ Thumbs.db
 # Repo-local LLM agent work directories
 .codex/
 .codex-work/
+.analysis/
 output/
 tmp/
 

@@ -48,6 +48,8 @@ const PANEL_LABELS: Record<string, string> = {
   refs: '참고자료',
   preview: '프리뷰',
   terminal: 'TokiTalk',
+  'lore-manager': '로어북 관리자',
+  'asset-manager': '에셋 관리자',
 };
 
 function labelFor(panelId: string): string {

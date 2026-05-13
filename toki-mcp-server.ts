@@ -51,6 +51,13 @@ import {
   type FacadeV1Target,
   type FacadeV1ToolMutability,
 } from './src/lib/mcp-request-schemas';
+import {
+  extractDocumentToProject,
+  getProjectFileType,
+  listProjectTree,
+  reassembleProjectDocument,
+  type ProjectTreeNode,
+} from './src/lib/folder-workspace';
 
 let TOKI_PORT = process.env.TOKI_PORT;
 let TOKI_TOKEN = process.env.TOKI_TOKEN;
@@ -567,6 +574,28 @@ function textResult(data: unknown) {
     return { content: [{ type: 'text' as const, text: JSON.stringify(rest) }], isError: true as const };
   }
   return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
+}
+
+function defaultProjectFolderForDocument(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase().replace('.', '') || 'project';
+  return path.join(path.dirname(filePath), `${path.basename(filePath, path.extname(filePath))}_${ext}`);
+}
+
+function summarizeProjectTree(projectPath: string): { files: number; directories: number; topLevel: string[] } {
+  const tree = listProjectTree(projectPath);
+  let files = 0;
+  let directories = 0;
+  const walk = (node: ProjectTreeNode) => {
+    if (node.type === 'file') files += 1;
+    if (node.type === 'directory') directories += 1;
+    for (const child of node.children || []) walk(child);
+  };
+  walk(tree);
+  return {
+    files,
+    directories,
+    topLevel: (tree.children || []).map((child) => child.name).slice(0, 30),
+  };
 }
 
 function safeToolHandler<TArgs extends Record<string, unknown>>(
@@ -5615,6 +5644,119 @@ server.tool(
     if (format) body.format = format;
     return textResult(await apiRequest('POST', '/field/export', body));
   },
+);
+
+// ===== Folder Workspace Tools =====
+
+server.tool(
+  'extract_charx_to_project_folder',
+  '큰 필드를 MCP 응답으로 읽기 어렵거나 외부 에디터/AI CLI로 직접 수정해야 할 때, .charx/.risum/.risup 파일을 프로젝트 폴더(card.json/module.json/preset.json, markdown 파일, assets/)로 추출합니다. 사용자 확인 필요.',
+  {
+    file_path: z.string().describe('추출할 .charx/.risum/.risup 파일 경로. 절대 경로 권장.'),
+    project_path: z
+      .string()
+      .optional()
+      .describe('출력 프로젝트 폴더 경로. 생략하면 원본 파일 옆에 {파일명}_{확장자} 폴더를 만듭니다.'),
+  },
+  safeToolHandler('extract_charx_to_project_folder', async ({ file_path, project_path }) => {
+    const sourcePath = path.resolve(file_path);
+    if (!fs.existsSync(sourcePath)) {
+      return textResult({
+        [API_ERROR_KEY]: true,
+        status: 400,
+        error: `File not found: ${sourcePath}`,
+        suggestion: 'session_status 또는 inspect_external_file로 현재 파일 경로를 확인한 뒤 다시 시도하세요.',
+        retryable: false,
+        next_actions: ['session_status', 'inspect_external_file'],
+      });
+    }
+    const sourceExt = path.extname(sourcePath).toLowerCase();
+    if (!['.charx', '.risum', '.risup'].includes(sourceExt)) {
+      return textResult({
+        [API_ERROR_KEY]: true,
+        status: 400,
+        error: 'extract_charx_to_project_folder only supports .charx, .risum, and .risup files.',
+        suggestion: '프로젝트 폴더로 추출할 수 있는 RisuAI 문서 파일을 지정하세요.',
+        retryable: false,
+        next_actions: ['inspect_external_file'],
+      });
+    }
+    const targetPath = path.resolve(project_path || defaultProjectFolderForDocument(sourcePath));
+    extractDocumentToProject(sourcePath, targetPath);
+    const treeSummary = summarizeProjectTree(targetPath);
+    const sourceType = sourceExt.slice(1);
+    return textResult(
+      mcpSuccess(
+        {
+          success: true,
+          filePath: sourcePath,
+          fileType: sourceType,
+          projectPath: targetPath,
+          treeSummary,
+          workflow:
+            'Use structured editor/MCP surfaces when possible; raw project files are an advanced fallback. Reassemble this projectPath when an exported file is needed.',
+        },
+        {
+          toolName: 'extract_charx_to_project_folder',
+          summary: `Extracted .${sourceType} into project folder with ${treeSummary.files} files`,
+          nextActions: ['reassemble_project_folder_to_charx', 'session_status'],
+          artifacts: {
+            byte_size: 0,
+            project_path: targetPath,
+            file_count: treeSummary.files,
+            directory_count: treeSummary.directories,
+          },
+        },
+      ),
+    );
+  }),
+);
+
+server.tool(
+  'reassemble_project_folder_to_charx',
+  'RisuToki 프로젝트 폴더를 다시 .charx/.risum/.risup 파일로 내보냅니다. 프로젝트 폴더에서 긴 markdown/json/assets 파일을 직접 편집한 뒤 사용하세요. 사용자 확인 필요.',
+  {
+    project_path: z.string().describe('card.json/module.json/preset.json 중 하나가 들어 있는 프로젝트 폴더 경로.'),
+    output_path: z.string().describe('생성할 .charx/.risum/.risup 파일 경로. 기존 파일을 덮어쓸 수 있습니다.'),
+  },
+  safeToolHandler('reassemble_project_folder_to_charx', async ({ project_path, output_path }) => {
+    const projectPath = path.resolve(project_path);
+    const outputPath = path.resolve(output_path);
+    if (!fs.existsSync(projectPath)) {
+      return textResult({
+        [API_ERROR_KEY]: true,
+        status: 400,
+        error: `Project folder not found: ${projectPath}`,
+        suggestion: 'extract_charx_to_project_folder로 먼저 프로젝트 폴더를 만들거나 project_path를 확인하세요.',
+        retryable: false,
+        next_actions: ['extract_charx_to_project_folder'],
+      });
+    }
+    const projectFileType = getProjectFileType(projectPath);
+    reassembleProjectDocument(projectPath, outputPath);
+    const stat = fs.statSync(outputPath);
+    return textResult(
+      mcpSuccess(
+        {
+          success: true,
+          fileType: projectFileType,
+          projectPath,
+          outputPath,
+          sizeBytes: stat.size,
+        },
+        {
+          toolName: 'reassemble_project_folder_to_charx',
+          summary: `Reassembled project folder into .${projectFileType} (${stat.size} bytes)`,
+          nextActions: ['inspect_external_file', 'open_file', 'validate_content'],
+          artifacts: {
+            byte_size: stat.size,
+            project_path: projectPath,
+            output_path: outputPath,
+          },
+        },
+      ),
+    );
+  }),
 );
 
 // ===== Skill Tools =====

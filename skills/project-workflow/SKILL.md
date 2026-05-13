@@ -53,6 +53,7 @@ Startup principles:
 
 - App-backed MCP is started by the Electron app and works against the active editor document.
 - Standalone MCP is started with `node toki-mcp-server.js --standalone` and works against files supplied by `--file`, `open_file`, and repeated `--ref`; pass `--allow-writes` when mutation tools should be permitted. `session_status` reports `allowWrites` / `userDataPath`, and process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log`.
+- When a `.charx`, `.risum`, or `.risup` project folder is active, the folder is the save backend for the normal structured editor. AI terminal cwd and generated `AGENTS.md` project-root context resolve to the workspace folder, while MCP field visibility and hidden/deprecated-field policy remain the same as the underlying document type. Raw project files are an advanced fallback for external tools or precise filesystem edits, not the default editing surface.
 
 > Complete tool routing map, workflow patterns, and caveats: [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)
 >

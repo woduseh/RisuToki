@@ -1171,7 +1171,7 @@ function applyPresetFields(preset: Record<string, unknown>, data: CharxData): vo
   if (data.presetImage !== undefined) preset.image = data.presetImage;
 }
 
-type RisupCompressionMode = 'gzip' | 'zlib' | 'raw';
+export type RisupCompressionMode = 'gzip' | 'zlib' | 'raw';
 
 /**
  * Detect compression format by header bytes and decompress accordingly.
@@ -1317,6 +1317,26 @@ export function saveRisup(filePath: string, data: CharxData): void {
   const encoded = rpackEncode(compressed);
 
   writeFileAtomicSync(filePath, encoded);
+}
+
+export function saveRisupPresetPayload(
+  filePath: string,
+  presetPayload: Record<string, unknown>,
+  compressionMode: RisupCompressionMode = 'gzip',
+): void {
+  const preset = cloneJson(presetPayload);
+  delete preset.openAIKey;
+  delete preset.proxyKey;
+
+  const presetBuf = pack(preset);
+  const encrypted = encryptAesGcm(presetBuf);
+  const envelope = pack({
+    presetVersion: 2,
+    type: 'preset',
+    preset: encrypted,
+  });
+  const compressed = risupCompress(envelope, compressionMode);
+  writeFileAtomicSync(filePath, rpackEncode(compressed));
 }
 
 // ---------------------------------------------------------------------------

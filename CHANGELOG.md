@@ -9,6 +9,64 @@
 
 ---
 
+## [0.72.7] - 2026-05-13
+
+### Changed
+
+- 파일 닫기 시 실제 미저장 변경이 있을 때만 저장 경고를 표시하도록 개선했습니다.
+
+## [0.72.6] - 2026-05-13
+
+### Added
+
+- Extended project folder workspaces from `.charx` cards to `.risum` modules and `.risup` presets, with type-specific `card.json`, `module.json`, and `preset.json` roots.
+- Added type-aware project export so project folders save back to `.charx`, `.risum`, or `.risup` files from the same structured editor workflow.
+- Added `.risup` project-folder sanitization so API key fields stay excluded from saved and exported preset payloads.
+
+## [0.72.5] - 2026-05-13
+
+### Changed
+
+- Made lorebook and asset manager close actions fully remove the panels from layout space, leaving only edge expand buttons when supported.
+- Enabled lorebook and asset managers for `.risum` modules while keeping them fully hidden for `.risup` presets.
+- Added an empty-state message to the item sidebar when no file is open.
+
+## [0.72.4] - 2026-05-13
+
+### Changed
+
+- Split the RisuMari-style lorebook and asset manager into independent movable panels that can be placed through the normal layout system.
+- Improved asset image tabs so fit and actual-size views open centered instead of drifting to the viewport edge.
+
+## [0.72.3] - 2026-05-13
+
+### Changed
+
+- Reframed project folders as a structured-editor storage backend by moving raw project files into a collapsed advanced sidebar area.
+- Added debounced raw project-file synchronization so direct `card.json`/markdown edits update the structured editor state without making raw files the primary workflow.
+- Renamed the project export menu wording from CharX reassembly to CharX export in the renderer UI.
+
+## [0.72.2] - 2026-05-13
+
+### Added
+
+- Added a RisuMari-style right manager panel for `.charx` lorebooks and assets, with search, filters, folder browsing, thumbnail browsing, multi-select, and bulk delete workflows.
+- Added batch asset deletion IPC for one-pass cache refreshes after multi-select asset deletes.
+
+## [0.72.1] - 2026-05-13
+
+### Added
+
+- Added MCP folder-workspace tools for extracting large `.charx` files into editable project folders and reassembling them after filesystem-based edits.
+
+## [0.72.0] - 2026-05-12
+
+### Added
+
+- Added `.charx` folder workspaces that extract cards into editable project folders and reassemble them back into `.charx` files.
+- Added project-folder IPC, file watching, project tree file access, and terminal cwd routing for folder workspaces.
+- Added RisuMari-compatible folder schema support, including markdown text-field manifests, `module.risum`/`module.json` round trips, assets, and `x_meta`.
+
 ## [0.71.12] - 2026-05-12
 
 ### Changed

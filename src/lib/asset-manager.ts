@@ -233,6 +233,17 @@ export function initAssetManager(d: AssetManagerDeps): void {
     return true;
   });
 
+  // Delete multiple assets in one cache invalidation/update pass
+  ipcMain.handle('delete-assets', (_, assetPaths: string[]) => {
+    const data = deps.getCurrentData();
+    if (!data || !Array.isArray(assetPaths)) return false;
+    invalidateAssetsMapCache();
+    const targets = new Set(assetPaths);
+    const before = data.assets.length;
+    data.assets = data.assets.filter((a: any) => !targets.has(a.path));
+    return data.assets.length !== before;
+  });
+
   // Rename asset
   ipcMain.handle('rename-asset', (_, oldPath: string, newName: string) => {
     const data = deps.getCurrentData();

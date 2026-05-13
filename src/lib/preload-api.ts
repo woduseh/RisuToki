@@ -9,6 +9,19 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     newFile: () => ipcRenderer.invoke('new-file'),
     openFile: () => ipcRenderer.invoke('open-file'),
     openFilePath: (filePath) => ipcRenderer.invoke('open-file-path', filePath),
+    extractDocumentToProject: () => ipcRenderer.invoke('extract-document-to-project'),
+    extractCharxToProject: () => ipcRenderer.invoke('extract-document-to-project'),
+    openProjectFolder: () => ipcRenderer.invoke('open-project-folder'),
+    reloadProjectFolder: () => ipcRenderer.invoke('reload-project-folder'),
+    saveProjectFolder: (updatedFields) => ipcRenderer.invoke('save-project-folder', updatedFields),
+    reassembleProjectDocument: (updatedFields) => ipcRenderer.invoke('reassemble-project-document', updatedFields),
+    reassembleProjectCharx: (updatedFields) => ipcRenderer.invoke('reassemble-project-document', updatedFields),
+    getProjectPath: () => ipcRenderer.invoke('get-project-path'),
+    getProjectTree: () => ipcRenderer.invoke('get-project-tree'),
+    readProjectFile: (relativePath) => ipcRenderer.invoke('read-project-file', relativePath),
+    writeProjectFile: (relativePath, content) => ipcRenderer.invoke('write-project-file', relativePath, content),
+    watchProjectFolder: () => ipcRenderer.invoke('watch-project-folder'),
+    unwatchProjectFolder: () => ipcRenderer.invoke('unwatch-project-folder'),
     openReference: () => ipcRenderer.invoke('open-reference'),
     openReferencePath: (filePath) => ipcRenderer.invoke('open-reference-path', filePath),
     listReferences: () => ipcRenderer.invoke('list-references'),
@@ -45,6 +58,9 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     onDataUpdated: (cb) => {
       ipcRenderer.on('data-updated', (_event, field: string, value: unknown) => cb(field, value));
     },
+    onProjectFolderChanged: (cb) => {
+      ipcRenderer.on('project-folder-changed', (_event, payload: Parameters<typeof cb>[0]) => cb(payload));
+    },
     onMcpConfirmRequest: (cb) => {
       ipcRenderer.on('mcp-confirm-request', (_event, id: number, title: string, message: string) =>
         cb(id, title, message),
@@ -75,6 +91,7 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     addAssetBuffer: (fileName, base64, targetFolder) =>
       ipcRenderer.invoke('add-asset-buffer', fileName, base64, targetFolder),
     deleteAsset: (assetPath) => ipcRenderer.invoke('delete-asset', assetPath),
+    deleteAssets: (assetPaths) => ipcRenderer.invoke('delete-assets', assetPaths),
     renameAsset: (oldPath, newName) => ipcRenderer.invoke('rename-asset', oldPath, newName),
     reorderAsset: (fromPath, toIdx) => ipcRenderer.invoke('reorder-asset', fromPath, toIdx),
     compressAssetsWebp: (opts) => ipcRenderer.invoke('compress-assets-webp', opts),

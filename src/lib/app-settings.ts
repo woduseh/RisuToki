@@ -25,9 +25,13 @@ export interface StoredLayoutState {
   itemsPos?: string;
   refsPos?: string;
   terminalPos?: string;
+  loreManagerPos?: string;
+  assetManagerPos?: string;
   itemsVisible?: boolean;
   terminalVisible?: boolean;
   avatarVisible?: boolean;
+  loreManagerVisible?: boolean;
+  assetManagerVisible?: boolean;
   slotSizes?: Record<string, number>;
 }
 

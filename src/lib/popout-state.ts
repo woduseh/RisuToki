@@ -4,6 +4,8 @@ export interface LayoutStateLike {
   itemsVisible?: boolean;
   refsPos?: string;
   terminalVisible?: boolean;
+  loreManagerVisible?: boolean;
+  assetManagerVisible?: boolean;
 }
 
 export function applyPopoutLayoutState(panelId: string, layoutState: LayoutStateLike): void {
@@ -14,6 +16,16 @@ export function applyPopoutLayoutState(panelId: string, layoutState: LayoutState
 
   if (panelId === 'terminal') {
     layoutState.terminalVisible = false;
+    return;
+  }
+
+  if (panelId === 'lore-manager') {
+    layoutState.loreManagerVisible = false;
+    return;
+  }
+
+  if (panelId === 'asset-manager') {
+    layoutState.assetManagerVisible = false;
     return;
   }
 
@@ -31,6 +43,16 @@ export function applyDockedLayoutState(panelId: string, layoutState: LayoutState
 
   if (panelId === 'terminal') {
     layoutState.terminalVisible = true;
+    return;
+  }
+
+  if (panelId === 'lore-manager') {
+    layoutState.loreManagerVisible = true;
+    return;
+  }
+
+  if (panelId === 'asset-manager') {
+    layoutState.assetManagerVisible = true;
     return;
   }
 

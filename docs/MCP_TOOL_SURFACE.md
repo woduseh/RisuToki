@@ -252,6 +252,15 @@ The family sections below describe the underlying granular tool surface. For fir
 - **Next actions:** `list_lorebook`, `export_lorebook_to_files`, `import_lorebook_from_files`
 - **Boundary:** use `lorebook` for in-editor entry edits; this family is for filesystem exchange
 
+### `folder-workspace`
+
+- **Use when:** MCP reads or searches are too large, or when an AI CLI should work from a `.charx`, `.risum`, or `.risup` project folder while preserving the normal structured editor/MCP policy
+- **Tools:** `extract_charx_to_project_folder`, `reassemble_project_folder_to_charx`
+- **Naming note:** these tool names are retained for compatibility, but both tools now accept/export `.charx`, `.risum`, and `.risup` project folders
+- **Hints:** open-world write; both tools require explicit user-approved paths
+- **Next actions:** use project-folder extraction, prefer structured editor/MCP edits, use raw filesystem edits only as an advanced fallback, then reassemble when a `.charx`, `.risum`, or `.risup` export is needed, followed by `inspect_external_file` / `open_file` / `validate_content`
+- **Boundary:** `.charx` keeps the RisuMari-compatible folder schema, while `.risum` and `.risup` use RisuToki type-specific project schemas
+
 ### `regex`
 
 - **Use when:** reading or editing regex entries on the active document

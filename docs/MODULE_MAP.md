@@ -18,7 +18,7 @@ This map is for source navigation. It is not a full API reference.
 
 ## Integration layers
 
-- `src/app/controller.ts` — main-window orchestration
+- `src/app/controller.ts` — main-window orchestration, including project-folder raw file tabs and debounced structured-state sync
 - `src/popout/controller.ts` — popout orchestration
 - `src/components/` — Vue UI components
 - `src/stores/` — shared renderer stores
@@ -50,6 +50,7 @@ This map is for source navigation. It is not a full API reference.
 ## File formats and RisuAI document modeling
 
 - `src/charx-io.ts` — `.charx`, `.risum`, `.risup` serialization and loading
+- `src/lib/folder-workspace.ts` — `.charx` / `.risum` / `.risup` project-folder extraction, loading, saving, tree reads, watching support, and type-aware export
 - `src/lib/charx-export-compatibility.ts` — `.charx` RisuAI upload compatibility checks for card/module lorebook/regex mirrors and assets
 - `src/lib/data-serializer.ts` — normalized document serialization helpers
 - `src/lib/document-validation.ts` — document-shape validation
@@ -97,6 +98,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/sidebar-builder.ts` — sidebar tree construction
 - `src/lib/sidebar-actions.ts` — sidebar mutations/actions
 - `src/lib/sidebar-dnd.ts` — sidebar drag-and-drop behavior
+- `src/lib/right-manager-panel.ts` — RisuMari-style `.charx` lorebook and asset manager panels rendered as independent movable layout panels
 - `src/lib/sidebar-refs.ts` — sidebar reference integration
 - `src/lib/editor-activation.ts` — editor focus/activation state
 - `src/lib/editor-dirty-fields.ts` — dirty-field tracking
@@ -152,7 +154,7 @@ This map is for source navigation. It is not a full API reference.
 
 ## Assets and media
 
-- `src/lib/asset-manager.ts` — asset CRUD helpers
+- `src/lib/asset-manager.ts` — asset CRUD helpers, including batch delete IPC for manager-panel multi-select workflows
 - `src/lib/asset-runtime.ts` — asset runtime resolution
 - `src/lib/image-compressor.ts` — asset compression helpers
 - `src/lib/avatar.ts` / `src/lib/avatar-ui.ts` — avatar rendering/state

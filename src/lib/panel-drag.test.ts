@@ -6,8 +6,12 @@ function makeDeps(overrides: Partial<PanelDragDeps> = {}): PanelDragDeps {
   return {
     moveItems: vi.fn(),
     moveTerminal: vi.fn(),
+    moveLoreManager: vi.fn(),
+    moveAssetManager: vi.fn(),
     toggleSidebar: vi.fn(),
     toggleTerminal: vi.fn(),
+    toggleLoreManager: vi.fn(),
+    toggleAssetManager: vi.fn(),
     isPanelPoppedOut: vi.fn(() => false),
     popOutPanel: vi.fn(),
     dockPanel: vi.fn(),
@@ -42,5 +46,30 @@ describe('initPanelDragDrop', () => {
       '팝아웃 (분리)',
       '닫기',
     ]);
+  });
+
+  it('wires independent manager panel headers into drag/drop controls', () => {
+    document.body.innerHTML += `
+      <div id="app-body"></div>
+      <div id="lore-manager-panel">
+        <div class="right-manager-header"><span>로어북 관리자</span><div class="right-manager-actions"></div></div>
+      </div>
+      <div id="asset-manager-panel">
+        <div class="right-manager-header"><span>에셋 관리자</span><div class="right-manager-actions"></div></div>
+      </div>
+    `;
+    const deps = makeDeps();
+
+    initPanelDragDrop(deps);
+
+    const loreButtons = document.querySelectorAll('#lore-manager-panel .panel-collapse-btn');
+    const assetButtons = document.querySelectorAll('#asset-manager-panel .panel-collapse-btn');
+    expect(loreButtons).toHaveLength(1);
+    expect(assetButtons).toHaveLength(1);
+
+    loreButtons[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    assetButtons[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(deps.toggleLoreManager).toHaveBeenCalled();
+    expect(deps.toggleAssetManager).toHaveBeenCalled();
   });
 });

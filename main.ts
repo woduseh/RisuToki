@@ -40,6 +40,7 @@ interface ReferenceManifestStatus {
 
 interface MainStateStore {
   currentFilePath: string | null;
+  currentProjectPath: string | null;
   currentData: CharxData | null;
   currentFileBaseline: Record<string, unknown> | null;
   referenceFiles: ReferenceRecord[];
@@ -47,6 +48,8 @@ interface MainStateStore {
   terminalCwd: string | null;
   resetCurrentDocument(data: CharxData): void;
   setCurrentDocument(filePath: string, data: CharxData): void;
+  setCurrentProject(projectPath: string, data: CharxData, sourceFilePath?: string | null): void;
+  clearCurrentProject(): void;
   setCurrentFileBaseline(baseline: Record<string, unknown> | null): void;
   setReferenceFiles(files: ReferenceRecord[]): void;
   setReferenceManifestStatus(status: ReferenceManifestStatus | null): void;
@@ -137,6 +140,26 @@ const {
   mergePrimaryLuaIntoTriggerScripts: (triggerScripts: unknown, lua: unknown) => unknown[];
   normalizeTriggerScripts: (triggerScripts: unknown) => unknown[];
   stringifyTriggerScripts: (triggerScripts: unknown) => string;
+};
+
+const {
+  extractDocumentToProject,
+  getProjectFileType,
+  loadProjectData,
+  saveProjectData,
+  reassembleProjectDocument,
+  listProjectTree,
+  readProjectFile,
+  writeProjectFile,
+} = require('./src/lib/folder-workspace') as {
+  extractDocumentToProject: (sourcePath: string, projectPath: string) => { success: true; projectPath: string };
+  getProjectFileType: (projectPath: string) => 'charx' | 'risum' | 'risup';
+  loadProjectData: (projectPath: string) => CharxData;
+  saveProjectData: (projectPath: string, data: CharxData) => void;
+  reassembleProjectDocument: (projectPath: string, outputPath: string) => { success: true; outputPath: string };
+  listProjectTree: (projectPath: string) => unknown;
+  readProjectFile: (projectPath: string, relativePath: string) => string;
+  writeProjectFile: (projectPath: string, relativePath: string, content: string) => void;
 };
 
 const {
@@ -310,11 +333,15 @@ const { initAutosaveManager } = require('./src/lib/autosave-manager') as {
   }) => void;
 };
 
-const { resolveCloseWindowAction } = require('./src/lib/close-window-policy') as {
+const { resolveCloseWindowAction, shouldPromptForUnsavedClose } = require('./src/lib/close-window-policy') as {
   resolveCloseWindowAction: (input: { choice: number; saveResult?: SaveResult }) => {
     action: 'save' | 'close' | 'stay';
     errorMessage: string | null;
   };
+  shouldPromptForUnsavedClose: (input: {
+    hasCurrentDocument: boolean;
+    status: RendererSessionStatusResponse | null;
+  }) => boolean;
 };
 
 const { createSessionRecoveryManager } = require('./src/lib/session-recovery-manager') as {
@@ -363,6 +390,9 @@ const RENDERER_OPEN_TIMEOUT_MS = 60000;
 let rendererSessionStatusRequestId = 0;
 const rendererSessionStatusCallbacks: Record<number, (response: RendererSessionStatusResponse) => void> = {};
 const RENDERER_SESSION_STATUS_TIMEOUT_MS = 5000;
+let projectWatcher: fs.FSWatcher | null = null;
+let projectWatchTimer: NodeJS.Timeout | null = null;
+let suppressProjectWatchUntil = 0;
 
 // ---------------------------------------------------------------------------
 // Document open helper (shared by open-file and recovery)
@@ -377,6 +407,19 @@ function openDocumentByPath(filePath: string): CharxData {
 function getDocumentFileType(data: CharxData): 'charx' | 'risum' | 'risup' {
   if (data._fileType === 'risum' || data._fileType === 'risup') return data._fileType;
   return 'charx';
+}
+
+function getSaveDialogOptionsForFileType(fileType: 'charx' | 'risum' | 'risup'): {
+  filters: { name: string; extensions: string[] }[];
+  defaultExt: string;
+} {
+  if (fileType === 'risum') {
+    return { filters: [{ name: 'RisuAI Module', extensions: ['risum'] }], defaultExt: '.risum' };
+  }
+  if (fileType === 'risup') {
+    return { filters: [{ name: 'RisuAI Preset', extensions: ['risup'] }], defaultExt: '.risup' };
+  }
+  return { filters: [{ name: 'Character Card', extensions: ['charx'] }], defaultExt: '.charx' };
 }
 
 function captureFileBaseline(filePath: string): Record<string, unknown> | null {
@@ -405,6 +448,7 @@ function sameDocumentPath(a: string, b: string): boolean {
 }
 
 function activateOpenedDocument(filePath: string, nextData: CharxData): Record<string, unknown> {
+  stopProjectWatcher();
   mainState.setCurrentDocument(filePath, nextData);
   mainState.setCurrentFileBaseline(captureFileBaseline(filePath));
   invalidateAssetsMapCache();
@@ -420,6 +464,24 @@ function activateOpenedDocument(filePath: string, nextData: CharxData): Record<s
   return serializeForRenderer(mainState.currentData!);
 }
 
+function activateProjectDocument(
+  projectPath: string,
+  nextData: CharxData,
+  sourceFilePath?: string | null,
+): Record<string, unknown> {
+  mainState.setCurrentProject(projectPath, nextData, sourceFilePath || null);
+  mainState.setCurrentFileBaseline(null);
+  invalidateAssetsMapCache();
+  if (mcpApi) mcpApi.invalidateSectionCaches();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setTitle(`RisuToki - ${path.basename(projectPath)} [Project]`);
+  }
+  if (apiPort) writeCurrentMcpConfig();
+  broadcastSidebarDataChanged();
+  startProjectWatcher(projectPath);
+  return serializeForRenderer(mainState.currentData!);
+}
+
 function openDocumentIntoWorkspace(filePath: string): Record<string, unknown> {
   const normalizedPath = path.normalize(filePath);
   console.log('[main] Opening:', normalizedPath);
@@ -432,6 +494,46 @@ function openDocumentIntoWorkspace(filePath: string): Record<string, unknown> {
     getDocumentFileType(mainState.currentData!),
   );
   return serialized;
+}
+
+function stopProjectWatcher(): void {
+  if (projectWatchTimer) {
+    clearTimeout(projectWatchTimer);
+    projectWatchTimer = null;
+  }
+  if (projectWatcher) {
+    projectWatcher.close();
+    projectWatcher = null;
+  }
+}
+
+function startProjectWatcher(projectPath: string): void {
+  stopProjectWatcher();
+  try {
+    projectWatcher = fs.watch(projectPath, { recursive: true }, (_event, fileName) => {
+      if (Date.now() < suppressProjectWatchUntil) return;
+      const name = String(fileName || '');
+      if (!name || name.startsWith('.risutoki')) return;
+      if (projectWatchTimer) clearTimeout(projectWatchTimer);
+      projectWatchTimer = setTimeout(() => {
+        projectWatchTimer = null;
+        if (!mainState.currentProjectPath) return;
+        broadcastToAll('project-folder-changed', { path: mainState.currentProjectPath, fileName: name });
+      }, 250);
+    });
+  } catch (error) {
+    console.warn('[main] failed to watch project folder:', error);
+  }
+}
+
+function saveCurrentProject(updatedFields: Record<string, unknown>): SaveResult {
+  if (!mainState.currentData || !mainState.currentProjectPath) return { success: false, error: 'No project open' };
+  applyUpdates(mainState.currentData, updatedFields);
+  invalidateAssetsMapCache();
+  if (mcpApi) mcpApi.invalidateSectionCaches();
+  suppressProjectWatchUntil = Date.now() + 1000;
+  saveProjectData(mainState.currentProjectPath, mainState.currentData);
+  return { success: true, path: mainState.currentProjectPath };
 }
 
 function requestRendererOpenFile(request: RendererOpenFileRequest): Promise<RendererOpenFileResponse> {
@@ -836,34 +938,54 @@ function createWindow(): void {
     }
   }
 
+  function closeWindowForReal(): void {
+    isClosingForReal = true;
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+  }
+
   mainWindow.on('close', (e) => {
-    if (mainState.currentData && !isClosingForReal) {
-      e.preventDefault();
-      askRendererCloseConfirm()
-        .then(async (choice) => {
-          let decision = resolveCloseWindowAction({ choice });
-          if (decision.action === 'save') {
-            const saveResult = await saveDocumentBeforeClose();
-            if (!saveResult.success) {
-              console.error('[main] Failed to save before close:', saveResult.error);
-            }
-            decision = resolveCloseWindowAction({ choice, saveResult });
-          }
+    if (!mainState.currentData || isClosingForReal) return;
 
-          if (decision.errorMessage) {
-            dialog.showErrorBox('저장 실패', decision.errorMessage);
-          }
-
-          if (decision.action === 'close') {
-            isClosingForReal = true;
-            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
-          }
-        })
-        .catch((err) => {
-          console.error('[main] Close confirmation failed:', err);
-          dialog.showErrorBox('종료 확인 실패', '창 닫기 확인 중 오류가 발생해 창을 닫지 않았습니다.');
+    e.preventDefault();
+    Promise.resolve()
+      .then(async () => {
+        const status = await requestRendererSessionStatus().catch((err) => {
+          console.error('[main] Failed to read renderer dirty status before close:', err);
+          return null;
         });
-    }
+
+        if (
+          !shouldPromptForUnsavedClose({
+            hasCurrentDocument: !!mainState.currentData,
+            status,
+          })
+        ) {
+          closeWindowForReal();
+          return;
+        }
+
+        const choice = await askRendererCloseConfirm();
+        let decision = resolveCloseWindowAction({ choice });
+        if (decision.action === 'save') {
+          const saveResult = await saveDocumentBeforeClose();
+          if (!saveResult.success) {
+            console.error('[main] Failed to save before close:', saveResult.error);
+          }
+          decision = resolveCloseWindowAction({ choice, saveResult });
+        }
+
+        if (decision.errorMessage) {
+          dialog.showErrorBox('저장 실패', decision.errorMessage);
+        }
+
+        if (decision.action === 'close') {
+          closeWindowForReal();
+        }
+      })
+      .catch((err) => {
+        console.error('[main] Close confirmation failed:', err);
+        dialog.showErrorBox('종료 확인 실패', '창 닫기 확인 중 오류가 발생해 창을 닫지 않았습니다.');
+      });
   });
 }
 
@@ -1155,8 +1277,138 @@ ipcMain.handle('open-file-path', async (_event, filePath: string) => {
   }
 });
 
+async function handleExtractDocumentToProject() {
+  try {
+    const source = await dialog.showOpenDialog(mainWindow!, {
+      filters: [
+        { name: 'RisuAI Files', extensions: ['charx', 'risum', 'risup'] },
+        { name: 'Character Card', extensions: ['charx'] },
+        { name: 'RisuAI Module', extensions: ['risum'] },
+        { name: 'RisuAI Preset', extensions: ['risup'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (source.canceled || !source.filePaths[0]) return { success: false, canceled: true };
+    const sourceType = path.extname(source.filePaths[0]).toLowerCase().replace('.', '') || 'project';
+    const defaultName = `${path.basename(source.filePaths[0], path.extname(source.filePaths[0]))}_${sourceType}`;
+    const target = await dialog.showOpenDialog(mainWindow!, {
+      title: '프로젝트 폴더 선택',
+      defaultPath: path.join(path.dirname(source.filePaths[0]), defaultName),
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (target.canceled || !target.filePaths[0]) return { success: false, canceled: true };
+    extractDocumentToProject(source.filePaths[0], target.filePaths[0]);
+    const data = loadProjectData(target.filePaths[0]);
+    (data as unknown as Record<string, unknown>)._sourceFilePath = source.filePaths[0];
+    return {
+      success: true,
+      data: activateProjectDocument(target.filePaths[0], data, source.filePaths[0]),
+      projectPath: target.filePaths[0],
+    };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+ipcMain.handle('extract-document-to-project', handleExtractDocumentToProject);
+ipcMain.handle('extract-charx-to-project', handleExtractDocumentToProject);
+
+ipcMain.handle('open-project-folder', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: 'RisuToki 프로젝트 폴더 열기',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true };
+    const data = loadProjectData(result.filePaths[0]);
+    return {
+      success: true,
+      data: activateProjectDocument(result.filePaths[0], data),
+      projectPath: result.filePaths[0],
+    };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('reload-project-folder', async () => {
+  try {
+    if (!mainState.currentProjectPath) return { success: false, error: 'No project folder open' };
+    const data = loadProjectData(mainState.currentProjectPath);
+    return {
+      success: true,
+      data: activateProjectDocument(mainState.currentProjectPath, data, mainState.currentFilePath),
+      projectPath: mainState.currentProjectPath,
+    };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('save-project-folder', async (_event, updatedFields: Record<string, unknown>) => {
+  try {
+    return saveCurrentProject(updatedFields || {});
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+async function handleReassembleProjectDocument(_event: unknown, updatedFields?: Record<string, unknown>) {
+  if (!mainState.currentProjectPath) return { success: false, error: 'No project folder open' };
+  try {
+    if (updatedFields && mainState.currentData) saveCurrentProject(updatedFields);
+    const fileType = getProjectFileType(mainState.currentProjectPath);
+    const { filters, defaultExt } = getSaveDialogOptionsForFileType(fileType);
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      filters,
+      defaultPath:
+        mainState.currentFilePath ||
+        path.join(
+          path.dirname(mainState.currentProjectPath),
+          `${path.basename(mainState.currentProjectPath)}${defaultExt}`,
+        ),
+    });
+    if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' };
+    reassembleProjectDocument(mainState.currentProjectPath, result.filePath);
+    mainState.currentFilePath = result.filePath;
+    return { success: true, path: result.filePath };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+ipcMain.handle('reassemble-project-document', handleReassembleProjectDocument);
+ipcMain.handle('reassemble-project-charx', handleReassembleProjectDocument);
+
+ipcMain.handle('get-project-path', () => mainState.currentProjectPath);
+ipcMain.handle('get-project-tree', () =>
+  mainState.currentProjectPath ? listProjectTree(mainState.currentProjectPath) : null,
+);
+ipcMain.handle('read-project-file', (_event, relativePath: string) => {
+  if (!mainState.currentProjectPath) throw new Error('No project folder open');
+  return readProjectFile(mainState.currentProjectPath, relativePath);
+});
+ipcMain.handle('write-project-file', (_event, relativePath: string, content: string) => {
+  if (!mainState.currentProjectPath) throw new Error('No project folder open');
+  suppressProjectWatchUntil = Date.now() + 1000;
+  writeProjectFile(mainState.currentProjectPath, relativePath, content);
+  return true;
+});
+ipcMain.handle('watch-project-folder', () => {
+  if (!mainState.currentProjectPath) return false;
+  startProjectWatcher(mainState.currentProjectPath);
+  return true;
+});
+ipcMain.handle('unwatch-project-folder', () => {
+  stopProjectWatcher();
+  return true;
+});
+
 async function saveCurrentDocumentFromMcp(): Promise<SaveResult> {
   if (!mainState.currentData) return { success: false, error: 'No file open' };
+  if (mainState.currentProjectPath) {
+    return saveCurrentProject({});
+  }
   if (!mainState.currentFilePath) {
     return saveCurrentFileAs({});
   }
@@ -1181,6 +1433,26 @@ async function saveCurrentDocumentFromMcp(): Promise<SaveResult> {
 // Save to current path
 async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promise<SaveResult> {
   try {
+    if (mainState.currentProjectPath) {
+      applyUpdates(mainState.currentData!, updatedFields);
+      const fileType = getProjectFileType(mainState.currentProjectPath);
+      const { filters, defaultExt } = getSaveDialogOptionsForFileType(fileType);
+      const result = await dialog.showSaveDialog(mainWindow!, {
+        filters,
+        defaultPath:
+          mainState.currentFilePath ||
+          path.join(
+            path.dirname(mainState.currentProjectPath),
+            `${path.basename(mainState.currentProjectPath)}${defaultExt}`,
+          ),
+      });
+      if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' };
+      saveCurrentProject({});
+      reassembleProjectDocument(mainState.currentProjectPath, result.filePath);
+      mainState.currentFilePath = result.filePath;
+      return { success: true, path: result.filePath };
+    }
+
     applyUpdates(mainState.currentData!, updatedFields);
     invalidateAssetsMapCache();
     if (mcpApi) mcpApi.invalidateSectionCaches();
@@ -1224,6 +1496,12 @@ async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promis
 ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown>) => {
   if (!mainState.currentData) return { success: false, error: 'No file open' };
   try {
+    if (mainState.currentProjectPath) {
+      const result = saveCurrentProject(updatedFields);
+      if (recoveryManager) recoveryManager.clearAutosavePaths();
+      return result;
+    }
+
     if (!mainState.currentFilePath) {
       const result = await saveCurrentFileAs(updatedFields);
       syncRecoveryAfterExplicitSave(recoveryManager, result).catch((e) =>
@@ -1344,6 +1622,7 @@ ipcMain.handle('get-cwd', () => {
   const cwd = mainState.terminalCwd;
   return (
     (cwd && path.isAbsolute(cwd) ? cwd : null) ||
+    (mainState.currentProjectPath ? mainState.currentProjectPath : null) ||
     (mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : null) ||
     process.cwd()
   );
