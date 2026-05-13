@@ -35,6 +35,10 @@ export interface PromptEditorHandle {
   dispose(): void;
 }
 
+export interface PromptItemEditorHandle {
+  dispose(): void;
+}
+
 // ---------------------------------------------------------------------------
 // Shared DOM helpers
 // ---------------------------------------------------------------------------
@@ -189,7 +193,7 @@ const PROMPT_ADD_MENU_GROUPS: SupportedPromptItemType[][] = [
   ['authornote', 'chat', 'cache'],
 ];
 
-function promptTypeLabel(type: string | null | undefined): string {
+export function promptTypeLabel(type: string | null | undefined): string {
   return type && type in PROMPT_TYPE_LABELS ? PROMPT_TYPE_LABELS[type as SupportedPromptItemType] : (type ?? 'unknown');
 }
 
@@ -239,7 +243,7 @@ function normalizePromptSearchQuery(query: string): string {
   return query.trim().toLowerCase();
 }
 
-function promptItemSearchText(item: PromptItemModel): string {
+export function promptItemSearchText(item: PromptItemModel): string {
   const parts: string[] = [item.type ?? '', promptItemSummary(item)];
   if (item.supported) {
     for (const [key, value] of Object.entries(item)) {
@@ -258,7 +262,7 @@ function promptItemMatchesSearch(item: PromptItemModel, normalizedQuery: string)
   return normalizedQuery.length === 0 || promptItemSearchText(item).includes(normalizedQuery);
 }
 
-function promptItemSummary(item: PromptItemModel): string {
+export function promptItemSummary(item: PromptItemModel): string {
   if (!item.supported) {
     return `지원되지 않는 ${item.type ?? 'unknown'} 항목`;
   }
@@ -285,6 +289,110 @@ function promptItemSummary(item: PromptItemModel): string {
     case 'cache':
       return `${item.name || '(이름 없음)'} • depth ${item.depth} • ${optionLabel(CACHE_ROLE_OPTIONS, item.role)}`;
   }
+}
+
+export function createPromptItemEditor(
+  container: HTMLElement,
+  initialValue: string,
+  itemId: string,
+  onChange: ((value: string) => void) | null,
+): PromptItemEditorHandle {
+  const readonly = onChange === null;
+  let model = parsePromptTemplate(initialValue);
+
+  function notifyChange(): void {
+    if (onChange) onChange(serializePromptTemplate(model));
+  }
+
+  function updateItem(index: number, updater: (item: PromptItemModel) => PromptItemModel, rerender = false): void {
+    const newItems = [...model.items];
+    const item = newItems[index];
+    if (item === undefined) return;
+    newItems[index] = updater(item);
+    model = { ...model, items: newItems };
+    notifyChange();
+    if (rerender) render();
+  }
+
+  function render(): void {
+    container.innerHTML = '';
+    const root = document.createElement('div');
+    root.className = 'prompt-editor-shell prompt-item-detail-editor';
+
+    if (model.state === 'invalid') {
+      const errBox = document.createElement('div');
+      errBox.className = 'prompt-editor-message prompt-editor-error';
+      errBox.textContent = `JSON 파싱 오류: ${model.parseError ?? '알 수 없는 오류'}`;
+      root.appendChild(errBox);
+      container.appendChild(root);
+      return;
+    }
+
+    const index = model.items.findIndex((item) => item.id === itemId);
+    const item = index >= 0 ? model.items[index] : undefined;
+    if (!item) {
+      const empty = document.createElement('div');
+      empty.className = 'prompt-editor-message prompt-editor-empty-search';
+      empty.textContent = '프롬프트 블록을 찾을 수 없습니다. 전체 프롬프트 편집 화면을 다시 열어 확인해 주세요.';
+      root.appendChild(empty);
+      container.appendChild(root);
+      return;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'prompt-item prompt-editor-card prompt-item-detail-card';
+
+    const header = document.createElement('div');
+    header.className = 'prompt-item-header prompt-editor-card-header';
+
+    if (item.supported) {
+      const typeSelect = makeSelect(
+        PROMPT_TYPE_OPTIONS,
+        item.type,
+        readonly,
+        (value) => {
+          updateItem(
+            index,
+            (old) => {
+              const fresh = defaultPromptItem(value as SupportedPromptItemType);
+              if (!old.supported) return fresh;
+              return { ...fresh, id: old.id };
+            },
+            true,
+          );
+        },
+        'type',
+      );
+      typeSelect.classList.add('prompt-item-type');
+      header.appendChild(typeSelect);
+    } else {
+      const typeLabel = document.createElement('span');
+      typeLabel.className = 'prompt-item-type prompt-editor-type-label';
+      typeLabel.textContent = promptTypeLabel(item.type);
+      header.appendChild(typeLabel);
+    }
+
+    const summaryEl = document.createElement('div');
+    summaryEl.className = 'prompt-editor-summary';
+    summaryEl.textContent = promptItemSummary(item);
+    header.appendChild(summaryEl);
+    card.appendChild(header);
+
+    const fields = document.createElement('div');
+    fields.className = 'prompt-item-fields prompt-editor-card-body';
+    renderItemFields(fields, item, index, updateItem, readonly);
+    card.appendChild(fields);
+    root.appendChild(card);
+    container.appendChild(root);
+  }
+
+  render();
+
+  return {
+    dispose(): void {
+      container.innerHTML = '';
+    },
+  };
 }
 
 function promptItemCollapseKey(item: PromptItemModel, index: number): string {

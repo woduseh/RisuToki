@@ -1036,6 +1036,78 @@ function getLorebookEntryLabel(entry: Record<string, unknown> | undefined, index
   return comment || `entry_${index}`;
 }
 
+function stableIdentityHash(prefix: string, value: unknown): string {
+  return `${prefix}_${crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16)}`;
+}
+
+function getLorebookEntryStableId(
+  entry: Record<string, unknown>,
+  index: number,
+  lorebook: Record<string, unknown>[],
+): string {
+  if (entry.mode === 'folder') {
+    const folderUuid = getFolderUuid(entry);
+    if (folderUuid) return `folder_${folderUuid}`;
+  }
+  return stableIdentityHash('lb', {
+    mode: entry.mode || 'normal',
+    comment: entry.comment || '',
+    key: entry.key || '',
+    secondkey: entry.secondkey || '',
+    content: entry.content || '',
+    folder: resolveLorebookFolderRef(entry.folder, lorebook) || '',
+    indexHint: index,
+  });
+}
+
+function buildLorebookIdIndex(lorebook: Record<string, unknown>[]): Map<string, number[]> {
+  const byId = new Map<string, number[]>();
+  lorebook.forEach((entry, index) => {
+    const id = getLorebookEntryStableId(entry, index, lorebook);
+    byId.set(id, [...(byId.get(id) || []), index]);
+  });
+  return byId;
+}
+
+function resolveUniqueLorebookId(
+  res: http.ServerResponse,
+  lorebook: Record<string, unknown>[],
+  id: unknown,
+  action: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): number | null {
+  if (typeof id !== 'string' || !id) {
+    onError(res, 400, {
+      action,
+      message: 'id must be a non-empty string',
+      suggestion: 'list_lorebook에서 받은 id를 사용하거나 index 기반 도구로 fallback하세요.',
+      target: 'lorebook:id',
+    });
+    return null;
+  }
+  const matches = buildLorebookIdIndex(lorebook).get(id) || [];
+  if (matches.length === 0) {
+    onError(res, 404, {
+      action,
+      message: `Lorebook id not found: ${id}`,
+      suggestion: 'list_lorebook로 최신 id를 다시 확인한 뒤 재시도하세요.',
+      target: `lorebook:${id}`,
+    });
+    return null;
+  }
+  if (matches.length > 1) {
+    onError(res, 409, {
+      action,
+      message: `Lorebook id collision: ${id}`,
+      suggestion: 'id 충돌이 있으므로 index + expected_comment 기반 도구를 사용하세요.',
+      target: `lorebook:${id}`,
+      details: { id, indices: matches },
+    });
+    return null;
+  }
+  return matches[0];
+}
+
 function ensureExpectedStringMatch(
   res: http.ServerResponse,
   index: number,
@@ -1098,6 +1170,75 @@ function getRegexEntryComment(entry: Record<string, unknown> | undefined): strin
   return typeof entry?.comment === 'string' ? entry.comment : '';
 }
 
+function getRegexEntryPreview(entry: Record<string, unknown> | undefined): string {
+  if (!entry) return '';
+  const normalized = normalizeRegexEntryForResponse(entry);
+  return getSectionPreview(`${normalized.find || ''}\n${normalized.replace || ''}`);
+}
+
+function getRegexEntryHash(entry: Record<string, unknown> | undefined): string {
+  if (!entry) return hashSurface('');
+  const normalized = normalizeRegexEntryForResponse(entry);
+  return hashSurface({
+    comment: normalized.comment || '',
+    type: normalized.type || '',
+    find: normalized.find || '',
+    replace: normalized.replace || '',
+  });
+}
+
+function resolveUniqueRegexIdentity(
+  res: http.ServerResponse,
+  regexEntries: Record<string, unknown>[],
+  identity: unknown,
+  action: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): number | null {
+  const record = identity && typeof identity === 'object' ? (identity as Record<string, unknown>) : {};
+  const comment = typeof record.comment === 'string' ? record.comment : undefined;
+  const preview = typeof record.preview === 'string' ? record.preview : undefined;
+  const hash = typeof record.hash === 'string' ? record.hash : undefined;
+  if (!comment && !preview && !hash) {
+    onError(res, 400, {
+      action,
+      message: 'identity requires comment, preview, or hash',
+      suggestion:
+        'list_regex에서 comment를 확인하고, 중복 가능성이 있으면 read_regex의 preview/hash를 함께 사용하세요.',
+      target: 'regex:identity',
+    });
+    return null;
+  }
+  const matches = regexEntries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => {
+      if (comment !== undefined && getRegexEntryComment(entry) !== comment) return false;
+      if (preview !== undefined && getRegexEntryPreview(entry) !== preview) return false;
+      if (hash !== undefined && getRegexEntryHash(entry) !== hash) return false;
+      return true;
+    })
+    .map(({ index }) => index);
+  if (matches.length === 0) {
+    onError(res, 404, {
+      action,
+      message: 'Regex identity did not match any entry',
+      suggestion: 'list_regex/read_regex로 최신 identity를 다시 확인한 뒤 재시도하세요.',
+      target: 'regex:identity',
+    });
+    return null;
+  }
+  if (matches.length > 1) {
+    onError(res, 409, {
+      action,
+      message: 'Regex identity matched multiple entries',
+      suggestion: 'comment가 중복됩니다. hash를 함께 제공하거나 index + expected_comment 도구를 사용하세요.',
+      target: 'regex:identity',
+      details: { indices: matches },
+    });
+    return null;
+  }
+  return matches[0];
+}
+
 function ensureRegexExpectedComment(
   res: http.ServerResponse,
   index: number,
@@ -1146,6 +1287,60 @@ function ensureTriggerExpectedComment(
 
 function getGreetingPreview(content: string): string {
   return content.slice(0, 100) + (content.length > 100 ? '…' : '');
+}
+
+function getGreetingHash(content: string): string {
+  return hashSurface(normalizeLF(content));
+}
+
+function resolveUniqueGreetingIdentity(
+  res: http.ServerResponse,
+  arr: string[],
+  identity: unknown,
+  action: string,
+  target: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): number | null {
+  const record = identity && typeof identity === 'object' ? (identity as Record<string, unknown>) : {};
+  const preview = typeof record.preview === 'string' ? record.preview : undefined;
+  const hash = typeof record.hash === 'string' ? record.hash : undefined;
+  if (!preview && !hash) {
+    onError(res, 400, {
+      action,
+      message: 'identity requires preview or hash',
+      suggestion: 'list_greetings에서 preview/hash를 확인한 뒤 재시도하세요.',
+      target,
+    });
+    return null;
+  }
+  const matches = arr
+    .map((content, index) => ({ content, index }))
+    .filter(({ content }) => {
+      if (preview !== undefined && getGreetingPreview(content) !== preview) return false;
+      if (hash !== undefined && getGreetingHash(content) !== hash) return false;
+      return true;
+    })
+    .map(({ index }) => index);
+  if (matches.length === 0) {
+    onError(res, 404, {
+      action,
+      message: 'Greeting identity did not match any entry',
+      suggestion: 'list_greetings로 최신 preview/hash를 다시 확인한 뒤 재시도하세요.',
+      target,
+    });
+    return null;
+  }
+  if (matches.length > 1) {
+    onError(res, 409, {
+      action,
+      message: 'Greeting identity matched multiple entries',
+      suggestion: '동일 preview/hash가 여러 개입니다. index + expected_preview 도구를 사용하세요.',
+      target,
+      details: { indices: matches },
+    });
+    return null;
+  }
+  return matches[0];
 }
 
 function ensureGreetingExpectedPreview(
@@ -1256,6 +1451,48 @@ function getPromptItemType(item: PromptItemModel): string {
   return item.type ?? 'unknown';
 }
 
+function resolveUniqueRisupPromptId(
+  res: http.ServerResponse,
+  model: { items: PromptItemModel[] },
+  id: unknown,
+  action: string,
+  onError: (res: http.ServerResponse, status: number, info: McpErrorInfo) => void,
+): number | null {
+  if (typeof id !== 'string' || !id) {
+    onError(res, 400, {
+      action,
+      message: 'item_id must be a non-empty string',
+      suggestion: 'list_risup_prompt_items에서 받은 id를 사용하세요.',
+      target: 'risup:promptTemplate',
+    });
+    return null;
+  }
+  const matches = model.items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.supported && item.id === id)
+    .map(({ index }) => index);
+  if (matches.length === 0) {
+    onError(res, 404, {
+      action,
+      message: `Prompt item id not found: ${id}`,
+      suggestion: 'list_risup_prompt_items로 최신 id를 다시 확인한 뒤 재시도하세요.',
+      target: `risup:promptTemplate:${id}`,
+    });
+    return null;
+  }
+  if (matches.length > 1) {
+    onError(res, 409, {
+      action,
+      message: `Prompt item id collision: ${id}`,
+      suggestion: 'id 충돌이 있으므로 index + expected_type/expected_preview 도구를 사용하세요.',
+      target: `risup:promptTemplate:${id}`,
+      details: { id, indices: matches },
+    });
+    return null;
+  }
+  return matches[0];
+}
+
 function ensureRisupPromptExpectedIdentity(
   res: http.ServerResponse,
   index: number,
@@ -1363,6 +1600,7 @@ function buildLorebookListResponse(rawEntries: Record<string, unknown>[], url: U
     const normalized = normalizeLorebookEntryForResponse(entry, rawEntries);
     const responseEntry: Record<string, unknown> = {
       index,
+      id: getLorebookEntryStableId(entry, index, rawEntries),
       comment: normalized.comment || '',
       key: normalized.key || '',
       mode: normalized.mode || 'normal',
@@ -1436,6 +1674,8 @@ function buildRegexListResponse(regexEntries: Record<string, unknown>[]): Record
     type: entry.type || '',
     findSize: String(entry.find || entry.in || '').length,
     replaceSize: String(entry.replace || entry.out || '').length,
+    preview: getRegexEntryPreview(entry),
+    hash: getRegexEntryHash(entry),
   }));
   return { count: entries.length, entries };
 }
@@ -1488,6 +1728,7 @@ function buildGreetingListResponse(arr: string[], greetingType: string, url: URL
     index,
     contentSize: content.length,
     preview: getGreetingPreview(content),
+    hash: getGreetingHash(content),
   }));
 
   const filterParam = url.searchParams.get('filter');
@@ -5030,6 +5271,293 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // GET /lorebook/by-id/:id — read entry by calculated stable id
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'by-id' && parts[2] && !parts[3] && req.method === 'GET') {
+        const lorebook = (currentData.lorebook as Record<string, unknown>[]) || [];
+        const id = decodeURIComponent(parts[2]);
+        const idx = resolveUniqueLorebookId(res, lorebook, id, 'read lorebook by id', mcpError);
+        if (idx === null) return;
+        const lbEntry = normalizeLorebookEntryForResponse(lorebook[idx], lorebook);
+        return jsonResSuccess(
+          res,
+          { index: idx, id, entry: lbEntry },
+          {
+            toolName: 'read_lorebook_by_id',
+            summary: `Read lorebook entry id ${id} at [${idx}]`,
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lorebook/by-id/:id — write entry by calculated stable id
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'by-id' && parts[2] && !parts[3] && req.method === 'POST') {
+        const lorebook = (currentData.lorebook as Record<string, unknown>[]) || [];
+        const id = decodeURIComponent(parts[2]);
+        const idx = resolveUniqueLorebookId(res, lorebook, id, 'write lorebook by id', mcpError);
+        if (idx === null) return;
+        const body = await readJsonBody(req, res, `lorebook/by-id/${id}`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureLorebookExpectedComment(
+            res,
+            idx,
+            lorebook[idx],
+            body.expected_comment,
+            'write lorebook by id',
+            `lorebook:${id}`,
+            mcpError,
+          )
+        )
+          return;
+        const newData = body.data || body.entry;
+        if (!newData || typeof newData !== 'object' || Array.isArray(newData)) {
+          return mcpError(res, 400, {
+            action: 'write lorebook by id',
+            message: 'data must be an object',
+            suggestion: '{ "data": { ... } } 형식으로 전달하세요.',
+            target: `lorebook:${id}`,
+          });
+        }
+        const entryName = getLorebookEntryLabel(lorebook[idx], idx);
+        const allowed = await deps.askRendererConfirm(
+          'MCP 수정 요청',
+          `AI 어시스턴트가 로어북 항목 "${entryName}" (id ${id}, index ${idx})을(를) 수정하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'write lorebook by id',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: `lorebook:${id}`,
+          });
+        }
+        Object.assign(lorebook[idx], newData as Record<string, unknown>);
+        canonicalizeLorebookFolderRefs(lorebook);
+        logMcpMutation('write lorebook by id', `lorebook:${id}`, { index: idx });
+        deps.broadcastToAll('data-updated', 'lorebook', lorebook);
+        return jsonResSuccess(
+          res,
+          { success: true, id, index: idx, entry: normalizeLorebookEntryForResponse(lorebook[idx], lorebook) },
+          { toolName: 'write_lorebook_by_id', summary: `Updated lorebook id ${id}` },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lorebook/by-id/:id/delete — delete entry by calculated stable id
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'lorebook' &&
+        parts[1] === 'by-id' &&
+        parts[2] &&
+        parts[3] === 'delete' &&
+        req.method === 'POST'
+      ) {
+        const lorebook = (currentData.lorebook as Record<string, unknown>[]) || [];
+        const id = decodeURIComponent(parts[2]);
+        const idx = resolveUniqueLorebookId(res, lorebook, id, 'delete lorebook by id', mcpError);
+        if (idx === null) return;
+        const body = await readJsonBody(req, res, `lorebook/by-id/${id}/delete`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureLorebookExpectedComment(
+            res,
+            idx,
+            lorebook[idx],
+            body.expected_comment,
+            'delete lorebook by id',
+            `lorebook:${id}`,
+            mcpError,
+          )
+        )
+          return;
+        const entryName = getLorebookEntryLabel(lorebook[idx], idx);
+        const allowed = await deps.askRendererConfirm(
+          'MCP 삭제 요청',
+          `AI 어시스턴트가 로어북 항목 "${entryName}" (id ${id}, index ${idx})을(를) 삭제하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'delete lorebook by id',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: `lorebook:${id}`,
+          });
+        }
+        lorebook.splice(idx, 1);
+        canonicalizeLorebookFolderRefs(lorebook);
+        logMcpMutation('delete lorebook by id', `lorebook:${id}`, { index: idx });
+        deps.broadcastToAll('data-updated', 'lorebook', lorebook);
+        return jsonResSuccess(
+          res,
+          { success: true, deleted: id, index: idx },
+          { toolName: 'delete_lorebook_by_id', summary: `Deleted lorebook id ${id}` },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lorebook/batch-write-by-id — batch write entries by calculated stable ids
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'batch-write-by-id' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lorebook/batch-write-by-id', broadcastStatus);
+        if (!body) return;
+        const entries: Array<{ id: string; data: Record<string, unknown>; expected_comment?: unknown }> = body.entries;
+        if (!Array.isArray(entries) || entries.length === 0 || entries.length > 50) {
+          return mcpError(res, 400, {
+            action: 'batch write lorebook by id',
+            message: 'entries must be a non-empty array with at most 50 items',
+            suggestion: '{ "entries": [{ "id": "...", "data": { ... } }] } 형식으로 전달하세요.',
+            target: 'lorebook:batch-write-by-id',
+          });
+        }
+        const lorebook = (currentData.lorebook as Record<string, unknown>[]) || [];
+        const seen = new Set<string>();
+        const resolved: Array<{ id: string; index: number; data: Record<string, unknown> }> = [];
+        for (const [position, entry] of entries.entries()) {
+          if (
+            !entry ||
+            typeof entry.id !== 'string' ||
+            seen.has(entry.id) ||
+            !entry.data ||
+            typeof entry.data !== 'object' ||
+            Array.isArray(entry.data)
+          ) {
+            return mcpError(res, 400, {
+              action: 'batch write lorebook by id',
+              message: `Invalid batch entry at position ${position}`,
+              suggestion: '각 항목은 중복 없는 id와 data 객체를 포함해야 합니다.',
+              target: 'lorebook:batch-write-by-id',
+            });
+          }
+          seen.add(entry.id);
+          const index = resolveUniqueLorebookId(res, lorebook, entry.id, 'batch write lorebook by id', mcpError);
+          if (index === null) return;
+          if (
+            !ensureLorebookExpectedComment(
+              res,
+              index,
+              lorebook[index],
+              entry.expected_comment,
+              'batch write lorebook by id',
+              `lorebook:${entry.id}`,
+              mcpError,
+            )
+          )
+            return;
+          resolved.push({ id: entry.id, index, data: entry.data });
+        }
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 수정 요청',
+          `AI 어시스턴트가 로어북 항목 ${resolved.length}개를 id 기준으로 일괄 수정하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'batch write lorebook by id',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 일괄 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'lorebook:batch-write-by-id',
+          });
+        }
+        for (const entry of resolved) Object.assign(lorebook[entry.index], entry.data);
+        canonicalizeLorebookFolderRefs(lorebook);
+        logMcpMutation('batch write lorebook by id', 'lorebook:batch-write-by-id', { count: resolved.length });
+        deps.broadcastToAll('data-updated', 'lorebook', lorebook);
+        return jsonResSuccess(
+          res,
+          {
+            success: true,
+            count: resolved.length,
+            results: resolved.map((entry) => ({ id: entry.id, index: entry.index })),
+          },
+          {
+            toolName: 'write_lorebook_by_id_batch',
+            summary: `Batch updated ${resolved.length} lorebook entries by id`,
+            artifacts: { count: resolved.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lorebook/batch-delete-by-id — batch delete entries by calculated stable ids
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lorebook' && parts[1] === 'batch-delete-by-id' && req.method === 'POST') {
+        const body = await readJsonBody(req, res, 'lorebook/batch-delete-by-id', broadcastStatus);
+        if (!body) return;
+        const ids: string[] = body.ids;
+        if (!Array.isArray(ids) || ids.length === 0 || ids.length > 50) {
+          return mcpError(res, 400, {
+            action: 'batch delete lorebook by id',
+            message: 'ids must be a non-empty array with at most 50 items',
+            suggestion: '{ "ids": ["..."] } 형식으로 전달하세요.',
+            target: 'lorebook:batch-delete-by-id',
+          });
+        }
+        const lorebook = (currentData.lorebook as Record<string, unknown>[]) || [];
+        const seen = new Set<string>();
+        const expectedComments: unknown[] | undefined = Array.isArray(body.expected_comments)
+          ? body.expected_comments
+          : undefined;
+        const resolved: Array<{ id: string; index: number; comment: string }> = [];
+        for (let i = 0; i < ids.length; i++) {
+          const id = ids[i];
+          if (typeof id !== 'string' || !id || seen.has(id)) {
+            return mcpError(res, 400, {
+              action: 'batch delete lorebook by id',
+              message: `Invalid or duplicate id at position ${i}`,
+              suggestion: '중복 없는 ids 배열을 사용하세요.',
+              target: 'lorebook:batch-delete-by-id',
+            });
+          }
+          seen.add(id);
+          const index = resolveUniqueLorebookId(res, lorebook, id, 'batch delete lorebook by id', mcpError);
+          if (index === null) return;
+          if (
+            !ensureLorebookExpectedComment(
+              res,
+              index,
+              lorebook[index],
+              expectedComments?.[i],
+              'batch delete lorebook by id',
+              `lorebook:${id}`,
+              mcpError,
+            )
+          )
+            return;
+          resolved.push({ id, index, comment: getLorebookEntryComment(lorebook[index]) });
+        }
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 삭제 요청',
+          `AI 어시스턴트가 로어북 항목 ${resolved.length}개를 id 기준으로 일괄 삭제하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'batch delete lorebook by id',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 일괄 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'lorebook:batch-delete-by-id',
+          });
+        }
+        for (const entry of [...resolved].sort((a, b) => b.index - a.index)) lorebook.splice(entry.index, 1);
+        canonicalizeLorebookFolderRefs(lorebook);
+        logMcpMutation('batch delete lorebook by id', 'lorebook:batch-delete-by-id', { count: resolved.length });
+        deps.broadcastToAll('data-updated', 'lorebook', lorebook);
+        return jsonResSuccess(
+          res,
+          { success: true, count: resolved.length, deleted: ids, indices: resolved.map((entry) => entry.index) },
+          {
+            toolName: 'batch_delete_lorebook_by_id',
+            summary: `Batch deleted ${resolved.length} lorebook entries by id`,
+            artifacts: { count: resolved.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
       // POST /lorebook/batch-write — batch modify multiple entries
       // ----------------------------------------------------------------
       if (parts[0] === 'lorebook' && parts[1] === 'batch-write' && req.method === 'POST') {
@@ -6748,6 +7276,124 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // POST /regex/by-identity/read|write|delete — safe identity-based regex operations
+      // ----------------------------------------------------------------
+      if (parts[0] === 'regex' && parts[1] === 'by-identity' && parts[2] && !parts[3] && req.method === 'POST') {
+        const actionName = parts[2];
+        const body = await readJsonBody(req, res, `regex/by-identity/${actionName}`, broadcastStatus);
+        if (!body) return;
+        const regexEntries = (currentData.regex as Record<string, unknown>[]) || [];
+        const idx = resolveUniqueRegexIdentity(
+          res,
+          regexEntries,
+          body.identity,
+          `${actionName} regex by identity`,
+          mcpError,
+        );
+        if (idx === null) return;
+        if (actionName === 'read') {
+          const entry = normalizeRegexEntryForResponse(regexEntries[idx]);
+          return jsonResSuccess(
+            res,
+            {
+              index: idx,
+              entry,
+              preview: getRegexEntryPreview(regexEntries[idx]),
+              hash: getRegexEntryHash(regexEntries[idx]),
+            },
+            { toolName: 'read_regex_by_identity', summary: `Read regex entry [${idx}] by identity` },
+          );
+        }
+        if (actionName === 'write') {
+          if (
+            !ensureRegexExpectedComment(
+              res,
+              idx,
+              regexEntries[idx],
+              body.expected_comment,
+              'write regex by identity',
+              `regex:${idx}`,
+              mcpError,
+            )
+          )
+            return;
+          const data = body.data;
+          if (!data || typeof data !== 'object' || Array.isArray(data)) {
+            return mcpError(res, 400, {
+              action: 'write regex by identity',
+              message: 'data must be an object',
+              suggestion: '{ "identity": { ... }, "data": { ... } } 형식으로 전달하세요.',
+              target: `regex:${idx}`,
+            });
+          }
+          const entryName = getRegexEntryComment(regexEntries[idx]) || `regex_${idx}`;
+          const allowed = await deps.askRendererConfirm(
+            'MCP 수정 요청',
+            `AI 어시스턴트가 정규식 항목 "${entryName}" (index ${idx})을(를) identity 기준으로 수정하려 합니다.`,
+          );
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'write regex by identity',
+              message: '사용자가 거부했습니다',
+              rejected: true,
+              suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+              target: `regex:${idx}`,
+            });
+          }
+          Object.assign(regexEntries[idx], data as Record<string, unknown>);
+          logMcpMutation('write regex by identity', `regex:${idx}`, { idx });
+          deps.broadcastToAll('data-updated', 'regex', regexEntries);
+          return jsonResSuccess(
+            res,
+            { success: true, index: idx, entry: normalizeRegexEntryForResponse(regexEntries[idx]) },
+            { toolName: 'write_regex_by_identity', summary: `Updated regex [${idx}] by identity` },
+          );
+        }
+        if (actionName === 'delete') {
+          if (
+            !ensureRegexExpectedComment(
+              res,
+              idx,
+              regexEntries[idx],
+              body.expected_comment,
+              'delete regex by identity',
+              `regex:${idx}`,
+              mcpError,
+            )
+          )
+            return;
+          const entryName = getRegexEntryComment(regexEntries[idx]) || `regex_${idx}`;
+          const allowed = await deps.askRendererConfirm(
+            'MCP 삭제 요청',
+            `AI 어시스턴트가 정규식 항목 "${entryName}" (index ${idx})을(를) identity 기준으로 삭제하려 합니다.`,
+          );
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'delete regex by identity',
+              message: '사용자가 거부했습니다',
+              rejected: true,
+              suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+              target: `regex:${idx}`,
+            });
+          }
+          regexEntries.splice(idx, 1);
+          logMcpMutation('delete regex by identity', `regex:${idx}`, { idx });
+          deps.broadcastToAll('data-updated', 'regex', regexEntries);
+          return jsonResSuccess(
+            res,
+            { success: true, deleted: idx },
+            { toolName: 'delete_regex_by_identity', summary: `Deleted regex [${idx}] by identity` },
+          );
+        }
+        return mcpError(res, 400, {
+          action: 'regex by identity',
+          message: `Unsupported by-identity action: ${actionName}`,
+          suggestion: 'read, write, delete 중 하나를 사용하세요.',
+          target: 'regex:identity',
+        });
+      }
+
+      // ----------------------------------------------------------------
       // GET /regex/:idx
       // ----------------------------------------------------------------
       if (parts[0] === 'regex' && parts[1] && req.method === 'GET') {
@@ -7456,6 +8102,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             index: i,
             contentSize: g.length,
             preview: g.slice(0, 100) + (g.length > 100 ? '…' : ''),
+            hash: getGreetingHash(g),
           };
           return entry;
         });
@@ -7498,6 +8145,159 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             artifacts: { count: items.length, total: arr.length },
           },
         );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /greeting/:type/by-hash/read|write|delete — identity-based greeting operations
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'greeting' &&
+        parts[1] &&
+        parts[2] === 'by-hash' &&
+        parts[3] &&
+        !parts[4] &&
+        req.method === 'POST'
+      ) {
+        const greetingType = parts[1];
+        const actionName = parts[3];
+        const fieldName = getGreetingFieldName(greetingType);
+        if (!fieldName) {
+          return mcpError(res, 400, {
+            action: `${actionName} greeting by hash`,
+            message: `Unknown greeting type: "${greetingType}"`,
+            suggestion: 'type은 "alternate" 또는 "group"만 사용 가능합니다.',
+            target: `greeting:${greetingType}`,
+          });
+        }
+        const hiddenBlock = getHiddenFieldReadBlock(currentData, fieldName);
+        if (hiddenBlock) {
+          return mcpError(res, 400, {
+            action: `${actionName} greeting by hash`,
+            message: hiddenBlock.message,
+            suggestion: hiddenBlock.suggestion,
+            target: `greeting:${greetingType}`,
+          });
+        }
+        if (greetingType === 'group' && (actionName === 'write' || actionName === 'delete')) {
+          return mcpError(res, 400, {
+            action: `${actionName} greeting by hash`,
+            message: 'groupOnlyGreetings is read-only',
+            suggestion: 'alternate 인사말 또는 지원되는 현재 필드를 사용하세요.',
+            target: `greeting:${greetingType}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `greeting/${greetingType}/by-hash/${actionName}`, broadcastStatus);
+        if (!body) return;
+        const arr: string[] = currentData[fieldName] || [];
+        const idx = resolveUniqueGreetingIdentity(
+          res,
+          arr,
+          body.identity,
+          `${actionName} greeting by hash`,
+          `greeting:${greetingType}`,
+          mcpError,
+        );
+        if (idx === null) return;
+        if (actionName === 'read') {
+          return jsonResSuccess(
+            res,
+            {
+              type: greetingType,
+              index: idx,
+              content: arr[idx],
+              preview: getGreetingPreview(arr[idx] || ''),
+              hash: getGreetingHash(arr[idx] || ''),
+            },
+            { toolName: 'read_greeting_by_hash', summary: `Read ${greetingType} greeting [${idx}] by identity` },
+          );
+        }
+        if (actionName === 'write') {
+          if (
+            !ensureGreetingExpectedPreview(
+              res,
+              idx,
+              arr[idx],
+              body.expected_preview,
+              'write greeting by hash',
+              `greeting:${greetingType}:${idx}`,
+              mcpError,
+            )
+          )
+            return;
+          if (typeof body.content !== 'string') {
+            return mcpError(res, 400, {
+              action: 'write greeting by hash',
+              message: 'content must be a string',
+              suggestion: '{ "identity": { "hash": "..." }, "content": "..." } 형식으로 전달하세요.',
+              target: `greeting:${greetingType}:${idx}`,
+            });
+          }
+          const preview = body.content.slice(0, 60) + (body.content.length > 60 ? '…' : '');
+          const allowed = await deps.askRendererConfirm(
+            'MCP 수정 요청',
+            `AI 어시스턴트가 ${greetingType} 인사말 #${idx}을(를) identity 기준으로 수정하려 합니다: "${preview}"`,
+          );
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'write greeting by hash',
+              message: '사용자가 거부했습니다',
+              rejected: true,
+              suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+              target: `greeting:${greetingType}:${idx}`,
+            });
+          }
+          arr[idx] = body.content;
+          currentData[fieldName] = arr;
+          logMcpMutation('write greeting by hash', `greeting:${greetingType}:${idx}`, { idx });
+          deps.broadcastToAll('data-updated', fieldName, arr);
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, index: idx, preview: getGreetingPreview(arr[idx]) },
+            { toolName: 'write_greeting_by_hash', summary: `Updated ${greetingType} greeting [${idx}] by identity` },
+          );
+        }
+        if (actionName === 'delete') {
+          if (
+            !ensureGreetingExpectedPreview(
+              res,
+              idx,
+              arr[idx],
+              body.expected_preview,
+              'delete greeting by hash',
+              `greeting:${greetingType}:${idx}`,
+              mcpError,
+            )
+          )
+            return;
+          const allowed = await deps.askRendererConfirm(
+            'MCP 삭제 요청',
+            `AI 어시스턴트가 ${greetingType} 인사말 #${idx}을(를) identity 기준으로 삭제하려 합니다.`,
+          );
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'delete greeting by hash',
+              message: '사용자가 거부했습니다',
+              rejected: true,
+              suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+              target: `greeting:${greetingType}:${idx}`,
+            });
+          }
+          arr.splice(idx, 1);
+          currentData[fieldName] = arr;
+          logMcpMutation('delete greeting by hash', `greeting:${greetingType}:${idx}`, { idx });
+          deps.broadcastToAll('data-updated', fieldName, arr);
+          return jsonResSuccess(
+            res,
+            { success: true, type: greetingType, deleted: idx },
+            { toolName: 'delete_greeting_by_hash', summary: `Deleted ${greetingType} greeting [${idx}] by identity` },
+          );
+        }
+        return mcpError(res, 400, {
+          action: 'greeting by hash',
+          message: `Unsupported by-hash action: ${actionName}`,
+          suggestion: 'read, write, delete 중 하나를 사용하세요.',
+          target: `greeting:${greetingType}`,
+        });
       }
 
       // ----------------------------------------------------------------
@@ -11649,6 +12449,213 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // GET /risup/prompt-item-by-id/:id — read prompt item by stable id
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risup' && parts[1] === 'prompt-item-by-id' && parts[2] && !parts[3] && req.method === 'GET') {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'read risup prompt item by id',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const model = parsePromptTemplate(
+          typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '',
+        );
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'read risup prompt item by id',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const idx = resolveUniqueRisupPromptId(
+          res,
+          model,
+          decodeURIComponent(parts[2]),
+          'read risup prompt item by id',
+          mcpError,
+        );
+        if (idx === null) return;
+        const item = model.items[idx];
+        return jsonResSuccess(
+          res,
+          {
+            index: idx,
+            id: item.id ?? null,
+            item: item.rawValue,
+            supported: item.supported,
+            type: item.type,
+            preview: promptItemPreview(item),
+          },
+          {
+            toolName: 'read_risup_prompt_item_by_id',
+            summary: `Read prompt item id ${item.id} at [${idx}]`,
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item-by-id/:id — write prompt item by stable id
+      // ----------------------------------------------------------------
+      if (parts[0] === 'risup' && parts[1] === 'prompt-item-by-id' && parts[2] && !parts[3] && req.method === 'POST') {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'write risup prompt item by id',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const model = parsePromptTemplate(
+          typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '',
+        );
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'write risup prompt item by id',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const id = decodeURIComponent(parts[2]);
+        const idx = resolveUniqueRisupPromptId(res, model, id, 'write risup prompt item by id', mcpError);
+        if (idx === null) return;
+        const body = await readJsonBody(req, res, `risup/prompt-item-by-id/${id}`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureRisupPromptExpectedIdentity(
+            res,
+            idx,
+            model.items[idx],
+            body.expected_type,
+            body.expected_preview,
+            'write risup prompt item by id',
+            `risup:promptTemplate:${id}`,
+            mcpError,
+          )
+        )
+          return;
+        const validation = validatePromptItemInput(body.item);
+        if ('error' in validation) {
+          return mcpError(res, 400, {
+            action: 'write risup prompt item by id',
+            message: validation.error,
+            suggestion:
+              'Supported prompt item type이 필요합니다. unsupported/raw shape는 write_field("promptTemplate") fallback을 사용하세요.',
+            target: `risup:promptTemplate:${id}`,
+          });
+        }
+        if (validation.model.supported && !hasExplicitPromptItemId(body.item)) validation.model.id = id;
+        const allowed = await deps.askRendererConfirm(
+          'MCP 수정 요청',
+          `AI 어시스턴트가 promptTemplate 항목 id ${id} (index ${idx})을(를) 수정하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'write risup prompt item by id',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: `risup:promptTemplate:${id}`,
+          });
+        }
+        const newItems = model.items.map((item, i) => (i === idx ? validation.model : item));
+        const newText = serializePromptTemplate({ items: newItems });
+        currentData.promptTemplate = newText;
+        const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
+        logMcpMutation('write risup prompt item by id', `risup:promptTemplate:${id}`, {
+          index: idx,
+          type: validation.model.type,
+        });
+        deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+        return jsonResSuccess(
+          res,
+          { success: true, id, index: idx, orderWarnings },
+          { toolName: 'write_risup_prompt_item_by_id', summary: `Updated prompt item id ${id}` },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item-by-id/:id/delete — delete prompt item by stable id
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item-by-id' &&
+        parts[2] &&
+        parts[3] === 'delete' &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'delete risup prompt item by id',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const model = parsePromptTemplate(
+          typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '',
+        );
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'delete risup prompt item by id',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const id = decodeURIComponent(parts[2]);
+        const idx = resolveUniqueRisupPromptId(res, model, id, 'delete risup prompt item by id', mcpError);
+        if (idx === null) return;
+        const body = await readJsonBody(req, res, `risup/prompt-item-by-id/${id}/delete`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureRisupPromptExpectedIdentity(
+            res,
+            idx,
+            model.items[idx],
+            body.expected_type,
+            body.expected_preview,
+            'delete risup prompt item by id',
+            `risup:promptTemplate:${id}`,
+            mcpError,
+          )
+        )
+          return;
+        const deletedType = model.items[idx].type ?? 'unknown';
+        const allowed = await deps.askRendererConfirm(
+          'MCP 삭제 요청',
+          `AI 어시스턴트가 promptTemplate 항목 id ${id} (index ${idx}, type: ${deletedType})을(를) 삭제하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'delete risup prompt item by id',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: `risup:promptTemplate:${id}`,
+          });
+        }
+        const newItems = model.items.filter((_, i) => i !== idx);
+        const newText = serializePromptTemplate({ items: newItems });
+        currentData.promptTemplate = newText;
+        const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
+        logMcpMutation('delete risup prompt item by id', `risup:promptTemplate:${id}`, { index: idx, deletedType });
+        deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+        return jsonResSuccess(
+          res,
+          { success: true, deleted: id, index: idx, orderWarnings },
+          { toolName: 'delete_risup_prompt_item_by_id', summary: `Deleted prompt item id ${id}` },
+        );
+      }
+
+      // ----------------------------------------------------------------
       // POST /risup/prompt-item/add — add new prompt item
       // ----------------------------------------------------------------
       if (
@@ -11868,6 +12875,319 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           suggestion: '앱에서 일괄 추가 요청을 허용한 뒤 다시 시도하세요.',
           target: 'risup:promptTemplate',
         });
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item/batch-write-by-id — update multiple prompt items by id
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] === 'batch-write-by-id' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'batch write risup prompt items by id',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const model = parsePromptTemplate(
+          typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '',
+        );
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'batch write risup prompt items by id',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-item/batch-write-by-id', broadcastStatus);
+        if (!body) return;
+        const writes = body.writes;
+        if (!Array.isArray(writes) || writes.length === 0 || writes.length > MAX_RISUP_PROMPT_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch write risup prompt items by id',
+            message: `writes must be a non-empty array with at most ${MAX_RISUP_PROMPT_BATCH} items`,
+            suggestion: '{ "writes": [{ "item_id": "...", "item": { ... } }] } 형식으로 전달하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const seen = new Set<string>();
+        const resolved: Array<{ id: string; index: number; model: PromptItemModel }> = [];
+        for (const [batchIndex, write] of writes.entries()) {
+          const id = typeof write?.item_id === 'string' ? write.item_id : '';
+          if (!id || seen.has(id)) {
+            return mcpError(res, 400, {
+              action: 'batch write risup prompt items by id',
+              message: !id ? `Missing item_id at batch index ${batchIndex}` : `Duplicate item_id ${id}`,
+              suggestion: '중복 없는 item_id 배열을 사용하세요.',
+              target: 'risup:promptTemplate',
+            });
+          }
+          seen.add(id);
+          const index = resolveUniqueRisupPromptId(res, model, id, 'batch write risup prompt items by id', mcpError);
+          if (index === null) return;
+          if (
+            !ensureRisupPromptExpectedIdentity(
+              res,
+              index,
+              model.items[index],
+              write.expected_type,
+              write.expected_preview,
+              'batch write risup prompt items by id',
+              `risup:promptTemplate:${id}`,
+              mcpError,
+            )
+          )
+            return;
+          const validation = validatePromptItemInput(write.item);
+          if ('error' in validation) {
+            return mcpError(res, 400, {
+              action: 'batch write risup prompt items by id',
+              message: `Invalid item at batch index ${batchIndex}: ${validation.error}`,
+              suggestion: 'Supported prompt item type이 필요합니다.',
+              target: `risup:promptTemplate:${id}`,
+            });
+          }
+          if (validation.model.supported && !hasExplicitPromptItemId(write.item)) validation.model.id = id;
+          resolved.push({ id, index, model: validation.model });
+        }
+        const summary = resolved
+          .map((entry) => `  ${entry.id} -> [${entry.index}] type: ${entry.model.type ?? 'unknown'}`)
+          .join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 수정 요청',
+          `AI 어시스턴트가 promptTemplate 항목 ${resolved.length}개를 id 기준으로 일괄 수정하려 합니다.\n\n${summary.substring(0, 500)}${summary.length > 500 ? '\n...' : ''}`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'batch write risup prompt items by id',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 일괄 수정 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const writeMap = new Map(resolved.map((entry) => [entry.index, entry.model]));
+        const newItems = model.items.map((item, index) => writeMap.get(index) ?? item);
+        const newText = serializePromptTemplate({ items: newItems });
+        currentData.promptTemplate = newText;
+        const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
+        logMcpMutation('batch write risup prompt items by id', 'risup:promptTemplate', { count: resolved.length });
+        deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+        return jsonResSuccess(
+          res,
+          {
+            success: true,
+            count: resolved.length,
+            orderWarnings,
+            results: resolved.map((entry) => ({ id: entry.id, index: entry.index, type: entry.model.type ?? null })),
+          },
+          {
+            toolName: 'write_risup_prompt_item_by_id_batch',
+            summary: `Batch updated ${resolved.length} prompt items by id`,
+            artifacts: { count: resolved.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item/batch-delete-by-id — delete multiple prompt items by id
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] === 'batch-delete-by-id' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'batch delete risup prompt items by id',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const model = parsePromptTemplate(
+          typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '',
+        );
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'batch delete risup prompt items by id',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-item/batch-delete-by-id', broadcastStatus);
+        if (!body) return;
+        const itemIds: string[] = body.item_ids;
+        if (!Array.isArray(itemIds) || itemIds.length === 0 || itemIds.length > MAX_RISUP_PROMPT_BATCH) {
+          return mcpError(res, 400, {
+            action: 'batch delete risup prompt items by id',
+            message: `item_ids must be a non-empty array with at most ${MAX_RISUP_PROMPT_BATCH} items`,
+            suggestion: '{ "item_ids": ["..."] } 형식으로 전달하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const seen = new Set<string>();
+        const resolved: Array<{ id: string; index: number; type: string }> = [];
+        for (let i = 0; i < itemIds.length; i++) {
+          const id = itemIds[i];
+          if (typeof id !== 'string' || !id || seen.has(id)) {
+            return mcpError(res, 400, {
+              action: 'batch delete risup prompt items by id',
+              message: !id ? `Invalid item id at position ${i}` : `Duplicate item_id ${id}`,
+              suggestion: '중복 없는 item_ids 배열을 사용하세요.',
+              target: 'risup:promptTemplate',
+            });
+          }
+          seen.add(id);
+          const index = resolveUniqueRisupPromptId(res, model, id, 'batch delete risup prompt items by id', mcpError);
+          if (index === null) return;
+          const expectedTypes: string[] | undefined = body.expected_types;
+          const expectedPreviews: string[] | undefined = body.expected_previews;
+          if (
+            !ensureRisupPromptExpectedIdentity(
+              res,
+              index,
+              model.items[index],
+              expectedTypes?.[i],
+              expectedPreviews?.[i],
+              'batch delete risup prompt items by id',
+              `risup:promptTemplate:${id}`,
+              mcpError,
+            )
+          )
+            return;
+          resolved.push({ id, index, type: model.items[index].type ?? 'unknown' });
+        }
+        const summary = resolved.map((entry) => `  ${entry.id} -> [${entry.index}] type: ${entry.type}`).join('\n');
+        const allowed = await deps.askRendererConfirm(
+          'MCP 일괄 삭제 요청',
+          `AI 어시스턴트가 promptTemplate 항목 ${resolved.length}개를 id 기준으로 일괄 삭제하려 합니다.\n\n${summary.substring(0, 500)}${summary.length > 500 ? '\n...' : ''}`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'batch delete risup prompt items by id',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 일괄 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const deleteSet = new Set(resolved.map((entry) => entry.index));
+        const newItems = model.items.filter((_, index) => !deleteSet.has(index));
+        const newText = serializePromptTemplate({ items: newItems });
+        currentData.promptTemplate = newText;
+        const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
+        logMcpMutation('batch delete risup prompt items by id', 'risup:promptTemplate', { count: resolved.length });
+        deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+        return jsonResSuccess(
+          res,
+          {
+            success: true,
+            count: resolved.length,
+            deleted: itemIds,
+            indices: resolved.map((entry) => entry.index),
+            orderWarnings,
+          },
+          {
+            toolName: 'batch_delete_risup_prompt_items_by_id',
+            summary: `Batch deleted ${resolved.length} prompt items by id`,
+            artifacts: { count: resolved.length },
+          },
+        );
+      }
+
+      // ----------------------------------------------------------------
+      // POST /risup/prompt-item/reorder-by-id — reorder prompt items by full id permutation
+      // ----------------------------------------------------------------
+      if (
+        parts[0] === 'risup' &&
+        parts[1] === 'prompt-item' &&
+        parts[2] === 'reorder-by-id' &&
+        !parts[3] &&
+        req.method === 'POST'
+      ) {
+        const fileType = currentData._fileType || 'charx';
+        if (fileType !== 'risup') {
+          return mcpError(res, 400, {
+            action: 'reorder risup prompt items by id',
+            message: 'Current file is not a risup preset.',
+            suggestion: 'Open a .risup file first.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const model = parsePromptTemplate(
+          typeof currentData.promptTemplate === 'string' ? currentData.promptTemplate : '',
+        );
+        if (model.state === 'invalid') {
+          return mcpError(res, 400, {
+            action: 'reorder risup prompt items by id',
+            message: `Invalid promptTemplate: ${model.parseError}`,
+            suggestion: 'write_field("promptTemplate")로 수정하거나 초기화하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const body = await readJsonBody(req, res, 'risup/prompt-item/reorder-by-id', broadcastStatus);
+        if (!body) return;
+        const orderIds: string[] = body.order_ids;
+        const currentIds = model.items.map((item) => (item.supported ? item.id : undefined));
+        if (!Array.isArray(orderIds) || orderIds.length !== model.items.length || currentIds.some((id) => !id)) {
+          return mcpError(res, 400, {
+            action: 'reorder risup prompt items by id',
+            message: `order_ids must include every current supported prompt item id exactly once (${model.items.length} items)`,
+            suggestion: 'unsupported/raw prompt item이 있으면 기존 reorder_risup_prompt_items index 도구를 사용하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const expectedIds = [...(currentIds as string[])].sort();
+        const actualIds = [...orderIds].sort();
+        if (JSON.stringify(expectedIds) !== JSON.stringify(actualIds)) {
+          return mcpError(res, 400, {
+            action: 'reorder risup prompt items by id',
+            message: 'order_ids must be a full permutation of current prompt item ids',
+            suggestion: 'list_risup_prompt_items로 최신 id 순서를 확인하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const idToItem = new Map(model.items.map((item) => [item.id, item] as const));
+        const newItems = orderIds.map((id) => idToItem.get(id)!);
+        const allowed = await deps.askRendererConfirm(
+          'MCP 순서 변경 요청',
+          `AI 어시스턴트가 promptTemplate 항목 ${model.items.length}개의 순서를 id 기준으로 변경하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'reorder risup prompt items by id',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 순서 변경 요청을 허용한 뒤 다시 시도하세요.',
+            target: 'risup:promptTemplate',
+          });
+        }
+        const newText = serializePromptTemplate({ items: newItems });
+        currentData.promptTemplate = newText;
+        const orderWarnings = collectRisupFormatingOrderWarningsForPrompt(currentData, parsePromptTemplate(newText));
+        logMcpMutation('reorder risup prompt items by id', 'risup:promptTemplate', { count: model.items.length });
+        deps.broadcastToAll('data-updated', 'promptTemplate', newText);
+        return jsonResSuccess(
+          res,
+          { success: true, order_ids: orderIds, orderWarnings },
+          {
+            toolName: 'reorder_risup_prompt_items_by_id',
+            summary: `Reordered ${model.items.length} prompt items by id`,
+          },
+        );
       }
 
       // ----------------------------------------------------------------

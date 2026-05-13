@@ -48,6 +48,7 @@ function handleAction(action: string) {
 
     <div id="lore-manager-panel" class="manager-panel"></div>
     <div id="asset-manager-panel" class="manager-panel"></div>
+    <div id="prompt-manager-panel" class="manager-panel"></div>
     <button
       id="lore-manager-expand"
       type="button"
@@ -67,6 +68,17 @@ function handleAction(action: string) {
       aria-label="에셋 관리자 열기"
       style="display: none"
       @click="handleAction('toggle-asset-manager')"
+    >
+      ▶
+    </button>
+    <button
+      id="prompt-manager-expand"
+      type="button"
+      class="manager-expand"
+      title="프롬프트 관리자 열기"
+      aria-label="프롬프트 관리자 열기"
+      style="display: none"
+      @click="handleAction('toggle-prompt-manager')"
     >
       ▶
     </button>

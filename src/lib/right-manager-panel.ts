@@ -88,6 +88,48 @@ function entryLabel(entry: LorebookEntryLike, index: number): string {
   return String(entry.comment || entry.key || `entry_${index}`);
 }
 
+interface FocusSnapshot {
+  selector: string;
+  start: number | null;
+  end: number | null;
+}
+
+function captureFocus(root: HTMLElement): FocusSnapshot | null {
+  const active = document.activeElement as HTMLInputElement | HTMLSelectElement | null;
+  if (!active || !root.contains(active)) return null;
+  const key = active.getAttribute('data-manager-focus-key');
+  if (!key) return null;
+  return {
+    selector: `[data-manager-focus-key="${CSS.escape(key)}"]`,
+    start: 'selectionStart' in active ? active.selectionStart : null,
+    end: 'selectionEnd' in active ? active.selectionEnd : null,
+  };
+}
+
+function restoreFocus(root: HTMLElement, snapshot: FocusSnapshot | null): void {
+  if (!snapshot) return;
+  queueMicrotask(() => {
+    const target = root.querySelector<HTMLInputElement | HTMLSelectElement>(snapshot.selector);
+    if (!target) return;
+    target.focus();
+    if (
+      snapshot.start !== null &&
+      snapshot.end !== null &&
+      'setSelectionRange' in target &&
+      target instanceof HTMLInputElement
+    ) {
+      target.setSelectionRange(snapshot.start, snapshot.end);
+    }
+  });
+}
+
+function renderRightManagerPanelWithFocus(rootId: string): void {
+  const root = document.getElementById(rootId);
+  const focus = root ? captureFocus(root) : null;
+  renderRightManagerPanel();
+  if (root) restoreFocus(root, focus);
+}
+
 function normalizeText(value: unknown): string {
   return String(value ?? '').toLowerCase();
 }
@@ -183,15 +225,16 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
 
   const toolbar = el('div', 'manager-toolbar');
   const query = el('input', 'manager-search') as HTMLInputElement;
+  query.setAttribute('data-manager-focus-key', 'lore-search');
   query.placeholder = '검색...';
   query.value = state.loreQuery;
   query.addEventListener('input', () => {
     state.loreQuery = query.value;
-    renderRightManagerPanel();
+    renderRightManagerPanelWithFocus('lore-manager-panel');
   });
   toolbar.appendChild(query);
   toolbar.appendChild(makeToolbarButton('+', '새 로어북 항목', () => deps.addLorebookEntry()));
-  toolbar.appendChild(makeToolbarButton('□', '새 폴더', () => deps.addLorebookFolder()));
+  toolbar.appendChild(makeToolbarButton('+폴더', '새 폴더', () => deps.addLorebookFolder()));
   body.appendChild(toolbar);
 
   const filterBar = el('div', 'manager-filter-row');
@@ -281,8 +324,11 @@ function createLoreRow(deps: RightManagerPanelDeps, entry: LorebookEntryLike, in
 
   const main = el('div', 'manager-row-main');
   main.appendChild(el('div', 'manager-row-title', entryLabel(entry, index)));
+  const contentPreview = String(entry.content || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   const keys = [entry.key, entry.secondkey].filter(Boolean).join(' / ');
-  main.appendChild(el('div', 'manager-row-subtitle', keys || String(entry.content || '').slice(0, 52)));
+  main.appendChild(el('div', 'manager-row-subtitle', contentPreview.slice(0, 72) || keys));
 
   const tags = el('div', 'manager-row-tags');
   if (entry.alwaysActive || entry.constant || entry.forceActivation)
@@ -326,11 +372,12 @@ async function promptMoveLoreSelection(deps: RightManagerPanelDeps): Promise<voi
 async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement): Promise<void> {
   const toolbar = el('div', 'manager-toolbar');
   const query = el('input', 'manager-search') as HTMLInputElement;
+  query.setAttribute('data-manager-focus-key', 'asset-search');
   query.placeholder = '검색...';
   query.value = state.assetQuery;
   query.addEventListener('input', () => {
     state.assetQuery = query.value;
-    renderRightManagerPanel();
+    renderRightManagerPanelWithFocus('asset-manager-panel');
   });
   toolbar.appendChild(query);
   toolbar.appendChild(makeToolbarButton('+', '추가 에셋 추가', () => deps.addAssetFromDialog('other')));

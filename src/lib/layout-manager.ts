@@ -7,11 +7,13 @@ export interface LayoutState {
   terminalPos: LayoutSlot;
   loreManagerPos: LayoutSlot;
   assetManagerPos: LayoutSlot;
+  promptManagerPos: LayoutSlot;
   itemsVisible: boolean;
   terminalVisible: boolean;
   avatarVisible: boolean;
   loreManagerVisible: boolean;
   assetManagerVisible: boolean;
+  promptManagerVisible: boolean;
   slotSizes: Record<LayoutSlot, number>;
   _refsPosBefore?: PanelPosition;
 }
@@ -25,8 +27,10 @@ interface LayoutDomCache {
   refsSection: HTMLElement | null;
   loreManagerPanel: HTMLElement | null;
   assetManagerPanel: HTMLElement | null;
+  promptManagerPanel: HTMLElement | null;
   loreManagerExpand: HTMLElement | null;
   assetManagerExpand: HTMLElement | null;
+  promptManagerExpand: HTMLElement | null;
   sidebar: HTMLElement | null;
   sidebarExpand: HTMLElement | null;
   sidebarRefs: HTMLElement | null;
@@ -39,6 +43,7 @@ interface LayoutDomCache {
 interface ManagerAvailability {
   lore: boolean;
   asset: boolean;
+  prompt?: boolean;
 }
 
 export const SLOT_IDS: LayoutSlot[] = ['far-left', 'left', 'right', 'far-right', 'top', 'bottom'];
@@ -84,11 +89,13 @@ export function createDefaultLayoutState(): LayoutState {
     terminalPos: 'bottom',
     loreManagerPos: 'right',
     assetManagerPos: 'far-right',
+    promptManagerPos: 'right',
     itemsVisible: true,
     terminalVisible: true,
     avatarVisible: true,
     loreManagerVisible: true,
     assetManagerVisible: true,
+    promptManagerVisible: true,
     slotSizes: { ...DEFAULT_SLOT_SIZES },
   };
 }
@@ -109,11 +116,13 @@ export function applyStoredLayoutState(
   if (migrated.terminalPos) target.terminalPos = migrated.terminalPos;
   if (migrated.loreManagerPos) target.loreManagerPos = migrated.loreManagerPos;
   if (migrated.assetManagerPos) target.assetManagerPos = migrated.assetManagerPos;
+  if (migrated.promptManagerPos) target.promptManagerPos = migrated.promptManagerPos;
   if (migrated.itemsVisible !== undefined) target.itemsVisible = migrated.itemsVisible;
   if (migrated.terminalVisible !== undefined) target.terminalVisible = migrated.terminalVisible;
   if (migrated.avatarVisible !== undefined) target.avatarVisible = migrated.avatarVisible;
   if (migrated.loreManagerVisible !== undefined) target.loreManagerVisible = migrated.loreManagerVisible;
   if (migrated.assetManagerVisible !== undefined) target.assetManagerVisible = migrated.assetManagerVisible;
+  if (migrated.promptManagerVisible !== undefined) target.promptManagerVisible = migrated.promptManagerVisible;
   if (migrated.slotSizes) {
     target.slotSizes = { ...target.slotSizes, ...migrated.slotSizes };
   }
@@ -142,8 +151,10 @@ export function createLayoutManager({
     refsSection: null,
     loreManagerPanel: null,
     assetManagerPanel: null,
+    promptManagerPanel: null,
     loreManagerExpand: null,
     assetManagerExpand: null,
+    promptManagerExpand: null,
     sidebar: null,
     sidebarExpand: null,
     sidebarRefs: null,
@@ -168,7 +179,7 @@ export function createLayoutManager({
   };
 
   let refitTimer: ReturnType<typeof setTimeout> | null = null;
-  let managerAvailability: ManagerAvailability = { lore: false, asset: false };
+  let managerAvailability: ManagerAvailability = { lore: false, asset: false, prompt: false };
   const resizerHandlers: Partial<Record<LayoutSlot, (event: MouseEvent) => void>> = {};
   const resizerKeyHandlers: Partial<Record<LayoutSlot, (event: KeyboardEvent) => void>> = {};
 
@@ -180,8 +191,10 @@ export function createLayoutManager({
     elements.refsSection = documentRef.getElementById('sidebar-refs-section');
     elements.loreManagerPanel = documentRef.getElementById('lore-manager-panel');
     elements.assetManagerPanel = documentRef.getElementById('asset-manager-panel');
+    elements.promptManagerPanel = documentRef.getElementById('prompt-manager-panel');
     elements.loreManagerExpand = documentRef.getElementById('lore-manager-expand');
     elements.assetManagerExpand = documentRef.getElementById('asset-manager-expand');
+    elements.promptManagerExpand = documentRef.getElementById('prompt-manager-expand');
     elements.splitResizer = documentRef.getElementById('sidebar-split-resizer');
     elements.refsPanelContent = documentRef.getElementById('refs-panel-content');
     elements.avatar = documentRef.getElementById('toki-avatar');
@@ -315,8 +328,10 @@ export function createLayoutManager({
       termBtn,
       loreManagerPanel,
       assetManagerPanel,
+      promptManagerPanel,
       loreManagerExpand,
       assetManagerExpand,
+      promptManagerExpand,
     } = elements;
 
     if (!sidebar || !refsPanel || !bottomArea || !refsSection || !splitResizer || !refsPanelContent) {
@@ -408,6 +423,15 @@ export function createLayoutManager({
       }
     }
 
+    if (promptManagerPanel) {
+      if (managerAvailability.prompt && state.promptManagerVisible) {
+        promptManagerPanel.style.display = 'flex';
+        slotContents[state.promptManagerPos].push(promptManagerPanel);
+      } else {
+        promptManagerPanel.style.display = 'none';
+      }
+    }
+
     if (avatar) avatar.style.display = state.avatarVisible ? '' : 'none';
     if (termBtn) termBtn.textContent = state.terminalVisible ? '━' : '▲';
 
@@ -450,6 +474,12 @@ export function createLayoutManager({
       visible: state.assetManagerVisible,
       position: state.assetManagerPos,
       label: '에셋 관리자',
+    });
+    updateManagerExpandButton(promptManagerExpand, {
+      available: !!managerAvailability.prompt,
+      visible: state.promptManagerVisible,
+      position: state.promptManagerPos,
+      label: '프롬프트 관리자',
     });
 
     initSlotResizers();
@@ -550,6 +580,20 @@ export function createLayoutManager({
     onStatus(`에셋 관리자 → ${POS_LABELS[position] || position}`);
   }
 
+  function movePromptManager(position: LayoutSlot | 'hide'): void {
+    if (position === 'hide') {
+      state.promptManagerVisible = false;
+      rebuild();
+      onStatus('프롬프트 관리자 숨김');
+      return;
+    }
+    if (!managerAvailability.prompt) return;
+    state.promptManagerPos = position;
+    state.promptManagerVisible = true;
+    rebuild();
+    onStatus(`프롬프트 관리자 → ${POS_LABELS[position] || position}`);
+  }
+
   function moveRefs(position: PanelPosition): void {
     state.refsPos = position;
     rebuild();
@@ -563,11 +607,13 @@ export function createLayoutManager({
     state.refsPos = nextState.refsPos;
     state.loreManagerPos = nextState.loreManagerPos;
     state.assetManagerPos = nextState.assetManagerPos;
+    state.promptManagerPos = nextState.promptManagerPos;
     state.itemsVisible = nextState.itemsVisible;
     state.terminalVisible = nextState.terminalVisible;
     state.avatarVisible = nextState.avatarVisible;
     state.loreManagerVisible = nextState.loreManagerVisible;
     state.assetManagerVisible = nextState.assetManagerVisible;
+    state.promptManagerVisible = nextState.promptManagerVisible;
     state.slotSizes = { ...nextState.slotSizes };
     delete state._refsPosBefore;
     rebuild();
@@ -578,6 +624,7 @@ export function createLayoutManager({
     moveItems,
     moveLoreManager,
     moveAssetManager,
+    movePromptManager,
     moveRefs,
     moveTerminal,
     rebuild,
@@ -596,6 +643,11 @@ export function createLayoutManager({
     toggleAssetManager: () => {
       if (!managerAvailability.asset) return;
       state.assetManagerVisible = !state.assetManagerVisible;
+      rebuild();
+    },
+    togglePromptManager: () => {
+      if (!managerAvailability.prompt) return;
+      state.promptManagerVisible = !state.promptManagerVisible;
       rebuild();
     },
     toggleSidebar,

@@ -11,11 +11,13 @@ function createLayoutDom() {
     <div id="refs-panel-content"></div>
     <div id="lore-manager-panel"></div>
     <div id="asset-manager-panel"></div>
+    <div id="prompt-manager-panel"></div>
     <div id="toki-avatar"></div>
     <button id="btn-terminal-toggle"></button>
     <button id="sidebar-expand"></button>
     <button id="lore-manager-expand"></button>
     <button id="asset-manager-expand"></button>
+    <button id="prompt-manager-expand"></button>
     <div id="sidebar-refs"></div>
     <div id="slot-far-left"></div>
     <div id="slot-left"></div>
@@ -49,7 +51,7 @@ describe('layout manager refs sync', () => {
       onStatus: vi.fn(),
     });
 
-    layoutManager.setManagerAvailability({ lore: true, asset: true });
+    layoutManager.setManagerAvailability({ lore: true, asset: true, prompt: true });
     layoutManager.rebuild();
 
     const sidebarRefs = document.getElementById('sidebar-refs');
@@ -113,7 +115,7 @@ describe('layout manager refs sync', () => {
       onRefit: vi.fn(),
       onStatus: vi.fn(),
     });
-    layoutManager.setManagerAvailability({ lore: true, asset: true });
+    layoutManager.setManagerAvailability({ lore: true, asset: true, prompt: true });
 
     layoutManager.rebuild();
     vi.runOnlyPendingTimers();
@@ -122,6 +124,7 @@ describe('layout manager refs sync', () => {
     expect(document.getElementById('slot-far-right')?.contains(document.getElementById('asset-manager-panel'))).toBe(
       true,
     );
+    expect(document.getElementById('slot-right')?.contains(document.getElementById('prompt-manager-panel'))).toBe(true);
 
     layoutManager.moveLoreManager('bottom');
     expect(state.loreManagerPos).toBe('bottom');
@@ -133,6 +136,10 @@ describe('layout manager refs sync', () => {
       false,
     );
     expect(document.getElementById('asset-manager-expand')?.style.display).toBe('block');
+
+    layoutManager.movePromptManager('top');
+    expect(state.promptManagerPos).toBe('top');
+    expect(document.getElementById('slot-top')?.contains(document.getElementById('prompt-manager-panel'))).toBe(true);
     vi.useRealTimers();
   });
 
@@ -153,8 +160,10 @@ describe('layout manager refs sync', () => {
 
     expect(document.getElementById('lore-manager-panel')?.style.display).toBe('none');
     expect(document.getElementById('asset-manager-panel')?.style.display).toBe('none');
+    expect(document.getElementById('prompt-manager-panel')?.style.display).toBe('none');
     expect(document.getElementById('lore-manager-expand')?.style.display).toBe('none');
     expect(document.getElementById('asset-manager-expand')?.style.display).toBe('none');
+    expect(document.getElementById('prompt-manager-expand')?.style.display).toBe('none');
     vi.useRealTimers();
   });
 });

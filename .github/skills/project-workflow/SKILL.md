@@ -43,7 +43,7 @@ This skill only orients you. Before concrete MCP reads or writes, load `using-mc
 
 Startup principles:
 
-1. Prefer dedicated structured tools over broad field dumps for Lua, CSS, greetings, lorebooks, regex, triggers, and risup prompt structures.
+1. Prefer facade selectors over broad field dumps for covered reads/edits, and prefer stable `id` / `identity` selectors over indexes when lorebook, regex, greeting, or `.risup` prompt item lists provide them.
 2. Batch related reads/writes instead of looping single-item tools.
 3. Probe unopened files before switching the active UI document.
 4. Search/range-read before replacing large fields.

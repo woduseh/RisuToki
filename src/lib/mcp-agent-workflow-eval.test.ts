@@ -173,8 +173,8 @@ const WORKFLOW_EVAL_TASKS = [
     },
   },
   {
-    id: 'charx-greeting-indexed-facade-write',
-    prompt: 'Rewrite one alternate greeting through a preview-token flow with stale-preview protection.',
+    id: 'charx-greeting-identity-facade-write',
+    prompt: 'Rewrite one alternate greeting through a preview-token flow with hash/preview identity protection.',
     family: 'charx',
     corpusRoots: LOCAL_CORPUS_ROOTS.charx,
     sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
@@ -191,10 +191,10 @@ const WORKFLOW_EVAL_TASKS = [
     safety: {
       boundedOrItemizedRead: true,
       batchWhenSiblingItems: true,
-      staleGuards: ['expected_preview'],
+      staleGuards: ['identity.hash', 'expected_preview'],
       previewPolicy: 'required',
-      wrongTargetAvoidance: ['greeting_type must be explicit: alternate or group'],
-      postEditValidation: ['focused read_content re-read of changed greeting index'],
+      wrongTargetAvoidance: ['greeting_type must be explicit and selector.identity must uniquely match'],
+      postEditValidation: ['focused read_content re-read of changed greeting identity'],
     },
     metrics: {
       routeCorrect: true,
@@ -206,8 +206,8 @@ const WORKFLOW_EVAL_TASKS = [
     },
   },
   {
-    id: 'charx-greeting-indexed-facade-delete',
-    prompt: 'Delete one alternate greeting through a preview-token flow with stale-preview protection.',
+    id: 'charx-greeting-identity-facade-delete',
+    prompt: 'Delete one alternate greeting through a preview-token flow with hash/preview identity protection.',
     family: 'charx',
     corpusRoots: LOCAL_CORPUS_ROOTS.charx,
     sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
@@ -224,10 +224,10 @@ const WORKFLOW_EVAL_TASKS = [
     safety: {
       boundedOrItemizedRead: true,
       batchWhenSiblingItems: true,
-      staleGuards: ['expected_preview'],
+      staleGuards: ['identity.hash', 'expected_preview'],
       previewPolicy: 'required',
-      wrongTargetAvoidance: ['greeting_type must be explicit and selector.index must be present'],
-      postEditValidation: ['focused read_content list re-read after deletion'],
+      wrongTargetAvoidance: ['greeting_type must be explicit and selector.identity must uniquely match'],
+      postEditValidation: ['focused read_content list re-read after identity deletion'],
     },
     metrics: {
       routeCorrect: true,
@@ -272,8 +272,8 @@ const WORKFLOW_EVAL_TASKS = [
     },
   },
   {
-    id: 'charx-lorebook-guarded-replace',
-    prompt: 'Replace a lorebook phrase with stale-comment protection and post-edit validation.',
+    id: 'charx-lorebook-id-facade-replace',
+    prompt: 'Replace a lorebook phrase through a facade id selector with stale-comment fallback.',
     family: 'charx',
     corpusRoots: LOCAL_CORPUS_ROOTS.charx,
     sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
@@ -290,12 +290,12 @@ const WORKFLOW_EVAL_TASKS = [
     safety: {
       boundedOrItemizedRead: true,
       batchWhenSiblingItems: true,
-      staleGuards: ['expected_comment'],
+      staleGuards: ['id', 'expected_comment'],
       previewPolicy: 'required',
-      wrongTargetAvoidance: ['selector.family must be lorebook and selector.index must be present'],
+      wrongTargetAvoidance: ['selector.family must be lorebook and selector.id must resolve without idConflict'],
       postEditValidation: [
         'validate_content lorebook keys',
-        'focused read_content',
+        'focused read_content by lorebook id',
         'diff_lorebook when reference exists',
       ],
     },
@@ -309,8 +309,8 @@ const WORKFLOW_EVAL_TASKS = [
     },
   },
   {
-    id: 'charx-regex-indexed-facade-write',
-    prompt: 'Rewrite one regex script entry through a preview-token flow with stale-comment protection.',
+    id: 'charx-regex-identity-facade-write',
+    prompt: 'Rewrite one regex script entry through a preview-token flow with comment/hash identity protection.',
     family: 'charx',
     corpusRoots: LOCAL_CORPUS_ROOTS.charx,
     sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
@@ -327,10 +327,10 @@ const WORKFLOW_EVAL_TASKS = [
     safety: {
       boundedOrItemizedRead: true,
       batchWhenSiblingItems: true,
-      staleGuards: ['expected_comment'],
+      staleGuards: ['identity.comment', 'identity.hash', 'expected_comment'],
       previewPolicy: 'required',
-      wrongTargetAvoidance: ['selector.family must be regex and selector.index must be present'],
-      postEditValidation: ['focused read_content re-read of changed regex index'],
+      wrongTargetAvoidance: ['selector.family must be regex and selector.identity must uniquely match'],
+      postEditValidation: ['focused read_content re-read of changed regex identity'],
     },
     metrics: {
       routeCorrect: true,
@@ -342,8 +342,8 @@ const WORKFLOW_EVAL_TASKS = [
     },
   },
   {
-    id: 'charx-regex-indexed-facade-delete',
-    prompt: 'Delete one regex script entry through a preview-token flow with stale-comment protection.',
+    id: 'charx-regex-identity-facade-delete',
+    prompt: 'Delete one regex script entry through a preview-token flow with comment/hash identity protection.',
     family: 'charx',
     corpusRoots: LOCAL_CORPUS_ROOTS.charx,
     sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
@@ -360,10 +360,10 @@ const WORKFLOW_EVAL_TASKS = [
     safety: {
       boundedOrItemizedRead: true,
       batchWhenSiblingItems: true,
-      staleGuards: ['expected_comment'],
+      staleGuards: ['identity.comment', 'identity.hash', 'expected_comment'],
       previewPolicy: 'required',
-      wrongTargetAvoidance: ['selector.family must be regex and selector.index must be present'],
-      postEditValidation: ['focused read_content list re-read after deletion'],
+      wrongTargetAvoidance: ['selector.family must be regex and selector.identity must uniquely match'],
+      postEditValidation: ['focused read_content list re-read after identity deletion'],
     },
     metrics: {
       routeCorrect: true,
@@ -397,6 +397,43 @@ const WORKFLOW_EVAL_TASKS = [
       previewPolicy: 'required',
       wrongTargetAvoidance: ['selector.indices must align to entries[] and expected_comment guards'],
       postEditValidation: ['validate_content regex sanity check', 'focused read_content batch re-read'],
+    },
+    metrics: {
+      routeCorrect: true,
+      expectedFirstPassSuccess: true,
+      wrongTargetIncidents: 0,
+      validationCovered: true,
+      boundedReadCovered: true,
+      docsSynced: true,
+    },
+  },
+  {
+    id: 'charx-regex-duplicate-identity-fallback',
+    prompt: 'Handle a regex edit request where several entries share the same comment and identity is ambiguous.',
+    family: 'charx',
+    corpusRoots: LOCAL_CORPUS_ROOTS.charx,
+    sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
+    surfaces: ['regex scripts'],
+    editRisk: 'guarded-edit',
+    route: {
+      profile: 'facade-first',
+      discover: ['inspect_document', 'list_regex'],
+      readOrSearch: ['read_regex_batch'],
+      preview: ['preview_edit'],
+      apply: ['apply_edit'],
+      validate: ['validate_content', 'read_content'],
+      granularFallbackReason:
+        'Duplicate regex identity must reject mutation and fall back to index plus expected_comment after refresh.',
+    },
+    safety: {
+      boundedOrItemizedRead: true,
+      batchWhenSiblingItems: true,
+      staleGuards: ['identity.comment', 'expected_comment'],
+      previewPolicy: 'required',
+      wrongTargetAvoidance: [
+        'identity collisions must not mutate; refresh list and select index with expected_comment',
+      ],
+      postEditValidation: ['validate_content regex sanity check', 'focused read_content re-read'],
     },
     metrics: {
       routeCorrect: true,
@@ -510,8 +547,8 @@ const WORKFLOW_EVAL_TASKS = [
     },
   },
   {
-    id: 'risup-prompt-template-indexed-facade-write',
-    prompt: 'Rewrite one supported promptTemplate item through a preview-token flow with type/preview guards.',
+    id: 'risup-prompt-template-id-facade-write',
+    prompt: 'Rewrite one supported promptTemplate item through a facade id selector with type/preview guards.',
     family: 'risup',
     corpusRoots: LOCAL_CORPUS_ROOTS.risup,
     sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
@@ -528,10 +565,10 @@ const WORKFLOW_EVAL_TASKS = [
     safety: {
       boundedOrItemizedRead: true,
       batchWhenSiblingItems: true,
-      staleGuards: ['expected_type', 'expected_preview'],
+      staleGuards: ['id', 'expected_type', 'expected_preview'],
       previewPolicy: 'required',
-      wrongTargetAvoidance: ['selector.family must be risup-prompt and selector.index must be present'],
-      postEditValidation: ['validate_content risup prompt/order check', 'focused read_content re-read'],
+      wrongTargetAvoidance: ['selector.family must be risup-prompt and selector.id must be present'],
+      postEditValidation: ['validate_content risup prompt/order check', 'focused read_content by prompt id'],
     },
     metrics: {
       routeCorrect: true,
@@ -543,8 +580,8 @@ const WORKFLOW_EVAL_TASKS = [
     },
   },
   {
-    id: 'risup-prompt-template-indexed-facade-delete',
-    prompt: 'Delete one promptTemplate item through a preview-token flow with type/preview guards.',
+    id: 'risup-prompt-template-id-facade-delete',
+    prompt: 'Delete one promptTemplate item through a facade id selector with type/preview guards.',
     family: 'risup',
     corpusRoots: LOCAL_CORPUS_ROOTS.risup,
     sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
@@ -561,10 +598,13 @@ const WORKFLOW_EVAL_TASKS = [
     safety: {
       boundedOrItemizedRead: true,
       batchWhenSiblingItems: true,
-      staleGuards: ['expected_type', 'expected_preview'],
+      staleGuards: ['id', 'expected_type', 'expected_preview'],
       previewPolicy: 'required',
-      wrongTargetAvoidance: ['selector.family must be risup-prompt and selector.index must be present'],
-      postEditValidation: ['validate_content risup prompt/order check', 'focused read_content list re-read'],
+      wrongTargetAvoidance: ['selector.family must be risup-prompt and selector.id must be present'],
+      postEditValidation: [
+        'validate_content risup prompt/order check',
+        'focused read_content list re-read after id deletion',
+      ],
     },
     metrics: {
       routeCorrect: true,
@@ -594,10 +634,10 @@ const WORKFLOW_EVAL_TASKS = [
     safety: {
       boundedOrItemizedRead: true,
       batchWhenSiblingItems: true,
-      staleGuards: ['expected_type', 'expected_preview'],
+      staleGuards: ['ids', 'expected_type', 'expected_preview'],
       previewPolicy: 'required',
-      wrongTargetAvoidance: ['align selector.indices with writes[] and expected_type/expected_preview guards'],
-      postEditValidation: ['validate_content risup prompt/order check', 'focused read_content batch item re-read'],
+      wrongTargetAvoidance: ['align selector.ids with writes[] and expected_type/expected_preview guards'],
+      postEditValidation: ['validate_content risup prompt/order check', 'focused read_content batch id re-read'],
     },
     metrics: {
       routeCorrect: true,

@@ -9,10 +9,12 @@ export interface PanelDragDeps {
   moveTerminal(position: string): void;
   moveLoreManager(position: string): void;
   moveAssetManager(position: string): void;
+  movePromptManager?(position: string): void;
   toggleSidebar(): void;
   toggleTerminal(): void;
   toggleLoreManager(): void;
   toggleAssetManager(): void;
+  togglePromptManager?(): void;
   isPanelPoppedOut(name: string): boolean;
   popOutPanel(name: string): void;
   dockPanel(name: string): void;
@@ -48,6 +50,11 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
       el: document.querySelector('#asset-manager-panel .right-manager-header')!,
       panel: 'asset-manager',
       label: '에셋 관리자',
+    },
+    {
+      el: document.querySelector('#prompt-manager-panel .right-manager-header')!,
+      panel: 'prompt-manager',
+      label: '프롬프트 관리자',
     },
   ].filter((d): d is DraggablePanel => d.el != null);
 
@@ -85,6 +92,7 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
       else if (item.panel === 'terminal') deps.toggleTerminal();
       else if (item.panel === 'lore-manager') deps.toggleLoreManager();
       else if (item.panel === 'asset-manager') deps.toggleAssetManager();
+      else if (item.panel === 'prompt-manager') deps.togglePromptManager?.();
     });
 
     if (item.panel === 'sidebar') {
@@ -101,7 +109,7 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
         headerRight.insertBefore(popoutBtn, toggleBtn);
         toggleBtn.after(closeBtn);
       }
-    } else if (item.panel === 'lore-manager' || item.panel === 'asset-manager') {
+    } else if (item.panel === 'lore-manager' || item.panel === 'asset-manager' || item.panel === 'prompt-manager') {
       const actions = item.el.querySelector('.right-manager-actions');
       if (actions) {
         actions.appendChild(closeBtn);
@@ -133,7 +141,9 @@ export function initPanelDragDrop(deps: PanelDragDeps): void {
             ? deps.moveTerminal
             : item.panel === 'lore-manager'
               ? deps.moveLoreManager
-              : deps.moveAssetManager;
+              : item.panel === 'asset-manager'
+                ? deps.moveAssetManager
+                : (deps.movePromptManager ?? (() => undefined));
       const posItems: ContextMenuItem[] = [
         { label: '→ 좌측', action: () => moveFn('left') },
         { label: '→ 우측', action: () => moveFn('right') },
@@ -292,5 +302,7 @@ function applyPanelDrop(panelId: string, position: string, deps: PanelDragDeps):
     deps.moveLoreManager(position);
   } else if (panelId === 'asset-manager') {
     deps.moveAssetManager(position);
+  } else if (panelId === 'prompt-manager') {
+    deps.movePromptManager?.(position);
   }
 }

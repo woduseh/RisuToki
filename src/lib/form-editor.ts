@@ -4,7 +4,7 @@ import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
 import { getFolderRef, normalizeFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
 import { getRisupFieldGroup, isRisupDisableableNumberFieldId } from './risup-fields';
 import { coerceRisupInputValue, validateRisupDraftFields, type RisupFormTabInfo } from './risup-form-editor';
-import { createFormatingOrderEditor, createPromptTemplateEditor } from './risup-prompt-editor';
+import { createFormatingOrderEditor, createPromptItemEditor, createPromptTemplateEditor } from './risup-prompt-editor';
 import { createCustomPromptTemplateToggleEditor } from './risup-toggle-editor';
 import {
   coerceTriggerFormInputValue,
@@ -648,6 +648,9 @@ export function showRisupEditor(tabInfo: RisupFormTabInfo): void {
     data[fieldId] = nextValue;
     markDirty();
     updateValidation();
+    if (fieldId === 'promptTemplate') {
+      deps!.buildSidebar();
+    }
   }
 
   for (const field of groupFields) {
@@ -842,6 +845,55 @@ export function showRisupEditor(tabInfo: RisupFormTabInfo): void {
 
   form.appendChild(header);
   form.appendChild(body);
+  container.appendChild(form);
+}
+
+export interface RisupPromptItemTabInfo extends RisupFormTabInfo {
+  language: '_risupPromptItemForm';
+  _promptItemId?: string;
+}
+
+export function showRisupPromptItemEditor(tabInfo: RisupPromptItemTabInfo): void {
+  saveCurrentMonacoState(tabInfo);
+  const container = clearEditorContainer();
+
+  const readonly = !tabInfo.setValue;
+  const value = typeof tabInfo.getValue() === 'string' ? (tabInfo.getValue() as string) : '';
+  const itemId =
+    tabInfo._promptItemId ||
+    (tabInfo.id.startsWith('risup_prompt_item_') ? tabInfo.id.replace('risup_prompt_item_', '') : '');
+
+  const form = document.createElement('div');
+  form.className = 'form-editor';
+
+  const header = document.createElement('div');
+  header.className = 'form-editor-header';
+  header.textContent = `🧩 ${tabInfo.label}`;
+
+  const body = document.createElement('div');
+  body.className = 'form-editor-body';
+  const editorContainer = document.createElement('div');
+  editorContainer.className = 'form-embedded-editor prompt-template-editor-container prompt-item-detail-container';
+  body.appendChild(editorContainer);
+
+  const handle = createPromptItemEditor(
+    editorContainer,
+    value,
+    itemId,
+    readonly
+      ? null
+      : (nextValue) => {
+          tabInfo.setValue!(nextValue);
+          const d = deps!;
+          d.tabMgr.markDirtyForTabId(tabInfo.id);
+          d.tabMgr.markDirtyForTabId('risup_prompt');
+          d.tabMgr.renderTabs();
+          d.buildSidebar();
+        },
+  );
+  formEditors.push(handle);
+
+  form.append(header, body);
   container.appendChild(form);
 }
 

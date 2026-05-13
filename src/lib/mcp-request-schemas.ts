@@ -350,6 +350,15 @@ export const facadeV1ContentSelectorSchema = z.object({
   field: z.string().min(1).optional(),
   index: z.number().int().nonnegative().optional(),
   indices: z.array(z.number().int().nonnegative()).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+  id: z.string().min(1).optional(),
+  ids: z.array(z.string().min(1)).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+  identity: z
+    .object({
+      comment: z.string().optional(),
+      preview: z.string().optional(),
+      hash: z.string().optional(),
+    })
+    .optional(),
   greeting_type: z.enum(['alternate', 'group']).optional(),
   entry_field: z.string().min(1).optional(),
   item_field: z.string().min(1).optional(),

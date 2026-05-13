@@ -73,9 +73,10 @@ import {
   showToggleTemplateEditor,
   showTriggerEditor,
   showRisupEditor,
+  showRisupPromptItemEditor,
   showRegexEditor,
 } from '../lib/form-editor';
-import type { BooleanFormTabInfo, FormTabInfo, ToggleFormTabInfo } from '../lib/form-editor';
+import type { BooleanFormTabInfo, FormTabInfo, RisupPromptItemTabInfo, ToggleFormTabInfo } from '../lib/form-editor';
 import type { RisupFormTabInfo } from '../lib/risup-form-editor';
 import { showConfirm, showCloseConfirm, showPrompt, showSessionRecoveryDialog } from '../lib/dialog';
 import { showContextMenu } from '../lib/context-menu';
@@ -103,6 +104,7 @@ import { showHelpPopup } from '../lib/help-popup';
 import { createSidebarActions } from '../lib/sidebar-actions';
 import { initSidebarDnD, destroyAllSortables } from '../lib/sidebar-dnd';
 import { initRightManagerPanel, renderRightManagerPanel } from '../lib/right-manager-panel';
+import { initPromptManagerPanel, renderPromptManagerPanel } from '../lib/risup-prompt-manager-panel';
 import {
   handleNew as _handleNew,
   handleOpen as _handleOpen,
@@ -123,6 +125,8 @@ import {
   getRisupFieldGroup,
   type RisupFieldGroupId,
 } from '../lib/risup-fields';
+import { parsePromptTemplate, type PromptItemModel } from '../lib/risup-prompt-model';
+import { promptItemSummary } from '../lib/risup-prompt-editor';
 import { getCharxInfoItems } from '../lib/charx-sidebar-fields';
 import { collectHiddenFieldWarnings } from '../lib/mcp-field-access';
 import { isTriggerScriptsLuaMode } from '../lib/trigger-script-model';
@@ -529,6 +533,14 @@ function createOrSwitchEditor(tabInfo: Tab): void {
     return;
   }
 
+  if (tabInfo.language === '_risupPromptItemForm') {
+    tabMgr.activeTabId = tabInfo.id;
+    showRisupPromptItemEditor(tabInfo as unknown as RisupPromptItemTabInfo);
+    tabMgr.renderTabs();
+    updateSidebarActive();
+    return;
+  }
+
   if (tabInfo.language === '_regexform') {
     tabMgr.activeTabId = tabInfo.id;
     showRegexEditor(tabInfo as FormTabInfo);
@@ -807,6 +819,70 @@ function openRisupGroupTab(groupId: RisupFieldGroupId): void {
     tabState.setValue as ((value: unknown) => void) | null,
   );
   tab._risupGroupId = groupId;
+}
+
+function getRisupPromptItems(): PromptItemModel[] {
+  if (!fileData || fileData._fileType !== 'risup') return [];
+  const model = parsePromptTemplate(typeof fileData.promptTemplate === 'string' ? fileData.promptTemplate : '');
+  return model.state === 'valid' || model.state === 'empty' ? model.items : [];
+}
+
+function setRisupPromptTemplate(value: string): void {
+  if (!fileData || fileData._fileType !== 'risup') return;
+  fileData.promptTemplate = value;
+  tabMgr.markFieldDirty('promptTemplate');
+  tabMgr.markDirtyForTabId('risup_prompt');
+  tabMgr.refreshIndexedTabs('risup_prompt_item_', (_index, tab) =>
+    buildRisupPromptItemTabState(String(tab._promptItemId || tab.id.replace('risup_prompt_item_', '')), tab),
+  );
+  tabMgr.refreshIndexedTabs('risup_', (_index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
+  renderPromptManagerPanel();
+}
+
+function buildRisupPromptItemTabState(itemId: string, _tab: Tab): Record<string, unknown> | null {
+  if (!fileData || fileData._fileType !== 'risup') return null;
+  const item = getRisupPromptItems().find((entry) => entry.id === itemId);
+  if (!item) return null;
+  const label = promptItemSummary(item) || promptTypeLabelForController(item.type);
+  return {
+    id: `risup_prompt_item_${itemId}`,
+    label,
+    language: '_risupPromptItemForm',
+    _promptItemId: itemId,
+    getValue: () => (typeof fileData?.promptTemplate === 'string' ? fileData.promptTemplate : ''),
+    setValue: (value: unknown) => {
+      if (!fileData) return;
+      fileData.promptTemplate = String(value ?? '');
+      renderPromptManagerPanel();
+    },
+  };
+}
+
+function promptTypeLabelForController(type: string | null | undefined): string {
+  return type ? `프롬프트 ${type}` : '프롬프트 블록';
+}
+
+function openRisupPromptItemTab(itemId: string): void {
+  const tabState = buildRisupPromptItemTabState(itemId, {
+    id: `risup_prompt_item_${itemId}`,
+    label: '프롬프트 블록',
+    language: '_risupPromptItemForm',
+    getValue: () => '',
+    setValue: null,
+    _lastValue: null,
+  });
+  if (!tabState) {
+    setStatus('프롬프트 블록을 열 수 없습니다.');
+    return;
+  }
+  const tab = tabMgr.openTab(
+    tabState.id as string,
+    tabState.label as string,
+    tabState.language as string,
+    tabState.getValue as () => unknown,
+    tabState.setValue as ((value: unknown) => void) | null,
+  );
+  tab._promptItemId = itemId;
 }
 
 // ==================== Sidebar ====================
@@ -1219,15 +1295,16 @@ function buildSidebar(): void {
   // Always build refs sidebar regardless of fileData
   buildRefsSidebar();
 
+  const promptManagerAvailable = !!fileData && fileData._fileType === 'risup';
   const managersAvailable = !!fileData && fileData._fileType !== 'risup';
   if (managersAvailable) {
-    layoutManager.setManagerAvailability({ lore: true, asset: true });
+    layoutManager.setManagerAvailability({ lore: true, asset: true, prompt: false });
   } else {
     if (fileData?._fileType === 'risup') {
       moveLoreManager('hide');
       moveAssetManager('hide');
     }
-    layoutManager.setManagerAvailability({ lore: false, asset: false });
+    layoutManager.setManagerAvailability({ lore: false, asset: false, prompt: promptManagerAvailable });
   }
 
   if (!fileData) {
@@ -1242,6 +1319,7 @@ function buildSidebar(): void {
     empty.append(title, hint);
     tree.appendChild(empty);
     renderRightManagerPanel();
+    renderPromptManagerPanel();
     return;
   }
 
@@ -1253,6 +1331,7 @@ function buildSidebar(): void {
   if (isRisup) {
     buildRisupSidebar(tree);
     renderRightManagerPanel();
+    renderPromptManagerPanel();
     return;
   }
 
@@ -2287,6 +2366,10 @@ function moveAssetManager(pos: LayoutSlot | 'hide'): void {
   layoutManager.moveAssetManager(pos);
 }
 
+function movePromptManager(pos: LayoutSlot | 'hide'): void {
+  layoutManager.movePromptManager(pos);
+}
+
 function moveRefs(pos: PanelPosition): void {
   layoutManager.moveRefs(pos);
 }
@@ -2732,10 +2815,12 @@ function initPanelDragDrop(): void {
     moveTerminal,
     moveLoreManager,
     moveAssetManager,
+    movePromptManager,
     toggleSidebar,
     toggleTerminal,
     toggleLoreManager: () => layoutManager.toggleLoreManager(),
     toggleAssetManager: () => layoutManager.toggleAssetManager(),
+    togglePromptManager: () => layoutManager.togglePromptManager(),
     isPanelPoppedOut,
     popOutPanel,
     dockPanel,
@@ -2853,6 +2938,10 @@ function openTabById(tabId: string): void {
   }
 
   if (tabId.startsWith('risup_')) {
+    if (tabId.startsWith('risup_prompt_item_')) {
+      openRisupPromptItemTab(tabId.replace('risup_prompt_item_', ''));
+      return;
+    }
     const groupId = tabId.replace('risup_', '') as RisupFieldGroupId;
     if (getRisupFieldGroup(groupId)) {
       openRisupGroupTab(groupId);
@@ -2985,6 +3074,7 @@ export async function initMainRenderer(): Promise<void> {
     'toggle-avatar': () => toggleAvatar(),
     'toggle-lore-manager': () => layoutManager.toggleLoreManager(),
     'toggle-asset-manager': () => layoutManager.toggleAssetManager(),
+    'toggle-prompt-manager': () => layoutManager.togglePromptManager(),
     // Items position
     'items-left': () => moveItems('left'),
     'items-right': () => moveItems('right'),
@@ -3022,6 +3112,13 @@ export async function initMainRenderer(): Promise<void> {
     'asset-manager-top': () => moveAssetManager('top'),
     'asset-manager-bottom': () => moveAssetManager('bottom'),
     'asset-manager-hide': () => moveAssetManager('hide'),
+    'prompt-manager-left': () => movePromptManager('left'),
+    'prompt-manager-right': () => movePromptManager('right'),
+    'prompt-manager-far-left': () => movePromptManager('far-left'),
+    'prompt-manager-far-right': () => movePromptManager('far-right'),
+    'prompt-manager-top': () => movePromptManager('top'),
+    'prompt-manager-bottom': () => movePromptManager('bottom'),
+    'prompt-manager-hide': () => movePromptManager('hide'),
     // Reset
     'layout-reset': () => resetLayout(),
     'zoom-in': () => {
@@ -3210,6 +3307,15 @@ export async function initMainRenderer(): Promise<void> {
     deleteAssets: deleteAssetsFromManager,
     getAssetList: () => window.tokiAPI.getAssetList(),
     getAssetData: (path) => window.tokiAPI.getAssetData(path),
+    setStatus,
+    refresh: buildSidebar,
+    afterRender: initPanelDragDrop,
+  });
+  initPromptManagerPanel({
+    getFileData: () => fileData,
+    openPromptItem: openRisupPromptItemTab,
+    setPromptTemplate: setRisupPromptTemplate,
+    confirm: showConfirm,
     setStatus,
     refresh: buildSidebar,
     afterRender: initPanelDragDrop,

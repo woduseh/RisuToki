@@ -9,6 +9,30 @@
 
 ---
 
+## [0.72.10] - 2026-05-14
+
+### Added
+
+- Added stable-id MCP edit routes for `.risup` prompt items and lorebook entries, plus hash/identity routes for regex and greetings.
+- Extended facade `read_content`, `preview_edit`, and `apply_edit` selectors so LLM workflows can prefer `id` / `identity` targets before falling back to index-based granular tools.
+- Updated MCP workflow docs and eval coverage to keep facade-first routing explicit for stable structured-item edits.
+
+## [0.72.9] - 2026-05-13
+
+### Fixed
+
+- Fixed `.risup` prompt manager item tabs opening with a missing prompt-block id.
+- Kept prompt, lorebook, and asset manager search inputs focused while filtering.
+- Added confirmation and unsaved-change tracking for `.risup` prompt manager structural edits.
+- Improved manager labels, `.risup` filter grouping, lorebook previews, and the lorebook folder-add button.
+
+## [0.72.8] - 2026-05-13
+
+### Added
+
+- Added a movable `.risup` prompt manager panel with RisuMari-style search, type/role/special filters, badges, item selection, add, duplicate, delete, reorder, and multi-delete actions.
+- Added focused single prompt-block editor tabs opened from the prompt manager while keeping the existing full preset prompt editor as an advanced fallback.
+
 ## [0.72.7] - 2026-05-13
 
 ### Changed

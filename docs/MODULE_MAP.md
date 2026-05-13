@@ -64,7 +64,8 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/trigger-scripts-runtime.ts` — trigger-script runtime execution
 - `src/lib/risup-fields.ts` — structured risup field definitions
 - `src/lib/risup-form-editor.ts` — risup form editing
-- `src/lib/risup-prompt-editor.ts` — risup prompt-item editing
+- `src/lib/risup-prompt-editor.ts` — risup prompt-item editing and focused single-block editor rendering
+- `src/lib/risup-prompt-manager-panel.ts` — movable RisuMari-style `.risup` prompt manager panel for search/filter/open/add/duplicate/delete/reorder workflows
 - `src/lib/risup-prompt-model.ts` — risup prompt-item parsing/model helpers, including whole-template text import/export
 - `src/lib/risup-prompt-compare.ts` — serializer-backed risup prompt/reference compare helpers for MCP diffs
 - `src/lib/risup-prompt-snippet-store.ts` — sidecar-backed persistent risup prompt snippet library
@@ -98,7 +99,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/sidebar-builder.ts` — sidebar tree construction
 - `src/lib/sidebar-actions.ts` — sidebar mutations/actions
 - `src/lib/sidebar-dnd.ts` — sidebar drag-and-drop behavior
-- `src/lib/right-manager-panel.ts` — RisuMari-style `.charx` lorebook and asset manager panels rendered as independent movable layout panels
+- `src/lib/right-manager-panel.ts` — RisuMari-style `.charx`/`.risum` lorebook and asset manager panels rendered as independent movable layout panels
 - `src/lib/sidebar-refs.ts` — sidebar reference integration
 - `src/lib/editor-activation.ts` — editor focus/activation state
 - `src/lib/editor-dirty-fields.ts` — dirty-field tracking

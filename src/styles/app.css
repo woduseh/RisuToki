@@ -990,6 +990,19 @@ body {
   font-size: 12px;
 }
 
+.manager-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  font-size: 12px;
+}
+
+.manager-sort-select {
+  width: 74px;
+  height: 30px;
+  font-size: 12px;
+}
+
 .manager-icon-btn {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -1013,6 +1026,44 @@ body {
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.manager-filter-label {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 30px;
+}
+
+.manager-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.prompt-manager-filter-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manager-filter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+
+.manager-filter-section-title {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .manager-selected-bar {
@@ -1038,7 +1089,8 @@ body {
 }
 
 .manager-folder-row,
-.manager-lore-row {
+.manager-lore-row,
+.prompt-manager-row {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-primary);
@@ -1092,13 +1144,41 @@ body {
   cursor: pointer;
 }
 
+.prompt-manager-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.prompt-manager-row-main {
+  min-width: 0;
+}
+
+.prompt-manager-badges {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.prompt-manager-row .manager-row-actions {
+  grid-column: 2;
+  display: flex;
+  gap: 4px;
+}
+
 .manager-lore-row:hover,
-.manager-asset-card:hover {
+.manager-asset-card:hover,
+.prompt-manager-row:hover {
   border-color: var(--accent);
 }
 
 .manager-lore-row.selected,
-.manager-asset-card.selected {
+.manager-asset-card.selected,
+.prompt-manager-row.selected {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-primary));
 }
@@ -1134,6 +1214,11 @@ body {
   padding: 2px 6px;
   font-size: 10px;
   white-space: nowrap;
+}
+
+.manager-badge-accent {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-tertiary));
+  color: var(--accent);
 }
 
 .manager-asset-grid {

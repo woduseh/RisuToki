@@ -848,6 +848,8 @@ function route(tool: string, method: string, routePath: string): FacadeRoute {
 
 function selectorTarget(selector: FacadeV1ContentSelector): string {
   if (selector.family === 'lorebook') {
+    if (selector.id) return `lorebook:${selector.id}${selector.field ? `:${selector.field}` : ''}`;
+    if (selector.ids) return `lorebook:[${selector.ids.join(',')}]${selector.field ? `:${selector.field}` : ''}`;
     if (selector.index !== undefined) return `lorebook:${selector.index}${selector.field ? `:${selector.field}` : ''}`;
     if (selector.indices)
       return `lorebook:[${selector.indices.join(',')}]${selector.field ? `:${selector.field}` : ''}`;
@@ -855,11 +857,15 @@ function selectorTarget(selector: FacadeV1ContentSelector): string {
   }
   if (selector.family === 'greeting') {
     const type = selector.greeting_type ?? 'unknown';
+    if (selector.identity) return `greeting:${type}:identity`;
     if (selector.index !== undefined) return `greeting:${type}:${selector.index}`;
     if (selector.indices) return `greeting:${type}:[${selector.indices.join(',')}]`;
     return `greeting:${type}`;
   }
   if (selector.family === 'regex' || selector.family === 'risup-prompt') {
+    if (selector.id) return `${selector.family}:${selector.id}`;
+    if (selector.ids) return `${selector.family}:[${selector.ids.join(',')}]`;
+    if (selector.identity) return `${selector.family}:identity`;
     if (selector.index !== undefined) return `${selector.family}:${selector.index}`;
     if (selector.indices) return `${selector.family}:[${selector.indices.join(',')}]`;
     return selector.family;
@@ -1058,6 +1064,11 @@ async function readFacadeSelector(
 ): Promise<{ data: unknown; routes: FacadeRoute[] } | ApiErrorResult> {
   if (target.kind === 'active') {
     if (selector.family === 'lorebook') {
+      if (selector.id) {
+        const lorebookRoute = `/lorebook/by-id/${encodeURIComponent(selector.id)}`;
+        const data = await apiRequest('GET', lorebookRoute);
+        return isApiError(data) ? data : { data, routes: [route('read_lorebook_by_id', 'GET', lorebookRoute)] };
+      }
       if (selector.index !== undefined) {
         const lorebookRoute = `/lorebook/${selector.index}`;
         const data = await apiRequest('GET', lorebookRoute);
@@ -1074,6 +1085,12 @@ async function readFacadeSelector(
       return isApiError(data) ? data : { data, routes: [route('list_lorebook', 'GET', '/lorebook')] };
     }
     if (selector.family === 'regex') {
+      if (selector.identity) {
+        const data = await apiRequest('POST', '/regex/by-identity/read', { identity: selector.identity });
+        return isApiError(data)
+          ? data
+          : { data, routes: [route('read_regex_by_identity', 'POST', '/regex/by-identity/read')] };
+      }
       if (selector.index !== undefined) {
         const regexRoute = `/regex/${selector.index}`;
         const data = await apiRequest('GET', regexRoute);
@@ -1096,6 +1113,11 @@ async function readFacadeSelector(
         );
       }
       const type = encodeURIComponent(selector.greeting_type);
+      if (selector.identity) {
+        const greetingRoute = `/greeting/${type}/by-hash/read`;
+        const data = await apiRequest('POST', greetingRoute, { identity: selector.identity });
+        return isApiError(data) ? data : { data, routes: [route('read_greeting_by_hash', 'POST', greetingRoute)] };
+      }
       if (selector.index !== undefined) {
         const greetingRoute = `/greeting/${type}/${selector.index}`;
         const data = await apiRequest('GET', greetingRoute);
@@ -1111,6 +1133,11 @@ async function readFacadeSelector(
       return isApiError(data) ? data : { data, routes: [route('list_greetings', 'GET', greetingRoute)] };
     }
     if (selector.family === 'risup-prompt') {
+      if (selector.id) {
+        const promptRoute = `/risup/prompt-item-by-id/${encodeURIComponent(selector.id)}`;
+        const data = await apiRequest('GET', promptRoute);
+        return isApiError(data) ? data : { data, routes: [route('read_risup_prompt_item_by_id', 'GET', promptRoute)] };
+      }
       if (selector.index !== undefined) {
         const promptRoute = `/risup/prompt-item/${selector.index}`;
         const data = await apiRequest('GET', promptRoute);
@@ -1793,6 +1820,155 @@ async function previewFacadeOperation(
     );
   }
 
+  if (
+    target.kind === 'active' &&
+    operation.op === 'replace_text' &&
+    operation.selector.family === 'lorebook' &&
+    operation.selector.id
+  ) {
+    const readRoute = `/lorebook/by-id/${encodeURIComponent(operation.selector.id)}`;
+    const read = await apiRequest('GET', readRoute);
+    if (isApiError(read)) return read;
+    const index = recordNumber(asRecord(read), 'index');
+    if (index === undefined)
+      return facadeApiError(
+        404,
+        'Lorebook id did not resolve to an index',
+        'Run read_content/list_lorebook again and retry preview_edit.',
+      );
+    operation.selector.index = index;
+    const lorebookRoute = `/lorebook/${index}/replace`;
+    const data = await apiRequest('POST', lorebookRoute, {
+      find: operation.find,
+      replace: typeof operation.replace === 'string' ? operation.replace : '',
+      regex: operation.regex,
+      flags: operation.flags,
+      field: lorebookReplaceField(operation),
+      expected_comment: lorebookExpectedComment(operation.guards),
+      dry_run: true,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data: { ...(asRecord(data) ?? {}), resolved_id: operation.selector.id, resolved_index: index },
+          routes: [route('read_lorebook_by_id', 'GET', readRoute), route('replace_in_lorebook', 'POST', lorebookRoute)],
+          touched,
+          requiredGuards: operation.guards ?? [],
+        };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'lorebook' &&
+    operation.selector.id
+  ) {
+    const readRoute = `/lorebook/by-id/${encodeURIComponent(operation.selector.id)}`;
+    const read = await apiRequest('GET', readRoute);
+    if (isApiError(read)) return read;
+    const index = recordNumber(asRecord(read), 'index');
+    const entry = asRecord(asRecord(read)?.entry);
+    if (index === undefined)
+      return facadeApiError(
+        404,
+        'Lorebook id did not resolve to an index',
+        'Run read_content/list_lorebook again and retry preview_edit.',
+      );
+    const currentComment = recordString(entry, 'comment');
+    const conflict = guardConflict(
+      operation.guards,
+      'expected_comment',
+      currentComment,
+      `lorebook:${operation.selector.id}`,
+    );
+    if (conflict) return conflict;
+    operation.selector.index = index;
+    const content = asRecord(operation.content);
+    if (!content) {
+      return facadeApiError(
+        400,
+        'lorebook write_content requires an object',
+        'Set operations[].content to the partial lorebook entry data.',
+        { operation },
+      );
+    }
+    return {
+      data: {
+        dryRun: true,
+        resolved_id: operation.selector.id,
+        resolved_index: index,
+        currentComment,
+        updatedKeys: Object.keys(content),
+      },
+      routes: [route('read_lorebook_by_id', 'GET', readRoute), route('write_lorebook_by_id', 'POST', readRoute)],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentComment === undefined
+          ? undefined
+          : buildGuard(
+              'expected_comment',
+              currentComment,
+              '/expected_comment',
+              ['read_lorebook_by_id'],
+              '/entry/comment',
+            ),
+      ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'lorebook' &&
+    operation.selector.id
+  ) {
+    const readRoute = `/lorebook/by-id/${encodeURIComponent(operation.selector.id)}`;
+    const read = await apiRequest('GET', readRoute);
+    if (isApiError(read)) return read;
+    const index = recordNumber(asRecord(read), 'index');
+    const entry = asRecord(asRecord(read)?.entry);
+    if (index === undefined)
+      return facadeApiError(
+        404,
+        'Lorebook id did not resolve to an index',
+        'Run read_content/list_lorebook again and retry preview_edit.',
+      );
+    const currentComment = recordString(entry, 'comment');
+    const conflict = guardConflict(
+      operation.guards,
+      'expected_comment',
+      currentComment,
+      `lorebook:${operation.selector.id}`,
+    );
+    if (conflict) return conflict;
+    operation.selector.index = index;
+    return {
+      data: {
+        dryRun: true,
+        operation: 'delete_item',
+        resolved_id: operation.selector.id,
+        resolved_index: index,
+        currentComment,
+      },
+      routes: [
+        route('read_lorebook_by_id', 'GET', readRoute),
+        route('delete_lorebook_by_id', 'POST', `${readRoute}/delete`),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentComment === undefined
+          ? undefined
+          : buildGuard(
+              'expected_comment',
+              currentComment,
+              '/expected_comment',
+              ['read_lorebook_by_id'],
+              '/entry/comment',
+            ),
+      ]),
+    };
+  }
+
   if (operation.selector.family === 'lorebook') {
     return facadeApiError(
       400,
@@ -1863,6 +2039,55 @@ async function previewFacadeOperation(
       ],
       touched,
       requiredGuards: mergeGuards(operation.guards, requiredGuards),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'regex' &&
+    operation.selector.identity
+  ) {
+    const data = asRecord(operation.content);
+    if (!data)
+      return facadeApiError(
+        400,
+        'regex write_content requires an object',
+        'Set operations[].content to partial regex entry data.',
+        { operation },
+      );
+    const read = await apiRequest('POST', '/regex/by-identity/read', { identity: operation.selector.identity });
+    if (isApiError(read)) return read;
+    const readRecord = asRecord(read);
+    const index = recordNumber(readRecord, 'index');
+    const entry = asRecord(readRecord?.entry);
+    const currentComment = recordString(entry, 'comment');
+    const conflict = guardConflict(operation.guards, 'expected_comment', currentComment, 'regex:identity');
+    if (conflict) return conflict;
+    return {
+      data: {
+        dryRun: true,
+        resolved_identity: operation.selector.identity,
+        resolved_index: index,
+        currentComment,
+        updatedKeys: Object.keys(data),
+      },
+      routes: [
+        route('read_regex_by_identity', 'POST', '/regex/by-identity/read'),
+        route('write_regex_by_identity', 'POST', '/regex/by-identity/write'),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentComment === undefined
+          ? undefined
+          : buildGuard(
+              'expected_comment',
+              currentComment,
+              '/expected_comment',
+              ['read_regex_by_identity'],
+              '/entry/comment',
+            ),
+      ]),
     };
   }
 
@@ -1997,6 +2222,55 @@ async function previewFacadeOperation(
     target.kind === 'active' &&
     operation.op === 'write_content' &&
     operation.selector.family === 'greeting' &&
+    operation.selector.identity
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting identity write selector',
+        'preview_edit greeting identity writes require greeting_type="alternate" or "group".',
+        { operation },
+      );
+    }
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const readRoute = `/greeting/${greetingType}/by-hash/read`;
+    const read = await apiRequest('POST', readRoute, { identity: operation.selector.identity });
+    if (isApiError(read)) return read;
+    const currentContent = recordString(asRecord(read), 'content');
+    const currentPreview = currentContent === undefined ? undefined : greetingPreview(currentContent);
+    const conflict = guardConflict(
+      operation.guards,
+      'expected_preview',
+      currentPreview,
+      `greeting:${operation.selector.greeting_type}:identity`,
+    );
+    if (conflict) return conflict;
+    const newContent = replacementString(operation.content);
+    return {
+      data: {
+        dryRun: true,
+        resolved_identity: operation.selector.identity,
+        resolved_index: recordNumber(asRecord(read), 'index'),
+        oldSize: currentContent?.length ?? 0,
+        newSize: newContent.length,
+      },
+      routes: [
+        route('read_greeting_by_hash', 'POST', readRoute),
+        route('write_greeting_by_hash', 'POST', `/greeting/${greetingType}/by-hash/write`),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentPreview === undefined
+          ? undefined
+          : buildGuard('expected_preview', currentPreview, '/expected_preview', ['read_greeting_by_hash'], '/preview'),
+      ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'greeting' &&
     operation.selector.index !== undefined
   ) {
     if (!operation.selector.greeting_type) {
@@ -2044,6 +2318,171 @@ async function previewFacadeOperation(
               sourceOperations: ['read_greeting'],
               sourceResultPath: '/content',
             },
+      ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.ids &&
+    operation.selector.ids.length > 0
+  ) {
+    const writes = normalizeBatchEntries(operation, 'item');
+    if (isApiError(writes)) return writes;
+    const requiredGuards: FacadeV1Guard[] = [];
+    const enrichedWrites: Array<Record<string, unknown>> = [];
+    const previews: Array<Record<string, unknown>> = [];
+    for (const [position, write] of writes.entries()) {
+      const id = recordString(write, 'item_id') ?? operation.selector.ids[position];
+      const item = asRecord(write.item);
+      if (!id || !item) {
+        return facadeApiError(
+          400,
+          'Invalid risup prompt id batch write entry',
+          'Each write must provide item_id and item object.',
+          { write, position },
+          ['list_risup_prompt_items', 'preview_edit'],
+        );
+      }
+      const readRoute = `/risup/prompt-item-by-id/${encodeURIComponent(id)}`;
+      const read = await apiRequest('GET', readRoute);
+      if (isApiError(read)) return read;
+      const readRecord = asRecord(read);
+      const currentType = recordString(readRecord, 'type') ?? recordString(asRecord(readRecord?.item), 'type');
+      const currentPreview = recordString(readRecord, 'preview');
+      const expectedType = recordString(write, 'expected_type');
+      const expectedPreview = recordString(write, 'expected_preview');
+      if (expectedType !== undefined && currentType !== undefined && expectedType !== currentType) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_type',
+          'Re-list/read risup prompt items, then run preview_edit again with current expected_type values.',
+          { target: `risup-prompt:${id}`, guard: 'expected_type', expected: expectedType, actual: currentType },
+          ['list_risup_prompt_items', 'preview_edit'],
+        );
+      }
+      if (expectedPreview !== undefined && currentPreview !== undefined && expectedPreview !== currentPreview) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_preview',
+          'Re-list/read risup prompt items, then run preview_edit again with current expected_preview values.',
+          {
+            target: `risup-prompt:${id}`,
+            guard: 'expected_preview',
+            expected: expectedPreview,
+            actual: currentPreview,
+          },
+          ['list_risup_prompt_items', 'preview_edit'],
+        );
+      }
+      enrichedWrites.push({
+        ...write,
+        item_id: id,
+        item,
+        expected_type: currentType,
+        expected_preview: currentPreview,
+      });
+      previews.push({
+        id,
+        resolved_index: recordNumber(readRecord, 'index'),
+        currentType,
+        currentPreview,
+        replacementType: recordString(item, 'type'),
+      });
+      if (currentType !== undefined)
+        requiredGuards.push(
+          buildGuard(
+            'expected_type',
+            currentType,
+            `/writes/${position}/expected_type`,
+            ['read_risup_prompt_item_by_id'],
+            '/type',
+          ),
+        );
+      if (currentPreview !== undefined)
+        requiredGuards.push(
+          buildGuard(
+            'expected_preview',
+            currentPreview,
+            `/writes/${position}/expected_preview`,
+            ['read_risup_prompt_item_by_id'],
+            '/preview',
+          ),
+        );
+    }
+    rewriteOperationBatchContent(operation, 'writes', enrichedWrites);
+    return {
+      data: { dryRun: true, operation: 'write_content', count: enrichedWrites.length, writes: previews },
+      routes: [route('write_risup_prompt_item_by_id_batch', 'POST', '/risup/prompt-item/batch-write-by-id')],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, requiredGuards),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.id
+  ) {
+    const promptRoute = `/risup/prompt-item-by-id/${encodeURIComponent(operation.selector.id)}`;
+    const read = await apiRequest('GET', promptRoute);
+    if (isApiError(read)) return read;
+    const readRecord = asRecord(read);
+    const currentType = recordString(readRecord, 'type') ?? recordString(asRecord(readRecord?.item), 'type');
+    const currentPreview = recordString(readRecord, 'preview');
+    const typeConflict = guardConflict(
+      operation.guards,
+      'expected_type',
+      currentType,
+      `risup-prompt:${operation.selector.id}`,
+    );
+    if (typeConflict) return typeConflict;
+    const previewConflict = guardConflict(
+      operation.guards,
+      'expected_preview',
+      currentPreview,
+      `risup-prompt:${operation.selector.id}`,
+    );
+    if (previewConflict) return previewConflict;
+    const item = asRecord(operation.content);
+    if (!item) {
+      return facadeApiError(
+        400,
+        'risup-prompt write_content requires an item object',
+        'Set operations[].content to the replacement prompt item object.',
+        { operation },
+      );
+    }
+    return {
+      data: {
+        dryRun: true,
+        resolved_id: operation.selector.id,
+        resolved_index: recordNumber(readRecord, 'index'),
+        currentType,
+        currentPreview,
+        replacementType: recordString(item, 'type'),
+      },
+      routes: [
+        route('read_risup_prompt_item_by_id', 'GET', promptRoute),
+        route('write_risup_prompt_item_by_id', 'POST', promptRoute),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentType === undefined
+          ? undefined
+          : buildGuard('expected_type', currentType, '/expected_type', ['read_risup_prompt_item_by_id'], '/type'),
+        currentPreview === undefined
+          ? undefined
+          : buildGuard(
+              'expected_preview',
+              currentPreview,
+              '/expected_preview',
+              ['read_risup_prompt_item_by_id'],
+              '/preview',
+            ),
       ]),
     };
   }
@@ -2240,6 +2679,45 @@ async function previewFacadeOperation(
     target.kind === 'active' &&
     operation.op === 'delete_item' &&
     operation.selector.family === 'regex' &&
+    operation.selector.identity
+  ) {
+    const read = await apiRequest('POST', '/regex/by-identity/read', { identity: operation.selector.identity });
+    if (isApiError(read)) return read;
+    const readRecord = asRecord(read);
+    const currentComment = recordString(asRecord(readRecord?.entry), 'comment');
+    const conflict = guardConflict(operation.guards, 'expected_comment', currentComment, 'regex:identity');
+    if (conflict) return conflict;
+    return {
+      data: {
+        dryRun: true,
+        operation: 'delete_item',
+        resolved_identity: operation.selector.identity,
+        resolved_index: recordNumber(readRecord, 'index'),
+        currentComment,
+      },
+      routes: [
+        route('read_regex_by_identity', 'POST', '/regex/by-identity/read'),
+        route('delete_regex_by_identity', 'POST', '/regex/by-identity/delete'),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentComment === undefined
+          ? undefined
+          : buildGuard(
+              'expected_comment',
+              currentComment,
+              '/expected_comment',
+              ['read_regex_by_identity'],
+              '/entry/comment',
+            ),
+      ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'regex' &&
     operation.selector.index !== undefined
   ) {
     const regexRoute = `/regex/${operation.selector.index}`;
@@ -2276,6 +2754,54 @@ async function previewFacadeOperation(
               sourceOperations: ['read_regex'],
               sourceResultPath: '/entry/comment',
             },
+      ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'greeting' &&
+    operation.selector.identity
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting identity delete selector',
+        'preview_edit greeting identity deletes require greeting_type="alternate" or "group".',
+        { operation },
+      );
+    }
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const readRoute = `/greeting/${greetingType}/by-hash/read`;
+    const read = await apiRequest('POST', readRoute, { identity: operation.selector.identity });
+    if (isApiError(read)) return read;
+    const currentContent = recordString(asRecord(read), 'content');
+    const currentPreview = currentContent === undefined ? undefined : greetingPreview(currentContent);
+    const conflict = guardConflict(
+      operation.guards,
+      'expected_preview',
+      currentPreview,
+      `greeting:${operation.selector.greeting_type}:identity`,
+    );
+    if (conflict) return conflict;
+    return {
+      data: {
+        dryRun: true,
+        operation: 'delete_item',
+        resolved_identity: operation.selector.identity,
+        resolved_index: recordNumber(asRecord(read), 'index'),
+        currentPreview,
+      },
+      routes: [
+        route('read_greeting_by_hash', 'POST', readRoute),
+        route('delete_greeting_by_hash', 'POST', `/greeting/${greetingType}/by-hash/delete`),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentPreview === undefined
+          ? undefined
+          : buildGuard('expected_preview', currentPreview, '/expected_preview', ['read_greeting_by_hash'], '/preview'),
       ]),
     };
   }
@@ -2410,6 +2936,148 @@ async function previewFacadeOperation(
               sourceOperations: ['read_greeting'],
               sourceResultPath: '/content',
             },
+      ]),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.ids &&
+    operation.selector.ids.length > 0
+  ) {
+    const contentRecord = asRecord(operation.content);
+    const expectedTypes = Array.isArray(contentRecord?.expected_types) ? contentRecord.expected_types : undefined;
+    const expectedPreviews = Array.isArray(contentRecord?.expected_previews)
+      ? contentRecord.expected_previews
+      : undefined;
+    const enrichedExpectedTypes: string[] = [];
+    const enrichedExpectedPreviews: string[] = [];
+    const requiredGuards: FacadeV1Guard[] = [];
+    const previews: Array<Record<string, unknown>> = [];
+    for (const [position, id] of operation.selector.ids.entries()) {
+      const promptRoute = `/risup/prompt-item-by-id/${encodeURIComponent(id)}`;
+      const read = await apiRequest('GET', promptRoute);
+      if (isApiError(read)) return read;
+      const readRecord = asRecord(read);
+      const currentType = recordString(readRecord, 'type') ?? recordString(asRecord(readRecord?.item), 'type');
+      const currentPreview = recordString(readRecord, 'preview');
+      const expectedType = typeof expectedTypes?.[position] === 'string' ? expectedTypes[position] : undefined;
+      const expectedPreview = typeof expectedPreviews?.[position] === 'string' ? expectedPreviews[position] : undefined;
+      if (expectedType !== undefined && currentType !== undefined && expectedType !== currentType) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_type',
+          'Re-list/read risup prompt items, then run preview_edit again with current expected_type values.',
+          { target: `risup-prompt:${id}`, guard: 'expected_type', expected: expectedType, actual: currentType },
+          ['list_risup_prompt_items', 'preview_edit'],
+        );
+      }
+      if (expectedPreview !== undefined && currentPreview !== undefined && expectedPreview !== currentPreview) {
+        return facadeApiError(
+          409,
+          'Stale guard mismatch for expected_preview',
+          'Re-list/read risup prompt items, then run preview_edit again with current expected_preview values.',
+          {
+            target: `risup-prompt:${id}`,
+            guard: 'expected_preview',
+            expected: expectedPreview,
+            actual: currentPreview,
+          },
+          ['list_risup_prompt_items', 'preview_edit'],
+        );
+      }
+      enrichedExpectedTypes.push(currentType ?? '');
+      enrichedExpectedPreviews.push(currentPreview ?? '');
+      previews.push({ id, resolved_index: recordNumber(readRecord, 'index'), currentType, currentPreview });
+      if (currentType !== undefined)
+        requiredGuards.push(
+          buildGuard(
+            'expected_types',
+            currentType,
+            `/expected_types/${position}`,
+            ['read_risup_prompt_item_by_id'],
+            '/type',
+          ),
+        );
+      if (currentPreview !== undefined)
+        requiredGuards.push(
+          buildGuard(
+            'expected_previews',
+            currentPreview,
+            `/expected_previews/${position}`,
+            ['read_risup_prompt_item_by_id'],
+            '/preview',
+          ),
+        );
+    }
+    operation.content = {
+      ...(contentRecord ?? {}),
+      expected_types: enrichedExpectedTypes,
+      expected_previews: enrichedExpectedPreviews,
+    };
+    return {
+      data: { dryRun: true, operation: 'delete_item', count: operation.selector.ids.length, deletes: previews },
+      routes: [route('batch_delete_risup_prompt_items_by_id', 'POST', '/risup/prompt-item/batch-delete-by-id')],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, requiredGuards),
+    };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.id
+  ) {
+    const promptRoute = `/risup/prompt-item-by-id/${encodeURIComponent(operation.selector.id)}`;
+    const read = await apiRequest('GET', promptRoute);
+    if (isApiError(read)) return read;
+    const readRecord = asRecord(read);
+    const currentType = recordString(readRecord, 'type') ?? recordString(asRecord(readRecord?.item), 'type');
+    const currentPreview = recordString(readRecord, 'preview');
+    const typeConflict = guardConflict(
+      operation.guards,
+      'expected_type',
+      currentType,
+      `risup-prompt:${operation.selector.id}`,
+    );
+    if (typeConflict) return typeConflict;
+    const previewConflict = guardConflict(
+      operation.guards,
+      'expected_preview',
+      currentPreview,
+      `risup-prompt:${operation.selector.id}`,
+    );
+    if (previewConflict) return previewConflict;
+    return {
+      data: {
+        dryRun: true,
+        operation: 'delete_item',
+        resolved_id: operation.selector.id,
+        resolved_index: recordNumber(readRecord, 'index'),
+        currentType,
+        currentPreview,
+      },
+      routes: [
+        route('read_risup_prompt_item_by_id', 'GET', promptRoute),
+        route('delete_risup_prompt_item_by_id', 'POST', `${promptRoute}/delete`),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, [
+        currentType === undefined
+          ? undefined
+          : buildGuard('expected_type', currentType, '/expected_type', ['read_risup_prompt_item_by_id'], '/type'),
+        currentPreview === undefined
+          ? undefined
+          : buildGuard(
+              'expected_preview',
+              currentPreview,
+              '/expected_preview',
+              ['read_risup_prompt_item_by_id'],
+              '/preview',
+            ),
       ]),
     };
   }
@@ -2721,6 +3389,43 @@ async function applyFacadeOperation(
     );
   }
 
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'lorebook' &&
+    operation.selector.id
+  ) {
+    const data = asRecord(operation.content);
+    if (!data)
+      return facadeApiError(
+        400,
+        'lorebook write_content requires an object',
+        'Set operations[].content to the partial lorebook entry data.',
+        { operation },
+      );
+    const routePath = `/lorebook/by-id/${encodeURIComponent(operation.selector.id)}`;
+    const applied = await apiRequest('POST', routePath, {
+      data,
+      expected_comment: stringGuardValue(guards, 'expected_comment'),
+    });
+    return isApiError(applied)
+      ? applied
+      : { data: applied, routes: [route('write_lorebook_by_id', 'POST', routePath)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'lorebook' &&
+    operation.selector.id
+  ) {
+    const routePath = `/lorebook/by-id/${encodeURIComponent(operation.selector.id)}/delete`;
+    const data = await apiRequest('POST', routePath, {
+      expected_comment: stringGuardValue(guards, 'expected_comment'),
+    });
+    return isApiError(data) ? data : { data, routes: [route('delete_lorebook_by_id', 'POST', routePath)], touched };
+  }
+
   if (operation.selector.family === 'lorebook') {
     return facadeApiError(
       400,
@@ -2728,6 +3433,30 @@ async function applyFacadeOperation(
       'apply_edit supports active lorebook replace_text only when selector.index is provided; write_content and broad lorebook edits remain unsupported.',
       { operation },
     );
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'regex' &&
+    operation.selector.identity
+  ) {
+    const data = asRecord(operation.content);
+    if (!data)
+      return facadeApiError(
+        400,
+        'regex write_content requires an object',
+        'Set operations[].content to the partial regex entry data.',
+        { operation },
+      );
+    const applied = await apiRequest('POST', '/regex/by-identity/write', {
+      identity: operation.selector.identity,
+      data,
+      expected_comment: stringGuardValue(guards, 'expected_comment'),
+    });
+    return isApiError(applied)
+      ? applied
+      : { data: applied, routes: [route('write_regex_by_identity', 'POST', '/regex/by-identity/write')], touched };
   }
 
   if (
@@ -2830,6 +3559,81 @@ async function applyFacadeOperation(
   if (
     target.kind === 'active' &&
     operation.op === 'write_content' &&
+    operation.selector.family === 'greeting' &&
+    operation.selector.identity
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting write selector',
+        'apply_edit greeting identity writes require greeting_type="alternate" or "group".',
+        { operation },
+      );
+    }
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const routePath = `/greeting/${greetingType}/by-hash/write`;
+    const data = await apiRequest('POST', routePath, {
+      identity: operation.selector.identity,
+      content: replacementString(operation.content),
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(data) ? data : { data, routes: [route('write_greeting_by_hash', 'POST', routePath)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.ids &&
+    operation.selector.ids.length > 0
+  ) {
+    const writes = normalizeBatchEntries(operation, 'item');
+    if (isApiError(writes)) return writes;
+    const payloadWrites = writes.map((write, position) => ({
+      item_id: recordString(write, 'item_id') ?? operation.selector.ids?.[position],
+      item: asRecord(write.item) ?? {},
+      expected_type: recordString(write, 'expected_type'),
+      expected_preview: recordString(write, 'expected_preview'),
+    }));
+    const data = await apiRequest('POST', '/risup/prompt-item/batch-write-by-id', { writes: payloadWrites });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('write_risup_prompt_item_by_id_batch', 'POST', '/risup/prompt-item/batch-write-by-id')],
+          touched,
+        };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.id
+  ) {
+    const item = asRecord(operation.content);
+    if (!item) {
+      return facadeApiError(
+        400,
+        'risup-prompt write_content requires an item object',
+        'Set operations[].content to the replacement prompt item object.',
+        { operation },
+      );
+    }
+    const promptRoute = `/risup/prompt-item-by-id/${encodeURIComponent(operation.selector.id)}`;
+    const data = await apiRequest('POST', promptRoute, {
+      item,
+      expected_type: stringGuardValue(guards, 'expected_type'),
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(data)
+      ? data
+      : { data, routes: [route('write_risup_prompt_item_by_id', 'POST', promptRoute)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'write_content' &&
     operation.selector.family === 'risup-prompt' &&
     operation.selector.indices &&
     operation.selector.indices.length > 0
@@ -2900,6 +3704,21 @@ async function applyFacadeOperation(
   if (
     target.kind === 'active' &&
     operation.op === 'delete_item' &&
+    operation.selector.family === 'regex' &&
+    operation.selector.identity
+  ) {
+    const data = await apiRequest('POST', '/regex/by-identity/delete', {
+      identity: operation.selector.identity,
+      expected_comment: stringGuardValue(guards, 'expected_comment'),
+    });
+    return isApiError(data)
+      ? data
+      : { data, routes: [route('delete_regex_by_identity', 'POST', '/regex/by-identity/delete')], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
     operation.selector.family === 'greeting' &&
     operation.selector.indices &&
     operation.selector.indices.length > 0
@@ -2943,6 +3762,67 @@ async function applyFacadeOperation(
       expected_preview: stringGuardValue(guards, 'expected_preview'),
     });
     return isApiError(data) ? data : { data, routes: [route('delete_greeting', 'POST', greetingRoute)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'greeting' &&
+    operation.selector.identity
+  ) {
+    if (!operation.selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'Unsupported greeting delete selector',
+        'apply_edit greeting identity deletes require greeting_type="alternate" or "group".',
+        { operation },
+      );
+    }
+    const greetingType = encodeURIComponent(operation.selector.greeting_type);
+    const routePath = `/greeting/${greetingType}/by-hash/delete`;
+    const data = await apiRequest('POST', routePath, {
+      identity: operation.selector.identity,
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(data) ? data : { data, routes: [route('delete_greeting_by_hash', 'POST', routePath)], touched };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.ids &&
+    operation.selector.ids.length > 0
+  ) {
+    const contentRecord = asRecord(operation.content);
+    const data = await apiRequest('POST', '/risup/prompt-item/batch-delete-by-id', {
+      item_ids: operation.selector.ids,
+      expected_types: contentRecord?.expected_types,
+      expected_previews: contentRecord?.expected_previews,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('batch_delete_risup_prompt_items_by_id', 'POST', '/risup/prompt-item/batch-delete-by-id')],
+          touched,
+        };
+  }
+
+  if (
+    target.kind === 'active' &&
+    operation.op === 'delete_item' &&
+    operation.selector.family === 'risup-prompt' &&
+    operation.selector.id
+  ) {
+    const promptRoute = `/risup/prompt-item-by-id/${encodeURIComponent(operation.selector.id)}/delete`;
+    const data = await apiRequest('POST', promptRoute, {
+      expected_type: stringGuardValue(guards, 'expected_type'),
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(data)
+      ? data
+      : { data, routes: [route('delete_risup_prompt_item_by_id', 'POST', promptRoute)], touched };
   }
 
   if (
@@ -4338,6 +5218,13 @@ server.tool(
 );
 
 server.tool(
+  'read_lorebook_by_id',
+  '계산된 안정 id로 로어북 항목을 읽습니다. 새 LLM 흐름에서는 facade read_content selector { family: "lorebook", id }를 우선 사용하세요.',
+  { id: z.string().min(1).describe('list_lorebook 응답의 id') },
+  async ({ id }) => textResult(await apiRequest('GET', `/lorebook/by-id/${encodeURIComponent(id)}`)),
+);
+
+server.tool(
   'write_lorebook_batch',
   '여러 로어북 항목을 한 번에 수정합니다. 변경 사항 요약을 보여주고 한 번의 확인으로 전부 적용합니다. 각 항목에 optional expected_comment를 넣으면 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
   {
@@ -4358,6 +5245,23 @@ server.tool(
   safeToolHandler('write_lorebook_batch', async ({ entries }) =>
     textResult(await apiRequest('POST', '/lorebook/batch-write', { entries })),
   ),
+);
+
+server.tool(
+  'write_lorebook_by_id_batch',
+  '계산된 안정 id로 여러 로어북 항목을 한 번에 수정합니다. 충돌 시 index + expected_comment 도구로 fallback하세요. 사용자 확인 필요.',
+  {
+    entries: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          data: z.record(z.string(), z.unknown()),
+          expected_comment: z.string().optional(),
+        }),
+      )
+      .max(50),
+  },
+  async ({ entries }) => textResult(await apiRequest('POST', '/lorebook/batch-write-by-id', { entries })),
 );
 
 server.tool(
@@ -4415,6 +5319,18 @@ server.tool(
 );
 
 server.tool(
+  'write_lorebook_by_id',
+  '계산된 안정 id로 로어북 항목을 수정합니다. 새 LLM 흐름에서는 facade preview_edit/apply_edit selector { family: "lorebook", id }를 우선 사용하세요. 사용자 확인 필요.',
+  {
+    id: z.string().min(1),
+    data: z.record(z.string(), z.unknown()),
+    expected_comment: z.string().optional(),
+  },
+  async ({ id, data, expected_comment }) =>
+    textResult(await apiRequest('POST', `/lorebook/by-id/${encodeURIComponent(id)}`, { data, expected_comment })),
+);
+
+server.tool(
   'add_lorebook',
   '새 로어북 항목을 추가합니다. 사용자 확인 필요.',
   { data: z.record(z.string(), z.unknown()).describe('로어북 항목 데이터 (key, comment, content 등)') },
@@ -4454,6 +5370,17 @@ server.tool(
 );
 
 server.tool(
+  'delete_lorebook_by_id',
+  '계산된 안정 id로 로어북 항목을 삭제합니다. 새 LLM 흐름에서는 facade preview_edit/apply_edit selector { family: "lorebook", id }를 우선 사용하세요. 사용자 확인 필요.',
+  {
+    id: z.string().min(1),
+    expected_comment: z.string().optional(),
+  },
+  async ({ id, expected_comment }) =>
+    textResult(await apiRequest('POST', `/lorebook/by-id/${encodeURIComponent(id)}/delete`, { expected_comment })),
+);
+
+server.tool(
   'batch_delete_lorebook',
   '여러 로어북 항목을 한 번에 삭제합니다. 인덱스를 내림차순 처리하여 시프트 문제를 방지합니다. optional expected_comments를 함께 보내면 stale index를 감지할 수 있습니다. 최대 50개. 사용자 확인 필요.',
   {
@@ -4466,6 +5393,17 @@ server.tool(
   },
   async ({ indices, expected_comments }) =>
     textResult(await apiRequest('POST', '/lorebook/batch-delete', { indices, expected_comments })),
+);
+
+server.tool(
+  'batch_delete_lorebook_by_id',
+  '계산된 안정 id 배열로 여러 로어북 항목을 삭제합니다. id 충돌 시 index + expected_comment 도구로 fallback하세요. 사용자 확인 필요.',
+  {
+    ids: z.array(z.string().min(1)).max(50),
+    expected_comments: z.array(z.string()).max(50).optional(),
+  },
+  async ({ ids, expected_comments }) =>
+    textResult(await apiRequest('POST', '/lorebook/batch-delete-by-id', { ids, expected_comments })),
 );
 
 server.tool(
@@ -4634,6 +5572,19 @@ server.tool(
   async ({ indices }) => textResult(await apiRequest('POST', '/regex/batch', { indices })),
 );
 
+const regexIdentitySchema = z.object({
+  comment: z.string().optional(),
+  preview: z.string().optional(),
+  hash: z.string().optional(),
+});
+
+server.tool(
+  'read_regex_by_identity',
+  'comment + preview/hash identity로 정규식 항목을 읽습니다. 새 LLM 흐름에서는 facade read_content selector { family: "regex", identity }를 우선 사용하세요.',
+  { identity: regexIdentitySchema },
+  async ({ identity }) => textResult(await apiRequest('POST', '/regex/by-identity/read', { identity })),
+);
+
 server.tool(
   'write_regex',
   '특정 인덱스의 정규식 항목을 수정합니다. optional expected_comment로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
@@ -4644,6 +5595,18 @@ server.tool(
   },
   async ({ index, data, expected_comment }) =>
     textResult(await apiRequest('POST', `/regex/${index}`, { ...(data as Record<string, unknown>), expected_comment })),
+);
+
+server.tool(
+  'write_regex_by_identity',
+  'comment + preview/hash identity로 정규식 항목을 수정합니다. 중복 comment면 실패합니다. facade preview_edit/apply_edit identity selector를 우선 사용하세요. 사용자 확인 필요.',
+  {
+    identity: regexIdentitySchema,
+    data: z.record(z.string(), z.unknown()),
+    expected_comment: z.string().optional(),
+  },
+  async ({ identity, data, expected_comment }) =>
+    textResult(await apiRequest('POST', '/regex/by-identity/write', { identity, data, expected_comment })),
 );
 
 server.tool(
@@ -4700,6 +5663,17 @@ server.tool(
   },
   async ({ index, expected_comment }) =>
     textResult(await apiRequest('POST', `/regex/${index}/delete`, { expected_comment })),
+);
+
+server.tool(
+  'delete_regex_by_identity',
+  'comment + preview/hash identity로 정규식 항목을 삭제합니다. 중복 comment면 실패합니다. facade preview_edit/apply_edit identity selector를 우선 사용하세요. 사용자 확인 필요.',
+  {
+    identity: regexIdentitySchema,
+    expected_comment: z.string().optional(),
+  },
+  async ({ identity, expected_comment }) =>
+    textResult(await apiRequest('POST', '/regex/by-identity/delete', { identity, expected_comment })),
 );
 
 server.tool(
@@ -4774,6 +5748,21 @@ server.tool(
   async ({ type, indices }) => textResult(await apiRequest('POST', `/greeting/${type}/batch`, { indices })),
 );
 
+const greetingIdentitySchema = z.object({
+  preview: z.string().optional(),
+  hash: z.string().optional(),
+});
+
+server.tool(
+  'read_greeting_by_hash',
+  'preview/hash identity로 인사말을 읽습니다. 새 LLM 흐름에서는 facade read_content selector { family: "greeting", greeting_type, identity }를 우선 사용하세요.',
+  {
+    type: z.enum(['alternate', 'group']),
+    identity: greetingIdentitySchema,
+  },
+  async ({ type, identity }) => textResult(await apiRequest('POST', `/greeting/${type}/by-hash/read`, { identity })),
+);
+
 server.tool(
   'write_greeting',
   '특정 인덱스의 alternate 인사말을 수정합니다. groupOnlyGreetings(type="group")는 deprecated 호환 필드라 읽기 전용입니다. optional expected_preview로 stale index를 감지할 수 있습니다. 사용자 확인 필요.',
@@ -4785,6 +5774,19 @@ server.tool(
   },
   async ({ type, index, content, expected_preview }) =>
     textResult(await apiRequest('POST', `/greeting/${type}/${index}`, { content, expected_preview })),
+);
+
+server.tool(
+  'write_greeting_by_hash',
+  'preview/hash identity로 alternate 인사말을 수정합니다. 같은 identity가 여러 개면 실패합니다. facade preview_edit/apply_edit identity selector를 우선 사용하세요. 사용자 확인 필요.',
+  {
+    type: z.enum(['alternate']),
+    identity: greetingIdentitySchema,
+    content: z.string(),
+    expected_preview: z.string().optional(),
+  },
+  async ({ type, identity, content, expected_preview }) =>
+    textResult(await apiRequest('POST', `/greeting/${type}/by-hash/write`, { identity, content, expected_preview })),
 );
 
 server.tool(
@@ -4807,6 +5809,18 @@ server.tool(
   },
   async ({ type, index, expected_preview }) =>
     textResult(await apiRequest('POST', `/greeting/${type}/${index}/delete`, { expected_preview })),
+);
+
+server.tool(
+  'delete_greeting_by_hash',
+  'preview/hash identity로 alternate 인사말을 삭제합니다. 같은 identity가 여러 개면 실패합니다. facade preview_edit/apply_edit identity selector를 우선 사용하세요. 사용자 확인 필요.',
+  {
+    type: z.enum(['alternate']),
+    identity: greetingIdentitySchema,
+    expected_preview: z.string().optional(),
+  },
+  async ({ type, identity, expected_preview }) =>
+    textResult(await apiRequest('POST', `/greeting/${type}/by-hash/delete`, { identity, expected_preview })),
 );
 
 server.tool(
@@ -6146,6 +7160,92 @@ server.tool(
       .describe('New order as a permutation of [0, 1, ..., n-1]. Example: [2, 0, 1] moves item 2 to position 0.'),
   },
   async ({ order }) => textResult(await apiRequest('POST', '/risup/prompt-item/reorder', { order })),
+);
+
+server.tool(
+  'read_risup_prompt_item_by_id',
+  'Reads a single supported risup prompt item by stable id from list_risup_prompt_items. Prefer facade read_content with selector { family: "risup-prompt", id } for new LLM workflows.',
+  { item_id: z.string().min(1).describe('Stable prompt item id from list_risup_prompt_items.') },
+  async ({ item_id }) => textResult(await apiRequest('GET', `/risup/prompt-item-by-id/${encodeURIComponent(item_id)}`)),
+);
+
+server.tool(
+  'write_risup_prompt_item_by_id',
+  'Replaces a supported risup prompt item by stable id. Prefer facade preview_edit/apply_edit with selector { family: "risup-prompt", id } when possible. Requires user confirmation.',
+  {
+    item_id: z.string().min(1),
+    item: z.record(z.string(), z.unknown()).describe('Replacement supported prompt item object.'),
+    expected_type: z.string().optional(),
+    expected_preview: z.string().optional(),
+  },
+  async ({ item_id, item, expected_type, expected_preview }) =>
+    textResult(
+      await apiRequest('POST', `/risup/prompt-item-by-id/${encodeURIComponent(item_id)}`, {
+        item,
+        expected_type,
+        expected_preview,
+      }),
+    ),
+);
+
+server.tool(
+  'delete_risup_prompt_item_by_id',
+  'Deletes a supported risup prompt item by stable id. Prefer facade preview_edit/apply_edit with selector { family: "risup-prompt", id } when possible. Requires user confirmation.',
+  {
+    item_id: z.string().min(1),
+    expected_type: z.string().optional(),
+    expected_preview: z.string().optional(),
+  },
+  async ({ item_id, expected_type, expected_preview }) =>
+    textResult(
+      await apiRequest('POST', `/risup/prompt-item-by-id/${encodeURIComponent(item_id)}/delete`, {
+        expected_type,
+        expected_preview,
+      }),
+    ),
+);
+
+server.tool(
+  'write_risup_prompt_item_by_id_batch',
+  'Replaces multiple supported risup prompt items by stable ids in one confirmed operation. Use for granular batch workflows; facade id selectors remain preferred for simple writes. Requires user confirmation.',
+  {
+    writes: z
+      .array(
+        z.object({
+          item_id: z.string().min(1),
+          item: z.record(z.string(), z.unknown()),
+          expected_type: z.string().optional(),
+          expected_preview: z.string().optional(),
+        }),
+      )
+      .max(50),
+  },
+  async ({ writes }) => textResult(await apiRequest('POST', '/risup/prompt-item/batch-write-by-id', { writes })),
+);
+
+server.tool(
+  'batch_delete_risup_prompt_items_by_id',
+  'Deletes multiple supported risup prompt items by stable ids in one confirmed operation. Requires user confirmation.',
+  {
+    item_ids: z.array(z.string().min(1)).max(50),
+    expected_types: z.array(z.string()).max(50).optional(),
+    expected_previews: z.array(z.string()).max(50).optional(),
+  },
+  async ({ item_ids, expected_types, expected_previews }) =>
+    textResult(
+      await apiRequest('POST', '/risup/prompt-item/batch-delete-by-id', {
+        item_ids,
+        expected_types,
+        expected_previews,
+      }),
+    ),
+);
+
+server.tool(
+  'reorder_risup_prompt_items_by_id',
+  'Reorders all supported risup prompt items by a full stable-id permutation. Use when order may have shifted since index discovery. Requires user confirmation.',
+  { order_ids: z.array(z.string().min(1)).describe('Full prompt item id permutation in the desired order.') },
+  async ({ order_ids }) => textResult(await apiRequest('POST', '/risup/prompt-item/reorder-by-id', { order_ids })),
 );
 
 server.tool(
