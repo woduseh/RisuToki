@@ -91,6 +91,23 @@ describe('app.css – risup prompt editor layout', () => {
       /\.prompt-editor-inline-row\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[^}]*\}/s,
     );
     expect(css).toMatch(/\.prompt-editor-inline-field\s*\{[^}]*flex-direction:\s*column;[^}]*\}/s);
+    expect(css).toMatch(/\.prompt-editor-input,\s*\.prompt-editor-select\s*\{[^}]*flex:\s*0 0 auto;[^}]*\}/s);
+  });
+
+  it('stretches the focused prompt block editor and its main text field', () => {
+    expect(css).toMatch(
+      /\.prompt-item-detail-container\s*\{[^}]*flex:\s*1;[^}]*min-height:\s*0;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*\}/s,
+    );
+    expect(css).toMatch(
+      /\.prompt-item-detail-card\s*\{[^}]*flex:\s*1;[^}]*min-height:\s*0;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*\}/s,
+    );
+    expect(css).toMatch(
+      /\.prompt-item-detail-card\s+\.prompt-editor-textarea\[data-field='text'\]\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*320px;[^}]*\}/s,
+    );
+  });
+
+  it('uses a taller default textarea for prompt template list items', () => {
+    expect(css).toMatch(/\.prompt-editor-textarea\s*\{[^}]*min-height:\s*126px;[^}]*\}/s);
   });
 });
 

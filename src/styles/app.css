@@ -2554,11 +2554,24 @@ body {
   margin-bottom: 10px;
 }
 
+.prompt-item-detail-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
 .prompt-editor-shell,
 .prompt-order-shell {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.prompt-item-detail-editor {
+  flex: 1;
+  min-height: 0;
 }
 
 .prompt-editor-list,
@@ -2574,6 +2587,13 @@ body {
   border-radius: var(--radius-sm);
   background: var(--bg-primary);
   padding: 10px 12px;
+}
+
+.prompt-item-detail-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .prompt-editor-card-header,
@@ -2632,6 +2652,11 @@ body {
   gap: 6px;
 }
 
+.prompt-item-detail-card .prompt-editor-card-body {
+  flex: 1;
+  min-height: 0;
+}
+
 .prompt-editor-inline-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2657,8 +2682,18 @@ body {
   width: 100%;
 }
 
+.prompt-editor-input,
+.prompt-editor-select {
+  flex: 0 0 auto;
+}
+
 .prompt-editor-textarea {
-  min-height: 84px;
+  min-height: 126px;
+}
+
+.prompt-item-detail-card .prompt-editor-textarea[data-field='text'] {
+  flex: 1 1 auto;
+  min-height: 320px;
 }
 
 .prompt-editor-number {

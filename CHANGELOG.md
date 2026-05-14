@@ -9,6 +9,12 @@
 
 ---
 
+## [0.72.11] - 2026-05-14
+
+### Fixed
+
+- Expanded the focused `.risup` prompt block editor so Prompt Manager selections show a taller prompt text box by default.
+
 ## [0.72.10] - 2026-05-14
 
 ### Added
