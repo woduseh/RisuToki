@@ -9,6 +9,26 @@
 
 ---
 
+## [0.72.14] - 2026-05-14
+
+### Changed
+
+- Split browser-safe reference helpers from Node path-based reference manifest helpers so renderer builds no longer pull in Node `path` through reference UI code.
+
+## [0.72.13] - 2026-05-14
+
+### Changed
+
+- Deferred Monaco and Wasmoon loading during main renderer startup so the initial app shell can appear before editor and preview runtimes are needed.
+
+## [0.72.12] - 2026-05-14
+
+### Changed
+
+- Split Electron Builder release artifacts into `release/` so renderer builds can safely clean `dist/`.
+- Made `npm run dev` and `npm start` use already-built Electron files, with `dev:build` and `start:build` available when a rebuild is needed.
+- Enabled incremental TypeScript emit builds for Electron and Node-side libraries to improve repeated build times.
+
 ## [0.72.11] - 2026-05-14
 
 ### Fixed

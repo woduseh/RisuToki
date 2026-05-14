@@ -1,13 +1,14 @@
 {
   "name": "risutoki",
-  "version": "0.72.11",
+  "version": "0.72.14",
   "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
   "main": "main.js",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
     "dev:renderer": "vite --host 127.0.0.1 --port 5173 --strictPort",
-    "dev:electron": "npm run build:electron && wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
-    "prestart": "npm run build:electron && npm run build:renderer",
+    "dev:electron": "wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+    "dev:build": "npm run build:electron && npm run dev",
+    "start:build": "npm run build:electron && npm run build:renderer && npm start",
     "start": "electron .",
     "lint": "npx eslint \"src/**/*.{ts,vue}\" \"test/**/*.ts\" main.ts preload.ts popout-preload.ts vite.config.ts vitest.setup.ts toki-mcp-server.ts --max-warnings=0",
     "typecheck": "vue-tsc --noEmit && tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.node-libs.json --noEmit",
@@ -87,6 +88,9 @@
     "appId": "com.risutoki.editor",
     "productName": "RisuToki",
     "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
     "win": {
       "target": [
         "nsis",

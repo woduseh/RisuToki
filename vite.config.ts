@@ -1,13 +1,13 @@
 import { resolve, join, dirname } from 'node:path';
-import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig, type Plugin } from 'vitest/config';
 import { normalizePath } from 'vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
-const rootDir = fileURLToPath(new URL('.', import.meta.url));
+const rootDir = realpathSync(process.cwd());
 const require = createRequire(import.meta.url);
 
 function resolveInstalledAssetPath(packageName: string, assetPath: string): string {
@@ -82,7 +82,8 @@ function monacoIifePlugin(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  root: command === 'build' ? rootDir : process.cwd(),
   base: './',
   plugins: [
     vue(),
@@ -122,6 +123,9 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: true,
+    fs: {
+      allow: [process.cwd(), rootDir],
+    },
   },
   resolve: {
     extensions: ['.mts', '.ts', '.mjs', '.js', '.tsx', '.jsx', '.json'],
@@ -139,7 +143,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./vitest.setup.ts'],
+    setupFiles: [pathToFileURL(resolve(process.cwd(), 'vitest.setup.ts')).href],
     include: ['src/**/*.{test,spec}.{ts,js}'],
   },
-});
+}));

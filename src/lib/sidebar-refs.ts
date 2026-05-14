@@ -5,7 +5,7 @@ import {
   getReferenceUiItems,
   shouldRenderReferenceUiItem,
 } from './reference-item-registry';
-import { getRefFileType } from './reference-store';
+import { getRefFileType } from './reference-shared';
 import { parseLuaSections, parseCssSections } from './section-parser';
 import { parseTriggerScriptsText } from './trigger-script-model';
 import { normalizeTriggerScriptsText } from './trigger-scripts-runtime';

@@ -3,7 +3,7 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 
 import { parsePromptTemplate } from './risup-prompt-model';
-import { getRefFileType } from './reference-store';
+import { getRefFileType } from './reference-shared';
 import { collectHiddenFieldWarnings, isHiddenField } from './mcp-field-access';
 import type { McpSuccessOptions } from './mcp-response-envelope';
 import type { McpApiDeps, McpSessionStatus } from './mcp-api-server';

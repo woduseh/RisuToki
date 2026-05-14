@@ -3,7 +3,7 @@ import {
   getReferenceUiItems,
   shouldRenderReferenceUiItem,
 } from './reference-item-registry';
-import { getRefFileType } from './reference-store';
+import { getRefFileType } from './reference-shared';
 
 interface GuidesListResult {
   builtIn?: string[];

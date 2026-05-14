@@ -3341,7 +3341,6 @@ export async function initMainRenderer(): Promise<void> {
     const detail = referenceManifestStatus.detail ? ` — ${referenceManifestStatus.detail}` : '';
     setStatus(`${prefix}: ${referenceManifestStatus.message}${detail}`);
   }
-  await ensureWasmoon();
 
   // Listen for popout window events
   window.tokiAPI.onPopoutClosed((panelType) => {
@@ -3533,9 +3532,6 @@ export async function initMainRenderer(): Promise<void> {
     setStatus(updatePlan.statusMessage);
     tabMgr.markFieldDirty(field);
   });
-
-  // Load Monaco (async)
-  await ensureMonacoEditorReady();
 
   // Load Terminal (async, non-blocking)
   try {

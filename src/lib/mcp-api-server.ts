@@ -47,7 +47,7 @@ import {
 import { mcpSuccess, errorRecoveryMeta, type McpErrorInfo, type McpSuccessOptions } from './mcp-response-envelope';
 import type { RuntimeMetadata } from './mcp-runtime-contract';
 import { normalizeLF, extToMime, cloneJson } from './shared-utils';
-import { REF_SCALAR_FIELDS, REF_ALLOWED_READ_FIELDS, getGreetingFieldName, getRefFileType } from './reference-store';
+import { REF_SCALAR_FIELDS, REF_ALLOWED_READ_FIELDS, getGreetingFieldName, getRefFileType } from './reference-shared';
 import {
   replaceBodySchema,
   blockReplaceBodySchema,

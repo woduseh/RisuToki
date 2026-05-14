@@ -1,6 +1,6 @@
 import { getCharxInfoItems } from './charx-sidebar-fields';
 import { getVisibleRisupFieldGroups, type RisupFieldGroupId } from './risup-fields';
-import type { GreetingType, ReferenceFileType } from './reference-store';
+import type { GreetingType, ReferenceFileType } from './reference-shared';
 
 export type ReferenceUiItemKind =
   | 'field'

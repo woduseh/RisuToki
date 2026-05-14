@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+release/
+.tsbuildinfo/
 
 # Compiled Electron files (generated from .ts sources)
 main.js

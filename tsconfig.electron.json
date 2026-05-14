@@ -6,16 +6,12 @@
     "lib": ["ES2022", "DOM"],
     "strict": true,
     "skipLibCheck": true,
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo/electron.tsbuildinfo",
     "esModuleInterop": true,
     "noEmitOnError": true,
     "types": ["node"]
   },
-  "include": [
-    "main.ts",
-    "preload.ts",
-    "popout-preload.ts",
-    "src/electron-api.d.ts",
-    "src/adm-zip.d.ts"
-  ],
+  "include": ["main.ts", "preload.ts", "popout-preload.ts", "src/electron-api.d.ts", "src/adm-zip.d.ts"],
   "exclude": ["dist", "node_modules"]
 }
