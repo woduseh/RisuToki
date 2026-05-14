@@ -7,16 +7,18 @@ LLM-optimized skills for writing and reviewing `.charx` bots.
 | If the main problem is...                                                       | Load                                 |
 | ------------------------------------------------------------------------------- | ------------------------------------ |
 | explicit engine, contradiction, voice, and pressure scaffolding for a character | `authoring-characters`               |
+| worldbuilding substance: setting, culture, factions, systems, history, places   | `authoring-worlds`                   |
 | a factual profile plus a voice-led self-introduction sheet                      | `authoring-self-introduction-sheets` |
 | description-vs-lorebook distribution, cast compression, or conditional depth    | `authoring-lorebook-bots`            |
 
 ## Composition skills
 
-| Skill                                                                     | Description                                  | Files                                                               |
-| ------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------- |
-| [authoring-characters](authoring-characters/)                             | Character description writing for LLM RP     | `SKILL.md` + `SPEECH_SYSTEM.md` + `VALIDATION.md` + `BOT_SCALES.md` |
-| [authoring-self-introduction-sheets](authoring-self-introduction-sheets/) | Self-introduction monologue character sheets | `SKILL.md` + `SHEET_STRUCTURE.md` + `GENERATION_GUIDANCE.md`        |
-| [authoring-lorebook-bots](authoring-lorebook-bots/)                       | Lorebook-driven bot description writing      | `SKILL.md` + `LOREBOOK_ARCHITECTURE.md` + `BOT_SCALES.md`           |
+| Skill                                                                     | Description                                  | Files                                                                           |
+| ------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------- |
+| [authoring-characters](authoring-characters/)                             | Character description writing for LLM RP     | `SKILL.md` + `SPEECH_SYSTEM.md` + `VALIDATION.md` + `BOT_SCALES.md`             |
+| [authoring-worlds](authoring-worlds/)                                     | Worldbuilding for LLM RP                     | `SKILL.md` + `VALIDATION.md`                                                    |
+| [authoring-self-introduction-sheets](authoring-self-introduction-sheets/) | Self-introduction monologue character sheets | `SKILL.md` + `SHEET_STRUCTURE.md` + `GENERATION_GUIDANCE.md`                    |
+| [authoring-lorebook-bots](authoring-lorebook-bots/)                       | Lorebook-driven bot description writing      | `SKILL.md` + `LOREBOOK_ARCHITECTURE.md` + `BOT_SCALES.md` + `BOT_VALIDATION.md` |
 
 ## Typical workflow
 
@@ -28,6 +30,7 @@ LLM-optimized skills for writing and reviewing `.charx` bots.
 Examples:
 
 - `read_skill("authoring-characters")`
+- `read_skill("authoring-worlds")`
 - `read_skill("authoring-self-introduction-sheets")`
 - `read_skill("authoring-lorebook-bots")`
 - `read_skill("writing-arca-html")`

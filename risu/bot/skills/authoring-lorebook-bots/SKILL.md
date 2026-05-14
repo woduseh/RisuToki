@@ -18,14 +18,14 @@ related_tools:
 ## Agent Operating Contract
 
 - **Use when:** the main task is deciding what belongs in always-on description versus conditional lorebook entries for a cast-heavy, world-heavy, or lorebook-driven bot.
-- **Do not use when:** the main task is one character's inner engine/voice, a self-introduction sheet, raw lorebook syntax, or non-bot artifact work.
-- **Read first:** this `SKILL.md` only. Treat it as the architecture guide; load character-writing skills only for characters that need full voice scaffolding.
-- **Load deeper only if:** entry activation/structure is the hard part (`LOREBOOK_ARCHITECTURE.md`) or cast size changes the design economics (`BOT_SCALES.md`).
+- **Do not use when:** the main task is one character's inner engine/voice, worldbuilding substance, a self-introduction sheet, raw lorebook syntax, or non-bot artifact work.
+- **Read first:** this `SKILL.md` only. Treat it as the architecture guide; load character-writing or world-writing skills only when the source material itself is weak.
+- **Load deeper only if:** entry activation, progression, continuity, or reveal staging is the hard part (`LOREBOOK_ARCHITECTURE.md`), cast size changes the design economics (`BOT_SCALES.md`), or the user asks for finished-bot QA / release-level review (`BOT_VALIDATION.md`).
 - **Output/validation contract:** produce a description/lorebook distribution plan or revised bot frame; verify tone survives without lorebook, details activate conditionally, and the description is not a pasted database.
 
 > **Use this skill when the description is not supposed to carry everything.** In many bots the description provides the persistent frame — tone, world pressure, core cast thumbnail, and narrative direction — while the lorebook provides conditional detail. In lorebook-heavy bots the balance can shift further: the description's job becomes partly to teach the model how to read and use the lorebook itself.
 >
-> **If the main problem is one character's internal engine, voice, and contradictions, use [authoring-characters](../authoring-characters/). If you want that core character to be written through the self-introduction monologue method instead of an explicit scaffolded sheet, use [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/).** This skill sits beside character-writing and focuses on architecture: what stays always-on, what becomes conditional, and how that depth is surfaced in play.
+> **If the main problem is one character's internal engine, voice, and contradictions, use [authoring-characters](../authoring-characters/). If the main problem is worldbuilding substance — setting pressure, culture, factions, places, active history, or systems — use [authoring-worlds](../authoring-worlds/). If you want the core character written through the self-introduction monologue method, use [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/).** This skill sits beside those writing skills and focuses on architecture: what stays always-on, what becomes conditional, and how that depth is surfaced in play.
 
 ## Route by Bot Shape
 
@@ -37,7 +37,7 @@ Most bots fall somewhere along this spectrum. These are common shapes, not a clo
 | **2–4 recurring characters**                    | Establish tone, group tension, and cast thumbnails | Carry pair dynamics, deeper profiles, and scene-specific behavior      | [authoring-characters](../authoring-characters/) or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for per-character voice |
 | **10+ cast / world bot**                        | Frame the world, POV rules, and only the core cast | Carry most character/world detail, activation rules, and secret layers | [authoring-characters](../authoring-characters/) or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for the core cast       |
 
-For scale-specific recipes, use [BOT_SCALES.md](BOT_SCALES.md). For entry design and activation logic, use [LOREBOOK_ARCHITECTURE.md](LOREBOOK_ARCHITECTURE.md).
+For scale-specific recipes, use [BOT_SCALES.md](BOT_SCALES.md). For entry design, progression, continuity, and activation logic, use [LOREBOOK_ARCHITECTURE.md](LOREBOOK_ARCHITECTURE.md). For whole-bot validation, use [BOT_VALIDATION.md](BOT_VALIDATION.md).
 
 ---
 
@@ -137,13 +137,14 @@ In lorebook-heavy bots, this teaching role can become the description's primary 
 
 ## Role Boundary vs. Character-Writing Skills
 
-| Concern                                                               | Skill                                | Focus               |
-| --------------------------------------------------------------------- | ------------------------------------ | ------------------- |
-| Deep per-character engine (voice, contradictions, mask/leak, speech)  | `authoring-characters`               | Character internals |
-| Self-introduction monologue sheets (inference-first, omission-driven) | `authoring-self-introduction-sheets` | Character via voice |
-| Description framing, cast compression, lorebook activation strategy   | **this skill**                       | Architecture        |
+| Concern                                                                | Skill                                | Focus               |
+| ---------------------------------------------------------------------- | ------------------------------------ | ------------------- |
+| Deep per-character engine (voice, contradictions, mask/leak, speech)   | `authoring-characters`               | Character internals |
+| Self-introduction monologue sheets (inference-first, omission-driven)  | `authoring-self-introduction-sheets` | Character via voice |
+| Worldbuilding substance (pressure, culture, systems, factions, places) | `authoring-worlds`                   | World design        |
+| Description framing, cast compression, lorebook activation strategy    | **this skill**                       | Architecture        |
 
-In practice: write the **core cast** with a character skill, then decide **how much survives in always-on text** with this skill.
+In practice: write the **core cast** with a character skill and the **world substance** with `authoring-worlds`, then decide **how much survives in always-on text** with this skill.
 
 ---
 
@@ -258,6 +259,12 @@ Examples:
 - Key contradiction -> hint in description, full cause in lorebook
 - Core institution -> one-line pressure in description, workings in lorebook
 - Important NPC -> thumbnail in description, full profile in lorebook
+
+### Step 7.5 — Check Whether the World Itself Needs Repair
+
+Before routing world-heavy material, check whether the world already has usable pressure, texture, active history, and knowledge horizon. If it reads like a wiki or collapses into genre defaults, use [authoring-worlds](../authoring-worlds/) first.
+
+This skill should then resume after the world substance is strong enough to distribute into description, lorebook entries, `globalNote`, or `firstMessage`.
 
 ### Step 8 — Write the Opening Message
 
@@ -401,7 +408,7 @@ If the user also needs a protagonist-grade character sheet for the core cast, pa
 
 ## Smoke Tests
 
-| Prompt                                                                     | Expected routing                                                                                      | Expected output                                              | Forbidden behavior                                                  |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
-| "This world bot has too much lore in description; split it into lorebook." | Primary: `authoring-lorebook-bots`; load `LOREBOOK_ARCHITECTURE.md` if entry grouping is requested.   | Always-on frame plus conditional lorebook architecture.      | Rewriting every lore detail into the description again.             |
-| "Make a four-person relationship bot where secrets reveal gradually."      | Primary: `authoring-lorebook-bots`; pair with `authoring-characters` only for full lead voice sheets. | Description frame, relationship-entry plan, reveal triggers. | Preloading syntax skills unless CBS/Lua/regex is explicitly needed. |
+| Prompt                                                                     | Expected routing                                                                                      | Expected output                                              | Forbidden behavior                                                   |
+| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
+| "This world bot has too much lore in description; split it into lorebook." | Primary: `authoring-lorebook-bots`; load `LOREBOOK_ARCHITECTURE.md` if entry grouping is requested.   | Always-on frame plus conditional lorebook architecture.      | Rebuilding world substance before routing unless it is visibly weak. |
+| "Make a four-person relationship bot where secrets reveal gradually."      | Primary: `authoring-lorebook-bots`; pair with `authoring-characters` only for full lead voice sheets. | Description frame, relationship-entry plan, reveal triggers. | Preloading syntax skills unless CBS/Lua/regex is explicitly needed.  |

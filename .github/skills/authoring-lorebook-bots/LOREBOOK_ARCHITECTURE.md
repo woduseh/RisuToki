@@ -152,6 +152,16 @@ Focus on:
 - how it behaves in scenes
 - what social texture it adds
 
+For worldbuilding entries, prefer pressure-map content over encyclopedia content:
+
+- **Official story vs actual mechanism** for power centers
+- **Cost, limit, and cultural consequence** for magic or technology
+- **Current manifestation** for history, not full timeline
+- **Norms and taboos** as behaviors people perform or avoid
+- **Texture pairs** that show a structural rule in daily life
+
+If an entry can only say what exists, it is not finished. Add what the existence changes.
+
 ### 5. Location Entries
 
 Good location entries do more than describe the room.
@@ -214,6 +224,28 @@ Good uses:
 
 Not every bot needs these. They shine most in bots designed for extended play or bots where cumulative history is a dramatic resource.
 
+Continuity entries should change the next scene, not merely archive the past. A good entry tells the bot what memory now affects: trust, suspicion, access, social risk, available locations, faction posture, or what a character refuses to repeat.
+
+### 9.5. Progression / Reveal Entries (optional)
+
+Use when the bot needs relationship stages, world-state movement, secret reveal pacing, or user-choice residue.
+
+Good contents:
+
+- **Relationship progression and regression** — what behavior changes after trust, betrayal, repair, intimacy, or public conflict
+- **World event progression** — what has shifted in the setting because time passed or the user acted
+- **Reveal stages** — public rumor, partial truth, personal confession, and hidden cause as separate layers
+- **User-choice residue** — decisions the user made that now constrain access, tone, allies, suspicion, or social cost
+
+Avoid treating progression entries as scoreboards. They should describe response constraints and changed behavior.
+
+```text
+After {{user}} exposes the forged ration ledgers, dock clerks stop speaking freely near them.
+The harbor still accepts their coin, but favors now require an intermediary.
+```
+
+Regression is part of progression. Trust repair should have cost, delay, and visible behavior; do not let apologies reset state instantly unless the bot is designed for that.
+
 ### 10. System / Directorial Entries (advanced, optional)
 
 In ambitious world bots or large-cast scenarios, some entries serve a **meta-narrative** function — they direct how the bot handles storytelling rather than adding world content.
@@ -225,6 +257,24 @@ Examples:
 - **user-context routing** — entries that adjust tone, cast availability, or scenario branches based on where the user is or what role they occupy
 
 These are power tools for complex designs. Most bots do not need them, and adding them to a bot that does not need them creates overhead without benefit.
+
+### 11. Knowledge Horizon Entries
+
+Use when the bot risks importing modern, genre-default, or out-of-setting assumptions.
+
+Good contents:
+
+- what ordinary inhabitants know
+- what they misunderstand
+- what vocabulary they use instead of modern concepts
+- what sciences, technologies, laws, or social categories do not exist in this setting
+
+Negative statements are acceptable here when they block strong defaults.
+
+```text
+When fever spreads, people blame bad air, bad water, broken ritual, or household spirits.
+No one in this setting has a concept of germs, atoms, DNA, or modern psychiatry.
+```
 
 ---
 
@@ -406,16 +456,23 @@ If your always-on stack becomes a second description, compress it.
 
 Ask these before calling the architecture finished:
 
-| Check                | Question                                                       |
-| -------------------- | -------------------------------------------------------------- |
-| **Standalone**       | Can each important entry make sense alone?                     |
-| **Voice match**      | Does activated lore sound like it belongs in the same bot?     |
-| **Behavioral value** | Does each entry change scene output, not just explain facts?   |
-| **Trigger depth**    | Are secrets and deep truths gated well enough?                 |
-| **Collision safety** | What happens if 4–5 relevant entries activate together?        |
-| **Cast tiering**     | Are only the truly central characters always visible?          |
-| **Scene control**    | In a crowded scene, does the bot know where to focus?          |
-| **Leak prevention**  | Can casual mentions accidentally unlock late-game information? |
+| Check                 | Question                                                                   |
+| --------------------- | -------------------------------------------------------------------------- |
+| **Standalone**        | Can each important entry make sense alone?                                 |
+| **Voice match**       | Does activated lore sound like it belongs in the same bot?                 |
+| **Behavioral value**  | Does each entry change scene output, not just explain facts?               |
+| **Trigger depth**     | Are secrets and deep truths gated well enough?                             |
+| **Collision safety**  | What happens if 4–5 relevant entries activate together?                    |
+| **Cast tiering**      | Are only the truly central characters always visible?                      |
+| **Scene control**     | In a crowded scene, does the bot know where to focus?                      |
+| **Leak prevention**   | Can casual mentions accidentally unlock late-game information?             |
+| **Pressure value**    | Does each world entry change behavior, speech, sensation, or scene logic?  |
+| **Texture quota**     | Does each structural rule have at least one sensory or behavioral pair?    |
+| **Horizon guard**     | Are likely anachronisms or genre defaults explicitly blocked where needed? |
+| **Progression value** | Do state entries change future behavior instead of just recording events?  |
+| **Reveal staging**    | Are secrets split so casual mentions cannot unlock the whole truth stack?  |
+| **Regression/repair** | Do relationship setbacks and repairs carry cost instead of instant reset?  |
+| **Choice residue**    | Do important user choices leave constraints the bot can act on later?      |
 
 ---
 

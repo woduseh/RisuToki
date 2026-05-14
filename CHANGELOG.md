@@ -9,6 +9,32 @@
 
 ---
 
+## [0.72.17] - 2026-05-15
+
+### Added
+
+- Added whole-bot validation guidance for lorebook-driven bots, covering description, opener, lorebook activation, user role, and long-session drift.
+
+### Changed
+
+- Added character/world cross-handoff checks and strengthened progression, continuity, reveal staging, and user-choice residue guidance for long-running roleplay bots.
+
+## [0.72.16] - 2026-05-15
+
+### Added
+
+- Added the `authoring-worlds` bot skill for worldbuilding substance, pressure-map design, and world validation separate from lorebook architecture.
+
+### Changed
+
+- Clarified bot authoring routing so `authoring-lorebook-bots` focuses on description/lorebook/globalNote/firstMessage distribution after character and world substance are ready.
+
+## [0.72.15] - 2026-05-14
+
+### Changed
+
+- Expanded Risu bot authoring skills with commissioner-style intake, anti-flattening validation, pressure-map world routing, and knowledge-horizon lorebook guidance.
+
 ## [0.72.14] - 2026-05-14
 
 ### Changed

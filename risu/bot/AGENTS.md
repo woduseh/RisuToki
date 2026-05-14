@@ -4,14 +4,15 @@
 
 ## What to read / when
 
-| Order | Topic                                        | How to load                                             |
-| ----- | -------------------------------------------- | ------------------------------------------------------- |
-| 1     | Project rules & MCP workflow                 | `read_skill("project-workflow")`                        |
-| 2     | MCP tool selection                           | `read_skill("using-mcp-tools")` before MCP reads/writes |
-| 3     | Explicitly scaffolded character composition  | `read_skill("authoring-characters")`                    |
-| 4     | Self-introduction monologue character sheets | `read_skill("authoring-self-introduction-sheets")`      |
-| 5     | Lorebook-driven / cast-heavy bot composition | `read_skill("authoring-lorebook-bots")`                 |
-| 6     | Bot-specific critique / reference docs       | `risu/bot/docs/`                                        |
+| Order | Topic                                         | How to load                                             |
+| ----- | --------------------------------------------- | ------------------------------------------------------- |
+| 1     | Project rules & MCP workflow                  | `read_skill("project-workflow")`                        |
+| 2     | MCP tool selection                            | `read_skill("using-mcp-tools")` before MCP reads/writes |
+| 3     | Explicitly scaffolded character composition   | `read_skill("authoring-characters")`                    |
+| 4     | Worldbuilding / setting composition           | `read_skill("authoring-worlds")`                        |
+| 5     | Self-introduction monologue character sheets  | `read_skill("authoring-self-introduction-sheets")`      |
+| 6     | Lorebook-driven / cast-heavy bot architecture | `read_skill("authoring-lorebook-bots")`                 |
+| 7     | Bot-specific critique / reference docs        | `risu/bot/docs/`                                        |
 
 ## Shared syntax (load on demand)
 
@@ -31,7 +32,7 @@
 ## Mandatory rules
 
 1. **Read `project-workflow` first** every session.
-2. Choose **one primary composition skill first**: use **`authoring-characters`** for explicit engine/voice/pressure scaffolding, **`authoring-self-introduction-sheets`** for inference-first monologue sheets, or **`authoring-lorebook-bots`** when the description is mostly framing and the heavy lifting lives in lorebooks.
+2. Choose **one primary composition skill first**: use **`authoring-characters`** for explicit character engine/voice/pressure scaffolding, **`authoring-worlds`** for worldbuilding substance, **`authoring-self-introduction-sheets`** for inference-first monologue sheets, or **`authoring-lorebook-bots`** when the main task is description/lorebook/globalNote/firstMessage architecture.
 3. Use dedicated MCP surfaces for `lua`, `css`, greetings, lorebooks, regex, and triggers. Do not bulk-read those through generic `read_field`.
 4. Treat files in `docs/` as bot-specific review/reference material; shared syntax belongs in `risu/common/skills/`.
 5. Local `.charx` work products in this directory stay ignored. Only routing/docs/skills surfaces are tracked here.

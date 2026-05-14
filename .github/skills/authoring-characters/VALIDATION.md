@@ -76,6 +76,21 @@ These are the checks most likely to catch failures that a static reread will mis
 | **Lorebook Dump Risk**        | Backstory detail appears in description or always-on text without need | The bot starts explaining instead of roleplaying    | Move gated detail into lorebook architecture          |
 | **Voice Collision**           | Two characters share rhythm, humor, and pressure behavior              | Ensemble scenes become unreadable                   | Build a cast contrast grid before finalizing          |
 
+## Anti-Flattening Checks
+
+Use these when a character feels polished but still collapses into a default archetype during play.
+
+| Check                    | Question                                                                 | Fix if weak                                                                 |
+| ------------------------ | ------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| **Function Test**        | Does every memorable fact change behavior, voice, relation, or pressure? | Attach the fact to a scene consequence or remove it                         |
+| **Default Prediction**   | What stock character will the model assume this is?                      | Add Contrast that names the default and gives specific differences          |
+| **Reference Conversion** | Are references still visible as imitation?                               | Convert them into keep/change/reject functions and original behavior        |
+| **Texture Anchor**       | Are abstract traits paired with sensory or behavioral evidence?          | Replace labels with gestures, choices, silence rules, or environmental cues |
+| **Unresolved Tension**   | Did the draft explain away its own contradiction?                        | Remove "deep down" closure and keep the pressure active at story start      |
+| **Dark-Trait Dilution**  | Did difficult content become moral labels or reassuring balance notes?   | Write allowed dark material as specific conditional behavior and cost       |
+| **Future Leakage**       | Does the sheet tell the model where the arc will go?                     | Replace future outcomes with thresholds, tendencies, and current pressures  |
+| **Example-Line Leakage** | Are examples too memorable or signature-like?                            | Make them plainer and strengthen the reusable speech pattern                |
+
 ---
 
 ## Quick Validation Workflow

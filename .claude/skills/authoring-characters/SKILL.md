@@ -29,6 +29,12 @@ related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list
 
 For detailed scale recipes, see [BOT_SCALES.md](BOT_SCALES.md).
 
+## Cross-Handoff with Worldbuilding
+
+Characters often inherit pressure from the world. If a wound, backstory event, Lie, social role, taboo, class position, religion, war, institution, or magic cost is doing major character work, verify that the world pressure exists in [authoring-worlds](../authoring-worlds/) instead of inventing it only inside the character sheet.
+
+When checking fit, ask whether the character's Need, Lie, silence rules, and pressure responses collide with the world's Pressure, Taboo, and Knowledge Horizon. If they do not touch, either connect them or keep the world detail out of the character's always-on description.
+
 ---
 
 ## Core Principles
@@ -40,6 +46,55 @@ For detailed scale recipes, see [BOT_SCALES.md](BOT_SCALES.md).
 5. **Write to the bot's scale.** A single-character bot can justify a deep profile. A 10+ cast bot cannot give everyone protagonist depth in always-on text.
 6. **Do not script the future.** Define tendencies, thresholds, and pressure responses. Let the RP decide outcomes.
 7. **Architecture follows need, not convention.** Some bots thrive with heavy description and minimal lorebook; others do the opposite. Match the structure to what the bot actually requires.
+
+## Commissioner Intake Principles
+
+Use these while collecting or restructuring source material. They prevent the draft from accepting inert facts that look complete but do not help runtime play.
+
+### One high-value question at a time
+
+When the user is still inventing the character, ask the single question whose answer most changes the card. Do not bundle a full questionnaire unless the user explicitly asks for a worksheet.
+
+If the user provides a large info dump, summarize what is already covered, mark the weakest area, and ask only the next missing question. Never restart the whole pipeline when the material already answers early steps.
+
+### Function test every detail
+
+Before keeping a trait, reference, wound, outfit detail, ability, or relationship label, ask:
+
+**What does this change in scene generation?**
+
+If the answer is "nothing," either attach the detail to behavior, conflict, relation, voice, appearance-as-signal, or cut it. Fixed canon should still be respected; challenge only its function, placement, or wording.
+
+### Treat references as raw material
+
+When the user gives an existing character, image, song, scene, or aesthetic, decompose it into:
+
+- **Keep** — what function should survive
+- **Change** — how this character must differ
+- **Reject** — which recognizable default must not leak in
+
+Convert reference traits into original behavior. A comparison target is most useful when it feeds Contrast, voice calibration, appearance signals, or relationship pressure.
+
+### Predict and block model defaults
+
+At each major design choice, privately predict the most likely model default: generic mentor, tsundere rival, robe-and-staff mage, instant softening, tragic confession loop, and so on. If that default is wrong, add an explicit Contrast note or a more specific behavior pattern.
+
+Characters that pull from a single strong archetype or cultural source often snap back to that source. Add one off-pattern influence, pressure, or limitation unless the user intentionally wants the default.
+
+### Keep contradictions unresolved
+
+Contradiction is not a problem to tidy away. Avoid wording that resolves the character with "deep down" explanations or future redemption. Define what they do now, what leaks under pressure, and what they refuse to admit.
+
+### Preserve dark or difficult intent as craft
+
+If the user asks for morally difficult material that is otherwise allowed, do not soften it into author reassurance. Write it as specific behavior, conditional patterns, and scene consequences rather than moral labels.
+
+```text
+Weak: Cruel, dangerous, abusive.
+Stronger: Answers questions by raising the cost of asking the next one.
+```
+
+This is a writing-quality rule, not a safety bypass: follow normal safety boundaries, but do not dilute allowed dark characterization into safe-average prose.
 
 ---
 
@@ -98,6 +153,14 @@ The milk in the fridge expired. The front door never opened.
 She still checks the entryway when she smells spoiled milk.
 ```
 
+For core backstory events, keep the chain visible while drafting:
+
+```text
+event -> wound -> belief formed -> current manifestation
+```
+
+Supporting events can be shorter, but they still need to explain something the character does now. Past facts that do not affect present behavior are lorebook candidates or cuts.
+
 #### 3. Want vs. Need
 
 Give the character **two** forces that clash:
@@ -154,6 +217,15 @@ At minimum, define:
 - **Truth budget** — how honest they can be at each trust stage
 
 The model learns more from 3 excellent lines than from 3 paragraphs of abstract adjectives.
+
+When voice is being designed collaboratively, calibrate it before finalizing:
+
+1. Write the speech pattern first.
+2. Generate a few plain sample lines that test different registers.
+3. Ask what feels too stiff, too clean, too generic, or rhythmically wrong.
+4. Revise the pattern, not just the examples.
+
+Example lines should be diagnostic but fungible. If a line is so iconic that the model will parrot it, make it plainer and let the pattern carry the distinctiveness.
 
 ### Step 4 — Map Pressure Responses
 
@@ -234,6 +306,15 @@ If you do **not** want an explicit scaffolded sheet here at all — if you want 
 
 [Secret interests, private wants, shame-linked pleasures, layered dreams]
 ```
+
+### Runtime wording rules
+
+- Use present tense for current character behavior.
+- Avoid future promises such as "will eventually confess" or "is destined to change."
+- Use direct "is" statements for stable facts only: name, age, role, species, affiliation, rank, fixed physical facts.
+- Write personality, morality, and psychology as condition -> behavior -> leak.
+- Avoid negative statements except in explicit Contrast against a named default.
+- For appearance, keep only distinctive features and visual signals that affect recognition, status, movement, or scene texture.
 
 ### Step 6 — Scale the Sheet
 
