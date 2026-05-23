@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 async function loadSessionRecoveryControllerModule(): Promise<Record<string, unknown>> {
-  const modulePath = './session-recovery-controller';
+  const modulePath = './session-recovery-controller.ts';
   try {
     return await import(modulePath);
   } catch {

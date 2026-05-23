@@ -9,6 +9,19 @@
 
 ---
 
+## [1.0.0] - 2026-05-24
+
+### Changed
+
+- Promoted RisuToki to the 1.0.0 release line.
+- Updated the GitHub Release workflow to upload Electron Builder artifacts from the configured `release/` output directory.
+- Synced the README version badge with the package version.
+
+### Fixed
+
+- Fixed Vitest dynamic imports in session recovery and MCP search tests so the full test suite resolves TypeScript modules reliably.
+- Added the shared reference helper module to the module map to keep documentation drift checks passing.
+
 ## [0.72.17] - 2026-05-15
 
 ### Added

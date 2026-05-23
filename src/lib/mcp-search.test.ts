@@ -19,7 +19,7 @@ interface SurfaceSummary {
 }
 
 async function runSearch(data: SearchFixture, options: Record<string, unknown>) {
-  const modulePath = './mcp-search';
+  const modulePath = './mcp-search.ts';
   const { searchAllTextSurfaces } = await import(modulePath);
   return Promise.resolve(searchAllTextSurfaces(data, options));
 }
