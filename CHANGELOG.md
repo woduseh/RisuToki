@@ -9,6 +9,12 @@
 
 ---
 
+## [1.0.2] - 2026-05-24
+
+### Fixed
+
+- Disabled electron-builder's implicit tag publishing in the Release workflow so the explicit GitHub Release upload step owns all release assets.
+
 ## [1.0.1] - 2026-05-24
 
 ### Fixed

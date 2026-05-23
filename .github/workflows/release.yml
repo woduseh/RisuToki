@@ -43,7 +43,7 @@ jobs:
         run: npm run build:electron && npm run build:renderer
 
       - name: Package (NSIS + Portable)
-        run: npx electron-builder --win nsis portable
+        run: npx electron-builder --win nsis portable --publish never
 
       - name: Upload artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
