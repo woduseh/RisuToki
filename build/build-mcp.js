@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 const { execFileSync } = require('child_process');
+const esbuild = require('esbuild');
 const version = require('../package.json').version;
 
 function readCommit() {
@@ -14,20 +15,18 @@ function readCommit() {
 const buildTime = new Date().toISOString();
 const commit = readCommit();
 
-execFileSync(
-  process.execPath,
-  [
-    require.resolve('esbuild/bin/esbuild'),
-    'toki-mcp-server.ts',
-    '--bundle',
-    '--platform=node',
-    '--format=cjs',
-    '--outfile=toki-mcp-server.js',
-    '--target=node20',
-    `--define:__APP_VERSION__=${JSON.stringify(version)}`,
-    `--define:__PACKAGE_VERSION__=${JSON.stringify(version)}`,
-    `--define:__BUILD_TIME__=${JSON.stringify(buildTime)}`,
-    `--define:__COMMIT__=${JSON.stringify(commit)}`,
-  ],
-  { stdio: 'inherit' },
-);
+esbuild.buildSync({
+  entryPoints: ['toki-mcp-server.ts'],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  outfile: 'toki-mcp-server.js',
+  target: 'node20',
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+    __PACKAGE_VERSION__: JSON.stringify(version),
+    __BUILD_TIME__: JSON.stringify(buildTime),
+    __COMMIT__: JSON.stringify(commit),
+  },
+  logLevel: 'info',
+});

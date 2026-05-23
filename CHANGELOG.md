@@ -9,6 +9,13 @@
 
 ---
 
+## [1.0.1] - 2026-05-24
+
+### Fixed
+
+- Fixed the MCP bundle build script so Ubuntu CI runs esbuild through its JavaScript API instead of invoking the platform binary through Node.
+- Removed electron-builder auto-publish credentials from the Release workflow so GitHub Release assets are uploaded only once by the explicit upload step.
+
 ## [1.0.0] - 2026-05-24
 
 ### Changed
