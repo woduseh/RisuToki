@@ -44,8 +44,6 @@ jobs:
 
       - name: Package (NSIS + Portable)
         run: npx electron-builder --win nsis portable
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
