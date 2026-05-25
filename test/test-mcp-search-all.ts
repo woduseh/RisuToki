@@ -336,12 +336,18 @@ function createFolderWorkspaceMcpFixtures(dir: string): { risumFile: string; ris
   saveRisup(risupFile, {
     _fileType: 'risup',
     name: 'Workspace Preset',
+    promptTemplate: JSON.stringify([
+      { type: 'plain', type2: 'normal', text: 'Workspace modern prompt.', role: 'system' },
+    ]),
     mainPrompt: 'Workspace main prompt.',
     jailbreak: 'Workspace jailbreak.',
     globalNote: 'Workspace global note.',
     _compressionMode: 'gzip',
     _presetData: {
       name: 'Workspace Preset',
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: 'Workspace modern prompt.', role: 'system' },
+      ]),
       mainPrompt: 'Workspace main prompt.',
       jailbreak: 'Workspace jailbreak.',
       globalNote: 'Workspace global note.',
@@ -2327,7 +2333,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     assert.equal(risupReassemble.fileType, 'risup');
     const reopenedPreset = openRisup(risupOutput);
-    assert.equal(reopenedPreset.mainPrompt, 'Workspace main prompt.');
+    assert.equal(reopenedPreset.mainPrompt, '');
+    assert.match(reopenedPreset.promptTemplate ?? '', /Workspace modern prompt/);
     assert.equal((reopenedPreset._presetData as Record<string, unknown>).openAIKey, undefined);
 
     console.log('search_all_fields MCP smoke test passed');

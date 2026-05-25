@@ -188,7 +188,9 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.equal(reopened.characterVersion, data.characterVersion);
   assert.equal(reopened.firstMessage, data.firstMessage);
   assert.deepStrictEqual(reopened.alternateGreetings, data.alternateGreetings);
-  assert.deepStrictEqual(reopened.groupOnlyGreetings, data.groupOnlyGreetings);
+  assert.deepStrictEqual(reopened.groupOnlyGreetings, []);
+  assert.equal(reopened.personality, '');
+  assert.equal(reopened.scenario, '');
   assert.equal(reopened.globalNote, data.globalNote);
   assert.equal(reopened.css, data.css);
   assert.equal(reopened.defaultVariables, data.defaultVariables);
@@ -210,20 +212,20 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.equal(compatibility.issueCount, 0);
 })();
 
-(function testCharxOmitsEmptyCompatibilityFields() {
-  const filePath = path.join(tempDir, 'empty-compat-fields.charx');
+(function testCharxStripsDeprecatedCompatibilityFieldsOnSave() {
+  const filePath = path.join(tempDir, 'deprecated-compat-fields.charx');
   const data = {
     spec: 'chara_card_v3',
     specVersion: '3.0',
     name: 'No Empty Compat',
     description: 'Character description',
-    personality: '',
-    scenario: '',
+    personality: 'Legacy personality',
+    scenario: 'Legacy scenario',
     creatorcomment: '',
     tags: [],
     firstMessage: 'Hello',
     alternateGreetings: [],
-    groupOnlyGreetings: [],
+    groupOnlyGreetings: ['Legacy group greeting'],
     globalNote: '',
     css: '',
     defaultVariables: '',
@@ -238,23 +240,29 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
     xMeta: {},
     risumAssets: [],
     cardAssets: [],
-    systemPrompt: '',
-    nickname: '',
-    source: [],
-    additionalText: '',
-    license: '',
-    _risuExt: { additionalText: '', license: '' },
+    systemPrompt: 'Legacy system prompt',
+    nickname: 'Legacy nickname',
+    source: ['https://example.invalid/source'],
+    additionalText: 'Legacy additional text',
+    license: 'Legacy license',
+    _risuExt: { additionalText: 'Legacy additional text', license: 'Legacy license', virtualscript: 'alert(1)' },
     _card: {
       spec: 'chara_card_v3',
       spec_version: '3.0',
       data: {
-        personality: '',
-        scenario: '',
-        system_prompt: '',
-        nickname: '',
-        source: [],
-        group_only_greetings: [],
-        extensions: { risuai: { additionalText: '', license: '' } },
+        personality: 'Legacy personality',
+        scenario: 'Legacy scenario',
+        system_prompt: 'Legacy system prompt',
+        nickname: 'Legacy nickname',
+        source: ['https://example.invalid/source'],
+        group_only_greetings: ['Legacy group greeting'],
+        extensions: {
+          risuai: {
+            additionalText: 'Legacy additional text',
+            license: 'Legacy license',
+            virtualscript: 'alert(1)',
+          },
+        },
         character_book: { entries: [] },
         assets: [],
       },
@@ -267,10 +275,11 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   const risuExt = cardData.extensions.risuai;
 
   for (const key of ['personality', 'scenario', 'system_prompt', 'nickname', 'source', 'group_only_greetings']) {
-    assert.equal(Object.hasOwn(cardData, key), false, `${key} should be omitted when empty`);
+    assert.equal(Object.hasOwn(cardData, key), false, `${key} should be stripped on save`);
   }
   assert.equal(Object.hasOwn(risuExt, 'additionalText'), false);
   assert.equal(Object.hasOwn(risuExt, 'license'), false);
+  assert.equal(Object.hasOwn(risuExt, 'virtualscript'), false);
 })();
 
 (function testCharxExportCompatibilityDetectsLorebookMismatch() {
@@ -562,7 +571,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
 
   assert.equal(reopened._fileType, 'risum');
   assert.equal(reopened.name, data.moduleName);
-  assert.equal(reopened.cjs, data.cjs);
+  assert.equal(reopened.cjs, '');
   assert.equal(reopened.lowLevelAccess, data.lowLevelAccess);
   assert.equal(reopened.hideIcon, data.hideIcon);
   assert.equal(reopened.backgroundEmbedding, data.backgroundEmbedding);
@@ -626,7 +635,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   saveCharx(filePath, data as any);
   const reopened = openCharx(filePath);
 
-  assert.equal(reopened.cjs, data.cjs);
+  assert.equal(reopened.cjs, '');
   assert.equal(reopened.lowLevelAccess, data.lowLevelAccess);
   assert.equal(reopened.hideIcon, data.hideIcon);
   assert.equal(reopened.backgroundEmbedding, data.backgroundEmbedding);
@@ -812,9 +821,9 @@ const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
 
   assert.equal(reopened._fileType, 'risup');
   assert.equal(reopened.name, data.name);
-  assert.equal(reopened.mainPrompt, data.mainPrompt);
-  assert.equal(reopened.jailbreak, data.jailbreak);
-  assert.equal(reopened.globalNote, data.globalNote);
+  assert.equal(reopened.mainPrompt, '');
+  assert.equal(reopened.jailbreak, '');
+  assert.equal(reopened.globalNote, '');
   assert.equal(reopened.temperature, data.temperature);
   assert.equal(reopened.maxContext, data.maxContext);
   assert.equal(reopened.maxResponse, data.maxResponse);
@@ -892,7 +901,8 @@ const risupTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-'));
 
   assert.equal(reopened._presetData!.customFieldFromRisu, 'should be preserved');
   assert.deepStrictEqual(reopened._presetData!.someNestedConfig, { nested: true, value: 42 });
-  assert.equal(reopened.mainPrompt, 'Test prompt');
+  assert.equal(Object.hasOwn(reopened._presetData!, 'mainPrompt'), false);
+  assert.equal(reopened.mainPrompt, '');
 })();
 
 fs.rmSync(risupTempDir, { recursive: true, force: true });
@@ -1487,7 +1497,7 @@ function writeRisupEnvelopeCompressed(
 
   const reopened = openRisup(filePath);
   assert.equal(reopened.name, 'New Default Preset');
-  assert.equal(reopened.mainPrompt, 'default mode test');
+  assert.equal(reopened.mainPrompt, '');
   assert.equal(reopened._compressionMode, 'gzip');
 })();
 

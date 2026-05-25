@@ -146,7 +146,7 @@ The executable contract lives in `src/lib/mcp-request-schemas.ts` and `src/lib/m
 
 Future facade candidates are documented but not part of first-wave v1: `manage_items`, `manage_assets`, and `manage_file`.
 
-Hidden compatibility fields are preserved on disk but are not normal MCP content surfaces: deprecated `.charx` fields, `.risup` legacy prompt fields, reserved `.risum` `cjs`, and `groupOnlyGreetings` are omitted from read/search/probe/surface/facade results. Inventory/inspect/status responses may include `hiddenFieldWarnings` with field names and count/size only. `.risum` `mcpUrl` is preserved but read-only in normal mutation/string-edit routes. `lowLevelAccess` remains visible/editable.
+Hidden compatibility fields are not normal MCP content surfaces and are stripped from saved files: deprecated `.charx` fields, `.risup` legacy prompt fields, reserved `.risum` `cjs`, and `groupOnlyGreetings` are omitted from read/search/probe/surface/facade results. Inventory/inspect/status responses may include `hiddenFieldWarnings` with field names and count/size only. `.risum` `mcpUrl` is preserved but read-only in normal mutation/string-edit routes. `lowLevelAccess` remains visible/editable.
 
 ### Target discriminators
 

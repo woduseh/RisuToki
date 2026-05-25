@@ -9,6 +9,13 @@
 
 ---
 
+## [1.0.3] - 2026-05-25
+
+### Changed
+
+- Removed RisuAI-unrecommended compatibility fields from saved `.charx`, `.risup`, and `.risum` files while keeping their MCP/editor read and write surfaces hidden or blocked.
+- Updated hidden-field warnings and agent guidance so deprecated `.charx` fields, legacy `.risup` prompt fields, and reserved `.risum` `cjs` are treated as save-stripped data rather than preserved compatibility content.
+
 ## [1.0.2] - 2026-05-24
 
 ### Fixed

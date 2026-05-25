@@ -51,6 +51,7 @@ This map is for source navigation. It is not a full API reference.
 
 - `src/charx-io.ts` — `.charx`, `.risum`, `.risup` serialization and loading
 - `src/lib/folder-workspace.ts` — `.charx` / `.risum` / `.risup` project-folder extraction, loading, saving, tree reads, watching support, and type-aware export
+- `src/lib/deprecated-save-policy.ts` — save-time stripping policy for deprecated/unrecommended `.charx`, `.risum`, and `.risup` fields
 - `src/lib/charx-export-compatibility.ts` — `.charx` RisuAI upload compatibility checks for card/module lorebook/regex mirrors and assets
 - `src/lib/data-serializer.ts` — normalized document serialization helpers
 - `src/lib/document-validation.ts` — document-shape validation

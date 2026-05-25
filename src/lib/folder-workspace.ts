@@ -15,6 +15,11 @@ import {
   type RisupCompressionMode,
 } from '../charx-io';
 import { parseRisum, buildRisum } from '../rpack';
+import {
+  stripDeprecatedCharxSaveFields,
+  stripDeprecatedRisumSaveFields,
+  stripDeprecatedRisupSaveFields,
+} from './deprecated-save-policy';
 import { cloneJson } from './shared-utils';
 
 export type ProjectFileType = 'charx' | 'risum' | 'risup';
@@ -395,6 +400,7 @@ export function reassembleProjectCharx(projectPath: string, outputPath: string):
   if (!fs.existsSync(cardPath)) throw new Error('card.json not found in project folder');
   const card = readJson(cardPath);
   applyTextFields(projectPath, card, CHARX_EXTRACTABLE_FIELDS, { includeGreetings: true });
+  stripDeprecatedCharxSaveFields(card);
 
   const zip = new AdmZip();
   zip.addFile('card.json', Buffer.from(JSON.stringify(card, null, 2), 'utf-8'));
@@ -402,6 +408,7 @@ export function reassembleProjectCharx(projectPath: string, outputPath: string):
   const modulePath = path.join(projectPath, 'module.json');
   if (fs.existsSync(modulePath)) {
     const moduleJson = readJson(modulePath);
+    stripDeprecatedRisumSaveFields(moduleJson);
     zip.addFile('module.risum', buildRisum(moduleJson, readRisumAssets(projectPath)));
   }
 
@@ -416,6 +423,7 @@ function reassembleProjectRisum(projectPath: string, outputPath: string): { succ
   const modulePath = path.join(projectPath, 'module.json');
   if (!fs.existsSync(modulePath)) throw new Error('module.json not found in project folder');
   const moduleJson = readJson(modulePath);
+  stripDeprecatedRisumSaveFields(moduleJson);
   fs.writeFileSync(outputPath, buildRisum(moduleJson, readRisumAssets(projectPath)));
   return { success: true, outputPath };
 }
@@ -425,6 +433,7 @@ function reassembleProjectRisup(projectPath: string, outputPath: string): { succ
   if (!fs.existsSync(presetPath)) throw new Error('preset.json not found in project folder');
   const preset = sanitizePresetPayload(readJson(presetPath));
   applyTextFields(projectPath, preset, RISUP_EXTRACTABLE_FIELDS);
+  stripDeprecatedRisupSaveFields(preset);
   const marker = readProjectMarker(projectPath);
   saveRisupPresetPayload(outputPath, preset, marker?.compressionMode || 'gzip');
   return { success: true, outputPath };

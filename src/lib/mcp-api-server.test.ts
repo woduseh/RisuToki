@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as nodeCrypto from 'crypto';
 
+import AdmZip from 'adm-zip';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../charx-io';
 import { resolveSkillRootDirs } from './content-roots';
@@ -794,6 +795,21 @@ describe('MCP API surface routes', () => {
 describe('MCP API external unopened-file routes', () => {
   it('inspects unopened charx files and exposes missing probe surfaces', async () => {
     const fixture = createExternalCharxFixture();
+    const fixtureZip = new AdmZip(fixture.filePath);
+    const cardEntry = fixtureZip.getEntry('card.json');
+    expect(cardEntry).toBeTruthy();
+    const card = JSON.parse(cardEntry!.getData().toString('utf-8')) as {
+      data: Record<string, unknown>;
+    };
+    card.data.group_only_greetings = ['Legacy group external'];
+    const rewrittenZip = new AdmZip();
+    for (const entry of fixtureZip.getEntries()) {
+      rewrittenZip.addFile(
+        entry.entryName,
+        entry.entryName === 'card.json' ? Buffer.from(JSON.stringify(card), 'utf-8') : entry.getData(),
+      );
+    }
+    rewrittenZip.writeZip(fixture.filePath);
     const fixtureStat = fs.statSync(fixture.filePath);
     const api = await startTestApiServer(null, [], undefined, {
       parseLuaSections: (lua) => [{ name: 'main', content: lua }],
@@ -904,7 +920,7 @@ describe('MCP API external unopened-file routes', () => {
       expect(response.data.error).toContain('deprecated');
 
       const reopened = openCharx(fixture.filePath);
-      expect(reopened.groupOnlyGreetings).toEqual(['Group external']);
+      expect(reopened.groupOnlyGreetings).toEqual([]);
     } finally {
       await closeServer(api.server);
       fs.rmSync(fixture.dir, { recursive: true, force: true });

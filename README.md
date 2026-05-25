@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -197,7 +197,7 @@ Which items appear depends on the file type:
 - `customPromptTemplateToggle` opens in a **visual/raw dual-mode editor** that keeps the original line syntax while making toggles, groups, captions, dividers, and select/text inputs easier to manage, including drag-and-drop reorder in visual mode.
 - For persistent block reuse across sessions, MCP now exposes a **sidecar-backed risup prompt snippet library** on top of the text serializer (`list_risup_prompt_snippets`, `save_risup_prompt_snippet`, `insert_risup_prompt_snippet`, etc.).
 - For prompt-vs-reference review, MCP also exposes **`diff_risup_prompt`**, which compares the current preset against a loaded reference `.risup` using serializer-backed `promptTemplate` line diffs plus `formatingOrder` token/warning diffs.
-- Legacy fields (`mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`) are preserved in the file but demoted from the primary prompt UI — they remain as compatibility data.
+- Legacy fields (`mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`) are hidden from the primary prompt UI and removed on save; use structured `promptTemplate` / `formatingOrder` for persisted prompt content.
 - RisuToki can open `.risup` exports in gzip, zlib, and raw-deflate variants, and it preserves the detected compression mode on save.
 - If JSON-based preset fields (`presetBias`, `localStopStrings`) or structured prompt fields (`promptTemplate`, `formatingOrder`) contain malformed data, saving is blocked and the status bar shows the offending field.
 - MCP `write_field` / `write_field_batch` and autosave share the same risup validation boundary, so malformed JSON/shape is rejected immediately — it never silently persists in memory or in autosave files.

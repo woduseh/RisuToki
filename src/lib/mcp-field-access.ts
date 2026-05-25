@@ -1,3 +1,11 @@
+import {
+  CHARX_DEPRECATED_FIELD_NAMES,
+  RISUM_RESERVED_FIELD_NAMES,
+  RISUP_LEGACY_FIELD_NAMES,
+} from './deprecated-save-policy';
+
+export { CHARX_DEPRECATED_FIELD_NAMES, RISUM_RESERVED_FIELD_NAMES, RISUP_LEGACY_FIELD_NAMES };
+
 export type SupportedFileType = 'charx' | 'risum' | 'risup';
 
 export const CORE_FIELD_NAMES = [
@@ -29,17 +37,6 @@ export const CHARX_FIELD_NAMES = [
 
 export const CHARX_READ_ONLY_FIELD_NAMES = ['creationDate', 'modificationDate'];
 
-export const CHARX_DEPRECATED_FIELD_NAMES = [
-  'personality',
-  'scenario',
-  'systemPrompt',
-  'nickname',
-  'source',
-  'additionalText',
-  'license',
-  'groupOnlyGreetings',
-];
-
 export const RISUM_FIELD_NAMES = [
   'cjs',
   'lowLevelAccess',
@@ -52,8 +49,6 @@ export const RISUM_FIELD_NAMES = [
 ];
 
 export const RISUM_READ_ONLY_FIELD_NAMES = ['moduleId', 'mcpUrl'];
-export const RISUM_RESERVED_FIELD_NAMES = ['cjs'];
-
 export const RISUP_FIELD_NAMES = [
   'mainPrompt',
   'jailbreak',
@@ -123,15 +118,6 @@ export const RISUP_FIELD_NAMES = [
   'textgenWebUIBlockingURL',
   'localNetworkMode',
   'localNetworkTimeoutSec',
-];
-
-export const RISUP_LEGACY_FIELD_NAMES = [
-  'mainPrompt',
-  'jailbreak',
-  'globalNote',
-  'useInstructPrompt',
-  'instructChatTemplate',
-  'JinjaTemplate',
 ];
 
 export const ARRAY_FIELD_NAMES = ['alternateGreetings', 'tags', 'source'];
@@ -350,7 +336,7 @@ export function getHiddenFieldInfo(currentData: Record<string, unknown>, fieldNa
       field: fieldName,
       category: 'deprecated',
       reason: '.charx deprecated field',
-      suggestion: '최신 캐릭터/프롬프트 필드 또는 전용 구조화 도구를 사용하세요.',
+      suggestion: '비권장 필드는 편집할 수 없으며 다음 저장 시 파일에서 제거됩니다.',
     };
   }
   if (flags.isRisum && RISUM_RESERVED_FIELD_NAME_SET.has(fieldName)) {
@@ -358,7 +344,8 @@ export function getHiddenFieldInfo(currentData: Record<string, unknown>, fieldNa
       field: fieldName,
       category: 'reserved',
       reason: '.risum reserved field',
-      suggestion: 'cjs는 현재 사용되지 않는 예약 슬롯입니다. 새 모듈 로직에는 Lua/지원 필드를 사용하세요.',
+      suggestion:
+        'cjs는 편집할 수 없는 예약 슬롯이며 다음 저장 시 파일에서 제거됩니다. 새 모듈 로직에는 Lua/지원 필드를 사용하세요.',
     };
   }
   if (flags.isRisup && RISUP_LEGACY_FIELD_NAME_SET.has(fieldName)) {
@@ -366,7 +353,8 @@ export function getHiddenFieldInfo(currentData: Record<string, unknown>, fieldNa
       field: fieldName,
       category: 'legacy',
       reason: '.risup legacy prompt compatibility field',
-      suggestion: 'promptTemplate + formatingOrder 기반 프롬프트 구조를 사용하세요.',
+      suggestion:
+        'legacy prompt 필드는 편집할 수 없으며 다음 저장 시 파일에서 제거됩니다. promptTemplate + formatingOrder 기반 프롬프트 구조를 사용하세요.',
     };
   }
   return null;

@@ -243,14 +243,16 @@ describe('folder-workspace', () => {
     >;
     expect(presetJson.openAIKey).toBeUndefined();
     expect(presetJson.proxyKey).toBeUndefined();
-    expect(fs.readFileSync(path.join(projectPath, 'mainPrompt.md'), 'utf-8')).toBe('Main prompt');
+    expect(fs.existsSync(path.join(projectPath, 'mainPrompt.md'))).toBe(false);
+    expect(presetJson.mainPrompt).toBeUndefined();
 
     writeProjectFile(projectPath, 'mainPrompt.md', 'Edited main prompt');
     reassembleProjectDocument(projectPath, outputPath);
 
     const reopened = openRisup(outputPath);
-    expect(reopened.mainPrompt).toBe('Edited main prompt');
+    expect(reopened.mainPrompt).toBe('');
     expect((reopened._presetData as Record<string, unknown>).openAIKey).toBeUndefined();
     expect((reopened._presetData as Record<string, unknown>).proxyKey).toBeUndefined();
+    expect((reopened._presetData as Record<string, unknown>).mainPrompt).toBeUndefined();
   });
 });

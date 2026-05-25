@@ -58,6 +58,12 @@ const { writeFileAtomicSync, writePathAtomicSync } = require('./lib/atomic-write
   writeFileAtomicSync: (filePath: string, data: string | NodeJS.ArrayBufferView) => void;
   writePathAtomicSync: (filePath: string, writeTempPath: (tempPath: string) => void) => void;
 };
+const { stripDeprecatedCharxSaveFields, stripDeprecatedRisumSaveFields, stripDeprecatedRisupSaveFields } =
+  require('./lib/deprecated-save-policy') as {
+    stripDeprecatedCharxSaveFields: (card: Record<string, unknown>) => void;
+    stripDeprecatedRisumSaveFields: (modulePayload: Record<string, unknown>) => void;
+    stripDeprecatedRisupSaveFields: (preset: Record<string, unknown>) => void;
+  };
 
 const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_FILE_SIZE: number = 200 * 1024 * 1024; // 200 MB
@@ -333,7 +339,7 @@ function extractRisumModuleFields(
 
 /** Write risum module-specific fields back into a module JSON object. */
 function applyRisumModuleFields(mod: Record<string, unknown>, data: CharxData): void {
-  if (data.cjs !== undefined) mod.cjs = data.cjs || undefined;
+  delete mod.cjs;
   mod.lowLevelAccess = data.lowLevelAccess || false;
   mod.hideIcon = data.hideIcon || false;
   if (data.backgroundEmbedding !== undefined) mod.backgroundEmbedding = data.backgroundEmbedding || undefined;
@@ -627,6 +633,7 @@ export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
   risuExt.defaultVariables = data.defaultVariables;
   setOptionalStringField(risuExt, 'additionalText', data.additionalText);
   setOptionalStringField(risuExt, 'license', data.license);
+  delete risuExt.virtualscript;
 
   // Remove trigger/script from card (they go in module.risum)
   delete risuExt.customScripts;
@@ -692,6 +699,7 @@ export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
       });
     }
   }
+  stripDeprecatedCharxSaveFields(card);
   zip.addFile('card.json', Buffer.from(JSON.stringify(card, null, 2), 'utf-8'));
 
   // Build module.risum
@@ -725,6 +733,7 @@ export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
 
   // Apply risum module-specific fields
   applyRisumModuleFields(mod, data);
+  stripDeprecatedRisumSaveFields(moduleJson);
 
   const risumBuf: Buffer = buildRisum(moduleJson, data.risumAssets || []);
   zip.addFile('module.risum', risumBuf);
@@ -866,6 +875,7 @@ export function saveRisum(filePath: string, data: CharxData): void {
   normalizeRegexArray(mod.regex as unknown[]);
   mod.lorebook = data.lorebook || [];
 
+  stripDeprecatedRisumSaveFields(moduleJson);
   const risumBuf: Buffer = buildRisum(moduleJson, data.risumAssets || []);
   writeFileAtomicSync(filePath, risumBuf);
 }
@@ -1295,6 +1305,7 @@ export function saveRisup(filePath: string, data: CharxData): void {
   // Clear sensitive keys (never re-export API keys)
   delete preset.openAIKey;
   delete preset.proxyKey;
+  stripDeprecatedRisupSaveFields(preset);
 
   // Step 1: MessagePack encode preset
   const presetBuf = pack(preset);
@@ -1327,6 +1338,7 @@ export function saveRisupPresetPayload(
   const preset = cloneJson(presetPayload);
   delete preset.openAIKey;
   delete preset.proxyKey;
+  stripDeprecatedRisupSaveFields(preset);
 
   const presetBuf = pack(preset);
   const encrypted = encryptAesGcm(presetBuf);
