@@ -9,6 +9,16 @@
 
 ---
 
+## [1.0.4] - 2026-05-26
+
+### Added
+
+- Added RisuToki bot authoring, Mythos prompt development, Mythos prompt maintenance, and prompt preset synchronization skills for guided `.charx` and `.risup` authoring workflows.
+
+### Changed
+
+- Updated prompt authoring routing and skill indexes so Source/variant prompt synchronization and Mythos prompt work resolve to the dedicated skills.
+
 ## [1.0.3] - 2026-05-25
 
 ### Changed
