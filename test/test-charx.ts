@@ -119,8 +119,13 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
     alternateGreetings: ['안녕하세요. 두 번째 인사입니다.', '세 번째 인사입니다.'],
     groupOnlyGreetings: ['그룹 채팅 첫 인사입니다.'],
     globalNote: '[시스템] 테스트 노트',
+    systemPrompt: 'Character-specific system prompt',
     css: '/* test css */',
     defaultVariables: 'mood=happy',
+    nickname: 'Tester',
+    source: ['https://example.invalid/source'],
+    additionalText: 'Additional description used by RisuAI',
+    license: 'CC BY-SA 4.0',
     lua: '-- ===== main =====\nprint("hello")\n',
     triggerScripts: [
       {
@@ -192,8 +197,13 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.equal(reopened.personality, '');
   assert.equal(reopened.scenario, '');
   assert.equal(reopened.globalNote, data.globalNote);
+  assert.equal(reopened.systemPrompt, '');
   assert.equal(reopened.css, data.css);
   assert.equal(reopened.defaultVariables, data.defaultVariables);
+  assert.equal(reopened.nickname, '');
+  assert.deepStrictEqual(reopened.source, []);
+  assert.equal(reopened.additionalText, '');
+  assert.equal(reopened.license, '');
   assert.equal(reopened.lua, data.lua);
   assert.deepStrictEqual(reopened.triggerScripts, data.triggerScripts);
   assert.deepStrictEqual(reopened.tags, data.tags);
@@ -212,7 +222,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.equal(compatibility.issueCount, 0);
 })();
 
-(function testCharxStripsDeprecatedCompatibilityFieldsOnSave() {
+(function testCharxStripsProtectedCompatibilityFieldsOnSave() {
   const filePath = path.join(tempDir, 'deprecated-compat-fields.charx');
   const data = {
     spec: 'chara_card_v3',
@@ -282,6 +292,29 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.equal(Object.hasOwn(risuExt, 'virtualscript'), false);
 })();
 
+(function testCharxDropsVirtualscriptOnOpen() {
+  const filePath = path.join(tempDir, 'virtualscript-import.charx');
+  writeCharxCompatibilityFixture(filePath, {
+    cardDataPatch: {
+      extensions: {
+        risuai: {
+          additionalText: 'Supported additional text',
+          license: 'Supported license',
+          virtualscript: 'alert(1)',
+          customScripts: [],
+        },
+      },
+    },
+  });
+
+  const opened = openCharx(filePath);
+  assert.equal(opened.additionalText, 'Supported additional text');
+  assert.equal(opened.license, 'Supported license');
+  assert.equal(Object.hasOwn(opened._risuExt, 'virtualscript'), false);
+  const openedCardData = opened._card.data as Record<string, any>;
+  assert.equal(Object.hasOwn(openedCardData.extensions.risuai, 'virtualscript'), false);
+})();
+
 (function testCharxExportCompatibilityDetectsLorebookMismatch() {
   const filePath = path.join(tempDir, 'compat-lorebook-mismatch.charx');
   const moduleLorebook = [{ comment: 'Lore A', key: 'lore', content: 'Old module lore', insertorder: 100 }];
@@ -346,6 +379,21 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
 
   assert.equal(result.ok, false);
   assert.ok(result.issues.some((item) => item.code === 'empty-compatibility-field'));
+})();
+
+(function testCharxExportCompatibilityDetectsNonEmptyDeprecatedFields() {
+  const filePath = path.join(tempDir, 'compat-nonempty-deprecated.charx');
+  writeCharxCompatibilityFixture(filePath, {
+    cardDataPatch: {
+      personality: 'Legacy personality text',
+      scenario: 'Legacy scenario text',
+    },
+  });
+
+  const result = validateCharxExportCompatibilityFile(filePath);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((item) => item.code === 'deprecated-card-field'));
 })();
 
 (function testCharxExportCompatibilityDetectsZeroByteAsset() {

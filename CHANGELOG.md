@@ -9,6 +9,13 @@
 
 ---
 
+## [1.0.5] - 2026-05-26
+
+### Fixed
+
+- Restored RisuToki's stricter practical protection policy for `.charx`: `personality`, `scenario`, `systemPrompt`, `nickname`, `source`, `groupOnlyGreetings`, `additionalText`, `license`, and unsafe `virtualscript` are hidden or blocked from normal editing and removed on save.
+- Kept group-only greetings out of MCP/reference reads, search, probe, surface, and facade routes so `hiddenFieldWarnings` remains the only value-safe visibility signal.
+
 ## [1.0.4] - 2026-05-26
 
 ### Added

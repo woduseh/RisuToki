@@ -47,17 +47,15 @@ interface WorkspaceMarker {
 
 const CHARX_EXTRACTABLE_FIELDS: ExtractableField[] = [
   { file: 'description.md', path: 'data.description' },
-  { file: 'personality.md', path: 'data.personality' },
-  { file: 'scenario.md', path: 'data.scenario' },
   { file: 'first_mes.md', path: 'data.first_mes' },
   { file: 'mes_example.md', path: 'data.mes_example' },
   { file: 'creator_notes.md', path: 'data.creator_notes' },
-  { file: 'system_prompt.md', path: 'data.system_prompt' },
   { file: 'post_history_instructions.md', path: 'data.post_history_instructions' },
   { file: 'backgroundHTML.md', path: 'data.extensions.risuai.backgroundHTML' },
-  { file: 'additionalText.md', path: 'data.extensions.risuai.additionalText' },
   { file: 'depth_prompt.md', path: 'data.extensions.depth_prompt.prompt' },
 ];
+
+const CHARX_PROTECTED_PROJECT_FILES = ['personality.md', 'scenario.md', 'system_prompt.md', 'additionalText.md'];
 
 const RISUP_EXTRACTABLE_FIELDS: ExtractableField[] = [
   { file: 'mainPrompt.md', path: 'mainPrompt' },
@@ -91,6 +89,12 @@ function readJson(filePath: string): Record<string, unknown> {
 function writeJson(filePath: string, value: unknown): void {
   ensureDir(path.dirname(filePath));
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf-8');
+}
+
+function removeProjectFiles(projectPath: string, files: readonly string[]): void {
+  for (const file of files) {
+    fs.rmSync(path.join(projectPath, file), { force: true });
+  }
 }
 
 function getNestedValue(obj: unknown, dotPath: string): unknown {
@@ -401,6 +405,7 @@ export function reassembleProjectCharx(projectPath: string, outputPath: string):
   const card = readJson(cardPath);
   applyTextFields(projectPath, card, CHARX_EXTRACTABLE_FIELDS, { includeGreetings: true });
   stripDeprecatedCharxSaveFields(card);
+  removeProjectFiles(projectPath, CHARX_PROTECTED_PROJECT_FILES);
 
   const zip = new AdmZip();
   zip.addFile('card.json', Buffer.from(JSON.stringify(card, null, 2), 'utf-8'));
@@ -522,6 +527,7 @@ export function saveProjectData(projectPath: string, data: Record<string, unknow
   const cardPath = path.join(projectPath, 'card.json');
   const card = readJson(cardPath);
   extractTextFields(projectPath, card, CHARX_EXTRACTABLE_FIELDS, { includeGreetings: true });
+  removeProjectFiles(projectPath, CHARX_PROTECTED_PROJECT_FILES);
   writeJson(cardPath, card);
   writeProjectMarker(projectPath, {
     sourceFileType: 'charx',

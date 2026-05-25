@@ -517,7 +517,12 @@ export function openCharx(filePath: string): CharxData {
 
   // Extract editable components
   const data = card.data || {};
-  const risuExt = data.extensions?.risuai || {};
+  const rawRisuExt = data.extensions?.risuai;
+  const risuExt =
+    rawRisuExt && typeof rawRisuExt === 'object' && !Array.isArray(rawRisuExt)
+      ? (rawRisuExt as Record<string, unknown>)
+      : {};
+  delete risuExt.virtualscript;
   const mod = ((moduleData as Record<string, unknown>)?.module as Record<string, unknown>) || {};
   const triggerScripts: TriggerScript[] = cloneTriggerScripts(mod.trigger || []);
 
@@ -551,8 +556,8 @@ export function openCharx(filePath: string): CharxData {
     alternateGreetings: data.alternate_greetings || [],
     groupOnlyGreetings: data.group_only_greetings || [],
     globalNote: data.post_history_instructions || '',
-    css: risuExt.backgroundHTML || '',
-    defaultVariables: risuExt.defaultVariables || '',
+    css: (risuExt.backgroundHTML as string) || '',
+    defaultVariables: (risuExt.defaultVariables as string) || '',
     lua: extractPrimaryLuaFromTriggerScripts(triggerScripts),
     triggerScripts,
 

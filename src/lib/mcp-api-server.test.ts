@@ -862,6 +862,12 @@ describe('MCP API external unopened-file routes', () => {
       expect(greetings.status).toBe(200);
       expect(greetings.data).toMatchObject({ type: 'alternate', count: 1 });
 
+      const groupGreetings = await postJson<McpErrorEnvelope>(api.port, api.token, '/probe/greetings/groupOnly', {
+        file_path: fixture.filePath,
+      });
+      expect(groupGreetings.status).toBe(400);
+      expect(groupGreetings.data.error).toContain('숨겨집니다');
+
       const triggers = await postJson<{ count: number }>(api.port, api.token, '/probe/triggers', {
         file_path: fixture.filePath,
       });
@@ -3844,11 +3850,12 @@ describe('MCP API structured error envelopes — field routes', () => {
       );
 
       const batch = await postJson<{ fields: Array<Record<string, unknown>> }>(api.port, api.token, '/field/batch', {
-        fields: ['name', 'personality'],
+        fields: ['name', 'groupOnlyGreetings', 'personality'],
       });
       expect(batch.status).toBe(200);
       expect(batch.data.fields).toEqual([
         expect.objectContaining({ field: 'name', content: '' }),
+        expect.objectContaining({ field: 'groupOnlyGreetings', hidden: true }),
         expect.objectContaining({ field: 'personality', hidden: true }),
       ]);
 

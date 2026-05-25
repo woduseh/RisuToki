@@ -767,16 +767,16 @@ function getFieldMutationBlock(
   fieldName: string,
 ): { message: string; suggestion: string } | null {
   const rules = getFieldAccessRules(currentData);
-  if (rules.readOnlyFields.includes(fieldName)) {
-    return {
-      message: `"${fieldName}" 필드는 읽기 전용입니다.`,
-      suggestion: '이 필드는 비권장/예약 호환 필드이거나 시스템 관리 필드라 수정할 수 없습니다.',
-    };
-  }
   if (rules.deprecatedFields.includes(fieldName)) {
     return {
       message: `"${fieldName}" 필드는 deprecated/비권장 필드라 수정할 수 없습니다.`,
       suggestion: '최신 필드나 전용 구조화 도구를 사용하고 이 필드는 호환 읽기 용도로만 유지하세요.',
+    };
+  }
+  if (rules.readOnlyFields.includes(fieldName)) {
+    return {
+      message: `"${fieldName}" 필드는 읽기 전용입니다.`,
+      suggestion: '이 필드는 비권장/예약 호환 필드이거나 시스템 관리 필드라 수정할 수 없습니다.',
     };
   }
   return null;
@@ -1998,22 +1998,6 @@ function getExternalFieldAccess(currentData: Record<string, unknown>, fieldName:
       readOnly: true,
       message: mutationBlock.message,
       suggestion: mutationBlock.suggestion,
-    };
-  }
-
-  if (fieldName === 'groupOnlyGreetings') {
-    if (fileType !== 'charx') {
-      return {
-        allowed: false,
-        message: `Unknown field: ${fieldName} ${getUnknownFieldHint(rules)}`,
-        suggestion: 'inspect_external_file 또는 probe_greetings로 사용 가능한 표면을 다시 확인하세요.',
-      };
-    }
-    return {
-      allowed: false,
-      readOnly: true,
-      message: `"${fieldName}" 필드는 deprecated/비권장 필드라 수정할 수 없습니다.`,
-      suggestion: 'groupOnlyGreetings는 호환 읽기 용도로만 유지됩니다. alternateGreetings를 사용하세요.',
     };
   }
 
@@ -3735,6 +3719,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               target: `field:${fieldName}`,
             });
           }
+          const mutationBlock = getFieldMutationBlock(currentData, fieldName);
+          if (mutationBlock) {
+            return mcpError(res, 400, {
+              action: 'update field',
+              message: mutationBlock.message,
+              suggestion: mutationBlock.suggestion,
+              target: `field:${fieldName}`,
+            });
+          }
           // Read-only fields check
           if (rules.readOnlyFields.includes(fieldName)) {
             return mcpError(res, 400, {
@@ -3984,6 +3977,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               message: `각 항목에 "field"와 "content"가 필요합니다.`,
               suggestion: '각 항목을 { "field": "<필드명>", "content": <값> } 형태로 전달하세요.',
               target: 'field:batch-write',
+            });
+          }
+          const mutationBlock = getFieldMutationBlock(currentData, entry.field);
+          if (mutationBlock) {
+            return mcpError(res, 400, {
+              action: 'batch write field',
+              message: mutationBlock.message,
+              suggestion: mutationBlock.suggestion,
+              target: `field:${entry.field}`,
             });
           }
           if (readOnlyFields.includes(entry.field)) {

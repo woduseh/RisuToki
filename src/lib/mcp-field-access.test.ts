@@ -90,16 +90,14 @@ describe('getFieldAccessRules', () => {
   it('includes only charx-specific fields for charx documents', () => {
     const rules = getFieldAccessRules({ name: 'Card' });
     expect(rules.allowedFields).toContain('personality');
+    expect(rules.allowedFields).toContain('systemPrompt');
+    expect(rules.allowedFields).toContain('additionalText');
+    expect(rules.allowedFields).toContain('groupOnlyGreetings');
     expect(rules.allowedFields).not.toContain('moduleNamespace');
     expect(rules.allowedFields).not.toContain('mainPrompt');
-    expect(rules.readOnlyFields).toEqual([
-      ...CHARX_READ_ONLY_FIELD_NAMES,
-      ...CHARX_DEPRECATED_FIELD_NAMES.filter((field) => field !== 'groupOnlyGreetings'),
-    ]);
+    expect(rules.readOnlyFields).toEqual([...CHARX_READ_ONLY_FIELD_NAMES, ...CHARX_DEPRECATED_FIELD_NAMES]);
     expect(rules.deprecatedFields).toEqual(CHARX_DEPRECATED_FIELD_NAMES);
     expect(rules.hiddenFields).toEqual(CHARX_DEPRECATED_FIELD_NAMES);
-    expect(rules.readOnlyFields).not.toContain('groupOnlyGreetings');
-    expect(rules.allowedFields).not.toContain('groupOnlyGreetings');
     for (const field of rules.readOnlyFields) {
       expect(rules.allowedFields).toContain(field);
     }
@@ -152,7 +150,9 @@ describe('hidden deprecated field policy', () => {
       expect.objectContaining({ field: 'groupOnlyGreetings', category: 'deprecated', count: 1 }),
     ]);
     expect(JSON.stringify(warnings)).not.toContain('secret greeting');
-    expect(redactHiddenFields({ name: 'Card', personality: 'hidden text' })).toEqual({ name: 'Card' });
+    expect(redactHiddenFields({ name: 'Card', personality: 'hidden text', groupOnlyGreetings: ['hidden'] })).toEqual({
+      name: 'Card',
+    });
   });
 });
 
@@ -226,6 +226,10 @@ describe('string mutation field support', () => {
 
   it('classifies string mutation fields as supported, read-only, or unsupported', () => {
     expect(getStringMutationFieldStatus('description')).toBe('ok');
+    expect(getStringMutationFieldStatus('systemPrompt', { _fileType: 'charx' })).toBe('read-only');
+    expect(getStringMutationFieldStatus('additionalText', { _fileType: 'charx' })).toBe('read-only');
+    expect(getStringMutationFieldStatus('personality', { _fileType: 'charx' })).toBe('read-only');
+    expect(getStringMutationFieldStatus('groupOnlyGreetings', { _fileType: 'charx' })).toBe('read-only');
     expect(getStringMutationFieldStatus('creationDate')).toBe('read-only');
     expect(getStringMutationFieldStatus('moduleId')).toBe('read-only');
     expect(getStringMutationFieldStatus('cjs')).toBe('read-only');
@@ -296,13 +300,20 @@ describe('buildFieldBatchReadResults', () => {
   it('returns per-field payloads for known fields and errors for unknown ones', () => {
     expect(
       buildFieldBatchReadResults(
-        { name: 'Card', description: 'Desc', alternateGreetings: ['Hi'], personality: 'old' },
-        ['name', 'alternateGreetings', 'personality', 'moduleNamespace'],
+        {
+          name: 'Card',
+          description: 'Desc',
+          alternateGreetings: ['Hi'],
+          groupOnlyGreetings: ['Group hi'],
+          personality: 'old',
+        },
+        ['name', 'alternateGreetings', 'groupOnlyGreetings', 'personality', 'moduleNamespace'],
         { stringifyTriggerScripts: JSON.stringify },
       ),
     ).toEqual([
       { field: 'name', content: 'Card' },
       { field: 'alternateGreetings', content: ['Hi'], type: 'array' },
+      expect.objectContaining({ field: 'groupOnlyGreetings', hidden: true, category: 'deprecated' }),
       expect.objectContaining({ field: 'personality', hidden: true, category: 'deprecated' }),
       { field: 'moduleNamespace', error: 'Unknown field: moduleNamespace' },
     ]);

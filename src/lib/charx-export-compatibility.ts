@@ -35,7 +35,7 @@ export interface CharxExportCompatibilityResult {
 
 const EMBEDDED_ASSET_URI_PREFIX = 'embeded://';
 
-const EMPTY_COMPAT_CARD_FIELDS = [
+const DEPRECATED_CARD_FIELDS = [
   'personality',
   'scenario',
   'system_prompt',
@@ -44,7 +44,7 @@ const EMPTY_COMPAT_CARD_FIELDS = [
   'group_only_greetings',
 ] as const;
 
-const EMPTY_COMPAT_RISUAI_FIELDS = ['additionalText', 'license'] as const;
+const DEPRECATED_RISUAI_FIELDS = ['additionalText', 'license'] as const;
 
 const REGEX_TYPE_MAP: Record<string, string> = {
   editrequest: 'editprocess',
@@ -259,34 +259,51 @@ function validateEmptyCompatibilityFields(
   issues: CharxExportCompatibilityIssue[],
   data: Record<string, unknown>,
 ): void {
-  for (const key of EMPTY_COMPAT_CARD_FIELDS) {
-    if (!Object.hasOwn(data, key) || !isEmptyCompatibilityValue(data[key])) continue;
+  for (const key of DEPRECATED_CARD_FIELDS) {
+    if (!Object.hasOwn(data, key)) continue;
+    const empty = isEmptyCompatibilityValue(data[key]);
     issues.push(
       issue(
-        'empty-compatibility-field',
+        empty ? 'empty-compatibility-field' : 'deprecated-card-field',
         'auto-fixable',
         'warning',
         `card.json.data.${key}`,
-        `Empty compatibility-only field "${key}" is present in card.json.`,
-        'Omit empty compatibility-only fields during .charx export/save.',
+        empty
+          ? `Empty deprecated field "${key}" is present in card.json.`
+          : `Deprecated field "${key}" is present in card.json.`,
+        'Omit deprecated fields during .charx export/save; RisuToki strips them before saving.',
       ),
     );
   }
   const risuExt = asRecord(asRecord(data.extensions)?.risuai);
   if (!risuExt) return;
-  for (const key of EMPTY_COMPAT_RISUAI_FIELDS) {
-    if (!Object.hasOwn(risuExt, key) || !isEmptyCompatibilityValue(risuExt[key])) continue;
+  for (const key of DEPRECATED_RISUAI_FIELDS) {
+    if (!Object.hasOwn(risuExt, key)) continue;
+    const empty = isEmptyCompatibilityValue(risuExt[key]);
     issues.push(
       issue(
-        'empty-compatibility-field',
+        empty ? 'empty-compatibility-field' : 'deprecated-risuai-extension-field',
         'auto-fixable',
         'warning',
         `card.json.data.extensions.risuai.${key}`,
-        `Empty compatibility-only RisuAI extension field "${key}" is present in card.json.`,
-        'Omit empty compatibility-only RisuAI extension fields during .charx export/save.',
+        empty
+          ? `Empty deprecated RisuAI extension field "${key}" is present in card.json.`
+          : `Deprecated RisuAI extension field "${key}" is present in card.json.`,
+        'Omit deprecated RisuAI extension fields during .charx export/save; RisuToki strips them before saving.',
       ),
     );
   }
+  if (!Object.hasOwn(risuExt, 'virtualscript') || isEmptyCompatibilityValue(risuExt.virtualscript)) return;
+  issues.push(
+    issue(
+      'unsafe-virtualscript-field',
+      'auto-fixable',
+      'warning',
+      'card.json.data.extensions.risuai.virtualscript',
+      'Non-empty RisuAI virtualscript data is present in card.json.',
+      'Omit virtualscript during .charx export/save; RisuAI also blanks this field during import/export for security.',
+    ),
+  );
 }
 
 function validateAssets(

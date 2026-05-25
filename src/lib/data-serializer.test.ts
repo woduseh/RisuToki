@@ -39,7 +39,6 @@ describe('serializeForRenderer', () => {
         'firstMessage',
         'triggerScripts',
         'alternateGreetings',
-        'groupOnlyGreetings',
         'globalNote',
         'css',
         'defaultVariables',
@@ -62,10 +61,30 @@ describe('serializeForRenderer', () => {
     expect(stubDeps.stringifyTriggerScripts).toHaveBeenCalledWith(ts);
   });
 
-  it('defaults alternateGreetings and groupOnlyGreetings to empty arrays', () => {
+  it('defaults alternateGreetings to an empty array', () => {
     const result = serializeForRenderer({});
     expect(result.alternateGreetings).toEqual([]);
-    expect(result.groupOnlyGreetings).toEqual([]);
+  });
+
+  it('hides protected charx compatibility fields from renderer payloads', () => {
+    const result = serializeForRenderer({
+      personality: 'old personality',
+      scenario: 'old scenario',
+      systemPrompt: 'old system',
+      nickname: 'nick',
+      source: ['source'],
+      additionalText: 'extra',
+      license: 'license',
+      groupOnlyGreetings: ['group'],
+    });
+    expect(result).not.toHaveProperty('personality');
+    expect(result).not.toHaveProperty('scenario');
+    expect(result).not.toHaveProperty('systemPrompt');
+    expect(result).not.toHaveProperty('nickname');
+    expect(result).not.toHaveProperty('source');
+    expect(result).not.toHaveProperty('additionalText');
+    expect(result).not.toHaveProperty('license');
+    expect(result).not.toHaveProperty('groupOnlyGreetings');
   });
 
   it('strips unknown keys from the output', () => {
@@ -95,6 +114,39 @@ describe('applyUpdates', () => {
     const data: Record<string, unknown> = {};
     applyUpdates(data, { hackedField: 'bad' });
     expect(data).not.toHaveProperty('hackedField');
+  });
+
+  it('ignores protected charx compatibility field updates', () => {
+    const data: Record<string, unknown> = {
+      personality: 'old personality',
+      scenario: 'old scenario',
+      systemPrompt: 'old system',
+      nickname: 'old nickname',
+      source: ['old source'],
+      additionalText: 'old additional',
+      license: 'old license',
+      groupOnlyGreetings: ['old group'],
+    };
+    applyUpdates(data, {
+      personality: 'new personality',
+      scenario: 'new scenario',
+      systemPrompt: 'new system',
+      nickname: 'new nickname',
+      source: ['new source'],
+      additionalText: 'new additional',
+      license: 'new license',
+      groupOnlyGreetings: ['new group'],
+    });
+    expect(data).toEqual({
+      personality: 'old personality',
+      scenario: 'old scenario',
+      systemPrompt: 'old system',
+      nickname: 'old nickname',
+      source: ['old source'],
+      additionalText: 'old additional',
+      license: 'old license',
+      groupOnlyGreetings: ['old group'],
+    });
   });
 
   it('syncs lua when triggerScripts is updated', () => {

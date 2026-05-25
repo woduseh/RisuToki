@@ -4,6 +4,7 @@ import {
   validatePresetBiasText,
   validatePromptTemplateText,
 } from './risup-prompt-model';
+import { CHARX_DEPRECATED_FIELD_NAMES } from './deprecated-save-policy';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -62,6 +63,8 @@ const RISUP_JSON_TEXT_FIELDS = new Set([
   'reverseProxyOobaArgs',
 ]);
 
+const CHARX_DEPRECATED_FIELD_NAME_SET = new Set(CHARX_DEPRECATED_FIELD_NAMES);
+
 // ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
@@ -83,7 +86,6 @@ export function serializeForRenderer(data: any): Record<string, any> {
     firstMessage: data.firstMessage,
     triggerScripts: deps.stringifyTriggerScripts(data.triggerScripts),
     alternateGreetings: data.alternateGreetings || [],
-    groupOnlyGreetings: data.groupOnlyGreetings || [],
     globalNote: data.globalNote,
     css: data.css,
     defaultVariables: data.defaultVariables,
@@ -95,20 +97,13 @@ export function serializeForRenderer(data: any): Record<string, any> {
 
   // Include charx card.data fields (always present for charx files)
   if (data._fileType !== 'risup') {
-    result.personality = data.personality || '';
-    result.scenario = data.scenario || '';
     result.creatorcomment = data.creatorcomment || '';
     result.tags = data.tags || [];
     result.exampleMessage = data.exampleMessage || '';
-    result.systemPrompt = data.systemPrompt || '';
     result.creator = data.creator || '';
     result.characterVersion = data.characterVersion || '';
-    result.nickname = data.nickname || '';
-    result.source = data.source || [];
     result.creationDate = typeof data.creationDate === 'number' ? data.creationDate : 0;
     result.modificationDate = typeof data.modificationDate === 'number' ? data.modificationDate : 0;
-    result.additionalText = data.additionalText || '';
-    result.license = data.license || '';
   }
 
   // Include risum module-specific fields
@@ -218,7 +213,6 @@ export function applyUpdates(data: any, fields: any): void {
     'description',
     'firstMessage',
     'alternateGreetings',
-    'groupOnlyGreetings',
     'globalNote',
     'css',
     'defaultVariables',
@@ -243,7 +237,7 @@ export function applyUpdates(data: any, fields: any): void {
     'modificationDate',
     'additionalText',
     'license',
-  ];
+  ].filter((field) => !CHARX_DEPRECATED_FIELD_NAME_SET.has(field));
   // Risum module-specific fields (always safe to allow — no-ops on charx)
   const risumAllowed = [
     'moduleName',
