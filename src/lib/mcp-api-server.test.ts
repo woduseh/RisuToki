@@ -3759,7 +3759,7 @@ describe('MCP API structured error envelopes — field routes', () => {
       expect(res.data).toHaveProperty('action', 'batch write field');
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'field:personality');
-      expect(res.data.error).toContain('읽기 전용');
+      expect(res.data.error).toContain('deprecated');
       expect(res.data.suggestion).toBeDefined();
     } finally {
       await closeServer(api.server);

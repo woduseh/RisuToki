@@ -92,10 +92,13 @@ describe('getFieldAccessRules', () => {
     expect(rules.allowedFields).toContain('personality');
     expect(rules.allowedFields).toContain('systemPrompt');
     expect(rules.allowedFields).toContain('additionalText');
-    expect(rules.allowedFields).toContain('groupOnlyGreetings');
+    expect(rules.allowedFields).not.toContain('groupOnlyGreetings');
     expect(rules.allowedFields).not.toContain('moduleNamespace');
     expect(rules.allowedFields).not.toContain('mainPrompt');
-    expect(rules.readOnlyFields).toEqual([...CHARX_READ_ONLY_FIELD_NAMES, ...CHARX_DEPRECATED_FIELD_NAMES]);
+    expect(rules.readOnlyFields).toEqual([
+      ...CHARX_READ_ONLY_FIELD_NAMES,
+      ...CHARX_DEPRECATED_FIELD_NAMES.filter((field) => field !== 'groupOnlyGreetings'),
+    ]);
     expect(rules.deprecatedFields).toEqual(CHARX_DEPRECATED_FIELD_NAMES);
     expect(rules.hiddenFields).toEqual(CHARX_DEPRECATED_FIELD_NAMES);
     for (const field of rules.readOnlyFields) {
