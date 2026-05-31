@@ -66,8 +66,32 @@ export function removeManagedCodexMcpBlock(content: string): string {
   return content.replace(CODEX_MANAGED_BLOCK_PATTERN, '\n').replace(/\n{3,}/g, '\n\n');
 }
 
+function getTomlTableName(line: string): string | null {
+  const match = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/);
+  return match ? match[1].trim() : null;
+}
+
+export function removeTopLevelCodexRisutokiServerTables(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const kept: string[] = [];
+  let skipping = false;
+
+  for (const line of lines) {
+    const tableName = getTomlTableName(line);
+    if (tableName) {
+      skipping = tableName === 'mcp_servers.risutoki' || tableName === 'mcp_servers.risutoki.env';
+    }
+
+    if (!skipping) {
+      kept.push(line);
+    }
+  }
+
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
 function isTomlTableHeader(line: string): boolean {
-  return /^\s*\[[^\]]+\]\s*(?:#.*)?$/.test(line);
+  return getTomlTableName(line) !== null;
 }
 
 function isFeatureBooleanAssignment(line: string): boolean {
@@ -114,13 +138,15 @@ function buildCodexMcpBlock(options: CodexMcpConfigOptions): string {
 }
 
 export function buildCodexMcpConfigToml(existing: string, options: CodexMcpConfigOptions): string {
-  const preserved = sanitizeCodexFeatures(removeManagedCodexMcpBlock(existing)).trimEnd();
+  const preserved = sanitizeCodexFeatures(
+    removeTopLevelCodexRisutokiServerTables(removeManagedCodexMcpBlock(existing)),
+  ).trimEnd();
   const block = buildCodexMcpBlock(options);
   return `${preserved ? `${preserved}\n\n` : ''}${block}\n`;
 }
 
 export function cleanupCodexMcpConfigToml(content: string): string {
-  return removeManagedCodexMcpBlock(content).trimEnd() + '\n';
+  return removeTopLevelCodexRisutokiServerTables(removeManagedCodexMcpBlock(content)).trimEnd() + '\n';
 }
 
 export function upsertJsonMcpConfig(configPath: string): string | null {
@@ -199,30 +225,39 @@ function writeCopilotMcpConfig(): string | null {
   return writtenPath;
 }
 
-function writeCodexMcpConfig(): string | null {
-  const port = deps.getApiPort();
-  const token = deps.getApiToken();
-  if (!port || !token) return null;
-
-  const codexDir = path.join(os.homedir(), '.codex');
-  if (!fs.existsSync(codexDir)) fs.mkdirSync(codexDir, { recursive: true });
-  const configPath = path.join(codexDir, 'config.toml');
+function writeCodexMcpConfigFile(configPath: string, options: CodexMcpConfigOptions): void {
+  const configDir = path.dirname(configPath);
+  if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
 
   let existing = '';
   if (fs.existsSync(configPath)) {
     existing = fs.readFileSync(configPath, 'utf-8');
   }
 
-  fs.writeFileSync(
-    configPath,
-    buildCodexMcpConfigToml(existing, {
-      serverPath: getMcpServerPath(),
-      port,
-      token,
-    }),
-    'utf-8',
-  );
+  fs.writeFileSync(configPath, buildCodexMcpConfigToml(existing, options), 'utf-8');
+}
+
+function writeCodexMcpConfig(projectRoot?: string | null): string | null {
+  const port = deps.getApiPort();
+  const token = deps.getApiToken();
+  if (!port || !token) return null;
+
+  const options = {
+    serverPath: getMcpServerPath(),
+    port,
+    token,
+  };
+
+  const configPath = path.join(os.homedir(), '.codex', 'config.toml');
+  writeCodexMcpConfigFile(configPath, options);
   console.log('[main] Codex MCP config written:', configPath);
+
+  if (projectRoot && path.isAbsolute(projectRoot)) {
+    const projectConfigPath = path.join(projectRoot, '.codex', 'config.toml');
+    writeCodexMcpConfigFile(projectConfigPath, options);
+    console.log('[main] Codex project MCP config written:', projectConfigPath);
+  }
+
   return configPath;
 }
 
@@ -260,8 +295,8 @@ export function initMcpConfig(d: McpConfigDeps): void {
     return writeCopilotMcpConfig();
   });
 
-  ipcMain.handle('write-codex-mcp-config', () => {
-    return writeCodexMcpConfig();
+  ipcMain.handle('write-codex-mcp-config', (_, projectRoot?: string | null) => {
+    return writeCodexMcpConfig(projectRoot);
   });
 
   ipcMain.handle('write-gemini-mcp-config', () => {

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  buildWindowsTerminalBootstrap,
   buildTerminalLaunchAttempts,
   getTerminalLaunchCandidates,
 } from '../src/lib/terminal-shell';
@@ -10,6 +11,14 @@ import {
     candidates.map((candidate) => candidate.shell),
     ['powershell.exe', 'pwsh.exe', 'cmd.exe'],
   );
+})();
+
+(function testWindowsBootstrapRefreshesCodexProjectConfig() {
+  const bootstrap = buildWindowsTerminalBootstrap();
+
+  assert.match(bootstrap, /function global:__TokiWriteCodexMcpConfig/);
+  assert.match(bootstrap, /function global:codex\.cmd/);
+  assert.match(bootstrap, /TOKI_MCP_SERVER_PATH/);
 })();
 
 (function testAttemptsIncludeFallbackWorkingDirectory() {

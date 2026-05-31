@@ -12,6 +12,7 @@ export interface TerminalManagerDeps {
   getCurrentFilePath: () => string | null;
   getApiPort: () => number | null;
   getApiToken: () => string | null;
+  getMcpServerPath: () => string;
 }
 
 interface LaunchAttempt {
@@ -74,7 +75,7 @@ export function killTerminal(): void {
 }
 
 export function initTerminalManager(deps: TerminalManagerDeps): void {
-  const { broadcastToAll, getApiPort, getApiToken } = deps;
+  const { broadcastToAll, getApiPort, getApiToken, getMcpServerPath } = deps;
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { buildTerminalLaunchAttempts } = require('./terminal-shell') as {
@@ -123,6 +124,7 @@ export function initTerminalManager(deps: TerminalManagerDeps): void {
     if (apiPort && apiToken) {
       cleanEnv.TOKI_PORT = String(apiPort);
       cleanEnv.TOKI_TOKEN = apiToken;
+      cleanEnv.TOKI_MCP_SERVER_PATH = getMcpServerPath();
     }
 
     const failures: { label: string; cwd: string; detail: string }[] = [];

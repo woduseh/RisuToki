@@ -242,6 +242,7 @@ const { initTerminalManager, killTerminal } = require('./src/lib/terminal-manage
     getCurrentFilePath: () => string | null;
     getApiPort: () => number | null;
     getApiToken: () => string | null;
+    getMcpServerPath: () => string;
   }) => void;
   killTerminal: () => void;
 };
@@ -1061,6 +1062,7 @@ app.whenReady().then(() => {
     getCurrentFilePath: () => mainState.currentFilePath,
     getApiPort: () => apiPort,
     getApiToken: () => apiToken,
+    getMcpServerPath: () => path.join(__dirname, 'toki-mcp-server.js').replace('app.asar', 'app.asar.unpacked'),
   });
 
   // Initialize MCP config management

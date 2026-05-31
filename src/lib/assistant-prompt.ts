@@ -27,7 +27,7 @@ export interface AssistantDeps {
   getClaudePrompt(): Promise<PromptInfo | null>;
   writeMcpConfig(): Promise<unknown>;
   writeCopilotMcpConfig(): Promise<unknown>;
-  writeCodexMcpConfig(): Promise<unknown>;
+  writeCodexMcpConfig(projectRoot?: string | null): Promise<unknown>;
   writeGeminiMcpConfig(): Promise<unknown>;
   cleanupAgentsMd(): Promise<void>;
   writeSystemPrompt(content: string): Promise<{ filePath: string; platform?: string }>;
@@ -211,7 +211,7 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
     mcpConnected = !!(await deps.writeMcpConfig());
     await deps.cleanupAgentsMd();
   } else if (agent === 'codex') {
-    mcpConnected = !!(await deps.writeCodexMcpConfig());
+    mcpConnected = !!(await deps.writeCodexMcpConfig(deps.projectRoot));
     await deps.cleanupAgentsMd();
   } else if (agent === 'gemini') {
     mcpConnected = !!(await deps.writeGeminiMcpConfig());

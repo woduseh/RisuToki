@@ -23,6 +23,51 @@ function encodePowerShellCommand(script: string): string {
 export function buildWindowsTerminalBootstrap(): string {
   return `
 $ErrorActionPreference = 'SilentlyContinue'
+function global:__TokiJsonString([string]$value) {
+  if ($null -eq $value) { return '""' }
+  return ConvertTo-Json -Compress $value
+}
+function global:__TokiWriteCodexMcpConfig {
+  if (-not $env:TOKI_PORT -or -not $env:TOKI_TOKEN -or -not $env:TOKI_MCP_SERVER_PATH) { return }
+
+  $configDir = Join-Path (Get-Location) '.codex'
+  $configPath = Join-Path $configDir 'config.toml'
+  New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+
+  $existing = ''
+  if (Test-Path -LiteralPath $configPath) {
+    $existing = Get-Content -LiteralPath $configPath -Raw
+  }
+
+  $existing = [regex]::Replace($existing, '(?s)\\r?\\n?# --- RisuToki MCP \\(auto-generated, do not edit\\) ---.*?# --- /RisuToki MCP ---[^\\S\\r\\n]*(?:\\r?\\n)?', "\`n")
+  $kept = New-Object System.Collections.Generic.List[string]
+  $skip = $false
+  foreach ($line in ($existing -split "\\r?\\n")) {
+    if ($line -match '^\\s*\\[([^\\]]+)\\]\\s*(?:#.*)?$') {
+      $table = $Matches[1].Trim()
+      $skip = ($table -eq 'mcp_servers.risutoki' -or $table -eq 'mcp_servers.risutoki.env')
+    }
+    if (-not $skip) { $kept.Add($line) }
+  }
+
+  $serverPath = $env:TOKI_MCP_SERVER_PATH.Replace('\\', '/')
+  $block = @(
+    '# --- RisuToki MCP (auto-generated, do not edit) ---',
+    '[mcp_servers.risutoki]',
+    'command = "node"',
+    ('args = [' + (__TokiJsonString $serverPath) + ']'),
+    '',
+    '[mcp_servers.risutoki.env]',
+    ('TOKI_PORT = ' + (__TokiJsonString $env:TOKI_PORT)),
+    ('TOKI_TOKEN = ' + (__TokiJsonString $env:TOKI_TOKEN)),
+    '# --- /RisuToki MCP ---'
+  ) -join "\`n"
+
+  $preserved = (($kept -join "\`n") -replace "(\`r?\`n){3,}", "\`n\`n").TrimEnd()
+  $content = if ($preserved) { $preserved + "\`n\`n" + $block + "\`n" } else { $block + "\`n" }
+  $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllText($configPath, $content, $utf8NoBom)
+}
 function global:__TokiInvokeCommand([string]$primary, [string[]]$fallbacks, [object[]]$argv) {
   foreach ($candidate in @($primary) + $fallbacks) {
     $resolved = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -36,7 +81,8 @@ function global:__TokiInvokeCommand([string]$primary, [string[]]$fallbacks, [obj
 }
 function global:copilot { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'copilot.ps1' @('copilot.bat', 'copilot.cmd', 'copilot.exe') $argv }
 function global:claude { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'claude.cmd' @('claude.exe', 'claude.bat') $argv }
-function global:codex { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'codex.cmd' @('codex.exe', 'codex.bat') $argv }
+function global:codex { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiWriteCodexMcpConfig; __TokiInvokeCommand 'codex.cmd' @('codex.exe', 'codex.bat') $argv }
+function global:codex.cmd { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiWriteCodexMcpConfig; __TokiInvokeCommand 'codex.cmd' @('codex.exe', 'codex.bat') $argv }
 $ErrorActionPreference = 'Continue'
 Clear-Host
 `;
@@ -52,18 +98,18 @@ export function getTerminalLaunchCandidates(options: LaunchOptions = {}): Termin
       {
         label: 'Windows PowerShell',
         shell: 'powershell.exe',
-        args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-EncodedCommand', bootstrap]
+        args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-EncodedCommand', bootstrap],
       },
       {
         label: 'PowerShell 7',
         shell: 'pwsh.exe',
-        args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-EncodedCommand', bootstrap]
+        args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-EncodedCommand', bootstrap],
       },
       {
         label: '명령 프롬프트',
         shell: 'cmd.exe',
-        args: ['/K', 'chcp 65001 >NUL']
-      }
+        args: ['/K', 'chcp 65001 >NUL'],
+      },
     ];
   }
 
@@ -72,7 +118,7 @@ export function getTerminalLaunchCandidates(options: LaunchOptions = {}): Termin
   return uniqueShells.map((shell) => ({
     label: shell,
     shell,
-    args: []
+    args: [],
   }));
 }
 
@@ -86,7 +132,7 @@ export function buildTerminalLaunchAttempts(options: LaunchOptions = {}): Launch
       attempts.push({
         ...candidate,
         cwd,
-        isFallbackCwd: cwd !== options.cwd
+        isFallbackCwd: cwd !== options.cwd,
       });
     }
   }

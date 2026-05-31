@@ -2514,7 +2514,7 @@ function getAssistantDeps() {
     getClaudePrompt: () => window.tokiAPI.getClaudePrompt(),
     writeMcpConfig: () => window.tokiAPI.writeMcpConfig(),
     writeCopilotMcpConfig: () => window.tokiAPI.writeCopilotMcpConfig(),
-    writeCodexMcpConfig: () => window.tokiAPI.writeCodexMcpConfig(),
+    writeCodexMcpConfig: (projectRoot?: string | null) => window.tokiAPI.writeCodexMcpConfig(projectRoot),
     writeGeminiMcpConfig: () => window.tokiAPI.writeGeminiMcpConfig(),
     cleanupAgentsMd: () => window.tokiAPI.cleanupAgentsMd(),
     writeSystemPrompt: (content: string) => window.tokiAPI.writeSystemPrompt(content),

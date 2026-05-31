@@ -235,7 +235,7 @@ interface TokiAPI {
   getMcpInfo: () => Promise<McpInfo | null>;
   writeMcpConfig: () => Promise<string | null>;
   writeCopilotMcpConfig: () => Promise<string | null>;
-  writeCodexMcpConfig: () => Promise<string | null>;
+  writeCodexMcpConfig: (projectRoot?: string | null) => Promise<string | null>;
   writeGeminiMcpConfig: () => Promise<string | null>;
   writeAgentsMd: (content: string, projectRoot?: string | null) => Promise<string>;
   cleanupAgentsMd: () => Promise<boolean>;
