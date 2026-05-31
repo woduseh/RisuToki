@@ -409,7 +409,10 @@ describe('realistic payload enrichment', () => {
     expect(result.field).toBe('description');
     expect(result.content).toBe('hello');
     expect(result.status).toBe(200);
-    expect(result.next_actions as string[]).toEqual(TOOL_NEXT_ACTIONS.read_reference_field);
+    expect(result.next_actions as string[]).toEqual([
+      'read_reference_field_batch',
+      ...(TOOL_NEXT_ACTIONS.read_reference_field ?? []),
+    ]);
   });
 
   // ──────────────────────────────────────────────────────────────────────

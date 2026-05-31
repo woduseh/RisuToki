@@ -82,7 +82,7 @@ export const TOOL_SURFACE_PROFILE_ALIASES = {
   full: 'advanced-full',
 } as const satisfies Record<string, ToolSurfaceProfileName>;
 
-export type ToolSurfaceProfileFilteringStatus = 'catalog-facade';
+export type ToolSurfaceProfileFilteringStatus = 'catalog-facade' | 'registered-filter';
 
 export interface ToolSurfaceProfileContract {
   name: ToolSurfaceProfileName;
@@ -107,7 +107,8 @@ const PROFILE_METADATA_DISCOVERY = [
 
 const PROFILE_CLIENT_REQUEST = [
   'Call list_tool_profiles with the exact profile name for a compact profile-specific catalog.',
-  'Keep tools/list unfiltered for MCP client compatibility and use advanced-full as the escape hatch.',
+  'Keep tools/list unfiltered for MCP client compatibility unless the server was explicitly started with a strict tool profile.',
+  'Use advanced-full as the escape hatch, or restart the MCP server with --tool-profile=advanced-full when strict filtering is active.',
 ] as const;
 
 export const TOOL_SURFACE_PROFILE_CONTRACTS: readonly ToolSurfaceProfileContract[] = [
@@ -189,6 +190,7 @@ export interface ToolMeta {
   workflowStages?: readonly ToolWorkflowStage[];
   requiresConfirmation?: boolean;
   supportsDryRun?: boolean;
+  batchAlternative?: string;
 }
 
 export interface StaleGuardDetail {
@@ -211,6 +213,7 @@ export const TOOL_META_KEYS = {
   defaultProfile: 'risutoki/defaultProfile',
   requiresConfirmation: 'risutoki/requiresConfirmation',
   supportsDryRun: 'risutoki/supportsDryRun',
+  batchAlternative: 'risutoki/batchAlternative',
 } as const;
 
 export const TOOL_MUTATION_META_KEYS = {
@@ -260,6 +263,40 @@ const AUTHORING_PROFILE_FAMILIES = new Set<ToolFamily>([
   'danbooru',
   'cbs',
 ]);
+
+export const TOOL_BATCH_ALTERNATIVES: Record<string, string> = {
+  read_field: 'read_field_batch',
+  replace_in_field: 'replace_in_field_batch',
+  read_lorebook: 'read_lorebook_batch',
+  write_lorebook: 'write_lorebook_batch',
+  write_lorebook_by_id: 'write_lorebook_by_id_batch',
+  replace_in_lorebook: 'replace_in_lorebook_batch',
+  insert_in_lorebook: 'insert_in_lorebook_batch',
+  delete_lorebook: 'batch_delete_lorebook',
+  delete_lorebook_by_id: 'batch_delete_lorebook_by_id',
+  read_regex: 'read_regex_batch',
+  write_regex: 'write_regex_batch',
+  read_greeting: 'read_greeting_batch',
+  write_greeting: 'batch_write_greeting',
+  delete_greeting: 'batch_delete_greeting',
+  read_trigger: 'read_trigger_batch',
+  read_lua: 'read_lua_batch',
+  read_css: 'read_css_batch',
+  read_reference_field: 'read_reference_field_batch',
+  read_reference_greeting: 'read_reference_greeting_batch',
+  read_reference_trigger: 'read_reference_trigger_batch',
+  read_reference_lorebook: 'read_reference_lorebook_batch',
+  read_reference_regex: 'read_reference_regex_batch',
+  read_reference_lua: 'read_reference_lua_batch',
+  read_reference_css: 'read_reference_css_batch',
+  read_reference_risup_prompt_item: 'read_reference_risup_prompt_item_batch',
+  read_risup_prompt_item: 'read_risup_prompt_item_batch',
+  write_risup_prompt_item: 'write_risup_prompt_item_batch',
+  write_risup_prompt_item_by_id: 'write_risup_prompt_item_by_id_batch',
+  delete_risup_prompt_item: 'batch_delete_risup_prompt_items',
+  delete_risup_prompt_item_by_id: 'batch_delete_risup_prompt_items_by_id',
+  add_risup_prompt_item: 'add_risup_prompt_item_batch',
+} as const;
 
 export const TOOL_STALE_GUARD_NAMES: Record<string, readonly string[]> = {
   patch_surface: ['expected_hash'],
@@ -996,14 +1033,18 @@ export interface ToolSurfaceProfileCatalogTool {
   recommendation: ToolRecommendation;
   workflowStages: readonly ToolWorkflowStage[];
   readOnly: boolean;
+  registered: boolean;
+  batchAlternative?: string;
 }
 
 export interface ToolSurfaceProfileCatalog {
   defaultProfile: ToolSurfaceProfileName;
   requestedProfile: string | undefined;
   resolvedProfile: ToolSurfaceProfileName;
+  currentProfile: ToolSurfaceProfileName | null;
+  strictFiltering: boolean;
   filteringStatus: ToolSurfaceProfileFilteringStatus;
-  toolsListBehavior: 'unfiltered-compatible';
+  toolsListBehavior: 'unfiltered-compatible' | 'profile-filtered';
   legacyEscapeHatch: ToolSurfaceProfileName | false;
   aliases: typeof TOOL_SURFACE_PROFILE_ALIASES;
   profiles: readonly ToolSurfaceProfileContract[];
@@ -1011,9 +1052,16 @@ export interface ToolSurfaceProfileCatalog {
   counts: {
     profileTools: number;
     allTools: number;
-    hiddenFromToolsList: 0;
+    registeredTools: number;
+    hiddenFromToolsList: number;
   };
   requestPath: readonly string[];
+}
+
+interface ToolSurfaceProfileCatalogOptions {
+  currentProfile?: ToolSurfaceProfileName | null;
+  registeredTools?: readonly string[];
+  strictFiltering?: boolean;
 }
 
 export function listToolsForSurfaceProfile(profileName?: string): readonly string[] {
@@ -1022,11 +1070,17 @@ export function listToolsForSurfaceProfile(profileName?: string): readonly strin
   return ALL_TOOL_NAMES.filter((name) => getToolProfilesForTool(name).includes(resolved));
 }
 
-export function buildToolSurfaceProfileCatalog(profileName?: string): ToolSurfaceProfileCatalog | undefined {
+export function buildToolSurfaceProfileCatalog(
+  profileName?: string,
+  options: ToolSurfaceProfileCatalogOptions = {},
+): ToolSurfaceProfileCatalog | undefined {
   const resolved = resolveToolSurfaceProfileName(profileName);
   if (!resolved) return undefined;
   const contract = getToolSurfaceProfileContract(resolved);
   if (!contract) return undefined;
+  const registeredToolSet = new Set(options.registeredTools ?? ALL_TOOL_NAMES);
+  const strictFiltering = options.strictFiltering === true;
+  const currentProfile = options.currentProfile ?? null;
   const tools = listToolsForSurfaceProfile(resolved).map((name) => {
     const entry = TOOL_TAXONOMY[name];
     return {
@@ -1036,14 +1090,18 @@ export function buildToolSurfaceProfileCatalog(profileName?: string): ToolSurfac
       recommendation: entry.recommendation ?? 'advanced',
       workflowStages: getToolWorkflowStages(name),
       readOnly: entry.hints.readOnlyHint === true,
+      registered: registeredToolSet.has(name),
+      ...(TOOL_BATCH_ALTERNATIVES[name] ? { batchAlternative: TOOL_BATCH_ALTERNATIVES[name] } : {}),
     };
   });
   return {
     defaultProfile: DEFAULT_TOOL_SURFACE_PROFILE,
     requestedProfile: profileName,
     resolvedProfile: resolved,
-    filteringStatus: contract.filteringStatus,
-    toolsListBehavior: 'unfiltered-compatible',
+    currentProfile,
+    strictFiltering,
+    filteringStatus: strictFiltering ? 'registered-filter' : contract.filteringStatus,
+    toolsListBehavior: strictFiltering ? 'profile-filtered' : 'unfiltered-compatible',
     legacyEscapeHatch: contract.legacyEscapeHatch,
     aliases: TOOL_SURFACE_PROFILE_ALIASES,
     profiles: TOOL_SURFACE_PROFILE_CONTRACTS,
@@ -1051,11 +1109,14 @@ export function buildToolSurfaceProfileCatalog(profileName?: string): ToolSurfac
     counts: {
       profileTools: tools.length,
       allTools: ALL_TOOL_NAMES.length,
-      hiddenFromToolsList: 0,
+      registeredTools: registeredToolSet.size,
+      hiddenFromToolsList: ALL_TOOL_NAMES.length - registeredToolSet.size,
     },
     requestPath: [
       `Call list_tool_profiles with profile="${resolved}" to get this compact catalog.`,
-      'Use the returned tool names for local planning; tools/list remains unfiltered for client compatibility.',
+      strictFiltering
+        ? `This server is currently strict-filtered to ${currentProfile ?? 'an explicit profile'}; restart with --tool-profile=advanced-full for every granular route.`
+        : 'Use the returned tool names for local planning; tools/list remains unfiltered for client compatibility.',
       contract.legacyEscapeHatch
         ? `Escalate to ${contract.legacyEscapeHatch} when this profile cannot express the workflow.`
         : 'This profile is the full legacy-compatible tool surface.',
@@ -1081,6 +1142,9 @@ export function getToolMeta(name: string): Record<string, unknown> | undefined {
   if (mutationMeta) {
     meta[TOOL_META_KEYS.requiresConfirmation] = mutationMeta.requiresConfirmation;
     meta[TOOL_META_KEYS.supportsDryRun] = mutationMeta.supportsDryRun;
+  }
+  if (TOOL_BATCH_ALTERNATIVES[name]) {
+    meta[TOOL_META_KEYS.batchAlternative] = TOOL_BATCH_ALTERNATIVES[name];
   }
   return meta;
 }

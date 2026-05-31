@@ -13,7 +13,7 @@
  *   - `next_actions` are deterministic: explicit override → per-tool override → family default.
  */
 
-import { TOOL_TAXONOMY, TOOL_FAMILIES } from './mcp-tool-taxonomy';
+import { TOOL_BATCH_ALTERNATIVES, TOOL_TAXONOMY, TOOL_FAMILIES } from './mcp-tool-taxonomy';
 import type { ToolFamily } from './mcp-tool-taxonomy';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -194,11 +194,18 @@ export function mcpSuccess(payload: Record<string, unknown>, opts: McpSuccessOpt
 function resolveNextActions(opts: McpSuccessOptions): string[] {
   if (opts.nextActions) return opts.nextActions;
   if (!opts.toolName) return [];
+  const batchAlternative = TOOL_BATCH_ALTERNATIVES[opts.toolName];
   const toolOverride = TOOL_NEXT_ACTIONS[opts.toolName];
-  if (toolOverride) return toolOverride;
+  if (toolOverride)
+    return batchAlternative
+      ? [batchAlternative, ...toolOverride.filter((tool) => tool !== batchAlternative)]
+      : toolOverride;
   const entry = TOOL_TAXONOMY[opts.toolName];
   if (!entry) return [];
-  return FAMILY_NEXT_ACTIONS[entry.family] ?? [];
+  const familyActions = FAMILY_NEXT_ACTIONS[entry.family] ?? [];
+  return batchAlternative
+    ? [batchAlternative, ...familyActions.filter((tool) => tool !== batchAlternative)]
+    : familyActions;
 }
 
 function createArtifacts(

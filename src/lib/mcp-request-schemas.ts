@@ -347,6 +347,7 @@ export const facadeV1ContentSelectorSchema = z.object({
     ])
     .optional(),
   path: z.string().min(1).optional(),
+  include_raw: z.boolean().optional(),
   field: z.string().min(1).optional(),
   index: z.number().int().nonnegative().optional(),
   indices: z.array(z.number().int().nonnegative()).max(FACADE_V1_LIMITS.maxBatchItems).optional(),

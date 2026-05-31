@@ -551,6 +551,7 @@ async function startStandaloneClient(options: {
   refs?: string[];
   userDataDir: string;
   allowWrites?: boolean;
+  toolProfile?: string;
 }): Promise<StandaloneClientRuntime> {
   const args = [
     path.join(__dirname, '..', 'toki-mcp-server.js'),
@@ -559,6 +560,7 @@ async function startStandaloneClient(options: {
     options.userDataDir,
   ];
   if (options.allowWrites) args.push('--allow-writes');
+  if (options.toolProfile) args.push('--tool-profile', options.toolProfile);
   if (options.file) args.push('--file', options.file);
   for (const ref of options.refs ?? []) args.push('--ref', ref);
 
@@ -634,6 +636,15 @@ function assertToolProfileRuntimeHealth(catalog: McpCallJson, expectedRuntime?: 
   assert.ok(skewWarnings.every((warning) => typeof warning === 'string'));
   if (expectedRuntime) assert.deepEqual(runtime, expectedRuntime);
 
+  const runtimeHealth = nestedRecord(catalog.runtimeHealth, 'tool profile runtimeHealth');
+  assert.equal(typeof runtimeHealth.startedAt, 'string');
+  assert.equal(typeof runtimeHealth.pid, 'number');
+  assert.ok(runtimeHealth.runtimeMode === 'standalone' || runtimeHealth.runtimeMode === 'app-backed');
+  assert.equal(typeof runtimeHealth.apiTimeoutCount, 'number');
+  assert.equal(typeof runtimeHealth.apiNetworkErrorCount, 'number');
+  assert.equal(typeof runtimeHealth.uncaughtExceptionCount, 'number');
+  assert.equal(typeof runtimeHealth.standaloneLogPath, 'string');
+
   const health = nestedRecord(catalog.health, 'tool profile health');
   for (const field of ['facadeTools', 'readonlyTools', 'advancedTools', 'allTools'] as const) {
     assert.equal(typeof health[field], 'number', `health.${field} should be numeric`);
@@ -646,6 +657,7 @@ function assertToolProfileRuntimeHealth(catalog: McpCallJson, expectedRuntime?: 
 
   const artifacts = nestedRecord(catalog.artifacts, 'tool profile artifacts');
   assert.equal(artifacts.runtime_mode, runtime.runtimeMode);
+  assert.deepEqual(artifacts.runtime_health, runtimeHealth);
   assert.equal(artifacts.runtime_skew_detected, skew.detected);
   assert.deepEqual(artifacts.runtime_skew_warnings, skewWarnings);
   assert.deepEqual(artifacts.catalog_health, health);
@@ -836,6 +848,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
   };
 
   let runtime: StandaloneClientRuntime | null = null;
+  let strictRuntime: StandaloneClientRuntime | null = null;
   let recoveryRuntime: StandaloneClientRuntime | null = null;
   try {
     runtime = await startStandaloneClient({
@@ -887,10 +900,19 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assertToolProfileRuntimeHealth(profileCatalog);
     const profile = nestedRecord(profileCatalog.profile, 'profile catalog');
     assert.equal(profile.resolvedProfile, 'facade-first');
+    assert.equal(profile.strictFiltering, false);
     assert.equal(profile.toolsListBehavior, 'unfiltered-compatible');
+    const profileCounts = nestedRecord(profile.counts, 'profile catalog.counts');
+    assert.equal(profileCounts.registeredTools, tools.tools.length);
+    assert.equal(profileCounts.hiddenFromToolsList, 0);
     const profileTools = nestedArray(profile.tools, 'profile catalog.tools');
     assert.ok(profileTools.length < tools.tools.length, 'facade-first profile catalog should be compact');
-    assert.ok(profileTools.some((tool) => nestedRecord(tool, 'profile tool').name === 'inspect_document'));
+    assert.ok(
+      profileTools.some((tool) => {
+        const record = nestedRecord(tool, 'profile tool');
+        return record.name === 'inspect_document' && record.registered === true;
+      }),
+    );
     const assertProfileToolWorkflowStages = (catalogTools: unknown[], toolName: string, workflowStages: string[]) => {
       const tool = catalogTools.find((candidate) => nestedRecord(candidate, 'profile tool').name === toolName);
       assert.deepEqual(
@@ -935,6 +957,29 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assert.equal(fullProfile.resolvedProfile, 'advanced-full');
     assert.equal(nestedArray(fullProfile.tools, 'full profile tools').length, tools.tools.length);
 
+    strictRuntime = await startStandaloneClient({
+      file: fixture.mainFile,
+      refs: [fixture.referenceRisum, fixture.referenceRisup, fixture.referenceCharx],
+      userDataDir: path.join(fixture.dir, 'strict-profile-user-data'),
+      toolProfile: 'facade-first',
+    });
+    const strictTools = await strictRuntime.client.listTools();
+    const strictToolNames = strictTools.tools.map((tool) => tool.name).sort();
+    assert.deepEqual(
+      strictToolNames,
+      profileTools.map((tool) => String(nestedRecord(tool, 'profile tool').name)).sort(),
+      'strict facade-first tool profile should register only facade-first tools',
+    );
+    assert.ok(!strictToolNames.includes('read_field'), 'strict facade-first profile should hide granular read_field');
+    const strictCatalog = await callJson(strictRuntime, 'list_tool_profiles', { profile: 'facade-first' });
+    const strictProfile = nestedRecord(strictCatalog.profile, 'strict profile catalog');
+    assert.equal(strictProfile.toolsListBehavior, 'profile-filtered');
+    assert.equal(strictProfile.strictFiltering, true);
+    assert.equal(strictProfile.currentProfile, 'facade-first');
+    const strictCounts = nestedRecord(strictProfile.counts, 'strict profile counts');
+    assert.equal(strictCounts.registeredTools, strictToolNames.length);
+    assert.equal(strictCounts.hiddenFromToolsList, tools.tools.length - strictToolNames.length);
+
     const inspect = await callJson(runtime, 'inspect_document', { target: activeTarget, max_bytes: 32000 });
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(inspect), ['session_status', 'list_fields', 'list_surfaces']);
@@ -960,6 +1005,41 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(readBefore), ['read_field']);
+
+    const boundedRootRead = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'surface', path: '/' }],
+    });
+    assert.deepEqual(routedTools(boundedRootRead), ['read_surface']);
+    const boundedRootItems = nestedArray(
+      nestedRecord(boundedRootRead.result, 'bounded root read result').items,
+      'bounded root read items',
+    );
+    const boundedRootData = nestedRecord(
+      nestedRecord(boundedRootItems[0], 'bounded root read item').data,
+      'bounded root read data',
+    );
+    assert.equal(boundedRootData.raw_omitted, true);
+    assert.equal(boundedRootData.value, undefined);
+    assert.equal(nestedRecord(boundedRootData.overview, 'bounded root overview').kind, 'object');
+    assert.equal(nestedRecord(boundedRootRead.facade, 'bounded root facade').max_bytes, 24 * 1024);
+    const boundedRootArtifacts = nestedRecord(boundedRootRead.artifacts, 'bounded root artifacts');
+    assert.match(String(boundedRootArtifacts.continuation_hint ?? ''), /narrower selector/);
+    assert.ok(
+      nestedArray(boundedRootArtifacts.recommended_follow_up_selectors, 'bounded root selector hints').length > 0,
+    );
+
+    const rawRootWithoutMax = await callJson(
+      runtime,
+      'read_content',
+      {
+        target: activeTarget,
+        selectors: [{ family: 'surface', path: '/', include_raw: true }],
+      },
+      { expectError: true },
+    );
+    assert.equal(rawRootWithoutMax.status, 400);
+    assert.match(String(rawRootWithoutMax.error ?? ''), /explicit max_bytes/);
 
     const lorebookReadBefore = await callJson(runtime, 'read_content', {
       target: activeTarget,
@@ -1460,6 +1540,138 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     );
     assert.equal(nestedRecord(presetPromptData.item, 'preset prompt data.item').text, 'Preset facade prompt');
 
+    const externalPresetFile = path.join(fixture.dir, 'external-preset.risup');
+    fs.copyFileSync(fixture.referenceRisup, externalPresetFile);
+    const externalPresetTarget = { kind: 'external', file_path: externalPresetFile };
+    const externalPresetRead = await callJson(runtime, 'read_content', {
+      target: externalPresetTarget,
+      selectors: [
+        { family: 'risup-prompt' },
+        { family: 'risup-prompt', index: 0 },
+        { family: 'risup-prompt', indices: [0, 1] },
+      ],
+    });
+    assert.deepEqual(routedTools(externalPresetRead), [
+      'external_read_surface',
+      'external_read_surface',
+      'external_read_surface',
+    ]);
+    const externalPresetItems = nestedArray(
+      nestedRecord(externalPresetRead.result, 'external preset read result').items,
+      'external preset read items',
+    );
+    const externalPresetIndexData = nestedRecord(
+      nestedRecord(externalPresetItems[1], 'external preset index item').data,
+      'external preset index data',
+    );
+    const externalPresetItem = nestedRecord(
+      nestedRecord(nestedArray(externalPresetIndexData.entries, 'external preset index entries')[0], 'entry').item,
+      'external preset prompt item',
+    );
+    assert.equal(externalPresetItem.text, 'Preset facade prompt');
+
+    const externalPresetSearch = await callJson(runtime, 'search_document', {
+      target: externalPresetTarget,
+      field: 'risup-prompt',
+      query: 'removable',
+    });
+    assert.deepEqual(routedTools(externalPresetSearch), ['external_read_surface']);
+    assert.equal(
+      Number(
+        nestedRecord(nestedRecord(externalPresetSearch.result, 'external preset search result').search, 'search data')
+          .count,
+      ),
+      1,
+    );
+
+    const externalPresetValidation = await callJson(runtime, 'validate_content', {
+      target: externalPresetTarget,
+      selectors: [{ family: 'risup-prompt' }],
+    });
+    assert.deepEqual(routedTools(externalPresetValidation), ['external_read_surface']);
+
+    facadeOnlyCalls.push('preview_edit');
+    const externalPresetPreview = await callJson(runtime, 'preview_edit', {
+      target: externalPresetTarget,
+      operations: [
+        {
+          op: 'write_content',
+          selector: { family: 'risup-prompt', index: 0 },
+          content: {
+            type: 'plain',
+            type2: 'normal',
+            text: 'External preset facade prompt',
+            role: 'system',
+          },
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(externalPresetPreview), ['external_read_surface', 'external_write_field']);
+    const externalPresetPreviewGuards = nestedArray(
+      nestedRecord(externalPresetPreview.result, 'external preset preview result').guard_values,
+      'external preset preview guard values',
+    );
+    assert.ok(
+      externalPresetPreviewGuards.some(
+        (guard) => nestedRecord(guard, 'external preset guard').name === 'expected_type',
+      ),
+      'external risup prompt preview should derive expected_type',
+    );
+    const externalPresetPreviewInfo = nestedRecord(externalPresetPreview.preview, 'external preset preview');
+    facadeOnlyCalls.push('apply_edit');
+    const externalPresetApply = await callJson(runtime, 'apply_edit', {
+      preview_token: externalPresetPreviewInfo.preview_token,
+      operation_digest: externalPresetPreviewInfo.operation_digest,
+      target: externalPresetTarget,
+    });
+    assert.deepEqual(routedTools(externalPresetApply), ['external_read_surface', 'external_write_field']);
+    const externalPresetAfter = await callJson(runtime, 'read_content', {
+      target: externalPresetTarget,
+      selectors: [{ family: 'risup-prompt', index: 0 }],
+    });
+    const externalPresetAfterItems = nestedArray(
+      nestedRecord(externalPresetAfter.result, 'external preset after result').items,
+      'external preset after items',
+    );
+    const externalPresetAfterData = nestedRecord(
+      nestedRecord(externalPresetAfterItems[0], 'external preset after item').data,
+      'external preset after data',
+    );
+    const externalPresetAfterEntries = nestedArray(externalPresetAfterData.entries, 'external preset after entries');
+    const externalPresetAfterItem = nestedRecord(
+      nestedRecord(externalPresetAfterEntries[0], 'external preset after entry').item,
+      'external preset after prompt item',
+    );
+    assert.equal(externalPresetAfterItem.text, 'External preset facade prompt');
+
+    facadeOnlyCalls.push('preview_edit');
+    const externalPresetDeletePreview = await callJson(runtime, 'preview_edit', {
+      target: externalPresetTarget,
+      operations: [
+        {
+          op: 'delete_item',
+          selector: { family: 'risup-prompt', indices: [1] },
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(externalPresetDeletePreview), ['external_read_surface', 'external_write_field']);
+    const externalPresetDeletePreviewInfo = nestedRecord(
+      externalPresetDeletePreview.preview,
+      'external preset delete preview',
+    );
+    facadeOnlyCalls.push('apply_edit');
+    const externalPresetDeleteApply = await callJson(runtime, 'apply_edit', {
+      preview_token: externalPresetDeletePreviewInfo.preview_token,
+      operation_digest: externalPresetDeletePreviewInfo.operation_digest,
+      target: externalPresetTarget,
+    });
+    assert.deepEqual(routedTools(externalPresetDeleteApply), ['external_read_surface', 'external_write_field']);
+    const externalPresetAfterDelete = await callJson(runtime, 'read_content', {
+      target: externalPresetTarget,
+      selectors: [{ family: 'risup-prompt' }],
+    });
+    assert.equal(JSON.stringify(externalPresetAfterDelete.result).includes('Preset removable prompt'), false);
+
     facadeOnlyCalls.push('load_guidance');
     const guidance = await callJson(runtime, 'load_guidance', {
       target: { kind: 'guidance', skill: 'using-mcp-tools' },
@@ -1551,6 +1763,12 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'session inspect runtime',
     );
     assert.equal(sessionInspectRuntime.runtimeMode, 'standalone');
+    const sessionInspectHealth = nestedRecord(
+      nestedRecord(nestedRecord(sessionInspect.result, 'session inspect result').session, 'session inspect session')
+        .runtimeHealth,
+      'session inspect runtimeHealth',
+    );
+    assert.equal(sessionInspectHealth.runtimeMode, 'standalone');
     const noActiveRead = await callJson(
       recoveryRuntime,
       'read_content',
@@ -1704,7 +1922,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assert.equal(metrics.staleGuardReuse, true);
     assert.equal(metrics.finalArtifactEquality, true);
   } catch (error) {
-    const stderrText = [runtime, recoveryRuntime]
+    const stderrText = [runtime, strictRuntime, recoveryRuntime]
       .flatMap((candidate) => candidate?.stderrChunks ?? [])
       .join('')
       .trim();
@@ -1713,6 +1931,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     throw new Error(stderrText ? `${detail}\n\nStandalone MCP stderr:\n${stderrText}` : detail);
   } finally {
     if (recoveryRuntime) await recoveryRuntime.close();
+    if (strictRuntime) await strictRuntime.close();
     if (runtime) await runtime.close();
     fs.rmSync(fixture.dir, { recursive: true, force: true });
   }
@@ -1884,6 +2103,11 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'session_status should preserve the MCP process serverVersion instead of trusting the API placeholder',
     );
     assert.equal(nestedRecord(appBackedSessionRuntime.skew, 'app-backed session runtime skew').detected, true);
+    const appBackedSessionHealth = nestedRecord(
+      appBackedSessionStatus.runtimeHealth,
+      'app-backed session_status runtimeHealth',
+    );
+    assert.equal(appBackedSessionHealth.runtimeMode, 'app-backed');
     assertToolListMetadata(tools.tools, 'preview_edit', {
       family: 'surface',
       staleGuards: [],

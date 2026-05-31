@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   TOOL_TAXONOMY,
+  TOOL_BATCH_ALTERNATIVES,
   TOOL_FAMILIES,
   ALL_TOOL_NAMES,
   DRY_RUN_TOOL_NAMES,
@@ -403,7 +404,7 @@ describe('MCP Tool Taxonomy', () => {
     }
   });
 
-  it('defines the tool surface profile contract with the catalog facade instead of unsafe server filtering', () => {
+  it('defines the tool surface profile contract with catalog facade plus opt-in server filtering', () => {
     expect(TOOL_SURFACE_PROFILE_NAMES).toEqual(['facade-first', 'authoring', 'advanced-full', 'readonly']);
     expect(DEFAULT_TOOL_SURFACE_PROFILE).toBe('facade-first');
     expect(TOOL_SURFACE_PROFILE_ALIASES).toEqual({ advanced: 'advanced-full', full: 'advanced-full' });
@@ -464,6 +465,8 @@ describe('MCP Tool Taxonomy', () => {
       expect.objectContaining({
         defaultProfile: 'facade-first',
         resolvedProfile: 'facade-first',
+        currentProfile: null,
+        strictFiltering: false,
         filteringStatus: 'catalog-facade',
         toolsListBehavior: 'unfiltered-compatible',
         legacyEscapeHatch: 'advanced-full',
@@ -481,8 +484,27 @@ describe('MCP Tool Taxonomy', () => {
       'validate_content',
     ]);
     expect(facadeCatalog?.counts.allTools).toBe(ALL_TOOL_NAMES.length);
+    expect(facadeCatalog?.counts.registeredTools).toBe(ALL_TOOL_NAMES.length);
     expect(facadeCatalog?.counts.hiddenFromToolsList).toBe(0);
     expect(facadeCatalog?.counts.profileTools).toBeLessThan(facadeCatalog?.counts.allTools ?? 0);
+
+    const strictFacadeCatalog = buildToolSurfaceProfileCatalog('facade-first', {
+      currentProfile: 'facade-first',
+      registeredTools: listToolsForSurfaceProfile('facade-first'),
+      strictFiltering: true,
+    });
+    expect(strictFacadeCatalog).toEqual(
+      expect.objectContaining({
+        currentProfile: 'facade-first',
+        strictFiltering: true,
+        filteringStatus: 'registered-filter',
+        toolsListBehavior: 'profile-filtered',
+      }),
+    );
+    expect(strictFacadeCatalog?.counts.hiddenFromToolsList).toBe(
+      ALL_TOOL_NAMES.length - listToolsForSurfaceProfile('facade-first').length,
+    );
+    expect(strictFacadeCatalog?.tools.every((tool) => tool.registered)).toBe(true);
 
     const fullCatalog = buildToolSurfaceProfileCatalog('full');
     expect(fullCatalog?.resolvedProfile).toBe('advanced-full');
@@ -490,6 +512,19 @@ describe('MCP Tool Taxonomy', () => {
     expect(fullCatalog?.tools.map((tool) => tool.name)).toEqual(ALL_TOOL_NAMES);
     expect(listToolsForSurfaceProfile('unknown')).toEqual([]);
     expect(buildToolSurfaceProfileCatalog('unknown')).toBeUndefined();
+  });
+
+  it('exposes batch alternatives in metadata and compact catalogs', () => {
+    expect(TOOL_BATCH_ALTERNATIVES.read_regex).toBe('read_regex_batch');
+    expect(TOOL_BATCH_ALTERNATIVES.read_risup_prompt_item).toBe('read_risup_prompt_item_batch');
+    expect(getToolMeta('read_regex')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.batchAlternative]: 'read_regex_batch',
+      }),
+    );
+    const authoringCatalog = buildToolSurfaceProfileCatalog('authoring');
+    const readRegex = authoringCatalog?.tools.find((tool) => tool.name === 'read_regex');
+    expect(readRegex).toEqual(expect.objectContaining({ batchAlternative: 'read_regex_batch' }));
   });
 
   it('readonly profile includes only readOnlyHint tools and excludes preview/apply mutations', () => {

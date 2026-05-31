@@ -667,6 +667,8 @@ describe('facade v1 contract schemas', () => {
           { family: 'greeting', greeting_type: 'group', indices: [0, 1], fields: ['name'] },
           { family: 'regex', index: 1, entry_field: 'out' },
           { family: 'risup-prompt', index: 2, prompt_type: 'plain', item_field: 'text' },
+          { family: 'risup-prompt', ids: ['main', 'jailbreak'] },
+          { family: 'surface', path: '/', include_raw: true },
         ],
       },
       facadeV1ReadContentBodySchema,
@@ -685,6 +687,15 @@ describe('facade v1 contract schemas', () => {
         family: 'risup-prompt',
         prompt_type: 'plain',
         item_field: 'text',
+      });
+      expect(extended.data.selectors?.[4]).toMatchObject({
+        family: 'risup-prompt',
+        ids: ['main', 'jailbreak'],
+      });
+      expect(extended.data.selectors?.[5]).toMatchObject({
+        family: 'surface',
+        path: '/',
+        include_raw: true,
       });
     }
   });

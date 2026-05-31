@@ -9,6 +9,32 @@
 
 ---
 
+## [1.1.0] - 2026-05-31
+
+### Added
+
+- Added opt-in strict MCP tool profiles via `--tool-profile` / `RISUTOKI_MCP_TOOL_PROFILE`, with runtime catalog counts showing registered and hidden tools.
+- Extended facade `read_content`, `search_document`, `preview_edit`, `apply_edit`, and `validate_content` to cover external `.risup` prompt item read/search/write/delete workflows.
+- Added MCP runtime health metadata and sanitized per-tool telemetry for tool calls, response sizes, profile state, and recent standalone runtime errors.
+
+### Changed
+
+- Made facade `read_content` default to bounded 24KB responses and return root surface overviews unless raw root reads are explicitly requested.
+- Added batch-alternative metadata and next-action hints so agents prefer batch readers/writers over repeated single-item calls.
+
+## [1.0.7] - 2026-05-27
+
+### Fixed
+
+- Fixed `.charx` export compatibility checks and saves misreading JSON-serialized asset buffers as 0-byte ZIP assets.
+
+## [1.0.6] - 2026-05-26
+
+### Fixed
+
+- Fixed RisuToki MCP startup when Danbooru tag loading logs before the MCP transport is connected.
+- Updated Codex startup and the internal terminal `codex` / `codex.cmd` wrappers to refresh the current project `.codex/config.toml` so local standalone MCP settings do not override the app-connected server.
+
 ## [1.0.5] - 2026-05-26
 
 ### Fixed

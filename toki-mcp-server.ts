@@ -24,11 +24,15 @@ import { startHeadlessMcpApiServer } from './src/lib/mcp-headless-server';
 import {
   ALL_TOOL_NAMES,
   buildToolSurfaceProfileCatalog,
+  getToolFamily,
   getToolMeta,
   getToolWorkflowStages,
+  listToolsForSurfaceProfile,
+  resolveToolSurfaceProfileName,
   TOOL_RECOMMENDATIONS,
   TOOL_SURFACE_KINDS,
   TOOL_TAXONOMY,
+  type ToolSurfaceProfileName,
 } from './src/lib/mcp-tool-taxonomy';
 import {
   buildRuntimeMetadata,
@@ -51,6 +55,7 @@ import {
   type FacadeV1Target,
   type FacadeV1ToolMutability,
 } from './src/lib/mcp-request-schemas';
+import { parsePromptTemplate, serializePromptTemplate, type PromptItemModel } from './src/lib/risup-prompt-model';
 import {
   extractDocumentToProject,
   getProjectFileType,
@@ -71,6 +76,8 @@ const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '
 const PACKAGE_VERSION = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : APP_VERSION;
 const BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : null;
 const COMMIT = typeof __COMMIT__ !== 'undefined' ? __COMMIT__ : null;
+const SERVER_STARTED_AT = new Date().toISOString();
+const DEFAULT_FACADE_READ_MAX_BYTES = 24 * 1024;
 
 interface DanbooruTag {
   id: number;
@@ -169,6 +176,9 @@ let tagsByCount: DanbooruTag[] = [];
 let tagsLoaded = false;
 const apiCache = new Map<string, DanbooruTag | null>();
 const API_CACHE_MAX = 5000;
+
+/** Whether the MCP transport is connected (logging available). */
+let mcpConnected = false;
 
 function apiCacheSet(key: string, value: DanbooruTag | null): void {
   if (apiCache.size >= API_CACHE_MAX) {
@@ -540,6 +550,32 @@ interface ApiErrorResult {
   [key: string]: unknown;
 }
 
+interface RuntimeHealthSummary {
+  startedAt: string;
+  pid: number;
+  runtimeMode: RuntimeMode;
+  apiTimeoutCount: number;
+  apiNetworkErrorCount: number;
+  uncaughtExceptionCount: number;
+  lastErrorSummary: string | null;
+  standaloneLogPath: string;
+  logTail?: {
+    bytesRead: number;
+    processStartCount: number;
+    apiTimeoutCount: number;
+    apiNetworkErrorCount: number;
+    uncaughtExceptionCount: number;
+    lastErrorSummary: string | null;
+  };
+}
+
+const runtimeHealthCounters = {
+  apiTimeoutCount: 0,
+  apiNetworkErrorCount: 0,
+  uncaughtExceptionCount: 0,
+  lastErrorSummary: null as string | null,
+};
+
 function isApiError(data: unknown): data is ApiErrorResult {
   return !!data && typeof data === 'object' && (data as Record<string, unknown>)[API_ERROR_KEY] === true;
 }
@@ -564,6 +600,83 @@ function summarizeArgsForDiagnostic(args: Record<string, unknown>): Record<strin
 
 function byteLengthForDiagnostic(value: string | null): number {
   return value ? Buffer.byteLength(value) : 0;
+}
+
+function noteRuntimeError(kind: 'apiTimeout' | 'apiNetworkError' | 'uncaughtException', summary: string): void {
+  if (kind === 'apiTimeout') runtimeHealthCounters.apiTimeoutCount++;
+  if (kind === 'apiNetworkError') runtimeHealthCounters.apiNetworkErrorCount++;
+  if (kind === 'uncaughtException') runtimeHealthCounters.uncaughtExceptionCount++;
+  runtimeHealthCounters.lastErrorSummary = summary.slice(0, 300);
+}
+
+function getStandaloneLogPath(args = process.argv.slice(2)): string {
+  return path.join(getStandaloneUserDataPath(args), 'mcp-server.log');
+}
+
+function summarizeStandaloneLogTail(maxBytes = 256 * 1024): RuntimeHealthSummary['logTail'] | undefined {
+  const logPath = getStandaloneLogPath();
+  try {
+    const stat = fs.statSync(logPath);
+    const bytesToRead = Math.min(stat.size, maxBytes);
+    const fd = fs.openSync(logPath, 'r');
+    try {
+      const buffer = Buffer.alloc(bytesToRead);
+      fs.readSync(fd, buffer, 0, bytesToRead, stat.size - bytesToRead);
+      const text = buffer.toString('utf8');
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      let processStartCount = 0;
+      let apiTimeoutCount = 0;
+      let apiNetworkErrorCount = 0;
+      let uncaughtExceptionCount = 0;
+      let lastErrorSummary: string | null = null;
+      for (const line of lines) {
+        const jsonStart = line.indexOf('{');
+        if (jsonStart < 0) continue;
+        try {
+          const entry = JSON.parse(line.slice(jsonStart)) as Record<string, unknown>;
+          const event = typeof entry.event === 'string' ? entry.event : '';
+          if (event === 'processStart') processStartCount++;
+          if (event === 'apiTimeout') apiTimeoutCount++;
+          if (event === 'apiNetworkError') apiNetworkErrorCount++;
+          if (event === 'uncaughtException') uncaughtExceptionCount++;
+          if (['apiTimeout', 'apiNetworkError', 'uncaughtException', 'toolError', 'fatal'].includes(event)) {
+            const error = asRecord(entry.error);
+            const message =
+              recordString(error, 'message') ?? recordString(entry, 'message') ?? recordString(entry, 'path') ?? event;
+            lastErrorSummary = `${event}: ${message}`.slice(0, 300);
+          }
+        } catch {
+          // Ignore partial/truncated diagnostic lines.
+        }
+      }
+      return {
+        bytesRead: bytesToRead,
+        processStartCount,
+        apiTimeoutCount,
+        apiNetworkErrorCount,
+        uncaughtExceptionCount,
+        lastErrorSummary,
+      };
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+function getRuntimeHealth(): RuntimeHealthSummary {
+  return {
+    startedAt: SERVER_STARTED_AT,
+    pid: process.pid,
+    runtimeMode: getRuntimeMode(),
+    apiTimeoutCount: runtimeHealthCounters.apiTimeoutCount,
+    apiNetworkErrorCount: runtimeHealthCounters.apiNetworkErrorCount,
+    uncaughtExceptionCount: runtimeHealthCounters.uncaughtExceptionCount,
+    lastErrorSummary: runtimeHealthCounters.lastErrorSummary,
+    standaloneLogPath: getStandaloneLogPath(),
+    ...(getRuntimeMode() === 'standalone' ? { logTail: summarizeStandaloneLogTail() } : {}),
+  };
 }
 
 function textResult(data: unknown) {
@@ -604,7 +717,6 @@ function safeToolHandler<TArgs extends Record<string, unknown>>(
 ) {
   return async (args: TArgs) => {
     const startedAt = Date.now();
-    logProcessDiagnostic('toolStart', { tool: name, args: summarizeArgsForDiagnostic(args) });
     try {
       const result = await handler(args);
       try {
@@ -623,10 +735,8 @@ function safeToolHandler<TArgs extends Record<string, unknown>>(
           message: serializationError instanceof Error ? serializationError.message : String(serializationError),
         });
       }
-      logProcessDiagnostic('toolSuccess', { tool: name, elapsedMs: Date.now() - startedAt, isError: !!result.isError });
       return result;
     } catch (error) {
-      logProcessDiagnostic('toolError', { tool: name, elapsedMs: Date.now() - startedAt, error });
       return textResult({
         [API_ERROR_KEY]: true,
         status: 500,
@@ -685,6 +795,7 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
             resolve(parsed);
           }
         } catch (error) {
+          noteRuntimeError('apiNetworkError', `Invalid JSON response from ${method} ${urlPath}`);
           logProcessDiagnostic('apiInvalidJson', {
             method,
             path: urlPath,
@@ -704,6 +815,7 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
     });
 
     req.on('error', (err: NodeJS.ErrnoException) => {
+      noteRuntimeError('apiNetworkError', `${err.code ?? 'network'} ${method} ${urlPath}: ${err.message}`);
       logProcessDiagnostic('apiNetworkError', {
         method,
         path: urlPath,
@@ -733,6 +845,7 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
     });
     req.setTimeout(120000, () => {
       req.destroy();
+      noteRuntimeError('apiTimeout', `${method} ${urlPath} timed out after 120 seconds`);
       logProcessDiagnostic('apiTimeout', {
         method,
         path: urlPath,
@@ -883,6 +996,54 @@ function selectorFamily(selector: FacadeV1ContentSelector): string {
   return 'document';
 }
 
+function surfaceValueOverview(value: unknown): Record<string, unknown> {
+  if (Array.isArray(value)) {
+    return {
+      kind: 'array',
+      length: value.length,
+      sampleTypes: value
+        .slice(0, 10)
+        .map((item) => (Array.isArray(item) ? 'array' : item === null ? 'null' : typeof item)),
+    };
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    return {
+      kind: 'object',
+      keyCount: keys.length,
+      keys: keys.slice(0, 80),
+      omittedKeys: Math.max(0, keys.length - 80),
+      childSummary: Object.fromEntries(
+        keys.slice(0, 30).map((key) => {
+          const child = record[key];
+          if (Array.isArray(child)) return [key, { kind: 'array', length: child.length }];
+          if (child && typeof child === 'object') return [key, { kind: 'object', keyCount: Object.keys(child).length }];
+          if (typeof child === 'string') return [key, { kind: 'string', length: child.length }];
+          return [key, { kind: child === null ? 'null' : typeof child }];
+        }),
+      ),
+    };
+  }
+  if (typeof value === 'string') return { kind: 'string', length: value.length, preview: value.slice(0, 300) };
+  return { kind: value === null ? 'null' : typeof value };
+}
+
+function maybeOverviewSurfaceRead(data: unknown, selector: FacadeV1ContentSelector): unknown {
+  const pathValue = selector.path ?? '/';
+  if (selector.include_raw === true || (pathValue !== '/' && pathValue !== '')) return data;
+  const record = asRecord(data);
+  if (!record || !('value' in record)) return data;
+  return {
+    ...record,
+    value: undefined,
+    overview: surfaceValueOverview(record.value),
+    raw_omitted: true,
+    continuation_hint:
+      'Root surface raw JSON is omitted by default. Re-run read_content with selector.include_raw=true and explicit max_bytes, or choose a narrower selector.path.',
+  };
+}
+
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values)];
 }
@@ -1002,12 +1163,15 @@ function facadeEnvelope(
 ) {
   let truncated = false;
   let finalResult: Record<string, unknown> = result;
-  if (maxBytes && Buffer.byteLength(JSON.stringify(result), 'utf8') > maxBytes) {
+  const resultBytes = Buffer.byteLength(JSON.stringify(result), 'utf8');
+  if (maxBytes && resultBytes > maxBytes) {
     truncated = true;
     finalResult = {
       truncated: true,
       preview: JSON.stringify(result).slice(0, Math.max(0, maxBytes - 256)),
-      original_byte_size: Buffer.byteLength(JSON.stringify(result), 'utf8'),
+      original_byte_size: resultBytes,
+      continuation_hint:
+        'Narrow the selector, use search_document, or pass an explicit max_bytes when you need a larger bounded read.',
     };
   }
 
@@ -1021,6 +1185,7 @@ function facadeEnvelope(
         ...(target ? { target } : {}),
         ...(maxBytes ? { max_bytes: maxBytes } : {}),
         ...(truncated ? { truncated: true } : {}),
+        response_bytes: resultBytes,
       },
       result: finalResult,
     },
@@ -1028,7 +1193,18 @@ function facadeEnvelope(
       toolName: tool,
       summary,
       nextActions,
-      artifacts: { ...artifacts, ...(truncated ? { truncated: true } : {}) },
+      artifacts: {
+        ...artifacts,
+        result_byte_size: resultBytes,
+        ...(truncated
+          ? {
+              truncated: true,
+              original_byte_size: resultBytes,
+              continuation_hint:
+                'Narrow the selector, use search_document, or pass an explicit max_bytes when you need a larger bounded read.',
+            }
+          : {}),
+      },
     },
   );
 }
@@ -1157,7 +1333,9 @@ async function readFacadeSelector(
     if (selector.family === 'surface' || selector.path) {
       const pathValue = selector.path ?? '/';
       const data = await apiRequest('POST', '/surface/read', { path: pathValue });
-      return isApiError(data) ? data : { data, routes: [route('read_surface', 'POST', '/surface/read')] };
+      return isApiError(data)
+        ? data
+        : { data: maybeOverviewSurfaceRead(data, selector), routes: [route('read_surface', 'POST', '/surface/read')] };
     }
     if (selector.field) {
       const fieldRoute = `/field/${encodeURIComponent(selector.field)}`;
@@ -1175,6 +1353,44 @@ async function readFacadeSelector(
         { selector },
       );
     }
+    if (selector.family === 'risup-prompt') {
+      const externalPrompt = await readExternalRisupPromptModel(target.file_path);
+      if (isApiError(externalPrompt)) return externalPrompt;
+      const indices = resolveRisupPromptSelectorIndices(externalPrompt.model, selector, 'read external risup prompt');
+      if (!Array.isArray(indices)) return indices;
+      if (selector.id || selector.index !== undefined || selector.ids || selector.indices) {
+        const entries = indices.map((index) => {
+          const item = externalPrompt.model.items[index];
+          return {
+            index,
+            id: item.id ?? null,
+            item: item.rawValue,
+            supported: item.supported,
+            type: item.type ?? null,
+            preview: risupPromptItemPreview(item),
+          };
+        });
+        return {
+          data: {
+            file_path: target.file_path,
+            count: entries.length,
+            total: indices.length,
+            entries,
+          },
+          routes: externalPrompt.routes,
+        };
+      }
+      return {
+        data: {
+          file_path: target.file_path,
+          count: externalPrompt.model.items.length,
+          state: externalPrompt.model.state,
+          hasUnsupportedContent: externalPrompt.model.hasUnsupportedContent,
+          items: externalPrompt.model.items.map(risupPromptItemSummary),
+        },
+        routes: externalPrompt.routes,
+      };
+    }
     if (selector.family === 'surface' || selector.path) {
       const data = await apiRequest('POST', '/external/surface/read', {
         file_path: target.file_path,
@@ -1182,7 +1398,10 @@ async function readFacadeSelector(
       });
       return isApiError(data)
         ? data
-        : { data, routes: [route('external_read_surface', 'POST', '/external/surface/read')] };
+        : {
+            data: maybeOverviewSurfaceRead(data, selector),
+            routes: [route('external_read_surface', 'POST', '/external/surface/read')],
+          };
     }
     if (selector.field) {
       const fieldRoute = `/probe/field/${encodeURIComponent(selector.field)}`;
@@ -1312,10 +1531,38 @@ async function validateFacadeSelectors(
         touchedTargets: [`plugin-v3:${target.file_path}`],
       };
     }
+    if (
+      target.kind === 'external' &&
+      selectors?.some((selector) => selector.family === 'risup-prompt' || selector.field === 'promptTemplate')
+    ) {
+      const externalPrompt = await readExternalRisupPromptModel(target.file_path);
+      if (isApiError(externalPrompt)) return externalPrompt;
+      return {
+        result: {
+          validations: [
+            {
+              selector: selectors[0],
+              data: {
+                file_path: target.file_path,
+                state: externalPrompt.model.state,
+                count: externalPrompt.model.items.length,
+                hasUnsupportedContent: externalPrompt.model.hasUnsupportedContent,
+                ok: externalPrompt.model.state !== 'invalid',
+              },
+            },
+          ],
+          routed_legacy: externalPrompt.routes,
+          touched_targets: [`external:${target.file_path}:risup-prompt`],
+          source_workflow: true,
+        },
+        routes: externalPrompt.routes,
+        touchedTargets: [`external:${target.file_path}:risup-prompt`],
+      };
+    }
     return facadeApiError(
       400,
       `Unsupported validate_content target kind "${target.kind}"`,
-      'validate_content supports active-document validators plus external Plugin v3 source scans. Use inspect_document/read_content for other external or reference preflight.',
+      'validate_content supports active-document validators plus external Plugin v3 and external .risup prompt scans. Use inspect_document/read_content for other external or reference preflight.',
       undefined,
       ['inspect_document', 'read_content'],
     );
@@ -1520,54 +1767,6 @@ function buildGuard(
   return { name, value, payloadPath, sourceOperations, sourceResultPath };
 }
 
-function normalizeBatchEntries(
-  operation: FacadeV1EditOperation,
-  payloadKey: 'data' | 'content' | 'item',
-): Array<Record<string, unknown>> | ApiErrorResult {
-  const indices = operation.selector.indices;
-  if (!indices || indices.length === 0) {
-    return facadeApiError(
-      400,
-      'Batch structured edits require selector.indices',
-      'Provide selector.indices with the active item indexes and align content entries to those indexes.',
-      { operation },
-      ['read_content', 'preview_edit'],
-    );
-  }
-
-  const content = operation.content;
-  const contentRecord = asRecord(content);
-  const rawEntries =
-    (contentRecord && Array.isArray(contentRecord.entries) && contentRecord.entries) ||
-    (contentRecord && Array.isArray(contentRecord.writes) && contentRecord.writes) ||
-    (Array.isArray(content) && content);
-
-  if (!rawEntries || rawEntries.length !== indices.length) {
-    return facadeApiError(
-      400,
-      'Batch structured edit content must align with selector.indices',
-      'Use content.entries/content.writes or a content array with the same length and order as selector.indices.',
-      { selector: operation.selector },
-      ['read_content', 'preview_edit'],
-    );
-  }
-
-  return rawEntries.map((entry, position) => {
-    const record = asRecord(entry);
-    if (!record) return { index: indices[position], [payloadKey]: entry };
-    const index = recordNumber(record, 'index') ?? indices[position];
-    if (
-      payloadKey in record ||
-      'expected_comment' in record ||
-      'expected_preview' in record ||
-      'expected_type' in record
-    ) {
-      return { ...record, index };
-    }
-    return { index, [payloadKey]: record };
-  });
-}
-
 function itemByIndex(
   data: unknown,
   collectionKey: 'entries' | 'items',
@@ -1595,6 +1794,524 @@ function selectorTags(selector: FacadeV1ContentSelector): string[] {
   if (Array.isArray(selectorRecord.tags)) return selectorRecord.tags.filter((tag) => typeof tag === 'string');
   if (Array.isArray(selector.fields)) return selector.fields.filter((tag) => typeof tag === 'string');
   return [];
+}
+
+function risupPromptItemPreview(item: PromptItemModel): string {
+  if (!item.supported) return `[unsupported: ${item.type ?? 'unknown'}]`;
+  if ('text' in item && typeof item.text === 'string') {
+    return item.text.slice(0, 80) + (item.text.length > 80 ? '...' : '');
+  }
+  if ('defaultText' in item && typeof item.defaultText === 'string' && item.defaultText.length > 0) {
+    return item.defaultText.slice(0, 80) + (item.defaultText.length > 80 ? '...' : '');
+  }
+  if ('innerFormat' in item && typeof item.innerFormat === 'string' && item.innerFormat.length > 0) {
+    return `[innerFormat: ${item.innerFormat.slice(0, 60)}]`;
+  }
+  if (item.type === 'chat' && 'rangeStart' in item && 'rangeEnd' in item) {
+    return `[range: ${item.rangeStart}-${item.rangeEnd}]`;
+  }
+  if (item.type === 'cache' && 'name' in item) {
+    return `[cache: ${item.name}]`;
+  }
+  return `[${item.type ?? 'unknown'}]`;
+}
+
+function risupPromptItemSummary(item: PromptItemModel, index: number): Record<string, unknown> {
+  const summary: Record<string, unknown> = {
+    index,
+    id: item.id ?? null,
+    type: item.type ?? null,
+    supported: item.supported,
+    preview: risupPromptItemPreview(item),
+  };
+  if (item.supported && 'name' in item && item.name !== undefined) summary.name = item.name;
+  return summary;
+}
+
+function risupPromptSearchFields(item: PromptItemModel): Array<{ field: string; value: string }> {
+  const fields: Array<{ field: string; value: string }> = [];
+  const push = (field: string, value: unknown) => {
+    if (typeof value === 'string' && value.length > 0) fields.push({ field, value });
+  };
+  if (!item.supported) {
+    push('raw', JSON.stringify(item.rawValue));
+    return fields;
+  }
+  push('id', item.id);
+  push('type', item.type);
+  if ('name' in item) push('name', item.name);
+  if ('text' in item) push('text', item.text);
+  if ('innerFormat' in item) push('innerFormat', item.innerFormat);
+  if ('defaultText' in item) push('defaultText', item.defaultText);
+  return fields;
+}
+
+function findRisupPromptItemMatchedFields(item: PromptItemModel, query: string): string[] {
+  const needle = query.toLowerCase();
+  return risupPromptSearchFields(item)
+    .filter(({ value }) => value.toLowerCase().includes(needle))
+    .map(({ field }) => field);
+}
+
+async function readExternalRisupPromptModel(filePath: string): Promise<
+  | {
+      rawText: string;
+      model: ReturnType<typeof parsePromptTemplate>;
+      routes: FacadeRoute[];
+    }
+  | ApiErrorResult
+> {
+  const routePath = '/external/surface/read';
+  const read = await apiRequest('POST', routePath, { file_path: filePath, path: '/promptTemplate' });
+  if (isApiError(read)) return read;
+  const value = asRecord(read)?.value;
+  if (typeof value !== 'string') {
+    return facadeApiError(
+      400,
+      'External risup promptTemplate is not a string',
+      'Use inspect_document on the external .risup file, then repair promptTemplate before using risup-prompt selectors.',
+      { file_path: filePath },
+      ['inspect_document', 'read_content'],
+    );
+  }
+  const model = parsePromptTemplate(value);
+  if (model.state === 'invalid') {
+    return facadeApiError(
+      400,
+      `Invalid external promptTemplate: ${model.parseError}`,
+      'Use read_content with selector { field: "promptTemplate" } or a granular external field route to inspect and repair the raw promptTemplate.',
+      { file_path: filePath, parseError: model.parseError },
+      ['read_content', 'search_document'],
+    );
+  }
+  return {
+    rawText: value,
+    model,
+    routes: [route('external_read_surface', 'POST', routePath)],
+  };
+}
+
+function resolveRisupPromptIdIndex(
+  model: ReturnType<typeof parsePromptTemplate>,
+  id: string,
+  action: string,
+): number | ApiErrorResult {
+  const matches = model.items.map((item, index) => ({ item, index })).filter(({ item }) => item.id === id);
+  if (matches.length === 0) {
+    return facadeApiError(404, `Prompt item id not found: ${id}`, 'Refresh prompt item summaries and retry.', {
+      action,
+      id,
+    });
+  }
+  if (matches.length > 1) {
+    return facadeApiError(
+      409,
+      `Prompt item id is not unique: ${id}`,
+      'Use an index selector or normalize duplicate prompt item ids before retrying.',
+      { action, id, matches: matches.map((match) => match.index) },
+    );
+  }
+  return matches[0].index;
+}
+
+function resolveRisupPromptSelectorIndices(
+  model: ReturnType<typeof parsePromptTemplate>,
+  selector: FacadeV1ContentSelector,
+  action: string,
+): number[] | ApiErrorResult {
+  if (selector.id) {
+    const index = resolveRisupPromptIdIndex(model, selector.id, action);
+    return typeof index === 'number' ? [index] : index;
+  }
+  if (selector.ids) {
+    const indices: number[] = [];
+    for (const id of selector.ids) {
+      const index = resolveRisupPromptIdIndex(model, id, action);
+      if (typeof index !== 'number') return index;
+      indices.push(index);
+    }
+    return indices;
+  }
+  const indices = selector.index !== undefined ? [selector.index] : selector.indices;
+  if (!indices) return model.items.map((_, index) => index);
+  const invalid = indices.find((index) => index < 0 || index >= model.items.length);
+  if (invalid !== undefined) {
+    return facadeApiError(
+      400,
+      `Prompt item index out of range: ${invalid}`,
+      'Refresh prompt item summaries and retry.',
+      {
+        action,
+        index: invalid,
+        count: model.items.length,
+      },
+    );
+  }
+  return indices;
+}
+
+function hasExplicitPromptItemIdLocal(item: unknown): boolean {
+  return !!item && typeof item === 'object' && !Array.isArray(item) && typeof asRecord(item)?.id === 'string';
+}
+
+function validateReplacementPromptItem(content: unknown, preserveId?: string): PromptItemModel | ApiErrorResult {
+  const testModel = parsePromptTemplate(JSON.stringify([content]));
+  if (testModel.state === 'invalid' || testModel.items.length === 0) {
+    return facadeApiError(
+      400,
+      `Invalid risup prompt item: ${testModel.parseError ?? 'Invalid item structure.'}`,
+      'Set operations[].content to one supported prompt item object.',
+      { parseError: testModel.parseError },
+    );
+  }
+  const item = testModel.items[0];
+  if (!item.supported) {
+    return facadeApiError(
+      400,
+      `Unsupported risup prompt item type: ${item.type ?? 'unknown'}`,
+      'Facade risup-prompt item writes require supported item types. Use advanced raw promptTemplate routes for unsupported shapes.',
+    );
+  }
+  if (preserveId && !hasExplicitPromptItemIdLocal(content)) item.id = preserveId;
+  return item;
+}
+
+function stringArrayFromRecord(record: Record<string, unknown> | undefined, key: string): string[] | undefined {
+  const value = record?.[key];
+  return Array.isArray(value) && value.every((item) => typeof item === 'string') ? (value as string[]) : undefined;
+}
+
+function checkRisupPromptIdentity(
+  operation: FacadeV1EditOperation,
+  item: PromptItemModel,
+  label: string,
+): ApiErrorResult | undefined {
+  const currentType = item.type ?? undefined;
+  const currentPreview = risupPromptItemPreview(item);
+  const typeConflict = guardConflict(operation.guards, 'expected_type', currentType, label);
+  if (typeConflict) return typeConflict;
+  const previewConflict = guardConflict(operation.guards, 'expected_preview', currentPreview, label);
+  if (previewConflict) return previewConflict;
+  return undefined;
+}
+
+function risupPromptSingleGuards(item: PromptItemModel): FacadeV1Guard[] {
+  const guards: FacadeV1Guard[] = [];
+  if (item.type !== null && item.type !== undefined) {
+    guards.push(buildGuard('expected_type', item.type, '/expected_type', ['read_content'], '/item/type'));
+  }
+  guards.push(
+    buildGuard('expected_preview', risupPromptItemPreview(item), '/expected_preview', ['read_content'], '/preview'),
+  );
+  return guards;
+}
+
+function risupPromptBatchGuards(items: PromptItemModel[]): FacadeV1Guard[] {
+  return [
+    {
+      name: 'expected_types',
+      value: items.map((item) => item.type ?? ''),
+      payloadPath: '/expected_types/*',
+      sourceOperations: ['read_content'],
+      sourceResultPath: '/entries/*/type',
+    },
+    {
+      name: 'expected_previews',
+      value: items.map((item) => risupPromptItemPreview(item)),
+      payloadPath: '/expected_previews/*',
+      sourceOperations: ['read_content'],
+      sourceResultPath: '/entries/*/preview',
+    },
+  ];
+}
+
+function checkRisupPromptBatchIdentity(
+  item: PromptItemModel,
+  position: number,
+  expectedTypes: string[] | undefined,
+  expectedPreviews: string[] | undefined,
+  label: string,
+): ApiErrorResult | undefined {
+  const currentType = item.type ?? '';
+  const currentPreview = risupPromptItemPreview(item);
+  const expectedType = expectedTypes?.[position];
+  const expectedPreview = expectedPreviews?.[position];
+  if (expectedType !== undefined && expectedType !== currentType) {
+    return facadeApiError(
+      409,
+      'Stale guard mismatch for expected_types',
+      'Refresh prompt item summaries, then run preview_edit again with current expected_types values.',
+      { target: label, guard: 'expected_types', expected: expectedType, actual: currentType, position },
+      ['read_content', 'preview_edit'],
+    );
+  }
+  if (expectedPreview !== undefined && expectedPreview !== currentPreview) {
+    return facadeApiError(
+      409,
+      'Stale guard mismatch for expected_previews',
+      'Refresh prompt item summaries, then run preview_edit again with current expected_previews values.',
+      { target: label, guard: 'expected_previews', expected: expectedPreview, actual: currentPreview, position },
+      ['read_content', 'preview_edit'],
+    );
+  }
+  return undefined;
+}
+
+async function prepareExternalRisupPromptMutation(
+  target: FacadeV1Target,
+  operation: FacadeV1EditOperation,
+): Promise<
+  | {
+      data: unknown;
+      newPromptTemplate: string;
+      routes: FacadeRoute[];
+      touched: string[];
+      requiredGuards: FacadeV1Guard[];
+    }
+  | ApiErrorResult
+> {
+  if (target.kind !== 'external') {
+    return facadeApiError(
+      400,
+      'External risup prompt mutation requires target.kind="external"',
+      'Use target.kind="external" with a .risup file path or open the file and use active risup-prompt selectors.',
+      { target },
+    );
+  }
+  const externalPrompt = await readExternalRisupPromptModel(target.file_path);
+  if (isApiError(externalPrompt)) return externalPrompt;
+  const indices = resolveRisupPromptSelectorIndices(
+    externalPrompt.model,
+    operation.selector,
+    `external risup ${operation.op}`,
+  );
+  if (!Array.isArray(indices)) return indices;
+  const currentItems = indices.map((index) => externalPrompt.model.items[index]);
+  const contentRecord = asRecord(operation.content);
+  const requiredGuards =
+    indices.length === 1 ? risupPromptSingleGuards(currentItems[0]) : risupPromptBatchGuards(currentItems);
+  const writeRoute = route('external_write_field', 'POST', '/external/field/promptTemplate');
+  const touched = indices.map((index) => `external:${target.file_path}:risup-prompt:${index}`);
+
+  if (operation.op === 'write_content') {
+    const newItems = [...externalPrompt.model.items];
+    if (indices.length === 1 && !operation.selector.ids && !operation.selector.indices) {
+      const currentItem = currentItems[0];
+      const label = selectorTarget(operation.selector);
+      const conflict = checkRisupPromptIdentity(operation, currentItem, label);
+      if (conflict) return conflict;
+      const replacement = validateReplacementPromptItem(operation.content, currentItem.id ?? operation.selector.id);
+      if (isApiError(replacement)) return replacement;
+      newItems[indices[0]] = replacement;
+      return {
+        data: {
+          dryRun: true,
+          operation: 'write_content',
+          file_path: target.file_path,
+          index: indices[0],
+          id: currentItem.id ?? null,
+          currentType: currentItem.type ?? null,
+          currentPreview: risupPromptItemPreview(currentItem),
+          replacementType: replacement.type ?? null,
+        },
+        newPromptTemplate: serializePromptTemplate({ items: newItems }),
+        routes: [...externalPrompt.routes, writeRoute],
+        touched,
+        requiredGuards: mergeGuards(operation.guards, requiredGuards),
+      };
+    }
+
+    const writes = normalizeBatchEntries(operation, 'item');
+    if (isApiError(writes)) return writes;
+    const expectedTypes = stringArrayFromRecord(contentRecord, 'expected_types');
+    const expectedPreviews = stringArrayFromRecord(contentRecord, 'expected_previews');
+    const enrichedWrites: Array<Record<string, unknown>> = [];
+    const previews: Array<Record<string, unknown>> = [];
+    for (const [position, write] of writes.entries()) {
+      const index =
+        recordNumber(write, 'index') ??
+        (recordString(write, 'item_id')
+          ? resolveRisupPromptIdIndex(
+              externalPrompt.model,
+              recordString(write, 'item_id') ?? '',
+              'external risup write',
+            )
+          : indices[position]);
+      if (typeof index !== 'number') return index;
+      const currentItem = externalPrompt.model.items[index];
+      const conflict = checkRisupPromptBatchIdentity(
+        currentItem,
+        position,
+        expectedTypes,
+        expectedPreviews,
+        `risup-prompt:${index}`,
+      );
+      if (conflict) return conflict;
+      const replacement = validateReplacementPromptItem(write.item, recordString(write, 'item_id') ?? currentItem.id);
+      if (isApiError(replacement)) return replacement;
+      newItems[index] = replacement;
+      enrichedWrites.push({
+        ...write,
+        ...(recordString(write, 'item_id') ? { item_id: recordString(write, 'item_id') } : { index }),
+        item: asRecord(write.item) ?? write.item,
+        expected_type: currentItem.type ?? '',
+        expected_preview: risupPromptItemPreview(currentItem),
+      });
+      previews.push({
+        index,
+        id: currentItem.id ?? null,
+        currentType: currentItem.type ?? null,
+        currentPreview: risupPromptItemPreview(currentItem),
+        replacementType: replacement.type ?? null,
+      });
+    }
+    operation.content = {
+      ...(contentRecord ?? {}),
+      writes: enrichedWrites,
+      expected_types: currentItems.map((item) => item.type ?? ''),
+      expected_previews: currentItems.map((item) => risupPromptItemPreview(item)),
+    };
+    return {
+      data: {
+        dryRun: true,
+        operation: 'write_content',
+        file_path: target.file_path,
+        count: previews.length,
+        writes: previews,
+      },
+      newPromptTemplate: serializePromptTemplate({ items: newItems }),
+      routes: [...externalPrompt.routes, writeRoute],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, requiredGuards),
+    };
+  }
+
+  if (operation.op === 'delete_item') {
+    if (indices.length === 1 && !operation.selector.ids && !operation.selector.indices) {
+      const currentItem = currentItems[0];
+      const conflict = checkRisupPromptIdentity(operation, currentItem, selectorTarget(operation.selector));
+      if (conflict) return conflict;
+      return {
+        data: {
+          dryRun: true,
+          operation: 'delete_item',
+          file_path: target.file_path,
+          index: indices[0],
+          id: currentItem.id ?? null,
+          currentType: currentItem.type ?? null,
+          currentPreview: risupPromptItemPreview(currentItem),
+        },
+        newPromptTemplate: serializePromptTemplate({
+          items: externalPrompt.model.items.filter((_, index) => index !== indices[0]),
+        }),
+        routes: [...externalPrompt.routes, writeRoute],
+        touched,
+        requiredGuards: mergeGuards(operation.guards, requiredGuards),
+      };
+    }
+
+    const expectedTypes = stringArrayFromRecord(contentRecord, 'expected_types');
+    const expectedPreviews = stringArrayFromRecord(contentRecord, 'expected_previews');
+    const deletes: Array<Record<string, unknown>> = [];
+    for (const [position, index] of indices.entries()) {
+      const item = externalPrompt.model.items[index];
+      const conflict = checkRisupPromptBatchIdentity(
+        item,
+        position,
+        expectedTypes,
+        expectedPreviews,
+        `risup-prompt:${index}`,
+      );
+      if (conflict) return conflict;
+      deletes.push({
+        index,
+        id: item.id ?? null,
+        currentType: item.type ?? null,
+        currentPreview: risupPromptItemPreview(item),
+      });
+    }
+    const deleteSet = new Set(indices);
+    operation.content = {
+      ...(contentRecord ?? {}),
+      expected_types: currentItems.map((item) => item.type ?? ''),
+      expected_previews: currentItems.map((item) => risupPromptItemPreview(item)),
+    };
+    return {
+      data: {
+        dryRun: true,
+        operation: 'delete_item',
+        file_path: target.file_path,
+        count: deletes.length,
+        deletes,
+      },
+      newPromptTemplate: serializePromptTemplate({
+        items: externalPrompt.model.items.filter((_, index) => !deleteSet.has(index)),
+      }),
+      routes: [...externalPrompt.routes, writeRoute],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, requiredGuards),
+    };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported external risup prompt operation: ${operation.op}`,
+    'External risup-prompt facade parity supports write_content and delete_item for id/index and id/index batches.',
+    { operation },
+  );
+}
+
+function normalizeBatchEntries(
+  operation: FacadeV1EditOperation,
+  payloadKey: 'data' | 'content' | 'item',
+): Array<Record<string, unknown>> | ApiErrorResult {
+  const indices = operation.selector.indices;
+  const ids = operation.selector.ids;
+  const targetKeys = indices ?? ids;
+  if (!targetKeys || targetKeys.length === 0) {
+    return facadeApiError(
+      400,
+      'Batch structured edits require selector.indices or selector.ids',
+      'Provide selector.indices or selector.ids and align content entries to those targets.',
+      { operation },
+      ['read_content', 'preview_edit'],
+    );
+  }
+
+  const content = operation.content;
+  const contentRecord = asRecord(content);
+  const rawEntries =
+    (contentRecord && Array.isArray(contentRecord.entries) && contentRecord.entries) ||
+    (contentRecord && Array.isArray(contentRecord.writes) && contentRecord.writes) ||
+    (Array.isArray(content) && content);
+
+  if (!rawEntries || rawEntries.length !== targetKeys.length) {
+    return facadeApiError(
+      400,
+      'Batch structured edit content must align with selector.indices or selector.ids',
+      'Use content.entries/content.writes or a content array with the same length and order as the selector targets.',
+      { selector: operation.selector },
+      ['read_content', 'preview_edit'],
+    );
+  }
+
+  return rawEntries.map((entry, position) => {
+    const record = asRecord(entry);
+    const base =
+      indices !== undefined
+        ? { index: record ? (recordNumber(record, 'index') ?? indices[position]) : indices[position] }
+        : { item_id: record ? (recordString(record, 'item_id') ?? ids?.[position]) : ids?.[position] };
+    if (!record) return { ...base, [payloadKey]: entry };
+    if (
+      payloadKey in record ||
+      'expected_comment' in record ||
+      'expected_preview' in record ||
+      'expected_type' in record
+    ) {
+      return { ...record, ...base };
+    }
+    return { ...base, [payloadKey]: record };
+  });
 }
 
 function validateRegexEntries(data: unknown): Record<string, unknown> {
@@ -1777,6 +2494,23 @@ async function previewFacadeOperation(
       'groupOnlyGreetings is deprecated and kept only for compatibility reads. Use alternate greetings or supported current fields instead.',
       { selector: operation.selector },
     );
+  }
+  if (
+    target.kind === 'external' &&
+    operation.selector.family === 'risup-prompt' &&
+    (operation.op === 'write_content' || operation.op === 'delete_item')
+  ) {
+    const prepared = await prepareExternalRisupPromptMutation(target, operation);
+    if (isApiError(prepared)) return prepared;
+    return {
+      data: {
+        ...(asRecord(prepared.data) ?? {}),
+        newSize: prepared.newPromptTemplate.length,
+      },
+      routes: prepared.routes,
+      touched: prepared.touched,
+      requiredGuards: prepared.requiredGuards,
+    };
   }
   if (
     target.kind === 'active' &&
@@ -3353,6 +4087,29 @@ async function applyFacadeOperation(
   const touched = [selectorTarget(operation.selector)];
   const guards = guardValues && guardValues.length > 0 ? guardValues : operation.guards;
   if (
+    target.kind === 'external' &&
+    operation.selector.family === 'risup-prompt' &&
+    (operation.op === 'write_content' || operation.op === 'delete_item')
+  ) {
+    const originalGuards = operation.guards;
+    operation.guards = guards;
+    const prepared = await prepareExternalRisupPromptMutation(target, operation);
+    operation.guards = originalGuards;
+    if (isApiError(prepared)) return prepared;
+    const routePath = '/external/field/promptTemplate';
+    const data = await apiRequest('POST', routePath, {
+      file_path: target.file_path,
+      content: prepared.newPromptTemplate,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data: { ...(asRecord(data) ?? {}), operation: operation.op, promptSize: prepared.newPromptTemplate.length },
+          routes: prepared.routes,
+          touched: prepared.touched,
+        };
+  }
+  if (
     target.kind === 'active' &&
     operation.op === 'replace_text' &&
     operation.selector.family === 'lorebook' &&
@@ -4012,6 +4769,7 @@ function withMergedRuntimeMetadata(session: unknown): unknown {
   return {
     ...(session as Record<string, unknown>),
     runtime: getRuntimeMetadataForApiSession(session),
+    runtimeHealth: getRuntimeHealth(),
   };
 }
 
@@ -4038,6 +4796,106 @@ function getToolCatalogHealthSummary(): ToolCatalogHealthSummary {
   });
 }
 
+interface ConfiguredToolProfile {
+  raw: string | undefined;
+  source: 'argv' | 'env' | null;
+  resolved: ToolSurfaceProfileName | undefined;
+  strictFiltering: boolean;
+}
+
+function getConfiguredToolProfile(args = process.argv.slice(2)): ConfiguredToolProfile {
+  const argValue = readArgValue(args, '--tool-profile');
+  const envValue = process.env.RISUTOKI_MCP_TOOL_PROFILE;
+  const raw = argValue ?? envValue;
+  const resolved = resolveToolSurfaceProfileName(raw);
+  return {
+    raw,
+    source: argValue !== undefined ? 'argv' : envValue !== undefined ? 'env' : null,
+    resolved,
+    strictFiltering: raw !== undefined && resolved !== undefined,
+  };
+}
+
+const configuredToolProfile = getConfiguredToolProfile();
+const configuredToolProfileNames =
+  configuredToolProfile.strictFiltering && configuredToolProfile.resolved
+    ? new Set(listToolsForSurfaceProfile(configuredToolProfile.resolved))
+    : null;
+
+function shouldRegisterMcpTool(name: string): boolean {
+  if (!configuredToolProfileNames) return true;
+  return configuredToolProfileNames.has(name);
+}
+
+function activeToolProfileName(): ToolSurfaceProfileName | null {
+  return configuredToolProfile.strictFiltering && configuredToolProfile.resolved
+    ? configuredToolProfile.resolved
+    : null;
+}
+
+function registeredToolNames(): string[] {
+  return Array.from(_registeredToolHandles.keys()).sort();
+}
+
+function toolProfileCatalogOptions() {
+  return {
+    currentProfile: activeToolProfileName(),
+    registeredTools: registeredToolNames(),
+    strictFiltering: configuredToolProfile.strictFiltering,
+  };
+}
+
+function toolDiagnosticBase(name: string): Record<string, unknown> {
+  const entry = TOOL_TAXONOMY[name];
+  return {
+    toolName: name,
+    tool: name,
+    family: getToolFamily(name) ?? 'unknown',
+    surfaceKind: entry?.surfaceKind ?? 'granular',
+    recommendation: entry?.recommendation ?? 'advanced',
+    profile: activeToolProfileName() ?? 'unfiltered-compatible',
+    strictFiltering: configuredToolProfile.strictFiltering,
+  };
+}
+
+function resultByteSize(result: unknown): number | null {
+  try {
+    return Buffer.byteLength(JSON.stringify(result), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+function instrumentToolHandler(name: string, handler: (...args: unknown[]) => unknown) {
+  return async (...handlerArgs: unknown[]) => {
+    const startedAt = Date.now();
+    const callArgs = asRecord(handlerArgs[0]) ?? {};
+    logProcessDiagnostic('toolStart', {
+      ...toolDiagnosticBase(name),
+      args: summarizeArgsForDiagnostic(callArgs),
+    });
+    try {
+      const result = await handler(...handlerArgs);
+      const isError = asRecord(result)?.isError === true;
+      logProcessDiagnostic('toolSuccess', {
+        ...toolDiagnosticBase(name),
+        status: isError ? 'error' : 'ok',
+        elapsedMs: Date.now() - startedAt,
+        responseBytes: resultByteSize(result),
+      });
+      return result;
+    } catch (error) {
+      logProcessDiagnostic('toolError', {
+        ...toolDiagnosticBase(name),
+        status: 'thrown',
+        elapsedMs: Date.now() - startedAt,
+        error,
+      });
+      throw error;
+    }
+  };
+}
+
 const server = new McpServer({
   name: 'risutoki',
   version: APP_VERSION,
@@ -4048,9 +4906,30 @@ const server = new McpServer({
 const _registeredToolHandles = new Map<string, ReturnType<typeof server.tool>>();
 const _origServerTool = server.tool.bind(server) as typeof server.tool;
 server.tool = ((...args: unknown[]) => {
-  const result = (_origServerTool as (...a: unknown[]) => ReturnType<typeof server.tool>)(...args);
-  if (typeof args[0] === 'string') {
-    _registeredToolHandles.set(args[0], result);
+  const toolName = typeof args[0] === 'string' ? args[0] : undefined;
+  if (toolName && !shouldRegisterMcpTool(toolName)) {
+    logProcessDiagnostic('toolSkippedByProfile', {
+      ...toolDiagnosticBase(toolName),
+      requestedProfile: configuredToolProfile.raw,
+      resolvedProfile: configuredToolProfile.resolved,
+    });
+    return {
+      update: () => undefined,
+      remove: () => undefined,
+    } as unknown as ReturnType<typeof server.tool>;
+  }
+  const wrappedArgs = [...args];
+  if (toolName) {
+    for (let i = wrappedArgs.length - 1; i >= 0; i--) {
+      if (typeof wrappedArgs[i] === 'function') {
+        wrappedArgs[i] = instrumentToolHandler(toolName, wrappedArgs[i] as (...handlerArgs: unknown[]) => unknown);
+        break;
+      }
+    }
+  }
+  const result = (_origServerTool as (...a: unknown[]) => ReturnType<typeof server.tool>)(...wrappedArgs);
+  if (toolName) {
+    _registeredToolHandles.set(toolName, result);
   }
   return result;
 }) as typeof server.tool;
@@ -4170,7 +5049,7 @@ server.tool(
 
 server.tool(
   'list_tool_profiles',
-  'Preferred read-only catalog facade for MCP tool surface profiles. Returns a compact profile-specific tool list while tools/list remains unfiltered for legacy compatibility. Use profile="advanced-full" (aliases "advanced" or "full") as the granular escape hatch.',
+  'Preferred read-only catalog facade for MCP tool surface profiles. Returns compact profile-specific tools plus current strict filtering status, registered/hidden counts, batch alternatives, and runtimeHealth. tools/list remains unfiltered unless --tool-profile or RISUTOKI_MCP_TOOL_PROFILE is set. Use profile="advanced-full" (aliases "advanced" or "full") as the granular escape hatch.',
   {
     profile: z
       .string()
@@ -4180,7 +5059,7 @@ server.tool(
       ),
   },
   async ({ profile }) => {
-    const catalog = buildToolSurfaceProfileCatalog(profile);
+    const catalog = buildToolSurfaceProfileCatalog(profile, toolProfileCatalogOptions());
     if (!catalog) {
       return textResult(
         facadeApiError(
@@ -4191,6 +5070,7 @@ server.tool(
       );
     }
     const runtime = await getRuntimeMetadataForCatalog();
+    const runtimeHealth = getRuntimeHealth();
     const health = getToolCatalogHealthSummary();
     const skewSummary = runtime.skew.detected ? ` Runtime skew detected: ${runtime.skew.warnings.join('; ')}` : '';
     return textResult(
@@ -4198,6 +5078,7 @@ server.tool(
         {
           profile: catalog,
           runtime,
+          runtimeHealth,
           health,
         },
         {
@@ -4210,7 +5091,10 @@ server.tool(
             tools_list_behavior: catalog.toolsListBehavior,
             tool_count: catalog.counts.profileTools,
             all_tool_count: catalog.counts.allTools,
+            registered_tool_count: catalog.counts.registeredTools,
+            hidden_from_tools_list: catalog.counts.hiddenFromToolsList,
             runtime_mode: runtime.runtimeMode,
+            runtime_health: runtimeHealth,
             runtime_skew_detected: runtime.skew.detected,
             runtime_skew_warnings: runtime.skew.warnings,
             catalog_health: health,
@@ -4223,7 +5107,7 @@ server.tool(
 
 server.tool(
   'read_content',
-  'Preferred facade v1 bounded reader. Reads selected field/surface content by routing to existing granular tools and returns routed legacy names. Supports field/surface selectors for active/external targets and field selectors for references.',
+  'Preferred facade v1 bounded reader. Reads selected field/surface/content items by routing to existing granular tools and returns routed legacy names. Defaults to a 24KB response cap; root surface selectors return an overview unless selector.include_raw=true and max_bytes is explicit. Supports external .risup prompt item selectors.',
   {
     target: facadeV1TargetSchema.describe('Explicit facade target discriminator.'),
     selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
@@ -4232,16 +5116,34 @@ server.tool(
   async ({ target, selectors, max_bytes }) => {
     const actualSelectors: FacadeV1ContentSelector[] =
       selectors && selectors.length > 0 ? selectors : [{ family: 'surface', path: '/' }];
+    const effectiveMaxBytes = max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES;
     const results: unknown[] = [];
     const routes: FacadeRoute[] = [];
     const touchedTargets: string[] = [];
     for (const selector of actualSelectors) {
+      if (
+        (selector.family === 'surface' || selector.path) &&
+        (selector.path === undefined || selector.path === '/' || selector.path === '') &&
+        selector.include_raw === true &&
+        max_bytes === undefined
+      ) {
+        return textResult(
+          facadeApiError(
+            400,
+            'Raw root surface reads require an explicit max_bytes',
+            'Use the default overview, choose a narrower selector.path, or pass max_bytes with selector.include_raw=true.',
+            { selector, default_max_bytes: DEFAULT_FACADE_READ_MAX_BYTES },
+            ['read_content', 'search_document'],
+          ),
+        );
+      }
       const read = await readFacadeSelector(target, selector);
       if (isApiError(read)) return textResult(read);
       results.push({ selector, data: read.data });
       routes.push(...read.routes);
       touchedTargets.push(selectorTarget(selector));
     }
+    const hasOverviewRead = results.some((item) => asRecord(asRecord(item)?.data)?.raw_omitted === true);
     return textResult(
       facadeEnvelope(
         'read_content',
@@ -4250,8 +5152,22 @@ server.tool(
         { items: results, routed_legacy: routes, touched_targets: touchedTargets },
         `Read ${results.length} facade selector(s)`,
         ['search_document', 'preview_edit'],
-        { count: results.length, routed_tools: routes.map((entry) => entry.tool), touched_targets: touchedTargets },
-        max_bytes,
+        {
+          count: results.length,
+          routed_tools: routes.map((entry) => entry.tool),
+          touched_targets: touchedTargets,
+          ...(hasOverviewRead
+            ? {
+                continuation_hint:
+                  'Root surface raw JSON is omitted by default. Choose a narrower selector or use include_raw with explicit max_bytes only when raw root JSON is required.',
+                recommended_follow_up_selectors: [
+                  { family: 'field', field: '<fieldName>' },
+                  { family: 'surface', path: '/<json-pointer>' },
+                ],
+              }
+            : {}),
+        },
+        effectiveMaxBytes,
       ),
     );
   },
@@ -4259,7 +5175,7 @@ server.tool(
 
 server.tool(
   'search_document',
-  'Preferred facade v1 search entrypoint. Searches an active document via search_all_fields, an external field via external_search_in_field, or a reference field via search_in_reference_field.',
+  'Preferred facade v1 search entrypoint. Searches active documents, active/external risup-prompt items with literal queries, external fields, or reference fields through routed legacy tools.',
   {
     target: facadeV1TargetSchema.describe('Explicit facade target discriminator.'),
     query: z.string().min(1),
@@ -4295,6 +5211,35 @@ server.tool(
         max_matches_per_field: max_matches,
       });
       routes = [route('search_all_fields', 'POST', '/search-all')];
+    } else if (target.kind === 'external' && field === 'risup-prompt') {
+      if (regex) {
+        return textResult(
+          facadeApiError(
+            400,
+            'Unsupported external risup-prompt regex search',
+            'External risup-prompt facade search supports literal substring queries; omit regex or use a granular raw field search.',
+          ),
+        );
+      }
+      const externalPrompt = await readExternalRisupPromptModel(target.file_path);
+      if (isApiError(externalPrompt)) return textResult(externalPrompt);
+      const matches = externalPrompt.model.items
+        .map((item, index) => {
+          const matchedFields = findRisupPromptItemMatchedFields(item, query);
+          if (matchedFields.length === 0) return null;
+          return {
+            index,
+            id: item.id ?? null,
+            type: item.type ?? null,
+            supported: item.supported,
+            preview: risupPromptItemPreview(item),
+            matched_fields: matchedFields,
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+        .slice(0, max_matches ?? FACADE_V1_LIMITS.maxMatches);
+      data = { query, count: matches.length, matches };
+      routes = externalPrompt.routes;
     } else if (target.kind === 'external' && field) {
       const routePath = `/external/field/${encodeURIComponent(field)}/search`;
       data = await apiRequest('POST', routePath, { ...body, file_path: target.file_path });
@@ -4332,10 +5277,10 @@ server.tool(
 
 server.tool(
   'validate_content',
-  'Preferred facade v1 validation entrypoint. Validates active lorebook, regex, CBS, Danbooru tags, risup prompt/order, risum semantic fields, and external Plugin v3 source scans where facade selectors provide enough context.',
+  'Preferred facade v1 validation entrypoint. Validates active lorebook, regex, CBS, Danbooru tags, active/external risup prompt/order selectors, risum semantic fields, and external Plugin v3 source scans where facade selectors provide enough context.',
   {
     target: facadeV1TargetSchema.describe(
-      'Explicit facade target discriminator. Supports active artifact validation and external Plugin v3 source scans.',
+      'Explicit facade target discriminator. Supports active artifact validation, external .risup prompt checks, and external Plugin v3 source scans.',
     ),
     selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
@@ -4411,7 +5356,7 @@ server.tool(
 
 server.tool(
   'preview_edit',
-  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, active surface patches, active indexed and safe batch regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
+  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, external .risup prompt item edits, active surface patches, active indexed and safe batch regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
   {
     target: facadeV1TargetSchema.describe(
       'Explicit facade target discriminator. Supports active edits and second-wave external field replace/write previews.',
@@ -4484,7 +5429,7 @@ server.tool(
 
 server.tool(
   'apply_edit',
-  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior for active/external fields, active surface patches, and active indexed/batch regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
+  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior for active/external fields, external .risup prompt item edits, active surface patches, and active indexed/batch regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
   {
     preview_token: z.string().regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/),
     operation_digest: z.string().min(16),
@@ -4877,7 +5822,7 @@ server.tool(
 
 server.tool(
   'read_surface',
-  '현재 문서의 임의 JSON surface를 JSON Pointer path로 읽습니다. 예: "/", "/regex/0/comment", "/alternateGreetings/0".',
+  '현재 문서의 임의 JSON surface를 JSON Pointer path로 읽습니다. 예: "/", "/regex/0/comment", "/alternateGreetings/0". 새 LLM 흐름에서는 root 덤프 대신 facade read_content의 bounded overview 또는 좁은 path selector를 우선 사용하세요.',
   {
     path: z.string().optional().describe('JSON Pointer path. 생략 또는 빈 문자열이면 전체 문서 root를 읽습니다.'),
   },
@@ -4923,7 +5868,7 @@ server.tool(
 
 server.tool(
   'external_read_surface',
-  '에디터에 열지 않은 .charx/.risum/.risup 파일의 임의 JSON surface를 JSON Pointer path로 읽습니다. current UI 문서와 같은 파일은 거부됩니다.',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 임의 JSON surface를 JSON Pointer path로 읽습니다. current UI 문서와 같은 파일은 거부됩니다. 새 LLM 흐름에서는 root 덤프 대신 facade read_content의 bounded overview 또는 좁은 path selector를 우선 사용하세요.',
   {
     file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
     path: z.string().optional().describe('JSON Pointer path. 생략 또는 빈 문자열이면 전체 문서 root를 읽습니다.'),
@@ -7422,9 +8367,6 @@ server.prompt(
 
 // ==================== Start ====================
 
-/** Whether the MCP transport is connected (logging available). */
-let mcpConnected = false;
-
 function getDefaultStandaloneUserDataPath(): string {
   return path.join(os.homedir(), '.risutoki', 'mcp-standalone');
 }
@@ -7477,6 +8419,7 @@ function logProcessDiagnostic(event: string, data: Record<string, unknown> = {})
 }
 
 process.on('uncaughtException', (error) => {
+  noteRuntimeError('uncaughtException', error instanceof Error ? error.message : String(error));
   logProcessDiagnostic('uncaughtException', { error });
   process.exit(1);
 });
@@ -7534,6 +8477,13 @@ async function main() {
   }
 
   const runtime = getRuntimeMetadata();
+  if (configuredToolProfile.raw !== undefined && configuredToolProfile.resolved === undefined) {
+    logProcessDiagnostic('toolProfileWarning', {
+      requestedProfile: configuredToolProfile.raw,
+      source: configuredToolProfile.source,
+      message: 'Unknown tool profile; registering the unfiltered compatible tool surface.',
+    });
+  }
   logProcessDiagnostic('processStart', {
     serverVersion: runtime.serverVersion,
     appVersion: runtime.appVersion,
@@ -7543,6 +8493,10 @@ async function main() {
     runtimeMode: runtime.runtimeMode,
     allowWrites: runtime.allowWrites,
     userDataPath: runtime.userDataPath,
+    toolProfile: configuredToolProfile.raw ?? null,
+    resolvedToolProfile: configuredToolProfile.resolved ?? null,
+    strictToolFiltering: configuredToolProfile.strictFiltering,
+    registeredTools: registeredToolNames().length,
     api: `127.0.0.1:${TOKI_PORT}`,
   });
   attachStdioDiagnostics();
@@ -7560,6 +8514,10 @@ async function main() {
     runtimeMode: runtime.runtimeMode,
     allowWrites: runtime.allowWrites,
     userDataPath: runtime.userDataPath,
+    toolProfile: configuredToolProfile.raw ?? null,
+    resolvedToolProfile: configuredToolProfile.resolved ?? null,
+    strictToolFiltering: configuredToolProfile.strictFiltering,
+    registeredTools: registeredToolNames().length,
     skew: runtime.skew,
     api: `127.0.0.1:${TOKI_PORT}`,
   });

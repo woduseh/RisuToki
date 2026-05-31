@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.0.5-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -328,7 +328,7 @@ Useful options:
 
 Use `session_status` to verify the active standalone `allowWrites` and `userDataPath` values. Standalone process, stdio lifecycle, mutating tool, sanitized API request/response, and MCP logging diagnostics are written to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` without field content bodies.
 
-Environment variable equivalents are `RISUTOKI_MCP_FILE`, `RISUTOKI_MCP_REFS` (path-delimited), `RISUTOKI_MCP_ALLOW_WRITES`, and `RISUTOKI_MCP_USER_DATA_DIR`.
+Environment variable equivalents are `RISUTOKI_MCP_FILE`, `RISUTOKI_MCP_REFS` (path-delimited), `RISUTOKI_MCP_ALLOW_WRITES`, `RISUTOKI_MCP_USER_DATA_DIR`, and `RISUTOKI_MCP_TOOL_PROFILE`.
 
 ### Unified Skill Catalog
 
@@ -367,10 +367,11 @@ If a Windows git checkout turns those discovery paths into plain text placeholde
 
 ### MCP Tool Catalogue
 
-When an AI CLI starts, the MCP server connects automatically so the AI can read and write the active document directly. It can also probe unopened `.charx` / `.risum` / `.risup` files by absolute path and switch to them with `open_file`.
+When an AI CLI starts, the MCP server connects automatically so the AI can read and write the active document directly. It can also probe unopened `.charx` / `.risum` / `.risup` files by absolute path and switch to them with `open_file`. By default `tools/list` remains fully compatible; agents can call `list_tool_profiles`, or advanced users can start MCP with `--tool-profile=<facade-first|authoring|readonly|advanced-full>` to register only a strict profile.
 
 | Category             | Tools                                                                                                                                                                                                                                                                                                                                             |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Facade v1**        | `list_tool_profiles` · `inspect_document` · `read_content` · `search_document` · `preview_edit` · `apply_edit` · `validate_content` · `load_guidance` — bounded/profiled workflow entrypoints, including external `.risup` prompt item read/search/preview/apply/validate and runtime health metadata                                             |
 | **Fields**           | `list_fields` · `read_field` · `write_field` · `search_in_field` · `read_field_range` · `replace_in_field` · `replace_in_field_batch` · `insert_in_field` · `search_all_fields`                                                                                                                                                                   |
 | **Folder Workspace** | `extract_charx_to_project_folder` · `reassemble_project_folder_to_charx` — compatibility-named filesystem fallback for oversized `.charx`, `.risum`, and `.risup` editing                                                                                                                                                                         |
 | **Surfaces**         | `list_surfaces` · `read_surface` · `patch_surface` · `replace_in_surface` · `save_current_file` — JSON Pointer fallback editing for content not covered by a specialized family                                                                                                                                                                   |
