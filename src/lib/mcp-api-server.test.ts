@@ -6158,6 +6158,30 @@ describe('MCP API success response envelope', () => {
     }
   });
 
+  it('charx export compatibility route preserves asset bytes after cloning current data', async () => {
+    const fixture = createExternalCharxFixture({
+      name: 'Export Asset Buffer Card',
+      assets: [{ path: 'assets/icon/image/main.png', data: Buffer.from([0x89, 0x50, 0x4e, 0x47]) }],
+      cardAssets: [{ type: 'icon', uri: 'embeded://assets/icon/image/main.png', name: 'main', ext: 'png' }],
+    });
+    const data = openExternalDocumentForTest(fixture.filePath);
+    const api = await startTestApiServer(data);
+    try {
+      const res = await getJson<Record<string, unknown>>(api.port, api.token, '/charx/export-compatibility');
+
+      expect(res.status).toBe(200);
+      expect(res.data.ok).toBe(true);
+      expect(res.data.issueCount).toBe(0);
+      expect(res.data.metadata).toEqual(
+        expect.objectContaining({
+          assets: expect.objectContaining({ zipCount: 1, cardReferenceCount: 1 }),
+        }),
+      );
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('charx export compatibility route reports upload-risk asset issues', async () => {
     const fixture = createExternalCharxFixture({ name: 'Export Asset Issue Card' });
     const data = openExternalDocumentForTest(fixture.filePath);

@@ -138,6 +138,27 @@ function validateFileSize(filePath: string): void {
   }
 }
 
+function coerceAssetBuffer(value: unknown): Buffer {
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof Uint8Array) return Buffer.from(value);
+  if (value && typeof value === 'object') {
+    const record = value as { type?: unknown; data?: unknown };
+    if (record.type === 'Buffer' && Array.isArray(record.data)) {
+      return Buffer.from(record.data as number[]);
+    }
+  }
+  return Buffer.alloc(0);
+}
+
+function normalizeCharxAssetsForZip(assets: CharxAsset[] | undefined): CharxAsset[] {
+  return (assets || [])
+    .filter((asset) => asset && typeof asset.path === 'string' && asset.path.length > 0)
+    .map((asset) => ({
+      path: asset.path,
+      data: coerceAssetBuffer((asset as unknown as { data?: unknown }).data),
+    }));
+}
+
 // ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
@@ -602,6 +623,7 @@ export function openCharx(filePath: string): CharxData {
  */
 export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
   const zip = new AdmZip();
+  const zipAssets = normalizeCharxAssetsForZip(data.assets);
 
   // Build card.json
   const card: Record<string, unknown> = cloneJson(data._card || {});
@@ -656,7 +678,7 @@ export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
 
   // Preserve card assets
   const rawCardAssets = (data.cardAssets || []) as { type?: string; uri?: string; name?: string; ext?: string }[];
-  const actualAssetPaths = new Set((data.assets || []).map((a) => a.path));
+  const actualAssetPaths = new Set(zipAssets.map((a) => a.path));
   const EMBEDDED_ASSET_URI_PREFIX = 'embeded://';
 
   function resolveLocalAssetPath(uri?: string): string | null {
@@ -688,7 +710,7 @@ export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
   // Use 'main' for the first icon entry that doesn't already exist in the array.
   const hasMainIcon = cardAssetArr.some((a) => a.type === 'icon' && a.name === 'main');
   let mainIconAssigned = hasMainIcon;
-  for (const asset of data.assets || []) {
+  for (const asset of zipAssets) {
     const uri = `embeded://${asset.path}`;
     if (!existingAssetPaths.has(asset.path)) {
       const ext = path.extname(asset.path).slice(1) || '';
@@ -744,7 +766,7 @@ export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
   zip.addFile('module.risum', risumBuf);
 
   // Add image assets
-  for (const asset of data.assets || []) {
+  for (const asset of zipAssets) {
     zip.addFile(asset.path, asset.data);
   }
 

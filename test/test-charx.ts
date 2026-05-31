@@ -409,6 +409,50 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.ok(result.issues.some((item) => item.code === 'zero-byte-asset'));
 })();
 
+(function testSaveCharxRestoresJsonSerializedAssetBuffers() {
+  const filePath = path.join(tempDir, 'json-serialized-asset-buffer.charx');
+  const sourceData = {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'Serialized Asset Test',
+    description: '',
+    creatorcomment: '',
+    tags: [],
+    firstMessage: '',
+    alternateGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    moduleId: '',
+    moduleName: '',
+    moduleDescription: '',
+    assets: [{ path: 'assets/icon/image/main.png', data: Buffer.from([0x89, 0x50, 0x4e, 0x47]) }],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [{ type: 'icon', uri: 'embeded://assets/icon/image/main.png', name: 'main', ext: 'png' }],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: { extensions: { risuai: {} }, character_book: { entries: [] }, assets: [] },
+    },
+    _moduleData: null,
+  };
+  const serializedData = JSON.parse(JSON.stringify(sourceData));
+
+  saveCharx(filePath, serializedData as any);
+
+  const zip = new AdmZip(filePath);
+  const assetEntry = zip.getEntry('assets/icon/image/main.png');
+  assert.ok(assetEntry, 'serialized asset should be written to the ZIP');
+  assert.equal(assetEntry.getData().length, 4);
+  assert.equal(validateCharxExportCompatibilityFile(filePath).ok, true);
+})();
+
 (function testCharxWithPrependedImageData() {
   const sourcePath = path.join(tempDir, 'prefixed-source.charx');
   const prefixedPath = path.join(tempDir, 'prefixed.charx');
