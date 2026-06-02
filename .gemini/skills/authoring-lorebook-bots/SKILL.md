@@ -18,14 +18,14 @@ related_tools:
 ## Agent Operating Contract
 
 - **Use when:** the main task is deciding what belongs in always-on description versus conditional lorebook entries for a cast-heavy, world-heavy, or lorebook-driven bot.
-- **Do not use when:** the main task is one character's inner engine/voice, worldbuilding substance, a self-introduction sheet, raw lorebook syntax, or non-bot artifact work.
-- **Read first:** this `SKILL.md` only. Treat it as the architecture guide; load character-writing or world-writing skills only when the source material itself is weak.
+- **Do not use when:** the main task is one character's inner drive/voice, worldbuilding substance, a self-introduction sheet, raw lorebook syntax, or non-bot artifact work.
+- **Read first:** this `SKILL.md` only. Treat it as the structure guide; load character-writing or world-writing skills only when the source material itself is weak.
 - **Load deeper only if:** entry activation, progression, continuity, or reveal staging is the hard part (`LOREBOOK_ARCHITECTURE.md`), cast size changes the design economics (`BOT_SCALES.md`), or the user asks for finished-bot QA / release-level review (`BOT_VALIDATION.md`).
 - **Output/validation contract:** produce a description/lorebook distribution plan or revised bot frame; verify tone survives without lorebook, details activate conditionally, and the description is not a pasted database.
 
 > **Use this skill when the description is not supposed to carry everything.** In many bots the description provides the persistent frame — tone, world pressure, core cast thumbnail, and narrative direction — while the lorebook provides conditional detail. In lorebook-heavy bots the balance can shift further: the description's job becomes partly to teach the model how to read and use the lorebook itself.
 >
-> **If the main problem is one character's internal engine, voice, and contradictions, use [authoring-characters](../authoring-characters/). If the main problem is worldbuilding substance — setting pressure, culture, factions, places, active history, or systems — use [authoring-worlds](../authoring-worlds/). If you want the core character written through the self-introduction monologue method, use [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/).** This skill sits beside those writing skills and focuses on architecture: what stays always-on, what becomes conditional, and how that depth is surfaced in play.
+> **If the main problem is one character's inner drive, voice, and contradictions, use [authoring-characters](../authoring-characters/). If the main problem is worldbuilding substance — setting pressure, culture, factions, places, active history, or systems — use [authoring-worlds](../authoring-worlds/). If you want the core character written through the self-introduction monologue method, use [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/).** This skill sits beside those writing skills and focuses on structure: what stays always-on, what becomes conditional, and how that depth is surfaced in play.
 
 ## Route by Bot Shape
 
@@ -70,7 +70,7 @@ It is generally **not** well served by being:
 - If the bot loses all sense of tone, pacing, and genre, the description was doing its job.
 - If nothing changes, the description may be dead weight or the lorebook has absorbed work the description should own.
 
-In either case the ideal description gives the model the **right instinct**, not the full archive. How much of the engine lives in description vs lorebook varies by design — neither balance is inherently better.
+In either case the ideal description gives the model the **right instinct**, not the full archive. How much of the emotional core lives in description vs lorebook varies by design — neither balance is inherently better.
 
 ---
 
@@ -98,6 +98,17 @@ Lorebook entries are filtered through whatever prose the description establishes
 
 - atmospheric description -> lorebook facts integrate like fiction
 - clinical description -> lorebook facts get dumped like notes
+
+### 3.5 Keep Structure Language Out of Model-Visible Prose
+
+This skill uses terms like "architecture," "routing," "contract," and "activation" because it helps the agent plan where information belongs. Those words should usually stay in design notes, not in the actual `description`, `firstMessage`, or lorebook content.
+
+For model-visible prose:
+
+- Write people as people, not as state machines, data stores, or behavioral modules.
+- Write attraction, fear, jealousy, shame, and intimacy through breath, silence, gesture, attention, avoidance, and scene texture.
+- Avoid clinical or technical metaphors for bodies and emotions unless the scene literally involves medicine, engineering, computing, or another matching context.
+- Let lorebook entries feel like compact fiction or clear dramatic notes, not database rows.
 
 ### 4. The More Characters You Have, the More Brutal Your Compression Must Be
 
@@ -137,12 +148,12 @@ In lorebook-heavy bots, this teaching role can become the description's primary 
 
 ## Role Boundary vs. Character-Writing Skills
 
-| Concern                                                                | Skill                                | Focus               |
-| ---------------------------------------------------------------------- | ------------------------------------ | ------------------- |
-| Deep per-character engine (voice, contradictions, mask/leak, speech)   | `authoring-characters`               | Character internals |
-| Self-introduction monologue sheets (inference-first, omission-driven)  | `authoring-self-introduction-sheets` | Character via voice |
-| Worldbuilding substance (pressure, culture, systems, factions, places) | `authoring-worlds`                   | World design        |
-| Description framing, cast compression, lorebook activation strategy    | **this skill**                       | Architecture        |
+| Concern                                                                   | Skill                                | Focus               |
+| ------------------------------------------------------------------------- | ------------------------------------ | ------------------- |
+| Deep per-character inner drive (voice, contradictions, mask/leak, speech) | `authoring-characters`               | Character internals |
+| Self-introduction monologue sheets (inference-first, omission-driven)     | `authoring-self-introduction-sheets` | Character via voice |
+| Worldbuilding substance (pressure, culture, systems, factions, places)    | `authoring-worlds`                   | World design        |
+| Description framing, cast compression, lorebook activation strategy       | **this skill**                       | Architecture        |
 
 In practice: write the **core cast** with a character skill and the **world substance** with `authoring-worlds`, then decide **how much survives in always-on text** with this skill.
 
@@ -211,7 +222,7 @@ Bad:  Mina is a 27-year-old archivist who works in the east tower and likes tea.
 Good: Mina files rumors the way other people sharpen knives — quietly, precisely, and with obvious enjoyment.
 ```
 
-If a character needs a deeper engine than that, write it in `authoring-characters` and move the rest into a dedicated lorebook entry.
+If a character needs a deeper inner drive than that, write it in `authoring-characters` and move the rest into a dedicated lorebook entry.
 
 ### Step 5 — Establish the Lorebook Contract
 
@@ -268,7 +279,7 @@ This skill should then resume after the world substance is strong enough to dist
 
 ### Step 8 — Write the Opening Message
 
-The opening message should prove that the description+lorebook architecture creates a living scene.
+The opening message should prove that the description+lorebook structure creates a living scene.
 
 Do:
 
@@ -324,7 +335,7 @@ The lorebook should carry:
 - rivalries, secrets, and progression
 - scene-dependent behavior
 
-Small ensembles can be structurally simple. If the cast chemistry works with short always-on dossiers and no trigger gating, that is a valid architecture — not every ensemble needs a complex scaffolding stack.
+Small ensembles can be structurally simple. If the cast chemistry works with short always-on dossiers and no trigger gating, that is a valid structure — not every ensemble needs a complex scaffolding stack.
 
 ### 10+ world/cast
 
@@ -347,14 +358,14 @@ Use [BOT_SCALES.md](BOT_SCALES.md) for concrete recipes.
 
 This skill stays frontend-agnostic, but in RisuAI the usual mapping is:
 
-| Risu field / surface                         | Best use                                                                                                                                                                       |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `description`                                | Tonal field, core cast thumbnails, scene logic                                                                                                                                 |
-| `firstMessage`                               | Proof-of-concept scene that demonstrates the architecture                                                                                                                      |
-| Lorebook entries                             | World systems, character profiles, locations, relationships, secrets, state/reaction layers                                                                                    |
-| `globalNote` or equivalent post-history note | Direction rules, pacing notes, anti-spoiler reminders. In advanced bots this can carry heavier loads: behavioral contracts, output-shape rules, or persistent scene directives |
+| Risu field / surface                         | Best use                                                                                                                                                                    |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `description`                                | Tonal field, core cast thumbnails, scene logic                                                                                                                              |
+| `firstMessage`                               | Proof-of-concept scene that demonstrates the structure                                                                                                                      |
+| Lorebook entries                             | World systems, character profiles, locations, relationships, secrets, state/reaction layers                                                                                 |
+| `globalNote` or equivalent post-history note | Direction rules, pacing notes, anti-spoiler reminders. In advanced bots this can carry heavier loads: behavioral reminders, format guidance, or persistent scene directives |
 
-> **Advanced optional surfaces.** Some bots extend their architecture with technical surfaces like CBS variables, Lua scripting, CSS display panels, regex postprocessing, or trigger scripts — used for setup UX, live state displays, conditional routing, or output formatting. These are powerful amplifiers for ambitious designs, but they are never prerequisites. A bot with well-written description and lorebook needs none of them.
+> **Advanced optional surfaces.** Some bots extend their structure with technical surfaces like CBS variables, Lua scripting, CSS display panels, regex postprocessing, or trigger scripts — used for setup UX, live state displays, conditional routing, or output formatting. These are powerful amplifiers for ambitious designs, but they are never prerequisites. A bot with well-written description and lorebook needs none of them.
 
 For exact lorebook mechanics, decorators, and insertion controls, use `writing-lorebooks`.
 
@@ -395,7 +406,7 @@ Deliver:
 
 ## Opening Message
 
-(First scene proving the description architecture works)
+(First scene proving the description structure works)
 
 ---
 
@@ -410,5 +421,5 @@ If the user also needs a protagonist-grade character sheet for the core cast, pa
 
 | Prompt                                                                     | Expected routing                                                                                      | Expected output                                              | Forbidden behavior                                                   |
 | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
-| "This world bot has too much lore in description; split it into lorebook." | Primary: `authoring-lorebook-bots`; load `LOREBOOK_ARCHITECTURE.md` if entry grouping is requested.   | Always-on frame plus conditional lorebook architecture.      | Rebuilding world substance before routing unless it is visibly weak. |
+| "This world bot has too much lore in description; split it into lorebook." | Primary: `authoring-lorebook-bots`; load `LOREBOOK_ARCHITECTURE.md` if entry grouping is requested.   | Always-on frame plus conditional lorebook structure.         | Rebuilding world substance before routing unless it is visibly weak. |
 | "Make a four-person relationship bot where secrets reveal gradually."      | Primary: `authoring-lorebook-bots`; pair with `authoring-characters` only for full lead voice sheets. | Description frame, relationship-entry plan, reveal triggers. | Preloading syntax skills unless CBS/Lua/regex is explicitly needed.  |

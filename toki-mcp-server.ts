@@ -49,13 +49,32 @@ import {
   facadeV1ContentSelectorSchema,
   facadeV1GuardSchema,
   facadeV1TargetSchema,
+  manageAssetsBodySchema,
+  manageAssetsFamilySchema,
+  manageAssetsOperationSchema,
+  manageItemsOperationSchema,
+  manageItemsFamilySchema,
   type FacadeV1ContentSelector,
   type FacadeV1EditOperation,
   type FacadeV1Guard,
   type FacadeV1Target,
   type FacadeV1ToolMutability,
+  type ManageAssetsFamily,
+  type ManageAssetsOperation,
+  type ManageItemsFamily,
+  type ManageItemsOperation,
 } from './src/lib/mcp-request-schemas';
-import { parsePromptTemplate, serializePromptTemplate, type PromptItemModel } from './src/lib/risup-prompt-model';
+import {
+  collectFormatingOrderWarnings,
+  duplicatePromptItem,
+  parseFormatingOrder,
+  parsePromptTemplate,
+  parsePromptTemplateFromText,
+  serializePromptTemplate,
+  serializePromptTemplateSubsetToText,
+  type PromptItemModel,
+  type PromptTemplateModel,
+} from './src/lib/risup-prompt-model';
 import {
   extractDocumentToProject,
   getProjectFileType,
@@ -63,6 +82,12 @@ import {
   reassembleProjectDocument,
   type ProjectTreeNode,
 } from './src/lib/folder-workspace';
+import {
+  combineCssSections,
+  combineLuaSections,
+  parseCssSections,
+  parseLuaSections,
+} from './src/lib/mcp-section-parser';
 
 let TOKI_PORT = process.env.TOKI_PORT;
 let TOKI_TOKEN = process.env.TOKI_TOKEN;
@@ -888,7 +913,33 @@ interface FacadePreviewEntry {
   expiresAtMs: number;
 }
 
+interface ManageItemsPreviewEntry {
+  token: string;
+  operationDigest: string;
+  target: FacadeV1Target;
+  family: ManageItemsFamily;
+  operation: ManageItemsOperation;
+  routes: FacadeRoute[];
+  touchedTargets: string[];
+  requiredGuards: FacadeV1Guard[];
+  expiresAtMs: number;
+}
+
+interface ManageAssetsPreviewEntry {
+  token: string;
+  operationDigest: string;
+  target: FacadeV1Target;
+  assetFamily: ManageAssetsFamily | undefined;
+  operation: ManageAssetsOperation;
+  routes: FacadeRoute[];
+  touchedTargets: string[];
+  requiredGuards: FacadeV1Guard[];
+  expiresAtMs: number;
+}
+
 const facadePreviewStore = new Map<string, FacadePreviewEntry>();
+const manageItemsPreviewStore = new Map<string, ManageItemsPreviewEntry>();
+const manageAssetsPreviewStore = new Map<string, ManageAssetsPreviewEntry>();
 
 const facadeEditOperationSchema = z.object({
   op: z.enum(['write_content', 'replace_text', 'insert_text', 'delete_item', 'patch_surface']),
@@ -930,6 +981,12 @@ function cleanupFacadePreviews(): void {
   for (const [token, entry] of facadePreviewStore.entries()) {
     if (entry.expiresAtMs <= now) facadePreviewStore.delete(token);
   }
+  for (const [token, entry] of manageItemsPreviewStore.entries()) {
+    if (entry.expiresAtMs <= now) manageItemsPreviewStore.delete(token);
+  }
+  for (const [token, entry] of manageAssetsPreviewStore.entries()) {
+    if (entry.expiresAtMs <= now) manageAssetsPreviewStore.delete(token);
+  }
 }
 
 function stableJson(value: unknown): string {
@@ -945,6 +1002,22 @@ function stableJson(value: unknown): string {
 
 function operationDigest(target: FacadeV1Target, operations: FacadeV1EditOperation[]): string {
   return crypto.createHash('sha256').update(stableJson({ target, operations })).digest('hex');
+}
+
+function manageItemsOperationDigest(
+  target: FacadeV1Target,
+  family: ManageItemsFamily,
+  operation: ManageItemsOperation,
+): string {
+  return crypto.createHash('sha256').update(stableJson({ target, family, operation })).digest('hex');
+}
+
+function manageAssetsOperationDigest(
+  target: FacadeV1Target,
+  assetFamily: ManageAssetsFamily | undefined,
+  operation: ManageAssetsOperation,
+): string {
+  return crypto.createHash('sha256').update(stableJson({ target, assetFamily, operation })).digest('hex');
 }
 
 function makePreviewToken(): string {
@@ -1330,6 +1403,29 @@ async function readFacadeSelector(
         ? data
         : { data, routes: [route('list_risup_prompt_items', 'GET', '/risup/prompt-items')] };
     }
+    if (isScriptStyleFamily(selector.family)) {
+      const parts = scriptStyleRouteParts(selector.family);
+      if (selector.index !== undefined) {
+        const itemRoute = parts.readPath(selector.index);
+        const data = await apiRequest('GET', itemRoute);
+        return isApiError(data) ? data : { data, routes: [route(parts.readTool, 'GET', itemRoute)] };
+      }
+      if (selector.indices) {
+        const data = await apiRequest('POST', parts.batchPath, { indices: selector.indices });
+        return isApiError(data) ? data : { data, routes: [route(parts.batchTool, 'POST', parts.batchPath)] };
+      }
+      if (selector.identity) {
+        const resolved = await resolveActiveScriptStyleIndex(selector.family, selector);
+        if (isApiError(resolved)) return resolved;
+        const itemRoute = parts.readPath(resolved.index);
+        const data = await apiRequest('GET', itemRoute);
+        return isApiError(data)
+          ? data
+          : { data, routes: [...resolved.routes, route(parts.readTool, 'GET', itemRoute)] };
+      }
+      const data = await apiRequest('GET', parts.listPath);
+      return isApiError(data) ? data : { data, routes: [route(parts.listTool, 'GET', parts.listPath)] };
+    }
     if (selector.family === 'surface' || selector.path) {
       const pathValue = selector.path ?? '/';
       const data = await apiRequest('POST', '/surface/read', { path: pathValue });
@@ -1345,13 +1441,8 @@ async function readFacadeSelector(
   }
 
   if (target.kind === 'external') {
-    if (selector.family === 'lorebook') {
-      return facadeApiError(
-        400,
-        'External lorebook selectors are not supported by read_content yet',
-        'Use inspect_external_file/probe_lorebook or open the file, then retry with target.kind="active".',
-        { selector },
-      );
+    if (selector.family === 'lorebook' || selector.family === 'regex' || selector.family === 'greeting') {
+      return readExternalStructuredSelector(target, selector);
     }
     if (selector.family === 'risup-prompt') {
       const externalPrompt = await readExternalRisupPromptModel(target.file_path);
@@ -1390,6 +1481,9 @@ async function readFacadeSelector(
         },
         routes: externalPrompt.routes,
       };
+    }
+    if (isScriptStyleFamily(selector.family)) {
+      return readExternalScriptStyleSelector(target, selector);
     }
     if (selector.family === 'surface' || selector.path) {
       const data = await apiRequest('POST', '/external/surface/read', {
@@ -1496,6 +1590,46 @@ async function readFacadeSelector(
       return isApiError(data)
         ? data
         : { data, routes: [route('list_reference_risup_prompt_items', 'GET', promptRoute)] };
+    }
+    if (isScriptStyleFamily(selector.family)) {
+      if (selector.index !== undefined) {
+        const itemRoute =
+          selector.family === 'trigger'
+            ? `/reference/${index}/trigger/${selector.index}`
+            : `/reference/${index}/${selector.family}/${selector.index}`;
+        const toolName =
+          selector.family === 'trigger'
+            ? 'read_reference_trigger'
+            : selector.family === 'lua'
+              ? 'read_reference_lua'
+              : 'read_reference_css';
+        const data = await apiRequest('GET', itemRoute);
+        return isApiError(data) ? data : { data, routes: [route(toolName, 'GET', itemRoute)] };
+      }
+      if (selector.indices) {
+        const batchRoute =
+          selector.family === 'trigger'
+            ? `/reference/${index}/trigger/batch`
+            : `/reference/${index}/${selector.family}/batch`;
+        const toolName =
+          selector.family === 'trigger'
+            ? 'read_reference_trigger_batch'
+            : selector.family === 'lua'
+              ? 'read_reference_lua_batch'
+              : 'read_reference_css_batch';
+        const data = await apiRequest('POST', batchRoute, { indices: selector.indices });
+        return isApiError(data) ? data : { data, routes: [route(toolName, 'POST', batchRoute)] };
+      }
+      const listRoute =
+        selector.family === 'trigger' ? `/reference/${index}/triggers` : `/reference/${index}/${selector.family}`;
+      const toolName =
+        selector.family === 'trigger'
+          ? 'list_reference_triggers'
+          : selector.family === 'lua'
+            ? 'list_reference_lua'
+            : 'list_reference_css';
+      const data = await apiRequest('GET', listRoute);
+      return isApiError(data) ? data : { data, routes: [route(toolName, 'GET', listRoute)] };
     }
     if (selector.field) {
       const fieldRoute = `/reference/${index}/${encodeURIComponent(selector.field)}`;
@@ -1743,6 +1877,15 @@ function stringGuardValue(guards: FacadeV1Guard[] | undefined, name: string): st
   return typeof value === 'string' ? value : undefined;
 }
 
+function stringGuardValueAtPath(
+  guards: FacadeV1Guard[] | undefined,
+  name: string,
+  payloadPath: string,
+): string | undefined {
+  const value = guards?.find((guard) => guard.name === name && guard.payloadPath === payloadPath)?.value;
+  return typeof value === 'string' ? value : undefined;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
@@ -1889,6 +2032,1945 @@ async function readExternalRisupPromptModel(filePath: string): Promise<
     model,
     routes: [route('external_read_surface', 'POST', routePath)],
   };
+}
+
+const EXTERNAL_LOREBOOK_ALLOWED_FIELDS = new Set([
+  'key',
+  'secondkey',
+  'comment',
+  'content',
+  'mode',
+  'insertorder',
+  'order',
+  'priority',
+  'activationPercent',
+  'alwaysActive',
+  'forceActivation',
+  'selective',
+  'constant',
+  'useRegex',
+  'folder',
+  'extentions',
+  'id',
+]);
+
+const EXTERNAL_REGEX_ALLOWED_FIELDS = new Set(['comment', 'type', 'find', 'replace', 'in', 'out', 'flag', 'ableFlag']);
+const EXTERNAL_LOREBOOK_REPLACEABLE_FIELDS = new Set(['content', 'comment', 'key', 'secondkey']);
+
+function hashStableValue(value: unknown): string {
+  return crypto.createHash('sha256').update(stableJson(value)).digest('hex');
+}
+
+function stableIdentityHash(prefix: string, value: unknown): string {
+  return `${prefix}_${hashStableValue(value).slice(0, 16)}`;
+}
+
+function normalizeLFString(value: string): string {
+  return value.replace(/\r\n?/g, '\n');
+}
+
+function jsonPointerSegment(segment: string | number): string {
+  return String(segment).replace(/~/g, '~0').replace(/\//g, '~1');
+}
+
+function pickAllowedRecordFields(source: Record<string, unknown>, allowed: Set<string>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(source)) {
+    if (allowed.has(key)) result[key] = source[key];
+  }
+  return result;
+}
+
+function externalLorebookStableId(
+  entry: Record<string, unknown>,
+  index: number,
+  lorebook: Record<string, unknown>[],
+): string {
+  return stableIdentityHash('lb', {
+    mode: entry.mode || 'normal',
+    comment: entry.comment || '',
+    key: entry.key || '',
+    secondkey: entry.secondkey || '',
+    content: entry.content || '',
+    folder: entry.folder || '',
+    indexHint: index,
+    total: lorebook.length,
+  });
+}
+
+function externalLorebookSummary(
+  entry: Record<string, unknown>,
+  index: number,
+  lorebook: Record<string, unknown>[],
+): Record<string, unknown> {
+  const content = typeof entry.content === 'string' ? entry.content : '';
+  return {
+    index,
+    id: externalLorebookStableId(entry, index, lorebook),
+    comment: recordString(entry, 'comment') ?? '',
+    key: recordString(entry, 'key') ?? '',
+    secondkey: recordString(entry, 'secondkey') ?? '',
+    mode: recordString(entry, 'mode') ?? 'normal',
+    contentSize: content.length,
+    preview: greetingPreview(content),
+  };
+}
+
+function normalizeExternalRegexEntry(entry: Record<string, unknown> | undefined): Record<string, unknown> {
+  const normalized = { ...(entry ?? {}) };
+  if (!normalized.find && normalized.in) normalized.find = normalized.in;
+  if (!normalized.replace && normalized.out) normalized.replace = normalized.out;
+  if (normalized.find === undefined) normalized.find = '';
+  if (normalized.replace === undefined) normalized.replace = '';
+  delete normalized.in;
+  delete normalized.out;
+  return normalized;
+}
+
+function externalRegexEntryPreview(entry: Record<string, unknown> | undefined): string {
+  const normalized = normalizeExternalRegexEntry(entry);
+  return greetingPreview(`${recordString(normalized, 'find') ?? ''}\n${recordString(normalized, 'replace') ?? ''}`);
+}
+
+function externalRegexEntryHash(entry: Record<string, unknown> | undefined): string {
+  const normalized = normalizeExternalRegexEntry(entry);
+  return hashStableValue({
+    comment: recordString(normalized, 'comment') ?? '',
+    type: recordString(normalized, 'type') ?? '',
+    find: recordString(normalized, 'find') ?? '',
+    replace: recordString(normalized, 'replace') ?? '',
+  });
+}
+
+function externalRegexSummary(entry: Record<string, unknown>, index: number): Record<string, unknown> {
+  const normalized = normalizeExternalRegexEntry(entry);
+  return {
+    index,
+    comment: recordString(normalized, 'comment') ?? '',
+    type: recordString(normalized, 'type') ?? '',
+    findSize: (recordString(normalized, 'find') ?? '').length,
+    replaceSize: (recordString(normalized, 'replace') ?? '').length,
+    preview: externalRegexEntryPreview(entry),
+    hash: externalRegexEntryHash(entry),
+  };
+}
+
+function externalGreetingHash(content: string): string {
+  return hashStableValue(normalizeLFString(content));
+}
+
+function externalGreetingSummary(content: string, index: number): Record<string, unknown> {
+  return {
+    index,
+    contentSize: content.length,
+    preview: greetingPreview(content),
+    hash: externalGreetingHash(content),
+  };
+}
+
+async function readExternalSurfaceValue(
+  filePath: string,
+  surfacePath: string,
+): Promise<{ value: unknown; routes: FacadeRoute[]; raw: Record<string, unknown> } | ApiErrorResult> {
+  const routePath = '/external/surface/read';
+  const read = await apiRequest('POST', routePath, { file_path: filePath, path: surfacePath });
+  if (isApiError(read)) return read;
+  const record = asRecord(read);
+  return {
+    value: record?.value,
+    raw: record ?? {},
+    routes: [route('external_read_surface', 'POST', routePath)],
+  };
+}
+
+async function readExternalRecordArraySurface(
+  filePath: string,
+  surfacePath: string,
+  family: string,
+): Promise<{ entries: Record<string, unknown>[]; routes: FacadeRoute[] } | ApiErrorResult> {
+  const read = await readExternalSurfaceValue(filePath, surfacePath);
+  if (isApiError(read)) return read;
+  if (!Array.isArray(read.value)) {
+    return facadeApiError(
+      400,
+      `External ${family} surface is not an array`,
+      'Inspect the external file surface, then retry with a supported structured selector.',
+      { file_path: filePath, path: surfacePath, type: typeof read.value },
+      ['inspect_document', 'read_content'],
+    );
+  }
+  const invalidIndex = read.value.findIndex((entry) => !asRecord(entry));
+  if (invalidIndex >= 0) {
+    return facadeApiError(
+      400,
+      `External ${family} entry is not an object`,
+      'Use a raw surface patch or repair the structured array before using facade structured item selectors.',
+      { file_path: filePath, path: surfacePath, index: invalidIndex },
+      ['read_content'],
+    );
+  }
+  return { entries: read.value.map((entry) => asRecord(entry) ?? {}), routes: read.routes };
+}
+
+async function readExternalStringArraySurface(
+  filePath: string,
+  surfacePath: string,
+  family: string,
+): Promise<{ entries: string[]; routes: FacadeRoute[] } | ApiErrorResult> {
+  const read = await readExternalSurfaceValue(filePath, surfacePath);
+  if (isApiError(read)) return read;
+  if (!Array.isArray(read.value) || !read.value.every((entry) => typeof entry === 'string')) {
+    return facadeApiError(
+      400,
+      `External ${family} surface is not a string array`,
+      'Inspect the external file surface, then retry with a supported greeting selector.',
+      { file_path: filePath, path: surfacePath },
+      ['inspect_document', 'read_content'],
+    );
+  }
+  return { entries: read.value as string[], routes: read.routes };
+}
+
+function validateExternalIndices(count: number, indices: number[], label: string): ApiErrorResult | undefined {
+  const invalid = indices.find((index) => index < 0 || index >= count);
+  if (invalid !== undefined) {
+    return facadeApiError(
+      400,
+      `${label} index out of range: ${invalid}`,
+      'Refresh the item summaries and retry with a current index or stable identity selector.',
+      { index: invalid, count },
+      ['read_content'],
+    );
+  }
+  return undefined;
+}
+
+function resolveExternalLorebookSelectorIndices(
+  lorebook: Record<string, unknown>[],
+  selector: FacadeV1ContentSelector,
+  action: string,
+): number[] | ApiErrorResult {
+  const resolveId = (id: string): number | ApiErrorResult => {
+    const matches = lorebook
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry, index }) => externalLorebookStableId(entry, index, lorebook) === id)
+      .map(({ index }) => index);
+    if (matches.length === 0) {
+      return facadeApiError(404, `External lorebook id not found: ${id}`, 'Refresh lorebook summaries and retry.', {
+        action,
+        id,
+      });
+    }
+    if (matches.length > 1) {
+      return facadeApiError(
+        409,
+        `External lorebook id is not unique: ${id}`,
+        'Use an index selector plus expected_comment after refreshing the lorebook list.',
+        { action, id, indices: matches },
+      );
+    }
+    return matches[0];
+  };
+
+  if (selector.id) {
+    const index = resolveId(selector.id);
+    return typeof index === 'number' ? [index] : index;
+  }
+  if (selector.ids) {
+    const indices: number[] = [];
+    for (const id of selector.ids) {
+      const index = resolveId(id);
+      if (typeof index !== 'number') return index;
+      indices.push(index);
+    }
+    return indices;
+  }
+  const indices = selector.index !== undefined ? [selector.index] : selector.indices;
+  if (!indices) return lorebook.map((_, index) => index);
+  const invalid = validateExternalIndices(lorebook.length, indices, 'External lorebook');
+  return invalid ?? indices;
+}
+
+function resolveExternalRegexSelectorIndices(
+  entries: Record<string, unknown>[],
+  selector: FacadeV1ContentSelector,
+  action: string,
+): number[] | ApiErrorResult {
+  if (selector.identity) {
+    const { comment, preview, hash } = selector.identity;
+    if (!comment && !preview && !hash) {
+      return facadeApiError(
+        400,
+        'Regex identity requires comment, preview, or hash',
+        'Use read_content/list regex summaries and retry with a unique identity.',
+        { action },
+        ['read_content'],
+      );
+    }
+    const matches = entries
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => {
+        if (comment !== undefined && (recordString(entry, 'comment') ?? '') !== comment) return false;
+        if (preview !== undefined && externalRegexEntryPreview(entry) !== preview) return false;
+        if (hash !== undefined && externalRegexEntryHash(entry) !== hash) return false;
+        return true;
+      })
+      .map(({ index }) => index);
+    if (matches.length === 0) {
+      return facadeApiError(
+        404,
+        'External regex identity did not match any entry',
+        'Refresh regex summaries and retry.',
+        {
+          action,
+          identity: selector.identity,
+        },
+      );
+    }
+    if (matches.length > 1) {
+      return facadeApiError(
+        409,
+        'External regex identity matched multiple entries',
+        'Add hash/preview to the identity or use an index selector with expected_comment.',
+        { action, indices: matches },
+      );
+    }
+    return matches;
+  }
+  const indices = selector.index !== undefined ? [selector.index] : selector.indices;
+  if (!indices) return entries.map((_, index) => index);
+  const invalid = validateExternalIndices(entries.length, indices, 'External regex');
+  return invalid ?? indices;
+}
+
+function resolveExternalGreetingSelectorIndices(
+  entries: string[],
+  selector: FacadeV1ContentSelector,
+  action: string,
+): number[] | ApiErrorResult {
+  if (selector.identity) {
+    const { preview, hash } = selector.identity;
+    if (!preview && !hash) {
+      return facadeApiError(
+        400,
+        'Greeting identity requires preview or hash',
+        'Use read_content/list greeting summaries and retry with a unique identity.',
+        { action },
+        ['read_content'],
+      );
+    }
+    const matches = entries
+      .map((content, index) => ({ content, index }))
+      .filter(({ content }) => {
+        if (preview !== undefined && greetingPreview(content) !== preview) return false;
+        if (hash !== undefined && externalGreetingHash(content) !== hash) return false;
+        return true;
+      })
+      .map(({ index }) => index);
+    if (matches.length === 0) {
+      return facadeApiError(
+        404,
+        'External greeting identity did not match any entry',
+        'Refresh greeting summaries and retry.',
+        { action, identity: selector.identity },
+      );
+    }
+    if (matches.length > 1) {
+      return facadeApiError(
+        409,
+        'External greeting identity matched multiple entries',
+        'Add hash to the identity or use an index selector with expected_preview.',
+        { action, indices: matches },
+      );
+    }
+    return matches;
+  }
+  const indices = selector.index !== undefined ? [selector.index] : selector.indices;
+  if (!indices) return entries.map((_, index) => index);
+  const invalid = validateExternalIndices(entries.length, indices, 'External greeting');
+  return invalid ?? indices;
+}
+
+async function readExternalStructuredSelector(
+  target: FacadeV1Target,
+  selector: FacadeV1ContentSelector,
+): Promise<{ data: unknown; routes: FacadeRoute[] } | ApiErrorResult> {
+  if (target.kind !== 'external') {
+    return facadeApiError(400, 'External structured read requires target.kind="external"', 'Use an external target.');
+  }
+  if (selector.family === 'lorebook') {
+    const read = await readExternalRecordArraySurface(target.file_path, '/lorebook', 'lorebook');
+    if (isApiError(read)) return read;
+    const indices = resolveExternalLorebookSelectorIndices(read.entries, selector, 'read external lorebook');
+    if (!Array.isArray(indices)) return indices;
+    const selected = selector.id || selector.ids || selector.index !== undefined || selector.indices;
+    return {
+      data: {
+        file_path: target.file_path,
+        count: indices.length,
+        total: read.entries.length,
+        entries: indices.map((index) => ({
+          ...externalLorebookSummary(read.entries[index], index, read.entries),
+          ...(selected ? { entry: read.entries[index] } : {}),
+        })),
+      },
+      routes: read.routes,
+    };
+  }
+  if (selector.family === 'regex') {
+    const read = await readExternalRecordArraySurface(target.file_path, '/regex', 'regex');
+    if (isApiError(read)) return read;
+    const indices = resolveExternalRegexSelectorIndices(read.entries, selector, 'read external regex');
+    if (!Array.isArray(indices)) return indices;
+    const selected = selector.identity || selector.index !== undefined || selector.indices;
+    return {
+      data: {
+        file_path: target.file_path,
+        count: indices.length,
+        total: read.entries.length,
+        entries: indices.map((index) => ({
+          ...externalRegexSummary(read.entries[index], index),
+          ...(selected ? { entry: read.entries[index] } : {}),
+        })),
+      },
+      routes: read.routes,
+    };
+  }
+  if (selector.family === 'greeting') {
+    if (!selector.greeting_type) {
+      return facadeApiError(
+        400,
+        'External greeting selectors require greeting_type',
+        'Set greeting_type="alternate"; groupOnlyGreetings remains protected by the hidden/deprecated field policy.',
+        { selector },
+      );
+    }
+    const surfacePath = selector.greeting_type === 'alternate' ? '/alternateGreetings' : '/groupOnlyGreetings';
+    const read = await readExternalStringArraySurface(target.file_path, surfacePath, 'greeting');
+    if (isApiError(read)) return read;
+    const indices = resolveExternalGreetingSelectorIndices(read.entries, selector, 'read external greeting');
+    if (!Array.isArray(indices)) return indices;
+    const selected = selector.identity || selector.index !== undefined || selector.indices;
+    return {
+      data: {
+        file_path: target.file_path,
+        type: selector.greeting_type,
+        count: indices.length,
+        total: read.entries.length,
+        items: indices.map((index) => ({
+          ...externalGreetingSummary(read.entries[index], index),
+          ...(selected ? { content: read.entries[index] } : {}),
+        })),
+      },
+      routes: read.routes,
+    };
+  }
+  return facadeApiError(400, 'Unsupported external structured selector', 'Use lorebook, regex, or greeting selectors.');
+}
+
+function computeTextReplacement(
+  content: string,
+  operation: FacadeV1EditOperation,
+): { matchCount: number; newContent: string } | ApiErrorResult {
+  if (!operation.find) return facadeApiError(400, 'replace_text requires find', 'Provide operations[].find.');
+  const findStr = normalizeLFString(operation.find);
+  const replaceStr = normalizeLFString(typeof operation.replace === 'string' ? operation.replace : '');
+  const normalizedContent = normalizeLFString(content);
+  if (operation.regex) {
+    try {
+      const re = new RegExp(findStr, operation.flags || 'g');
+      const matches = normalizedContent.match(re);
+      return { matchCount: matches ? matches.length : 0, newContent: normalizedContent.replace(re, replaceStr) };
+    } catch (error) {
+      return facadeApiError(
+        400,
+        'Invalid replace_text regex',
+        'Check operations[].find and operations[].flags, then retry preview_edit.',
+        { error: (error as Error).message },
+      );
+    }
+  }
+  let matchCount = 0;
+  let searchFrom = 0;
+  while (true) {
+    const pos = normalizedContent.indexOf(findStr, searchFrom);
+    if (pos === -1) break;
+    matchCount++;
+    searchFrom = pos + findStr.length;
+  }
+  return { matchCount, newContent: normalizedContent.split(findStr).join(replaceStr) };
+}
+
+type ScriptStyleFamily = 'trigger' | 'lua' | 'css';
+type TextSection = { name: string; content: string };
+
+const SCRIPT_STYLE_FAMILIES = new Set(['trigger', 'lua', 'css']);
+const EXTERNAL_TRIGGER_ALLOWED_FIELDS = new Set(['comment', 'type', 'conditions', 'effect', 'lowLevelAccess']);
+
+function isScriptStyleFamily(value: unknown): value is ScriptStyleFamily {
+  return typeof value === 'string' && SCRIPT_STYLE_FAMILIES.has(value);
+}
+
+function scriptStyleRouteParts(family: ScriptStyleFamily): {
+  listTool: string;
+  readTool: string;
+  batchTool: string;
+  writeTool: string;
+  replaceTool?: string;
+  insertTool?: string;
+  deleteTool?: string;
+  listPath: string;
+  readPath: (index: number) => string;
+  batchPath: string;
+  writePath: (index: number) => string;
+  replacePath?: (index: number) => string;
+  insertPath?: (index: number) => string;
+  deletePath?: (index: number) => string;
+} {
+  if (family === 'trigger') {
+    return {
+      listTool: 'list_triggers',
+      readTool: 'read_trigger',
+      batchTool: 'read_trigger_batch',
+      writeTool: 'write_trigger',
+      deleteTool: 'delete_trigger',
+      listPath: '/triggers',
+      readPath: (index) => `/trigger/${index}`,
+      batchPath: '/trigger/batch',
+      writePath: (index) => `/trigger/${index}`,
+      deletePath: (index) => `/trigger/${index}/delete`,
+    };
+  }
+  if (family === 'lua') {
+    return {
+      listTool: 'list_lua',
+      readTool: 'read_lua',
+      batchTool: 'read_lua_batch',
+      writeTool: 'write_lua',
+      replaceTool: 'replace_in_lua',
+      insertTool: 'insert_in_lua',
+      listPath: '/lua',
+      readPath: (index) => `/lua/${index}`,
+      batchPath: '/lua/batch',
+      writePath: (index) => `/lua/${index}`,
+      replacePath: (index) => `/lua/${index}/replace`,
+      insertPath: (index) => `/lua/${index}/insert`,
+    };
+  }
+  return {
+    listTool: 'list_css',
+    readTool: 'read_css',
+    batchTool: 'read_css_batch',
+    writeTool: 'write_css',
+    replaceTool: 'replace_in_css',
+    insertTool: 'insert_in_css',
+    listPath: '/css-section',
+    readPath: (index) => `/css-section/${index}`,
+    batchPath: '/css-section/batch',
+    writePath: (index) => `/css-section/${index}`,
+    replacePath: (index) => `/css-section/${index}/replace`,
+    insertPath: (index) => `/css-section/${index}/insert`,
+  };
+}
+
+function sectionPreview(content: string): string {
+  return content.slice(0, 100) + (content.length > 100 ? '…' : '');
+}
+
+function sectionHash(content: string): string {
+  return hashStableValue(normalizeLFString(content));
+}
+
+function sectionSummary(section: TextSection, index: number): Record<string, unknown> {
+  return {
+    index,
+    name: section.name,
+    contentSize: section.content.length,
+    preview: sectionPreview(section.content),
+    hash: sectionHash(section.content),
+  };
+}
+
+function triggerSummary(entry: Record<string, unknown>, index: number): Record<string, unknown> {
+  return {
+    index,
+    comment: recordString(entry, 'comment') ?? '',
+    type: recordString(entry, 'type') ?? '',
+    conditionCount: Array.isArray(entry.conditions) ? entry.conditions.length : 0,
+    effectCount: Array.isArray(entry.effect) ? entry.effect.length : 0,
+    lowLevelAccess: !!entry.lowLevelAccess,
+    preview: externalTriggerPreview(entry),
+    hash: externalTriggerHash(entry),
+  };
+}
+
+function externalTriggerPreview(entry: Record<string, unknown>): string {
+  return greetingPreview(`${recordString(entry, 'comment') ?? ''}\n${recordString(entry, 'type') ?? ''}`);
+}
+
+function externalTriggerHash(entry: Record<string, unknown>): string {
+  return hashStableValue({
+    comment: recordString(entry, 'comment') ?? '',
+    type: recordString(entry, 'type') ?? '',
+    conditions: Array.isArray(entry.conditions) ? entry.conditions : [],
+    effect: Array.isArray(entry.effect) ? entry.effect : [],
+    lowLevelAccess: !!entry.lowLevelAccess,
+  });
+}
+
+function resolveTriggerSelectorIndices(
+  entries: Record<string, unknown>[],
+  selector: FacadeV1ContentSelector,
+  action: string,
+): number[] | ApiErrorResult {
+  if (selector.identity) {
+    const { comment, preview, hash } = selector.identity;
+    if (!comment && !preview && !hash) {
+      return facadeApiError(
+        400,
+        'Trigger identity requires comment, preview, or hash',
+        'Use read_content trigger summaries and retry with a unique identity.',
+        { action },
+        ['read_content'],
+      );
+    }
+    const matches = entries
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => {
+        if (comment !== undefined && (recordString(entry, 'comment') ?? '') !== comment) return false;
+        if (preview !== undefined && externalTriggerPreview(entry) !== preview) return false;
+        if (hash !== undefined && externalTriggerHash(entry) !== hash) return false;
+        return true;
+      })
+      .map(({ index }) => index);
+    if (matches.length === 0) {
+      return facadeApiError(404, 'Trigger identity did not match any entry', 'Refresh trigger summaries and retry.', {
+        action,
+        identity: selector.identity,
+      });
+    }
+    if (matches.length > 1) {
+      return facadeApiError(
+        409,
+        'Trigger identity matched multiple entries',
+        'Add hash/preview to the identity or use an index selector with expected_comment.',
+        { action, indices: matches },
+      );
+    }
+    return matches;
+  }
+  const indices = selector.index !== undefined ? [selector.index] : selector.indices;
+  if (!indices) return entries.map((_, index) => index);
+  const invalid = validateExternalIndices(entries.length, indices, 'Trigger');
+  return invalid ?? indices;
+}
+
+function resolveSectionSelectorIndices(
+  sections: TextSection[],
+  selector: FacadeV1ContentSelector,
+  action: string,
+): number[] | ApiErrorResult {
+  if (selector.identity) {
+    const { comment, preview, hash } = selector.identity;
+    if (!comment && !preview && !hash) {
+      return facadeApiError(
+        400,
+        'Section identity requires comment/name, preview, or hash',
+        'Use read_content section summaries and retry with a unique identity.',
+        { action },
+        ['read_content'],
+      );
+    }
+    const matches = sections
+      .map((section, index) => ({ section, index }))
+      .filter(({ section }) => {
+        if (comment !== undefined && section.name !== comment) return false;
+        if (preview !== undefined && sectionPreview(section.content) !== preview) return false;
+        if (hash !== undefined && sectionHash(section.content) !== hash) return false;
+        return true;
+      })
+      .map(({ index }) => index);
+    if (matches.length === 0) {
+      return facadeApiError(404, 'Section identity did not match any entry', 'Refresh section summaries and retry.', {
+        action,
+        identity: selector.identity,
+      });
+    }
+    if (matches.length > 1) {
+      return facadeApiError(
+        409,
+        'Section identity matched multiple entries',
+        'Add hash/preview to the identity or use an index selector with expected guards.',
+        { action, indices: matches },
+      );
+    }
+    return matches;
+  }
+  const indices = selector.index !== undefined ? [selector.index] : selector.indices;
+  if (!indices) return sections.map((_, index) => index);
+  const invalid = validateExternalIndices(sections.length, indices, 'Section');
+  return invalid ?? indices;
+}
+
+function selectedSelector(selector: FacadeV1ContentSelector): boolean {
+  return !!selector.identity || selector.index !== undefined || !!selector.indices || !!selector.id || !!selector.ids;
+}
+
+async function readExternalTextSurface(
+  filePath: string,
+  surfacePath: '/lua' | '/css',
+  family: 'lua' | 'css',
+): Promise<{ text: string; routes: FacadeRoute[] } | ApiErrorResult> {
+  const read = await readExternalSurfaceValue(filePath, surfacePath);
+  if (isApiError(read)) return read;
+  if (read.value === undefined || read.value === null) return { text: '', routes: read.routes };
+  if (typeof read.value !== 'string') {
+    return facadeApiError(
+      400,
+      `External ${family} surface is not a string`,
+      'Inspect the external file surface, then retry with a supported structured selector.',
+      { file_path: filePath, path: surfacePath, type: typeof read.value },
+      ['inspect_document', 'read_content'],
+    );
+  }
+  return { text: read.value, routes: read.routes };
+}
+
+async function readExternalScriptStyleSelector(
+  target: FacadeV1Target,
+  selector: FacadeV1ContentSelector,
+): Promise<{ data: unknown; routes: FacadeRoute[] } | ApiErrorResult> {
+  if (target.kind !== 'external') {
+    return facadeApiError(400, 'External script/style read requires target.kind="external"', 'Use an external target.');
+  }
+  if (selector.family === 'trigger') {
+    const read = await readExternalRecordArraySurface(target.file_path, '/triggerScripts', 'trigger');
+    if (isApiError(read)) return read;
+    const indices = resolveTriggerSelectorIndices(read.entries, selector, 'read external trigger');
+    if (!Array.isArray(indices)) return indices;
+    const selected = selectedSelector(selector);
+    return {
+      data: {
+        file_path: target.file_path,
+        count: indices.length,
+        total: read.entries.length,
+        items: indices.map((index) => ({
+          ...triggerSummary(read.entries[index], index),
+          ...(selected ? { trigger: read.entries[index] } : {}),
+        })),
+      },
+      routes: read.routes,
+    };
+  }
+  if (selector.family === 'lua' || selector.family === 'css') {
+    const surfacePath = selector.family === 'lua' ? '/lua' : '/css';
+    const read = await readExternalTextSurface(target.file_path, surfacePath, selector.family);
+    if (isApiError(read)) return read;
+    const parsed =
+      selector.family === 'lua'
+        ? { sections: parseLuaSections(read.text) as TextSection[] }
+        : (parseCssSections(read.text) as { sections: TextSection[]; prefix: string; suffix: string });
+    const indices = resolveSectionSelectorIndices(parsed.sections, selector, `read external ${selector.family}`);
+    if (!Array.isArray(indices)) return indices;
+    const selected = selectedSelector(selector);
+    return {
+      data: {
+        file_path: target.file_path,
+        count: indices.length,
+        total: parsed.sections.length,
+        sections: indices.map((index) => ({
+          ...sectionSummary(parsed.sections[index], index),
+          ...(selected ? { content: parsed.sections[index].content } : {}),
+        })),
+      },
+      routes: read.routes,
+    };
+  }
+  return facadeApiError(400, 'Unsupported external script/style selector', 'Use trigger, lua, or css selectors.');
+}
+
+function contentStringFromOperation(operation: FacadeV1EditOperation, action: string): string | ApiErrorResult {
+  const record = asRecord(operation.content);
+  const value = record && typeof record.content === 'string' ? record.content : operation.content;
+  if (typeof value !== 'string') {
+    return facadeApiError(400, `${action} requires string content`, 'Set operations[].content to a string.', {
+      operation,
+    });
+  }
+  return normalizeLFString(value);
+}
+
+function insertSpecFromOperation(
+  content: string,
+  operation: FacadeV1EditOperation,
+): { newContent: string; position: string; anchor?: string; insertedSize: number } | ApiErrorResult {
+  const record = asRecord(operation.content);
+  const insertContent = contentStringFromOperation(operation, 'insert_text');
+  if (isApiError(insertContent)) return insertContent;
+  const position = recordString(record, 'position') ?? 'end';
+  const anchor = recordString(record, 'anchor');
+  const normalizedContent = normalizeLFString(content);
+  if (position === 'end') {
+    return {
+      newContent: normalizedContent + '\n' + insertContent,
+      position,
+      insertedSize: insertContent.length,
+    };
+  }
+  if (position === 'start') {
+    return {
+      newContent: insertContent + '\n' + normalizedContent,
+      position,
+      insertedSize: insertContent.length,
+    };
+  }
+  if ((position === 'after' || position === 'before') && anchor) {
+    const normalizedAnchor = normalizeLFString(anchor);
+    const anchorPos = normalizedContent.indexOf(normalizedAnchor);
+    if (anchorPos === -1) {
+      return facadeApiError(
+        404,
+        'insert_text anchor not found',
+        'Refresh the section content, then retry with a current anchor or position start/end.',
+        { position, anchor: normalizedAnchor.slice(0, 120) },
+        ['read_content', 'preview_edit'],
+      );
+    }
+    if (position === 'after') {
+      const insertAt = anchorPos + normalizedAnchor.length;
+      return {
+        newContent: normalizedContent.slice(0, insertAt) + '\n' + insertContent + normalizedContent.slice(insertAt),
+        position,
+        anchor: normalizedAnchor,
+        insertedSize: insertContent.length,
+      };
+    }
+    return {
+      newContent: normalizedContent.slice(0, anchorPos) + insertContent + '\n' + normalizedContent.slice(anchorPos),
+      position,
+      anchor: normalizedAnchor,
+      insertedSize: insertContent.length,
+    };
+  }
+  return facadeApiError(
+    400,
+    'insert_text requires a valid position',
+    'Use content as a string or { content, position: "start"|"end"|"before"|"after", anchor? }. Anchor is required for before/after.',
+    { position },
+  );
+}
+
+async function resolveActiveScriptStyleIndex(
+  family: ScriptStyleFamily,
+  selector: FacadeV1ContentSelector,
+): Promise<{ index: number; routes: FacadeRoute[] } | ApiErrorResult> {
+  if (selector.index !== undefined) return { index: selector.index, routes: [] };
+  if (selector.indices && selector.indices.length === 1) return { index: selector.indices[0], routes: [] };
+  if (selector.indices && selector.indices.length !== 1) {
+    return facadeApiError(
+      400,
+      `${family} mutation requires one item`,
+      'Use selector.index or a single-entry selector.indices for preview_edit/apply_edit script/style mutations.',
+      { selector },
+    );
+  }
+  if (!selector.identity) {
+    return facadeApiError(
+      400,
+      `${family} mutation requires an item selector`,
+      'Use read_content to list items, then retry with selector.index or a unique identity.',
+      { selector },
+      ['read_content'],
+    );
+  }
+
+  const parts = scriptStyleRouteParts(family);
+  const listed = await apiRequest('GET', parts.listPath);
+  if (isApiError(listed)) return listed;
+  const record = asRecord(listed);
+  const entries =
+    family === 'trigger'
+      ? Array.isArray(record?.items)
+        ? (record?.items as Record<string, unknown>[])
+        : []
+      : Array.isArray(record?.sections)
+        ? (record?.sections as Record<string, unknown>[])
+        : [];
+  const { comment, preview, hash } = selector.identity;
+  const matches = entries
+    .map((entry) => ({ entry, index: recordNumber(entry, 'index') }))
+    .filter(({ entry, index }) => {
+      if (index === undefined) return false;
+      if (comment !== undefined) {
+        const nameOrComment =
+          family === 'trigger' ? (recordString(entry, 'comment') ?? '') : (recordString(entry, 'name') ?? '');
+        if (nameOrComment !== comment) return false;
+      }
+      if (preview !== undefined && recordString(entry, 'preview') !== preview) return false;
+      if (hash !== undefined && recordString(entry, 'hash') !== hash) return false;
+      return true;
+    })
+    .map(({ index }) => index)
+    .filter((index): index is number => index !== undefined);
+  if (matches.length === 0) {
+    return facadeApiError(404, `${family} identity did not match any item`, 'Refresh item summaries and retry.', {
+      identity: selector.identity,
+    });
+  }
+  if (matches.length > 1) {
+    return facadeApiError(
+      409,
+      `${family} identity matched multiple items`,
+      'Add hash/preview to the identity or use selector.index.',
+      { indices: matches },
+    );
+  }
+  return { index: matches[0], routes: [route(parts.listTool, 'GET', parts.listPath)] };
+}
+
+async function readActiveScriptStyleItem(
+  family: ScriptStyleFamily,
+  selector: FacadeV1ContentSelector,
+): Promise<
+  | { index: number; data: Record<string, unknown>; routes: FacadeRoute[]; current: Record<string, unknown> }
+  | ApiErrorResult
+> {
+  const resolved = await resolveActiveScriptStyleIndex(family, selector);
+  if (isApiError(resolved)) return resolved;
+  const parts = scriptStyleRouteParts(family);
+  const readPath = parts.readPath(resolved.index);
+  const data = await apiRequest('GET', readPath);
+  if (isApiError(data)) return data;
+  const dataRecord = asRecord(data) ?? {};
+  const current = family === 'trigger' ? (asRecord(dataRecord.trigger) ?? {}) : dataRecord;
+  return {
+    index: resolved.index,
+    data: dataRecord,
+    current,
+    routes: [...resolved.routes, route(parts.readTool, 'GET', readPath)],
+  };
+}
+
+function activeSectionGuards(current: Record<string, unknown>, sourceTool: string): FacadeV1Guard[] {
+  const guards: FacadeV1Guard[] = [];
+  const hash = recordString(current, 'hash');
+  const preview = recordString(current, 'preview');
+  if (hash !== undefined) guards.push(buildGuard('expected_hash', hash, '/expected_hash', [sourceTool], '/hash'));
+  if (preview !== undefined)
+    guards.push(buildGuard('expected_preview', preview, '/expected_preview', [sourceTool], '/preview'));
+  return guards;
+}
+
+function checkActiveSectionGuards(
+  guards: FacadeV1Guard[] | undefined,
+  current: Record<string, unknown>,
+  targetLabel: string,
+): ApiErrorResult | undefined {
+  return (
+    guardConflict(guards, 'expected_hash', recordString(current, 'hash'), targetLabel) ??
+    guardConflict(guards, 'expected_preview', recordString(current, 'preview'), targetLabel)
+  );
+}
+
+function checkExternalSectionGuards(
+  guards: FacadeV1Guard[] | undefined,
+  section: TextSection,
+  targetLabel: string,
+): ApiErrorResult | undefined {
+  return (
+    guardConflict(guards, 'expected_section_hash', sectionHash(section.content), targetLabel) ??
+    guardConflict(guards, 'expected_section_preview', sectionPreview(section.content), targetLabel)
+  );
+}
+
+function externalSectionGuards(section: TextSection): FacadeV1Guard[] {
+  return [
+    buildGuard(
+      'expected_section_hash',
+      sectionHash(section.content),
+      '/expected_section_hash',
+      ['read_content'],
+      '/hash',
+    ),
+    buildGuard(
+      'expected_section_preview',
+      sectionPreview(section.content),
+      '/expected_section_preview',
+      ['read_content'],
+      '/preview',
+    ),
+  ];
+}
+
+async function previewActiveScriptStyleMutation(
+  operation: FacadeV1EditOperation,
+): Promise<
+  { data: unknown; routes: FacadeRoute[]; touched: string[]; requiredGuards: FacadeV1Guard[] } | ApiErrorResult
+> {
+  const family = operation.selector.family;
+  if (!isScriptStyleFamily(family)) {
+    return facadeApiError(400, 'Unsupported script/style family', 'Use trigger, lua, or css selectors.');
+  }
+  const read = await readActiveScriptStyleItem(family, operation.selector);
+  if (isApiError(read)) return read;
+  const parts = scriptStyleRouteParts(family);
+  const touched = [`${family}:${read.index}`];
+
+  if (family === 'trigger') {
+    const currentComment = recordString(read.current, 'comment') ?? '';
+    const conflict = guardConflict(operation.guards, 'expected_comment', currentComment, `trigger:${read.index}`);
+    if (conflict) return conflict;
+    const commentGuard = buildGuard(
+      'expected_comment',
+      currentComment,
+      '/expected_comment',
+      [parts.readTool],
+      '/trigger/comment',
+    );
+    if (operation.op === 'write_content') {
+      const data = asRecord(operation.content);
+      if (!data) {
+        return facadeApiError(
+          400,
+          'trigger write_content requires an object',
+          'Set operations[].content to trigger fields.',
+        );
+      }
+      const picked = pickAllowedRecordFields(data, EXTERNAL_TRIGGER_ALLOWED_FIELDS);
+      return {
+        data: {
+          dryRun: true,
+          operation: 'write_content',
+          index: read.index,
+          currentComment,
+          updatedKeys: Object.keys(picked),
+        },
+        routes: [...read.routes, route(parts.writeTool, 'POST', parts.writePath(read.index))],
+        touched,
+        requiredGuards: mergeGuards(operation.guards, [commentGuard]),
+      };
+    }
+    if (operation.op === 'delete_item') {
+      return {
+        data: { dryRun: true, operation: 'delete_item', index: read.index, currentComment },
+        routes: [
+          ...read.routes,
+          route(parts.deleteTool ?? 'delete_trigger', 'POST', parts.deletePath?.(read.index) ?? ''),
+        ],
+        touched,
+        requiredGuards: mergeGuards(operation.guards, [commentGuard]),
+      };
+    }
+    return facadeApiError(
+      400,
+      `Unsupported trigger preview operation: ${operation.op}`,
+      'Trigger facade mutations currently support write_content and delete_item.',
+      { operation },
+    );
+  }
+
+  const conflict = checkActiveSectionGuards(operation.guards, read.current, `${family}:${read.index}`);
+  if (conflict) return conflict;
+  const currentContent = recordString(read.current, 'content') ?? '';
+  const sourceTool = parts.readTool;
+  const guards = activeSectionGuards(read.current, sourceTool);
+
+  if (operation.op === 'write_content') {
+    const newContent = contentStringFromOperation(operation, `${family} write_content`);
+    if (isApiError(newContent)) return newContent;
+    return {
+      data: {
+        dryRun: true,
+        operation: 'write_content',
+        index: read.index,
+        name: recordString(read.current, 'name') ?? '',
+        oldSize: currentContent.length,
+        newSize: newContent.length,
+      },
+      routes: [...read.routes, route(parts.writeTool, 'POST', parts.writePath(read.index))],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, guards),
+    };
+  }
+
+  if (operation.op === 'replace_text') {
+    const replacement = computeTextReplacement(currentContent, operation);
+    if (isApiError(replacement)) return replacement;
+    if (replacement.matchCount === 0) {
+      return facadeApiError(
+        404,
+        `No matching text in ${family} section`,
+        'Refresh the section content or adjust find/regex/flags before retrying.',
+        { index: read.index },
+        ['read_content', 'preview_edit'],
+      );
+    }
+    return {
+      data: {
+        dryRun: true,
+        operation: 'replace_text',
+        index: read.index,
+        name: recordString(read.current, 'name') ?? '',
+        matchCount: replacement.matchCount,
+        oldSize: currentContent.length,
+        newSize: replacement.newContent.length,
+      },
+      routes: [
+        ...read.routes,
+        route(parts.replaceTool ?? `${family}_replace`, 'POST', parts.replacePath?.(read.index) ?? ''),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, guards),
+    };
+  }
+
+  if (operation.op === 'insert_text') {
+    const inserted = insertSpecFromOperation(currentContent, operation);
+    if (isApiError(inserted)) return inserted;
+    return {
+      data: {
+        dryRun: true,
+        operation: 'insert_text',
+        index: read.index,
+        name: recordString(read.current, 'name') ?? '',
+        position: inserted.position,
+        oldSize: currentContent.length,
+        newSize: inserted.newContent.length,
+        insertedSize: inserted.insertedSize,
+      },
+      routes: [
+        ...read.routes,
+        route(parts.insertTool ?? `${family}_insert`, 'POST', parts.insertPath?.(read.index) ?? ''),
+      ],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, guards),
+    };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported ${family} preview operation: ${operation.op}`,
+    'Script/style facade mutations support write_content, replace_text, insert_text, and trigger delete_item.',
+    { operation },
+  );
+}
+
+async function applyActiveScriptStyleMutation(
+  operation: FacadeV1EditOperation,
+  guards: FacadeV1Guard[] | undefined,
+): Promise<{ data: unknown; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  const family = operation.selector.family;
+  if (!isScriptStyleFamily(family)) {
+    return facadeApiError(400, 'Unsupported script/style family', 'Use trigger, lua, or css selectors.');
+  }
+  const read = await readActiveScriptStyleItem(family, operation.selector);
+  if (isApiError(read)) return read;
+  const parts = scriptStyleRouteParts(family);
+  const touched = [`${family}:${read.index}`];
+
+  if (family === 'trigger') {
+    const currentComment = recordString(read.current, 'comment') ?? '';
+    const conflict = guardConflict(guards, 'expected_comment', currentComment, `trigger:${read.index}`);
+    if (conflict) return conflict;
+    if (operation.op === 'write_content') {
+      const data = asRecord(operation.content);
+      if (!data) {
+        return facadeApiError(
+          400,
+          'trigger write_content requires an object',
+          'Set operations[].content to trigger fields.',
+        );
+      }
+      const picked = pickAllowedRecordFields(data, EXTERNAL_TRIGGER_ALLOWED_FIELDS);
+      const routePath = parts.writePath(read.index);
+      const applied = await apiRequest('POST', routePath, {
+        ...picked,
+        expected_comment: stringGuardValue(guards, 'expected_comment'),
+      });
+      return isApiError(applied)
+        ? applied
+        : { data: applied, routes: [...read.routes, route(parts.writeTool, 'POST', routePath)], touched };
+    }
+    if (operation.op === 'delete_item') {
+      const routePath = parts.deletePath?.(read.index);
+      if (!routePath) return facadeApiError(400, 'Trigger delete route is unavailable', 'Retry with a current server.');
+      const applied = await apiRequest('POST', routePath, {
+        expected_comment: stringGuardValue(guards, 'expected_comment'),
+      });
+      return isApiError(applied)
+        ? applied
+        : {
+            data: applied,
+            routes: [...read.routes, route(parts.deleteTool ?? 'delete_trigger', 'POST', routePath)],
+            touched,
+          };
+    }
+    return facadeApiError(
+      400,
+      `Unsupported trigger apply operation: ${operation.op}`,
+      'Use write_content or delete_item.',
+    );
+  }
+
+  const conflict = checkActiveSectionGuards(guards, read.current, `${family}:${read.index}`);
+  if (conflict) return conflict;
+  const currentContent = recordString(read.current, 'content') ?? '';
+
+  if (operation.op === 'write_content') {
+    const content = contentStringFromOperation(operation, `${family} write_content`);
+    if (isApiError(content)) return content;
+    const routePath = parts.writePath(read.index);
+    const applied = await apiRequest('POST', routePath, {
+      content,
+      expected_hash: stringGuardValue(guards, 'expected_hash'),
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(applied)
+      ? applied
+      : { data: applied, routes: [...read.routes, route(parts.writeTool, 'POST', routePath)], touched };
+  }
+
+  if (operation.op === 'replace_text') {
+    const replacement = computeTextReplacement(currentContent, operation);
+    if (isApiError(replacement)) return replacement;
+    if (replacement.matchCount === 0) {
+      return facadeApiError(404, `No matching text in ${family} section`, 'Refresh the section and retry.');
+    }
+    const routePath = parts.replacePath?.(read.index);
+    if (!routePath)
+      return facadeApiError(400, `${family} replace route is unavailable`, 'Retry with a current server.');
+    const applied = await apiRequest('POST', routePath, {
+      find: operation.find,
+      replace: typeof operation.replace === 'string' ? operation.replace : '',
+      regex: operation.regex,
+      flags: operation.flags,
+      expected_hash: stringGuardValue(guards, 'expected_hash'),
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(applied)
+      ? applied
+      : {
+          data: applied,
+          routes: [...read.routes, route(parts.replaceTool ?? `${family}_replace`, 'POST', routePath)],
+          touched,
+        };
+  }
+
+  if (operation.op === 'insert_text') {
+    const inserted = insertSpecFromOperation(currentContent, operation);
+    if (isApiError(inserted)) return inserted;
+    const contentRecord = asRecord(operation.content);
+    const insertContent = contentStringFromOperation(operation, `${family} insert_text`);
+    if (isApiError(insertContent)) return insertContent;
+    const routePath = parts.insertPath?.(read.index);
+    if (!routePath) return facadeApiError(400, `${family} insert route is unavailable`, 'Retry with a current server.');
+    const applied = await apiRequest('POST', routePath, {
+      content: insertContent,
+      position: inserted.position,
+      anchor: recordString(contentRecord, 'anchor'),
+      expected_hash: stringGuardValue(guards, 'expected_hash'),
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(applied)
+      ? applied
+      : {
+          data: applied,
+          routes: [...read.routes, route(parts.insertTool ?? `${family}_insert`, 'POST', routePath)],
+          touched,
+        };
+  }
+
+  return facadeApiError(400, `Unsupported ${family} apply operation: ${operation.op}`, 'Re-run preview_edit.');
+}
+
+interface ExternalStructuredPatchPlan {
+  data: Record<string, unknown>;
+  operations: Array<Record<string, unknown>>;
+  routes: FacadeRoute[];
+  touched: string[];
+  requiredGuards: FacadeV1Guard[];
+}
+
+function externalExpectedHashGuard(beforeHash: string): FacadeV1Guard {
+  return buildGuard(
+    'expected_hash',
+    beforeHash,
+    '/expected_hash',
+    ['preview_edit'],
+    '/result/previews/*/data/before_hash',
+  );
+}
+
+async function buildExternalScriptStylePatchPlan(
+  target: FacadeV1Target,
+  operation: FacadeV1EditOperation,
+  guards: FacadeV1Guard[] | undefined,
+): Promise<ExternalStructuredPatchPlan | ApiErrorResult> {
+  if (target.kind !== 'external') {
+    return facadeApiError(
+      400,
+      'External script/style mutation requires target.kind="external"',
+      'Use an unopened external .charx/.risum file target or open the file and use active selectors.',
+    );
+  }
+  const family = operation.selector.family;
+  if (!isScriptStyleFamily(family)) {
+    return facadeApiError(400, 'Unsupported external script/style family', 'Use trigger, lua, or css selectors.');
+  }
+
+  if (family === 'trigger') {
+    const read = await readExternalRecordArraySurface(target.file_path, '/triggerScripts', 'trigger');
+    if (isApiError(read)) return read;
+    const indices = resolveTriggerSelectorIndices(read.entries, operation.selector, `external trigger ${operation.op}`);
+    if (!Array.isArray(indices)) return indices;
+    if (indices.length !== 1) {
+      return facadeApiError(
+        400,
+        'External trigger mutation requires one item',
+        'Use selector.index or a unique selector.identity for trigger write/delete operations.',
+        { selector: operation.selector, count: indices.length },
+      );
+    }
+    const index = indices[0];
+    const currentEntry = read.entries[index];
+    const currentComment = recordString(currentEntry, 'comment') ?? '';
+    const conflict = guardConflict(guards, 'expected_comment', currentComment, `external:trigger:${index}`);
+    if (conflict) return conflict;
+    const commentGuard = buildGuard(
+      'expected_comment',
+      currentComment,
+      '/expected_comment',
+      ['read_content'],
+      '/items/*/comment',
+    );
+    const targetPath = `/triggerScripts/${jsonPointerSegment(index)}`;
+    const touched = [`external:${target.file_path}:trigger:${index}`];
+
+    if (operation.op === 'write_content') {
+      const data = asRecord(operation.content);
+      if (!data) {
+        return facadeApiError(
+          400,
+          'External trigger write_content requires an object',
+          'Set operations[].content to partial trigger script fields.',
+          { operation },
+        );
+      }
+      const picked = pickAllowedRecordFields(data, EXTERNAL_TRIGGER_ALLOWED_FIELDS);
+      if (Object.keys(picked).length === 0) {
+        return facadeApiError(
+          400,
+          'External trigger write_content has no supported fields',
+          'Provide at least one supported trigger script field.',
+          { supportedFields: [...EXTERNAL_TRIGGER_ALLOWED_FIELDS] },
+        );
+      }
+      return {
+        data: {
+          dryRun: true,
+          operation: 'write_content',
+          index,
+          currentComment,
+          updatedKeys: Object.keys(picked),
+        },
+        operations: [{ op: 'replace', path: targetPath, value: { ...currentEntry, ...picked } }],
+        routes: read.routes,
+        touched,
+        requiredGuards: mergeGuards(guards, [commentGuard]),
+      };
+    }
+
+    if (operation.op === 'delete_item') {
+      return {
+        data: { dryRun: true, operation: 'delete_item', index, currentComment },
+        operations: [{ op: 'remove', path: targetPath }],
+        routes: read.routes,
+        touched,
+        requiredGuards: mergeGuards(guards, [commentGuard]),
+      };
+    }
+
+    return facadeApiError(
+      400,
+      `Unsupported external trigger operation: ${operation.op}`,
+      'External trigger facade mutations currently support write_content and delete_item.',
+      { operation },
+    );
+  }
+
+  const surfacePath = family === 'lua' ? '/lua' : '/css';
+  const read = await readExternalTextSurface(target.file_path, surfacePath, family);
+  if (isApiError(read)) return read;
+  const parsed =
+    family === 'lua'
+      ? { sections: parseLuaSections(read.text) as TextSection[], prefix: '', suffix: '' }
+      : (parseCssSections(read.text) as { sections: TextSection[]; prefix: string; suffix: string });
+  const indices = resolveSectionSelectorIndices(
+    parsed.sections,
+    operation.selector,
+    `external ${family} ${operation.op}`,
+  );
+  if (!Array.isArray(indices)) return indices;
+  if (indices.length !== 1) {
+    return facadeApiError(
+      400,
+      `External ${family} mutation requires one section`,
+      'Use selector.index or a unique selector.identity for section write/replace/insert/delete operations.',
+      { selector: operation.selector, count: indices.length },
+    );
+  }
+  const index = indices[0];
+  const section = parsed.sections[index];
+  const conflict = checkExternalSectionGuards(guards, section, `external:${family}:${index}`);
+  if (conflict) return conflict;
+  const nextSections = parsed.sections.map((item) => ({ ...item }));
+  const touched = [`external:${target.file_path}:${family}:${index}`];
+
+  let data: Record<string, unknown>;
+  if (operation.op === 'write_content') {
+    const newContent = contentStringFromOperation(operation, `external ${family} write_content`);
+    if (isApiError(newContent)) return newContent;
+    nextSections[index] = { ...section, content: newContent };
+    data = {
+      dryRun: true,
+      operation: 'write_content',
+      index,
+      name: section.name,
+      oldSize: section.content.length,
+      newSize: newContent.length,
+    };
+  } else if (operation.op === 'replace_text') {
+    const replacement = computeTextReplacement(section.content, operation);
+    if (isApiError(replacement)) return replacement;
+    if (replacement.matchCount === 0) {
+      return facadeApiError(
+        404,
+        `No matching text in external ${family} section`,
+        'Refresh the section content or adjust find/regex/flags before retrying.',
+        { index },
+        ['read_content', 'preview_edit'],
+      );
+    }
+    nextSections[index] = { ...section, content: replacement.newContent };
+    data = {
+      dryRun: true,
+      operation: 'replace_text',
+      index,
+      name: section.name,
+      matchCount: replacement.matchCount,
+      oldSize: section.content.length,
+      newSize: replacement.newContent.length,
+    };
+  } else if (operation.op === 'insert_text') {
+    const inserted = insertSpecFromOperation(section.content, operation);
+    if (isApiError(inserted)) return inserted;
+    nextSections[index] = { ...section, content: inserted.newContent };
+    data = {
+      dryRun: true,
+      operation: 'insert_text',
+      index,
+      name: section.name,
+      position: inserted.position,
+      oldSize: section.content.length,
+      newSize: inserted.newContent.length,
+      insertedSize: inserted.insertedSize,
+    };
+  } else if (operation.op === 'delete_item') {
+    if (nextSections.length <= 1) {
+      return facadeApiError(
+        400,
+        `Cannot delete the only external ${family} section`,
+        'Use write_content with an empty string if you want to clear the section while preserving the surface.',
+        { index },
+      );
+    }
+    nextSections.splice(index, 1);
+    data = {
+      dryRun: true,
+      operation: 'delete_item',
+      index,
+      name: section.name,
+      oldSize: section.content.length,
+    };
+  } else {
+    return facadeApiError(
+      400,
+      `Unsupported external ${family} operation: ${operation.op}`,
+      'External lua/css facade mutations support write_content, replace_text, insert_text, and delete_item.',
+      { operation },
+    );
+  }
+
+  const newSurface =
+    family === 'lua'
+      ? combineLuaSections(nextSections)
+      : combineCssSections(nextSections, parsed.prefix, parsed.suffix);
+  return {
+    data,
+    operations: [{ op: 'replace', path: surfacePath, value: newSurface }],
+    routes: read.routes,
+    touched,
+    requiredGuards: mergeGuards(guards, externalSectionGuards(section)),
+  };
+}
+
+async function buildExternalStructuredPatchPlan(
+  target: FacadeV1Target,
+  operation: FacadeV1EditOperation,
+  guards: FacadeV1Guard[] | undefined,
+): Promise<ExternalStructuredPatchPlan | ApiErrorResult> {
+  if (target.kind !== 'external') {
+    return facadeApiError(
+      400,
+      'External structured mutation requires target.kind="external"',
+      'Use an unopened external .charx/.risum file target or open the file and use active selectors.',
+    );
+  }
+
+  if (operation.selector.family === 'lorebook') {
+    const read = await readExternalRecordArraySurface(target.file_path, '/lorebook', 'lorebook');
+    if (isApiError(read)) return read;
+    const indices = resolveExternalLorebookSelectorIndices(
+      read.entries,
+      operation.selector,
+      `external lorebook ${operation.op}`,
+    );
+    if (!Array.isArray(indices)) return indices;
+    if (indices.length !== 1) {
+      return facadeApiError(
+        400,
+        'External lorebook mutation requires one item',
+        'Use selector.id or selector.index for lorebook write/delete/replace operations.',
+        { selector: operation.selector, count: indices.length },
+      );
+    }
+    const index = indices[0];
+    const currentEntry = read.entries[index];
+    const currentComment = recordString(currentEntry, 'comment') ?? '';
+    const conflict = guardConflict(guards, 'expected_comment', currentComment, `external:lorebook:${index}`);
+    if (conflict) return conflict;
+    const commentGuard = buildGuard(
+      'expected_comment',
+      currentComment,
+      '/expected_comment',
+      ['read_content'],
+      '/entries/*/comment',
+    );
+    const targetPath = `/lorebook/${jsonPointerSegment(index)}`;
+    const touched = [`external:${target.file_path}:lorebook:${index}`];
+
+    if (operation.op === 'write_content') {
+      const data = asRecord(operation.content);
+      if (!data) {
+        return facadeApiError(
+          400,
+          'External lorebook write_content requires an object',
+          'Set operations[].content to partial lorebook entry data.',
+          { operation },
+        );
+      }
+      const picked = pickAllowedRecordFields(data, EXTERNAL_LOREBOOK_ALLOWED_FIELDS);
+      if (Object.keys(picked).length === 0) {
+        return facadeApiError(
+          400,
+          'External lorebook write_content has no supported fields',
+          'Provide at least one supported lorebook entry field.',
+          { supportedFields: [...EXTERNAL_LOREBOOK_ALLOWED_FIELDS] },
+        );
+      }
+      return {
+        data: {
+          dryRun: true,
+          operation: 'write_content',
+          index,
+          id: externalLorebookStableId(currentEntry, index, read.entries),
+          currentComment,
+          updatedKeys: Object.keys(picked),
+        },
+        operations: [{ op: 'replace', path: targetPath, value: { ...currentEntry, ...picked } }],
+        routes: read.routes,
+        touched,
+        requiredGuards: mergeGuards(guards, [commentGuard]),
+      };
+    }
+
+    if (operation.op === 'delete_item') {
+      return {
+        data: {
+          dryRun: true,
+          operation: 'delete_item',
+          index,
+          id: externalLorebookStableId(currentEntry, index, read.entries),
+          currentComment,
+        },
+        operations: [{ op: 'remove', path: targetPath }],
+        routes: read.routes,
+        touched,
+        requiredGuards: mergeGuards(guards, [commentGuard]),
+      };
+    }
+
+    if (operation.op === 'replace_text') {
+      const field = lorebookReplaceField(operation) ?? 'content';
+      if (!EXTERNAL_LOREBOOK_REPLACEABLE_FIELDS.has(field)) {
+        return facadeApiError(
+          400,
+          `External lorebook field "${field}" does not support replace_text`,
+          `Supported fields: ${[...EXTERNAL_LOREBOOK_REPLACEABLE_FIELDS].join(', ')}`,
+          { field },
+        );
+      }
+      const oldContent = typeof currentEntry[field] === 'string' ? (currentEntry[field] as string) : '';
+      const replacement = computeTextReplacement(oldContent, operation);
+      if (isApiError(replacement)) return replacement;
+      if (replacement.matchCount === 0) {
+        return facadeApiError(
+          404,
+          'No matching text in external lorebook entry',
+          'Refresh the entry content or adjust find/regex/flags before retrying.',
+          { index, field },
+          ['read_content', 'preview_edit'],
+        );
+      }
+      return {
+        data: {
+          dryRun: true,
+          operation: 'replace_text',
+          index,
+          id: externalLorebookStableId(currentEntry, index, read.entries),
+          currentComment,
+          field,
+          matchCount: replacement.matchCount,
+          oldSize: oldContent.length,
+          newSize: replacement.newContent.length,
+        },
+        operations: [
+          {
+            op: 'replace',
+            path: `${targetPath}/${jsonPointerSegment(field)}`,
+            value: replacement.newContent,
+          },
+        ],
+        routes: read.routes,
+        touched: [`external:${target.file_path}:lorebook:${index}:${field}`],
+        requiredGuards: mergeGuards(guards, [commentGuard]),
+      };
+    }
+  }
+
+  if (operation.selector.family === 'regex') {
+    const read = await readExternalRecordArraySurface(target.file_path, '/regex', 'regex');
+    if (isApiError(read)) return read;
+    const indices = resolveExternalRegexSelectorIndices(
+      read.entries,
+      operation.selector,
+      `external regex ${operation.op}`,
+    );
+    if (!Array.isArray(indices)) return indices;
+    const touched = indices.map((index) => `external:${target.file_path}:regex:${index}`);
+
+    if (operation.op === 'write_content') {
+      const writes =
+        operation.selector.indices && operation.selector.indices.length > 0
+          ? normalizeBatchEntries(operation, 'data')
+          : undefined;
+      if (writes && isApiError(writes)) return writes;
+      const patchOperations: Array<Record<string, unknown>> = [];
+      const previews: Array<Record<string, unknown>> = [];
+      const derivedGuards: FacadeV1Guard[] = [];
+      const writeRecords = writes ?? indices.map((index) => ({ index, data: asRecord(operation.content) }));
+      for (const [position, write] of writeRecords.entries()) {
+        const index = recordNumber(write, 'index');
+        const data = asRecord(write.data);
+        if (index === undefined || !data) {
+          return facadeApiError(
+            400,
+            'External regex write_content requires object data',
+            'Set operations[].content to partial regex entry data, or align content.entries with selector.indices.',
+            { write, position },
+          );
+        }
+        const currentEntry = read.entries[index];
+        const currentComment = recordString(currentEntry, 'comment') ?? '';
+        const expectedComment =
+          recordString(write, 'expected_comment') ??
+          (writes
+            ? stringGuardValueAtPath(guards, 'expected_comment', `/entries/${position}/expected_comment`)
+            : stringGuardValue(guards, 'expected_comment'));
+        if (expectedComment !== undefined && expectedComment !== currentComment) {
+          return facadeApiError(
+            409,
+            'Stale guard mismatch for expected_comment',
+            'Refresh external regex summaries, then run preview_edit again.',
+            {
+              target: `external:regex:${index}`,
+              guard: 'expected_comment',
+              expected: expectedComment,
+              actual: currentComment,
+            },
+            ['read_content', 'preview_edit'],
+          );
+        }
+        const picked = pickAllowedRecordFields(data, EXTERNAL_REGEX_ALLOWED_FIELDS);
+        if (Object.keys(picked).length === 0) {
+          return facadeApiError(
+            400,
+            'External regex write_content has no supported fields',
+            'Provide at least one supported regex entry field.',
+            { supportedFields: [...EXTERNAL_REGEX_ALLOWED_FIELDS] },
+          );
+        }
+        patchOperations.push({
+          op: 'replace',
+          path: `/regex/${jsonPointerSegment(index)}`,
+          value: { ...currentEntry, ...picked },
+        });
+        previews.push({ index, currentComment, updatedKeys: Object.keys(picked) });
+        derivedGuards.push(
+          buildGuard(
+            'expected_comment',
+            currentComment,
+            writes ? `/entries/${position}/expected_comment` : '/expected_comment',
+            ['read_content'],
+            '/entries/*/comment',
+          ),
+        );
+      }
+      return {
+        data: { dryRun: true, operation: 'write_content', count: patchOperations.length, entries: previews },
+        operations: patchOperations,
+        routes: read.routes,
+        touched,
+        requiredGuards: mergeGuards(guards, derivedGuards),
+      };
+    }
+
+    if (operation.op === 'delete_item') {
+      if (indices.length !== 1) {
+        return facadeApiError(
+          400,
+          'External regex delete_item requires one item',
+          'Use selector.identity or selector.index for regex delete operations.',
+          { selector: operation.selector, count: indices.length },
+        );
+      }
+      const index = indices[0];
+      const currentEntry = read.entries[index];
+      const currentComment = recordString(currentEntry, 'comment') ?? '';
+      const conflict = guardConflict(guards, 'expected_comment', currentComment, `external:regex:${index}`);
+      if (conflict) return conflict;
+      return {
+        data: { dryRun: true, operation: 'delete_item', index, currentComment },
+        operations: [{ op: 'remove', path: `/regex/${jsonPointerSegment(index)}` }],
+        routes: read.routes,
+        touched,
+        requiredGuards: mergeGuards(guards, [
+          buildGuard('expected_comment', currentComment, '/expected_comment', ['read_content'], '/entries/*/comment'),
+        ]),
+      };
+    }
+  }
+
+  if (operation.selector.family === 'greeting') {
+    if (operation.selector.greeting_type !== 'alternate') {
+      return facadeApiError(
+        400,
+        'External greeting mutations support alternate greetings only',
+        'groupOnlyGreetings is deprecated and protected from normal mutation.',
+        { selector: operation.selector },
+      );
+    }
+    const read = await readExternalStringArraySurface(target.file_path, '/alternateGreetings', 'greeting');
+    if (isApiError(read)) return read;
+    const indices = resolveExternalGreetingSelectorIndices(
+      read.entries,
+      operation.selector,
+      `external greeting ${operation.op}`,
+    );
+    if (!Array.isArray(indices)) return indices;
+    const touched = indices.map((index) => `external:${target.file_path}:greeting:alternate:${index}`);
+
+    if (operation.op === 'write_content') {
+      const writes =
+        operation.selector.indices && operation.selector.indices.length > 0
+          ? normalizeBatchEntries(operation, 'content')
+          : undefined;
+      if (writes && isApiError(writes)) return writes;
+      const patchOperations: Array<Record<string, unknown>> = [];
+      const previews: Array<Record<string, unknown>> = [];
+      const derivedGuards: FacadeV1Guard[] = [];
+      const writeRecords = writes ?? indices.map((index) => ({ index, content: operation.content }));
+      for (const [position, write] of writeRecords.entries()) {
+        const index = recordNumber(write, 'index');
+        if (index === undefined) {
+          return facadeApiError(
+            400,
+            'External greeting write_content requires an index',
+            'Use selector.index, selector.identity, or aligned selector.indices plus content.writes.',
+            { write, position },
+          );
+        }
+        const currentContent = read.entries[index];
+        const currentPreview = greetingPreview(currentContent);
+        const expectedPreview =
+          recordString(write, 'expected_preview') ??
+          (writes
+            ? stringGuardValueAtPath(guards, 'expected_preview', `/writes/${position}/expected_preview`)
+            : stringGuardValue(guards, 'expected_preview'));
+        if (expectedPreview !== undefined && expectedPreview !== currentPreview) {
+          return facadeApiError(
+            409,
+            'Stale guard mismatch for expected_preview',
+            'Refresh external greeting summaries, then run preview_edit again.',
+            {
+              target: `external:greeting:alternate:${index}`,
+              guard: 'expected_preview',
+              expected: expectedPreview,
+              actual: currentPreview,
+            },
+            ['read_content', 'preview_edit'],
+          );
+        }
+        const newContent = replacementString(write.content);
+        patchOperations.push({
+          op: 'replace',
+          path: `/alternateGreetings/${jsonPointerSegment(index)}`,
+          value: newContent,
+        });
+        previews.push({ index, oldSize: currentContent.length, newSize: newContent.length });
+        derivedGuards.push(
+          buildGuard(
+            'expected_preview',
+            currentPreview,
+            writes ? `/writes/${position}/expected_preview` : '/expected_preview',
+            ['read_content'],
+            '/items/*/preview',
+          ),
+        );
+      }
+      return {
+        data: {
+          dryRun: true,
+          operation: 'write_content',
+          type: 'alternate',
+          count: patchOperations.length,
+          writes: previews,
+        },
+        operations: patchOperations,
+        routes: read.routes,
+        touched,
+        requiredGuards: mergeGuards(guards, derivedGuards),
+      };
+    }
+
+    if (operation.op === 'delete_item') {
+      const contentRecord = asRecord(operation.content);
+      const expectedPreviews = Array.isArray(contentRecord?.expected_previews)
+        ? contentRecord.expected_previews
+        : undefined;
+      const patchOperations: Array<Record<string, unknown>> = [];
+      const previews: Array<Record<string, unknown>> = [];
+      const derivedGuards: FacadeV1Guard[] = [];
+      for (const [position, index] of indices.entries()) {
+        const currentContent = read.entries[index];
+        const currentPreview = greetingPreview(currentContent);
+        const expectedPreview =
+          typeof expectedPreviews?.[position] === 'string'
+            ? expectedPreviews[position]
+            : indices.length > 1
+              ? stringGuardValueAtPath(guards, 'expected_previews', `/expected_previews/${position}`)
+              : stringGuardValue(guards, 'expected_preview');
+        if (expectedPreview !== undefined && expectedPreview !== currentPreview) {
+          return facadeApiError(
+            409,
+            'Stale guard mismatch for expected_preview',
+            'Refresh external greeting summaries, then run preview_edit again.',
+            {
+              target: `external:greeting:alternate:${index}`,
+              guard: 'expected_preview',
+              expected: expectedPreview,
+              actual: currentPreview,
+            },
+            ['read_content', 'preview_edit'],
+          );
+        }
+        previews.push({ index, preview: currentPreview, oldSize: currentContent.length });
+        derivedGuards.push(
+          buildGuard(
+            indices.length > 1 ? 'expected_previews' : 'expected_preview',
+            currentPreview,
+            indices.length > 1 ? `/expected_previews/${position}` : '/expected_preview',
+            ['read_content'],
+            '/items/*/preview',
+          ),
+        );
+      }
+      for (const index of [...indices].sort((a, b) => b - a)) {
+        patchOperations.push({ op: 'remove', path: `/alternateGreetings/${jsonPointerSegment(index)}` });
+      }
+      return {
+        data: { dryRun: true, operation: 'delete_item', type: 'alternate', count: indices.length, deletes: previews },
+        operations: patchOperations,
+        routes: read.routes,
+        touched,
+        requiredGuards: mergeGuards(guards, derivedGuards),
+      };
+    }
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported external structured operation: ${operation.op}`,
+    'External structured facade parity currently supports lorebook write/delete/replace, regex write/delete, and alternate greeting write/delete.',
+    { operation },
+  );
+}
+
+async function previewExternalStructuredMutation(
+  target: FacadeV1Target,
+  operation: FacadeV1EditOperation,
+): Promise<
+  { data: unknown; routes: FacadeRoute[]; touched: string[]; requiredGuards: FacadeV1Guard[] } | ApiErrorResult
+> {
+  const plan = await buildExternalStructuredPatchPlan(target, operation, operation.guards);
+  if (isApiError(plan)) return plan;
+  const routePath = '/external/surface/patch';
+  const dryRun = await apiRequest('POST', routePath, {
+    file_path: target.kind === 'external' ? target.file_path : undefined,
+    operations: plan.operations,
+    dry_run: true,
+    expected_hash: guardValue(operation.guards, 'expected_hash'),
+  });
+  if (isApiError(dryRun)) return dryRun;
+  const beforeHash = recordString(asRecord(dryRun), 'before_hash');
+  return {
+    data: { ...plan.data, ...(asRecord(dryRun) ?? {}) },
+    routes: [...plan.routes, route('external_patch_surface', 'POST', routePath)],
+    touched: plan.touched,
+    requiredGuards: mergeGuards(plan.requiredGuards, [beforeHash ? externalExpectedHashGuard(beforeHash) : undefined]),
+  };
+}
+
+async function applyExternalStructuredMutation(
+  target: FacadeV1Target,
+  operation: FacadeV1EditOperation,
+  guards: FacadeV1Guard[] | undefined,
+): Promise<{ data: unknown; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  const plan = await buildExternalStructuredPatchPlan(target, operation, guards);
+  if (isApiError(plan)) return plan;
+  const routePath = '/external/surface/patch';
+  const data = await apiRequest('POST', routePath, {
+    file_path: target.kind === 'external' ? target.file_path : undefined,
+    operations: plan.operations,
+    expected_hash: guardValue(guards, 'expected_hash'),
+  });
+  return isApiError(data)
+    ? data
+    : {
+        data: { ...(asRecord(data) ?? {}), operation: operation.op, structured_family: operation.selector.family },
+        routes: [...plan.routes, route('external_patch_surface', 'POST', routePath)],
+        touched: plan.touched,
+      };
 }
 
 function resolveRisupPromptIdIndex(
@@ -2261,6 +4343,2798 @@ async function prepareExternalRisupPromptMutation(
   );
 }
 
+interface RisupPromptContext {
+  rawText: string;
+  model: PromptTemplateModel;
+  routes: FacadeRoute[];
+  touchedTarget: string;
+}
+
+interface ManageItemsPromptPlan {
+  result: Record<string, unknown>;
+  newPromptTemplate: string;
+  routes: FacadeRoute[];
+  touched: string[];
+  requiredGuards: FacadeV1Guard[];
+}
+
+function promptTemplateDigest(rawText: string): string {
+  return crypto.createHash('sha256').update(rawText).digest('hex');
+}
+
+function promptDigestGuard(rawText: string): FacadeV1Guard {
+  return {
+    name: 'expected_prompt_items_digest',
+    value: promptTemplateDigest(rawText),
+    payloadPath: '/guard_values/*',
+    sourceOperations: ['manage_items'],
+    sourceResultPath: '/result/prompt_items_digest',
+  };
+}
+
+function snippetUpdatedAtGuard(updatedAt: string | null): FacadeV1Guard {
+  return {
+    name: 'expected_snippet_updated_at',
+    value: updatedAt,
+    payloadPath: '/guard_values/*',
+    sourceOperations: ['manage_items'],
+    sourceResultPath: '/result/snippet/updatedAt',
+  };
+}
+
+function checkGuardValue(
+  guards: FacadeV1Guard[] | undefined,
+  name: string,
+  actual: unknown,
+  suggestion: string,
+): ApiErrorResult | undefined {
+  const expected = guardValue(guards, name);
+  if (expected === undefined) {
+    return facadeApiError(400, `Missing guard value for ${name}`, suggestion, { guard: name }, ['manage_items']);
+  }
+  if (expected !== actual) {
+    return facadeApiError(409, `Stale guard mismatch for ${name}`, suggestion, { guard: name, expected, actual }, [
+      'manage_items',
+      'read_content',
+    ]);
+  }
+  return undefined;
+}
+
+type ManageItemsScriptStyleFamily = Extract<ManageItemsFamily, ScriptStyleFamily>;
+type ManageItemsStructuredFamily = Exclude<ManageItemsFamily, 'risup-prompt' | ManageItemsScriptStyleFamily>;
+type ManageItemsCollectionFamily = Exclude<ManageItemsFamily, 'risup-prompt'>;
+
+interface ManageItemsStructuredContext {
+  entries: Array<Record<string, unknown> | string>;
+  routes: FacadeRoute[];
+  surfacePath: string;
+  touchedTarget: string;
+}
+
+interface ManageItemsStructuredPlan {
+  result: Record<string, unknown>;
+  operations: Array<Record<string, unknown>>;
+  routes: FacadeRoute[];
+  touched: string[];
+  requiredGuards: FacadeV1Guard[];
+}
+
+function isManageItemsStructuredFamily(family: ManageItemsFamily): family is ManageItemsStructuredFamily {
+  return family === 'lorebook' || family === 'regex' || family === 'greeting';
+}
+
+function isManageItemsScriptStyleFamily(family: ManageItemsFamily): family is ManageItemsScriptStyleFamily {
+  return isScriptStyleFamily(family);
+}
+
+function itemCollectionDigestGuard(family: ManageItemsCollectionFamily, entries: unknown[]): FacadeV1Guard {
+  return {
+    name: 'expected_item_collection_digest',
+    value: hashStableValue(entries),
+    payloadPath: '/guard_values/*',
+    sourceOperations: ['manage_items'],
+    sourceResultPath: '/result/item_collection_digest',
+  };
+}
+
+function manageItemsExpectedHashGuard(beforeHash: string): FacadeV1Guard {
+  return buildGuard('expected_hash', beforeHash, '/guard_values/*', ['manage_items'], '/result/before_hash');
+}
+
+function structuredManageItemsSurfacePath(
+  family: ManageItemsStructuredFamily,
+  operation: ManageItemsOperation,
+): string | ApiErrorResult {
+  if (family === 'lorebook') return '/lorebook';
+  if (family === 'regex') return '/regex';
+  if (family === 'greeting') {
+    const greetingType =
+      operation.action === 'add_items' || operation.action === 'reorder_items' ? operation.greeting_type : undefined;
+    if (greetingType !== 'alternate') {
+      return facadeApiError(
+        400,
+        'manage_items greeting operations support alternate greetings only',
+        'Set operation.greeting_type="alternate"; groupOnlyGreetings is deprecated and protected from normal mutation.',
+        { greeting_type: greetingType },
+      );
+    }
+    return '/alternateGreetings';
+  }
+  return facadeApiError(
+    400,
+    `Unsupported manage_items family: ${family}`,
+    'Use risup-prompt, lorebook, regex, or greeting.',
+  );
+}
+
+function structuredManageItemsTouchedTarget(
+  target: FacadeV1Target,
+  family: ManageItemsStructuredFamily,
+  surfacePath: string,
+): string {
+  const suffix = family === 'greeting' ? 'greeting:alternate' : family;
+  return target.kind === 'external' ? `external:${target.file_path}:${suffix}` : `active:${suffix}:${surfacePath}`;
+}
+
+function structuredManageItemsSummary(
+  family: ManageItemsStructuredFamily,
+  entry: Record<string, unknown> | string,
+  index: number,
+  entries: Array<Record<string, unknown> | string>,
+): Record<string, unknown> {
+  if (family === 'lorebook') {
+    const records = entries as Record<string, unknown>[];
+    return externalLorebookSummary(entry as Record<string, unknown>, index, records);
+  }
+  if (family === 'regex') return externalRegexSummary(entry as Record<string, unknown>, index);
+  return externalGreetingSummary(String(entry), index);
+}
+
+function validateManageItemsStructuredAction(
+  family: ManageItemsStructuredFamily,
+  operation: ManageItemsOperation,
+): ApiErrorResult | undefined {
+  if (operation.action !== 'add_items' && operation.action !== 'reorder_items') {
+    return facadeApiError(
+      400,
+      `manage_items family "${family}" supports add_items and reorder_items only`,
+      'Use read_content for item reads and preview_edit/apply_edit for write/delete/replace operations.',
+      { action: operation.action, family },
+      ['read_content', 'preview_edit'],
+    );
+  }
+  return undefined;
+}
+
+async function readManageItemsStructuredContext(
+  target: FacadeV1Target,
+  family: ManageItemsStructuredFamily,
+  operation: ManageItemsOperation,
+): Promise<ManageItemsStructuredContext | ApiErrorResult> {
+  const actionError = validateManageItemsStructuredAction(family, operation);
+  if (actionError) return actionError;
+  const surfacePath = structuredManageItemsSurfacePath(family, operation);
+  if (isApiError(surfacePath)) return surfacePath;
+
+  if (target.kind === 'active') {
+    const routePath = '/surface/read';
+    const read = await apiRequest('POST', routePath, { path: surfacePath });
+    if (isApiError(read)) return read;
+    const value = asRecord(read)?.value;
+    if (family === 'greeting') {
+      if (!Array.isArray(value) || !value.every((entry) => typeof entry === 'string')) {
+        return facadeApiError(
+          400,
+          'Active alternate greeting surface is not a string array',
+          'Inspect the active document surface before using manage_items greeting add/reorder.',
+          { path: surfacePath },
+          ['inspect_document', 'read_content'],
+        );
+      }
+      return {
+        entries: value as string[],
+        routes: [route('read_surface', 'POST', routePath)],
+        surfacePath,
+        touchedTarget: structuredManageItemsTouchedTarget(target, family, surfacePath),
+      };
+    }
+    if (!Array.isArray(value)) {
+      return facadeApiError(
+        400,
+        `Active ${family} surface is not an array`,
+        'Inspect the active document surface before using manage_items add/reorder.',
+        { path: surfacePath, type: typeof value },
+        ['inspect_document', 'read_content'],
+      );
+    }
+    const invalidIndex = value.findIndex((entry) => !asRecord(entry));
+    if (invalidIndex >= 0) {
+      return facadeApiError(
+        400,
+        `Active ${family} entry is not an object`,
+        'Repair the structured array or use an advanced raw surface patch.',
+        { path: surfacePath, index: invalidIndex },
+        ['read_content'],
+      );
+    }
+    return {
+      entries: value.map((entry) => asRecord(entry) ?? {}),
+      routes: [route('read_surface', 'POST', routePath)],
+      surfacePath,
+      touchedTarget: structuredManageItemsTouchedTarget(target, family, surfacePath),
+    };
+  }
+
+  if (target.kind === 'external') {
+    if (family === 'greeting') {
+      const read = await readExternalStringArraySurface(target.file_path, surfacePath, 'greeting');
+      if (isApiError(read)) return read;
+      return {
+        entries: read.entries,
+        routes: read.routes,
+        surfacePath,
+        touchedTarget: structuredManageItemsTouchedTarget(target, family, surfacePath),
+      };
+    }
+    const read = await readExternalRecordArraySurface(target.file_path, surfacePath, family);
+    if (isApiError(read)) return read;
+    return {
+      entries: read.entries,
+      routes: read.routes,
+      surfacePath,
+      touchedTarget: structuredManageItemsTouchedTarget(target, family, surfacePath),
+    };
+  }
+
+  return facadeApiError(
+    400,
+    'manage_items structured target must be active or external',
+    'Use target.kind="active" for the current file or target.kind="external" for an unopened file.',
+    { target, family },
+    ['inspect_document'],
+  );
+}
+
+function normalizeManageItemsLorebookEntry(item: unknown, index: number): Record<string, unknown> | ApiErrorResult {
+  const data = asRecord(item);
+  if (!data) {
+    return facadeApiError(
+      400,
+      'lorebook add_items requires object entries',
+      'Provide items as lorebook entry objects with content/comment/key fields.',
+      { index },
+    );
+  }
+  return {
+    key: '',
+    secondkey: '',
+    comment: '',
+    content: '',
+    folder: '',
+    order: 100,
+    priority: 0,
+    selective: false,
+    alwaysActive: false,
+    mode: 'normal',
+    extentions: {},
+    ...pickAllowedRecordFields(data, EXTERNAL_LOREBOOK_ALLOWED_FIELDS),
+  };
+}
+
+function normalizeManageItemsRegexEntry(item: unknown, index: number): Record<string, unknown> | ApiErrorResult {
+  const data = asRecord(item);
+  if (!data) {
+    return facadeApiError(
+      400,
+      'regex add_items requires object entries',
+      'Provide items as regex entry objects with find/replace/comment fields.',
+      { index },
+    );
+  }
+  const entry: Record<string, unknown> = {
+    comment: '',
+    type: 'editoutput',
+    find: '',
+    replace: '',
+    flag: 'g',
+    ...pickAllowedRecordFields(data, EXTERNAL_REGEX_ALLOWED_FIELDS),
+  };
+  if (entry.find && !entry.in) entry.in = entry.find;
+  if (entry.in && !entry.find) entry.find = entry.in;
+  if (entry.replace && !entry.out) entry.out = entry.replace;
+  if (entry.out && !entry.replace) entry.replace = entry.out;
+  return entry;
+}
+
+function normalizeManageItemsGreetingEntry(item: unknown, index: number): string | ApiErrorResult {
+  if (typeof item === 'string') return item;
+  const data = asRecord(item);
+  const content = recordString(data, 'content') ?? recordString(data, 'text');
+  if (content === undefined) {
+    return facadeApiError(
+      400,
+      'greeting add_items requires content text',
+      'Provide each item as { "content": "..." } or { "text": "..." }.',
+      { index },
+    );
+  }
+  return content;
+}
+
+function normalizeManageItemsStructuredEntries(
+  family: ManageItemsStructuredFamily,
+  items: unknown[],
+): Array<Record<string, unknown> | string> | ApiErrorResult {
+  const entries: Array<Record<string, unknown> | string> = [];
+  for (const [index, item] of items.entries()) {
+    const normalized =
+      family === 'lorebook'
+        ? normalizeManageItemsLorebookEntry(item, index)
+        : family === 'regex'
+          ? normalizeManageItemsRegexEntry(item, index)
+          : normalizeManageItemsGreetingEntry(item, index);
+    if (isApiError(normalized)) return normalized;
+    entries.push(normalized);
+  }
+  return entries;
+}
+
+function fullStructuredIdPermutation(
+  orderIds: string[] | undefined,
+  family: ManageItemsStructuredFamily,
+  entries: Array<Record<string, unknown> | string>,
+): ApiErrorResult | string[] {
+  if (family !== 'lorebook') {
+    return facadeApiError(
+      400,
+      'order_ids is currently supported only for lorebook item reorder',
+      'Use a full index order permutation for regex and alternate greeting reorder operations.',
+      { family },
+    );
+  }
+  const records = entries as Record<string, unknown>[];
+  const currentIds = records.map((entry, index) => externalLorebookStableId(entry, index, records));
+  if (!orderIds || orderIds.length !== entries.length) {
+    return facadeApiError(
+      400,
+      `order_ids must include every current lorebook id exactly once (${entries.length} items)`,
+      'Refresh lorebook summaries, then retry with every id exactly once.',
+      { count: entries.length },
+      ['read_content', 'manage_items'],
+    );
+  }
+  const duplicate = currentIds.find((id, index) => currentIds.indexOf(id) !== index);
+  if (duplicate) {
+    return facadeApiError(
+      409,
+      'Current lorebook stable ids are not unique',
+      'Use a full index order permutation for this reorder.',
+      { duplicate },
+    );
+  }
+  const expected = [...currentIds].sort();
+  const actual = [...orderIds].sort();
+  if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+    return facadeApiError(
+      400,
+      'order_ids must be a full permutation of current lorebook ids',
+      'Refresh lorebook summaries and retry with every id exactly once.',
+      { count: entries.length },
+      ['read_content', 'manage_items'],
+    );
+  }
+  return orderIds;
+}
+
+async function buildManageItemsStructuredPlan(
+  target: FacadeV1Target,
+  family: ManageItemsStructuredFamily,
+  operation: ManageItemsOperation,
+  providedContext?: ManageItemsStructuredContext,
+): Promise<ManageItemsStructuredPlan | ApiErrorResult> {
+  const context = providedContext ?? (await readManageItemsStructuredContext(target, family, operation));
+  if (isApiError(context)) return context;
+  const guard = itemCollectionDigestGuard(family, context.entries);
+  const beforeCount = context.entries.length;
+  const operations: Array<Record<string, unknown>> = [];
+  let result: Record<string, unknown>;
+  let newEntries: Array<Record<string, unknown> | string>;
+
+  if (operation.action === 'add_items') {
+    const entries = normalizeManageItemsStructuredEntries(family, operation.items);
+    if (isApiError(entries)) return entries;
+    const insertAt = operation.insertAt ?? beforeCount;
+    if (insertAt < 0 || insertAt > beforeCount) {
+      return facadeApiError(
+        400,
+        `insertAt must be an integer between 0 and ${beforeCount}`,
+        'Use an insertAt value inside the current item bounds.',
+        { insertAt, beforeCount },
+      );
+    }
+    for (const [offset, entry] of entries.entries()) {
+      operations.push({
+        op: 'add',
+        path: `${context.surfacePath}/${jsonPointerSegment(insertAt + offset)}`,
+        value: entry,
+      });
+    }
+    newEntries = [...context.entries.slice(0, insertAt), ...entries, ...context.entries.slice(insertAt)];
+    result = {
+      action: operation.action,
+      family,
+      before_count: beforeCount,
+      after_count: newEntries.length,
+      insertAt,
+      count: entries.length,
+      items: entries.map((entry, offset) => structuredManageItemsSummary(family, entry, insertAt + offset, newEntries)),
+      item_collection_digest: guard.value,
+    };
+  } else if (operation.action === 'reorder_items') {
+    if ((operation.order_ids ? 1 : 0) + (operation.order ? 1 : 0) !== 1) {
+      return facadeApiError(
+        400,
+        'reorder_items requires exactly one of order_ids or order',
+        'Use order_ids for lorebook stable-id reorder, or order for full index permutation fallback.',
+        { operation, family },
+      );
+    }
+    if (operation.order_ids) {
+      const orderIds = fullStructuredIdPermutation(operation.order_ids, family, context.entries);
+      if (isApiError(orderIds)) return orderIds;
+      const records = context.entries as Record<string, unknown>[];
+      const byId = new Map(records.map((entry, index) => [externalLorebookStableId(entry, index, records), entry]));
+      newEntries = orderIds.map((id) => byId.get(id)!);
+      operations.push({ op: 'replace', path: context.surfacePath, value: newEntries });
+      result = {
+        action: operation.action,
+        family,
+        before_count: beforeCount,
+        after_count: beforeCount,
+        order_ids: orderIds,
+        item_collection_digest: guard.value,
+      };
+    } else {
+      const order = fullIndexPermutation(operation.order, beforeCount);
+      if (isApiError(order)) return order;
+      newEntries = order.map((index) => context.entries[index]);
+      operations.push({ op: 'replace', path: context.surfacePath, value: newEntries });
+      result = {
+        action: operation.action,
+        family,
+        before_count: beforeCount,
+        after_count: beforeCount,
+        order,
+        item_collection_digest: guard.value,
+      };
+    }
+  } else {
+    return facadeApiError(
+      400,
+      `Unsupported structured manage_items action: ${operation.action}`,
+      'Use add_items or reorder_items for lorebook, regex, and alternate greeting management.',
+      { action: operation.action, family },
+    );
+  }
+
+  return {
+    result,
+    operations,
+    routes: context.routes,
+    touched: [context.touchedTarget],
+    requiredGuards: [guard],
+  };
+}
+
+async function previewManageItemsStructuredOperation(
+  target: FacadeV1Target,
+  family: ManageItemsStructuredFamily,
+  operation: ManageItemsOperation,
+): Promise<
+  | {
+      result: Record<string, unknown>;
+      routes: FacadeRoute[];
+      touched: string[];
+      requiredGuards: FacadeV1Guard[];
+    }
+  | ApiErrorResult
+> {
+  const plan = await buildManageItemsStructuredPlan(target, family, operation);
+  if (isApiError(plan)) return plan;
+  const routePath = target.kind === 'external' ? '/external/surface/patch' : '/surface/patch';
+  const dryRun = await apiRequest('POST', routePath, {
+    ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
+    operations: plan.operations,
+    dry_run: true,
+  });
+  if (isApiError(dryRun)) return dryRun;
+  const beforeHash = recordString(asRecord(dryRun), 'before_hash');
+  return {
+    result: { dry_run: true, ...plan.result, ...(asRecord(dryRun) ?? {}) },
+    routes: [
+      ...plan.routes,
+      route(target.kind === 'external' ? 'external_patch_surface' : 'patch_surface', 'POST', routePath),
+    ],
+    touched: plan.touched,
+    requiredGuards: mergeGuards(plan.requiredGuards, [
+      beforeHash ? manageItemsExpectedHashGuard(beforeHash) : undefined,
+    ]),
+  };
+}
+
+async function applyManageItemsStructuredOperation(
+  target: FacadeV1Target,
+  family: ManageItemsStructuredFamily,
+  operation: ManageItemsOperation,
+  guardValues: FacadeV1Guard[] | undefined,
+): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  const context = await readManageItemsStructuredContext(target, family, operation);
+  if (isApiError(context)) return context;
+  const digestConflict = checkGuardValue(
+    guardValues,
+    'expected_item_collection_digest',
+    hashStableValue(context.entries),
+    'Refresh item summaries, then run manage_items preview again.',
+  );
+  if (digestConflict) return digestConflict;
+  const plan = await buildManageItemsStructuredPlan(target, family, operation, context);
+  if (isApiError(plan)) return plan;
+  const routePath = target.kind === 'external' ? '/external/surface/patch' : '/surface/patch';
+  const data = await apiRequest('POST', routePath, {
+    ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
+    operations: plan.operations,
+    expected_hash: guardValue(guardValues, 'expected_hash'),
+  });
+  return isApiError(data)
+    ? data
+    : {
+        result: { ...(asRecord(data) ?? {}), ...plan.result },
+        routes: [
+          ...plan.routes,
+          route(target.kind === 'external' ? 'external_patch_surface' : 'patch_surface', 'POST', routePath),
+        ],
+        touched: plan.touched,
+      };
+}
+
+type ManageItemsScriptStyleEntry = Record<string, unknown> | TextSection;
+
+interface ManageItemsScriptStyleContext {
+  entries: ManageItemsScriptStyleEntry[];
+  routes: FacadeRoute[];
+  surfacePath: '/triggerScripts' | '/lua' | '/css';
+  touchedTarget: string;
+  rawText?: string;
+  cssPrefix?: string;
+  cssSuffix?: string;
+}
+
+interface ManageItemsScriptStylePlan {
+  result: Record<string, unknown>;
+  serializedValue: unknown;
+  operations: Array<Record<string, unknown>>;
+  routes: FacadeRoute[];
+  touched: string[];
+  requiredGuards: FacadeV1Guard[];
+}
+
+function scriptStyleManageSurfacePath(family: ManageItemsScriptStyleFamily): '/triggerScripts' | '/lua' | '/css' {
+  if (family === 'trigger') return '/triggerScripts';
+  if (family === 'lua') return '/lua';
+  return '/css';
+}
+
+function scriptStyleManageFieldName(family: ManageItemsScriptStyleFamily): 'triggerScripts' | 'lua' | 'css' {
+  if (family === 'trigger') return 'triggerScripts';
+  return family;
+}
+
+function scriptStyleManageTouchedTarget(
+  target: FacadeV1Target,
+  family: ManageItemsScriptStyleFamily,
+  surfacePath: string,
+): string {
+  return target.kind === 'external' ? `external:${target.file_path}:${family}` : `active:${family}:${surfacePath}`;
+}
+
+function scriptStyleManageDigestInput(context: ManageItemsScriptStyleContext): unknown {
+  if (context.rawText !== undefined) {
+    return {
+      entries: context.entries,
+      rawText: context.rawText,
+      cssPrefix: context.cssPrefix ?? '',
+      cssSuffix: context.cssSuffix ?? '',
+    };
+  }
+  return context.entries;
+}
+
+function scriptStyleCollectionDigestGuard(
+  family: ManageItemsScriptStyleFamily,
+  context: ManageItemsScriptStyleContext,
+): FacadeV1Guard {
+  return {
+    ...itemCollectionDigestGuard(family, []),
+    value: hashStableValue(scriptStyleManageDigestInput(context)),
+  };
+}
+
+function scriptStyleManageSummary(
+  family: ManageItemsScriptStyleFamily,
+  entry: ManageItemsScriptStyleEntry,
+  index: number,
+): Record<string, unknown> {
+  if (family === 'trigger') return triggerSummary(entry as Record<string, unknown>, index);
+  return sectionSummary(entry as TextSection, index);
+}
+
+function validateManageItemsScriptStyleAction(
+  family: ManageItemsScriptStyleFamily,
+  operation: ManageItemsOperation,
+): ApiErrorResult | undefined {
+  if (operation.action !== 'add_items' && operation.action !== 'reorder_items') {
+    return facadeApiError(
+      400,
+      `manage_items family "${family}" supports add_items and reorder_items only`,
+      'Use read_content for item reads and preview_edit/apply_edit for write/delete/replace operations.',
+      { action: operation.action, family },
+      ['read_content', 'preview_edit'],
+    );
+  }
+  return undefined;
+}
+
+async function readManageItemsScriptStyleContext(
+  target: FacadeV1Target,
+  family: ManageItemsScriptStyleFamily,
+  operation: ManageItemsOperation,
+): Promise<ManageItemsScriptStyleContext | ApiErrorResult> {
+  const actionError = validateManageItemsScriptStyleAction(family, operation);
+  if (actionError) return actionError;
+  const surfacePath = scriptStyleManageSurfacePath(family);
+
+  if (target.kind === 'active') {
+    if (family === 'trigger') {
+      const routePath = '/surface/read';
+      const read = await apiRequest('POST', routePath, { path: surfacePath });
+      if (isApiError(read)) return read;
+      const value = asRecord(read)?.value;
+      if (!Array.isArray(value)) {
+        return facadeApiError(
+          400,
+          'Active triggerScripts surface is not an array',
+          'Inspect the active document surface before using manage_items trigger add/reorder.',
+          { path: surfacePath, type: typeof value },
+          ['inspect_document', 'read_content'],
+        );
+      }
+      const invalidIndex = value.findIndex((entry) => !asRecord(entry));
+      if (invalidIndex >= 0) {
+        return facadeApiError(
+          400,
+          'Active triggerScripts entry is not an object',
+          'Repair the triggerScripts array or use an advanced raw surface patch.',
+          { path: surfacePath, index: invalidIndex },
+          ['read_content'],
+        );
+      }
+      return {
+        entries: value.map((entry) => asRecord(entry) ?? {}),
+        routes: [route('read_surface', 'POST', routePath)],
+        surfacePath,
+        touchedTarget: scriptStyleManageTouchedTarget(target, family, surfacePath),
+      };
+    }
+
+    const fieldName = scriptStyleManageFieldName(family);
+    const routePath = `/field/${fieldName}`;
+    const read = await apiRequest('GET', routePath);
+    if (isApiError(read)) return read;
+    const content = asRecord(read)?.content;
+    if (typeof content !== 'string') {
+      return facadeApiError(
+        400,
+        `Active ${family} field is not a string`,
+        'Inspect the active document field before using manage_items section add/reorder.',
+        { field: fieldName, type: typeof content },
+        ['inspect_document', 'read_content'],
+      );
+    }
+    const parsed =
+      family === 'lua'
+        ? { sections: parseLuaSections(content) as TextSection[], prefix: '', suffix: '' }
+        : (parseCssSections(content) as { sections: TextSection[]; prefix: string; suffix: string });
+    return {
+      entries: parsed.sections,
+      routes: [route('read_field', 'GET', routePath)],
+      surfacePath,
+      touchedTarget: scriptStyleManageTouchedTarget(target, family, surfacePath),
+      rawText: content,
+      cssPrefix: parsed.prefix,
+      cssSuffix: parsed.suffix,
+    };
+  }
+
+  if (target.kind === 'external') {
+    if (family === 'trigger') {
+      const read = await readExternalRecordArraySurface(target.file_path, surfacePath, 'trigger');
+      if (isApiError(read)) return read;
+      return {
+        entries: read.entries,
+        routes: read.routes,
+        surfacePath,
+        touchedTarget: scriptStyleManageTouchedTarget(target, family, surfacePath),
+      };
+    }
+
+    const textSurfacePath = family === 'lua' ? '/lua' : '/css';
+    const read = await readExternalTextSurface(target.file_path, textSurfacePath, family);
+    if (isApiError(read)) return read;
+    const parsed =
+      family === 'lua'
+        ? { sections: parseLuaSections(read.text) as TextSection[], prefix: '', suffix: '' }
+        : (parseCssSections(read.text) as { sections: TextSection[]; prefix: string; suffix: string });
+    return {
+      entries: parsed.sections,
+      routes: read.routes,
+      surfacePath,
+      touchedTarget: scriptStyleManageTouchedTarget(target, family, surfacePath),
+      rawText: read.text,
+      cssPrefix: parsed.prefix,
+      cssSuffix: parsed.suffix,
+    };
+  }
+
+  return facadeApiError(
+    400,
+    'manage_items script/style target must be active or external',
+    'Use target.kind="active" for the current file or target.kind="external" for an unopened file.',
+    { target, family },
+    ['inspect_document'],
+  );
+}
+
+function normalizeManageItemsTriggerEntry(item: unknown, index: number): Record<string, unknown> | ApiErrorResult {
+  const data = asRecord(item);
+  if (!data) {
+    return facadeApiError(
+      400,
+      'trigger add_items requires object entries',
+      'Provide items as trigger objects with comment/type/conditions/effect fields.',
+      { index },
+    );
+  }
+  const entry: Record<string, unknown> = {
+    comment: '',
+    type: 'start',
+    conditions: [],
+    effect: [],
+    lowLevelAccess: false,
+    ...pickAllowedRecordFields(data, EXTERNAL_TRIGGER_ALLOWED_FIELDS),
+  };
+  if (typeof entry.comment !== 'string') {
+    return facadeApiError(400, 'trigger comment must be a string', 'Set items[].comment to a string.', { index });
+  }
+  if (typeof entry.type !== 'string') {
+    return facadeApiError(400, 'trigger type must be a string', 'Set items[].type to a trigger type string.', {
+      index,
+    });
+  }
+  if (!Array.isArray(entry.conditions)) {
+    return facadeApiError(
+      400,
+      'trigger conditions must be an array',
+      'Set items[].conditions to an array, or omit it for an empty array.',
+      { index },
+    );
+  }
+  if (!Array.isArray(entry.effect)) {
+    return facadeApiError(
+      400,
+      'trigger effect must be an array',
+      'Set items[].effect to an array, or omit it for an empty array.',
+      { index },
+    );
+  }
+  entry.lowLevelAccess = !!entry.lowLevelAccess;
+  return entry;
+}
+
+function normalizeManageItemsSectionEntry(
+  family: ManageItemsScriptStyleFamily,
+  item: unknown,
+  index: number,
+  names: Set<string>,
+): TextSection | ApiErrorResult {
+  const data = asRecord(item);
+  if (!data) {
+    return facadeApiError(
+      400,
+      `${family} add_items requires object entries`,
+      'Provide items as { name, content } objects.',
+      { index },
+    );
+  }
+  const name = recordString(data, 'name');
+  if (!name || !name.trim()) {
+    return facadeApiError(
+      400,
+      `${family} section add_items requires a non-empty name`,
+      'Set items[].name to a unique section name.',
+      { index },
+    );
+  }
+  const trimmedName = name.trim();
+  if (names.has(trimmedName)) {
+    return facadeApiError(
+      409,
+      `${family} section name already exists: ${trimmedName}`,
+      'Choose a unique section name or use preview_edit/apply_edit to modify the existing section.',
+      { index, name: trimmedName },
+      ['read_content', 'preview_edit'],
+    );
+  }
+  names.add(trimmedName);
+  return { name: trimmedName, content: normalizeLFString(recordString(data, 'content') ?? '') };
+}
+
+function normalizeManageItemsScriptStyleEntries(
+  family: ManageItemsScriptStyleFamily,
+  items: unknown[],
+  currentEntries: ManageItemsScriptStyleEntry[],
+): ManageItemsScriptStyleEntry[] | ApiErrorResult {
+  const entries: ManageItemsScriptStyleEntry[] = [];
+  const names =
+    family === 'trigger' ? new Set<string>() : new Set((currentEntries as TextSection[]).map((entry) => entry.name));
+  for (const [index, item] of items.entries()) {
+    const normalized =
+      family === 'trigger'
+        ? normalizeManageItemsTriggerEntry(item, index)
+        : normalizeManageItemsSectionEntry(family, item, index, names);
+    if (isApiError(normalized)) return normalized;
+    entries.push(normalized);
+  }
+  return entries;
+}
+
+function serializeManageItemsScriptStyleEntries(
+  family: ManageItemsScriptStyleFamily,
+  entries: ManageItemsScriptStyleEntry[],
+  context: ManageItemsScriptStyleContext,
+): unknown {
+  if (family === 'trigger') return entries as Record<string, unknown>[];
+  const sections = entries as TextSection[];
+  if (family === 'lua') return combineLuaSections(sections);
+  return combineCssSections(sections, context.cssPrefix ?? '', context.cssSuffix ?? '');
+}
+
+async function buildManageItemsScriptStylePlan(
+  target: FacadeV1Target,
+  family: ManageItemsScriptStyleFamily,
+  operation: ManageItemsOperation,
+  providedContext?: ManageItemsScriptStyleContext,
+): Promise<ManageItemsScriptStylePlan | ApiErrorResult> {
+  const context = providedContext ?? (await readManageItemsScriptStyleContext(target, family, operation));
+  if (isApiError(context)) return context;
+  const guard = scriptStyleCollectionDigestGuard(family, context);
+  const beforeCount = context.entries.length;
+  let newEntries: ManageItemsScriptStyleEntry[];
+  let result: Record<string, unknown>;
+
+  if (operation.action === 'add_items') {
+    const entries = normalizeManageItemsScriptStyleEntries(family, operation.items, context.entries);
+    if (isApiError(entries)) return entries;
+    const insertAt = operation.insertAt ?? beforeCount;
+    if (insertAt < 0 || insertAt > beforeCount) {
+      return facadeApiError(
+        400,
+        `insertAt must be an integer between 0 and ${beforeCount}`,
+        'Use an insertAt value inside the current item bounds.',
+        { insertAt, beforeCount },
+      );
+    }
+    newEntries = [...context.entries.slice(0, insertAt), ...entries, ...context.entries.slice(insertAt)];
+    result = {
+      action: operation.action,
+      family,
+      before_count: beforeCount,
+      after_count: newEntries.length,
+      insertAt,
+      count: entries.length,
+      items: entries.map((entry, offset) => scriptStyleManageSummary(family, entry, insertAt + offset)),
+      item_collection_digest: guard.value,
+    };
+  } else if (operation.action === 'reorder_items') {
+    if (operation.order_ids) {
+      return facadeApiError(
+        400,
+        'order_ids is not supported for trigger/Lua/CSS reorder',
+        'Use operation.order with a full index permutation.',
+        { family },
+      );
+    }
+    const order = fullIndexPermutation(operation.order, beforeCount);
+    if (isApiError(order)) return order;
+    newEntries = order.map((index) => context.entries[index]);
+    result = {
+      action: operation.action,
+      family,
+      before_count: beforeCount,
+      after_count: beforeCount,
+      order,
+      item_collection_digest: guard.value,
+    };
+  } else {
+    return facadeApiError(
+      400,
+      `Unsupported script/style manage_items action: ${operation.action}`,
+      'Use add_items or reorder_items for trigger, Lua, and CSS management.',
+      { action: operation.action, family },
+    );
+  }
+
+  const serializedValue = serializeManageItemsScriptStyleEntries(family, newEntries, context);
+  return {
+    result,
+    serializedValue,
+    operations: [{ op: 'replace', path: context.surfacePath, value: serializedValue }],
+    routes: context.routes,
+    touched: [context.touchedTarget],
+    requiredGuards: [guard],
+  };
+}
+
+async function previewManageItemsScriptStyleOperation(
+  target: FacadeV1Target,
+  family: ManageItemsScriptStyleFamily,
+  operation: ManageItemsOperation,
+): Promise<
+  | {
+      result: Record<string, unknown>;
+      routes: FacadeRoute[];
+      touched: string[];
+      requiredGuards: FacadeV1Guard[];
+    }
+  | ApiErrorResult
+> {
+  const plan = await buildManageItemsScriptStylePlan(target, family, operation);
+  if (isApiError(plan)) return plan;
+  if (target.kind === 'external') {
+    const routePath = '/external/surface/patch';
+    const dryRun = await apiRequest('POST', routePath, {
+      file_path: target.file_path,
+      operations: plan.operations,
+      dry_run: true,
+    });
+    if (isApiError(dryRun)) return dryRun;
+    const beforeHash = recordString(asRecord(dryRun), 'before_hash');
+    return {
+      result: { dry_run: true, ...plan.result, ...(asRecord(dryRun) ?? {}) },
+      routes: [...plan.routes, route('external_patch_surface', 'POST', routePath)],
+      touched: plan.touched,
+      requiredGuards: mergeGuards(plan.requiredGuards, [
+        beforeHash ? manageItemsExpectedHashGuard(beforeHash) : undefined,
+      ]),
+    };
+  }
+
+  const fieldName = scriptStyleManageFieldName(family);
+  return {
+    result: { dry_run: true, ...plan.result },
+    routes: [...plan.routes, route('write_field', 'POST', `/field/${fieldName}`)],
+    touched: plan.touched,
+    requiredGuards: plan.requiredGuards,
+  };
+}
+
+async function applyManageItemsScriptStyleOperation(
+  target: FacadeV1Target,
+  family: ManageItemsScriptStyleFamily,
+  operation: ManageItemsOperation,
+  guardValues: FacadeV1Guard[] | undefined,
+): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  const context = await readManageItemsScriptStyleContext(target, family, operation);
+  if (isApiError(context)) return context;
+  const digestConflict = checkGuardValue(
+    guardValues,
+    'expected_item_collection_digest',
+    hashStableValue(scriptStyleManageDigestInput(context)),
+    'Refresh item summaries, then run manage_items preview again.',
+  );
+  if (digestConflict) return digestConflict;
+  const plan = await buildManageItemsScriptStylePlan(target, family, operation, context);
+  if (isApiError(plan)) return plan;
+
+  if (target.kind === 'external') {
+    const routePath = '/external/surface/patch';
+    const data = await apiRequest('POST', routePath, {
+      file_path: target.file_path,
+      operations: plan.operations,
+      expected_hash: guardValue(guardValues, 'expected_hash'),
+    });
+    return isApiError(data)
+      ? data
+      : {
+          result: { ...(asRecord(data) ?? {}), ...plan.result },
+          routes: [...plan.routes, route('external_patch_surface', 'POST', routePath)],
+          touched: plan.touched,
+        };
+  }
+
+  const fieldName = scriptStyleManageFieldName(family);
+  const routePath = `/field/${fieldName}`;
+  const content = family === 'trigger' ? JSON.stringify(plan.serializedValue) : String(plan.serializedValue);
+  const data = await apiRequest('POST', routePath, { content });
+  return isApiError(data)
+    ? data
+    : {
+        result: { ...(asRecord(data) ?? {}), ...plan.result },
+        routes: [...plan.routes, route('write_field', 'POST', routePath)],
+        touched: plan.touched,
+      };
+}
+
+async function readActiveRisupPromptContext(action: string): Promise<RisupPromptContext | ApiErrorResult> {
+  const routePath = '/field/promptTemplate';
+  const read = await apiRequest('GET', routePath);
+  if (isApiError(read)) return read;
+  const content = asRecord(read)?.content;
+  if (typeof content !== 'string') {
+    return facadeApiError(
+      400,
+      'Active promptTemplate is not a string',
+      'Open a .risup preset before using manage_items for risup-prompt workflows.',
+      { action },
+      ['inspect_document'],
+    );
+  }
+  const model = parsePromptTemplate(content);
+  if (model.state === 'invalid') {
+    return facadeApiError(
+      400,
+      `Invalid active promptTemplate: ${model.parseError}`,
+      'Repair promptTemplate with a granular field route before using manage_items.',
+      { action, parseError: model.parseError },
+      ['read_content'],
+    );
+  }
+  return {
+    rawText: content,
+    model,
+    routes: [route('read_field', 'GET', routePath)],
+    touchedTarget: 'active:risup-prompt',
+  };
+}
+
+async function readManageItemsPromptContext(
+  target: FacadeV1Target,
+  action: string,
+): Promise<RisupPromptContext | ApiErrorResult> {
+  if (target.kind === 'active') return readActiveRisupPromptContext(action);
+  if (target.kind === 'external') {
+    const external = await readExternalRisupPromptModel(target.file_path);
+    if (isApiError(external)) return external;
+    return {
+      rawText: external.rawText,
+      model: external.model,
+      routes: external.routes,
+      touchedTarget: `external:${target.file_path}:risup-prompt`,
+    };
+  }
+  return facadeApiError(
+    400,
+    'manage_items risup-prompt target must be active or external',
+    'Use target.kind="active" for the current .risup preset or target.kind="external" for an unopened .risup file.',
+    { target, action },
+    ['inspect_document'],
+  );
+}
+
+async function collectManageItemsOrderWarnings(
+  target: FacadeV1Target,
+  promptModel: PromptTemplateModel,
+): Promise<{ warnings: string[]; routes: FacadeRoute[] } | ApiErrorResult> {
+  const routePath = target.kind === 'external' ? '/external/surface/read' : '/field/formatingOrder';
+  const read =
+    target.kind === 'external'
+      ? await apiRequest('POST', routePath, { file_path: target.file_path, path: '/formatingOrder' })
+      : await apiRequest('GET', routePath);
+  if (isApiError(read)) return read;
+  const value = target.kind === 'external' ? asRecord(read)?.value : asRecord(read)?.content;
+  const order = parseFormatingOrder(typeof value === 'string' ? value : '');
+  return {
+    warnings:
+      order.state === 'invalid'
+        ? [`Invalid formatingOrder: ${order.parseError ?? 'unknown parse error'}`]
+        : collectFormatingOrderWarnings(promptModel, order),
+    routes: [
+      target.kind === 'external'
+        ? route('external_read_surface', 'POST', routePath)
+        : route('read_field', 'GET', routePath),
+    ],
+  };
+}
+
+function manageItemsSelectorIndices(
+  model: PromptTemplateModel,
+  selector: { id?: string; ids?: string[]; index?: number; indices?: number[] },
+  action: string,
+): number[] | ApiErrorResult {
+  return resolveRisupPromptSelectorIndices(model, { family: 'risup-prompt', ...selector }, action);
+}
+
+function validateManagePromptItemInput(item: unknown, action: string): PromptItemModel | ApiErrorResult {
+  const parsed = parsePromptTemplate(JSON.stringify([item]));
+  if (parsed.state === 'invalid' || parsed.items.length === 0) {
+    return facadeApiError(
+      400,
+      `Invalid risup prompt item: ${parsed.parseError ?? 'Invalid item structure.'}`,
+      'Provide one supported prompt item object.',
+      { action, parseError: parsed.parseError },
+    );
+  }
+  const model = parsed.items[0];
+  if (!model.supported) {
+    return facadeApiError(
+      400,
+      `Unsupported risup prompt item type: ${model.type ?? 'unknown'}`,
+      'manage_items add_items supports plain, jailbreak, cot, chatML, persona, description, lorebook, postEverything, memory, authornote, chat, and cache items.',
+      { action },
+    );
+  }
+  if (!hasExplicitPromptItemIdLocal(item)) model.id = '';
+  return model;
+}
+
+function validateManagePromptItems(items: unknown[], action: string): PromptItemModel[] | ApiErrorResult {
+  const models: PromptItemModel[] = [];
+  for (const [index, item] of items.entries()) {
+    const model = validateManagePromptItemInput(item, action);
+    if (isApiError(model)) {
+      return facadeApiError(
+        model.status,
+        `Invalid item at batch index ${index}`,
+        String(model.suggestion ?? 'Fix the invalid prompt item and retry.'),
+        { action, invalidIndex: index, cause: model },
+      );
+    }
+    models.push(model);
+  }
+  return models;
+}
+
+function promptItemSummaries(items: PromptItemModel[], startIndex = 0): Array<Record<string, unknown>> {
+  return items.map((item, offset) => risupPromptItemSummary(item, startIndex + offset));
+}
+
+function fullIndexPermutation(order: number[] | undefined, count: number): ApiErrorResult | number[] {
+  if (!order || order.length !== count) {
+    return facadeApiError(
+      400,
+      `order must include every current prompt item index exactly once (${count} items)`,
+      'Use manage_items read/copy or read_content to refresh the current item count before reordering.',
+      { count },
+    );
+  }
+  const sorted = [...order].sort((a, b) => a - b);
+  const expected = Array.from({ length: count }, (_, index) => index);
+  if (JSON.stringify(sorted) !== JSON.stringify(expected)) {
+    return facadeApiError(
+      400,
+      'order must be a full permutation of [0, 1, ..., n-1]',
+      'Provide each current prompt item index exactly once.',
+      { count, order },
+    );
+  }
+  return order;
+}
+
+function fullIdPermutation(orderIds: string[] | undefined, model: PromptTemplateModel): ApiErrorResult | string[] {
+  const currentIds = model.items.map((item) => (item.supported ? item.id : undefined));
+  if (!orderIds || orderIds.length !== model.items.length || currentIds.some((id) => !id)) {
+    return facadeApiError(
+      400,
+      `order_ids must include every current supported prompt item id exactly once (${model.items.length} items)`,
+      'If unsupported/raw prompt items are present, use the full index order fallback instead.',
+      { count: model.items.length },
+    );
+  }
+  const expected = [...(currentIds as string[])].sort();
+  const actual = [...orderIds].sort();
+  if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+    return facadeApiError(
+      400,
+      'order_ids must be a full permutation of current prompt item ids',
+      'Refresh prompt item ids and retry with every id exactly once.',
+      { count: model.items.length },
+    );
+  }
+  return orderIds;
+}
+
+async function readSnippetOptional(
+  identifier: string,
+): Promise<{ data: Record<string, unknown> | null; routes: FacadeRoute[] } | ApiErrorResult> {
+  const routePath = '/risup/prompt-snippets/read';
+  const data = await apiRequest('POST', routePath, { identifier });
+  if (isApiError(data)) {
+    if (data.status === 404) return { data: null, routes: [route('read_risup_prompt_snippet', 'POST', routePath)] };
+    return data;
+  }
+  return { data: asRecord(data) ?? {}, routes: [route('read_risup_prompt_snippet', 'POST', routePath)] };
+}
+
+function snippetSummary(data: Record<string, unknown> | null): Record<string, unknown> | null {
+  return asRecord(data?.snippet) ?? null;
+}
+
+function snippetUpdatedAt(data: Record<string, unknown> | null): string | null {
+  return recordString(snippetSummary(data) ?? undefined, 'updatedAt') ?? null;
+}
+
+function parseSnippetItems(data: Record<string, unknown>, action: string): PromptTemplateModel | ApiErrorResult {
+  const text = recordString(data, 'text');
+  if (text === undefined) {
+    return facadeApiError(500, 'Snippet read response did not include text', 'Retry read_snippet, then retry.', {
+      action,
+    });
+  }
+  const parsed = parsePromptTemplateFromText(text);
+  if (parsed.state === 'invalid') {
+    return facadeApiError(
+      409,
+      `Stored snippet text is invalid: ${parsed.parseError}`,
+      'Overwrite or delete the invalid snippet before using it through manage_items.',
+      { action, parseError: parsed.parseError, snippet: snippetSummary(data) },
+    );
+  }
+  return parsed;
+}
+
+async function buildManageItemsPromptPlan(
+  target: FacadeV1Target,
+  operation: ManageItemsOperation,
+  providedContext?: RisupPromptContext,
+): Promise<ManageItemsPromptPlan | ApiErrorResult> {
+  const context = providedContext ?? (await readManageItemsPromptContext(target, operation.action));
+  if (isApiError(context)) return context;
+  const promptGuard = promptDigestGuard(context.rawText);
+  const beforeCount = context.model.items.length;
+  const baseRoutes = [...context.routes];
+  let newItems: PromptItemModel[];
+  let result: Record<string, unknown>;
+  let intendedRoute: FacadeRoute;
+
+  if (operation.action === 'add_items') {
+    const models = validateManagePromptItems(operation.items, operation.action);
+    if (isApiError(models)) return models;
+    const insertAt = operation.insertAt ?? beforeCount;
+    if (insertAt < 0 || insertAt > beforeCount) {
+      return facadeApiError(
+        400,
+        `insertAt must be an integer between 0 and ${beforeCount}`,
+        'Use an insertAt value inside the current prompt item bounds.',
+        { insertAt, beforeCount },
+      );
+    }
+    newItems = [...context.model.items];
+    newItems.splice(insertAt, 0, ...models);
+    intendedRoute =
+      models.length === 1
+        ? route('add_risup_prompt_item', 'POST', '/risup/prompt-item/add')
+        : route('add_risup_prompt_item_batch', 'POST', '/risup/prompt-item/batch-add');
+    result = {
+      action: operation.action,
+      before_count: beforeCount,
+      after_count: newItems.length,
+      insertAt,
+      items: promptItemSummaries(models, insertAt),
+    };
+  } else if (operation.action === 'reorder_items') {
+    if ((operation.order_ids ? 1 : 0) + (operation.order ? 1 : 0) !== 1) {
+      return facadeApiError(
+        400,
+        'reorder_items requires exactly one of order_ids or order',
+        'Use order_ids for stable-id reorder, or order only when unsupported/raw items require index fallback.',
+        { operation },
+      );
+    }
+    if (operation.order_ids) {
+      const orderIds = fullIdPermutation(operation.order_ids, context.model);
+      if (isApiError(orderIds)) return orderIds;
+      const byId = new Map(context.model.items.map((item) => [item.id, item] as const));
+      newItems = orderIds.map((id) => byId.get(id)!);
+      intendedRoute = route('reorder_risup_prompt_items_by_id', 'POST', '/risup/prompt-item/reorder-by-id');
+      result = { action: operation.action, before_count: beforeCount, after_count: beforeCount, order_ids: orderIds };
+    } else {
+      const order = fullIndexPermutation(operation.order, beforeCount);
+      if (isApiError(order)) return order;
+      newItems = order.map((index) => context.model.items[index]);
+      intendedRoute = route('reorder_risup_prompt_items', 'POST', '/risup/prompt-item/reorder');
+      result = { action: operation.action, before_count: beforeCount, after_count: beforeCount, order };
+    }
+  } else if (operation.action === 'import_text') {
+    const imported = parsePromptTemplateFromText(operation.text);
+    if (imported.state === 'invalid') {
+      return facadeApiError(
+        400,
+        `Invalid prompt text: ${imported.parseError}`,
+        'Use text from export/copy prompt serializer output, preserving block headers and metadata.',
+        { parseError: imported.parseError },
+      );
+    }
+    const mode = operation.import_mode ?? 'replace';
+    if (mode === 'append') {
+      const insertAt = operation.insertAt ?? beforeCount;
+      if (insertAt < 0 || insertAt > beforeCount) {
+        return facadeApiError(
+          400,
+          `insertAt must be an integer between 0 and ${beforeCount}`,
+          'Use an insertAt value inside the current prompt item bounds.',
+          { insertAt, beforeCount },
+        );
+      }
+      const importedItems = imported.items.map((item) => duplicatePromptItem(item));
+      newItems = [...context.model.items.slice(0, insertAt), ...importedItems, ...context.model.items.slice(insertAt)];
+      result = {
+        action: operation.action,
+        mode,
+        before_count: beforeCount,
+        after_count: newItems.length,
+        insertAt,
+        count: importedItems.length,
+        hasUnsupportedContent: imported.hasUnsupportedContent,
+        items: promptItemSummaries(importedItems, insertAt),
+      };
+    } else {
+      newItems = imported.items;
+      result = {
+        action: operation.action,
+        mode,
+        before_count: beforeCount,
+        after_count: imported.items.length,
+        count: imported.items.length,
+        hasUnsupportedContent: imported.hasUnsupportedContent,
+        items: promptItemSummaries(imported.items),
+      };
+    }
+    intendedRoute = route('import_risup_prompt_from_text', 'POST', '/risup/prompt-text/import');
+  } else if (operation.action === 'insert_snippet') {
+    const snippet = await readSnippetOptional(operation.identifier);
+    if (isApiError(snippet)) return snippet;
+    if (!snippet.data) {
+      return facadeApiError(
+        404,
+        `Prompt snippet not found: ${operation.identifier}`,
+        'Use manage_items read/list_snippets before inserting.',
+        { identifier: operation.identifier },
+      );
+    }
+    const parsed = parseSnippetItems(snippet.data, operation.action);
+    if (isApiError(parsed)) return parsed;
+    const insertAt = operation.insertAt ?? beforeCount;
+    if (insertAt < 0 || insertAt > beforeCount) {
+      return facadeApiError(
+        400,
+        `insertAt must be an integer between 0 and ${beforeCount}`,
+        'Use an insertAt value inside the current prompt item bounds.',
+        { insertAt, beforeCount },
+      );
+    }
+    const insertedItems = parsed.items.map((item) => duplicatePromptItem(item));
+    newItems = [...context.model.items.slice(0, insertAt), ...insertedItems, ...context.model.items.slice(insertAt)];
+    baseRoutes.push(...snippet.routes);
+    intendedRoute = route('insert_risup_prompt_snippet', 'POST', '/risup/prompt-snippets/insert');
+    result = {
+      action: operation.action,
+      before_count: beforeCount,
+      after_count: newItems.length,
+      insertAt,
+      count: insertedItems.length,
+      snippet: snippetSummary(snippet.data),
+      items: promptItemSummaries(insertedItems, insertAt),
+    };
+  } else {
+    return facadeApiError(
+      400,
+      `Unsupported prompt item mutation action: ${operation.action}`,
+      'Use add_items, reorder_items, import_text, or insert_snippet for promptTemplate mutations.',
+      { operation },
+    );
+  }
+
+  const newPromptTemplate = serializePromptTemplate({ items: newItems });
+  const parsedNew = parsePromptTemplate(newPromptTemplate);
+  const warningResult = await collectManageItemsOrderWarnings(target, parsedNew);
+  if (isApiError(warningResult)) return warningResult;
+  result = {
+    ...result,
+    prompt_items_digest: promptGuard.value,
+    orderWarnings: warningResult.warnings,
+  };
+  return {
+    result,
+    newPromptTemplate,
+    routes: [
+      ...baseRoutes,
+      ...warningResult.routes,
+      target.kind === 'external'
+        ? route('external_write_field', 'POST', '/external/field/promptTemplate')
+        : intendedRoute,
+    ],
+    touched: [context.touchedTarget],
+    requiredGuards: [promptGuard],
+  };
+}
+
+async function previewManageItemsOperation(
+  target: FacadeV1Target,
+  family: ManageItemsFamily,
+  operation: ManageItemsOperation,
+): Promise<
+  | {
+      result: Record<string, unknown>;
+      routes: FacadeRoute[];
+      touched: string[];
+      requiredGuards: FacadeV1Guard[];
+    }
+  | ApiErrorResult
+> {
+  if (isManageItemsScriptStyleFamily(family)) {
+    return previewManageItemsScriptStyleOperation(target, family, operation);
+  }
+
+  if (isManageItemsStructuredFamily(family)) {
+    return previewManageItemsStructuredOperation(target, family, operation);
+  }
+
+  if (['add_items', 'reorder_items', 'import_text', 'insert_snippet'].includes(operation.action)) {
+    const plan = await buildManageItemsPromptPlan(target, operation);
+    if (isApiError(plan)) return plan;
+    return {
+      result: { dry_run: true, ...plan.result },
+      routes: plan.routes,
+      touched: plan.touched,
+      requiredGuards: plan.requiredGuards,
+    };
+  }
+
+  if (operation.action === 'save_snippet') {
+    let sourceText = operation.text;
+    let promptGuard: FacadeV1Guard | undefined;
+    let sourceItems: unknown[] = [];
+    const routes: FacadeRoute[] = [];
+    const touched: string[] = ['risup:prompt-snippets'];
+    if (operation.selector) {
+      const context = await readManageItemsPromptContext(target, operation.action);
+      if (isApiError(context)) return context;
+      const indices = manageItemsSelectorIndices(context.model, operation.selector, operation.action);
+      if (!Array.isArray(indices)) return indices;
+      sourceText = serializePromptTemplateSubsetToText(context.model, indices);
+      promptGuard = promptDigestGuard(context.rawText);
+      routes.push(...context.routes);
+      touched.push(context.touchedTarget);
+      sourceItems = indices.map((index) => risupPromptItemSummary(context.model.items[index], index));
+    }
+    if (sourceText === undefined) {
+      return facadeApiError(
+        400,
+        'save_snippet requires text or selector',
+        'Provide operation.text or operation.selector.',
+        { operation },
+      );
+    }
+    const parsed = parsePromptTemplateFromText(sourceText);
+    if (parsed.state === 'invalid') {
+      return facadeApiError(
+        400,
+        `Invalid snippet text: ${parsed.parseError}`,
+        'Use serializer text from manage_items copy_as_text or export/copy granular routes.',
+        { parseError: parsed.parseError },
+      );
+    }
+    const currentSnippet = await readSnippetOptional(operation.name);
+    if (isApiError(currentSnippet)) return currentSnippet;
+    routes.push(...currentSnippet.routes, route('save_risup_prompt_snippet', 'POST', '/risup/prompt-snippets/save'));
+    const snippetGuard = snippetUpdatedAtGuard(snippetUpdatedAt(currentSnippet.data));
+    return {
+      result: {
+        dry_run: true,
+        action: operation.action,
+        source: operation.selector ? 'selector' : 'text',
+        count: parsed.items.length,
+        hasUnsupportedContent: parsed.hasUnsupportedContent,
+        source_items: sourceItems,
+        snippet: snippetSummary(currentSnippet.data),
+        prompt_items_digest: promptGuard?.value,
+      },
+      routes,
+      touched,
+      requiredGuards: promptGuard ? [promptGuard, snippetGuard] : [snippetGuard],
+    };
+  }
+
+  if (operation.action === 'delete_snippet') {
+    const currentSnippet = await readSnippetOptional(operation.identifier);
+    if (isApiError(currentSnippet)) return currentSnippet;
+    if (!currentSnippet.data) {
+      return facadeApiError(
+        404,
+        `Prompt snippet not found: ${operation.identifier}`,
+        'Use manage_items read/list_snippets before deleting.',
+        { identifier: operation.identifier },
+      );
+    }
+    return {
+      result: {
+        dry_run: true,
+        action: operation.action,
+        snippet: snippetSummary(currentSnippet.data),
+      },
+      routes: [...currentSnippet.routes, route('delete_risup_prompt_snippet', 'POST', '/risup/prompt-snippets/delete')],
+      touched: ['risup:prompt-snippets'],
+      requiredGuards: [snippetUpdatedAtGuard(snippetUpdatedAt(currentSnippet.data))],
+    };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported manage_items preview action: ${operation.action}`,
+    'Preview mode supports add_items, reorder_items, import_text, save_snippet, insert_snippet, and delete_snippet.',
+    { operation },
+  );
+}
+
+async function readManageItemsOperation(
+  target: FacadeV1Target,
+  family: ManageItemsFamily,
+  operation: ManageItemsOperation,
+): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  if (family !== 'risup-prompt') {
+    return facadeApiError(
+      400,
+      `manage_items read mode is not available for ${family}`,
+      'Use read_content for structured item summaries.',
+      { family, action: operation.action },
+      ['read_content'],
+    );
+  }
+
+  if (operation.action === 'list_snippets') {
+    const routePath = '/risup/prompt-snippets';
+    const data = await apiRequest('GET', routePath);
+    return isApiError(data)
+      ? data
+      : {
+          result: { action: operation.action, ...(asRecord(data) ?? {}) },
+          routes: [route('list_risup_prompt_snippets', 'GET', routePath)],
+          touched: ['risup:prompt-snippets'],
+        };
+  }
+
+  if (operation.action === 'read_snippet') {
+    const snippet = await readSnippetOptional(operation.identifier);
+    if (isApiError(snippet)) return snippet;
+    if (!snippet.data) {
+      return facadeApiError(
+        404,
+        `Prompt snippet not found: ${operation.identifier}`,
+        'Use manage_items with operation.action="list_snippets" to refresh snippet identifiers.',
+        { identifier: operation.identifier },
+      );
+    }
+    return {
+      result: { action: operation.action, ...snippet.data },
+      routes: snippet.routes,
+      touched: ['risup:prompt-snippets'],
+    };
+  }
+
+  if (operation.action === 'copy_as_text') {
+    const context = await readManageItemsPromptContext(target, operation.action);
+    if (isApiError(context)) return context;
+    const indices = manageItemsSelectorIndices(context.model, operation.selector, operation.action);
+    if (!Array.isArray(indices)) return indices;
+    const text = serializePromptTemplateSubsetToText(context.model, indices);
+    return {
+      result: {
+        action: operation.action,
+        count: indices.length,
+        indices,
+        text,
+        hasUnsupportedContent: indices.some((index) => context.model.items[index].supported === false),
+        items: indices.map((index) => risupPromptItemSummary(context.model.items[index], index)),
+        prompt_items_digest: promptTemplateDigest(context.rawText),
+      },
+      routes: context.routes,
+      touched: [context.touchedTarget],
+    };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported manage_items read action: ${operation.action}`,
+    'Read mode supports list_snippets, read_snippet, and copy_as_text.',
+    { operation },
+  );
+}
+
+async function applyManageItemsOperation(
+  target: FacadeV1Target,
+  family: ManageItemsFamily,
+  operation: ManageItemsOperation,
+  guardValues: FacadeV1Guard[] | undefined,
+): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  if (isManageItemsScriptStyleFamily(family)) {
+    return applyManageItemsScriptStyleOperation(target, family, operation, guardValues);
+  }
+
+  if (isManageItemsStructuredFamily(family)) {
+    return applyManageItemsStructuredOperation(target, family, operation, guardValues);
+  }
+
+  if (['add_items', 'reorder_items', 'import_text', 'insert_snippet'].includes(operation.action)) {
+    const context = await readManageItemsPromptContext(target, operation.action);
+    if (isApiError(context)) return context;
+    const promptConflict = checkGuardValue(
+      guardValues,
+      'expected_prompt_items_digest',
+      promptTemplateDigest(context.rawText),
+      'Refresh prompt item summaries, then run manage_items preview again.',
+    );
+    if (promptConflict) return promptConflict;
+    const plan = await buildManageItemsPromptPlan(target, operation, context);
+    if (isApiError(plan)) return plan;
+
+    if (target.kind === 'external') {
+      const routePath = '/external/field/promptTemplate';
+      const data = await apiRequest('POST', routePath, {
+        file_path: target.file_path,
+        content: plan.newPromptTemplate,
+      });
+      return isApiError(data)
+        ? data
+        : {
+            result: { ...(asRecord(data) ?? {}), ...plan.result },
+            routes: plan.routes,
+            touched: plan.touched,
+          };
+    }
+
+    let data: unknown;
+    if (operation.action === 'add_items') {
+      data =
+        operation.items.length === 1
+          ? await apiRequest('POST', '/risup/prompt-item/add', {
+              item: operation.items[0],
+              insertAt: operation.insertAt,
+            })
+          : await apiRequest('POST', '/risup/prompt-item/batch-add', {
+              items: operation.items,
+              insertAt: operation.insertAt,
+            });
+    } else if (operation.action === 'reorder_items') {
+      data = operation.order_ids
+        ? await apiRequest('POST', '/risup/prompt-item/reorder-by-id', { order_ids: operation.order_ids })
+        : await apiRequest('POST', '/risup/prompt-item/reorder', { order: operation.order });
+    } else if (operation.action === 'import_text') {
+      data = await apiRequest('POST', '/risup/prompt-text/import', {
+        text: operation.text,
+        mode: operation.import_mode,
+        insertAt: operation.insertAt,
+      });
+    } else if (operation.action === 'insert_snippet') {
+      data = await apiRequest('POST', '/risup/prompt-snippets/insert', {
+        identifier: operation.identifier,
+        insertAt: operation.insertAt,
+      });
+    } else {
+      return facadeApiError(
+        400,
+        `Unsupported prompt item apply action: ${operation.action}`,
+        'Use add_items, reorder_items, import_text, or insert_snippet.',
+        { operation },
+      );
+    }
+    return isApiError(data)
+      ? data
+      : {
+          result: { ...(asRecord(data) ?? {}), ...plan.result },
+          routes: plan.routes,
+          touched: plan.touched,
+        };
+  }
+
+  if (operation.action === 'save_snippet') {
+    let sourceText = operation.text;
+    let promptContext: RisupPromptContext | undefined;
+    const routes: FacadeRoute[] = [];
+    const touched = ['risup:prompt-snippets'];
+    if (operation.selector) {
+      const context = await readManageItemsPromptContext(target, operation.action);
+      if (isApiError(context)) return context;
+      promptContext = context;
+      const promptConflict = checkGuardValue(
+        guardValues,
+        'expected_prompt_items_digest',
+        promptTemplateDigest(context.rawText),
+        'Refresh prompt item summaries, then run manage_items preview again.',
+      );
+      if (promptConflict) return promptConflict;
+      const indices = manageItemsSelectorIndices(context.model, operation.selector, operation.action);
+      if (!Array.isArray(indices)) return indices;
+      sourceText = serializePromptTemplateSubsetToText(context.model, indices);
+      routes.push(...context.routes);
+      touched.push(context.touchedTarget);
+    }
+    if (sourceText === undefined) {
+      return facadeApiError(400, 'save_snippet requires text or selector', 'Provide operation.text or selector.');
+    }
+    const currentSnippet = await readSnippetOptional(operation.name);
+    if (isApiError(currentSnippet)) return currentSnippet;
+    const snippetConflict = checkGuardValue(
+      guardValues,
+      'expected_snippet_updated_at',
+      snippetUpdatedAt(currentSnippet.data),
+      'Refresh snippet metadata, then run manage_items preview again.',
+    );
+    if (snippetConflict) return snippetConflict;
+    const data = await apiRequest('POST', '/risup/prompt-snippets/save', { name: operation.name, text: sourceText });
+    return isApiError(data)
+      ? data
+      : {
+          result: {
+            ...(asRecord(data) ?? {}),
+            action: operation.action,
+            prompt_items_digest: promptContext ? promptTemplateDigest(promptContext.rawText) : undefined,
+          },
+          routes: [
+            ...routes,
+            ...currentSnippet.routes,
+            route('save_risup_prompt_snippet', 'POST', '/risup/prompt-snippets/save'),
+          ],
+          touched,
+        };
+  }
+
+  if (operation.action === 'delete_snippet') {
+    const currentSnippet = await readSnippetOptional(operation.identifier);
+    if (isApiError(currentSnippet)) return currentSnippet;
+    if (!currentSnippet.data) {
+      return facadeApiError(404, `Prompt snippet not found: ${operation.identifier}`, 'Refresh snippet metadata.');
+    }
+    const snippetConflict = checkGuardValue(
+      guardValues,
+      'expected_snippet_updated_at',
+      snippetUpdatedAt(currentSnippet.data),
+      'Refresh snippet metadata, then run manage_items preview again.',
+    );
+    if (snippetConflict) return snippetConflict;
+    const data = await apiRequest('POST', '/risup/prompt-snippets/delete', { identifier: operation.identifier });
+    return isApiError(data)
+      ? data
+      : {
+          result: { ...(asRecord(data) ?? {}), action: operation.action },
+          routes: [
+            ...currentSnippet.routes,
+            route('delete_risup_prompt_snippet', 'POST', '/risup/prompt-snippets/delete'),
+          ],
+          touched: ['risup:prompt-snippets'],
+        };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported manage_items apply action: ${operation.action}`,
+    'Apply mode requires a preview token for a supported mutating action.',
+    { operation },
+  );
+}
+
+type ManageAssetsResolvedFamily = Exclude<ManageAssetsFamily, 'auto'>;
+
+interface ManageAssetsSummary {
+  index: number;
+  path: string;
+  name?: string;
+  size: number;
+  mimeType?: string;
+}
+
+interface ManageAssetsContext {
+  family: ManageAssetsResolvedFamily;
+  summaries: ManageAssetsSummary[];
+  assets: unknown[];
+  routes: FacadeRoute[];
+  touchedTarget: string;
+  cardAssets?: Record<string, unknown>[];
+  moduleData?: Record<string, unknown>;
+}
+
+interface ManageAssetsPlan {
+  result: Record<string, unknown>;
+  routes: FacadeRoute[];
+  touched: string[];
+  requiredGuards: FacadeV1Guard[];
+  operations?: Array<Record<string, unknown>>;
+  activeApply?: {
+    tool: string;
+    method: 'POST';
+    path: string;
+    body: Record<string, unknown>;
+  };
+}
+
+function assetBytesFromUnknown(value: unknown): Buffer {
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof Uint8Array) return Buffer.from(value);
+  if (Array.isArray(value) && value.every((entry) => typeof entry === 'number')) {
+    return Buffer.from(value as number[]);
+  }
+  const record = asRecord(value);
+  if (record?.type === 'Buffer' && Array.isArray(record.data)) return Buffer.from(record.data as number[]);
+  return Buffer.alloc(0);
+}
+
+function assetBufferJsonFromBase64(base64: string): Record<string, unknown> {
+  return { type: 'Buffer', data: [...Buffer.from(base64, 'base64')] };
+}
+
+function assetPathBasename(assetPath: string): string {
+  return assetPath.split(/[\\/]/).filter(Boolean).pop() ?? assetPath;
+}
+
+function assetPathDirname(assetPath: string): string {
+  const normalized = assetPath.replace(/\\/g, '/');
+  const slashIndex = normalized.lastIndexOf('/');
+  return slashIndex >= 0 ? normalized.slice(0, slashIndex + 1) : '';
+}
+
+function normalizeAssetPath(assetPath: string): string {
+  return assetPath.replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function assetExtension(nameOrPath: string): string {
+  const base = assetPathBasename(nameOrPath);
+  const dotIndex = base.lastIndexOf('.');
+  return dotIndex >= 0 ? base.slice(dotIndex + 1).toLowerCase() : '';
+}
+
+function assetMimeType(assetPath: string): string {
+  const ext = assetExtension(assetPath);
+  if (ext === 'png') return 'image/png';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'gif') return 'image/gif';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'svg') return 'image/svg+xml';
+  if (ext === 'json') return 'application/json';
+  if (ext === 'txt' || ext === 'md') return 'text/plain';
+  return 'application/octet-stream';
+}
+
+function validateManageAssetFileName(name: string, action: string): ApiErrorResult | undefined {
+  if (!/^[a-zA-Z0-9가-힣._\- ]+$/.test(name)) {
+    return facadeApiError(
+      400,
+      'Asset file name contains unsupported characters',
+      'Use letters, numbers, Korean characters, spaces, dot, underscore, or hyphen.',
+      { action, name },
+    );
+  }
+  return undefined;
+}
+
+function normalizeCharxAssetAdd(operation: Extract<ManageAssetsOperation, { action: 'add_asset' }>):
+  | {
+      fileName: string;
+      folder: 'icon' | 'other';
+      assetPath: string;
+    }
+  | ApiErrorResult {
+  const explicitPath = operation.path ? normalizeAssetPath(operation.path) : '';
+  const fileName = operation.fileName ?? operation.name ?? (explicitPath ? assetPathBasename(explicitPath) : undefined);
+  if (!fileName) {
+    return facadeApiError(
+      400,
+      'add_asset requires fileName, name, or path for charx assets',
+      'Provide operation.fileName or operation.path.',
+      { operation },
+    );
+  }
+  const invalidName = validateManageAssetFileName(fileName, operation.action);
+  if (invalidName) return invalidName;
+  const inferredFolder: 'icon' | 'other' = explicitPath.startsWith('assets/icon/') ? 'icon' : 'other';
+  const folder = operation.folder ?? inferredFolder;
+  const defaultBase = folder === 'icon' ? 'assets/icon' : 'assets/other/image';
+  const assetPath = explicitPath || `${defaultBase}/${fileName}`;
+  if (assetPath.startsWith('assets/icon/') && folder !== 'icon') {
+    return facadeApiError(
+      400,
+      'charx icon asset path requires folder="icon"',
+      'Use folder="icon" for assets/icon/* paths.',
+      { path: assetPath, folder },
+    );
+  }
+  return { fileName, folder, assetPath };
+}
+
+function normalizeRisumAssetAdd(operation: Extract<ManageAssetsOperation, { action: 'add_asset' }>):
+  | {
+      name: string;
+      path: string;
+      ext: string;
+    }
+  | ApiErrorResult {
+  const assetPath = operation.path ? normalizeAssetPath(operation.path) : '';
+  const name = operation.name ?? operation.fileName ?? (assetPath ? assetPathBasename(assetPath) : undefined);
+  if (!name) {
+    return facadeApiError(
+      400,
+      'add_asset requires name, fileName, or path for risum assets',
+      'Provide operation.name or operation.path.',
+      { operation },
+    );
+  }
+  const ext = assetExtension(assetPath || name) || 'png';
+  return { name, path: assetPath, ext };
+}
+
+function charxCardAsset(assetPath: string, fileName: string, folder: 'icon' | 'other'): Record<string, unknown> {
+  const ext = assetExtension(fileName);
+  return {
+    type: folder === 'icon' ? 'icon' : 'x-risu-asset',
+    uri: `embeded://${assetPath}`,
+    name: ext ? fileName.slice(0, -(ext.length + 1)) : fileName,
+    ext,
+  };
+}
+
+function manageAssetsCollectionDigest(summaries: ManageAssetsSummary[]): string {
+  return hashStableValue(
+    summaries.map((summary) => ({
+      index: summary.index,
+      path: summary.path,
+      name: summary.name ?? '',
+      size: summary.size,
+    })),
+  );
+}
+
+function assetCollectionDigestGuard(summaries: ManageAssetsSummary[]): FacadeV1Guard {
+  return buildGuard(
+    'expected_asset_collection_digest',
+    manageAssetsCollectionDigest(summaries),
+    '/guard_values/*',
+    ['manage_assets'],
+    '/result/asset_collection_digest',
+  );
+}
+
+function assetExpectedPathGuard(summary: ManageAssetsSummary): FacadeV1Guard {
+  return buildGuard(
+    'expected_path',
+    summary.path || summary.name || String(summary.index),
+    '/guard_values/*',
+    ['manage_assets'],
+    '/result/assets/*/path',
+  );
+}
+
+function manageAssetsExpectedHashGuard(beforeHash: string): FacadeV1Guard {
+  return buildGuard('expected_hash', beforeHash, '/guard_values/*', ['manage_assets'], '/result/before_hash');
+}
+
+function checkManageAssetsGuardValue(
+  guards: FacadeV1Guard[] | undefined,
+  name: string,
+  actual: unknown,
+  suggestion: string,
+): ApiErrorResult | undefined {
+  const expected = guardValue(guards, name);
+  if (expected === undefined) {
+    return facadeApiError(400, `Missing guard value for ${name}`, suggestion, { guard: name }, ['manage_assets']);
+  }
+  if (expected !== actual) {
+    return facadeApiError(409, `Stale guard mismatch for ${name}`, suggestion, { guard: name, expected, actual }, [
+      'manage_assets',
+      'read_content',
+    ]);
+  }
+  return undefined;
+}
+
+async function resolveManageAssetsFamily(
+  target: FacadeV1Target,
+  requestedFamily: ManageAssetsFamily,
+): Promise<ManageAssetsResolvedFamily | ApiErrorResult> {
+  if (target.kind === 'external') {
+    const ext = path.extname(target.file_path).toLowerCase();
+    if (requestedFamily === 'auto') {
+      if (ext === '.charx') return 'charx';
+      if (ext === '.risum') return 'risum';
+      return facadeApiError(
+        400,
+        'manage_assets supports external .charx or .risum files',
+        'Use an unopened .charx file for charx assets or an unopened .risum file for risum module assets.',
+        { file_path: target.file_path },
+      );
+    }
+    if (requestedFamily === 'charx' && ext !== '.charx') {
+      return facadeApiError(
+        400,
+        'asset_family="charx" requires an external .charx file',
+        'Use asset_family="risum" for .risum files.',
+        {
+          file_path: target.file_path,
+        },
+      );
+    }
+    if (requestedFamily === 'risum' && ext !== '.risum') {
+      return facadeApiError(
+        400,
+        'asset_family="risum" requires an external .risum file',
+        'Use asset_family="charx" for .charx files.',
+        {
+          file_path: target.file_path,
+        },
+      );
+    }
+    return requestedFamily;
+  }
+
+  if (requestedFamily !== 'auto') return requestedFamily;
+  const fields = await apiRequest('GET', '/fields');
+  if (isApiError(fields)) return fields;
+  const fileType = recordString(asRecord(fields), 'fileType');
+  return fileType === 'risum' ? 'risum' : 'charx';
+}
+
+function charxAssetSummary(entry: unknown, index: number): ManageAssetsSummary | ApiErrorResult {
+  const record = asRecord(entry);
+  if (!record || typeof record.path !== 'string') {
+    return facadeApiError(
+      400,
+      'charx asset entry is not an object with path',
+      'Repair the asset list or use the granular surface tools for precision debugging.',
+      { index },
+    );
+  }
+  const bytes = assetBytesFromUnknown(record.data);
+  return {
+    index,
+    path: record.path,
+    name: assetPathBasename(record.path),
+    size: bytes.length,
+    mimeType: assetMimeType(record.path),
+  };
+}
+
+function risumModuleAssets(moduleData: Record<string, unknown> | undefined): unknown[] {
+  const moduleRecord = asRecord(moduleData?.module) ?? moduleData;
+  return Array.isArray(moduleRecord?.assets) ? (moduleRecord.assets as unknown[]) : [];
+}
+
+function risumAssetSummary(asset: unknown, index: number, moduleData?: Record<string, unknown>): ManageAssetsSummary {
+  const meta = risumModuleAssets(moduleData)[index];
+  const tuple = Array.isArray(meta) ? meta : [];
+  const name = typeof tuple[0] === 'string' ? tuple[0] : `asset_${index}`;
+  const assetPath = typeof tuple[2] === 'string' ? tuple[2] : '';
+  const bytes = assetBytesFromUnknown(asset);
+  return {
+    index,
+    name,
+    path: assetPath,
+    size: bytes.length,
+    mimeType: assetMimeType(assetPath || name),
+  };
+}
+
+async function readOptionalExternalRecordArraySurface(
+  filePath: string,
+  surfacePath: string,
+): Promise<{ entries: Record<string, unknown>[] | undefined; routes: FacadeRoute[] } | ApiErrorResult> {
+  const read = await readExternalSurfaceValue(filePath, surfacePath);
+  if (isApiError(read)) {
+    const status = recordNumber(asRecord(read), 'status');
+    if (status === 400 || status === 404) {
+      return { entries: undefined, routes: [route('external_read_surface', 'POST', '/external/surface/read')] };
+    }
+    return read;
+  }
+  if (!Array.isArray(read.value)) {
+    return facadeApiError(
+      400,
+      `External ${surfacePath} surface is not an array`,
+      'Inspect the external file surface before using manage_assets.',
+      { file_path: filePath, path: surfacePath },
+      ['inspect_document'],
+    );
+  }
+  const invalidIndex = read.value.findIndex((entry) => !asRecord(entry));
+  if (invalidIndex >= 0) {
+    return facadeApiError(
+      400,
+      `External ${surfacePath} entry is not an object`,
+      'Repair the array or use an advanced raw surface patch.',
+      { file_path: filePath, path: surfacePath, index: invalidIndex },
+      ['read_content'],
+    );
+  }
+  return { entries: read.value.map((entry) => asRecord(entry) ?? {}), routes: read.routes };
+}
+
+async function readManageAssetsContext(
+  target: FacadeV1Target,
+  requestedFamily: ManageAssetsFamily,
+): Promise<ManageAssetsContext | ApiErrorResult> {
+  const family = await resolveManageAssetsFamily(target, requestedFamily);
+  if (isApiError(family)) return family;
+
+  if (target.kind === 'active') {
+    const routePath = family === 'charx' ? '/assets' : '/risum-assets';
+    const data = await apiRequest('GET', routePath);
+    if (isApiError(data)) return data;
+    const assets = Array.isArray(asRecord(data)?.assets) ? (asRecord(data)?.assets as unknown[]) : [];
+    const summaries = assets.map((entry, index) => {
+      const record = asRecord(entry) ?? {};
+      return {
+        index: recordNumber(record, 'index') ?? index,
+        path: recordString(record, 'path') ?? '',
+        name:
+          recordString(record, 'name') ??
+          (recordString(record, 'path') ? assetPathBasename(recordString(record, 'path') ?? '') : undefined),
+        size: recordNumber(record, 'size') ?? 0,
+        mimeType: recordString(record, 'path') ? assetMimeType(recordString(record, 'path') ?? '') : undefined,
+      };
+    });
+    return {
+      family,
+      summaries,
+      assets,
+      routes: [route(family === 'charx' ? 'list_charx_assets' : 'list_risum_assets', 'GET', routePath)],
+      touchedTarget: `active:${family}:assets`,
+    };
+  }
+
+  if (target.kind === 'external') {
+    if (family === 'charx') {
+      const read = await readExternalSurfaceValue(target.file_path, '/assets');
+      if (isApiError(read)) return read;
+      if (!Array.isArray(read.value)) {
+        return facadeApiError(
+          400,
+          'External charx assets surface is not an array',
+          'Inspect the external .charx surface before using manage_assets.',
+          { file_path: target.file_path, path: '/assets' },
+          ['inspect_document', 'read_content'],
+        );
+      }
+      const summaries: ManageAssetsSummary[] = [];
+      for (const [index, entry] of read.value.entries()) {
+        const summary = charxAssetSummary(entry, index);
+        if (isApiError(summary)) return summary;
+        summaries.push(summary);
+      }
+      const cardAssets = await readOptionalExternalRecordArraySurface(target.file_path, '/cardAssets');
+      if (isApiError(cardAssets)) return cardAssets;
+      return {
+        family,
+        summaries,
+        assets: read.value,
+        routes: [...read.routes, ...cardAssets.routes],
+        touchedTarget: `external:${target.file_path}:charx-assets`,
+        cardAssets: cardAssets.entries,
+      };
+    }
+
+    const assetsRead = await readExternalSurfaceValue(target.file_path, '/risumAssets');
+    if (isApiError(assetsRead)) return assetsRead;
+    if (!Array.isArray(assetsRead.value)) {
+      return facadeApiError(
+        400,
+        'External risumAssets surface is not an array',
+        'Inspect the external .risum surface before using manage_assets.',
+        { file_path: target.file_path, path: '/risumAssets' },
+        ['inspect_document', 'read_content'],
+      );
+    }
+    const moduleRead = await readExternalSurfaceValue(target.file_path, '/_moduleData');
+    if (isApiError(moduleRead)) return moduleRead;
+    const moduleData = asRecord(moduleRead.value) ?? {};
+    return {
+      family,
+      summaries: assetsRead.value.map((asset, index) => risumAssetSummary(asset, index, moduleData)),
+      assets: assetsRead.value,
+      routes: [...assetsRead.routes, ...moduleRead.routes],
+      touchedTarget: `external:${target.file_path}:risum-assets`,
+      moduleData,
+    };
+  }
+
+  return facadeApiError(
+    400,
+    'manage_assets supports only active or external targets',
+    'Use target.kind="active" for the current file or target.kind="external" for an unopened file.',
+    { target },
+    ['inspect_document'],
+  );
+}
+
+function resolveManageAssetsSelector(
+  context: ManageAssetsContext,
+  selector: Extract<ManageAssetsOperation, { action: 'read_asset' | 'delete_asset' | 'rename_asset' }>['selector'],
+  action: string,
+): ManageAssetsSummary | ApiErrorResult {
+  if (selector.index !== undefined) {
+    const summary = context.summaries.find((entry) => entry.index === selector.index);
+    if (!summary) {
+      return facadeApiError(
+        404,
+        `Asset index not found: ${selector.index}`,
+        'Refresh asset summaries and retry with a current index or path.',
+        { index: selector.index, action },
+        ['manage_assets'],
+      );
+    }
+    return summary;
+  }
+  const byPath = context.summaries.filter((entry) => entry.path === selector.path || entry.name === selector.path);
+  if (byPath.length === 0) {
+    return facadeApiError(
+      404,
+      `Asset path not found: ${selector.path}`,
+      'Refresh asset summaries and retry with a current path or index.',
+      { path: selector.path, action },
+      ['manage_assets'],
+    );
+  }
+  if (byPath.length > 1) {
+    return facadeApiError(
+      409,
+      `Asset selector is ambiguous: ${selector.path}`,
+      'Use selector.index for this asset operation.',
+      { path: selector.path, matches: byPath.map((entry) => entry.index), action },
+      ['manage_assets'],
+    );
+  }
+  return byPath[0];
+}
+
+function cloneJsonValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function withRisumModuleAssets(
+  moduleData: Record<string, unknown> | undefined,
+  assets: unknown[],
+): Record<string, unknown> {
+  const next = cloneJsonValue(moduleData ?? {});
+  const moduleRecord = asRecord(next.module) ?? next;
+  moduleRecord.assets = assets;
+  return next;
+}
+
+async function buildManageAssetsPlan(
+  target: FacadeV1Target,
+  requestedFamily: ManageAssetsFamily,
+  operation: ManageAssetsOperation,
+  providedContext?: ManageAssetsContext,
+): Promise<ManageAssetsPlan | ApiErrorResult> {
+  const context = providedContext ?? (await readManageAssetsContext(target, requestedFamily));
+  if (isApiError(context)) return context;
+  const collectionGuard = assetCollectionDigestGuard(context.summaries);
+  const beforeCount = context.summaries.length;
+  const requiredGuards: FacadeV1Guard[] = [collectionGuard];
+  const routes = [...context.routes];
+  const touched = [context.touchedTarget];
+
+  if (operation.action === 'add_asset') {
+    if (context.family === 'charx') {
+      const normalized = normalizeCharxAssetAdd(operation);
+      if (isApiError(normalized)) return normalized;
+      if (context.summaries.some((summary) => summary.path === normalized.assetPath)) {
+        return facadeApiError(
+          409,
+          `Asset path already exists: ${normalized.assetPath}`,
+          'Use a different fileName/path or delete/rename the existing asset first.',
+          { path: normalized.assetPath },
+          ['manage_assets'],
+        );
+      }
+      const size = Buffer.from(operation.base64, 'base64').length;
+      const summary: ManageAssetsSummary = {
+        index: beforeCount,
+        path: normalized.assetPath,
+        name: normalized.fileName,
+        size,
+        mimeType: assetMimeType(normalized.assetPath),
+      };
+      if (target.kind === 'active') {
+        return {
+          result: {
+            dry_run: true,
+            action: operation.action,
+            family: context.family,
+            before_count: beforeCount,
+            after_count: beforeCount + 1,
+            assets: [summary],
+            asset_collection_digest: collectionGuard.value,
+          },
+          routes: [...routes, route('add_charx_asset', 'POST', '/asset/add')],
+          touched,
+          requiredGuards,
+          activeApply: {
+            tool: 'add_charx_asset',
+            method: 'POST',
+            path: '/asset/add',
+            body: { fileName: normalized.fileName, base64: operation.base64, folder: normalized.folder },
+          },
+        };
+      }
+      const newAssets = [
+        ...(context.assets as Record<string, unknown>[]),
+        { path: normalized.assetPath, data: assetBufferJsonFromBase64(operation.base64) },
+      ];
+      const operations: Array<Record<string, unknown>> = [{ op: 'replace', path: '/assets', value: newAssets }];
+      if (context.cardAssets) {
+        operations.push({
+          op: 'replace',
+          path: '/cardAssets',
+          value: [...context.cardAssets, charxCardAsset(normalized.assetPath, normalized.fileName, normalized.folder)],
+        });
+      }
+      return {
+        result: {
+          dry_run: true,
+          action: operation.action,
+          family: context.family,
+          before_count: beforeCount,
+          after_count: beforeCount + 1,
+          assets: [summary],
+          asset_collection_digest: collectionGuard.value,
+        },
+        routes: [...routes, route('external_patch_surface', 'POST', '/external/surface/patch')],
+        touched,
+        requiredGuards,
+        operations,
+      };
+    }
+
+    const normalized = normalizeRisumAssetAdd(operation);
+    if (isApiError(normalized)) return normalized;
+    const size = Buffer.from(operation.base64, 'base64').length;
+    const summary: ManageAssetsSummary = {
+      index: beforeCount,
+      name: normalized.name,
+      path: normalized.ext,
+      size,
+      mimeType: assetMimeType(normalized.path || normalized.name),
+    };
+    if (target.kind === 'active') {
+      return {
+        result: {
+          dry_run: true,
+          action: operation.action,
+          family: context.family,
+          before_count: beforeCount,
+          after_count: beforeCount + 1,
+          assets: [summary],
+          asset_collection_digest: collectionGuard.value,
+        },
+        routes: [...routes, route('add_risum_asset', 'POST', '/risum-asset/add')],
+        touched,
+        requiredGuards,
+        activeApply: {
+          tool: 'add_risum_asset',
+          method: 'POST',
+          path: '/risum-asset/add',
+          body: { name: normalized.name, path: normalized.path, base64: operation.base64 },
+        },
+      };
+    }
+    const moduleAssets = risumModuleAssets(context.moduleData);
+    const newModuleData = withRisumModuleAssets(context.moduleData, [
+      ...moduleAssets,
+      [normalized.name, '', normalized.ext],
+    ]);
+    return {
+      result: {
+        dry_run: true,
+        action: operation.action,
+        family: context.family,
+        before_count: beforeCount,
+        after_count: beforeCount + 1,
+        assets: [summary],
+        asset_collection_digest: collectionGuard.value,
+      },
+      routes: [...routes, route('external_patch_surface', 'POST', '/external/surface/patch')],
+      touched,
+      requiredGuards,
+      operations: [
+        {
+          op: 'replace',
+          path: '/risumAssets',
+          value: [...context.assets, assetBufferJsonFromBase64(operation.base64)],
+        },
+        { op: 'replace', path: '/_moduleData', value: newModuleData },
+      ],
+    };
+  }
+
+  if (operation.action === 'delete_asset') {
+    const summary = resolveManageAssetsSelector(context, operation.selector, operation.action);
+    if (isApiError(summary)) return summary;
+    const pathGuard = assetExpectedPathGuard(summary);
+    requiredGuards.push(pathGuard);
+    if (target.kind === 'active') {
+      const routePath =
+        context.family === 'charx' ? `/asset/${summary.index}/delete` : `/risum-asset/${summary.index}/delete`;
+      return {
+        result: {
+          dry_run: true,
+          action: operation.action,
+          family: context.family,
+          before_count: beforeCount,
+          after_count: beforeCount - 1,
+          assets: [summary],
+          asset_collection_digest: collectionGuard.value,
+        },
+        routes: [
+          ...routes,
+          route(context.family === 'charx' ? 'delete_charx_asset' : 'delete_risum_asset', 'POST', routePath),
+        ],
+        touched,
+        requiredGuards,
+        activeApply: {
+          tool: context.family === 'charx' ? 'delete_charx_asset' : 'delete_risum_asset',
+          method: 'POST',
+          path: routePath,
+          body: { expected_path: summary.path || summary.name || String(summary.index) },
+        },
+      };
+    }
+    if (context.family === 'charx') {
+      const newAssets = (context.assets as Record<string, unknown>[]).filter((_, index) => index !== summary.index);
+      const operations: Array<Record<string, unknown>> = [{ op: 'replace', path: '/assets', value: newAssets }];
+      if (context.cardAssets) {
+        operations.push({
+          op: 'replace',
+          path: '/cardAssets',
+          value: context.cardAssets.filter((entry) => recordString(entry, 'uri') !== `embeded://${summary.path}`),
+        });
+      }
+      return {
+        result: {
+          dry_run: true,
+          action: operation.action,
+          family: context.family,
+          before_count: beforeCount,
+          after_count: beforeCount - 1,
+          assets: [summary],
+          asset_collection_digest: collectionGuard.value,
+        },
+        routes: [...routes, route('external_patch_surface', 'POST', '/external/surface/patch')],
+        touched,
+        requiredGuards,
+        operations,
+      };
+    }
+    const moduleAssets = risumModuleAssets(context.moduleData);
+    const newModuleAssets = moduleAssets.filter((_, index) => index !== summary.index);
+    return {
+      result: {
+        dry_run: true,
+        action: operation.action,
+        family: context.family,
+        before_count: beforeCount,
+        after_count: beforeCount - 1,
+        assets: [summary],
+        asset_collection_digest: collectionGuard.value,
+      },
+      routes: [...routes, route('external_patch_surface', 'POST', '/external/surface/patch')],
+      touched,
+      requiredGuards,
+      operations: [
+        { op: 'replace', path: '/risumAssets', value: context.assets.filter((_, index) => index !== summary.index) },
+        { op: 'replace', path: '/_moduleData', value: withRisumModuleAssets(context.moduleData, newModuleAssets) },
+      ],
+    };
+  }
+
+  if (operation.action === 'rename_asset') {
+    if (context.family !== 'charx') {
+      return facadeApiError(
+        400,
+        'rename_asset is supported only for charx assets',
+        'For risum assets, delete and add the asset with the desired name.',
+        { family: context.family },
+        ['manage_assets'],
+      );
+    }
+    const invalidName = validateManageAssetFileName(operation.newName, operation.action);
+    if (invalidName) return invalidName;
+    const summary = resolveManageAssetsSelector(context, operation.selector, operation.action);
+    if (isApiError(summary)) return summary;
+    const newPath = `${assetPathDirname(summary.path)}${operation.newName}`;
+    if (context.summaries.some((entry) => entry.index !== summary.index && entry.path === newPath)) {
+      return facadeApiError(
+        409,
+        `Asset path already exists: ${newPath}`,
+        'Use a unique newName or refresh asset summaries first.',
+        { path: newPath },
+        ['manage_assets'],
+      );
+    }
+    const renamedSummary: ManageAssetsSummary = {
+      ...summary,
+      path: newPath,
+      name: operation.newName,
+      mimeType: assetMimeType(newPath),
+    };
+    const pathGuard = assetExpectedPathGuard(summary);
+    requiredGuards.push(pathGuard);
+    if (target.kind === 'active') {
+      const routePath = `/asset/${summary.index}/rename`;
+      return {
+        result: {
+          dry_run: true,
+          action: operation.action,
+          family: context.family,
+          before_count: beforeCount,
+          after_count: beforeCount,
+          assets: [summary],
+          renamed_assets: [renamedSummary],
+          asset_collection_digest: collectionGuard.value,
+        },
+        routes: [...routes, route('rename_charx_asset', 'POST', routePath)],
+        touched,
+        requiredGuards,
+        activeApply: {
+          tool: 'rename_charx_asset',
+          method: 'POST',
+          path: routePath,
+          body: { newName: operation.newName, expected_path: summary.path },
+        },
+      };
+    }
+    const newAssets = (context.assets as Record<string, unknown>[]).map((entry, index) =>
+      index === summary.index ? { ...entry, path: newPath } : entry,
+    );
+    const operations: Array<Record<string, unknown>> = [{ op: 'replace', path: '/assets', value: newAssets }];
+    if (context.cardAssets) {
+      operations.push({
+        op: 'replace',
+        path: '/cardAssets',
+        value: context.cardAssets.map((entry) => {
+          if (recordString(entry, 'uri') !== `embeded://${summary.path}`) return entry;
+          const ext = assetExtension(operation.newName);
+          return {
+            ...entry,
+            uri: `embeded://${newPath}`,
+            name: ext ? operation.newName.slice(0, -(ext.length + 1)) : operation.newName,
+            ext,
+          };
+        }),
+      });
+    }
+    return {
+      result: {
+        dry_run: true,
+        action: operation.action,
+        family: context.family,
+        before_count: beforeCount,
+        after_count: beforeCount,
+        assets: [summary],
+        renamed_assets: [renamedSummary],
+        asset_collection_digest: collectionGuard.value,
+      },
+      routes: [...routes, route('external_patch_surface', 'POST', '/external/surface/patch')],
+      touched,
+      requiredGuards,
+      operations,
+    };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported manage_assets action: ${operation.action}`,
+    'Use list_assets/read_asset in read mode or add_asset/delete_asset/rename_asset in preview mode.',
+    { operation },
+  );
+}
+
+async function previewManageAssetsOperation(
+  target: FacadeV1Target,
+  requestedFamily: ManageAssetsFamily,
+  operation: ManageAssetsOperation,
+): Promise<
+  | {
+      result: Record<string, unknown>;
+      routes: FacadeRoute[];
+      touched: string[];
+      requiredGuards: FacadeV1Guard[];
+    }
+  | ApiErrorResult
+> {
+  const plan = await buildManageAssetsPlan(target, requestedFamily, operation);
+  if (isApiError(plan)) return plan;
+  if (target.kind === 'external' && plan.operations) {
+    const routePath = '/external/surface/patch';
+    const dryRun = await apiRequest('POST', routePath, {
+      file_path: target.file_path,
+      operations: plan.operations,
+      dry_run: true,
+    });
+    if (isApiError(dryRun)) return dryRun;
+    const beforeHash = recordString(asRecord(dryRun), 'before_hash');
+    return {
+      result: { ...plan.result, ...(asRecord(dryRun) ?? {}) },
+      routes: plan.routes,
+      touched: plan.touched,
+      requiredGuards: mergeGuards(plan.requiredGuards, [
+        beforeHash ? manageAssetsExpectedHashGuard(beforeHash) : undefined,
+      ]),
+    };
+  }
+  return {
+    result: plan.result,
+    routes: plan.routes,
+    touched: plan.touched,
+    requiredGuards: plan.requiredGuards,
+  };
+}
+
+async function readManageAssetsOperation(
+  target: FacadeV1Target,
+  requestedFamily: ManageAssetsFamily,
+  operation: ManageAssetsOperation,
+): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  const context = await readManageAssetsContext(target, requestedFamily);
+  if (isApiError(context)) return context;
+  const collectionGuard = assetCollectionDigestGuard(context.summaries);
+
+  if (operation.action === 'list_assets') {
+    return {
+      result: {
+        action: operation.action,
+        family: context.family,
+        count: context.summaries.length,
+        assets: context.summaries,
+        asset_collection_digest: collectionGuard.value,
+      },
+      routes: context.routes,
+      touched: [context.touchedTarget],
+    };
+  }
+
+  if (operation.action === 'read_asset') {
+    const summary = resolveManageAssetsSelector(context, operation.selector, operation.action);
+    if (isApiError(summary)) return summary;
+    if (target.kind === 'active') {
+      const routePath = context.family === 'charx' ? `/asset/${summary.index}` : `/risum-asset/${summary.index}`;
+      const data = await apiRequest('GET', routePath);
+      if (isApiError(data)) return data;
+      return {
+        result: {
+          action: operation.action,
+          family: context.family,
+          asset: data,
+          asset_collection_digest: collectionGuard.value,
+        },
+        routes: [
+          ...context.routes,
+          route(context.family === 'charx' ? 'read_charx_asset' : 'read_risum_asset', 'GET', routePath),
+        ],
+        touched: [context.touchedTarget, `${context.touchedTarget}:${summary.index}`],
+      };
+    }
+    const rawAsset = context.assets[summary.index];
+    const dataSource = context.family === 'charx' ? asRecord(rawAsset)?.data : rawAsset;
+    const bytes = assetBytesFromUnknown(dataSource);
+    return {
+      result: {
+        action: operation.action,
+        family: context.family,
+        asset: {
+          ...summary,
+          base64: bytes.toString('base64'),
+        },
+        asset_collection_digest: collectionGuard.value,
+      },
+      routes: context.routes,
+      touched: [context.touchedTarget, `${context.touchedTarget}:${summary.index}`],
+    };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported manage_assets read action: ${operation.action}`,
+    'Read mode supports list_assets and read_asset.',
+    { operation },
+  );
+}
+
+async function applyManageAssetsOperation(
+  target: FacadeV1Target,
+  requestedFamily: ManageAssetsFamily,
+  operation: ManageAssetsOperation,
+  guardValues: FacadeV1Guard[] | undefined,
+): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  const context = await readManageAssetsContext(target, requestedFamily);
+  if (isApiError(context)) return context;
+  const digestConflict = checkManageAssetsGuardValue(
+    guardValues,
+    'expected_asset_collection_digest',
+    manageAssetsCollectionDigest(context.summaries),
+    'Refresh asset summaries, then run manage_assets preview again.',
+  );
+  if (digestConflict) return digestConflict;
+  const plan = await buildManageAssetsPlan(target, requestedFamily, operation, context);
+  if (isApiError(plan)) return plan;
+
+  if (operation.action === 'delete_asset' || operation.action === 'rename_asset') {
+    const summary = resolveManageAssetsSelector(context, operation.selector, operation.action);
+    if (isApiError(summary)) return summary;
+    const pathConflict = checkManageAssetsGuardValue(
+      guardValues,
+      'expected_path',
+      summary.path || summary.name || String(summary.index),
+      'Refresh asset summaries, then run manage_assets preview again.',
+    );
+    if (pathConflict) return pathConflict;
+  }
+
+  if (target.kind === 'active') {
+    if (!plan.activeApply) {
+      return facadeApiError(
+        400,
+        `Unsupported active manage_assets apply action: ${operation.action}`,
+        'Run manage_assets preview again and apply the returned token.',
+        { operation },
+      );
+    }
+    const data = await apiRequest(plan.activeApply.method, plan.activeApply.path, plan.activeApply.body);
+    return isApiError(data)
+      ? data
+      : {
+          result: { ...(asRecord(data) ?? {}), ...plan.result, dry_run: undefined },
+          routes: plan.routes,
+          touched: plan.touched,
+        };
+  }
+
+  if (!plan.operations) {
+    return facadeApiError(
+      400,
+      `Unsupported external manage_assets apply action: ${operation.action}`,
+      'Run manage_assets preview again and apply the returned token.',
+      { operation },
+    );
+  }
+  if (target.kind !== 'external') {
+    return facadeApiError(
+      400,
+      'manage_assets apply target must be active or external',
+      'Use the exact target returned by manage_assets preview.',
+      { target },
+    );
+  }
+  const routePath = '/external/surface/patch';
+  const data = await apiRequest('POST', routePath, {
+    file_path: target.file_path,
+    operations: plan.operations,
+    expected_hash: guardValue(guardValues, 'expected_hash'),
+  });
+  return isApiError(data)
+    ? data
+    : {
+        result: { ...(asRecord(data) ?? {}), ...plan.result, dry_run: undefined },
+        routes: plan.routes,
+        touched: plan.touched,
+      };
+}
+
 function normalizeBatchEntries(
   operation: FacadeV1EditOperation,
   payloadKey: 'data' | 'content' | 'item',
@@ -2496,6 +7370,44 @@ async function previewFacadeOperation(
     );
   }
   if (
+    target.kind === 'active' &&
+    isScriptStyleFamily(operation.selector.family) &&
+    (operation.op === 'write_content' ||
+      operation.op === 'replace_text' ||
+      operation.op === 'insert_text' ||
+      operation.op === 'delete_item')
+  ) {
+    return previewActiveScriptStyleMutation(operation);
+  }
+  if (
+    target.kind === 'external' &&
+    isScriptStyleFamily(operation.selector.family) &&
+    (operation.op === 'write_content' ||
+      operation.op === 'replace_text' ||
+      operation.op === 'insert_text' ||
+      operation.op === 'delete_item')
+  ) {
+    const plan = await buildExternalScriptStylePatchPlan(target, operation, operation.guards);
+    if (isApiError(plan)) return plan;
+    const routePath = '/external/surface/patch';
+    const dryRun = await apiRequest('POST', routePath, {
+      file_path: target.file_path,
+      operations: plan.operations,
+      dry_run: true,
+      expected_hash: guardValue(operation.guards, 'expected_hash'),
+    });
+    if (isApiError(dryRun)) return dryRun;
+    const beforeHash = recordString(asRecord(dryRun), 'before_hash');
+    return {
+      data: { ...plan.data, ...(asRecord(dryRun) ?? {}) },
+      routes: [...plan.routes, route('external_patch_surface', 'POST', routePath)],
+      touched: plan.touched,
+      requiredGuards: mergeGuards(plan.requiredGuards, [
+        beforeHash ? externalExpectedHashGuard(beforeHash) : undefined,
+      ]),
+    };
+  }
+  if (
     target.kind === 'external' &&
     operation.selector.family === 'risup-prompt' &&
     (operation.op === 'write_content' || operation.op === 'delete_item')
@@ -2511,6 +7423,13 @@ async function previewFacadeOperation(
       touched: prepared.touched,
       requiredGuards: prepared.requiredGuards,
     };
+  }
+  if (
+    target.kind === 'external' &&
+    ['lorebook', 'regex', 'greeting'].includes(operation.selector.family ?? '') &&
+    (operation.op === 'write_content' || operation.op === 'delete_item' || operation.op === 'replace_text')
+  ) {
+    return previewExternalStructuredMutation(target, operation);
   }
   if (
     target.kind === 'active' &&
@@ -4041,13 +8960,6 @@ async function previewFacadeOperation(
   }
 
   if (operation.op === 'patch_surface') {
-    if (target.kind !== 'active') {
-      return facadeApiError(
-        400,
-        'External patch_surface is not in the second-wave facade scope',
-        'Use external_patch_surface as an advanced granular route with expected_hash until manage_file/structured item facade work lands.',
-      );
-    }
     const operations = Array.isArray(operation.content) ? operation.content : undefined;
     if (!operations) {
       return facadeApiError(
@@ -4056,25 +8968,41 @@ async function previewFacadeOperation(
         'Set operations[].content to [{ "op": "replace", "path": "/name", "value": "..." }].',
       );
     }
-    const data = await apiRequest('POST', '/surface/patch', {
+    const routePath = target.kind === 'external' ? '/external/surface/patch' : '/surface/patch';
+    const data = await apiRequest('POST', routePath, {
+      ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
       operations,
       dry_run: true,
       expected_hash: guardValue(operation.guards, 'expected_hash'),
     });
+    const beforeHash = recordString(asRecord(data), 'before_hash');
+    const derivedHashGuard =
+      beforeHash === undefined
+        ? undefined
+        : buildGuard(
+            'expected_hash',
+            beforeHash,
+            '/expected_hash',
+            [target.kind === 'external' ? 'external_read_surface' : 'read_surface'],
+            '/hash',
+          );
     return isApiError(data)
       ? data
       : {
           data,
-          routes: [route('patch_surface', 'POST', '/surface/patch')],
-          touched,
-          requiredGuards: operation.guards ?? [],
+          routes: [route(target.kind === 'external' ? 'external_patch_surface' : 'patch_surface', 'POST', routePath)],
+          touched:
+            target.kind === 'external'
+              ? [`external:${target.file_path}:surface:${operation.selector.path ?? '/'}`]
+              : touched,
+          requiredGuards: mergeGuards(operation.guards, [derivedHashGuard]),
         };
   }
 
   return facadeApiError(
     400,
     `Unsupported preview operation: ${operation.op}`,
-    'preview_edit supports active/external field replace_text, active/external field write_content, active indexed regex/greeting/risup-prompt write_content/delete_item, and active patch_surface.',
+    'preview_edit supports active/external field replace_text, active/external field write_content, active/external patch_surface, active indexed regex/greeting/risup-prompt write_content/delete_item, and external risup-prompt write/delete.',
     { operation },
   );
 }
@@ -4086,6 +9014,40 @@ async function applyFacadeOperation(
 ): Promise<{ data: unknown; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
   const touched = [selectorTarget(operation.selector)];
   const guards = guardValues && guardValues.length > 0 ? guardValues : operation.guards;
+  if (
+    target.kind === 'active' &&
+    isScriptStyleFamily(operation.selector.family) &&
+    (operation.op === 'write_content' ||
+      operation.op === 'replace_text' ||
+      operation.op === 'insert_text' ||
+      operation.op === 'delete_item')
+  ) {
+    return applyActiveScriptStyleMutation(operation, guards);
+  }
+  if (
+    target.kind === 'external' &&
+    isScriptStyleFamily(operation.selector.family) &&
+    (operation.op === 'write_content' ||
+      operation.op === 'replace_text' ||
+      operation.op === 'insert_text' ||
+      operation.op === 'delete_item')
+  ) {
+    const plan = await buildExternalScriptStylePatchPlan(target, operation, guards);
+    if (isApiError(plan)) return plan;
+    const routePath = '/external/surface/patch';
+    const data = await apiRequest('POST', routePath, {
+      file_path: target.file_path,
+      operations: plan.operations,
+      expected_hash: guardValue(guards, 'expected_hash'),
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data: { ...(asRecord(data) ?? {}), operation: operation.op, structured_family: operation.selector.family },
+          routes: [...plan.routes, route('external_patch_surface', 'POST', routePath)],
+          touched: plan.touched,
+        };
+  }
   if (
     target.kind === 'external' &&
     operation.selector.family === 'risup-prompt' &&
@@ -4108,6 +9070,13 @@ async function applyFacadeOperation(
           routes: prepared.routes,
           touched: prepared.touched,
         };
+  }
+  if (
+    target.kind === 'external' &&
+    ['lorebook', 'regex', 'greeting'].includes(operation.selector.family ?? '') &&
+    (operation.op === 'write_content' || operation.op === 'delete_item' || operation.op === 'replace_text')
+  ) {
+    return applyExternalStructuredMutation(target, operation, guards);
   }
   if (
     target.kind === 'active' &&
@@ -4670,19 +9639,23 @@ async function applyFacadeOperation(
         };
   }
   if (operation.op === 'patch_surface') {
-    if (target.kind !== 'active') {
-      return facadeApiError(
-        400,
-        'External patch_surface is not in the second-wave facade scope',
-        'Use external_patch_surface as an advanced granular route with expected_hash.',
-      );
-    }
     const operations = Array.isArray(operation.content) ? operation.content : undefined;
-    const data = await apiRequest('POST', '/surface/patch', {
+    const routePath = target.kind === 'external' ? '/external/surface/patch' : '/surface/patch';
+    const data = await apiRequest('POST', routePath, {
+      ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
       operations,
       expected_hash: guardValue(guards, 'expected_hash'),
     });
-    return isApiError(data) ? data : { data, routes: [route('patch_surface', 'POST', '/surface/patch')], touched };
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route(target.kind === 'external' ? 'external_patch_surface' : 'patch_surface', 'POST', routePath)],
+          touched:
+            target.kind === 'external'
+              ? [`external:${target.file_path}:surface:${operation.selector.path ?? '/'}`]
+              : touched,
+        };
   }
   return facadeApiError(
     400,
@@ -5107,7 +10080,7 @@ server.tool(
 
 server.tool(
   'read_content',
-  'Preferred facade v1 bounded reader. Reads selected field/surface/content items by routing to existing granular tools and returns routed legacy names. Defaults to a 24KB response cap; root surface selectors return an overview unless selector.include_raw=true and max_bytes is explicit. Supports external .risup prompt item selectors.',
+  'Preferred facade v1 bounded reader. Reads selected field/surface/content items by routing to existing granular tools and returns routed legacy names. Defaults to a 24KB response cap; root surface selectors return an overview unless selector.include_raw=true and max_bytes is explicit. Supports external lorebook, regex, greeting, and .risup prompt item selectors.',
   {
     target: facadeV1TargetSchema.describe('Explicit facade target discriminator.'),
     selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
@@ -5356,10 +10329,10 @@ server.tool(
 
 server.tool(
   'preview_edit',
-  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, external .risup prompt item edits, active surface patches, active indexed and safe batch regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
+  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, active/external surface patches, external lorebook/regex/greeting structured edits, external .risup prompt item edits, active indexed and safe batch regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
   {
     target: facadeV1TargetSchema.describe(
-      'Explicit facade target discriminator. Supports active edits and second-wave external field replace/write previews.',
+      'Explicit facade target discriminator. Supports active edits plus external field replace/write and surface patch previews.',
     ),
     operations: z.array(facadeEditOperationSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems),
     dry_run: z.boolean().optional(),
@@ -5429,7 +10402,7 @@ server.tool(
 
 server.tool(
   'apply_edit',
-  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior for active/external fields, external .risup prompt item edits, active surface patches, and active indexed/batch regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
+  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior for active/external fields, active/external surface patches, external lorebook/regex/greeting structured edits, external .risup prompt item edits, and active indexed/batch regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
   {
     preview_token: z.string().regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/),
     operation_digest: z.string().min(16),
@@ -5495,6 +10468,380 @@ server.tool(
       ),
     );
   }),
+);
+
+server.tool(
+  'manage_items',
+  'Preferred facade v1 item-management tool for .risup prompt items/snippets plus lorebook, regex, and alternate greeting add/reorder workflows. Use mode="read" for .risup snippets/copy-as-text, mode="preview" as the dry_run path for mutations, then mode="apply" with the returned preview_token and operation_digest. Requires user confirmation on mutating apply. Supports active and unopened external targets; granular item tools remain advanced fallbacks.',
+  {
+    target: facadeV1TargetSchema.describe(
+      'Use target.kind="active" for the current file or "external" for an unopened .charx/.risum/.risup file.',
+    ),
+    family: manageItemsFamilySchema,
+    mode: z.enum(['read', 'preview', 'apply']),
+    operation: manageItemsOperationSchema.optional(),
+    preview_token: z
+      .string()
+      .regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/)
+      .optional(),
+    operation_digest: z.string().min(16).optional(),
+    guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  safeToolHandler(
+    'manage_items',
+    async ({ target, family, mode, operation, preview_token, operation_digest, guard_values, max_bytes }) => {
+      cleanupFacadePreviews();
+      if (target.kind !== 'active' && target.kind !== 'external') {
+        return textResult(
+          facadeApiError(
+            400,
+            'manage_items supports only active or external targets',
+            'Use target.kind="active" for the current file or target.kind="external" for an unopened .charx/.risum/.risup file.',
+            { target },
+            ['inspect_document'],
+          ),
+        );
+      }
+      if (mode === 'read') {
+        if (!operation) {
+          return textResult(
+            facadeApiError(400, 'manage_items read mode requires operation', 'Provide a read operation.'),
+          );
+        }
+        const read = await readManageItemsOperation(target, family, operation);
+        if (isApiError(read)) return textResult(read);
+        return textResult(
+          facadeEnvelope(
+            'manage_items',
+            'read-only',
+            target,
+            { ...read.result, routed_legacy: read.routes, touched_targets: read.touched },
+            `Read manage_items ${family} ${operation.action}`,
+            ['manage_items', 'read_content'],
+            {
+              family,
+              routed_tools: read.routes.map((entry) => entry.tool),
+              touched_targets: read.touched,
+            },
+            max_bytes,
+          ),
+        );
+      }
+
+      if (mode === 'preview') {
+        if (!operation) {
+          return textResult(
+            facadeApiError(400, 'manage_items preview mode requires operation', 'Provide a mutating operation.'),
+          );
+        }
+        const preview = await previewManageItemsOperation(target, family, operation);
+        if (isApiError(preview)) return textResult(preview);
+        const digest = manageItemsOperationDigest(target, family, operation);
+        const token = makePreviewToken();
+        const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
+        manageItemsPreviewStore.set(token, {
+          token,
+          operationDigest: digest,
+          target,
+          family,
+          operation,
+          routes: preview.routes,
+          touchedTargets: preview.touched,
+          requiredGuards: preview.requiredGuards,
+          expiresAtMs,
+        });
+        return textResult(
+          mcpSuccess(
+            {
+              facade: {
+                contract: FACADE_V1_CONTRACT_ID,
+                version: 'v1',
+                tool: 'manage_items',
+                mutability: 'preview',
+                target,
+                family,
+                ...(max_bytes ? { max_bytes } : {}),
+              },
+              result: {
+                ...preview.result,
+                routed_legacy: preview.routes,
+                touched_targets: preview.touched,
+                guard_values: preview.requiredGuards,
+              },
+              preview: {
+                preview_token: token,
+                operation_digest: digest,
+                expires_at: new Date(expiresAtMs).toISOString(),
+                required_guards: preview.requiredGuards,
+              },
+            },
+            {
+              toolName: 'manage_items',
+              summary: `Previewed manage_items ${family} ${operation.action}`,
+              nextActions: ['manage_items', 'read_content', 'validate_content'],
+              artifacts: {
+                family,
+                action: operation.action,
+                routed_tools: preview.routes.map((entry) => entry.tool),
+                touched_targets: preview.touched,
+              },
+            },
+          ),
+        );
+      }
+
+      if (!preview_token || !operation_digest) {
+        return textResult(
+          facadeApiError(
+            400,
+            'manage_items apply mode requires preview_token and operation_digest',
+            'Run manage_items with mode="preview", then pass the returned preview token and digest.',
+          ),
+        );
+      }
+      if (!guard_values || guard_values.length === 0) {
+        return textResult(
+          facadeApiError(
+            400,
+            'manage_items apply mode requires guard_values',
+            'Pass the required_guards array returned by manage_items preview.',
+          ),
+        );
+      }
+      const entry = manageItemsPreviewStore.get(preview_token);
+      if (!entry) {
+        return textResult(
+          facadeApiError(
+            404,
+            'Unknown or expired manage_items preview token',
+            'Run manage_items preview again, then retry apply with the new token.',
+          ),
+        );
+      }
+      if (entry.operationDigest !== operation_digest || !sameTarget(entry.target, target) || entry.family !== family) {
+        return textResult(
+          facadeApiError(
+            409,
+            'manage_items preview token does not match operation digest, target, or family',
+            'Use the exact operation_digest, target, and family returned by manage_items preview.',
+          ),
+        );
+      }
+      const applied = await applyManageItemsOperation(target, entry.family, entry.operation, guard_values);
+      if (isApiError(applied)) return textResult(applied);
+      manageItemsPreviewStore.delete(preview_token);
+      return textResult(
+        facadeEnvelope(
+          'manage_items',
+          'mutating',
+          target,
+          {
+            ...applied.result,
+            routed_legacy: applied.routes,
+            touched_targets: applied.touched,
+            family: entry.family,
+            guard_values,
+            preview_token,
+            operation_digest,
+          },
+          `Applied manage_items ${entry.family} ${entry.operation.action}`,
+          ['read_content', 'validate_content', 'manage_items'],
+          {
+            family: entry.family,
+            action: entry.operation.action,
+            routed_tools: applied.routes.map((routeEntry) => routeEntry.tool),
+            touched_targets: applied.touched,
+          },
+          max_bytes,
+        ),
+      );
+    },
+  ),
+);
+
+server.tool(
+  'manage_assets',
+  'Preferred facade v1 asset-management tool for active or unopened external .charx/.risum assets. Use mode="read" for list/read, mode="preview" for add/delete/rename dry runs, then mode="apply" with the returned preview_token, operation_digest, and guard_values. Active applies route through existing asset tools; external applies route through guarded surface patch.',
+  {
+    target: facadeV1TargetSchema.describe(
+      'Use target.kind="active" for the current file or "external" for an unopened .charx/.risum file.',
+    ),
+    asset_family: manageAssetsFamilySchema.optional(),
+    mode: z.enum(['read', 'preview', 'apply']),
+    operation: manageAssetsOperationSchema.optional(),
+    preview_token: z
+      .string()
+      .regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/)
+      .optional(),
+    operation_digest: z.string().min(16).optional(),
+    guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  safeToolHandler(
+    'manage_assets',
+    async ({ target, asset_family, mode, operation, preview_token, operation_digest, guard_values, max_bytes }) => {
+      cleanupFacadePreviews();
+      const parsed = manageAssetsBodySchema.safeParse({
+        target,
+        asset_family,
+        mode,
+        operation,
+        preview_token,
+        operation_digest,
+        guard_values,
+        max_bytes,
+      });
+      if (!parsed.success) {
+        return textResult(
+          facadeApiError(
+            400,
+            'Invalid manage_assets request',
+            parsed.error.issues.map((issue) => issue.message).join('; '),
+            { issues: parsed.error.issues },
+            ['manage_assets'],
+          ),
+        );
+      }
+      const body = parsed.data;
+      const requestedFamily = body.asset_family ?? 'auto';
+
+      if (body.mode === 'read') {
+        const read = await readManageAssetsOperation(body.target, requestedFamily, body.operation!);
+        if (isApiError(read)) return textResult(read);
+        return textResult(
+          facadeEnvelope(
+            'manage_assets',
+            'read-only',
+            body.target,
+            { ...read.result, routed_legacy: read.routes, touched_targets: read.touched },
+            `Read manage_assets ${read.result.family ?? requestedFamily} ${body.operation!.action}`,
+            ['manage_assets', 'read_content'],
+            {
+              family: read.result.family ?? requestedFamily,
+              routed_tools: read.routes.map((entry) => entry.tool),
+              touched_targets: read.touched,
+            },
+            body.max_bytes,
+          ),
+        );
+      }
+
+      if (body.mode === 'preview') {
+        const preview = await previewManageAssetsOperation(body.target, requestedFamily, body.operation!);
+        if (isApiError(preview)) return textResult(preview);
+        const digest = manageAssetsOperationDigest(body.target, requestedFamily, body.operation!);
+        const token = makePreviewToken();
+        const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
+        manageAssetsPreviewStore.set(token, {
+          token,
+          operationDigest: digest,
+          target: body.target,
+          assetFamily: requestedFamily,
+          operation: body.operation!,
+          routes: preview.routes,
+          touchedTargets: preview.touched,
+          requiredGuards: preview.requiredGuards,
+          expiresAtMs,
+        });
+        return textResult(
+          mcpSuccess(
+            {
+              facade: {
+                contract: FACADE_V1_CONTRACT_ID,
+                version: 'v1',
+                tool: 'manage_assets',
+                mutability: 'preview',
+                target: body.target,
+                asset_family: requestedFamily,
+                ...(body.max_bytes ? { max_bytes: body.max_bytes } : {}),
+              },
+              result: {
+                ...preview.result,
+                routed_legacy: preview.routes,
+                touched_targets: preview.touched,
+                guard_values: preview.requiredGuards,
+              },
+              preview: {
+                preview_token: token,
+                operation_digest: digest,
+                expires_at: new Date(expiresAtMs).toISOString(),
+                required_guards: preview.requiredGuards,
+              },
+            },
+            {
+              toolName: 'manage_assets',
+              summary: `Previewed manage_assets ${preview.result.family ?? requestedFamily} ${body.operation!.action}`,
+              nextActions: ['manage_assets', 'read_content', 'validate_content'],
+              artifacts: {
+                family: preview.result.family ?? requestedFamily,
+                action: body.operation!.action,
+                routed_tools: preview.routes.map((entry) => entry.tool),
+                touched_targets: preview.touched,
+              },
+            },
+          ),
+        );
+      }
+
+      const entry = manageAssetsPreviewStore.get(body.preview_token!);
+      if (!entry) {
+        return textResult(
+          facadeApiError(
+            404,
+            'Unknown or expired manage_assets preview token',
+            'Run manage_assets preview again, then retry apply with the new token.',
+          ),
+        );
+      }
+      if (
+        entry.operationDigest !== body.operation_digest ||
+        !sameTarget(entry.target, body.target) ||
+        entry.assetFamily !== requestedFamily
+      ) {
+        return textResult(
+          facadeApiError(
+            409,
+            'manage_assets preview token does not match operation digest, target, or asset_family',
+            'Use the exact operation_digest, target, and asset_family returned by manage_assets preview.',
+          ),
+        );
+      }
+      const applied = await applyManageAssetsOperation(
+        body.target,
+        entry.assetFamily ?? 'auto',
+        entry.operation,
+        body.guard_values,
+      );
+      if (isApiError(applied)) return textResult(applied);
+      manageAssetsPreviewStore.delete(body.preview_token!);
+      return textResult(
+        facadeEnvelope(
+          'manage_assets',
+          'mutating',
+          body.target,
+          {
+            ...applied.result,
+            routed_legacy: applied.routes,
+            touched_targets: applied.touched,
+            asset_family: entry.assetFamily,
+            guard_values: body.guard_values,
+            preview_token: body.preview_token,
+            operation_digest: body.operation_digest,
+          },
+          `Applied manage_assets ${applied.result.family ?? entry.assetFamily} ${entry.operation.action}`,
+          ['read_content', 'validate_content', 'manage_assets'],
+          {
+            family: applied.result.family ?? entry.assetFamily,
+            action: entry.operation.action,
+            routed_tools: applied.routes.map((routeEntry) => routeEntry.tool),
+            touched_targets: applied.touched,
+          },
+          body.max_bytes,
+        ),
+      );
+    },
+  ),
 );
 
 // ===== Field Tools =====

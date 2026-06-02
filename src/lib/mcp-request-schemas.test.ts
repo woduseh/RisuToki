@@ -23,6 +23,8 @@ import {
   fieldBatchReadSchema,
   fieldBatchWriteSchema,
   insertBodySchema,
+  manageAssetsBodySchema,
+  manageItemsBodySchema,
   replaceBodySchema,
   risumAssetAddBodySchema,
   risumAssetDeleteBodySchema,
@@ -571,8 +573,10 @@ describe('facade v1 contract schemas', () => {
       'apply_edit',
       'validate_content',
       'load_guidance',
+      'manage_items',
+      'manage_assets',
     ]);
-    expect(FACADE_V1_FUTURE_TOOL_NAMES).toEqual(['manage_items', 'manage_assets', 'manage_file']);
+    expect(FACADE_V1_FUTURE_TOOL_NAMES).toEqual(['manage_file']);
 
     const readOnly = FACADE_V1_TOOL_CONTRACTS.filter(
       (tool) => tool.lifecycle === 'v1' && tool.mutability === 'read-only',
@@ -586,7 +590,8 @@ describe('facade v1 contract schemas', () => {
     ]);
     expect(getFacadeV1ToolContract('preview_edit')?.mutability).toBe('preview');
     expect(getFacadeV1ToolContract('apply_edit')?.mutability).toBe('mutating');
-    expect(getFacadeV1ToolContract('manage_assets')?.lifecycle).toBe('future-candidate');
+    expect(getFacadeV1ToolContract('manage_items')?.lifecycle).toBe('v1');
+    expect(getFacadeV1ToolContract('manage_assets')?.lifecycle).toBe('v1');
   });
 
   it('uses explicit target discriminators for active, external, reference, guidance, and session routes', () => {
@@ -778,20 +783,19 @@ describe('facade v1 contract schemas', () => {
   it('codifies preview-token-first mutation flow with propagated guards', () => {
     const preview = validateBody(
       {
-        target: { kind: 'active' },
+        target: { kind: 'external', file_path: 'C:\\fixtures\\card.charx' },
         operations: [
           {
-            op: 'replace_text',
-            selector: { family: 'lorebook', index: 2 },
-            find: 'old',
-            replace: 'new',
+            op: 'patch_surface',
+            selector: { family: 'surface', path: '/' },
+            content: [{ op: 'replace', path: '/name', value: 'Facade patched' }],
             guards: [
               {
-                name: 'expected_comment',
-                value: 'stable comment',
+                name: 'expected_hash',
+                value: 'stable-hash',
                 payloadPath: '/operations/*/guards/*',
-                sourceOperations: ['list_lorebook', 'read_lorebook'],
-                sourceResultPath: '/entries/*/comment or /comment',
+                sourceOperations: ['external_read_surface'],
+                sourceResultPath: '/hash',
               },
             ],
           },
@@ -806,8 +810,8 @@ describe('facade v1 contract schemas', () => {
       {
         preview_token: 'facade-preview-v1.abcdef0123456789',
         operation_digest: '0123456789abcdef',
-        target: { kind: 'active' },
-        guard_values: [{ name: 'expected_comment', value: 'stable comment' }],
+        target: { kind: 'external', file_path: 'C:\\fixtures\\card.charx' },
+        guard_values: [{ name: 'expected_hash', value: 'stable-hash' }],
       },
       facadeV1ApplyEditBodySchema,
     );
@@ -821,6 +825,390 @@ describe('facade v1 contract schemas', () => {
           target: { kind: 'active' },
         },
         facadeV1ApplyEditBodySchema,
+      ).success,
+    ).toBe(false);
+  });
+
+  it('accepts manage_items read, preview, and apply shapes for supported item workflows', () => {
+    const read = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\preset.risup' },
+        family: 'risup-prompt',
+        mode: 'read',
+        operation: { action: 'copy_as_text', selector: { ids: ['prompt-main'] } },
+      },
+      manageItemsBodySchema,
+    );
+    expect(read.success).toBe(true);
+
+    const preview = validateBody(
+      {
+        target: { kind: 'active' },
+        family: 'risup-prompt',
+        mode: 'preview',
+        operation: {
+          action: 'add_items',
+          insertAt: 1,
+          items: [{ type: 'plain', type2: 'normal', text: 'Managed prompt', role: 'system' }],
+        },
+      },
+      manageItemsBodySchema,
+    );
+    expect(preview.success).toBe(true);
+
+    const apply = validateBody(
+      {
+        target: { kind: 'active' },
+        family: 'risup-prompt',
+        mode: 'apply',
+        preview_token: 'facade-preview-v1.abcdef0123456789',
+        operation_digest: '0123456789abcdef',
+        guard_values: [{ name: 'expected_prompt_items_digest', value: 'digest' }],
+      },
+      manageItemsBodySchema,
+    );
+    expect(apply.success).toBe(true);
+
+    const lorebookPreview = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\card.charx' },
+        family: 'lorebook',
+        mode: 'preview',
+        operation: {
+          action: 'add_items',
+          items: [{ comment: 'Managed lore', key: 'managed', content: 'Managed lorebook entry.' }],
+        },
+      },
+      manageItemsBodySchema,
+    );
+    expect(lorebookPreview.success).toBe(true);
+
+    const regexPreview = validateBody(
+      {
+        target: { kind: 'active' },
+        family: 'regex',
+        mode: 'preview',
+        operation: {
+          action: 'reorder_items',
+          order: [1, 0],
+        },
+      },
+      manageItemsBodySchema,
+    );
+    expect(regexPreview.success).toBe(true);
+
+    const greetingPreview = validateBody(
+      {
+        target: { kind: 'active' },
+        family: 'greeting',
+        mode: 'preview',
+        operation: {
+          action: 'add_items',
+          greeting_type: 'alternate',
+          items: [{ content: 'Managed greeting.' }],
+        },
+      },
+      manageItemsBodySchema,
+    );
+    expect(greetingPreview.success).toBe(true);
+
+    const triggerPreview = validateBody(
+      {
+        target: { kind: 'active' },
+        family: 'trigger',
+        mode: 'preview',
+        operation: {
+          action: 'add_items',
+          items: [{ comment: 'Managed trigger', type: 'start', conditions: [], effect: [] }],
+        },
+      },
+      manageItemsBodySchema,
+    );
+    expect(triggerPreview.success).toBe(true);
+
+    const luaPreview = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\card.charx' },
+        family: 'lua',
+        mode: 'preview',
+        operation: {
+          action: 'add_items',
+          items: [{ name: 'managed_lua', content: 'print("managed")' }],
+        },
+      },
+      manageItemsBodySchema,
+    );
+    expect(luaPreview.success).toBe(true);
+
+    const cssPreview = validateBody(
+      {
+        target: { kind: 'active' },
+        family: 'css',
+        mode: 'preview',
+        operation: {
+          action: 'reorder_items',
+          order: [1, 0],
+        },
+      },
+      manageItemsBodySchema,
+    );
+    expect(cssPreview.success).toBe(true);
+  });
+
+  it('rejects invalid manage_items modes and oversized item batches', () => {
+    expect(
+      validateBody(
+        {
+          target: { kind: 'reference', reference_id: '0' },
+          family: 'risup-prompt',
+          mode: 'read',
+          operation: { action: 'list_snippets' },
+        },
+        manageItemsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          family: 'lorebook',
+          mode: 'read',
+          operation: { action: 'list_snippets' },
+        },
+        manageItemsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          family: 'greeting',
+          mode: 'preview',
+          operation: {
+            action: 'add_items',
+            items: [{ content: 'Missing type.' }],
+          },
+        },
+        manageItemsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          family: 'risup-prompt',
+          mode: 'read',
+          operation: { action: 'read_lorebook' },
+        },
+        manageItemsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          family: 'risup-prompt',
+          mode: 'preview',
+        },
+        manageItemsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          family: 'risup-prompt',
+          mode: 'apply',
+          preview_token: 'facade-preview-v1.abcdef0123456789',
+        },
+        manageItemsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          family: 'risup-prompt',
+          mode: 'apply',
+          preview_token: 'facade-preview-v1.abcdef0123456789',
+          operation_digest: '0123456789abcdef',
+        },
+        manageItemsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    const tooManyItems = Array.from({ length: FACADE_V1_LIMITS.maxBatchItems + 1 }, (_, index) => ({
+      type: 'plain',
+      type2: 'normal',
+      text: `Prompt ${index}`,
+      role: 'system',
+    }));
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          family: 'risup-prompt',
+          mode: 'preview',
+          operation: { action: 'add_items', items: tooManyItems },
+        },
+        manageItemsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          family: 'risup-prompt',
+          mode: 'preview',
+          operation: {
+            action: 'reorder_items',
+            order: Array.from({ length: FACADE_V1_LIMITS.maxBatchItems + 1 }, (_, index) => index),
+          },
+        },
+        manageItemsBodySchema,
+      ).success,
+    ).toBe(false);
+  });
+
+  it('accepts manage_assets read, preview, and apply shapes for active/external asset workflows', () => {
+    const list = validateBody(
+      {
+        target: { kind: 'active' },
+        asset_family: 'auto',
+        mode: 'read',
+        operation: { action: 'list_assets' },
+      },
+      manageAssetsBodySchema,
+    );
+    expect(list.success).toBe(true);
+
+    const read = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\card.charx' },
+        asset_family: 'charx',
+        mode: 'read',
+        operation: { action: 'read_asset', selector: { path: 'assets/other/image/portrait.png' } },
+      },
+      manageAssetsBodySchema,
+    );
+    expect(read.success).toBe(true);
+
+    const addPreview = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\module.risum' },
+        asset_family: 'risum',
+        mode: 'preview',
+        operation: {
+          action: 'add_asset',
+          name: 'portrait',
+          path: 'portrait.png',
+          base64: Buffer.from('asset').toString('base64'),
+        },
+      },
+      manageAssetsBodySchema,
+    );
+    expect(addPreview.success).toBe(true);
+
+    const deletePreview = validateBody(
+      {
+        target: { kind: 'active' },
+        asset_family: 'charx',
+        mode: 'preview',
+        operation: { action: 'delete_asset', selector: { index: 0 } },
+      },
+      manageAssetsBodySchema,
+    );
+    expect(deletePreview.success).toBe(true);
+
+    const renamePreview = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\card.charx' },
+        asset_family: 'charx',
+        mode: 'preview',
+        operation: { action: 'rename_asset', selector: { index: 0 }, newName: 'portrait-renamed.png' },
+      },
+      manageAssetsBodySchema,
+    );
+    expect(renamePreview.success).toBe(true);
+
+    const apply = validateBody(
+      {
+        target: { kind: 'active' },
+        asset_family: 'auto',
+        mode: 'apply',
+        preview_token: 'facade-preview-v1.abcdef0123456789',
+        operation_digest: '0123456789abcdef',
+        guard_values: [
+          { name: 'expected_asset_collection_digest', value: 'digest' },
+          { name: 'expected_path', value: 'assets/other/image/portrait.png' },
+        ],
+      },
+      manageAssetsBodySchema,
+    );
+    expect(apply.success).toBe(true);
+  });
+
+  it('rejects invalid manage_assets targets and mode/action combinations', () => {
+    expect(
+      validateBody(
+        {
+          target: { kind: 'reference', reference_id: '0' },
+          mode: 'read',
+          operation: { action: 'list_assets' },
+        },
+        manageAssetsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          mode: 'read',
+          operation: { action: 'add_asset', fileName: 'asset.png', base64: 'YXNzZXQ=' },
+        },
+        manageAssetsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          mode: 'preview',
+          operation: { action: 'read_asset', selector: { index: 0 } },
+        },
+        manageAssetsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          mode: 'preview',
+          operation: { action: 'delete_asset', selector: {} },
+        },
+        manageAssetsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          mode: 'apply',
+          preview_token: 'facade-preview-v1.abcdef0123456789',
+          operation_digest: '0123456789abcdef',
+        },
+        manageAssetsBodySchema,
       ).success,
     ).toBe(false);
   });

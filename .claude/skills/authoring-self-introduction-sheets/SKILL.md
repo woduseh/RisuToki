@@ -1,6 +1,6 @@
 ---
 name: authoring-self-introduction-sheets
-description: 'Use when writing a character through a self-introduction monologue: factual profile plus character-voiced introduction that lets the model infer personality through tone, evasions, and omission rather than explicit behavioral scaffolding.'
+description: 'Use when writing a character through a self-introduction monologue: factual profile plus character-voiced introduction that lets the model infer personality through tone, evasions, and omission rather than explicit behavioral over-explanation.'
 tags: ['authoring', 'self-introduction', 'monologue', 'roleplay']
 related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list_lorebook', 'read_lorebook_batch']
 ---
@@ -10,16 +10,16 @@ related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list
 ## Agent Operating Contract
 
 - **Use when:** the user wants a factual profile plus character-voiced self-introduction where personality is inferred through voice, omission, and framing.
-- **Do not use when:** the user wants explicit behavioral scaffolding, lorebook-first architecture, or syntax/tool help.
+- **Do not use when:** the user wants explicit behavioral mapping, lorebook-first structure, or syntax/tool help.
 - **Read first:** this `SKILL.md`; it contains the method boundary and output shape.
 - **Load deeper only if:** the sheet structure itself is unclear (`SHEET_STRUCTURE.md`) or you need generation prompts that preserve the method (`GENERATION_GUIDANCE.md`).
 - **Output/validation contract:** deliver a concise factual profile and a character-voiced monologue; verify it does not explain the character from outside when the voice can reveal it.
 
 > **Use this skill when the description should feel like meeting a person, not reading a fully scaffolded spec.** The factual frame stays explicit, but more of the character work is carried by voice, pacing, omission, and self-presentation.
 >
-> **For explicit scaffolding** — engine, contradiction, speech system, pressure map, and long-form control — use [authoring-characters](../authoring-characters/).
+> **For explicit character mapping** — inner drive, contradiction, voice patterns, pressure map, and long-form control — use [authoring-characters](../authoring-characters/).
 >
-> **For lorebook-heavy or cast-heavy architecture** — where the description is mostly framing and the conditional depth lives elsewhere — use [authoring-lorebook-bots](../authoring-lorebook-bots/).
+> **For lorebook-heavy or cast-heavy structure** — where the description is mostly framing and the conditional depth lives elsewhere — use [authoring-lorebook-bots](../authoring-lorebook-bots/).
 
 ## What This Method Is
 
@@ -33,7 +33,7 @@ This method is useful when over-specified labels and fixed behavior notes are ma
 
 | Goal                                      | Use this skill for                                                       | Use another skill when                                                                                                   |
 | ----------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| **Single-character / dedicated partner**  | You want inference, self-presentation, and voice doing more of the work  | You want explicit engine, contradiction, or pressure scaffolding -> [authoring-characters](../authoring-characters/)     |
+| **Single-character / dedicated partner**  | You want inference, self-presentation, and voice doing more of the work  | You want explicit inner drive, contradiction, or pressure mapping -> [authoring-characters](../authoring-characters/)    |
 | **Core character inside a larger bot**    | You want a compact, voice-led core sheet that feels like an introduction | The real problem is description-vs-lorebook distribution -> [authoring-lorebook-bots](../authoring-lorebook-bots/)       |
 | **Refactoring a flat resume-style sheet** | You want to rebuild labels into a voiced presentation                    | You want to preserve direct behavioral control rather than loosen it -> [authoring-characters](../authoring-characters/) |
 
@@ -77,7 +77,7 @@ Do not turn the profile into a poetry field. Keep it factual enough that the mod
 
 Use **Compact** when the sheet should introduce the character cleanly and quickly.
 
-Use **Deep** when the monologue should carry more of the diagnostic weight through tone, avoidance, and emphasis.
+Use **Deep** when the monologue should carry more of the expressive weight through tone, avoidance, and emphasis.
 
 For the structure and field-level differences, load [SHEET_STRUCTURE.md](SHEET_STRUCTURE.md).
 
@@ -157,7 +157,7 @@ Deliver:
 | Lorebook entries | Secrets, gated history, topic-sensitive reactions, progression layers              |
 | `globalNote`     | Optional reminder layer if the bot needs extra response-point steering             |
 
-If you discover that the character needs explicit engine design, contradiction mechanics, full speech scaffolding, or runtime pressure mapping, switch to [authoring-characters](../authoring-characters/). If the bot's main problem becomes description-vs-lorebook architecture, switch to [authoring-lorebook-bots](../authoring-lorebook-bots/).
+If you discover that the character needs explicit inner-drive design, contradiction mapping, full voice planning, or runtime pressure mapping, switch to [authoring-characters](../authoring-characters/). If the bot's main problem becomes description-vs-lorebook structure, switch to [authoring-lorebook-bots](../authoring-lorebook-bots/).
 
 ## Source References
 

@@ -9,6 +9,44 @@
 
 ---
 
+## [1.3.0] - 2026-06-02
+
+### Added
+
+- Added the `manage_assets` MCP facade for active and external `.charx` / `.risum` asset list/read/add/delete workflows plus `.charx` asset rename.
+- Added preview/apply guards for `manage_assets`, including asset collection digests, destructive-operation `expected_path`, and external document `expected_hash` checks.
+- Added standalone MCP smoke, schema, taxonomy, and workflow eval coverage for facade-first asset management.
+
+### Changed
+
+- Promoted covered asset-management guidance, docs, evals, and profile metadata to prefer `manage_assets` before granular asset tools, while keeping asset compression and unsupported asset operations as advanced fallbacks.
+
+## [1.2.1] - 2026-06-02
+
+### Changed
+
+- Refined character and world authoring skills to guard against mechanical or clinical character prose, with human-interiority rules, softer character-sheet labels, and validation checks for embodied emotion and sensory scene texture.
+
+## [1.2.0] - 2026-06-01
+
+### Added
+
+- Added the `manage_items` MCP facade for active and external `.risup` prompt item management, including add, batch add, reorder, copy-as-text, text import append/replace, and prompt snippet list/read/save/insert/delete workflows.
+- Added preview/apply guards for `manage_items`, including prompt item digests and snippet updated-at checks.
+- Added active/external lorebook, regex, and alternate greeting add/reorder coverage to `manage_items`, guarded by item collection digests and surface `expected_hash` checks.
+- Added active/external trigger, Lua, and CSS add/reorder coverage to `manage_items`; active apply uses the existing field-write sync path for trigger/Lua/CSS state while external apply stays on guarded surface patches.
+- Added external `.charx` / `.risum` structured-item facade parity for lorebook, regex, and alternate greeting reads plus preview/apply write/delete/replace flows with item guards and `expected_hash` protection.
+- Added active/reference/external trigger, Lua, and CSS `read_content` selector coverage plus active/external trigger and Lua/CSS preview/apply mutation parity with stale guards.
+
+### Changed
+
+- Promoted `.risup` add/reorder/import/snippet guidance, docs, evals, and standalone MCP smoke coverage to prefer `manage_items` before granular prompt-item tools.
+- Promoted lorebook, regex, and alternate greeting add/reorder guidance, evals, and standalone MCP smoke coverage to prefer `manage_items` before granular add/reorder tools when covered.
+- Promoted trigger, Lua, and CSS add/reorder guidance, evals, and standalone MCP smoke coverage to prefer `manage_items` before granular add/reorder tools when covered.
+- Promoted external surface patch workflows to facade `preview_edit` / `apply_edit` with `expected_hash` guard coverage, keeping `external_patch_surface` as the advanced fallback.
+- Promoted unopened-file lorebook/regex/greeting docs, evals, and standalone MCP smoke coverage to prefer facade selectors before direct `external_read_surface` / `external_patch_surface` fallback routes.
+- Promoted trigger, Lua, and CSS docs, evals, and standalone MCP smoke coverage to prefer facade selectors before raw field or direct granular section tools when covered.
+
 ## [1.1.0] - 2026-05-31
 
 ### Added

@@ -1,6 +1,6 @@
 # Whole-Bot Validation
 
-Use this after the bot has a draft description, opening message, and any planned lorebook architecture. This is for finished-bot QA and release-level review, not for early character or world invention.
+Use this after the bot has a draft description, opening message, and any planned lorebook structure. This is for finished-bot QA and release-level review, not for early character or world invention.
 
 ---
 
@@ -9,9 +9,9 @@ Use this after the bot has a draft description, opening message, and any planned
 | Check                   | Question                                                                                                     | Fix if weak                                                                       |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | **Persistent frame**    | Does the description give the bot tone, scene instinct, user role, and priority without becoming a database? | Compress facts and strengthen atmosphere, scene logic, and current pressure       |
-| **First-message proof** | Does the opener demonstrate the bot's actual architecture?                                                   | Show one scene owner, one pressure line, and one actionable hook                  |
+| **First-message proof** | Does the opener demonstrate the bot's actual structure?                                                      | Show one scene owner, one pressure line, and one actionable hook                  |
 | **Character-world fit** | Do character Need/Lie/silence rules collide with world Pressure/Taboo/Knowledge Horizon?                     | Connect them or move the isolated detail out of always-on text                    |
-| **Voice survival**      | Do core characters remain identifiable after novelty wears off?                                              | Add speech DNA, pressure responses, and no-name line checks                       |
+| **Voice survival**      | Do core characters remain identifiable after novelty wears off?                                              | Add signature tells, pressure responses, and no-name line checks                  |
 | **World texture**       | Does the world appear through behavior and sensation instead of exposition?                                  | Add pressure-map detail and ordinary-life texture                                 |
 | **Lorebook activation** | Do entries change scenes without dumping facts?                                                              | Split broad entries, narrow triggers, and rewrite entries as behavior constraints |
 | **User role coherence** | Does the bot know what `{{user}}` is allowed to know, do, and affect?                                        | Clarify user position, access, limits, and social consequences                    |
@@ -21,15 +21,16 @@ Use this after the bot has a draft description, opening message, and any planned
 
 ## Runtime Smoke Tests
 
-| Test                         | What to do                                                                | What you want to see                                                          |
-| ---------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **Cold Open**                | User gives a minimal first reply                                          | Bot stays specific without infodumping                                        |
-| **10-Turn Drift**            | Continue past the opener with ordinary inputs                             | Voice, world texture, and scene priorities remain recognizable                |
-| **Lorebook Without Dumping** | Trigger a character, place, faction, or system entry                      | The scene changes through action, tension, or perception instead of a summary |
-| **Secret Leakage**           | Mention a name or location casually                                       | Deep truths stay gated unless the trigger path calls for them                 |
-| **Crowded Scene Focus**      | Put several relevant characters or factions in one scene                  | The bot foregrounds 2-3 active pressures instead of serving the whole archive |
-| **User Role Coherence**      | Have `{{user}}` ask for knowledge, access, or authority they may not have | The bot responds according to role, world horizon, and relationship state     |
-| **Repair / Regression**      | Cause conflict, apologize, and continue                                   | Trust shifts with cost and residue rather than resetting instantly            |
+| Test                         | What to do                                                                | What you want to see                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **Cold Open**                | User gives a minimal first reply                                          | Bot stays specific without infodumping                                                                                    |
+| **10-Turn Drift**            | Continue past the opener with ordinary inputs                             | Voice, world texture, and scene priorities remain recognizable                                                            |
+| **Lorebook Without Dumping** | Trigger a character, place, faction, or system entry                      | The scene changes through action, tension, or perception instead of a summary                                             |
+| **Human Prose Guard**        | Trigger intimate, emotional, or character-heavy entries                   | People are described through breath, gesture, attention, silence, and choice, not as data, systems, anatomy, or machinery |
+| **Secret Leakage**           | Mention a name or location casually                                       | Deep truths stay gated unless the trigger path calls for them                                                             |
+| **Crowded Scene Focus**      | Put several relevant characters or factions in one scene                  | The bot foregrounds 2-3 active pressures instead of serving the whole archive                                             |
+| **User Role Coherence**      | Have `{{user}}` ask for knowledge, access, or authority they may not have | The bot responds according to role, world horizon, and relationship state                                                 |
+| **Repair / Regression**      | Cause conflict, apologize, and continue                                   | Trust shifts with cost and residue rather than resetting instantly                                                        |
 
 ---
 

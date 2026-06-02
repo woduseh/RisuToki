@@ -9,41 +9,49 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../src/charx-io';
 import { startApiServer } from '../src/lib/mcp-api-server';
 import { buildRuntimeMetadata, type RuntimeMetadata } from '../src/lib/mcp-runtime-contract';
+import {
+  combineCssSections as combineCssSectionsImpl,
+  combineLuaSections as combineLuaSectionsImpl,
+  detectCssBlockClose as detectCssBlockCloseImpl,
+  detectCssBlockOpen as detectCssBlockOpenImpl,
+  detectCssSectionInline as detectCssSectionInlineImpl,
+  detectLuaSection as detectLuaSectionImpl,
+  parseCssSections as parseCssSectionsImpl,
+  parseLuaSections as parseLuaSectionsImpl,
+} from '../src/lib/mcp-section-parser';
 
 const TEST_DIR = path.join(__dirname, '_mcp-search-tmp');
 
-function parseLuaSections() {
-  return [];
+function parseLuaSections(lua = '') {
+  return parseLuaSectionsImpl(lua);
 }
 
-function combineLuaSections() {
-  return '';
+function combineLuaSections(sections: Array<{ name: string; content: string }> = []) {
+  return combineLuaSectionsImpl(sections);
 }
 
-function detectLuaSection() {
-  return null;
+function detectLuaSection(line = '') {
+  return detectLuaSectionImpl(line);
 }
 
 function parseCssSections(css: string) {
-  return css.trim().length > 0
-    ? { sections: [{ name: 'main', content: css }], prefix: '', suffix: '' }
-    : { sections: [], prefix: '', suffix: '' };
+  return parseCssSectionsImpl(css);
 }
 
-function combineCssSections() {
-  return '';
+function combineCssSections(sections: Array<{ name: string; content: string }> = [], prefix = '', suffix = '') {
+  return combineCssSectionsImpl(sections, prefix, suffix);
 }
 
-function detectCssSectionInline() {
-  return null;
+function detectCssSectionInline(line = '') {
+  return detectCssSectionInlineImpl(line);
 }
 
-function detectCssBlockOpen() {
-  return false;
+function detectCssBlockOpen(line = '') {
+  return detectCssBlockOpenImpl(line);
 }
 
-function detectCssBlockClose() {
-  return false;
+function detectCssBlockClose(line = '') {
+  return detectCssBlockCloseImpl(line);
 }
 
 function openExternalDocumentForTest(filePath: string): CharxData {
@@ -216,10 +224,18 @@ function dogfoodCardData(name: string, description: string): CharxData {
     alternateGreetings: ['Facade alternate hello.'],
     groupOnlyGreetings: ['Facade group hello.'],
     globalNote: 'Destructive preview keeps this note until apply.',
-    css: '',
+    css: '<style>\n/* ============================================================\n   main\n   ============================================================ */\n.facade-alpha { color: red; }\n</style>',
     defaultVariables: '',
-    lua: '',
-    triggerScripts: [],
+    lua: '-- ===== main =====\nlocal label = "Alpha"\nprint(label)\n',
+    triggerScripts: [
+      {
+        comment: 'Facade Trigger',
+        type: 'start',
+        conditions: [],
+        effect: [{ type: 'triggerlua', code: '-- ===== main =====\nlocal label = "Alpha"\nprint(label)\n' }],
+        lowLevelAccess: false,
+      },
+    ],
     lorebook: [
       {
         comment: 'Facade Lore',
@@ -414,7 +430,25 @@ async function startTestApiServer(currentData: SearchFixture, options: { runtime
     openExternalDocument: openExternalDocumentForTest,
     saveExternalDocument: (filePath, _fileType, data) => saveExternalDocumentForTest(filePath, data),
     normalizeTriggerScripts: (data: unknown) => data,
-    extractPrimaryLua: () => '',
+    extractPrimaryLua: (scripts: unknown) => {
+      if (!Array.isArray(scripts)) return '';
+      return scripts
+        .flatMap((script) => {
+          const effect = script && typeof script === 'object' ? (script as { effect?: unknown }).effect : undefined;
+          if (!Array.isArray(effect)) return [];
+          return effect
+            .map((item) =>
+              item &&
+              typeof item === 'object' &&
+              (item as { type?: unknown }).type === 'triggerlua' &&
+              typeof (item as { code?: unknown }).code === 'string'
+                ? String((item as { code?: unknown }).code)
+                : '',
+            )
+            .filter((code) => code.length > 0);
+        })
+        .join('\n\n');
+    },
     mergePrimaryLua: (scripts: unknown, lua: string) => {
       void lua;
       return scripts;
@@ -829,6 +863,550 @@ async function runStandaloneRealCorpusFacadeReadEval(): Promise<void> {
   }
 }
 
+function createManageItemsFixtures(): {
+  dir: string;
+  activeRisup: string;
+  externalRisup: string;
+  activeCharx: string;
+  externalCharx: string;
+  externalRisum: string;
+  userDataDir: string;
+} {
+  fs.mkdirSync(TEST_DIR, { recursive: true });
+  const dir = fs.mkdtempSync(path.join(TEST_DIR, 'manage-items-'));
+  const activeRisup = path.join(dir, 'active.risup');
+  const externalRisup = path.join(dir, 'external.risup');
+  const activeCharx = path.join(dir, 'active.charx');
+  const externalCharx = path.join(dir, 'external.charx');
+  const externalRisum = path.join(dir, 'external.risum');
+  const userDataDir = path.join(dir, 'user-data');
+  const basePreset = (name: string) =>
+    ({
+      _fileType: 'risup',
+      name,
+      promptTemplate: JSON.stringify([
+        { type: 'plain', type2: 'normal', text: `${name} main prompt.`, role: 'system' },
+        { type: 'jailbreak', type2: 'normal', text: `${name} jailbreak prompt.`, role: 'system' },
+      ]),
+      formatingOrder: JSON.stringify(['main', 'jailbreak']),
+      presetBias: '[]',
+      localStopStrings: '[]',
+    }) as unknown as CharxData;
+  saveRisup(activeRisup, basePreset('Active managed'));
+  saveRisup(externalRisup, basePreset('External managed'));
+  saveCharx(activeCharx, dogfoodCardData('Active managed card', 'Active manage_items structured card.'));
+  saveCharx(externalCharx, dogfoodCardData('External managed card', 'External manage_items structured card.'));
+  saveRisum(externalRisum, {
+    _fileType: 'risum',
+    name: 'External managed module',
+    description: 'External manage_assets module.',
+    moduleName: 'External managed module',
+    moduleDescription: 'External manage_assets module.',
+    moduleNamespace: 'external.managed',
+    lowLevelAccess: false,
+    hideIcon: false,
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    risumAssets: [],
+    _moduleData: { module: { assets: [] } },
+  } as unknown as CharxData);
+  return { dir, activeRisup, externalRisup, activeCharx, externalCharx, externalRisum, userDataDir };
+}
+
+function risupPromptItems(filePath: string): Array<Record<string, unknown>> {
+  const data = openRisup(filePath);
+  return JSON.parse(String(data.promptTemplate || '[]')) as Array<Record<string, unknown>>;
+}
+
+function previewToken(envelope: McpCallJson, label: string): McpCallJson {
+  return nestedRecord(envelope.preview, label);
+}
+
+async function currentPromptIds(runtime: StandaloneClientRuntime): Promise<string[]> {
+  const read = await callJson(runtime, 'read_content', {
+    target: { kind: 'active' },
+    selectors: [{ family: 'risup-prompt' }],
+  });
+  const resultItems = nestedArray(nestedRecord(read.result, 'prompt read result').items, 'prompt read result.items');
+  const data = nestedRecord(nestedRecord(resultItems[0], 'prompt read item').data, 'prompt read data');
+  return nestedArray(data.items, 'prompt summary items').map((item) =>
+    String(nestedRecord(item, 'prompt summary item').id),
+  );
+}
+
+async function applyManagePreview(
+  runtime: StandaloneClientRuntime,
+  target: Record<string, unknown>,
+  previewEnvelope: McpCallJson,
+  family: string = 'risup-prompt',
+): Promise<McpCallJson> {
+  const preview = previewToken(previewEnvelope, 'manage_items preview');
+  return callJson(runtime, 'manage_items', {
+    target,
+    family,
+    mode: 'apply',
+    preview_token: preview.preview_token,
+    operation_digest: preview.operation_digest,
+    guard_values: preview.required_guards,
+  });
+}
+
+async function applyManageAssetsPreview(
+  runtime: StandaloneClientRuntime,
+  target: Record<string, unknown>,
+  previewEnvelope: McpCallJson,
+  assetFamily: string,
+): Promise<McpCallJson> {
+  const preview = previewToken(previewEnvelope, 'manage_assets preview');
+  return callJson(runtime, 'manage_assets', {
+    target,
+    asset_family: assetFamily,
+    mode: 'apply',
+    preview_token: preview.preview_token,
+    operation_digest: preview.operation_digest,
+    guard_values: preview.required_guards,
+  });
+}
+
+async function runStandaloneManageItemsDogfood(): Promise<void> {
+  const fixture = createManageItemsFixtures();
+  let runtime: StandaloneClientRuntime | null = null;
+  try {
+    runtime = await startStandaloneClient({
+      file: fixture.activeRisup,
+      userDataDir: fixture.userDataDir,
+      allowWrites: true,
+    });
+    const activeTarget = { kind: 'active' };
+    const externalTarget = { kind: 'external', file_path: fixture.externalRisup };
+
+    const addPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'risup-prompt',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        insertAt: 1,
+        items: [
+          { type: 'plain', type2: 'normal', text: 'Managed facade inserted prompt.', role: 'system' },
+          { type: 'cache', name: 'managed-cache', depth: 2, role: 'system' },
+        ],
+      },
+    });
+    assert.ok(routedTools(addPreview).includes('add_risup_prompt_item_batch'));
+    const addApply = await applyManagePreview(runtime, activeTarget, addPreview);
+    assert.ok(routedTools(addApply).includes('add_risup_prompt_item_batch'));
+    assert.equal((await currentPromptIds(runtime)).length, 4);
+
+    const ids = await currentPromptIds(runtime);
+    const reorderPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'risup-prompt',
+      mode: 'preview',
+      operation: { action: 'reorder_items', order_ids: [...ids].reverse() },
+    });
+    assert.ok(routedTools(reorderPreview).includes('reorder_risup_prompt_items_by_id'));
+    await applyManagePreview(runtime, activeTarget, reorderPreview);
+
+    const copyText = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'risup-prompt',
+      mode: 'read',
+      operation: { action: 'copy_as_text', selector: { indices: [0, 1] } },
+      max_bytes: 4096,
+    });
+    const copiedText = String(nestedRecord(copyText.result, 'copy text result').text ?? '');
+    assert.match(copiedText, /### \[/);
+
+    const savePreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'risup-prompt',
+      mode: 'preview',
+      operation: { action: 'save_snippet', name: 'Managed snippet', selector: { indices: [0, 1] } },
+    });
+    assert.ok(routedTools(savePreview).includes('save_risup_prompt_snippet'));
+    await applyManagePreview(runtime, activeTarget, savePreview);
+
+    const snippets = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'risup-prompt',
+      mode: 'read',
+      operation: { action: 'list_snippets' },
+    });
+    assert.equal(nestedRecord(snippets.result, 'snippet list').count, 1);
+
+    const insertPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'risup-prompt',
+      mode: 'preview',
+      operation: { action: 'insert_snippet', identifier: 'Managed snippet', insertAt: 0 },
+    });
+    assert.ok(routedTools(insertPreview).includes('insert_risup_prompt_snippet'));
+    await applyManagePreview(runtime, activeTarget, insertPreview);
+    assert.ok((await currentPromptIds(runtime)).length > 4);
+
+    const staleDelete = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'risup-prompt',
+      mode: 'preview',
+      operation: { action: 'delete_snippet', identifier: 'Managed snippet' },
+    });
+    const stalePreview = previewToken(staleDelete, 'stale delete preview');
+    await callJson(
+      runtime,
+      'manage_items',
+      {
+        target: activeTarget,
+        family: 'risup-prompt',
+        mode: 'apply',
+        preview_token: stalePreview.preview_token,
+        operation_digest: stalePreview.operation_digest,
+        guard_values: [{ name: 'expected_snippet_updated_at', value: 'stale' }],
+      },
+      { expectError: true },
+    );
+    await applyManagePreview(runtime, activeTarget, staleDelete);
+
+    const externalAddPreview = await callJson(runtime, 'manage_items', {
+      target: externalTarget,
+      family: 'risup-prompt',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [{ type: 'plain', type2: 'normal', text: 'External managed add.', role: 'system' }],
+      },
+    });
+    assert.ok(routedTools(externalAddPreview).includes('external_write_field'));
+    await applyManagePreview(runtime, externalTarget, externalAddPreview);
+    assert.equal(risupPromptItems(fixture.externalRisup).length, 3);
+
+    const externalImportPreview = await callJson(runtime, 'manage_items', {
+      target: externalTarget,
+      family: 'risup-prompt',
+      mode: 'preview',
+      operation: { action: 'import_text', text: copiedText, import_mode: 'append', insertAt: 1 },
+    });
+    assert.ok(routedTools(externalImportPreview).includes('external_write_field'));
+    await applyManagePreview(runtime, externalTarget, externalImportPreview);
+    assert.ok(risupPromptItems(fixture.externalRisup).length > 3);
+
+    const largeCopy = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'risup-prompt',
+      mode: 'read',
+      operation: { action: 'copy_as_text', selector: { indices: [0, 1, 2, 3] } },
+      max_bytes: 256,
+    });
+    assert.equal(nestedRecord(largeCopy.facade, 'large copy facade').truncated, true);
+
+    await runtime.close();
+    runtime = await startStandaloneClient({
+      file: fixture.activeCharx,
+      userDataDir: path.join(fixture.dir, 'charx-user-data'),
+      allowWrites: true,
+    });
+    const externalCharxTarget = { kind: 'external', file_path: fixture.externalCharx };
+    const externalRisumTarget = { kind: 'external', file_path: fixture.externalRisum };
+
+    const activeAssetAddPreview = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'charx',
+      mode: 'preview',
+      operation: {
+        action: 'add_asset',
+        fileName: 'managed-asset.png',
+        base64: Buffer.from('active-managed-asset').toString('base64'),
+      },
+    });
+    assert.ok(routedTools(activeAssetAddPreview).includes('list_charx_assets'));
+    assert.ok(routedTools(activeAssetAddPreview).includes('add_charx_asset'));
+    assert.ok(
+      nestedArray(
+        nestedRecord(activeAssetAddPreview.preview, 'active asset add preview').required_guards,
+        'active asset add guards',
+      ).some((guard) => nestedRecord(guard, 'active asset guard').name === 'expected_asset_collection_digest'),
+    );
+    const activeAssetAddApply = await applyManageAssetsPreview(runtime, activeTarget, activeAssetAddPreview, 'charx');
+    assert.ok(routedTools(activeAssetAddApply).includes('add_charx_asset'));
+    const activeAssetList = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'charx',
+      mode: 'read',
+      operation: { action: 'list_assets' },
+    });
+    assert.equal(nestedRecord(activeAssetList.result, 'active asset list result').count, 1);
+
+    const activeAssetRenamePreview = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'charx',
+      mode: 'preview',
+      operation: {
+        action: 'rename_asset',
+        selector: { path: 'assets/other/image/managed-asset.png' },
+        newName: 'managed-asset-renamed.png',
+      },
+    });
+    assert.ok(routedTools(activeAssetRenamePreview).includes('rename_charx_asset'));
+    await applyManageAssetsPreview(runtime, activeTarget, activeAssetRenamePreview, 'charx');
+
+    const activeAssetDeletePreview = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'charx',
+      mode: 'preview',
+      operation: { action: 'delete_asset', selector: { path: 'assets/other/image/managed-asset-renamed.png' } },
+    });
+    assert.ok(routedTools(activeAssetDeletePreview).includes('delete_charx_asset'));
+    await applyManageAssetsPreview(runtime, activeTarget, activeAssetDeletePreview, 'charx');
+
+    const externalCharxAssetPreview = await callJson(runtime, 'manage_assets', {
+      target: externalCharxTarget,
+      asset_family: 'charx',
+      mode: 'preview',
+      operation: {
+        action: 'add_asset',
+        fileName: 'external-managed-asset.png',
+        base64: Buffer.from('external-managed-asset').toString('base64'),
+      },
+    });
+    assert.ok(routedTools(externalCharxAssetPreview).includes('external_patch_surface'));
+    await applyManageAssetsPreview(runtime, externalCharxTarget, externalCharxAssetPreview, 'charx');
+    assert.equal(openCharx(fixture.externalCharx).assets?.length, 1);
+    assert.equal(openCharx(fixture.externalCharx).cardAssets?.length, 1);
+
+    const externalRisumAssetPreview = await callJson(runtime, 'manage_assets', {
+      target: externalRisumTarget,
+      asset_family: 'risum',
+      mode: 'preview',
+      operation: {
+        action: 'add_asset',
+        name: 'external_module_asset',
+        path: 'external_module_asset.png',
+        base64: Buffer.from('external-risum-asset').toString('base64'),
+      },
+    });
+    assert.ok(routedTools(externalRisumAssetPreview).includes('external_patch_surface'));
+    await applyManageAssetsPreview(runtime, externalRisumTarget, externalRisumAssetPreview, 'risum');
+    assert.equal(openRisum(fixture.externalRisum).risumAssets?.length, 1);
+
+    const externalRisumDeletePreview = await callJson(runtime, 'manage_assets', {
+      target: externalRisumTarget,
+      asset_family: 'risum',
+      mode: 'preview',
+      operation: { action: 'delete_asset', selector: { index: 0 } },
+    });
+    assert.ok(routedTools(externalRisumDeletePreview).includes('external_patch_surface'));
+    await applyManageAssetsPreview(runtime, externalRisumTarget, externalRisumDeletePreview, 'risum');
+    assert.equal(openRisum(fixture.externalRisum).risumAssets?.length, 0);
+
+    const activeLorebookAddPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'lorebook',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [{ comment: 'Managed Lore', key: 'managed', content: 'Managed lorebook facade entry.' }],
+      },
+    });
+    assert.deepEqual(routedTools(activeLorebookAddPreview), ['read_surface', 'patch_surface']);
+    assert.ok(
+      nestedArray(
+        nestedRecord(activeLorebookAddPreview.preview, 'active lorebook manage preview').required_guards,
+        'active lorebook guards',
+      ).some((guard) => nestedRecord(guard, 'active lorebook guard').name === 'expected_item_collection_digest'),
+    );
+    await applyManagePreview(runtime, activeTarget, activeLorebookAddPreview, 'lorebook');
+
+    const activeRegexAddPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'regex',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [{ comment: 'Managed Regex', find: 'Managed', replace: 'Handled', flag: 'g' }],
+      },
+    });
+    assert.deepEqual(routedTools(activeRegexAddPreview), ['read_surface', 'patch_surface']);
+    await applyManagePreview(runtime, activeTarget, activeRegexAddPreview, 'regex');
+    const activeRegexReorderPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'regex',
+      mode: 'preview',
+      operation: { action: 'reorder_items', order: [1, 0] },
+    });
+    assert.deepEqual(routedTools(activeRegexReorderPreview), ['read_surface', 'patch_surface']);
+    await applyManagePreview(runtime, activeTarget, activeRegexReorderPreview, 'regex');
+
+    const activeGreetingAddPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'greeting',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        greeting_type: 'alternate',
+        items: [{ content: 'Managed alternate greeting.' }],
+      },
+    });
+    assert.deepEqual(routedTools(activeGreetingAddPreview), ['read_surface', 'patch_surface']);
+    await applyManagePreview(runtime, activeTarget, activeGreetingAddPreview, 'greeting');
+    const activeGreetingReorderPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'greeting',
+      mode: 'preview',
+      operation: { action: 'reorder_items', greeting_type: 'alternate', order: [1, 0] },
+    });
+    assert.deepEqual(routedTools(activeGreetingReorderPreview), ['read_surface', 'patch_surface']);
+    await applyManagePreview(runtime, activeTarget, activeGreetingReorderPreview, 'greeting');
+
+    const externalLorebookAddPreview = await callJson(runtime, 'manage_items', {
+      target: externalCharxTarget,
+      family: 'lorebook',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [{ comment: 'External Managed Lore', key: 'external-managed', content: 'External lorebook add.' }],
+      },
+    });
+    assert.deepEqual(routedTools(externalLorebookAddPreview), ['external_read_surface', 'external_patch_surface']);
+    await applyManagePreview(runtime, externalCharxTarget, externalLorebookAddPreview, 'lorebook');
+    assert.equal(openCharx(fixture.externalCharx).lorebook?.length, 2);
+
+    const externalRegexAddPreview = await callJson(runtime, 'manage_items', {
+      target: externalCharxTarget,
+      family: 'regex',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [{ comment: 'External Managed Regex', find: 'External', replace: 'Managed' }],
+      },
+    });
+    assert.deepEqual(routedTools(externalRegexAddPreview), ['external_read_surface', 'external_patch_surface']);
+    await applyManagePreview(runtime, externalCharxTarget, externalRegexAddPreview, 'regex');
+    assert.equal(openCharx(fixture.externalCharx).regex?.length, 2);
+
+    const externalGreetingAddPreview = await callJson(runtime, 'manage_items', {
+      target: externalCharxTarget,
+      family: 'greeting',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        greeting_type: 'alternate',
+        items: [{ content: 'External managed alternate greeting.' }],
+      },
+    });
+    assert.deepEqual(routedTools(externalGreetingAddPreview), ['external_read_surface', 'external_patch_surface']);
+    await applyManagePreview(runtime, externalCharxTarget, externalGreetingAddPreview, 'greeting');
+    const externalGreetingReorderPreview = await callJson(runtime, 'manage_items', {
+      target: externalCharxTarget,
+      family: 'greeting',
+      mode: 'preview',
+      operation: { action: 'reorder_items', greeting_type: 'alternate', order: [1, 0] },
+    });
+    assert.deepEqual(routedTools(externalGreetingReorderPreview), ['external_read_surface', 'external_patch_surface']);
+    await applyManagePreview(runtime, externalCharxTarget, externalGreetingReorderPreview, 'greeting');
+    assert.equal(openCharx(fixture.externalCharx).alternateGreetings?.[0], 'External managed alternate greeting.');
+
+    const activeTriggerAddPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'trigger',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [{ comment: 'Managed Trigger', type: 'start', conditions: [], effect: [], lowLevelAccess: false }],
+      },
+    });
+    assert.deepEqual(routedTools(activeTriggerAddPreview), ['read_surface', 'write_field']);
+    const activeTriggerApply = await applyManagePreview(runtime, activeTarget, activeTriggerAddPreview, 'trigger');
+    assert.equal(nestedRecord(activeTriggerApply.result, 'active trigger apply result').after_count, 2);
+    const activeTriggerReorderPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'trigger',
+      mode: 'preview',
+      operation: { action: 'reorder_items', order: [1, 0] },
+    });
+    assert.deepEqual(routedTools(activeTriggerReorderPreview), ['read_surface', 'write_field']);
+    await applyManagePreview(runtime, activeTarget, activeTriggerReorderPreview, 'trigger');
+
+    const activeLuaAddPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'lua',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [{ name: 'managed_lua', content: 'print("managed lua")' }],
+      },
+    });
+    assert.deepEqual(routedTools(activeLuaAddPreview), ['read_field', 'write_field']);
+    const activeLuaApply = await applyManagePreview(runtime, activeTarget, activeLuaAddPreview, 'lua');
+    assert.equal(nestedRecord(activeLuaApply.result, 'active lua apply result').after_count, 2);
+
+    const activeCssAddPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'css',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [{ name: 'managed_css', content: '.managed-css { color: green; }' }],
+      },
+    });
+    assert.deepEqual(routedTools(activeCssAddPreview), ['read_field', 'write_field']);
+    await applyManagePreview(runtime, activeTarget, activeCssAddPreview, 'css');
+    const activeCssReorderPreview = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'css',
+      mode: 'preview',
+      operation: { action: 'reorder_items', order: [1, 0] },
+    });
+    assert.deepEqual(routedTools(activeCssReorderPreview), ['read_field', 'write_field']);
+    await applyManagePreview(runtime, activeTarget, activeCssReorderPreview, 'css');
+
+    const externalTriggerAddPreview = await callJson(runtime, 'manage_items', {
+      target: externalCharxTarget,
+      family: 'trigger',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [
+          { comment: 'External Managed Trigger', type: 'start', conditions: [], effect: [], lowLevelAccess: false },
+        ],
+      },
+    });
+    assert.deepEqual(routedTools(externalTriggerAddPreview), ['external_read_surface', 'external_patch_surface']);
+    await applyManagePreview(runtime, externalCharxTarget, externalTriggerAddPreview, 'trigger');
+    assert.equal(openCharx(fixture.externalCharx).triggerScripts?.length, 2);
+
+    const externalLuaAddPreview = await callJson(runtime, 'manage_items', {
+      target: externalCharxTarget,
+      family: 'lua',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [{ name: 'external_managed_lua', content: 'print("external managed lua")' }],
+      },
+    });
+    assert.deepEqual(routedTools(externalLuaAddPreview), ['external_read_surface', 'external_patch_surface']);
+    await applyManagePreview(runtime, externalCharxTarget, externalLuaAddPreview, 'lua');
+    assert.match(String(openCharx(fixture.externalCharx).lua ?? ''), /external_managed_lua/);
+
+    const externalCssAddPreview = await callJson(runtime, 'manage_items', {
+      target: externalCharxTarget,
+      family: 'css',
+      mode: 'preview',
+      operation: {
+        action: 'add_items',
+        items: [{ name: 'external_managed_css', content: '.external-managed-css { color: green; }' }],
+      },
+    });
+    assert.deepEqual(routedTools(externalCssAddPreview), ['external_read_surface', 'external_patch_surface']);
+    await applyManagePreview(runtime, externalCharxTarget, externalCssAddPreview, 'css');
+    assert.match(String(openCharx(fixture.externalCharx).css ?? ''), /external_managed_css/);
+  } finally {
+    if (runtime) await runtime.close();
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+}
+
 async function runStandaloneFacadeDogfood(): Promise<void> {
   const fixture = createDogfoodFixtures();
   const activeTarget = { kind: 'active' };
@@ -872,6 +1450,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
             'apply_edit',
             'validate_content',
             'load_guidance',
+            'manage_items',
           ].includes(tool.name),
         ),
       ),
@@ -888,6 +1467,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'apply_edit',
       'validate_content',
       'load_guidance',
+      'manage_items',
+      'manage_assets',
     ]) {
       const tool = tools.tools.find((candidate) => candidate.name === name);
       assert.equal(tool?._meta?.['risutoki/surfaceKind'], 'facade');
@@ -928,6 +1509,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       ['validate_content', ['validate']],
       ['preview_edit', ['preview']],
       ['apply_edit', ['apply']],
+      ['manage_items', ['read', 'preview', 'apply']],
+      ['manage_assets', ['read', 'preview', 'apply']],
     ] as const;
     for (const [toolName, workflowStages] of facadeWorkflowStageExamples) {
       assertProfileToolWorkflowStages(profileTools, toolName, [...workflowStages]);
@@ -938,6 +1521,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     const readonlyToolNames = readonlyProfileTools.map((tool) => nestedRecord(tool, 'readonly profile tool').name);
     assert.ok(!readonlyToolNames.includes('preview_edit'), 'readonly profile should not expose preview_edit');
     assert.ok(!readonlyToolNames.includes('apply_edit'), 'readonly profile should not expose apply_edit');
+    assert.ok(!readonlyToolNames.includes('manage_items'), 'readonly profile should not expose manage_items');
+    assert.ok(!readonlyToolNames.includes('manage_assets'), 'readonly profile should not expose manage_assets');
     for (const [toolName, workflowStages] of [
       ['inspect_document', ['discover']],
       ['read_content', ['read']],
@@ -1090,6 +1675,41 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'active greeting data',
     );
     assert.equal(activeGreetingData.content, 'Facade alternate hello.');
+
+    const activeScriptStyleReads = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [
+        { family: 'trigger' },
+        { family: 'trigger', index: 0 },
+        { family: 'trigger', indices: [0] },
+        { family: 'lua' },
+        { family: 'lua', index: 0 },
+        { family: 'css' },
+        { family: 'css', index: 0 },
+      ],
+    });
+    assert.deepEqual(routedTools(activeScriptStyleReads), [
+      'list_triggers',
+      'read_trigger',
+      'read_trigger_batch',
+      'list_lua',
+      'read_lua',
+      'list_css',
+      'read_css',
+    ]);
+    const activeScriptItems = nestedArray(
+      nestedRecord(activeScriptStyleReads.result, 'active script/style read result').items,
+      'active script/style read result.items',
+    );
+    const activeTriggerData = nestedRecord(
+      nestedRecord(activeScriptItems[1], 'active trigger item').data,
+      'active trigger data',
+    );
+    assert.equal(nestedRecord(activeTriggerData.trigger, 'active trigger data.trigger').comment, 'Facade Trigger');
+    const activeLuaData = nestedRecord(nestedRecord(activeScriptItems[4], 'active lua item').data, 'active lua data');
+    assert.match(String(activeLuaData.content ?? ''), /Alpha/);
+    const activeCssData = nestedRecord(nestedRecord(activeScriptItems[6], 'active css item').data, 'active css data');
+    assert.match(String(activeCssData.content ?? ''), /facade-alpha/);
 
     const missingGreetingType = await callJson(
       runtime,
@@ -1325,6 +1945,90 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       target: activeTarget,
     });
     assert.deepEqual(routedTools(greetingWriteApply), ['batch_write_greeting']);
+
+    facadeOnlyCalls.push('preview_edit');
+    const triggerWritePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'write_content',
+          selector: { family: 'trigger', index: 0 },
+          content: { comment: 'Updated Facade Trigger' },
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(triggerWritePreview), ['read_trigger', 'write_trigger']);
+    const triggerGuardValues = nestedArray(
+      nestedRecord(triggerWritePreview.result, 'trigger write preview result').guard_values,
+      'trigger write guard values',
+    );
+    assert.ok(
+      triggerGuardValues.some((guard) => nestedRecord(guard, 'trigger guard').name === 'expected_comment'),
+      'trigger write preview should derive expected_comment',
+    );
+    const triggerWritePreviewInfo = nestedRecord(triggerWritePreview.preview, 'trigger write preview');
+    facadeOnlyCalls.push('apply_edit');
+    const triggerWriteApply = await callJson(runtime, 'apply_edit', {
+      preview_token: triggerWritePreviewInfo.preview_token,
+      operation_digest: triggerWritePreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(triggerWriteApply), ['read_trigger', 'write_trigger']);
+
+    facadeOnlyCalls.push('preview_edit');
+    const luaReplacePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'lua', index: 0 },
+          find: 'Alpha',
+          replace: 'Beta',
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(luaReplacePreview), ['read_lua', 'replace_in_lua']);
+    const luaGuardValues = nestedArray(
+      nestedRecord(luaReplacePreview.result, 'lua replace preview result').guard_values,
+      'lua replace guard values',
+    );
+    assert.ok(luaGuardValues.some((guard) => nestedRecord(guard, 'lua guard').name === 'expected_hash'));
+    const luaReplacePreviewInfo = nestedRecord(luaReplacePreview.preview, 'lua replace preview');
+    facadeOnlyCalls.push('apply_edit');
+    const luaReplaceApply = await callJson(runtime, 'apply_edit', {
+      preview_token: luaReplacePreviewInfo.preview_token,
+      operation_digest: luaReplacePreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(luaReplaceApply), ['read_lua', 'replace_in_lua']);
+
+    facadeOnlyCalls.push('preview_edit');
+    const cssReplacePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'css', index: 0 },
+          find: 'red',
+          replace: 'blue',
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(cssReplacePreview), ['read_css', 'replace_in_css']);
+    const cssGuardValues = nestedArray(
+      nestedRecord(cssReplacePreview.result, 'css replace preview result').guard_values,
+      'css replace guard values',
+    );
+    assert.ok(cssGuardValues.some((guard) => nestedRecord(guard, 'css guard').name === 'expected_hash'));
+    const cssReplacePreviewInfo = nestedRecord(cssReplacePreview.preview, 'css replace preview');
+    facadeOnlyCalls.push('apply_edit');
+    const cssReplaceApply = await callJson(runtime, 'apply_edit', {
+      preview_token: cssReplacePreviewInfo.preview_token,
+      operation_digest: cssReplacePreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(cssReplaceApply), ['read_css', 'replace_in_css']);
+
     const staleGreetingBatchPreview = await callJson(
       runtime,
       'preview_edit',
@@ -1415,6 +2119,9 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assert.equal(afterData.content, persisted.description);
     assert.equal(persisted.description, 'Omega facade dogfood description.');
     assert.equal((persisted.lorebook[0] as { content?: string } | undefined)?.content, 'Updated facade lore body.');
+    assert.equal(persisted.triggerScripts[0]?.comment, 'Updated Facade Trigger');
+    assert.match(persisted.lua, /Beta/);
+    assert.match(persisted.css, /blue/);
     assert.equal(persisted.regex.length, 0);
     assert.equal(persisted.alternateGreetings.length, 0);
     metrics.finalArtifactEquality = true;
@@ -1708,6 +2415,292 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     assert.deepEqual(routedTools(externalApply), ['external_replace_in_field']);
     assert.equal(openCharx(fixture.externalFile).description, 'Edited external facade dogfood description.');
+
+    facadeOnlyCalls.push('preview_edit');
+    const externalSurfacePreview = await callJson(runtime, 'preview_edit', {
+      target: externalTarget,
+      operations: [
+        {
+          op: 'patch_surface',
+          selector: { family: 'surface', path: '/' },
+          content: [{ op: 'replace', path: '/name', value: 'External Surface Patched' }],
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(externalSurfacePreview), ['external_patch_surface']);
+    assert.equal(openCharx(fixture.externalFile).name, 'Facade External');
+    const externalSurfacePreviewInfo = nestedRecord(externalSurfacePreview.preview, 'external surface preview');
+    const externalSurfaceGuards = nestedArray(
+      externalSurfacePreviewInfo.required_guards,
+      'external surface preview required guards',
+    );
+    assert.ok(
+      externalSurfaceGuards.some((guard) => nestedRecord(guard, 'external surface guard').name === 'expected_hash'),
+      'external surface patch preview should derive expected_hash',
+    );
+    facadeOnlyCalls.push('apply_edit');
+    const externalSurfaceApply = await callJson(runtime, 'apply_edit', {
+      preview_token: externalSurfacePreviewInfo.preview_token,
+      operation_digest: externalSurfacePreviewInfo.operation_digest,
+      target: externalTarget,
+      guard_values: externalSurfaceGuards,
+    });
+    assert.deepEqual(routedTools(externalSurfaceApply), ['external_patch_surface']);
+    assert.equal(openCharx(fixture.externalFile).name, 'External Surface Patched');
+
+    const externalLorebookList = await callJson(runtime, 'read_content', {
+      target: externalTarget,
+      selectors: [{ family: 'lorebook' }],
+    });
+    assert.deepEqual(routedTools(externalLorebookList), ['external_read_surface']);
+    const externalLorebookItems = nestedArray(
+      nestedRecord(externalLorebookList.result, 'external lorebook list result').items,
+      'external lorebook list result.items',
+    );
+    const externalLorebookEntries = nestedArray(
+      nestedRecord(nestedRecord(externalLorebookItems[0], 'external lorebook list item').data, 'external lorebook data')
+        .entries,
+      'external lorebook entries',
+    );
+    const externalLorebookId = String(nestedRecord(externalLorebookEntries[0], 'external lorebook entry').id);
+    const externalLorebookPreview = await callJson(runtime, 'preview_edit', {
+      target: externalTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'lorebook', id: externalLorebookId, field: 'content' },
+          find: 'Facade lore',
+          replace: 'External facade lore',
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(externalLorebookPreview), ['external_read_surface', 'external_patch_surface']);
+    const externalLorebookPreviewInfo = nestedRecord(externalLorebookPreview.preview, 'external lorebook preview');
+    const externalLorebookGuards = nestedArray(
+      externalLorebookPreviewInfo.required_guards,
+      'external lorebook required guards',
+    );
+    assert.ok(
+      externalLorebookGuards.some((guard) => nestedRecord(guard, 'external lorebook guard').name === 'expected_hash'),
+      'external lorebook preview should derive expected_hash',
+    );
+    assert.ok(
+      externalLorebookGuards.some(
+        (guard) => nestedRecord(guard, 'external lorebook guard').name === 'expected_comment',
+      ),
+      'external lorebook preview should derive expected_comment',
+    );
+    const externalLorebookApply = await callJson(runtime, 'apply_edit', {
+      preview_token: externalLorebookPreviewInfo.preview_token,
+      operation_digest: externalLorebookPreviewInfo.operation_digest,
+      target: externalTarget,
+      guard_values: externalLorebookGuards,
+    });
+    assert.deepEqual(routedTools(externalLorebookApply), ['external_read_surface', 'external_patch_surface']);
+    assert.equal(
+      (openCharx(fixture.externalFile).lorebook[0] as { content?: string }).content,
+      'External facade lore body.',
+    );
+
+    const externalRegexList = await callJson(runtime, 'read_content', {
+      target: externalTarget,
+      selectors: [{ family: 'regex' }],
+    });
+    assert.deepEqual(routedTools(externalRegexList), ['external_read_surface']);
+    const externalRegexItems = nestedArray(
+      nestedRecord(externalRegexList.result, 'external regex list result').items,
+      'external regex list result.items',
+    );
+    const externalRegexEntries = nestedArray(
+      nestedRecord(nestedRecord(externalRegexItems[0], 'external regex list item').data, 'external regex data').entries,
+      'external regex entries',
+    );
+    const externalRegexEntry = nestedRecord(externalRegexEntries[0], 'external regex entry');
+    const externalRegexPreview = await callJson(runtime, 'preview_edit', {
+      target: externalTarget,
+      operations: [
+        {
+          op: 'write_content',
+          selector: {
+            family: 'regex',
+            identity: { comment: String(externalRegexEntry.comment), hash: String(externalRegexEntry.hash) },
+          },
+          content: { replace: 'External Surface' },
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(externalRegexPreview), ['external_read_surface', 'external_patch_surface']);
+    const externalRegexPreviewInfo = nestedRecord(externalRegexPreview.preview, 'external regex preview');
+    const externalRegexGuards = nestedArray(externalRegexPreviewInfo.required_guards, 'external regex required guards');
+    assert.ok(
+      externalRegexGuards.some((guard) => nestedRecord(guard, 'external regex guard').name === 'expected_hash'),
+      'external regex preview should derive expected_hash',
+    );
+    const externalRegexApply = await callJson(runtime, 'apply_edit', {
+      preview_token: externalRegexPreviewInfo.preview_token,
+      operation_digest: externalRegexPreviewInfo.operation_digest,
+      target: externalTarget,
+      guard_values: externalRegexGuards,
+    });
+    assert.deepEqual(routedTools(externalRegexApply), ['external_read_surface', 'external_patch_surface']);
+    assert.equal((openCharx(fixture.externalFile).regex[0] as { replace?: string }).replace, 'External Surface');
+
+    const externalGreetingList = await callJson(runtime, 'read_content', {
+      target: externalTarget,
+      selectors: [{ family: 'greeting', greeting_type: 'alternate' }],
+    });
+    assert.deepEqual(routedTools(externalGreetingList), ['external_read_surface']);
+    const externalGreetingItems = nestedArray(
+      nestedRecord(externalGreetingList.result, 'external greeting list result').items,
+      'external greeting list result.items',
+    );
+    const externalGreetingSummaries = nestedArray(
+      nestedRecord(nestedRecord(externalGreetingItems[0], 'external greeting list item').data, 'external greeting data')
+        .items,
+      'external greeting summaries',
+    );
+    const externalGreeting = nestedRecord(externalGreetingSummaries[0], 'external greeting summary');
+    const externalGreetingPreview = await callJson(runtime, 'preview_edit', {
+      target: externalTarget,
+      operations: [
+        {
+          op: 'write_content',
+          selector: {
+            family: 'greeting',
+            greeting_type: 'alternate',
+            identity: { preview: String(externalGreeting.preview), hash: String(externalGreeting.hash) },
+          },
+          content: 'External alternate updated.',
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(externalGreetingPreview), ['external_read_surface', 'external_patch_surface']);
+    const externalGreetingPreviewInfo = nestedRecord(externalGreetingPreview.preview, 'external greeting preview');
+    const externalGreetingGuards = nestedArray(
+      externalGreetingPreviewInfo.required_guards,
+      'external greeting required guards',
+    );
+    assert.ok(
+      externalGreetingGuards.some((guard) => nestedRecord(guard, 'external greeting guard').name === 'expected_hash'),
+      'external greeting preview should derive expected_hash',
+    );
+    const externalGreetingApply = await callJson(runtime, 'apply_edit', {
+      preview_token: externalGreetingPreviewInfo.preview_token,
+      operation_digest: externalGreetingPreviewInfo.operation_digest,
+      target: externalTarget,
+      guard_values: externalGreetingGuards,
+    });
+    assert.deepEqual(routedTools(externalGreetingApply), ['external_read_surface', 'external_patch_surface']);
+    assert.equal(openCharx(fixture.externalFile).alternateGreetings[0], 'External alternate updated.');
+
+    const externalScriptReads = await callJson(runtime, 'read_content', {
+      target: externalTarget,
+      selectors: [{ family: 'trigger' }, { family: 'lua', index: 0 }, { family: 'css', index: 0 }],
+    });
+    assert.deepEqual(routedTools(externalScriptReads), [
+      'external_read_surface',
+      'external_read_surface',
+      'external_read_surface',
+    ]);
+    const externalScriptItems = nestedArray(
+      nestedRecord(externalScriptReads.result, 'external script/style read result').items,
+      'external script/style read result.items',
+    );
+    const externalTriggerSummaries = nestedArray(
+      nestedRecord(nestedRecord(externalScriptItems[0], 'external trigger list item').data, 'external trigger data')
+        .items,
+      'external trigger summaries',
+    );
+    assert.equal(nestedRecord(externalTriggerSummaries[0], 'external trigger summary').comment, 'Facade Trigger');
+    const externalLuaReadData = nestedRecord(
+      nestedRecord(externalScriptItems[1], 'external lua item').data,
+      'external lua read data',
+    );
+    assert.match(JSON.stringify(externalLuaReadData), /Alpha/);
+
+    const externalTriggerPreview = await callJson(runtime, 'preview_edit', {
+      target: externalTarget,
+      operations: [
+        {
+          op: 'write_content',
+          selector: { family: 'trigger', identity: { comment: 'Facade Trigger' } },
+          content: { comment: 'External Facade Trigger' },
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(externalTriggerPreview), ['external_read_surface', 'external_patch_surface']);
+    const externalTriggerPreviewInfo = nestedRecord(externalTriggerPreview.preview, 'external trigger preview');
+    const externalTriggerGuards = nestedArray(
+      externalTriggerPreviewInfo.required_guards,
+      'external trigger required guards',
+    );
+    assert.ok(
+      externalTriggerGuards.some((guard) => nestedRecord(guard, 'external trigger guard').name === 'expected_comment'),
+      'external trigger preview should derive expected_comment',
+    );
+    const externalTriggerApply = await callJson(runtime, 'apply_edit', {
+      preview_token: externalTriggerPreviewInfo.preview_token,
+      operation_digest: externalTriggerPreviewInfo.operation_digest,
+      target: externalTarget,
+      guard_values: externalTriggerGuards,
+    });
+    assert.deepEqual(routedTools(externalTriggerApply), ['external_read_surface', 'external_patch_surface']);
+
+    const externalLuaPreview = await callJson(runtime, 'preview_edit', {
+      target: externalTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'lua', index: 0 },
+          find: 'Alpha',
+          replace: 'ExternalBeta',
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(externalLuaPreview), ['external_read_surface', 'external_patch_surface']);
+    const externalLuaPreviewInfo = nestedRecord(externalLuaPreview.preview, 'external lua preview');
+    const externalLuaGuards = nestedArray(externalLuaPreviewInfo.required_guards, 'external lua required guards');
+    assert.ok(
+      externalLuaGuards.some((guard) => nestedRecord(guard, 'external lua guard').name === 'expected_section_hash'),
+      'external lua preview should derive expected_section_hash',
+    );
+    const externalLuaApply = await callJson(runtime, 'apply_edit', {
+      preview_token: externalLuaPreviewInfo.preview_token,
+      operation_digest: externalLuaPreviewInfo.operation_digest,
+      target: externalTarget,
+      guard_values: externalLuaGuards,
+    });
+    assert.deepEqual(routedTools(externalLuaApply), ['external_read_surface', 'external_patch_surface']);
+
+    const externalCssPreview = await callJson(runtime, 'preview_edit', {
+      target: externalTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'css', index: 0 },
+          find: 'red',
+          replace: 'green',
+        },
+      ],
+    });
+    assert.deepEqual(routedTools(externalCssPreview), ['external_read_surface', 'external_patch_surface']);
+    const externalCssPreviewInfo = nestedRecord(externalCssPreview.preview, 'external css preview');
+    const externalCssGuards = nestedArray(externalCssPreviewInfo.required_guards, 'external css required guards');
+    assert.ok(
+      externalCssGuards.some((guard) => nestedRecord(guard, 'external css guard').name === 'expected_section_hash'),
+      'external css preview should derive expected_section_hash',
+    );
+    const externalCssApply = await callJson(runtime, 'apply_edit', {
+      preview_token: externalCssPreviewInfo.preview_token,
+      operation_digest: externalCssPreviewInfo.operation_digest,
+      target: externalTarget,
+      guard_values: externalCssGuards,
+    });
+    assert.deepEqual(routedTools(externalCssApply), ['external_read_surface', 'external_patch_surface']);
+    const externalAfterScriptStyle = openCharx(fixture.externalFile);
+    assert.equal(externalAfterScriptStyle.triggerScripts[0]?.comment, 'External Facade Trigger');
+    assert.match(externalAfterScriptStyle.lua, /ExternalBeta/);
+    assert.match(externalAfterScriptStyle.css, /green/);
 
     const refreshedInspect = await callJson(runtime, 'inspect_document', { target: activeTarget, max_bytes: 32000 });
     const refreshedSurfaces = nestedRecord(
@@ -2054,6 +3047,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'apply_edit',
       'validate_content',
       'load_guidance',
+      'manage_items',
+      'manage_assets',
     ]) {
       assert.ok(
         tools.tools.some((tool) => tool.name === toolName),
@@ -2127,6 +3122,28 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       surfaceKind: 'facade',
       recommendation: 'preferred',
       workflowStages: ['apply'],
+      profiles: ['facade-first', 'authoring', 'advanced-full'],
+      defaultProfile: 'facade-first',
+    });
+    assertToolListMetadata(tools.tools, 'manage_items', {
+      family: 'item-management',
+      staleGuards: [],
+      requiresConfirmation: true,
+      supportsDryRun: true,
+      surfaceKind: 'facade',
+      recommendation: 'preferred',
+      workflowStages: ['read', 'preview', 'apply'],
+      profiles: ['facade-first', 'authoring', 'advanced-full'],
+      defaultProfile: 'facade-first',
+    });
+    assertToolListMetadata(tools.tools, 'manage_assets', {
+      family: 'asset-management',
+      staleGuards: [],
+      requiresConfirmation: true,
+      supportsDryRun: true,
+      surfaceKind: 'facade',
+      recommendation: 'preferred',
+      workflowStages: ['read', 'preview', 'apply'],
       profiles: ['facade-first', 'authoring', 'advanced-full'],
       defaultProfile: 'facade-first',
     });
@@ -2564,6 +3581,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     console.log('search_all_fields MCP smoke test passed');
     await runStandaloneFacadeDogfood();
     console.log('facade-first standalone MCP dogfood eval passed');
+    await runStandaloneManageItemsDogfood();
+    console.log('manage_items standalone MCP dogfood eval passed');
     await runStandaloneRealCorpusFacadeReadEval();
   } catch (error) {
     const stderrText = stderrChunks.join('').trim();

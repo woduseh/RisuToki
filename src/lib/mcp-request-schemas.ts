@@ -259,10 +259,12 @@ export const FACADE_V1_TOOL_NAMES = [
   'apply_edit',
   'validate_content',
   'load_guidance',
+  'manage_items',
+  'manage_assets',
 ] as const;
 export type FacadeV1ToolName = (typeof FACADE_V1_TOOL_NAMES)[number];
 
-export const FACADE_V1_FUTURE_TOOL_NAMES = ['manage_items', 'manage_assets', 'manage_file'] as const;
+export const FACADE_V1_FUTURE_TOOL_NAMES = ['manage_file'] as const;
 
 export type FacadeV1ToolMutability = 'read-only' | 'preview' | 'mutating';
 
@@ -281,8 +283,8 @@ export const FACADE_V1_TOOL_CONTRACTS: readonly FacadeV1ToolContract[] = [
   { name: 'apply_edit', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
   { name: 'validate_content', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
   { name: 'load_guidance', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
-  { name: 'manage_items', lifecycle: 'future-candidate', mutability: 'mutating', preference: 'preferred' },
-  { name: 'manage_assets', lifecycle: 'future-candidate', mutability: 'mutating', preference: 'preferred' },
+  { name: 'manage_items', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
+  { name: 'manage_assets', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
   { name: 'manage_file', lifecycle: 'future-candidate', mutability: 'mutating', preference: 'preferred' },
 ];
 
@@ -460,6 +462,242 @@ export const facadeV1LoadGuidanceBodySchema = z.object({
   max_bytes: facadeMaxBytesSchema,
 });
 export type FacadeV1LoadGuidanceBody = z.infer<typeof facadeV1LoadGuidanceBodySchema>;
+
+export const manageItemsFamilySchema = z.enum([
+  'risup-prompt',
+  'lorebook',
+  'regex',
+  'greeting',
+  'trigger',
+  'lua',
+  'css',
+]);
+export type ManageItemsFamily = z.infer<typeof manageItemsFamilySchema>;
+
+const manageItemsSelectorSchema = z.object({
+  index: z.number().int().nonnegative().optional(),
+  indices: z.array(z.number().int().nonnegative()).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+  id: z.string().min(1).optional(),
+  ids: z.array(z.string().min(1)).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+});
+
+export const manageItemsOperationSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('list_snippets'),
+  }),
+  z.object({
+    action: z.literal('read_snippet'),
+    identifier: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal('copy_as_text'),
+    selector: manageItemsSelectorSchema,
+  }),
+  z.object({
+    action: z.literal('add_items'),
+    items: z
+      .array(z.union([z.record(z.string(), z.unknown()), z.string()]))
+      .min(1)
+      .max(FACADE_V1_LIMITS.maxBatchItems),
+    insertAt: z.number().int().nonnegative().optional(),
+    greeting_type: z.enum(['alternate', 'group']).optional(),
+  }),
+  z.object({
+    action: z.literal('reorder_items'),
+    order_ids: z.array(z.string().min(1)).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    order: z.array(z.number().int().nonnegative()).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    greeting_type: z.enum(['alternate', 'group']).optional(),
+  }),
+  z.object({
+    action: z.literal('import_text'),
+    text: z.string().min(1),
+    import_mode: z.enum(['replace', 'append']).optional(),
+    insertAt: z.number().int().nonnegative().optional(),
+  }),
+  z
+    .object({
+      action: z.literal('save_snippet'),
+      name: z.string().min(1),
+      text: z.string().optional(),
+      selector: manageItemsSelectorSchema.optional(),
+    })
+    .refine((d) => (d.text !== undefined) !== (d.selector !== undefined), {
+      message: 'save_snippet requires exactly one of text or selector',
+      path: ['text'],
+    }),
+  z.object({
+    action: z.literal('insert_snippet'),
+    identifier: z.string().min(1),
+    insertAt: z.number().int().nonnegative().optional(),
+  }),
+  z.object({
+    action: z.literal('delete_snippet'),
+    identifier: z.string().min(1),
+  }),
+]);
+export type ManageItemsOperation = z.infer<typeof manageItemsOperationSchema>;
+
+export const manageItemsBodySchema = z
+  .object({
+    target: facadeV1TargetSchema,
+    family: manageItemsFamilySchema,
+    mode: z.enum(['read', 'preview', 'apply']),
+    operation: manageItemsOperationSchema.optional(),
+    preview_token: facadeV1PreviewTokenSchema.optional(),
+    operation_digest: z.string().min(16).optional(),
+    guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    max_bytes: facadeMaxBytesSchema,
+  })
+  .refine((d) => (d.mode === 'apply' ? d.preview_token !== undefined && d.operation_digest !== undefined : true), {
+    message: 'apply mode requires preview_token and operation_digest',
+    path: ['preview_token'],
+  })
+  .refine((d) => (d.mode === 'apply' ? d.guard_values !== undefined && d.guard_values.length > 0 : true), {
+    message: 'apply mode requires guard_values',
+    path: ['guard_values'],
+  })
+  .refine((d) => (d.mode === 'read' || d.mode === 'preview' ? d.operation !== undefined : true), {
+    message: 'read/preview mode requires operation',
+    path: ['operation'],
+  })
+  .refine((d) => d.target.kind === 'active' || d.target.kind === 'external', {
+    message: 'manage_items supports only active or external targets',
+    path: ['target', 'kind'],
+  })
+  .superRefine((d, ctx) => {
+    if (!d.operation || d.mode === 'apply') return;
+    const readActions = new Set(['list_snippets', 'read_snippet', 'copy_as_text']);
+    const previewActions = new Set([
+      'add_items',
+      'reorder_items',
+      'import_text',
+      'save_snippet',
+      'insert_snippet',
+      'delete_snippet',
+    ]);
+    if (d.mode === 'read' && !readActions.has(d.operation.action)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'read mode supports list_snippets, read_snippet, and copy_as_text',
+        path: ['operation', 'action'],
+      });
+    }
+    if (d.mode === 'preview' && !previewActions.has(d.operation.action)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'preview mode supports mutating item operations',
+        path: ['operation', 'action'],
+      });
+    }
+    if (d.family !== 'risup-prompt' && !['add_items', 'reorder_items'].includes(d.operation.action)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'structured item management supports add_items and reorder_items only',
+        path: ['operation', 'action'],
+      });
+    }
+    if (
+      d.family === 'greeting' &&
+      ['add_items', 'reorder_items'].includes(d.operation.action) &&
+      !('greeting_type' in d.operation && d.operation.greeting_type)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'greeting item management requires greeting_type',
+        path: ['operation', 'greeting_type'],
+      });
+    }
+  });
+export type ManageItemsBody = z.infer<typeof manageItemsBodySchema>;
+
+export const manageAssetsFamilySchema = z.enum(['auto', 'charx', 'risum']).default('auto');
+export type ManageAssetsFamily = z.infer<typeof manageAssetsFamilySchema>;
+
+const manageAssetsSelectorSchema = z
+  .object({
+    index: z.number().int().nonnegative().optional(),
+    path: z.string().min(1).optional(),
+  })
+  .refine((d) => d.index !== undefined || d.path !== undefined, {
+    message: 'asset selector requires index or path',
+    path: ['index'],
+  });
+
+export const manageAssetsOperationSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('list_assets'),
+  }),
+  z.object({
+    action: z.literal('read_asset'),
+    selector: manageAssetsSelectorSchema,
+  }),
+  z.object({
+    action: z.literal('add_asset'),
+    name: z.string().min(1).optional(),
+    fileName: z.string().min(1).optional(),
+    path: z.string().optional(),
+    folder: z.enum(['icon', 'other']).optional(),
+    base64: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal('delete_asset'),
+    selector: manageAssetsSelectorSchema,
+  }),
+  z.object({
+    action: z.literal('rename_asset'),
+    selector: manageAssetsSelectorSchema,
+    newName: z.string().min(1),
+  }),
+]);
+export type ManageAssetsOperation = z.infer<typeof manageAssetsOperationSchema>;
+
+export const manageAssetsBodySchema = z
+  .object({
+    target: facadeV1TargetSchema,
+    asset_family: manageAssetsFamilySchema.optional(),
+    mode: z.enum(['read', 'preview', 'apply']),
+    operation: manageAssetsOperationSchema.optional(),
+    preview_token: facadeV1PreviewTokenSchema.optional(),
+    operation_digest: z.string().min(16).optional(),
+    guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    max_bytes: facadeMaxBytesSchema,
+  })
+  .refine((d) => (d.mode === 'apply' ? d.preview_token !== undefined && d.operation_digest !== undefined : true), {
+    message: 'apply mode requires preview_token and operation_digest',
+    path: ['preview_token'],
+  })
+  .refine((d) => (d.mode === 'apply' ? d.guard_values !== undefined && d.guard_values.length > 0 : true), {
+    message: 'apply mode requires guard_values',
+    path: ['guard_values'],
+  })
+  .refine((d) => (d.mode === 'read' || d.mode === 'preview' ? d.operation !== undefined : true), {
+    message: 'read/preview mode requires operation',
+    path: ['operation'],
+  })
+  .refine((d) => d.target.kind === 'active' || d.target.kind === 'external', {
+    message: 'manage_assets supports only active or external targets',
+    path: ['target', 'kind'],
+  })
+  .superRefine((d, ctx) => {
+    if (!d.operation || d.mode === 'apply') return;
+    const readActions = new Set(['list_assets', 'read_asset']);
+    const previewActions = new Set(['add_asset', 'delete_asset', 'rename_asset']);
+    if (d.mode === 'read' && !readActions.has(d.operation.action)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'read mode supports list_assets and read_asset',
+        path: ['operation', 'action'],
+      });
+    }
+    if (d.mode === 'preview' && !previewActions.has(d.operation.action)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'preview mode supports add_asset, delete_asset, and rename_asset',
+        path: ['operation', 'action'],
+      });
+    }
+  });
+export type ManageAssetsBody = z.infer<typeof manageAssetsBodySchema>;
 
 export const facadeV1SuccessEnvelopeSchema = z
   .object({

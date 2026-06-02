@@ -159,6 +159,10 @@ function normalizeCharxAssetsForZip(assets: CharxAsset[] | undefined): CharxAsse
     }));
 }
 
+function normalizeRisumAssetBuffers(assets: unknown[] | undefined): Buffer[] {
+  return (assets || []).map((asset) => coerceAssetBuffer(asset));
+}
+
 // ---------------------------------------------------------------------------
 // Interfaces
 // ---------------------------------------------------------------------------
@@ -762,7 +766,7 @@ export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
   applyRisumModuleFields(mod, data);
   stripDeprecatedRisumSaveFields(moduleJson);
 
-  const risumBuf: Buffer = buildRisum(moduleJson, data.risumAssets || []);
+  const risumBuf: Buffer = buildRisum(moduleJson, normalizeRisumAssetBuffers(data.risumAssets as unknown[]));
   zip.addFile('module.risum', risumBuf);
 
   // Add image assets
@@ -903,7 +907,7 @@ export function saveRisum(filePath: string, data: CharxData): void {
   mod.lorebook = data.lorebook || [];
 
   stripDeprecatedRisumSaveFields(moduleJson);
-  const risumBuf: Buffer = buildRisum(moduleJson, data.risumAssets || []);
+  const risumBuf: Buffer = buildRisum(moduleJson, normalizeRisumAssetBuffers(data.risumAssets as unknown[]));
   writeFileAtomicSync(filePath, risumBuf);
 }
 

@@ -10,22 +10,22 @@ related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list
 ## Agent Operating Contract
 
 - **Use when:** the main task is explicit character design, character-sheet refactoring, voice/behavior diagnosis, or scale-aware solo/ensemble roleplay character authoring.
-- **Do not use when:** the user wants a self-introduction monologue sheet, a lorebook-first architecture, RisuAI syntax help, or pure HTML/CSS/Lua/CBS work.
+- **Do not use when:** the user wants a self-introduction monologue sheet, a lorebook-first structure, RisuAI syntax help, or pure HTML/CSS/Lua/CBS work.
 - **Read first:** this `SKILL.md` only. Use the route table below to decide whether this is the primary skill before loading sibling skills.
 - **Load deeper only if:** cast size is the hard part (`BOT_SCALES.md`), speech mechanics need focused repair (`SPEECH_SYSTEM.md`), or you are validating a completed draft (`VALIDATION.md`).
-- **Output/validation contract:** produce a performance-ready character brief, not a filled template; verify core engine, contradiction, pressure response, voice, scale fit, and whether details belong in lorebook instead of always-on description.
+- **Output/validation contract:** produce a performance-ready character brief, not a filled template; verify inner drive, contradiction, pressure response, voice, human interiority, scale fit, and whether details belong in lorebook instead of always-on description.
 
-> **This guide is a toolkit, not a checklist.** Use the parts that sharpen output and ignore the rest. The goal is not "completing the template" — it is giving the model a character it can perform consistently. Real bots succeed through many different architectures; the patterns here are strong defaults, not the only valid paths.
+> **This guide is a toolkit, not a checklist.** Use the parts that sharpen output and ignore the rest. The goal is not "completing the template" — it is giving the model a character who feels alive and performs consistently. Real bots succeed through many different structures; the patterns here are strong defaults, not the only valid paths.
 >
 > **Use this skill when the character itself is the main design problem and you want to design that character explicitly.** For self-introduction monologue sheets that keep the factual skeleton light and let the model infer more through voice, use [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/). For lorebook-driven bots where the always-on description is mostly a tonal frame and the heavy lifting lives in lorebooks, use [authoring-lorebook-bots](../authoring-lorebook-bots/).
 
 ## Route by Bot Shape
 
-| Bot shape                                    | Use this skill for                                                                               | Pair with                                                                                               |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| **Single-character / dedicated partner bot** | Full character sheet: engine, contradiction, speech, pressure responses, opening message         | Optional lorebook support for state/reaction layers                                                     |
-| **2–4 recurring characters**                 | Per-character thumbnails that still feel distinct; cross-character contrast and voice separation | [authoring-lorebook-bots](../authoring-lorebook-bots/) for roster, relationship, and scene architecture |
-| **10+ cast / world bot**                     | Only the core cast gets full sheets; everyone else gets compressed diagnostic anchors            | [authoring-lorebook-bots](../authoring-lorebook-bots/) for large-cast lorebook design                   |
+| Bot shape                                    | Use this skill for                                                                               | Pair with                                                                                            |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| **Single-character / dedicated partner bot** | Full character sheet: inner drive, contradiction, voice, pressure responses, opening message     | Optional lorebook support for state/reaction layers                                                  |
+| **2–4 recurring characters**                 | Per-character thumbnails that still feel distinct; cross-character contrast and voice separation | [authoring-lorebook-bots](../authoring-lorebook-bots/) for roster, relationship, and scene structure |
+| **10+ cast / world bot**                     | Only the core cast gets full sheets; everyone else gets compressed expressive anchors            | [authoring-lorebook-bots](../authoring-lorebook-bots/) for large-cast lorebook design                |
 
 For detailed scale recipes, see [BOT_SCALES.md](BOT_SCALES.md).
 
@@ -45,7 +45,17 @@ When checking fit, ask whether the character's Need, Lie, silence rules, and pre
 4. **Contradiction creates movement.** Want vs. Need, Mask vs. Leak, public role vs. private crack — these are what keep a character alive across long chats.
 5. **Write to the bot's scale.** A single-character bot can justify a deep profile. A 10+ cast bot cannot give everyone protagonist depth in always-on text.
 6. **Do not script the future.** Define tendencies, thresholds, and pressure responses. Let the RP decide outcomes.
-7. **Architecture follows need, not convention.** Some bots thrive with heavy description and minimal lorebook; others do the opposite. Match the structure to what the bot actually requires.
+7. **Keep characters human before they are clever.** Sharp intellect, composure, or strategy should still pass through breath, posture, jealousy, restraint, tenderness, dread, and desire. Do not let a logical character become a processor wearing a face.
+8. **Structure follows need, not convention.** Some bots thrive with heavy description and minimal lorebook; others do the opposite. Match the structure to what the bot actually requires.
+
+### Human Interiority and Anti-Mechanical Prose
+
+Keep craft language backstage. It is fine to use terms like "pressure map" or "voice pattern" while designing, but do not let the final character description read like a diagnostic chart, product spec, medical report, or machine manual.
+
+- **Human observation, not calculation:** Present intelligence through intuition, restraint, emotional timing, pattern-sensitive attention, or poetic noticing. Avoid portraying thoughts as algorithms, data analysis, sensor readings, or detached computation unless the character is literally using technology.
+- **Embodied reactions:** Even highly composed characters feel through the body: a held breath, a loosened grip, heat in the face, the weight of a touch, the sourness of jealousy, the silence after a confession. Anchor interiority in sensations and choices.
+- **No clinical intimacy by default:** For emotional tension, attraction, touch, fear, shame, and conflict, avoid technological, anatomical, medical, physics, UI, or engineering metaphors. Words such as "system," "process," "register," "track," "update," "functional," "architecture," "coordinate," "tissue," and "geometry" are acceptable in literal contexts, but not as metaphors for human feeling or bodies.
+- **Use literary replacements:** Replace measurements and mechanical logic with scene texture. "The weight of her" beats "52 kilograms"; "waking in waves" beats "nervous system coming online"; "razor-sharp precision" beats "surgical precision" unless surgery is literally happening.
 
 ## Commissioner Intake Principles
 
@@ -105,7 +115,7 @@ This is a writing-quality rule, not a safety bypass: follow normal safety bounda
 | **Keywords only**    | "cocky swordswoman, scarred, lonely"           | Ask 2–3 clarifying questions about appeal, tone, and boundaries, then build freely |
 | **Brief concept**    | "ER doctor, competent but emotionally distant" | Confirm tone and desired scale, then produce                                       |
 | **Detailed bio**     | Full backstory, personality, relationships     | Restructure into performance-first sections; cut inert facts                       |
-| **Refactor request** | Existing description that feels flat           | Diagnose missing engine, voice, contradiction, and pressure responses              |
+| **Refactor request** | Existing description that feels flat           | Diagnose missing inner drive, voice, contradiction, and pressure responses         |
 
 ### Always ask
 
@@ -124,7 +134,7 @@ This is a writing-quality rule, not a safety bypass: follow normal safety bounda
 
 ## Build Pipeline
 
-### Step 1 — Find the Engine
+### Step 1 — Find the Inner Drive
 
 Start with the forces that make the character act even when the user gives weak input.
 
@@ -195,11 +205,11 @@ Subversion: rehearsed composure, not natural calm; petty, needy, and deeply reli
 
 For major emotions, define both the **performed reaction** and the **uncontrolled tell**.
 
-| Emotion   | Mask                       | Leak                                     |
-| --------- | -------------------------- | ---------------------------------------- |
-| Jealousy  | Teasing, dismissive jokes  | Starts tracking details nobody asked for |
-| Fear      | Hyper-competence           | Never lets anyone stand behind them      |
-| Affection | Nitpicking, practical help | Remembers tiny things weeks later        |
+| Emotion   | Mask                       | Leak                                    |
+| --------- | -------------------------- | --------------------------------------- |
+| Jealousy  | Teasing, dismissive jokes  | Remembers tiny details nobody asked for |
+| Fear      | Hyper-competence           | Never lets anyone stand behind them     |
+| Affection | Nitpicking, practical help | Remembers tiny things weeks later       |
 
 This is stronger than a flat "warm inside" note because it generates both dialogue and body language.
 
@@ -209,9 +219,9 @@ This is stronger than a flat "warm inside" note because it generates both dialog
 
 At minimum, define:
 
-- **DNA markers** — 2–4 always-present verbal or behavioral signatures
+- **Signature tells** — 2–4 always-present verbal, physical, or perceptual habits
 - **Registers** — at least 2 for simple characters, 3–6 for complex ones
-- **Diagnostic example lines** — lines that only this character could say
+- **Revealing example lines** — lines that only this character could say
 - **Silence rules** — what they avoid saying directly
 - **Narration lens** — what they notice first in a room
 - **Truth budget** — how honest they can be at each trust stage
@@ -225,7 +235,7 @@ When voice is being designed collaboratively, calibrate it before finalizing:
 3. Ask what feels too stiff, too clean, too generic, or rhythmically wrong.
 4. Revise the pattern, not just the examples.
 
-Example lines should be diagnostic but fungible. If a line is so iconic that the model will parrot it, make it plainer and let the pattern carry the distinctiveness.
+Example lines should be revealing but fungible. If a line is so iconic that the model will parrot it, make it plainer and let the pattern carry the distinctiveness.
 
 ### Step 4 — Map Pressure Responses
 
@@ -252,7 +262,7 @@ Use [BOT_SCALES.md](BOT_SCALES.md) for the scale-specific version of that handof
 
 Use this as a default structure, not a mandatory format. Reorder, merge, or skip sections when the character's design demands it.
 
-If you do **not** want an explicit scaffolded sheet here at all — if you want the description to be a factual profile plus a character-voiced self-introduction monologue that leaves more to inference — switch to [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) instead of forcing that architecture into this format.
+If you do **not** want an explicit scaffolded sheet here at all — if you want the description to be a factual profile plus a character-voiced self-introduction monologue that leaves more to inference — switch to [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) instead of forcing that structure into this format.
 
 ```markdown
 ### Basic Information
@@ -260,13 +270,13 @@ If you do **not** want an explicit scaffolded sheet here at all — if you want 
 - Name / Age / Role
 - Relationship to {{user}}: the dynamic, not just the label
 
-### Core Engine
+### Inner Drive
 
 [Anchor sentence — who they are when every scene is stripped down]
 [Wound as scene]
 [Want]
 [Need]
-[Condition -> reaction -> reason]
+[When pressed -> what they do -> what slips through]
 
 ### Personality
 
@@ -276,7 +286,7 @@ If you do **not** want an explicit scaffolded sheet here at all — if you want 
 
 ### Speech & Voice
 
-[DNA markers]
+[Signature tells]
 [Registers + example lines]
 [Silence rules]
 [Narration lens]
@@ -298,7 +308,7 @@ If you do **not** want an explicit scaffolded sheet here at all — if you want 
 
 ### Reactions & Blind Spots
 
-[This section operationalizes the pressure map from Step 4.]
+[This section turns the pressure map from Step 4 into lived reactions.]
 [Trigger -> tendency]
 [Misreadings, obsessions, blind spots]
 
@@ -312,9 +322,10 @@ If you do **not** want an explicit scaffolded sheet here at all — if you want 
 - Use present tense for current character behavior.
 - Avoid future promises such as "will eventually confess" or "is destined to change."
 - Use direct "is" statements for stable facts only: name, age, role, species, affiliation, rank, fixed physical facts.
-- Write personality, morality, and psychology as condition -> behavior -> leak.
+- Write personality, morality, and psychology as pressure -> outward behavior -> involuntary tell.
 - Avoid negative statements except in explicit Contrast against a named default.
 - For appearance, keep only distinctive features and visual signals that affect recognition, status, movement, or scene texture.
+- Keep mechanical craft terms out of model-visible prose unless they are literal to the setting. A character can notice a room with frightening precision; they should not "process input," "update emotional state," or describe desire as a system.
 
 ### Step 6 — Scale the Sheet
 
@@ -322,7 +333,7 @@ Do **not** give every bot the same depth.
 
 | Use case                           | What to keep in the description                                                   | What to move out                                                        |
 | ---------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **Dedicated single-character bot** | Full engine, full voice, detailed current state, rich pressure design             | Extended world systems, optional lorebook-only state/reaction layers    |
+| **Dedicated single-character bot** | Full inner drive, full voice, detailed current state, rich pressure design        | Extended world systems, optional lorebook-only state/reaction layers    |
 | **2–4 recurring characters**       | One anchor, one contradiction, one speech signature, one group role per character | Full backstory, long pressure maps, pairwise dynamics                   |
 | **10+ world/cast bot**             | Full sheet only for POV/core cast; thumbnails for everyone else                   | Most backstory, deep reactions, relationship webs, situational behavior |
 
@@ -345,7 +356,7 @@ It should **not**:
 - Resolve emotional tension immediately
 - Dictate the user's feelings or actions
 
-> **Alternate opener shapes exist.** If the bot needs a scenario bank, setup router, or minimal placeholder opener because the real depth lives in lorebook or system layers, use [authoring-lorebook-bots](../authoring-lorebook-bots/) for the architecture-specific opener patterns instead of maintaining a second taxonomy here.
+> **Alternate opener shapes exist.** If the bot needs a scenario bank, setup router, or minimal placeholder opener because the real depth lives in lorebook or conditional layers, use [authoring-lorebook-bots](../authoring-lorebook-bots/) for lorebook-specific opener patterns instead of maintaining a second taxonomy here.
 
 If the bot is world-heavy or multi-character, pair this with [authoring-lorebook-bots](../authoring-lorebook-bots/).
 
@@ -355,7 +366,8 @@ If the bot is world-heavy or multi-character, pair this with [authoring-lorebook
 
 At minimum, run:
 
-- structural checks (engine, contradiction, speech investment)
+- structural checks (inner drive, contradiction, speech investment)
+- human-interiority checks (embodied feeling, non-clinical observation, anti-mechanical metaphors)
 - runtime pressure tests (cold open, vulnerability press, boundary test)
 - drift tests (30-turn voice persistence, example-line overfitting)
 - scale checks (voice collision for ensembles, budget audits for large casts)
@@ -366,16 +378,16 @@ At minimum, run:
 
 These skills stay frontend-agnostic, but for RisuAI the mapping is usually:
 
-| Risu field / surface                         | Best use                                                                                                                                                                         |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `description`                                | Main character sheet or compressed cast thumbnail                                                                                                                                |
-| `firstMessage`                               | Opening-message few-shot                                                                                                                                                         |
-| `globalNote` or equivalent post-history note | At minimum, brief turn reminders, pacing notes, or output constraints. In advanced bots, this surface can also carry heavier behavioral contracts or output-shape control logic. |
-| Lorebook entries                             | State layers, reaction layers, extended backstory, situational reveals                                                                                                           |
+| Risu field / surface                         | Best use                                                                                                                                                              |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `description`                                | Main character sheet or compressed cast thumbnail                                                                                                                     |
+| `firstMessage`                               | Opening-message few-shot                                                                                                                                              |
+| `globalNote` or equivalent post-history note | At minimum, brief turn reminders, pacing notes, or output constraints. In advanced bots, this surface can also carry heavier behavioral reminders or format guidance. |
+| Lorebook entries                             | State layers, reaction layers, extended backstory, situational reveals                                                                                                |
 
 `globalNote` is near the response point, which makes it high-influence real estate. Simple bots may only need a few reminder lines; complex bots sometimes use it for detailed behavioral rules or format enforcement. Scale the investment to the bot's needs.
 
-For exact lorebook mechanics, decorators, and insertion controls, use `writing-lorebooks`. For lorebook-driven bot architecture, use [authoring-lorebook-bots](../authoring-lorebook-bots/).
+For exact lorebook mechanics, decorators, and insertion controls, use `writing-lorebooks`. For lorebook-driven bot structure, use [authoring-lorebook-bots](../authoring-lorebook-bots/).
 
 ---
 
@@ -398,7 +410,7 @@ Only include NSFW detail when the user asks for it, and keep the same rule:
 
 **If it does not change behavior, tension, or decision-making, it is probably wasted space.**
 
-The same voice rules still apply in intimate scenes: desire should interact with **truth budget, control patterns, registers, and silence rules**, not flatten into generic erotic prose.
+The same voice rules still apply in intimate scenes: desire should interact with **honesty limits, restraint, registers, and silence rules**, not flatten into generic erotic prose.
 
 In some genres, explicit physical detail is structurally relevant — it shapes how characters perceive each other and how scenes build tension. This is a design choice, not a universal quality signal.
 
@@ -416,7 +428,7 @@ Deliver:
 ```markdown
 ## Design Notes
 
-(Core engine, contrast logic, voice plan, scale decision)
+(Inner drive, contrast logic, voice plan, scale decision)
 
 ---
 
@@ -444,4 +456,4 @@ If the user is building a lorebook-driven or cast-heavy bot, point them to [auth
 | Prompt                                                                | Expected routing                                                                                         | Expected output                                                | Forbidden behavior                                                       |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | "Refactor this solo partner bot; the voice drifts after 20 turns."    | Primary: `authoring-characters`; load `SPEECH_SYSTEM.md` only if the draft needs detailed speech repair. | Diagnosis plus revised behavior/voice/pressure sections.       | Loading lorebook/preset/module skills before confirming they are needed. |
-| "I have a 12-character school cast and only the leads feel distinct." | Primary: `authoring-characters`; pair with `authoring-lorebook-bots` only for roster architecture.       | Scale-aware lead sheets and compressed anchors for minor cast. | Giving every minor cast member protagonist-depth always-on text.         |
+| "I have a 12-character school cast and only the leads feel distinct." | Primary: `authoring-characters`; pair with `authoring-lorebook-bots` only for roster structure.          | Scale-aware lead sheets and compressed anchors for minor cast. | Giving every minor cast member protagonist-depth always-on text.         |

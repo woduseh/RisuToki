@@ -33,7 +33,9 @@ export const TOOL_FAMILIES = [
   'charx-asset',
   'risum-asset',
   'asset-compression',
+  'asset-management',
   'risup-prompt',
+  'item-management',
   'skill',
   'danbooru',
   'cbs',
@@ -124,7 +126,7 @@ export const TOOL_SURFACE_PROFILE_CONTRACTS: readonly ToolSurfaceProfileContract
     clientRequest: PROFILE_CLIENT_REQUEST,
     discovery: PROFILE_METADATA_DISCOVERY,
     description:
-      'Default planning profile. Prefer first-wave facade tools for covered inspect/read/search/preview/apply workflows and switch to advanced-full for granular escape hatches.',
+      'Default planning profile. Prefer facade tools for covered inspect/read/search/preview/apply/item-management workflows and switch to advanced-full for granular escape hatches.',
   },
   {
     name: 'authoring',
@@ -170,6 +172,7 @@ export const TOOL_SURFACE_PROFILE_CONTRACTS: readonly ToolSurfaceProfileContract
     excludedCategories: [
       'preview_edit',
       'apply_edit',
+      'manage_items',
       'all mutating or destructive tools',
       'session/file-open mutations',
     ],
@@ -239,6 +242,8 @@ export const DRY_RUN_TOOL_NAMES = [
   'external_patch_surface',
   'compress_assets_webp',
   'preview_edit',
+  'manage_items',
+  'manage_assets',
 ] as const;
 
 const NO_CONFIRMATION_TOOL_NAME_SET = new Set<string>(NO_CONFIRMATION_TOOL_NAMES);
@@ -257,6 +262,7 @@ const AUTHORING_PROFILE_FAMILIES = new Set<ToolFamily>([
   'reference',
   'charx-asset',
   'risum-asset',
+  'asset-management',
   'risup-prompt',
   'folder-workspace',
   'skill',
@@ -587,6 +593,8 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   apply_edit: { family: 'surface', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
   validate_content: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
   load_guidance: { family: 'skill', hints: OPEN_WORLD_RO, surfaceKind: 'facade', recommendation: 'preferred' },
+  manage_items: { family: 'item-management', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
+  manage_assets: { family: 'asset-management', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
 
   // ── Field ──────────────────────────────────────────────────────────────
   list_fields: { family: 'field', hints: RO_IDEMPOTENT },
@@ -960,6 +968,8 @@ export function getToolWorkflowStages(name: string): readonly ToolWorkflowStage[
   if (
     name === 'read_content' ||
     name === 'load_guidance' ||
+    name === 'manage_items' ||
+    name === 'manage_assets' ||
     toolNameHasSegment(name, 'read') ||
     name.startsWith('probe_')
   ) {
@@ -977,7 +987,12 @@ export function getToolWorkflowStages(name: string): readonly ToolWorkflowStage[
   }
 
   if (entry.hints.readOnlyHint !== true) {
-    if (name === 'preview_edit' || DRY_RUN_TOOL_NAME_SET.has(name)) {
+    if (
+      name === 'preview_edit' ||
+      name === 'manage_items' ||
+      name === 'manage_assets' ||
+      DRY_RUN_TOOL_NAME_SET.has(name)
+    ) {
       stages.add('preview');
     }
     if (name !== 'preview_edit') {

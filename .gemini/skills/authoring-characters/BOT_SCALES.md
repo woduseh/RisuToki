@@ -10,13 +10,13 @@ Use this file after reading `SKILL.md` when the main problem is **how much chara
 
 ## Quick Chooser
 
-| Bot shape                                | Description job                                                    | Lorebook job                                                | Risk if you over-write the description          |
-| ---------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------- | ----------------------------------------------- |
-| **Single-character / dedicated partner** | Carry most of the character's engine and voice                     | Handle optional state, reaction, and deep reveals           | Mostly wasted time, not fatal                   |
-| **2–4 recurring characters**             | Give each character a diagnostic identity and shared group tension | Hold deeper backstory, pair dynamics, situational behavior  | Voice collision and cast blur                   |
-| **10+ world/cast**                       | Frame the world, roster, POV rules, and only the core cast         | Carry most character detail, relationships, and progression | Attention collapse, info-dumps, trigger pileups |
+| Bot shape                                | Description job                                                     | Lorebook job                                                | Risk if you over-write the description          |
+| ---------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------- |
+| **Single-character / dedicated partner** | Carry most of the character's inner drive and voice                 | Handle optional state, reaction, and deep reveals           | Mostly wasted time, not fatal                   |
+| **2–4 recurring characters**             | Give each character an expressive identity and shared group tension | Hold deeper backstory, pair dynamics, situational behavior  | Voice collision and cast blur                   |
+| **10+ world/cast**                       | Frame the world, roster, POV rules, and only the core cast          | Carry most character detail, relationships, and progression | Attention collapse, info-dumps, trigger pileups |
 
-If the architecture is lorebook-heavy, pair this with `authoring-lorebook-bots`. If you want a minimal factual profile plus a self-introduction monologue instead of an explicit scaffolded sheet, use `authoring-self-introduction-sheets`.
+If the structure is lorebook-heavy, pair this with `authoring-lorebook-bots`. If you want a minimal factual profile plus a self-introduction monologue instead of an explicit scaffolded sheet, use `authoring-self-introduction-sheets`.
 
 ---
 
@@ -48,7 +48,7 @@ Single-character bots still benefit from lorebook layers when you need dynamic b
 
 ### Supporting ecology
 
-Some single-character bots define a **supporting ecology** — family members, household dynamics, workplace hierarchies, or social webs — that is load-bearing architecture rather than optional flavor. When the character's behavior is shaped by relationships the user will encounter (a controlling parent, a dependent sibling, a rivalrous coworker), those figures deserve lorebook investment even though the bot is still fundamentally single-character-centered.
+Some single-character bots define a **supporting ecology** — family members, household dynamics, workplace hierarchies, or social webs — that is load-bearing structure rather than optional flavor. When the character's behavior is shaped by relationships the user will encounter (a controlling parent, a dependent sibling, a rivalrous coworker), those figures deserve lorebook investment even though the bot is still fundamentally single-character-centered.
 
 Signs a supporting ecology needs structural support:
 
@@ -56,7 +56,7 @@ Signs a supporting ecology needs structural support:
 - Family or social dynamics are a primary source of tension, not just backstory.
 - The user is expected to interact with supporting figures, not just hear about them.
 
-This does not mean every single-character bot needs a cast lorebook. It means that when the character's world is part of the experience, treating it as architecture pays off.
+This does not mean every single-character bot needs a cast lorebook. It means that when the character's world is part of the experience, treating it as structure pays off.
 
 ### Good target
 
@@ -72,7 +72,7 @@ Writing only a static biography. The model may understand who the character _was
 
 This is the easiest scale to overbuild. You still want meaningful character identity, but you no longer have infinite room.
 
-> **Simplicity is a legitimate path.** Some small ensembles work best with short character dossiers always-on and minimal technical scaffolding. Not every 2–4 character bot needs complex trigger systems, state tracking, or elaborate lorebook architecture. If the cast is well-differentiated and the description carries enough voice, the bot can be structurally simple and still perform well.
+> **Simplicity is a legitimate path.** Some small ensembles work best with short character dossiers always-on and minimal technical scaffolding. Not every 2–4 character bot needs complex trigger systems, state notes, or elaborate lorebook structure. If the cast is well-differentiated and the description carries enough voice, the bot can be structurally simple and still perform well.
 
 ### The cast-design rule
 
@@ -92,7 +92,7 @@ Per character, keep at minimum:
 
 - 1 anchor sentence
 - 1 contradiction or core crack
-- 2 diagnostic lines of speech
+- 2 revealing lines of speech
 - 1 group role
 - 1 private/public difference
 
@@ -185,7 +185,7 @@ When these appear, move into `authoring-lorebook-bots`.
 
 ## 4. Handoff Checklist to `authoring-lorebook-bots`
 
-Move from pure character authoring into lorebook-bot architecture when:
+Move from pure character authoring into lorebook-bot structure when:
 
 - the description is mostly framing rather than performance detail
 - multiple characters need independent triggerable depth
@@ -196,5 +196,5 @@ Move from pure character authoring into lorebook-bot architecture when:
 In practice:
 
 - **Single-character bot** → start here, then add lorebook layers only if needed
-- **2–4 character bot** → start here for cast identity, then pair with lorebook-bot architecture
-- **10+ cast bot** → use this file only for deciding who deserves full character treatment; do the real architecture in `authoring-lorebook-bots`
+- **2–4 character bot** → start here for cast identity, then pair with lorebook-bot structure
+- **10+ cast bot** → use this file only for deciding who deserves full character treatment; do the real structure in `authoring-lorebook-bots`

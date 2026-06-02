@@ -91,7 +91,7 @@ Deep usually adds:
 - what they want from other people
 - how they handle intimacy as a topic
 
-Use Deep when the monologue itself should do more of the diagnostic work.
+Use Deep when the monologue itself should do more of the expressive work.
 
 ## Topic-by-Topic Notes
 

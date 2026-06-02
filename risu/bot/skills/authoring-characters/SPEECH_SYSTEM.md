@@ -1,8 +1,8 @@
-# Speech System Reference
+# Speech and Voice Reference
 
 Voice is not one thing. It has **three layers**:
 
-1. **DNA markers** — what stays recognizable across every mood
+1. **Signature tells** — what stays recognizable across every mood
 2. **Registers** — how the voice shifts under different conditions
 3. **Narration lens** — what the character notices and how that colors prose
 
@@ -10,9 +10,9 @@ If the character sounds distinct but sees the world like generic LLM narration, 
 
 ---
 
-## 1. Start with DNA Markers
+## 1. Start with Signature Tells
 
-DNA markers are the smallest high-impact investment you can make.
+Signature tells are the smallest high-impact investment you can make.
 
 They are the tics or habits that stay present across **all** registers.
 
@@ -20,10 +20,10 @@ They are the tics or habits that stay present across **all** registers.
 | -------------------- | ------------------------------------------------------------------------------- |
 | **Verbal tic**       | Starts with "look," calls people by function instead of name                    |
 | **Physical habit**   | Adjusts bracelets, cracks knuckles, touches doorframes when tense               |
-| **Thought pattern**  | Turns everything into efficiency problems, food metaphors, battlefield geometry |
+| **Thought habit**    | Frames problems through kitchens, court etiquette, debts, weather, or old songs |
 | **Structural habit** | Answers questions with questions, never says "I don't know" directly            |
 
-### Good DNA markers
+### Good signature tells
 
 ```text
 Hands are always doing something — tapping, folding, aligning, checking.
@@ -31,16 +31,16 @@ She almost never uses names before respect is earned.
 When emotional, her volume rises before her honesty does.
 ```
 
-### Bad DNA markers
+### Bad signature tells
 
 ```text
 She has some habits.
 She talks differently depending on mood.
 ```
 
-### DNA rule
+### Signature rule
 
-If you removed the mood label from a line and could still guess the character, the DNA is working.
+If you removed the mood label from a line and could still guess the character, the signature is working.
 
 ---
 
@@ -292,7 +292,7 @@ For the description-budget version of this problem, pair this section with **[BO
 Strip names from each character's example lines.
 
 - If you can still tell who is speaking, you are close.
-- If not, redesign DNA markers before adding more lore.
+- If not, redesign signature tells before adding more lore.
 
 ### Cast cap
 
@@ -308,7 +308,7 @@ For ensemble bots, fewer sharper registers beat many overlapping ones.
 ```markdown
 ### Speech & Voice
 
-**DNA markers**
+**Signature tells**
 
 - Calls people by function before respect
 - Hands always align objects when thinking
@@ -351,11 +351,11 @@ For ensemble bots, fewer sharper registers beat many overlapping ones.
 
 ## 9. Scale Targets
 
-| Use case                       | Target investment                                                               |
-| ------------------------------ | ------------------------------------------------------------------------------- |
-| Minor NPC                      | 1 DNA cluster + 1 register + 1 pressure tell                                    |
-| Recurring side character       | 2 DNA markers + 2 registers + 1 narration lens                                  |
-| Major character                | 3 DNA markers + 3–4 registers + silence rules + truth budget                    |
-| Dedicated single-character bot | Full system: DNA, registers, silence rules, truth budget, narration lens, barks |
+| Use case                       | Target investment                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Minor NPC                      | 1 signature cluster + 1 register + 1 pressure tell                                               |
+| Recurring side character       | 2 signature tells + 2 registers + 1 narration lens                                               |
+| Major character                | 3 signature tells + 3–4 registers + silence rules + truth budget                                 |
+| Dedicated single-character bot | Full voice suite: signature tells, registers, silence rules, truth budget, narration lens, barks |
 
 If the character is part of a lorebook-heavy or large-cast bot, pair this file with `BOT_SCALES.md` and `authoring-lorebook-bots`.

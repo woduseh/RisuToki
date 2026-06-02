@@ -8,22 +8,22 @@ description: 'Use when creating, refining, or diagnosing worldbuilding for RisuA
 ## Agent Operating Contract
 
 - **Use when:** the main task is designing, refactoring, or diagnosing the world itself: setting pressure, culture, factions, institutions, places, systems, active history, or knowledge horizon.
-- **Do not use when:** the main task is one character's engine/voice, self-introduction sheets, lorebook trigger architecture, raw lorebook syntax, or technical CBS/Lua/regex/HTML work.
+- **Do not use when:** the main task is one character's inner drive/voice, self-introduction sheets, lorebook trigger structure, raw lorebook syntax, or technical CBS/Lua/regex/HTML work.
 - **Read first:** this `SKILL.md` only. Load [VALIDATION.md](VALIDATION.md) after drafting or when diagnosing why a world feels flat.
 - **Load deeper only if:** world material needs placement into description/lorebook/globalNote/firstMessage; then hand off to [authoring-lorebook-bots](../authoring-lorebook-bots/). For exact lorebook decorators and trigger syntax, use `writing-lorebooks`.
 - **Output/validation contract:** produce a scene-useful world frame and deep-reference candidates, not a wiki. Verify that every world element changes behavior, speech, sensation, conflict, or withholding in play.
 
-> This skill answers **what the world is and how it acts on scenes**. It does not decide final RisuAI storage, keyword triggers, insertion depth, or large-bot scene routing. Those are architecture tasks for `authoring-lorebook-bots` and syntax tasks for `writing-lorebooks`.
+> This skill answers **what the world is and how it acts on scenes**. It does not decide final RisuAI storage, keyword triggers, insertion depth, or large-bot scene routing. Those are structure tasks for `authoring-lorebook-bots` and syntax tasks for `writing-lorebooks`.
 
 ## Role Boundary
 
-| Concern                                                                  | Primary skill                        | Focus                   |
-| ------------------------------------------------------------------------ | ------------------------------------ | ----------------------- |
-| One character's internal engine, voice, contradiction, pressure response | `authoring-characters`               | Character performance   |
-| Factual profile plus character-voiced introduction                       | `authoring-self-introduction-sheets` | Character through voice |
-| World substance: culture, pressure, power, systems, places, history      | **this skill**                       | World design            |
-| Description vs lorebook/globalNote/firstMessage distribution             | `authoring-lorebook-bots`            | Bot architecture        |
-| Lorebook keys, decorators, insertion behavior                            | `writing-lorebooks`                  | Lorebook syntax         |
+| Concern                                                              | Primary skill                        | Focus                   |
+| -------------------------------------------------------------------- | ------------------------------------ | ----------------------- |
+| One character's inner drive, voice, contradiction, pressure response | `authoring-characters`               | Character performance   |
+| Factual profile plus character-voiced introduction                   | `authoring-self-introduction-sheets` | Character through voice |
+| World substance: culture, pressure, power, systems, places, history  | **this skill**                       | World design            |
+| Description vs lorebook/globalNote/firstMessage distribution         | `authoring-lorebook-bots`            | Bot structure           |
+| Lorebook keys, decorators, insertion behavior                        | `writing-lorebooks`                  | Lorebook syntax         |
 
 If a task crosses boundaries, use this skill to make the world vivid first, then use `authoring-lorebook-bots` to place it.
 
@@ -31,7 +31,7 @@ If a task crosses boundaries, use this skill to make the world vivid first, then
 
 World entries can create characters, but not every named person deserves character-depth writing. Keep factions, social roles, and NPC candidates in this skill while they only need scene function, behavioral signature, or public pressure.
 
-Move a figure to [authoring-characters](../authoring-characters/) when they need independent voice, motivation, contradiction, pressure responses, or a specific relationship engine with `{{user}}`. When doing so, keep the handoff anchored to the world's Pressure, Taboo, and Knowledge Horizon so the character does not float free of the setting.
+Move a figure to [authoring-characters](../authoring-characters/) when they need independent voice, motivation, contradiction, pressure responses, or a specific relationship dynamic with `{{user}}`. When doing so, keep the handoff anchored to the world's Pressure, Taboo, and Knowledge Horizon so the character does not float free of the setting.
 
 ---
 
@@ -89,6 +89,15 @@ Negative statements are acceptable when they block strong defaults:
 
 ```text
 No one here has a concept of germs, atoms, DNA, or modern psychiatry.
+```
+
+### 7. Human-scale special rules
+
+Magic, technology, law, religion, and economics can be described as systems when that is literally what the world needs. Human feelings and bodies should not be. When a world rule affects intimacy, fear, grief, hunger, loyalty, jealousy, or shame, translate the rule into what people feel, avoid, touch, smell, say, and refuse to say.
+
+```text
+Weak: The bonding system updates emotional states after contact.
+Strong: After the rite, people flinch from accidental touch because a careless brush can leave someone else's longing under their skin for hours.
 ```
 
 ---
@@ -158,6 +167,7 @@ For magic, technology, supernatural rules, or other special logic, define:
 - what it cannot do
 - who is allowed or barred from using it
 - what metaphors, professions, taboos, or daily habits it creates
+- what it feels like in ordinary bodies and relationships when people encounter it
 
 Limits are more useful than powers because they preserve tension.
 
@@ -211,12 +221,12 @@ Produce a world-design draft in this shape unless the user asks for a different 
 
 ---
 
-## Handoff to Lorebook Architecture
+## Handoff to Lorebook Structure
 
 (What should later become description material, lorebook entries, or character-design followups)
 ```
 
-Do not invent final lorebook keywords, insertion depth, or RisuAI storage policy unless the user asks for architecture. When that becomes the task, switch to `authoring-lorebook-bots` and `writing-lorebooks` as needed.
+Do not invent final lorebook keywords, insertion depth, or RisuAI storage policy unless the user asks for structure. When that becomes the task, switch to `authoring-lorebook-bots` and `writing-lorebooks` as needed.
 
 ## Smoke Tests
 

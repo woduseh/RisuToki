@@ -4,17 +4,17 @@
 
 Use this file when the main question is **how to distribute description vs lorebook responsibility at a given bot scale**.
 
-> The recipes below are starting points drawn from common patterns, not rigid templates. Your bot may need more, less, or different architecture depending on its goals and the model it runs on.
+> The recipes below are starting points drawn from common patterns, not rigid templates. Your bot may need more, less, or different structure depending on its goals and the model it runs on.
 
 ---
 
 ## Quick Chooser
 
-| Bot shape                                | Description emphasis                    | Lorebook emphasis                                   |
-| ---------------------------------------- | --------------------------------------- | --------------------------------------------------- |
-| **Single-character + optional lorebook** | Character engine, tone, current tension | Dynamic state, topic reactions, deep reveals        |
-| **2–4 recurring characters**             | Group tension, thumbnails, scene mode   | Full profiles, pair dynamics, scene management      |
-| **10+ cast / world bot**                 | World tone, POV rules, core cast only   | Roster, factions, locations, relationships, secrets |
+| Bot shape                                | Description emphasis                         | Lorebook emphasis                                   |
+| ---------------------------------------- | -------------------------------------------- | --------------------------------------------------- |
+| **Single-character + optional lorebook** | Character inner drive, tone, current tension | Dynamic state, topic reactions, deep reveals        |
+| **2–4 recurring characters**             | Group tension, thumbnails, scene mode        | Full profiles, pair dynamics, scene management      |
+| **10+ cast / world bot**                 | World tone, POV rules, core cast only        | Roster, factions, locations, relationships, secrets |
 
 If the question is "how do I write this character well?" start with `authoring-characters` for an explicit scaffolded sheet, or `authoring-self-introduction-sheets` for the self-introduction monologue method.
 
@@ -22,11 +22,11 @@ If the question is "how do I write this character well?" start with `authoring-c
 
 ## 1. Single-Character Bots with Lorebook Support
 
-This is the lightest architecture. The description should still be able to carry the RP by itself.
+This is the lightest structure. The description should still be able to carry the RP by itself.
 
 ### Description should carry
 
-- full character engine
+- full character inner drive
 - speech and narration identity
 - relationship dynamic with {{user}}
 - current state
@@ -61,19 +61,19 @@ Lorebook:
 
 - "what wakes up only under certain conditions"
 
-Some single-character bots flip this balance — placing behavioral state machinery in lorebook while the description focuses on teaching the model how to interpret and use that machinery. Both approaches work.
+Some single-character bots flip this balance — placing relationship or state notes in lorebook while the description focuses on teaching the model how to interpret and use them. Both approaches work.
 
 ### Common mistake
 
 Moving too much of the character's soul into lorebook.
 
-If the base description feels hollow without triggers, the architecture may be upside down — unless the bot is deliberately designed as a lorebook-heavy system where the description acts as an interpretive frame rather than a full character engine.
+If the base description feels hollow without triggers, the structure may be upside down — unless the bot is deliberately designed as a lorebook-heavy system where the description acts as an interpretive frame rather than a full character sheet.
 
 ---
 
 ## 2. Small Ensemble Bots (2–4 recurring characters)
 
-This scale often benefits from explicit architecture, but the amount of scaffolding varies widely. Some small ensembles work beautifully with short always-on dossiers and no trigger gating at all; others benefit from deeper lorebook structure. Let the bot's needs drive the decision.
+This scale often benefits from explicit structure, but the amount of scaffolding varies widely. Some small ensembles work beautifully with short always-on dossiers and no trigger gating at all; others benefit from deeper lorebook structure. Let the bot's needs drive the decision.
 
 ### Description should carry
 
@@ -102,7 +102,7 @@ This scale often benefits from explicit architecture, but the amount of scaffold
 | **Scene-management entry**               | Prevents four people from talking equally at once       |
 | **World/location entries**               | Supports scene changes without bloating the description |
 
-Not all of these are necessary. A 3-character bot with strong always-on profiles and no complex trigger logic can outperform one with elaborate architecture if the cast chemistry is well-written.
+Not all of these are necessary. A 3-character bot with strong always-on profiles and no complex trigger logic can outperform one with elaborate structure if the cast chemistry is well-written.
 
 ### Pair-dynamics rule
 
@@ -120,7 +120,7 @@ Do not stage the whole ensemble equally on turn one.
 
 ### Common mistake
 
-Writing four excellent individual sheets but no architecture for how they interact.
+Writing four excellent individual sheets but no structure for how they interact.
 
 The result is four monologues sharing a setting.
 
@@ -128,7 +128,7 @@ The result is four monologues sharing a setting.
 
 ## 3. Large World / Large Cast Bots (10+ characters)
 
-This is an architecture-first problem. The patterns below reflect what works in many successful world bots, but no single bot needs all of them.
+This is a structure-first problem. The patterns below reflect what works in many successful world bots, but no single bot needs all of them.
 
 ### Description should carry
 
@@ -232,16 +232,16 @@ That usually causes:
 
 Use this decision table when you are unsure.
 
-| Content                                          | Best home                                                      |
-| ------------------------------------------------ | -------------------------------------------------------------- |
-| The world's emotional weather                    | Description                                                    |
-| The one-line reason a character matters          | Description or roster summary                                  |
-| The full performance engine for a core character | Character profile entry + maybe compressed description mention |
-| Relationship chemistry                           | Pair-dynamics entry                                            |
-| Deep backstory                                   | Lorebook                                                       |
-| Topic-based reactions                            | Lorebook                                                       |
-| "How to handle crowded scenes"                   | Scene-management entry                                         |
-| Slow reveal or secret chain                      | Layered secret entries                                         |
+| Content                                   | Best home                                                      |
+| ----------------------------------------- | -------------------------------------------------------------- |
+| The world's emotional weather             | Description                                                    |
+| The one-line reason a character matters   | Description or roster summary                                  |
+| The full inner drive for a core character | Character profile entry + maybe compressed description mention |
+| Relationship chemistry                    | Pair-dynamics entry                                            |
+| Deep backstory                            | Lorebook                                                       |
+| Topic-based reactions                     | Lorebook                                                       |
+| "How to handle crowded scenes"            | Scene-management entry                                         |
+| Slow reveal or secret chain               | Layered secret entries                                         |
 
 ---
 
@@ -277,4 +277,4 @@ Your job is to decide:
 
 **what the model should always remember, what it should recall conditionally, and what it should not surface yet.**
 
-The scales and recipes here are reference points. The best bot at any scale is the one whose architecture serves its specific vision — not the one that checks the most boxes.
+The scales and recipes here are reference points. The best bot at any scale is the one whose structure serves its specific vision — not the one that checks the most boxes.

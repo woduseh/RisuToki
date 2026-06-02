@@ -6,7 +6,7 @@ How to design lorebook systems that **extend** the description instead of fighti
 
 ## Core Principle
 
-In a typical lorebook-driven bot the description is the **persistent frame** and lorebook entries are **conditional depth**. Some designs shift the balance further toward lorebook — always-on entries, dense state systems, or structural scaffolding — and that is equally valid when it serves the bot's goals.
+In a typical lorebook-driven bot the description is the **persistent frame** and lorebook entries are **conditional depth**. Some designs shift the balance further toward lorebook — always-on entries, dense state notes, or structural support — and that is equally valid when it serves the bot's goals.
 
 Regardless of balance, every entry should answer:
 
@@ -34,6 +34,8 @@ The lorebook should read like it belongs to the same bot.
 - atmospheric description + clinical lorebook = tonal whiplash
 - clinical description + atmospheric lorebook = awkward paste-in prose
 
+Keep planning terms out of entry prose. Use "architecture," "activation," "state," and "routing" while designing if they help, but rewrite model-visible character and relationship material as pressure, memory, gesture, silence, sensory texture, and changed choices.
+
 ### 3. Behavior Over Biography
 
 Write what changes scenes.
@@ -59,7 +61,7 @@ Cut sentences that do not materially change likely output.
 
 ### 5. Secrets Need Trigger Depth
 
-If a secret activates on the character's name alone, it is not a secret architecture problem — it is a trigger-design failure.
+If a secret activates on the character's name alone, it is not a secret-structure problem — it is a trigger-design failure.
 
 ---
 
@@ -96,9 +98,9 @@ Use when a character needs more than a thumbnail.
 
 Good contents:
 
-- behavioral engine
+- inner drive
 - current state
-- speech system or extra registers
+- voice patterns or extra registers
 - topic-specific reactions
 - secrets or contradictions
 
@@ -127,10 +129,10 @@ Rook treats her needling as a test he refuses to fail. Their scenes are controll
 duels disguised as logistics.
 ```
 
-**Beyond pairs.** Relationship architecture can scale beyond two-person dynamics:
+**Beyond pairs.** Relationship structure can scale beyond two-person dynamics:
 
 - **Relationship clusters** — group dynamics where the chemistry is between 3+ people and cannot be decomposed into pair interactions alone (e.g., a family unit, a squad that only functions as a unit, a love triangle). Write these as their own entries when the group dynamic is load-bearing.
-- **Social / supporting ecology** — entries that define a character's broader social world: family patterns, community ties, professional networks, or rivalries that create pressure even when those people are offscreen. These work well for single-character bots where the ecology itself is a dramatic engine.
+- **Social / supporting ecology** — entries that define a character's broader social world: family patterns, community ties, professional networks, or rivalries that create pressure even when those people are offscreen. These work well for single-character bots where the ecology itself keeps drama alive.
 - **Continuity / event-summary memory** — entries that record significant relationship events or state changes so the bot can reference shared history. Useful in longer-running scenarios but not every bot needs them.
 
 Use whichever shape fits the bot. A single-character bot might need ecology entries but no pair dynamics; a small ensemble might need only pairs; a world bot might need clusters.
@@ -219,7 +221,7 @@ In longer-running or progression-heavy bots, dedicated entries can track signifi
 Good uses:
 
 - recording relationship turning points so the bot can reference shared history
-- tracking world events that shift the political or social landscape
+- recording world events that shift the political or social landscape
 - maintaining a running summary of user decisions that affect the scenario
 
 Not every bot needs these. They shine most in bots designed for extended play or bots where cumulative history is a dramatic resource.
@@ -289,7 +291,7 @@ One common entry mix (adjust to fit your bot):
 - 1–2 deep reveal entries
 - optional location entries if the setting matters strongly
 
-Keep the emotional engine in the description. Use lorebook to make it responsive.
+Keep the emotional core in the description. Use lorebook to make it responsive.
 
 ### 2–4 Character Ensemble
 
@@ -303,7 +305,7 @@ One common entry mix (adjust to fit your bot):
 
 This scale is where pair-dynamics entries shine the most.
 
-Not every small ensemble needs complex scaffolding. If the cast works with short always-on dossiers and natural keyword triggers, that simplicity is a strength, not a gap.
+Not every small ensemble needs complex scaffolding. If the cast works with short always-on dossiers and natural keyword triggers, that simplicity is a strength, not a gap. Do not replace living chemistry with extra layers just because the tools can support them.
 
 ### 10+ Character / World Bot
 
@@ -377,7 +379,7 @@ When a broad keyword is unavoidable, require a second condition.
 
 ### Decorator-Aware Activation Notes
 
-If your lorebook system supports insertion decorators or depth controls such as `@@depth`, `@@role`, or `@@position`, use them to refine already-good entry design — not to rescue bad architecture.
+If your lorebook system supports insertion decorators or depth controls such as `@@depth`, `@@role`, or `@@position`, use them to refine already-good entry design — not to rescue weak structure.
 
 Good use:
 
@@ -454,7 +456,7 @@ If your always-on stack becomes a second description, compress it.
 
 ## Audit Checklist
 
-Ask these before calling the architecture finished:
+Ask these before calling the structure finished:
 
 | Check                 | Question                                                                   |
 | --------------------- | -------------------------------------------------------------------------- |
@@ -484,4 +486,4 @@ Measure it by how cleanly it answers:
 
 **"When this scene changes, which information should wake up — and what should stay asleep?"**
 
-The roles, patterns, and architecture outlines in this document are tools, not requirements. Use what serves your bot and leave the rest.
+The roles, patterns, and structure outlines in this document are tools, not requirements. Use what serves your bot and leave the rest.

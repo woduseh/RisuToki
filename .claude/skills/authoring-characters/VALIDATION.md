@@ -1,6 +1,6 @@
 # Validation Checklist
 
-Use these checks **after** you have a draft. They are diagnostic tools, not purity tests — skip any check that does not apply to the bot's architecture.
+Use these checks **after** you have a draft. They are review tools, not purity tests — skip any check that does not apply to the bot's structure.
 
 > A character that fails one box but performs brilliantly in scenes is still better than a template that passes everything and feels dead.
 
@@ -8,19 +8,20 @@ Use these checks **after** you have a draft. They are diagnostic tools, not puri
 
 ## Core Checks
 
-| Check                       | Applies to                        | Question                                                                                             | Fix if weak                                                   |
-| --------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Behavioral Engine**       | All                               | Can you predict the character's gut reaction in 3 random scenes?                                     | Strengthen anchor, wound, Want vs. Need, or contradiction     |
-| **Wound Specificity**       | Single / major cast               | Is the wound a scene or at least a sensory fragment, not a summary label?                            | Replace abstract trauma text with a lived moment              |
-| **Want vs. Need Collision** | Single / major cast               | Do the conscious goal and vulnerable need actually pull against each other?                          | Write both explicitly in draft notes, then weave them back in |
-| **Speech Investment**       | All                               | Are there enough distinctive example lines to keep the voice from collapsing into generic LLM prose? | Add or sharpen diagnostic lines                               |
-| **DNA Markers**             | All                               | Are there 2–4 always-present habits/tics that survive every mood?                                    | Add verbal, structural, or physical DNA markers               |
-| **Silence Rules**           | Single / guarded characters       | Does the character avoid naming key feelings directly in a consistent way?                           | Add 2–4 direct-to-indirect substitutions                      |
-| **Truth Budget**            | Single / slow-burn / guarded bots | Is there any gating on when the character can admit fear, need, jealousy, etc.?                      | Add trust stages or at least explicit disclosure ceilings     |
-| **Narration Lens**          | All                               | Does the narration notice what _this_ character would notice first?                                  | Define 2–4 stable perception filters                          |
-| **Current Situation**       | All                               | Is there enough "right now" pressure for the RP to start with direction?                             | Add active tension, recent events, and uncertainty            |
-| **Strategic Gaps**          | All                               | Did you define tendencies instead of scripting future outcomes?                                      | Remove "will eventually..." and replace with conditions       |
-| **Scale Fit**               | All                               | Is the depth appropriate for the bot's cast size and architecture?                                   | Compress or expand using `BOT_SCALES.md`                      |
+| Check                       | Applies to                        | Question                                                                                              | Fix if weak                                                   |
+| --------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **Inner Drive**             | All                               | Can you predict the character's gut reaction in 3 random scenes?                                      | Strengthen anchor, wound, Want vs. Need, or contradiction     |
+| **Wound Specificity**       | Single / major cast               | Is the wound a scene or at least a sensory fragment, not a summary label?                             | Replace abstract trauma text with a lived moment              |
+| **Want vs. Need Collision** | Single / major cast               | Do the conscious goal and vulnerable need actually pull against each other?                           | Write both explicitly in draft notes, then weave them back in |
+| **Speech Investment**       | All                               | Are there enough distinctive example lines to keep the voice from collapsing into generic LLM prose?  | Add or sharpen revealing lines                                |
+| **Signature Tells**         | All                               | Are there 2–4 always-present habits/tics that survive every mood?                                     | Add verbal, structural, or physical signatures                |
+| **Silence Rules**           | Single / guarded characters       | Does the character avoid naming key feelings directly in a consistent way?                            | Add 2–4 direct-to-indirect substitutions                      |
+| **Truth Budget**            | Single / slow-burn / guarded bots | Is there any gating on when the character can admit fear, need, jealousy, etc.?                       | Add trust stages or at least explicit disclosure ceilings     |
+| **Narration Lens**          | All                               | Does the narration notice what _this_ character would notice first?                                   | Define 2–4 stable perception filters                          |
+| **Human Interiority**       | All                               | Do intellect, composure, attraction, jealousy, fear, and restraint still feel embodied and emotional? | Add sensory pressure, body language, subtext, and felt stakes |
+| **Current Situation**       | All                               | Is there enough "right now" pressure for the RP to start with direction?                              | Add active tension, recent events, and uncertainty            |
+| **Strategic Gaps**          | All                               | Did you define tendencies instead of scripting future outcomes?                                       | Remove "will eventually..." and replace with conditions       |
+| **Scale Fit**               | All                               | Is the depth appropriate for the bot's cast size and structure?                                       | Compress or expand using `BOT_SCALES.md`                      |
 
 ---
 
@@ -36,7 +37,7 @@ These are the checks most likely to catch failures that a static reread will mis
 | **Vulnerability Press** | User pushes on a wound or sore subject several times | Escalation, deflection, or retreat feels in-character; no instant confession |
 | **Boundary Test**       | User is rude, invasive, or too familiar too quickly  | The character resists in their own style; does not become a yes-machine      |
 | **Apology Sequence**    | User apologizes after conflict                       | The character does not reset instantly; trust repair has cost                |
-| **30-Turn Drift**       | Continue long enough for novelty to wear off         | DNA markers, silence rules, and narration lens still survive                 |
+| **30-Turn Drift**       | Continue long enough for novelty to wear off         | Signature tells, silence rules, and narration lens still survive             |
 | **Model Switch**        | Run on a second model if possible                    | Core behavior remains recognizable even if tone changes                      |
 
 ### 2–4 Character Ensemble
@@ -63,18 +64,19 @@ These are the checks most likely to catch failures that a static reread will mis
 
 ## Anti-Pattern Checks
 
-| Anti-pattern                  | How it usually looks                                                   | Why it hurts                                        | Fix                                                   |
-| ----------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------- |
-| **Keyword Soup**              | "cold, sharp, secretly warm, stubborn, lonely"                         | Labels do not teach performance                     | Rewrite as condition -> reaction -> leak              |
-| **Emotion Labeling**          | "She loves him" / "She hates pity"                                     | The model states feelings instead of staging them   | Add silence rules, triggers, and indirect tells       |
-| **Register Without Examples** | "Formal in public, casual in private"                                  | No pattern for the model to imitate                 | Add 2–5 lines per important register                  |
-| **DNA Absence**               | Any capable model could have written these lines                       | Long-chat drift becomes inevitable                  | Add repeated verbal / physical signatures             |
-| **Narration Vacuum**          | Dialogue is specific; narration is generic                             | The character sounds right but sees the world wrong | Add narration lens and barks                          |
-| **Future Scripting**          | "Eventually falls in love"                                             | Kills emergence and accelerates intimacy            | Remove trajectories; keep thresholds                  |
-| **Overfit Examples**          | Example lines are so specific the model parrots them                   | Output becomes repetitive cosplay                   | Vary examples and treat them as patterns, not scripts |
-| **Description Bloat**         | Every character gets a full protagonist sheet in a world bot           | Attention collapses and all voices blur             | Re-tier the cast using `BOT_SCALES.md`                |
-| **Lorebook Dump Risk**        | Backstory detail appears in description or always-on text without need | The bot starts explaining instead of roleplaying    | Move gated detail into lorebook architecture          |
-| **Voice Collision**           | Two characters share rhythm, humor, and pressure behavior              | Ensemble scenes become unreadable                   | Build a cast contrast grid before finalizing          |
+| Anti-pattern                    | How it usually looks                                                                               | Why it hurts                                          | Fix                                                                                                |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Keyword Soup**                | "cold, sharp, secretly warm, stubborn, lonely"                                                     | Labels do not teach performance                       | Rewrite as condition -> reaction -> leak                                                           |
+| **Emotion Labeling**            | "She loves him" / "She hates pity"                                                                 | The model states feelings instead of staging them     | Add silence rules, triggers, and indirect tells                                                    |
+| **Register Without Examples**   | "Formal in public, casual in private"                                                              | No pattern for the model to imitate                   | Add 2–5 lines per important register                                                               |
+| **Signature Absence**           | Any capable model could have written these lines                                                   | Long-chat drift becomes inevitable                    | Add repeated verbal / physical signatures                                                          |
+| **Narration Vacuum**            | Dialogue is specific; narration is generic                                                         | The character sounds right but sees the world wrong   | Add narration lens and barks                                                                       |
+| **Future Scripting**            | "Eventually falls in love"                                                                         | Kills emergence and accelerates intimacy              | Remove trajectories; keep thresholds                                                               |
+| **Overfit Examples**            | Example lines are so specific the model parrots them                                               | Output becomes repetitive cosplay                     | Vary examples and treat them as patterns, not scripts                                              |
+| **Description Bloat**           | Every character gets a full protagonist sheet in a world bot                                       | Attention collapses and all voices blur               | Re-tier the cast using `BOT_SCALES.md`                                                             |
+| **Lorebook Dump Risk**          | Backstory detail appears in description or always-on text without need                             | The bot starts explaining instead of roleplaying      | Move gated detail into lorebook structure                                                          |
+| **Voice Collision**             | Two characters share rhythm, humor, and pressure behavior                                          | Ensemble scenes become unreadable                     | Build a cast contrast grid before finalizing                                                       |
+| **Mechanical Metaphor Leakage** | Feelings, bodies, or intimacy are described as systems, data, coordinates, anatomy, physics, or UI | The character feels artificial or clinically observed | Rewrite through breath, touch, posture, silence, sensory texture, and emotionally specific choices |
 
 ## Anti-Flattening Checks
 
@@ -121,14 +123,14 @@ Use these when a character feels polished but still collapses into a default arc
 
 ## Optional Advanced Checks
 
-Use these when the bot's architecture warrants them. They are not part of the standard checklist.
+Use these when the bot's structure warrants them. They are not part of the standard checklist.
 
-| Check                            | When to use                                                    | What to look for                                                                                           |
-| -------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Format-Stress Survival**       | The bot defines a specific output shape or formatting contract | Does the output format survive when the scene gets emotionally intense, complex, or multi-character?       |
-| **Multi-Axis State Coherence**   | The bot tracks more than one state dimension simultaneously    | Do the different state axes (trust, arousal, mood, etc.) interact coherently or contradict each other?     |
-| **Small-Scale Overengineering**  | 2–4 character ensemble with heavy technical scaffolding        | Could the bot work equally well with less machinery? Remove one system and see if output quality degrades. |
-| **Supporting Ecology Integrity** | Single-character bot with load-bearing family/social web       | Do supporting figures behave consistently, or do they flatten into generic NPCs after a few turns?         |
+| Check                            | When to use                                                    | What to look for                                                                                          |
+| -------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Format-Stress Survival**       | The bot defines a specific output shape or formatting contract | Does the output format survive when the scene gets emotionally intense, complex, or multi-character?      |
+| **Multi-Axis State Coherence**   | The bot tracks more than one state dimension simultaneously    | Do the different state axes (trust, arousal, mood, etc.) interact coherently or contradict each other?    |
+| **Small-Scale Overengineering**  | 2–4 character ensemble with heavy technical scaffolding        | Could the bot work equally well with less machinery? Remove one layer and see if output quality degrades. |
+| **Supporting Ecology Integrity** | Single-character bot with load-bearing family/social web       | Do supporting figures behave consistently, or do they flatten into generic NPCs after a few turns?        |
 
 ---
 
