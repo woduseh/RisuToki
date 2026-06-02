@@ -34,6 +34,7 @@ export const TOOL_FAMILIES = [
   'risum-asset',
   'asset-compression',
   'asset-management',
+  'file-management',
   'risup-prompt',
   'item-management',
   'skill',
@@ -244,6 +245,7 @@ export const DRY_RUN_TOOL_NAMES = [
   'preview_edit',
   'manage_items',
   'manage_assets',
+  'manage_file',
 ] as const;
 
 const NO_CONFIRMATION_TOOL_NAME_SET = new Set<string>(NO_CONFIRMATION_TOOL_NAMES);
@@ -263,6 +265,7 @@ const AUTHORING_PROFILE_FAMILIES = new Set<ToolFamily>([
   'charx-asset',
   'risum-asset',
   'asset-management',
+  'file-management',
   'risup-prompt',
   'folder-workspace',
   'skill',
@@ -595,6 +598,12 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   load_guidance: { family: 'skill', hints: OPEN_WORLD_RO, surfaceKind: 'facade', recommendation: 'preferred' },
   manage_items: { family: 'item-management', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
   manage_assets: { family: 'asset-management', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
+  manage_file: {
+    family: 'file-management',
+    hints: OPEN_WORLD_WRITE,
+    surfaceKind: 'facade',
+    recommendation: 'preferred',
+  },
 
   // ── Field ──────────────────────────────────────────────────────────────
   list_fields: { family: 'field', hints: RO_IDEMPOTENT },
@@ -970,6 +979,7 @@ export function getToolWorkflowStages(name: string): readonly ToolWorkflowStage[
     name === 'load_guidance' ||
     name === 'manage_items' ||
     name === 'manage_assets' ||
+    name === 'manage_file' ||
     toolNameHasSegment(name, 'read') ||
     name.startsWith('probe_')
   ) {
@@ -991,6 +1001,7 @@ export function getToolWorkflowStages(name: string): readonly ToolWorkflowStage[
       name === 'preview_edit' ||
       name === 'manage_items' ||
       name === 'manage_assets' ||
+      name === 'manage_file' ||
       DRY_RUN_TOOL_NAME_SET.has(name)
     ) {
       stages.add('preview');

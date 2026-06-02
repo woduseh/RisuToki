@@ -9,6 +9,24 @@
 
 ---
 
+## [1.4.0] - 2026-06-02
+
+### Added
+
+- Added the `manage_file` MCP facade for guarded file/session/project-folder workflows, including active snapshot reads, project-tree reads, file open, active save, snapshot/restore, field export, and `.charx` / `.risum` / `.risup` project-folder extract/reassemble.
+- Added preview/apply guards for `manage_file`, including active-file path, file-state, output-state, and project-tree digest checks.
+- Added schema, taxonomy, standalone MCP smoke, and workflow eval coverage for facade-first file management.
+- Added `manage_assets` `compress_assets` preview/apply coverage for active and external `.charx` asset compression, including collection digest guards and external document hash guards.
+- Added `validate_content` support for external `.charx` export compatibility checks through `family: "asset"` or `field: "exportCompatibility"` selectors.
+- Added `manage_assets` `rename_asset` preview/apply coverage for active and external `.risum` module asset metadata.
+- Added `validate_content` support for external `.risum` semantic field checks.
+
+### Changed
+
+- Promoted covered file/session/project-folder guidance, docs, evals, and profile metadata to prefer `manage_file` before granular `open_file`, `save_current_file`, snapshot, export, or project-folder tools.
+- Promoted covered `.charx` asset compression guidance and smoke coverage to prefer `manage_assets` before granular `compress_assets_webp`, while keeping unsupported `.risum` compression as an advanced fallback.
+- Promoted covered `.risum` asset rename guidance and smoke coverage to prefer `manage_assets` before delete/add workarounds.
+
 ## [1.3.0] - 2026-06-02
 
 ### Added

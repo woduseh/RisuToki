@@ -75,6 +75,7 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
   'risum-asset': ['list_risum_assets', 'read_risum_asset', 'add_risum_asset'],
   'asset-compression': ['compress_assets_webp', 'list_charx_assets'],
   'asset-management': ['manage_assets', 'validate_content', 'read_content'],
+  'file-management': ['manage_file', 'inspect_document', 'read_content'],
   'risup-prompt': [
     'manage_items',
     'list_risup_prompt_items',
@@ -113,6 +114,7 @@ export const TOOL_NEXT_ACTIONS: Partial<Record<keyof typeof TOOL_TAXONOMY, strin
   apply_edit: ['read_content', 'search_document'],
   manage_items: ['manage_items', 'read_content', 'validate_content'],
   manage_assets: ['manage_assets', 'validate_content', 'read_content'],
+  manage_file: ['manage_file', 'inspect_document', 'read_content'],
   open_file: ['session_status', 'list_fields', 'list_references'],
   inspect_external_file: [
     'probe_field',

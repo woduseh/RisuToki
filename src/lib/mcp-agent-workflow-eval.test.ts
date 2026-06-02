@@ -140,6 +140,41 @@ const WORKFLOW_EVAL_TASKS = [
     },
   },
   {
+    id: 'charx-open-file-facade',
+    prompt: 'Preview and open an unopened character card without bypassing dirty-state guards.',
+    family: 'charx',
+    corpusRoots: LOCAL_CORPUS_ROOTS.charx,
+    sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
+    surfaces: ['character metadata'],
+    editRisk: 'guarded-edit',
+    route: {
+      profile: 'facade-first',
+      discover: ['list_tool_profiles', 'inspect_document'],
+      readOrSearch: ['inspect_document'],
+      preview: ['manage_file:open_file'],
+      apply: ['manage_file:apply'],
+      validate: ['inspect_document', 'read_content'],
+    },
+    safety: {
+      boundedOrItemizedRead: true,
+      batchWhenSiblingItems: true,
+      staleGuards: ['expected_file_state_digest', 'expected_active_file_path'],
+      previewPolicy: 'required',
+      wrongTargetAvoidance: [
+        'target.kind must be external; use manage_file preview/apply instead of direct open_file when a guardable switch is needed',
+      ],
+      postEditValidation: ['inspect_document confirms active file path and file type before content reads'],
+    },
+    metrics: {
+      routeCorrect: true,
+      expectedFirstPassSuccess: true,
+      wrongTargetIncidents: 0,
+      validationCovered: true,
+      boundedReadCovered: true,
+      docsSynced: true,
+    },
+  },
+  {
     id: 'charx-first-message-field-edit',
     prompt: 'Patch one first message phrase in a character card.',
     family: 'charx',
@@ -235,7 +270,7 @@ const WORKFLOW_EVAL_TASKS = [
       ],
       postEditValidation: [
         'focused read_content re-read of changed external lorebook/regex/greeting selectors',
-        'validate_content when the external file type supports the requested validation',
+        'validate_content external charx export compatibility when selector family="asset" or field="exportCompatibility"',
       ],
     },
     metrics: {
@@ -590,7 +625,7 @@ const WORKFLOW_EVAL_TASKS = [
   {
     id: 'charx-asset-destructive-flow',
     prompt:
-      'Add, rename, or delete an embedded card asset through the asset-management facade after identity inspection.',
+      'Add, rename, delete, or compress an embedded card asset through the asset-management facade after identity inspection, including unopened external .charx files.',
     family: 'charx',
     corpusRoots: LOCAL_CORPUS_ROOTS.charx,
     sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
@@ -600,7 +635,12 @@ const WORKFLOW_EVAL_TASKS = [
       profile: 'facade-first',
       discover: ['list_tool_profiles', 'inspect_document'],
       readOrSearch: ['manage_assets:list_assets', 'manage_assets:read_asset'],
-      preview: ['manage_assets:add_asset', 'manage_assets:rename_asset', 'manage_assets:delete_asset'],
+      preview: [
+        'manage_assets:add_asset',
+        'manage_assets:rename_asset',
+        'manage_assets:delete_asset',
+        'manage_assets:compress_assets',
+      ],
       apply: ['manage_assets:apply'],
       validate: ['validate_content', 'manage_assets:list_assets'],
     },
@@ -610,9 +650,9 @@ const WORKFLOW_EVAL_TASKS = [
       staleGuards: ['expected_asset_collection_digest', 'expected_path', 'expected_hash'],
       previewPolicy: 'required',
       wrongTargetAvoidance: [
-        'asset_family should resolve to charx; use manage_assets instead of raw asset routes when covered',
+        'asset_family should resolve to charx; use manage_assets instead of raw asset routes or compress_assets_webp when covered',
       ],
-      postEditValidation: ['validate_content export compatibility', 'asset list re-read'],
+      postEditValidation: ['validate_content active/external charx export compatibility', 'asset list re-read'],
     },
     metrics: {
       routeCorrect: true,
@@ -1052,6 +1092,42 @@ const WORKFLOW_EVAL_TASKS = [
     },
   },
   {
+    id: 'risup-project-folder-facade',
+    prompt:
+      'Extract an unopened preset into a project folder, inspect the tree, then reassemble it to an output preset.',
+    family: 'risup',
+    corpusRoots: LOCAL_CORPUS_ROOTS.risup,
+    sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
+    surfaces: ['import/export'],
+    editRisk: 'destructive-edit',
+    route: {
+      profile: 'facade-first',
+      discover: ['list_tool_profiles', 'inspect_document'],
+      readOrSearch: ['manage_file:project_tree'],
+      preview: ['manage_file:extract_project', 'manage_file:reassemble_project'],
+      apply: ['manage_file:apply'],
+      validate: ['inspect_document', 'validate_content'],
+    },
+    safety: {
+      boundedOrItemizedRead: true,
+      batchWhenSiblingItems: true,
+      staleGuards: ['expected_file_state_digest', 'expected_output_state_digest', 'expected_project_tree_digest'],
+      previewPolicy: 'required',
+      wrongTargetAvoidance: [
+        'project_path must stay external; use manage_file instead of raw extract/reassemble routes when preview guards are needed',
+      ],
+      postEditValidation: ['inspect output preset externally and validate risup structure'],
+    },
+    metrics: {
+      routeCorrect: true,
+      expectedFirstPassSuccess: true,
+      wrongTargetIncidents: 0,
+      validationCovered: true,
+      boundedReadCovered: true,
+      docsSynced: true,
+    },
+  },
+  {
     id: 'risum-metadata-read',
     prompt: 'Inspect module metadata before touching module-specific fields.',
     family: 'risum',
@@ -1185,7 +1261,7 @@ const WORKFLOW_EVAL_TASKS = [
   },
   {
     id: 'risum-asset-destructive-flow',
-    prompt: 'Add or delete a module asset through the asset-management facade with collection guards.',
+    prompt: 'Add, rename, or delete a module asset through the asset-management facade with collection guards.',
     family: 'risum',
     corpusRoots: LOCAL_CORPUS_ROOTS.risum,
     sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
@@ -1195,9 +1271,9 @@ const WORKFLOW_EVAL_TASKS = [
       profile: 'facade-first',
       discover: ['list_tool_profiles', 'inspect_document'],
       readOrSearch: ['manage_assets:list_assets', 'manage_assets:read_asset'],
-      preview: ['manage_assets:add_asset', 'manage_assets:delete_asset'],
+      preview: ['manage_assets:add_asset', 'manage_assets:rename_asset', 'manage_assets:delete_asset'],
       apply: ['manage_assets:apply'],
-      validate: ['manage_assets:list_assets'],
+      validate: ['manage_assets:list_assets', 'validate_content external risum semantic fields'],
     },
     safety: {
       boundedOrItemizedRead: true,
@@ -1205,9 +1281,9 @@ const WORKFLOW_EVAL_TASKS = [
       staleGuards: ['expected_asset_collection_digest', 'expected_path', 'expected_hash'],
       previewPolicy: 'required',
       wrongTargetAvoidance: [
-        'asset_family should resolve to risum; use manage_assets instead of raw module asset routes when covered',
+        'asset_family should resolve to risum; use manage_assets instead of raw module asset routes or delete/add rename workarounds when covered',
       ],
-      postEditValidation: ['module asset list re-read'],
+      postEditValidation: ['module asset list re-read', 'validate_content external risum semantic fields when needed'],
     },
     metrics: {
       routeCorrect: true,

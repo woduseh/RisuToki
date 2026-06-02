@@ -52,6 +52,8 @@ import {
   manageAssetsBodySchema,
   manageAssetsFamilySchema,
   manageAssetsOperationSchema,
+  manageFileBodySchema,
+  manageFileOperationSchema,
   manageItemsOperationSchema,
   manageItemsFamilySchema,
   type FacadeV1ContentSelector,
@@ -61,6 +63,7 @@ import {
   type FacadeV1ToolMutability,
   type ManageAssetsFamily,
   type ManageAssetsOperation,
+  type ManageFileOperation,
   type ManageItemsFamily,
   type ManageItemsOperation,
 } from './src/lib/mcp-request-schemas';
@@ -75,6 +78,8 @@ import {
   type PromptItemModel,
   type PromptTemplateModel,
 } from './src/lib/risup-prompt-model';
+import { compressAssetsToWebP, updateAssetReferences, type CharxAssetLike } from './src/lib/image-compressor';
+import { validateCharxExportCompatibilityFile } from './src/lib/charx-export-compatibility';
 import {
   extractDocumentToProject,
   getProjectFileType,
@@ -937,9 +942,21 @@ interface ManageAssetsPreviewEntry {
   expiresAtMs: number;
 }
 
+interface ManageFilePreviewEntry {
+  token: string;
+  operationDigest: string;
+  target: FacadeV1Target;
+  operation: ManageFileOperation;
+  routes: FacadeRoute[];
+  touchedTargets: string[];
+  requiredGuards: FacadeV1Guard[];
+  expiresAtMs: number;
+}
+
 const facadePreviewStore = new Map<string, FacadePreviewEntry>();
 const manageItemsPreviewStore = new Map<string, ManageItemsPreviewEntry>();
 const manageAssetsPreviewStore = new Map<string, ManageAssetsPreviewEntry>();
+const manageFilePreviewStore = new Map<string, ManageFilePreviewEntry>();
 
 const facadeEditOperationSchema = z.object({
   op: z.enum(['write_content', 'replace_text', 'insert_text', 'delete_item', 'patch_surface']),
@@ -987,6 +1004,9 @@ function cleanupFacadePreviews(): void {
   for (const [token, entry] of manageAssetsPreviewStore.entries()) {
     if (entry.expiresAtMs <= now) manageAssetsPreviewStore.delete(token);
   }
+  for (const [token, entry] of manageFilePreviewStore.entries()) {
+    if (entry.expiresAtMs <= now) manageFilePreviewStore.delete(token);
+  }
 }
 
 function stableJson(value: unknown): string {
@@ -1018,6 +1038,10 @@ function manageAssetsOperationDigest(
   operation: ManageAssetsOperation,
 ): string {
   return crypto.createHash('sha256').update(stableJson({ target, assetFamily, operation })).digest('hex');
+}
+
+function manageFileOperationDigest(target: FacadeV1Target, operation: ManageFileOperation): string {
+  return crypto.createHash('sha256').update(stableJson({ target, operation })).digest('hex');
 }
 
 function makePreviewToken(): string {
@@ -1651,6 +1675,43 @@ async function validateFacadeSelectors(
   selectors: FacadeV1ContentSelector[] | undefined,
 ): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touchedTargets: string[] } | ApiErrorResult> {
   if (target.kind !== 'active') {
+    if (target.kind === 'external') {
+      const exportCompatibilitySelector = selectors?.find(
+        (selector) => selector.family === 'asset' || selector.field === 'exportCompatibility',
+      );
+      if (exportCompatibilitySelector) {
+        const data = validateExternalCharxExportCompatibility(target.file_path);
+        if (isApiError(data)) return data;
+        const routes = [route('validate_charx_export_compatibility', 'FILE', 'validateCharxExportCompatibilityFile')];
+        const touchedTarget = `external:${target.file_path}:charx-exportCompatibility`;
+        return {
+          result: {
+            validations: [{ selector: exportCompatibilitySelector, data }],
+            routed_legacy: routes,
+            touched_targets: [touchedTarget],
+            source_workflow: true,
+          },
+          routes,
+          touchedTargets: [touchedTarget],
+        };
+      }
+      const risumSelector = selectors?.find((selector) => selector.family === 'risum');
+      if (risumSelector) {
+        const validation = await validateExternalRisumSemanticFields(target.file_path, risumSelector);
+        if (isApiError(validation)) return validation;
+        const touchedTarget = `external:${target.file_path}:risum`;
+        return {
+          result: {
+            validations: [{ selector: risumSelector, data: validation.data }],
+            routed_legacy: validation.routes,
+            touched_targets: [touchedTarget],
+            source_workflow: true,
+          },
+          routes: validation.routes,
+          touchedTargets: [touchedTarget],
+        };
+      }
+    }
     if (selectors?.some((selector) => selector.family === 'plugin-v3') && target.kind === 'external') {
       const scan = scanPluginV3Source(target.file_path);
       if (isApiError(scan)) return scan;
@@ -1696,7 +1757,7 @@ async function validateFacadeSelectors(
     return facadeApiError(
       400,
       `Unsupported validate_content target kind "${target.kind}"`,
-      'validate_content supports active-document validators plus external Plugin v3 and external .risup prompt scans. Use inspect_document/read_content for other external or reference preflight.',
+      'validate_content supports active-document validators plus external .charx export compatibility, external .risum semantic fields, external Plugin v3, and external .risup prompt scans. Use inspect_document/read_content for other external or reference preflight.',
       undefined,
       ['inspect_document', 'read_content'],
     );
@@ -6149,6 +6210,7 @@ interface ManageAssetsContext {
   routes: FacadeRoute[];
   touchedTarget: string;
   cardAssets?: Record<string, unknown>[];
+  xMeta?: Record<string, unknown>;
   moduleData?: Record<string, unknown>;
 }
 
@@ -6179,6 +6241,10 @@ function assetBytesFromUnknown(value: unknown): Buffer {
 
 function assetBufferJsonFromBase64(base64: string): Record<string, unknown> {
   return { type: 'Buffer', data: [...Buffer.from(base64, 'base64')] };
+}
+
+function assetBufferJsonFromBuffer(buffer: Buffer): Record<string, unknown> {
+  return { type: 'Buffer', data: [...buffer] };
 }
 
 function assetPathBasename(assetPath: string): string {
@@ -6288,6 +6354,44 @@ function charxCardAsset(assetPath: string, fileName: string, folder: 'icon' | 'o
     name: ext ? fileName.slice(0, -(ext.length + 1)) : fileName,
     ext,
   };
+}
+
+function manageAssetsCompressionOptions(operation: Extract<ManageAssetsOperation, { action: 'compress_assets' }>): {
+  quality: number;
+  recompressWebp: boolean;
+} {
+  return {
+    quality: operation.quality ?? 80,
+    recompressWebp: operation.recompress_webp ?? operation.recompressWebp ?? false,
+  };
+}
+
+function charxCompressionAssets(context: ManageAssetsContext): CharxAssetLike[] | ApiErrorResult {
+  const assets: CharxAssetLike[] = [];
+  for (const [index, entry] of context.assets.entries()) {
+    const record = asRecord(entry);
+    if (!record || typeof record.path !== 'string') {
+      return facadeApiError(
+        400,
+        'charx asset entry is not an object with path',
+        'Repair the asset list or use granular surface tools for precision debugging.',
+        { index },
+        ['manage_assets'],
+      );
+    }
+    assets.push({ path: record.path, data: assetBytesFromUnknown(record.data) });
+  }
+  return assets;
+}
+
+function summarizeCompressedCharxAssets(assets: CharxAssetLike[]): ManageAssetsSummary[] {
+  return assets.map((asset, index) => ({
+    index,
+    path: asset.path,
+    name: assetPathBasename(asset.path),
+    size: asset.data.length,
+    mimeType: assetMimeType(asset.path),
+  }));
 }
 
 function manageAssetsCollectionDigest(summaries: ManageAssetsSummary[]): string {
@@ -6464,6 +6568,31 @@ async function readOptionalExternalRecordArraySurface(
   return { entries: read.value.map((entry) => asRecord(entry) ?? {}), routes: read.routes };
 }
 
+async function readOptionalExternalRecordSurface(
+  filePath: string,
+  surfacePath: string,
+): Promise<{ value: Record<string, unknown> | undefined; routes: FacadeRoute[] } | ApiErrorResult> {
+  const read = await readExternalSurfaceValue(filePath, surfacePath);
+  if (isApiError(read)) {
+    const status = recordNumber(asRecord(read), 'status');
+    if (status === 400 || status === 404) {
+      return { value: undefined, routes: [route('external_read_surface', 'POST', '/external/surface/read')] };
+    }
+    return read;
+  }
+  const record = asRecord(read.value);
+  if (!record) {
+    return facadeApiError(
+      400,
+      `External ${surfacePath} surface is not an object`,
+      'Inspect the external file surface before using manage_assets.',
+      { file_path: filePath, path: surfacePath },
+      ['inspect_document'],
+    );
+  }
+  return { value: record, routes: read.routes };
+}
+
 async function readManageAssetsContext(
   target: FacadeV1Target,
   requestedFamily: ManageAssetsFamily,
@@ -6488,12 +6617,31 @@ async function readManageAssetsContext(
         mimeType: recordString(record, 'path') ? assetMimeType(recordString(record, 'path') ?? '') : undefined,
       };
     });
+    let moduleData: Record<string, unknown> | undefined;
+    let cardAssets: Record<string, unknown>[] | undefined;
+    const routes = [route(family === 'charx' ? 'list_charx_assets' : 'list_risum_assets', 'GET', routePath)];
+    if (family === 'risum') {
+      const moduleRead = await apiRequest('POST', '/surface/read', { path: '/_moduleData' });
+      if (!isApiError(moduleRead)) {
+        moduleData = asRecord(asRecord(moduleRead)?.value);
+        routes.push(route('read_surface', 'POST', '/surface/read'));
+      }
+      const cardAssetsRead = await apiRequest('POST', '/surface/read', { path: '/cardAssets' });
+      if (!isApiError(cardAssetsRead) && Array.isArray(asRecord(cardAssetsRead)?.value)) {
+        cardAssets = (asRecord(cardAssetsRead)?.value as unknown[])
+          .map((entry) => asRecord(entry))
+          .filter((entry): entry is Record<string, unknown> => !!entry);
+        routes.push(route('read_surface', 'POST', '/surface/read'));
+      }
+    }
     return {
       family,
       summaries,
       assets,
-      routes: [route(family === 'charx' ? 'list_charx_assets' : 'list_risum_assets', 'GET', routePath)],
+      routes,
       touchedTarget: `active:${family}:assets`,
+      ...(cardAssets ? { cardAssets } : {}),
+      ...(moduleData ? { moduleData } : {}),
     };
   }
 
@@ -6518,13 +6666,16 @@ async function readManageAssetsContext(
       }
       const cardAssets = await readOptionalExternalRecordArraySurface(target.file_path, '/cardAssets');
       if (isApiError(cardAssets)) return cardAssets;
+      const xMeta = await readOptionalExternalRecordSurface(target.file_path, '/xMeta');
+      if (isApiError(xMeta)) return xMeta;
       return {
         family,
         summaries,
         assets: read.value,
-        routes: [...read.routes, ...cardAssets.routes],
+        routes: [...read.routes, ...cardAssets.routes, ...xMeta.routes],
         touchedTarget: `external:${target.file_path}:charx-assets`,
         cardAssets: cardAssets.entries,
+        xMeta: xMeta.value,
       };
     }
 
@@ -6615,6 +6766,57 @@ function withRisumModuleAssets(
   return next;
 }
 
+function risumAssetRenameParts(
+  current: ManageAssetsSummary,
+  newName: string,
+): { name: string; ext: string; displayName: string } {
+  const extFromName = assetExtension(newName);
+  const ext = extFromName || current.path || assetExtension(current.name ?? '') || 'png';
+  const name =
+    extFromName && newName.toLowerCase().endsWith(`.${extFromName.toLowerCase()}`)
+      ? newName.slice(0, -(extFromName.length + 1))
+      : newName;
+  return {
+    name,
+    ext,
+    displayName: ext ? `${name}.${ext}` : name,
+  };
+}
+
+function renamedRisumModuleData(
+  moduleData: Record<string, unknown> | undefined,
+  summary: ManageAssetsSummary,
+  newName: string,
+): { moduleData: Record<string, unknown>; summary: ManageAssetsSummary } | ApiErrorResult {
+  const moduleAssets = risumModuleAssets(moduleData);
+  if (summary.index >= moduleAssets.length) {
+    return facadeApiError(
+      400,
+      'Risum asset metadata is missing for rename',
+      'Use manage_assets list_assets to refresh metadata, or delete/add the asset if the module asset table is incomplete.',
+      { index: summary.index },
+      ['manage_assets'],
+    );
+  }
+  const parts = risumAssetRenameParts(summary, newName);
+  const nextAssets = cloneJsonValue(moduleAssets);
+  const currentTuple = Array.isArray(nextAssets[summary.index])
+    ? ([...(nextAssets[summary.index] as unknown[])] as unknown[])
+    : [summary.name ?? `asset_${summary.index}`, '', summary.path || parts.ext];
+  currentTuple[0] = parts.name;
+  currentTuple[2] = parts.ext;
+  nextAssets[summary.index] = currentTuple;
+  return {
+    moduleData: withRisumModuleAssets(moduleData, nextAssets),
+    summary: {
+      ...summary,
+      name: parts.name,
+      path: parts.ext,
+      mimeType: assetMimeType(parts.displayName),
+    },
+  };
+}
+
 async function buildManageAssetsPlan(
   target: FacadeV1Target,
   requestedFamily: ManageAssetsFamily,
@@ -6628,6 +6830,123 @@ async function buildManageAssetsPlan(
   const requiredGuards: FacadeV1Guard[] = [collectionGuard];
   const routes = [...context.routes];
   const touched = [context.touchedTarget];
+
+  if (operation.action === 'compress_assets') {
+    if (context.family !== 'charx') {
+      return facadeApiError(
+        400,
+        'compress_assets is supported only for charx assets',
+        'Use add/delete asset workflows for risum assets or granular tools for unsupported asset operations.',
+        { family: context.family },
+        ['manage_assets'],
+      );
+    }
+    if (beforeCount === 0) {
+      return facadeApiError(
+        400,
+        'No assets found in file.',
+        'Add at least one charx asset before compressing assets.',
+        { family: context.family },
+        ['manage_assets'],
+      );
+    }
+    const options = manageAssetsCompressionOptions(operation);
+    if (target.kind === 'active') {
+      const dryRun = await apiRequest('POST', '/assets/compress-webp', {
+        quality: options.quality,
+        recompressWebp: options.recompressWebp,
+        dry_run: true,
+      });
+      if (isApiError(dryRun)) return dryRun;
+      return {
+        result: {
+          dry_run: true,
+          action: operation.action,
+          family: context.family,
+          before_count: beforeCount,
+          after_count: beforeCount,
+          quality: options.quality,
+          recompressWebp: options.recompressWebp,
+          compression_preview: asRecord(dryRun) ?? dryRun,
+          asset_collection_digest: collectionGuard.value,
+        },
+        routes: [...routes, route('compress_assets_webp', 'POST', '/assets/compress-webp')],
+        touched,
+        requiredGuards,
+        activeApply: {
+          tool: 'compress_assets_webp',
+          method: 'POST',
+          path: '/assets/compress-webp',
+          body: { quality: options.quality, recompressWebp: options.recompressWebp },
+        },
+      };
+    }
+
+    const assets = charxCompressionAssets(context);
+    if (isApiError(assets)) return assets;
+    let compressed: Awaited<ReturnType<typeof compressAssetsToWebP>>;
+    try {
+      compressed = await compressAssetsToWebP(assets, options);
+    } catch (error) {
+      return facadeApiError(
+        500,
+        `Compression failed: ${error instanceof Error ? error.message : String(error)}`,
+        'Ensure the image compression dependency is installed, then retry manage_assets preview.',
+        { family: context.family },
+        ['manage_assets'],
+      );
+    }
+    const pathMap = new Map<string, string>();
+    for (const detail of compressed.details) {
+      if (detail.status === 'converted' && detail.originalPath !== detail.newPath) {
+        pathMap.set(detail.originalPath, detail.newPath);
+      }
+    }
+    const operations: Array<Record<string, unknown>> = [
+      {
+        op: 'replace',
+        path: '/assets',
+        value: compressed.assets.map((asset) => ({
+          path: asset.path,
+          data: assetBufferJsonFromBuffer(asset.data),
+        })),
+      },
+    ];
+    let referencesUpdated = { cardAssetsUpdated: 0, xMetaUpdated: 0 };
+    if (context.cardAssets || context.xMeta) {
+      const nextCardAssets = cloneJsonValue(context.cardAssets ?? []);
+      const nextXMeta = cloneJsonValue(context.xMeta ?? {});
+      if (pathMap.size > 0) {
+        referencesUpdated = updateAssetReferences(pathMap, nextCardAssets, nextXMeta);
+      }
+      if (context.cardAssets) {
+        operations.push({ op: 'replace', path: '/cardAssets', value: nextCardAssets });
+      }
+      if (context.xMeta) {
+        operations.push({ op: 'replace', path: '/xMeta', value: nextXMeta });
+      }
+    }
+    return {
+      result: {
+        dry_run: true,
+        action: operation.action,
+        family: context.family,
+        before_count: beforeCount,
+        after_count: compressed.assets.length,
+        quality: options.quality,
+        recompressWebp: options.recompressWebp,
+        stats: compressed.stats,
+        referencesUpdated,
+        details: compressed.details,
+        assets: summarizeCompressedCharxAssets(compressed.assets),
+        asset_collection_digest: collectionGuard.value,
+      },
+      routes: [...routes, route('external_patch_surface', 'POST', '/external/surface/patch')],
+      touched,
+      requiredGuards,
+      operations,
+    };
+  }
 
   if (operation.action === 'add_asset') {
     if (context.family === 'charx') {
@@ -6843,19 +7162,74 @@ async function buildManageAssetsPlan(
   }
 
   if (operation.action === 'rename_asset') {
-    if (context.family !== 'charx') {
-      return facadeApiError(
-        400,
-        'rename_asset is supported only for charx assets',
-        'For risum assets, delete and add the asset with the desired name.',
-        { family: context.family },
-        ['manage_assets'],
-      );
-    }
     const invalidName = validateManageAssetFileName(operation.newName, operation.action);
     if (invalidName) return invalidName;
     const summary = resolveManageAssetsSelector(context, operation.selector, operation.action);
     if (isApiError(summary)) return summary;
+    const pathGuard = assetExpectedPathGuard(summary);
+    requiredGuards.push(pathGuard);
+
+    if (context.family === 'risum') {
+      const renamed = renamedRisumModuleData(context.moduleData, summary, operation.newName);
+      if (isApiError(renamed)) return renamed;
+      if (
+        context.summaries.some(
+          (entry) =>
+            entry.index !== summary.index && entry.name === renamed.summary.name && entry.path === renamed.summary.path,
+        )
+      ) {
+        return facadeApiError(
+          409,
+          `Risum asset metadata already exists: ${renamed.summary.name}.${renamed.summary.path}`,
+          'Use a unique newName or refresh asset summaries first.',
+          { name: renamed.summary.name, path: renamed.summary.path },
+          ['manage_assets'],
+        );
+      }
+      const operations: Array<Record<string, unknown>> = [
+        { op: 'replace', path: '/_moduleData', value: renamed.moduleData },
+      ];
+      if (context.cardAssets) {
+        const parts = risumAssetRenameParts(summary, operation.newName);
+        operations.push({
+          op: 'replace',
+          path: '/cardAssets',
+          value: context.cardAssets.map((entry) => {
+            if (recordString(entry, 'name') !== summary.name) return entry;
+            return {
+              ...entry,
+              uri: `embeded://${parts.displayName}`,
+              name: parts.name,
+              ext: parts.ext,
+            };
+          }),
+        });
+      }
+      return {
+        result: {
+          dry_run: true,
+          action: operation.action,
+          family: context.family,
+          before_count: beforeCount,
+          after_count: beforeCount,
+          assets: [summary],
+          renamed_assets: [renamed.summary],
+          asset_collection_digest: collectionGuard.value,
+        },
+        routes: [
+          ...routes,
+          route(
+            target.kind === 'external' ? 'external_patch_surface' : 'patch_surface',
+            'POST',
+            target.kind === 'external' ? '/external/surface/patch' : '/surface/patch',
+          ),
+        ],
+        touched,
+        requiredGuards,
+        operations,
+      };
+    }
+
     const newPath = `${assetPathDirname(summary.path)}${operation.newName}`;
     if (context.summaries.some((entry) => entry.index !== summary.index && entry.path === newPath)) {
       return facadeApiError(
@@ -6872,8 +7246,6 @@ async function buildManageAssetsPlan(
       name: operation.newName,
       mimeType: assetMimeType(newPath),
     };
-    const pathGuard = assetExpectedPathGuard(summary);
-    requiredGuards.push(pathGuard);
     if (target.kind === 'active') {
       const routePath = `/asset/${summary.index}/rename`;
       return {
@@ -6939,7 +7311,7 @@ async function buildManageAssetsPlan(
   return facadeApiError(
     400,
     `Unsupported manage_assets action: ${operation.action}`,
-    'Use list_assets/read_asset in read mode or add_asset/delete_asset/rename_asset in preview mode.',
+    'Use list_assets/read_asset in read mode or add_asset/delete_asset/rename_asset/compress_assets in preview mode.',
     { operation },
   );
 }
@@ -6959,6 +7331,23 @@ async function previewManageAssetsOperation(
 > {
   const plan = await buildManageAssetsPlan(target, requestedFamily, operation);
   if (isApiError(plan)) return plan;
+  if (target.kind === 'active' && plan.operations) {
+    const routePath = '/surface/patch';
+    const dryRun = await apiRequest('POST', routePath, {
+      operations: plan.operations,
+      dry_run: true,
+    });
+    if (isApiError(dryRun)) return dryRun;
+    const beforeHash = recordString(asRecord(dryRun), 'before_hash');
+    return {
+      result: { ...plan.result, ...(asRecord(dryRun) ?? {}) },
+      routes: plan.routes,
+      touched: plan.touched,
+      requiredGuards: mergeGuards(plan.requiredGuards, [
+        beforeHash ? manageAssetsExpectedHashGuard(beforeHash) : undefined,
+      ]),
+    };
+  }
   if (target.kind === 'external' && plan.operations) {
     const routePath = '/external/surface/patch';
     const dryRun = await apiRequest('POST', routePath, {
@@ -7086,22 +7475,36 @@ async function applyManageAssetsOperation(
   }
 
   if (target.kind === 'active') {
-    if (!plan.activeApply) {
-      return facadeApiError(
-        400,
-        `Unsupported active manage_assets apply action: ${operation.action}`,
-        'Run manage_assets preview again and apply the returned token.',
-        { operation },
-      );
+    if (plan.activeApply) {
+      const data = await apiRequest(plan.activeApply.method, plan.activeApply.path, plan.activeApply.body);
+      return isApiError(data)
+        ? data
+        : {
+            result: { ...plan.result, ...(asRecord(data) ?? {}), dry_run: undefined },
+            routes: plan.routes,
+            touched: plan.touched,
+          };
     }
-    const data = await apiRequest(plan.activeApply.method, plan.activeApply.path, plan.activeApply.body);
-    return isApiError(data)
-      ? data
-      : {
-          result: { ...(asRecord(data) ?? {}), ...plan.result, dry_run: undefined },
-          routes: plan.routes,
-          touched: plan.touched,
-        };
+    if (plan.operations) {
+      const routePath = '/surface/patch';
+      const data = await apiRequest('POST', routePath, {
+        operations: plan.operations,
+        expected_hash: guardValue(guardValues, 'expected_hash'),
+      });
+      return isApiError(data)
+        ? data
+        : {
+            result: { ...plan.result, ...(asRecord(data) ?? {}), dry_run: undefined },
+            routes: plan.routes,
+            touched: plan.touched,
+          };
+    }
+    return facadeApiError(
+      400,
+      `Unsupported active manage_assets apply action: ${operation.action}`,
+      'Run manage_assets preview again and apply the returned token.',
+      { operation },
+    );
   }
 
   if (!plan.operations) {
@@ -7129,10 +7532,608 @@ async function applyManageAssetsOperation(
   return isApiError(data)
     ? data
     : {
-        result: { ...(asRecord(data) ?? {}), ...plan.result, dry_run: undefined },
+        result: { ...plan.result, ...(asRecord(data) ?? {}), dry_run: undefined },
         routes: plan.routes,
         touched: plan.touched,
       };
+}
+
+interface ManageFilePathState {
+  path: string;
+  exists: boolean;
+  kind: 'file' | 'directory' | 'other' | 'missing';
+  size: number | null;
+  mtimeMs: number | null;
+}
+
+interface ManageFilePlan {
+  result: Record<string, unknown>;
+  routes: FacadeRoute[];
+  touched: string[];
+  requiredGuards: FacadeV1Guard[];
+}
+
+function filePathState(filePath: string): ManageFilePathState {
+  const resolved = path.resolve(filePath);
+  try {
+    const stat = fs.statSync(resolved);
+    return {
+      path: resolved,
+      exists: true,
+      kind: stat.isFile() ? 'file' : stat.isDirectory() ? 'directory' : 'other',
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+    };
+  } catch {
+    return { path: resolved, exists: false, kind: 'missing', size: null, mtimeMs: null };
+  }
+}
+
+function filePathStateDigest(filePath: string): string {
+  const state = filePathState(filePath);
+  return hashStableValue({
+    path: state.path,
+    exists: state.exists,
+    kind: state.kind,
+    size: state.size,
+    mtimeMs: state.mtimeMs,
+  });
+}
+
+function projectTreeDigest(projectPath: string): string {
+  const resolved = path.resolve(projectPath);
+  const entries: Array<Record<string, unknown>> = [];
+  const walk = (dirPath: string) => {
+    for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') && entry.name !== '.risutoki') continue;
+      const fullPath = path.join(dirPath, entry.name);
+      const relativePath = path.relative(resolved, fullPath).replace(/\\/g, '/');
+      const stat = fs.statSync(fullPath);
+      entries.push({
+        relativePath,
+        kind: entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other',
+        size: entry.isFile() ? stat.size : null,
+        mtimeMs: stat.mtimeMs,
+      });
+      if (entry.isDirectory()) walk(fullPath);
+    }
+  };
+  walk(resolved);
+  entries.sort((a, b) => String(a.relativePath).localeCompare(String(b.relativePath)));
+  return hashStableValue(entries);
+}
+
+function projectTreeDigestOrMissing(projectPath: string): string {
+  const state = filePathState(projectPath);
+  if (!state.exists || state.kind !== 'directory') return filePathStateDigest(projectPath);
+  return projectTreeDigest(projectPath);
+}
+
+function manageFileGuard(
+  name: string,
+  value: string,
+  sourceResultPath: string,
+  sourceOperations: string[] = ['manage_file'],
+): FacadeV1Guard {
+  return buildGuard(name, value, '/guard_values/*', sourceOperations, sourceResultPath);
+}
+
+function checkManageFileGuardValue(
+  guards: FacadeV1Guard[] | undefined,
+  name: string,
+  actual: string,
+  suggestion: string,
+): ApiErrorResult | undefined {
+  const expected = guardValue(guards, name);
+  if (expected === undefined) {
+    return facadeApiError(400, `Missing guard value for ${name}`, suggestion, { guard: name }, ['manage_file']);
+  }
+  if (expected !== actual) {
+    return facadeApiError(409, `Stale guard mismatch for ${name}`, suggestion, { guard: name, expected, actual }, [
+      'manage_file',
+      'inspect_document',
+    ]);
+  }
+  return undefined;
+}
+
+function sessionDocumentRecord(session: unknown): Record<string, unknown> | undefined {
+  return asRecord(asRecord(session)?.document);
+}
+
+function sessionActiveFilePath(session: unknown): string {
+  const filePath = recordString(sessionDocumentRecord(session), 'filePath');
+  return filePath ? path.resolve(filePath) : '';
+}
+
+async function readSessionForManageFile(): Promise<
+  { session: unknown; activeFilePath: string; routes: FacadeRoute[] } | ApiErrorResult
+> {
+  const session = await apiRequest('GET', '/session/status');
+  if (isApiError(session)) return session;
+  return {
+    session,
+    activeFilePath: sessionActiveFilePath(session),
+    routes: [route('session_status', 'GET', '/session/status')],
+  };
+}
+
+function activeFilePathGuard(activeFilePath: string): FacadeV1Guard {
+  return manageFileGuard('expected_active_file_path', activeFilePath, '/result/current_active_file_path', [
+    'inspect_document',
+    'session_status',
+    'manage_file',
+  ]);
+}
+
+function externalPathStateGuard(name: string, filePath: string, sourceResultPath: string): FacadeV1Guard {
+  return manageFileGuard(name, filePathStateDigest(filePath), sourceResultPath);
+}
+
+function projectDigestGuard(projectPath: string): FacadeV1Guard {
+  return manageFileGuard(
+    'expected_project_tree_digest',
+    projectTreeDigestOrMissing(projectPath),
+    '/result/project_digest',
+  );
+}
+
+function manageFileTargetPath(
+  target: FacadeV1Target,
+  operationPath: string | undefined,
+  action: string,
+): string | ApiErrorResult {
+  const rawPath = operationPath ?? (target.kind === 'external' ? target.file_path : undefined);
+  if (!rawPath) {
+    return facadeApiError(
+      400,
+      `${action} requires an external target path`,
+      'Use target.kind="external" or provide the operation path explicitly.',
+      { target, action },
+      ['manage_file'],
+    );
+  }
+  return path.resolve(rawPath);
+}
+
+function ensureSupportedDocumentFile(filePath: string, action: string): ApiErrorResult | undefined {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!['.charx', '.risum', '.risup'].includes(ext)) {
+    return facadeApiError(
+      400,
+      `${action} supports .charx, .risum, and .risup files`,
+      'Choose a RisuAI document file or keep using the filesystem directly for non-artifact files.',
+      { file_path: filePath },
+      ['inspect_document'],
+    );
+  }
+  return undefined;
+}
+
+function summarizeManageFileProject(projectPath: string): Record<string, unknown> | ApiErrorResult {
+  const state = filePathState(projectPath);
+  if (!state.exists || state.kind !== 'directory') {
+    return facadeApiError(
+      400,
+      `Project folder not found: ${state.path}`,
+      'Use extract_project first or provide a project_path containing card.json, module.json, or preset.json.',
+      { project_path: state.path, state },
+      ['manage_file'],
+    );
+  }
+  let fileType: string | null = null;
+  try {
+    fileType = getProjectFileType(state.path);
+  } catch {
+    fileType = null;
+  }
+  return {
+    project_path: state.path,
+    file_type: fileType,
+    tree: listProjectTree(state.path),
+    treeSummary: summarizeProjectTree(state.path),
+    project_digest: projectTreeDigest(state.path),
+  };
+}
+
+async function readManageFileOperation(
+  target: FacadeV1Target,
+  operation: ManageFileOperation,
+): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  if (operation.action === 'list_snapshots') {
+    if (target.kind === 'external') {
+      return facadeApiError(
+        400,
+        'list_snapshots supports only active/session targets',
+        'Snapshots are tied to the active editor session. Use target.kind="active" or "session".',
+        { target },
+        ['inspect_document'],
+      );
+    }
+    const data = await apiRequest('GET', `/field/${encodeURIComponent(operation.field)}/snapshots`);
+    return isApiError(data)
+      ? data
+      : {
+          result: asRecord(data) ?? { data },
+          routes: [route('list_snapshots', 'GET', `/field/${operation.field}/snapshots`)],
+          touched: [`active:snapshot:${operation.field}`],
+        };
+  }
+
+  if (operation.action === 'project_tree') {
+    const projectPath = manageFileTargetPath(target, operation.project_path, operation.action);
+    if (isApiError(projectPath)) return projectPath;
+    const summary = summarizeManageFileProject(projectPath);
+    if (isApiError(summary)) return summary;
+    return {
+      result: summary,
+      routes: [route('manage_file', 'READ', 'project_tree')],
+      touched: [`project:${projectPath}`],
+    };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported manage_file read action: ${operation.action}`,
+    'Read mode supports list_snapshots and project_tree.',
+    { operation },
+  );
+}
+
+async function previewManageFileOperation(
+  target: FacadeV1Target,
+  operation: ManageFileOperation,
+): Promise<ManageFilePlan | ApiErrorResult> {
+  if (operation.action === 'open_file') {
+    const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
+    if (isApiError(filePath)) return filePath;
+    const extensionError = ensureSupportedDocumentFile(filePath, operation.action);
+    if (extensionError) return extensionError;
+    const fileState = filePathState(filePath);
+    if (!fileState.exists || fileState.kind !== 'file') {
+      return facadeApiError(400, `File not found: ${filePath}`, 'Choose an existing .charx/.risum/.risup file.', {
+        file_path: filePath,
+        state: fileState,
+      });
+    }
+    const session = await readSessionForManageFile();
+    if (isApiError(session)) return session;
+    const requiredGuards = [
+      externalPathStateGuard('expected_file_state_digest', filePath, '/result/file_state_digest'),
+      activeFilePathGuard(session.activeFilePath),
+    ];
+    return {
+      result: {
+        action: operation.action,
+        file_path: filePath,
+        file_state: fileState,
+        file_state_digest: filePathStateDigest(filePath),
+        current_active_file_path: session.activeFilePath,
+        save_current: operation.save_current ?? null,
+        will_open_active_document: true,
+      },
+      routes: [...session.routes, route('open_file', 'POST', '/open-file')],
+      touched: [`external:${filePath}`, 'active:document'],
+      requiredGuards,
+    };
+  }
+
+  if (operation.action === 'save_current_file') {
+    const session = await readSessionForManageFile();
+    if (isApiError(session)) return session;
+    return {
+      result: {
+        action: operation.action,
+        current_active_file_path: session.activeFilePath,
+        will_save_active_document: true,
+      },
+      routes: [...session.routes, route('save_current_file', 'POST', '/document/save')],
+      touched: ['active:document'],
+      requiredGuards: [activeFilePathGuard(session.activeFilePath)],
+    };
+  }
+
+  if (operation.action === 'snapshot_field' || operation.action === 'restore_snapshot') {
+    if (target.kind === 'external') {
+      return facadeApiError(
+        400,
+        `${operation.action} supports only active/session targets`,
+        'Snapshots are tied to the active editor session. Use target.kind="active" or "session".',
+        { target },
+      );
+    }
+    const session = await readSessionForManageFile();
+    if (isApiError(session)) return session;
+    const routes = [...session.routes];
+    const result: Record<string, unknown> = {
+      action: operation.action,
+      field: operation.field,
+      current_active_file_path: session.activeFilePath,
+    };
+    if (operation.action === 'restore_snapshot') {
+      const snapshots = await apiRequest('GET', `/field/${encodeURIComponent(operation.field)}/snapshots`);
+      if (isApiError(snapshots)) return snapshots;
+      const snapshotList = asRecord(snapshots)?.snapshots;
+      const snapshot = Array.isArray(snapshotList)
+        ? snapshotList.find((entry) => asRecord(entry)?.id === operation.snapshot_id)
+        : undefined;
+      if (!snapshot) {
+        return facadeApiError(
+          404,
+          `Snapshot not found: ${operation.snapshot_id}`,
+          'Call manage_file read list_snapshots, then preview restore_snapshot again with a current snapshot_id.',
+          { field: operation.field, snapshot_id: operation.snapshot_id },
+          ['manage_file'],
+        );
+      }
+      routes.push(route('list_snapshots', 'GET', `/field/${operation.field}/snapshots`));
+      result.snapshot = snapshot;
+      result.snapshot_id = operation.snapshot_id;
+    }
+    routes.push(
+      operation.action === 'snapshot_field'
+        ? route('snapshot_field', 'POST', `/field/${operation.field}/snapshot`)
+        : route('restore_snapshot', 'POST', `/field/${operation.field}/restore`),
+    );
+    return {
+      result,
+      routes,
+      touched: [`active:field:${operation.field}`],
+      requiredGuards: [activeFilePathGuard(session.activeFilePath)],
+    };
+  }
+
+  if (operation.action === 'export_field') {
+    if (target.kind === 'external') {
+      return facadeApiError(
+        400,
+        'export_field exports from the active editor document',
+        'Open or target the document as active before exporting a field, or use project extraction for external files.',
+        { target },
+      );
+    }
+    const session = await readSessionForManageFile();
+    if (isApiError(session)) return session;
+    const outputPath = path.resolve(operation.file_path);
+    return {
+      result: {
+        action: operation.action,
+        field: operation.field,
+        file_path: outputPath,
+        format: operation.format ?? 'txt',
+        output_state: filePathState(outputPath),
+        output_state_digest: filePathStateDigest(outputPath),
+        current_active_file_path: session.activeFilePath,
+      },
+      routes: [...session.routes, route('export_field_to_file', 'POST', '/field/export')],
+      touched: [`active:field:${operation.field}`, `file:${outputPath}`],
+      requiredGuards: [
+        activeFilePathGuard(session.activeFilePath),
+        externalPathStateGuard('expected_output_state_digest', outputPath, '/result/output_state_digest'),
+      ],
+    };
+  }
+
+  if (operation.action === 'extract_project') {
+    const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
+    if (isApiError(filePath)) return filePath;
+    const extensionError = ensureSupportedDocumentFile(filePath, operation.action);
+    if (extensionError) return extensionError;
+    const fileState = filePathState(filePath);
+    if (!fileState.exists || fileState.kind !== 'file') {
+      return facadeApiError(400, `File not found: ${filePath}`, 'Choose an existing .charx/.risum/.risup file.', {
+        file_path: filePath,
+        state: fileState,
+      });
+    }
+    const projectPath = path.resolve(operation.project_path || defaultProjectFolderForDocument(filePath));
+    return {
+      result: {
+        action: operation.action,
+        file_path: filePath,
+        project_path: projectPath,
+        file_state: fileState,
+        file_state_digest: filePathStateDigest(filePath),
+        output_state: filePathState(projectPath),
+        output_state_digest: filePathStateDigest(projectPath),
+      },
+      routes: [route('extract_charx_to_project_folder', 'POST', 'extractDocumentToProject')],
+      touched: [`external:${filePath}`, `project:${projectPath}`],
+      requiredGuards: [
+        externalPathStateGuard('expected_file_state_digest', filePath, '/result/file_state_digest'),
+        externalPathStateGuard('expected_output_state_digest', projectPath, '/result/output_state_digest'),
+      ],
+    };
+  }
+
+  if (operation.action === 'reassemble_project') {
+    const projectPath = manageFileTargetPath(target, operation.project_path, operation.action);
+    if (isApiError(projectPath)) return projectPath;
+    const projectSummary = summarizeManageFileProject(projectPath);
+    if (isApiError(projectSummary)) return projectSummary;
+    const outputPath = path.resolve(operation.output_path);
+    const extensionError = ensureSupportedDocumentFile(outputPath, operation.action);
+    if (extensionError) return extensionError;
+    return {
+      result: {
+        action: operation.action,
+        project_path: projectPath,
+        output_path: outputPath,
+        project_digest: projectTreeDigest(projectPath),
+        project: projectSummary,
+        output_state: filePathState(outputPath),
+        output_state_digest: filePathStateDigest(outputPath),
+      },
+      routes: [route('reassemble_project_folder_to_charx', 'POST', 'reassembleProjectDocument')],
+      touched: [`project:${projectPath}`, `external:${outputPath}`],
+      requiredGuards: [
+        projectDigestGuard(projectPath),
+        externalPathStateGuard('expected_output_state_digest', outputPath, '/result/output_state_digest'),
+      ],
+    };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported manage_file preview action: ${operation.action}`,
+    'Preview mode supports open/save/snapshot/restore/export/extract/reassemble file operations.',
+    { operation },
+  );
+}
+
+async function applyManageFileOperation(
+  target: FacadeV1Target,
+  operation: ManageFileOperation,
+  guardValues: FacadeV1Guard[] | undefined,
+): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+  const plan = await previewManageFileOperation(target, operation);
+  if (isApiError(plan)) return plan;
+
+  for (const guard of plan.requiredGuards) {
+    const name = guard.name;
+    let actual = '';
+    if (name === 'expected_active_file_path') {
+      actual = String(guard.value);
+    } else if (name === 'expected_file_state_digest') {
+      const filePath =
+        operation.action === 'open_file' || operation.action === 'extract_project'
+          ? manageFileTargetPath(target, operation.file_path, operation.action)
+          : undefined;
+      if (filePath && isApiError(filePath)) return filePath;
+      if (!filePath) return facadeApiError(400, 'Missing file path', 'Retry.');
+      actual = filePathStateDigest(filePath);
+    } else if (name === 'expected_output_state_digest') {
+      let outputPath =
+        operation.action === 'export_field'
+          ? operation.file_path
+          : operation.action === 'reassemble_project'
+            ? operation.output_path
+            : undefined;
+      if (operation.action === 'extract_project') {
+        if (operation.project_path) {
+          outputPath = operation.project_path;
+        } else {
+          const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
+          if (isApiError(filePath)) return filePath;
+          outputPath = defaultProjectFolderForDocument(filePath);
+        }
+      }
+      if (!outputPath) return facadeApiError(400, 'Missing output path', 'Run manage_file preview again.');
+      actual = filePathStateDigest(outputPath);
+    } else if (name === 'expected_project_tree_digest') {
+      const projectPath =
+        operation.action === 'reassemble_project'
+          ? manageFileTargetPath(target, operation.project_path, operation.action)
+          : undefined;
+      if (projectPath && isApiError(projectPath)) return projectPath;
+      if (!projectPath) return facadeApiError(400, 'Missing project path', 'Retry.');
+      actual = projectTreeDigestOrMissing(projectPath);
+    }
+    const conflict = checkManageFileGuardValue(
+      guardValues,
+      name,
+      actual,
+      'Refresh manage_file preview, then apply with the new guard values.',
+    );
+    if (conflict) return conflict;
+  }
+
+  if (operation.action === 'open_file') {
+    const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
+    if (isApiError(filePath)) return filePath;
+    const data = await apiRequest('POST', '/open-file', { file_path: filePath, save_current: operation.save_current });
+    return isApiError(data)
+      ? data
+      : {
+          result: { ...(asRecord(data) ?? {}), action: operation.action },
+          routes: plan.routes,
+          touched: plan.touched,
+        };
+  }
+
+  if (operation.action === 'save_current_file') {
+    const data = await apiRequest('POST', '/document/save', {});
+    return isApiError(data)
+      ? data
+      : { result: { ...(asRecord(data) ?? {}), action: operation.action }, routes: plan.routes, touched: plan.touched };
+  }
+
+  if (operation.action === 'snapshot_field') {
+    const data = await apiRequest('POST', `/field/${encodeURIComponent(operation.field)}/snapshot`);
+    return isApiError(data)
+      ? data
+      : { result: { ...(asRecord(data) ?? {}), action: operation.action }, routes: plan.routes, touched: plan.touched };
+  }
+
+  if (operation.action === 'restore_snapshot') {
+    const data = await apiRequest('POST', `/field/${encodeURIComponent(operation.field)}/restore`, {
+      snapshot_id: operation.snapshot_id,
+    });
+    return isApiError(data)
+      ? data
+      : { result: { ...(asRecord(data) ?? {}), action: operation.action }, routes: plan.routes, touched: plan.touched };
+  }
+
+  if (operation.action === 'export_field') {
+    const data = await apiRequest('POST', '/field/export', {
+      field: operation.field,
+      file_path: path.resolve(operation.file_path),
+      format: operation.format,
+    });
+    return isApiError(data)
+      ? data
+      : { result: { ...(asRecord(data) ?? {}), action: operation.action }, routes: plan.routes, touched: plan.touched };
+  }
+
+  if (operation.action === 'extract_project') {
+    const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
+    if (isApiError(filePath)) return filePath;
+    const projectPath = path.resolve(operation.project_path || defaultProjectFolderForDocument(filePath));
+    extractDocumentToProject(filePath, projectPath);
+    const treeSummary = summarizeProjectTree(projectPath);
+    const fileType = path.extname(filePath).toLowerCase().replace('.', '');
+    return {
+      result: {
+        success: true,
+        action: operation.action,
+        filePath,
+        fileType,
+        projectPath,
+        treeSummary,
+        project_digest: projectTreeDigest(projectPath),
+      },
+      routes: plan.routes,
+      touched: plan.touched,
+    };
+  }
+
+  if (operation.action === 'reassemble_project') {
+    const projectPath = manageFileTargetPath(target, operation.project_path, operation.action);
+    if (isApiError(projectPath)) return projectPath;
+    const outputPath = path.resolve(operation.output_path);
+    const projectFileType = getProjectFileType(projectPath);
+    reassembleProjectDocument(projectPath, outputPath);
+    const stat = fs.statSync(outputPath);
+    return {
+      result: {
+        success: true,
+        action: operation.action,
+        fileType: projectFileType,
+        projectPath,
+        outputPath,
+        sizeBytes: stat.size,
+      },
+      routes: plan.routes,
+      touched: plan.touched,
+    };
+  }
+
+  return facadeApiError(
+    400,
+    `Unsupported manage_file apply action: ${operation.action}`,
+    'Apply mode requires a preview token for a supported mutating file action.',
+    { operation },
+  );
 }
 
 function normalizeBatchEntries(
@@ -7210,6 +8211,126 @@ function validateRegexEntries(data: unknown): Record<string, unknown> {
     count: results.length,
     ok: results.every((result) => result.ok === true),
     results,
+  };
+}
+
+function validateExternalCharxExportCompatibility(filePath: string): Record<string, unknown> | ApiErrorResult {
+  if (path.extname(filePath).toLowerCase() !== '.charx') {
+    return facadeApiError(
+      400,
+      'Charx export compatibility validation expects a .charx file',
+      'Pass target.kind="external" with a .charx file path and selector { family: "asset" } or { field: "exportCompatibility" }.',
+      { file_path: filePath },
+      ['inspect_document', 'read_content'],
+    );
+  }
+  if (!fs.existsSync(filePath)) {
+    return facadeApiError(
+      404,
+      'External .charx file could not be found',
+      'Check the filesystem path, then retry validate_content.',
+      { file_path: filePath },
+      ['inspect_document'],
+    );
+  }
+  try {
+    return {
+      file_path: filePath,
+      ...validateCharxExportCompatibilityFile(filePath),
+    };
+  } catch (error) {
+    return facadeApiError(
+      400,
+      'External .charx export compatibility validation failed',
+      'Inspect the external file and confirm it is a readable .charx archive before retrying validate_content.',
+      { file_path: filePath, error: (error as Error).message },
+      ['inspect_document', 'manage_file'],
+    );
+  }
+}
+
+async function validateExternalRisumSemanticFields(
+  filePath: string,
+  selector: FacadeV1ContentSelector,
+): Promise<{ data: Record<string, unknown>; routes: FacadeRoute[] } | ApiErrorResult> {
+  if (path.extname(filePath).toLowerCase() !== '.risum') {
+    return facadeApiError(
+      400,
+      'Risum semantic validation expects a .risum file',
+      'Pass target.kind="external" with a .risum file path and selector { family: "risum" }.',
+      { file_path: filePath },
+      ['inspect_document', 'read_content'],
+    );
+  }
+  if (!fs.existsSync(filePath)) {
+    return facadeApiError(
+      404,
+      'External .risum file could not be found',
+      'Check the filesystem path, then retry validate_content.',
+      { file_path: filePath },
+      ['inspect_document'],
+    );
+  }
+  const fields = selector.fields ?? [
+    'moduleNamespace',
+    'namespace',
+    'lowLevelAccess',
+    'backgroundEmbedding',
+    'customModuleToggle',
+    'mcpUrl',
+    'cjs',
+  ];
+  const routes: FacadeRoute[] = [];
+  const results: Array<Record<string, unknown>> = [];
+  for (const field of fields) {
+    if (field === 'cjs') {
+      results.push({
+        field,
+        ok: true,
+        skipped: true,
+        reason: 'reserved hidden field',
+      });
+      continue;
+    }
+    const surfacePath = `/${jsonPointerSegment(field)}`;
+    const read = await readExternalSurfaceValue(filePath, surfacePath);
+    routes.push(route('external_read_surface', 'POST', '/external/surface/read'));
+    if (isApiError(read)) {
+      results.push({
+        field,
+        ok: false,
+        error: recordString(asRecord(read), 'error') ?? recordString(asRecord(read), 'message') ?? 'unreadable',
+      });
+      continue;
+    }
+    const record = asRecord(read);
+    const hasValue = !!record && Object.prototype.hasOwnProperty.call(record, 'value');
+    const value = record?.value;
+    results.push({
+      field,
+      ok: true,
+      present: hasValue,
+      type: value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value,
+    });
+  }
+  const warnings = results
+    .filter((result) => result.ok === false || result.skipped === true)
+    .map((result) => ({
+      field: result.field,
+      ...(result.error ? { error: result.error } : {}),
+      ...(result.skipped ? { skipped: result.skipped, reason: result.reason } : {}),
+    }));
+  return {
+    data: {
+      file_path: filePath,
+      fields,
+      results,
+      consistency: {
+        ok: results.every((result) => result.ok !== false),
+        warnings,
+      },
+    },
+    routes,
   };
 }
 
@@ -10250,10 +11371,10 @@ server.tool(
 
 server.tool(
   'validate_content',
-  'Preferred facade v1 validation entrypoint. Validates active lorebook, regex, CBS, Danbooru tags, active/external risup prompt/order selectors, risum semantic fields, and external Plugin v3 source scans where facade selectors provide enough context.',
+  'Preferred facade v1 validation entrypoint. Validates active lorebook, regex, CBS, Danbooru tags, active/external .charx export compatibility, active/external risup prompt/order selectors, active/external risum semantic fields, and external Plugin v3 source scans where facade selectors provide enough context.',
   {
     target: facadeV1TargetSchema.describe(
-      'Explicit facade target discriminator. Supports active artifact validation, external .risup prompt checks, and external Plugin v3 source scans.',
+      'Explicit facade target discriminator. Supports active artifact validation, external .charx export compatibility checks, external .risup prompt checks, and external Plugin v3 source scans.',
     ),
     selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
@@ -10662,7 +11783,7 @@ server.tool(
 
 server.tool(
   'manage_assets',
-  'Preferred facade v1 asset-management tool for active or unopened external .charx/.risum assets. Use mode="read" for list/read, mode="preview" for add/delete/rename dry runs, then mode="apply" with the returned preview_token, operation_digest, and guard_values. Active applies route through existing asset tools; external applies route through guarded surface patch.',
+  'Preferred facade v1 asset-management tool for active or unopened external .charx/.risum assets. Use mode="read" for list/read, mode="preview" as the dry_run path for add/delete/rename/compress_assets mutations, then mode="apply" with the returned preview_token, operation_digest, and guard_values. Requires user confirmation on mutating apply. Active applies route through existing asset tools or guarded surface patch for .risum rename; external applies route through guarded surface patch. compress_assets is supported for .charx assets.',
   {
     target: facadeV1TargetSchema.describe(
       'Use target.kind="active" for the current file or "external" for an unopened .charx/.risum file.',
@@ -10833,6 +11954,173 @@ server.tool(
           ['read_content', 'validate_content', 'manage_assets'],
           {
             family: applied.result.family ?? entry.assetFamily,
+            action: entry.operation.action,
+            routed_tools: applied.routes.map((routeEntry) => routeEntry.tool),
+            touched_targets: applied.touched,
+          },
+          body.max_bytes,
+        ),
+      );
+    },
+  ),
+);
+
+server.tool(
+  'manage_file',
+  'Preferred facade v1 file-management tool for session-coupled file actions. Use mode="read" for snapshot/project-tree reads, mode="preview" as the dry_run path for open/save/snapshot/restore/export/extract/reassemble mutations, then mode="apply" with preview_token, operation_digest, and guard_values. Requires user confirmation on mutating apply. Supports active/session and explicit external paths while keeping granular file tools as advanced fallbacks.',
+  {
+    target: facadeV1TargetSchema.describe(
+      'Use target.kind="active" or "session" for active editor file actions, or target.kind="external" for unopened files/project folders.',
+    ),
+    mode: z.enum(['read', 'preview', 'apply']),
+    operation: manageFileOperationSchema.optional(),
+    preview_token: z
+      .string()
+      .regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/)
+      .optional(),
+    operation_digest: z.string().min(16).optional(),
+    guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  safeToolHandler(
+    'manage_file',
+    async ({ target, mode, operation, preview_token, operation_digest, guard_values, max_bytes }) => {
+      cleanupFacadePreviews();
+      const parsed = manageFileBodySchema.safeParse({
+        target,
+        mode,
+        operation,
+        preview_token,
+        operation_digest,
+        guard_values,
+        max_bytes,
+      });
+      if (!parsed.success) {
+        return textResult(
+          facadeApiError(
+            400,
+            'Invalid manage_file request',
+            parsed.error.issues.map((issue) => issue.message).join('; '),
+            { issues: parsed.error.issues },
+            ['manage_file'],
+          ),
+        );
+      }
+      const body = parsed.data;
+
+      if (body.mode === 'read') {
+        const read = await readManageFileOperation(body.target, body.operation!);
+        if (isApiError(read)) return textResult(read);
+        return textResult(
+          facadeEnvelope(
+            'manage_file',
+            'read-only',
+            body.target,
+            { ...read.result, routed_legacy: read.routes, touched_targets: read.touched },
+            `Read manage_file ${body.operation!.action}`,
+            ['manage_file', 'inspect_document'],
+            {
+              action: body.operation!.action,
+              routed_tools: read.routes.map((entry) => entry.tool),
+              touched_targets: read.touched,
+            },
+            body.max_bytes,
+          ),
+        );
+      }
+
+      if (body.mode === 'preview') {
+        const preview = await previewManageFileOperation(body.target, body.operation!);
+        if (isApiError(preview)) return textResult(preview);
+        const digest = manageFileOperationDigest(body.target, body.operation!);
+        const token = makePreviewToken();
+        const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
+        manageFilePreviewStore.set(token, {
+          token,
+          operationDigest: digest,
+          target: body.target,
+          operation: body.operation!,
+          routes: preview.routes,
+          touchedTargets: preview.touched,
+          requiredGuards: preview.requiredGuards,
+          expiresAtMs,
+        });
+        return textResult(
+          mcpSuccess(
+            {
+              facade: {
+                contract: FACADE_V1_CONTRACT_ID,
+                version: 'v1',
+                tool: 'manage_file',
+                mutability: 'preview',
+                target: body.target,
+                ...(body.max_bytes ? { max_bytes: body.max_bytes } : {}),
+              },
+              result: {
+                ...preview.result,
+                routed_legacy: preview.routes,
+                touched_targets: preview.touched,
+                guard_values: preview.requiredGuards,
+              },
+              preview: {
+                preview_token: token,
+                operation_digest: digest,
+                expires_at: new Date(expiresAtMs).toISOString(),
+                required_guards: preview.requiredGuards,
+              },
+            },
+            {
+              toolName: 'manage_file',
+              summary: `Previewed manage_file ${body.operation!.action}`,
+              nextActions: ['manage_file', 'inspect_document'],
+              artifacts: {
+                action: body.operation!.action,
+                routed_tools: preview.routes.map((entry) => entry.tool),
+                touched_targets: preview.touched,
+              },
+            },
+          ),
+        );
+      }
+
+      const entry = manageFilePreviewStore.get(body.preview_token!);
+      if (!entry) {
+        return textResult(
+          facadeApiError(
+            404,
+            'Unknown or expired manage_file preview token',
+            'Run manage_file preview again, then retry apply with the new token.',
+          ),
+        );
+      }
+      if (entry.operationDigest !== body.operation_digest || !sameTarget(entry.target, body.target)) {
+        return textResult(
+          facadeApiError(
+            409,
+            'manage_file preview token does not match operation digest or target',
+            'Use the exact operation_digest and target returned by manage_file preview.',
+          ),
+        );
+      }
+      const applied = await applyManageFileOperation(body.target, entry.operation, body.guard_values);
+      if (isApiError(applied)) return textResult(applied);
+      manageFilePreviewStore.delete(body.preview_token!);
+      return textResult(
+        facadeEnvelope(
+          'manage_file',
+          'mutating',
+          body.target,
+          {
+            ...applied.result,
+            routed_legacy: applied.routes,
+            touched_targets: applied.touched,
+            guard_values: body.guard_values,
+            preview_token: body.preview_token,
+            operation_digest: body.operation_digest,
+          },
+          `Applied manage_file ${entry.operation.action}`,
+          ['inspect_document', 'read_content', 'manage_file'],
+          {
             action: entry.operation.action,
             routed_tools: applied.routes.map((routeEntry) => routeEntry.tool),
             touched_targets: applied.touched,

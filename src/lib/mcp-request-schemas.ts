@@ -261,10 +261,11 @@ export const FACADE_V1_TOOL_NAMES = [
   'load_guidance',
   'manage_items',
   'manage_assets',
+  'manage_file',
 ] as const;
 export type FacadeV1ToolName = (typeof FACADE_V1_TOOL_NAMES)[number];
 
-export const FACADE_V1_FUTURE_TOOL_NAMES = ['manage_file'] as const;
+export const FACADE_V1_FUTURE_TOOL_NAMES = [] as const;
 
 export type FacadeV1ToolMutability = 'read-only' | 'preview' | 'mutating';
 
@@ -285,7 +286,7 @@ export const FACADE_V1_TOOL_CONTRACTS: readonly FacadeV1ToolContract[] = [
   { name: 'load_guidance', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
   { name: 'manage_items', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
   { name: 'manage_assets', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
-  { name: 'manage_file', lifecycle: 'future-candidate', mutability: 'mutating', preference: 'preferred' },
+  { name: 'manage_file', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
 ];
 
 export function getFacadeV1ToolContract(name: string): FacadeV1ToolContract | undefined {
@@ -648,6 +649,12 @@ export const manageAssetsOperationSchema = z.discriminatedUnion('action', [
     selector: manageAssetsSelectorSchema,
     newName: z.string().min(1),
   }),
+  z.object({
+    action: z.literal('compress_assets'),
+    quality: z.number().min(0).max(100).optional(),
+    recompress_webp: z.boolean().optional(),
+    recompressWebp: z.boolean().optional(),
+  }),
 ]);
 export type ManageAssetsOperation = z.infer<typeof manageAssetsOperationSchema>;
 
@@ -681,7 +688,7 @@ export const manageAssetsBodySchema = z
   .superRefine((d, ctx) => {
     if (!d.operation || d.mode === 'apply') return;
     const readActions = new Set(['list_assets', 'read_asset']);
-    const previewActions = new Set(['add_asset', 'delete_asset', 'rename_asset']);
+    const previewActions = new Set(['add_asset', 'delete_asset', 'rename_asset', 'compress_assets']);
     if (d.mode === 'read' && !readActions.has(d.operation.action)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -692,12 +699,145 @@ export const manageAssetsBodySchema = z
     if (d.mode === 'preview' && !previewActions.has(d.operation.action)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'preview mode supports add_asset, delete_asset, and rename_asset',
+        message: 'preview mode supports add_asset, delete_asset, rename_asset, and compress_assets',
         path: ['operation', 'action'],
+      });
+    }
+    if (
+      d.operation.action === 'compress_assets' &&
+      d.operation.recompress_webp !== undefined &&
+      d.operation.recompressWebp !== undefined &&
+      d.operation.recompress_webp !== d.operation.recompressWebp
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'recompress_webp and recompressWebp must match when both are provided',
+        path: ['operation', 'recompress_webp'],
       });
     }
   });
 export type ManageAssetsBody = z.infer<typeof manageAssetsBodySchema>;
+
+export const manageFileOperationSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('list_snapshots'),
+    field: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal('project_tree'),
+    project_path: z.string().min(1).optional(),
+  }),
+  z.object({
+    action: z.literal('open_file'),
+    file_path: z.string().min(1).optional(),
+    save_current: z.boolean().optional(),
+  }),
+  z.object({
+    action: z.literal('save_current_file'),
+  }),
+  z.object({
+    action: z.literal('snapshot_field'),
+    field: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal('restore_snapshot'),
+    field: z.string().min(1),
+    snapshot_id: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal('export_field'),
+    field: z.string().min(1),
+    file_path: z.string().min(1),
+    format: z.enum(['md', 'txt']).optional(),
+  }),
+  z.object({
+    action: z.literal('extract_project'),
+    file_path: z.string().min(1).optional(),
+    project_path: z.string().min(1).optional(),
+  }),
+  z.object({
+    action: z.literal('reassemble_project'),
+    project_path: z.string().min(1).optional(),
+    output_path: z.string().min(1),
+  }),
+]);
+export type ManageFileOperation = z.infer<typeof manageFileOperationSchema>;
+
+export const manageFileBodySchema = z
+  .object({
+    target: facadeV1TargetSchema,
+    mode: z.enum(['read', 'preview', 'apply']),
+    operation: manageFileOperationSchema.optional(),
+    preview_token: facadeV1PreviewTokenSchema.optional(),
+    operation_digest: z.string().min(16).optional(),
+    guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    max_bytes: facadeMaxBytesSchema,
+  })
+  .refine((d) => (d.mode === 'apply' ? d.preview_token !== undefined && d.operation_digest !== undefined : true), {
+    message: 'apply mode requires preview_token and operation_digest',
+    path: ['preview_token'],
+  })
+  .refine((d) => (d.mode === 'apply' ? d.guard_values !== undefined && d.guard_values.length > 0 : true), {
+    message: 'apply mode requires guard_values',
+    path: ['guard_values'],
+  })
+  .refine((d) => (d.mode === 'read' || d.mode === 'preview' ? d.operation !== undefined : true), {
+    message: 'read/preview mode requires operation',
+    path: ['operation'],
+  })
+  .refine((d) => d.target.kind === 'active' || d.target.kind === 'external' || d.target.kind === 'session', {
+    message: 'manage_file supports active, external, or session targets',
+    path: ['target', 'kind'],
+  })
+  .superRefine((d, ctx) => {
+    if (!d.operation || d.mode === 'apply') return;
+    const readActions = new Set(['list_snapshots', 'project_tree']);
+    const previewActions = new Set([
+      'open_file',
+      'save_current_file',
+      'snapshot_field',
+      'restore_snapshot',
+      'export_field',
+      'extract_project',
+      'reassemble_project',
+    ]);
+    if (d.mode === 'read' && !readActions.has(d.operation.action)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'read mode supports list_snapshots and project_tree',
+        path: ['operation', 'action'],
+      });
+    }
+    if (d.mode === 'preview' && !previewActions.has(d.operation.action)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'preview mode supports mutating file operations',
+        path: ['operation', 'action'],
+      });
+    }
+    if (d.operation.action === 'open_file' && d.target.kind !== 'external' && !d.operation.file_path) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'open_file requires target.kind="external" or operation.file_path',
+        path: ['operation', 'file_path'],
+      });
+    }
+    if (d.operation.action === 'extract_project' && d.target.kind !== 'external' && !d.operation.file_path) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'extract_project requires target.kind="external" or operation.file_path',
+        path: ['operation', 'file_path'],
+      });
+    }
+    if (d.operation.action === 'reassemble_project' && d.target.kind !== 'external' && !d.operation.project_path) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'reassemble_project requires target.kind="external" or operation.project_path',
+        path: ['operation', 'project_path'],
+      });
+    }
+  });
+export type ManageFileBody = z.infer<typeof manageFileBodySchema>;
 
 export const facadeV1SuccessEnvelopeSchema = z
   .object({

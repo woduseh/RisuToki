@@ -24,6 +24,7 @@ import {
   fieldBatchWriteSchema,
   insertBodySchema,
   manageAssetsBodySchema,
+  manageFileBodySchema,
   manageItemsBodySchema,
   replaceBodySchema,
   risumAssetAddBodySchema,
@@ -575,8 +576,9 @@ describe('facade v1 contract schemas', () => {
       'load_guidance',
       'manage_items',
       'manage_assets',
+      'manage_file',
     ]);
-    expect(FACADE_V1_FUTURE_TOOL_NAMES).toEqual(['manage_file']);
+    expect(FACADE_V1_FUTURE_TOOL_NAMES).toEqual([]);
 
     const readOnly = FACADE_V1_TOOL_CONTRACTS.filter(
       (tool) => tool.lifecycle === 'v1' && tool.mutability === 'read-only',
@@ -592,6 +594,7 @@ describe('facade v1 contract schemas', () => {
     expect(getFacadeV1ToolContract('apply_edit')?.mutability).toBe('mutating');
     expect(getFacadeV1ToolContract('manage_items')?.lifecycle).toBe('v1');
     expect(getFacadeV1ToolContract('manage_assets')?.lifecycle).toBe('v1');
+    expect(getFacadeV1ToolContract('manage_file')?.lifecycle).toBe('v1');
   });
 
   it('uses explicit target discriminators for active, external, reference, guidance, and session routes', () => {
@@ -1138,6 +1141,17 @@ describe('facade v1 contract schemas', () => {
     );
     expect(renamePreview.success).toBe(true);
 
+    const compressPreview = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\card.charx' },
+        asset_family: 'charx',
+        mode: 'preview',
+        operation: { action: 'compress_assets', quality: 72, recompress_webp: false },
+      },
+      manageAssetsBodySchema,
+    );
+    expect(compressPreview.success).toBe(true);
+
     const apply = validateBody(
       {
         target: { kind: 'active' },
@@ -1193,6 +1207,28 @@ describe('facade v1 contract schemas', () => {
       validateBody(
         {
           target: { kind: 'active' },
+          mode: 'read',
+          operation: { action: 'compress_assets', quality: 80 },
+        },
+        manageAssetsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          mode: 'preview',
+          operation: { action: 'compress_assets', recompress_webp: true, recompressWebp: false },
+        },
+        manageAssetsBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
           mode: 'preview',
           operation: { action: 'delete_asset', selector: {} },
         },
@@ -1209,6 +1245,143 @@ describe('facade v1 contract schemas', () => {
           operation_digest: '0123456789abcdef',
         },
         manageAssetsBodySchema,
+      ).success,
+    ).toBe(false);
+  });
+
+  it('accepts manage_file read, preview, and apply shapes for file-management workflows', () => {
+    const snapshots = validateBody(
+      {
+        target: { kind: 'active' },
+        mode: 'read',
+        operation: { action: 'list_snapshots', field: 'description' },
+      },
+      manageFileBodySchema,
+    );
+    expect(snapshots.success).toBe(true);
+
+    const projectTree = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\card_project' },
+        mode: 'read',
+        operation: { action: 'project_tree' },
+      },
+      manageFileBodySchema,
+    );
+    expect(projectTree.success).toBe(true);
+
+    const openPreview = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\card.charx' },
+        mode: 'preview',
+        operation: { action: 'open_file', save_current: true },
+      },
+      manageFileBodySchema,
+    );
+    expect(openPreview.success).toBe(true);
+
+    const exportPreview = validateBody(
+      {
+        target: { kind: 'active' },
+        mode: 'preview',
+        operation: {
+          action: 'export_field',
+          field: 'description',
+          file_path: 'C:\\fixtures\\description.md',
+          format: 'md',
+        },
+      },
+      manageFileBodySchema,
+    );
+    expect(exportPreview.success).toBe(true);
+
+    const extractPreview = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\preset.risup' },
+        mode: 'preview',
+        operation: { action: 'extract_project', project_path: 'C:\\fixtures\\preset_project' },
+      },
+      manageFileBodySchema,
+    );
+    expect(extractPreview.success).toBe(true);
+
+    const reassemblePreview = validateBody(
+      {
+        target: { kind: 'external', file_path: 'C:\\fixtures\\preset_project' },
+        mode: 'preview',
+        operation: { action: 'reassemble_project', output_path: 'C:\\fixtures\\preset-out.risup' },
+      },
+      manageFileBodySchema,
+    );
+    expect(reassemblePreview.success).toBe(true);
+
+    const apply = validateBody(
+      {
+        target: { kind: 'session' },
+        mode: 'apply',
+        preview_token: 'facade-preview-v1.abcdef0123456789',
+        operation_digest: '0123456789abcdef',
+        guard_values: [{ name: 'expected_active_file_path', value: 'C:\\fixtures\\card.charx' }],
+      },
+      manageFileBodySchema,
+    );
+    expect(apply.success).toBe(true);
+  });
+
+  it('rejects invalid manage_file targets and mode/action combinations', () => {
+    expect(
+      validateBody(
+        {
+          target: { kind: 'reference', reference_id: '0' },
+          mode: 'read',
+          operation: { action: 'list_snapshots', field: 'description' },
+        },
+        manageFileBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          mode: 'read',
+          operation: { action: 'save_current_file' },
+        },
+        manageFileBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          mode: 'preview',
+          operation: { action: 'project_tree', project_path: 'C:\\fixtures\\card_project' },
+        },
+        manageFileBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'session' },
+          mode: 'preview',
+          operation: { action: 'open_file' },
+        },
+        manageFileBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          mode: 'apply',
+          preview_token: 'facade-preview-v1.abcdef0123456789',
+          operation_digest: '0123456789abcdef',
+        },
+        manageFileBodySchema,
       ).success,
     ).toBe(false);
   });

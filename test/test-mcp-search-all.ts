@@ -46,6 +46,21 @@ function detectCssSectionInline(line = '') {
   return detectCssSectionInlineImpl(line);
 }
 
+async function createCompressiblePngBase64(): Promise<string> {
+  const sharpModule = await import('sharp');
+  const width = 512;
+  const height = 512;
+  const pixels = Buffer.alloc(width * height * 3);
+  for (let index = 0; index < pixels.length; index += 1) {
+    pixels[index] = (index * 73 + 41) % 256;
+  }
+  const buffer = await sharpModule
+    .default(pixels, { raw: { width, height, channels: 3 } })
+    .png()
+    .toBuffer();
+  return buffer.toString('base64');
+}
+
 function detectCssBlockOpen(line = '') {
   return detectCssBlockOpenImpl(line);
 }
@@ -866,6 +881,7 @@ async function runStandaloneRealCorpusFacadeReadEval(): Promise<void> {
 function createManageItemsFixtures(): {
   dir: string;
   activeRisup: string;
+  activeRisum: string;
   externalRisup: string;
   activeCharx: string;
   externalCharx: string;
@@ -875,6 +891,7 @@ function createManageItemsFixtures(): {
   fs.mkdirSync(TEST_DIR, { recursive: true });
   const dir = fs.mkdtempSync(path.join(TEST_DIR, 'manage-items-'));
   const activeRisup = path.join(dir, 'active.risup');
+  const activeRisum = path.join(dir, 'active.risum');
   const externalRisup = path.join(dir, 'external.risup');
   const activeCharx = path.join(dir, 'active.charx');
   const externalCharx = path.join(dir, 'external.charx');
@@ -894,6 +911,22 @@ function createManageItemsFixtures(): {
     }) as unknown as CharxData;
   saveRisup(activeRisup, basePreset('Active managed'));
   saveRisup(externalRisup, basePreset('External managed'));
+  saveRisum(activeRisum, {
+    _fileType: 'risum',
+    name: 'Active managed module',
+    description: 'Active manage_assets module.',
+    moduleName: 'Active managed module',
+    moduleDescription: 'Active manage_assets module.',
+    moduleNamespace: 'active.managed',
+    lowLevelAccess: false,
+    hideIcon: false,
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    risumAssets: [],
+    _moduleData: { module: { assets: [] } },
+  } as unknown as CharxData);
   saveCharx(activeCharx, dogfoodCardData('Active managed card', 'Active manage_items structured card.'));
   saveCharx(externalCharx, dogfoodCardData('External managed card', 'External manage_items structured card.'));
   saveRisum(externalRisum, {
@@ -912,7 +945,7 @@ function createManageItemsFixtures(): {
     risumAssets: [],
     _moduleData: { module: { assets: [] } },
   } as unknown as CharxData);
-  return { dir, activeRisup, externalRisup, activeCharx, externalCharx, externalRisum, userDataDir };
+  return { dir, activeRisup, activeRisum, externalRisup, activeCharx, externalCharx, externalRisum, userDataDir };
 }
 
 function risupPromptItems(filePath: string): Array<Record<string, unknown>> {
@@ -963,6 +996,21 @@ async function applyManageAssetsPreview(
   return callJson(runtime, 'manage_assets', {
     target,
     asset_family: assetFamily,
+    mode: 'apply',
+    preview_token: preview.preview_token,
+    operation_digest: preview.operation_digest,
+    guard_values: preview.required_guards,
+  });
+}
+
+async function applyManageFilePreview(
+  runtime: StandaloneClientRuntime,
+  target: Record<string, unknown>,
+  previewEnvelope: McpCallJson,
+): Promise<McpCallJson> {
+  const preview = previewToken(previewEnvelope, 'manage_file preview');
+  return callJson(runtime, 'manage_file', {
+    target,
     mode: 'apply',
     preview_token: preview.preview_token,
     operation_digest: preview.operation_digest,
@@ -1102,6 +1150,7 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
     assert.equal(nestedRecord(largeCopy.facade, 'large copy facade').truncated, true);
 
     await runtime.close();
+    runtime = null;
     runtime = await startStandaloneClient({
       file: fixture.activeCharx,
       userDataDir: path.join(fixture.dir, 'charx-user-data'),
@@ -1160,6 +1209,47 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
     assert.ok(routedTools(activeAssetDeletePreview).includes('delete_charx_asset'));
     await applyManageAssetsPreview(runtime, activeTarget, activeAssetDeletePreview, 'charx');
 
+    const compressiblePngBase64 = await createCompressiblePngBase64();
+    const activeCompressionAddPreview = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'charx',
+      mode: 'preview',
+      operation: {
+        action: 'add_asset',
+        fileName: 'compress-source.png',
+        base64: compressiblePngBase64,
+      },
+    });
+    await applyManageAssetsPreview(runtime, activeTarget, activeCompressionAddPreview, 'charx');
+    const activeCompressPreview = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'charx',
+      mode: 'preview',
+      operation: { action: 'compress_assets', quality: 30 },
+    });
+    assert.ok(routedTools(activeCompressPreview).includes('compress_assets_webp'));
+    assert.ok(
+      nestedArray(
+        nestedRecord(activeCompressPreview.preview, 'active asset compression preview').required_guards,
+        'active asset compression guards',
+      ).some(
+        (guard) => nestedRecord(guard, 'active asset compression guard').name === 'expected_asset_collection_digest',
+      ),
+    );
+    const activeCompressApply = await applyManageAssetsPreview(runtime, activeTarget, activeCompressPreview, 'charx');
+    assert.ok(routedTools(activeCompressApply).includes('compress_assets_webp'));
+    const activeCompressedAssetList = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'charx',
+      mode: 'read',
+      operation: { action: 'list_assets' },
+    });
+    assert.ok(
+      nestedArray(nestedRecord(activeCompressedAssetList.result, 'active compressed assets').assets, 'assets').some(
+        (asset) => String(nestedRecord(asset, 'active compressed asset').path).endsWith('.webp'),
+      ),
+    );
+
     const externalCharxAssetPreview = await callJson(runtime, 'manage_assets', {
       target: externalCharxTarget,
       asset_family: 'charx',
@@ -1175,6 +1265,47 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
     assert.equal(openCharx(fixture.externalCharx).assets?.length, 1);
     assert.equal(openCharx(fixture.externalCharx).cardAssets?.length, 1);
 
+    const externalCompressionAddPreview = await callJson(runtime, 'manage_assets', {
+      target: externalCharxTarget,
+      asset_family: 'charx',
+      mode: 'preview',
+      operation: {
+        action: 'add_asset',
+        fileName: 'external-compress-source.png',
+        base64: compressiblePngBase64,
+      },
+    });
+    await applyManageAssetsPreview(runtime, externalCharxTarget, externalCompressionAddPreview, 'charx');
+    const externalCompressPreview = await callJson(runtime, 'manage_assets', {
+      target: externalCharxTarget,
+      asset_family: 'charx',
+      mode: 'preview',
+      operation: { action: 'compress_assets', quality: 30 },
+    });
+    assert.ok(routedTools(externalCompressPreview).includes('external_patch_surface'));
+    await applyManageAssetsPreview(runtime, externalCharxTarget, externalCompressPreview, 'charx');
+    const externalCompressedCharx = openCharx(fixture.externalCharx);
+    assert.ok(externalCompressedCharx.assets?.some((asset) => String(asset.path).endsWith('.webp')));
+    assert.ok(
+      externalCompressedCharx.cardAssets?.some((asset) =>
+        String((asset as Record<string, unknown>).uri ?? '').endsWith('.webp'),
+      ),
+    );
+    const externalCharxValidation = await callJson(runtime, 'validate_content', {
+      target: externalCharxTarget,
+      selectors: [{ family: 'asset' }],
+    });
+    assert.deepEqual(routedTools(externalCharxValidation), ['validate_charx_export_compatibility']);
+    const externalCharxValidationRows = nestedArray(
+      nestedRecord(externalCharxValidation.result, 'external charx validation result').validations,
+      'external charx validation rows',
+    );
+    assert.equal(
+      nestedRecord(nestedRecord(externalCharxValidationRows[0], 'external charx validation row').data, 'data')
+        .file_path,
+      fixture.externalCharx,
+    );
+
     const externalRisumAssetPreview = await callJson(runtime, 'manage_assets', {
       target: externalRisumTarget,
       asset_family: 'risum',
@@ -1189,6 +1320,40 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
     assert.ok(routedTools(externalRisumAssetPreview).includes('external_patch_surface'));
     await applyManageAssetsPreview(runtime, externalRisumTarget, externalRisumAssetPreview, 'risum');
     assert.equal(openRisum(fixture.externalRisum).risumAssets?.length, 1);
+
+    const externalRisumRenamePreview = await callJson(runtime, 'manage_assets', {
+      target: externalRisumTarget,
+      asset_family: 'risum',
+      mode: 'preview',
+      operation: {
+        action: 'rename_asset',
+        selector: { index: 0 },
+        newName: 'external_module_asset_renamed.png',
+      },
+    });
+    assert.ok(routedTools(externalRisumRenamePreview).includes('external_patch_surface'));
+    await applyManageAssetsPreview(runtime, externalRisumTarget, externalRisumRenamePreview, 'risum');
+    const externalRisumModuleAssets = (
+      openRisum(fixture.externalRisum)._moduleData as { module?: { assets?: unknown[][] } }
+    ).module?.assets;
+    assert.equal(externalRisumModuleAssets?.[0]?.[0], 'external_module_asset_renamed');
+    assert.equal(externalRisumModuleAssets?.[0]?.[2], 'png');
+    const externalRisumValidation = await callJson(runtime, 'validate_content', {
+      target: externalRisumTarget,
+      selectors: [{ family: 'risum' }],
+    });
+    assert.ok(routedTools(externalRisumValidation).every((tool) => tool === 'external_read_surface'));
+    const externalRisumValidationRows = nestedArray(
+      nestedRecord(externalRisumValidation.result, 'external risum validation result').validations,
+      'external risum validation rows',
+    );
+    assert.equal(
+      nestedRecord(
+        nestedRecord(externalRisumValidationRows[0], 'external risum validation row').data,
+        'external risum validation data',
+      ).file_path,
+      fixture.externalRisum,
+    );
 
     const externalRisumDeletePreview = await callJson(runtime, 'manage_assets', {
       target: externalRisumTarget,
@@ -1401,6 +1566,176 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
     assert.deepEqual(routedTools(externalCssAddPreview), ['external_read_surface', 'external_patch_surface']);
     await applyManagePreview(runtime, externalCharxTarget, externalCssAddPreview, 'css');
     assert.match(String(openCharx(fixture.externalCharx).css ?? ''), /external_managed_css/);
+
+    await runtime.close();
+    runtime = await startStandaloneClient({
+      file: fixture.activeRisum,
+      userDataDir: path.join(fixture.dir, 'active-risum-user-data'),
+      allowWrites: true,
+    });
+    const activeRisumAssetPreview = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'risum',
+      mode: 'preview',
+      operation: {
+        action: 'add_asset',
+        name: 'active_module_asset',
+        path: 'active_module_asset.png',
+        base64: Buffer.from('active-risum-asset').toString('base64'),
+      },
+    });
+    assert.ok(routedTools(activeRisumAssetPreview).includes('add_risum_asset'));
+    await applyManageAssetsPreview(runtime, activeTarget, activeRisumAssetPreview, 'risum');
+    const activeRisumRenamePreview = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'risum',
+      mode: 'preview',
+      operation: {
+        action: 'rename_asset',
+        selector: { index: 0 },
+        newName: 'active_module_asset_renamed.png',
+      },
+    });
+    assert.ok(routedTools(activeRisumRenamePreview).includes('patch_surface'));
+    await applyManageAssetsPreview(runtime, activeTarget, activeRisumRenamePreview, 'risum');
+    const activeRisumAssetList = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'risum',
+      mode: 'read',
+      operation: { action: 'list_assets' },
+    });
+    const activeRisumAssets = nestedArray(
+      nestedRecord(activeRisumAssetList.result, 'active risum asset list').assets,
+      'active risum assets',
+    );
+    assert.equal(nestedRecord(activeRisumAssets[0], 'active risum renamed asset').name, 'active_module_asset_renamed');
+  } finally {
+    if (runtime) await runtime.close();
+    fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+}
+
+async function runStandaloneManageFileDogfood(): Promise<void> {
+  const fixture = createDogfoodFixtures();
+  let runtime: StandaloneClientRuntime | null = null;
+  try {
+    runtime = await startStandaloneClient({
+      file: fixture.mainFile,
+      userDataDir: fixture.userDataDir,
+      allowWrites: true,
+    });
+    const activeTarget = { kind: 'active' };
+    const externalTarget = { kind: 'external', file_path: fixture.externalFile };
+
+    const initialSnapshots = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'read',
+      operation: { action: 'list_snapshots', field: 'description' },
+    });
+    assert.deepEqual(routedTools(initialSnapshots), ['list_snapshots']);
+
+    const staleSavePreview = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'preview',
+      operation: { action: 'save_current_file' },
+    });
+    const staleSave = await callJson(
+      runtime,
+      'manage_file',
+      {
+        target: activeTarget,
+        mode: 'apply',
+        preview_token: previewToken(staleSavePreview, 'stale save preview').preview_token,
+        operation_digest: previewToken(staleSavePreview, 'stale save preview').operation_digest,
+        guard_values: [{ name: 'expected_active_file_path', value: 'stale-active-path' }],
+      },
+      { expectError: true },
+    );
+    assert.equal(staleSave.status, 409);
+    await applyManageFilePreview(runtime, activeTarget, staleSavePreview);
+
+    const snapshotPreview = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'preview',
+      operation: { action: 'snapshot_field', field: 'description' },
+    });
+    assert.ok(routedTools(snapshotPreview).includes('snapshot_field'));
+    const snapshotApply = await applyManageFilePreview(runtime, activeTarget, snapshotPreview);
+    const snapshotId = String(nestedRecord(snapshotApply.result, 'snapshot apply result').snapshotId);
+    assert.ok(snapshotId.startsWith('snap_'));
+
+    const snapshots = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'read',
+      operation: { action: 'list_snapshots', field: 'description' },
+    });
+    assert.equal(nestedRecord(snapshots.result, 'snapshot list result').count, 1);
+
+    const restorePreview = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'preview',
+      operation: { action: 'restore_snapshot', field: 'description', snapshot_id: snapshotId },
+    });
+    assert.ok(routedTools(restorePreview).includes('restore_snapshot'));
+    await applyManageFilePreview(runtime, activeTarget, restorePreview);
+
+    const exportPath = path.join(fixture.dir, 'description-export.txt');
+    const exportPreview = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'preview',
+      operation: { action: 'export_field', field: 'description', file_path: exportPath, format: 'txt' },
+    });
+    assert.ok(routedTools(exportPreview).includes('export_field_to_file'));
+    await applyManageFilePreview(runtime, activeTarget, exportPreview);
+    assert.equal(fs.readFileSync(exportPath, 'utf-8'), 'Alpha facade dogfood description.');
+
+    const openPreview = await callJson(runtime, 'manage_file', {
+      target: externalTarget,
+      mode: 'preview',
+      operation: { action: 'open_file' },
+    });
+    assert.ok(routedTools(openPreview).includes('open_file'));
+    const openApply = await applyManageFilePreview(runtime, externalTarget, openPreview);
+    assert.equal(nestedRecord(openApply.result, 'open apply result').file_path, fixture.externalFile);
+
+    const workspaceFixtures = createFolderWorkspaceMcpFixtures(fixture.dir);
+    const projectPath = path.join(fixture.dir, 'manage-file-preset-project');
+    const extractPreview = await callJson(runtime, 'manage_file', {
+      target: { kind: 'external', file_path: workspaceFixtures.risupFile },
+      mode: 'preview',
+      operation: { action: 'extract_project', project_path: projectPath },
+    });
+    assert.ok(routedTools(extractPreview).includes('extract_charx_to_project_folder'));
+    const extractApply = await applyManageFilePreview(
+      runtime,
+      { kind: 'external', file_path: workspaceFixtures.risupFile },
+      extractPreview,
+    );
+    assert.equal(nestedRecord(extractApply.result, 'extract apply result').fileType, 'risup');
+    assert.ok(fs.existsSync(path.join(projectPath, 'preset.json')));
+
+    const treeRead = await callJson(runtime, 'manage_file', {
+      target: { kind: 'external', file_path: projectPath },
+      mode: 'read',
+      operation: { action: 'project_tree' },
+    });
+    assert.deepEqual(routedTools(treeRead), ['manage_file']);
+    assert.equal(nestedRecord(treeRead.result, 'project tree result').file_type, 'risup');
+
+    const outputPath = path.join(fixture.dir, 'manage-file-preset-output.risup');
+    const reassemblePreview = await callJson(runtime, 'manage_file', {
+      target: { kind: 'external', file_path: projectPath },
+      mode: 'preview',
+      operation: { action: 'reassemble_project', output_path: outputPath },
+    });
+    assert.ok(routedTools(reassemblePreview).includes('reassemble_project_folder_to_charx'));
+    const reassembleApply = await applyManageFilePreview(
+      runtime,
+      { kind: 'external', file_path: projectPath },
+      reassemblePreview,
+    );
+    assert.equal(nestedRecord(reassembleApply.result, 'reassemble apply result').fileType, 'risup');
+    assert.match(openRisup(outputPath).promptTemplate ?? '', /Workspace modern prompt/);
   } finally {
     if (runtime) await runtime.close();
     fs.rmSync(fixture.dir, { recursive: true, force: true });
@@ -1451,6 +1786,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
             'validate_content',
             'load_guidance',
             'manage_items',
+            'manage_assets',
+            'manage_file',
           ].includes(tool.name),
         ),
       ),
@@ -1469,6 +1806,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'load_guidance',
       'manage_items',
       'manage_assets',
+      'manage_file',
     ]) {
       const tool = tools.tools.find((candidate) => candidate.name === name);
       assert.equal(tool?._meta?.['risutoki/surfaceKind'], 'facade');
@@ -1511,6 +1849,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       ['apply_edit', ['apply']],
       ['manage_items', ['read', 'preview', 'apply']],
       ['manage_assets', ['read', 'preview', 'apply']],
+      ['manage_file', ['read', 'preview', 'apply']],
     ] as const;
     for (const [toolName, workflowStages] of facadeWorkflowStageExamples) {
       assertProfileToolWorkflowStages(profileTools, toolName, [...workflowStages]);
@@ -1523,6 +1862,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assert.ok(!readonlyToolNames.includes('apply_edit'), 'readonly profile should not expose apply_edit');
     assert.ok(!readonlyToolNames.includes('manage_items'), 'readonly profile should not expose manage_items');
     assert.ok(!readonlyToolNames.includes('manage_assets'), 'readonly profile should not expose manage_assets');
+    assert.ok(!readonlyToolNames.includes('manage_file'), 'readonly profile should not expose manage_file');
     for (const [toolName, workflowStages] of [
       ['inspect_document', ['discover']],
       ['read_content', ['read']],
@@ -3049,6 +3389,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'load_guidance',
       'manage_items',
       'manage_assets',
+      'manage_file',
     ]) {
       assert.ok(
         tools.tools.some((tool) => tool.name === toolName),
@@ -3138,6 +3479,17 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     assertToolListMetadata(tools.tools, 'manage_assets', {
       family: 'asset-management',
+      staleGuards: [],
+      requiresConfirmation: true,
+      supportsDryRun: true,
+      surfaceKind: 'facade',
+      recommendation: 'preferred',
+      workflowStages: ['read', 'preview', 'apply'],
+      profiles: ['facade-first', 'authoring', 'advanced-full'],
+      defaultProfile: 'facade-first',
+    });
+    assertToolListMetadata(tools.tools, 'manage_file', {
+      family: 'file-management',
       staleGuards: [],
       requiresConfirmation: true,
       supportsDryRun: true,
@@ -3583,6 +3935,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     console.log('facade-first standalone MCP dogfood eval passed');
     await runStandaloneManageItemsDogfood();
     console.log('manage_items standalone MCP dogfood eval passed');
+    await runStandaloneManageFileDogfood();
+    console.log('manage_file standalone MCP dogfood eval passed');
     await runStandaloneRealCorpusFacadeReadEval();
   } catch (error) {
     const stderrText = stderrChunks.join('').trim();

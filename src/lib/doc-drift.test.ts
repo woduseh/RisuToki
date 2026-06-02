@@ -255,7 +255,17 @@ describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
     'expected_types',
     'expected_hash',
     'actual_hash',
+    'expected_path',
+    'expected_asset_collection_digest',
+    'expected_prompt_items_digest',
+    'expected_snippet_updated_at',
+    'expected_item_collection_digest',
+    'expected_file_state_digest',
+    'expected_active_file_path',
+    'expected_output_state_digest',
+    'expected_project_tree_digest',
     'dry_run',
+    'compress_assets',
   ]);
 
   it('every tool name in MCP_TOOL_SURFACE.md exists in taxonomy', () => {

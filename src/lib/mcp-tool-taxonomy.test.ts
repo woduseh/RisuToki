@@ -393,6 +393,8 @@ describe('MCP Tool Taxonomy', () => {
       'validate_content',
       'load_guidance',
       'manage_items',
+      'manage_assets',
+      'manage_file',
     ]);
     for (const name of ALL_TOOL_NAMES) {
       const meta = getToolMeta(name);
@@ -443,6 +445,8 @@ describe('MCP Tool Taxonomy', () => {
       'validate_content',
       'load_guidance',
       'manage_items',
+      'manage_assets',
+      'manage_file',
     ]) {
       expect(getToolProfilesForTool(name), `${name} should be in facade-first`).toContain('facade-first');
       expect(getToolProfilesForTool(name), `${name} should remain available in advanced-full`).toContain(
@@ -480,6 +484,8 @@ describe('MCP Tool Taxonomy', () => {
       'inspect_document',
       'list_tool_profiles',
       'load_guidance',
+      'manage_assets',
+      'manage_file',
       'manage_items',
       'preview_edit',
       'read_content',
@@ -541,6 +547,7 @@ describe('MCP Tool Taxonomy', () => {
     expect(getToolProfilesForTool('apply_edit')).not.toContain('readonly');
     expect(getToolProfilesForTool('manage_items')).not.toContain('readonly');
     expect(getToolProfilesForTool('manage_assets')).not.toContain('readonly');
+    expect(getToolProfilesForTool('manage_file')).not.toContain('readonly');
 
     for (const name of ALL_TOOL_NAMES) {
       if (!getToolProfilesForTool(name).includes('readonly')) continue;
@@ -574,6 +581,12 @@ describe('MCP Tool Taxonomy', () => {
         [TOOL_META_KEYS.defaultProfile]: 'facade-first',
       }),
     );
+    expect(getToolMeta('manage_file')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.profiles]: ['facade-first', 'authoring', 'advanced-full'],
+        [TOOL_META_KEYS.defaultProfile]: 'facade-first',
+      }),
+    );
     expect(getToolMeta('write_lorebook')).toEqual(
       expect.objectContaining({
         [TOOL_META_KEYS.profiles]: ['authoring', 'advanced-full'],
@@ -592,6 +605,7 @@ describe('MCP Tool Taxonomy', () => {
     expect(getToolWorkflowStages('apply_edit')).toEqual(['apply']);
     expect(getToolWorkflowStages('manage_items')).toEqual(['read', 'preview', 'apply']);
     expect(getToolWorkflowStages('manage_assets')).toEqual(['read', 'preview', 'apply']);
+    expect(getToolWorkflowStages('manage_file')).toEqual(['read', 'preview', 'apply']);
     expect(getToolWorkflowStages('write_lorebook')).toEqual(['apply']);
     expect(getToolWorkflowStages('replace_in_field')).toEqual(['preview', 'apply']);
   });
@@ -637,6 +651,11 @@ describe('MCP Tool Taxonomy', () => {
         [TOOL_META_KEYS.workflowStages]: ['read', 'preview', 'apply'],
       }),
     );
+    expect(getToolMeta('manage_file')).toEqual(
+      expect.objectContaining({
+        [TOOL_META_KEYS.workflowStages]: ['read', 'preview', 'apply'],
+      }),
+    );
     expect(getToolMeta('write_lorebook')).toEqual(
       expect.objectContaining({
         [TOOL_META_KEYS.workflowStages]: ['apply'],
@@ -652,6 +671,7 @@ describe('MCP Tool Taxonomy', () => {
       ['apply_edit', ['apply']],
       ['manage_items', ['read', 'preview', 'apply']],
       ['manage_assets', ['read', 'preview', 'apply']],
+      ['manage_file', ['read', 'preview', 'apply']],
     ] as const;
     for (const profileName of ['facade-first', 'authoring'] as const) {
       const catalog = buildToolSurfaceProfileCatalog(profileName);
@@ -679,6 +699,7 @@ describe('MCP Tool Taxonomy', () => {
     expect(readonlyCatalog?.tools.some((tool) => tool.name === 'apply_edit')).toBe(false);
     expect(readonlyCatalog?.tools.some((tool) => tool.name === 'manage_items')).toBe(false);
     expect(readonlyCatalog?.tools.some((tool) => tool.name === 'manage_assets')).toBe(false);
+    expect(readonlyCatalog?.tools.some((tool) => tool.name === 'manage_file')).toBe(false);
   });
 
   it('readonly profile tools never advertise preview or apply workflow stages', () => {
