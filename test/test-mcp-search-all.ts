@@ -2110,6 +2110,49 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(apply), ['replace_in_field']);
+
+    const surfacePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'surface', path: '/description' },
+          find: 'Omega',
+          replace: 'Surface Omega',
+        },
+      ],
+    });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(surfacePreview), ['replace_in_surface']);
+    const surfacePreviewGuards = nestedArray(
+      nestedRecord(surfacePreview.result, 'surface preview result').guard_values,
+      'surface preview guard values',
+    );
+    assert.ok(
+      surfacePreviewGuards.some((guard) => nestedRecord(guard, 'surface guard').name === 'expected_hash'),
+      'surface replace preview should derive expected_hash',
+    );
+    const surfacePreviewInfo = nestedRecord(surfacePreview.preview, 'surface preview');
+    const surfaceApply = await callJson(runtime, 'apply_edit', {
+      preview_token: surfacePreviewInfo.preview_token,
+      operation_digest: surfacePreviewInfo.operation_digest,
+      target: activeTarget,
+    });
+    metrics.activeWorkflowCallCount += 1;
+    assert.deepEqual(routedTools(surfaceApply), ['replace_in_surface']);
+    const surfaceReadback = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    const surfaceReadbackItems = nestedArray(
+      nestedRecord(surfaceReadback.result, 'surface readback result').items,
+      'surface readback items',
+    );
+    const surfaceReadbackData = nestedRecord(
+      nestedRecord(surfaceReadbackItems[0], 'surface readback item').data,
+      'surface readback data',
+    );
+    assert.match(String(surfaceReadbackData.content ?? ''), /Surface Omega/);
     const diagnosticLog = readStandaloneLog(fixture.userDataDir);
     for (const event of [
       'processStart',
@@ -2457,7 +2500,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     );
     const afterData = nestedRecord(nestedRecord(afterItems[0], 'read after item').data, 'read after item.data');
     assert.equal(afterData.content, persisted.description);
-    assert.equal(persisted.description, 'Omega facade dogfood description.');
+    assert.equal(persisted.description, 'Surface Omega facade dogfood description.');
     assert.equal((persisted.lorebook[0] as { content?: string } | undefined)?.content, 'Updated facade lore body.');
     assert.equal(persisted.triggerScripts[0]?.comment, 'Updated Facade Trigger');
     assert.match(persisted.lua, /Beta/);
@@ -3250,7 +3293,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     const wrongTools = ['read_field', 'write_field', 'replace_in_field', 'patch_surface'];
     metrics.wrongToolAvoidance = facadeOnlyCalls.every((name) => !wrongTools.includes(name));
     assert.equal(metrics.wrongToolAvoidance, true);
-    assert.equal(metrics.activeWorkflowCallCount, 10);
+    assert.equal(metrics.activeWorkflowCallCount, 12);
     assert.equal(metrics.granularFallbackFrequency, 0);
     assert.equal(metrics.staleGuardReuse, true);
     assert.equal(metrics.finalArtifactEquality, true);

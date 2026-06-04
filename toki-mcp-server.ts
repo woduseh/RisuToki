@@ -2562,6 +2562,68 @@ function computeTextReplacement(
   return { matchCount, newContent: normalizedContent.split(findStr).join(replaceStr) };
 }
 
+const FACADE_SURFACE_REPLACE_MAX_MATCHES = 1000;
+
+function computeSurfaceReplacement(
+  value: unknown,
+  operation: FacadeV1EditOperation,
+): { matchCount: number; nextValue: unknown } | ApiErrorResult {
+  if (!operation.find) return facadeApiError(400, 'replace_text requires find', 'Provide operations[].find.');
+  const findStr = normalizeLFString(operation.find);
+  const replaceStr = normalizeLFString(typeof operation.replace === 'string' ? operation.replace : '');
+  let matchCount = 0;
+  let pattern: RegExp | undefined;
+  if (operation.regex) {
+    try {
+      pattern = new RegExp(findStr, operation.flags || 'g');
+    } catch (error) {
+      return facadeApiError(
+        400,
+        'Invalid replace_text regex',
+        'Check operations[].find and operations[].flags, then retry preview_edit.',
+        { error: (error as Error).message },
+      );
+    }
+  }
+  const visit = (node: unknown): unknown => {
+    if (typeof node === 'string') {
+      if (pattern) {
+        const re = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
+        const localMatches = [...node.matchAll(re)].length;
+        matchCount += localMatches;
+        if (matchCount > FACADE_SURFACE_REPLACE_MAX_MATCHES)
+          throw new Error(`Too many matches (>${FACADE_SURFACE_REPLACE_MAX_MATCHES})`);
+        return node.replace(re, replaceStr);
+      }
+      const localMatches = findStr ? node.split(findStr).length - 1 : 0;
+      matchCount += localMatches;
+      if (matchCount > FACADE_SURFACE_REPLACE_MAX_MATCHES)
+        throw new Error(`Too many matches (>${FACADE_SURFACE_REPLACE_MAX_MATCHES})`);
+      return findStr ? node.split(findStr).join(replaceStr) : node;
+    }
+    if (Array.isArray(node)) return node.map(visit);
+    if (node && typeof node === 'object') {
+      const next: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(node as Record<string, unknown>)) next[key] = visit(child);
+      return next;
+    }
+    return node;
+  };
+  try {
+    return { matchCount, nextValue: visit(value) };
+  } catch (error) {
+    return facadeApiError(
+      413,
+      'Too many surface replace_text matches',
+      'Narrow the selector or use a more specific find pattern.',
+      {
+        error: (error as Error).message,
+        max_matches: FACADE_SURFACE_REPLACE_MAX_MATCHES,
+      },
+    );
+  }
+}
+
 type ScriptStyleFamily = 'trigger' | 'lua' | 'css';
 type TextSection = { name: string; content: string };
 
@@ -10080,6 +10142,84 @@ async function previewFacadeOperation(
     };
   }
 
+  if (operation.op === 'replace_text' && operation.selector.family === 'surface' && operation.selector.path) {
+    if (!operation.find) {
+      return facadeApiError(400, 'replace_text requires find', 'Provide operations[].find.');
+    }
+    if (target.kind === 'active') {
+      const routePath = '/surface/replace';
+      const data = await apiRequest('POST', routePath, {
+        path: operation.selector.path,
+        find: operation.find,
+        replace: typeof operation.replace === 'string' ? operation.replace : '',
+        regex: operation.regex,
+        flags: operation.flags,
+        dry_run: true,
+        expected_hash: guardValue(operation.guards, 'expected_hash'),
+      });
+      const beforeHash = recordString(asRecord(data), 'before_hash');
+      const derivedHashGuard =
+        beforeHash === undefined
+          ? undefined
+          : buildGuard('expected_hash', beforeHash, '/expected_hash', ['read_surface'], '/hash');
+      return isApiError(data)
+        ? data
+        : {
+            data: { ...(asRecord(data) ?? {}), operation: 'replace_text' },
+            routes: [route('replace_in_surface', 'POST', routePath)],
+            touched,
+            requiredGuards: mergeGuards(operation.guards, [derivedHashGuard]),
+          };
+    }
+    if (target.kind === 'external') {
+      const read = await readExternalSurfaceValue(target.file_path, operation.selector.path);
+      if (isApiError(read)) return read;
+      const replacement = computeSurfaceReplacement(read.value, operation);
+      if (isApiError(replacement)) return replacement;
+      if (replacement.matchCount === 0) {
+        return facadeApiError(
+          404,
+          'No matching text in external surface',
+          'Refresh the surface content or adjust find/regex/flags before retrying.',
+          { file_path: target.file_path, path: operation.selector.path },
+          ['read_content', 'preview_edit'],
+        );
+      }
+      const routePath = '/external/surface/patch';
+      const patchOperations = [{ op: 'replace', path: operation.selector.path, value: replacement.nextValue }];
+      const data = await apiRequest('POST', routePath, {
+        file_path: target.file_path,
+        operations: patchOperations,
+        dry_run: true,
+        expected_hash: guardValue(operation.guards, 'expected_hash'),
+      });
+      const beforeHash = recordString(asRecord(data), 'before_hash');
+      const derivedHashGuard =
+        beforeHash === undefined
+          ? undefined
+          : buildGuard('expected_hash', beforeHash, '/expected_hash', ['external_read_surface'], '/hash');
+      return isApiError(data)
+        ? data
+        : {
+            data: {
+              ...(asRecord(data) ?? {}),
+              operation: 'replace_text',
+              matchCount: replacement.matchCount,
+              path: operation.selector.path,
+            },
+            routes: [...read.routes, route('external_patch_surface', 'POST', routePath)],
+            touched: [`external:${target.file_path}:surface:${operation.selector.path}`],
+            requiredGuards: mergeGuards(operation.guards, [derivedHashGuard]),
+          };
+    }
+    return facadeApiError(
+      400,
+      'Surface replace_text requires active or external target',
+      'Use target.kind="active" or target.kind="external".',
+      { target, operation },
+    );
+  }
+
   if (operation.op === 'patch_surface') {
     const operations = Array.isArray(operation.content) ? operation.content : undefined;
     if (!operations) {
@@ -10123,7 +10263,7 @@ async function previewFacadeOperation(
   return facadeApiError(
     400,
     `Unsupported preview operation: ${operation.op}`,
-    'preview_edit supports active/external field replace_text, active/external field write_content, active/external patch_surface, active indexed regex/greeting/risup-prompt write_content/delete_item, and external risup-prompt write/delete.',
+    'preview_edit supports active/external field replace_text, active/external field write_content, active/external surface replace_text/patch_surface, active indexed regex/greeting/risup-prompt write_content/delete_item, and external risup-prompt write/delete.',
     { operation },
   );
 }
@@ -10758,6 +10898,59 @@ async function applyFacadeOperation(
           routes: [route(target.kind === 'external' ? 'external_write_field' : 'write_field', 'POST', fieldRoute)],
           touched,
         };
+  }
+  if (operation.op === 'replace_text' && operation.selector.family === 'surface' && operation.selector.path) {
+    if (target.kind === 'active') {
+      const routePath = '/surface/replace';
+      const data = await apiRequest('POST', routePath, {
+        path: operation.selector.path,
+        find: operation.find,
+        replace: typeof operation.replace === 'string' ? operation.replace : '',
+        regex: operation.regex,
+        flags: operation.flags,
+        expected_hash: guardValue(guards, 'expected_hash'),
+      });
+      return isApiError(data)
+        ? data
+        : {
+            data: { ...(asRecord(data) ?? {}), operation: 'replace_text' },
+            routes: [route('replace_in_surface', 'POST', routePath)],
+            touched,
+          };
+    }
+    if (target.kind === 'external') {
+      const read = await readExternalSurfaceValue(target.file_path, operation.selector.path);
+      if (isApiError(read)) return read;
+      const replacement = computeSurfaceReplacement(read.value, operation);
+      if (isApiError(replacement)) return replacement;
+      if (replacement.matchCount === 0) {
+        return facadeApiError(404, 'No matching text in external surface', 'Refresh the surface and retry.');
+      }
+      const routePath = '/external/surface/patch';
+      const data = await apiRequest('POST', routePath, {
+        file_path: target.file_path,
+        operations: [{ op: 'replace', path: operation.selector.path, value: replacement.nextValue }],
+        expected_hash: guardValue(guards, 'expected_hash'),
+      });
+      return isApiError(data)
+        ? data
+        : {
+            data: {
+              ...(asRecord(data) ?? {}),
+              operation: 'replace_text',
+              matchCount: replacement.matchCount,
+              path: operation.selector.path,
+            },
+            routes: [...read.routes, route('external_patch_surface', 'POST', routePath)],
+            touched: [`external:${target.file_path}:surface:${operation.selector.path}`],
+          };
+    }
+    return facadeApiError(
+      400,
+      'Surface replace_text requires active or external target',
+      'Use target.kind="active" or target.kind="external".',
+      { target, operation },
+    );
   }
   if (operation.op === 'patch_surface') {
     const operations = Array.isArray(operation.content) ? operation.content : undefined;
@@ -11450,10 +11643,10 @@ server.tool(
 
 server.tool(
   'preview_edit',
-  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, active/external surface patches, external lorebook/regex/greeting structured edits, external .risup prompt item edits, active indexed and safe batch regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
+  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, active/external surface patches/replacements, external lorebook/regex/greeting structured edits, external .risup prompt item edits, active indexed and safe batch regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
   {
     target: facadeV1TargetSchema.describe(
-      'Explicit facade target discriminator. Supports active edits plus external field replace/write and surface patch previews.',
+      'Explicit facade target discriminator. Supports active edits plus external field replace/write and surface patch/replace previews.',
     ),
     operations: z.array(facadeEditOperationSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems),
     dry_run: z.boolean().optional(),
@@ -11523,7 +11716,7 @@ server.tool(
 
 server.tool(
   'apply_edit',
-  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior for active/external fields, active/external surface patches, external lorebook/regex/greeting structured edits, external .risup prompt item edits, and active indexed/batch regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
+  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior for active/external fields, active/external surface patches/replacements, external lorebook/regex/greeting structured edits, external .risup prompt item edits, and active indexed/batch regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
   {
     preview_token: z.string().regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/),
     operation_digest: z.string().min(16),
@@ -12488,17 +12681,20 @@ server.tool(
 
 server.tool(
   'replace_in_surface',
-  '현재 문서의 JSON surface 아래 모든 문자열 값에서 텍스트를 치환합니다. 대형 구조를 직접 덤프하지 않고 path 단위로 처리합니다. 사용자 확인 필요.',
+  '현재 문서의 JSON surface 아래 모든 문자열 값에서 텍스트를 치환합니다. 대형 구조를 직접 덤프하지 않고 path 단위로 처리합니다. optional expected_hash로 stale document를 감지할 수 있습니다. 새 LLM 흐름에서는 preview_edit/apply_edit의 surface replace_text facade를 우선 사용하세요. 사용자 확인 필요.',
   {
     path: z.string().describe('JSON Pointer path. 예: "/regex/0", "/lorebook/3/content"'),
     find: z.string().describe('찾을 문자열 또는 regex 패턴'),
     replace: z.string().optional().describe('바꿀 문자열. 생략 시 빈 문자열'),
     regex: z.boolean().optional().describe('정규식 모드 여부'),
     flags: z.string().optional().describe('정규식 flags'),
+    expected_hash: z.string().optional().describe('선택: 전체 현재 문서 hash. 다르면 409로 중단됩니다.'),
     dry_run: z.boolean().optional().describe('true이면 실제 변경 없이 매치 수만 반환합니다.'),
   },
-  async ({ path, find, replace, regex, flags, dry_run }) =>
-    textResult(await apiRequest('POST', '/surface/replace', { path, find, replace, regex, flags, dry_run })),
+  async ({ path, find, replace, regex, flags, expected_hash, dry_run }) =>
+    textResult(
+      await apiRequest('POST', '/surface/replace', { path, find, replace, regex, flags, expected_hash, dry_run }),
+    ),
 );
 
 server.tool(

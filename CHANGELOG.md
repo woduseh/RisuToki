@@ -9,6 +9,18 @@
 
 ---
 
+## [1.5.0] - 2026-06-02
+
+### Added
+
+- Added `preview_edit` / `apply_edit` facade coverage for active and external surface `replace_text` workflows, including preview-token-first recursive string replacement under JSON Pointer selectors.
+- Added `expected_hash` stale-document guard support to active `replace_in_surface`.
+- Added standalone MCP smoke coverage for active and unopened external surface replacement through the facade path.
+
+### Changed
+
+- Promoted covered surface replacement guidance to prefer `preview_edit` / `apply_edit` before direct `replace_in_surface` or manual external surface patch workflows.
+
 ## [1.4.0] - 2026-06-02
 
 ### Added

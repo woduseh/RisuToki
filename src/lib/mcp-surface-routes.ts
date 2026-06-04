@@ -266,6 +266,17 @@ export async function handleSurfaceRoute(
     const replacement = typeof body.replace === 'string' ? body.replace : '';
     try {
       const beforeHash = deps.hashSurface(currentData);
+      const expectedHash = typeof body.expected_hash === 'string' ? body.expected_hash : undefined;
+      if (expectedHash && expectedHash !== beforeHash) {
+        deps.mcpError(res, 409, {
+          action: 'replace in surface',
+          message: 'Stale current document hash',
+          suggestion: 'read_surface 또는 list_surfaces로 최신 hash를 확인한 뒤 다시 시도하세요.',
+          target: `surface:${body.path}`,
+          details: { expected_hash: expectedHash, actual_hash: beforeHash },
+        });
+        return true;
+      }
       const oldValue = deps.getPointerValue(currentData, body.path);
       const { next, matches } = deps.replaceStringInSurface(
         oldValue,

@@ -208,9 +208,9 @@ const WORKFLOW_EVAL_TASKS = [
     },
   },
   {
-    id: 'external-charx-surface-patch-facade-parity',
+    id: 'external-charx-surface-patch-replace-facade-parity',
     prompt:
-      'Patch an unopened character card root surface through preview_edit/apply_edit without calling external_patch_surface directly.',
+      'Patch or recursively replace text in an unopened character card surface through preview_edit/apply_edit without calling external_patch_surface directly.',
     family: 'charx',
     corpusRoots: LOCAL_CORPUS_ROOTS.charx,
     sourceOfTruth: [UPSTREAM_RISUAI_SOURCE],
@@ -220,7 +220,7 @@ const WORKFLOW_EVAL_TASKS = [
       profile: 'facade-first',
       discover: ['inspect_document'],
       readOrSearch: ['read_content'],
-      preview: ['preview_edit:patch_surface'],
+      preview: ['preview_edit:patch_surface', 'preview_edit:surface:replace_text'],
       apply: ['apply_edit'],
       validate: ['read_content'],
     },
@@ -230,7 +230,7 @@ const WORKFLOW_EVAL_TASKS = [
       staleGuards: ['expected_hash'],
       previewPolicy: 'required',
       wrongTargetAvoidance: [
-        'target.kind must stay external; use preview_edit patch_surface instead of calling external_patch_surface directly',
+        'target.kind must stay external; use preview_edit surface patch/replace instead of calling external_patch_surface directly',
       ],
       postEditValidation: ['focused read_content surface/field readback on the external file'],
     },

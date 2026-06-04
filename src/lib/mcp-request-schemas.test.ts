@@ -752,6 +752,13 @@ describe('facade v1 contract schemas', () => {
             guards: [{ name: 'expected_regex_comment', value: 'stable regex' }],
           },
           {
+            op: 'replace_text',
+            selector: { family: 'surface', path: '/description' },
+            find: 'old surface text',
+            replace: 'new surface text',
+            guards: [{ name: 'expected_hash', value: 'stable-document-hash' }],
+          },
+          {
             op: 'write_content',
             selector: { family: 'risup-prompt', index: 2, prompt_type: 'plain', item_field: 'text' },
             content: 'Updated prompt text',
