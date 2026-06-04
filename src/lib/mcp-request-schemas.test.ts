@@ -778,12 +778,20 @@ describe('facade v1 contract schemas', () => {
         entry_field: 'out',
       });
       expect(result.data.operations[1].selector).toMatchObject({
+        family: 'surface',
+        path: '/description',
+      });
+      expect(result.data.operations[1].guards?.[0]).toMatchObject({
+        name: 'expected_hash',
+        value: 'stable-document-hash',
+      });
+      expect(result.data.operations[2].selector).toMatchObject({
         family: 'risup-prompt',
         index: 2,
         prompt_type: 'plain',
         item_field: 'text',
       });
-      expect(result.data.operations[1].guards?.[0]).toMatchObject({
+      expect(result.data.operations[2].guards?.[0]).toMatchObject({
         name: 'expected_prompt_type',
         value: 'plain',
       });
