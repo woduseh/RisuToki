@@ -6,16 +6,18 @@ Use this after the bot has a draft description, opening message, and any planned
 
 ## Core Checks
 
-| Check                   | Question                                                                                                     | Fix if weak                                                                       |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| **Persistent frame**    | Does the description give the bot tone, scene instinct, user role, and priority without becoming a database? | Compress facts and strengthen atmosphere, scene logic, and current pressure       |
-| **First-message proof** | Does the opener demonstrate the bot's actual structure?                                                      | Show one scene owner, one pressure line, and one actionable hook                  |
-| **Character-world fit** | Do character Need/Lie/silence rules collide with world Pressure/Taboo/Knowledge Horizon?                     | Connect them or move the isolated detail out of always-on text                    |
-| **Voice survival**      | Do core characters remain identifiable after novelty wears off?                                              | Add signature tells, pressure responses, and no-name line checks                  |
-| **World texture**       | Does the world appear through behavior and sensation instead of exposition?                                  | Add pressure-map detail and ordinary-life texture                                 |
-| **Lorebook activation** | Do entries change scenes without dumping facts?                                                              | Split broad entries, narrow triggers, and rewrite entries as behavior constraints |
-| **User role coherence** | Does the bot know what `{{user}}` is allowed to know, do, and affect?                                        | Clarify user position, access, limits, and social consequences                    |
-| **Long-session drift**  | Does the bot have enough state/progression support for extended play?                                        | Add progression, continuity, reveal, or user-choice residue entries               |
+| Check                     | Question                                                                                                                                              | Fix if weak                                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Persistent frame**      | Does the description give the bot tone, scene instinct, user role, and priority without becoming a database?                                          | Compress facts and strengthen atmosphere, scene logic, and current pressure                       |
+| **First-message proof**   | Does the opener demonstrate the bot's actual structure?                                                                                               | Show one scene owner, one pressure line, and one actionable hook                                  |
+| **Character-world fit**   | Do character Need/Lie/silence rules collide with world Pressure/Taboo/Knowledge Horizon?                                                              | Connect them or move the isolated detail out of always-on text                                    |
+| **Voice survival**        | Do core characters remain identifiable after novelty wears off?                                                                                       | Add signature tells, pressure responses, and no-name line checks                                  |
+| **World texture**         | Does the world appear through behavior and sensation instead of exposition?                                                                           | Add pressure-map detail and ordinary-life texture                                                 |
+| **Lorebook activation**   | Do entries change scenes without dumping facts?                                                                                                       | Split broad entries, narrow triggers, and rewrite entries as behavior constraints                 |
+| **User role coherence**   | Does the bot know what `{{user}}` is allowed to know, do, and affect?                                                                                 | Clarify user position, access, limits, and social consequences                                    |
+| **Long-session drift**    | Does the bot have enough state/progression support for extended play?                                                                                 | Add progression, continuity, reveal, or user-choice residue entries                               |
+| **Language variants**     | If the bot ships UI-language variants (e.g., English/Korean), are they functionally equivalent, with default-language behavior and fallback verified? | Align variants by function rather than word-for-word, then re-test the default and fallback paths |
+| **Asset & UI references** | Do referenced asset names, status/cargo UI snippets, and Lua-facing labels match the actual bot fields?                                               | Re-read the referenced fields and fix dead names before release                                   |
 
 ---
 
@@ -52,15 +54,4 @@ Use this after the bot has a draft description, opening message, and any planned
 
 - Entries are self-contained enough to activate alone.
 - Trigger depth protects secrets and late-stage truths.
-- Progression entries change future behavior, not just stored facts.
-- Activated entries match the description's prose temperature.
-
-### User Role
-
-- `{{user}}` has a clear relationship to the cast, world, and opening situation.
-- The bot knows what `{{user}}` can plausibly know or influence.
-- User choices can leave residue when the bot is designed for long play.
-
-## Final Rule
-
-A finished bot is ready when the description gives instinct, the opener proves the promise, and the lorebook wakes up only the detail that the current scene can use.
+- Progression entries change future behavior,

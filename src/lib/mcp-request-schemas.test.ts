@@ -15,6 +15,7 @@ import {
   FACADE_V1_TOOL_NAMES,
   facadeV1ApplyEditBodySchema,
   facadeV1InspectDocumentBodySchema,
+  facadeV1LoadGuidanceBodySchema,
   facadeV1PreviewEditBodySchema,
   facadeV1ReadContentBodySchema,
   facadeV1SearchDocumentBodySchema,
@@ -613,6 +614,25 @@ describe('facade v1 contract schemas', () => {
     expect(validateBody({ target: { kind: 'external' } }, facadeV1InspectDocumentBodySchema).success).toBe(false);
   });
 
+  it('allows guidance catalog reads and requires skill before a guidance document', () => {
+    expect(validateBody({ target: { kind: 'guidance' } }, facadeV1LoadGuidanceBodySchema).success).toBe(true);
+    expect(
+      validateBody({ target: { kind: 'guidance', skill: 'project-workflow' } }, facadeV1LoadGuidanceBodySchema).success,
+    ).toBe(true);
+    expect(
+      validateBody(
+        {
+          target: { kind: 'guidance', skill: 'project-workflow', document: 'PROJECT_RULES.md' },
+        },
+        facadeV1LoadGuidanceBodySchema,
+      ).success,
+    ).toBe(true);
+    expect(
+      validateBody({ target: { kind: 'guidance', document: 'PROJECT_RULES.md' } }, facadeV1LoadGuidanceBodySchema)
+        .success,
+    ).toBe(false);
+  });
+
   it('bounds read/search batches and max_bytes for context-safe facade calls', () => {
     const tooManySelectors = Array.from({ length: FACADE_V1_LIMITS.maxBatchItems + 1 }, (_, index) => ({
       family: 'field',
@@ -646,6 +666,25 @@ describe('facade v1 contract schemas', () => {
         },
         facadeV1ReadContentBodySchema,
       ).success,
+    ).toBe(false);
+  });
+
+  it('requires a field for external and reference searches', () => {
+    for (const target of [
+      { kind: 'external', file_path: 'C:\\fixtures\\bot.charx' },
+      { kind: 'reference', reference_id: 'ref-1' },
+    ]) {
+      expect(validateBody({ target, query: 'needle' }, facadeV1SearchDocumentBodySchema).success).toBe(false);
+      expect(
+        validateBody({ target, field: 'description', query: 'needle' }, facadeV1SearchDocumentBodySchema).success,
+      ).toBe(true);
+    }
+
+    expect(
+      validateBody({ target: { kind: 'active' }, query: 'needle' }, facadeV1SearchDocumentBodySchema).success,
+    ).toBe(true);
+    expect(
+      validateBody({ target: { kind: 'session' }, query: 'needle' }, facadeV1SearchDocumentBodySchema).success,
     ).toBe(false);
   });
 
@@ -796,6 +835,37 @@ describe('facade v1 contract schemas', () => {
         value: 'plain',
       });
     }
+  });
+
+  it('rejects preview operations that omit operation-specific required inputs', () => {
+    const invalidOperations = [
+      { op: 'write_content', selector: { family: 'field', field: 'description' } },
+      { op: 'replace_text', selector: { family: 'field', field: 'description' }, replace: 'new' },
+      { op: 'insert_text', selector: { family: 'field', field: 'description' } },
+      { op: 'patch_surface', selector: { family: 'surface', path: '/' } },
+    ];
+
+    for (const operation of invalidOperations) {
+      expect(
+        validateBody(
+          {
+            target: { kind: 'active' },
+            operations: [operation],
+          },
+          facadeV1PreviewEditBodySchema,
+        ).success,
+      ).toBe(false);
+    }
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          operations: [{ op: 'delete_item', selector: { family: 'regex', index: 0 } }],
+        },
+        facadeV1PreviewEditBodySchema,
+      ).success,
+    ).toBe(true);
   });
 
   it('codifies preview-token-first mutation flow with propagated guards', () => {

@@ -1,6 +1,8 @@
 ---
 name: authoring-worlds
 description: 'Use when creating, refining, or diagnosing worldbuilding for RisuAI roleplay bots: settings, cultures, factions, power structures, magic or technology systems, places, active history, knowledge horizons, and worlds that feel dry, generic, cliche, or disconnected from scenes. Use for world substance; use authoring-lorebook-bots when the main task is distributing finished material into description, lorebook entries, globalNote, or firstMessage.'
+tags: ['authoring', 'worldbuilding', 'roleplay']
+related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list_lorebook', 'read_lorebook_batch']
 ---
 
 # World Authoring

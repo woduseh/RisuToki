@@ -136,11 +136,11 @@ Modules under `src/lib/` can theoretically be used by either side, but in practi
 | Owner Layer       | Example Modules                                                                                                                                                                      |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Main process only | `terminal-manager.ts`, `session-recovery-main.ts`, `main-state-store.ts`, `mcp-config.ts`, `charx-io.ts`, `data-serializer.ts`, `document-validation.ts`                             |
-| Renderer only     | `layout-manager.ts`, `tab-manager.ts`, `sidebar-builder.ts`, `form-editor.ts`, `monaco-loader.ts`, `section-parser.ts`                                                               |
-| Shared            | `shared-utils.ts`, `risup-prompt-model.ts`, `cbs-parser.ts`, `cbs-evaluator.ts`                                                                                                      |
+| Renderer only     | `layout-manager.ts`, `tab-manager.ts`, `sidebar-builder.ts`, `form-editor.ts`, `monaco-loader.ts`                                                                                    |
+| Shared            | `shared-utils.ts`, `section-parser.ts`, `risup-prompt-model.ts`, `risup-json-fields.ts`, `cbs-parser.ts`, `cbs-evaluator.ts`                                                        |
 | MCP server only   | `mcp-api-server.ts`, `mcp-cbs-routes.ts`, `mcp-surface-routes.ts`, `mcp-asset-routes.ts`, `mcp-field-access.ts`, `mcp-tool-taxonomy.ts`, `mcp-response-envelope.ts`, `mcp-search.ts` |
 
-Note: `src/lib/section-parser.ts` itself is renderer-only, but MCP routes do not import it. Instead they use a parallel Lua/CSS section parser implementation (`parseLuaSections`, `combineLuaSections`, `parseCssSections`, etc.) passed in through `startApiServer()` deps by `main.ts`. Changes to section grammar currently need to be kept in sync across both paths.
+`src/lib/section-parser.ts` is the canonical Lua/CSS section grammar for renderer, Electron main-process MCP dependencies, and standalone MCP. `src/lib/mcp-section-parser.ts` is a compatibility re-export only.
 
 ### 2.3 Compilation Targets
 
@@ -164,7 +164,7 @@ Vite builds the renderer bundle, `tsc` compiles main-process entry points and sh
 | `src/lib/data-serializer.ts`     | ~300   | Normalized JSON/binary serialization                                                                                                |
 | `src/lib/document-validation.ts` | ~90    | Document shape validation                                                                                                           |
 | `src/lib/risup-prompt-model.ts`  | ~1,240 | `.risup` promptTemplate parsing and model                                                                                           |
-| `src/lib/section-parser.ts`      | ~210   | Renderer-side Lua/CSS section parsing (`===section===` syntax). MCP/main paths currently use a parallel implementation in `main.ts` |
+| `src/lib/section-parser.ts`      | ~210   | Shared Lua/CSS section parsing (`===section===` syntax) for renderer, main-process MCP, and standalone MCP                            |
 
 ### 3.2 Preview System (`.charx` Only)
 
@@ -181,6 +181,13 @@ The preview is a port of the RisuAI rendering pipeline that simulates CBS, regex
 | `src/lib/preview-sanitizer.ts` | ~140   | HTML/XSS sanitization                                       |
 
 Preview works only with `.charx` files. When a `.risum` or `.risup` file is open, the F5 shortcut and the menu entry are blocked.
+
+Operational preview details:
+
+- Initialization and runtime errors appear as inline banners. If the iframe is not ready within 5 seconds, the panel reports a timeout.
+- Controller-level Wasmoon preflight (`ensureWasmoon()`) runs outside the preview panel and is not surfaced through those banners.
+- Preview messages support the renderer's safe markdown and structural-HTML allowlist inside the existing sandbox/CSP boundary; inline styles remain restricted.
+- Preview-local Lua field setters update preview state immediately, and `{{charpersona}}` remains distinct from `{{chardesc}}`.
 
 ### 3.3 Session Recovery and Autosave
 

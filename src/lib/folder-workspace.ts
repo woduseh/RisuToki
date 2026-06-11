@@ -43,6 +43,7 @@ interface WorkspaceMarker {
   updatedAt?: string;
   compressionMode?: RisupCompressionMode;
   risumAssetFiles?: string[];
+  charxManagedFiles?: string[];
 }
 
 const CHARX_EXTRACTABLE_FIELDS: ExtractableField[] = [
@@ -120,6 +121,7 @@ function setNestedValue(obj: Record<string, unknown>, dotPath: string, value: un
 function setArrayPath(obj: Record<string, unknown>, arrayPath: string, index: number, value: string): void {
   const arr = getNestedValue(obj, arrayPath);
   if (Array.isArray(arr)) {
+    while (arr.length < index) arr.push('');
     arr[index] = value;
   }
 }
@@ -322,6 +324,80 @@ function writeProjectMarker(projectPath: string, marker: Partial<WorkspaceMarker
   });
 }
 
+function normalizeManagedCharxPath(relativePath: string): string {
+  return relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function isManagedCharxPath(relativePath: string): boolean {
+  const normalized = normalizeManagedCharxPath(relativePath);
+  return normalized.startsWith('assets/') || normalized.startsWith('x_meta/');
+}
+
+function listManagedCharxZipEntries(zip: InstanceType<typeof AdmZip>): string[] {
+  return [
+    ...new Set(
+      zip
+        .getEntries()
+        .filter((entry) => !isZipDirectory(entry) && isManagedCharxPath(entry.entryName))
+        .map((entry) => normalizeManagedCharxPath(entry.entryName)),
+    ),
+  ].sort();
+}
+
+function readLegacyManagedCharxFiles(marker: WorkspaceMarker | null): string[] | null {
+  if (Array.isArray(marker?.charxManagedFiles)) {
+    return marker.charxManagedFiles.filter(isManagedCharxPath).map(normalizeManagedCharxPath);
+  }
+  if (
+    !marker?.sourcePath ||
+    !fs.existsSync(marker.sourcePath) ||
+    path.extname(marker.sourcePath).toLowerCase() !== '.charx'
+  ) {
+    return null;
+  }
+  try {
+    return listManagedCharxZipEntries(new AdmZip(marker.sourcePath));
+  } catch {
+    return null;
+  }
+}
+
+function pruneEmptyManagedDirectories(projectPath: string): void {
+  for (const rootName of ['assets', 'x_meta']) {
+    const root = resolveInsideProject(projectPath, rootName);
+    if (!fs.existsSync(root)) continue;
+    const directories: string[] = [];
+    const visit = (dirPath: string): void => {
+      for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const child = path.join(dirPath, entry.name);
+        visit(child);
+        directories.push(child);
+      }
+    };
+    visit(root);
+    for (const dirPath of directories) {
+      if (fs.readdirSync(dirPath).length === 0) fs.rmdirSync(dirPath);
+    }
+    if (fs.existsSync(root) && fs.readdirSync(root).length === 0) fs.rmdirSync(root);
+  }
+}
+
+function removeStaleManagedCharxFiles(
+  projectPath: string,
+  previousManagedFiles: string[] | null,
+  currentManagedFiles: string[],
+): void {
+  if (!previousManagedFiles) return;
+  const current = new Set(currentManagedFiles);
+  for (const relativePath of previousManagedFiles) {
+    const normalized = normalizeManagedCharxPath(relativePath);
+    if (!isManagedCharxPath(normalized) || current.has(normalized)) continue;
+    fs.rmSync(resolveInsideProject(projectPath, normalized), { force: true });
+  }
+  pruneEmptyManagedDirectories(projectPath);
+}
+
 function writeRisumAssets(projectPath: string, assets: Buffer[]): string[] {
   const assetDir = path.join(projectPath, RISUM_ASSET_DIR);
   if (fs.existsSync(assetDir)) fs.rmSync(assetDir, { recursive: true, force: true });
@@ -517,9 +593,13 @@ export function saveProjectData(projectPath: string, data: Record<string, unknow
   }
 
   const zip = buildCharxZip(data as never);
+  const marker = readProjectMarker(projectPath);
+  const previousManagedFiles = readLegacyManagedCharxFiles(marker);
+  const currentManagedFiles = listManagedCharxZipEntries(zip);
+  removeStaleManagedCharxFiles(projectPath, previousManagedFiles, currentManagedFiles);
   for (const entry of zip.getEntries()) {
     if (isZipDirectory(entry)) continue;
-    const outPath = path.join(projectPath, entry.entryName);
+    const outPath = resolveInsideProject(projectPath, entry.entryName);
     ensureDir(path.dirname(outPath));
     fs.writeFileSync(outPath, entry.getData());
   }
@@ -532,6 +612,7 @@ export function saveProjectData(projectPath: string, data: Record<string, unknow
   writeProjectMarker(projectPath, {
     sourceFileType: 'charx',
     sourcePath: typeof data._sourceFilePath === 'string' ? data._sourceFilePath : undefined,
+    charxManagedFiles: currentManagedFiles,
   });
 }
 

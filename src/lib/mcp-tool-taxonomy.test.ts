@@ -407,7 +407,7 @@ describe('MCP Tool Taxonomy', () => {
     }
   });
 
-  it('defines the tool surface profile contract with catalog facade plus opt-in server filtering', () => {
+  it('defines facade-first as the registered default with advanced-full as the opt-in escape hatch', () => {
     expect(TOOL_SURFACE_PROFILE_NAMES).toEqual(['facade-first', 'authoring', 'advanced-full', 'readonly']);
     expect(DEFAULT_TOOL_SURFACE_PROFILE).toBe('facade-first');
     expect(TOOL_SURFACE_PROFILE_ALIASES).toEqual({ advanced: 'advanced-full', full: 'advanced-full' });
@@ -421,14 +421,14 @@ describe('MCP Tool Taxonomy', () => {
     expect(contractsByName.get('facade-first')).toEqual(
       expect.objectContaining({
         default: true,
-        filteringStatus: 'catalog-facade',
+        filteringStatus: 'registered-filter',
         legacyEscapeHatch: 'advanced-full',
       }),
     );
     expect(contractsByName.get('readonly')).toEqual(
       expect.objectContaining({
         readonly: true,
-        filteringStatus: 'catalog-facade',
+        filteringStatus: 'registered-filter',
       }),
     );
     expect(getToolSurfaceProfileContract('advanced')).toBe(contractsByName.get('advanced-full'));
@@ -454,6 +454,15 @@ describe('MCP Tool Taxonomy', () => {
       );
     }
 
+    for (const name of ['list_skills', 'read_skill']) {
+      expect(getToolProfilesForTool(name), `${name} should bootstrap facade-first`).toEqual([
+        'facade-first',
+        'authoring',
+        'advanced-full',
+        'readonly',
+      ]);
+    }
+
     expect(getToolProfilesForTool('write_lorebook')).toEqual(expect.arrayContaining(['authoring', 'advanced-full']));
     expect(getToolProfilesForTool('write_lorebook')).not.toContain('facade-first');
     expect(getToolProfilesForTool('write_lorebook')).not.toContain('readonly');
@@ -471,10 +480,10 @@ describe('MCP Tool Taxonomy', () => {
       expect.objectContaining({
         defaultProfile: 'facade-first',
         resolvedProfile: 'facade-first',
-        currentProfile: null,
-        strictFiltering: false,
-        filteringStatus: 'catalog-facade',
-        toolsListBehavior: 'unfiltered-compatible',
+        currentProfile: 'facade-first',
+        strictFiltering: true,
+        filteringStatus: 'registered-filter',
+        toolsListBehavior: 'profile-filtered',
         legacyEscapeHatch: 'advanced-full',
       }),
     );
@@ -482,6 +491,7 @@ describe('MCP Tool Taxonomy', () => {
     expect(facadeCatalog?.tools.map((tool) => tool.name)).toEqual([
       'apply_edit',
       'inspect_document',
+      'list_skills',
       'list_tool_profiles',
       'load_guidance',
       'manage_assets',
@@ -489,13 +499,17 @@ describe('MCP Tool Taxonomy', () => {
       'manage_items',
       'preview_edit',
       'read_content',
+      'read_skill',
       'search_document',
       'validate_content',
     ]);
     expect(facadeCatalog?.counts.allTools).toBe(ALL_TOOL_NAMES.length);
-    expect(facadeCatalog?.counts.registeredTools).toBe(ALL_TOOL_NAMES.length);
-    expect(facadeCatalog?.counts.hiddenFromToolsList).toBe(0);
+    expect(facadeCatalog?.counts.registeredTools).toBe(listToolsForSurfaceProfile('facade-first').length);
+    expect(facadeCatalog?.counts.hiddenFromToolsList).toBe(
+      ALL_TOOL_NAMES.length - listToolsForSurfaceProfile('facade-first').length,
+    );
     expect(facadeCatalog?.counts.profileTools).toBeLessThan(facadeCatalog?.counts.allTools ?? 0);
+    expect(facadeCatalog?.tools.every((tool) => tool.registered)).toBe(true);
 
     const strictFacadeCatalog = buildToolSurfaceProfileCatalog('facade-first', {
       currentProfile: 'facade-first',
@@ -517,8 +531,10 @@ describe('MCP Tool Taxonomy', () => {
 
     const fullCatalog = buildToolSurfaceProfileCatalog('full');
     expect(fullCatalog?.resolvedProfile).toBe('advanced-full');
+    expect(fullCatalog?.currentProfile).toBe('advanced-full');
     expect(fullCatalog?.legacyEscapeHatch).toBe(false);
     expect(fullCatalog?.tools.map((tool) => tool.name)).toEqual(ALL_TOOL_NAMES);
+    expect(fullCatalog?.tools.every((tool) => tool.registered)).toBe(true);
     expect(listToolsForSurfaceProfile('unknown')).toEqual([]);
     expect(buildToolSurfaceProfileCatalog('unknown')).toBeUndefined();
   });

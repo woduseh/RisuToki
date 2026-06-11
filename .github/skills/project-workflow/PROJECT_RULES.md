@@ -46,8 +46,8 @@ These rules apply **automatically** when the task changes the repo itself — ev
 | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `docs/README.md`                                                        | Knowledge-base index for code work                                                     |
 | `docs/MODULE_MAP.md`                                                    | Module map for TypeScript source navigation                                            |
-| `docs/MCP_WORKFLOW.md`                                                  | MCP tool selection, read rules, workflow patterns                                      |
-| `docs/MCP_TOOL_SURFACE.md`                                              | MCP tool families, boundaries, behavior hints, deterministic `next_actions` map        |
+| `docs/MCP_WORKFLOW.md`                                                  | MCP runtime modes, startup profiles, and common execution sequence                     |
+| `docs/MCP_TOOL_SURFACE.md`                                              | MCP profiles, facade coverage, tool families, behavior hints, and tool contracts       |
 | `docs/MCP_ERROR_CONTRACT.md`                                            | MCP success / error / no-op response contracts and recovery playbook                   |
 | `skills/`                                                               | Bundled product/editor skill docs                                                      |
 | `risu/common/skills/`, `risu/{bot,prompts,modules,plugins}/skills/`     | Bundled authoring skill docs; actual work products in the same subtrees remain ignored |

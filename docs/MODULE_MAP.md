@@ -34,7 +34,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-surface-routes.ts` — extracted active-document JSON surface route dispatcher
 - `src/lib/mcp-asset-routes.ts` — extracted charx/risum asset route dispatcher and WebP compression route
 - `src/lib/mcp-field-access.ts` — MCP field name sets, document-type access rules, and field-read payload builders
-- `src/lib/mcp-section-parser.ts` — standalone MCP section parsing and external-document helpers
+- `src/lib/mcp-section-parser.ts` — compatibility re-export of the shared Lua/CSS section parser
 - `src/lib/mcp-tool-taxonomy.ts` — tool-family single source of truth
 - `src/lib/mcp-response-envelope.ts` — additive success envelope, deterministic `next_actions`, and success-response size metadata
 - `src/lib/mcp-search.ts` — search behavior for MCP search tools
@@ -59,7 +59,10 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/lorebook-io.ts` — lorebook import/export helpers
 - `src/lib/lorebook-folders.ts` — lorebook folder identity and hierarchy handling
 - `src/lib/lorebook-decorators.ts` — lorebook decorator parsing and rendering helpers
-- `src/lib/section-parser.ts` — Lua/CSS section parsing
+- `src/lib/section-parser.ts` — canonical Lua/CSS section parsing shared by renderer, Electron main, and standalone MCP
+- `src/lib/risup-json-fields.ts` — shared validation/parsing contract for JSON-backed `.risup` text fields
+- `src/lib/asset-utils.ts` — shared asset file-name and `cardAssets`/`xMeta` reference synchronization
+- `src/lib/persona-store.ts` — bundled-default plus user-override RP persona persistence
 - `src/lib/trigger-script-model.ts` — trigger-script data model
 - `src/lib/trigger-form-editor.ts` — trigger-script form editing helpers
 - `src/lib/trigger-scripts-runtime.ts` — trigger-script runtime execution

@@ -471,7 +471,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
     globalNote: '',
     css: '',
     defaultVariables: '',
-    lua: '',
+    lua: 'print("prefixed")',
     triggerScripts: [
       {
         comment: 'prefixed',

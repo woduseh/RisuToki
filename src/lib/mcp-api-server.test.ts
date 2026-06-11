@@ -682,6 +682,52 @@ describe('MCP API surface routes', () => {
     }
   });
 
+  it('uses RFC 6902 array insertion, append, and replace semantics', async () => {
+    const currentData: SearchFixture = {
+      alternateGreetings: ['first', 'third'],
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const patched = await postJson<{ success: boolean }>(api.port, api.token, '/surface/patch', {
+        operations: [
+          { op: 'add', path: '/alternateGreetings/1', value: 'second' },
+          { op: 'add', path: '/alternateGreetings/-', value: 'fourth' },
+          { op: 'replace', path: '/alternateGreetings/0', value: 'FIRST' },
+        ],
+      });
+      expect(patched.status).toBe(200);
+      expect(currentData.alternateGreetings).toEqual(['FIRST', 'second', 'third', 'fourth']);
+
+      const rejected = await postJson<Record<string, unknown>>(api.port, api.token, '/surface/patch', {
+        operations: [{ op: 'replace', path: '/alternateGreetings/99', value: 'invalid' }],
+      });
+      expect(rejected.status).toBe(400);
+      expect(currentData.alternateGreetings).toEqual(['FIRST', 'second', 'third', 'fourth']);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects malformed risup JSON field patches before mutating current data', async () => {
+    const currentData: SearchFixture = {
+      _fileType: 'risup',
+      promptSettings: '{}',
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const rejected = await postJson<Record<string, unknown>>(api.port, api.token, '/surface/patch', {
+        operations: [{ op: 'replace', path: '/promptSettings', value: '{broken' }],
+      });
+      expect(rejected.status).toBe(400);
+      expect(rejected.data.error).toContain('Invalid promptSettings');
+      expect(currentData.promptSettings).toBe('{}');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('invalidates asset map cache when surface patches touch asset source fields', async () => {
     const currentData: SearchFixture = {
       name: 'Asset Surface Bot',
@@ -757,11 +803,16 @@ describe('MCP API surface routes', () => {
 
       const patched = await postJson<{ success: boolean }>(api.port, api.token, '/external/surface/patch', {
         file_path: fixture.filePath,
-        operations: [{ op: 'replace', path: '/regex/0/comment', value: 'External New' }],
+        operations: [
+          { op: 'replace', path: '/regex/0/comment', value: 'External New' },
+          { op: 'add', path: '/alternateGreetings/0', value: 'Inserted first' },
+        ],
       });
       expect(patched.status).toBe(200);
       expect(patched.data.success).toBe(true);
-      expect((openCharx(fixture.filePath) as unknown as SearchFixture).regex?.[0]?.comment).toBe('External New');
+      const reopened = openCharx(fixture.filePath) as unknown as SearchFixture;
+      expect(reopened.regex?.[0]?.comment).toBe('External New');
+      expect(reopened.alternateGreetings?.[0]).toBe('Inserted first');
     } finally {
       await closeServer(api.server);
     }
@@ -2152,6 +2203,31 @@ describe('MCP API risup prompt-item routes', () => {
     }
   });
 
+  it('rejects malformed generic risup JSON fields atomically in batch writes', async () => {
+    const currentData = {
+      ...createRisupFixture(),
+      name: 'Original',
+      promptSettings: '{}',
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const res = await postJson<{ error: string }>(api.port, api.token, '/field/batch-write', {
+        entries: [
+          { field: 'name', content: 'Mutated' },
+          { field: 'promptSettings', content: '{broken' },
+        ],
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.data.error).toContain('Invalid promptSettings');
+      expect(currentData.name).toBe('Original');
+      expect(currentData.promptSettings).toBe('{}');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('rejects generic field writes with invalid presetBias pair shapes', async () => {
     const currentData = createRisupFixture();
     const api = await startTestApiServer(currentData);
@@ -2616,6 +2692,34 @@ describe('MCP API lorebook folder reads', () => {
 });
 
 describe('MCP API skills routes', () => {
+  it('lists and reads skills without an active document', async () => {
+    const skillsDir = path.join(TEST_DIR, 'skills-without-document');
+    await fs.promises.rm(skillsDir, { recursive: true, force: true });
+    await writeSkillFixture(skillsDir, 'reference-skill', {
+      'SKILL.md': `---
+name: reference-skill
+description: 'Reference skill without an active document'
+---
+
+# Reference Skill
+`,
+    });
+
+    const api = await startTestApiServer(null, [], skillsDir);
+
+    try {
+      const list = await getJson<{ count: number; skills: Array<{ name: string }> }>(api.port, api.token, '/skills');
+      expect(list.status).toBe(200);
+      expect(list.data.skills).toEqual([expect.objectContaining({ name: 'reference-skill' })]);
+
+      const detail = await getJson<{ content: string }>(api.port, api.token, '/skills/reference-skill/SKILL.md');
+      expect(detail.status).toBe(200);
+      expect(detail.data.content).toContain('# Reference Skill');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('lists custom skills with parsed additive metadata', async () => {
     const skillsDir = path.join(TEST_DIR, 'skills-metadata');
     await fs.promises.rm(skillsDir, { recursive: true, force: true });
@@ -4717,6 +4821,22 @@ describe('MCP API structured error envelopes — global guards', () => {
       expect(res.data).toHaveProperty('target', 'document:current');
       expect(res.data).toHaveProperty('error', 'No file open');
       expect(typeof res.data.suggestion).toBe('string');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('allows skill catalog and document reads when no file is open', async () => {
+    const api = await startTestApiServer(null);
+    try {
+      const list = await getJson<{ count: number; skills: Array<{ name: string }> }>(api.port, api.token, '/skills');
+      expect(list.status).toBe(200);
+      expect(list.data.count).toBeGreaterThan(0);
+      expect(list.data.skills.some((skill) => skill.name === 'project-workflow')).toBe(true);
+
+      const detail = await getJson<{ content: string }>(api.port, api.token, '/skills/project-workflow');
+      expect(detail.status).toBe(200);
+      expect(detail.data.content).toContain('Project Workflow');
     } finally {
       await closeServer(api.server);
     }

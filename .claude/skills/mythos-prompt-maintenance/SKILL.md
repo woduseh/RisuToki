@@ -1,6 +1,9 @@
 ---
 name: mythos-prompt-maintenance
 description: Maintain the Mythos prompt suite across source and model-specific variants. Use when revising Mythos prompt files, comparing Source/GPT/Claude/Gemini/DeepSeek versions, changing CBS toggles or UI names, syncing `.md` and `.risup` prompt artifacts, validating CBS syntax, or checking the Mythos principles of abstract narration, systematic character handling, and concise non-duplicative prompts.
+tags: ['mythos', 'prompt', 'maintenance', 'sync']
+related_tools:
+  ['diff_risup_prompt', 'list_risup_prompt_items', 'read_risup_prompt_item_batch', 'validate_cbs', 'search_all_fields']
 ---
 
 # Mythos Prompt Maintenance

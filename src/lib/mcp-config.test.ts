@@ -9,6 +9,8 @@ vi.mock('electron', () => ({
 import {
   buildCodexMcpConfigToml,
   cleanupCodexMcpConfigToml,
+  mergeRisutokiJsonMcpConfig,
+  normalizeMcpToolProfile,
   removeTopLevelCodexRisutokiServerTables,
   sanitizeCodexFeatures,
 } from './mcp-config';
@@ -82,6 +84,119 @@ describe('Codex MCP config helpers', () => {
     expect(result).not.toContain('TOKI_TOKEN = "old"');
     expect(result.match(/^\[mcp_servers\.risutoki\]$/gm)).toHaveLength(1);
     expect(result.match(/^\[mcp_servers\.risutoki\.env\]$/gm)).toHaveLength(1);
+  });
+
+  it('preserves a valid generated Codex tool profile selection', () => {
+    const existing = [
+      '[mcp_servers.risutoki]',
+      'command = "old-node"',
+      '',
+      '[mcp_servers.risutoki.env]',
+      'TOKI_PORT = "1"',
+      'TOKI_TOKEN = "old"',
+      'RISUTOKI_MCP_TOOL_PROFILE = "advanced-full"',
+    ].join('\n');
+
+    const result = buildCodexMcpConfigToml(existing, codexOptions);
+
+    expect(result).toContain('RISUTOKI_MCP_TOOL_PROFILE = "advanced-full"');
+    expect(result.match(/RISUTOKI_MCP_TOOL_PROFILE/g)).toHaveLength(1);
+  });
+
+  it('writes an explicitly selected profile and normalizes aliases', () => {
+    const result = buildCodexMcpConfigToml('', {
+      ...codexOptions,
+      toolProfile: 'full',
+    });
+
+    expect(result).toContain('RISUTOKI_MCP_TOOL_PROFILE = "advanced-full"');
+  });
+
+  it('normalizes supported profile aliases and rejects unknown values', () => {
+    expect(normalizeMcpToolProfile(' FULL ')).toBe('advanced-full');
+    expect(normalizeMcpToolProfile('authoring')).toBe('authoring');
+    expect(normalizeMcpToolProfile('not-a-profile')).toBeUndefined();
+  });
+
+  it('preserves a valid JSON profile while replacing generated connection values', () => {
+    const result = mergeRisutokiJsonMcpConfig(
+      {
+        mcpServers: {
+          other: { command: 'keep' },
+          risutoki: {
+            command: 'old-node',
+            env: {
+              TOKI_PORT: '1',
+              RISUTOKI_MCP_TOOL_PROFILE: 'full',
+            },
+          },
+        },
+      },
+      {
+        type: 'stdio',
+        command: 'node',
+        args: ['new-server.js'],
+        env: {
+          TOKI_PORT: '39464',
+          TOKI_TOKEN: 'new-token',
+        },
+      },
+    );
+
+    expect(result.mcpServers.other).toEqual({ command: 'keep' });
+    expect(result.mcpServers.risutoki).toEqual({
+      type: 'stdio',
+      command: 'node',
+      args: ['new-server.js'],
+      env: {
+        TOKI_PORT: '39464',
+        TOKI_TOKEN: 'new-token',
+        RISUTOKI_MCP_TOOL_PROFILE: 'advanced-full',
+      },
+    });
+  });
+
+  it('does not preserve an invalid JSON profile', () => {
+    const result = mergeRisutokiJsonMcpConfig(
+      {
+        mcpServers: {
+          risutoki: {
+            env: {
+              RISUTOKI_MCP_TOOL_PROFILE: 'everything',
+            },
+          },
+        },
+      },
+      {
+        command: 'node',
+        env: {
+          TOKI_PORT: '39464',
+          TOKI_TOKEN: 'new-token',
+        },
+      },
+    );
+
+    expect(result.mcpServers.risutoki.env).not.toHaveProperty('RISUTOKI_MCP_TOOL_PROFILE');
+  });
+
+  it('creates a new JSON config without forcing an explicit profile', () => {
+    const result = mergeRisutokiJsonMcpConfig(
+      {},
+      {
+        type: 'stdio',
+        command: 'node',
+        args: ['new-server.js'],
+        env: {
+          TOKI_PORT: '39464',
+          TOKI_TOKEN: 'new-token',
+        },
+      },
+    );
+
+    expect(result.mcpServers.risutoki.env).toEqual({
+      TOKI_PORT: '39464',
+      TOKI_TOKEN: 'new-token',
+    });
   });
 
   it('removes only top-level RisuToki server tables', () => {

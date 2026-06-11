@@ -79,3 +79,68 @@ describe('asset-manager MIME mapping', () => {
     });
   });
 });
+
+describe('asset-manager mutation consistency', () => {
+  beforeEach(() => {
+    ipcHandle.mockClear();
+    invalidateAssetsMapCache();
+  });
+
+  it('adds card and x_meta references for valid buffer assets and rejects invalid names', () => {
+    const currentData = {
+      assets: [] as Array<{ path: string; data: Buffer }>,
+      cardAssets: [] as Array<Record<string, unknown>>,
+      xMeta: {} as Record<string, unknown>,
+    };
+    initAssetManager({
+      getCurrentData: () => currentData,
+      getMainWindow: () => null,
+    });
+    const addAssetBuffer = getRegisteredHandler('add-asset-buffer');
+
+    expect(addAssetBuffer({}, '../bad.png', Buffer.from('bad').toString('base64'), 'other')).toBeNull();
+    expect(addAssetBuffer({}, 'portrait.png', Buffer.from('image').toString('base64'), 'other')).toEqual({
+      path: 'assets/other/image/portrait.png',
+      size: 5,
+    });
+    expect(currentData.cardAssets).toContainEqual({
+      type: 'x-risu-asset',
+      uri: 'embeded://assets/other/image/portrait.png',
+      name: 'portrait',
+      ext: 'png',
+    });
+    expect(currentData.xMeta).toHaveProperty('portrait');
+  });
+
+  it('renames and deletes asset references while rejecting path collisions', () => {
+    const currentData = {
+      assets: [
+        { path: 'assets/icon/old.png', data: Buffer.from('old') },
+        { path: 'assets/icon/existing.png', data: Buffer.from('existing') },
+      ],
+      cardAssets: [{ type: 'icon', uri: 'embeded://assets/icon/old.png', name: 'old', ext: 'png' }],
+      xMeta: { old: { type: 'PNG' }, existing: { type: 'PNG' } },
+    };
+    initAssetManager({
+      getCurrentData: () => currentData,
+      getMainWindow: () => null,
+    });
+
+    const renameAsset = getRegisteredHandler('rename-asset');
+    const deleteAsset = getRegisteredHandler('delete-asset');
+
+    expect(renameAsset({}, 'assets/icon/old.png', 'existing.png')).toBeNull();
+    expect(renameAsset({}, 'assets/icon/old.png', 'new.webp')).toBe('assets/icon/new.webp');
+    expect(currentData.cardAssets[0]).toMatchObject({
+      uri: 'embeded://assets/icon/new.webp',
+      name: 'new',
+      ext: 'webp',
+    });
+    expect(currentData.xMeta).not.toHaveProperty('old');
+    expect(currentData.xMeta).toHaveProperty('new');
+
+    expect(deleteAsset({}, 'assets/icon/new.webp')).toBe(true);
+    expect(currentData.cardAssets).toEqual([]);
+    expect(currentData.xMeta).not.toHaveProperty('new');
+  });
+});

@@ -17,8 +17,8 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 
 ## Core documents
 
-- **`docs/MCP_WORKFLOW.md`** — MCP tool routing map, read rules, task-intent playbooks, reference diff workflows, operational caveats
-- **`docs/MCP_TOOL_SURFACE.md`** — MCP family map, tool boundaries, behavior hints, and deterministic `next_actions`
+- **`docs/MCP_WORKFLOW.md`** — runtime modes, startup profile behavior, and the common execution sequence
+- **`docs/MCP_TOOL_SURFACE.md`** — profile, facade coverage, MCP family, tool-boundary, and metadata contracts
 - **`docs/MCP_ERROR_CONTRACT.md`** — success / error / no-op response contracts and the recovery playbook
 - **`src/lib/mcp-agent-workflow-eval.test.ts`** — deterministic agent workflow eval matrix for `.charx`, `.risup`, `.risum`, and Plugin API v3 route choice against the local `risu/` corpus
 - **`docs/PROJECT_RULES.md`** — versioning, CI/release workflow, and guide locations
@@ -28,6 +28,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 ## Boundary notes
 
 - Root `AGENTS.md` is a compact **product-first** routing TOC. The nearest `risu/{scope}/AGENTS.md` handles authoring routing under `risu/`.
+- Guidance ownership is explicit: `AGENTS.md` owns startup/routing, `using-mcp-tools` owns tool choice/playbooks, `MCP_TOOL_SURFACE.md` owns profiles/coverage/contracts, and `MCP_WORKFLOW.md` owns runtime modes/common sequence.
 - Root `skills/` now holds product/editor skills only. Shared and artifact-specific authoring skills live under `risu/common/skills/` and `risu/{bot,prompts,modules,plugins}/skills/`.
 - Built-in authoring docs live under `risu/common/docs/` and `risu/{bot,prompts,modules,plugins}/docs/`.
 - Success envelopes expose `artifacts.byte_size`; use it as a context-budget cue before asking for adjacent content.

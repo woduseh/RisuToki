@@ -24,6 +24,7 @@ import { startHeadlessMcpApiServer } from './src/lib/mcp-headless-server';
 import {
   ALL_TOOL_NAMES,
   buildToolSurfaceProfileCatalog,
+  DEFAULT_TOOL_SURFACE_PROFILE,
   getToolFamily,
   getToolMeta,
   getToolWorkflowStages,
@@ -47,7 +48,10 @@ import {
   FACADE_V1_CONTRACT_ID,
   FACADE_V1_LIMITS,
   facadeV1ContentSelectorSchema,
+  facadeV1EditOperationSchema,
   facadeV1GuardSchema,
+  facadeV1GuidanceTargetSchema,
+  facadeV1SearchDocumentBodySchema,
   facadeV1TargetSchema,
   manageAssetsBodySchema,
   manageAssetsFamilySchema,
@@ -79,6 +83,12 @@ import {
   type PromptTemplateModel,
 } from './src/lib/risup-prompt-model';
 import { compressAssetsToWebP, updateAssetReferences, type CharxAssetLike } from './src/lib/image-compressor';
+import {
+  addAssetReferences,
+  deleteAssetReferences,
+  renameAssetReferences,
+  validateAssetFileName,
+} from './src/lib/asset-utils';
 import { validateCharxExportCompatibilityFile } from './src/lib/charx-export-compatibility';
 import {
   extractDocumentToProject,
@@ -957,18 +967,6 @@ const facadePreviewStore = new Map<string, FacadePreviewEntry>();
 const manageItemsPreviewStore = new Map<string, ManageItemsPreviewEntry>();
 const manageAssetsPreviewStore = new Map<string, ManageAssetsPreviewEntry>();
 const manageFilePreviewStore = new Map<string, ManageFilePreviewEntry>();
-
-const facadeEditOperationSchema = z.object({
-  op: z.enum(['write_content', 'replace_text', 'insert_text', 'delete_item', 'patch_surface']),
-  selector: facadeV1ContentSelectorSchema,
-  content: z.unknown().optional(),
-  find: z.string().min(1).optional(),
-  replace: z.string().optional(),
-  regex: z.boolean().optional(),
-  flags: z.string().optional(),
-  field: z.string().optional(),
-  guards: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
-});
 
 function facadeApiError(
   status: number,
@@ -6342,10 +6340,11 @@ function assetMimeType(assetPath: string): string {
 }
 
 function validateManageAssetFileName(name: string, action: string): ApiErrorResult | undefined {
-  if (!/^[a-zA-Z0-9가-힣._\- ]+$/.test(name)) {
+  const error = validateAssetFileName(name);
+  if (error) {
     return facadeApiError(
       400,
-      'Asset file name contains unsupported characters',
+      error,
       'Use letters, numbers, Korean characters, spaces, dot, underscore, or hyphen.',
       { action, name },
     );
@@ -6360,7 +6359,32 @@ function normalizeCharxAssetAdd(operation: Extract<ManageAssetsOperation, { acti
       assetPath: string;
     }
   | ApiErrorResult {
-  const explicitPath = operation.path ? normalizeAssetPath(operation.path) : '';
+  const rawPath = operation.path ?? '';
+  if (
+    rawPath &&
+    (rawPath.includes('\\') ||
+      rawPath.startsWith('/') ||
+      /^[a-zA-Z]:/.test(rawPath) ||
+      rawPath.split('/').some((part) => !part || part === '.' || part === '..' || validateAssetFileName(part)))
+  ) {
+    return facadeApiError(
+      400,
+      `Invalid charx asset path: ${rawPath}`,
+      'Use a relative path under assets/ with valid folder and file names.',
+      { path: rawPath },
+      ['manage_assets'],
+    );
+  }
+  const explicitPath = rawPath ? normalizeAssetPath(rawPath) : '';
+  if (explicitPath && !explicitPath.startsWith('assets/')) {
+    return facadeApiError(
+      400,
+      `Charx asset paths must stay under assets/: ${explicitPath}`,
+      'Use a relative path beginning with assets/.',
+      { path: explicitPath },
+      ['manage_assets'],
+    );
+  }
   const fileName = operation.fileName ?? operation.name ?? (explicitPath ? assetPathBasename(explicitPath) : undefined);
   if (!fileName) {
     return facadeApiError(
@@ -6372,6 +6396,15 @@ function normalizeCharxAssetAdd(operation: Extract<ManageAssetsOperation, { acti
   }
   const invalidName = validateManageAssetFileName(fileName, operation.action);
   if (invalidName) return invalidName;
+  if (explicitPath && assetPathBasename(explicitPath) !== fileName) {
+    return facadeApiError(
+      400,
+      'charx asset path basename must match fileName',
+      'Use the same final file name in operation.path and operation.fileName.',
+      { path: explicitPath, fileName },
+      ['manage_assets'],
+    );
+  }
   const inferredFolder: 'icon' | 'other' = explicitPath.startsWith('assets/icon/') ? 'icon' : 'other';
   const folder = operation.folder ?? inferredFolder;
   const defaultBase = folder === 'icon' ? 'assets/icon' : 'assets/other/image';
@@ -6382,6 +6415,15 @@ function normalizeCharxAssetAdd(operation: Extract<ManageAssetsOperation, { acti
       'charx icon asset path requires folder="icon"',
       'Use folder="icon" for assets/icon/* paths.',
       { path: assetPath, folder },
+    );
+  }
+  if (explicitPath && folder === 'icon' && !assetPath.startsWith('assets/icon/')) {
+    return facadeApiError(
+      400,
+      'folder="icon" requires an assets/icon/* path',
+      'Use an assets/icon/* path or set folder="other".',
+      { path: assetPath, folder },
+      ['manage_assets'],
     );
   }
   return { fileName, folder, assetPath };
@@ -6406,16 +6448,6 @@ function normalizeRisumAssetAdd(operation: Extract<ManageAssetsOperation, { acti
   }
   const ext = assetExtension(assetPath || name) || 'png';
   return { name, path: assetPath, ext };
-}
-
-function charxCardAsset(assetPath: string, fileName: string, folder: 'icon' | 'other'): Record<string, unknown> {
-  const ext = assetExtension(fileName);
-  return {
-    type: folder === 'icon' ? 'icon' : 'x-risu-asset',
-    uri: `embeded://${assetPath}`,
-    name: ext ? fileName.slice(0, -(ext.length + 1)) : fileName,
-    ext,
-  };
 }
 
 function manageAssetsCompressionOptions(operation: Extract<ManageAssetsOperation, { action: 'compress_assets' }>): {
@@ -7057,14 +7089,25 @@ async function buildManageAssetsPlan(
         ...(context.assets as Record<string, unknown>[]),
         { path: normalized.assetPath, data: assetBufferJsonFromBase64(operation.base64) },
       ];
-      const operations: Array<Record<string, unknown>> = [{ op: 'replace', path: '/assets', value: newAssets }];
-      if (context.cardAssets) {
-        operations.push({
-          op: 'replace',
+      const references = {
+        assets: newAssets,
+        cardAssets: cloneJsonValue(context.cardAssets ?? []),
+        xMeta: cloneJsonValue(context.xMeta ?? {}),
+      };
+      addAssetReferences(references, normalized.assetPath, normalized.folder);
+      const operations: Array<Record<string, unknown>> = [
+        { op: 'replace', path: '/assets', value: newAssets },
+        {
+          op: context.cardAssets ? 'replace' : 'add',
           path: '/cardAssets',
-          value: [...context.cardAssets, charxCardAsset(normalized.assetPath, normalized.fileName, normalized.folder)],
-        });
-      }
+          value: references.cardAssets,
+        },
+        {
+          op: context.xMeta ? 'replace' : 'add',
+          path: '/xMeta',
+          value: references.xMeta,
+        },
+      ];
       return {
         result: {
           dry_run: true,
@@ -7177,14 +7220,25 @@ async function buildManageAssetsPlan(
     }
     if (context.family === 'charx') {
       const newAssets = (context.assets as Record<string, unknown>[]).filter((_, index) => index !== summary.index);
-      const operations: Array<Record<string, unknown>> = [{ op: 'replace', path: '/assets', value: newAssets }];
-      if (context.cardAssets) {
-        operations.push({
-          op: 'replace',
+      const references = {
+        assets: newAssets,
+        cardAssets: cloneJsonValue(context.cardAssets ?? []),
+        xMeta: cloneJsonValue(context.xMeta ?? {}),
+      };
+      deleteAssetReferences(references, summary.path);
+      const operations: Array<Record<string, unknown>> = [
+        { op: 'replace', path: '/assets', value: newAssets },
+        {
+          op: context.cardAssets ? 'replace' : 'add',
           path: '/cardAssets',
-          value: context.cardAssets.filter((entry) => recordString(entry, 'uri') !== `embeded://${summary.path}`),
-        });
-      }
+          value: references.cardAssets,
+        },
+        {
+          op: context.xMeta ? 'replace' : 'add',
+          path: '/xMeta',
+          value: references.xMeta,
+        },
+      ];
       return {
         result: {
           dry_run: true,
@@ -7335,23 +7389,25 @@ async function buildManageAssetsPlan(
     const newAssets = (context.assets as Record<string, unknown>[]).map((entry, index) =>
       index === summary.index ? { ...entry, path: newPath } : entry,
     );
-    const operations: Array<Record<string, unknown>> = [{ op: 'replace', path: '/assets', value: newAssets }];
-    if (context.cardAssets) {
-      operations.push({
-        op: 'replace',
+    const references = {
+      assets: newAssets,
+      cardAssets: cloneJsonValue(context.cardAssets ?? []),
+      xMeta: cloneJsonValue(context.xMeta ?? {}),
+    };
+    renameAssetReferences(references, summary.path, newPath);
+    const operations: Array<Record<string, unknown>> = [
+      { op: 'replace', path: '/assets', value: newAssets },
+      {
+        op: context.cardAssets ? 'replace' : 'add',
         path: '/cardAssets',
-        value: context.cardAssets.map((entry) => {
-          if (recordString(entry, 'uri') !== `embeded://${summary.path}`) return entry;
-          const ext = assetExtension(operation.newName);
-          return {
-            ...entry,
-            uri: `embeded://${newPath}`,
-            name: ext ? operation.newName.slice(0, -(ext.length + 1)) : operation.newName,
-            ext,
-          };
-        }),
-      });
-    }
+        value: references.cardAssets,
+      },
+      {
+        op: context.xMeta ? 'replace' : 'add',
+        path: '/xMeta',
+        value: references.xMeta,
+      },
+    ];
     return {
       result: {
         dry_run: true,
@@ -11086,7 +11142,8 @@ function getToolCatalogHealthSummary(): ToolCatalogHealthSummary {
 interface ConfiguredToolProfile {
   raw: string | undefined;
   source: 'argv' | 'env' | null;
-  resolved: ToolSurfaceProfileName | undefined;
+  resolved: ToolSurfaceProfileName;
+  invalid: boolean;
   strictFiltering: boolean;
 }
 
@@ -11094,30 +11151,25 @@ function getConfiguredToolProfile(args = process.argv.slice(2)): ConfiguredToolP
   const argValue = readArgValue(args, '--tool-profile');
   const envValue = process.env.RISUTOKI_MCP_TOOL_PROFILE;
   const raw = argValue ?? envValue;
-  const resolved = resolveToolSurfaceProfileName(raw);
+  const requestedProfile = resolveToolSurfaceProfileName(raw);
   return {
     raw,
     source: argValue !== undefined ? 'argv' : envValue !== undefined ? 'env' : null,
-    resolved,
-    strictFiltering: raw !== undefined && resolved !== undefined,
+    resolved: requestedProfile ?? DEFAULT_TOOL_SURFACE_PROFILE,
+    invalid: raw !== undefined && requestedProfile === undefined,
+    strictFiltering: true,
   };
 }
 
 const configuredToolProfile = getConfiguredToolProfile();
-const configuredToolProfileNames =
-  configuredToolProfile.strictFiltering && configuredToolProfile.resolved
-    ? new Set(listToolsForSurfaceProfile(configuredToolProfile.resolved))
-    : null;
+const configuredToolProfileNames = new Set(listToolsForSurfaceProfile(configuredToolProfile.resolved));
 
 function shouldRegisterMcpTool(name: string): boolean {
-  if (!configuredToolProfileNames) return true;
   return configuredToolProfileNames.has(name);
 }
 
-function activeToolProfileName(): ToolSurfaceProfileName | null {
-  return configuredToolProfile.strictFiltering && configuredToolProfile.resolved
-    ? configuredToolProfile.resolved
-    : null;
+function activeToolProfileName(): ToolSurfaceProfileName {
+  return configuredToolProfile.resolved;
 }
 
 function registeredToolNames(): string[] {
@@ -11140,7 +11192,7 @@ function toolDiagnosticBase(name: string): Record<string, unknown> {
     family: getToolFamily(name) ?? 'unknown',
     surfaceKind: entry?.surfaceKind ?? 'granular',
     recommendation: entry?.recommendation ?? 'advanced',
-    profile: activeToolProfileName() ?? 'unfiltered-compatible',
+    profile: activeToolProfileName(),
     strictFiltering: configuredToolProfile.strictFiltering,
   };
 }
@@ -11195,11 +11247,13 @@ const _origServerTool = server.tool.bind(server) as typeof server.tool;
 server.tool = ((...args: unknown[]) => {
   const toolName = typeof args[0] === 'string' ? args[0] : undefined;
   if (toolName && !shouldRegisterMcpTool(toolName)) {
-    logProcessDiagnostic('toolSkippedByProfile', {
-      ...toolDiagnosticBase(toolName),
-      requestedProfile: configuredToolProfile.raw,
-      resolvedProfile: configuredToolProfile.resolved,
-    });
+    if (configuredToolProfile.source) {
+      logProcessDiagnostic('toolSkippedByProfile', {
+        ...toolDiagnosticBase(toolName),
+        requestedProfile: configuredToolProfile.raw,
+        resolvedProfile: configuredToolProfile.resolved,
+      });
+    }
     return {
       update: () => undefined,
       remove: () => undefined,
@@ -11336,7 +11390,7 @@ server.tool(
 
 server.tool(
   'list_tool_profiles',
-  'Preferred read-only catalog facade for MCP tool surface profiles. Returns compact profile-specific tools plus current strict filtering status, registered/hidden counts, batch alternatives, and runtimeHealth. tools/list remains unfiltered unless --tool-profile or RISUTOKI_MCP_TOOL_PROFILE is set. Use profile="advanced-full" (aliases "advanced" or "full") as the granular escape hatch.',
+  'Read-only catalog for MCP tool profiles, filtering status, registered/hidden counts, batch alternatives, and runtime health. tools/list defaults to facade-first; restart with --tool-profile=advanced-full for every granular route.',
   {
     profile: z
       .string()
@@ -11474,6 +11528,26 @@ server.tool(
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
   },
   async ({ target, query, field, regex, flags, context_chars, max_matches, max_bytes }) => {
+    const parsed = facadeV1SearchDocumentBodySchema.safeParse({
+      target,
+      query,
+      field,
+      regex,
+      flags,
+      context_chars,
+      max_matches,
+      max_bytes,
+    });
+    if (!parsed.success) {
+      return textResult(
+        facadeApiError(
+          400,
+          'Invalid search_document request',
+          parsed.error.issues.map((issue) => issue.message).join('; '),
+          { issues: parsed.error.issues },
+        ),
+      );
+    }
     let data: unknown;
     let routes: FacadeRoute[];
     const body = { query, regex, flags, context_chars, max_matches };
@@ -11597,16 +11671,7 @@ server.tool(
   'load_guidance',
   'Preferred facade v1 guidance loader. Reads the skill catalog or a skill document through existing list_skills/read_skill routes with bounded facade metadata.',
   {
-    target: z
-      .object({
-        kind: z.literal('guidance'),
-        skill: z.string().min(1).optional(),
-        document: z.string().min(1).optional(),
-      })
-      .refine((d) => d.skill !== undefined || d.document !== undefined, {
-        message: 'guidance target requires skill or document',
-        path: ['skill'],
-      }),
+    target: facadeV1GuidanceTargetSchema,
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
   },
   async ({ target, max_bytes }) => {
@@ -11648,7 +11713,7 @@ server.tool(
     target: facadeV1TargetSchema.describe(
       'Explicit facade target discriminator. Supports active edits plus external field replace/write and surface patch/replace previews.',
     ),
-    operations: z.array(facadeEditOperationSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems),
+    operations: z.array(facadeV1EditOperationSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems),
     dry_run: z.boolean().optional(),
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
   },
@@ -12659,7 +12724,7 @@ server.tool(
 
 server.tool(
   'patch_surface',
-  '현재 문서의 임의 JSON surface에 JSON Patch(add/replace/remove)를 적용합니다. dry_run과 expected_hash를 지원합니다. 사용자 확인 필요.',
+  '현재 문서의 임의 JSON surface에 RFC 6902 JSON Patch(add/replace/remove)를 적용합니다. 배열 add는 인덱스 삽입, -는 append이며 dry_run과 expected_hash를 지원합니다. 사용자 확인 필요.',
   {
     operations: z
       .array(
@@ -12709,7 +12774,7 @@ server.tool(
 
 server.tool(
   'external_patch_surface',
-  '에디터에 열지 않은 .charx/.risum/.risup 파일의 임의 JSON surface에 JSON Patch(add/replace/remove)를 적용합니다. current UI 문서와 같은 파일은 거부됩니다. 사용자 확인 필요.',
+  '에디터에 열지 않은 .charx/.risum/.risup 파일의 임의 JSON surface에 RFC 6902 JSON Patch(add/replace/remove)를 적용합니다. 배열 add는 인덱스 삽입, -는 append입니다. current UI 문서와 같은 파일은 거부됩니다. 사용자 확인 필요.',
   {
     file_path: z.string().describe('대상 .charx/.risum/.risup 파일의 절대 경로'),
     operations: z
@@ -14553,14 +14618,14 @@ server.tool(
 
 server.tool(
   'list_skills',
-  'RisuAI 스킬 문서 목록을 반환합니다. 각 스킬의 name, description, 포함 파일 목록을 확인할 수 있습니다. CBS 문법, Lua 스크립트, 로어북, 정규식, HTML/CSS, 트리거 스크립트, 캐릭터 작성 등의 가이드가 포함되어 있습니다.',
+  '사용 가능한 RisuAI 스킬과 설명, 문서 파일 목록을 반환합니다.',
   {},
   async () => textResult(await apiRequest('GET', '/skills')),
 );
 
 server.tool(
   'read_skill',
-  '특정 스킬의 문서 파일을 읽습니다. 기본적으로 SKILL.md를 읽으며, file 파라미터로 참조 파일(예: REFERENCE.md, API_REFERENCE.md)도 읽을 수 있습니다.',
+  '스킬 문서를 읽습니다. file을 생략하면 SKILL.md를 반환합니다.',
   {
     name: z.string().describe('스킬 이름 (예: writing-lua-scripts, authoring-characters)'),
     file: z.string().optional().describe('읽을 파일명 (기본: SKILL.md). list_skills에서 확인한 파일명 사용.'),
@@ -15308,11 +15373,12 @@ async function main() {
   }
 
   const runtime = getRuntimeMetadata();
-  if (configuredToolProfile.raw !== undefined && configuredToolProfile.resolved === undefined) {
+  if (configuredToolProfile.invalid) {
     logProcessDiagnostic('toolProfileWarning', {
       requestedProfile: configuredToolProfile.raw,
       source: configuredToolProfile.source,
-      message: 'Unknown tool profile; registering the unfiltered compatible tool surface.',
+      resolvedProfile: configuredToolProfile.resolved,
+      message: 'Unknown tool profile; falling back to the facade-first registered surface.',
     });
   }
   logProcessDiagnostic('processStart', {

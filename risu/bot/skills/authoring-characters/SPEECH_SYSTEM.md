@@ -279,7 +279,7 @@ in formal settings, but not when tired or embarrassed.
 
 For 2–4 recurring characters, build a quick contrast matrix before you finalize any one voice.
 
-For the description-budget version of this problem, pair this section with **[BOT_SCALES.md](BOT_SCALES.md)**.
+For the description-budget version of this problem, pair this section with **[CHARACTER_SCALES.md](CHARACTER_SCALES.md)**.
 
 | Character | Sentence rhythm | Humor style | Pressure tell    | Social strategy |
 | --------- | --------------- | ----------- | ---------------- | --------------- |
@@ -358,4 +358,4 @@ For ensemble bots, fewer sharper registers beat many overlapping ones.
 | Major character                | 3 signature tells + 3–4 registers + silence rules + truth budget                                 |
 | Dedicated single-character bot | Full voice suite: signature tells, registers, silence rules, truth budget, narration lens, barks |
 
-If the character is part of a lorebook-heavy or large-cast bot, pair this file with `BOT_SCALES.md` and `authoring-lorebook-bots`.
+If the character is part of a lorebook-heavy or large-cast bot, pair this file with `CHARACTER_SCALES.md` and `authoring-lorebook-bots`.

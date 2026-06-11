@@ -198,6 +198,49 @@ describe('folder-workspace', () => {
     expect(reopened.firstMessage).toBe('Saved first message');
   });
 
+  it('removes only stale RisuToki-managed charx assets and preserves external project files', () => {
+    const temp = makeTempDir();
+    const charxPath = path.join(temp, 'source.charx');
+    const projectPath = path.join(temp, 'project');
+    writeFixtureCharx(charxPath);
+    extractCharxToProject(charxPath, projectPath);
+
+    const markerPath = path.join(projectPath, '.risutoki', 'workspace.json');
+    const marker = JSON.parse(fs.readFileSync(markerPath, 'utf-8')) as Record<string, unknown>;
+    delete marker.charxManagedFiles;
+    fs.writeFileSync(markerPath, `${JSON.stringify(marker, null, 2)}\n`, 'utf-8');
+
+    const externalPath = path.join(projectPath, 'assets', 'manual', 'keep.txt');
+    fs.mkdirSync(path.dirname(externalPath), { recursive: true });
+    fs.writeFileSync(externalPath, 'external');
+
+    const data = loadProjectData(projectPath);
+    data.assets = [];
+    data.cardAssets = [];
+    data.xMeta = {};
+    saveProjectData(projectPath, data);
+
+    expect(fs.existsSync(path.join(projectPath, 'assets', 'icon', 'main.png'))).toBe(false);
+    expect(fs.existsSync(path.join(projectPath, 'x_meta', 'main.json'))).toBe(false);
+    expect(fs.readFileSync(externalPath, 'utf-8')).toBe('external');
+
+    const updatedMarker = JSON.parse(fs.readFileSync(markerPath, 'utf-8')) as { charxManagedFiles?: string[] };
+    expect(updatedMarker.charxManagedFiles).toEqual([]);
+  });
+
+  it('pads sparse greeting indexes with empty strings instead of null values', () => {
+    const temp = makeTempDir();
+    const charxPath = path.join(temp, 'source.charx');
+    const projectPath = path.join(temp, 'project');
+    const outputPath = path.join(temp, 'output.charx');
+    writeFixtureCharx(charxPath);
+    extractCharxToProject(charxPath, projectPath);
+    fs.writeFileSync(path.join(projectPath, 'greeting_4.md'), 'Late greeting', 'utf-8');
+
+    reassembleProjectCharx(projectPath, outputPath);
+    expect(openCharx(outputPath).alternateGreetings).toEqual(['Alt one', 'Alt two', '', '', 'Late greeting']);
+  });
+
   it('extracts, loads, and reassembles risum project folders', () => {
     const temp = makeTempDir();
     const risumPath = path.join(temp, 'source.risum');

@@ -147,7 +147,52 @@ describe('MCP API structured error envelopes — asset routes', () => {
       expect(res.data).toHaveProperty('action', 'rename_asset');
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'asset:0');
-      expect(res.data).toHaveProperty('error', '유효한 newName이 필요합니다.');
+      expect(res.data).toHaveProperty('error', '파일명에 허용되지 않는 문자가 포함되어 있습니다.');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects rename collisions and keeps card/x_meta references synchronized', async () => {
+    const cardAssets: Array<Record<string, unknown>> = [
+      { type: 'icon', uri: 'embeded://assets/icon/original.png', name: 'original', ext: 'png' },
+    ];
+    const xMeta: Record<string, unknown> = {
+      original: { type: 'PNG' },
+      existing: { type: 'PNG' },
+    };
+    const fixture: SearchFixture = {
+      ...createSearchFixture(),
+      assets: [
+        { path: 'assets/icon/original.png', data: Buffer.from('asset-bytes') },
+        { path: 'assets/icon/existing.png', data: Buffer.from('existing') },
+      ],
+      cardAssets,
+      xMeta,
+    };
+    const api = await startTestApiServer(fixture);
+    try {
+      const collision = await postJson<McpErrorEnvelope>(api.port, api.token, '/asset/0/rename', {
+        newName: 'existing.png',
+      });
+      expect(collision.status).toBe(409);
+
+      const renamed = await postJson<Record<string, unknown>>(api.port, api.token, '/asset/0/rename', {
+        newName: 'renamed.webp',
+      });
+      expect(renamed.status).toBe(200);
+      expect(cardAssets[0]).toMatchObject({
+        uri: 'embeded://assets/icon/renamed.webp',
+        name: 'renamed',
+        ext: 'webp',
+      });
+      expect(xMeta).not.toHaveProperty('original');
+      expect(xMeta).toHaveProperty('renamed');
+
+      const deleted = await postJson<Record<string, unknown>>(api.port, api.token, '/asset/0/delete', {});
+      expect(deleted.status).toBe(200);
+      expect(cardAssets).toEqual([]);
+      expect(xMeta).not.toHaveProperty('renamed');
     } finally {
       await closeServer(api.server);
     }

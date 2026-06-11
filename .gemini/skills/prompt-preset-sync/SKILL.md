@@ -1,6 +1,16 @@
 ---
 name: prompt-preset-sync
 description: Synchronize RisuToki prompt and .risup preset variants across canonical Source files and model-specific GPT, Claude, Gemini, DeepSeek, or other versions. Use when updating a Source prompt and mirroring it to variants, comparing prompt families, validating CBS toggle references, regex or prefill blocks, variable names, UI labels, version strings, or intentional model-specific divergence.
+tags: ['prompt', 'preset', 'sync', 'variants']
+related_tools:
+  [
+    'diff_risup_prompt',
+    'list_risup_prompt_items',
+    'read_risup_prompt_item_batch',
+    'validate_risup_prompt_import',
+    'list_cbs_toggles',
+    'search_all_fields',
+  ]
 ---
 
 # Prompt Preset Sync
@@ -27,7 +37,7 @@ Use this skill when the task is not just revising one prompt, but keeping a Risu
 - Use `mythos-prompt-development` when the main question is whether a Mythos instruction is philosophically right, should be default, should be a CBS toggle, or conflicts with the three Mythos principles.
 - Use `writing-risup-presets` when the main task is `.risup` structure, promptTemplate item editing, formatingOrder, import/export, or MCP prompt tools.
 - Use `writing-cbs-syntax` when exact CBS syntax, balance, or toggle expansion rules are unclear.
-- Use `prompt-revision` or `prompt-evaluation` when the prompt family is not RisuToki-specific.
+- Use `prompt-revision` or `prompt-evaluation` for prompt families that are not RisuToki-specific, but only when those skills exist in your environment — they are personal/global skills, not part of this repo. If they are unavailable, handle generic prompt revision inline.
 
 ## Output Contract
 

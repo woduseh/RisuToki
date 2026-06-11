@@ -110,8 +110,8 @@ const PROFILE_METADATA_DISCOVERY = [
 
 const PROFILE_CLIENT_REQUEST = [
   'Call list_tool_profiles with the exact profile name for a compact profile-specific catalog.',
-  'Keep tools/list unfiltered for MCP client compatibility unless the server was explicitly started with a strict tool profile.',
-  'Use advanced-full as the escape hatch, or restart the MCP server with --tool-profile=advanced-full when strict filtering is active.',
+  'tools/list exposes only the active registered profile; changing profiles requires restarting the MCP server.',
+  'Use advanced-full as the escape hatch by restarting with --tool-profile=advanced-full or RISUTOKI_MCP_TOOL_PROFILE=advanced-full.',
 ] as const;
 
 export const TOOL_SURFACE_PROFILE_CONTRACTS: readonly ToolSurfaceProfileContract[] = [
@@ -120,8 +120,8 @@ export const TOOL_SURFACE_PROFILE_CONTRACTS: readonly ToolSurfaceProfileContract
     aliases: [],
     default: true,
     readonly: false,
-    filteringStatus: 'catalog-facade',
-    includedCategories: ['facade preferred tools'],
+    filteringStatus: 'registered-filter',
+    includedCategories: ['facade preferred tools', 'skill bootstrap tools'],
     excludedCategories: ['granular tools from the compact facade-first catalog unless advanced-full is requested'],
     legacyEscapeHatch: 'advanced-full',
     clientRequest: PROFILE_CLIENT_REQUEST,
@@ -134,7 +134,7 @@ export const TOOL_SURFACE_PROFILE_CONTRACTS: readonly ToolSurfaceProfileContract
     aliases: [],
     default: false,
     readonly: false,
-    filteringStatus: 'catalog-facade',
+    filteringStatus: 'registered-filter',
     includedCategories: [
       'facade preferred tools',
       'field/surface/search',
@@ -154,7 +154,7 @@ export const TOOL_SURFACE_PROFILE_CONTRACTS: readonly ToolSurfaceProfileContract
     aliases: ['advanced', 'full'],
     default: false,
     readonly: false,
-    filteringStatus: 'catalog-facade',
+    filteringStatus: 'registered-filter',
     includedCategories: ['all registered tools', 'all granular fallback tools', 'legacy compatibility routes'],
     excludedCategories: [],
     legacyEscapeHatch: false,
@@ -168,7 +168,7 @@ export const TOOL_SURFACE_PROFILE_CONTRACTS: readonly ToolSurfaceProfileContract
     aliases: [],
     default: false,
     readonly: true,
-    filteringStatus: 'catalog-facade',
+    filteringStatus: 'registered-filter',
     includedCategories: ['tools annotated readOnlyHint=true'],
     excludedCategories: [
       'preview_edit',
@@ -1042,6 +1042,9 @@ export function getToolProfilesForTool(name: string): readonly ToolSurfaceProfil
     profiles.add('facade-first');
     profiles.add('authoring');
   }
+  if (name === 'list_skills' || name === 'read_skill') {
+    profiles.add('facade-first');
+  }
   if (AUTHORING_PROFILE_FAMILIES.has(entry.family)) {
     profiles.add('authoring');
   }
@@ -1104,9 +1107,13 @@ export function buildToolSurfaceProfileCatalog(
   if (!resolved) return undefined;
   const contract = getToolSurfaceProfileContract(resolved);
   if (!contract) return undefined;
-  const registeredToolSet = new Set(options.registeredTools ?? ALL_TOOL_NAMES);
-  const strictFiltering = options.strictFiltering === true;
-  const currentProfile = options.currentProfile ?? null;
+  const strictFiltering = options.strictFiltering ?? true;
+  const currentProfile =
+    options.currentProfile === undefined ? (strictFiltering ? resolved : null) : options.currentProfile;
+  const registeredToolSet = new Set(
+    options.registeredTools ??
+      (strictFiltering ? listToolsForSurfaceProfile(currentProfile ?? resolved) : ALL_TOOL_NAMES),
+  );
   const tools = listToolsForSurfaceProfile(resolved).map((name) => {
     const entry = TOOL_TAXONOMY[name];
     return {
@@ -1142,7 +1149,7 @@ export function buildToolSurfaceProfileCatalog(
       `Call list_tool_profiles with profile="${resolved}" to get this compact catalog.`,
       strictFiltering
         ? `This server is currently strict-filtered to ${currentProfile ?? 'an explicit profile'}; restart with --tool-profile=advanced-full for every granular route.`
-        : 'Use the returned tool names for local planning; tools/list remains unfiltered for client compatibility.',
+        : 'Use the returned tool names for local planning; server runtimes register the default facade-first profile unless another profile is selected at startup.',
       contract.legacyEscapeHatch
         ? `Escalate to ${contract.legacyEscapeHatch} when this profile cannot express the workflow.`
         : 'This profile is the full legacy-compatible tool surface.',

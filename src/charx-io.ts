@@ -51,6 +51,9 @@ const { normalizePromptTemplateForStorage, serializePromptTemplate } = require('
   normalizePromptTemplateForStorage: (value: unknown) => { items: unknown[] };
   serializePromptTemplate: (model: { items: unknown[] }) => string;
 };
+const { parseSubmittedRisupJsonFields } = require('./lib/risup-json-fields') as {
+  parseSubmittedRisupJsonFields: (data: Record<string, unknown>) => Record<string, unknown>;
+};
 const { cloneJson } = require('./lib/shared-utils') as {
   cloneJson: <T>(value: T) => T;
 };
@@ -382,17 +385,19 @@ function cloneTriggerScripts(triggerScripts: unknown): TriggerScript[] {
   return Array.isArray(triggerScripts) ? cloneJson(triggerScripts as TriggerScript[]) : [];
 }
 
+function isPrimaryLuaEffect(effect: TriggerEffect | null | undefined): effect is TriggerEffect & { code: string } {
+  return (
+    !!effect && typeof effect.code === 'string' && (effect.type === 'triggerlua' || typeof effect.type !== 'string')
+  );
+}
+
 export function extractPrimaryLuaFromTriggerScripts(triggerScripts: unknown): string {
   if (!Array.isArray(triggerScripts)) return '';
 
   for (const trigger of triggerScripts as TriggerScript[]) {
     const effects: TriggerEffect[] = Array.isArray(trigger?.effect) ? trigger.effect : [];
     for (const effect of effects) {
-      if (
-        effect &&
-        typeof effect.code === 'string' &&
-        (effect.type === 'triggerlua' || typeof effect.type !== 'string')
-      ) {
+      if (isPrimaryLuaEffect(effect)) {
         return effect.code;
       }
     }
@@ -426,20 +431,22 @@ export function normalizeTriggerScripts(triggerScripts: unknown): TriggerScript[
 
 export function mergePrimaryLuaIntoTriggerScripts(triggerScripts: unknown, lua: unknown): TriggerScript[] {
   const scripts = normalizeTriggerScripts(triggerScripts);
-  if (typeof lua !== 'string' || !lua) {
+  if (typeof lua !== 'string') {
     return scripts;
   }
 
   for (const trigger of scripts) {
     const effects: TriggerEffect[] = Array.isArray(trigger?.effect) ? trigger.effect : [];
     for (const effect of effects) {
-      if (effect && (effect.type === 'triggerlua' || typeof effect.code === 'string')) {
+      if (isPrimaryLuaEffect(effect)) {
         effect.type = effect.type || 'triggerlua';
         effect.code = lua;
         return scripts;
       }
     }
   }
+
+  if (!lua) return scripts;
 
   scripts.unshift({
     comment: '',
@@ -964,18 +971,6 @@ function presetJson(preset: Record<string, unknown>, key: string, fallback: unkn
   return JSON.stringify(preset[key] ?? fallback, null, 2);
 }
 
-function applyPresetJsonField(
-  preset: Record<string, unknown>,
-  data: CharxData,
-  field: keyof CharxData,
-  key = field,
-): void {
-  const value = data[field];
-  if (value === undefined) return;
-  if (typeof value !== 'string') return;
-  preset[key as string] = JSON.parse(value);
-}
-
 /** Extract preset fields from a botPreset object into CharxData. */
 function extractPresetFields(preset: Record<string, unknown>): Partial<CharxData> {
   return {
@@ -1085,6 +1080,7 @@ function extractPresetFields(preset: Record<string, unknown>): Partial<CharxData
 
 /** Write edited preset fields back into a botPreset object. */
 function applyPresetFields(preset: Record<string, unknown>, data: CharxData): void {
+  const parsedJsonFields = parseSubmittedRisupJsonFields(data as unknown as Record<string, unknown>);
   preset.name = data.name;
 
   // Basic prompt fields
@@ -1119,27 +1115,9 @@ function applyPresetFields(preset: Record<string, unknown>, data: CharxData): vo
   if (data.promptPreprocess !== undefined) preset.promptPreprocess = data.promptPreprocess;
 
   // Templates & formatting (JSON-encoded fields)
-  if (data.promptTemplate !== undefined) {
-    try {
-      preset.promptTemplate = JSON.parse(data.promptTemplate);
-    } catch {
-      /* keep original */
-    }
-  }
-  if (data.presetBias !== undefined) {
-    try {
-      preset.bias = JSON.parse(data.presetBias);
-    } catch {
-      /* keep original */
-    }
-  }
-  if (data.formatingOrder !== undefined) {
-    try {
-      preset.formatingOrder = JSON.parse(data.formatingOrder);
-    } catch {
-      /* keep original */
-    }
-  }
+  if (data.promptTemplate !== undefined) preset.promptTemplate = parsedJsonFields.promptTemplate;
+  if (data.presetBias !== undefined) preset.bias = parsedJsonFields.presetBias;
+  if (data.formatingOrder !== undefined) preset.formatingOrder = parsedJsonFields.formatingOrder;
 
   // Templates & formatting (scalar fields)
   if (data.useInstructPrompt !== undefined) preset.useInstructPrompt = data.useInstructPrompt;
@@ -1166,13 +1144,7 @@ function applyPresetFields(preset: Record<string, unknown>, data: CharxData): vo
   if (data.autoSuggestClean !== undefined) preset.autoSuggestClean = data.autoSuggestClean;
 
   // Stop strings (JSON-encoded)
-  if (data.localStopStrings !== undefined) {
-    try {
-      preset.localStopStrings = JSON.parse(data.localStopStrings);
-    } catch {
-      /* keep original */
-    }
-  }
+  if (data.localStopStrings !== undefined) preset.localStopStrings = parsedJsonFields.localStopStrings;
 
   // Misc
   if (data.outputImageModal !== undefined) preset.outputImageModal = data.outputImageModal;
@@ -1180,23 +1152,23 @@ function applyPresetFields(preset: Record<string, unknown>, data: CharxData): vo
   if (data.fallbackWhenBlankResponse !== undefined) preset.fallbackWhenBlankResponse = data.fallbackWhenBlankResponse;
   if (data.systemContentReplacement !== undefined) preset.systemContentReplacement = data.systemContentReplacement;
   if (data.systemRoleReplacement !== undefined) preset.systemRoleReplacement = data.systemRoleReplacement;
-  applyPresetJsonField(preset, data, 'promptSettings');
-  applyPresetJsonField(preset, data, 'customAPIFormat');
-  applyPresetJsonField(preset, data, 'openrouterProvider');
+  if (data.promptSettings !== undefined) preset.promptSettings = parsedJsonFields.promptSettings;
+  if (data.customAPIFormat !== undefined) preset.customAPIFormat = parsedJsonFields.customAPIFormat;
+  if (data.openrouterProvider !== undefined) preset.openrouterProvider = parsedJsonFields.openrouterProvider;
   if (data.seperateParametersEnabled !== undefined) preset.seperateParametersEnabled = data.seperateParametersEnabled;
-  applyPresetJsonField(preset, data, 'seperateParameters');
-  applyPresetJsonField(preset, data, 'fallbackModels');
-  applyPresetJsonField(preset, data, 'seperateModels');
-  applyPresetJsonField(preset, data, 'modelTools');
-  applyPresetJsonField(preset, data, 'customFlags');
+  if (data.seperateParameters !== undefined) preset.seperateParameters = parsedJsonFields.seperateParameters;
+  if (data.fallbackModels !== undefined) preset.fallbackModels = parsedJsonFields.fallbackModels;
+  if (data.seperateModels !== undefined) preset.seperateModels = parsedJsonFields.seperateModels;
+  if (data.modelTools !== undefined) preset.modelTools = parsedJsonFields.modelTools;
+  if (data.customFlags !== undefined) preset.customFlags = parsedJsonFields.customFlags;
   if (data.enableCustomFlags !== undefined) preset.enableCustomFlags = data.enableCustomFlags;
-  applyPresetJsonField(preset, data, 'dynamicOutput');
+  if (data.dynamicOutput !== undefined) preset.dynamicOutput = parsedJsonFields.dynamicOutput;
   if (data.deepseekThinkingType !== undefined) preset.deepseekThinkingType = data.deepseekThinkingType;
   if (data.deepseekReasoningEffort !== undefined) preset.deepseekReasoningEffort = data.deepseekReasoningEffort;
   if (data.proxyRequestModel !== undefined) preset.proxyRequestModel = data.proxyRequestModel;
   if (data.openrouterRequestModel !== undefined) preset.openrouterRequestModel = data.openrouterRequestModel;
   if (data.customProxyRequestModel !== undefined) preset.customProxyRequestModel = data.customProxyRequestModel;
-  applyPresetJsonField(preset, data, 'reverseProxyOobaArgs');
+  if (data.reverseProxyOobaArgs !== undefined) preset.reverseProxyOobaArgs = parsedJsonFields.reverseProxyOobaArgs;
   if (data.koboldURL !== undefined) preset.koboldURL = data.koboldURL;
   if (data.forceReplaceUrl !== undefined) preset.forceReplaceUrl = data.forceReplaceUrl;
   if (data.textgenWebUIStreamURL !== undefined) preset.textgenWebUIStreamURL = data.textgenWebUIStreamURL;

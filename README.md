@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -143,6 +143,7 @@ Double-click the RisuToki executable (`.exe`) to launch.
 
 - **Project folders**: File → **프로젝트 폴더로 추출** expands `.charx`, `.risum`, or `.risup` files into folder workspaces. `.charx` keeps the RisuMari-compatible `card.json` shape; `.risum` uses `module.json`; `.risup` uses `preset.json` with sensitive key fields removed.
 - In a project folder, **Save** writes the structured editor state back to the folder files. File → **파일로 내보내기** and **Save As** create the matching `.charx`, `.risum`, or `.risup` output when you want to import the result into RisuAI.
+- `.charx` project folders track only the generated `assets/**` and `x_meta/**` files they manage. Removing or renaming an asset removes the stale generated file on save, while unrelated files added by external tools are preserved.
 - Raw project files remain available under the collapsed **프로젝트 원본 파일** advanced sidebar area. Direct raw edits are debounced and synchronized back into the structured editor state.
 - `.charx` and `.risum` files show independent **로어북 관리자** and **에셋 관리자** panels. `.risup` files instead show a movable **프롬프트 관리자** panel for promptTemplate search, type/role/special filters, badges, item selection, add, duplicate, delete, reorder, and multi-delete.
 - MCP agents can also use the `manage_file` facade for preview-first project-folder extract/reassemble workflows when a field or whole document is too large to handle comfortably through MCP responses.
@@ -200,7 +201,7 @@ Which items appear depends on the file type:
 - Legacy fields (`mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`) are hidden from the primary prompt UI and removed on save; use structured `promptTemplate` / `formatingOrder` for persisted prompt content.
 - `.charx` saving follows RisuToki's stricter practical protection boundary: `personality`, `scenario`, `systemPrompt`, `nickname`, `source`, `groupOnlyGreetings`, `additionalText`, `license`, and unsafe `virtualscript` are hidden from normal editing and removed on save.
 - RisuToki can open `.risup` exports in gzip, zlib, and raw-deflate variants, and it preserves the detected compression mode on save.
-- If JSON-based preset fields (`presetBias`, `localStopStrings`) or structured prompt fields (`promptTemplate`, `formatingOrder`) contain malformed data, saving is blocked and the status bar shows the offending field.
+- If any JSON-backed preset field contains malformed data, saving is blocked and the status bar shows the offending field. Structured fields (`promptTemplate`, `formatingOrder`, `presetBias`, `localStopStrings`) also enforce their expected array/item shapes.
 - MCP `write_field` / `write_field_batch` and autosave share the same risup validation boundary, so malformed JSON/shape is rejected immediately — it never silently persists in memory or in autosave files.
 - `.charx` **Character Info** includes `description`, `globalNote`, `defaultVariables`, `creatorcomment`, and `characterVersion`.
 - `triggerScripts` opens in a **structured trigger form editor** (not raw JSON). If unsupported trigger/effect/condition types are present, saving is blocked.
@@ -317,6 +318,14 @@ command = "node"
 args = ["C:/path/to/RisuToki/toki-mcp-server.js", "--standalone", "--allow-writes"]
 ```
 
+The default server registers the compact `facade-first` profile. Existing clients that call granular tools directly must opt into the complete surface and restart the MCP process:
+
+```toml
+[mcp_servers.risutoki]
+command = "node"
+args = ["C:/path/to/RisuToki/toki-mcp-server.js", "--standalone", "--allow-writes", "--tool-profile", "advanced-full"]
+```
+
 Useful options:
 
 | Option            | Description                                                                 |
@@ -325,14 +334,17 @@ Useful options:
 | `--ref <path>`    | Load a read-only reference file; repeat for multiple references             |
 | `--allow-writes`  | Permit write tools in headless mode; omitted means mutation requests reject |
 | `--user-data-dir` | Override the standalone sidecar state directory                             |
+| `--tool-profile`  | Register `facade-first`, `authoring`, `readonly`, or `advanced-full` tools  |
 
 Use `session_status` to verify the active standalone `allowWrites` and `userDataPath` values. Standalone process, stdio lifecycle, mutating tool, sanitized API request/response, and MCP logging diagnostics are written to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` without field content bodies.
 
 Environment variable equivalents are `RISUTOKI_MCP_FILE`, `RISUTOKI_MCP_REFS` (path-delimited), `RISUTOKI_MCP_ALLOW_WRITES`, `RISUTOKI_MCP_USER_DATA_DIR`, and `RISUTOKI_MCP_TOOL_PROFILE`.
 
+> **1.6.0 migration note:** the unconfigured `tools/list` default changes from the complete granular catalog to 13 bootstrap-capable tools: 11 Facade v1 tools plus `list_skills` and `read_skill`. No granular tool or file format is removed, but clients that call granular tools directly must select `advanced-full` and restart the server. Auto-generated JSON/TOML configuration refreshes preserve an existing valid profile selection.
+
 ### Unified Skill Catalog
 
-This repository now ships skills from multiple tracked roots:
+This repository ships skills from multiple tracked roots:
 
 | Root                   | Purpose                                                               |
 | ---------------------- | --------------------------------------------------------------------- |
@@ -367,7 +379,7 @@ If a Windows git checkout turns those discovery paths into plain text placeholde
 
 ### MCP Tool Catalogue
 
-When an AI CLI starts, the MCP server connects automatically so the AI can read and write the active document directly. It can also inspect unopened `.charx` / `.risum` / `.risup` files by absolute path and switch to them through guarded `manage_file` preview/apply open workflows. By default `tools/list` remains fully compatible; agents can call `list_tool_profiles`, or advanced users can start MCP with `--tool-profile=<facade-first|authoring|readonly|advanced-full>` to register only a strict profile.
+When an AI CLI starts, the MCP server connects automatically so the AI can read and write the active document directly. It can also inspect unopened `.charx` / `.risum` / `.risup` files by absolute path and switch to them through guarded `manage_file` preview/apply open workflows. By default `tools/list` contains 13 `facade-first` bootstrap tools. This keeps eager-loading clients from paying for the complete catalog on every session and gives deferred-loading clients a compact discovery surface. Start MCP with `--tool-profile=advanced-full` or `RISUTOKI_MCP_TOOL_PROFILE=advanced-full` and restart the process when the complete granular catalog is required. The table below describes the full `advanced-full` surface.
 
 | Category             | Tools                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -393,7 +405,7 @@ When an AI CLI starts, the MCP server connects automatically so the AI can read 
 - Changes made by the AI CLI are reflected in the editor in real time.
 - Facade-first tools (`inspect_document`, `read_content`, `search_document`, `preview_edit`, `apply_edit`, `validate_content`, `manage_items`, `manage_assets`, `manage_file`) cover bounded read/search plus preview-token-first active/external field edits, active/external surface patches/replacements, active/external lorebook text/id edits, regex/greeting identity or index edits, trigger writes/deletes, Lua/CSS section writes/replacements/inserts, `.risup` prompt-item id/index edits, active/external `.risup` prompt add/reorder/import/copy/snippet workflows, active/external lorebook, regex, alternate greeting, trigger, Lua, or CSS add/reorder, active/external `.charx` export compatibility validation, covered `.charx`/`.risum` asset management including rename and `.charx` compression, and guarded file/session/project-folder management. LLM workflows should prefer `{ family: "risup-prompt", id }`, `{ family: "lorebook", id }`, regex/greeting `identity` selectors, trigger/Lua/CSS section selectors, `manage_items`, `manage_assets`, and `manage_file` before falling back to index-based or granular tools.
 - For unopened files, the recommended flow is facade `inspect_document` / `read_content` first, then `preview_edit` / `apply_edit` for covered field, surface, lorebook, regex, alternate greeting, trigger, Lua/CSS section, or `.risup` prompt-item mutations; use `manage_assets` for covered external `.charx`/`.risum` asset management including rename and `.charx` compression and `manage_file` for guarded open/extract/reassemble workflows; use `probe_*` / `external_*` for exact legacy shapes or unsupported direct path edits, and granular `open_file` only when exact legacy active-document switching is needed.
-- Route-local `4xx/409` errors across regex, greetings, Lua/CSS sections, fields, lorebook, references, assets, risup reorder/formating-order, skill-file reads, and unopened-file probe/open validation carry structured fields (`action`, `target`, `status`, `suggestion`, `retryable`, `next_actions`) so the AI CLI can diagnose and recover automatically. Global `Unauthorized` / `No file open` guards and HTTP-200 `success: false` no-op paths provide the same recovery metadata. Success responses include `artifacts.byte_size` as a context-budget hint, and high-traffic tools can now narrow `next_actions` below the family default so agents are steered toward smaller follow-up reads or safer specialized tools. `session_status` also exposes a compact `surfaceSummary` (lorebook/regex/greetings/triggers/Lua/CSS/risup prompt counts) so agents can skip empty-surface discovery loops. The full contract is documented in `docs/MCP_ERROR_CONTRACT.md`.
+- Route-local `4xx/409` errors across regex, greetings, Lua/CSS sections, fields, lorebook, references, assets, risup reorder/formating-order, skill-file reads, and unopened-file probe/open validation carry structured fields (`action`, `target`, `status`, `suggestion`, `retryable`, `next_actions`) so the AI CLI can diagnose and recover automatically. Global `Unauthorized` / `No file open` guards and HTTP-200 `success: false` no-op paths provide the same recovery metadata. Success responses include `artifacts.byte_size` as a context-budget hint, and high-traffic tools may narrow `next_actions` below the family default so agents are steered toward smaller follow-up reads or safer specialized tools. `session_status` also exposes a compact `surfaceSummary` (lorebook/regex/greetings/triggers/Lua/CSS/risup prompt counts) so agents can skip empty-surface discovery loops. The full contract is documented in `docs/MCP_ERROR_CONTRACT.md`.
 - Lorebook folders are tracked by the canonical `key` of the folder entry (`folder:UUID`). Child entries normalize their `folder` value to the same `folder:UUID` form. Legacy bare-UUID / `id`-based folder data is auto-upgraded on read.
 
 <img width="1593" height="380" alt="MCP integration" src="https://github.com/user-attachments/assets/bb2cf1b0-d8f9-4eb7-afe4-37491ca9cfc6" />
@@ -472,15 +484,15 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 
 Open from the menu bar **Settings** or with `Ctrl+,`.
 
-| Setting             | Description                                        |
-| ------------------- | -------------------------------------------------- |
-| **Autosave ON/OFF** | Save at a regular interval                         |
-| **Save Interval**   | 1 min / 5 min / 10 min / 20 min / 30 min           |
-| **Autosave Path**   | Default (next to the file) or a custom folder      |
-| **Dark Mode**       | Light (Toki) ↔ Dark (Aris)                         |
-| **BGM**             | Background music on/off                            |
-| **RP Mode**         | Toki / Aris / Custom                               |
-| **Persona Editor**  | Edit the static RP persona text (Toki/Aris/Custom) |
+| Setting             | Description                                                                                    |
+| ------------------- | ---------------------------------------------------------------------------------------------- |
+| **Autosave ON/OFF** | Save at a regular interval                                                                     |
+| **Save Interval**   | 1 min / 5 min / 10 min / 20 min / 30 min                                                       |
+| **Autosave Path**   | Default (next to the file) or a custom folder                                                  |
+| **Dark Mode**       | Light (Toki) ↔ Dark (Aris)                                                                     |
+| **BGM**             | Background music on/off                                                                        |
+| **RP Mode**         | Toki / Aris / Custom                                                                           |
+| **Persona Editor**  | Edit RP persona text; customizations persist in the user profile and override bundled defaults |
 
 > Set up your persona **before** starting an AI CLI session when using RP mode.
 
@@ -557,7 +569,7 @@ Encrypted AI preset file containing model settings, generation parameters, promp
 - Opens all compression variants exported by RisuAI: gzip, zlib, and raw-deflate.
 - The visible **Prompts** group uses a **template-first prompt surface** built around `promptTemplate`, `formatingOrder`, `customPromptTemplateToggle`, and template variables.
 - `promptTemplate` opens in a per-item structured editor supporting `plain` / `jailbreak` / `cot` / `chatML` / `persona` / `description` / `lorebook` / `postEverything` / `memory` / `authornote` / `chat` / `cache` types, plus toolbar search/filter, grouped type-aware add menus, per-item insert-below controls, drag-and-drop reorder, quick duplicate, and collapse/expand controls for longer lists.
-- `formatingOrder` opens in an order-only list editor that preserves legacy/custom tokens as-is (if they are strings) and now supports drag-and-drop reorder alongside the existing button controls.
+- `formatingOrder` opens in an order-only list editor that preserves legacy/custom string tokens and supports drag-and-drop reorder alongside button controls.
 - `customPromptTemplateToggle` opens in a visual/raw editor that preserves the stored newline-delimited toggle syntax while exposing row-level controls for toggle/select/text/textarea/group/divider/caption items and drag-and-drop reorder in visual mode.
 - Legacy fields (`mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`) remain as compatibility data but are demoted from the primary prompt flow.
 - Via MCP, the preferred `manage_items` facade handles active/external prompt-item add, batch add, stable-id or index reorder, selected-item text copy, text import append/replace, **persistent prompt snippet library** list/read/save/insert/delete, and lorebook/regex/alternate greeting/trigger/Lua/CSS add/reorder through preview-first workflows. Granular prompt-item CRUD/reorder, batch read/write/add, prompt-item search, whole-template text export/import, snippet tools, prompt-vs-reference compare via `diff_risup_prompt`, formatting-order tools, and unsupported structured add/reorder shapes remain available as advanced fallbacks. Prompt-item responses include an additive `id`, prompt mutation/import responses include additive `orderWarnings`, structured add/reorder previews include collection/hash guards, `read_risup_formating_order` / `write_risup_formating_order` return advisory `warnings` arrays, and `diff_risup_prompt` reports serializer-based `promptTemplate` line deltas plus `formatingOrder` token/warning differences against a loaded reference preset. The text serializer preserves supported-item IDs, supported-item extra JSON fields, and unsupported/raw prompt items, while append-mode imports reassign fresh IDs so copied blocks and stored snippets can be reused safely across sessions.

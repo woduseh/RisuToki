@@ -88,6 +88,18 @@ describe('parseLuaSections', () => {
     expect(result[0].name).toBe('header');
     expect(result[0].content).toBe('local h = true');
   });
+
+  it('preserves leading, middle, and trailing empty named sections', () => {
+    const sections = [
+      { name: 'leading', content: '' },
+      { name: 'body', content: 'print("body")' },
+      { name: 'middle', content: '' },
+      { name: 'tail-body', content: 'print("tail")' },
+      { name: 'trailing', content: '' },
+    ];
+
+    expect(parseLuaSections(combineLuaSections(sections))).toEqual(sections);
+  });
 });
 
 // ── combineLuaSections ──────────────────────────────────────────────────────
@@ -273,6 +285,23 @@ describe('parseCssSections', () => {
     expect(result.sections).toHaveLength(1);
     expect(result.sections[0].name).toBe('main');
     expect(result.sections[0].content).toContain('.b { color: blue; }');
+  });
+
+  it('preserves leading, middle, and trailing empty named sections', () => {
+    const sections = [
+      { name: 'leading', content: '' },
+      { name: 'body', content: '.body { color: red; }' },
+      { name: 'middle', content: '' },
+      { name: 'tail-body', content: '.tail { color: blue; }' },
+      { name: 'trailing', content: '' },
+    ];
+    const combined = combineCssSections(sections, '<style>\n', '\n</style>');
+
+    expect(parseCssSections(combined)).toEqual({
+      sections,
+      prefix: '<style>\n',
+      suffix: '\n</style>',
+    });
   });
 });
 

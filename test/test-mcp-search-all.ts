@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -479,13 +480,14 @@ async function startTestApiServer(currentData: SearchFixture, options: { runtime
   return { ...api, port, mcpStatuses };
 }
 
-function buildChildEnv(port: number, token: string): Record<string, string> {
+function buildChildEnv(port: number, token: string, toolProfile = 'advanced-full'): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (typeof value === 'string') env[key] = value;
   }
   env.TOKI_PORT = String(port);
   env.TOKI_TOKEN = token;
+  env.RISUTOKI_MCP_TOOL_PROFILE = toolProfile;
   return env;
 }
 
@@ -601,6 +603,7 @@ async function startStandaloneClient(options: {
   userDataDir: string;
   allowWrites?: boolean;
   toolProfile?: string;
+  envToolProfile?: string;
 }): Promise<StandaloneClientRuntime> {
   const args = [
     path.join(__dirname, '..', 'toki-mcp-server.js'),
@@ -613,11 +616,18 @@ async function startStandaloneClient(options: {
   if (options.file) args.push('--file', options.file);
   for (const ref of options.refs ?? []) args.push('--ref', ref);
 
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === 'string') env[key] = value;
+  }
+  delete env.RISUTOKI_MCP_TOOL_PROFILE;
+  if (options.envToolProfile) env.RISUTOKI_MCP_TOOL_PROFILE = options.envToolProfile;
   const client = new Client({ name: 'mcp-facade-dogfood-test', version: '1.0.0' }, { capabilities: {} });
   const transport = new StdioClientTransport({
     command: process.execPath,
     args,
     cwd: path.join(__dirname, '..'),
+    env,
     stderr: 'pipe',
   });
   const stderrChunks: string[] = [];
@@ -1250,6 +1260,22 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
       ),
     );
 
+    await callJson(
+      runtime,
+      'manage_assets',
+      {
+        target: externalCharxTarget,
+        asset_family: 'charx',
+        mode: 'preview',
+        operation: {
+          action: 'add_asset',
+          path: '../outside.png',
+          base64: Buffer.from('invalid-path').toString('base64'),
+        },
+      },
+      { expectError: true },
+    );
+
     const externalCharxAssetPreview = await callJson(runtime, 'manage_assets', {
       target: externalCharxTarget,
       asset_family: 'charx',
@@ -1262,8 +1288,10 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
     });
     assert.ok(routedTools(externalCharxAssetPreview).includes('external_patch_surface'));
     await applyManageAssetsPreview(runtime, externalCharxTarget, externalCharxAssetPreview, 'charx');
-    assert.equal(openCharx(fixture.externalCharx).assets?.length, 1);
-    assert.equal(openCharx(fixture.externalCharx).cardAssets?.length, 1);
+    const externalCharxWithAsset = openCharx(fixture.externalCharx);
+    assert.equal(externalCharxWithAsset.assets?.length, 1);
+    assert.equal(externalCharxWithAsset.cardAssets?.length, 1);
+    assert.ok(externalCharxWithAsset.xMeta?.['external-managed-asset']);
 
     const externalCompressionAddPreview = await callJson(runtime, 'manage_assets', {
       target: externalCharxTarget,
@@ -1761,7 +1789,6 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
   };
 
   let runtime: StandaloneClientRuntime | null = null;
-  let strictRuntime: StandaloneClientRuntime | null = null;
   let recoveryRuntime: StandaloneClientRuntime | null = null;
   try {
     runtime = await startStandaloneClient({
@@ -1773,29 +1800,10 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
 
     const tools = await runtime.client.listTools();
     metrics.toolListByteCost = Buffer.byteLength(JSON.stringify(tools.tools), 'utf-8');
-    metrics.facadeToolListByteCost = Buffer.byteLength(
-      JSON.stringify(
-        tools.tools.filter((tool) =>
-          [
-            'inspect_document',
-            'list_tool_profiles',
-            'read_content',
-            'search_document',
-            'preview_edit',
-            'apply_edit',
-            'validate_content',
-            'load_guidance',
-            'manage_items',
-            'manage_assets',
-            'manage_file',
-          ].includes(tool.name),
-        ),
-      ),
-      'utf-8',
-    );
-    assert.ok(metrics.toolListByteCost > metrics.facadeToolListByteCost);
+    metrics.facadeToolListByteCost = metrics.toolListByteCost;
+    assert.ok(metrics.toolListByteCost <= 40 * 1024, 'default tools/list should stay within a 40 KiB budget');
 
-    for (const name of [
+    const expectedFacadeTools = [
       'inspect_document',
       'list_tool_profiles',
       'search_document',
@@ -1807,7 +1815,14 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'manage_items',
       'manage_assets',
       'manage_file',
-    ]) {
+    ];
+    const expectedBootstrapTools = [...expectedFacadeTools, 'list_skills', 'read_skill'];
+    assert.deepEqual(
+      tools.tools.map((tool) => tool.name).sort(),
+      expectedBootstrapTools.sort(),
+      'default tools/list should expose the facade-first tools plus skill bootstrap tools',
+    );
+    for (const name of expectedFacadeTools) {
       const tool = tools.tools.find((candidate) => candidate.name === name);
       assert.equal(tool?._meta?.['risutoki/surfaceKind'], 'facade');
       assert.equal(tool?._meta?.['risutoki/recommendation'], 'preferred');
@@ -1819,13 +1834,14 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assertToolProfileRuntimeHealth(profileCatalog);
     const profile = nestedRecord(profileCatalog.profile, 'profile catalog');
     assert.equal(profile.resolvedProfile, 'facade-first');
-    assert.equal(profile.strictFiltering, false);
-    assert.equal(profile.toolsListBehavior, 'unfiltered-compatible');
+    assert.equal(profile.strictFiltering, true);
+    assert.equal(profile.toolsListBehavior, 'profile-filtered');
+    assert.equal(profile.currentProfile, 'facade-first');
     const profileCounts = nestedRecord(profile.counts, 'profile catalog.counts');
     assert.equal(profileCounts.registeredTools, tools.tools.length);
-    assert.equal(profileCounts.hiddenFromToolsList, 0);
+    assert.ok(Number(profileCounts.hiddenFromToolsList) > 0);
     const profileTools = nestedArray(profile.tools, 'profile catalog.tools');
-    assert.ok(profileTools.length < tools.tools.length, 'facade-first profile catalog should be compact');
+    assert.equal(profileTools.length, tools.tools.length);
     assert.ok(
       profileTools.some((tool) => {
         const record = nestedRecord(tool, 'profile tool');
@@ -1880,30 +1896,12 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     const fullProfileCatalog = await callJson(runtime, 'list_tool_profiles', { profile: 'full' });
     const fullProfile = nestedRecord(fullProfileCatalog.profile, 'full profile catalog');
     assert.equal(fullProfile.resolvedProfile, 'advanced-full');
-    assert.equal(nestedArray(fullProfile.tools, 'full profile tools').length, tools.tools.length);
-
-    strictRuntime = await startStandaloneClient({
-      file: fixture.mainFile,
-      refs: [fixture.referenceRisum, fixture.referenceRisup, fixture.referenceCharx],
-      userDataDir: path.join(fixture.dir, 'strict-profile-user-data'),
-      toolProfile: 'facade-first',
-    });
-    const strictTools = await strictRuntime.client.listTools();
-    const strictToolNames = strictTools.tools.map((tool) => tool.name).sort();
-    assert.deepEqual(
-      strictToolNames,
-      profileTools.map((tool) => String(nestedRecord(tool, 'profile tool').name)).sort(),
-      'strict facade-first tool profile should register only facade-first tools',
+    const fullProfileTools = nestedArray(fullProfile.tools, 'full profile tools');
+    assert.ok(fullProfileTools.length > tools.tools.length);
+    assert.ok(
+      fullProfileTools.some((tool) => nestedRecord(tool, 'full profile tool').registered === false),
+      'advanced-full catalog should mark granular tools hidden by the active facade-first registration',
     );
-    assert.ok(!strictToolNames.includes('read_field'), 'strict facade-first profile should hide granular read_field');
-    const strictCatalog = await callJson(strictRuntime, 'list_tool_profiles', { profile: 'facade-first' });
-    const strictProfile = nestedRecord(strictCatalog.profile, 'strict profile catalog');
-    assert.equal(strictProfile.toolsListBehavior, 'profile-filtered');
-    assert.equal(strictProfile.strictFiltering, true);
-    assert.equal(strictProfile.currentProfile, 'facade-first');
-    const strictCounts = nestedRecord(strictProfile.counts, 'strict profile counts');
-    assert.equal(strictCounts.registeredTools, strictToolNames.length);
-    assert.equal(strictCounts.hiddenFromToolsList, tools.tools.length - strictToolNames.length);
 
     const inspect = await callJson(runtime, 'inspect_document', { target: activeTarget, max_bytes: 32000 });
     metrics.activeWorkflowCallCount += 1;
@@ -2806,7 +2804,10 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
         {
           op: 'patch_surface',
           selector: { family: 'surface', path: '/' },
-          content: [{ op: 'replace', path: '/name', value: 'External Surface Patched' }],
+          content: [
+            { op: 'replace', path: '/name', value: 'External Surface Patched' },
+            { op: 'add', path: '/alternateGreetings/0', value: 'Facade inserted greeting' },
+          ],
         },
       ],
     });
@@ -2829,7 +2830,9 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       guard_values: externalSurfaceGuards,
     });
     assert.deepEqual(routedTools(externalSurfaceApply), ['external_patch_surface']);
-    assert.equal(openCharx(fixture.externalFile).name, 'External Surface Patched');
+    const externalSurfacePatched = openCharx(fixture.externalFile);
+    assert.equal(externalSurfacePatched.name, 'External Surface Patched');
+    assert.equal(externalSurfacePatched.alternateGreetings[0], 'Facade inserted greeting');
 
     const externalLorebookList = await callJson(runtime, 'read_content', {
       target: externalTarget,
@@ -3130,6 +3133,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       refs: [fixture.referenceRisum],
       userDataDir: path.join(fixture.dir, 'recovery-user-data'),
       allowWrites: true,
+      toolProfile: 'advanced-full',
     });
     const sessionInspect = await callJson(recoveryRuntime, 'inspect_document', { target: { kind: 'session' } });
     assert.deepEqual(routedTools(sessionInspect), ['session_status']);
@@ -3298,7 +3302,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assert.equal(metrics.staleGuardReuse, true);
     assert.equal(metrics.finalArtifactEquality, true);
   } catch (error) {
-    const stderrText = [runtime, strictRuntime, recoveryRuntime]
+    const stderrText = [runtime, recoveryRuntime]
       .flatMap((candidate) => candidate?.stderrChunks ?? [])
       .join('')
       .trim();
@@ -3307,9 +3311,128 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     throw new Error(stderrText ? `${detail}\n\nStandalone MCP stderr:\n${stderrText}` : detail);
   } finally {
     if (recoveryRuntime) await recoveryRuntime.close();
-    if (strictRuntime) await strictRuntime.close();
     if (runtime) await runtime.close();
     fs.rmSync(fixture.dir, { recursive: true, force: true });
+  }
+}
+
+async function runStandaloneToolProfileContract(): Promise<void> {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-profile-contract-'));
+  const expectedFacadeTools = [
+    'apply_edit',
+    'inspect_document',
+    'list_tool_profiles',
+    'load_guidance',
+    'manage_assets',
+    'manage_file',
+    'manage_items',
+    'preview_edit',
+    'read_content',
+    'search_document',
+    'validate_content',
+  ].sort();
+  const expectedDefaultTools = [...expectedFacadeTools, 'list_skills', 'read_skill'].sort();
+
+  const inspectProfile = async (profile: string | undefined, label: string, envToolProfile?: string) => {
+    const userDataDir = path.join(rootDir, label);
+    fs.mkdirSync(userDataDir, { recursive: true });
+    const runtime = await startStandaloneClient({
+      userDataDir,
+      ...(profile ? { toolProfile: profile } : {}),
+      ...(envToolProfile ? { envToolProfile } : {}),
+    });
+    try {
+      const tools = await runtime.client.listTools();
+      return {
+        names: tools.tools.map((tool) => tool.name).sort(),
+        bytes: Buffer.byteLength(JSON.stringify(tools.tools), 'utf-8'),
+        runtime,
+        userDataDir,
+      };
+    } catch (error) {
+      await runtime.close();
+      throw error;
+    }
+  };
+
+  let defaultProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
+  let advancedProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
+  let authoringProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
+  let readonlyProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
+  let invalidProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
+  let argvPrecedenceProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
+  try {
+    defaultProfile = await inspectProfile(undefined, 'default');
+    assert.deepEqual(defaultProfile.names, expectedDefaultTools);
+    assert.ok(defaultProfile.bytes <= 40 * 1024, 'default tools/list should stay within a 40 KiB budget');
+    const skills = await callJson(defaultProfile.runtime, 'list_skills', {});
+    assert.ok(Number(skills.count) > 0);
+    const skill = await callJson(defaultProfile.runtime, 'read_skill', { name: 'project-workflow' });
+    assert.match(String(skill.content), /Project Workflow/);
+    const guidanceCatalog = await callJson(defaultProfile.runtime, 'load_guidance', {
+      target: { kind: 'guidance' },
+    });
+    assert.deepEqual(routedTools(guidanceCatalog), ['list_skills']);
+    assert.ok(
+      Number(
+        nestedRecord(
+          nestedRecord(guidanceCatalog.result, 'guidance catalog result').guidance,
+          'guidance catalog',
+        ).count,
+      ) > 0,
+    );
+    const guidance = await callJson(defaultProfile.runtime, 'load_guidance', {
+      target: { kind: 'guidance', skill: 'project-workflow' },
+    });
+    assert.deepEqual(routedTools(guidance), ['read_skill']);
+    assert.match(JSON.stringify(guidance), /Project Workflow/);
+    const guidanceInspect = await callJson(defaultProfile.runtime, 'inspect_document', {
+      target: { kind: 'guidance', skill: 'project-workflow' },
+    });
+    assert.deepEqual(routedTools(guidanceInspect), ['read_skill']);
+    assert.match(JSON.stringify(guidanceInspect), /Project Workflow/);
+
+    advancedProfile = await inspectProfile('advanced-full', 'advanced-full');
+    assert.ok(advancedProfile.names.length > defaultProfile.names.length);
+    assert.ok(advancedProfile.names.includes('read_field'));
+    assert.ok(advancedProfile.names.includes('list_skills'));
+    assert.ok(advancedProfile.names.includes('read_skill'));
+    assert.ok(
+      defaultProfile.bytes <= advancedProfile.bytes * 0.2,
+      'default tools/list should be at least 80% smaller than advanced-full',
+    );
+
+    authoringProfile = await inspectProfile('authoring', 'authoring');
+    assert.ok(authoringProfile.names.includes('read_field'));
+    assert.ok(authoringProfile.names.includes('read_skill'));
+    assert.ok(!authoringProfile.names.includes('open_file'));
+
+    readonlyProfile = await inspectProfile('readonly', 'readonly');
+    assert.ok(readonlyProfile.names.includes('load_guidance'));
+    assert.ok(readonlyProfile.names.includes('read_skill'));
+    assert.ok(!readonlyProfile.names.includes('preview_edit'));
+    assert.ok(!readonlyProfile.names.includes('apply_edit'));
+    assert.ok(!readonlyProfile.names.includes('open_file'));
+
+    invalidProfile = await inspectProfile('not-a-profile', 'invalid');
+    assert.deepEqual(invalidProfile.names, expectedDefaultTools);
+    assert.match(readStandaloneLog(invalidProfile.userDataDir), /toolProfileWarning/);
+    assert.match(readStandaloneLog(invalidProfile.userDataDir), /falling back to the facade-first registered surface/);
+
+    argvPrecedenceProfile = await inspectProfile('facade-first', 'argv-precedence', 'advanced-full');
+    assert.deepEqual(argvPrecedenceProfile.names, expectedDefaultTools);
+  } finally {
+    for (const profile of [
+      argvPrecedenceProfile,
+      invalidProfile,
+      readonlyProfile,
+      authoringProfile,
+      advancedProfile,
+      defaultProfile,
+    ]) {
+      if (profile) await profile.runtime.close();
+    }
+    fs.rmSync(rootDir, { recursive: true, force: true });
   }
 }
 
@@ -3974,6 +4097,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assert.equal((reopenedPreset._presetData as Record<string, unknown>).openAIKey, undefined);
 
     console.log('search_all_fields MCP smoke test passed');
+    await runStandaloneToolProfileContract();
+    console.log('standalone MCP tool profile contract passed');
     await runStandaloneFacadeDogfood();
     console.log('facade-first standalone MCP dogfood eval passed');
     await runStandaloneManageItemsDogfood();

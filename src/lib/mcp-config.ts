@@ -20,6 +20,7 @@ export interface CodexMcpConfigOptions {
   serverPath: string;
   port: number | string;
   token: string;
+  toolProfile?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -40,10 +41,24 @@ function getMcpServerPath(): string {
   return serverPath;
 }
 
-function getRisutokiMcpServerConfig(): Record<string, any> | null {
+const TOOL_PROFILE_ALIASES: Record<string, string> = {
+  advanced: 'advanced-full',
+  full: 'advanced-full',
+};
+const TOOL_PROFILE_NAMES = new Set(['facade-first', 'authoring', 'advanced-full', 'readonly']);
+
+export function normalizeMcpToolProfile(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  const resolved = TOOL_PROFILE_ALIASES[normalized] ?? normalized;
+  return TOOL_PROFILE_NAMES.has(resolved) ? resolved : undefined;
+}
+
+function getRisutokiMcpServerConfig(toolProfile?: string): Record<string, any> | null {
   const port = deps.getApiPort();
   const token = deps.getApiToken();
   if (!port || !token) return null;
+  const normalizedToolProfile = normalizeMcpToolProfile(toolProfile);
   return {
     type: 'stdio',
     command: 'node',
@@ -51,6 +66,7 @@ function getRisutokiMcpServerConfig(): Record<string, any> | null {
     env: {
       TOKI_PORT: String(port),
       TOKI_TOKEN: token,
+      ...(normalizedToolProfile ? { RISUTOKI_MCP_TOOL_PROFILE: normalizedToolProfile } : {}),
     },
   };
 }
@@ -122,8 +138,24 @@ export function sanitizeCodexFeatures(content: string): string {
   return sanitized.join('\n');
 }
 
+function extractCodexToolProfile(content: string): string | undefined {
+  let tableName: string | null = null;
+  for (const line of content.split(/\r?\n/)) {
+    const nextTableName = getTomlTableName(line);
+    if (nextTableName) {
+      tableName = nextTableName;
+      continue;
+    }
+    if (tableName !== 'mcp_servers.risutoki.env') continue;
+    const match = line.match(/^\s*RISUTOKI_MCP_TOOL_PROFILE\s*=\s*"([^"]+)"\s*(?:#.*)?$/);
+    if (match) return normalizeMcpToolProfile(match[1]);
+  }
+  return undefined;
+}
+
 function buildCodexMcpBlock(options: CodexMcpConfigOptions): string {
   const serverPath = options.serverPath.replace(/\\/g, '/');
+  const toolProfile = normalizeMcpToolProfile(options.toolProfile);
   return [
     '# --- RisuToki MCP (auto-generated, do not edit) ---',
     '[mcp_servers.risutoki]',
@@ -133,15 +165,17 @@ function buildCodexMcpBlock(options: CodexMcpConfigOptions): string {
     '[mcp_servers.risutoki.env]',
     `TOKI_PORT = ${toTomlString(String(options.port))}`,
     `TOKI_TOKEN = ${toTomlString(options.token)}`,
+    ...(toolProfile ? [`RISUTOKI_MCP_TOOL_PROFILE = ${toTomlString(toolProfile)}`] : []),
     '# --- /RisuToki MCP ---',
   ].join('\n');
 }
 
 export function buildCodexMcpConfigToml(existing: string, options: CodexMcpConfigOptions): string {
+  const toolProfile = normalizeMcpToolProfile(options.toolProfile) ?? extractCodexToolProfile(existing);
   const preserved = sanitizeCodexFeatures(
     removeTopLevelCodexRisutokiServerTables(removeManagedCodexMcpBlock(existing)),
   ).trimEnd();
-  const block = buildCodexMcpBlock(options);
+  const block = buildCodexMcpBlock({ ...options, toolProfile });
   return `${preserved ? `${preserved}\n\n` : ''}${block}\n`;
 }
 
@@ -149,10 +183,33 @@ export function cleanupCodexMcpConfigToml(content: string): string {
   return removeTopLevelCodexRisutokiServerTables(removeManagedCodexMcpBlock(content)).trimEnd() + '\n';
 }
 
-export function upsertJsonMcpConfig(configPath: string): string | null {
-  const serverConfig = getRisutokiMcpServerConfig();
-  if (!serverConfig) return null;
+export function mergeRisutokiJsonMcpConfig(input: unknown, serverConfig: Record<string, any>): Record<string, any> {
+  const existing =
+    input && typeof input === 'object' && !Array.isArray(input) ? { ...(input as Record<string, any>) } : {};
+  const existingServers =
+    existing.mcpServers && typeof existing.mcpServers === 'object' && !Array.isArray(existing.mcpServers)
+      ? { ...existing.mcpServers }
+      : {};
+  const existingRisutoki =
+    existingServers.risutoki && typeof existingServers.risutoki === 'object' && !Array.isArray(existingServers.risutoki)
+      ? existingServers.risutoki
+      : {};
+  const toolProfile = normalizeMcpToolProfile(existingRisutoki.env?.RISUTOKI_MCP_TOOL_PROFILE);
+  const nextEnv = {
+    ...(serverConfig.env ?? {}),
+    ...(toolProfile ? { RISUTOKI_MCP_TOOL_PROFILE: toolProfile } : {}),
+  };
+  existing.mcpServers = {
+    ...existingServers,
+    risutoki: {
+      ...serverConfig,
+      env: nextEnv,
+    },
+  };
+  return existing;
+}
 
+export function upsertJsonMcpConfig(configPath: string): string | null {
   let existing: any = {};
   try {
     if (fs.existsSync(configPath)) {
@@ -161,12 +218,11 @@ export function upsertJsonMcpConfig(configPath: string): string | null {
   } catch {
     existing = {};
   }
-  if (!existing || typeof existing !== 'object' || Array.isArray(existing)) existing = {};
-  if (!existing.mcpServers || typeof existing.mcpServers !== 'object' || Array.isArray(existing.mcpServers)) {
-    existing.mcpServers = {};
-  }
 
-  existing.mcpServers.risutoki = serverConfig;
+  const existingToolProfile = normalizeMcpToolProfile(existing?.mcpServers?.risutoki?.env?.RISUTOKI_MCP_TOOL_PROFILE);
+  const serverConfig = getRisutokiMcpServerConfig(existingToolProfile);
+  if (!serverConfig) return null;
+  existing = mergeRisutokiJsonMcpConfig(existing, serverConfig);
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(existing, null, 2), 'utf-8');
   return configPath;

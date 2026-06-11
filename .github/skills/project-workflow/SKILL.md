@@ -11,8 +11,8 @@ related_tools: ['list_skills', 'read_skill', 'list_fields', 'read_field_batch', 
 
 - **Use when:** starting a RisuToki session, checking project rules, choosing whether to load MCP workflow details, or preparing repo/documentation changes.
 - **Do not use when:** the task only needs an artifact-specific authoring skill after project rules are already known.
-- **Read first:** this `SKILL.md` at session start; it is the lightweight orientation layer.
-- **Load deeper only if:** MCP routing details are needed (`MCP_WORKFLOW.md`) or versioning/CI/release rules affect the change (`PROJECT_RULES.md`).
+- **Read first:** this `SKILL.md` at session start; if MCP is unavailable, open this file directly from `skills/project-workflow/SKILL.md`.
+- **Load deeper only if:** runtime-mode or common-sequence details are needed (`MCP_WORKFLOW.md`) or versioning/CI/release rules affect the change (`PROJECT_RULES.md`).
 - **Output/validation contract:** route to the smallest relevant skill set, keep docs/versioning rules in sync, and treat `using-mcp-tools` as the detailed MCP tool-choice source of truth.
 
 This skill is the agent-facing entrypoint for **project-level guidance** that every coding agent should know before making changes. It covers two areas:
@@ -22,17 +22,17 @@ This skill is the agent-facing entrypoint for **project-level guidance** that ev
 
 ## Supporting Files
 
-| File                                   | Contents                                                                                |
-| -------------------------------------- | --------------------------------------------------------------------------------------- |
-| [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)   | Full MCP tool routing map, read rules, workflow patterns, caveats, and skill navigation |
-| [`PROJECT_RULES.md`](PROJECT_RULES.md) | Versioning, CI/release workflow, and guide locations                                    |
+| File                                   | Contents                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------- |
+| [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)   | Runtime modes, startup profiles, common execution sequence, and skill discovery |
+| [`PROJECT_RULES.md`](PROJECT_RULES.md) | Versioning, CI/release workflow, and guide locations                            |
 
 Load these via `read_skill("project-workflow", "MCP_WORKFLOW.md")` and `read_skill("project-workflow", "PROJECT_RULES.md")` when you need complete detail.
 
 ## When to Use This Skill
 
 - **Session start**: Read this SKILL.md for orientation, then load supporting files as needed.
-- **Before MCP edits**: Load `MCP_WORKFLOW.md` for the tool routing map and read rules.
+- **Before MCP edits**: Load `MCP_WORKFLOW.md` for runtime context, then `using-mcp-tools` for tool choice.
 - **Before committing**: Load `PROJECT_RULES.md` for versioning and documentation update rules.
 
 ---
@@ -49,13 +49,15 @@ Startup principles:
 4. Search/range-read before replacing large fields.
 5. Snapshot or use dry-run/hash guards before risky edits.
 
+The MCP server registers `facade-first` by default. Restart it with `--tool-profile advanced-full` or `RISUTOKI_MCP_TOOL_PROFILE=advanced-full` before using granular routes that are not in the active profile.
+
 ### Runtime Modes
 
 - App-backed MCP is started by the Electron app and works against the active editor document.
 - Standalone MCP is started with `node toki-mcp-server.js --standalone` and works against files supplied by `--file`, `open_file`, and repeated `--ref`; pass `--allow-writes` when mutation tools should be permitted. `session_status` reports `allowWrites` / `userDataPath`, and process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log`.
 - When a `.charx`, `.risum`, or `.risup` project folder is active, the folder is the save backend for the normal structured editor. AI terminal cwd and generated `AGENTS.md` project-root context resolve to the workspace folder, while MCP field visibility and hidden/deprecated-field policy remain the same as the underlying document type. Raw project files are an advanced fallback for external tools or precise filesystem edits, not the default editing surface.
 
-> Complete tool routing map, workflow patterns, and caveats: [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)
+> Runtime modes and common execution sequence: [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)
 >
 > For **detailed MCP tool-selection guidance** (batch-first patterns, large-field editing, context-budget sizing), load `read_skill("using-mcp-tools")` when the task reaches an MCP read/write decision.
 

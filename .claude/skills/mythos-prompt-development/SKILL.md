@@ -1,6 +1,8 @@
 ---
 name: mythos-prompt-development
 description: Develop and evaluate Mythos / 뮈토스 prompts using the three Mythos principles, CBS conditional logic, toggle design, Source-first architecture, and model-specific variant policy. Use when deciding whether Mythos instructions should be default text, CBS toggles, removed, renamed, or adapted for GPT, Claude, Gemini, DeepSeek, or other .risup prompt variants.
+tags: ['mythos', 'prompt', 'preset', 'cbs']
+related_tools: ['list_cbs_toggles', 'validate_cbs', 'diff_risup_prompt', 'list_risup_prompt_items']
 ---
 
 # Mythos Prompt Development

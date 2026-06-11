@@ -12,7 +12,7 @@ related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list
 - **Use when:** the main task is explicit character design, character-sheet refactoring, voice/behavior diagnosis, or scale-aware solo/ensemble roleplay character authoring.
 - **Do not use when:** the user wants a self-introduction monologue sheet, a lorebook-first structure, RisuAI syntax help, or pure HTML/CSS/Lua/CBS work.
 - **Read first:** this `SKILL.md` only. Use the route table below to decide whether this is the primary skill before loading sibling skills.
-- **Load deeper only if:** cast size is the hard part (`BOT_SCALES.md`), speech mechanics need focused repair (`SPEECH_SYSTEM.md`), or you are validating a completed draft (`VALIDATION.md`).
+- **Load deeper only if:** cast size is the hard part (`CHARACTER_SCALES.md`), speech mechanics need focused repair (`SPEECH_SYSTEM.md`), or you are validating a completed draft (`VALIDATION.md`).
 - **Output/validation contract:** produce a performance-ready character brief, not a filled template; verify inner drive, contradiction, pressure response, voice, human interiority, scale fit, and whether details belong in lorebook instead of always-on description.
 
 > **This guide is a toolkit, not a checklist.** Use the parts that sharpen output and ignore the rest. The goal is not "completing the template" — it is giving the model a character who feels alive and performs consistently. Real bots succeed through many different structures; the patterns here are strong defaults, not the only valid paths.
@@ -27,7 +27,7 @@ related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list
 | **2–4 recurring characters**                 | Per-character thumbnails that still feel distinct; cross-character contrast and voice separation | [authoring-lorebook-bots](../authoring-lorebook-bots/) for roster, relationship, and scene structure |
 | **10+ cast / world bot**                     | Only the core cast gets full sheets; everyone else gets compressed expressive anchors            | [authoring-lorebook-bots](../authoring-lorebook-bots/) for large-cast lorebook design                |
 
-For detailed scale recipes, see [BOT_SCALES.md](BOT_SCALES.md).
+For detailed scale recipes, see [CHARACTER_SCALES.md](CHARACTER_SCALES.md).
 
 ## Cross-Handoff with Worldbuilding
 
@@ -256,7 +256,7 @@ For dedicated single-character bots, pressure design often deserves its own lore
 - **Reaction** — trauma triggers, environmental reactions, topic-sensitive behaviors
 - **Direction** — post-history reminders or Author's Note style turn logic
 
-Use [BOT_SCALES.md](BOT_SCALES.md) for the scale-specific version of that handoff.
+Use [CHARACTER_SCALES.md](CHARACTER_SCALES.md) for the scale-specific version of that handoff.
 
 ### Step 5 — Assemble the Description
 
@@ -337,7 +337,7 @@ Do **not** give every bot the same depth.
 | **2–4 recurring characters**       | One anchor, one contradiction, one speech signature, one group role per character | Full backstory, long pressure maps, pairwise dynamics                   |
 | **10+ world/cast bot**             | Full sheet only for POV/core cast; thumbnails for everyone else                   | Most backstory, deep reactions, relationship webs, situational behavior |
 
-For exact recipes, use [BOT_SCALES.md](BOT_SCALES.md).
+For exact recipes, use [CHARACTER_SCALES.md](CHARACTER_SCALES.md).
 
 ### Step 7 — Write the Opening Message
 
@@ -400,7 +400,7 @@ For exact lorebook mechanics, decorators, and insertion controls, use `writing-l
 | **Deep**          | Main RP partner, emotionally central character | 4,000–10,000+ tokens if the content stays behavioral     |
 | **Comprehensive** | Character **is** the experience                | Use only when one character dominates the bot's identity |
 
-Use [BOT_SCALES.md](BOT_SCALES.md) when cast size changes the economics more than character complexity does.
+Use [CHARACTER_SCALES.md](CHARACTER_SCALES.md) when cast size changes the economics more than character complexity does.
 
 ---
 

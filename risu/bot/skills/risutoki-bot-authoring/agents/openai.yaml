@@ -1,4 +1,0 @@
-interface:
-  display_name: 'RisuToki Bot Authoring'
-  short_description: 'Draft, edit, and QA RisuToki bot cards.'
-  default_prompt: 'Use RisuToki bot authoring to draft, edit, and validate a bot card.'

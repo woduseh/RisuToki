@@ -104,7 +104,22 @@ function normalizeWorkflowMirrorMarkdown(content: string): string {
   return content
     .replace(/\r\n/g, '\n')
     .replace(/\]\(\.\.\/\.\.\/docs\/([^)]+)\)/g, (_match, file) => `](${file})`)
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) return line;
+      const cells = trimmed
+        .slice(1, -1)
+        .split('|')
+        .map((cell) => cell.trim().replace(/^(:?)-{3,}(:?)$/, '$1---$2'));
+      return `| ${cells.join(' | ')} |`;
+    })
+    .join('\n')
     .trim();
+}
+
+function countWords(content: string): number {
+  return content.match(/\S+/g)?.length ?? 0;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -345,5 +360,44 @@ describe('workflow doc mirrors stay in sync', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// 6. (removed — docs/superpowers/ was deleted as a historical artifact)
+// 6. Agent guidance ownership and startup budget
 // ────────────────────────────────────────────────────────────────────────────
+
+describe('agent guidance ownership and startup budget', () => {
+  const agentsPath = path.join(ROOT, 'AGENTS.md');
+  const projectSkillPath = path.join(ROOT, 'skills', 'project-workflow', 'SKILL.md');
+  const usingMcpToolsPath = path.join(ROOT, 'skills', 'using-mcp-tools', 'SKILL.md');
+  const workflowPath = path.join(DOCS_DIR, 'MCP_WORKFLOW.md');
+  const surfacePath = path.join(DOCS_DIR, 'MCP_TOOL_SURFACE.md');
+
+  it('keeps canonical guidance ownership explicit', () => {
+    expect(fs.readFileSync(agentsPath, 'utf-8')).toContain('startup and routing source of truth');
+    expect(fs.readFileSync(usingMcpToolsPath, 'utf-8')).toContain(
+      'tool-choice and task-intent playbook source of truth',
+    );
+    expect(fs.readFileSync(surfacePath, 'utf-8')).toContain('profile, coverage, and tool-contract source of truth');
+    expect(fs.readFileSync(workflowPath, 'utf-8')).toContain('runtime-mode and common-sequence source of truth');
+  });
+
+  it('keeps mandatory startup guidance within the 1900-word budget', () => {
+    const startupWords =
+      countWords(fs.readFileSync(agentsPath, 'utf-8')) + countWords(fs.readFileSync(projectSkillPath, 'utf-8'));
+    expect(startupWords).toBeLessThanOrEqual(1900);
+  });
+
+  it('keeps normative MCP guidance free of changelog-style version phrasing', () => {
+    const normativePaths = [
+      workflowPath,
+      surfacePath,
+      path.join(DOCS_DIR, 'MCP_ERROR_CONTRACT.md'),
+      usingMcpToolsPath,
+      path.join(ROOT, 'skills', 'using-mcp-tools', 'TOOL_REFERENCE.md'),
+    ];
+    const violations = normativePaths.flatMap((filePath) => {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const matches = content.match(/\bnow (?:supports?|accepts?|has|uses)\b|\(v0\.\d/gi) ?? [];
+      return matches.map((match) => `${path.relative(ROOT, filePath)}: ${match}`);
+    });
+    expect(violations).toEqual([]);
+  });
+});

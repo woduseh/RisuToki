@@ -20,7 +20,7 @@ related_tools:
 - **Use when:** the main task is deciding what belongs in always-on description versus conditional lorebook entries for a cast-heavy, world-heavy, or lorebook-driven bot.
 - **Do not use when:** the main task is one character's inner drive/voice, worldbuilding substance, a self-introduction sheet, raw lorebook syntax, or non-bot artifact work.
 - **Read first:** this `SKILL.md` only. Treat it as the structure guide; load character-writing or world-writing skills only when the source material itself is weak.
-- **Load deeper only if:** entry activation, progression, continuity, or reveal staging is the hard part (`LOREBOOK_ARCHITECTURE.md`), cast size changes the design economics (`BOT_SCALES.md`), or the user asks for finished-bot QA / release-level review (`BOT_VALIDATION.md`).
+- **Load deeper only if:** entry activation, progression, continuity, or reveal staging is the hard part (`LOREBOOK_ARCHITECTURE.md`), cast size changes the design economics (`STRUCTURE_SCALES.md`), or the user asks for finished-bot QA / release-level review (`BOT_VALIDATION.md`).
 - **Output/validation contract:** produce a description/lorebook distribution plan or revised bot frame; verify tone survives without lorebook, details activate conditionally, and the description is not a pasted database.
 
 > **Use this skill when the description is not supposed to carry everything.** In many bots the description provides the persistent frame — tone, world pressure, core cast thumbnail, and narrative direction — while the lorebook provides conditional detail. In lorebook-heavy bots the balance can shift further: the description's job becomes partly to teach the model how to read and use the lorebook itself.
@@ -37,7 +37,7 @@ Most bots fall somewhere along this spectrum. These are common shapes, not a clo
 | **2–4 recurring characters**                    | Establish tone, group tension, and cast thumbnails | Carry pair dynamics, deeper profiles, and scene-specific behavior      | [authoring-characters](../authoring-characters/) or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for per-character voice |
 | **10+ cast / world bot**                        | Frame the world, POV rules, and only the core cast | Carry most character/world detail, activation rules, and secret layers | [authoring-characters](../authoring-characters/) or [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/) for the core cast       |
 
-For scale-specific recipes, use [BOT_SCALES.md](BOT_SCALES.md). For entry design, progression, continuity, and activation logic, use [LOREBOOK_ARCHITECTURE.md](LOREBOOK_ARCHITECTURE.md). For whole-bot validation, use [BOT_VALIDATION.md](BOT_VALIDATION.md).
+For scale-specific recipes, use [STRUCTURE_SCALES.md](STRUCTURE_SCALES.md). For entry design, progression, continuity, and activation logic, use [LOREBOOK_ARCHITECTURE.md](LOREBOOK_ARCHITECTURE.md). For whole-bot validation, use [BOT_VALIDATION.md](BOT_VALIDATION.md).
 
 ---
 
@@ -350,7 +350,7 @@ The lorebook should carry almost everything else.
 
 If the description starts resembling a cast index, stop and compress.
 
-Use [BOT_SCALES.md](BOT_SCALES.md) for concrete recipes.
+Use [STRUCTURE_SCALES.md](STRUCTURE_SCALES.md) for concrete recipes.
 
 ---
 

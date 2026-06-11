@@ -295,6 +295,17 @@ export function getFacadeV1ToolContract(name: string): FacadeV1ToolContract | un
 
 const facadeMaxBytesSchema = z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional();
 
+export const facadeV1GuidanceTargetSchema = z
+  .object({
+    kind: z.literal('guidance'),
+    skill: z.string().min(1).optional(),
+    document: z.string().min(1).optional(),
+  })
+  .refine((d) => d.document === undefined || d.skill !== undefined, {
+    message: 'guidance document requires skill',
+    path: ['skill'],
+  });
+
 export const facadeV1TargetSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('active'),
@@ -314,16 +325,7 @@ export const facadeV1TargetSchema = z.discriminatedUnion('kind', [
       message: 'reference target requires reference_id or file_path',
       path: ['reference_id'],
     }),
-  z
-    .object({
-      kind: z.literal('guidance'),
-      skill: z.string().min(1).optional(),
-      document: z.string().min(1).optional(),
-    })
-    .refine((d) => d.skill !== undefined || d.document !== undefined, {
-      message: 'guidance target requires skill or document',
-      path: ['skill'],
-    }),
+  facadeV1GuidanceTargetSchema,
   z.object({
     kind: z.literal('session'),
   }),
@@ -394,29 +396,87 @@ export const facadeV1ReadContentBodySchema = z.object({
 });
 export type FacadeV1ReadContentBody = z.infer<typeof facadeV1ReadContentBodySchema>;
 
-export const facadeV1SearchDocumentBodySchema = z.object({
-  target: facadeV1TargetSchema,
-  query: z.string().min(1),
-  regex: boolish.optional(),
-  flags: lenientString,
-  context_chars: lenientNumber,
-  max_matches: z.number().int().positive().max(FACADE_V1_LIMITS.maxMatches).optional(),
-  max_bytes: facadeMaxBytesSchema,
-});
+export const facadeV1SearchDocumentBodySchema = z
+  .object({
+    target: facadeV1TargetSchema,
+    query: z.string().min(1),
+    field: z.string().min(1).optional(),
+    regex: boolish.optional(),
+    flags: lenientString,
+    context_chars: lenientNumber,
+    max_matches: z.number().int().positive().max(FACADE_V1_LIMITS.maxMatches).optional(),
+    max_bytes: facadeMaxBytesSchema,
+  })
+  .superRefine((body, ctx) => {
+    if ((body.target.kind === 'external' || body.target.kind === 'reference') && !body.field) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${body.target.kind} search requires field`,
+        path: ['field'],
+      });
+    }
+    if (body.target.kind === 'guidance' || body.target.kind === 'session') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `search_document does not support ${body.target.kind} targets`,
+        path: ['target', 'kind'],
+      });
+    }
+  });
 export type FacadeV1SearchDocumentBody = z.infer<typeof facadeV1SearchDocumentBodySchema>;
 
-const facadeV1EditOperationSchema = z.object({
-  op: z.enum(['write_content', 'replace_text', 'insert_text', 'delete_item', 'patch_surface']),
+const facadeEditOperationBase = {
   selector: facadeV1ContentSelectorSchema,
-  content: z.unknown().optional(),
-  find: z.string().min(1).optional(),
-  replace: z.string().optional(),
-  regex: boolish.optional(),
-  flags: lenientString,
   field: z.string().min(1).optional(),
   guards: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
-});
-export type FacadeV1EditOperation = z.infer<typeof facadeV1EditOperationSchema>;
+};
+
+const facadeRequiredContentSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(z.unknown()),
+  z.record(z.string(), z.unknown()),
+]);
+
+export const facadeV1EditOperationSchema = z.discriminatedUnion('op', [
+  z.object({
+    op: z.literal('write_content'),
+    ...facadeEditOperationBase,
+    content: facadeRequiredContentSchema,
+  }),
+  z.object({
+    op: z.literal('replace_text'),
+    ...facadeEditOperationBase,
+    find: z.string().min(1),
+    replace: z.string().optional(),
+    regex: boolish.optional(),
+    flags: lenientString,
+  }),
+  z.object({
+    op: z.literal('insert_text'),
+    ...facadeEditOperationBase,
+    content: facadeRequiredContentSchema,
+  }),
+  z.object({
+    op: z.literal('delete_item'),
+    ...facadeEditOperationBase,
+    content: z.unknown().optional(),
+  }),
+  z.object({
+    op: z.literal('patch_surface'),
+    ...facadeEditOperationBase,
+    content: facadeRequiredContentSchema,
+  }),
+]);
+export type FacadeV1EditOperation = z.infer<typeof facadeV1EditOperationSchema> & {
+  content?: unknown;
+  find?: string;
+  replace?: string;
+  regex?: boolean;
+  flags?: string;
+};
 
 export const facadeV1PreviewEditBodySchema = z
   .object({
@@ -450,16 +510,7 @@ export const facadeV1ValidateContentBodySchema = z.object({
 export type FacadeV1ValidateContentBody = z.infer<typeof facadeV1ValidateContentBodySchema>;
 
 export const facadeV1LoadGuidanceBodySchema = z.object({
-  target: z
-    .object({
-      kind: z.literal('guidance'),
-      skill: z.string().min(1).optional(),
-      document: z.string().min(1).optional(),
-    })
-    .refine((d) => d.skill !== undefined || d.document !== undefined, {
-      message: 'guidance target requires skill or document',
-      path: ['skill'],
-    }),
+  target: facadeV1GuidanceTargetSchema,
   max_bytes: facadeMaxBytesSchema,
 });
 export type FacadeV1LoadGuidanceBody = z.infer<typeof facadeV1LoadGuidanceBodySchema>;

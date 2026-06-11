@@ -13,19 +13,19 @@ LLM-optimized skills for writing and reviewing `.charx` bots.
 
 ## Composition skills
 
-| Skill                                                                     | Description                                  | Files                                                                           |
-| ------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------- |
-| [authoring-characters](authoring-characters/)                             | Character description writing for LLM RP     | `SKILL.md` + `SPEECH_SYSTEM.md` + `VALIDATION.md` + `BOT_SCALES.md`             |
-| [authoring-worlds](authoring-worlds/)                                     | Worldbuilding for LLM RP                     | `SKILL.md` + `VALIDATION.md`                                                    |
-| [authoring-self-introduction-sheets](authoring-self-introduction-sheets/) | Self-introduction monologue character sheets | `SKILL.md` + `SHEET_STRUCTURE.md` + `GENERATION_GUIDANCE.md`                    |
-| [authoring-lorebook-bots](authoring-lorebook-bots/)                       | Lorebook-driven bot description writing      | `SKILL.md` + `LOREBOOK_ARCHITECTURE.md` + `BOT_SCALES.md` + `BOT_VALIDATION.md` |
+| Skill                                                                     | Description                                  | Files                                                                                 |
+| ------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [authoring-characters](authoring-characters/)                             | Character description writing for LLM RP     | `SKILL.md` + `SPEECH_SYSTEM.md` + `VALIDATION.md` + `CHARACTER_SCALES.md`             |
+| [authoring-worlds](authoring-worlds/)                                     | Worldbuilding for LLM RP                     | `SKILL.md` + `VALIDATION.md`                                                          |
+| [authoring-self-introduction-sheets](authoring-self-introduction-sheets/) | Self-introduction monologue character sheets | `SKILL.md` + `SHEET_STRUCTURE.md` + `GENERATION_GUIDANCE.md`                          |
+| [authoring-lorebook-bots](authoring-lorebook-bots/)                       | Lorebook-driven bot description writing      | `SKILL.md` + `LOREBOOK_ARCHITECTURE.md` + `STRUCTURE_SCALES.md` + `BOT_VALIDATION.md` |
 
 ## Typical workflow
 
 1. Load one composition skill first.
 2. If you need a paste-target intro/profile page for a restricted WYSIWYG, load [writing-arca-html](../../common/skills/writing-arca-html/) from the shared skill set.
 3. If that skill references CBS, lorebook decorators, regex, Lua callbacks, or HTML/CSS rules, load the corresponding shared skill from `../../common/skills/`.
-4. Keep large references opt-in: use `BOT_SCALES.md`, `SPEECH_SYSTEM.md`, `VALIDATION.md`, or `LOREBOOK_ARCHITECTURE.md` only after the primary `SKILL.md` shows that depth is needed.
+4. Keep large references opt-in: use `CHARACTER_SCALES.md`, `SPEECH_SYSTEM.md`, `VALIDATION.md`, or `LOREBOOK_ARCHITECTURE.md` only after the primary `SKILL.md` shows that depth is needed.
 
 Examples:
 

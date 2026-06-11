@@ -5,6 +5,7 @@ import * as path from 'path';
 
 import { normalizeFolderRef } from './lorebook-folders';
 import { extToMime } from './shared-utils';
+import { addAssetReferences, deleteAssetReferences, renameAssetReferences, validateAssetFileName } from './asset-utils';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -193,13 +194,12 @@ export function initAssetManager(d: AssetManagerDeps): void {
     const added: { path: string; size: number }[] = [];
     for (const filePath of result.filePaths) {
       const fileName = path.basename(filePath);
+      if (validateAssetFileName(fileName)) continue;
       const assetPath = `${basePath}/${fileName}`;
       if (data.assets.find((a: any) => a.path === assetPath)) continue;
       const fileData = fs.readFileSync(filePath);
       data.assets.push({ path: assetPath, data: fileData });
-      const ext = path.extname(fileName).replace('.', '').toUpperCase();
-      const metaName = path.basename(fileName, path.extname(fileName));
-      data.xMeta[metaName] = { type: ext === 'JPG' ? 'JPEG' : ext };
+      addAssetReferences(data, assetPath, folder === 'icon' ? 'icon' : 'other');
       added.push({ path: assetPath, size: fileData.length });
     }
     return added;
@@ -209,6 +209,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
   ipcMain.handle('add-asset-buffer', (_, fileName: string, base64Data: string, targetFolder: string) => {
     const data = deps.getCurrentData();
     if (!data) return null;
+    if (validateAssetFileName(fileName)) return null;
     invalidateAssetsMapCache();
     const folder = targetFolder || 'other';
     const basePath = folder === 'icon' ? 'assets/icon' : 'assets/other/image';
@@ -216,9 +217,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
     if (data.assets.find((a: any) => a.path === assetPath)) return null;
     const buf = Buffer.from(base64Data, 'base64');
     data.assets.push({ path: assetPath, data: buf });
-    const ext = path.extname(fileName).replace('.', '').toUpperCase();
-    const metaName = path.basename(fileName, path.extname(fileName));
-    data.xMeta[metaName] = { type: ext === 'JPG' ? 'JPEG' : ext };
+    addAssetReferences(data, assetPath, folder === 'icon' ? 'icon' : 'other');
     return { path: assetPath, size: buf.length };
   });
 
@@ -230,6 +229,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
     const idx = data.assets.findIndex((a: any) => a.path === assetPath);
     if (idx === -1) return false;
     data.assets.splice(idx, 1);
+    deleteAssetReferences(data, assetPath);
     return true;
   });
 
@@ -241,6 +241,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
     const targets = new Set(assetPaths);
     const before = data.assets.length;
     data.assets = data.assets.filter((a: any) => !targets.has(a.path));
+    for (const assetPath of targets) deleteAssetReferences(data, assetPath);
     return data.assets.length !== before;
   });
 
@@ -248,11 +249,15 @@ export function initAssetManager(d: AssetManagerDeps): void {
   ipcMain.handle('rename-asset', (_, oldPath: string, newName: string) => {
     const data = deps.getCurrentData();
     if (!data) return null;
+    if (validateAssetFileName(newName)) return null;
     const asset = data.assets.find((a: any) => a.path === oldPath);
     if (!asset) return null;
     const dir = oldPath.substring(0, oldPath.lastIndexOf('/') + 1);
     const newPath = dir + newName;
+    if (data.assets.some((a: any) => a !== asset && a.path === newPath)) return null;
     asset.path = newPath;
+    renameAssetReferences(data, oldPath, newPath);
+    invalidateAssetsMapCache();
     return newPath;
   });
 

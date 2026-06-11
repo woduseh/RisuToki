@@ -320,6 +320,40 @@ describe('applyUpdates', () => {
     expect(data.localStopStrings).toBe('["END"]');
   });
 
+  it.each([
+    'promptSettings',
+    'customAPIFormat',
+    'openrouterProvider',
+    'seperateParameters',
+    'fallbackModels',
+    'seperateModels',
+    'modelTools',
+    'customFlags',
+    'dynamicOutput',
+    'reverseProxyOobaArgs',
+  ])('rejects malformed JSON in %s before mutating any submitted field', (fieldName) => {
+    const data: Record<string, unknown> = {
+      _fileType: 'risup',
+      name: 'Original',
+      [fieldName]: '{}',
+    };
+
+    expect(() => applyUpdates(data, { name: 'Mutated', [fieldName]: '{broken' })).toThrow(
+      new RegExp(`Invalid ${fieldName}`, 'i'),
+    );
+    expect(data.name).toBe('Original');
+    expect(data[fieldName]).toBe('{}');
+  });
+
+  it.each(['{}', '[]', '"value"', '42', 'true', 'null'])(
+    'accepts generic risup JSON values with any valid JSON shape: %s',
+    (value) => {
+      const data: Record<string, unknown> = { _fileType: 'risup' };
+      expect(() => applyUpdates(data, { promptSettings: value })).not.toThrow();
+      expect(data.promptSettings).toBe(value);
+    },
+  );
+
   it('accepts promptTemplate JSON strings that include stable ids', () => {
     const data: Record<string, unknown> = { _fileType: 'risup', name: 'Test' };
     expect(() =>

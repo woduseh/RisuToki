@@ -1,269 +1,115 @@
 # MCP Workflow Guide
 
-This guide covers tool selection, read rules, workflow patterns, and operational caveats for editing `.charx` / `.risum` / `.risup` files through MCP tools.
-
-For tool-family definitions and boundary rules see [`docs/MCP_TOOL_SURFACE.md`](MCP_TOOL_SURFACE.md).
-For error/no-op/success response contracts see [`docs/MCP_ERROR_CONTRACT.md`](MCP_ERROR_CONTRACT.md).
+This document is the runtime-mode and common-sequence source of truth for RisuToki MCP sessions. It explains how a session starts and how work progresses across app-backed and standalone runtimes.
 
-RisuToki MCP has two runtime modes:
+Use the other canonical documents for details owned elsewhere:
 
-- **App-backed mode**: the desktop app starts the local API, auto-writes CLI MCP configs, and tools operate on the active editor document plus loaded references.
-- **Standalone mode**: run `node toki-mcp-server.js --standalone [--file <path>] [--ref <path>] [--allow-writes] [--tool-profile <profile>]` to start a file-backed MCP server without Electron. Without `--allow-writes`, mutation tools reject at the confirmation gate while read/probe/search tools remain available. `--tool-profile` or `RISUTOKI_MCP_TOOL_PROFILE` can opt into strict `facade-first`, `authoring`, `readonly`, or `advanced-full` tool registration. `session_status` reports `allowWrites` / `userDataPath` / `runtimeHealth`, and process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log`.
+| Concern                                                     | Canonical source                                                       |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Startup order and guidance routing                          | Root `AGENTS.md`                                                       |
+| Tool choice and task-intent playbooks                       | `read_skill("using-mcp-tools")`                                        |
+| Profiles, facade coverage, tool families, and tool metadata | [`docs/MCP_TOOL_SURFACE.md`](../../docs/MCP_TOOL_SURFACE.md)           |
+| Success, error, no-op, and recovery envelopes               | [`docs/MCP_ERROR_CONTRACT.md`](../../docs/MCP_ERROR_CONTRACT.md)       |
+| Runtime implementation and application caveats              | [`docs/analysis/ARCHITECTURE.md`](../../docs/analysis/ARCHITECTURE.md) |
 
-When a `.charx`, `.risum`, or `.risup` project folder is active, the folder is the save backend for the normal structured editor. AI terminal cwd and generated `AGENTS.md` project-root context resolve to the workspace folder, while MCP field visibility and hidden/deprecated-field policy remain the same as the underlying document type. Raw project files are an advanced fallback for external tools or precise filesystem edits, not the default editing surface.
+If documents overlap, follow the source that owns the concern in this table.
 
-**Facade-first rule:** for new agent workflows, start with `list_tool_profiles` for compact profile discovery, then `inspect_document`, `read_content`, `search_document`, and `preview_edit` → `apply_edit` when the selectors cover the task. Use `manage_items` for covered `.risup` prompt add/reorder/import/copy/snippet management plus lorebook, regex, alternate greeting, trigger, Lua, and CSS add/reorder. Use `manage_assets` for covered active/external `.charx` and `.risum` asset list/read/add/delete/rename plus `.charx` compression. Use `manage_file` for covered file/session workflows: snapshot list, project-tree read, guarded file open, active save, snapshot/restore, field export, and `.charx`/`.risum`/`.risup` project-folder extract/reassemble. `read_content` defaults to a 24KB cap and returns root surface overviews unless raw root reads are explicitly requested with `include_raw` plus `max_bytes`. Current facade mutation coverage includes active/external field write/replace, active/external surface patch/replace, active/external lorebook text replacement and guarded lorebook/regex/greeting item writes/deletes where selectors resolve, active/external trigger writes/deletes, active/external Lua/CSS section write/replace/insert, external Lua/CSS section delete, active/external `.risup` prompt item id/index writes/deletes, older indexed regex/greeting/risup prompt item writes/deletes, active/external `.risup` prompt batch writes/deletes, active regex/greeting prompt batch writes, active greeting batch deletes, active/external `.risup` prompt item/snippet management, active/external lorebook, regex, alternate greeting, trigger, Lua, and CSS add/reorder, covered asset management including rename and `.charx` compression, and covered file management with stale guards. Use granular families as stable advanced escape hatches for unsupported selectors, exact structured editors, `.risum` compression, unsupported filesystem operations, unsupported surface workflows, or compatibility/debugging.
-
-**Hidden/protected compatibility fields:** normal MCP read/search/probe/surface/facade routes hide RisuToki-protected `.charx` fields: `personality`, `scenario`, `systemPrompt`, `nickname`, `source`, `groupOnlyGreetings`, `extensions.risuai.additionalText`, `extensions.risuai.license`, and unsafe `extensions.risuai.virtualscript`. This is stricter than RisuAI's official compatibility boundary because these fields are treated as practical deprecated/security-sensitive data in RisuToki. `inspect_document`, `list_fields`, `list_surfaces`, `session_status`, and external/reference inventories may return value-safe `hiddenFieldWarnings` with field names and count/size only; they do not expose hidden content. `.risup` legacy prompt fields and reserved `.risum` `cjs` follow the same hidden + save-stripped policy. `.risum` `mcpUrl` is preserved but read-only in mutation/string-edit routes. `.risum` `lowLevelAccess` is not hidden and remains visible/editable.
+## 1. Runtime Modes
 
-**`.charx` export compatibility:** before RisuAI upload or after risky asset/lorebook/regex edits, use `validate_content` with an active or external `.charx` target and a selector such as `family: "asset"` or `field: "exportCompatibility"`. This routes to `.charx` export compatibility validation and checks card/module lorebook and regex mirrors, canonical regex `in` / `out`, protected deprecated fields, unsafe `virtualscript`, card asset references, and 0-byte ZIP assets.
+### App-backed mode
 
----
+The desktop app starts the local API and MCP stdio process, writes supported CLI configurations, and connects tools to the active editor document plus loaded references.
 
-## 1. Quick Tool Routing Map
+- Generated JSON and TOML configuration updates preserve an existing valid `RISUTOKI_MCP_TOOL_PROFILE`.
+- The active tool profile is selected when the MCP process starts.
+- Changing profiles requires restarting the MCP server. Dynamic tool expansion is not supported.
 
-| Category                      | Preferred Tools                                                                                                                                                                                                                                                                                                                                                                                                                                                | When to Use                                                                                                                                                                                                                                                                                                                          |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Facade v1**                 | `list_tool_profiles`, `inspect_document`, `read_content`, `search_document`, `preview_edit`, `apply_edit`, `validate_content`, `load_guidance`, `manage_items`, `manage_assets`, `manage_file`                                                                                                                                                                                                                                                                 | Preferred profile discovery plus bounded inspect/read/search/validate, preview-token-first covered mutations, `.risup` prompt add/reorder/import/copy/snippet management, structured add/reorder for lorebook/regex/alternate greeting/trigger/Lua/CSS, covered asset management, and guarded file/session/project-folder management |
-| **Fields**                    | `list_fields`, `read_field`, `read_field_batch`, `write_field`, `write_field_batch`                                                                                                                                                                                                                                                                                                                                                                            | Advanced granular fallback for exact field payloads, unsupported facade selectors, or compatibility work                                                                                                                                                                                                                             |
-| **Large-field editing**       | `search_in_field`, `read_field_range`, `replace_in_field`, `replace_in_field_batch`, `replace_block_in_field`, `insert_in_field`, `extract_charx_to_project_folder`, `reassemble_project_folder_to_charx`                                                                                                                                                                                                                                                      | Advanced granular fallback for ranges, inserts, block replacements, batch replacements, exact project-folder legacy results, filesystem raw-file edits, or legacy result shapes; prefer `manage_file` for covered project-folder extract/reassemble previews                                                                         |
-| **Session state**             | `session_status`, `save_current_file`                                                                                                                                                                                                                                                                                                                                                                                                                          | Advanced runtime diagnostics or exact legacy saves when `inspect_document` / `manage_file` session summaries are not detailed enough                                                                                                                                                                                                 |
-| **Surface fallback**          | `list_surfaces`, `read_surface`, `patch_surface`, `replace_in_surface`                                                                                                                                                                                                                                                                                                                                                                                         | Advanced JSON Pointer fallback when `read_content` / `preview_edit` cannot reach the required active-document shape                                                                                                                                                                                                                  |
-| **External file read/write**  | `inspect_external_file`, `probe_field`, `probe_field_batch`, `probe_lorebook`, `probe_regex`, `probe_lua`, `probe_css`, `probe_greetings`, `probe_triggers`, `probe_risup_prompt_items`, `probe_risup_formating_order`, `external_search_in_field`, `external_read_field_range`, `external_write_field`, `external_write_field_batch`, `external_replace_in_field`, `external_insert_in_field`, `external_read_surface`, `external_patch_surface`, `open_file` | Advanced fallback for unopened-file diagnostics, direct external mutations, probe-specific summaries, exact legacy external surface patch payloads, or switching the active document when facade routes are insufficient                                                                                                             |
-| **Lua sections**              | `list_lua`, `read_lua`, `write_lua`, `replace_in_lua`, `insert_in_lua`, `add_lua_section`                                                                                                                                                                                                                                                                                                                                                                      | Advanced section fallback; prefer facade `read_content` and `preview_edit` → `apply_edit` for covered active/external section reads and edits                                                                                                                                                                                        |
-| **CSS sections**              | `list_css`, `read_css`, `write_css`, `replace_in_css`, `insert_in_css`, `add_css_section`                                                                                                                                                                                                                                                                                                                                                                      | Advanced section fallback; prefer facade `read_content` and `preview_edit` → `apply_edit` for covered active/external section reads and edits                                                                                                                                                                                        |
-| **Lorebook**                  | `list_lorebook`, `read_lorebook_by_id`, `read_lorebook`, `read_lorebook_batch`, `write_lorebook_by_id`, `write_lorebook_by_id_batch`, `write_lorebook`, `write_lorebook_batch`                                                                                                                                                                                                                                                                                 | Browse, compare, and bulk-edit lorebook entries; prefer `id` selectors when present                                                                                                                                                                                                                                                  |
-| **Regex**                     | `list_regex`, `read_regex_by_identity`, `read_regex`, `read_regex_batch`, `write_regex_by_identity`, `write_regex`, `replace_in_regex`, `add_regex_batch`, `write_regex_batch`                                                                                                                                                                                                                                                                                 | Per-entry regex operations; prefer unique `identity` selectors when present                                                                                                                                                                                                                                                          |
-| **Greetings / Triggers**      | `list_greetings`, `read_greeting_by_hash`, `read_greeting`, `read_greeting_batch`, `write_greeting_by_hash`, `batch_write_greeting`, `list_triggers`, `read_trigger`, `read_trigger_batch`, `write_trigger`                                                                                                                                                                                                                                                    | Advanced structured fallback; prefer facade selectors for covered greeting/trigger reads and guarded item edits                                                                                                                                                                                                                      |
-| **risup prompts**             | `manage_items`, `list_risup_prompt_items`, `read_risup_prompt_item_by_id`, `search_in_risup_prompt_items`, `read_risup_prompt_item_batch`, `read_risup_formating_order`, `diff_risup_prompt`, `export_risup_prompt_to_text`, `list_risup_prompt_snippets`                                                                                                                                                                                                      | Start here for structured `.risup` prompts. Prefer item `id` selectors for facade reads/writes/deletes and `manage_items` for add/reorder/import/copy/snippet workflows.                                                                                                                                                             |
-| **References**                | `list_references`, `search_in_reference_field`, `read_reference_field_range`, `list_reference_lorebook`, `read_reference_lorebook_batch`, `list_reference_regex`, `read_reference_regex_batch`, `list_reference_greetings`, `read_reference_greeting_batch`, `list_reference_triggers`, `read_reference_trigger_batch`, `list_reference_risup_prompt_items`, `read_reference_risup_prompt_item_batch`                                                          | Advanced structured/reference fallback after facade reference inspection, reads, or search are insufficient.                                                                                                                                                                                                                         |
-| **Assets**                    | `manage_assets`, `list_charx_assets`, `read_charx_asset`, `add_charx_asset`, `list_risum_assets`, `read_risum_asset`, `compress_assets_webp`                                                                                                                                                                                                                                                                                                                   | Prefer `manage_assets` for covered list/read/add/delete/rename and `.charx` compression workflows; use granular tools for `.risum` compression or exact legacy payloads                                                                                                                                                              |
-| **Danbooru / CBS validation** | `validate_danbooru_tags`, `search_danbooru_tags`, `get_popular_danbooru_tags`, `validate_cbs`, `list_cbs_toggles`, `simulate_cbs`, `diff_cbs`                                                                                                                                                                                                                                                                                                                  | Clean up image-prompt tags, validate CBS syntax                                                                                                                                                                                                                                                                                      |
-| **Skill docs**                | `list_skills`, `read_skill`                                                                                                                                                                                                                                                                                                                                                                                                                                    | On-demand loading of workflow, file-structure, CBS/Lua/lorebook/regex/Danbooru guides                                                                                                                                                                                                                                                |
-
----
-
-## 2. Critical Don'ts
-
-- Do **not** default to granular tools when a first-wave facade route covers the inspect/read/search/preview/apply workflow.
-- Do **not** call `apply_edit` without a matching `preview_edit` token and `operation_digest`.
-- Do **not** use `read_field` / `write_field` on surfaces that already have dedicated section/item tools.
-- Do **not** use `replace_in_field` as a search tool; use `search_in_field`.
-- Do **not** loop single-item reads when a batch reader already exists.
-- Do **not** loop single-item writes when a batch tool exists.
-- Do **not** request a raw root surface dump through `read_content` unless `selector.include_raw=true` and an explicit `max_bytes` are both justified; the default overview is the normal route.
-- Do **not** use `external_replace_in_field` or raw `promptTemplate` edits for covered external `.risup` prompt item writes/deletes; use facade `preview_edit` → `apply_edit` with `{ family: "risup-prompt", id/index }`.
-- Do **not** call `external_patch_surface` directly for covered unopened-file JSON Patch or recursive surface text replacement edits; use facade `preview_edit` → `apply_edit` with `{ family: "surface", path }` so the preview token and `expected_hash` guard are preserved.
-- Do **not** call `external_patch_surface` directly for covered unopened-file lorebook, regex, or alternate greeting item writes/deletes/replacements; use facade `read_content` for the stable `id` / `identity` / `index`, then `preview_edit` → `apply_edit` so item guards and `expected_hash` travel together.
-- Do **not** choose granular `.risup` add/reorder/import/copy/snippet, lorebook/regex/alternate greeting/trigger/Lua/CSS add/reorder, asset add/delete/rename/compression, or file/session/project-folder tools first when `manage_items`, `manage_assets`, or `manage_file` can express the active, session, or external workflow; use facade read/preview/apply and keep granular routes as exact-output, unsupported-shape, unsupported `.risum` compression, filesystem, or oversize fallbacks.
-- Prefer response `next_actions` over guessing: high-traffic tools such as `open_file`, `read_field`, `search_in_field`, `read_reference_field`, and batch risup prompt tools may narrow the family defaults. Tool/profile entries may also expose `risutoki/batchAlternative` for sibling batch reads/writes.
-- When several tools fit, call `list_tool_profiles` for a compact profile catalog (default `facade-first`, escape hatch `advanced-full`) or inspect tool `_meta` from `tools/list`: `risutoki/profiles` and `risutoki/defaultProfile=facade-first` define the profile/catalog contract, `risutoki/supportsDryRun=true` means a preview-first path exists, `risutoki/requiresConfirmation=true` means the tool will pause on approval, and `runtimeHealth` shows whether the MCP runtime has recent timeouts/network errors/exceptions.
-
----
-
-## 3. Read Rules
-
-- **Start facade-first for bounded reads/searches.** Use `inspect_document` for session/external/reference preflight, `read_content` for bounded active/external/reference field or surface content, and `search_document` for active/external/reference text search. If `max_bytes` is omitted, `read_content` applies the default 24KB cap.
-- **Use granular readers only when the facade cannot express the task or when exact structured/editor payloads matter.**
-- **Do not use `read_field` on the following fields.** They dump the entire content and waste context.
-  - `lua` → `list_lua` → `read_lua(index)`
-  - `css` → `list_css` → `read_css(index)`
-  - `alternateGreetings` → `list_greetings("alternate")` → `read_greeting("alternate", index)` / `read_greeting_batch("alternate", indices)`
-  - `triggerScripts` → `list_triggers` → `read_trigger(index)` / `read_trigger_batch(indices)`
-  - `promptTemplate` / `formatingOrder` → `list_risup_prompt_items` / `search_in_risup_prompt_items` / `read_risup_prompt_item` / `read_risup_prompt_item_batch` / `export_risup_prompt_to_text` / `copy_risup_prompt_items_as_text` / `diff_risup_prompt` / `list_risup_prompt_snippets` / `read_risup_prompt_snippet` / `read_risup_formating_order`
-- Read lorebook entries through `list_lorebook(folder?)` → `read_lorebook(index)` when you need the structured lorebook editor; otherwise prefer bounded `read_content` selectors for covered flat field reads.
-- Read regex entries through `list_regex` → `read_regex(index)` / `read_regex_batch(indices)` when you need structured regex entries.
-- The same applies to references. Prefer facade `inspect_document` / `read_content` / `search_document` for covered reference preflight, field reads, and text search; switch to `list_reference_*` / `read_reference_*_batch` for structured reference entries or exact legacy result shapes.
-- In a reference-only session, start with `inspect_document` targeting the session/reference when available; use `list_references` or `session_status` only for full legacy inventories or runtime diagnostics.
-- For large reference text fields, prefer `search_document` or `read_content` bounds first; use `search_in_reference_field` / `read_reference_field_range` when you need the granular result shape.
-- Use `read_field_batch([...])` only when you need exact legacy batch payloads for several small fields at once.
-- **Read unopened files with `inspect_document` / `read_content` first when covered.** Use external `.risup` prompt selectors for covered prompt item reads/searches/edits. Use `inspect_external_file` + `probe_*` for probe-specific summaries and `external_*` for direct path-based edits that the facade cannot express. Switch the active document with `manage_file` preview/apply `open_file` when you specifically need the live session-coupled edit families; use granular `open_file` only for exact legacy switching behavior.
-- If the syntax or structure is unclear, read the relevant skill doc before making any changes.
+### Standalone mode
 
----
-
-## 4. Effective Workflows
-
-### Standard Sequence
-
-This sequence maps to additive `risutoki/workflowStages` metadata exposed by `tools/list` and `list_tool_profiles`. Stage meanings: `discover` = routing/catalog/list/session preflight, `read` = bounded content retrieval, `search` = query-based retrieval, `validate` = validators/diffs/simulators, `preview` = dry-run or preview-token generation, and `apply` = state-changing operations. The safe task order is **discover -> read/search -> validate/preview -> apply -> validate**; the final validation is a repeated workflow step after mutation.
-
-1. **Discover / routability first** — Use `inspect_document` for active/session, external, reference, or guidance preflight when the target fits the facade contract.
-2. **Read/search through the facade** — Use `read_content` and `search_document` with bounded selectors before reaching for legacy field/search/probe routes.
-3. **Choose a fallback only with a reason** — Switch to granular list/read/search tools for structured item editors, unsupported selectors, exact legacy response shapes, or broad batch workflows.
-4. **Validate/preview before apply** — Run relevant validators/diffs/simulators before risky changes. For covered facade edits call `preview_edit`, carrying returned guards/tokens into `apply_edit`; for covered item, asset, or file management call `manage_items`, `manage_assets`, or `manage_file` preview first.
-5. **Apply through the narrowest mutating route** — Use `apply_edit` for covered facade previews, `manage_items` apply mode for covered item-management previews, `manage_assets` apply mode for covered asset-management previews, and `manage_file` apply mode for covered file-management previews. Inserts, block replacements, unsupported batch item operations, `.risum` compression, and unsupported structured/filesystem edits remain granular.
-6. **Validate after apply** — Confirm results with facade follow-up reads, structured validators, reference comparison, or preview.
-
-For `.charx` files that will be uploaded to RisuAI, include export compatibility validation in steps 4 and 6. `session_status` also reports `integrity.activeFile.matchesLoadedBaseline` and `driftWarning` when the active file on disk no longer matches the opened/last-saved baseline, so check it before trusting disk-backed validation.
-
-### Real-Artifact Workflow Eval Matrix
-
-`src/lib/mcp-agent-workflow-eval.test.ts` is the real-artifact workflow eval matrix for CLI route selection. It maps representative `.charx`, `.risup`, `.risum`, and Plugin API v3 tasks to local `risu/` corpus roots, upstream RisuAI source links, facade-first routes, documented granular escape hatches, bounded reads, stale guards, preview/dry-run policy, apply scope, and post-edit validation evidence.
-
-Run it through `npm run test:evals`. Treat a new MCP workflow, file rule, or plugin-routing expectation as incomplete until this matrix, `docs/MCP_TOOL_SURFACE.md`, `AGENTS.md`, and `skills/using-mcp-tools/SKILL.md` all agree.
-
-### Task-Intent Playbooks
-
-Use these intent-based routes when a user describes the work rather than the exact MCP family. Each route follows the same safety shape: readonly analysis → preview/dry-run → apply → validation.
-
-| Intent                        | Readonly analysis                                                                                                                                                                                                                  | Preview / dry-run                                                                                                                                                                   | Apply                                                                                                                                                                                                 | Validation                                                                                                                                                                       |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Lorebook cleanup**          | `inspect_document` → `search_document` / bounded `read_content`; use `list_lorebook` or external `read_content` lorebook lists to get stable `id` values, folders, and stale-index fallback guards                                 | Use `preview_edit` with `{ family: "lorebook", id }` for covered item writes/deletes/replacements; use `replace_in_lorebook_batch(dry_run=true)` for broad multi-entry text changes | `apply_edit` for covered id previews; use `write_lorebook_by_id_batch`, `batch_delete_lorebook_by_id`, or index tools with `expected_comment` only when facade cannot express the operation           | `validate_lorebook_keys`, follow-up `read_content` / `read_lorebook_by_id`, and check Lua `getLoreBooks()` comment searches if comments changed                                  |
-| **Regex or greeting edits**   | `inspect_document`; then facade `read_content`, `list_regex` / `list_greetings` to get identity/hash values, or batch readers instead of dumping raw arrays                                                                        | Prefer `preview_edit` with `{ family: "regex", identity }` or `{ family: "greeting", greeting_type, identity }`; use `manage_items` preview for add/reorder                         | `apply_edit` for covered active/external identity previews; use `manage_items` apply for add/reorder, or index fallback with `expected_comment` / `expected_preview` when identity selectors collide  | Re-read the edited identity/index or list after deletion, preview affected chat output when relevant, and confirm no stale-target `409` required a refresh                       |
-| **`.risup` prompt edits**     | `inspect_document`, `list_risup_prompt_items` for active stable ids, facade `read_content`, `search_document` with `field="risup-prompt"` for external files, `read_risup_formating_order`, and `diff_risup_prompt` when available | Prefer `preview_edit` with `{ family: "risup-prompt", id }` or index selectors for writes/deletes; use `manage_items` preview for add/reorder/import/copy/snippet workflows         | `apply_edit` for covered id/index previews and batch writes/deletes; use `manage_items` apply mode for covered add/reorder/import/snippet previews and granular routes only for unsupported workflows | `validate_content`, `validate_risup_prompt_import` with the same source text after imports, `diff_risup_prompt`, `read_risup_formating_order`, and targeted by-id/index re-reads |
-| **CBS / Danbooru validation** | Load syntax guidance first (`read_skill("writing-cbs-syntax")`, `read_skill("writing-danbooru-tags")`) and locate candidate text with `search_document` / bounded `read_content`                                                   | Run `validate_content` when selectors include CBS content or Danbooru tags; use granular `simulate_cbs`, `diff_cbs`, or `search_danbooru_tags` for richer workflows                 | Use `preview_edit` → `apply_edit` for covered field/surface edits; fall back to dedicated prompt/field/regex/lorebook tools for structured items                                                      | Re-run the same validators, and preview/render when CBS changes affect visible output                                                                                            |
-| **Reference sync / diff**     | Start with `inspect_document` for session/reference state; use facade `read_content` / `search_document` for covered reference reads and `diff_lorebook` / `diff_risup_prompt` for purpose-built comparisons                       | Treat references as read-only; preview active-document changes with `preview_edit`, `manage_items`, `manage_assets`, or granular `dry_run` when a facade cannot express the change  | Apply only to the active or explicit external target through facade/granular active-document tools; never write reference files through reference readers                                             | Re-run the diff (`diff_lorebook`, `diff_risup_prompt`, or focused reference read/search) and verify active content now matches the intended reference subset                     |
-
-### Quick-Selection by Situation
-
-**When you want to inspect field contents**
-
-- Current session/document state → `inspect_document` (`target.kind="session"` or `active`); use `session_status` for full runtime diagnostics.
-- Bounded active/external/reference field or surface content → `read_content`.
-- File not open, identified by absolute path → `inspect_document` / `read_content` with `target.kind="external"`; use `inspect_external_file` / `probe_*` for probe-specific summaries.
-- Find a specific string → `search_document`; use granular `search_in_field` / `external_search_in_field` / `search_in_reference_field` only for exact legacy result shapes.
-- Inspect a specific position in a large field → `read_content` bounds first; use `read_field_range` when granular range semantics are required.
-- Export the entire field to a local file → `export_field_to_file` (granular/open-world fallback).
-- Whole-document or long-field editing exceeds MCP response limits → use `manage_file` project-folder extract/reassemble when covered, keep using structured editor/MCP surfaces where possible, use raw `.md`/`.json`/`assets` files only as an advanced filesystem fallback, then reassemble when a `.charx`, `.risum`, or `.risup` export is needed.
-
-**When you want to modify field contents**
+Run the file-backed MCP server without Electron:
 
-- Covered active/external field write/replace, active/external surface patch/replace, active/external lorebook text replacement or item write/delete where selectors resolve, active/external regex/greeting identity or index write/delete where selectors resolve, active/external `.risup` prompt-item id/index write/delete, or older indexed regex/greeting/risup prompt item write/delete → `preview_edit` → `apply_edit` with the returned `preview_token`, `operation_digest`, and guard values.
-- Covered active/external `.risup` prompt add, reorder, text import, copy-as-text, snippet management, or lorebook/regex/alternate greeting/trigger/Lua/CSS add/reorder → `manage_items` read or preview → `manage_items` apply with the returned `preview_token`, `operation_digest`, and guard values.
-- Covered active/external `.charx` / `.risum` asset list/read/add/delete/rename, or `.charx` asset compression → `manage_assets` read or preview → `manage_assets` apply with the returned `preview_token`, `operation_digest`, and guard values.
-- Covered file/session/project-folder operation such as opening an unopened artifact, saving active content, listing/restoring snapshots, exporting an active field, or extracting/reassembling `.charx` / `.risum` / `.risup` project folders → `manage_file` read or preview → `manage_file` apply with the returned `preview_token`, `operation_digest`, and guard values.
-- File not yet open but current UI document must stay unchanged → facade external field, surface patch/replace, lorebook/regex/alternate greeting item, and `.risup` prompt item selectors when covered; otherwise granular `external_write_field` / `external_write_field_batch` / `external_replace_in_field` / `external_insert_in_field` / `external_read_surface` / `external_patch_surface`.
-- Specialized active-document tool cannot reach the required content and facade selectors do not cover it → `list_surfaces` → `read_surface` → `patch_surface` or `replace_in_surface` with `dry_run` first when practical.
-- File not yet open and you want the full active-document editing surface → prefer `manage_file` preview/apply `open_file`, then use facade or granular active-document tools.
-- Small field legacy compatibility → `read_field` → `write_field`.
-- Single substitution in a large field outside facade scope → `search_in_field` → `replace_in_field`.
-- Multiple substitutions in a large field → `replace_in_field_batch`.
-- Anchor-based block replacement → `replace_block_in_field`.
+```bash
+node toki-mcp-server.js --standalone [--file <path>] [--ref <path>] [--allow-writes] [--tool-profile <profile>]
+```
 
-**When working with multiple lorebook entries**
+- `--file` loads an active `.charx`, `.risum`, or `.risup` document.
+- Repeated `--ref` options load read-only references.
+- Without `--allow-writes`, mutation requests stop at the write gate.
+- `--user-data-dir` changes the standalone sidecar and diagnostics directory.
+- `RISUTOKI_MCP_FILE`, `RISUTOKI_MCP_REFS`, `RISUTOKI_MCP_ALLOW_WRITES`, `RISUTOKI_MCP_USER_DATA_DIR`, and `RISUTOKI_MCP_TOOL_PROFILE` are the environment-variable equivalents.
 
-- Read → prefer facade `read_content` with `{ family: "lorebook", id }` or granular `read_lorebook_by_id`; use `read_lorebook_batch` for index fallback.
-- Write → prefer facade id preview/apply or granular `write_lorebook_by_id_batch`; use `write_lorebook_batch` for index fallback.
-- Stale-target safety → prefer `id`; if id is unavailable or collides, reuse each entry's current `comment` as `expected_comment` (or `expected_comments` for `batch_delete_lorebook`).
-- Bulk name/phrase replacement → `replace_across_all_lorebook`
-- Preview multi-entry replacements → `replace_in_lorebook_batch(dry_run=true)`
-- Key quality check → `validate_lorebook_keys`
+The default registered profile is `facade-first`. Use `--tool-profile advanced-full` or `RISUTOKI_MCP_TOOL_PROFILE=advanced-full` when a client needs every granular route. `authoring` and `readonly` select their documented subsets. An unknown profile value emits a warning and falls back to `facade-first`; it never expands to the full catalog.
 
-**When comparing against references**
+`session_status` reports `allowWrites`, `userDataPath`, and `runtimeHealth`. Standalone process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` unless `--user-data-dir` changes the location. Diagnostics contain paths, timings, status, response sizes, and error summaries, not prompt or field bodies.
 
-- Covered reference preflight/read/search → `inspect_document` / `read_content` / `search_document`.
-- Most efficient lorebook comparison → `diff_lorebook`.
-- Structured manual comparison → `list_reference_*` → `read_reference_*`.
-- Narrow large reference text with legacy result shape → `search_in_reference_field` / `read_reference_field_range`.
-- Reference-only session (no main file) → `inspect_document` first; use `session_status` or `list_references` for full legacy inventories → all `*_reference_*` tools.
+### Project-folder mode
 
-**When you need a safety net**
+When a `.charx`, `.risum`, or `.risup` project folder is active, the folder is the save backend for the normal structured editor. The AI terminal working directory and generated project-root context resolve to that folder.
 
-- Check dirty/autosave/recovery state before resuming → `inspect_document` for facade summary; `session_status` for full diagnostics.
-- Back up before editing → `manage_file` preview/apply `snapshot_field`; use granular `snapshot_field` only for exact legacy behavior.
-- Roll back → `list_snapshots` → `restore_snapshot`
-- Summary statistics → `get_field_stats`
+Structured editor and MCP surfaces remain the default. Raw `.md`, `.json`, and asset files are an advanced fallback for external tools or exact filesystem work. Use `manage_file` project-folder extract/reassemble workflows when MCP response bounds make direct work impractical.
 
-### Never Do This
+## 2. Tool Registration Profiles
 
-- Do not use `replace_in_field` as a search tool.
-- Do not use `read_field` to dump an entire surface that has dedicated tools.
-- Do not repeatedly call a single-item write tool when a batch tool is available. Always prefer the batch variant.
+The server registers one profile at startup, and `tools/list` returns only that registered set:
 
----
+| Profile         | Purpose                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| `facade-first`  | Default low-context surface for normal inspect/read/search/preview/apply workflows plus skill bootstrap |
+| `authoring`     | Facades plus structured authoring, reference, skill, CBS, and Danbooru families                         |
+| `readonly`      | Tools annotated with `readOnlyHint=true`; mutation facades and file-open controls are excluded          |
+| `advanced-full` | Every granular and compatibility route                                                                  |
 
-## 5. Caveats
+Call `list_tool_profiles` to inspect profile membership, the active profile, registered/hidden counts, workflow stages, and runtime health. Requesting another profile from that catalog does not register it dynamically; restart the server with the desired profile.
 
-### Write Behavior
+The complete profile and coverage contract lives in [`docs/MCP_TOOL_SURFACE.md`](../../docs/MCP_TOOL_SURFACE.md).
 
-- `write_field`, `write_lorebook`, `add_*`, and `delete_*` tools trigger a **user confirmation popup**.
-- `external_write_field`, `external_write_field_batch`, `external_replace_in_field`, `external_insert_in_field`, and `external_patch_surface` also trigger confirmation and reject targets that are already the active UI document.
-- `patch_surface` and `external_patch_surface` accept JSON Patch `add` / `replace` / `remove` operations, and `replace_in_surface` recursively replaces matching strings under one active JSON Pointer path. Prefer facade `preview_edit` / `apply_edit` for covered active/external patch or recursive replacement workflows; use direct patch/replace routes only for unsupported shapes, exact legacy payloads, or broad cross-surface fixes, and carry the document-level `expected_hash` when retrying after `list_surfaces` or a root surface read.
-- `list_tool_profiles` exposes the on-demand compact profile catalog; use it to apply the `facade-first` default, `authoring`, `advanced-full` / aliases `advanced` and `full`, or `readonly` without asking the MCP server to hide tools from `tools/list`. `tools/list` remains unfiltered for compatibility and still exposes additive `_meta`; use `risutoki/profiles`, `risutoki/surfaceKind`, `risutoki/recommendation`, `risutoki/requiresConfirmation`, and `risutoki/supportsDryRun` when a client cannot call the catalog facade or needs exact legacy discovery. `manage_items`, `manage_assets`, and `manage_file` are included in facade-first and authoring profiles, but excluded from readonly because they have apply-mode mutations.
-- Specialized indexed writes/deletes now support family-specific stale-index guards: lorebook/regex/trigger use `expected_comment`, greetings use `expected_preview` / `expected_previews`, and risup prompt items use `expected_type` plus optional `expected_preview`. Carry these values forward from the latest list/read response so a stale index returns `409` instead of overwriting the wrong item.
-- Lorebook `comment` values can be used by Lua `getLoreBooks()` searches. When changing a comment, always verify that it still matches the corresponding Lua search pattern.
-- References are **read-only**.
-- Items with `mode: "folder"` in `list_lorebook` results represent folders, not entries.
+## 3. Common Execution Sequence
 
-### risup Notes
+Use this sequence for reads and edits:
 
-- Complex nested objects in risup files (`ooba`, `NAISettings`, `customFlags`, etc.) are preserved during round-trips but are not exposed as individual form controls.
-- `.risup` files are compatible with gzip, zlib, and raw-deflate compression. On save the detected compression mode is preserved whenever possible.
-- `promptTemplate` / `formatingOrder` should be edited through the structured UI and the dedicated MCP tools. Fall back to `write_field` only when you need to touch an unsupported raw shape.
-- Responses from `list_risup_prompt_items` / `read_risup_prompt_item` / `read_risup_prompt_item_batch` include additive `id` metadata for supported items plus the `type` / `preview` pair needed by stale-index guards on prompt-item write/delete routes. Responses from `read_risup_formating_order` include an advisory `warnings` array. Routing is still index-based by default, but batch add/write tools reduce repeated confirmation prompts when touching several sibling items.
-- `manage_items` is the preferred facade for active/external `.risup` prompt add, reorder, copy-as-text, text import append/replace, snippet list/read/save/insert/delete, and lorebook/regex/alternate greeting/trigger/Lua/CSS add/reorder workflows. Mutations require preview then apply, rechecking prompt item digests, snippet updated-at guards, item collection digests, or `expected_hash` guards as applicable.
-- `manage_assets` is the preferred facade for covered active/external `.charx` and `.risum` asset list/read/add/delete/rename workflows plus `.charx` asset compression. Mutations require preview then apply, rechecking `expected_asset_collection_digest`, `expected_path` for delete/rename, and active/external document `expected_hash` guards where surface patches are used.
-- `manage_file` is the preferred facade for covered file/session workflows. Mutations require preview then apply, rechecking `expected_active_file_path`, `expected_file_state_digest`, `expected_output_state_digest`, or `expected_project_tree_digest` depending on the operation.
-- `export_risup_prompt_to_text` / `copy_risup_prompt_items_as_text` / `import_risup_prompt_from_text` remain advanced serializer fallbacks for exact legacy payloads or large outputs beyond facade bounds. The format preserves supported-item IDs, supported-item extra JSON fields, and unsupported/raw items; use `manage_items` preview before applying covered imports, and prefer append mode when pasting copied blocks into an existing template.
-- `list_risup_prompt_snippets` / `read_risup_prompt_snippet` / `save_risup_prompt_snippet` / `insert_risup_prompt_snippet` / `delete_risup_prompt_snippet` add a persistent, sidecar-backed snippet library on top of that serializer. Prefer `manage_items` for covered snippet reads/mutations; use granular snippet tools when exact legacy response shapes are required.
-- `diff_risup_prompt` compares the active `.risup` preset against a loaded reference `.risup` file using serializer-backed `promptTemplate` line summaries plus `formatingOrder` token/warning diffs. Use it before importing blocks or rewriting order when you need a prompt-specific compare step instead of noisy raw JSON field diffs.
-- `validate_risup_prompt_import` verifies that an import text matches the current `promptTemplate` content by comparing serialized item blocks with ID normalization. Call it immediately after `import_risup_prompt_from_text` with the same source text to catch silent mismatches from ID renormalization, content truncation, or unsupported item coercion.
-- `batch_delete_risup_prompt_items` deletes multiple prompt items in one confirmed operation. It accepts `indices`, optional `expected_types` / `expected_previews` arrays (aligned with `indices` order), and uses `Set`-based filtering for deletion. Prefer it over repeated `delete_risup_prompt_item` calls.
-- `add_risup_prompt_item` and `add_risup_prompt_item_batch` accept an optional `insertAt` parameter for positional insertion (0-based, `0 <= insertAt <= items.length`), matching the pattern from `insert_risup_prompt_snippet`.
-- The risup fallback write surface is not an unrestricted passthrough. `write_field`, `write_field_batch`, and autosave apply the same validation boundary as the UI save path for `promptTemplate`, `formatingOrder`, `presetBias`, and `localStopStrings`. Malformed JSON or unexpected shapes are immediately rejected with a 400 or an autosave failure.
+1. **Load guidance.** At session start, load `project-workflow`. Before concrete MCP reads or writes, load `using-mcp-tools`.
+2. **Discover.** Use `list_tool_profiles` when profile state matters, then `inspect_document` for active, session, reference, or external preflight.
+3. **Read or search narrowly.** Prefer bounded `read_content` and `search_document`. Use structured lists, item reads, ranges, or granular families only when the facade cannot express the target or exact legacy output is required.
+4. **Validate or preview.** Use `validate_content`, `preview_edit`, or the read/preview mode of `manage_items`, `manage_assets`, and `manage_file`. Risky granular routes should use `dry_run` when available.
+5. **Apply.** Reuse the returned `preview_token`, `operation_digest`, and stale guards. Mutation tools may require confirmation.
+6. **Validate again.** Re-read the changed target or rerun the validator/diff that found the issue.
+7. **Summarize fallback.** If a granular route was necessary, add one line to the final task summary stating which facade selector or operation was unsupported. No separate log or commit-message record is required.
 
-### Autosave / Recovery
+Facade coverage is determined by behavior: when a facade accepts the selector or operation in preview/read mode, use that facade through apply. A facade rejection or an operation it cannot express is the routing signal for the matching granular family. The route-by-route matrix lives in [`docs/MCP_TOOL_SURFACE.md`](../../docs/MCP_TOOL_SURFACE.md).
 
-- After an abnormal shutdown the app may prompt to restore from an autosave on restart. If the user restores, the file label shows `[Auto-Restored]`, provenance is displayed in the status bar, and a `.toki-recovery.json` sidecar is written alongside the autosave file.
-- `session_status` can be called even when no document is open. It reports the current file path/type, renderer dirty/autosave state, pending recovery records, snapshot totals, loaded reference files, lightweight stat-based integrity metadata (`mtimeMs`/`size` plus unavailable reasons), reference-manifest status when available, standalone `allowWrites` / `userDataPath` runtime diagnostics, and a compact `surfaceSummary` for the active document in a single response. When no main file is loaded but references exist, the summary directs you to `list_references`.
-- Standalone MCP process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log`, including process start, stdio transport lifecycle, mutating tool start/success/error, sanitized API request/response metadata, and MCP logging failures. Tool/API logs record paths, timings, status codes, byte counts, and content type/length summaries only; they must not include field bodies.
+## 4. Startup Without an Active Document
 
-### Preview
+Guidance discovery is independent of document state:
 
-- The preview panel displays initialization and runtime diagnostics as inline banners. If the iframe is not ready within 5 seconds a timeout error is shown; runtime errors such as Lua trigger failures appear directly inside the panel. Controller-level Wasmoon preflight (`ensureWasmoon()`) runs outside the preview panel and is not surfaced through these banners.
-- Preview is available only for `.charx` files. When a `.risum` or `.risup` file is open, the View menu preview item and the `F5` shortcut are both blocked. Internally, a missing `_fileType` and an explicit `_fileType: 'charx'` are both treated as charx.
-- Preview message rendering now supports richer markdown (`#` headings, ordered/unordered lists, links, strikethrough, horizontal rules) plus a wider safe structural-HTML allowlist (`h1-h6`, `ul/ol/li`, `details/summary`, `figure`, `section/article`, `u`, `sub`, `sup`, etc.). Messages still render inside the existing sandbox/CSP boundary, and inline styles remain narrowly restricted.
-- The preview Lua functions `setDescription`, `setPersonality`, `setScenario`, and `setFirstMessage` update preview-local state immediately, so you can verify card-field-changing triggers inside the preview.
-- Preview macros keep `{{charpersona}}` and `{{chardesc}}` as distinct fields. `{{charpersona}}` reads from personality; `{{chardesc}}` reads from description.
+- `list_skills` and `read_skill` work with no active document.
+- `load_guidance` works with no active document.
+- `inspect_document` works without an active document when the target is session, reference, external, or guidance.
+- Document-bound reads and edits still return the structured `No file open` error.
 
-### MCP Taxonomy
+This allows standalone clients to bootstrap project guidance before choosing or opening an artifact.
 
-- `src/lib/mcp-tool-taxonomy.ts` is the single source of truth that maps registered MCP tools into workflow families. When you add or remove a registered tool, update this file as well. `mcp-tool-taxonomy.test.ts` enforces bidirectional completeness (no orphans, no phantoms) and behavioral-hint consistency.
-- MCP SDK `ToolAnnotations` (readOnlyHint, destructiveHint, idempotentHint, openWorldHint) are automatically patched after registration via `RegisteredTool.update()`.
-- `risutoki/workflowStages` is additive planning metadata derived from taxonomy names and behavioral hints. Use it to sequence discover -> read/search -> validate/preview -> apply -> validate workflows, not as a substitute for tool-specific `next_actions` or stale-guard metadata.
-- Facade backlog: extend mutating parity into remaining block-specific or cross-surface operations only when preview can show exact insertion/order/file effects and stale guard policy is unambiguous. Current `preview_edit` coverage handles active/external surface patch/replace plus covered external lorebook/regex/alternate greeting item writes/deletes/replacements, current `manage_items` coverage handles `.risup` prompt add/reorder/import/copy/snippet workflows plus active/external lorebook, regex, and alternate greeting add/reorder, current `manage_assets` coverage handles covered `.charx`/`.risum` asset management plus `.charx` compression, current `manage_file` coverage handles covered file/session/project-folder management, and current `validate_content` coverage includes active lorebook key hygiene, regex compile/sanity checks, active/external `.charx` export compatibility, CBS validation, Danbooru tag validation, active/external `.risup` promptTemplate/formatingOrder structure checks, active/external `.risum` semantic field consistency, and external Plugin v3 source scans; keep using granular validators for simulation/diff/search or unsupported selector context.
+## 5. Shared Safety Rules
 
-> For the full error/no-op/success response contract see [`docs/MCP_ERROR_CONTRACT.md`](MCP_ERROR_CONTRACT.md).
+- Prefer stable `id`, `identity`, or hash selectors over indexes when list responses provide them.
+- Treat a stale-target `409` as a successful safety catch: refresh the source list/read, rebuild the preview, and retry with current guards.
+- Prefer response `next_actions` over a generic family sequence.
+- Use `artifacts.byte_size` as a context-budget cue. Narrow subsequent reads when responses are already large.
+- `read_content` defaults to a 24 KB cap. Root surface reads return an overview unless `include_raw` and an explicit `max_bytes` are both justified.
+- Protected `.charx` compatibility fields, `.risup` legacy prompt fields, and reserved `.risum` `cjs` remain hidden and save-stripped. `hiddenFieldWarnings` is an existence summary, not permission to recover values through another route.
+- References are read-only.
+- Batch related sibling reads or writes when a batch route exists.
 
----
+Exact tool-selection rules and task playbooks live in `read_skill("using-mcp-tools")`. Error and recovery behavior lives in [`docs/MCP_ERROR_CONTRACT.md`](../../docs/MCP_ERROR_CONTRACT.md).
 
-## 5. Skill Docs
+## 6. Skill Discovery
 
-### Start Here
+The generated skill catalog is repository-root scoped:
 
-- `read_skill("project-workflow")` — Project onboarding, MCP workflow summary, project rules
-- `read_skill("using-mcp-tools")` — Tool selection, large-field editing, batch-first principles
-- `read_skill("file-structure-reference")` — `.charx`, `.risum`, `.risup`, lorebook, regex structures
-- `read_skill("writing-danbooru-tags")` — Danbooru tag search/validation workflow
+- Codex: `.agents/skills`
+- Claude Code: `.claude/skills`
+- Gemini CLI: `.gemini/skills`
+- Copilot CLI: `.github/skills`
 
-### Syntax-Specific Skills
+`npm run sync:skills` rebuilds `.copilot-skill-catalog/` from the tracked skill roots and refreshes those discovery paths. Subtree routing is handled by the nearest `risu/{scope}/AGENTS.md`, not by separate nested catalogs.
 
-- `read_skill("writing-cbs-syntax")`
-- `read_skill("writing-lua-scripts")`
-- `read_skill("writing-lorebooks")`
-- `read_skill("writing-regex-scripts")`
-- `read_skill("writing-html-css")`
-- `read_skill("writing-trigger-scripts")`
-
-### Deeper References
-
-- `read_skill("using-mcp-tools", "TOOL_REFERENCE.md")` — Full MCP tool catalog summary
-- `read_skill("using-mcp-tools", "FILE_STRUCTURES.md")` — Quick structure pointers
-
-### Skill Discovery Scope
-
-RisuToki's generated unified skill catalog is **repo-root scoped**. Copilot CLI, Claude Code, and Gemini CLI resolve project skills from the repository-root `.github/skills`, `.claude/skills`, and `.gemini/skills` discovery paths. Codex resolves project skills through `.agents/skills`; Codex itself can scan that directory from the current working directory up to the repository root, but this repo provisions only a generated repository-root `.agents/skills` path after `npm run sync:skills` (or `npm install`, via `prepare`). Nested skill directories placed inside subdirectories do not create subtree-specific catalogs in this repo — `list_skills` always returns the same repo-wide set regardless of the agent's working directory. Subtree scoping is handled by `AGENTS.md` routing: the nearest `risu/{scope}/AGENTS.md` decides which skills from the global catalog are relevant.
-
-### When the Skills Folder Appears Empty
-
-If `list_skills` returns nothing, the generated CLI catalog may need repair. Check the following:
-
-1. `npm run sync:skills`
-2. The source skill roots that feed the catalog: `skills/`, `risu/common/skills/`, `risu/{bot,prompts,modules,plugins}/skills/`
-3. The generated `.copilot-skill-catalog/`
-4. Symlink/junction or managed-directory state of `.agents/skills`, `.claude/skills`, `.gemini/skills`, `.github/skills`
-
-If it is still empty, fall back to `docs/`, the local `risu/{artifact}/README.md` / `AGENTS.md`, and the codebase itself.
-
-`list_skills` returns `name`, `description`, `tags`, `relatedTools`, and `files` metadata for each skill. If you are unsure which guide to read, start with `list_skills` to pick one, then open only the file you need with `read_skill(name, file?)`.
+If MCP is unavailable, read `skills/project-workflow/SKILL.md` directly, then open only the supporting file needed for the task. If the generated catalog is empty, run `npm run sync:skills` and verify the tracked skill roots before falling back to repo-local docs.

@@ -23,6 +23,7 @@ Typical cases:
 5. renderer-side rejection or conflict (`rejected`, `409`)
 6. stale-index guard conflicts on guarded indexed writes using `expected_comment`, `expected_preview`, or `expected_type`
 7. stale document hash conflicts on surface patch writes using `expected_hash`
+8. malformed JSON-backed `.risup` fields submitted through field or surface mutations
 
 Notes:
 
@@ -31,10 +32,12 @@ Notes:
 - `details` should carry small machine-readable facts, not large payloads
 - Stale-index conflicts return `409` with family-specific `details.expected_*` / `details.actual_*` fields (for example `expected_comment`, `expected_preview`, or `expected_type`), so the caller can refresh the relevant list route deterministically before retrying
 - Surface patch hash conflicts return `409` with `details.expected_hash` / `details.actual_hash`; refresh with `list_surfaces`, `read_surface`, or `external_read_surface` before retrying
+- Invalid JSON-backed `.risup` fields use the field-specific message format `Invalid <field>: <reason>` and reject the whole submitted mutation before data is changed
+- Surface patch arrays follow RFC 6902 for supported operations: `add` inserts at an existing boundary or appends with `-`, while `replace` and `remove` require an existing index
 - `mcpError()` broadcasts failure status to the renderer UI
 - `No file open` applies only to routes that require the active main document; `session_status`, `probe_*`, `external_*`, and `reference*` routes remain available without one
 
-### Recovery metadata (additive, v0.38.9+)
+### Recovery metadata
 
 Both `mcpError()` and `mcpNoOp()` responses include machine-readable recovery hints:
 

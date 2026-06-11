@@ -100,18 +100,7 @@ export function parseLuaSections(luaCode: string): Section[] {
     sections.push({ name: 'main', content: luaCode.trim() });
   }
 
-  // Post-process: merge empty sections with the following section
-  const merged: Section[] = [];
-  for (let i = 0; i < sections.length; i++) {
-    if (!sections[i].content && i + 1 < sections.length) {
-      merged.push({ name: sections[i].name, content: sections[i + 1].content });
-      i++; // skip next
-    } else {
-      merged.push(sections[i]);
-    }
-  }
-
-  return merged;
+  return sections;
 }
 
 export function combineLuaSections(sections: Section[]): string {
@@ -223,16 +212,7 @@ export function parseCssSections(cssCode: string): CssParseResult {
   if (sections.length === 0) {
     sections.push({ name: 'main', content: cssCode.trim() });
   }
-  const merged: Section[] = [];
-  for (let i = 0; i < sections.length; i++) {
-    if (!sections[i].content && i + 1 < sections.length) {
-      merged.push({ name: sections[i].name, content: sections[i + 1].content });
-      i++;
-    } else {
-      merged.push(sections[i]);
-    }
-  }
-  return { sections: merged, prefix, suffix };
+  return { sections, prefix, suffix };
 }
 
 export function combineCssSections(sections: Section[], prefix: string, suffix: string): string {

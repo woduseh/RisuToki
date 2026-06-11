@@ -1,10 +1,5 @@
-import {
-  validateFormatingOrderText,
-  validateLocalStopStringsText,
-  validatePresetBiasText,
-  validatePromptTemplateText,
-} from './risup-prompt-model';
 import { CHARX_DEPRECATED_FIELD_NAMES } from './deprecated-save-policy';
+import { RISUP_JSON_TEXT_FIELD_NAMES, validateRisupJsonTextField } from './risup-json-fields';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -24,44 +19,6 @@ export interface DataSerializerDeps {
 // ---------------------------------------------------------------------------
 
 let deps: DataSerializerDeps;
-
-function validateRisupStructuredField(key: string, value: unknown): void {
-  if (typeof value !== 'string') {
-    throw new Error(`${key} must be a JSON string.`);
-  }
-
-  let parseError: string | null = null;
-  if (key === 'promptTemplate') {
-    parseError = validatePromptTemplateText(value);
-  } else if (key === 'formatingOrder') {
-    parseError = validateFormatingOrderText(value);
-  } else if (key === 'presetBias') {
-    parseError = validatePresetBiasText(value);
-  } else if (key === 'localStopStrings') {
-    parseError = validateLocalStopStringsText(value);
-  }
-
-  if (parseError) {
-    throw new Error(`Invalid ${key}: ${parseError}`);
-  }
-}
-
-const RISUP_JSON_TEXT_FIELDS = new Set([
-  'promptTemplate',
-  'formatingOrder',
-  'presetBias',
-  'localStopStrings',
-  'promptSettings',
-  'customAPIFormat',
-  'openrouterProvider',
-  'seperateParameters',
-  'fallbackModels',
-  'seperateModels',
-  'modelTools',
-  'customFlags',
-  'dynamicOutput',
-  'reverseProxyOobaArgs',
-]);
 
 const CHARX_DEPRECATED_FIELD_NAME_SET = new Set(CHARX_DEPRECATED_FIELD_NAMES);
 
@@ -326,9 +283,10 @@ export function applyUpdates(data: any, fields: any): void {
     'localNetworkMode',
     'localNetworkTimeoutSec',
   ];
-  for (const fieldName of RISUP_JSON_TEXT_FIELDS) {
+  for (const fieldName of RISUP_JSON_TEXT_FIELD_NAMES) {
     if (fields[fieldName] !== undefined) {
-      validateRisupStructuredField(fieldName, fields[fieldName]);
+      const error = validateRisupJsonTextField(fieldName, fields[fieldName]);
+      if (error) throw new Error(`Invalid ${fieldName}: ${error}`);
     }
   }
   for (const key of allowed) {

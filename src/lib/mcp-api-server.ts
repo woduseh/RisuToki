@@ -27,12 +27,9 @@ import {
   serializePromptTemplateToText,
   parseFormatingOrder,
   collectFormatingOrderWarnings,
-  validateLocalStopStringsText,
-  validatePresetBiasText,
-  validatePromptTemplateText,
-  validateFormatingOrderText,
   type PromptItemModel,
 } from './risup-prompt-model';
+import { isRisupJsonTextFieldName, validateRisupJsonTextField } from './risup-json-fields';
 import { diffRisupPromptData, diffRisupPromptWithText } from './risup-prompt-compare';
 import { listSkillCatalogEntries, resolveSkillCatalogFile } from './skill-catalog';
 import {
@@ -528,27 +525,8 @@ function referenceDataWithFileType(ref: {
 }
 
 function getRisupStructuredFieldError(fieldName: string, content: unknown): string | null {
-  if (
-    fieldName !== 'promptTemplate' &&
-    fieldName !== 'formatingOrder' &&
-    fieldName !== 'presetBias' &&
-    fieldName !== 'localStopStrings'
-  ) {
-    return null;
-  }
-  if (typeof content !== 'string') {
-    return `"${fieldName}" must be a string`;
-  }
-  if (fieldName === 'promptTemplate') {
-    return validatePromptTemplateText(content);
-  }
-  if (fieldName === 'formatingOrder') {
-    return validateFormatingOrderText(content);
-  }
-  if (fieldName === 'presetBias') {
-    return validatePresetBiasText(content);
-  }
-  return validateLocalStopStringsText(content);
+  if (!isRisupJsonTextFieldName(fieldName)) return null;
+  return validateRisupJsonTextField(fieldName, content);
 }
 
 function getRisupStructuredFieldSuggestion(fieldName: string): string {
@@ -558,7 +536,9 @@ function getRisupStructuredFieldSuggestion(fieldName: string): string {
       ? 'formatingOrder는 문자열 토큰만 포함한 JSON 배열 문자열이어야 합니다.'
       : fieldName === 'presetBias'
         ? 'presetBias는 [string, number] 쌍만 포함한 JSON 배열 문자열이어야 합니다.'
-        : 'localStopStrings는 문자열만 포함한 JSON 배열 문자열이어야 합니다.';
+        : fieldName === 'localStopStrings'
+          ? 'localStopStrings는 문자열만 포함한 JSON 배열 문자열이어야 합니다.'
+          : `${fieldName}은(는) 유효한 JSON 문자열이어야 합니다.`;
 }
 
 type McpNoOpInfo = Omit<McpErrorInfo, 'rejected'>;
@@ -859,13 +839,22 @@ function setPointerValue(root: unknown, pointer: string, value: unknown, allowAd
     if (!Number.isInteger(index) || index < 0 || index > parent.length || (!allowAdd && index >= parent.length)) {
       throw new Error(`Array index out of range: ${key}`);
     }
-    if (allowAdd && index === parent.length) parent.push(value);
+    if (allowAdd) parent.splice(index, 0, value);
     else parent[index] = value;
     return;
   }
   if (!parent || typeof parent !== 'object') throw new Error('Parent path is not an object or array');
   if (!allowAdd && !(key in (parent as Record<string, unknown>))) throw new Error(`Path not found: ${pointer}`);
   (parent as Record<string, unknown>)[key] = value;
+}
+
+function validateTouchedRisupJsonFields(data: Record<string, unknown>, touchedTopLevel: string[]): void {
+  if (data._fileType !== 'risup') return;
+  for (const fieldName of touchedTopLevel) {
+    if (!isRisupJsonTextFieldName(fieldName) || data[fieldName] === undefined) continue;
+    const error = validateRisupJsonTextField(fieldName, data[fieldName]);
+    if (error) throw new Error(`Invalid ${fieldName}: ${error}`);
+  }
 }
 
 function removePointerValue(root: unknown, pointer: string): unknown {
@@ -3513,6 +3502,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const draft = cloneJson(probe.data) as Record<string, unknown>;
         try {
           const result = applySurfacePatch(draft, operations);
+          validateTouchedRisupJsonFields(draft, result.touchedTopLevel);
           const afterHash = hashSurface(draft);
           if (probe.body.dry_run === true) {
             return jsonResSuccess(
@@ -3580,8 +3570,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       const isSessionStatusRoute = parts[0] === 'session' && parts[1] === 'status' && !parts[2] && req.method === 'GET';
       const isReferenceRoute = parts[0] === 'references' || parts[0] === 'reference';
       const isRisupPromptSnippetRoute = parts[0] === 'risup' && parts[1] === 'prompt-snippets';
+      const isSkillRoute = parts[0] === 'skills' && req.method === 'GET';
       const currentData = deps.getCurrentData();
-      if (!currentData && !isSessionStatusRoute && !isReferenceRoute && !isRisupPromptSnippetRoute) {
+      if (!currentData && !isSessionStatusRoute && !isReferenceRoute && !isRisupPromptSnippetRoute && !isSkillRoute) {
         return mcpError(res, 400, {
           action: 'require current document',
           target: 'document:current',
@@ -3613,6 +3604,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           getSurfacePatchMutationBlock,
           cloneJson,
           applySurfacePatch,
+          validateTouchedRisupJsonFields,
           touchesAssetMapSource,
           logMcpMutation,
           getSurfaceMutationBlock,
@@ -3962,7 +3954,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }> = [];
         const boolFields = BOOLEAN_FIELD_NAMES;
         const numFields = NUMBER_FIELD_NAMES;
-        const jsonFields = ['promptTemplate', 'presetBias', 'formatingOrder', 'localStopStrings'];
         const surfaceWritable = new Set(
           rules.allowedFields.filter(
             (field) =>
@@ -4042,7 +4033,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
                 target: `field:${entry.field}`,
               });
             }
-          } else if (jsonFields.includes(entry.field)) {
+          } else if (isRisupJsonTextFieldName(entry.field)) {
             type = 'json';
             if (typeof entry.content !== 'string') {
               return mcpError(res, 400, {

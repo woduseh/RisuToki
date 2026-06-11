@@ -34,6 +34,7 @@ interface SurfaceRouteDeps {
     root: Record<string, unknown>,
     operations: unknown[],
   ) => { changed: number; touchedTopLevel: string[] };
+  validateTouchedRisupJsonFields: (data: Record<string, unknown>, touchedTopLevel: string[]) => void;
   touchesAssetMapSource: (fields: readonly string[]) => boolean;
   logMcpMutation: (action: string, target: string, details: Record<string, unknown>) => void;
   getSurfaceMutationBlock: (data: Record<string, unknown>, pointer: string) => SurfaceBlock | null;
@@ -170,6 +171,7 @@ export async function handleSurfaceRoute(
     const draft = deps.cloneJson(currentData) as Record<string, unknown>;
     try {
       const result = deps.applySurfacePatch(draft, operations);
+      deps.validateTouchedRisupJsonFields(draft, result.touchedTopLevel);
       const afterHash = deps.hashSurface(draft);
       if (body.dry_run === true) {
         deps.jsonResSuccess(

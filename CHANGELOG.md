@@ -9,6 +9,53 @@
 
 ---
 
+## [1.6.0] - 2026-06-11
+
+### Added
+
+- Added documentless startup coverage so `list_skills`, `read_skill`, facade `load_guidance`, and guidance-target inspection work before an active artifact is opened.
+- Added startup-profile contract tests for default `facade-first`, `advanced-full`, `authoring`, `readonly`, invalid-profile fallback, tool-list size, and generated JSON/TOML profile preservation.
+- Added operation-specific facade schema coverage so malformed `preview_edit` operations and fieldless external/reference searches fail during request validation.
+
+### Changed
+
+- Clarified the `AGENTS.md` facade fallback rule: restart with the smallest profile that covers the need (`authoring` for structured authoring families, `advanced-full` for the complete granular catalog) instead of always selecting `advanced-full`.
+- Unified Lua/CSS section parsing across the renderer, Electron main process, and standalone MCP runtime so named empty sections round-trip without absorbing adjacent content.
+- Aligned active, external, and facade surface patches with RFC 6902 array semantics: `add` inserts at an index, `-` appends, and `replace` requires an existing index.
+- Moved editable RP personas to the writable user-data directory while retaining bundled personas as read-only defaults and user-overridable fallbacks.
+- Changed the unconfigured MCP registration default from the complete granular catalog to the compact `facade-first` profile: 11 facade tools plus `list_skills` and `read_skill` bootstrap access. Use `--tool-profile advanced-full` or `RISUTOKI_MCP_TOOL_PROFILE=advanced-full` and restart the MCP server for the full granular surface.
+- Invalid profile values warn and fall back to `facade-first` instead of exposing every tool. Profile changes require process restart; dynamic tool expansion is not supported.
+- Auto-generated MCP configuration updates preserve an existing valid profile selection.
+- Documented catalog cost by eager/deferred client loading behavior instead of making model-specific assumptions.
+- Changed `load_guidance` so `{ kind: "guidance" }` lists skills, while `skill` plus optional `document` reads a specific guidance document.
+- Changed `preview_edit` operations to an operation-discriminated schema: `replace_text` requires `find`, and write/insert/patch operations require `content`.
+- Changed `search_document` validation so external and reference targets require `field`.
+- Consolidated agent guidance docs around a single facade coverage source: `AGENTS.md`, `docs/MCP_WORKFLOW.md`, `skills/project-workflow/MCP_WORKFLOW.md`, and `skills/using-mcp-tools/SKILL.md` now state a coverage test plus a pointer to the canonical "First-wave facade replacement matrix" in `docs/MCP_TOOL_SURFACE.md` instead of repeating the full mutation-coverage enumeration.
+- Slimmed `AGENTS.md` to routing tables, mandatory rules, and a compact "MCP quick rules" summary.
+- Made `skills/using-mcp-tools/SKILL.md` the canonical home for task-intent playbooks; `MCP_WORKFLOW.md` now points there instead of keeping a duplicate playbook table.
+- Defined guidance ownership explicitly: `AGENTS.md` owns startup/routing, `using-mcp-tools` owns tool choice/playbooks, `MCP_TOOL_SURFACE.md` owns profiles/coverage/contracts, and `MCP_WORKFLOW.md` owns runtime modes/common sequence.
+- Defined granular fallback recording as one line in the final task summary; no separate log or commit-message entry is required.
+- Moved preview iframe and Wasmoon implementation caveats from the MCP workflow guide to the architecture document and replaced changelog-style wording in normative contracts with present-tense statements.
+- Reframed the lorebook and regex/reference workflow sections in `using-mcp-tools` as explicit granular fallbacks behind facade-first routes, and fixed a reference-only-session contradiction (start with `inspect_document`, not `session_status` / `list_references`).
+- Renamed bot-scale reference files to remove the duplicated `BOT_SCALES.md` name: `authoring-characters/CHARACTER_SCALES.md` and `authoring-lorebook-bots/STRUCTURE_SCALES.md`, with all cross-references updated.
+- Qualified the `prompt-revision` / `prompt-evaluation` handoff in `prompt-preset-sync` as environment-dependent external skills.
+- Added `tags` / `related_tools` frontmatter to `authoring-worlds`, `mythos-prompt-development`, `mythos-prompt-maintenance`, and `prompt-preset-sync`.
+
+### Removed
+
+- Removed the orphan `risutoki-bot-authoring` skill; its unique whole-bot QA checks (UI-language variants, asset/UI reference consistency) moved into `authoring-lorebook-bots/BOT_VALIDATION.md`, and the rest was already covered by `project-workflow`, `using-mcp-tools`, and the bot authoring skills.
+
+### Fixed
+
+- Prevented Lua edits from overwriting earlier JavaScript `triggercode` effects, and made clearing Lua update only an existing Lua effect without creating a new wrapper.
+- Validated every JSON-backed `.risup` text field before mutation or save, with field-specific errors instead of raw parse failures or silently retained values.
+- Tracked RisuToki-managed `.charx` project-folder asset and `x_meta` files so deleted or renamed assets no longer reappear, while unrelated external files remain untouched.
+- Kept asset paths, `cardAssets`, and `xMeta` references synchronized across app, MCP, and facade mutations, with shared file-name validation and rename collision checks.
+- Padded sparse project-folder greeting indexes with empty strings so exported arrays no longer serialize holes as `null`.
+- Fixed standalone guidance bootstrapping so read-only skill routes work before a document is opened while document-dependent routes retain the `No file open` guard.
+- Fixed duplicate section numbering in `MCP_WORKFLOW.md` (`## 5. Skill Docs` → `## 6. Skill Docs`).
+- Fixed `package-lock.json` root version drift.
+
 ## [1.5.0] - 2026-06-02
 
 ### Added

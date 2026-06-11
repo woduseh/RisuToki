@@ -7,6 +7,7 @@ import {
   type RisupFieldId,
 } from './risup-fields';
 import { collectFormatingOrderWarnings, parseFormatingOrder, parsePromptTemplate } from './risup-prompt-model';
+import { isRisupJsonTextFieldName, validateRisupJsonTextField } from './risup-json-fields';
 
 export interface RisupFormTabInfo {
   id: string;
@@ -54,32 +55,14 @@ export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftVa
     const label = getRisupFieldDefinition(fieldId)?.label || fieldId;
     const value = data[fieldId];
     if (value === undefined || value === null) continue;
-    if (typeof value !== 'string') {
+    if (isRisupJsonTextFieldName(fieldId)) {
+      const error = validateRisupJsonTextField(fieldId, value);
+      if (!error) continue;
       errors.push({
         field: fieldId,
         label,
         severity: 'error',
-        message: `${label} 값은 JSON 문자열이어야 합니다.`,
-      });
-      continue;
-    }
-    if (!value.trim()) {
-      errors.push({
-        field: fieldId,
-        label,
-        severity: 'error',
-        message: `${label} 값이 비어 있습니다.`,
-      });
-      continue;
-    }
-    try {
-      JSON.parse(value);
-    } catch (error) {
-      errors.push({
-        field: fieldId,
-        label,
-        severity: 'error',
-        message: `${label} JSON 파싱 실패: ${(error as Error).message}`,
+        message: `${label} JSON 파싱 실패: ${error}`,
       });
     }
   }

@@ -112,3 +112,5 @@ risu/plugins/**
 !risu/plugins/docs/**
 !risu/plugins/skills/
 !risu/plugins/skills/**
+
+/docs/analysis/

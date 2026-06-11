@@ -10,6 +10,7 @@ import {
   risumAssetAddBodySchema,
   risumAssetDeleteBodySchema,
 } from './mcp-request-schemas';
+import { addAssetReferences, deleteAssetReferences, renameAssetReferences, validateAssetFileName } from './asset-utils';
 
 type JsonBody = Record<string, unknown>;
 
@@ -131,10 +132,11 @@ export async function handleAssetRoute(
     const fileName = body.fileName;
     const base64Data = body.base64;
     const folder = body.folder || 'other';
-    if (!/^[a-zA-Z0-9가-힣._\- ]+$/.test(fileName)) {
+    const fileNameError = validateAssetFileName(fileName);
+    if (fileNameError) {
       deps.mcpError(res, 400, {
         action: 'add_asset',
-        message: '파일명에 허용되지 않는 문자가 포함되어 있습니다.',
+        message: fileNameError,
         target: 'asset:add',
       });
       return true;
@@ -167,16 +169,7 @@ export async function handleAssetRoute(
     }
     const buf = Buffer.from(base64Data, 'base64');
     currentAssets.push({ path: assetPath, data: buf });
-    if (Array.isArray(currentData.cardAssets)) {
-      const ext = fileName.includes('.') ? fileName.split('.').pop()! : '';
-      const name = ext ? fileName.slice(0, -(ext.length + 1)) : fileName;
-      currentData.cardAssets.push({
-        type: folder === 'icon' ? 'icon' : 'x-risu-asset',
-        uri: `embeded://${assetPath}`,
-        name,
-        ext,
-      });
-    }
+    addAssetReferences(currentData, assetPath, folder === 'icon' ? 'icon' : 'other');
     deps.broadcastToAll('data-updated', { field: 'assets' });
     deps.jsonResSuccess(
       res,
@@ -239,11 +232,7 @@ export async function handleAssetRoute(
       return true;
     }
     assets.splice(idx, 1);
-    if (Array.isArray(currentData.cardAssets)) {
-      const uri = `embeded://${assetToDelete.path}`;
-      const caIdx = (currentData.cardAssets as { uri?: string }[]).findIndex((a) => a.uri === uri);
-      if (caIdx >= 0) currentData.cardAssets.splice(caIdx, 1);
-    }
+    deleteAssetReferences(currentData, assetToDelete.path);
     deps.broadcastToAll('data-updated', { field: 'assets' });
     deps.jsonResSuccess(
       res,
@@ -277,10 +266,11 @@ export async function handleAssetRoute(
     });
     if (!body) return true;
     const newName = body.newName;
-    if (!/^[a-zA-Z0-9가-힣._\- ]+$/.test(newName)) {
+    const newNameError = validateAssetFileName(newName);
+    if (newNameError) {
       deps.mcpError(res, 400, {
         action: 'rename_asset',
-        message: '유효한 newName이 필요합니다.',
+        message: newNameError,
         target: `asset:${idx}`,
       });
       return true;
@@ -317,17 +307,17 @@ export async function handleAssetRoute(
     }
     const dir = oldPath.substring(0, oldPath.lastIndexOf('/') + 1);
     const newPath = dir + newName;
-    asset.path = newPath;
-    if (Array.isArray(currentData.cardAssets)) {
-      const oldUri = `embeded://${oldPath}`;
-      const ca = (currentData.cardAssets as Record<string, unknown>[]).find((a) => a.uri === oldUri);
-      if (ca) {
-        const ext = newName.includes('.') ? newName.split('.').pop()! : '';
-        ca.uri = `embeded://${newPath}`;
-        ca.name = ext ? newName.slice(0, -(ext.length + 1)) : newName;
-        ca.ext = ext;
-      }
+    if (assets.some((entry, entryIndex) => entryIndex !== idx && entry.path === newPath)) {
+      deps.mcpError(res, 409, {
+        action: 'rename_asset',
+        message: `에셋 경로 "${newPath}"가 이미 존재합니다.`,
+        suggestion: '다른 파일명을 사용하세요.',
+        target: `asset:${idx}`,
+      });
+      return true;
     }
+    asset.path = newPath;
+    renameAssetReferences(currentData, oldPath, newPath);
     deps.broadcastToAll('data-updated', { field: 'assets' });
     deps.jsonResSuccess(
       res,
