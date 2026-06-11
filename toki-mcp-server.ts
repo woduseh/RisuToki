@@ -6342,12 +6342,10 @@ function assetMimeType(assetPath: string): string {
 function validateManageAssetFileName(name: string, action: string): ApiErrorResult | undefined {
   const error = validateAssetFileName(name);
   if (error) {
-    return facadeApiError(
-      400,
-      error,
-      'Use letters, numbers, Korean characters, spaces, dot, underscore, or hyphen.',
-      { action, name },
-    );
+    return facadeApiError(400, error, 'Use letters, numbers, Korean characters, spaces, dot, underscore, or hyphen.', {
+      action,
+      name,
+    });
   }
   return undefined;
 }
@@ -14616,11 +14614,8 @@ server.tool(
 
 // ===== Skill Tools =====
 
-server.tool(
-  'list_skills',
-  '사용 가능한 RisuAI 스킬과 설명, 문서 파일 목록을 반환합니다.',
-  {},
-  async () => textResult(await apiRequest('GET', '/skills')),
+server.tool('list_skills', '사용 가능한 RisuAI 스킬과 설명, 문서 파일 목록을 반환합니다.', {}, async () =>
+  textResult(await apiRequest('GET', '/skills')),
 );
 
 server.tool(

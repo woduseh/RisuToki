@@ -3375,10 +3375,8 @@ async function runStandaloneToolProfileContract(): Promise<void> {
     assert.deepEqual(routedTools(guidanceCatalog), ['list_skills']);
     assert.ok(
       Number(
-        nestedRecord(
-          nestedRecord(guidanceCatalog.result, 'guidance catalog result').guidance,
-          'guidance catalog',
-        ).count,
+        nestedRecord(nestedRecord(guidanceCatalog.result, 'guidance catalog result').guidance, 'guidance catalog')
+          .count,
       ) > 0,
     );
     const guidance = await callJson(defaultProfile.runtime, 'load_guidance', {
