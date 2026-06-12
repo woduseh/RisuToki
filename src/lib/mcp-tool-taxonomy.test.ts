@@ -379,7 +379,7 @@ describe('MCP Tool Taxonomy', () => {
     );
   });
 
-  it('tool metadata classifies facade tools as preferred and granular tools as advanced', () => {
+  it('tool metadata classifies preferred facade tools and explicit legacy compatibility tools', () => {
     expect(TOOL_SURFACE_KINDS).toEqual(['facade', 'granular']);
     expect(TOOL_RECOMMENDATIONS).toEqual(['preferred', 'advanced', 'legacy']);
 
@@ -388,6 +388,7 @@ describe('MCP Tool Taxonomy', () => {
       'list_tool_profiles',
       'read_content',
       'search_document',
+      'analyze_content',
       'preview_edit',
       'apply_edit',
       'validate_content',
@@ -401,8 +402,30 @@ describe('MCP Tool Taxonomy', () => {
       expect(meta?.[TOOL_META_KEYS.surfaceKind], `${name} surface kind mismatch`).toBe(
         facadeNames.has(name) ? 'facade' : 'granular',
       );
+      const legacy =
+        name === 'load_guidance' ||
+        name === 'session_status' ||
+        name === 'list_references' ||
+        [
+          'write_lorebook',
+          'write_lorebook_batch',
+          'delete_lorebook',
+          'batch_delete_lorebook',
+          'write_regex',
+          'delete_regex',
+          'write_greeting',
+          'delete_greeting',
+          'write_risup_prompt_item',
+          'write_risup_prompt_item_batch',
+          'delete_risup_prompt_item',
+          'batch_delete_risup_prompt_items',
+          'reorder_risup_prompt_items',
+        ].includes(name) ||
+        name.startsWith('probe_') ||
+        name.startsWith('read_reference_') ||
+        name.startsWith('list_reference_');
       expect(meta?.[TOOL_META_KEYS.recommendation], `${name} recommendation mismatch`).toBe(
-        facadeNames.has(name) ? 'preferred' : 'advanced',
+        legacy ? 'legacy' : facadeNames.has(name) ? 'preferred' : 'advanced',
       );
     }
   });
@@ -440,10 +463,10 @@ describe('MCP Tool Taxonomy', () => {
       'list_tool_profiles',
       'read_content',
       'search_document',
+      'analyze_content',
       'preview_edit',
       'apply_edit',
       'validate_content',
-      'load_guidance',
       'manage_items',
       'manage_assets',
       'manage_file',
@@ -489,11 +512,11 @@ describe('MCP Tool Taxonomy', () => {
     );
     expect(facadeCatalog?.tools.map((tool) => tool.name)).toEqual(listToolsForSurfaceProfile('facade-first'));
     expect(facadeCatalog?.tools.map((tool) => tool.name)).toEqual([
+      'analyze_content',
       'apply_edit',
       'inspect_document',
       'list_skills',
       'list_tool_profiles',
-      'load_guidance',
       'manage_assets',
       'manage_file',
       'manage_items',

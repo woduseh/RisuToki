@@ -4747,6 +4747,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             includeGreetings: parsed.include_greetings !== false,
             contextChars: Math.max(0, Math.min(Number(parsed.context_chars) || 60, 300)),
             maxMatchesPerSurface: Math.max(1, Math.min(Number(parsed.max_matches_per_field) || 5, 20)),
+            maxMatchesTotal:
+              parsed.max_matches_total === undefined
+                ? undefined
+                : Math.max(1, Math.min(Number(parsed.max_matches_total) || 1, 100)),
           });
           const totalHits = Array.isArray(searchResult.surfaces)
             ? (searchResult.surfaces as Array<{ totalMatches?: number }>).reduce(
@@ -9387,21 +9391,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         ) {
           return;
         }
-        if (
-          !ensureSectionExpectedIdentity(
-            res,
-            'css',
-            idx,
-            sections[idx],
-            body.expected_hash,
-            body.expected_preview,
-            'write css section',
-            `css-section:${idx}`,
-            mcpError,
-          )
-        ) {
-          return;
-        }
         const sectionName = sections[idx].name;
         const oldSize = sections[idx].content.length;
         const newSize = body.content.length;
@@ -9440,6 +9429,64 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `lua:${idx}`,
           });
         }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /lua/:idx/delete — delete Lua section
+      // ----------------------------------------------------------------
+      if (parts[0] === 'lua' && parts[1] && parts[2] === 'delete' && !parts[3] && req.method === 'POST') {
+        const sections = luaCache.get(currentData.lua);
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= sections.length) {
+          return mcpError(res, 400, {
+            action: 'delete lua section',
+            message: `Lua section index ${idx} out of range (0-${sections.length - 1})`,
+            suggestion: 'list_lua 또는 GET /lua 로 유효한 section index를 다시 확인하세요.',
+            target: `lua:${idx}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `lua/${idx}/delete`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'lua',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'delete lua section',
+            `lua:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
+        const section = sections[idx];
+        const allowed = await deps.askRendererConfirm(
+          'MCP 삭제 요청',
+          `AI 어시스턴트가 Lua 섹션 "${section.name}" (index ${idx})을 삭제하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'delete lua section',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: `lua:${idx}`,
+          });
+        }
+        sections.splice(idx, 1);
+        currentData.lua = deps.combineLuaSections(sections);
+        currentData.triggerScripts = deps.mergePrimaryLua(currentData.triggerScripts, currentData.lua);
+        logMcpMutation('delete lua section', `lua:${idx}`, { sectionName: section.name });
+        deps.broadcastToAll('data-updated', 'lua', currentData.lua);
+        deps.broadcastToAll('data-updated', 'triggerScripts', currentData.triggerScripts);
+        return jsonResSuccess(
+          res,
+          { success: true, deleted: idx, name: section.name },
+          { toolName: 'delete_lua_section', summary: `Deleted Lua section [${idx}] "${section.name}"` },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -9959,6 +10006,62 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `css-section:${idx}`,
           });
         }
+      }
+
+      // ----------------------------------------------------------------
+      // POST /css-section/:idx/delete — delete CSS section
+      // ----------------------------------------------------------------
+      if (parts[0] === 'css-section' && parts[1] && parts[2] === 'delete' && !parts[3] && req.method === 'POST') {
+        const { sections, prefix, suffix } = cssCache.get(currentData.css);
+        const idx = parseInt(parts[1], 10);
+        if (isNaN(idx) || idx < 0 || idx >= sections.length) {
+          return mcpError(res, 400, {
+            action: 'delete css section',
+            message: `CSS section index ${idx} out of range (0-${sections.length - 1})`,
+            suggestion: 'list_css 또는 GET /css-section 으로 유효한 section index를 다시 확인하세요.',
+            target: `css-section:${idx}`,
+          });
+        }
+        const body = await readJsonBody(req, res, `css-section/${idx}/delete`, broadcastStatus);
+        if (!body) return;
+        if (
+          !ensureSectionExpectedIdentity(
+            res,
+            'css',
+            idx,
+            sections[idx],
+            body.expected_hash,
+            body.expected_preview,
+            'delete css section',
+            `css-section:${idx}`,
+            mcpError,
+          )
+        ) {
+          return;
+        }
+        const section = sections[idx];
+        const allowed = await deps.askRendererConfirm(
+          'MCP 삭제 요청',
+          `AI 어시스턴트가 CSS 섹션 "${section.name}" (index ${idx})을 삭제하려 합니다.`,
+        );
+        if (!allowed) {
+          return mcpError(res, 403, {
+            action: 'delete css section',
+            message: '사용자가 거부했습니다',
+            rejected: true,
+            suggestion: '앱에서 삭제 요청을 허용한 뒤 다시 시도하세요.',
+            target: `css-section:${idx}`,
+          });
+        }
+        sections.splice(idx, 1);
+        currentData.css = deps.combineCssSections(sections, prefix, suffix);
+        logMcpMutation('delete css section', `css-section:${idx}`, { sectionName: section.name });
+        deps.broadcastToAll('data-updated', 'css', currentData.css);
+        return jsonResSuccess(
+          res,
+          { success: true, deleted: idx, name: section.name },
+          { toolName: 'delete_css_section', summary: `Deleted CSS section [${idx}] "${section.name}"` },
+        );
       }
 
       // ----------------------------------------------------------------
@@ -11865,45 +11968,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const filter = typeof body.filter === 'string' ? body.filter : undefined;
         const folder = typeof body.folder === 'string' ? body.folder : undefined;
 
-        // Filter entries
-        let entries = [...((currentData.lorebook as Record<string, unknown>[]) || [])];
-        if (filter) {
-          const lowerFilter = filter.toLowerCase();
-          entries = entries.filter((e) => {
-            const comment = String(e.comment || '').toLowerCase();
-            const key = String(e.key || '').toLowerCase();
-            return comment.includes(lowerFilter) || key.includes(lowerFilter) || e.mode === 'folder';
-          });
-        }
-        if (folder) {
-          const folderId = resolveLorebookFolderRef(folder, entries);
-          entries = entries.filter(
-            (e) => resolveLorebookFolderRef(e.folder, entries) === folderId || e.mode === 'folder',
-          );
-        }
-
-        const nonFolderCount = entries.filter((e) => e.mode !== 'folder').length;
-        if (nonFolderCount === 0) {
-          return mcpError(res, 400, {
-            action: 'export-lorebook',
-            message: 'No entries to export.',
-            target: 'lorebook',
-          });
-        }
-
-        // User confirmation
-        const confirmMsg =
-          `AI 어시스턴트가 로어북 ${nonFolderCount}개 항목을 내보내려 합니다.\n\n` +
-          `형식: ${format.toUpperCase()}\n` +
-          `경로: ${targetDir}`;
-        const allowed = await deps.askRendererConfirm('MCP 내보내기 요청', confirmMsg);
-        if (!allowed) {
-          return mcpError(res, 403, {
-            action: 'export-lorebook',
-            message: 'User rejected export.',
-            target: 'lorebook',
-          });
-        }
+        const entries = [...((currentData.lorebook as Record<string, unknown>[]) || [])];
 
         try {
           // Lazy-load lorebook-io
@@ -11915,7 +11980,31 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             groupByFolder,
             includeMetadata: true,
             sourceName: String((currentData as Record<string, unknown>).name || 'unknown'),
+            filter,
+            folder,
           };
+          const plan = lorebookIo.planLorebookExport(entries, targetDir, options);
+          if (plan.exportedCount === 0) {
+            return mcpError(res, 400, {
+              action: 'export-lorebook',
+              message: 'No entries to export.',
+              target: 'lorebook',
+            });
+          }
+
+          // User confirmation
+          const confirmMsg =
+            `AI 어시스턴트가 로어북 ${plan.exportedCount}개 항목을 내보내려 합니다.\n\n` +
+            `형식: ${format.toUpperCase()}\n` +
+            `경로: ${targetDir}`;
+          const allowed = await deps.askRendererConfirm('MCP 내보내기 요청', confirmMsg);
+          if (!allowed) {
+            return mcpError(res, 403, {
+              action: 'export-lorebook',
+              message: 'User rejected export.',
+              target: 'lorebook',
+            });
+          }
 
           const result =
             format === 'json'

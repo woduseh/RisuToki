@@ -9,6 +9,54 @@
 
 ---
 
+## [1.8.0] - 2026-06-13
+
+### Added
+
+- Added `analyze_content` operations for field statistics, explicit `cl100k_base` / `o200k_base` token counts, lorebook activation simulation, and ordered regex test execution.
+- Added compile-only Lua syntax diagnostics for Lua sections and `triggerlua` effects, plus Danbooru `valid | invalid | unknown` validation results.
+- Added active Lua/CSS section deletion through `preview_edit` / `apply_edit` and `.risum` asset compression through facade and granular asset routes.
+- Added shared lorebook and regex execution logic so the browser preview and MCP simulations use the same implementation.
+
+### Changed
+
+- Unified `search_document` around selectors, including active field and reference `.risup` prompt search, total-result `max_matches`, and a byte-accurate 24 KiB default response bound.
+- Made preview tokens one-shot before mutation begins and added explicit partial-batch failure details.
+- Changed reference inspection without an identifier to bounded inventory and selected-reference inspection to one reference; session inspection retains the complete bounded status payload.
+- Reduced the default profile to 11 preferred facades plus `list_skills` and `read_skill` (13 total). `load_guidance` and facade-covered compatibility routes remain available outside the default profile with `recommendation=legacy`.
+- Renamed the canonical `.risup` import comparison action to `verify_risup_prompt_import`; the previous action name remains a compatibility alias.
+
+### Fixed
+
+- Preserved UTF-8 boundaries and accurate original/returned byte sizes when truncating Korean text, emoji, and other multibyte content.
+- Routed active field search to the requested field instead of silently searching the whole document.
+- Preserved original `.risum` bytes and extension metadata when WebP conversion fails or increases size, and synchronized metadata after successful conversion.
+- Prevented Danbooru network failures from being reported or cached as invalid tags.
+
+## [1.7.0] - 2026-06-12
+
+### Added
+
+- Added the read-only `analyze_content` facade for nine CBS, Danbooru, lorebook/risup diff, and risup import-verification operations.
+- Added guarded active field/lorebook block replacement, whole-lorebook text replacement, and preview-token lorebook file import/export to the facade surface.
+- Added `authoring-media-mix` with franchise-core design, visual identity, medium adaptation profiles, RisuAI handoff, and cross-media validation.
+- Expanded the living trope catalog to 70 character, relationship, media-convention, and species/role entries; expanded world genre presets to 21 with an isekai transfer/summoning frame.
+- Added a 15-family adult consenting desire catalog, relationship configuration/exclusivity and relationship-constant contracts, plus an original worked example.
+- Added optional user-position, comedy-craft, appeal-pattern, and worked-example references without introducing new primary routing skills.
+- Added deterministic creative-skill contracts and 22-scenario routing evals, including documentless MCP discovery of all new reference files.
+
+### Changed
+
+- Expanded the default profile to 12 facade tools plus `list_skills` and `read_skill` (14 total), while retaining all 203 tools in `advanced-full`.
+- Routed facade post-edit diff recommendations through `analyze_content`, removed stale item/asset gap text, and clarified that `.risum` compression is unavailable in the granular compressor too.
+- Added emergent RP, fixed narrative, route/serial hybrid, and franchise-core modes to shared craft guidance so future scripting rules apply by medium.
+- Expanded familiar-yet-distinct design from a single deviation to an optional Headline Signature with 2–4 Reinforcing Echoes for franchise-scale work.
+- Added target-language voice capsules for identity-bearing pronouns, endings, dialect, name readings, and wordplay that English source text cannot preserve.
+- Reworked myth and legend adaptation around source, regional, popular-culture, project-adopted, and deliberate-deviation variants.
+- Updated bot authoring routing so media-mix work is primary only for multi-medium, adaptation, franchise, or visual-identity tasks; single image prompts remain under `writing-asset-prompts`.
+- Added fixed, open, and compatibility-bounded `{{user}}` position contracts with explicit agency protection and non-silent persona mismatch handling.
+- Expanded character appeal guidance with 24 gap directions, embodied/costume staging, and multi-heroine portfolio differentiation; added five-beat comedy and varied-callback guidance.
+
 ## [1.6.0] - 2026-06-11
 
 ### Added

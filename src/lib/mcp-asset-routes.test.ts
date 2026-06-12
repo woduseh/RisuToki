@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   closeServer,
   createSearchFixture,
@@ -23,6 +23,18 @@ interface McpRecoveryEnvelope extends McpErrorEnvelope {
   retryable: boolean;
   next_actions: string[];
 }
+
+let TEST_PNG: Buffer;
+
+beforeAll(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const sharp = require('sharp');
+  TEST_PNG = await sharp({
+    create: { width: 100, height: 100, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } },
+  })
+    .png()
+    .toBuffer();
+});
 
 describe('MCP API risum asset compatibility', () => {
   it('stores risum asset metadata with ext semantics and x-risu-asset card type on add', async () => {
@@ -62,6 +74,131 @@ describe('MCP API risum asset compatibility', () => {
           ext: 'mp3',
         },
       ]);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('compresses risum image assets and synchronizes extension metadata', async () => {
+    const currentData: SearchFixture = {
+      _fileType: 'risum',
+      risumAssets: [Buffer.from(TEST_PNG)],
+      cardAssets: [
+        {
+          type: 'x-risu-asset',
+          uri: 'embeded://assets/image/portrait.png',
+          name: 'portrait',
+          ext: 'png',
+        },
+      ],
+      _moduleData: {
+        module: {
+          assets: [['portrait', '', 'png']],
+        },
+      },
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const dryRun = await postJson<Record<string, unknown>>(api.port, api.token, '/assets/compress-webp', {
+        asset_family: 'risum',
+        dry_run: true,
+      });
+      expect(dryRun.status).toBe(200);
+      expect(dryRun.data).toMatchObject({ dry_run: true, asset_family: 'risum' });
+      expect((currentData._moduleData as { module: { assets: string[][] } }).module.assets[0][2]).toBe('png');
+
+      const converted = await postJson<Record<string, unknown>>(api.port, api.token, '/assets/compress-webp', {
+        asset_family: 'risum',
+        quality: 80,
+      });
+      expect(converted.status).toBe(200);
+      expect(converted.data.asset_family).toBe('risum');
+      expect((converted.data.stats as Record<string, unknown>).converted).toBe(1);
+      expect(converted.data.referencesUpdated).toMatchObject({ cardAssetsUpdated: 1 });
+      expect((currentData.risumAssets as Buffer[])[0].equals(TEST_PNG)).toBe(false);
+      expect((currentData._moduleData as { module: { assets: string[][] } }).module.assets[0][2]).toBe('webp');
+      expect((currentData.cardAssets as Array<Record<string, unknown>>)[0]).toMatchObject({
+        uri: 'embeded://assets/image/portrait.webp',
+        name: 'portrait',
+        ext: 'webp',
+      });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('keeps risum bytes and metadata unchanged when conversion fails', async () => {
+    const original = Buffer.from('not-a-real-png');
+    const currentData: SearchFixture = {
+      _fileType: 'risum',
+      risumAssets: [Buffer.from(original)],
+      cardAssets: [
+        {
+          type: 'x-risu-asset',
+          uri: 'embeded://assets/image/broken.png',
+          name: 'broken',
+          ext: 'png',
+        },
+      ],
+      _moduleData: {
+        module: {
+          assets: [['broken', '', 'png']],
+        },
+      },
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const response = await postJson<Record<string, unknown>>(api.port, api.token, '/assets/compress-webp', {
+        asset_family: 'risum',
+      });
+      expect(response.status).toBe(200);
+      expect((response.data.stats as Record<string, unknown>).failed).toBe(1);
+      expect((currentData.risumAssets as Buffer[])[0].equals(original)).toBe(true);
+      expect((currentData._moduleData as { module: { assets: string[][] } }).module.assets[0][2]).toBe('png');
+      expect((currentData.cardAssets as Array<Record<string, unknown>>)[0]).toMatchObject({
+        uri: 'embeded://assets/image/broken.png',
+        ext: 'png',
+      });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('keeps risum bytes and metadata unchanged when WebP would be larger', async () => {
+    const original = Buffer.from('R0lGODlhAQABAIAAAExpcf8AACH5BAUAAAAALAAAAAABAAEAAAICTAEAOw==', 'base64');
+    const currentData: SearchFixture = {
+      _fileType: 'risum',
+      risumAssets: [Buffer.from(original)],
+      cardAssets: [
+        {
+          type: 'x-risu-asset',
+          uri: 'embeded://assets/image/tiny.gif',
+          name: 'tiny',
+          ext: 'gif',
+        },
+      ],
+      _moduleData: {
+        module: {
+          assets: [['tiny', '', 'gif']],
+        },
+      },
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const response = await postJson<Record<string, unknown>>(api.port, api.token, '/assets/compress-webp', {
+        asset_family: 'risum',
+      });
+      expect(response.status).toBe(200);
+      expect((response.data.stats as Record<string, unknown>).larger).toBe(1);
+      expect((currentData.risumAssets as Buffer[])[0].equals(original)).toBe(true);
+      expect((currentData._moduleData as { module: { assets: string[][] } }).module.assets[0][2]).toBe('gif');
+      expect((currentData.cardAssets as Array<Record<string, unknown>>)[0]).toMatchObject({
+        uri: 'embeded://assets/image/tiny.gif',
+        ext: 'gif',
+      });
     } finally {
       await closeServer(api.server);
     }

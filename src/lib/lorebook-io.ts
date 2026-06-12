@@ -81,6 +81,8 @@ export interface ExportOptions {
   groupByFolder?: boolean; // default true
   includeMetadata?: boolean; // default true — write _export_meta.json
   sourceName?: string; // source file name for metadata
+  filter?: string;
+  folder?: string;
 }
 
 export interface ImportOptions {
@@ -103,6 +105,12 @@ export interface ExportResult {
   skippedCount: number;
   files: string[];
   targetDir: string;
+}
+
+export interface LorebookExportPlan extends ExportResult {
+  format: 'md' | 'json';
+  sourceEntries: LorebookEntry[];
+  entries: Array<{ entry: LorebookEntry; relativePath: string }>;
 }
 
 export interface ImportResult {
@@ -251,13 +259,10 @@ export function sanitizeFilename(name: string): string {
   return safe || '_unnamed';
 }
 
-/**
- * Resolve filename conflicts by appending _2, _3, etc.
- */
-function resolveFilenameConflict(dir: string, baseName: string, ext: string): string {
+function resolvePlannedFilename(dir: string, baseName: string, ext: string, plannedPaths: Set<string>): string {
   let candidate = `${baseName}${ext}`;
   let counter = 2;
-  while (fs.existsSync(path.join(dir, candidate))) {
+  while (fs.existsSync(path.join(dir, candidate)) || plannedPaths.has(path.join(dir, candidate))) {
     candidate = `${baseName}_${counter}${ext}`;
     counter++;
   }
@@ -293,6 +298,87 @@ export function isPathSafe(targetDir: string, filePath: string): boolean {
   return resolved.startsWith(base + path.sep) || resolved === base;
 }
 
+export function planLorebookExport(
+  sourceEntries: LorebookEntry[],
+  targetDir: string,
+  options: Partial<ExportOptions> = {},
+): LorebookExportPlan {
+  const format = options.format === 'json' ? 'json' : 'md';
+  const groupByFolder = options.groupByFolder !== false;
+  const includeMetadata = options.includeMetadata !== false;
+  const resolvedDir = path.resolve(targetDir);
+
+  let entries = [...sourceEntries];
+  if (options.filter) {
+    const lowerFilter = options.filter.toLowerCase();
+    entries = entries.filter((entry) => {
+      const comment = String(entry.comment || '').toLowerCase();
+      const key = String(entry.key || '').toLowerCase();
+      return comment.includes(lowerFilter) || key.includes(lowerFilter) || entry.mode === 'folder';
+    });
+  }
+  if (options.folder) {
+    const folderId = resolveLorebookFolderRef(options.folder, entries);
+    entries = entries.filter(
+      (entry) => resolveLorebookFolderRef(entry.folder, entries) === folderId || entry.mode === 'folder',
+    );
+  }
+
+  const regularEntries = entries.filter((entry) => entry.mode !== 'folder');
+  if (format === 'json') {
+    return {
+      success: true,
+      format,
+      exportedCount: regularEntries.length,
+      skippedCount: entries.length - regularEntries.length,
+      files: ['lorebook.json'],
+      targetDir: resolvedDir,
+      sourceEntries: entries,
+      entries: regularEntries.map((entry) => ({ entry, relativePath: 'lorebook.json' })),
+    };
+  }
+
+  const folderMap = buildFolderMap(entries);
+  const plannedPaths = new Set<string>();
+  const plannedEntries: Array<{ entry: LorebookEntry; relativePath: string }> = [];
+  let skippedCount = 0;
+
+  for (const entry of entries) {
+    if (entry.mode === 'folder') {
+      skippedCount++;
+      continue;
+    }
+
+    let subDir = resolvedDir;
+    if (groupByFolder && entry.folder) {
+      const folderName = folderMap.get(resolveLorebookFolderRef(entry.folder, entries));
+      subDir = path.join(resolvedDir, folderName ? sanitizeFilename(folderName) : '_unfiled');
+    } else if (groupByFolder && folderMap.size > 0) {
+      subDir = path.join(resolvedDir, '_unfiled');
+    }
+    if (!isPathSafe(resolvedDir, subDir)) {
+      skippedCount++;
+      continue;
+    }
+
+    const fileName = resolvePlannedFilename(subDir, sanitizeFilename(entry.comment || '_unnamed'), '.md', plannedPaths);
+    const filePath = path.join(subDir, fileName);
+    plannedPaths.add(filePath);
+    plannedEntries.push({ entry, relativePath: path.relative(resolvedDir, filePath) });
+  }
+
+  return {
+    success: true,
+    format,
+    exportedCount: plannedEntries.length,
+    skippedCount,
+    files: [...(includeMetadata ? ['_export_meta.json'] : []), ...plannedEntries.map((item) => item.relativePath)],
+    targetDir: resolvedDir,
+    sourceEntries: entries,
+    entries: plannedEntries,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Export — Markdown
 // ---------------------------------------------------------------------------
@@ -306,16 +392,12 @@ export async function exportToMarkdown(
   targetDir: string,
   options: Partial<ExportOptions> = {},
 ): Promise<ExportResult> {
-  const groupByFolder = options.groupByFolder !== false;
   const includeMetadata = options.includeMetadata !== false;
-
-  const resolvedDir = path.resolve(targetDir);
+  const plan = planLorebookExport(entries, targetDir, { ...options, format: 'md' });
+  const resolvedDir = plan.targetDir;
   await fs.promises.mkdir(resolvedDir, { recursive: true });
 
-  const folderMap = buildFolderMap(entries);
-  const files: string[] = [];
-  let exportedCount = 0;
-  let skippedCount = 0;
+  const folderMap = buildFolderMap(plan.sourceEntries);
 
   // Write export metadata
   if (includeMetadata) {
@@ -323,7 +405,7 @@ export async function exportToMarkdown(
       format: 'md',
       source: options.sourceName || 'unknown',
       exportDate: new Date().toISOString(),
-      totalEntries: entries.filter((e) => e.mode !== 'folder').length,
+      totalEntries: plan.exportedCount,
       folders: Array.from(folderMap.entries()).map(([id, name]) => ({
         id,
         name,
@@ -331,41 +413,12 @@ export async function exportToMarkdown(
     };
     const metaPath = path.join(resolvedDir, '_export_meta.json');
     await fs.promises.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
-    files.push('_export_meta.json');
   }
 
-  for (const entry of entries) {
-    // Skip folder entries (they become directories)
-    if (entry.mode === 'folder') {
-      skippedCount++;
-      continue;
-    }
-
-    const comment = entry.comment || '_unnamed';
-
-    // Determine target subdirectory
-    let subDir = resolvedDir;
-    if (groupByFolder && entry.folder) {
-      const folderName = folderMap.get(resolveLorebookFolderRef(entry.folder, entries));
-      if (folderName) {
-        subDir = path.join(resolvedDir, sanitizeFilename(folderName));
-      } else {
-        subDir = path.join(resolvedDir, '_unfiled');
-      }
-    } else if (groupByFolder && !entry.folder) {
-      // Entries without folder go to _unfiled (only if there are folders)
-      if (folderMap.size > 0) {
-        subDir = path.join(resolvedDir, '_unfiled');
-      }
-    }
-
-    // Validate path safety
-    if (!isPathSafe(resolvedDir, subDir)) {
-      skippedCount++;
-      continue;
-    }
-
-    await fs.promises.mkdir(subDir, { recursive: true });
+  for (const planned of plan.entries) {
+    const entry = planned.entry;
+    const filePath = path.join(resolvedDir, planned.relativePath);
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
 
     // Build frontmatter metadata
     const meta: Record<string, unknown> = {};
@@ -379,21 +432,14 @@ export async function exportToMarkdown(
     const content = entry.content || '';
     const mdContent = stringifyYamlFrontmatter(meta, content);
 
-    // Resolve filename
-    const baseName = sanitizeFilename(comment);
-    const fileName = resolveFilenameConflict(subDir, baseName, '.md');
-    const filePath = path.join(subDir, fileName);
-
     await fs.promises.writeFile(filePath, mdContent, 'utf-8');
-    files.push(path.relative(resolvedDir, filePath));
-    exportedCount++;
   }
 
   return {
     success: true,
-    exportedCount,
-    skippedCount,
-    files,
+    exportedCount: plan.exportedCount,
+    skippedCount: plan.skippedCount,
+    files: plan.files,
     targetDir: resolvedDir,
   };
 }
@@ -410,28 +456,26 @@ export async function exportToJson(
   targetDir: string,
   options: Partial<ExportOptions> = {},
 ): Promise<ExportResult> {
-  const resolvedDir = path.resolve(targetDir);
+  const plan = planLorebookExport(entries, targetDir, { ...options, format: 'json' });
+  const resolvedDir = plan.targetDir;
   await fs.promises.mkdir(resolvedDir, { recursive: true });
 
-  const folderMap = buildFolderMap(entries);
+  const folderMap = buildFolderMap(plan.sourceEntries);
 
   // Separate folders and regular entries
-  const regularEntries = entries
-    .map((entry, index) => {
-      if (entry.mode === 'folder') return null;
-      // Include all writable fields
-      const exported: Record<string, unknown> = { index };
-      for (const key of Object.keys(entry)) {
-        if (LOREBOOK_WRITE_FIELDS.has(key) && entry[key] !== undefined) {
-          exported[key] = entry[key];
-        }
+  const regularEntries = plan.entries.map(({ entry }, index) => {
+    // Include all writable fields
+    const exported: Record<string, unknown> = { index };
+    for (const key of Object.keys(entry)) {
+      if (LOREBOOK_WRITE_FIELDS.has(key) && entry[key] !== undefined) {
+        exported[key] = entry[key];
       }
-      if (typeof exported.folder === 'string') {
-        exported.folder = resolveLorebookFolderRef(exported.folder, entries);
-      }
-      return exported;
-    })
-    .filter(Boolean);
+    }
+    if (typeof exported.folder === 'string') {
+      exported.folder = resolveLorebookFolderRef(exported.folder, plan.sourceEntries);
+    }
+    return exported;
+  });
 
   const jsonData = {
     exportMeta: {
@@ -452,8 +496,8 @@ export async function exportToJson(
 
   return {
     success: true,
-    exportedCount: regularEntries.length,
-    skippedCount: entries.length - regularEntries.length,
+    exportedCount: plan.exportedCount,
+    skippedCount: plan.skippedCount,
     files: ['lorebook.json'],
     targetDir: resolvedDir,
   };

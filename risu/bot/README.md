@@ -11,9 +11,9 @@ Composition guidance for writing and improving `.charx` bots and character cards
 
 ## Scope boundary
 
-| Here                                                                                                             | Elsewhere                                                                                        |
-| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Character description structure, self-introduction sheet methods, lorebook-driven bot architecture, bot critique | Shared syntax like CBS, lorebook schema, Lua APIs, regex, RisuAI HTML/CSS, and Arca/WYSIWYG HTML |
+| Here                                                                                                                                               | Elsewhere                                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Character/world composition, media-mix IP adaptation, visual identity, scenarios, desire architecture, lorebook-driven bot structure, bot critique | Shared syntax like CBS, lorebook schema, Lua APIs, regex, RisuAI HTML/CSS, and Arca/WYSIWYG HTML |
 
 ## Start here
 

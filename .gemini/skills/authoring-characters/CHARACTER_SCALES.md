@@ -5,6 +5,8 @@
 Use this file after reading `SKILL.md` when the main problem is **how much character depth to keep in the description at a given bot scale**.
 
 > The scale recipes below are strong defaults drawn from real reference bots. They are not the only way to build at each scale — treat them as starting points, not constraints.
+>
+> **Model-tier note:** depth budgets are ranges, not constants. Frontier target models hold larger always-on casts and deeper sheets without attention collapse; the conservative ends of each recipe are `[weak-model note]` territory (`core-craft` §1).
 
 ---
 
@@ -73,6 +75,8 @@ Writing only a static biography. The model may understand who the character _was
 This is the easiest scale to overbuild. You still want meaningful character identity, but you no longer have infinite room.
 
 > **Simplicity is a legitimate path.** Some small ensembles work best with short character dossiers always-on and minimal technical scaffolding. Not every 2–4 character bot needs complex trigger systems, state notes, or elaborate lorebook structure. If the cast is well-differentiated and the description carries enough voice, the bot can be structurally simple and still perform well.
+
+For multi-heroine or harem casts, load [APPEAL_PATTERNS.md](APPEAL_PATTERNS.md) and complete one appeal portfolio per recurring route. Cast contrast must separate access fantasy, priced obstacle, exclusivity stance, jealousy trigger, route-only payoff, and one non-overlap axis rather than merely assigning different colors or archetype labels.
 
 ### The cast-design rule
 
@@ -171,6 +175,16 @@ Reusable template:
 Bad:  Mina is a 27-year-old archivist with green eyes who likes tea and works in the east tower.
 Good: Mina files rumors the way other people sharpen knives — quietly, precisely, and with obvious enjoyment.
 ```
+
+### Procedural casts (simulator / region bots)
+
+Some bots generate NPCs procedurally instead of authoring them individually (district simulators, management games, faction sandboxes). For these, do not write character sheets — write a **generator contract**:
+
+- 3–5 behavioral templates the bot can stamp NPCs from (each: role-verb + signature + pressure channel)
+- naming and texture conventions so generated NPCs feel native to the world
+- a promotion rule: when a generated NPC recurs enough to matter, graduate them to a real thumbnail or lorebook entry
+
+Pair with `authoring-scenarios` for the event side of simulator design.
 
 ### Large-cast warning signs
 

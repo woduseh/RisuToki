@@ -18,6 +18,10 @@ Use these checks after drafting or when diagnosing a world that feels dry, gener
 | **Active history**      | Does each historical event affect the present?                                                             | Rewrite as `event -> wound -> current manifestation` or move to deep notes  |
 | **Knowledge horizon**   | Does the draft block likely anachronisms or genre imports?                                                 | State what people know, misunderstand, and cannot conceptualize             |
 | **Contrast**            | Does it name the likely cliche/default misread?                                                            | Add precise differences from the expected default                           |
+| **Ride/cross declared** | If genre-framed, was riding vs. crossing chosen on purpose, with one placed deviation?                     | Declare the choice per Core Principle 5; budget the deviation               |
+| **Scene output**        | Can the world fill a 5–10 item Scene Generators list without straining?                                    | Strengthen pressures until collisions become inevitable                     |
+| **Constants hold**      | For special-physics worlds: are ratios/ranges fixed as exact data-layer values, not relative language?     | Build the constants table and interaction constraints (SKILL.md Step 7)     |
+| **Expectation ledger**  | For myth adaptations: are audience-canon anchors kept or deliberately, visibly broken?                     | Run Step 2.5; signal breaks through scene texture, not disclaimers          |
 | **Moral language**      | Are cultures or institutions described with author judgment?                                               | Replace "evil/corrupt/civilized/barbaric" with inhabitant behavior          |
 
 ---

@@ -88,7 +88,7 @@ Every register benefits from these four elements:
 
 The model should imitate the **structure**, not recite the literal lines.
 
-If it starts parroting your examples:
+On frontier target models, 3–5 lines per important register — varied across different scene pressures — is the sweet spot; pattern extraction is strong enough that more material helps. `[weak-model note]` If the target model starts parroting:
 
 - reduce the number of nearly identical lines
 - vary sentence length and topic
@@ -275,7 +275,41 @@ in formal settings, but not when tired or embarrassed.
 
 ---
 
-## 7. Ensemble Voice Separation
+## 7. Translation-Survivable Voice
+
+Bots are written in English but played through a translation layer (`core-craft` §2). English voice design that relies on implicit social register dies in translation: English has no grammatical formality system, so anything not encoded explicitly cannot be rendered into Korean speech levels.
+
+### Address-form state
+
+Define how the character addresses `{{user}}` (and key cast) as an explicit, gated state — not a flavor detail:
+
+- **the forms:** full name + honorific / family name / given name / nickname / title-as-address
+- **the gates:** which relationship event unlocks each shift
+- **the cost:** an early shift is an _event_, not a default — characters notice and react
+
+```text
+Stage 0: "Mr. Han."  Stage 1: "Han Jiho." (after shared danger)
+Stage 2: "Jiho." (only after he uses her given name first; she pretends it slipped out)
+Regression: under public scrutiny she retreats to "Mr. Han" — and both feel it.
+```
+
+The translation guide maps these one-to-one onto Korean address progression (e.g., 성+씨 → 이름 → 애칭).
+
+### Formality state machine
+
+Make formality an explicit register attribute — formal / casual / intimate — with transition triggers and emotional-leak transitions (anger cracks her politeness; deliberate distance restores it). The translation layer converts this directly into 존댓말/반말 shifts: the single highest-impact speech signal in Korean output, and invisible unless encoded in the English source.
+
+### Catchphrase and persona-marker encoding
+
+Signature phrases survive translation only when marked as fixed: record the phrase, its frequency rule, and its variation pattern, so the translation guide assigns one stable Korean rendering instead of re-translating it differently each turn. The same applies to persona-marked speech — archaic diction, third-person self-reference, or verbal tics standing in for JP-style sentence-final markers: describe the _function_ in English and let `writing-translation-guides` define the rendering.
+
+### Handoff
+
+Every dedicated bot should ship a translation guide built from these states — see `writing-translation-guides`.
+
+---
+
+## 8. Ensemble Voice Separation
 
 For 2–4 recurring characters, build a quick contrast matrix before you finalize any one voice.
 
@@ -303,7 +337,7 @@ For ensemble bots, fewer sharper registers beat many overlapping ones.
 
 ---
 
-## 8. Worked Voice Skeleton
+## 9. Worked Voice Skeleton
 
 ```markdown
 ### Speech & Voice
@@ -345,11 +379,16 @@ For ensemble bots, fewer sharper registers beat many overlapping ones.
 **Narration lens**
 
 - Notices hands, thresholds, and who is pretending not to listen
+
+**Address & formality (for translation)**
+
+- {{user}}: "Mr. \_\_\_" -> family name after trust stage 1 -> given name only after stage 2
+- Formality: formal default; casual leaks when tired; intimate register gated behind stage 3
 ```
 
 ---
 
-## 9. Scale Targets
+## 10. Scale Targets
 
 | Use case                       | Target investment                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------------------------ |

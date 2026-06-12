@@ -592,10 +592,11 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   list_tool_profiles: { family: 'session', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
   read_content: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
   search_document: { family: 'search', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
+  analyze_content: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
   preview_edit: { family: 'surface', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
   apply_edit: { family: 'surface', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
   validate_content: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
-  load_guidance: { family: 'skill', hints: OPEN_WORLD_RO, surfaceKind: 'facade', recommendation: 'preferred' },
+  load_guidance: { family: 'skill', hints: OPEN_WORLD_RO, surfaceKind: 'facade', recommendation: 'legacy' },
   manage_items: { family: 'item-management', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
   manage_assets: { family: 'asset-management', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
   manage_file: {
@@ -629,7 +630,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   restore_snapshot: { family: 'snapshot', hints: WRITE },
 
   // ── Session ────────────────────────────────────────────────────────────
-  session_status: { family: 'session', hints: RO_IDEMPOTENT },
+  session_status: { family: 'session', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
   save_current_file: { family: 'session', hints: WRITE },
 
   // ── Surface ────────────────────────────────────────────────────────────
@@ -639,16 +640,16 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   replace_in_surface: { family: 'surface', hints: WRITE },
 
   // ── Probe / Open ───────────────────────────────────────────────────────
-  probe_field: { family: 'probe', hints: RO_IDEMPOTENT },
-  probe_field_batch: { family: 'probe', hints: RO_IDEMPOTENT },
-  probe_lorebook: { family: 'probe', hints: RO_IDEMPOTENT },
-  probe_regex: { family: 'probe', hints: RO_IDEMPOTENT },
-  probe_lua: { family: 'probe', hints: RO_IDEMPOTENT },
-  probe_css: { family: 'probe', hints: RO_IDEMPOTENT },
-  probe_greetings: { family: 'probe', hints: RO_IDEMPOTENT },
-  probe_triggers: { family: 'probe', hints: RO_IDEMPOTENT },
-  probe_risup_prompt_items: { family: 'probe', hints: RO_IDEMPOTENT },
-  probe_risup_formating_order: { family: 'probe', hints: RO_IDEMPOTENT },
+  probe_field: { family: 'probe', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  probe_field_batch: { family: 'probe', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  probe_lorebook: { family: 'probe', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  probe_regex: { family: 'probe', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  probe_lua: { family: 'probe', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  probe_css: { family: 'probe', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  probe_greetings: { family: 'probe', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  probe_triggers: { family: 'probe', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  probe_risup_prompt_items: { family: 'probe', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  probe_risup_formating_order: { family: 'probe', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
   open_file: { family: 'probe', hints: WRITE },
 
   // ── External unopened-file editing ─────────────────────────────────────
@@ -672,25 +673,25 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
     recommendation: 'advanced',
   },
   read_lorebook_batch: { family: 'lorebook', hints: RO_IDEMPOTENT },
-  write_lorebook: { family: 'lorebook', hints: WRITE_IDEMPOTENT },
+  write_lorebook: { family: 'lorebook', hints: WRITE_IDEMPOTENT, recommendation: 'legacy' },
   write_lorebook_by_id: {
     family: 'lorebook',
     hints: WRITE_IDEMPOTENT,
     surfaceKind: 'granular',
     recommendation: 'advanced',
   },
-  write_lorebook_batch: { family: 'lorebook', hints: WRITE },
+  write_lorebook_batch: { family: 'lorebook', hints: WRITE, recommendation: 'legacy' },
   write_lorebook_by_id_batch: { family: 'lorebook', hints: WRITE, surfaceKind: 'granular', recommendation: 'advanced' },
   add_lorebook: { family: 'lorebook', hints: WRITE },
   add_lorebook_batch: { family: 'lorebook', hints: WRITE },
-  delete_lorebook: { family: 'lorebook', hints: DESTRUCTIVE },
+  delete_lorebook: { family: 'lorebook', hints: DESTRUCTIVE, recommendation: 'legacy' },
   delete_lorebook_by_id: {
     family: 'lorebook',
     hints: DESTRUCTIVE,
     surfaceKind: 'granular',
     recommendation: 'advanced',
   },
-  batch_delete_lorebook: { family: 'lorebook', hints: DESTRUCTIVE },
+  batch_delete_lorebook: { family: 'lorebook', hints: DESTRUCTIVE, recommendation: 'legacy' },
   batch_delete_lorebook_by_id: {
     family: 'lorebook',
     hints: DESTRUCTIVE,
@@ -725,7 +726,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
     recommendation: 'advanced',
   },
   read_regex_batch: { family: 'regex', hints: RO_IDEMPOTENT },
-  write_regex: { family: 'regex', hints: WRITE_IDEMPOTENT },
+  write_regex: { family: 'regex', hints: WRITE_IDEMPOTENT, recommendation: 'legacy' },
   write_regex_by_identity: {
     family: 'regex',
     hints: WRITE_IDEMPOTENT,
@@ -735,7 +736,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   write_regex_batch: { family: 'regex', hints: WRITE },
   add_regex: { family: 'regex', hints: WRITE },
   add_regex_batch: { family: 'regex', hints: WRITE },
-  delete_regex: { family: 'regex', hints: DESTRUCTIVE },
+  delete_regex: { family: 'regex', hints: DESTRUCTIVE, recommendation: 'legacy' },
   delete_regex_by_identity: {
     family: 'regex',
     hints: DESTRUCTIVE,
@@ -755,7 +756,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
     recommendation: 'advanced',
   },
   read_greeting_batch: { family: 'greeting', hints: RO_IDEMPOTENT },
-  write_greeting: { family: 'greeting', hints: WRITE_IDEMPOTENT },
+  write_greeting: { family: 'greeting', hints: WRITE_IDEMPOTENT, recommendation: 'legacy' },
   write_greeting_by_hash: {
     family: 'greeting',
     hints: WRITE_IDEMPOTENT,
@@ -763,7 +764,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
     recommendation: 'advanced',
   },
   add_greeting: { family: 'greeting', hints: WRITE },
-  delete_greeting: { family: 'greeting', hints: DESTRUCTIVE },
+  delete_greeting: { family: 'greeting', hints: DESTRUCTIVE, recommendation: 'legacy' },
   delete_greeting_by_hash: {
     family: 'greeting',
     hints: DESTRUCTIVE,
@@ -801,33 +802,33 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   add_css_section: { family: 'css', hints: WRITE },
 
   // ── Reference (read-only) ──────────────────────────────────────────────
-  list_references: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_field: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_field_batch: { family: 'reference', hints: RO_IDEMPOTENT },
+  list_references: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_field: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_field_batch: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
   search_in_reference_field: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_field_range: { family: 'reference', hints: RO_IDEMPOTENT },
-  list_reference_greetings: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_greeting: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_greeting_batch: { family: 'reference', hints: RO_IDEMPOTENT },
-  list_reference_triggers: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_trigger: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_trigger_batch: { family: 'reference', hints: RO_IDEMPOTENT },
-  list_reference_lorebook: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_lorebook: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_lorebook_batch: { family: 'reference', hints: RO_IDEMPOTENT },
-  list_reference_regex: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_regex: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_regex_batch: { family: 'reference', hints: RO_IDEMPOTENT },
-  list_reference_lua: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_lua: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_lua_batch: { family: 'reference', hints: RO_IDEMPOTENT },
-  list_reference_css: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_css: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_css_batch: { family: 'reference', hints: RO_IDEMPOTENT },
-  list_reference_risup_prompt_items: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_risup_prompt_item: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_risup_prompt_item_batch: { family: 'reference', hints: RO_IDEMPOTENT },
-  read_reference_risup_formating_order: { family: 'reference', hints: RO_IDEMPOTENT },
+  read_reference_field_range: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  list_reference_greetings: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_greeting: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_greeting_batch: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  list_reference_triggers: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_trigger: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_trigger_batch: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  list_reference_lorebook: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_lorebook: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_lorebook_batch: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  list_reference_regex: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_regex: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_regex_batch: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  list_reference_lua: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_lua: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_lua_batch: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  list_reference_css: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_css: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_css_batch: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  list_reference_risup_prompt_items: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_risup_prompt_item: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_risup_prompt_item_batch: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
+  read_reference_risup_formating_order: { family: 'reference', hints: RO_IDEMPOTENT, recommendation: 'legacy' },
 
   // ── Charx Asset ────────────────────────────────────────────────────────
   list_charx_assets: { family: 'charx-asset', hints: RO_IDEMPOTENT },
@@ -856,14 +857,14 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   },
   read_risup_prompt_item_batch: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
   search_in_risup_prompt_items: { family: 'risup-prompt', hints: RO_IDEMPOTENT },
-  write_risup_prompt_item: { family: 'risup-prompt', hints: WRITE_IDEMPOTENT },
+  write_risup_prompt_item: { family: 'risup-prompt', hints: WRITE_IDEMPOTENT, recommendation: 'legacy' },
   write_risup_prompt_item_by_id: {
     family: 'risup-prompt',
     hints: WRITE_IDEMPOTENT,
     surfaceKind: 'granular',
     recommendation: 'advanced',
   },
-  write_risup_prompt_item_batch: { family: 'risup-prompt', hints: WRITE },
+  write_risup_prompt_item_batch: { family: 'risup-prompt', hints: WRITE, recommendation: 'legacy' },
   write_risup_prompt_item_by_id_batch: {
     family: 'risup-prompt',
     hints: WRITE,
@@ -872,21 +873,29 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   },
   add_risup_prompt_item: { family: 'risup-prompt', hints: WRITE },
   add_risup_prompt_item_batch: { family: 'risup-prompt', hints: WRITE },
-  delete_risup_prompt_item: { family: 'risup-prompt', hints: DESTRUCTIVE },
+  delete_risup_prompt_item: { family: 'risup-prompt', hints: DESTRUCTIVE, recommendation: 'legacy' },
   delete_risup_prompt_item_by_id: {
     family: 'risup-prompt',
     hints: DESTRUCTIVE,
     surfaceKind: 'granular',
     recommendation: 'advanced',
   },
-  batch_delete_risup_prompt_items: { family: 'risup-prompt', hints: DESTRUCTIVE },
+  batch_delete_risup_prompt_items: {
+    family: 'risup-prompt',
+    hints: DESTRUCTIVE,
+    recommendation: 'legacy',
+  },
   batch_delete_risup_prompt_items_by_id: {
     family: 'risup-prompt',
     hints: DESTRUCTIVE,
     surfaceKind: 'granular',
     recommendation: 'advanced',
   },
-  reorder_risup_prompt_items: { family: 'risup-prompt', hints: WRITE_IDEMPOTENT },
+  reorder_risup_prompt_items: {
+    family: 'risup-prompt',
+    hints: WRITE_IDEMPOTENT,
+    recommendation: 'legacy',
+  },
   reorder_risup_prompt_items_by_id: {
     family: 'risup-prompt',
     hints: WRITE_IDEMPOTENT,
@@ -976,6 +985,7 @@ export function getToolWorkflowStages(name: string): readonly ToolWorkflowStage[
   }
   if (
     name === 'read_content' ||
+    name === 'analyze_content' ||
     name === 'load_guidance' ||
     name === 'manage_items' ||
     name === 'manage_assets' ||
@@ -989,6 +999,7 @@ export function getToolWorkflowStages(name: string): readonly ToolWorkflowStage[
     stages.add('search');
   }
   if (
+    name === 'analyze_content' ||
     toolNameHasSegment(name, 'validate') ||
     toolNameHasSegment(name, 'diff') ||
     toolNameHasSegment(name, 'simulate')
@@ -1038,7 +1049,7 @@ export function getToolProfilesForTool(name: string): readonly ToolSurfaceProfil
   const profiles = new Set<ToolSurfaceProfileName>(['advanced-full']);
   const surfaceKind = entry.surfaceKind ?? 'granular';
 
-  if (surfaceKind === 'facade') {
+  if (surfaceKind === 'facade' && entry.recommendation !== 'legacy') {
     profiles.add('facade-first');
     profiles.add('authoring');
   }

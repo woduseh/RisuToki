@@ -8,20 +8,23 @@ Use these checks **after** you have a draft. They are review tools, not purity t
 
 ## Core Checks
 
-| Check                       | Applies to                        | Question                                                                                              | Fix if weak                                                   |
-| --------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| **Inner Drive**             | All                               | Can you predict the character's gut reaction in 3 random scenes?                                      | Strengthen anchor, wound, Want vs. Need, or contradiction     |
-| **Wound Specificity**       | Single / major cast               | Is the wound a scene or at least a sensory fragment, not a summary label?                             | Replace abstract trauma text with a lived moment              |
-| **Want vs. Need Collision** | Single / major cast               | Do the conscious goal and vulnerable need actually pull against each other?                           | Write both explicitly in draft notes, then weave them back in |
-| **Speech Investment**       | All                               | Are there enough distinctive example lines to keep the voice from collapsing into generic LLM prose?  | Add or sharpen revealing lines                                |
-| **Signature Tells**         | All                               | Are there 2–4 always-present habits/tics that survive every mood?                                     | Add verbal, structural, or physical signatures                |
-| **Silence Rules**           | Single / guarded characters       | Does the character avoid naming key feelings directly in a consistent way?                            | Add 2–4 direct-to-indirect substitutions                      |
-| **Truth Budget**            | Single / slow-burn / guarded bots | Is there any gating on when the character can admit fear, need, jealousy, etc.?                       | Add trust stages or at least explicit disclosure ceilings     |
-| **Narration Lens**          | All                               | Does the narration notice what _this_ character would notice first?                                   | Define 2–4 stable perception filters                          |
-| **Human Interiority**       | All                               | Do intellect, composure, attraction, jealousy, fear, and restraint still feel embodied and emotional? | Add sensory pressure, body language, subtext, and felt stakes |
-| **Current Situation**       | All                               | Is there enough "right now" pressure for the RP to start with direction?                              | Add active tension, recent events, and uncertainty            |
-| **Strategic Gaps**          | All                               | Did you define tendencies instead of scripting future outcomes?                                       | Remove "will eventually..." and replace with conditions       |
-| **Scale Fit**               | All                               | Is the depth appropriate for the bot's cast size and structure?                                       | Compress or expand using `CHARACTER_SCALES.md`                |
+| Check                       | Applies to                        | Question                                                                                             | Fix if weak                                                   |
+| --------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **Inner Drive**             | All                               | Can you predict the character's gut reaction in 3 random scenes?                                     | Strengthen anchor, wound, Want vs. Need, or contradiction     |
+| **Wound Specificity**       | Single / major cast               | Is the wound a scene or at least a sensory fragment, not a summary label?                            | Replace abstract trauma text with a lived moment              |
+| **Want vs. Need Collision** | Single / major cast               | Do the conscious goal and vulnerable need actually pull against each other?                          | Write both explicitly in draft notes, then weave them back in |
+| **Speech Investment**       | All                               | Are there enough distinctive example lines to keep the voice from collapsing into generic LLM prose? | Add or sharpen revealing lines                                |
+| **Signature Tells**         | All                               | Are there 2–4 always-present habits/tics that survive every mood?                                    | Add verbal, structural, or physical signatures                |
+| **Silence Rules**           | Single / guarded characters       | Does the character avoid naming key feelings directly in a consistent way?                           | Add 2–4 direct-to-indirect substitutions                      |
+| **Truth Budget**            | Single / slow-burn / guarded bots | Is there any gating on when the character can admit fear, need, jealousy, etc.?                      | Add trust stages or at least explicit disclosure ceilings     |
+| **Narration Lens**          | All                               | Does the narration notice what _this_ character would notice first?                                  | Define 2–4 stable perception filters                          |
+| **Prose Guards**            | All (register-layer text)         | Is prose free of both mechanical metaphor for feeling _and_ stock literary slop? (`core-craft` §1.2) | Rewrite through embodied, character-specific imagery          |
+| **Appeal Function**         | Single / major cast               | Does each designed appeal axis (gap, invitation/obstacle) actually change scene behavior?            | Attach appeal to offers, withholdings, and reveal conditions  |
+| **Layer Hygiene**           | All                               | Are specs/measurements in data-layer tables, and prose surfaces free of spec-sheet register?         | Move numbers to the profile; keep prose embodied              |
+| **Translation Survival**    | All bots shipping translated      | Are address-form states, formality states, and catchphrases explicitly encoded for the guide?        | Add the states per `SPEECH_SYSTEM.md` §7                      |
+| **Current Situation**       | All                               | Is there enough "right now" pressure for the RP to start with direction?                             | Add active tension, recent events, and uncertainty            |
+| **Strategic Gaps**          | All                               | Did you define tendencies instead of scripting future outcomes?                                      | Remove "will eventually..." and replace with conditions       |
+| **Scale Fit**               | All                               | Is the depth appropriate for the bot's cast size and structure?                                      | Compress or expand using `CHARACTER_SCALES.md`                |
 
 ---
 
@@ -39,6 +42,8 @@ These are the checks most likely to catch failures that a static reread will mis
 | **Apology Sequence**    | User apologizes after conflict                       | The character does not reset instantly; trust repair has cost                |
 | **30-Turn Drift**       | Continue long enough for novelty to wear off         | Signature tells, silence rules, and narration lens still survive             |
 | **Model Switch**        | Run on a second model if possible                    | Core behavior remains recognizable even if tone changes                      |
+| **Translation Pass**    | Render 10+ turns through the bot's translation guide | Address-form shifts, formality changes, and catchphrases survive into Korean |
+| **Body-Spec Hold**      | For spec-dependent characters (nonhuman, scale play) | Stated measurements/ratios stay consistent across 20+ turns; no drift        |
 
 ### 2–4 Character Ensemble
 
@@ -77,21 +82,25 @@ These are the checks most likely to catch failures that a static reread will mis
 | **Lorebook Dump Risk**          | Backstory detail appears in description or always-on text without need                             | The bot starts explaining instead of roleplaying      | Move gated detail into lorebook structure                                                          |
 | **Voice Collision**             | Two characters share rhythm, humor, and pressure behavior                                          | Ensemble scenes become unreadable                     | Build a cast contrast grid before finalizing                                                       |
 | **Mechanical Metaphor Leakage** | Feelings, bodies, or intimacy are described as systems, data, coordinates, anatomy, physics, or UI | The character feels artificial or clinically observed | Rewrite through breath, touch, posture, silence, sensory texture, and emotionally specific choices |
+| **Stock Literary Slop**         | "Not X but Y" reflexes, hitching breath, whitening knuckles, universal-issue lyricism              | Prose any character could narrate; signature erodes   | Draw metaphor only from this character's own image sources (trade, wound, obsession, setting)      |
+| **Spec Purge Overreach**        | Useful measurements/body specs deleted in the name of prose style                                  | Consistency anchors lost; long-session drift          | Keep precision in data-layer tables; apply style rules to prose surfaces only                      |
 
 ## Anti-Flattening Checks
 
 Use these when a character feels polished but still collapses into a default archetype during play.
 
-| Check                    | Question                                                                 | Fix if weak                                                                 |
-| ------------------------ | ------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| **Function Test**        | Does every memorable fact change behavior, voice, relation, or pressure? | Attach the fact to a scene consequence or remove it                         |
-| **Default Prediction**   | What stock character will the model assume this is?                      | Add Contrast that names the default and gives specific differences          |
-| **Reference Conversion** | Are references still visible as imitation?                               | Convert them into keep/change/reject functions and original behavior        |
-| **Texture Anchor**       | Are abstract traits paired with sensory or behavioral evidence?          | Replace labels with gestures, choices, silence rules, or environmental cues |
-| **Unresolved Tension**   | Did the draft explain away its own contradiction?                        | Remove "deep down" closure and keep the pressure active at story start      |
-| **Dark-Trait Dilution**  | Did difficult content become moral labels or reassuring balance notes?   | Write allowed dark material as specific conditional behavior and cost       |
-| **Future Leakage**       | Does the sheet tell the model where the arc will go?                     | Replace future outcomes with thresholds, tendencies, and current pressures  |
-| **Example-Line Leakage** | Are examples too memorable or signature-like?                            | Make them plainer and strengthen the reusable speech pattern                |
+| Check                       | Question                                                                                              | Fix if weak                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Function Test**           | Does every memorable fact change behavior, voice, relation, or pressure?                              | Attach the fact to a scene consequence or remove it                                       |
+| **Default Prediction**      | What stock character will the model assume this is?                                                   | Add Contrast that names the default and gives specific differences                        |
+| **Reference Conversion**    | Are references still visible as imitation?                                                            | Convert them into keep/change/reject functions and original behavior                      |
+| **Texture Anchor**          | Are abstract traits paired with sensory or behavioral evidence?                                       | Replace labels with gestures, choices, silence rules, or environmental cues               |
+| **Unresolved Tension**      | Did the draft explain away its own contradiction?                                                     | Remove "deep down" closure and keep the pressure active at story start                    |
+| **Dark-Trait Dilution**     | Did difficult content become moral labels or reassuring balance notes?                                | Write allowed dark material as specific conditional behavior and cost                     |
+| **Future Leakage**          | Does the sheet tell the model where the arc will go?                                                  | Replace future outcomes with thresholds, tendencies, and current pressures                |
+| **Example-Line Leakage**    | Are examples too memorable or signature-like?                                                         | Make them plainer and strengthen the reusable speech pattern                              |
+| **Played-Straight Quality** | If the archetype is played straight, does it hit every beat its audience expects, at high resolution? | Study the expected beats (`trope-library`) and execute them specifically, not generically |
+| **Familiarity Budget**      | Is there one legible anchor and one deliberately placed deviation — not zero, not five?               | Re-budget per `core-craft` §4.2                                                           |
 
 ---
 

@@ -332,16 +332,6 @@ export async function handleAssetRoute(
   }
 
   if (parts[0] === 'assets' && parts[1] === 'compress-webp' && req.method === 'POST') {
-    const assets = (currentData.assets || []) as { path: string; data: Buffer }[];
-    if (assets.length === 0) {
-      deps.mcpError(res, 400, {
-        action: 'compress-webp',
-        message: 'No assets found in file.',
-        target: 'assets',
-      });
-      return true;
-    }
-
     const rawBody = await deps.readJsonBody(req, res, 'assets/compress-webp', deps.broadcastStatus);
     if (!rawBody) return true;
     const body = deps.parseBody(res, rawBody, assetCompressWebpBodySchema, {
@@ -349,6 +339,27 @@ export async function handleAssetRoute(
       target: 'assets',
     });
     if (!body) return true;
+
+    const assetFamily = body.asset_family ?? 'charx';
+    const moduleAssets = getRisumModuleAssets(currentData);
+    const risumBuffers = (currentData.risumAssets || []) as Buffer[];
+    const assets =
+      assetFamily === 'risum'
+        ? risumBuffers.map((data, index) => {
+            const tuple = Array.isArray(moduleAssets[index]) ? (moduleAssets[index] as unknown[]) : [];
+            const name = typeof tuple[0] === 'string' ? tuple[0] : `asset_${index}`;
+            const ext = typeof tuple[2] === 'string' && tuple[2] ? tuple[2].replace(/^\./, '') : 'bin';
+            return { path: `${name}.${ext}`, data };
+          })
+        : ((currentData.assets || []) as { path: string; data: Buffer }[]);
+    if (assets.length === 0) {
+      deps.mcpError(res, 400, {
+        action: 'compress-webp',
+        message: 'No assets found in file.',
+        target: assetFamily === 'risum' ? 'risum-assets' : 'assets',
+      });
+      return true;
+    }
 
     const quality = body.quality ?? 80;
     const recompressWebp = body.recompressWebp === true;
@@ -420,6 +431,7 @@ export async function handleAssetRoute(
         {
           ok: true,
           dry_run: true,
+          asset_family: assetFamily,
           quality,
           recompressWebp,
           stats: {
@@ -442,6 +454,7 @@ export async function handleAssetRoute(
     const allowed = await deps.askRendererConfirm(
       'WebP 에셋 압축',
       `${convertible.length}개 이미지를 WebP (품질 ${quality})로 변환합니다.\n` +
+        `에셋 종류: ${assetFamily}\n` +
         `전체 에셋: ${assets.length}개 (${formatBytes(totalSize)})\n` +
         `변환 대상: ${convertible.length}개\n\n` +
         `원본 파일은 교체되며 되돌릴 수 없습니다.`,
@@ -470,10 +483,35 @@ export async function handleAssetRoute(
         }
       }
 
-      currentData.assets = result.assets;
-
       let refsUpdated = { cardAssetsUpdated: 0, xMetaUpdated: 0 };
-      if (pathMap.size > 0) {
+      if (assetFamily === 'risum') {
+        currentData.risumAssets = result.assets.map((asset) => asset.data);
+        for (const [index, detail] of result.details.entries()) {
+          if (detail.status !== 'converted') continue;
+          const tuple = Array.isArray(moduleAssets[index]) ? (moduleAssets[index] as unknown[]) : null;
+          if (tuple) tuple[2] = 'webp';
+          const name = typeof tuple?.[0] === 'string' ? tuple[0] : `asset_${index}`;
+          if (Array.isArray(currentData.cardAssets)) {
+            for (const cardAsset of currentData.cardAssets as Record<string, unknown>[]) {
+              if (cardAsset?.name !== name) continue;
+              cardAsset.ext = 'webp';
+              if (typeof cardAsset.uri === 'string') {
+                cardAsset.uri = cardAsset.uri.replace(/\.[^.]+$/, '.webp');
+              }
+              refsUpdated.cardAssetsUpdated++;
+            }
+          }
+        }
+        if (deps.invalidateAssetsMapCache) deps.invalidateAssetsMapCache();
+        deps.broadcastToAll('data-updated', { field: 'risumAssets' });
+        deps.broadcastToAll('data-updated', { field: '_moduleData' });
+        if (refsUpdated.cardAssetsUpdated > 0) {
+          deps.broadcastToAll('data-updated', { field: 'cardAssets' });
+        }
+      } else {
+        currentData.assets = result.assets;
+      }
+      if (assetFamily === 'charx' && pathMap.size > 0) {
         refsUpdated = updateAssetReferences(
           pathMap,
           (currentData.cardAssets || []) as unknown[],
@@ -481,8 +519,9 @@ export async function handleAssetRoute(
         );
       }
 
-      deps.broadcastToAll('data-updated', { field: 'assets' });
+      if (assetFamily === 'charx') deps.broadcastToAll('data-updated', { field: 'assets' });
       deps.logMcpMutation('compress-webp', 'assets', {
+        assetFamily,
         quality,
         converted: result.stats.converted,
         savedBytes: result.stats.savedBytes,
@@ -492,6 +531,7 @@ export async function handleAssetRoute(
         res,
         {
           ok: true,
+          asset_family: assetFamily,
           stats: result.stats,
           referencesUpdated: refsUpdated,
           details: result.details.map((d) => ({

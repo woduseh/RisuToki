@@ -33,7 +33,7 @@ RisuToki is an Electron desktop application composed of one **main process** and
 │  Accesses in-memory document state via deps.getCurrentData()    │
 ├─────────────────────────────────────────────────────────────────┤
 │  MCP Stdio Server (separate child process)                      │
-│  toki-mcp-server.ts (~2,020 lines)                              │
+│  toki-mcp-server.ts (~16,880 lines)                             │
 │  Connects to the above API over HTTP 127.0.0.1:${TOKI_PORT}    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -95,7 +95,7 @@ Type definitions: the `TokiAPI` and `PopoutAPI` interfaces are declared in `src/
 
 ```
 main.ts (Electron main process)
-  └─ startApiServer(deps) → src/lib/mcp-api-server.ts (HTTP API, ~13,825 lines)
+  └─ startApiServer(deps) → src/lib/mcp-api-server.ts (HTTP API, ~15,230 lines)
         ├─ Reads/writes main-process in-memory document state via deps.getCurrentData()
         ├─ src/lib/mcp-cbs-routes.ts (CBS route-family dispatcher)
         ├─ src/lib/mcp-surface-routes.ts (active-document surface route dispatcher, ~340 lines)
@@ -105,7 +105,7 @@ main.ts (Electron main process)
         ├─ src/lib/mcp-response-envelope.ts (response formatting, ~265 lines)
        └─ src/lib/mcp-search.ts (full-text search, ~360 lines)
 
-toki-mcp-server.ts (separate child process, stdio transport, ~5,980 lines)
+toki-mcp-server.ts (separate child process, stdio transport, ~16,880 lines)
   └─ Connects to the above API over HTTP 127.0.0.1:${TOKI_PORT}
 ```
 
@@ -139,6 +139,7 @@ Modules under `src/lib/` can theoretically be used by either side, but in practi
 | Renderer only     | `layout-manager.ts`, `tab-manager.ts`, `sidebar-builder.ts`, `form-editor.ts`, `monaco-loader.ts`                                                                                    |
 | Shared            | `shared-utils.ts`, `section-parser.ts`, `risup-prompt-model.ts`, `risup-json-fields.ts`, `cbs-parser.ts`, `cbs-evaluator.ts`                                                        |
 | MCP server only   | `mcp-api-server.ts`, `mcp-cbs-routes.ts`, `mcp-surface-routes.ts`, `mcp-asset-routes.ts`, `mcp-field-access.ts`, `mcp-tool-taxonomy.ts`, `mcp-response-envelope.ts`, `mcp-search.ts` |
+| Preview + MCP shared | `content-simulation.ts` (pure regex execution and lorebook activation) |
 
 `src/lib/section-parser.ts` is the canonical Lua/CSS section grammar for renderer, Electron main-process MCP dependencies, and standalone MCP. `src/lib/mcp-section-parser.ts` is a compatibility re-export only.
 
@@ -172,7 +173,8 @@ The preview is a port of the RisuAI rendering pipeline that simulates CBS, regex
 
 | Module                         | Lines  | Purpose                                                     |
 | ------------------------------ | ------ | ----------------------------------------------------------- |
-| `src/lib/preview-engine.ts`    | ~2,460 | CBS tokenizer, regex, lorebook, Lua (Wasmoon) execution     |
+| `src/lib/preview-engine.ts`    | ~2,340 | CBS rendering orchestration and Lua (Wasmoon) execution     |
+| `src/lib/content-simulation.ts` | ~380 | Shared pure regex execution and lorebook activation         |
 | `src/lib/preview-session.ts`   | ~460   | Session lifecycle and state management                      |
 | `src/lib/preview-panel.ts`     | ~380   | Preview panel UI                                            |
 | `src/lib/preview-runtime.ts`   | ~320   | Runtime feedback (error/timeout banners)                    |
@@ -259,10 +261,11 @@ The following are the largest files in the project and the top candidates for fu
 
 | Module                              | Lines       | Why It Is a Hotspot                                                                                                                                                              |
 | ----------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`src/lib/mcp-api-server.ts`**     | **~13,825** | Houses most MCP HTTP tool routing, with surface and asset routes split into dedicated route-family dispatchers; tool membership is maintained by the `mcp-tool-taxonomy.ts` SSOT |
-| **`toki-mcp-server.ts`**            | **~5,980**  | stdio MCP server + tool registration + Danbooru tag validation                                                                                                                   |
+| **`src/lib/mcp-api-server.ts`**     | **~15,230** | Houses most MCP HTTP tool routing, with surface and asset routes split into dedicated route-family dispatchers; tool membership is maintained by the `mcp-tool-taxonomy.ts` SSOT |
+| **`toki-mcp-server.ts`**            | **~16,880** | stdio MCP server, facade/granular tool registration, bounded envelopes, analysis routing, and Danbooru tag validation                                                            |
 | **`src/app/controller.ts`**         | **~2,820**  | Single orchestrator managing all main-window state, UI, and integrations                                                                                                         |
-| **`src/lib/preview-engine.ts`**     | **~2,460**  | Contains the entire CBS/regex/lorebook/Lua rendering pipeline                                                                                                                    |
+| **`src/lib/preview-engine.ts`**     | **~2,340**  | Preview document orchestration, CBS rendering, and Lua execution; regex/lorebook logic is shared through `content-simulation.ts`                                                |
+| `src/lib/content-simulation.ts`     | ~380        | Pure regex/lorebook execution shared by preview and MCP analysis                                                                                                                |
 | **`main.ts`**                       | **~1,570**  | IPC channel registration, file I/O, and window management concentrated here                                                                                                      |
 | **`src/lib/form-editor.ts`**        | **~1,440**  | Shared form editor for all three file types                                                                                                                                      |
 | **`src/lib/risup-prompt-model.ts`** | **~1,240**  | RISUP promptTemplate parsing                                                                                                                                                     |
@@ -329,8 +332,8 @@ F5 or menu click in the renderer (.charx only)
   └─ preview-session.ts: session initialization
        └─ preview-engine.ts: iframe document generation
             ├─ CBS parsing/evaluation (cbs-parser.ts, cbs-evaluator.ts)
-            ├─ Regex application
-            ├─ Lorebook decorator matching
+            ├─ Regex application (content-simulation.ts)
+            ├─ Lorebook decorator matching (content-simulation.ts)
             └─ Lua trigger execution (Wasmoon)
        └─ preview-runtime.ts: error/timeout inline banners
        └─ preview-debug.ts: debug trace view

@@ -11,11 +11,15 @@ related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list
 
 - **Use when:** the main task is designing, refactoring, or diagnosing the world itself: setting pressure, culture, factions, institutions, places, systems, active history, or knowledge horizon.
 - **Do not use when:** the main task is one character's inner drive/voice, self-introduction sheets, lorebook trigger structure, raw lorebook syntax, or technical CBS/Lua/regex/HTML work.
-- **Read first:** this `SKILL.md` only. Load [VALIDATION.md](VALIDATION.md) after drafting or when diagnosing why a world feels flat.
-- **Load deeper only if:** world material needs placement into description/lorebook/globalNote/firstMessage; then hand off to [authoring-lorebook-bots](../authoring-lorebook-bots/). For exact lorebook decorators and trigger syntax, use `writing-lorebooks`.
+- **Read first:** `core-craft` (shared doctrine), then this `SKILL.md`. Load [VALIDATION.md](VALIDATION.md) after drafting or when diagnosing why a world feels flat.
+- **Load deeper only if:** the world starts from a known genre frame ([GENRE_PRESETS.md](GENRE_PRESETS.md)), `{{user}}` access/knowledge/capability must fit world law (`core-craft/USER_POSITION.md`), world material needs placement into description/lorebook/globalNote/firstMessage ([authoring-lorebook-bots](../authoring-lorebook-bots/)), events/simulation are the point (`authoring-scenarios`), or exact lorebook syntax is needed (`writing-lorebooks`).
 - **Output/validation contract:** produce a scene-useful world frame and deep-reference candidates, not a wiki. Verify that every world element changes behavior, speech, sensation, conflict, or withholding in play.
 
 > This skill answers **what the world is and how it acts on scenes**. It does not decide final RisuAI storage, keyword triggers, insertion depth, or large-bot scene routing. Those are structure tasks for `authoring-lorebook-bots` and syntax tasks for `writing-lorebooks`.
+
+**Media-mix handoff:** if the world must be translated across two or more media, needs a franchise invariant/elastic-zone split, or requires adaptation compensation, use `authoring-media-mix` as the primary skill and this skill for world substance.
+
+**User-position handoff:** if world access, legal status, knowledge horizon, capability ceilings, or obligations differ by player role, load `core-craft/USER_POSITION.md` and define a fixed, open, or compatibility-bounded contract. Do not silently normalize an incompatible persona.
 
 ## Role Boundary
 
@@ -54,9 +58,9 @@ Before keeping any world fact, ask:
 
 If not, attach a consequence or leave it out of the play-facing world frame.
 
-### 2. Active present beats timeline
+### 2. Active present beats timeline in emergent play
 
-Write the world at the story's starting moment. Avoid future promises like "the empire will collapse" or "war is coming." If instability matters, write how it appears now.
+For emergent RP, write the world at the story's starting moment. Avoid future promises like "the empire will collapse" or "war is coming"; show current instability instead. Fixed narratives may plan future collapse, war, and endings explicitly, but the world frame should still show how those pressures manifest in each present scene.
 
 ### 3. Texture anchors abstractions
 
@@ -73,15 +77,18 @@ Every structural rule should have at least one texture pair: a sound, smell, rit
 
 Power, religion, magic, and social norms get stronger when the official story and actual mechanism disagree. Do not tidy the contradiction into a solved secret or future revelation.
 
-### 5. Cross-source to block defaults
+### 5. Genre frames: ride them or cross them — on purpose
 
-If the world leans on one obvious reference, genre, or culture, predict the model's default and add an off-pattern source or pressure unless the user intentionally wants that default.
+A world built on a recognizable genre frame (academy, romance fantasy, murim, dungeon) is not a defect; it is a legibility purchase (`core-craft` §4). Decide explicitly:
 
-Use Contrast to name the likely misread:
+- **Ride the frame (play straight):** start from [GENRE_PRESETS.md](GENRE_PRESETS.md), keep the expected pressures and norms, and spend your effort on texture resolution plus **one** signature difference. The quality bar is executing the genre's beats better than the generic version — not avoiding them.
+- **Cross the frame (subvert):** predict the model's default and add an off-pattern source or pressure. Use Contrast to name the likely misread:
 
 ```text
 This setting borrows monsoon-port logistics and courtly ancestor rites; it is not medieval Europe by default.
 ```
+
+Single-source collapse is still a real failure — but the fix can be a deliberate ride with one placed deviation, not always cross-pollination.
 
 ### 6. Knowledge horizon blocks leakage
 
@@ -126,7 +133,22 @@ All later choices are judged against this direction.
 
 ### Step 2 - Anchor References and Cross-Pollination
 
-Identify the strongest visual, cultural, historical, or genre anchor. If it is single-source, ask what second source, off-pattern pressure, or deliberate difference should prevent default drift.
+Identify the strongest visual, cultural, historical, or genre anchor. If it is single-source, decide per Core Principle 5: ride it deliberately (start from [GENRE_PRESETS.md](GENRE_PRESETS.md) and place one signature deviation) or cross it with a second source.
+
+### Step 2.5 - Myth and Legend Adaptation (when applicable)
+
+When the world adapts a real mythology, legend, or classic canon, run reference conversion (`core-craft` §3.2) against **audience expectation**, not just the source text:
+
+- **Variant ledger:** separate five layers instead of pretending one canon exists:
+  1. **Source tradition** — the oldest or chosen textual/oral source relevant to the project.
+  2. **Regional variants** — incompatible local, period, sectarian, or oral versions.
+  3. **Popular-culture version** — what the intended audience will assume arrives with the name.
+  4. **Project-adopted version** — which elements this work treats as true.
+  5. **Deliberate deviations** — what is changed, why, and how the audience learns the break is intentional.
+- **Expectation ledger:** within the popular-culture layer, list paid-for anchors (Hades = underworld/contracts/abduction story; 구미호 = liver/seduction/hundred-day trials). Breaking one is a move and must be signaled, or players read it as an error.
+- **Free-variation zone:** everything the popular image leaves vague is yours without cost — daily life, institutional details, what the myth's "offscreen" looks like.
+- **Deviation signaling:** when canon is deliberately broken, surface the break early through scene texture (someone reacting to the difference), never through narrator disclaimers.
+- **Syncretism check:** mixing pantheons or traditions multiplies default drift; name the mixing rule explicitly in Contrast.
 
 ### Step 3 - Current Pressures
 
@@ -173,6 +195,17 @@ For magic, technology, supernatural rules, or other special logic, define:
 
 Limits are more useful than powers because they preserve tension.
 
+#### Special physics: when the body's rules are the world system
+
+Some worlds make the body itself the system — size difference, nonhuman senses, transformation, shared pain, bonded biology. Treat these exactly like a magic system, with one addition: **the constants live in the data layer** (`core-craft` §1.1).
+
+- **Fix the constants:** ratios, ranges, and capabilities as exact values in a reference table (a 1:12 scale ratio, a 30-meter hearing radius, a 3-hour transformation cost). Models drift on relative language; they hold on stated constants.
+- **Interaction constraint table:** what is physically possible, awkward, and impossible between differently-ruled bodies — written once, as world law, so scenes inherit it instead of re-deciding it.
+- **Sensory asymmetry:** each side of the rule perceives differently (what is a hand to one is weather to the other). Define both lenses; they are the texture engine.
+- **Texture, not exposition:** the rule still appears in scenes through behavior and sensation (Core Principle 7). The constants table is for the model's reference, not for narration.
+
+When the special physics exists to serve desire content (e.g., size play), pair this section with `authoring-desire` for consistency enforcement and escalation design.
+
 ### Step 8 - Active History Only
 
 Record only past events that still press on the present.
@@ -214,6 +247,12 @@ Produce a world-design draft in this shape unless the user asks for a different 
 ## World Frame
 
 (Always-useful world substance: pressure, norms, taboos, texture, contrast)
+
+## Scene Generators
+
+(5-10 situation templates this world naturally and repeatedly produces — each one line:
+who collides with whom, over what, where. A world's quality is measured by its scene
+output, not its lore volume. If you cannot fill this section, the pressures are too weak.)
 
 ---
 

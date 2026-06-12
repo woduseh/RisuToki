@@ -240,9 +240,12 @@ function dogfoodCardData(name: string, description: string): CharxData {
     alternateGreetings: ['Facade alternate hello.'],
     groupOnlyGreetings: ['Facade group hello.'],
     globalNote: 'Destructive preview keeps this note until apply.',
-    css: '<style>\n/* ============================================================\n   main\n   ============================================================ */\n.facade-alpha { color: red; }\n</style>',
+    css: '<style>\n/* ============================================================\n   main\n   ============================================================ */\n.facade-alpha { color: red; }\n/* ============================================================\n   removable\n   ============================================================ */\n.facade-removable { display: none; }\n</style>',
     defaultVariables: '',
-    lua: '-- ===== main =====\nlocal label = "Alpha"\nprint(label)\n',
+    lua:
+      '-- ===== main =====\nlocal label = "Alpha"\nprint(label)\n' +
+      '-- ===== runtime_guard =====\nerror("compile-only validation must not execute this")\n' +
+      '-- ===== broken =====\nlocal =\n',
     triggerScripts: [
       {
         comment: 'Facade Trigger',
@@ -302,7 +305,9 @@ function createDogfoodFixtures(): {
   const referenceCharx = path.join(dir, 'reference.charx');
   const userDataDir = path.join(dir, 'user-data');
 
-  saveCharx(mainFile, dogfoodCardData('Facade Active', 'Alpha facade dogfood description.'));
+  const activeCard = dogfoodCardData('Facade Active', 'Alpha facade dogfood description.');
+  activeCard.defaultVariables = '한글🙂'.repeat(20_000);
+  saveCharx(mainFile, activeCard);
   saveCharx(externalFile, dogfoodCardData('Facade External', 'External facade dogfood description.'));
   saveCharx(referenceCharx, dogfoodCardData('Facade Reference Card', 'Reference charx facade dogfood description.'));
   saveRisum(referenceRisum, {
@@ -1342,7 +1347,7 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
         action: 'add_asset',
         name: 'external_module_asset',
         path: 'external_module_asset.png',
-        base64: Buffer.from('external-risum-asset').toString('base64'),
+        base64: compressiblePngBase64,
       },
     });
     assert.ok(routedTools(externalRisumAssetPreview).includes('external_patch_surface'));
@@ -1366,6 +1371,32 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
     ).module?.assets;
     assert.equal(externalRisumModuleAssets?.[0]?.[0], 'external_module_asset_renamed');
     assert.equal(externalRisumModuleAssets?.[0]?.[2], 'png');
+    const externalRisumCompressPreview = await callJson(runtime, 'manage_assets', {
+      target: externalRisumTarget,
+      asset_family: 'risum',
+      mode: 'preview',
+      operation: { action: 'compress_assets', quality: 30 },
+    });
+    assert.ok(routedTools(externalRisumCompressPreview).includes('external_patch_surface'));
+    assert.ok(
+      nestedArray(
+        nestedRecord(externalRisumCompressPreview.preview, 'external risum compression preview').required_guards,
+        'external risum compression guards',
+      ).some(
+        (guard) => nestedRecord(guard, 'external risum compression guard').name === 'expected_asset_collection_digest',
+      ),
+    );
+    await applyManageAssetsPreview(runtime, externalRisumTarget, externalRisumCompressPreview, 'risum');
+    const compressedExternalRisum = openRisum(fixture.externalRisum);
+    const compressedExternalModuleAssets = (
+      compressedExternalRisum._moduleData as { module?: { assets?: unknown[][] } }
+    ).module?.assets;
+    assert.equal(compressedExternalModuleAssets?.[0]?.[2], 'webp');
+    assert.ok(
+      compressedExternalRisum.cardAssets?.some((asset) =>
+        String((asset as Record<string, unknown>).uri ?? '').endsWith('.webp'),
+      ),
+    );
     const externalRisumValidation = await callJson(runtime, 'validate_content', {
       target: externalRisumTarget,
       selectors: [{ family: 'risum' }],
@@ -1717,6 +1748,102 @@ async function runStandaloneManageFileDogfood(): Promise<void> {
     await applyManageFilePreview(runtime, activeTarget, exportPreview);
     assert.equal(fs.readFileSync(exportPath, 'utf-8'), 'Alpha facade dogfood description.');
 
+    const lorebookExportDir = path.join(fixture.dir, 'lorebook-export');
+    const lorebookExportPreview = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'preview',
+      operation: { action: 'export_lorebook', target_dir: lorebookExportDir, format: 'md' },
+    });
+    assert.ok(routedTools(lorebookExportPreview).includes('export_lorebook_to_files'));
+    assert.equal(fs.existsSync(lorebookExportDir), false, 'lorebook export preview must not write files');
+    fs.mkdirSync(lorebookExportDir, { recursive: true });
+    fs.writeFileSync(path.join(lorebookExportDir, 'concurrent.txt'), 'changed after preview', 'utf-8');
+    const staleLorebookExport = await callJson(
+      runtime,
+      'manage_file',
+      {
+        target: activeTarget,
+        mode: 'apply',
+        preview_token: previewToken(lorebookExportPreview, 'lorebook export preview').preview_token,
+        operation_digest: previewToken(lorebookExportPreview, 'lorebook export preview').operation_digest,
+        guard_values: previewToken(lorebookExportPreview, 'lorebook export preview').required_guards,
+      },
+      { expectError: true },
+    );
+    assert.equal(staleLorebookExport.status, 409);
+    fs.rmSync(lorebookExportDir, { recursive: true, force: true });
+    const freshLorebookExportPreview = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'preview',
+      operation: { action: 'export_lorebook', target_dir: lorebookExportDir, format: 'md' },
+    });
+    await applyManageFilePreview(runtime, activeTarget, freshLorebookExportPreview);
+    assert.ok(fs.existsSync(path.join(lorebookExportDir, '_export_meta.json')));
+
+    const lorebookImportDir = path.join(fixture.dir, 'lorebook-import');
+    fs.mkdirSync(lorebookImportDir, { recursive: true });
+    const lorebookImportPath = path.join(lorebookImportDir, 'imported.md');
+    fs.writeFileSync(lorebookImportPath, '---\nkey: imported\n---\n\nImported lore body.', 'utf-8');
+    const lorebookBeforeImport = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'lorebook' }],
+    });
+    const lorebookBeforeCount = Number(
+      nestedRecord(
+        nestedRecord(
+          nestedArray(
+            nestedRecord(lorebookBeforeImport.result, 'lorebook before import result').items,
+            'lorebook before import items',
+          )[0],
+          'lorebook before import item',
+        ).data,
+        'lorebook before import data',
+      ).count,
+    );
+    const lorebookImportPreview = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'preview',
+      operation: { action: 'import_lorebook', source_dir: lorebookImportDir, format: 'md', conflict: 'rename' },
+    });
+    assert.ok(routedTools(lorebookImportPreview).includes('import_lorebook_from_files'));
+    const lorebookAfterPreview = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'lorebook' }],
+    });
+    const lorebookAfterPreviewCount = Number(
+      nestedRecord(
+        nestedRecord(
+          nestedArray(
+            nestedRecord(lorebookAfterPreview.result, 'lorebook after preview result').items,
+            'lorebook after preview items',
+          )[0],
+          'lorebook after preview item',
+        ).data,
+        'lorebook after preview data',
+      ).count,
+    );
+    assert.equal(lorebookAfterPreviewCount, lorebookBeforeCount, 'lorebook import preview must not mutate entries');
+    fs.appendFileSync(lorebookImportPath, '\nChanged after preview.', 'utf-8');
+    const staleLorebookImport = await callJson(
+      runtime,
+      'manage_file',
+      {
+        target: activeTarget,
+        mode: 'apply',
+        preview_token: previewToken(lorebookImportPreview, 'lorebook import preview').preview_token,
+        operation_digest: previewToken(lorebookImportPreview, 'lorebook import preview').operation_digest,
+        guard_values: previewToken(lorebookImportPreview, 'lorebook import preview').required_guards,
+      },
+      { expectError: true },
+    );
+    assert.equal(staleLorebookImport.status, 409);
+    const freshLorebookImportPreview = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'preview',
+      operation: { action: 'import_lorebook', source_dir: lorebookImportDir, format: 'md', conflict: 'rename' },
+    });
+    await applyManageFilePreview(runtime, activeTarget, freshLorebookImportPreview);
+
     const openPreview = await callJson(runtime, 'manage_file', {
       target: externalTarget,
       mode: 'preview',
@@ -1801,17 +1928,17 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     const tools = await runtime.client.listTools();
     metrics.toolListByteCost = Buffer.byteLength(JSON.stringify(tools.tools), 'utf-8');
     metrics.facadeToolListByteCost = metrics.toolListByteCost;
-    assert.ok(metrics.toolListByteCost <= 40 * 1024, 'default tools/list should stay within a 40 KiB budget');
+    assert.ok(metrics.toolListByteCost <= 52 * 1024, 'default tools/list should stay within a 52 KiB budget');
 
     const expectedFacadeTools = [
       'inspect_document',
       'list_tool_profiles',
       'search_document',
       'read_content',
+      'analyze_content',
       'preview_edit',
       'apply_edit',
       'validate_content',
-      'load_guidance',
       'manage_items',
       'manage_assets',
       'manage_file',
@@ -1860,6 +1987,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       ['inspect_document', ['discover']],
       ['read_content', ['read']],
       ['search_document', ['search']],
+      ['analyze_content', ['read', 'validate']],
       ['validate_content', ['validate']],
       ['preview_edit', ['preview']],
       ['apply_edit', ['apply']],
@@ -1883,6 +2011,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       ['inspect_document', ['discover']],
       ['read_content', ['read']],
       ['search_document', ['search']],
+      ['analyze_content', ['read', 'validate']],
       ['validate_content', ['validate']],
     ] as const) {
       assertProfileToolWorkflowStages(readonlyProfileTools, toolName, [...workflowStages]);
@@ -1903,6 +2032,118 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'advanced-full catalog should mark granular tools hidden by the active facade-first registration',
     );
 
+    for (const [operation, expectedRoute, target] of [
+      [{ action: 'tag_db_status' }, 'tag_db_status', { kind: 'session' }],
+      [{ action: 'search_danbooru_tags', query: 'blue_hair', limit: 5 }, 'search_danbooru_tags', { kind: 'session' }],
+      [
+        { action: 'get_popular_danbooru_tags', category: 'general', limit: 5 },
+        'get_popular_danbooru_tags',
+        { kind: 'session' },
+      ],
+      [{ action: 'list_cbs_toggles', field: 'description' }, 'list_cbs_toggles', activeTarget],
+      [
+        { action: 'simulate_cbs', field: 'description', toggles: { facade: 'on' }, compact: true },
+        'simulate_cbs',
+        activeTarget,
+      ],
+      [{ action: 'diff_cbs', field: 'description', toggles: { facade: 'on' } }, 'diff_cbs', activeTarget],
+      [
+        {
+          action: 'diff_lorebook',
+          index: 0,
+          reference: { kind: 'reference', reference_id: '2' },
+          ref_entry_index: 0,
+        },
+        'diff_lorebook',
+        activeTarget,
+      ],
+    ] as const) {
+      facadeOnlyCalls.push('analyze_content');
+      const analysis = await callJson(runtime, 'analyze_content', { target, operation });
+      assert.ok(routedTools(analysis).includes(expectedRoute));
+      assert.equal(nestedRecord(analysis.artifacts, 'analysis artifacts').operation, operation.action);
+    }
+
+    const fieldStats = await callJson(runtime, 'analyze_content', {
+      target: activeTarget,
+      operation: { action: 'field_stats', field: 'description' },
+    });
+    assert.deepEqual(routedTools(fieldStats), ['get_field_stats']);
+    assert.equal(
+      nestedRecord(nestedRecord(fieldStats.result, 'field stats result').analysis, 'field stats analysis').characters,
+      'Alpha facade dogfood description.'.length,
+    );
+
+    const tokenCount = await callJson(runtime, 'analyze_content', {
+      target: { kind: 'session' },
+      operation: { action: 'token_count', encoding: 'cl100k_base', text: 'hello' },
+    });
+    const tokenAnalysis = nestedRecord(
+      nestedRecord(tokenCount.result, 'token count result').analysis,
+      'token count analysis',
+    );
+    assert.equal(tokenAnalysis.encoding, 'cl100k_base');
+    assert.equal(tokenAnalysis.exact_for_encoding, true);
+    assert.equal(tokenAnalysis.model_equivalence, 'not_asserted');
+    assert.equal(tokenAnalysis.total_tokens, 1);
+
+    const lorebookSimulation = await callJson(runtime, 'analyze_content', {
+      target: activeTarget,
+      operation: {
+        action: 'simulate_lorebook',
+        messages: [{ role: 'user', content: 'Please activate the facade lore.' }],
+      },
+    });
+    const lorebookMatches = nestedArray(
+      nestedRecord(
+        nestedRecord(lorebookSimulation.result, 'lorebook simulation result').analysis,
+        'lorebook simulation analysis',
+      ).matches,
+      'lorebook simulation matches',
+    );
+    assert.equal(nestedRecord(lorebookMatches[0], 'lorebook simulation match').index, 0);
+
+    const regexSimulation = await callJson(runtime, 'analyze_content', {
+      target: activeTarget,
+      operation: { action: 'test_regex', text: 'Facade response', mode: 'editoutput' },
+    });
+    const regexAnalysis = nestedRecord(
+      nestedRecord(regexSimulation.result, 'regex simulation result').analysis,
+      'regex simulation analysis',
+    );
+    assert.equal(regexAnalysis.result, 'Surface response');
+    assert.equal(regexAnalysis.ok, true);
+
+    const luaValidation = await callJson(runtime, 'validate_content', {
+      target: activeTarget,
+      selectors: [{ family: 'lua' }, { family: 'trigger' }],
+    });
+    const luaValidationItems = nestedArray(
+      nestedRecord(luaValidation.result, 'lua validation result').validations,
+      'lua validation items',
+    );
+    const luaSectionValidation = nestedRecord(
+      nestedRecord(luaValidationItems[0], 'lua section validation').data,
+      'lua section validation data',
+    );
+    const luaResults = nestedArray(luaSectionValidation.results, 'lua validation results');
+    assert.ok(
+      luaResults.some(
+        (item) =>
+          nestedRecord(item, 'lua validation item').name === 'runtime_guard' &&
+          nestedRecord(item, 'lua validation item').ok === true,
+      ),
+      'compile-only validation must not execute valid Lua chunks',
+    );
+    assert.ok(
+      luaResults.some(
+        (item) =>
+          nestedRecord(item, 'lua validation item').name === 'broken' &&
+          nestedRecord(item, 'lua validation item').ok === false,
+      ),
+      'Lua syntax errors should be reported per section',
+    );
+
     const inspect = await callJson(runtime, 'inspect_document', { target: activeTarget, max_bytes: 32000 });
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(inspect), ['session_status', 'list_fields', 'list_surfaces']);
@@ -1921,6 +2162,41 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(search), ['search_all_fields']);
 
+    const fieldSearch = await callJson(runtime, 'search_document', {
+      target: activeTarget,
+      selector: { family: 'field', field: 'description' },
+      query: 'Alpha',
+      max_matches: 5,
+    });
+    assert.deepEqual(routedTools(fieldSearch), ['search_in_field']);
+    assert.deepEqual(nestedRecord(fieldSearch.result, 'field search result').touched_targets, ['field:description']);
+
+    const boundedSearch = await callJson(runtime, 'search_document', {
+      target: activeTarget,
+      query: 'Facade',
+      max_matches: 1,
+    });
+    const boundedSearchData = nestedRecord(
+      nestedRecord(boundedSearch.result, 'bounded search result').search,
+      'bounded search data',
+    );
+    assert.equal(boundedSearchData.returnedMatches, 1);
+    assert.ok(Number(boundedSearchData.totalMatches) > 1);
+
+    const utf8BoundedRead = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'field', field: 'defaultVariables' }],
+    });
+    const utf8Facade = nestedRecord(utf8BoundedRead.facade, 'utf8 bounded facade');
+    const utf8Result = nestedRecord(utf8BoundedRead.result, 'utf8 bounded result');
+    assert.equal(utf8Facade.max_bytes, 24 * 1024);
+    assert.equal(utf8Facade.truncated, true);
+    assert.equal(utf8Result.truncated, true);
+    assert.ok(Buffer.byteLength(JSON.stringify(utf8Result), 'utf8') <= 24 * 1024);
+    assert.ok(Number(utf8Result.original_byte_size) > Number(utf8Result.returned_byte_size));
+    assert.equal(Number(utf8Result.returned_byte_size), Buffer.byteLength(JSON.stringify(utf8Result), 'utf8'));
+    assert.ok(!String(utf8Result.preview).includes('\uFFFD'));
+
     facadeOnlyCalls.push('read_content');
     const readBefore = await callJson(runtime, 'read_content', {
       target: activeTarget,
@@ -1928,6 +2204,85 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(readBefore), ['read_field']);
+
+    const partialMarker = '[partial-once]';
+    const partialPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'insert_text',
+          selector: { family: 'field', field: 'description' },
+          content: partialMarker,
+          position: 'start',
+        },
+        {
+          op: 'patch_surface',
+          selector: { family: 'surface', path: '/' },
+          content: [{ op: 'replace', path: '/globalNote', value: 'MustNotApply' }],
+        },
+      ],
+    });
+    const partialPreviewInfo = previewToken(partialPreview, 'partial failure preview');
+    const partialApply = await callJson(
+      runtime,
+      'apply_edit',
+      {
+        preview_token: partialPreviewInfo.preview_token,
+        operation_digest: partialPreviewInfo.operation_digest,
+        target: activeTarget,
+      },
+      { expectError: true },
+    );
+    const partialDetails = nestedRecord(partialApply.details, 'partial apply details');
+    assert.equal(partialDetails.preview_token_consumed, true);
+    assert.equal(partialDetails.partial, true);
+    assert.equal(partialDetails.applied_count, 1);
+    assert.equal(partialDetails.remaining_count, 0);
+    assert.equal(nestedRecord(partialDetails.failed_operation, 'failed operation').index, 1);
+
+    const reusedPartialToken = await callJson(
+      runtime,
+      'apply_edit',
+      {
+        preview_token: partialPreviewInfo.preview_token,
+        operation_digest: partialPreviewInfo.operation_digest,
+        target: activeTarget,
+      },
+      { expectError: true },
+    );
+    assert.equal(reusedPartialToken.status, 404);
+
+    const afterPartialRead = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    const afterPartialItems = nestedArray(
+      nestedRecord(afterPartialRead.result, 'after partial result').items,
+      'after partial items',
+    );
+    const afterPartialContent = String(
+      nestedRecord(nestedRecord(afterPartialItems[0], 'after partial item').data, 'after partial data').content,
+    );
+    assert.equal(afterPartialContent.split(partialMarker).length - 1, 1);
+    assert.match(afterPartialContent, /Alpha/);
+    assert.equal(openCharx(fixture.mainFile).globalNote, 'No match here.');
+
+    const partialCleanupPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'field', field: 'description' },
+          find: partialMarker,
+          replace: '',
+        },
+      ],
+    });
+    await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(partialCleanupPreview, 'partial cleanup preview').preview_token,
+      operation_digest: previewToken(partialCleanupPreview, 'partial cleanup preview').operation_digest,
+      target: activeTarget,
+    });
 
     const boundedRootRead = await callJson(runtime, 'read_content', {
       target: activeTarget,
@@ -2084,6 +2439,282 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assert.match(String(applyWithoutPreview.error ?? ''), /Unknown or expired preview token/);
     assert.match(String(applyWithoutPreview.suggestion ?? ''), /preview_edit/);
 
+    const staleFieldBlockPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_block',
+          selector: { family: 'field', field: 'description' },
+          start_anchor: 'Alpha',
+          end_anchor: 'facade',
+          content: 'Alpha facade',
+        },
+      ],
+    });
+    const concurrentFieldPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'field', field: 'description' },
+          find: 'dogfood',
+          replace: 'guarded dogfood',
+        },
+      ],
+    });
+    await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(concurrentFieldPreview, 'concurrent field preview').preview_token,
+      operation_digest: previewToken(concurrentFieldPreview, 'concurrent field preview').operation_digest,
+      target: activeTarget,
+    });
+    const staleFieldBlockApply = await callJson(
+      runtime,
+      'apply_edit',
+      {
+        preview_token: previewToken(staleFieldBlockPreview, 'stale field block preview').preview_token,
+        operation_digest: previewToken(staleFieldBlockPreview, 'stale field block preview').operation_digest,
+        target: activeTarget,
+      },
+      { expectError: true },
+    );
+    assert.equal(staleFieldBlockApply.status, 409);
+    const restoreFieldPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'field', field: 'description' },
+          find: 'guarded dogfood',
+          replace: 'dogfood',
+        },
+      ],
+    });
+    await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(restoreFieldPreview, 'restore field preview').preview_token,
+      operation_digest: previewToken(restoreFieldPreview, 'restore field preview').operation_digest,
+      target: activeTarget,
+    });
+
+    const missingFieldBlockPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_block',
+          selector: { family: 'field', field: 'description' },
+          start_anchor: 'missing-start-anchor',
+          end_anchor: 'missing-end-anchor',
+          content: 'must not be written',
+        },
+      ],
+    });
+    const missingFieldPreviewData = nestedRecord(
+      nestedRecord(
+        nestedArray(
+          nestedRecord(missingFieldBlockPreview.result, 'missing field block preview result').previews,
+          'missing field block previews',
+        )[0],
+        'missing field block preview item',
+      ).data,
+      'missing field block preview data',
+    );
+    assert.equal(missingFieldPreviewData.success, false);
+    const missingFieldBlockApply = await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(missingFieldBlockPreview, 'missing field block preview').preview_token,
+      operation_digest: previewToken(missingFieldBlockPreview, 'missing field block preview').operation_digest,
+      target: activeTarget,
+    });
+    const missingFieldApplyData = nestedRecord(
+      nestedRecord(
+        nestedArray(
+          nestedRecord(missingFieldBlockApply.result, 'missing field block apply result').applied,
+          'missing field block applied',
+        )[0],
+        'missing field block applied item',
+      ).data,
+      'missing field block apply data',
+    );
+    assert.equal(missingFieldApplyData.success, false);
+
+    const fieldBlockPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_block',
+          selector: { family: 'field', field: 'description' },
+          start_anchor: 'Alpha',
+          end_anchor: 'facade',
+          content: 'Alpha facade',
+        },
+      ],
+    });
+    assert.ok(routedTools(fieldBlockPreview).includes('replace_block_in_field'));
+    assert.ok(
+      nestedArray(
+        nestedRecord(fieldBlockPreview.result, 'field block preview result').guard_values,
+        'field block guards',
+      ).some((guard) => nestedRecord(guard, 'field block guard').name === 'expected_content_hash'),
+    );
+    const fieldBlockApply = await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(fieldBlockPreview, 'field block preview').preview_token,
+      operation_digest: previewToken(fieldBlockPreview, 'field block preview').operation_digest,
+      target: activeTarget,
+    });
+    assert.ok(routedTools(fieldBlockApply).includes('replace_block_in_field'));
+
+    const staleLorebookBlockPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_block',
+          selector: { family: 'lorebook', index: 0 },
+          start_anchor: 'Facade',
+          end_anchor: 'lore',
+          content: 'Facade lore',
+        },
+      ],
+    });
+    const concurrentLorebookPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'lorebook', index: 0 },
+          field: 'content',
+          find: 'body',
+          replace: 'guarded body',
+        },
+      ],
+    });
+    await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(concurrentLorebookPreview, 'concurrent lorebook preview').preview_token,
+      operation_digest: previewToken(concurrentLorebookPreview, 'concurrent lorebook preview').operation_digest,
+      target: activeTarget,
+    });
+    const staleLorebookBlockApply = await callJson(
+      runtime,
+      'apply_edit',
+      {
+        preview_token: previewToken(staleLorebookBlockPreview, 'stale lorebook block preview').preview_token,
+        operation_digest: previewToken(staleLorebookBlockPreview, 'stale lorebook block preview').operation_digest,
+        target: activeTarget,
+      },
+      { expectError: true },
+    );
+    assert.equal(staleLorebookBlockApply.status, 409);
+    const restoreLorebookPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'lorebook', index: 0 },
+          field: 'content',
+          find: 'guarded body',
+          replace: 'body',
+        },
+      ],
+    });
+    await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(restoreLorebookPreview, 'restore lorebook preview').preview_token,
+      operation_digest: previewToken(restoreLorebookPreview, 'restore lorebook preview').operation_digest,
+      target: activeTarget,
+    });
+
+    const lorebookBlockPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_block',
+          selector: { family: 'lorebook', index: 0 },
+          start_anchor: 'Facade',
+          end_anchor: 'lore',
+          content: 'Facade lore',
+        },
+      ],
+    });
+    assert.ok(routedTools(lorebookBlockPreview).includes('replace_block_in_lorebook'));
+    const lorebookBlockGuards = nestedArray(
+      nestedRecord(lorebookBlockPreview.result, 'lorebook block preview result').guard_values,
+      'lorebook block guards',
+    );
+    assert.ok(
+      lorebookBlockGuards.some((guard) => nestedRecord(guard, 'lorebook block guard').name === 'expected_comment'),
+    );
+    assert.ok(
+      lorebookBlockGuards.some((guard) => nestedRecord(guard, 'lorebook block guard').name === 'expected_content_hash'),
+    );
+    const lorebookBlockApply = await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(lorebookBlockPreview, 'lorebook block preview').preview_token,
+      operation_digest: previewToken(lorebookBlockPreview, 'lorebook block preview').operation_digest,
+      target: activeTarget,
+    });
+    assert.ok(routedTools(lorebookBlockApply).includes('replace_block_in_lorebook'));
+
+    const replaceAllPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_all_text',
+          selector: { family: 'lorebook' },
+          field: 'content',
+          find: 'body',
+          replace: 'body',
+        },
+      ],
+    });
+    assert.ok(routedTools(replaceAllPreview).includes('replace_across_all_lorebook'));
+    assert.ok(
+      nestedArray(
+        nestedRecord(replaceAllPreview.result, 'replace all preview result').guard_values,
+        'replace all guards',
+      ).some((guard) => nestedRecord(guard, 'replace all guard').name === 'expected_item_collection_digest'),
+    );
+    const replaceAllApply = await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(replaceAllPreview, 'replace all preview').preview_token,
+      operation_digest: previewToken(replaceAllPreview, 'replace all preview').operation_digest,
+      target: activeTarget,
+    });
+    assert.ok(routedTools(replaceAllApply).includes('replace_across_all_lorebook'));
+
+    const missingReplaceAllPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'replace_all_text',
+          selector: { family: 'lorebook' },
+          field: 'content',
+          find: 'missing-replacement-target',
+          replace: 'must not be written',
+        },
+      ],
+    });
+    const missingReplaceAllPreviewData = nestedRecord(
+      nestedRecord(
+        nestedArray(
+          nestedRecord(missingReplaceAllPreview.result, 'missing replace-all preview result').previews,
+          'missing replace-all previews',
+        )[0],
+        'missing replace-all preview item',
+      ).data,
+      'missing replace-all preview data',
+    );
+    assert.equal(missingReplaceAllPreviewData.success, false);
+    const missingReplaceAllApply = await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(missingReplaceAllPreview, 'missing replace-all preview').preview_token,
+      operation_digest: previewToken(missingReplaceAllPreview, 'missing replace-all preview').operation_digest,
+      target: activeTarget,
+    });
+    const missingReplaceAllApplyData = nestedRecord(
+      nestedRecord(
+        nestedArray(
+          nestedRecord(missingReplaceAllApply.result, 'missing replace-all apply result').applied,
+          'missing replace-all applied',
+        )[0],
+        'missing replace-all applied item',
+      ).data,
+      'missing replace-all apply data',
+    );
+    assert.equal(missingReplaceAllApplyData.success, false);
+
     facadeOnlyCalls.push('preview_edit');
     const preview = await callJson(runtime, 'preview_edit', {
       target: activeTarget,
@@ -2198,7 +2829,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(lorebookApply), ['replace_in_lorebook']);
-    assert.deepEqual(lorebookApply.next_actions, ['validate_content', 'read_content', 'diff_lorebook']);
+    assert.deepEqual(lorebookApply.next_actions, ['validate_content', 'read_content', 'analyze_content']);
     const lorebookApplyArtifacts = nestedRecord(lorebookApply.artifacts, 'lorebook apply artifacts');
     assert.deepEqual(lorebookApplyArtifacts.edited_families, ['lorebook']);
     assert.ok(
@@ -2217,7 +2848,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     );
     assert.ok(
       nestedArray(lorebookApplyArtifacts.recommended_diffs, 'lorebook recommended diffs').some(
-        (item) => nestedRecord(item, 'lorebook recommended diff').tool === 'diff_lorebook',
+        (item) => nestedRecord(item, 'lorebook recommended diff').tool === 'analyze_content',
       ),
     );
 
@@ -2410,6 +3041,37 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     assert.deepEqual(routedTools(cssReplaceApply), ['read_css', 'replace_in_css']);
 
+    const luaDeletePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [{ op: 'delete_item', selector: { family: 'lua', index: 2 } }],
+    });
+    assert.deepEqual(routedTools(luaDeletePreview), ['read_lua', 'delete_lua_section']);
+    const luaDeleteApply = await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(luaDeletePreview, 'lua delete preview').preview_token,
+      operation_digest: previewToken(luaDeletePreview, 'lua delete preview').operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(luaDeleteApply), ['read_lua', 'delete_lua_section']);
+
+    const cssDeletePreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [{ op: 'delete_item', selector: { family: 'css', index: 1 } }],
+    });
+    assert.deepEqual(routedTools(cssDeletePreview), ['read_css', 'delete_css_section']);
+    const cssDeleteApply = await callJson(runtime, 'apply_edit', {
+      preview_token: previewToken(cssDeletePreview, 'css delete preview').preview_token,
+      operation_digest: previewToken(cssDeletePreview, 'css delete preview').operation_digest,
+      target: activeTarget,
+    });
+    assert.deepEqual(routedTools(cssDeleteApply), ['read_css', 'delete_css_section']);
+
+    const scriptStyleAfterDelete = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'lua' }, { family: 'css' }],
+    });
+    assert.equal(JSON.stringify(scriptStyleAfterDelete.result).includes('broken'), false);
+    assert.equal(JSON.stringify(scriptStyleAfterDelete.result).includes('removable'), false);
+
     const staleGreetingBatchPreview = await callJson(
       runtime,
       'preview_edit',
@@ -2483,9 +3145,15 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     assert.deepEqual(routedTools(greetingDeleteApply), ['batch_delete_greeting']);
 
-    const save = await callJson(runtime, 'save_current_file', {});
+    facadeOnlyCalls.push('manage_file');
+    const savePreview = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'preview',
+      operation: { action: 'save_current_file' },
+    });
+    const save = await applyManageFilePreview(runtime, activeTarget, savePreview);
     metrics.activeWorkflowCallCount += 1;
-    assert.equal(save.success, true);
+    assert.equal(nestedRecord(save.result, 'facade save result').success, true);
 
     const persisted = openCharx(fixture.mainFile);
     const readAfter = await callJson(runtime, 'read_content', {
@@ -2507,8 +3175,19 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     assert.equal(persisted.alternateGreetings.length, 0);
     metrics.finalArtifactEquality = true;
 
+    const referenceInventory = await callJson(runtime, 'inspect_document', {
+      target: { kind: 'reference' },
+    });
+    assert.deepEqual(routedTools(referenceInventory), ['list_references']);
+    const referenceInventoryResult = nestedRecord(referenceInventory.result, 'reference inventory result');
+    assert.ok(referenceInventoryResult.references);
+    assert.equal(referenceInventoryResult.reference, undefined);
+
     const referenceInspect = await callJson(runtime, 'inspect_document', { target: referenceTarget });
     assert.deepEqual(routedTools(referenceInspect), ['list_references']);
+    const referenceInspectResult = nestedRecord(referenceInspect.result, 'selected reference inspect result');
+    assert.ok(referenceInspectResult.reference);
+    assert.equal(referenceInspectResult.references, undefined);
     const referenceRead = await callJson(runtime, 'read_content', {
       target: referenceTarget,
       selectors: [{ family: 'field', field: 'description' }],
@@ -2591,6 +3270,17 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       query: 'risum',
     });
     assert.deepEqual(routedTools(referenceSearch), ['search_in_reference_field']);
+    const presetReferenceSearch = await callJson(runtime, 'search_document', {
+      target: presetReferenceTarget,
+      selector: { family: 'risup-prompt' },
+      query: 'facade prompt',
+    });
+    assert.deepEqual(routedTools(presetReferenceSearch), ['read_reference_field']);
+    const presetReferenceSearchData = nestedRecord(
+      nestedRecord(presetReferenceSearch.result, 'preset reference search result').search,
+      'preset reference search data',
+    );
+    assert.equal(presetReferenceSearchData.count, 1);
     const presetReferenceRead = await callJson(runtime, 'read_content', {
       target: presetReferenceTarget,
       selectors: [{ family: 'field', field: 'description' }],
@@ -2760,8 +3450,8 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
     assert.equal(JSON.stringify(externalPresetAfterDelete.result).includes('Preset removable prompt'), false);
 
-    facadeOnlyCalls.push('load_guidance');
-    const guidance = await callJson(runtime, 'load_guidance', {
+    facadeOnlyCalls.push('inspect_document');
+    const guidance = await callJson(runtime, 'inspect_document', {
       target: { kind: 'guidance', skill: 'using-mcp-tools' },
       max_bytes: 4096,
     });
@@ -3130,7 +3820,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     metrics.staleGuardReuse = true;
 
     recoveryRuntime = await startStandaloneClient({
-      refs: [fixture.referenceRisum],
+      refs: [fixture.referenceRisum, fixture.referenceRisup],
       userDataDir: path.join(fixture.dir, 'recovery-user-data'),
       allowWrites: true,
       toolProfile: 'advanced-full',
@@ -3149,6 +3839,24 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       'session inspect runtimeHealth',
     );
     assert.equal(sessionInspectHealth.runtimeMode, 'standalone');
+    const directSessionStatus = await callJson(recoveryRuntime, 'session_status', {});
+    const inspectedSession = nestedRecord(
+      nestedRecord(sessionInspect.result, 'session parity result').session,
+      'session parity payload',
+    );
+    for (const key of ['file', 'references', 'allowWrites', 'userDataPath', 'runtime'] as const) {
+      assert.deepEqual(inspectedSession[key], directSessionStatus[key], `session parity mismatch for ${key}`);
+    }
+
+    const referenceInventoryFacade = await callJson(recoveryRuntime, 'inspect_document', {
+      target: { kind: 'reference' },
+    });
+    const directReferenceInventory = await callJson(recoveryRuntime, 'list_references', {});
+    assert.deepEqual(
+      nestedRecord(referenceInventoryFacade.result, 'reference parity result').references,
+      directReferenceInventory,
+    );
+
     const noActiveRead = await callJson(
       recoveryRuntime,
       'read_content',
@@ -3161,6 +3869,43 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       target: { kind: 'external', file_path: fixture.mainFile },
     });
     assert.deepEqual(routedTools(recoveryExternalInspect), ['inspect_external_file']);
+    const facadeProbeRead = await callJson(recoveryRuntime, 'read_content', {
+      target: { kind: 'external', file_path: fixture.mainFile },
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    const directProbeRead = await callJson(recoveryRuntime, 'probe_field', {
+      file_path: fixture.mainFile,
+      field: 'description',
+    });
+    const facadeProbeItems = nestedArray(
+      nestedRecord(facadeProbeRead.result, 'probe parity result').items,
+      'probe parity items',
+    );
+    assert.deepEqual(
+      nestedRecord(nestedRecord(facadeProbeItems[0], 'probe parity item').data, 'probe parity data').content,
+      directProbeRead.content,
+    );
+
+    const facadeReferenceRead = await callJson(recoveryRuntime, 'read_content', {
+      target: { kind: 'reference', reference_id: '0' },
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    const directReferenceRead = await callJson(recoveryRuntime, 'read_reference_field', {
+      index: 0,
+      field: 'description',
+    });
+    const facadeReferenceItems = nestedArray(
+      nestedRecord(facadeReferenceRead.result, 'reference field parity result').items,
+      'reference field parity items',
+    );
+    assert.deepEqual(
+      nestedRecord(
+        nestedRecord(facadeReferenceItems[0], 'reference field parity item').data,
+        'reference field parity data',
+      ).content,
+      directReferenceRead.content,
+    );
+
     const opened = await callJson(recoveryRuntime, 'open_file', { file_path: fixture.mainFile });
     assert.equal(opened.file_path, fixture.mainFile);
     assert.equal(opened.file_type, 'charx');
@@ -3188,13 +3933,38 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       target: activeTarget,
       field: 'risup-prompt',
       query: 'Preset',
+      max_matches: 1,
     });
     assert.deepEqual(routedTools(activePresetSearch), ['search_in_risup_prompt_items']);
+    const activePresetSearchData = nestedRecord(
+      nestedRecord(activePresetSearch.result, 'active preset search result').search,
+      'active preset search data',
+    );
+    assert.equal(activePresetSearchData.totalMatches, 2);
+    assert.equal(activePresetSearchData.returnedMatches, 1);
     const activePresetValidation = await callJson(recoveryRuntime, 'validate_content', {
       target: activeTarget,
       selectors: [{ family: 'risup-prompt' }, { field: 'formatingOrder' }],
     });
     assert.deepEqual(routedTools(activePresetValidation), ['list_risup_prompt_items', 'read_risup_formating_order']);
+    const activePresetDiff = await callJson(recoveryRuntime, 'analyze_content', {
+      target: activeTarget,
+      operation: {
+        action: 'diff_risup_prompt',
+        reference: { kind: 'reference', reference_id: '1' },
+      },
+    });
+    assert.ok(routedTools(activePresetDiff).includes('diff_risup_prompt'));
+    const activePresetImportValidation = await callJson(recoveryRuntime, 'analyze_content', {
+      target: activeTarget,
+      operation: {
+        action: 'verify_risup_prompt_import',
+        text:
+          '### [plain] ###\nrole: system\ntype2: normal\nbody-lines: 1\n---\nPreset facade prompt\n===\n' +
+          '### [plain] ###\nrole: system\ntype2: normal\nbody-lines: 1\n---\nPreset removable prompt\n===',
+      },
+    });
+    assert.ok(routedTools(activePresetImportValidation).includes('validate_risup_prompt_import'));
     const activePresetValidationItems = nestedArray(
       nestedRecord(activePresetValidation.result, 'active preset validation result').validations,
       'active preset validations',
@@ -3320,9 +4090,9 @@ async function runStandaloneToolProfileContract(): Promise<void> {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-profile-contract-'));
   const expectedFacadeTools = [
     'apply_edit',
+    'analyze_content',
     'inspect_document',
     'list_tool_profiles',
-    'load_guidance',
     'manage_assets',
     'manage_file',
     'manage_items',
@@ -3364,26 +4134,12 @@ async function runStandaloneToolProfileContract(): Promise<void> {
   try {
     defaultProfile = await inspectProfile(undefined, 'default');
     assert.deepEqual(defaultProfile.names, expectedDefaultTools);
-    assert.ok(defaultProfile.bytes <= 40 * 1024, 'default tools/list should stay within a 40 KiB budget');
+    assert.equal(defaultProfile.names.length, 13);
+    assert.ok(defaultProfile.bytes <= 52 * 1024, 'default tools/list should stay within a 52 KiB budget');
     const skills = await callJson(defaultProfile.runtime, 'list_skills', {});
     assert.ok(Number(skills.count) > 0);
     const skill = await callJson(defaultProfile.runtime, 'read_skill', { name: 'project-workflow' });
     assert.match(String(skill.content), /Project Workflow/);
-    const guidanceCatalog = await callJson(defaultProfile.runtime, 'load_guidance', {
-      target: { kind: 'guidance' },
-    });
-    assert.deepEqual(routedTools(guidanceCatalog), ['list_skills']);
-    assert.ok(
-      Number(
-        nestedRecord(nestedRecord(guidanceCatalog.result, 'guidance catalog result').guidance, 'guidance catalog')
-          .count,
-      ) > 0,
-    );
-    const guidance = await callJson(defaultProfile.runtime, 'load_guidance', {
-      target: { kind: 'guidance', skill: 'project-workflow' },
-    });
-    assert.deepEqual(routedTools(guidance), ['read_skill']);
-    assert.match(JSON.stringify(guidance), /Project Workflow/);
     const guidanceInspect = await callJson(defaultProfile.runtime, 'inspect_document', {
       target: { kind: 'guidance', skill: 'project-workflow' },
     });
@@ -3391,10 +4147,17 @@ async function runStandaloneToolProfileContract(): Promise<void> {
     assert.match(JSON.stringify(guidanceInspect), /Project Workflow/);
 
     advancedProfile = await inspectProfile('advanced-full', 'advanced-full');
+    assert.equal(advancedProfile.names.length, 203);
     assert.ok(advancedProfile.names.length > defaultProfile.names.length);
     assert.ok(advancedProfile.names.includes('read_field'));
     assert.ok(advancedProfile.names.includes('list_skills'));
     assert.ok(advancedProfile.names.includes('read_skill'));
+    assert.ok(advancedProfile.names.includes('load_guidance'));
+    const guidance = await callJson(advancedProfile.runtime, 'load_guidance', {
+      target: { kind: 'guidance', skill: 'project-workflow' },
+    });
+    assert.deepEqual(routedTools(guidance), ['read_skill']);
+    assert.match(JSON.stringify(guidance), /Project Workflow/);
     assert.ok(
       defaultProfile.bytes <= advancedProfile.bytes * 0.2,
       'default tools/list should be at least 80% smaller than advanced-full',
@@ -3547,6 +4310,7 @@ async function runStandaloneToolProfileContract(): Promise<void> {
       'list_tool_profiles',
       'read_content',
       'search_document',
+      'analyze_content',
       'preview_edit',
       'apply_edit',
       'validate_content',

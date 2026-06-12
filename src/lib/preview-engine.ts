@@ -10,7 +10,7 @@ import type {
   PreviewMessage,
   PreviewRegexScript,
 } from './preview-session';
-import { parseLorebookDecorators, type PreviewLoreDecorators } from './lorebook-decorators';
+import { matchLorebookEntries, runRegexPipeline } from './content-simulation';
 
 // ==================== Wasmoon Types (broad, minimal surface) ====================
 interface WasmoonGlobal {
@@ -81,7 +81,6 @@ interface CBSArg {
   [key: string]: unknown;
 }
 type CBSCallback = (p1: string, arg: CBSArg, args: string[]) => string | null;
-type LoreMatchWithEntry = PreviewLoreMatch & { entry: PreviewLorebookRuntimeEntry };
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -1678,258 +1677,23 @@ export const PreviewEngine: PreviewEngineModule = (() => {
   // ==================== Regex Script Pipeline ====================
   // FIX: Case-insensitive type matching + support both find/in field names
   function processRegex(text: string, scripts: PreviewRegexScript[], mode: string): string {
-    if (!scripts || !scripts.length) return text;
-    const modeLower = mode.toLowerCase();
-    const filtered = scripts.filter((s) => {
-      const type = (s.type || '').toLowerCase();
-      return type === modeLower && type !== 'disabled' && (s.find || s.in);
-    });
-    filtered.sort((a, b) => {
-      const orderA = (a.replaceOrder as number | undefined) ?? extractOrder(String(a['flag'] ?? a['flags'] ?? ''));
-      const orderB = (b.replaceOrder as number | undefined) ?? extractOrder(String(b['flag'] ?? b['flags'] ?? ''));
-      return orderA - orderB;
-    });
-    for (const script of filtered) {
-      try {
-        const find = script.find || script.in || '';
-        const replace = script.replace || script.out || '';
-        let flags = String(script.ableFlag === true ? (script['flag'] ?? script['flags'] ?? 'g') : 'g')
-          .split('')
-          .filter((c) => 'gimsuy'.includes(c))
-          .join('');
-        if (!flags) flags = 'g';
-        const regex = new RegExp(find, flags);
-        text = text.replace(regex, replace);
-      } catch (e) {
-        console.warn('[PreviewEngine] Regex error:', (e as Error).message, script.comment);
-        notifyError('정규식 오류', e);
-      }
+    const result = runRegexPipeline(text, scripts || [], mode);
+    for (const entry of result.trace) {
+      if (entry.error) notifyError('정규식 오류', entry.error);
     }
-    return text;
-  }
-
-  function extractOrder(flagStr: string): number {
-    const m = flagStr.match(/<order\s+(\d+)>/i);
-    return m ? parseInt(m[1], 10) : 0;
+    return result.result;
   }
 
   // ==================== Lorebook Matching ====================
-
-  /** Build search text from messages (lowercased, space-joined). */
-  function buildSearchText(messages: PreviewMessage[], depth: number): string {
-    if (depth <= 0) return '';
-    return messages
-      .slice(-depth)
-      .map((m) => m.content)
-      .join(' ')
-      .toLowerCase();
-  }
-
-  /** Test whether `key` matches in `searchText` using plain or regex matching. */
-  function testKeyMatch(key: string, searchText: string, useRegex: boolean, fullWord: boolean): boolean {
-    if (useRegex) {
-      try {
-        return new RegExp(key, 'i').test(searchText);
-      } catch (e) {
-        console.warn('[preview] Invalid regex in lorebook key:', key, (e as Error).message);
-        notifyError('로어북 키 정규식 오류', e);
-        return false;
-      }
-    }
-    const lk = key.toLowerCase();
-    if (fullWord) {
-      // Whole-word boundary match (case-insensitive)
-      return new RegExp(`\\b${lk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(searchText);
-    }
-    return searchText.includes(lk);
-  }
-
-  /** Find all matching keys from a key list. Returns matched key strings. */
-  function findMatchingKeys(keys: string[], searchText: string, useRegex: boolean, fullWord: boolean): string[] {
-    const matched: string[] = [];
-    for (const key of keys) {
-      if (testKeyMatch(key, searchText, useRegex, fullWord)) {
-        matched.push(key);
-      }
-    }
-    return matched;
-  }
-
-  /**
-   * Deterministic probability roll based on entry index.
-   * Returns a number 0–100 that is stable per entry index within a session.
-   */
-  function deterministicRoll(entryIndex: number): number {
-    // Simple deterministic hash: multiply by prime, mod 101 gives 0-100.
-    // Note: index 0 always yields 0, which is acceptable for preview diagnostics.
-    return ((entryIndex * 2654435761) >>> 0) % 101;
-  }
 
   function matchLorebook(
     messages: PreviewMessage[],
     lorebook: PreviewLorebookEntry[],
     scanDepth = 10,
   ): PreviewLoreMatch[] {
-    if (!lorebook || !lorebook.length) return [];
-
-    // Build default search text once
-    const defaultSearchText = buildSearchText(messages, scanDepth);
-    const activated: LoreMatchWithEntry[] = [];
-
-    for (let i = 0; i < lorebook.length; i++) {
-      const entry = lorebook[i];
-      if (entry.mode === 'folder') continue;
-
-      // Parse decorators from entry content
-      const contentStr = String(entry.content || '');
-      const parsed = contentStr ? parseLorebookDecorators(contentStr) : null;
-      const dec = parsed?.decorators;
-      const warnings = parsed?.warnings;
-      const hasDecorators = dec != null && Object.keys(dec).length > 0;
-
-      // --- Force state: @@dont_activate / @@activate ---
-      if (dec?.dontActivate) continue;
-
-      // --- Effective probability ---
-      const entryPct = entry['activationPercent'] as number | undefined | null;
-      const effectivePct = dec?.probability !== undefined ? dec.probability : entryPct;
-
-      // activationPercent/@@probability 0 prevents activation entirely
-      if (effectivePct === 0) continue;
-
-      // --- Per-entry scan depth ---
-      const entryScanDepth = dec?.scanDepth ?? scanDepth;
-      const searchText = entryScanDepth !== scanDepth ? buildSearchText(messages, entryScanDepth) : defaultSearchText;
-
-      const useRegex = (entry['useRegex'] as boolean) ?? false;
-      const fullWord = dec?.matchFullWord ?? false;
-
-      // --- @@activate: force-activate bypass ---
-      if (dec?.activate) {
-        // @@exclude_keys veto still applies to forced activation
-        if (dec.excludeKeys?.length) {
-          const excludeMatched = findMatchingKeys(dec.excludeKeys, searchText, false, false);
-          if (excludeMatched.length > 0) continue;
-        }
-        const match: LoreMatchWithEntry = { index: i, entry, reason: '@@activate' };
-        if (dec.excludeKeys?.length) {
-          match.excludedKeys = dec.excludeKeys;
-        }
-        attachMetadata(match, dec, hasDecorators, warnings, effectivePct, entryScanDepth, scanDepth, i);
-        activated.push(match);
-        continue;
-      }
-
-      if (effectivePct != null && effectivePct > 0 && effectivePct < 100) {
-        const roll = deterministicRoll(i);
-        if (roll > effectivePct) continue;
-      }
-
-      // --- alwaysActive ---
-      if (entry.alwaysActive) {
-        // @@exclude_keys veto
-        if (dec?.excludeKeys?.length) {
-          const excludeMatched = findMatchingKeys(dec.excludeKeys, searchText, false, false);
-          if (excludeMatched.length > 0) continue;
-        }
-        // @@additional_keys gate
-        if (dec?.additionalKeys?.length) {
-          const addMatched = findMatchingKeys(dec.additionalKeys, searchText, false, fullWord);
-          if (addMatched.length < dec.additionalKeys.length) continue;
-        }
-        const match: LoreMatchWithEntry = { index: i, entry, reason: 'alwaysActive' };
-        if (dec?.excludeKeys?.length) {
-          match.excludedKeys = dec.excludeKeys;
-        }
-        attachMetadata(match, dec, hasDecorators, warnings, effectivePct, entryScanDepth, scanDepth, i);
-        activated.push(match);
-        continue;
-      }
-
-      // --- Key matching ---
-      const keys = (entry.key || '')
-        .split(',')
-        .map((k) => k.trim())
-        .filter(Boolean);
-      if (!keys.length) continue;
-
-      const matchedKeys = findMatchingKeys(keys, searchText, useRegex, fullWord);
-      const keyMatch = matchedKeys.length > 0;
-
-      // --- selective + secondkey gate ---
-      const selective = entry['selective'] as boolean | undefined;
-      const secondkey = entry['secondkey'] as string | undefined;
-      let reason: string;
-
-      if (selective && secondkey) {
-        if (!keyMatch) continue;
-        const secondKeys = secondkey
-          .split(',')
-          .map((k) => k.trim())
-          .filter(Boolean);
-        const secondMatched = findMatchingKeys(secondKeys, searchText, false, fullWord);
-        if (secondMatched.length === 0) continue;
-        reason = 'key+secondkey';
-      } else if (keyMatch) {
-        reason = `key: ${matchedKeys[0]}`;
-      } else {
-        continue;
-      }
-
-      // --- @@additional_keys gate ---
-      if (dec?.additionalKeys?.length) {
-        const addMatched = findMatchingKeys(dec.additionalKeys, searchText, false, fullWord);
-        if (addMatched.length < dec.additionalKeys.length) continue;
-      }
-
-      // --- @@exclude_keys veto ---
-      if (dec?.excludeKeys?.length) {
-        const excludeMatched = findMatchingKeys(dec.excludeKeys, searchText, false, false);
-        if (excludeMatched.length > 0) continue;
-      }
-
-      const match: LoreMatchWithEntry = { index: i, entry, reason };
-      match.matchedKeys = matchedKeys;
-      if (dec?.excludeKeys?.length) {
-        match.excludedKeys = dec.excludeKeys;
-      }
-      attachMetadata(match, dec, hasDecorators, warnings, effectivePct, entryScanDepth, scanDepth, i);
-      activated.push(match);
-    }
-
-    activated.sort(
-      (a, b) =>
-        ((a.entry['insertorder'] as number | undefined) || (a.entry['order'] as number | undefined) || 100) -
-        ((b.entry['insertorder'] as number | undefined) || (b.entry['order'] as number | undefined) || 100),
-    );
-    return activated;
-  }
-
-  /** Attach decorator metadata fields to a match result. */
-  function attachMetadata(
-    match: LoreMatchWithEntry,
-    dec: PreviewLoreDecorators | undefined,
-    hasDecorators: boolean,
-    warnings: string[] | undefined,
-    effectivePct: number | undefined | null,
-    entryScanDepth: number,
-    globalScanDepth: number,
-    entryIndex: number,
-  ): void {
-    if (hasDecorators && dec) {
-      match.decorators = dec;
-    }
-    if (entryScanDepth !== globalScanDepth) {
-      match.effectiveScanDepth = entryScanDepth;
-    }
-    if (warnings?.length) {
-      match.warnings = warnings;
-    }
-    // Probability annotation
-    if (effectivePct != null && effectivePct > 0 && effectivePct < 100) {
-      match.activationPercent = effectivePct;
-      match.probabilityRoll = deterministicRoll(entryIndex);
-    }
+    return matchLorebookEntries(messages, lorebook || [], scanDepth, {
+      onRegexError: ({ key, message }) => notifyError('로어북 키 정규식 오류', `${message}\n패턴: ${key}`),
+    });
   }
 
   // ==================== Lua Runtime ====================

@@ -86,6 +86,7 @@ This map is for source navigation. It is not a full API reference.
 
 - `src/lib/preview-session.ts` — preview session lifecycle
 - `src/lib/preview-engine.ts` — preview rendering engine
+- `src/lib/content-simulation.ts` — shared pure regex execution and lorebook activation logic used by preview and MCP analysis
 - `src/lib/preview-runtime.ts` — runtime execution inside preview
 - `src/lib/preview-format.ts` — preview formatting helpers
 - `src/lib/preview-debug.ts` — preview debug views

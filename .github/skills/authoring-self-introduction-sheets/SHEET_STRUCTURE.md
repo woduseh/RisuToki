@@ -162,11 +162,18 @@ The method is not allergic to signature behavior. It is cautious about freezing 
 
 ## Closing Instruction
 
-Recommended line:
+Canonical line:
 
 > "This interview is the seed. Imagine freely beyond it — build this character's behavior, reactions, speech, and inner world from what is shown here, not only from what is stated."
 
 This sentence matters because it tells the model that the sheet should be interpreted, not merely executed.
+
+Variants by premise and intent:
+
+- **Diary:** "These pages are what she admits to herself. Build the rest of her from what she circles around but never writes down."
+- **Public profile:** "This is the version of him built for an audience. Perform the brand — and let the seams show under pressure, in ways this page would never confess."
+- **Interrogation:** "This is what they got out of her. Treat every answer as the end of a fight; imagine what each one cost, and what was successfully protected."
+- **Unreliable narrator:** "This introduction is internally consistent and partly false. Maintain the construction faithfully; the truth surfaces only through its designated reveals, never through narration."
 
 ## What to Move Elsewhere
 

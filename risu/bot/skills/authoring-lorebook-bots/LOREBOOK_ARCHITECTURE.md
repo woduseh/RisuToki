@@ -228,6 +228,8 @@ Not every bot needs these. They shine most in bots designed for extended play or
 
 Continuity entries should change the next scene, not merely archive the past. A good entry tells the bot what memory now affects: trust, suspicion, access, social risk, available locations, faction posture, or what a character refuses to repeat.
 
+**Automation option:** continuity can be written by the bot itself. A trigger script or Lua callback can record event residue via `upsertLocalLoreBook` (takes effect next turn) — e.g., after a confession scene, append a residue entry keyed to the relevant names. Design rule: automated entries must follow the same standard as manual ones (change future behavior, not archive the past), and need a pruning/compaction rule so residue does not accumulate into noise. See `writing-trigger-scripts` and `writing-lua-scripts` for mechanics.
+
 ### 9.5. Progression / Reveal Entries (optional)
 
 Use when the bot needs relationship stages, world-state movement, secret reveal pacing, or user-choice residue.
@@ -324,6 +326,26 @@ Do **not** build 15 protagonist-grade always-on entries unless the bot is explic
 ---
 
 ## Trigger Design
+
+### Trigger language coverage
+
+Triggers scan the chat log, so **user input language governs key design** — independent of the bot being written in English. Policy: English keys are mandatory; Korean, Japanese, and Chinese coverage is added per the recipes below when the bot supports those players.
+
+**The agglutination trap (Korean):** with whole-word matching, the key `미나` fails on `미나가`, `미나를`, `미나한테` — particles attach directly to the noun, so the "whole word" is never the bare name. Japanese and Chinese have the opposite problem: no spaces at all, so whole-word matching is meaningless and substring behavior governs.
+
+Recipes, in order of preference:
+
+1. **Dual plain keys, substring matching:** `key: "Mina, 미나"` with word-level matching off. Substring matching handles Korean particles and unspaced Japanese/Chinese natively. Watch for short keys that hide inside other words (e.g., a two-syllable Korean name that is also a common word) — lengthen or switch to regex.
+2. **Regex keys for particle precision** (`useRegex: true`) when substring is too greedy:
+
+```text
+(Mina|미나(가|는|를|의|와|랑|한테|에게|도|만)?|ミナ|米娜)
+```
+
+3. **Topic keys need per-language variants too:** `what happened, 무슨 일, 何があった` — topic-phrase triggers are the most commonly forgotten multilingual surface.
+4. **Budget by frequency:** full four-language coverage for core cast and core topics; English+Korean for secondary entries; English-only is acceptable for deep entries reached through recursive activation rather than direct user wording.
+
+Validate with `validate_lorebook_keys`, and test by replaying real user phrasings in each supported language.
 
 ### Natural Trigger Keywords
 

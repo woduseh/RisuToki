@@ -13,6 +13,7 @@ import {
   FACADE_V1_LIMITS,
   FACADE_V1_TOOL_CONTRACTS,
   FACADE_V1_TOOL_NAMES,
+  facadeV1AnalyzeContentBodySchema,
   facadeV1ApplyEditBodySchema,
   facadeV1InspectDocumentBodySchema,
   facadeV1LoadGuidanceBodySchema,
@@ -444,11 +445,15 @@ describe('asset request schemas', () => {
   });
 
   it('coerces compress-webp options and rejects dry-run alias conflicts', () => {
-    const result = validateBody({ quality: '75', recompressWebp: 1, dry_run: true }, assetCompressWebpBodySchema);
+    const result = validateBody(
+      { asset_family: 'risum', quality: '75', recompressWebp: 1, dry_run: true },
+      assetCompressWebpBodySchema,
+    );
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.quality).toBe(75);
       expect(result.data.recompressWebp).toBe(true);
+      expect(result.data.asset_family).toBe('risum');
     }
 
     const conflict = validateBody({ dry_run: true, dryRun: false }, assetCompressWebpBodySchema);
@@ -571,6 +576,7 @@ describe('facade v1 contract schemas', () => {
       'inspect_document',
       'read_content',
       'search_document',
+      'analyze_content',
       'preview_edit',
       'apply_edit',
       'validate_content',
@@ -588,6 +594,7 @@ describe('facade v1 contract schemas', () => {
       'inspect_document',
       'read_content',
       'search_document',
+      'analyze_content',
       'validate_content',
       'load_guidance',
     ]);
@@ -596,6 +603,165 @@ describe('facade v1 contract schemas', () => {
     expect(getFacadeV1ToolContract('manage_items')?.lifecycle).toBe('v1');
     expect(getFacadeV1ToolContract('manage_assets')?.lifecycle).toBe('v1');
     expect(getFacadeV1ToolContract('manage_file')?.lifecycle).toBe('v1');
+    expect(getFacadeV1ToolContract('load_guidance')?.preference).toBe('legacy');
+  });
+
+  it('accepts all analyze_content actions and rejects unsupported targets', () => {
+    const activeOperations = [
+      { action: 'list_cbs_toggles', field: 'description' },
+      { action: 'simulate_cbs', field: 'description', toggles: { tone: 'warm' } },
+      { action: 'diff_cbs', field: 'description', toggles: { tone: 'warm' } },
+      {
+        action: 'diff_lorebook',
+        index: 0,
+        reference: { kind: 'reference', reference_id: '0' },
+        ref_entry_index: 1,
+      },
+      { action: 'diff_risup_prompt', reference: { kind: 'reference', file_path: 'C:\\fixtures\\base.risup' } },
+      { action: 'validate_risup_prompt_import', text: '[{"type":"plain","text":"hello"}]' },
+      { action: 'verify_risup_prompt_import', text: '[{"type":"plain","text":"hello"}]' },
+      { action: 'field_stats', field: 'description' },
+      {
+        action: 'simulate_lorebook',
+        messages: [{ role: 'user', content: 'bridge' }],
+        recursive: true,
+        max_passes: 5,
+      },
+      { action: 'test_regex', text: 'hello', mode: 'editinput', indices: [0] },
+    ];
+    for (const operation of activeOperations) {
+      expect(validateBody({ target: { kind: 'active' }, operation }, facadeV1AnalyzeContentBodySchema).success).toBe(
+        true,
+      );
+    }
+
+    const danbooruOperations = [
+      { action: 'tag_db_status' },
+      { action: 'search_danbooru_tags', query: 'blue_hair', limit: 10 },
+      { action: 'get_popular_danbooru_tags', category: 'general', limit: 50 },
+    ];
+    for (const operation of danbooruOperations) {
+      expect(validateBody({ target: { kind: 'session' }, operation }, facadeV1AnalyzeContentBodySchema).success).toBe(
+        true,
+      );
+    }
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'session' },
+          operation: { action: 'token_count', encoding: 'cl100k_base', text: 'hello' },
+        },
+        facadeV1AnalyzeContentBodySchema,
+      ).success,
+    ).toBe(true);
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          operation: {
+            action: 'token_count',
+            encoding: 'o200k_base',
+            selectors: [{ family: 'field', field: 'description' }],
+          },
+        },
+        facadeV1AnalyzeContentBodySchema,
+      ).success,
+    ).toBe(true);
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          operation: { action: 'token_count', encoding: 'cl100k_base', text: 'hello' },
+        },
+        facadeV1AnalyzeContentBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'external', file_path: 'C:\\fixtures\\card.charx' },
+          operation: { action: 'simulate_cbs', field: 'description' },
+        },
+        facadeV1AnalyzeContentBodySchema,
+      ).success,
+    ).toBe(false);
+    expect(
+      validateBody(
+        {
+          target: { kind: 'reference', reference_id: '0' },
+          operation: { action: 'search_danbooru_tags', query: 'blue_hair' },
+        },
+        facadeV1AnalyzeContentBodySchema,
+      ).success,
+    ).toBe(false);
+    expect(
+      validateBody(
+        { target: { kind: 'active' }, operation: { action: 'diff_lorebook', index: 0 } },
+        facadeV1AnalyzeContentBodySchema,
+      ).success,
+    ).toBe(false);
+  });
+
+  it('accepts guarded block and whole-lorebook replacement operations', () => {
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          operations: [
+            {
+              op: 'replace_block',
+              selector: { family: 'field', field: 'description' },
+              start_anchor: '<start>',
+              end_anchor: '<end>',
+              content: 'replacement',
+            },
+            {
+              op: 'replace_block',
+              selector: { family: 'lorebook', index: 0 },
+              field: 'comment',
+              start_anchor: '[',
+              end_anchor: ']',
+            },
+            {
+              op: 'replace_all_text',
+              selector: { family: 'lorebook' },
+              field: 'content',
+              find: 'old',
+              replace: 'new',
+            },
+          ],
+        },
+        facadeV1PreviewEditBodySchema,
+      ).success,
+    ).toBe(true);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'external', file_path: 'C:\\fixtures\\card.charx' },
+          operations: [
+            {
+              op: 'replace_block',
+              selector: { family: 'field', field: 'description' },
+              start_anchor: '<start>',
+              end_anchor: '<end>',
+            },
+          ],
+        },
+        facadeV1PreviewEditBodySchema,
+      ).success,
+    ).toBe(false);
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          operations: [{ op: 'replace_all_text', selector: { family: 'field', field: 'description' }, find: 'old' }],
+        },
+        facadeV1PreviewEditBodySchema,
+      ).success,
+    ).toBe(false);
   });
 
   it('uses explicit target discriminators for active, external, reference, guidance, and session routes', () => {
@@ -610,7 +776,7 @@ describe('facade v1 contract schemas', () => {
     for (const target of targets) {
       expect(validateBody({ target }, facadeV1InspectDocumentBodySchema).success).toBe(true);
     }
-    expect(validateBody({ target: { kind: 'reference' } }, facadeV1InspectDocumentBodySchema).success).toBe(false);
+    expect(validateBody({ target: { kind: 'reference' } }, facadeV1InspectDocumentBodySchema).success).toBe(true);
     expect(validateBody({ target: { kind: 'external' } }, facadeV1InspectDocumentBodySchema).success).toBe(false);
   });
 
@@ -669,7 +835,7 @@ describe('facade v1 contract schemas', () => {
     ).toBe(false);
   });
 
-  it('requires a field for external and reference searches', () => {
+  it('requires a selector or deprecated field alias for external and reference searches', () => {
     for (const target of [
       { kind: 'external', file_path: 'C:\\fixtures\\bot.charx' },
       { kind: 'reference', reference_id: 'ref-1' },
@@ -678,6 +844,12 @@ describe('facade v1 contract schemas', () => {
       expect(
         validateBody({ target, field: 'description', query: 'needle' }, facadeV1SearchDocumentBodySchema).success,
       ).toBe(true);
+      expect(
+        validateBody(
+          { target, selector: { family: 'field', field: 'description' }, query: 'needle' },
+          facadeV1SearchDocumentBodySchema,
+        ).success,
+      ).toBe(true);
     }
 
     expect(
@@ -685,6 +857,17 @@ describe('facade v1 contract schemas', () => {
     ).toBe(true);
     expect(
       validateBody({ target: { kind: 'session' }, query: 'needle' }, facadeV1SearchDocumentBodySchema).success,
+    ).toBe(false);
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          selector: { family: 'field', field: 'description' },
+          field: 'firstMessage',
+          query: 'needle',
+        },
+        facadeV1SearchDocumentBodySchema,
+      ).success,
     ).toBe(false);
   });
 
@@ -866,6 +1049,32 @@ describe('facade v1 contract schemas', () => {
         facadeV1PreviewEditBodySchema,
       ).success,
     ).toBe(true);
+  });
+
+  it('preserves insert_text position and anchor controls', () => {
+    const result = validateBody(
+      {
+        target: { kind: 'active' },
+        operations: [
+          {
+            op: 'insert_text',
+            selector: { family: 'field', field: 'description' },
+            content: 'inserted',
+            position: 'after',
+            anchor: 'anchor text',
+          },
+        ],
+      },
+      facadeV1PreviewEditBodySchema,
+    );
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.operations[0]).toMatchObject({
+        position: 'after',
+        anchor: 'anchor text',
+      });
+    }
   });
 
   it('codifies preview-token-first mutation flow with propagated guards', () => {
@@ -1400,6 +1609,37 @@ describe('facade v1 contract schemas', () => {
     );
     expect(reassemblePreview.success).toBe(true);
 
+    const lorebookExportPreview = validateBody(
+      {
+        target: { kind: 'active' },
+        mode: 'preview',
+        operation: {
+          action: 'export_lorebook',
+          target_dir: 'C:\\fixtures\\lorebook-export',
+          format: 'md',
+          group_by_folder: true,
+          filter: 'hero',
+        },
+      },
+      manageFileBodySchema,
+    );
+    expect(lorebookExportPreview.success).toBe(true);
+
+    const lorebookImportPreview = validateBody(
+      {
+        target: { kind: 'active' },
+        mode: 'preview',
+        operation: {
+          action: 'import_lorebook',
+          source_path: 'C:\\fixtures\\lorebook.json',
+          format: 'json',
+          conflict: 'rename',
+        },
+      },
+      manageFileBodySchema,
+    );
+    expect(lorebookImportPreview.success).toBe(true);
+
     const apply = validateBody(
       {
         target: { kind: 'session' },
@@ -1465,6 +1705,28 @@ describe('facade v1 contract schemas', () => {
           mode: 'apply',
           preview_token: 'facade-preview-v1.abcdef0123456789',
           operation_digest: '0123456789abcdef',
+        },
+        manageFileBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'session' },
+          mode: 'preview',
+          operation: { action: 'export_lorebook', target_dir: 'C:\\fixtures\\lorebook-export' },
+        },
+        manageFileBodySchema,
+      ).success,
+    ).toBe(false);
+
+    expect(
+      validateBody(
+        {
+          target: { kind: 'active' },
+          mode: 'preview',
+          operation: { action: 'import_lorebook', format: 'json' },
         },
         manageFileBodySchema,
       ).success,

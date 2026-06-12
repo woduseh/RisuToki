@@ -4826,17 +4826,87 @@ describe('MCP API structured error envelopes — global guards', () => {
     }
   });
 
-  it('allows skill catalog and document reads when no file is open', async () => {
+  it('agent eval: allows skill catalog and document reads when no file is open', async () => {
     const api = await startTestApiServer(null);
     try {
-      const list = await getJson<{ count: number; skills: Array<{ name: string }> }>(api.port, api.token, '/skills');
+      const list = await getJson<{ count: number; skills: Array<{ name: string; files: string[] }> }>(
+        api.port,
+        api.token,
+        '/skills',
+      );
       expect(list.status).toBe(200);
       expect(list.data.count).toBeGreaterThan(0);
       expect(list.data.skills.some((skill) => skill.name === 'project-workflow')).toBe(true);
+      expect(
+        list.data.skills.some(
+          (skill) =>
+            skill.name === 'authoring-media-mix' &&
+            skill.files.includes('MEDIA_PROFILES.md') &&
+            skill.files.includes('VISUAL_IDENTITY.md') &&
+            skill.files.includes('VALIDATION.md'),
+        ),
+      ).toBe(true);
+      expect(
+        list.data.skills.some(
+          (skill) =>
+            skill.name === 'core-craft' &&
+            skill.files.includes('USER_POSITION.md') &&
+            skill.files.includes('COMEDY_CRAFT.md'),
+        ),
+      ).toBe(true);
+      expect(
+        list.data.skills.some(
+          (skill) =>
+            skill.name === 'authoring-characters' &&
+            skill.files.includes('APPEAL_PATTERNS.md') &&
+            skill.files.includes('WORKED_EXAMPLE.md'),
+        ),
+      ).toBe(true);
+      expect(
+        list.data.skills.some(
+          (skill) =>
+            skill.name === 'authoring-desire' &&
+            skill.files.includes('DESIRE_CATALOG.md') &&
+            skill.files.includes('WORKED_EXAMPLE.md'),
+        ),
+      ).toBe(true);
+      expect(
+        list.data.skills.some(
+          (skill) => skill.name === 'trope-library' && skill.files.includes('SPECIES_ROLE_TROPES.md'),
+        ),
+      ).toBe(true);
 
       const detail = await getJson<{ content: string }>(api.port, api.token, '/skills/project-workflow');
       expect(detail.status).toBe(200);
       expect(detail.data.content).toContain('Project Workflow');
+
+      const mediaMix = await getJson<{ content: string }>(api.port, api.token, '/skills/authoring-media-mix');
+      expect(mediaMix.status).toBe(200);
+      expect(mediaMix.data.content).toContain('Media-Mix IP Authoring');
+
+      const visualIdentity = await getJson<{ content: string }>(
+        api.port,
+        api.token,
+        '/skills/authoring-media-mix/VISUAL_IDENTITY.md',
+      );
+      expect(visualIdentity.status).toBe(200);
+      expect(visualIdentity.data.content).toContain('32px icon');
+
+      const userPosition = await getJson<{ content: string }>(
+        api.port,
+        api.token,
+        '/skills/core-craft/USER_POSITION.md',
+      );
+      expect(userPosition.status).toBe(200);
+      expect(userPosition.data.content).toContain('Compatibility-Bounded Persona');
+
+      const speciesRoles = await getJson<{ content: string }>(
+        api.port,
+        api.token,
+        '/skills/trope-library/SPECIES_ROLE_TROPES.md',
+      );
+      expect(speciesRoles.status).toBe(200);
+      expect(speciesRoles.data.content).toContain('## Vampire');
     } finally {
       await closeServer(api.server);
     }
@@ -7727,6 +7797,23 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
     }
   });
 
+  it('delete_lua_section removes the selected section with stale guards', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const current = await getJson<Record<string, unknown>>(api.port, api.token, '/lua/1');
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/lua/1/delete', {
+        expected_hash: current.data.hash,
+        expected_preview: current.data.preview,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data).toMatchObject({ success: true, deleted: 1, name: 'utils' });
+      expect(String(fixture.lua)).not.toContain('local x = 1');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   // --- CSS section family ---
 
   it('list_css response includes envelope fields', async () => {
@@ -7889,6 +7976,23 @@ describe('MCP envelope — lua/css section and risup prompt families', () => {
       expect(res.data.status).toBe(200);
       expect(typeof res.data.summary).toBe('string');
       expect(Array.isArray(res.data.next_actions)).toBe(true);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('delete_css_section removes the selected section with stale guards', async () => {
+    const fixture = createLuaCssFixture();
+    const api = await startTestApiServer(fixture, [], undefined, luaCssOverrides);
+    try {
+      const current = await getJson<Record<string, unknown>>(api.port, api.token, '/css-section/1');
+      const res = await postJson<Record<string, unknown>>(api.port, api.token, '/css-section/1/delete', {
+        expected_hash: current.data.hash,
+        expected_preview: current.data.preview,
+      });
+      expect(res.status).toBe(200);
+      expect(res.data).toMatchObject({ success: true, deleted: 1, name: 'theme' });
+      expect(String(fixture.css)).not.toContain('.dark');
     } finally {
       await closeServer(api.server);
     }

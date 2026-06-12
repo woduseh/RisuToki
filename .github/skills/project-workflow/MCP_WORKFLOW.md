@@ -11,8 +11,11 @@ Use the other canonical documents for details owned elsewhere:
 | Profiles, facade coverage, tool families, and tool metadata | [`docs/MCP_TOOL_SURFACE.md`](../../docs/MCP_TOOL_SURFACE.md)           |
 | Success, error, no-op, and recovery envelopes               | [`docs/MCP_ERROR_CONTRACT.md`](../../docs/MCP_ERROR_CONTRACT.md)       |
 | Runtime implementation and application caveats              | [`docs/analysis/ARCHITECTURE.md`](../../docs/analysis/ARCHITECTURE.md) |
+| Real-artifact routing and validation coverage               | `src/lib/mcp-agent-workflow-eval.test.ts`                              |
 
 If documents overlap, follow the source that owns the concern in this table.
+
+The test file above is the real-artifact workflow eval matrix used to keep documented routes aligned with executable coverage.
 
 ## 1. Runtime Modes
 
@@ -38,7 +41,7 @@ node toki-mcp-server.js --standalone [--file <path>] [--ref <path>] [--allow-wri
 - `--user-data-dir` changes the standalone sidecar and diagnostics directory.
 - `RISUTOKI_MCP_FILE`, `RISUTOKI_MCP_REFS`, `RISUTOKI_MCP_ALLOW_WRITES`, `RISUTOKI_MCP_USER_DATA_DIR`, and `RISUTOKI_MCP_TOOL_PROFILE` are the environment-variable equivalents.
 
-The default registered profile is `facade-first`. Use `--tool-profile advanced-full` or `RISUTOKI_MCP_TOOL_PROFILE=advanced-full` when a client needs every granular route. `authoring` and `readonly` select their documented subsets. An unknown profile value emits a warning and falls back to `facade-first`; it never expands to the full catalog.
+The default registered profile is `facade-first` with 13 tools: 11 preferred facades plus `list_skills` and `read_skill`. `load_guidance` remains a legacy compatibility facade in non-default profiles. Use `--tool-profile advanced-full` or `RISUTOKI_MCP_TOOL_PROFILE=advanced-full` when a client needs every granular route.
 
 `session_status` reports `allowWrites`, `userDataPath`, and `runtimeHealth`. Standalone process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` unless `--user-data-dir` changes the location. Diagnostics contain paths, timings, status, response sizes, and error summaries, not prompt or field bodies.
 
@@ -69,9 +72,9 @@ Use this sequence for reads and edits:
 
 1. **Load guidance.** At session start, load `project-workflow`. Before concrete MCP reads or writes, load `using-mcp-tools`.
 2. **Discover.** Use `list_tool_profiles` when profile state matters, then `inspect_document` for active, session, reference, or external preflight.
-3. **Read or search narrowly.** Prefer bounded `read_content` and `search_document`. Use structured lists, item reads, ranges, or granular families only when the facade cannot express the target or exact legacy output is required.
-4. **Validate or preview.** Use `validate_content`, `preview_edit`, or the read/preview mode of `manage_items`, `manage_assets`, and `manage_file`. Risky granular routes should use `dry_run` when available.
-5. **Apply.** Reuse the returned `preview_token`, `operation_digest`, and stale guards. Mutation tools may require confirmation.
+3. **Read, search, or analyze narrowly.** Prefer bounded `read_content`, selector-based `search_document`, and `analyze_content`. Analysis owns transformation/statistics/simulation, including field/token counts and lorebook/regex behavior previews.
+4. **Validate or preview.** Use `validate_content` for pass/fail diagnostics, including compile-only Lua syntax and Danbooru `valid | invalid | unknown`; use `preview_edit` or the read/preview mode of `manage_items`, `manage_assets`, and `manage_file` before mutation.
+5. **Apply.** Reuse the returned `preview_token`, `operation_digest`, and stale guards once. `apply_edit` consumes its token before the first mutation; a partial batch failure requires inspection and a fresh preview.
 6. **Validate again.** Re-read the changed target or rerun the validator/diff that found the issue.
 7. **Summarize fallback.** If a granular route was necessary, add one line to the final task summary stating which facade selector or operation was unsupported. No separate log or commit-message record is required.
 
@@ -82,7 +85,7 @@ Facade coverage is determined by behavior: when a facade accepts the selector or
 Guidance discovery is independent of document state:
 
 - `list_skills` and `read_skill` work with no active document.
-- `load_guidance` works with no active document.
+- `load_guidance` works with no active document when the selected profile registers the legacy compatibility facade.
 - `inspect_document` works without an active document when the target is session, reference, external, or guidance.
 - Document-bound reads and edits still return the structured `No file open` error.
 
@@ -94,7 +97,8 @@ This allows standalone clients to bootstrap project guidance before choosing or 
 - Treat a stale-target `409` as a successful safety catch: refresh the source list/read, rebuild the preview, and retry with current guards.
 - Prefer response `next_actions` over a generic family sequence.
 - Use `artifacts.byte_size` as a context-budget cue. Narrow subsequent reads when responses are already large.
-- `read_content` defaults to a 24 KB cap. Root surface reads return an overview unless `include_raw` and an explicit `max_bytes` are both justified.
+- `inspect_document`, `read_content`, `search_document`, `analyze_content`, and `validate_content` default to a byte-accurate 24 KB UTF-8 result cap. Root surface reads return an overview unless `include_raw` and an explicit `max_bytes` are both justified.
+- `inspect_document({kind:"reference"})` without an identifier returns a bounded inventory; add `reference_id` or `file_path` to inspect only one reference.
 - Protected `.charx` compatibility fields, `.risup` legacy prompt fields, and reserved `.risum` `cjs` remain hidden and save-stripped. `hiddenFieldWarnings` is an existence summary, not permission to recover values through another route.
 - References are read-only.
 - Batch related sibling reads or writes when a batch route exists.

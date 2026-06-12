@@ -20,6 +20,8 @@ import os = require('os');
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { get_encoding } from '@dqbd/tiktoken';
+import { LuaFactory } from 'wasmoon';
 import { startHeadlessMcpApiServer } from './src/lib/mcp-headless-server';
 import {
   ALL_TOOL_NAMES,
@@ -47,6 +49,8 @@ import { mcpSuccess } from './src/lib/mcp-response-envelope';
 import {
   FACADE_V1_CONTRACT_ID,
   FACADE_V1_LIMITS,
+  facadeV1AnalyzeContentBodySchema,
+  facadeV1AnalyzeOperationSchema,
   facadeV1ContentSelectorSchema,
   facadeV1EditOperationSchema,
   facadeV1GuardSchema,
@@ -61,6 +65,7 @@ import {
   manageItemsOperationSchema,
   manageItemsFamilySchema,
   type FacadeV1ContentSelector,
+  type FacadeV1AnalyzeOperation,
   type FacadeV1EditOperation,
   type FacadeV1Guard,
   type FacadeV1Target,
@@ -103,6 +108,8 @@ import {
   parseCssSections,
   parseLuaSections,
 } from './src/lib/mcp-section-parser';
+import { planLorebookExport } from './src/lib/lorebook-io';
+import { runRegexPipeline, simulateLorebookActivation } from './src/lib/content-simulation';
 
 let TOKI_PORT = process.env.TOKI_PORT;
 let TOKI_TOKEN = process.env.TOKI_TOKEN;
@@ -128,11 +135,14 @@ interface DanbooruTag {
 
 interface TagValidationResult {
   tag: string;
-  valid: boolean;
+  status: 'valid' | 'invalid' | 'unknown';
+  valid: boolean | null;
   postCount?: number;
   category?: string;
   source?: 'local' | 'online';
   suggestions?: string[];
+  networkDegraded?: boolean;
+  reason?: string;
 }
 
 // ==================== Danbooru Tag Database ====================
@@ -391,9 +401,17 @@ function formatTags(tags: DanbooruTag[]): Array<{ name: string; category: string
   return tags.map((t) => ({ name: t.name, category: CATEGORY_NAMES[t.category] || 'unknown', post_count: t.count }));
 }
 
-function danbooruApiValidate(tagName: string): Promise<DanbooruTag | null> {
+type DanbooruValidationLookup =
+  | { status: 'found'; tag: DanbooruTag }
+  | { status: 'not_found' }
+  | { status: 'degraded'; reason: string };
+
+function danbooruApiValidate(tagName: string): Promise<DanbooruValidationLookup> {
   const key = `validate:${tagName}`;
-  if (apiCache.has(key)) return Promise.resolve(apiCache.get(key)!);
+  if (apiCache.has(key)) {
+    const cached = apiCache.get(key);
+    return Promise.resolve(cached ? { status: 'found', tag: cached } : { status: 'not_found' });
+  }
 
   return new Promise((resolve) => {
     const url = `https://danbooru.donmai.us/tags.json?search%5Bname%5D=${encodeURIComponent(tagName)}&limit=1`;
@@ -401,6 +419,10 @@ function danbooruApiValidate(tagName: string): Promise<DanbooruTag | null> {
       const chunks: string[] = [];
       res.on('data', (chunk: string) => chunks.push(chunk));
       res.on('end', () => {
+        if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+          resolve({ status: 'degraded', reason: `HTTP ${res.statusCode}` });
+          return;
+        }
         try {
           const results = JSON.parse(chunks.join(''));
           const tag =
@@ -414,23 +436,25 @@ function danbooruApiValidate(tagName: string): Promise<DanbooruTag | null> {
               : null;
           if (tag && results[0].is_deprecated) {
             apiCacheSet(key, null);
-            resolve(null);
+            resolve({ status: 'not_found' });
           } else {
             apiCacheSet(key, tag);
-            resolve(tag);
+            resolve(tag ? { status: 'found', tag } : { status: 'not_found' });
           }
-        } catch {
-          apiCacheSet(key, null);
-          resolve(null);
+        } catch (error) {
+          resolve({
+            status: 'degraded',
+            reason: `Invalid API response: ${error instanceof Error ? error.message : String(error)}`,
+          });
         }
       });
     });
-    req.on('error', () => {
-      resolve(null);
+    req.on('error', (error) => {
+      resolve({ status: 'degraded', reason: error.message });
     });
     req.on('timeout', () => {
       req.destroy();
-      resolve(null);
+      resolve({ status: 'degraded', reason: 'Request timed out' });
     });
   });
 }
@@ -480,6 +504,7 @@ async function validateTags(tags: string[], onlineFallback = true): Promise<TagV
     if (localTag) {
       results.push({
         tag: normalized,
+        status: 'valid',
         valid: true,
         postCount: localTag.count,
         category: CATEGORY_NAMES[localTag.category] || 'unknown',
@@ -488,10 +513,12 @@ async function validateTags(tags: string[], onlineFallback = true): Promise<TagV
       continue;
     }
     if (onlineFallback) {
-      const onlineTag = await danbooruApiValidate(normalized);
-      if (onlineTag) {
+      const onlineLookup = await danbooruApiValidate(normalized);
+      if (onlineLookup.status === 'found') {
+        const onlineTag = onlineLookup.tag;
         results.push({
           tag: normalized,
+          status: 'valid',
           valid: true,
           postCount: onlineTag.count,
           category: CATEGORY_NAMES[onlineTag.category] || 'unknown',
@@ -499,9 +526,24 @@ async function validateTags(tags: string[], onlineFallback = true): Promise<TagV
         });
         continue;
       }
+      if (onlineLookup.status === 'degraded') {
+        results.push({
+          tag: normalized,
+          status: 'unknown',
+          valid: null,
+          networkDegraded: true,
+          reason: onlineLookup.reason,
+        });
+        continue;
+      }
     }
     const suggestions = suggestSimilar(normalized, 5);
-    results.push({ tag: normalized, valid: false, suggestions: suggestions.length > 0 ? suggestions : undefined });
+    results.push({
+      tag: normalized,
+      status: 'invalid',
+      valid: false,
+      suggestions: suggestions.length > 0 ? suggestions : undefined,
+    });
   }
   return results;
 }
@@ -1165,7 +1207,7 @@ function applyEditPostEditMetadata(entry: FacadePreviewEntry): {
   const recommendedDiffs: Array<Record<string, unknown>> = [];
 
   if (editedFamilies.includes('lorebook')) {
-    nextActions.push('validate_content', 'read_content', 'diff_lorebook');
+    nextActions.push('validate_content', 'read_content', 'analyze_content');
     postEditValidation.push({
       family: 'lorebook',
       tools: ['validate_content'],
@@ -1179,18 +1221,18 @@ function applyEditPostEditMetadata(entry: FacadePreviewEntry): {
     });
     recommendedDiffs.push({
       family: 'lorebook',
-      tool: 'diff_lorebook',
+      tool: 'analyze_content',
+      operation: { action: 'diff_lorebook' },
       selectors: touchedSelectors.filter((selector) => selectorFamily(selector) === 'lorebook'),
       note: 'Run when a reference lorebook entry is available for comparison.',
     });
   }
 
   if (editedFamilies.includes('risup-prompt')) {
-    nextActions.push('validate_content', 'read_content', 'diff_risup_prompt');
-    if (hasImportContext) nextActions.push('validate_risup_prompt_import');
+    nextActions.push('validate_content', 'read_content', 'analyze_content');
     postEditValidation.push({
       family: 'risup-prompt',
-      tools: hasImportContext ? ['validate_content', 'validate_risup_prompt_import'] : ['validate_content'],
+      tools: hasImportContext ? ['validate_content', 'analyze_content'] : ['validate_content'],
       reason: hasImportContext
         ? 'Import/source context was present; verify the imported prompt structure.'
         : 'Check promptTemplate/formatingOrder structure, then read back the edited item.',
@@ -1203,7 +1245,9 @@ function applyEditPostEditMetadata(entry: FacadePreviewEntry): {
     });
     recommendedDiffs.push({
       family: 'risup-prompt',
-      tool: 'diff_risup_prompt',
+      tool: 'analyze_content',
+      operation: { action: 'diff_risup_prompt' },
+      ...(hasImportContext ? { import_validation_operation: { action: 'verify_risup_prompt_import' } } : {}),
     });
   }
 
@@ -1258,17 +1302,58 @@ function facadeEnvelope(
 ) {
   let truncated = false;
   let finalResult: Record<string, unknown> = result;
-  const resultBytes = Buffer.byteLength(JSON.stringify(result), 'utf8');
+  const serializedResult = JSON.stringify(result);
+  const resultBytes = Buffer.byteLength(serializedResult, 'utf8');
   if (maxBytes && resultBytes > maxBytes) {
     truncated = true;
-    finalResult = {
+    const continuationHint =
+      'Narrow the selector, use search_document, or pass an explicit max_bytes when you need a larger bounded read.';
+    const sourceBytes = Buffer.from(serializedResult, 'utf8');
+    let low = 0;
+    let high = Math.min(sourceBytes.length, maxBytes);
+    let best: Record<string, unknown> = {
       truncated: true,
-      preview: JSON.stringify(result).slice(0, Math.max(0, maxBytes - 256)),
+      preview: '',
       original_byte_size: resultBytes,
-      continuation_hint:
-        'Narrow the selector, use search_document, or pass an explicit max_bytes when you need a larger bounded read.',
+      returned_byte_size: 0,
+      continuation_hint: continuationHint,
     };
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      let end = mid;
+      let preview = '';
+      while (end >= 0) {
+        const candidateBytes = sourceBytes.subarray(0, end);
+        preview = candidateBytes.toString('utf8');
+        if (Buffer.from(preview, 'utf8').equals(candidateBytes)) break;
+        end--;
+      }
+      const candidate: Record<string, unknown> = {
+        truncated: true,
+        preview,
+        original_byte_size: resultBytes,
+        preview_byte_size: end,
+        returned_byte_size: 0,
+        continuation_hint: continuationHint,
+      };
+      let candidateSize = 0;
+      for (let iteration = 0; iteration < 4; iteration++) {
+        candidate.returned_byte_size = candidateSize;
+        const nextSize = Buffer.byteLength(JSON.stringify(candidate), 'utf8');
+        if (nextSize === candidateSize) break;
+        candidateSize = nextSize;
+      }
+      candidate.returned_byte_size = Buffer.byteLength(JSON.stringify(candidate), 'utf8');
+      if (Buffer.byteLength(JSON.stringify(candidate), 'utf8') <= maxBytes) {
+        best = candidate;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    finalResult = best;
   }
+  const returnedResultBytes = Buffer.byteLength(JSON.stringify(finalResult), 'utf8');
 
   return mcpSuccess(
     {
@@ -1280,7 +1365,8 @@ function facadeEnvelope(
         ...(target ? { target } : {}),
         ...(maxBytes ? { max_bytes: maxBytes } : {}),
         ...(truncated ? { truncated: true } : {}),
-        response_bytes: resultBytes,
+        response_bytes: returnedResultBytes,
+        original_response_bytes: resultBytes,
       },
       result: finalResult,
     },
@@ -1291,6 +1377,7 @@ function facadeEnvelope(
       artifacts: {
         ...artifacts,
         result_byte_size: resultBytes,
+        returned_byte_size: returnedResultBytes,
         ...(truncated
           ? {
               truncated: true,
@@ -1672,6 +1759,29 @@ async function validateFacadeSelectors(
   target: FacadeV1Target,
   selectors: FacadeV1ContentSelector[] | undefined,
 ): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touchedTargets: string[] } | ApiErrorResult> {
+  const luaSelectors = selectors?.filter((selector) => selector.family === 'lua' || selector.family === 'trigger');
+  if (luaSelectors?.length && luaSelectors.length === selectors?.length) {
+    const validations: Array<{ selector: FacadeV1ContentSelector; data: unknown }> = [];
+    const routes: FacadeRoute[] = [];
+    const touchedTargets: string[] = [];
+    for (const selector of luaSelectors) {
+      const validation = await validateLuaFacadeSelector(target, selector);
+      if (isApiError(validation)) return validation;
+      validations.push({ selector, data: validation.data });
+      routes.push(...validation.routes);
+      touchedTargets.push(...validation.touchedTargets);
+    }
+    return {
+      result: {
+        validations,
+        routed_legacy: routes,
+        touched_targets: uniqueStrings(touchedTargets),
+      },
+      routes,
+      touchedTargets: uniqueStrings(touchedTargets),
+    };
+  }
+
   if (target.kind !== 'active') {
     if (target.kind === 'external') {
       const exportCompatibilitySelector = selectors?.find(
@@ -1768,6 +1878,15 @@ async function validateFacadeSelectors(
   const touchedTargets: string[] = [];
 
   for (const selector of actualSelectors) {
+    if (selector.family === 'lua' || selector.family === 'trigger') {
+      const validation = await validateLuaFacadeSelector(target, selector);
+      if (isApiError(validation)) return validation;
+      validations.push({ selector, data: validation.data });
+      routes.push(...validation.routes);
+      touchedTargets.push(...validation.touchedTargets);
+      continue;
+    }
+
     if (selector.family === 'lorebook') {
       const data = await apiRequest('GET', '/lorebook/validate');
       if (isApiError(data)) return data;
@@ -1830,10 +1949,17 @@ async function validateFacadeSelectors(
       }
       ensureTagsLoaded();
       const data = await validateTags(tags, true);
+      const counts = {
+        valid: data.filter((result) => result.status === 'valid').length,
+        invalid: data.filter((result) => result.status === 'invalid').length,
+        unknown: data.filter((result) => result.status === 'unknown').length,
+      };
       validations.push({
         selector,
         data: {
-          summary: `${data.filter((result) => result.valid).length}/${tags.length} tags valid`,
+          summary: `${counts.valid} valid, ${counts.invalid} invalid, ${counts.unknown} unknown`,
+          counts,
+          network_degraded: counts.unknown > 0,
           results: data,
         },
       });
@@ -1919,12 +2045,437 @@ async function validateFacadeSelectors(
       routed_legacy: routes,
       touched_targets: uniqueTouchedTargets,
       remaining_gaps: [
-        'CBS simulation/diff, imports, prompt diffs, add/reorder item facade, asset management, and unsupported source shapes remain granular/advanced routes.',
+        'Exact legacy payloads, unsupported raw/batch/debug shapes, and non-artifact filesystem operations remain granular/advanced routes.',
       ],
     },
     routes,
     touchedTargets: uniqueTouchedTargets,
   };
+}
+
+interface LuaValidationSource {
+  source: string;
+  target: string;
+  name: string;
+}
+
+function collectLuaValidationSources(family: 'lua' | 'trigger', data: unknown): LuaValidationSource[] {
+  const record = asRecord(data);
+  if (!record) return [];
+  if (family === 'lua') {
+    const directContent = recordString(record, 'content');
+    if (directContent !== undefined) {
+      return [
+        {
+          source: directContent,
+          target: `lua:${recordNumber(record, 'index') ?? 0}`,
+          name: recordString(record, 'name') ?? 'Lua section',
+        },
+      ];
+    }
+    const sections = Array.isArray(record.sections) ? record.sections : [];
+    return sections.flatMap((item, position) => {
+      const section = asRecord(item);
+      const content = recordString(section, 'content');
+      if (content === undefined) return [];
+      const index = recordNumber(section, 'index') ?? position;
+      return [
+        {
+          source: content,
+          target: `lua:${index}`,
+          name: recordString(section, 'name') ?? `Lua section ${index}`,
+        },
+      ];
+    });
+  }
+
+  const triggerRecords: Array<{ index: number; trigger: Record<string, unknown> }> = [];
+  if (asRecord(record.trigger)) {
+    triggerRecords.push({ index: recordNumber(record, 'index') ?? 0, trigger: asRecord(record.trigger)! });
+  }
+  for (const key of ['triggers', 'items']) {
+    const collection = Array.isArray(record[key]) ? (record[key] as unknown[]) : [];
+    for (const [position, item] of collection.entries()) {
+      const itemRecord = asRecord(item);
+      const trigger = asRecord(itemRecord?.trigger);
+      if (trigger) triggerRecords.push({ index: recordNumber(itemRecord, 'index') ?? position, trigger });
+    }
+  }
+  return triggerRecords.flatMap(({ index, trigger }) => {
+    const effects = Array.isArray(trigger.effect) ? trigger.effect : [];
+    return effects.flatMap((effect, effectIndex) => {
+      const effectRecord = asRecord(effect);
+      const code = recordString(effectRecord, 'code');
+      const type = recordString(effectRecord, 'type');
+      if (!code || (type !== undefined && type !== 'triggerlua')) return [];
+      return [
+        {
+          source: code,
+          target: `trigger:${index}:effect:${effectIndex}`,
+          name: `${recordString(trigger, 'comment') ?? `Trigger ${index}`} effect ${effectIndex}`,
+        },
+      ];
+    });
+  });
+}
+
+async function validateLuaFacadeSelector(
+  target: FacadeV1Target,
+  selector: FacadeV1ContentSelector,
+): Promise<{ data: unknown; routes: FacadeRoute[]; touchedTargets: string[] } | ApiErrorResult> {
+  const family = selector.family;
+  if (family !== 'lua' && family !== 'trigger') {
+    return facadeApiError(
+      400,
+      'Lua validation requires lua or trigger selector',
+      'Use selector.family="lua" or "trigger".',
+    );
+  }
+  const list = await readFacadeSelector(target, { family });
+  if (isApiError(list)) return list;
+  const countValue = asRecord(list.data)?.count;
+  const count = typeof countValue === 'number' ? countValue : 0;
+  const indices =
+    selector.index !== undefined
+      ? [selector.index]
+      : (selector.indices ?? Array.from({ length: count }, (_, index) => index));
+  const batchSize = family === 'lua' ? 20 : FACADE_V1_LIMITS.maxBatchItems;
+  const sources: LuaValidationSource[] = [];
+  const routes = [...list.routes];
+  for (let offset = 0; offset < indices.length; offset += batchSize) {
+    const batch = await readFacadeSelector(target, { family, indices: indices.slice(offset, offset + batchSize) });
+    if (isApiError(batch)) return batch;
+    routes.push(...batch.routes);
+    sources.push(...collectLuaValidationSources(family, batch.data));
+  }
+
+  const factory = new LuaFactory();
+  const engine = await factory.createEngine();
+  const results: Array<Record<string, unknown>> = [];
+  try {
+    for (const source of sources) {
+      engine.global.set('__risutoki_source', source.source);
+      try {
+        await engine.doString(`
+          local fn, err = load(__risutoki_source, "=${source.target}", "t", {})
+          if fn == nil then error(err, 0) end
+        `);
+        results.push({ target: source.target, name: source.name, ok: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const location = message.match(/:(\d+):/);
+        results.push({
+          target: source.target,
+          name: source.name,
+          ok: false,
+          ...(location ? { line: Number(location[1]) } : {}),
+          message,
+        });
+      }
+    }
+  } finally {
+    engine.global.close();
+  }
+  return {
+    data: {
+      ok: results.every((result) => result.ok === true),
+      count: results.length,
+      results,
+      execution: 'compile_only',
+    },
+    routes,
+    touchedTargets: indices.map((index) => `${family}:${index}`),
+  };
+}
+
+async function readAllFacadeCollectionEntries(
+  target: FacadeV1Target,
+  family: 'lorebook' | 'regex',
+  requestedIndices?: number[],
+): Promise<{ entries: Record<string, unknown>[]; routes: FacadeRoute[] } | ApiErrorResult> {
+  const list = await readFacadeSelector(target, { family });
+  if (isApiError(list)) return list;
+  const listRecord = asRecord(list.data);
+  const totalCandidate = listRecord?.total ?? listRecord?.count;
+  const total = typeof totalCandidate === 'number' && Number.isInteger(totalCandidate) ? totalCandidate : 0;
+  const indices = requestedIndices ?? Array.from({ length: total }, (_, index) => index);
+  const entries: Record<string, unknown>[] = [];
+  const routes = [...list.routes];
+  for (let offset = 0; offset < indices.length; offset += FACADE_V1_LIMITS.maxBatchItems) {
+    const batchIndices = indices.slice(offset, offset + FACADE_V1_LIMITS.maxBatchItems);
+    const batch = await readFacadeSelector(target, { family, indices: batchIndices });
+    if (isApiError(batch)) return batch;
+    routes.push(...batch.routes);
+    const rawBatchEntries = asRecord(batch.data)?.entries;
+    const batchEntries = Array.isArray(rawBatchEntries) ? rawBatchEntries : [];
+    for (const item of batchEntries) {
+      const record = asRecord(item);
+      const entry = asRecord(record?.entry);
+      if (entry) {
+        entries.push({
+          ...entry,
+          ...(typeof record?.index === 'number' ? { __mcpIndex: record.index } : {}),
+        });
+      }
+    }
+  }
+  return { entries, routes };
+}
+
+function analysisTextValue(data: unknown): string {
+  const record = asRecord(data);
+  for (const key of ['content', 'value', 'text']) {
+    if (typeof record?.[key] === 'string') return record[key] as string;
+  }
+  if (record?.entry !== undefined) return JSON.stringify(record.entry);
+  return typeof data === 'string' ? data : JSON.stringify(data);
+}
+
+async function analyzeFacadeOperation(
+  target: FacadeV1Target,
+  operation: FacadeV1AnalyzeOperation,
+): Promise<{ data: unknown; routes: FacadeRoute[]; touchedTargets: string[] } | ApiErrorResult> {
+  if (operation.action === 'tag_db_status') {
+    const tagFilePath = path.join(__dirname, 'resources', 'Danbooru Tag.txt');
+    return {
+      data: {
+        loaded: tagsLoaded,
+        tagCount: tagMap.size,
+        filePath: tagFilePath,
+        fileExists: fs.existsSync(tagFilePath),
+      },
+      routes: [route('tag_db_status', 'MCP', 'mcp://tag_db_status')],
+      touchedTargets: ['danbooru:status'],
+    };
+  }
+
+  if (operation.action === 'search_danbooru_tags') {
+    ensureTagsLoaded();
+    const results = await searchWithOnline(operation.query, operation.category, operation.limit ?? 20);
+    return {
+      data: { query: operation.query, count: results.length, tags: formatTags(results) },
+      routes: [route('search_danbooru_tags', 'MCP', 'mcp://search_danbooru_tags')],
+      touchedTargets: ['danbooru:search'],
+    };
+  }
+
+  if (operation.action === 'get_popular_danbooru_tags') {
+    ensureTagsLoaded();
+    const popularTags = operation.group_by_semantic
+      ? undefined
+      : getPopular(operation.category, operation.limit ?? 100);
+    const data = operation.group_by_semantic
+      ? {
+          description: 'Popular Danbooru tags grouped by semantic category.',
+          groups: getPopularGrouped(),
+        }
+      : {
+          count: popularTags!.length,
+          tags: formatTags(popularTags!),
+        };
+    return {
+      data,
+      routes: [route('get_popular_danbooru_tags', 'MCP', 'mcp://get_popular_danbooru_tags')],
+      touchedTargets: ['danbooru:popular'],
+    };
+  }
+
+  if (operation.action === 'token_count') {
+    const items: Array<{ selector?: FacadeV1ContentSelector; input?: 'text'; characters: number; tokens: number }> = [];
+    const routes: FacadeRoute[] = [];
+    const encoding = get_encoding(operation.encoding);
+    try {
+      const sources: Array<{ selector?: FacadeV1ContentSelector; input?: 'text'; text: string }> = [];
+      if (operation.text !== undefined) {
+        sources.push({ input: 'text', text: operation.text });
+      } else {
+        for (const selector of operation.selectors ?? []) {
+          const read = await readFacadeSelector(target, selector);
+          if (isApiError(read)) return read;
+          routes.push(...read.routes);
+          sources.push({ selector, text: analysisTextValue(read.data) });
+        }
+      }
+      const inputBytes = sources.reduce((sum, source) => sum + Buffer.byteLength(source.text, 'utf8'), 0);
+      if (inputBytes > 1024 * 1024) {
+        return facadeApiError(
+          413,
+          'token_count input exceeds 1MB',
+          'Narrow the selectors or count the content in smaller batches.',
+          { input_bytes: inputBytes, max_input_bytes: 1024 * 1024 },
+        );
+      }
+      for (const source of sources) {
+        items.push({
+          ...(source.selector ? { selector: source.selector } : { input: 'text' as const }),
+          characters: Array.from(source.text).length,
+          tokens: encoding.encode(source.text).length,
+        });
+      }
+      return {
+        data: {
+          encoding: operation.encoding,
+          exact_for_encoding: true,
+          model_equivalence: 'not_asserted',
+          total_tokens: items.reduce((sum, item) => sum + item.tokens, 0),
+          total_characters: items.reduce((sum, item) => sum + item.characters, 0),
+          items,
+        },
+        routes,
+        touchedTargets: operation.selectors?.map((selector) => selectorTarget(selector)) ?? ['token-count:direct-text'],
+      };
+    } finally {
+      encoding.free();
+    }
+  }
+
+  if (operation.action === 'simulate_lorebook') {
+    const collection = await readAllFacadeCollectionEntries(target, 'lorebook');
+    if (isApiError(collection)) return collection;
+    const messages = operation.messages.map((message) => ({
+      role: message.role === 'assistant' || message.role === 'system' ? ('char' as const) : message.role,
+      content: message.content,
+    }));
+    return {
+      data: simulateLorebookActivation({
+        messages,
+        lorebook: collection.entries,
+        scanDepth: operation.scan_depth,
+        recursive: operation.recursive,
+        maxPasses: operation.max_passes,
+        includeContent: operation.include_content,
+      }),
+      routes: collection.routes,
+      touchedTargets: ['lorebook'],
+    };
+  }
+
+  if (operation.action === 'test_regex') {
+    const collection = await readAllFacadeCollectionEntries(target, 'regex', operation.indices);
+    if (isApiError(collection)) return collection;
+    return {
+      data: runRegexPipeline(operation.text, collection.entries, operation.mode),
+      routes: collection.routes,
+      touchedTargets: operation.indices?.map((index) => `regex:${index}`) ?? ['regex'],
+    };
+  }
+
+  if (target.kind !== 'active') {
+    return facadeApiError(
+      400,
+      `${operation.action} requires an active target`,
+      'Open the document and retry with target.kind="active".',
+      { target, operation },
+      ['inspect_document', 'analyze_content'],
+    );
+  }
+
+  if (operation.action === 'field_stats') {
+    const routePath = `/field/${encodeURIComponent(operation.field)}/stats`;
+    const data = await apiRequest('GET', routePath);
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('get_field_stats', 'GET', routePath)],
+          touchedTargets: [`field:${operation.field}`],
+        };
+  }
+
+  if (operation.action === 'list_cbs_toggles') {
+    const params = new URLSearchParams();
+    if (operation.field) params.set('field', operation.field);
+    if (operation.lorebook_index !== undefined) params.set('lorebook_index', String(operation.lorebook_index));
+    const query = params.toString();
+    const routePath = `/cbs/toggles${query ? `?${query}` : ''}`;
+    const data = await apiRequest('GET', routePath);
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('list_cbs_toggles', 'GET', routePath)],
+          touchedTargets: [operation.field ? `cbs:${operation.field}` : 'cbs'],
+        };
+  }
+
+  if (operation.action === 'simulate_cbs') {
+    const routePath = '/cbs/simulate';
+    const data = await apiRequest('POST', routePath, {
+      field: operation.field,
+      lorebook_index: operation.lorebook_index,
+      toggles: operation.toggles,
+      all_combos: operation.all_combos,
+      compact: operation.compact,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('simulate_cbs', 'POST', routePath)],
+          touchedTargets: [`cbs:${operation.field}`],
+        };
+  }
+
+  if (operation.action === 'diff_cbs') {
+    const routePath = '/cbs/diff';
+    const data = await apiRequest('POST', routePath, {
+      field: operation.field,
+      lorebook_index: operation.lorebook_index,
+      toggles: operation.toggles,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('diff_cbs', 'POST', routePath)],
+          touchedTargets: [`cbs:${operation.field}`],
+        };
+  }
+
+  if (operation.action === 'diff_lorebook') {
+    const refIndex = await resolveReferenceIndex(operation.reference);
+    if (typeof refIndex !== 'number') return refIndex;
+    const routePath = '/lorebook/diff';
+    const data = await apiRequest('POST', routePath, {
+      index: operation.index,
+      refIndex,
+      refEntryIndex: operation.ref_entry_index,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('list_references', 'GET', '/references'), route('diff_lorebook', 'POST', routePath)],
+          touchedTargets: [
+            `lorebook:${operation.index}`,
+            `reference:${refIndex}:lorebook:${operation.ref_entry_index}`,
+          ],
+        };
+  }
+
+  if (operation.action === 'diff_risup_prompt') {
+    const refIndex = await resolveReferenceIndex(operation.reference);
+    if (typeof refIndex !== 'number') return refIndex;
+    const routePath = '/risup/prompt-diff';
+    const data = await apiRequest('POST', routePath, { refIndex });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [route('list_references', 'GET', '/references'), route('diff_risup_prompt', 'POST', routePath)],
+          touchedTargets: ['risup:promptTemplate', `reference:${refIndex}:risup`],
+        };
+  }
+
+  const routePath = '/risup/prompt-text/verify';
+  const data = await apiRequest('POST', routePath, { text: operation.text });
+  return isApiError(data)
+    ? data
+    : {
+        data,
+        routes: [route('validate_risup_prompt_import', 'POST', routePath)],
+        touchedTargets: ['risup:promptTemplate'],
+      };
 }
 
 function guardValue(guards: FacadeV1Guard[] | undefined, name: string): unknown {
@@ -2670,12 +3221,14 @@ function scriptStyleRouteParts(family: ScriptStyleFamily): {
       writeTool: 'write_lua',
       replaceTool: 'replace_in_lua',
       insertTool: 'insert_in_lua',
+      deleteTool: 'delete_lua_section',
       listPath: '/lua',
       readPath: (index) => `/lua/${index}`,
       batchPath: '/lua/batch',
       writePath: (index) => `/lua/${index}`,
       replacePath: (index) => `/lua/${index}/replace`,
       insertPath: (index) => `/lua/${index}/insert`,
+      deletePath: (index) => `/lua/${index}/delete`,
     };
   }
   return {
@@ -2685,12 +3238,14 @@ function scriptStyleRouteParts(family: ScriptStyleFamily): {
     writeTool: 'write_css',
     replaceTool: 'replace_in_css',
     insertTool: 'insert_in_css',
+    deleteTool: 'delete_css_section',
     listPath: '/css-section',
     readPath: (index) => `/css-section/${index}`,
     batchPath: '/css-section/batch',
     writePath: (index) => `/css-section/${index}`,
     replacePath: (index) => `/css-section/${index}/replace`,
     insertPath: (index) => `/css-section/${index}/insert`,
+    deletePath: (index) => `/css-section/${index}/delete`,
   };
 }
 
@@ -2928,8 +3483,8 @@ function insertSpecFromOperation(
   const record = asRecord(operation.content);
   const insertContent = contentStringFromOperation(operation, 'insert_text');
   if (isApiError(insertContent)) return insertContent;
-  const position = recordString(record, 'position') ?? 'end';
-  const anchor = recordString(record, 'anchor');
+  const position = operation.position ?? recordString(record, 'position') ?? 'end';
+  const anchor = operation.anchor ?? recordString(record, 'anchor');
   const normalizedContent = normalizeLFString(content);
   if (position === 'end') {
     return {
@@ -3268,10 +3823,29 @@ async function previewActiveScriptStyleMutation(
     };
   }
 
+  if (operation.op === 'delete_item') {
+    const routePath = parts.deletePath?.(read.index);
+    if (!routePath) {
+      return facadeApiError(400, `${family} delete route is unavailable`, 'Retry with a current server.');
+    }
+    return {
+      data: {
+        dryRun: true,
+        operation: 'delete_item',
+        index: read.index,
+        name: recordString(read.current, 'name') ?? '',
+        oldSize: currentContent.length,
+      },
+      routes: [...read.routes, route(parts.deleteTool ?? `delete_${family}_section`, 'POST', routePath)],
+      touched,
+      requiredGuards: mergeGuards(operation.guards, guards),
+    };
+  }
+
   return facadeApiError(
     400,
     `Unsupported ${family} preview operation: ${operation.op}`,
-    'Script/style facade mutations support write_content, replace_text, insert_text, and trigger delete_item.',
+    'Script/style facade mutations support write_content, replace_text, insert_text, and delete_item.',
     { operation },
   );
 }
@@ -3397,6 +3971,24 @@ async function applyActiveScriptStyleMutation(
       : {
           data: applied,
           routes: [...read.routes, route(parts.insertTool ?? `${family}_insert`, 'POST', routePath)],
+          touched,
+        };
+  }
+
+  if (operation.op === 'delete_item') {
+    const routePath = parts.deletePath?.(read.index);
+    if (!routePath) {
+      return facadeApiError(400, `${family} delete route is unavailable`, 'Retry with a current server.');
+    }
+    const applied = await apiRequest('POST', routePath, {
+      expected_hash: stringGuardValue(guards, 'expected_hash'),
+      expected_preview: stringGuardValue(guards, 'expected_preview'),
+    });
+    return isApiError(applied)
+      ? applied
+      : {
+          data: applied,
+          routes: [...read.routes, route(parts.deleteTool ?? `delete_${family}_section`, 'POST', routePath)],
           touched,
         };
   }
@@ -6476,6 +7068,16 @@ function charxCompressionAssets(context: ManageAssetsContext): CharxAssetLike[] 
   return assets;
 }
 
+function risumCompressionAssets(context: ManageAssetsContext): CharxAssetLike[] | ApiErrorResult {
+  const moduleAssets = risumModuleAssets(context.moduleData);
+  return context.assets.map((entry, index) => {
+    const tuple = Array.isArray(moduleAssets[index]) ? (moduleAssets[index] as unknown[]) : [];
+    const name = typeof tuple[0] === 'string' ? tuple[0] : `asset_${index}`;
+    const ext = typeof tuple[2] === 'string' && tuple[2] ? tuple[2].replace(/^\./, '') : 'bin';
+    return { path: `${name}.${ext}`, data: assetBytesFromUnknown(entry) };
+  });
+}
+
 function summarizeCompressedCharxAssets(assets: CharxAssetLike[]): ManageAssetsSummary[] {
   return assets.map((asset, index) => ({
     index,
@@ -6785,13 +7387,16 @@ async function readManageAssetsContext(
     const moduleRead = await readExternalSurfaceValue(target.file_path, '/_moduleData');
     if (isApiError(moduleRead)) return moduleRead;
     const moduleData = asRecord(moduleRead.value) ?? {};
+    const cardAssets = await readOptionalExternalRecordArraySurface(target.file_path, '/cardAssets');
+    if (isApiError(cardAssets)) return cardAssets;
     return {
       family,
       summaries: assetsRead.value.map((asset, index) => risumAssetSummary(asset, index, moduleData)),
       assets: assetsRead.value,
-      routes: [...assetsRead.routes, ...moduleRead.routes],
+      routes: [...assetsRead.routes, ...moduleRead.routes, ...cardAssets.routes],
       touchedTarget: `external:${target.file_path}:risum-assets`,
       moduleData,
+      cardAssets: cardAssets.entries,
     };
   }
 
@@ -6924,20 +7529,11 @@ async function buildManageAssetsPlan(
   const touched = [context.touchedTarget];
 
   if (operation.action === 'compress_assets') {
-    if (context.family !== 'charx') {
-      return facadeApiError(
-        400,
-        'compress_assets is supported only for charx assets',
-        'Use add/delete asset workflows for risum assets or granular tools for unsupported asset operations.',
-        { family: context.family },
-        ['manage_assets'],
-      );
-    }
     if (beforeCount === 0) {
       return facadeApiError(
         400,
         'No assets found in file.',
-        'Add at least one charx asset before compressing assets.',
+        `Add at least one ${context.family} asset before compressing assets.`,
         { family: context.family },
         ['manage_assets'],
       );
@@ -6945,6 +7541,7 @@ async function buildManageAssetsPlan(
     const options = manageAssetsCompressionOptions(operation);
     if (target.kind === 'active') {
       const dryRun = await apiRequest('POST', '/assets/compress-webp', {
+        asset_family: context.family,
         quality: options.quality,
         recompressWebp: options.recompressWebp,
         dry_run: true,
@@ -6969,12 +7566,16 @@ async function buildManageAssetsPlan(
           tool: 'compress_assets_webp',
           method: 'POST',
           path: '/assets/compress-webp',
-          body: { quality: options.quality, recompressWebp: options.recompressWebp },
+          body: {
+            asset_family: context.family,
+            quality: options.quality,
+            recompressWebp: options.recompressWebp,
+          },
         },
       };
     }
 
-    const assets = charxCompressionAssets(context);
+    const assets = context.family === 'charx' ? charxCompressionAssets(context) : risumCompressionAssets(context);
     if (isApiError(assets)) return assets;
     let compressed: Awaited<ReturnType<typeof compressAssetsToWebP>>;
     try {
@@ -6994,18 +7595,52 @@ async function buildManageAssetsPlan(
         pathMap.set(detail.originalPath, detail.newPath);
       }
     }
-    const operations: Array<Record<string, unknown>> = [
-      {
+    const operations: Array<Record<string, unknown>> = [];
+    if (context.family === 'charx') {
+      operations.push({
         op: 'replace',
         path: '/assets',
         value: compressed.assets.map((asset) => ({
           path: asset.path,
           data: assetBufferJsonFromBuffer(asset.data),
         })),
-      },
-    ];
+      });
+    } else {
+      operations.push({
+        op: 'replace',
+        path: '/risumAssets',
+        value: compressed.assets.map((asset) => assetBufferJsonFromBuffer(asset.data)),
+      });
+      const nextModuleAssets = cloneJsonValue(risumModuleAssets(context.moduleData));
+      for (const [index, detail] of compressed.details.entries()) {
+        if (detail.status !== 'converted') continue;
+        const tuple = Array.isArray(nextModuleAssets[index]) ? [...(nextModuleAssets[index] as unknown[])] : [];
+        tuple[2] = 'webp';
+        nextModuleAssets[index] = tuple;
+      }
+      operations.push({
+        op: 'replace',
+        path: '/_moduleData',
+        value: withRisumModuleAssets(context.moduleData, nextModuleAssets),
+      });
+      if (context.cardAssets) {
+        const nextCardAssets = cloneJsonValue(context.cardAssets);
+        const originalModuleAssets = risumModuleAssets(context.moduleData);
+        for (const [index, detail] of compressed.details.entries()) {
+          if (detail.status !== 'converted') continue;
+          const tuple = Array.isArray(originalModuleAssets[index]) ? (originalModuleAssets[index] as unknown[]) : [];
+          const name = typeof tuple[0] === 'string' ? tuple[0] : `asset_${index}`;
+          for (const cardAsset of nextCardAssets) {
+            if (cardAsset.name !== name) continue;
+            cardAsset.ext = 'webp';
+            if (typeof cardAsset.uri === 'string') cardAsset.uri = cardAsset.uri.replace(/\.[^.]+$/, '.webp');
+          }
+        }
+        operations.push({ op: 'replace', path: '/cardAssets', value: nextCardAssets });
+      }
+    }
     let referencesUpdated = { cardAssetsUpdated: 0, xMetaUpdated: 0 };
-    if (context.cardAssets || context.xMeta) {
+    if (context.family === 'charx' && (context.cardAssets || context.xMeta)) {
       const nextCardAssets = cloneJsonValue(context.cardAssets ?? []);
       const nextXMeta = cloneJsonValue(context.xMeta ?? {});
       if (pathMap.size > 0) {
@@ -7030,7 +7665,23 @@ async function buildManageAssetsPlan(
         stats: compressed.stats,
         referencesUpdated,
         details: compressed.details,
-        assets: summarizeCompressedCharxAssets(compressed.assets),
+        assets:
+          context.family === 'charx'
+            ? summarizeCompressedCharxAssets(compressed.assets)
+            : compressed.assets.map((asset, index) =>
+                risumAssetSummary(
+                  asset.data,
+                  index,
+                  withRisumModuleAssets(
+                    context.moduleData,
+                    compressed.details.map((detail, detailIndex) => {
+                      const tuple = cloneJsonValue(risumModuleAssets(context.moduleData)[detailIndex] ?? []);
+                      if (detail.status === 'converted' && Array.isArray(tuple)) tuple[2] = 'webp';
+                      return tuple;
+                    }),
+                  ),
+                ),
+              ),
         asset_collection_digest: collectionGuard.value,
       },
       routes: [...routes, route('external_patch_surface', 'POST', '/external/surface/patch')],
@@ -7794,6 +8445,14 @@ function projectDigestGuard(projectPath: string): FacadeV1Guard {
   );
 }
 
+function lorebookCollectionManageFileGuard(entries: Array<Record<string, unknown>>): FacadeV1Guard {
+  return manageFileGuard(
+    'expected_lorebook_collection_digest',
+    hashStableValue(entries),
+    '/result/lorebook_collection_digest',
+  );
+}
+
 function manageFileTargetPath(
   target: FacadeV1Target,
   operationPath: string | undefined,
@@ -8030,6 +8689,128 @@ async function previewManageFileOperation(
     };
   }
 
+  if (operation.action === 'export_lorebook') {
+    if (target.kind !== 'active') {
+      return facadeApiError(
+        400,
+        'export_lorebook exports from the active editor document',
+        'Open the document and retry with target.kind="active".',
+        { target },
+      );
+    }
+    const session = await readSessionForManageFile();
+    if (isApiError(session)) return session;
+    const collection = await readActiveLorebookCollection();
+    if (isApiError(collection)) return collection;
+    const targetDir = path.resolve(operation.target_dir);
+    const plan = planLorebookExport(collection.entries, targetDir, {
+      format: operation.format ?? 'md',
+      groupByFolder: operation.group_by_folder,
+      includeMetadata: true,
+      sourceName: session.activeFilePath ? path.basename(session.activeFilePath) : 'unknown',
+      filter: operation.filter,
+      folder: operation.folder,
+    });
+    if (plan.exportedCount === 0) {
+      return facadeApiError(
+        400,
+        'No lorebook entries match the export selection',
+        'Adjust filter/folder or inspect the active lorebook before retrying.',
+        { filter: operation.filter, folder: operation.folder },
+        ['read_content', 'manage_file'],
+      );
+    }
+    return {
+      result: {
+        action: operation.action,
+        target_dir: targetDir,
+        format: operation.format ?? 'md',
+        group_by_folder: operation.group_by_folder ?? true,
+        filter: operation.filter ?? null,
+        folder: operation.folder ?? null,
+        exported_count: plan.exportedCount,
+        skipped_count: plan.skippedCount,
+        planned_files: plan.files,
+        current_active_file_path: session.activeFilePath,
+        lorebook_collection_digest: hashStableValue(collection.entries),
+        output_state_digest: projectTreeDigestOrMissing(targetDir),
+        writes_performed: false,
+      },
+      routes: [...session.routes, ...collection.routes, route('export_lorebook_to_files', 'POST', '/lorebook/export')],
+      touched: ['active:lorebook', `directory:${targetDir}`],
+      requiredGuards: [
+        activeFilePathGuard(session.activeFilePath),
+        lorebookCollectionManageFileGuard(collection.entries),
+        manageFileGuard(
+          'expected_output_state_digest',
+          projectTreeDigestOrMissing(targetDir),
+          '/result/output_state_digest',
+        ),
+      ],
+    };
+  }
+
+  if (operation.action === 'import_lorebook') {
+    if (target.kind !== 'active') {
+      return facadeApiError(
+        400,
+        'import_lorebook imports into the active editor document',
+        'Open the destination document and retry with target.kind="active".',
+        { target },
+      );
+    }
+    const session = await readSessionForManageFile();
+    if (isApiError(session)) return session;
+    const collection = await readActiveLorebookCollection();
+    if (isApiError(collection)) return collection;
+    const format = operation.format ?? 'md';
+    const source = path.resolve(format === 'json' ? operation.source_path! : operation.source_dir!);
+    const sourceState = filePathState(source);
+    if (!sourceState.exists || (format === 'json' ? sourceState.kind !== 'file' : sourceState.kind !== 'directory')) {
+      return facadeApiError(
+        400,
+        `Lorebook import source not found: ${source}`,
+        format === 'json' ? 'Choose an existing JSON file.' : 'Choose an existing Markdown directory.',
+        { source, state: sourceState },
+      );
+    }
+    const sourceDigest = format === 'json' ? filePathStateDigest(source) : projectTreeDigestOrMissing(source);
+    const dryRun = await apiRequest('POST', '/lorebook/import', {
+      source_path: operation.source_path ? path.resolve(operation.source_path) : undefined,
+      source_dir: operation.source_dir ? path.resolve(operation.source_dir) : undefined,
+      format,
+      create_folders: operation.create_folders,
+      conflict: operation.conflict,
+      dry_run: true,
+    });
+    if (isApiError(dryRun)) return dryRun;
+    return {
+      result: {
+        action: operation.action,
+        source,
+        format,
+        create_folders: operation.create_folders ?? true,
+        conflict: operation.conflict ?? 'skip',
+        import_preview: dryRun,
+        current_active_file_path: session.activeFilePath,
+        lorebook_collection_digest: hashStableValue(collection.entries),
+        source_state_digest: sourceDigest,
+        writes_performed: false,
+      },
+      routes: [
+        ...session.routes,
+        ...collection.routes,
+        route('import_lorebook_from_files', 'POST', '/lorebook/import'),
+      ],
+      touched: [`${sourceState.kind}:${source}`, 'active:lorebook'],
+      requiredGuards: [
+        activeFilePathGuard(session.activeFilePath),
+        lorebookCollectionManageFileGuard(collection.entries),
+        manageFileGuard('expected_source_state_digest', sourceDigest, '/result/source_state_digest'),
+      ],
+    };
+  }
+
   if (operation.action === 'extract_project') {
     const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
     if (isApiError(filePath)) return filePath;
@@ -8092,7 +8873,7 @@ async function previewManageFileOperation(
   return facadeApiError(
     400,
     `Unsupported manage_file preview action: ${operation.action}`,
-    'Preview mode supports open/save/snapshot/restore/export/extract/reassemble file operations.',
+    'Preview mode supports open/save/snapshot/restore/export/extract/reassemble and lorebook import/export operations.',
     { operation },
   );
 }
@@ -8109,7 +8890,9 @@ async function applyManageFileOperation(
     const name = guard.name;
     let actual = '';
     if (name === 'expected_active_file_path') {
-      actual = String(guard.value);
+      const session = await readSessionForManageFile();
+      if (isApiError(session)) return session;
+      actual = session.activeFilePath;
     } else if (name === 'expected_file_state_digest') {
       const filePath =
         operation.action === 'open_file' || operation.action === 'extract_project'
@@ -8124,7 +8907,9 @@ async function applyManageFileOperation(
           ? operation.file_path
           : operation.action === 'reassemble_project'
             ? operation.output_path
-            : undefined;
+            : operation.action === 'export_lorebook'
+              ? operation.target_dir
+              : undefined;
       if (operation.action === 'extract_project') {
         if (operation.project_path) {
           outputPath = operation.project_path;
@@ -8135,7 +8920,10 @@ async function applyManageFileOperation(
         }
       }
       if (!outputPath) return facadeApiError(400, 'Missing output path', 'Run manage_file preview again.');
-      actual = filePathStateDigest(outputPath);
+      actual =
+        operation.action === 'export_lorebook'
+          ? projectTreeDigestOrMissing(path.resolve(outputPath))
+          : filePathStateDigest(outputPath);
     } else if (name === 'expected_project_tree_digest') {
       const projectPath =
         operation.action === 'reassemble_project'
@@ -8144,6 +8932,17 @@ async function applyManageFileOperation(
       if (projectPath && isApiError(projectPath)) return projectPath;
       if (!projectPath) return facadeApiError(400, 'Missing project path', 'Retry.');
       actual = projectTreeDigestOrMissing(projectPath);
+    } else if (name === 'expected_lorebook_collection_digest') {
+      const collection = await readActiveLorebookCollection();
+      if (isApiError(collection)) return collection;
+      actual = hashStableValue(collection.entries);
+    } else if (name === 'expected_source_state_digest') {
+      if (operation.action !== 'import_lorebook') {
+        return facadeApiError(400, 'Unexpected source state guard', 'Run manage_file preview again.');
+      }
+      const format = operation.format ?? 'md';
+      const source = path.resolve(format === 'json' ? operation.source_path! : operation.source_dir!);
+      actual = format === 'json' ? filePathStateDigest(source) : projectTreeDigestOrMissing(source);
     }
     const conflict = checkManageFileGuardValue(
       guardValues,
@@ -8199,6 +8998,40 @@ async function applyManageFileOperation(
     return isApiError(data)
       ? data
       : { result: { ...(asRecord(data) ?? {}), action: operation.action }, routes: plan.routes, touched: plan.touched };
+  }
+
+  if (operation.action === 'export_lorebook') {
+    const data = await apiRequest('POST', '/lorebook/export', {
+      target_dir: path.resolve(operation.target_dir),
+      format: operation.format,
+      group_by_folder: operation.group_by_folder,
+      filter: operation.filter,
+      folder: operation.folder,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          result: { ...(asRecord(data) ?? {}), action: operation.action },
+          routes: plan.routes,
+          touched: plan.touched,
+        };
+  }
+
+  if (operation.action === 'import_lorebook') {
+    const data = await apiRequest('POST', '/lorebook/import', {
+      source_path: operation.source_path ? path.resolve(operation.source_path) : undefined,
+      source_dir: operation.source_dir ? path.resolve(operation.source_dir) : undefined,
+      format: operation.format,
+      create_folders: operation.create_folders,
+      conflict: operation.conflict,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          result: { ...(asRecord(data) ?? {}), action: operation.action },
+          routes: plan.routes,
+          touched: plan.touched,
+        };
   }
 
   if (operation.action === 'extract_project') {
@@ -8579,6 +9412,118 @@ function greetingPreview(content: string): string {
   return content.slice(0, 100) + (content.length > 100 ? '…' : '');
 }
 
+function contentHashGuard(
+  content: string,
+  sourceResultPath: string,
+  sourceOperations: string[] = ['read_content'],
+): FacadeV1Guard {
+  return buildGuard(
+    'expected_content_hash',
+    hashStableValue(content),
+    '/guard_values/*',
+    sourceOperations,
+    sourceResultPath,
+  );
+}
+
+function checkEditGuardValue(
+  guards: FacadeV1Guard[] | undefined,
+  name: string,
+  actual: string,
+): ApiErrorResult | undefined {
+  const expected = stringGuardValue(guards, name);
+  if (expected === undefined) {
+    return facadeApiError(
+      400,
+      `Missing guard value for ${name}`,
+      'Run preview_edit again, then apply with every returned guard value.',
+      { guard: name },
+      ['preview_edit'],
+    );
+  }
+  if (expected !== actual) {
+    return facadeApiError(
+      409,
+      `Stale guard mismatch for ${name}`,
+      'Refresh the content and run preview_edit again.',
+      { guard: name, expected, actual },
+      ['read_content', 'preview_edit'],
+    );
+  }
+  return undefined;
+}
+
+async function readActiveLorebookEntryForEdit(
+  selector: FacadeV1ContentSelector,
+): Promise<
+  { index: number; entry: Record<string, unknown>; routes: FacadeRoute[]; resolvedId?: string } | ApiErrorResult
+> {
+  if (selector.index !== undefined) {
+    const routePath = `/lorebook/${selector.index}`;
+    const data = await apiRequest('GET', routePath);
+    if (isApiError(data)) return data;
+    const entry = asRecord(asRecord(data)?.entry);
+    if (!entry) {
+      return facadeApiError(
+        400,
+        'Lorebook entry response is missing entry data',
+        'Refresh the lorebook list and retry.',
+      );
+    }
+    return {
+      index: selector.index,
+      entry,
+      routes: [route('read_lorebook', 'GET', routePath)],
+    };
+  }
+  if (selector.id) {
+    const routePath = `/lorebook/by-id/${encodeURIComponent(selector.id)}`;
+    const data = await apiRequest('GET', routePath);
+    if (isApiError(data)) return data;
+    const record = asRecord(data);
+    const index = recordNumber(record, 'index');
+    const entry = asRecord(record?.entry);
+    if (index === undefined || !entry) {
+      return facadeApiError(
+        404,
+        'Lorebook id did not resolve to an entry',
+        'Refresh the lorebook list and retry with a current id.',
+      );
+    }
+    return {
+      index,
+      entry,
+      routes: [route('read_lorebook_by_id', 'GET', routePath)],
+      resolvedId: selector.id,
+    };
+  }
+  return facadeApiError(
+    400,
+    'Lorebook block replacement requires selector.index or selector.id',
+    'Choose one lorebook entry before replacing a block.',
+  );
+}
+
+async function readActiveLorebookCollection(): Promise<
+  { entries: Array<Record<string, unknown>>; routes: FacadeRoute[] } | ApiErrorResult
+> {
+  const routePath = '/surface/read';
+  const data = await apiRequest('POST', routePath, { path: '/lorebook' });
+  if (isApiError(data)) return data;
+  const value = asRecord(data)?.value;
+  if (!Array.isArray(value) || !value.every((entry) => asRecord(entry) !== undefined)) {
+    return facadeApiError(
+      400,
+      'Active lorebook surface is not an object array',
+      'Inspect the active document before retrying the lorebook operation.',
+    );
+  }
+  return {
+    entries: value as Array<Record<string, unknown>>,
+    routes: [route('read_surface', 'POST', routePath)],
+  };
+}
+
 async function previewFacadeOperation(
   target: FacadeV1Target,
   operation: FacadeV1EditOperation,
@@ -8594,6 +9539,131 @@ async function previewFacadeOperation(
   }
 
   const touched = [selectorTarget(operation.selector)];
+  if (operation.op === 'replace_block') {
+    if (target.kind !== 'active') {
+      return facadeApiError(
+        400,
+        'replace_block supports active targets only',
+        'Open the document and retry with target.kind="active".',
+        { target, operation },
+      );
+    }
+    if (operation.selector.family === 'field' && operation.selector.field) {
+      const read = await readFacadeSelector(target, operation.selector);
+      if (isApiError(read)) return read;
+      const content = recordString(asRecord(read.data), 'content');
+      if (content === undefined) {
+        return facadeApiError(
+          400,
+          `"${operation.selector.field}" is not a string field`,
+          'Use replace_block only on active string fields.',
+        );
+      }
+      const routePath = `/field/${encodeURIComponent(operation.selector.field)}/block-replace`;
+      const data = await apiRequest('POST', routePath, {
+        start_anchor: operation.start_anchor,
+        end_anchor: operation.end_anchor,
+        content: operation.content,
+        include_anchors: operation.include_anchors,
+        dry_run: true,
+      });
+      return isApiError(data)
+        ? data
+        : {
+            data,
+            routes: [...read.routes, route('replace_block_in_field', 'POST', routePath)],
+            touched,
+            requiredGuards: [contentHashGuard(content, '/result/items/*/data/content', ['read_field', 'read_content'])],
+          };
+    }
+    if (operation.selector.family === 'lorebook') {
+      const read = await readActiveLorebookEntryForEdit(operation.selector);
+      if (isApiError(read)) return read;
+      const field = lorebookReplaceField(operation) ?? 'content';
+      if (!EXTERNAL_LOREBOOK_REPLACEABLE_FIELDS.has(field)) {
+        return facadeApiError(
+          400,
+          `Unsupported lorebook block field "${field}"`,
+          'Use content, comment, key, or secondkey.',
+        );
+      }
+      const content = typeof read.entry[field] === 'string' ? (read.entry[field] as string) : '';
+      const comment = typeof read.entry.comment === 'string' ? read.entry.comment : '';
+      const routePath = `/lorebook/${read.index}/block-replace`;
+      const data = await apiRequest('POST', routePath, {
+        start_anchor: operation.start_anchor,
+        end_anchor: operation.end_anchor,
+        content: operation.content,
+        include_anchors: operation.include_anchors,
+        field,
+        expected_comment: comment,
+        dry_run: true,
+      });
+      return isApiError(data)
+        ? data
+        : {
+            data: {
+              ...(asRecord(data) ?? {}),
+              ...(read.resolvedId ? { resolved_id: read.resolvedId } : {}),
+              resolved_index: read.index,
+            },
+            routes: [...read.routes, route('replace_block_in_lorebook', 'POST', routePath)],
+            touched,
+            requiredGuards: [
+              buildGuard(
+                'expected_comment',
+                comment,
+                '/guard_values/*',
+                ['read_lorebook', 'read_content'],
+                '/result/items/*/data/entry/comment',
+              ),
+              contentHashGuard(content, `/result/items/*/data/entry/${field}`, ['read_lorebook', 'read_content']),
+            ],
+          };
+    }
+    return facadeApiError(
+      400,
+      'replace_block requires a field or single lorebook selector',
+      'Use selector.family="field" with selector.field, or selector.family="lorebook" with selector.index/id.',
+    );
+  }
+  if (operation.op === 'replace_all_text') {
+    if (target.kind !== 'active' || operation.selector.family !== 'lorebook') {
+      return facadeApiError(
+        400,
+        'replace_all_text supports the active lorebook only',
+        'Use target.kind="active" and selector.family="lorebook".',
+        { target, operation },
+      );
+    }
+    const collection = await readActiveLorebookCollection();
+    if (isApiError(collection)) return collection;
+    const routePath = '/lorebook/replace-all';
+    const data = await apiRequest('POST', routePath, {
+      find: operation.find,
+      replace: operation.replace ?? '',
+      regex: operation.regex,
+      flags: operation.flags,
+      field: operation.field ?? 'content',
+      dry_run: true,
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [...collection.routes, route('replace_across_all_lorebook', 'POST', routePath)],
+          touched: ['active:lorebook'],
+          requiredGuards: [
+            buildGuard(
+              'expected_item_collection_digest',
+              hashStableValue(collection.entries),
+              '/guard_values/*',
+              ['read_content', 'manage_items'],
+              '/result/item_collection_digest',
+            ),
+          ],
+        };
+  }
   if (
     operation.selector.family === 'greeting' &&
     operation.selector.greeting_type === 'group' &&
@@ -10161,6 +11231,50 @@ async function previewFacadeOperation(
         };
   }
 
+  if (operation.op === 'insert_text' && operation.selector.field) {
+    const read = await readFacadeSelector(target, operation.selector);
+    if (isApiError(read)) return read;
+    if (isReadOnlyFacadeFieldPayload(read.data)) {
+      return facadeApiError(
+        400,
+        `"${operation.selector.field}" is read-only`,
+        'This field is deprecated, reserved, or compatibility-only. Use supported current fields instead.',
+        { selector: operation.selector },
+      );
+    }
+    const oldContent = recordString(asRecord(read.data), 'content');
+    if (oldContent === undefined) {
+      return facadeApiError(
+        400,
+        `"${operation.selector.field}" is not a string field`,
+        'Use insert_text only on active or external string fields.',
+      );
+    }
+    const inserted = insertSpecFromOperation(oldContent, operation);
+    if (isApiError(inserted)) return inserted;
+    const fieldRoute =
+      target.kind === 'external'
+        ? `/external/field/${encodeURIComponent(operation.selector.field)}/insert`
+        : `/field/${encodeURIComponent(operation.selector.field)}/insert`;
+    return {
+      data: {
+        dryRun: true,
+        field: operation.selector.field,
+        position: inserted.position,
+        ...(inserted.anchor ? { anchor: inserted.anchor } : {}),
+        oldSize: oldContent.length,
+        newSize: inserted.newContent.length,
+        insertedSize: inserted.insertedSize,
+      },
+      routes: [
+        ...read.routes,
+        route(target.kind === 'external' ? 'external_insert_in_field' : 'insert_in_field', 'POST', fieldRoute),
+      ],
+      touched,
+      requiredGuards: operation.guards ?? [],
+    };
+  }
+
   if (operation.op === 'write_content' && operation.selector.field) {
     const read = await readFacadeSelector(target, operation.selector);
     if (isApiError(read)) return read;
@@ -10317,7 +11431,7 @@ async function previewFacadeOperation(
   return facadeApiError(
     400,
     `Unsupported preview operation: ${operation.op}`,
-    'preview_edit supports active/external field replace_text, active/external field write_content, active/external surface replace_text/patch_surface, active indexed regex/greeting/risup-prompt write_content/delete_item, and external risup-prompt write/delete.',
+    'preview_edit supports active field/lorebook replace_block, active lorebook replace_all_text, active/external field replace_text/insert_text/write_content, active/external surface replace_text/patch_surface, active indexed regex/greeting/risup-prompt write_content/delete_item, and external risup-prompt write/delete.',
     { operation },
   );
 }
@@ -10329,6 +11443,116 @@ async function applyFacadeOperation(
 ): Promise<{ data: unknown; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
   const touched = [selectorTarget(operation.selector)];
   const guards = guardValues && guardValues.length > 0 ? guardValues : operation.guards;
+  if (operation.op === 'replace_block') {
+    if (target.kind !== 'active') {
+      return facadeApiError(
+        400,
+        'replace_block supports active targets only',
+        'Open the document and retry with target.kind="active".',
+        { target, operation },
+      );
+    }
+    if (operation.selector.family === 'field' && operation.selector.field) {
+      const read = await readFacadeSelector(target, operation.selector);
+      if (isApiError(read)) return read;
+      const content = recordString(asRecord(read.data), 'content');
+      if (content === undefined) {
+        return facadeApiError(
+          400,
+          `"${operation.selector.field}" is not a string field`,
+          'Use replace_block only on active string fields.',
+        );
+      }
+      const conflict = checkEditGuardValue(guards, 'expected_content_hash', hashStableValue(content));
+      if (conflict) return conflict;
+      const routePath = `/field/${encodeURIComponent(operation.selector.field)}/block-replace`;
+      const data = await apiRequest('POST', routePath, {
+        start_anchor: operation.start_anchor,
+        end_anchor: operation.end_anchor,
+        content: operation.content,
+        include_anchors: operation.include_anchors,
+      });
+      return isApiError(data)
+        ? data
+        : {
+            data,
+            routes: [...read.routes, route('replace_block_in_field', 'POST', routePath)],
+            touched,
+          };
+    }
+    if (operation.selector.family === 'lorebook') {
+      const read = await readActiveLorebookEntryForEdit(operation.selector);
+      if (isApiError(read)) return read;
+      const field = lorebookReplaceField(operation) ?? 'content';
+      if (!EXTERNAL_LOREBOOK_REPLACEABLE_FIELDS.has(field)) {
+        return facadeApiError(
+          400,
+          `Unsupported lorebook block field "${field}"`,
+          'Use content, comment, key, or secondkey.',
+        );
+      }
+      const content = typeof read.entry[field] === 'string' ? (read.entry[field] as string) : '';
+      const comment = typeof read.entry.comment === 'string' ? read.entry.comment : '';
+      const commentConflict = checkEditGuardValue(guards, 'expected_comment', comment);
+      if (commentConflict) return commentConflict;
+      const contentConflict = checkEditGuardValue(guards, 'expected_content_hash', hashStableValue(content));
+      if (contentConflict) return contentConflict;
+      const routePath = `/lorebook/${read.index}/block-replace`;
+      const data = await apiRequest('POST', routePath, {
+        start_anchor: operation.start_anchor,
+        end_anchor: operation.end_anchor,
+        content: operation.content,
+        include_anchors: operation.include_anchors,
+        field,
+        expected_comment: comment,
+      });
+      return isApiError(data)
+        ? data
+        : {
+            data,
+            routes: [...read.routes, route('replace_block_in_lorebook', 'POST', routePath)],
+            touched,
+          };
+    }
+    return facadeApiError(
+      400,
+      'replace_block requires a field or single lorebook selector',
+      'Use selector.family="field" with selector.field, or selector.family="lorebook" with selector.index/id.',
+    );
+  }
+  if (operation.op === 'replace_all_text') {
+    if (target.kind !== 'active' || operation.selector.family !== 'lorebook') {
+      return facadeApiError(
+        400,
+        'replace_all_text supports the active lorebook only',
+        'Use target.kind="active" and selector.family="lorebook".',
+        { target, operation },
+      );
+    }
+    const collection = await readActiveLorebookCollection();
+    if (isApiError(collection)) return collection;
+    const conflict = checkEditGuardValue(
+      guards,
+      'expected_item_collection_digest',
+      hashStableValue(collection.entries),
+    );
+    if (conflict) return conflict;
+    const routePath = '/lorebook/replace-all';
+    const data = await apiRequest('POST', routePath, {
+      find: operation.find,
+      replace: operation.replace ?? '',
+      regex: operation.regex,
+      flags: operation.flags,
+      field: operation.field ?? 'content',
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [...collection.routes, route('replace_across_all_lorebook', 'POST', routePath)],
+          touched: ['active:lorebook'],
+        };
+  }
   if (
     target.kind === 'active' &&
     isScriptStyleFamily(operation.selector.family) &&
@@ -10936,6 +12160,29 @@ async function applyFacadeOperation(
           touched,
         };
   }
+  if (operation.op === 'insert_text' && operation.selector.field) {
+    const insertContent = contentStringFromOperation(operation, 'insert_text');
+    if (isApiError(insertContent)) return insertContent;
+    const fieldRoute =
+      target.kind === 'external'
+        ? `/external/field/${encodeURIComponent(operation.selector.field)}/insert`
+        : `/field/${encodeURIComponent(operation.selector.field)}/insert`;
+    const data = await apiRequest('POST', fieldRoute, {
+      ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
+      content: insertContent,
+      position: operation.position ?? recordString(asRecord(operation.content), 'position'),
+      anchor: operation.anchor ?? recordString(asRecord(operation.content), 'anchor'),
+    });
+    return isApiError(data)
+      ? data
+      : {
+          data,
+          routes: [
+            route(target.kind === 'external' ? 'external_insert_in_field' : 'insert_in_field', 'POST', fieldRoute),
+          ],
+          touched,
+        };
+  }
   if (operation.op === 'write_content' && operation.selector.field) {
     const fieldRoute =
       target.kind === 'external'
@@ -11283,6 +12530,7 @@ server.tool(
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
   },
   async ({ target, max_bytes }) => {
+    const effectiveMaxBytes = max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES;
     if (target.kind === 'active' || target.kind === 'session') {
       const session = await apiRequest('GET', '/session/status');
       if (isApiError(session)) return textResult(session);
@@ -11312,7 +12560,7 @@ server.tool(
           target.kind === 'active' ? 'Inspected active document facade target' : 'Inspected session facade target',
           ['read_content', 'search_document', 'preview_edit'],
           { routed_tools: routes.map((entry) => entry.tool), touched_targets: result.touched_targets },
-          max_bytes,
+          effectiveMaxBytes,
         ),
       );
     }
@@ -11330,27 +12578,59 @@ server.tool(
           'Inspected external document facade target',
           ['read_content', 'search_document'],
           { routed_tools: routes.map((entry) => entry.tool), touched_targets: [`external:${target.file_path}`] },
-          max_bytes,
+          effectiveMaxBytes,
         ),
       );
     }
 
     if (target.kind === 'reference') {
-      const index = await resolveReferenceIndex(target);
-      if (typeof index !== 'number') return textResult(index);
       const refs = await apiRequest('GET', '/references');
       if (isApiError(refs)) return textResult(refs);
       const routes = [route('list_references', 'GET', '/references')];
+      const files = Array.isArray(asRecord(refs)?.files)
+        ? (asRecord(refs)?.files as Array<Record<string, unknown>>)
+        : [];
+      if (!target.reference_id && !target.file_path) {
+        return textResult(
+          facadeEnvelope(
+            'inspect_document',
+            'read-only',
+            target,
+            { references: refs, routed_legacy: routes, touched_targets: ['references'] },
+            `Inspected ${files.length} reference facade target(s)`,
+            ['read_content', 'search_document'],
+            { routed_tools: routes.map((entry) => entry.tool), touched_targets: ['references'] },
+            effectiveMaxBytes,
+          ),
+        );
+      }
+      const index = await resolveReferenceIndex(target);
+      if (typeof index !== 'number') return textResult(index);
+      const selected = files[index];
+      if (!selected) {
+        return textResult(
+          facadeApiError(
+            404,
+            'Reference target not found',
+            'Inspect the reference inventory and retry with a valid id.',
+          ),
+        );
+      }
       return textResult(
         facadeEnvelope(
           'inspect_document',
           'read-only',
           target,
-          { reference_index: index, references: refs, routed_legacy: routes, touched_targets: [`reference:${index}`] },
+          {
+            reference_index: index,
+            reference: selected,
+            routed_legacy: routes,
+            touched_targets: [`reference:${index}`],
+          },
           `Inspected reference ${index} facade target`,
           ['read_content', 'search_document'],
           { routed_tools: routes.map((entry) => entry.tool), touched_targets: [`reference:${index}`] },
-          max_bytes,
+          effectiveMaxBytes,
         ),
       );
     }
@@ -11371,7 +12651,7 @@ server.tool(
           'Inspected guidance facade target',
           ['read_content'],
           { routed_tools: routes.map((entry) => entry.tool), touched_targets: ['guidance'] },
-          max_bytes,
+          effectiveMaxBytes,
         ),
       );
     }
@@ -11514,21 +12794,23 @@ server.tool(
 
 server.tool(
   'search_document',
-  'Preferred facade v1 search entrypoint. Searches active documents, active/external risup-prompt items with literal queries, external fields, or reference fields through routed legacy tools.',
+  'Preferred facade v1 bounded search entrypoint. Use selector.family="field" for active/external/reference field searches or selector.family="risup-prompt" for prompt items. The legacy field argument and field="risup-prompt" magic value remain deprecated aliases. max_matches limits the total active-document result count, and responses default to a 24KB cap.',
   {
     target: facadeV1TargetSchema.describe('Explicit facade target discriminator.'),
     query: z.string().min(1),
-    field: z.string().optional().describe('Required for external/reference targets.'),
+    selector: facadeV1ContentSelectorSchema.optional().describe('Preferred field or risup-prompt selector.'),
+    field: z.string().optional().describe('Deprecated alias for selector.field.'),
     regex: z.boolean().optional(),
     flags: z.string().optional(),
     context_chars: z.number().optional(),
     max_matches: z.number().int().positive().max(FACADE_V1_LIMITS.maxMatches).optional(),
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
   },
-  async ({ target, query, field, regex, flags, context_chars, max_matches, max_bytes }) => {
+  async ({ target, query, selector, field, regex, flags, context_chars, max_matches, max_bytes }) => {
     const parsed = facadeV1SearchDocumentBodySchema.safeParse({
       target,
       query,
+      selector,
       field,
       regex,
       flags,
@@ -11548,8 +12830,12 @@ server.tool(
     }
     let data: unknown;
     let routes: FacadeRoute[];
+    const effectiveSelector =
+      selector ?? (field ? { family: field === 'risup-prompt' ? 'risup-prompt' : 'field', field } : undefined);
+    const selectedFamily = effectiveSelector?.family;
+    const selectedField = effectiveSelector?.field ?? field;
     const body = { query, regex, flags, context_chars, max_matches };
-    if (target.kind === 'active' && field === 'risup-prompt') {
+    if (target.kind === 'active' && selectedFamily === 'risup-prompt') {
       if (regex) {
         return textResult(
           facadeApiError(
@@ -11560,17 +12846,33 @@ server.tool(
         );
       }
       data = await apiRequest('POST', '/risup/prompt-items/search', { query });
+      if (!isApiError(data)) {
+        const promptSearch = asRecord(data);
+        const promptMatches = Array.isArray(promptSearch?.matches) ? promptSearch.matches : [];
+        const boundedMatches = promptMatches.slice(0, max_matches ?? FACADE_V1_LIMITS.maxMatches);
+        data = {
+          ...(promptSearch ?? {}),
+          count: boundedMatches.length,
+          totalMatches: promptMatches.length,
+          returnedMatches: boundedMatches.length,
+          matches: boundedMatches,
+        };
+      }
       routes = [route('search_in_risup_prompt_items', 'POST', '/risup/prompt-items/search')];
+    } else if (target.kind === 'active' && selectedFamily === 'field' && selectedField) {
+      const routePath = `/field/${encodeURIComponent(selectedField)}/search`;
+      data = await apiRequest('POST', routePath, body);
+      routes = [route('search_in_field', 'POST', routePath)];
     } else if (target.kind === 'active') {
       data = await apiRequest('POST', '/search-all', {
         query,
         regex,
         flags,
         context_chars,
-        max_matches_per_field: max_matches,
+        max_matches_total: max_matches,
       });
       routes = [route('search_all_fields', 'POST', '/search-all')];
-    } else if (target.kind === 'external' && field === 'risup-prompt') {
+    } else if (target.kind === 'external' && selectedFamily === 'risup-prompt') {
       if (regex) {
         return textResult(
           facadeApiError(
@@ -11599,14 +12901,68 @@ server.tool(
         .slice(0, max_matches ?? FACADE_V1_LIMITS.maxMatches);
       data = { query, count: matches.length, matches };
       routes = externalPrompt.routes;
-    } else if (target.kind === 'external' && field) {
-      const routePath = `/external/field/${encodeURIComponent(field)}/search`;
+    } else if (target.kind === 'external' && selectedField) {
+      const routePath = `/external/field/${encodeURIComponent(selectedField)}/search`;
       data = await apiRequest('POST', routePath, { ...body, file_path: target.file_path });
       routes = [route('external_search_in_field', 'POST', routePath)];
-    } else if (target.kind === 'reference' && field) {
+    } else if (target.kind === 'reference' && selectedFamily === 'risup-prompt') {
+      if (regex) {
+        return textResult(
+          facadeApiError(
+            400,
+            'Unsupported reference risup-prompt regex search',
+            'Reference risup-prompt facade search supports literal substring queries; omit regex or search promptTemplate as a field.',
+          ),
+        );
+      }
       const index = await resolveReferenceIndex(target);
       if (typeof index !== 'number') return textResult(index);
-      const routePath = `/reference/${index}/field/${encodeURIComponent(field)}/search`;
+      const routePath = `/reference/${index}/promptTemplate`;
+      const read = await apiRequest('GET', routePath);
+      if (isApiError(read)) return textResult(read);
+      const rawText = recordString(asRecord(read), 'content');
+      if (rawText === undefined) {
+        return textResult(
+          facadeApiError(
+            400,
+            'Reference promptTemplate is not a string',
+            'Inspect the selected reference and repair promptTemplate before using risup-prompt search.',
+            { reference_index: index },
+          ),
+        );
+      }
+      const model = parsePromptTemplate(rawText);
+      if (model.state === 'invalid') {
+        return textResult(
+          facadeApiError(
+            400,
+            `Invalid reference promptTemplate: ${model.parseError}`,
+            'Read the reference promptTemplate field and repair it before retrying.',
+            { reference_index: index, parseError: model.parseError },
+          ),
+        );
+      }
+      const matches = model.items
+        .map((item, itemIndex) => {
+          const matchedFields = findRisupPromptItemMatchedFields(item, query);
+          if (matchedFields.length === 0) return null;
+          return {
+            index: itemIndex,
+            id: item.id ?? null,
+            type: item.type ?? null,
+            supported: item.supported,
+            preview: risupPromptItemPreview(item),
+            matched_fields: matchedFields,
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+        .slice(0, max_matches ?? FACADE_V1_LIMITS.maxMatches);
+      data = { query, count: matches.length, matches };
+      routes = [route('read_reference_field', 'GET', routePath)];
+    } else if (target.kind === 'reference' && selectedField) {
+      const index = await resolveReferenceIndex(target);
+      if (typeof index !== 'number') return textResult(index);
+      const routePath = `/reference/${index}/field/${encodeURIComponent(selectedField)}/search`;
       data = await apiRequest('POST', routePath, body);
       routes = [route('search_in_reference_field', 'POST', routePath)];
     } else {
@@ -11624,19 +12980,86 @@ server.tool(
         'search_document',
         'read-only',
         target,
-        { search: data, routed_legacy: routes, touched_targets: field ? [`field:${field}`] : ['active'] },
+        {
+          search: data,
+          routed_legacy: routes,
+          touched_targets:
+            selectedFamily === 'risup-prompt'
+              ? ['risup-prompt']
+              : selectedField
+                ? [`field:${selectedField}`]
+                : ['active'],
+          ...(field ? { deprecated_field_alias_used: true } : {}),
+        },
         `Searched facade target for "${query}"`,
         ['read_content', 'preview_edit'],
-        { routed_tools: routes.map((entry) => entry.tool), touched_targets: field ? [`field:${field}`] : ['active'] },
-        max_bytes,
+        {
+          routed_tools: routes.map((entry) => entry.tool),
+          touched_targets:
+            selectedFamily === 'risup-prompt'
+              ? ['risup-prompt']
+              : selectedField
+                ? [`field:${selectedField}`]
+                : ['active'],
+        },
+        max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
       ),
     );
   },
 );
 
 server.tool(
+  'analyze_content',
+  'Preferred facade v1 transformation/statistics/simulation entrypoint. Supports field_stats, exact token_count for explicit cl100k_base/o200k_base encodings, simulate_lorebook, test_regex, CBS analysis, Danbooru discovery, lorebook/risup comparison, and verify_risup_prompt_import. validate_risup_prompt_import remains a deprecated compatibility alias.',
+  {
+    target: facadeV1TargetSchema.describe(
+      'Use active for document analysis. Danbooru database operations also accept session.',
+    ),
+    operation: facadeV1AnalyzeOperationSchema,
+    max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
+  },
+  safeToolHandler('analyze_content', async ({ target, operation, max_bytes }) => {
+    const parsed = facadeV1AnalyzeContentBodySchema.safeParse({ target, operation, max_bytes });
+    if (!parsed.success) {
+      return textResult(
+        facadeApiError(
+          400,
+          'Invalid analyze_content request',
+          parsed.error.issues.map((issue) => issue.message).join('; '),
+          { issues: parsed.error.issues },
+          ['analyze_content'],
+        ),
+      );
+    }
+    const analysis = await analyzeFacadeOperation(parsed.data.target, parsed.data.operation);
+    if (isApiError(analysis)) return textResult(analysis);
+    return textResult(
+      facadeEnvelope(
+        'analyze_content',
+        'read-only',
+        parsed.data.target,
+        {
+          operation: parsed.data.operation,
+          analysis: analysis.data,
+          routed_legacy: analysis.routes,
+          touched_targets: analysis.touchedTargets,
+        },
+        `Analyzed ${parsed.data.operation.action}`,
+        ['read_content', 'validate_content', 'analyze_content'],
+        {
+          operation: parsed.data.operation.action,
+          routed_tools: analysis.routes.map((entry) => entry.tool),
+          touched_targets: analysis.touchedTargets,
+        },
+        parsed.data.max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
+      ),
+    );
+  }),
+);
+
+server.tool(
   'validate_content',
-  'Preferred facade v1 validation entrypoint. Validates active lorebook, regex, CBS, Danbooru tags, active/external .charx export compatibility, active/external risup prompt/order selectors, active/external risum semantic fields, and external Plugin v3 source scans where facade selectors provide enough context.',
+  'Preferred facade v1 pass/fail diagnostics entrypoint. Validates lorebook keys, regex syntax, CBS, Lua sections and triggerlua effects with compile-only Wasmoon load(), Danbooru tags, .charx export compatibility, risup prompt/order selectors, risum semantic fields, and external Plugin v3 source scans where facade selectors provide enough context.',
   {
     target: facadeV1TargetSchema.describe(
       'Explicit facade target discriminator. Supports active artifact validation, external .charx export compatibility checks, external .risup prompt checks, and external Plugin v3 source scans.',
@@ -11659,7 +13082,7 @@ server.tool(
           routed_tools: validation.routes.map((entry) => entry.tool),
           touched_targets: validation.touchedTargets,
         },
-        max_bytes,
+        max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
       ),
     );
   },
@@ -11673,6 +13096,7 @@ server.tool(
     max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
   },
   async ({ target, max_bytes }) => {
+    const effectiveMaxBytes = max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES;
     const requestedSkill =
       target.skill === 'plugin-v3' || target.skill === 'plugins-v3' || target.document === 'plugin-v3'
         ? 'writing-plugins-v3'
@@ -11698,7 +13122,7 @@ server.tool(
             ? { source_workflow: true, note: '.js/.ts plugin files are source files, not MCP artifacts.' }
             : {}),
         },
-        max_bytes,
+        effectiveMaxBytes,
       ),
     );
   },
@@ -11706,7 +13130,7 @@ server.tool(
 
 server.tool(
   'preview_edit',
-  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, active/external surface patches/replacements, external lorebook/regex/greeting structured edits, external .risup prompt item edits, active indexed and safe batch regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
+  'Preferred facade v1 preview tool. Produces a dry-run/read-only preview token for active/external field edits, active/external surface patches/replacements, active field or single-lorebook block replacement, active whole-lorebook text replacement, external lorebook/regex/greeting structured edits, external .risup prompt item edits, and active indexed or safe batch regex/greeting/risup prompt item writes/deletes. Does not mutate content; call apply_edit with the returned preview_token and operation_digest to apply.',
   {
     target: facadeV1TargetSchema.describe(
       'Explicit facade target discriminator. Supports active edits plus external field replace/write and surface patch/replace previews.',
@@ -11779,7 +13203,7 @@ server.tool(
 
 server.tool(
   'apply_edit',
-  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation/guard behavior for active/external fields, active/external surface patches/replacements, external lorebook/regex/greeting structured edits, external .risup prompt item edits, and active indexed/batch regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
+  'Preferred facade v1 mutating apply tool. Applies a prior preview_edit using preview_token and operation_digest, preserving existing granular confirmation and stale-guard behavior for active/external fields, active/external surface patches/replacements, active field or single-lorebook block replacement, active whole-lorebook text replacement, external lorebook/regex/greeting structured edits, external .risup prompt item edits, and active indexed or batch regex/greeting/risup prompt item writes/deletes. Requires user confirmation through the routed legacy mutation.',
   {
     preview_token: z.string().regex(/^facade-preview-v1\.[A-Za-z0-9._-]{16,}$/),
     operation_digest: z.string().min(16),
@@ -11808,17 +13232,42 @@ server.tool(
         ),
       );
     }
+    facadePreviewStore.delete(preview_token);
     const results: unknown[] = [];
     const routes: FacadeRoute[] = [];
     const touchedTargets: string[] = [];
-    for (const operation of entry.operations) {
+    for (let operationIndex = 0; operationIndex < entry.operations.length; operationIndex++) {
+      const operation = entry.operations[operationIndex];
       const applied = await applyFacadeOperation(entry.target, operation, guard_values);
-      if (isApiError(applied)) return textResult(applied);
+      if (isApiError(applied)) {
+        const cause = asRecord(applied) ?? {};
+        return textResult(
+          facadeApiError(
+            typeof cause.status === 'number' ? cause.status : 409,
+            recordString(cause, 'error') ?? 'Facade edit operation failed',
+            recordString(cause, 'suggestion') ??
+              'Inspect the document state, then run preview_edit again before retrying.',
+            {
+              preview_token_consumed: true,
+              partial: results.length > 0,
+              applied_count: results.length,
+              applied: results,
+              failed_operation: {
+                index: operationIndex,
+                op: operation.op,
+                selector: operation.selector,
+              },
+              remaining_count: entry.operations.length - operationIndex - 1,
+              cause: cause.details ?? cause,
+            },
+            ['inspect_document', 'read_content', 'preview_edit'],
+          ),
+        );
+      }
       results.push({ operation: operation.op, selector: operation.selector, data: applied.data });
       routes.push(...applied.routes);
       touchedTargets.push(...applied.touched);
     }
-    facadePreviewStore.delete(preview_token);
     const postEdit = applyEditPostEditMetadata(entry);
     return textResult(
       facadeEnvelope(
@@ -12039,7 +13488,7 @@ server.tool(
 
 server.tool(
   'manage_assets',
-  'Preferred facade v1 asset-management tool for active or unopened external .charx/.risum assets. Use mode="read" for list/read, mode="preview" as the dry_run path for add/delete/rename/compress_assets mutations, then mode="apply" with the returned preview_token, operation_digest, and guard_values. Requires user confirmation on mutating apply. Active applies route through existing asset tools or guarded surface patch for .risum rename; external applies route through guarded surface patch. compress_assets is supported for .charx assets.',
+  'Preferred facade v1 asset-management tool for active or unopened external .charx/.risum assets. Use mode="read" for list/read, mode="preview" as the dry_run path for add/delete/rename/compress_assets mutations, then mode="apply" with the returned preview_token, operation_digest, and guard_values. Requires user confirmation on mutating apply. WebP compression supports both families, updates .risum binary and extension metadata together, and preserves originals when conversion fails or grows.',
   {
     target: facadeV1TargetSchema.describe(
       'Use target.kind="active" for the current file or "external" for an unopened .charx/.risum file.',
@@ -12223,7 +13672,7 @@ server.tool(
 
 server.tool(
   'manage_file',
-  'Preferred facade v1 file-management tool for session-coupled file actions. Use mode="read" for snapshot/project-tree reads, mode="preview" as the dry_run path for open/save/snapshot/restore/export/extract/reassemble mutations, then mode="apply" with preview_token, operation_digest, and guard_values. Requires user confirmation on mutating apply. Supports active/session and explicit external paths while keeping granular file tools as advanced fallbacks.',
+  'Preferred facade v1 file-management tool for session-coupled file actions. Use mode="read" for snapshot/project-tree reads, mode="preview" as the dry_run path for open/save/snapshot/restore/field export/active lorebook import-export/project extract-reassemble mutations, then mode="apply" with preview_token, operation_digest, and guard_values. Requires user confirmation on mutating apply. Supports active/session and explicit external paths while keeping granular file tools as advanced fallbacks.',
   {
     target: facadeV1TargetSchema.describe(
       'Use target.kind="active" or "session" for active editor file actions, or target.kind="external" for unopened files/project folders.',
@@ -14416,8 +15865,9 @@ server.tool(
 
 server.tool(
   'compress_assets_webp',
-  '모든 이미지 에셋을 WebP 손실 압축으로 변환합니다. dry_run으로 변환 후보를 미리 볼 수 있습니다. PNG, JPEG, GIF 등을 WebP로 변환하여 파일 크기를 줄입니다. SVG는 건너뛰며, WebP가 원본보다 크면 원본을 유지합니다. 사용자 확인 필요.',
+  'charx 또는 risum 이미지 에셋을 WebP 손실 압축으로 변환합니다. dry_run으로 변환 후보를 미리 볼 수 있습니다. SVG는 건너뛰며, WebP가 원본보다 크면 원본과 메타데이터를 유지합니다. 사용자 확인 필요.',
   {
+    asset_family: z.enum(['charx', 'risum']).optional().describe('압축할 에셋 종류 (기본: charx)'),
     quality: z
       .number()
       .min(0)
@@ -14427,8 +15877,9 @@ server.tool(
     recompress_webp: z.boolean().optional().describe('이미 WebP인 파일도 재압축할지 (기본: false)'),
     dry_run: z.boolean().optional().describe('true면 실제 압축 없이 변환 후보 preview만 반환'),
   },
-  async ({ quality, recompress_webp, dry_run }) => {
+  async ({ asset_family, quality, recompress_webp, dry_run }) => {
     const body: Record<string, unknown> = {};
+    if (asset_family !== undefined) body.asset_family = asset_family;
     if (quality !== undefined) body.quality = quality;
     if (recompress_webp !== undefined) body.recompressWebp = recompress_webp;
     if (dry_run !== undefined) body.dry_run = dry_run;
@@ -14673,10 +16124,16 @@ server.tool(
     ensureTagsLoaded();
     const onlineFallback = online_fallback !== false;
     const results = await validateTags(tags, onlineFallback);
-    const validCount = results.filter((r) => r.valid).length;
-    const invalidCount = results.filter((r) => !r.valid).length;
+    const validCount = results.filter((result) => result.status === 'valid').length;
+    const invalidCount = results.filter((result) => result.status === 'invalid').length;
+    const unknownCount = results.filter((result) => result.status === 'unknown').length;
     return textResult({
-      summary: `${validCount}/${tags.length} tags valid${invalidCount > 0 ? `, ${invalidCount} invalid` : ''}`,
+      summary:
+        `${validCount}/${tags.length} tags valid` +
+        `${invalidCount > 0 ? `, ${invalidCount} invalid` : ''}` +
+        `${unknownCount > 0 ? `, ${unknownCount} unknown` : ''}`,
+      counts: { valid: validCount, invalid: invalidCount, unknown: unknownCount },
+      network_degraded: results.some((result) => result.status === 'unknown'),
       results,
     });
   },

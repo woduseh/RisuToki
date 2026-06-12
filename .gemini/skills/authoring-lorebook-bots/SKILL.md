@@ -19,13 +19,17 @@ related_tools:
 
 - **Use when:** the main task is deciding what belongs in always-on description versus conditional lorebook entries for a cast-heavy, world-heavy, or lorebook-driven bot.
 - **Do not use when:** the main task is one character's inner drive/voice, worldbuilding substance, a self-introduction sheet, raw lorebook syntax, or non-bot artifact work.
-- **Read first:** this `SKILL.md` only. Treat it as the structure guide; load character-writing or world-writing skills only when the source material itself is weak.
-- **Load deeper only if:** entry activation, progression, continuity, or reveal staging is the hard part (`LOREBOOK_ARCHITECTURE.md`), cast size changes the design economics (`STRUCTURE_SCALES.md`), or the user asks for finished-bot QA / release-level review (`BOT_VALIDATION.md`).
+- **Read first:** `core-craft` (shared doctrine), then this `SKILL.md`. Treat it as the structure guide; load character-writing or world-writing skills only when the source material itself is weak.
+- **Load deeper only if:** `{{user}}`'s fixed/open/bounded position needs distribution across surfaces (`core-craft/USER_POSITION.md`), entry activation, progression, continuity, or reveal staging is the hard part (`LOREBOOK_ARCHITECTURE.md`), cast size changes the design economics (`STRUCTURE_SCALES.md`), event/simulator design is the point (`authoring-scenarios`), or the user asks for finished-bot QA / release-level review (`BOT_VALIDATION.md`).
 - **Output/validation contract:** produce a description/lorebook distribution plan or revised bot frame; verify tone survives without lorebook, details activate conditionally, and the description is not a pasted database.
 
 > **Use this skill when the description is not supposed to carry everything.** In many bots the description provides the persistent frame — tone, world pressure, core cast thumbnail, and narrative direction — while the lorebook provides conditional detail. In lorebook-heavy bots the balance can shift further: the description's job becomes partly to teach the model how to read and use the lorebook itself.
 >
 > **If the main problem is one character's inner drive, voice, and contradictions, use [authoring-characters](../authoring-characters/). If the main problem is worldbuilding substance — setting pressure, culture, factions, places, active history, or systems — use [authoring-worlds](../authoring-worlds/). If you want the core character written through the self-introduction monologue method, use [authoring-self-introduction-sheets](../authoring-self-introduction-sheets/).** This skill sits beside those writing skills and focuses on structure: what stays always-on, what becomes conditional, and how that depth is surfaced in play.
+
+If the source IP spans several media, finish the invariant/variant decisions in `authoring-media-mix` first. This skill owns only the RisuAI placement and activation handoff.
+
+If the bot depends on who `{{user}}` is, define the User Position Contract first, then place only its stable assumptions in description, conditional access and knowledge in lorebook, chosen fixed facts in `persona`, and agency-preserving choices in the opener.
 
 ## Route by Bot Shape
 

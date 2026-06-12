@@ -165,6 +165,7 @@ export const searchAllBodySchema = z.object({
   include_greetings: z.boolean().optional(),
   context_chars: lenientNumber,
   max_matches_per_field: lenientNumber,
+  max_matches_total: lenientNumber,
 });
 export type SearchAllBody = z.infer<typeof searchAllBodySchema>;
 
@@ -201,6 +202,7 @@ export type AssetRenameBody = z.infer<typeof assetRenameBodySchema>;
 /** POST /assets/compress-webp  (compress_assets_webp) */
 export const assetCompressWebpBodySchema = z
   .object({
+    asset_family: z.enum(['charx', 'risum']).optional(),
     quality: lenientNumber,
     recompressWebp: boolish.optional(),
     dry_run: boolish.optional(),
@@ -255,6 +257,7 @@ export const FACADE_V1_TOOL_NAMES = [
   'inspect_document',
   'read_content',
   'search_document',
+  'analyze_content',
   'preview_edit',
   'apply_edit',
   'validate_content',
@@ -273,17 +276,18 @@ export interface FacadeV1ToolContract {
   name: string;
   lifecycle: 'v1' | 'future-candidate';
   mutability: FacadeV1ToolMutability;
-  preference: 'preferred';
+  preference: 'preferred' | 'legacy';
 }
 
 export const FACADE_V1_TOOL_CONTRACTS: readonly FacadeV1ToolContract[] = [
   { name: 'inspect_document', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
   { name: 'read_content', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
   { name: 'search_document', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
+  { name: 'analyze_content', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
   { name: 'preview_edit', lifecycle: 'v1', mutability: 'preview', preference: 'preferred' },
   { name: 'apply_edit', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
   { name: 'validate_content', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
-  { name: 'load_guidance', lifecycle: 'v1', mutability: 'read-only', preference: 'preferred' },
+  { name: 'load_guidance', lifecycle: 'v1', mutability: 'read-only', preference: 'legacy' },
   { name: 'manage_items', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
   { name: 'manage_assets', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
   { name: 'manage_file', lifecycle: 'v1', mutability: 'mutating', preference: 'preferred' },
@@ -315,16 +319,11 @@ export const facadeV1TargetSchema = z.discriminatedUnion('kind', [
     kind: z.literal('external'),
     file_path: z.string().min(1),
   }),
-  z
-    .object({
-      kind: z.literal('reference'),
-      reference_id: z.string().min(1).optional(),
-      file_path: z.string().min(1).optional(),
-    })
-    .refine((d) => d.reference_id !== undefined || d.file_path !== undefined, {
-      message: 'reference target requires reference_id or file_path',
-      path: ['reference_id'],
-    }),
+  z.object({
+    kind: z.literal('reference'),
+    reference_id: z.string().min(1).optional(),
+    file_path: z.string().min(1).optional(),
+  }),
   facadeV1GuidanceTargetSchema,
   z.object({
     kind: z.literal('session'),
@@ -400,6 +399,7 @@ export const facadeV1SearchDocumentBodySchema = z
   .object({
     target: facadeV1TargetSchema,
     query: z.string().min(1),
+    selector: facadeV1ContentSelectorSchema.optional(),
     field: z.string().min(1).optional(),
     regex: boolish.optional(),
     flags: lenientString,
@@ -408,11 +408,34 @@ export const facadeV1SearchDocumentBodySchema = z
     max_bytes: facadeMaxBytesSchema,
   })
   .superRefine((body, ctx) => {
-    if ((body.target.kind === 'external' || body.target.kind === 'reference') && !body.field) {
+    const selectedField = body.selector?.field ?? body.field;
+    const selectedFamily = body.selector?.family;
+    if (body.selector && selectedFamily !== 'field' && selectedFamily !== 'risup-prompt') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `${body.target.kind} search requires field`,
+        message: 'search_document selector supports field or risup-prompt families',
+        path: ['selector', 'family'],
+      });
+    }
+    if (selectedFamily === 'field' && !selectedField) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'field search selector requires selector.field',
+        path: ['selector', 'field'],
+      });
+    }
+    if (body.selector?.field && body.field && body.selector.field !== body.field) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'selector.field and deprecated field alias must match',
         path: ['field'],
+      });
+    }
+    if ((body.target.kind === 'external' || body.target.kind === 'reference') && !body.selector && !body.field) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${body.target.kind} search requires selector or deprecated field alias`,
+        path: ['selector'],
       });
     }
     if (body.target.kind === 'guidance' || body.target.kind === 'session') {
@@ -424,6 +447,155 @@ export const facadeV1SearchDocumentBodySchema = z
     }
   });
 export type FacadeV1SearchDocumentBody = z.infer<typeof facadeV1SearchDocumentBodySchema>;
+
+const facadeV1ReferenceTargetSchema = z
+  .object({
+    kind: z.literal('reference'),
+    reference_id: z.string().min(1).optional(),
+    file_path: z.string().min(1).optional(),
+  })
+  .refine((d) => d.reference_id !== undefined || d.file_path !== undefined, {
+    message: 'reference target requires reference_id or file_path',
+    path: ['reference_id'],
+  });
+
+export const facadeV1AnalyzeOperationSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('list_cbs_toggles'),
+    field: z.string().min(1).optional(),
+    lorebook_index: z.number().int().nonnegative().optional(),
+  }),
+  z.object({
+    action: z.literal('simulate_cbs'),
+    field: z.string().min(1),
+    lorebook_index: z.number().int().nonnegative().optional(),
+    toggles: z.record(z.string(), z.string()).optional(),
+    all_combos: z.boolean().optional(),
+    compact: z.boolean().optional(),
+  }),
+  z.object({
+    action: z.literal('diff_cbs'),
+    field: z.string().min(1),
+    lorebook_index: z.number().int().nonnegative().optional(),
+    toggles: z.record(z.string(), z.string()),
+  }),
+  z.object({
+    action: z.literal('tag_db_status'),
+  }),
+  z.object({
+    action: z.literal('search_danbooru_tags'),
+    query: z.string().min(1),
+    category: z.enum(['general', 'artist', 'copyright', 'character', 'meta']).optional(),
+    limit: z.number().int().positive().max(50).optional(),
+  }),
+  z.object({
+    action: z.literal('get_popular_danbooru_tags'),
+    category: z.enum(['general', 'artist', 'copyright', 'character', 'meta']).optional(),
+    limit: z.number().int().positive().max(500).optional(),
+    group_by_semantic: z.boolean().optional(),
+  }),
+  z.object({
+    action: z.literal('diff_lorebook'),
+    index: z.number().int().nonnegative(),
+    reference: facadeV1ReferenceTargetSchema,
+    ref_entry_index: z.number().int().nonnegative(),
+  }),
+  z.object({
+    action: z.literal('diff_risup_prompt'),
+    reference: facadeV1ReferenceTargetSchema,
+  }),
+  z.object({
+    action: z.literal('validate_risup_prompt_import'),
+    text: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal('verify_risup_prompt_import'),
+    text: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal('field_stats'),
+    field: z.string().min(1),
+  }),
+  z
+    .object({
+      action: z.literal('token_count'),
+      encoding: z.enum(['cl100k_base', 'o200k_base']),
+      text: z.string().optional(),
+      selectors: z.array(facadeV1ContentSelectorSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+    })
+    .refine((operation) => (operation.text === undefined) !== (operation.selectors === undefined), {
+      message: 'token_count requires exactly one of text or selectors',
+      path: ['text'],
+    }),
+  z.object({
+    action: z.literal('simulate_lorebook'),
+    messages: z
+      .array(
+        z.object({
+          role: z.enum(['char', 'user', 'assistant', 'system']),
+          content: z.string(),
+        }),
+      )
+      .min(1)
+      .max(1000),
+    scan_depth: z.number().int().min(0).max(100).optional(),
+    recursive: z.boolean().optional(),
+    max_passes: z.number().int().min(1).max(10).optional(),
+    include_content: z.boolean().optional(),
+  }),
+  z.object({
+    action: z.literal('test_regex'),
+    text: z.string(),
+    mode: z.enum(['editinput', 'editoutput', 'editdisplay', 'editrequest']),
+    indices: z.array(z.number().int().nonnegative()).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+  }),
+]);
+export type FacadeV1AnalyzeOperation = z.infer<typeof facadeV1AnalyzeOperationSchema>;
+
+export const facadeV1AnalyzeContentBodySchema = z
+  .object({
+    target: facadeV1TargetSchema,
+    operation: facadeV1AnalyzeOperationSchema,
+    max_bytes: facadeMaxBytesSchema,
+  })
+  .superRefine((body, ctx) => {
+    const danbooruActions = new Set(['tag_db_status', 'search_danbooru_tags', 'get_popular_danbooru_tags']);
+    if (danbooruActions.has(body.operation.action)) {
+      if (body.target.kind !== 'active' && body.target.kind !== 'session') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Danbooru analysis supports active or session targets',
+          path: ['target', 'kind'],
+        });
+      }
+      return;
+    }
+    if (body.operation.action === 'token_count' && body.operation.text !== undefined) {
+      if (body.target.kind !== 'session') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'direct token_count text requires a session target',
+          path: ['target', 'kind'],
+        });
+      }
+      return;
+    }
+    const portableActions = new Set(['token_count', 'simulate_lorebook', 'test_regex']);
+    if (
+      portableActions.has(body.operation.action) &&
+      (body.target.kind === 'active' || body.target.kind === 'external' || body.target.kind === 'reference')
+    ) {
+      return;
+    }
+    if (body.target.kind !== 'active') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${body.operation.action} requires an active target`,
+        path: ['target', 'kind'],
+      });
+    }
+  });
+export type FacadeV1AnalyzeContentBody = z.infer<typeof facadeV1AnalyzeContentBodySchema>;
 
 const facadeEditOperationBase = {
   selector: facadeV1ContentSelectorSchema,
@@ -458,6 +630,8 @@ export const facadeV1EditOperationSchema = z.discriminatedUnion('op', [
     op: z.literal('insert_text'),
     ...facadeEditOperationBase,
     content: facadeRequiredContentSchema,
+    position: z.enum(['end', 'start', 'after', 'before']).optional(),
+    anchor: z.string().min(1).optional(),
   }),
   z.object({
     op: z.literal('delete_item'),
@@ -469,6 +643,23 @@ export const facadeV1EditOperationSchema = z.discriminatedUnion('op', [
     ...facadeEditOperationBase,
     content: facadeRequiredContentSchema,
   }),
+  z.object({
+    op: z.literal('replace_block'),
+    ...facadeEditOperationBase,
+    start_anchor: z.string().min(1),
+    end_anchor: z.string().min(1),
+    content: z.string().optional(),
+    include_anchors: z.boolean().optional(),
+  }),
+  z.object({
+    op: z.literal('replace_all_text'),
+    ...facadeEditOperationBase,
+    find: z.string().min(1),
+    replace: z.string().optional(),
+    regex: boolish.optional(),
+    flags: lenientString,
+    field: z.enum(['content', 'comment', 'key', 'secondkey']).optional(),
+  }),
 ]);
 export type FacadeV1EditOperation = z.infer<typeof facadeV1EditOperationSchema> & {
   content?: unknown;
@@ -476,6 +667,11 @@ export type FacadeV1EditOperation = z.infer<typeof facadeV1EditOperationSchema> 
   replace?: string;
   regex?: boolean;
   flags?: string;
+  start_anchor?: string;
+  end_anchor?: string;
+  include_anchors?: boolean;
+  position?: 'end' | 'start' | 'after' | 'before';
+  anchor?: string;
 };
 
 export const facadeV1PreviewEditBodySchema = z
@@ -486,7 +682,38 @@ export const facadeV1PreviewEditBodySchema = z
     dryRun: boolish.optional(),
     max_bytes: facadeMaxBytesSchema,
   })
-  .refine((d) => !hasDryRunConflict(d), DRY_RUN_CONFLICT_MSG);
+  .refine((d) => !hasDryRunConflict(d), DRY_RUN_CONFLICT_MSG)
+  .superRefine((body, ctx) => {
+    body.operations.forEach((operation, index) => {
+      if ((operation.op === 'replace_block' || operation.op === 'replace_all_text') && body.target.kind !== 'active') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${operation.op} requires an active target`,
+          path: ['operations', index, 'op'],
+        });
+      }
+      if (operation.op === 'replace_block') {
+        const isField = operation.selector.family === 'field' && !!operation.selector.field;
+        const isSingleLorebook =
+          operation.selector.family === 'lorebook' &&
+          (operation.selector.index !== undefined || !!operation.selector.id);
+        if (!isField && !isSingleLorebook) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'replace_block requires a string field or one lorebook index/id selector',
+            path: ['operations', index, 'selector'],
+          });
+        }
+      }
+      if (operation.op === 'replace_all_text' && operation.selector.family !== 'lorebook') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'replace_all_text requires selector.family="lorebook"',
+          path: ['operations', index, 'selector', 'family'],
+        });
+      }
+    });
+  });
 export type FacadeV1PreviewEditBody = z.infer<typeof facadeV1PreviewEditBodySchema>;
 
 export const facadeV1PreviewTokenSchema = z
@@ -811,6 +1038,22 @@ export const manageFileOperationSchema = z.discriminatedUnion('action', [
     project_path: z.string().min(1).optional(),
     output_path: z.string().min(1),
   }),
+  z.object({
+    action: z.literal('export_lorebook'),
+    target_dir: z.string().min(1),
+    format: z.enum(['md', 'json']).optional(),
+    group_by_folder: z.boolean().optional(),
+    filter: z.string().min(1).optional(),
+    folder: z.string().min(1).optional(),
+  }),
+  z.object({
+    action: z.literal('import_lorebook'),
+    source_dir: z.string().min(1).optional(),
+    source_path: z.string().min(1).optional(),
+    format: z.enum(['md', 'json']).optional(),
+    create_folders: z.boolean().optional(),
+    conflict: z.enum(['skip', 'overwrite', 'rename']).optional(),
+  }),
 ]);
 export type ManageFileOperation = z.infer<typeof manageFileOperationSchema>;
 
@@ -851,6 +1094,8 @@ export const manageFileBodySchema = z
       'export_field',
       'extract_project',
       'reassemble_project',
+      'export_lorebook',
+      'import_lorebook',
     ]);
     if (d.mode === 'read' && !readActions.has(d.operation.action)) {
       ctx.addIssue({
@@ -885,6 +1130,33 @@ export const manageFileBodySchema = z
         code: z.ZodIssueCode.custom,
         message: 'reassemble_project requires target.kind="external" or operation.project_path',
         path: ['operation', 'project_path'],
+      });
+    }
+    if (d.operation.action === 'import_lorebook') {
+      const format = d.operation.format ?? 'md';
+      if (format === 'json' && !d.operation.source_path) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'import_lorebook JSON format requires source_path',
+          path: ['operation', 'source_path'],
+        });
+      }
+      if (format === 'md' && !d.operation.source_dir) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'import_lorebook MD format requires source_dir',
+          path: ['operation', 'source_dir'],
+        });
+      }
+    }
+    if (
+      (d.operation.action === 'export_lorebook' || d.operation.action === 'import_lorebook') &&
+      d.target.kind !== 'active'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${d.operation.action} requires an active target`,
+        path: ['target', 'kind'],
       });
     }
   });

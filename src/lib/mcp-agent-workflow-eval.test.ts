@@ -395,7 +395,7 @@ const WORKFLOW_EVAL_TASKS = [
       readOrSearch: ['read_content'],
       preview: ['preview_edit'],
       apply: ['apply_edit'],
-      validate: ['validate_content', 'read_content', 'diff_lorebook'],
+      validate: ['validate_content', 'read_content', 'analyze_content:diff_lorebook'],
     },
     safety: {
       boundedOrItemizedRead: true,
@@ -406,7 +406,7 @@ const WORKFLOW_EVAL_TASKS = [
       postEditValidation: [
         'validate_content lorebook keys',
         'focused read_content by lorebook id',
-        'diff_lorebook when reference exists',
+        'analyze_content diff_lorebook when reference exists',
       ],
     },
     metrics: {
@@ -1066,13 +1066,11 @@ const WORKFLOW_EVAL_TASKS = [
     editRisk: 'guarded-edit',
     route: {
       profile: 'facade-first',
-      discover: ['list_tool_profiles', 'inspect_document', 'list_references'],
-      readOrSearch: ['manage_items:copy_as_text', 'diff_risup_prompt'],
+      discover: ['list_tool_profiles', 'inspect_document'],
+      readOrSearch: ['manage_items:copy_as_text', 'analyze_content:diff_risup_prompt'],
       preview: ['manage_items:import_text'],
       apply: ['manage_items:apply'],
-      validate: ['validate_risup_prompt_import', 'diff_risup_prompt'],
-      granularFallbackReason:
-        'Use granular export/diff only when exact whole-template text or reference diff payloads are required.',
+      validate: ['analyze_content:verify_risup_prompt_import', 'analyze_content:diff_risup_prompt'],
     },
     safety: {
       boundedOrItemizedRead: true,
@@ -1080,7 +1078,7 @@ const WORKFLOW_EVAL_TASKS = [
       staleGuards: [],
       previewPolicy: 'required',
       wrongTargetAvoidance: ['validate with the exact source text used for import'],
-      postEditValidation: ['validate_risup_prompt_import', 'diff_risup_prompt'],
+      postEditValidation: ['analyze_content verify_risup_prompt_import', 'analyze_content diff_risup_prompt'],
     },
     metrics: {
       routeCorrect: true,

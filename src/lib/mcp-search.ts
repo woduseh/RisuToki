@@ -138,6 +138,7 @@ export interface SearchAllTextSurfacesOptions {
   includeGreetings?: boolean;
   contextChars?: number;
   maxMatchesPerSurface?: number;
+  maxMatchesTotal?: number;
 }
 
 export interface SearchAllTextSurfacesResult {
@@ -148,7 +149,9 @@ export interface SearchAllTextSurfacesResult {
   includeGreetings: boolean;
   contextChars: number;
   maxMatchesPerSurface: number;
+  maxMatchesTotal?: number;
   totalMatches: number;
+  returnedMatches: number;
   returnedSurfaces: number;
   surfaces: SearchSurface[];
 }
@@ -345,6 +348,8 @@ export function searchAllTextSurfaces(
   const includeGreetings = options.includeGreetings !== false;
   const contextChars = clamp(Number(options.contextChars) || 60, 0, 300);
   const maxMatchesPerSurface = clamp(Number(options.maxMatchesPerSurface) || 5, 1, 20);
+  const maxMatchesTotal =
+    options.maxMatchesTotal === undefined ? undefined : clamp(Number(options.maxMatchesTotal) || 1, 1, 100);
   const normalizedOptions: SearchAllTextSurfacesOptions = {
     query,
     regex,
@@ -353,6 +358,7 @@ export function searchAllTextSurfaces(
     includeGreetings,
     contextChars,
     maxMatchesPerSurface,
+    maxMatchesTotal,
   };
 
   const surfaces: SearchSurface[] = [];
@@ -385,6 +391,20 @@ export function searchAllTextSurfaces(
   }
 
   const totalMatches = surfaces.reduce((sum, surface) => sum + surface.totalMatches, 0);
+  let remaining = maxMatchesTotal ?? Number.POSITIVE_INFINITY;
+  const boundedSurfaces = surfaces
+    .map((surface) => {
+      if (remaining <= 0) return null;
+      const matches = surface.matches.slice(0, remaining);
+      remaining -= matches.length;
+      return {
+        ...surface,
+        returnedMatches: matches.length,
+        matches,
+      };
+    })
+    .filter((surface): surface is SearchSurface => surface !== null && surface.returnedMatches > 0);
+  const returnedMatches = boundedSurfaces.reduce((sum, surface) => sum + surface.returnedMatches, 0);
 
   return {
     query,
@@ -394,8 +414,10 @@ export function searchAllTextSurfaces(
     includeGreetings,
     contextChars,
     maxMatchesPerSurface,
+    ...(maxMatchesTotal !== undefined ? { maxMatchesTotal } : {}),
     totalMatches,
-    returnedSurfaces: surfaces.length,
-    surfaces,
+    returnedMatches,
+    returnedSurfaces: boundedSurfaces.length,
+    surfaces: boundedSurfaces,
   };
 }
