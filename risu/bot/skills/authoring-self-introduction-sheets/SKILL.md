@@ -85,19 +85,19 @@ For the structure and field-level differences, load [SHEET_STRUCTURE.md](SHEET_S
 
 The neutral camera is the default premise, not the only one. **The premise is a revelation engine: each one makes a different kind of truth leak.** Choose the premise whose leak pattern serves this character:
 
-| Premise                  | Situation                                            | What it reveals                                                          |
-| ------------------------ | ----------------------------------------------------- | ------------------------------------------------------------------------- |
-| **Neutral camera**       | Alone, no interviewer, no audience                    | Baseline self-presentation; what they volunteer vs. trim                  |
-| **Interview**            | An unseen questioner asks; questions may be implied   | Deflection style, what offends them, where they push back                 |
-| **Diary / private notes**| Believes no one will read it                          | Self-deception with the mask half-off; what they admit only sideways      |
-| **Letter**               | Written to one specific person                        | Relationship performance; what this bond makes them exaggerate or hide    |
-| **Public profile / SNS** | Knows everyone will see it                            | The constructed brand — and the gap between it and every other surface    |
-| **Broadcast**            | Streamer/idol persona, live audience                  | Audience-management reflexes; the persona's seams under interaction       |
-| **Interrogation**        | Hostile questioner, stakes attached                   | What they protect at cost; the order in which defenses fall               |
+| Premise                   | Situation                                           | What it reveals                                                        |
+| ------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Neutral camera**        | Alone, no interviewer, no audience                  | Baseline self-presentation; what they volunteer vs. trim               |
+| **Interview**             | An unseen questioner asks; questions may be implied | Deflection style, what offends them, where they push back              |
+| **Diary / private notes** | Believes no one will read it                        | Self-deception with the mask half-off; what they admit only sideways   |
+| **Letter**                | Written to one specific person                      | Relationship performance; what this bond makes them exaggerate or hide |
+| **Public profile / SNS**  | Knows everyone will see it                          | The constructed brand — and the gap between it and every other surface |
+| **Broadcast**             | Streamer/idol persona, live audience                | Audience-management reflexes; the persona's seams under interaction    |
+| **Interrogation**         | Hostile questioner, stakes attached                 | What they protect at cost; the order in which defenses fall            |
 
 The neutral-camera defaults below still apply to whichever premise is chosen: the premise controls how much the character reveals, dodges, embellishes, or refuses.
 
-**Unreliable narrator mode (optional, any premise):** the entire introduction may be a constructed lie — a con artist's cover, a delusion, conditioning. Then design two things: the lie's internal consistency rules (a good liar is *more* coherent than an honest person), and where the truth lives instead (lorebook, gated reveals). The sheet itself never winks.
+**Unreliable narrator mode (optional, any premise):** the entire introduction may be a constructed lie — a con artist's cover, a delusion, conditioning. Then design two things: the lie's internal consistency rules (a good liar is _more_ coherent than an honest person), and where the truth lives instead (lorebook, gated reveals). The sheet itself never winks.
 
 ### Step 4 - Preserve strategic gaps
 
@@ -117,7 +117,7 @@ The method weakens if the sheet reads like a sealed compliance target.
 
 ### Step 5.5 - Translation survival
 
-The monologue's personality lives in register nuance — formality, hedging, bluntness — which must survive the output translation layer. Encode address forms and formality states explicitly (see `SPEECH_SYSTEM.md` §7 in `authoring-characters`) and ship a translation guide (`writing-translation-guides`). A monologue whose entire charm is its tone is the artifact *most* damaged by an unmanaged translation.
+The monologue's personality lives in register nuance — formality, hedging, bluntness — which must survive the output translation layer. Encode address forms and formality states explicitly (see `SPEECH_SYSTEM.md` §7 in `authoring-characters`) and ship a translation guide (`writing-translation-guides`). A monologue whose entire charm is its tone is the artifact _most_ damaged by an unmanaged translation.
 
 ### Step 5.6 - Ensemble use (multiple sheets in one bot)
 
