@@ -30,6 +30,7 @@ related_tools:
 - **Output/validation contract:** route inspect/read/search/preview/apply workflows through facade tools first when covered, state any granular fallback reason in one line of the final task summary, carry stale-index guards, use preview/dry-run support for risky edits, and avoid generic field dumps for structured surfaces.
 
 This skill is about **tool choice**, not syntax. Read it before making broad edits.
+Workflow routing coverage is guarded by `src/lib/mcp-agent-workflow-eval.test.ts`; keep this guide synchronized with that matrix when tool-choice rules change.
 
 ## Quick Read Rules
 

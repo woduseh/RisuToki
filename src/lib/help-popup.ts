@@ -125,8 +125,7 @@ export function showHelpPopup(): void {
     <div class="help-shortcut"><span>Codex 시작</span><span>터미널 메뉴</span></div>
 
     <h3>🔘 터미널 헤더 버튼</h3>
-    <div class="help-shortcut"><span>🐰 RP 모드</span><span>클릭: AI CLI에 캐릭터 말투 적용</span></div>
-    <div class="help-shortcut"><span>🔇 BGM</span><span>클릭: ON/OFF, 우클릭: 파일 변경</span></div>
+    <div class="help-shortcut"><span>🐰 RP 모드 / 🔇 BGM</span><span>설정(⚙) 모달에서 변경</span></div>
     <div class="help-shortcut"><span>🖼 배경</span><span>터미널 배경 이미지 설정</span></div>
     <div class="help-shortcut"><span>━ 토글</span><span>터미널 표시/숨김</span></div>
 
@@ -136,7 +135,7 @@ export function showHelpPopup(): void {
     <div class="help-shortcut"><span>사이드바 위치</span><span>보기 메뉴</span></div>
     <div class="help-shortcut"><span>터미널 위치</span><span>보기 메뉴</span></div>
     <div class="help-shortcut"><span>아바타 우클릭</span><span>이미지 수동 변경</span></div>
-    <div class="help-shortcut"><span>다크 모드</span><span>보기 메뉴 → 다크 모드 토글</span></div>
+    <div class="help-shortcut"><span>앱 테마</span><span>설정 → 앱 테마 (색상·마스코트)</span></div>
 
     <h3>🔧 편집 항목 안내</h3>
     <div class="help-shortcut"><span>Lua</span><span>트리거 스크립트 (게임 로직)</span></div>

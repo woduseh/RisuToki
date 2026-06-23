@@ -63,6 +63,9 @@ export function createTreeItem(label: string, icon: string, indent: number): HTM
   const el = document.createElement('div');
   el.className = `tree-item indent-${indent}`;
   el.dataset.label = label;
+  // Long names (e.g. full reference paths like bot/…_시뮬봇.md) truncate with
+  // ellipsis; expose the full label on hover.
+  el.title = label;
 
   const iconSpan = document.createElement('span');
   iconSpan.className = 'icon';
@@ -83,6 +86,7 @@ const _expandedFolders = new Set<string>();
 export function createFolderItem(label: string, icon: string, indent: number): FolderItemResult {
   const header = document.createElement('div');
   header.className = `tree-item indent-${indent}`;
+  header.title = label;
 
   const arrow = document.createElement('span');
   arrow.className = 'arrow';

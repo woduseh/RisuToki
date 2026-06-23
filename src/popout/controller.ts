@@ -1,10 +1,5 @@
 import PreviewEngine from '../lib/preview-engine';
-import {
-  getDefaultRpModeForThemeId,
-  readAppSettingsSnapshot,
-  subscribeToAppSettings,
-  writeRpMode,
-} from '../lib/app-settings';
+import { readAppSettingsSnapshot, subscribeToAppSettings } from '../lib/app-settings';
 import type { AppSettingsSnapshot } from '../lib/app-settings';
 import { createDirectTerminalChatSession } from '../lib/chat-session';
 import { getTalkTitle, toMediaAsset } from '../lib/asset-runtime';
@@ -113,7 +108,6 @@ async function buildTerminalPopout(): Promise<void> {
   `;
   root.appendChild(header);
   const actions = header.querySelector('.momo-header-right');
-  actions?.appendChild(createPopoutActionButton('🐰', { id: 'btn-rp-mode', title: 'RP 모드 (토키 말투)' }));
   actions?.appendChild(createPopoutActionButton('💭', { id: 'btn-chat-mode', title: '채팅 모드' }));
   actions?.appendChild(createPopoutActionButton('🖼', { id: 'btn-terminal-bg', title: '배경 이미지' }));
   actions?.appendChild(
@@ -197,7 +191,8 @@ const popoutChatSession = createDirectTerminalChatSession({
 
 async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): Promise<() => void> {
   let terminalUi: TerminalUiHandle | null = null;
-  let disposeRpModeSubscription: (() => void) | null = null;
+  let disposeSettingsSubscription: (() => void) | null = null;
+  const sessionId = window.popoutAPI.getRequestId() || 'default';
 
   const chatModeButton = document.getElementById('btn-chat-mode');
   const backgroundButton = document.getElementById('btn-terminal-bg');
@@ -209,13 +204,22 @@ async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): P
   try {
     terminalUi = await initializeTerminalUi({
       api: {
-        onTerminalData: (callback) => window.popoutAPI.onTerminalData(callback),
-        onTerminalExit: (callback) => window.popoutAPI.onTerminalExit(callback),
-        onTerminalStatus: (callback) => window.popoutAPI.onTerminalStatus(callback),
-        terminalInput: (data) => window.popoutAPI.terminalInput(data),
-        terminalIsRunning: () => window.popoutAPI.terminalIsRunning(),
-        terminalResize: (cols, rows) => window.popoutAPI.terminalResize(cols, rows),
-        terminalStart: (cols, rows) => window.popoutAPI.terminalStart(cols, rows),
+        onTerminalData: (callback) =>
+          window.popoutAPI.onTerminalDataSession((eventSessionId, data) => {
+            if (eventSessionId === sessionId) callback(data);
+          }),
+        onTerminalExit: (callback) =>
+          window.popoutAPI.onTerminalExitSession((eventSessionId) => {
+            if (eventSessionId === sessionId) callback();
+          }),
+        onTerminalStatus: (callback) =>
+          window.popoutAPI.onTerminalStatusSession((eventSessionId, event) => {
+            if (eventSessionId === sessionId) callback(event);
+          }),
+        terminalInput: (data) => window.popoutAPI.terminalInputSession(sessionId, data),
+        terminalIsRunning: () => window.popoutAPI.terminalIsSessionRunning(sessionId),
+        terminalResize: (cols, rows) => window.popoutAPI.terminalResizeSession(sessionId, cols, rows),
+        terminalStart: (cols, rows) => window.popoutAPI.terminalStartSession(sessionId, cols, rows, 'Shell'),
       },
       container,
       onTerminalData: (data) => {
@@ -233,8 +237,7 @@ async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): P
     // --- Build chat view (overlay inside termWrap) ---
     buildPopoutChatView(termWrap);
 
-    // --- Wire RP mode button ---
-    disposeRpModeSubscription = initPopoutRpMode();
+    disposeSettingsSubscription = initPopoutSettingsSync();
 
     // --- Wire chat mode button ---
     chatModeButton?.addEventListener('click', handleChatModeClick);
@@ -245,13 +248,13 @@ async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): P
     return () => {
       chatModeButton?.removeEventListener('click', handleChatModeClick);
       backgroundButton?.removeEventListener('click', handleBackgroundClick);
-      disposeRpModeSubscription?.();
+      disposeSettingsSubscription?.();
       terminalUi?.dispose();
       popoutTerm = null;
       popoutFitAddon = null;
     };
   } catch (error) {
-    disposeRpModeSubscription?.();
+    disposeSettingsSubscription?.();
     terminalUi?.dispose();
     popoutTerm = null;
     popoutFitAddon = null;
@@ -259,48 +262,21 @@ async function initPopoutXterm(container: HTMLElement, termWrap: HTMLElement): P
   }
 }
 
-// ==================== RP Mode (shared via localStorage) ====================
-
-function initPopoutRpMode(): () => void {
-  const btn = document.getElementById('btn-rp-mode');
-  if (!btn) return () => {};
-
-  let snapshot = readAppSettingsSnapshot();
-  updatePopoutRpStyle(btn, snapshot.rpMode !== 'off');
-
-  const handleClick = () => {
-    snapshot = readAppSettingsSnapshot();
-    const nextMode =
-      snapshot.rpMode === 'off' ? getDefaultRpModeForThemeId(snapshot.themeId, snapshot.customTheme) : 'off';
-    writeRpMode(nextMode);
-    updatePopoutRpStyle(btn, nextMode !== 'off');
-  };
-  btn.addEventListener('click', handleClick);
-
+// Keep a detached terminal synchronized with the persisted app theme. RP mode
+// remains settings-only and has no duplicate header control here.
+function initPopoutSettingsSync(): () => void {
   const disposeSettingsSubscription = subscribeToAppSettings((nextSnapshot: AppSettingsSnapshot) => {
-    snapshot = nextSnapshot;
     currentSettingsSnapshot = nextSnapshot;
-    applyPopoutDarkMode(snapshot);
+    applyPopoutDarkMode(nextSnapshot);
     const titleEl = document.querySelector('.momo-title');
     if (titleEl) {
-      titleEl.textContent = getTheme(snapshot.themeId, snapshot.customTheme).talkTitle;
+      titleEl.textContent = getTheme(nextSnapshot.themeId, nextSnapshot.customTheme).talkTitle;
     }
     if (popoutTerm) {
       popoutTerm.options.theme = getPopoutTerminalTheme();
     }
-    updatePopoutRpStyle(btn, snapshot.rpMode !== 'off');
   });
-
-  return () => {
-    btn.removeEventListener('click', handleClick);
-    disposeSettingsSubscription();
-  };
-}
-
-function updatePopoutRpStyle(btn: HTMLElement, active: boolean, rpMode = readAppSettingsSnapshot().rpMode): void {
-  const label = rpMode === 'aris' ? '아리스' : rpMode === 'custom' ? '커스텀' : '토키';
-  setPopoutButtonActive(btn, active);
-  btn.title = active ? `RP 모드 ON (${label})` : 'RP 모드 OFF';
+  return disposeSettingsSubscription;
 }
 
 // ==================== Avatar State ====================
@@ -405,9 +381,9 @@ function popoutChatSend(): void {
   popoutChatSession.send(text);
   renderPopoutChat();
 
-  window.popoutAPI.terminalInput(text);
+  window.popoutAPI.terminalInputSession(window.popoutAPI.getRequestId() || 'default', text);
   setTimeout(() => {
-    window.popoutAPI.terminalInput('\r');
+    window.popoutAPI.terminalInputSession(window.popoutAPI.getRequestId() || 'default', '\r');
   }, 50);
 }
 
@@ -459,8 +435,9 @@ function renderPopoutChat(): void {
 function sendPopoutChoice(value: string): void {
   popoutChatSession.selectChoice(value);
   renderPopoutChat();
-  window.popoutAPI.terminalInput(value);
-  setTimeout(() => window.popoutAPI.terminalInput('\r'), 50);
+  const sessionId = window.popoutAPI.getRequestId() || 'default';
+  window.popoutAPI.terminalInputSession(sessionId, value);
+  setTimeout(() => window.popoutAPI.terminalInputSession(sessionId, '\r'), 50);
 }
 
 // ==================== Sidebar Popout (MomoTalk style) ====================

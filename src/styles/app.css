@@ -731,13 +731,36 @@ body {
   box-shadow: var(--panel-shadow);
 }
 
-#editor-tabs {
+#editor-header {
   display: flex;
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-color);
   min-height: 32px;
-  overflow-x: auto;
   border-radius: var(--radius) var(--radius) 0 0;
+}
+
+#editor-tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+#editor-mode-toggle {
+  flex: none;
+  margin: 4px 6px;
+  padding: 0 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+#editor-mode-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
 }
 
 .editor-tab {
@@ -778,6 +801,15 @@ body {
 .editor-tab .modified {
   color: var(--pink);
   margin-left: 4px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* Unsaved tabs get a pink accent bar along the top edge so they stand out at a
+   glance. The active tab's accent sits on the bottom edge, so both can show
+   together without conflicting. */
+.editor-tab.is-modified {
+  box-shadow: inset 0 2px 0 var(--pink);
 }
 
 #editor-container {
@@ -1015,11 +1047,117 @@ body {
   cursor: pointer;
 }
 
+.module-settings-form .form-editor-body {
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.module-description-row {
+  align-items: flex-start;
+}
+
+.module-description-row textarea {
+  min-height: 150px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.module-settings-switches,
+.lore-activation-switches {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.module-settings-switch-row,
+.lore-activation-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+
+.app-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .manager-icon-btn:hover,
 .manager-icon-btn.active {
   background: var(--accent);
   border-color: var(--accent);
   color: white;
+}
+
+.manager-primary-action {
+  min-width: max-content;
+  padding-inline: 10px;
+  font-weight: 700;
+}
+
+.manager-drag-handle {
+  flex: none;
+  width: 16px;
+  color: var(--text-secondary);
+  cursor: grab;
+  user-select: none;
+  text-align: center;
+  letter-spacing: -3px;
+}
+
+.manager-drag-handle:active {
+  cursor: grabbing;
+}
+
+.manager-drag-handle.disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.manager-inline-rename {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  padding: 2px 4px;
+}
+
+.manager-inline-error {
+  margin-top: 3px;
+  color: var(--danger, #d83b3b);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.manager-folder-picker {
+  width: 100%;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+}
+
+.manager-folder-picker-title {
+  margin-bottom: 5px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.manager-folder-picker-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.manager-selected-bar:has(.manager-folder-picker) {
+  flex-wrap: wrap;
 }
 
 .manager-filter-row {
@@ -1048,6 +1186,35 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Collapsible wrapper around the (dense) prompt filter rows. */
+.prompt-manager-filters > summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  padding: 4px 6px;
+}
+
+.prompt-manager-filters > summary::-webkit-details-marker {
+  display: none;
+}
+
+.prompt-manager-filters > summary::before {
+  content: '▸';
+  margin-right: 5px;
+  font-size: 9px;
+}
+
+.prompt-manager-filters[open] > summary::before {
+  content: '▾';
+}
+
+.prompt-manager-filters[open] > summary {
+  margin-bottom: 6px;
 }
 
 .manager-filter-section {
@@ -1126,6 +1293,50 @@ body {
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 700;
+}
+
+.manager-folder-label {
+  border-radius: var(--radius-sm);
+  cursor: text;
+  padding: 1px 3px;
+}
+
+.manager-folder-label:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text-highlight);
+}
+
+.manager-asset-name {
+  display: -webkit-box;
+  min-height: 2.5em;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* Flat (folder-free) lorebook lists are drag-reorderable. */
+.manager-lore-list-sortable .manager-lore-row {
+  cursor: grab;
+}
+
+.manager-lore-list-sortable .manager-lore-row:active {
+  cursor: grabbing;
+}
+
+/* Inline rename field shown in place of a lorebook row title. */
+.manager-inline-rename {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 1px 4px;
 }
 
 .manager-folder-children {
@@ -1421,6 +1632,71 @@ body {
   background: rgba(255, 255, 255, 0.35);
 }
 
+.terminal-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 4px 6px 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-shrink: 0;
+}
+
+.terminal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 96px;
+  max-width: 180px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-color);
+  border-bottom-color: transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.terminal-tab.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.terminal-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-tab-close,
+.terminal-tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex: none;
+}
+
+.terminal-tab-close:hover,
+.terminal-tab-add:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
 #terminal-container {
   flex: 1;
   overflow: hidden;
@@ -1428,6 +1704,16 @@ body {
   background: var(--bg-secondary);
   position: relative;
   z-index: 1;
+}
+
+.terminal-session {
+  display: none;
+  width: 100%;
+  height: 100%;
+}
+
+.terminal-session.active {
+  display: block;
 }
 
 /* Chromatic/animated background support */
@@ -1495,11 +1781,26 @@ body {
 }
 
 #status-text {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+#statusbar:not(.has-message) #status-text {
+  display: none;
+}
+
+#status-stats {
+  flex: 0 1 auto;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
 }
 
 #status-dismiss {
@@ -1831,6 +2132,160 @@ body {
   justify-content: center;
   background: rgba(10, 15, 26, 0.55);
   z-index: 3000;
+}
+
+/* ---- Markdown document preview ---- */
+.md-preview-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(860px, 92vw);
+  height: min(88vh, 1000px);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: var(--panel-shadow);
+  overflow: hidden;
+}
+
+.md-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.md-preview-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-preview-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.md-preview-close:hover {
+  color: var(--pink);
+  background: var(--bg-hover);
+}
+
+.md-preview-content {
+  flex: 1;
+  overflow: auto;
+  padding: 18px 24px;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  margin: 1.2em 0 0.5em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.markdown-body h1 {
+  font-size: 1.6em;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.25em;
+}
+
+.markdown-body h2 {
+  font-size: 1.35em;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.2em;
+}
+
+.markdown-body h3 {
+  font-size: 1.15em;
+}
+
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body blockquote,
+.markdown-body table,
+.markdown-body pre {
+  margin: 0.6em 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.5em;
+}
+
+.markdown-body a {
+  color: var(--accent);
+}
+
+.markdown-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--bg-tertiary);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+
+.markdown-body pre {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  overflow: auto;
+}
+
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  color: var(--text-secondary);
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  display: block;
+  overflow: auto;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border-color);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--bg-secondary);
+}
+
+.markdown-body img {
+  max-width: 100%;
+}
+
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  margin: 1.2em 0;
 }
 
 .preview-panel {
@@ -2166,6 +2621,11 @@ body {
 }
 .settings-row:last-child {
   border-bottom: none;
+}
+.settings-inline-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .settings-row .settings-label {
   font-size: 13px;
@@ -2643,6 +3103,17 @@ body {
 .prompt-editor-drag-handle:active,
 .prompt-order-drag-handle:active,
 .toggle-template-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* When the prompt-manager list is reorderable, rows show a grab affordance.
+   Clicks without movement still open the block (SortableJS distinguishes the
+   two), and the checkbox/action buttons keep their own cursors. */
+.prompt-manager-list-sortable .prompt-manager-row {
+  cursor: grab;
+}
+
+.prompt-manager-list-sortable .prompt-manager-row:active {
   cursor: grabbing;
 }
 
@@ -3152,6 +3623,15 @@ body.dark-mode {
 body.dark-mode .sidebar-header {
   background: linear-gradient(180deg, var(--accent-light) 0%, var(--bg-secondary) 100%);
   border-bottom-color: var(--accent-light);
+}
+
+/* The menubar background is an --accent gradient, which stays bright blue in
+   dark mode (--accent is unchanged). Give it a dark surface gradient so it no
+   longer clashes with the darkened editor and panels. White label text and the
+   translucent hover/open states remain legible. */
+body.dark-mode #menubar {
+  background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
+  border-bottom-color: var(--border-color);
 }
 
 body.dark-mode #terminal-header {

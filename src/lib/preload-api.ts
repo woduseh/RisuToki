@@ -12,6 +12,8 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     extractDocumentToProject: () => ipcRenderer.invoke('extract-document-to-project'),
     extractCharxToProject: () => ipcRenderer.invoke('extract-document-to-project'),
     openProjectFolder: () => ipcRenderer.invoke('open-project-folder'),
+    openProjectFolderPath: (projectPath) => ipcRenderer.invoke('open-project-folder-path', projectPath),
+    cloneProjectFolder: () => ipcRenderer.invoke('clone-project-folder'),
     reloadProjectFolder: () => ipcRenderer.invoke('reload-project-folder'),
     saveProjectFolder: (updatedFields) => ipcRenderer.invoke('save-project-folder', updatedFields),
     reassembleProjectDocument: (updatedFields) => ipcRenderer.invoke('reassemble-project-document', updatedFields),
@@ -34,6 +36,16 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     getCwd: () => ipcRenderer.invoke('get-cwd'),
     setTerminalCwd: (cwd) => ipcRenderer.invoke('set-terminal-cwd', cwd),
     terminalStart: (cols, rows) => ipcRenderer.invoke('terminal-start', cols, rows),
+    terminalNewSession: (name) => ipcRenderer.invoke('terminal-new-session', name),
+    terminalStartSession: (sessionId, cols, rows, name) =>
+      ipcRenderer.invoke('terminal-start-session', sessionId, cols, rows, name),
+    terminalInputSession: (sessionId, data) => ipcRenderer.send('terminal-input-session', sessionId, data),
+    terminalResizeSession: (sessionId, cols, rows) =>
+      ipcRenderer.send('terminal-resize-session', sessionId, cols, rows),
+    terminalStopSession: (sessionId) => ipcRenderer.invoke('terminal-stop-session', sessionId),
+    terminalListSessions: () => ipcRenderer.invoke('terminal-list-sessions'),
+    terminalRenameSession: (sessionId, name) => ipcRenderer.invoke('terminal-rename-session', sessionId, name),
+    terminalIsSessionRunning: (sessionId) => ipcRenderer.invoke('terminal-is-session-running', sessionId),
     terminalIsRunning: () => ipcRenderer.invoke('terminal-is-running'),
     terminalInput: (data) => ipcRenderer.send('terminal-input', data),
     terminalResize: (cols, rows) => ipcRenderer.send('terminal-resize', cols, rows),
@@ -41,11 +53,26 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     onTerminalData: (cb) => {
       ipcRenderer.on('terminal-data', (_event, data: string) => cb(data));
     },
+    onTerminalDataSession: (cb) => {
+      const listener = (_event: unknown, sessionId: string, data: string) => cb(sessionId, data);
+      ipcRenderer.on('terminal-data-session', listener);
+      return () => ipcRenderer.removeListener('terminal-data-session', listener);
+    },
     onTerminalExit: (cb) => {
       ipcRenderer.on('terminal-exit', () => cb());
     },
+    onTerminalExitSession: (cb) => {
+      const listener = (_event: unknown, sessionId: string) => cb(sessionId);
+      ipcRenderer.on('terminal-exit-session', listener);
+      return () => ipcRenderer.removeListener('terminal-exit-session', listener);
+    },
     onTerminalStatus: (cb) => {
       ipcRenderer.on('terminal-status', (_event, event: TokiTerminalStatus) => cb(event));
+    },
+    onTerminalStatusSession: (cb) => {
+      const listener = (_event: unknown, sessionId: string, event: TokiTerminalStatus) => cb(sessionId, event);
+      ipcRenderer.on('terminal-status-session', listener);
+      return () => ipcRenderer.removeListener('terminal-status-session', listener);
     },
     getClaudePrompt: () => ipcRenderer.invoke('get-claude-prompt'),
     getMcpInfo: () => ipcRenderer.invoke('get-mcp-info'),
@@ -93,6 +120,7 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     deleteAsset: (assetPath) => ipcRenderer.invoke('delete-asset', assetPath),
     deleteAssets: (assetPaths) => ipcRenderer.invoke('delete-assets', assetPaths),
     renameAsset: (oldPath, newName) => ipcRenderer.invoke('rename-asset', oldPath, newName),
+    renameAssetsBatch: (operations) => ipcRenderer.invoke('rename-assets-batch', operations),
     reorderAsset: (fromPath, toIdx) => ipcRenderer.invoke('reorder-asset', fromPath, toIdx),
     compressAssetsWebp: (opts) => ipcRenderer.invoke('compress-assets-webp', opts),
     exportLorebook: (opts) => ipcRenderer.invoke('export-lorebook', opts),
@@ -113,6 +141,7 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     pickBgImage: () => ipcRenderer.invoke('pick-bg-image'),
     pickBgm: () => ipcRenderer.invoke('pick-bgm'),
     openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
+    openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
     getAutosaveInfo: (customDir) => ipcRenderer.invoke('get-autosave-info', customDir),
     pickAutosaveDir: () => ipcRenderer.invoke('pick-autosave-dir'),
     getPendingSessionRecovery: () => ipcRenderer.invoke('get-pending-session-recovery'),

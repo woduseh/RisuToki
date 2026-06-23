@@ -51,6 +51,16 @@ export interface AppSettingsSnapshot {
   layoutState: StoredLayoutState | null;
 }
 
+export type RecentItemKind = 'file' | 'project';
+export type RecentSourceFormat = 'charx' | 'risum' | 'risup' | 'png' | 'json' | 'jpg' | 'jpeg';
+
+export interface RecentItem {
+  kind: RecentItemKind;
+  path: string;
+  sourceFormat?: RecentSourceFormat;
+  openedAt: number;
+}
+
 interface SettingsEventTarget {
   addEventListener(type: 'storage', listener: (event: StorageEvent) => void): void;
   removeEventListener(type: 'storage', listener: (event: StorageEvent) => void): void;
@@ -69,10 +79,12 @@ export const STORAGE_KEYS = {
   layoutState: 'toki-layout-state',
   rpCustom: 'toki-rp-custom',
   rpMode: 'toki-rp-mode',
+  recentItems: 'toki-recent-items',
   themeId: 'toki-theme-id',
 } as const;
 
 export const DEFAULT_AUTOSAVE_INTERVAL = 60_000;
+export const MAX_RECENT_ITEMS = 10;
 
 function getDefaultStorage(storage?: StorageLike): StorageLike {
   if (storage) return storage;
@@ -86,6 +98,53 @@ function parseBoolean(value: string | null): boolean {
 function parseInteger(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value || '', 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeRecentFormat(value: unknown): RecentSourceFormat | undefined {
+  if (
+    value === 'charx' ||
+    value === 'risum' ||
+    value === 'risup' ||
+    value === 'png' ||
+    value === 'json' ||
+    value === 'jpg' ||
+    value === 'jpeg'
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeRecentItem(value: unknown): RecentItem | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const kind = record.kind === 'project' ? 'project' : record.kind === 'file' ? 'file' : null;
+  if (!kind || typeof record.path !== 'string' || !record.path.trim()) return null;
+  const openedAt = typeof record.openedAt === 'number' && Number.isFinite(record.openedAt) ? record.openedAt : 0;
+  const sourceFormat = normalizeRecentFormat(record.sourceFormat);
+  return {
+    kind,
+    path: record.path,
+    ...(sourceFormat ? { sourceFormat } : {}),
+    openedAt,
+  };
+}
+
+function recentIdentity(itemOrPath: RecentItem | string): string {
+  const path = typeof itemOrPath === 'string' ? itemOrPath : itemOrPath.path;
+  return path.trim().toLowerCase();
+}
+
+function normalizeRecentItems(items: unknown[]): RecentItem[] {
+  const deduped: RecentItem[] = [];
+  const seen = new Set<string>();
+  for (const item of items.map(normalizeRecentItem).filter((entry): entry is RecentItem => !!entry)) {
+    const identity = recentIdentity(item);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    deduped.push(item);
+  }
+  return deduped.sort((a, b) => b.openedAt - a.openedAt).slice(0, MAX_RECENT_ITEMS);
 }
 
 export function getDefaultRpModeForDarkMode(darkMode: boolean): RpMode {
@@ -134,6 +193,50 @@ export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnaps
 
 export function readStoredLayoutState(storage?: StorageLike): StoredLayoutState | null {
   return parseStoredJson(getDefaultStorage(storage).getItem(STORAGE_KEYS.layoutState), storedLayoutStateSchema);
+}
+
+export function readRecentItems(storage?: StorageLike): RecentItem[] {
+  const raw = getDefaultStorage(storage).getItem(STORAGE_KEYS.recentItems);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? normalizeRecentItems(parsed) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writeRecentItems(items: RecentItem[], storage?: StorageLike): RecentItem[] {
+  const target = getDefaultStorage(storage);
+  const normalized = normalizeRecentItems(items);
+  target.setItem(STORAGE_KEYS.recentItems, JSON.stringify(normalized));
+  return normalized;
+}
+
+export function addRecentItem(
+  item: Omit<RecentItem, 'openedAt'> & { openedAt?: number },
+  storage?: StorageLike,
+): RecentItem[] {
+  const target = getDefaultStorage(storage);
+  const nextItem = normalizeRecentItem({ ...item, openedAt: item.openedAt ?? Date.now() });
+  if (!nextItem) return readRecentItems(target);
+  const next = [
+    nextItem,
+    ...readRecentItems(target).filter((entry) => recentIdentity(entry) !== recentIdentity(nextItem)),
+  ];
+  return writeRecentItems(next, target);
+}
+
+export function removeRecentItem(path: string, storage?: StorageLike): RecentItem[] {
+  const target = getDefaultStorage(storage);
+  return writeRecentItems(
+    readRecentItems(target).filter((entry) => recentIdentity(entry) !== recentIdentity(path)),
+    target,
+  );
+}
+
+export function clearRecentItems(storage?: StorageLike): void {
+  getDefaultStorage(storage).removeItem(STORAGE_KEYS.recentItems);
 }
 
 export function subscribeToAppSettings(

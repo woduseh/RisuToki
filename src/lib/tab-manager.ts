@@ -9,6 +9,8 @@ export interface Tab {
   getValue: () => unknown;
   setValue: ((value: unknown) => void) | null;
   _lastValue: unknown;
+  editorKind?: 'prose' | 'code';
+  editorView?: 'simple' | 'code';
   [key: string]: unknown;
 }
 
@@ -25,6 +27,8 @@ export interface TabManagerCallbacks {
   onPopOutTab(tabId: string): void;
   /** Return true if the language represents a form tab (non-Monaco) */
   isFormTabType(language: string): boolean;
+  /** Called after tab state is rendered or otherwise changes. */
+  onTabsRendered?(): void;
 }
 
 type CloseTabConfirmationHandler = (tabId: string) => boolean | Promise<boolean>;
@@ -56,10 +60,11 @@ export class TabManager {
     language: string,
     getValue: () => unknown,
     setValue: ((value: unknown) => void) | null,
+    options?: Pick<Tab, 'editorKind' | 'editorView'>,
   ): Tab {
     let tab = this.tabIndex.get(id);
     if (!tab) {
-      tab = { id, label, language, getValue, setValue, _lastValue: null };
+      tab = { id, label, language, getValue, setValue, _lastValue: null, ...options };
       this.openTabs.push(tab);
       this.tabIndex.set(id, tab);
     } else {
@@ -67,6 +72,7 @@ export class TabManager {
       tab.language = language;
       tab.getValue = getValue;
       tab.setValue = setValue;
+      if (options) Object.assign(tab, options);
     }
     this.callbacks.onActivateTab(tab);
     return tab;
@@ -197,7 +203,10 @@ export class TabManager {
 
   renderTabs(): void {
     const tabBar = document.getElementById(this.tabBarId);
-    if (!tabBar) return;
+    if (!tabBar) {
+      this.callbacks.onTabsRendered?.();
+      return;
+    }
     tabBar.innerHTML = '';
 
     for (let i = 0; i < this.openTabs.length; i++) {
@@ -235,9 +244,13 @@ export class TabManager {
       el.appendChild(labelSpan);
 
       if (this.dirtyFields.has(tab.id)) {
+        el.classList.add('is-modified');
+        el.title = `${tab.label} — 저장되지 않음`;
         const dot = document.createElement('span');
         dot.className = 'modified';
         dot.textContent = '●';
+        dot.title = '저장되지 않음';
+        dot.setAttribute('aria-label', '저장되지 않음');
         el.appendChild(dot);
       }
 
@@ -268,5 +281,6 @@ export class TabManager {
       el.addEventListener('click', () => this.callbacks.onActivateTab(tab));
       tabBar.appendChild(el);
     }
+    this.callbacks.onTabsRendered?.();
   }
 }

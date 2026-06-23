@@ -6,6 +6,7 @@ import {
   type CustomThemePalette,
   type ThemeId,
 } from './theme-registry';
+import { createSwitchControl } from './switch-control';
 
 /**
  * Settings popup dialog.
@@ -19,7 +20,6 @@ export interface SettingsState {
   autosaveEnabled: boolean;
   autosaveInterval: number;
   autosaveDir: string;
-  darkMode: boolean;
   themeId: ThemeId;
   customTheme: CustomThemePalette | null;
   bgmEnabled: boolean;
@@ -33,10 +33,10 @@ export interface SettingsCallbacks {
   onPickAutosaveDir(): Promise<string | null>;
   onResetAutosaveDir(): void;
   onOpenAutosaveDir(): Promise<void>;
-  onDarkModeToggle(): void;
   onThemeChange(themeId: ThemeId): void;
   onCustomThemeChange(theme: CustomThemePalette | null): void;
   onBgmToggle(enabled: boolean): void;
+  onPickBgm(): Promise<string | null>;
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
   onOpenPersonaTab(name: string): Promise<void>;
@@ -89,11 +89,8 @@ function trapTabKey(event: KeyboardEvent, dialog: HTMLElement): void {
   }
 }
 
-function createToggle(isOn: boolean): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.className = 'settings-toggle' + (isOn ? ' on' : '');
-  btn.addEventListener('click', () => btn.classList.toggle('on'));
-  return btn;
+function createToggle(isOn: boolean, label: string): HTMLButtonElement {
+  return createSwitchControl({ checked: isOn, label });
 }
 
 export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallbacks): void {
@@ -139,7 +136,7 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   const autoLeft = document.createElement('div');
   autoLeft.innerHTML =
     '<div class="settings-label">자동 저장</div><div class="settings-desc">일정 간격으로 임시 파일에 저장</div>';
-  const autoToggle = createToggle(state.autosaveEnabled);
+  const autoToggle = createToggle(state.autosaveEnabled, '자동 저장');
   autoToggle.addEventListener('click', () => {
     callbacks.onAutosaveToggle(autoToggle.classList.contains('on'));
   });
@@ -222,7 +219,7 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   themeRow.className = 'settings-row';
   const themeLeft = document.createElement('div');
   themeLeft.innerHTML =
-    '<div class="settings-label">테마</div><div class="settings-desc">프리셋 또는 커스텀 팔레트</div>';
+    '<div class="settings-label">앱 테마 (색상·마스코트)</div><div class="settings-desc">외형은 이 선택기에서 통합 관리됩니다</div>';
   const themeSelect = document.createElement('select');
   themeSelect.className = 'settings-select';
   const themeOptions = [
@@ -314,12 +311,21 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   const bgmLeft = document.createElement('div');
   bgmLeft.innerHTML =
     '<div class="settings-label">BGM</div><div class="settings-desc">터미널 응답 시 배경음악 재생</div>';
-  const bgmToggle = createToggle(state.bgmEnabled);
+  const bgmToggle = createToggle(state.bgmEnabled, 'BGM');
   bgmToggle.addEventListener('click', () => {
     callbacks.onBgmToggle(bgmToggle.classList.contains('on'));
   });
+  const bgmControls = document.createElement('div');
+  bgmControls.className = 'settings-inline-controls';
+  const bgmPickBtn = document.createElement('button');
+  bgmPickBtn.className = 'settings-btn';
+  bgmPickBtn.type = 'button';
+  bgmPickBtn.textContent = '파일 선택';
+  bgmPickBtn.title = 'BGM 파일 변경';
+  bgmPickBtn.addEventListener('click', () => void callbacks.onPickBgm());
+  bgmControls.append(bgmPickBtn, bgmToggle);
   bgmRow.appendChild(bgmLeft);
-  bgmRow.appendChild(bgmToggle);
+  bgmRow.appendChild(bgmControls);
   body.appendChild(bgmRow);
 
   // --- RP Mode (dropdown + custom editor) ---

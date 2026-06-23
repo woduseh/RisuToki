@@ -1397,13 +1397,17 @@ async function resolveReferenceIndex(target: FacadeV1Target): Promise<number | A
   if (target.reference_id && /^\d+$/.test(target.reference_id)) return Number(target.reference_id);
   const refs = await apiRequest('GET', '/references');
   if (isApiError(refs)) return refs;
-  const files = Array.isArray((refs as Record<string, unknown>).files)
-    ? ((refs as Record<string, unknown>).files as Array<Record<string, unknown>>)
-    : [];
+  const files = referenceEntriesFromResponse(refs);
   const index = files.findIndex((ref, i) => {
-    const candidates = [String(i), ref.id, ref.filePath, ref.file_path, ref.fileName, ref.name].filter(
-      (value): value is string => typeof value === 'string',
-    );
+    const candidates = [
+      String(i),
+      ...(typeof ref.index === 'number' ? [String(ref.index)] : []),
+      ref.id,
+      ref.filePath,
+      ref.file_path,
+      ref.fileName,
+      ref.name,
+    ].filter((value): value is string => typeof value === 'string');
     return candidates.includes(target.reference_id ?? '') || candidates.includes(target.file_path ?? '');
   });
   if (index < 0) {
@@ -1414,6 +1418,18 @@ async function resolveReferenceIndex(target: FacadeV1Target): Promise<number | A
     );
   }
   return index;
+}
+
+function referenceEntriesFromResponse(refs: unknown): Array<Record<string, unknown>> {
+  const record = asRecord(refs);
+  const entries = Array.isArray(record?.references)
+    ? record.references
+    : Array.isArray(record?.files)
+      ? record.files
+      : [];
+  return entries.filter(
+    (entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object' && !Array.isArray(entry),
+  );
 }
 
 async function readFacadeSelector(
@@ -12587,9 +12603,7 @@ server.tool(
       const refs = await apiRequest('GET', '/references');
       if (isApiError(refs)) return textResult(refs);
       const routes = [route('list_references', 'GET', '/references')];
-      const files = Array.isArray(asRecord(refs)?.files)
-        ? (asRecord(refs)?.files as Array<Record<string, unknown>>)
-        : [];
+      const files = referenceEntriesFromResponse(refs);
       if (!target.reference_id && !target.file_path) {
         return textResult(
           facadeEnvelope(

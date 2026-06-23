@@ -30,6 +30,7 @@
     "src/lib/asset-manager.ts",
     "src/lib/persona-store.ts",
     "src/lib/guides-manager.ts",
+    "src/lib/character-card-import.ts",
     "src/lib/terminal-manager.ts",
     "src/lib/ipc-confirm.ts",
     "src/lib/image-compressor.ts",

@@ -416,6 +416,47 @@ describe('importFromJson', () => {
     expect(bob!.folderName).toBe('Characters');
   });
 
+  it('should import SillyTavern world_info JSON', async () => {
+    const dir = path.join(TEST_DIR, 'import-world-info');
+    await fs.promises.mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, 'world_info.json');
+    await fs.promises.writeFile(
+      filePath,
+      JSON.stringify({
+        entries: {
+          0: {
+            comment: 'Academy',
+            key: ['academy'],
+            keysecondary: ['school'],
+            content: 'A large academy.',
+            constant: true,
+            selective: true,
+            insertion_order: 30,
+            probability: 80,
+          },
+        },
+      }),
+      'utf-8',
+    );
+
+    const imported = await importFromJson(filePath);
+
+    expect(imported).toHaveLength(1);
+    expect(imported[0]).toMatchObject({
+      comment: 'Academy',
+      data: {
+        key: 'academy',
+        secondkey: 'school',
+        content: 'A large academy.',
+        alwaysActive: true,
+        selective: true,
+        insertorder: 30,
+        activationPercent: 80,
+      },
+      sourcePath: filePath,
+    });
+  });
+
   it('should throw for non-existent file', async () => {
     await expect(importFromJson('/nonexistent/file.json')).rejects.toThrow('Source file does not exist');
   });

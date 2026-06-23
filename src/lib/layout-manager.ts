@@ -28,6 +28,7 @@ interface LayoutDomCache {
   loreManagerPanel: HTMLElement | null;
   assetManagerPanel: HTMLElement | null;
   promptManagerPanel: HTMLElement | null;
+  panelParking: HTMLElement | null;
   loreManagerExpand: HTMLElement | null;
   assetManagerExpand: HTMLElement | null;
   promptManagerExpand: HTMLElement | null;
@@ -152,6 +153,7 @@ export function createLayoutManager({
     loreManagerPanel: null,
     assetManagerPanel: null,
     promptManagerPanel: null,
+    panelParking: null,
     loreManagerExpand: null,
     assetManagerExpand: null,
     promptManagerExpand: null,
@@ -180,6 +182,59 @@ export function createLayoutManager({
 
   let refitTimer: ReturnType<typeof setTimeout> | null = null;
   let managerAvailability: ManagerAvailability = { lore: false, asset: false, prompt: false };
+  // Whether each manager currently has any items. Empty managers collapse to
+  // their expand handle so the editor reclaims the width. Defaults to true, so
+  // behaviour is unchanged until the host reports real counts via
+  // setManagerContent().
+  const managerHasContent: Record<'lore' | 'asset' | 'prompt', boolean> = {
+    lore: true,
+    asset: true,
+    prompt: true,
+  };
+  // Set when the user explicitly opens a manager that is currently empty (e.g.
+  // to add the first entry); keeps it open until it gains content or is hidden.
+  const managerForceOpenEmpty: Record<'lore' | 'asset' | 'prompt', boolean> = {
+    lore: false,
+    asset: false,
+    prompt: false,
+  };
+
+  function managerVisibleFlag(kind: 'lore' | 'asset' | 'prompt'): boolean {
+    return kind === 'lore'
+      ? state.loreManagerVisible
+      : kind === 'asset'
+        ? state.assetManagerVisible
+        : state.promptManagerVisible;
+  }
+
+  // A manager is effectively visible only when the user wants it shown AND it
+  // either has content or was explicitly force-opened while empty.
+  function managerEffectiveVisible(kind: 'lore' | 'asset' | 'prompt'): boolean {
+    if (!managerVisibleFlag(kind)) return false;
+    return managerHasContent[kind] || managerForceOpenEmpty[kind];
+  }
+
+  function setManagerVisibleFlag(kind: 'lore' | 'asset' | 'prompt', value: boolean): void {
+    if (kind === 'lore') state.loreManagerVisible = value;
+    else if (kind === 'asset') state.assetManagerVisible = value;
+    else state.promptManagerVisible = value;
+  }
+
+  function toggleManager(kind: 'lore' | 'asset' | 'prompt'): void {
+    if (!managerAvailability[kind]) return;
+    if (managerEffectiveVisible(kind)) {
+      // Currently shown → hide it and clear any empty-state override.
+      setManagerVisibleFlag(kind, false);
+      managerForceOpenEmpty[kind] = false;
+    } else {
+      // Currently collapsed (hidden by the user, or auto-collapsed because it is
+      // empty) → show it, forcing it open even when it has no items yet so the
+      // user can add the first entry.
+      setManagerVisibleFlag(kind, true);
+      if (!managerHasContent[kind]) managerForceOpenEmpty[kind] = true;
+    }
+    rebuild();
+  }
   const resizerHandlers: Partial<Record<LayoutSlot, (event: MouseEvent) => void>> = {};
   const resizerKeyHandlers: Partial<Record<LayoutSlot, (event: KeyboardEvent) => void>> = {};
 
@@ -192,6 +247,7 @@ export function createLayoutManager({
     elements.loreManagerPanel = documentRef.getElementById('lore-manager-panel');
     elements.assetManagerPanel = documentRef.getElementById('asset-manager-panel');
     elements.promptManagerPanel = documentRef.getElementById('prompt-manager-panel');
+    elements.panelParking = documentRef.getElementById('panel-parking');
     elements.loreManagerExpand = documentRef.getElementById('lore-manager-expand');
     elements.assetManagerExpand = documentRef.getElementById('asset-manager-expand');
     elements.promptManagerExpand = documentRef.getElementById('prompt-manager-expand');
@@ -329,6 +385,7 @@ export function createLayoutManager({
       loreManagerPanel,
       assetManagerPanel,
       promptManagerPanel,
+      panelParking,
       loreManagerExpand,
       assetManagerExpand,
       promptManagerExpand,
@@ -406,29 +463,32 @@ export function createLayoutManager({
     }
 
     if (loreManagerPanel) {
-      if (managerAvailability.lore && state.loreManagerVisible) {
+      if (managerAvailability.lore && managerEffectiveVisible('lore')) {
         loreManagerPanel.style.display = 'flex';
         slotContents[state.loreManagerPos].push(loreManagerPanel);
       } else {
         loreManagerPanel.style.display = 'none';
+        panelParking?.appendChild(loreManagerPanel);
       }
     }
 
     if (assetManagerPanel) {
-      if (managerAvailability.asset && state.assetManagerVisible) {
+      if (managerAvailability.asset && managerEffectiveVisible('asset')) {
         assetManagerPanel.style.display = 'flex';
         slotContents[state.assetManagerPos].push(assetManagerPanel);
       } else {
         assetManagerPanel.style.display = 'none';
+        panelParking?.appendChild(assetManagerPanel);
       }
     }
 
     if (promptManagerPanel) {
-      if (managerAvailability.prompt && state.promptManagerVisible) {
+      if (managerAvailability.prompt && managerEffectiveVisible('prompt')) {
         promptManagerPanel.style.display = 'flex';
         slotContents[state.promptManagerPos].push(promptManagerPanel);
       } else {
         promptManagerPanel.style.display = 'none';
+        panelParking?.appendChild(promptManagerPanel);
       }
     }
 
@@ -465,19 +525,19 @@ export function createLayoutManager({
     }
     updateManagerExpandButton(loreManagerExpand, {
       available: managerAvailability.lore,
-      visible: state.loreManagerVisible,
+      visible: managerEffectiveVisible('lore'),
       position: state.loreManagerPos,
       label: '로어북 관리자',
     });
     updateManagerExpandButton(assetManagerExpand, {
       available: managerAvailability.asset,
-      visible: state.assetManagerVisible,
+      visible: managerEffectiveVisible('asset'),
       position: state.assetManagerPos,
       label: '에셋 관리자',
     });
     updateManagerExpandButton(promptManagerExpand, {
       available: !!managerAvailability.prompt,
-      visible: state.promptManagerVisible,
+      visible: managerEffectiveVisible('prompt'),
       position: state.promptManagerPos,
       label: '프롬프트 관리자',
     });
@@ -633,23 +693,31 @@ export function createLayoutManager({
       managerAvailability = availability;
       rebuild();
     },
+    setManagerContent: (content: Partial<Record<'lore' | 'asset' | 'prompt', boolean>>) => {
+      let changed = false;
+      for (const kind of ['lore', 'asset', 'prompt'] as const) {
+        const has = content[kind];
+        if (has === undefined || managerHasContent[kind] === has) continue;
+        managerHasContent[kind] = has;
+        // Once a manager has content again, drop the empty-state override so the
+        // user's normal show/hide preference takes over.
+        if (has) managerForceOpenEmpty[kind] = false;
+        changed = true;
+      }
+      if (changed) rebuild();
+    },
+    resetManagerContentState: () => {
+      for (const kind of ['lore', 'asset', 'prompt'] as const) {
+        managerHasContent[kind] = true;
+        managerForceOpenEmpty[kind] = false;
+      }
+      rebuild();
+    },
     state,
     toggleAvatar,
-    toggleLoreManager: () => {
-      if (!managerAvailability.lore) return;
-      state.loreManagerVisible = !state.loreManagerVisible;
-      rebuild();
-    },
-    toggleAssetManager: () => {
-      if (!managerAvailability.asset) return;
-      state.assetManagerVisible = !state.assetManagerVisible;
-      rebuild();
-    },
-    togglePromptManager: () => {
-      if (!managerAvailability.prompt) return;
-      state.promptManagerVisible = !state.promptManagerVisible;
-      rebuild();
-    },
+    toggleLoreManager: () => toggleManager('lore'),
+    toggleAssetManager: () => toggleManager('asset'),
+    togglePromptManager: () => toggleManager('prompt'),
     toggleSidebar,
     toggleTerminal,
   };

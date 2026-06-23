@@ -1,0 +1,48 @@
+{
+  "file": "C:\\Users\\wodus\\ai-workspace\\RisuToki\\risu\\bot\\거대녀 하숙집\\거대녀 하숙집.charx",
+  "allow_writes": true,
+  "tool_profile": "advanced-full",
+  "output_path": ".tmp/edit-fields-output.json",
+  "steps": [
+    {
+      "id": "preview",
+      "tool": "preview_edit",
+      "args": {
+        "target": {
+          "kind": "active"
+        },
+        "operations": [
+          {
+            "op": "replace_text",
+            "selector": {
+              "family": "surface",
+              "path": "/alternateGreetings/0"
+            },
+            "find": "한은서's",
+            "replace": "Han Eun-seo's"
+          }
+        ],
+        "max_bytes": 65536
+      }
+    },
+    {
+      "id": "apply",
+      "tool": "apply_edit",
+      "args": {
+        "preview_token": {
+          "$ref": "preview.body.preview.preview_token"
+        },
+        "operation_digest": {
+          "$ref": "preview.body.preview.operation_digest"
+        },
+        "target": {
+          "kind": "active"
+        },
+        "guard_values": {
+          "$ref": "preview.body.preview.required_guards"
+        },
+        "max_bytes": 65536
+      }
+    }
+  ]
+}

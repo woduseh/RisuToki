@@ -57,11 +57,12 @@ export function addAssetReferences(data: AssetReferenceData, assetPath: string, 
 
 export function deleteAssetReferences(data: AssetReferenceData, assetPath: string): void {
   if (Array.isArray(data.cardAssets)) {
-    data.cardAssets = data.cardAssets.filter((entry) => {
+    const nextCardAssets = data.cardAssets.filter((entry) => {
       if (!entry || typeof entry !== 'object') return true;
       const uri = (entry as Record<string, unknown>).uri;
       return typeof uri !== 'string' || replaceAssetUri(uri, assetPath, '') === null;
     });
+    data.cardAssets.splice(0, data.cardAssets.length, ...nextCardAssets);
   }
 
   const stem = assetStem(assetPath);

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import type { RecentItem } from '../lib/app-settings';
 
 interface MenuItem {
   label: string;
   shortcut?: string;
   action: string;
+  payload?: unknown;
   separator?: false;
   disabled?: boolean;
 }
@@ -22,14 +24,19 @@ type MenuEntry = MenuItem | MenuSeparator | SubMenu;
 
 const props = defineProps<{
   canPreviewCurrentFile?: boolean;
+  recentItems?: RecentItem[];
 }>();
 
 const emit = defineEmits<{
-  action: [action: string];
+  action: [action: string, payload?: unknown];
 }>();
 
 const openMenu = ref<string | null>(null);
 const hoveringMenu = ref(false);
+// True when hover-switching just changed `openMenu` to the menu under the
+// pointer. The click that completes such a switch must keep the menu open
+// instead of toggling it shut (otherwise switching menus closes them).
+const switchedByHover = ref(false);
 
 function isSubMenu(entry: MenuEntry): entry is SubMenu {
   return 'children' in entry;
@@ -39,15 +46,43 @@ function isSeparator(entry: MenuEntry): entry is MenuSeparator {
   return 'separator' in entry && entry.separator === true;
 }
 
-const menus: { id: string; label: string; items: MenuEntry[] }[] = [
+function getRecentBaseName(itemPath: string): string {
+  return itemPath.split(/[\\/]/).filter(Boolean).pop() || itemPath;
+}
+
+function getRecentLabel(item: RecentItem): string {
+  if (item.kind === 'project') return `[프로젝트] ${getRecentBaseName(item.path)}`;
+  const format = item.sourceFormat ? item.sourceFormat.toUpperCase() : 'FILE';
+  return `[${format}] ${getRecentBaseName(item.path)}`;
+}
+
+function buildRecentMenuItems(): (MenuItem | MenuSeparator)[] {
+  const recentItems = props.recentItems || [];
+  if (recentItems.length === 0) {
+    return [{ label: '최근 항목 없음', action: 'recent-empty', disabled: true }];
+  }
+  return [
+    ...recentItems.map((item) => ({
+      label: getRecentLabel(item),
+      action: 'open-recent-item',
+      payload: item,
+    })),
+    { separator: true as const },
+    { label: '최근 항목 지우기', action: 'clear-recent-items' },
+  ];
+}
+
+const menus = computed<{ id: string; label: string; items: MenuEntry[] }[]>(() => [
   {
     id: 'file',
     label: '파일',
     items: [
       { label: '새로 만들기', shortcut: 'Ctrl+N', action: 'new' },
       { label: '열기', shortcut: 'Ctrl+O', action: 'open' },
+      { label: '최근 항목', children: buildRecentMenuItems() },
       { label: '프로젝트 폴더 열기', action: 'open-project-folder' },
       { label: '프로젝트 폴더로 추출', action: 'extract-document-project' },
+      { label: '프로젝트 폴더 복제', action: 'clone-project-folder' },
       { separator: true },
       { label: '저장', shortcut: 'Ctrl+S', action: 'save' },
       { label: '다른 이름 저장', shortcut: 'Ctrl+Shift+S', action: 'save-as' },
@@ -84,10 +119,10 @@ const menus: { id: string; label: string; items: MenuEntry[] }[] = [
       {
         label: '항목 배치',
         children: [
-          { label: '좌측', action: 'items-left' },
-          { label: '우측', action: 'items-right' },
-          { label: '좌끝', action: 'items-far-left' },
-          { label: '우끝', action: 'items-far-right' },
+          { label: '왼쪽 안쪽 (편집기 옆)', action: 'items-left' },
+          { label: '왼쪽 바깥쪽', action: 'items-far-left' },
+          { label: '오른쪽 안쪽 (편집기 옆)', action: 'items-right' },
+          { label: '오른쪽 바깥쪽', action: 'items-far-right' },
           { label: '상단', action: 'items-top' },
           { label: '하단', action: 'items-bottom' },
         ],
@@ -96,10 +131,10 @@ const menus: { id: string; label: string; items: MenuEntry[] }[] = [
         label: '참고자료 배치',
         children: [
           { label: '사이드바', action: 'refs-sidebar' },
-          { label: '좌측', action: 'refs-left' },
-          { label: '우측', action: 'refs-right' },
-          { label: '좌끝', action: 'refs-far-left' },
-          { label: '우끝', action: 'refs-far-right' },
+          { label: '왼쪽 안쪽 (편집기 옆)', action: 'refs-left' },
+          { label: '왼쪽 바깥쪽', action: 'refs-far-left' },
+          { label: '오른쪽 안쪽 (편집기 옆)', action: 'refs-right' },
+          { label: '오른쪽 바깥쪽', action: 'refs-far-right' },
           { label: '상단', action: 'refs-top' },
           { label: '하단', action: 'refs-bottom' },
         ],
@@ -108,10 +143,10 @@ const menus: { id: string; label: string; items: MenuEntry[] }[] = [
         label: '터미널 배치',
         children: [
           { label: '하단', action: 'terminal-bottom' },
-          { label: '좌측', action: 'terminal-left' },
-          { label: '우측', action: 'terminal-right' },
-          { label: '좌끝', action: 'terminal-far-left' },
-          { label: '우끝', action: 'terminal-far-right' },
+          { label: '왼쪽 안쪽 (편집기 옆)', action: 'terminal-left' },
+          { label: '왼쪽 바깥쪽', action: 'terminal-far-left' },
+          { label: '오른쪽 안쪽 (편집기 옆)', action: 'terminal-right' },
+          { label: '오른쪽 바깥쪽', action: 'terminal-far-right' },
           { label: '상단', action: 'terminal-top' },
         ],
       },
@@ -120,10 +155,10 @@ const menus: { id: string; label: string; items: MenuEntry[] }[] = [
         children: [
           { label: '표시/숨김', action: 'toggle-lore-manager' },
           { separator: true },
-          { label: '좌측', action: 'lore-manager-left' },
-          { label: '우측', action: 'lore-manager-right' },
-          { label: '좌끝', action: 'lore-manager-far-left' },
-          { label: '우끝', action: 'lore-manager-far-right' },
+          { label: '왼쪽 안쪽 (편집기 옆)', action: 'lore-manager-left' },
+          { label: '왼쪽 바깥쪽', action: 'lore-manager-far-left' },
+          { label: '오른쪽 안쪽 (편집기 옆)', action: 'lore-manager-right' },
+          { label: '오른쪽 바깥쪽', action: 'lore-manager-far-right' },
           { label: '상단', action: 'lore-manager-top' },
           { label: '하단', action: 'lore-manager-bottom' },
         ],
@@ -133,10 +168,10 @@ const menus: { id: string; label: string; items: MenuEntry[] }[] = [
         children: [
           { label: '표시/숨김', action: 'toggle-asset-manager' },
           { separator: true },
-          { label: '좌측', action: 'asset-manager-left' },
-          { label: '우측', action: 'asset-manager-right' },
-          { label: '좌끝', action: 'asset-manager-far-left' },
-          { label: '우끝', action: 'asset-manager-far-right' },
+          { label: '왼쪽 안쪽 (편집기 옆)', action: 'asset-manager-left' },
+          { label: '왼쪽 바깥쪽', action: 'asset-manager-far-left' },
+          { label: '오른쪽 안쪽 (편집기 옆)', action: 'asset-manager-right' },
+          { label: '오른쪽 바깥쪽', action: 'asset-manager-far-right' },
           { label: '상단', action: 'asset-manager-top' },
           { label: '하단', action: 'asset-manager-bottom' },
         ],
@@ -146,10 +181,10 @@ const menus: { id: string; label: string; items: MenuEntry[] }[] = [
         children: [
           { label: '표시/숨김', action: 'toggle-prompt-manager' },
           { separator: true },
-          { label: '좌측', action: 'prompt-manager-left' },
-          { label: '우측', action: 'prompt-manager-right' },
-          { label: '좌끝', action: 'prompt-manager-far-left' },
-          { label: '우끝', action: 'prompt-manager-far-right' },
+          { label: '왼쪽 안쪽 (편집기 옆)', action: 'prompt-manager-left' },
+          { label: '왼쪽 바깥쪽', action: 'prompt-manager-far-left' },
+          { label: '오른쪽 안쪽 (편집기 옆)', action: 'prompt-manager-right' },
+          { label: '오른쪽 바깥쪽', action: 'prompt-manager-far-right' },
           { label: '상단', action: 'prompt-manager-top' },
           { label: '하단', action: 'prompt-manager-bottom' },
         ],
@@ -160,8 +195,6 @@ const menus: { id: string; label: string; items: MenuEntry[] }[] = [
       { label: '확대', shortcut: 'Ctrl++', action: 'zoom-in' },
       { label: '축소', shortcut: 'Ctrl+-', action: 'zoom-out' },
       { label: '기본 크기', shortcut: 'Ctrl+0', action: 'zoom-reset' },
-      { separator: true },
-      { label: '다크 모드 토글', action: 'toggle-dark' },
       { separator: true },
       { label: '프리뷰', shortcut: 'F5', action: 'preview-test' },
       { separator: true },
@@ -181,14 +214,23 @@ const menus: { id: string; label: string; items: MenuEntry[] }[] = [
       { label: '터미널 재시작', action: 'terminal-restart' },
     ],
   },
-];
+]);
 
 function toggleMenu(menuId: string) {
+  // If hover-switching just opened this menu, treat the completing click as a
+  // no-op so the menu stays open. A later click on the already-open menu still
+  // closes it normally.
+  if (openMenu.value === menuId && switchedByHover.value) {
+    switchedByHover.value = false;
+    return;
+  }
   openMenu.value = openMenu.value === menuId ? null : menuId;
+  switchedByHover.value = false;
 }
 
 async function openMenuAndFocusFirst(menuId: string) {
   openMenu.value = menuId;
+  switchedByHover.value = false;
   await nextTick();
   focusFirstMenuEntry(menuId);
 }
@@ -199,12 +241,13 @@ function focusMenuButton(menuId: string) {
 }
 
 function focusMenuByOffset(menuId: string, offset: number) {
-  const currentIndex = menus.findIndex((menu) => menu.id === menuId);
+  const currentIndex = menus.value.findIndex((menu) => menu.id === menuId);
   if (currentIndex < 0) return;
-  const nextMenu = menus[(currentIndex + offset + menus.length) % menus.length];
+  const nextMenu = menus.value[(currentIndex + offset + menus.value.length) % menus.value.length];
   if (!nextMenu) return;
   if (openMenu.value !== null) {
     openMenu.value = nextMenu.id;
+    switchedByHover.value = false;
   }
   nextTick(() => focusMenuButton(nextMenu.id));
 }
@@ -244,6 +287,10 @@ function focusParentSubmenu(current: HTMLElement) {
 
 function onMenuEnter(menuId: string) {
   if (openMenu.value !== null) {
+    // Mark as a hover switch only when moving to a different menu, so the
+    // following click keeps the newly-revealed menu open. Re-entering the
+    // already-open menu clears the flag so a click can still close it.
+    switchedByHover.value = openMenu.value !== menuId;
     openMenu.value = menuId;
   }
   hoveringMenu.value = true;
@@ -257,11 +304,12 @@ function isItemDisabled(item: MenuItem): boolean {
 function handleAction(action: string, item?: MenuItem) {
   if (item && isItemDisabled(item)) return;
   openMenu.value = null;
-  emit('action', action);
+  emit('action', action, item?.payload);
 }
 
 function closeMenus() {
   openMenu.value = null;
+  switchedByHover.value = false;
 }
 
 function closeMenusAndFocus(menuId: string) {
@@ -398,8 +446,11 @@ defineExpose({ closeMenus });
                   type="button"
                   class="menu-action"
                   role="menuitem"
+                  :class="{ disabled: isItemDisabled(child) }"
+                  :disabled="isItemDisabled(child)"
+                  :aria-disabled="isItemDisabled(child)"
                   data-menu-entry
-                  @click="handleAction(child.action)"
+                  @click="handleAction(child.action, child)"
                   @keydown="onMenuEntryKeydown($event, menu.id)"
                 >
                   {{ child.label }}

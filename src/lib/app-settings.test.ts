@@ -1,17 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_AUTOSAVE_INTERVAL,
+  addRecentItem,
   clearAutosaveDir,
+  clearRecentItems,
   getDefaultCustomTheme,
   normalizeRpMode,
   readAppSettingsSnapshot,
+  readRecentItems,
   readStoredLayoutState,
+  removeRecentItem,
   writeAutosaveDir,
   writeAutosaveEnabled,
   writeAutosaveInterval,
   writeDarkMode,
   writeCustomTheme,
   writeLayoutState,
+  writeRecentItems,
   writeRpMode,
   writeThemeId,
 } from './app-settings';
@@ -161,5 +166,64 @@ describe('app settings', () => {
     expect(normalizeRpMode('invalid', false)).toBe('off');
     expect(normalizeRpMode('pluni', false)).toBe('off');
     expect(normalizeRpMode(null, false)).toBe('off');
+  });
+
+  it('keeps recent items newest-first, deduplicated, and capped at 10', () => {
+    const storage = createStorage();
+
+    for (let i = 0; i < 12; i++) {
+      addRecentItem(
+        {
+          kind: 'file',
+          path: `C:\\cards\\card-${i}.charx`,
+          sourceFormat: 'charx',
+          openedAt: i,
+        },
+        storage,
+      );
+    }
+
+    addRecentItem(
+      {
+        kind: 'file',
+        path: 'C:\\cards\\card-5.charx',
+        sourceFormat: 'png',
+        openedAt: 100,
+      },
+      storage,
+    );
+
+    const items = readRecentItems(storage);
+    expect(items).toHaveLength(10);
+    expect(items[0]).toMatchObject({
+      path: 'C:\\cards\\card-5.charx',
+      sourceFormat: 'png',
+      openedAt: 100,
+    });
+    expect(items.filter((item) => item.path === 'C:\\cards\\card-5.charx')).toHaveLength(1);
+    expect(items.map((item) => item.openedAt)).toEqual([...items.map((item) => item.openedAt)].sort((a, b) => b - a));
+  });
+
+  it('removes and clears recent items', () => {
+    const storage = createStorage();
+    writeRecentItems(
+      [
+        { kind: 'file', path: 'C:\\a.charx', sourceFormat: 'charx', openedAt: 2 },
+        { kind: 'project', path: 'C:\\project', openedAt: 1 },
+      ],
+      storage,
+    );
+
+    expect(removeRecentItem('C:\\a.charx', storage)).toEqual([{ kind: 'project', path: 'C:\\project', openedAt: 1 }]);
+
+    clearRecentItems(storage);
+    expect(readRecentItems(storage)).toEqual([]);
+  });
+
+  it('ignores corrupted recent item state', () => {
+    const storage = createStorage();
+    storage.setItem('toki-recent-items', '{broken');
+
+    expect(readRecentItems(storage)).toEqual([]);
   });
 });

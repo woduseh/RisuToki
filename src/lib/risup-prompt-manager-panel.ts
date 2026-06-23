@@ -10,6 +10,8 @@ import {
 } from './risup-prompt-model';
 import { promptItemSearchText, promptItemSummary, promptTypeLabel } from './risup-prompt-editor';
 import { showContextMenu } from './context-menu';
+import Sortable from 'sortablejs';
+import { SHARED_OPTIONS, makeFlatOnEnd } from './sidebar-dnd';
 
 export interface PromptManagerPanelDeps {
   getFileData: () => CharxData | null;
@@ -75,9 +77,21 @@ const state = {
   roleFilters: new Set<string>(),
   specialFilters: new Set<string>(),
   selected: new Set<string>(),
+  filtersExpanded: false,
 };
 
 let depsRef: PromptManagerPanelDeps | null = null;
+let managerSortable: Sortable | null = null;
+
+function destroyManagerSortable(): void {
+  if (!managerSortable) return;
+  try {
+    managerSortable.destroy();
+  } catch {
+    /* already destroyed */
+  }
+  managerSortable = null;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -230,6 +244,14 @@ function makeToolbarButton(label: string, title: string, onClick: () => void): H
   return button;
 }
 
+function makeDragHandle(): HTMLElement {
+  const handle = el('span', 'manager-drag-handle disabled', '⋮⋮');
+  handle.title = '프롬프트 순서 드래그';
+  handle.setAttribute('aria-label', '프롬프트 순서 드래그');
+  handle.setAttribute('aria-disabled', 'true');
+  return handle;
+}
+
 function makeFilterToggle(label: string, value: string, target: Set<string>, rerender: () => void): HTMLLabelElement {
   const wrap = el('label', 'manager-filter-toggle');
   const input = document.createElement('input');
@@ -268,6 +290,9 @@ function renderPanelShell(root: HTMLElement, titleText: string, renderBody: (bod
 }
 
 function renderPromptPanel(body: HTMLElement): void {
+  // The panel rebuilds its DOM on every render, so tear down the previous
+  // drag-and-drop instance before it is re-created against the fresh list.
+  destroyManagerSortable();
   const deps = depsRef;
   const data = deps?.getFileData() ?? null;
   if (!deps || !isRisupDocument(data)) return;
@@ -313,7 +338,8 @@ function renderPromptPanel(body: HTMLElement): void {
   });
   toolbar.appendChild(sort);
 
-  const add = makeToolbarButton('+', '프롬프트 블록 추가', () => promptAddMenu(add));
+  const add = makeToolbarButton('＋ 프롬프트', '프롬프트 블록 추가', () => promptAddMenu(add));
+  add.classList.add('manager-primary-action');
   toolbar.appendChild(add);
   body.appendChild(toolbar);
 
@@ -342,7 +368,22 @@ function renderPromptPanel(body: HTMLElement): void {
   specialOptions.appendChild(makeFilterToggle('미지원', 'unsupported', state.specialFilters, rerenderWithFocus));
   specialRow.appendChild(specialOptions);
   filters.appendChild(specialRow);
-  body.appendChild(filters);
+
+  // The three filter rows are dense, so tuck them inside a collapsible section.
+  // The summary shows the active-filter count so applied filters stay obvious
+  // even while collapsed.
+  const activeFilterCount = state.typeFilters.size + state.roleFilters.size + state.specialFilters.size;
+  const filterDetails = document.createElement('details');
+  filterDetails.className = 'prompt-manager-filters';
+  filterDetails.open = state.filtersExpanded;
+  const filterSummary = document.createElement('summary');
+  filterSummary.className = 'prompt-manager-filters-summary';
+  filterSummary.textContent = activeFilterCount > 0 ? `필터 (${activeFilterCount})` : '필터';
+  filterDetails.append(filterSummary, filters);
+  filterDetails.addEventListener('toggle', () => {
+    state.filtersExpanded = filterDetails.open;
+  });
+  body.appendChild(filterDetails);
 
   if (state.selected.size > 0) {
     const selectedBar = el('div', 'manager-selected-bar');
@@ -368,6 +409,7 @@ function renderPromptPanel(body: HTMLElement): void {
   for (const { item, index } of entries) {
     const id = item.id ?? `prompt-item-${index}`;
     const row = el('div', 'manager-row prompt-manager-row');
+    row.dataset.dndIdx = String(index);
     row.classList.toggle('selected', state.selected.has(id));
     row.addEventListener('click', (event) => {
       const target = event.target as HTMLElement;
@@ -383,7 +425,7 @@ function renderPromptPanel(body: HTMLElement): void {
       else state.selected.delete(id);
       renderPromptManagerPanel();
     });
-    row.appendChild(checkbox);
+    row.append(makeDragHandle(), checkbox);
 
     const main = el('div', 'manager-row-main prompt-manager-row-main');
     main.append(el('div', 'manager-row-title', promptItemTitle(item, index)));
@@ -432,6 +474,35 @@ function renderPromptPanel(body: HTMLElement): void {
     list.appendChild(row);
   }
   body.appendChild(list);
+
+  // Drag-and-drop reordering is only unambiguous when the visible order matches
+  // the stored order: natural ('order') sort with nothing filtered out. The
+  // ↑/↓ buttons remain available for filtered or sorted views.
+  const promptFilterActive =
+    state.query.trim() !== '' ||
+    state.typeFilters.size > 0 ||
+    state.roleFilters.size > 0 ||
+    state.specialFilters.size > 0;
+  const dndEnabled =
+    state.sort === 'order' && !promptFilterActive && entries.length === model.items.length && model.items.length > 1;
+  if (dndEnabled) {
+    list.classList.add('prompt-manager-list-sortable');
+    list.querySelectorAll<HTMLElement>('.manager-drag-handle').forEach((handle) => {
+      handle.classList.remove('disabled');
+      handle.setAttribute('aria-disabled', 'false');
+    });
+    managerSortable = Sortable.create(list, {
+      ...SHARED_OPTIONS,
+      handle: '.manager-drag-handle',
+      // Let clicks on the checkbox and action buttons behave normally instead
+      // of starting a drag.
+      filter: 'input, button, .no-sort',
+      preventOnFilter: false,
+      onEnd: makeFlatOnEnd((fromIdx, toIdx) => {
+        writeItems(moveItem(model.items, fromIdx, toIdx));
+      }),
+    });
+  }
 }
 
 function moveItem<T>(items: T[], from: number, to: number): T[] {

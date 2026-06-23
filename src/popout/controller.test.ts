@@ -29,8 +29,6 @@ function baseSettingsSnapshot() {
 
 const mockReadAppSettingsSnapshot = vi.fn(() => createSettingsSnapshot());
 const mockSubscribeToAppSettings = vi.fn(() => () => {});
-const mockWriteRpMode = vi.fn();
-const mockGetDefaultRpModeForThemeId = vi.fn(() => 'toki');
 const mockCreateDirectTerminalChatSession = vi.fn(() => ({
   handleTerminalData: vi.fn(),
   setActive: vi.fn(),
@@ -71,10 +69,8 @@ const mockInitializeTerminalUi = vi.fn(async () => ({
 const mockCreatePreviewSession = vi.fn();
 
 vi.mock('../lib/app-settings', () => ({
-  getDefaultRpModeForThemeId: mockGetDefaultRpModeForThemeId,
   readAppSettingsSnapshot: mockReadAppSettingsSnapshot,
   subscribeToAppSettings: mockSubscribeToAppSettings,
-  writeRpMode: mockWriteRpMode,
 }));
 
 vi.mock('../lib/dark-mode', () => ({
@@ -445,7 +441,7 @@ describe('popout controller renderer', () => {
     ).toHaveBeenCalledWith(expect.any(HTMLElement), expect.objectContaining({ theme: 'risutoki-aris' }));
   });
 
-  it('uses dark terminal theme and class-based active buttons in terminal popout dark mode', async () => {
+  it('uses dark terminal theme and keeps RP controls settings-only in terminal popout dark mode', async () => {
     mockReadAppSettingsSnapshot.mockImplementation(() =>
       createSettingsSnapshot({ darkMode: true, themeId: 'aris', rpMode: 'aris' }),
     );
@@ -456,10 +452,8 @@ describe('popout controller renderer', () => {
 
     expect(mockInitializeTerminalUi).toHaveBeenCalledWith(expect.objectContaining({ theme: mockTermThemeDark }));
 
-    const rpButton = document.getElementById('btn-rp-mode') as HTMLButtonElement | null;
     const chatButton = document.getElementById('btn-chat-mode') as HTMLButtonElement | null;
-    expect(rpButton?.classList.contains('active')).toBe(true);
-    expect(rpButton?.style.background).toBe('');
+    expect(document.getElementById('btn-rp-mode')).toBeNull();
 
     chatButton?.click();
     expect(chatButton?.classList.contains('active')).toBe(true);
@@ -533,19 +527,13 @@ describe('popout controller renderer', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
-  it('removes rp-mode click listener on beforeunload', async () => {
+  it('does not render a duplicate RP control in the terminal popout', async () => {
     (window as unknown as { popoutAPI: { getType: () => string } }).popoutAPI.getType = vi.fn(() => 'terminal');
 
     const mod = await import('./controller');
     await mod.initPopoutRenderer();
 
-    const rpButton = document.getElementById('btn-rp-mode') as HTMLButtonElement | null;
-    expect(rpButton).not.toBeNull();
-
-    window.dispatchEvent(new Event('beforeunload'));
-    rpButton?.click();
-
-    expect(mockWriteRpMode).not.toHaveBeenCalled();
+    expect(document.getElementById('btn-rp-mode')).toBeNull();
   });
 
   it('renders refs empty state with the shared popout-empty-state class', async () => {

@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useAppStore } from '../stores/app-store';
 
 const store = useAppStore();
-const visible = ref(false);
+const messageVisible = ref(false);
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
 function dismissStatus(): void {
@@ -11,11 +11,15 @@ function dismissStatus(): void {
 }
 
 const statusClasses = computed(() => ({
-  visible: visible.value,
+  visible: messageVisible.value || !!store.documentStatsText,
   'status-info': store.statusKind === 'info',
   'status-error': store.statusKind === 'error',
   sticky: store.statusSticky,
+  'has-message': messageVisible.value && !!store.statusText,
+  'has-stats': !!store.documentStatsText,
 }));
+
+const displayStatusText = computed(() => (messageVisible.value ? store.statusText : ''));
 
 watch(
   () => [store.statusText, store.statusSticky] as const,
@@ -25,14 +29,14 @@ watch(
       hideTimer = null;
     }
     if (text) {
-      visible.value = true;
+      messageVisible.value = true;
       if (!sticky) {
         hideTimer = setTimeout(() => {
-          visible.value = false;
+          messageVisible.value = false;
         }, 3000);
       }
     } else {
-      visible.value = false;
+      messageVisible.value = false;
     }
   },
   { immediate: true },
@@ -47,9 +51,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div id="statusbar" :class="statusClasses" role="status" aria-live="polite" aria-atomic="true">
-    <span id="status-text">{{ store.statusText }}</span>
+    <span id="status-text">{{ displayStatusText }}</span>
+    <span v-if="store.documentStatsText" id="status-stats">{{ store.documentStatsText }}</span>
     <button
-      v-if="store.statusText"
+      v-if="displayStatusText"
       id="status-dismiss"
       type="button"
       title="상태 메시지 닫기"

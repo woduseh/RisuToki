@@ -31,11 +31,18 @@ export interface OpenPathOptions {
 }
 
 type OpenFileResult =
-  | { success: true; data: Record<string, unknown> }
+  | { success: true; data: Record<string, unknown>; path?: string; sourceFormat?: string; imported?: boolean }
   | { success: false; canceled: true }
   | { success: false; canceled?: false; error: string };
 
 type OpenDocumentLoaderResult = Record<string, unknown> | OpenFileResult | null;
+
+export interface OpenedDocumentResult {
+  data: Record<string, unknown>;
+  path?: string;
+  sourceFormat?: string;
+  imported?: boolean;
+}
 
 function isOpenFileResult(value: OpenDocumentLoaderResult): value is OpenFileResult {
   return !!value && typeof value === 'object' && 'success' in value && typeof value.success === 'boolean';
@@ -138,7 +145,7 @@ async function openDocumentWithLoader(
   targetLabel: string,
   loader: () => Promise<OpenDocumentLoaderResult>,
   options?: OpenPathOptions,
-): Promise<Record<string, unknown> | null> {
+): Promise<OpenedDocumentResult | null> {
   if (!(await confirmDocumentReplacement(deps, targetLabel, options))) return null;
   deps.setStatus('파일 열기 중...');
   options?.onLoadStateChange?.(true);
@@ -154,7 +161,15 @@ async function openDocumentWithLoader(
     }
     applyLoadedDocument(deps, data);
     deps.setStatus(`파일 열림: ${(data as Record<string, unknown>).name}`);
-    return data;
+    if (isOpenFileResult(result) && result.success) {
+      return {
+        data,
+        path: result.path,
+        sourceFormat: result.sourceFormat,
+        imported: result.imported,
+      };
+    }
+    return { data };
   } finally {
     options?.onLoadStateChange?.(false);
   }
@@ -176,9 +191,9 @@ export async function handleNew(deps: FileActionDeps): Promise<void> {
   deps.setStatus('새 파일 생성됨');
 }
 
-export async function handleOpen(deps: FileActionDeps): Promise<void> {
+export async function handleOpen(deps: FileActionDeps): Promise<OpenedDocumentResult | null> {
   try {
-    await openDocumentWithLoader(
+    return await openDocumentWithLoader(
       deps,
       '파일 열기',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -187,6 +202,7 @@ export async function handleOpen(deps: FileActionDeps): Promise<void> {
   } catch (err) {
     console.error('[renderer] handleOpen error:', err);
     deps.setStatus(`열기 실패: ${(err as Error).message}`);
+    return null;
   }
 }
 
@@ -196,13 +212,14 @@ export async function handleOpenPath(
   options?: OpenPathOptions,
 ): Promise<Record<string, unknown> | null> {
   try {
-    return await openDocumentWithLoader(
+    const result = await openDocumentWithLoader(
       deps,
       options?.targetLabel || filePath,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       () => (window as any).tokiAPI.openFilePath(filePath),
       options,
     );
+    return result?.data || null;
   } catch (err) {
     console.error('[renderer] handleOpenPath error:', err);
     deps.setStatus(`열기 실패: ${(err as Error).message}`);

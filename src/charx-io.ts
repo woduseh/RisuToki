@@ -14,7 +14,8 @@ const { pack, unpack } = require('msgpackr') as {
   pack: (value: unknown) => Buffer;
   unpack: (buf: Buffer | Uint8Array) => unknown;
 };
-const { risuArrayToCCV3 } = require('./lorebook-convert') as {
+const { ccv3ArrayToRisu, risuArrayToCCV3 } = require('./lorebook-convert') as {
+  ccv3ArrayToRisu: (entries: unknown[]) => unknown[];
   risuArrayToCCV3: (entries: unknown[]) => unknown[];
 };
 const { validateCharxCardDocument, validateRisupEnvelope, validateRisupPresetPayload } =
@@ -495,6 +496,140 @@ function openZipEntriesWithPreludeSupport(filePath: string): ZipResult {
   }
 }
 
+function readStringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function readStringArrayField(record: Record<string, unknown>, key: string): string[] {
+  const value = record[key];
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+function readArrayField(record: Record<string, unknown>, key: string): unknown[] {
+  const value = record[key];
+  return Array.isArray(value) ? value : [];
+}
+
+function buildCharxDataFromCardParts({
+  assets,
+  card,
+  moduleData,
+  risumAssets,
+  xMeta,
+}: {
+  assets: CharxAsset[];
+  card: Record<string, unknown> & { spec?: string; spec_version?: string; data: Record<string, unknown> };
+  moduleData: Record<string, unknown> | null;
+  risumAssets: Buffer[];
+  xMeta: Record<string, unknown>;
+}): CharxData {
+  const data = card.data || {};
+  const extensions =
+    data.extensions && typeof data.extensions === 'object' && !Array.isArray(data.extensions)
+      ? (data.extensions as Record<string, unknown>)
+      : {};
+  const rawRisuExt = extensions.risuai;
+  const risuExt =
+    rawRisuExt && typeof rawRisuExt === 'object' && !Array.isArray(rawRisuExt)
+      ? (rawRisuExt as Record<string, unknown>)
+      : {};
+  delete risuExt.virtualscript;
+  const mod = ((moduleData as Record<string, unknown>)?.module as Record<string, unknown>) || {};
+  const triggerScripts: TriggerScript[] = cloneTriggerScripts(mod.trigger || []);
+  const characterBook = data.character_book as Record<string, unknown> | undefined;
+  const cardLorebookEntries = Array.isArray(characterBook?.entries)
+    ? ccv3ArrayToRisu(characterBook.entries as unknown[])
+    : [];
+  const moduleLorebookEntries = Array.isArray(mod.lorebook) ? (mod.lorebook as unknown[]) : null;
+  const moduleRegexEntries = Array.isArray(mod.regex)
+    ? (mod.regex as unknown[])
+    : Array.isArray(risuExt.customScripts)
+      ? (risuExt.customScripts as unknown[])
+      : [];
+
+  return {
+    // Metadata
+    spec: card.spec || 'chara_card_v3',
+    specVersion: card.spec_version || '3.0',
+
+    // Character info
+    name: readStringField(data, 'name'),
+    description: readStringField(data, 'description'),
+    personality: readStringField(data, 'personality'),
+    scenario: readStringField(data, 'scenario'),
+    creatorcomment: readStringField(data, 'creator_notes') || readStringField(data, 'creatorcomment'),
+    tags: readStringArrayField(data, 'tags'),
+    exampleMessage: readStringField(data, 'mes_example'),
+    systemPrompt: readStringField(data, 'system_prompt'),
+    creator: readStringField(data, 'creator'),
+    characterVersion: readStringField(data, 'character_version'),
+    nickname: readStringField(data, 'nickname'),
+    source: readStringArrayField(data, 'source'),
+    creationDate: typeof data.creation_date === 'number' ? data.creation_date : 0,
+    modificationDate: typeof data.modification_date === 'number' ? data.modification_date : 0,
+
+    // RisuAI extension fields
+    additionalText: (risuExt.additionalText as string) || '',
+    license: (risuExt.license as string) || '',
+
+    // Editable content
+    firstMessage: readStringField(data, 'first_mes'),
+    alternateGreetings: readStringArrayField(data, 'alternate_greetings'),
+    groupOnlyGreetings: readStringArrayField(data, 'group_only_greetings'),
+    globalNote: readStringField(data, 'post_history_instructions'),
+    css: (risuExt.backgroundHTML as string) || '',
+    defaultVariables: (risuExt.defaultVariables as string) || '',
+    lua: extractPrimaryLuaFromTriggerScripts(triggerScripts),
+    triggerScripts,
+
+    // Lorebook (prefer module.risum; plain cards only have card.data.character_book)
+    lorebook: moduleLorebookEntries || cardLorebookEntries,
+
+    // Regex scripts (normalize types for RisuAI compatibility)
+    regex: (() => {
+      const r = moduleRegexEntries;
+      normalizeRegexArray(r);
+      return r;
+    })(),
+
+    // Module metadata
+    moduleId: (mod.id as string) || '',
+    moduleName: (mod.name as string) || '',
+    moduleDescription: (mod.description as string) || '',
+
+    // Risum module-specific fields (from embedded module.risum)
+    ...extractRisumModuleFields(mod),
+
+    // Assets
+    assets,
+    xMeta,
+    risumAssets,
+
+    // card.json asset references
+    cardAssets: readArrayField(data, 'assets'),
+
+    // Preserve full risuai extensions for save
+    _risuExt: risuExt,
+    // Preserve full card for fields we don't edit
+    _card: card,
+    // Preserve full module for fields we don't edit
+    _moduleData: moduleData,
+    _presetData: null,
+  };
+}
+
+export function openCharxCardDocument(cardInput: unknown, assets: CharxAsset[] = []): CharxData {
+  const card = validateCharxCardDocument(cardInput);
+  return buildCharxDataFromCardParts({
+    assets,
+    card,
+    moduleData: null,
+    risumAssets: [],
+    xMeta: {},
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Open / Save .charx
 // ---------------------------------------------------------------------------
@@ -547,86 +682,7 @@ export function openCharx(filePath: string): CharxData {
     }
   }
 
-  // Extract editable components
-  const data = card.data || {};
-  const rawRisuExt = data.extensions?.risuai;
-  const risuExt =
-    rawRisuExt && typeof rawRisuExt === 'object' && !Array.isArray(rawRisuExt)
-      ? (rawRisuExt as Record<string, unknown>)
-      : {};
-  delete risuExt.virtualscript;
-  const mod = ((moduleData as Record<string, unknown>)?.module as Record<string, unknown>) || {};
-  const triggerScripts: TriggerScript[] = cloneTriggerScripts(mod.trigger || []);
-
-  return {
-    // Metadata
-    spec: card.spec || 'chara_card_v3',
-    specVersion: card.spec_version || '3.0',
-
-    // Character info
-    name: data.name || '',
-    description: data.description || '',
-    personality: data.personality || '',
-    scenario: data.scenario || '',
-    creatorcomment: data.creator_notes || data.creatorcomment || '',
-    tags: data.tags || [],
-    exampleMessage: data.mes_example || '',
-    systemPrompt: data.system_prompt || '',
-    creator: data.creator || '',
-    characterVersion: data.character_version || '',
-    nickname: data.nickname || '',
-    source: Array.isArray(data.source) ? data.source : [],
-    creationDate: typeof data.creation_date === 'number' ? data.creation_date : 0,
-    modificationDate: typeof data.modification_date === 'number' ? data.modification_date : 0,
-
-    // RisuAI extension fields
-    additionalText: (risuExt.additionalText as string) || '',
-    license: (risuExt.license as string) || '',
-
-    // Editable content
-    firstMessage: data.first_mes || '',
-    alternateGreetings: data.alternate_greetings || [],
-    groupOnlyGreetings: data.group_only_greetings || [],
-    globalNote: data.post_history_instructions || '',
-    css: (risuExt.backgroundHTML as string) || '',
-    defaultVariables: (risuExt.defaultVariables as string) || '',
-    lua: extractPrimaryLuaFromTriggerScripts(triggerScripts),
-    triggerScripts,
-
-    // Lorebook (use module.risum version as source of truth)
-    lorebook: (mod.lorebook as unknown[]) || [],
-
-    // Regex scripts (normalize types for RisuAI compatibility)
-    regex: (() => {
-      const r = (mod.regex as unknown[]) || [];
-      normalizeRegexArray(r);
-      return r;
-    })(),
-
-    // Module metadata
-    moduleId: (mod.id as string) || '',
-    moduleName: (mod.name as string) || '',
-    moduleDescription: (mod.description as string) || '',
-
-    // Risum module-specific fields (from embedded module.risum)
-    ...extractRisumModuleFields(mod),
-
-    // Assets
-    assets,
-    xMeta,
-    risumAssets,
-
-    // card.json asset references
-    cardAssets: data.assets || [],
-
-    // Preserve full risuai extensions for save
-    _risuExt: risuExt,
-    // Preserve full card for fields we don't edit
-    _card: card,
-    // Preserve full module for fields we don't edit
-    _moduleData: moduleData,
-    _presetData: null,
-  };
+  return buildCharxDataFromCardParts({ assets, card, moduleData, risumAssets, xMeta });
 }
 
 /**

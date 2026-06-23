@@ -8,6 +8,7 @@ import {
   normalizeFolderRef,
   resolveLorebookFolderRef,
 } from './lorebook-folders';
+import { convertSillyTavernWorldInfoToLorebook, isSillyTavernWorldInfo } from './sillytavern-world-info';
 
 type TabStateFn = (index: number, tab: Tab) => Partial<Tab> | null;
 
@@ -127,7 +128,11 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     let addedCount = 0;
     for (const raw of imported) {
       const item = raw as { fileName: string; data: Record<string, unknown> };
-      const entries = Array.isArray(item.data) ? item.data : (item.data.entries as unknown[]) || [item.data];
+      const entries = isSillyTavernWorldInfo(item.data)
+        ? convertSillyTavernWorldInfoToLorebook(item.data)
+        : Array.isArray(item.data)
+          ? item.data
+          : (item.data.entries as unknown[]) || [item.data];
       for (const entry of entries) {
         const mode = entry.mode || 'normal';
         const folderUuid =
@@ -144,9 +149,21 @@ export function createSidebarActions(deps: SidebarActionDeps) {
           selective: entry.selective || false,
           secondkey: entry.secondkey || (entry.secondary_keys ? entry.secondary_keys.join(', ') : ''),
           constant: entry.constant || false,
-          order: fileData.lorebook.length,
+          order: typeof entry.order === 'number' ? entry.order : fileData.lorebook.length,
           folder: mode === 'folder' ? '' : normalizeFolderRef(entry.folder),
         };
+        for (const field of [
+          'activationPercent',
+          'depth',
+          'disable',
+          'position',
+          'priority',
+          'useRegex',
+          'extentions',
+        ]) {
+          const value = (entry as Record<string, unknown>)[field];
+          if (value !== undefined) importedEntry[field] = value;
+        }
         if (typeof entry.id === 'string' && entry.id.trim()) {
           importedEntry.id = entry.id;
         }
@@ -176,17 +193,41 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     deps.setStatus(`로어북 항목 삭제됨: ${name}`);
   }
 
-  async function renameLorebook(idx: number): Promise<void> {
+  // Commit a new lorebook name directly (no prompt). Used by inline editing in
+  // the lorebook manager; the prompt-based renameLorebook below reuses it.
+  function renameLorebookTo(idx: number, rawName: string): string | null {
     const fileData = fd();
-    if (!fileData || idx < 0 || idx >= fileData.lorebook.length) return;
+    if (!fileData || idx < 0 || idx >= fileData.lorebook.length) return '항목을 찾을 수 없습니다.';
+    const newName = rawName.trim();
     const oldName = fileData.lorebook[idx].comment || `entry_${idx}`;
-    const newName = await deps.showPrompt('새 이름:', oldName);
-    if (!newName || newName === oldName) return;
+    if (!newName) return '이름을 입력하세요.';
+    if (
+      fileData.lorebook.some(
+        (entry: { comment?: string }, entryIndex: number) =>
+          entryIndex !== idx &&
+          String(entry.comment || '')
+            .trim()
+            .toLocaleLowerCase() === newName.toLocaleLowerCase(),
+      )
+    ) {
+      return '같은 이름의 로어북 항목이 이미 있습니다.';
+    }
+    if (newName === oldName) return null;
     fileData.lorebook[idx].comment = newName;
     deps.markFieldDirty('lorebook');
     deps.buildSidebar();
     deps.refreshIndexedTabs('lore_', deps.buildLorebookTabState);
     deps.setStatus(`로어북 항목 이름 변경: ${newName}`);
+    return null;
+  }
+
+  async function renameLorebook(idx: number): Promise<void> {
+    const fileData = fd();
+    if (!fileData || idx < 0 || idx >= fileData.lorebook.length) return;
+    const oldName = fileData.lorebook[idx].comment || `entry_${idx}`;
+    const newName = await deps.showPrompt('새 이름:', oldName);
+    if (newName === null) return;
+    renameLorebookTo(idx, newName);
   }
 
   // ==================== Regex ====================
@@ -605,6 +646,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     importLorebook,
     deleteLorebook,
     renameLorebook,
+    renameLorebookTo,
     reorderLorebook,
     addNewRegex,
     importRegex,

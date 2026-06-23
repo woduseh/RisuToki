@@ -6,13 +6,17 @@ import StatusBar from './components/StatusBar.vue';
 
 const store = useAppStore();
 
-function handleAction(action: string) {
-  executeAction(action);
+function handleAction(action: string, payload?: unknown) {
+  executeAction(action, payload);
 }
 </script>
 
 <template>
-  <MenuBar :can-preview-current-file="store.canPreviewCurrentFile" @action="handleAction">
+  <MenuBar
+    :can-preview-current-file="store.canPreviewCurrentFile"
+    :recent-items="store.recentItems"
+    @action="handleAction"
+  >
     <template #file-label>
       <span id="file-label">{{ store.displayFileLabel }}</span>
     </template>
@@ -31,7 +35,10 @@ function handleAction(action: string) {
         <div id="resizer-left" class="slot-resizer slot-resizer-v active"></div>
 
         <div id="editor-area">
-          <div id="editor-tabs"></div>
+          <div id="editor-header">
+            <div id="editor-tabs"></div>
+            <button id="editor-mode-toggle" type="button" style="display: none">코드 보기</button>
+          </div>
           <div id="editor-container"></div>
         </div>
 
@@ -46,9 +53,11 @@ function handleAction(action: string) {
     <div id="resizer-far-right" class="slot-resizer slot-resizer-v"></div>
     <div id="slot-far-right" class="layout-slot slot-v"></div>
 
-    <div id="lore-manager-panel" class="manager-panel"></div>
-    <div id="asset-manager-panel" class="manager-panel"></div>
-    <div id="prompt-manager-panel" class="manager-panel"></div>
+    <div id="panel-parking" hidden>
+      <div id="lore-manager-panel" class="manager-panel"></div>
+      <div id="asset-manager-panel" class="manager-panel"></div>
+      <div id="prompt-manager-panel" class="manager-panel"></div>
+    </div>
     <button
       id="lore-manager-expand"
       type="button"
@@ -179,27 +188,7 @@ function handleAction(action: string) {
             <span class="momo-title">{{ store.talkTitle }}</span>
           </div>
           <div class="momo-header-right">
-            <button
-              id="btn-rp-mode"
-              :title="store.rpMode !== 'off' ? `RP: ${store.rpLabel} (클릭: OFF)` : 'RP 모드 OFF (클릭: ON)'"
-              :aria-label="store.rpMode !== 'off' ? `RP 모드: ${store.rpLabel}` : 'RP 모드 OFF'"
-              :aria-pressed="store.rpMode !== 'off'"
-              :style="{ background: store.rpMode !== 'off' ? 'rgba(255,255,255,0.5)' : '' }"
-              @click="handleAction('rp-toggle')"
-            >
-              🐰
-            </button>
-            <button
-              id="btn-bgm"
-              :title="store.bgmEnabled ? 'BGM ON (우클릭: 파일 변경)' : 'BGM OFF (우클릭: 파일 변경)'"
-              :aria-label="store.bgmEnabled ? 'BGM 켜짐' : 'BGM 꺼짐'"
-              :aria-pressed="store.bgmEnabled"
-              :style="{ background: store.bgmEnabled ? 'rgba(255,255,255,0.5)' : '' }"
-              @click="handleAction('bgm-toggle')"
-              @contextmenu.prevent="handleAction('bgm-pick')"
-            >
-              {{ store.bgmEnabled ? '🔊' : '🔇' }}
-            </button>
+            <!-- RP 모드 / BGM 컨트롤은 설정(⚙) 모달로 일원화됨 (중복 제거). -->
             <button
               id="btn-chat-mode"
               title="채팅 모드"
@@ -227,6 +216,7 @@ function handleAction(action: string) {
             </button>
           </div>
         </div>
+        <div id="terminal-tabs" class="terminal-tabs" role="tablist" aria-label="터미널 세션"></div>
         <div id="terminal-container"></div>
       </div>
     </div>

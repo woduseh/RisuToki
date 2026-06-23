@@ -1,0 +1,87 @@
+{
+  "file": "C:\\Users\\wodus\\ai-workspace\\RisuToki\\risu\\bot\\거대녀 하숙집\\거대녀 하숙집.charx",
+  "allow_writes": false,
+  "tool_profile": "advanced-full",
+  "output_path": ".tmp/deep-inspect-charx-output.json",
+  "steps": [
+    {
+      "id": "lorebook_0_14",
+      "tool": "read_content",
+      "args": {
+        "target": {
+          "kind": "active"
+        },
+        "selectors": [
+          {
+            "family": "lorebook",
+            "indices": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+          }
+        ],
+        "max_bytes": 65536
+      }
+    },
+    {
+      "id": "lorebook_15_29",
+      "tool": "read_content",
+      "args": {
+        "target": {
+          "kind": "active"
+        },
+        "selectors": [
+          {
+            "family": "lorebook",
+            "indices": [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+          }
+        ],
+        "max_bytes": 65536
+      }
+    },
+    {
+      "id": "greetings",
+      "tool": "read_content",
+      "args": {
+        "target": {
+          "kind": "active"
+        },
+        "selectors": [
+          {
+            "family": "greeting",
+            "greeting_type": "alternate",
+            "indices": [0, 1, 2]
+          }
+        ],
+        "max_bytes": 65536
+      }
+    },
+    {
+      "id": "metadata",
+      "tool": "read_content",
+      "args": {
+        "target": {
+          "kind": "active"
+        },
+        "selectors": [
+          {
+            "family": "field",
+            "field": "creator"
+          },
+          {
+            "family": "surface",
+            "path": "/tags",
+            "include_raw": true
+          },
+          {
+            "family": "surface",
+            "path": "/_moduleData"
+          },
+          {
+            "family": "surface",
+            "path": "/_moduleData/name",
+            "include_raw": true
+          }
+        ],
+        "max_bytes": 65536
+      }
+    }
+  ]
+}

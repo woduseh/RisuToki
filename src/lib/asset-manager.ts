@@ -25,6 +25,92 @@ export interface AssetManagerDeps {
 let deps: AssetManagerDeps;
 let _assetsMapCache: { assets: Record<string, string>; debug: Record<string, any> } | null = null;
 
+interface AssetBatchRenameOperation {
+  oldPath: string;
+  newName: string;
+}
+
+interface PlannedAssetRename {
+  oldPath: string;
+  newPath: string;
+  newName: string;
+}
+
+function fileExtension(fileName: string): string {
+  const dot = fileName.lastIndexOf('.');
+  return dot > 0 ? fileName.slice(dot).toLowerCase() : '';
+}
+
+function planAssetRenameOperations(
+  data: any,
+  operations: AssetBatchRenameOperation[],
+): {
+  planned: PlannedAssetRename[];
+  conflicts: string[];
+} {
+  const assets = Array.isArray(data?.assets) ? data.assets : [];
+  const selectedPaths = new Set(operations.map((operation) => operation.oldPath));
+  const selectedPathLower = new Set([...selectedPaths].map((assetPath) => assetPath.toLowerCase()));
+  const seenOldPaths = new Set<string>();
+  const plannedPaths = new Set<string>();
+  const planned: PlannedAssetRename[] = [];
+  const conflicts: string[] = [];
+
+  for (const operation of operations) {
+    const oldPath = typeof operation.oldPath === 'string' ? operation.oldPath : '';
+    const newName = typeof operation.newName === 'string' ? operation.newName.trim() : '';
+    const asset = assets.find((item: any) => item.path === oldPath);
+    const originalName = oldPath.split('/').pop() || oldPath;
+
+    if (!oldPath || !asset) {
+      conflicts.push(`${oldPath || '(unknown)'}: 에셋을 찾을 수 없습니다.`);
+      continue;
+    }
+    if (seenOldPaths.has(oldPath)) {
+      conflicts.push(`${oldPath}: 중복된 변경 요청입니다.`);
+      continue;
+    }
+    seenOldPaths.add(oldPath);
+    if (!newName) {
+      conflicts.push(`${originalName}: 새 이름이 비어 있습니다.`);
+      continue;
+    }
+    if (validateAssetFileName(newName)) {
+      conflicts.push(`${newName}: 파일명에 사용할 수 없는 문자가 있습니다.`);
+      continue;
+    }
+
+    const oldExtension = fileExtension(originalName);
+    const newExtension = fileExtension(newName);
+    if (oldExtension !== newExtension) {
+      conflicts.push(`${newName}: 확장자는 ${oldExtension || '(없음)'} 그대로 유지해야 합니다.`);
+      continue;
+    }
+
+    const dir = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/') + 1) : '';
+    const newPath = `${dir}${newName}`;
+    const normalizedNewPath = newPath.toLowerCase();
+
+    if (plannedPaths.has(normalizedNewPath)) {
+      conflicts.push(`${newName}: 일괄 변경 결과끼리 중복됩니다.`);
+      continue;
+    }
+    if (selectedPathLower.has(normalizedNewPath) && normalizedNewPath !== oldPath.toLowerCase()) {
+      conflicts.push(`${newName}: 선택된 다른 에셋의 기존 경로와 충돌합니다.`);
+      continue;
+    }
+    if (assets.some((item: any) => item !== asset && item.path.toLowerCase() === normalizedNewPath)) {
+      conflicts.push(`${newName}: 같은 경로에 이미 존재합니다.`);
+      continue;
+    }
+
+    plannedPaths.add(normalizedNewPath);
+    planned.push({ oldPath, newPath, newName });
+  }
+
+  return { planned, conflicts };
+}
+
 // ---------------------------------------------------------------------------
 // Public helpers
 // ---------------------------------------------------------------------------
@@ -259,6 +345,33 @@ export function initAssetManager(d: AssetManagerDeps): void {
     renameAssetReferences(data, oldPath, newPath);
     invalidateAssetsMapCache();
     return newPath;
+  });
+
+  // Rename multiple assets after a full preflight so references update atomically.
+  ipcMain.handle('rename-assets-batch', (_, operations: AssetBatchRenameOperation[]) => {
+    const data = deps.getCurrentData();
+    if (!data) return { ok: false, error: 'No file open' };
+    if (!Array.isArray(operations) || operations.length === 0) {
+      return { ok: false, error: 'No rename operations' };
+    }
+
+    const { planned, conflicts } = planAssetRenameOperations(data, operations);
+    if (conflicts.length > 0 || planned.length !== operations.length) {
+      return { ok: false, conflicts };
+    }
+
+    for (const item of planned) {
+      const asset = data.assets.find((entry: any) => entry.path === item.oldPath);
+      if (!asset) return { ok: false, conflicts: [`${item.oldPath}: 에셋을 찾을 수 없습니다.`] };
+      asset.path = item.newPath;
+      renameAssetReferences(data, item.oldPath, item.newPath);
+    }
+
+    invalidateAssetsMapCache();
+    return {
+      ok: true,
+      renamed: planned.map(({ oldPath, newPath }) => ({ oldPath, newPath })),
+    };
   });
 
   // Reorder asset (move within same folder group)

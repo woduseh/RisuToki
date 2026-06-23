@@ -217,7 +217,12 @@ export function parseCssSections(cssCode: string): CssParseResult {
 
 export function combineCssSections(sections: Section[], prefix: string, suffix: string): string {
   const eq = '============================================================';
-  const body = sections.map((s) => `/* ${eq}\n   ${s.name}\n   ${eq} */\n${s.content}`).join('\n\n');
+  const body = sections
+    .map((s) => {
+      const header = `/* ${eq}\n   ${s.name}\n   ${eq} */`;
+      return s.content ? `${header}\n${s.content}` : header;
+    })
+    .join('\n\n');
   const effectivePrefix = prefix || '<style>\n';
   const effectiveSuffix = suffix || '\n</style>';
   return effectivePrefix + body + effectiveSuffix;

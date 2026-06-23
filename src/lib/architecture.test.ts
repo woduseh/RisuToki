@@ -356,3 +356,15 @@ describe('src/lib lint coverage guard', () => {
     expect(stale, 'KNOWN_UNLINTED_LIB_FILES should shrink when lint coverage expands').toEqual([]);
   });
 });
+
+describe('packaged MCP runtime assets', () => {
+  const packageJson = JSON.parse(fs.readFileSync(PACKAGE_JSON, 'utf-8')) as {
+    build?: { files?: string[]; asarUnpack?: string[] };
+  };
+
+  it('ships bundled dependency WASM files beside the unpacked MCP server', () => {
+    const runtimeFiles = ['toki-mcp-server.js', 'tiktoken_bg.wasm', 'glue.wasm'];
+    expect(packageJson.build?.files).toEqual(expect.arrayContaining(runtimeFiles));
+    expect(packageJson.build?.asarUnpack).toEqual(expect.arrayContaining(runtimeFiles));
+  });
+});

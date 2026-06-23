@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { buildFolderInfoMap, normalizeFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
+import { convertSillyTavernWorldInfoToLorebook, isSillyTavernWorldInfo } from './sillytavern-world-info';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,11 +24,14 @@ const FRONTMATTER_FIELDS = [
   'order',
   'priority',
   'activationPercent',
+  'depth',
+  'disable',
   'alwaysActive',
   'forceActivation',
   'selective',
   'constant',
   'useRegex',
+  'position',
 ] as const;
 
 /** Fields allowed for lorebook write operations */
@@ -641,6 +645,14 @@ export async function importFromJson(sourcePath: string): Promise<ImportEntry[]>
   }
 
   const obj = parsed as Record<string, unknown>;
+
+  if (isSillyTavernWorldInfo(obj)) {
+    return convertSillyTavernWorldInfoToLorebook(obj).map((entry) => ({
+      comment: entry.comment || '_unnamed',
+      data: entry,
+      sourcePath: resolvedPath,
+    }));
+  }
 
   // Support both { entries: [...] } and plain array
   const rawEntries = Array.isArray(obj.entries) ? obj.entries : Array.isArray(parsed) ? parsed : null;

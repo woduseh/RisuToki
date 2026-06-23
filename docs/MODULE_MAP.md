@@ -50,6 +50,7 @@ This map is for source navigation. It is not a full API reference.
 ## File formats and RisuAI document modeling
 
 - `src/charx-io.ts` — `.charx`, `.risum`, `.risup` serialization and loading
+- `src/lib/character-card-import.ts` — PNG/JSON Character Card import into normalized `.charx` document data
 - `src/lib/folder-workspace.ts` — `.charx` / `.risum` / `.risup` project-folder extraction, loading, saving, tree reads, watching support, and type-aware export
 - `src/lib/deprecated-save-policy.ts` — save-time stripping policy for deprecated/unrecommended `.charx`, `.risum`, and `.risup` fields
 - `src/lib/charx-export-compatibility.ts` — `.charx` RisuAI upload compatibility checks for card/module lorebook/regex mirrors and assets
@@ -57,6 +58,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/document-validation.ts` — document-shape validation
 - `src/lorebook-convert.ts` — lorebook conversion helpers
 - `src/lib/lorebook-io.ts` — lorebook import/export helpers
+- `src/lib/sillytavern-world-info.ts` — SillyTavern `world_info` JSON detection and lorebook-entry conversion
 - `src/lib/lorebook-folders.ts` — lorebook folder identity and hierarchy handling
 - `src/lib/lorebook-decorators.ts` — lorebook decorator parsing and rendering helpers
 - `src/lib/section-parser.ts` — canonical Lua/CSS section parsing shared by renderer, Electron main, and standalone MCP
@@ -108,10 +110,13 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/sidebar-refs.ts` — sidebar reference integration
 - `src/lib/editor-activation.ts` — editor focus/activation state
 - `src/lib/editor-dirty-fields.ts` — dirty-field tracking
+- `src/lib/document-stats.ts` — status-bar document summary counts and active-tab character statistics
 - `src/lib/context-menu.ts` — renderer context menus
 - `src/lib/menu-bar.ts` — menu commands and wiring
 - `src/lib/dialog.ts` — shared dialog helpers
 - `src/lib/help-popup.ts` / `src/lib/settings-popup.ts` — popup UIs
+- `src/lib/switch-control.ts` — shared accessible boolean switch control
+- `src/lib/markdown-preview.ts` — sanitized rendered preview for Markdown guide and project tabs
 - `src/lib/status-bar.ts` — status-bar rendering/state
 - `src/lib/panel-drag.ts` — panel drag/resize logic
 - `src/lib/image-viewer.ts` — image preview helpers
@@ -121,7 +126,7 @@ This map is for source navigation. It is not a full API reference.
 
 ## Terminal and chat
 
-- `src/lib/terminal-manager.ts` — terminal lifecycle
+- `src/lib/terminal-manager.ts` — multi-session PTY lifecycle and legacy default-session terminal IPC
 - `src/lib/terminal-shell.ts` — PTY shell wrapper
 - `src/lib/terminal-ui.ts` — terminal renderer UI helpers
 - `src/lib/terminal-chat.ts` — TUI cleanup and numbered-choice parsing
@@ -132,7 +137,7 @@ This map is for source navigation. It is not a full API reference.
 
 ## Persistence, autosave, and recovery
 
-- `src/lib/app-settings.ts` — normalized app settings persistence
+- `src/lib/app-settings.ts` — normalized app settings and recent-item persistence
 - `src/lib/stored-state-validation.ts` — persisted-state validation
 - `src/lib/backup-store.ts` — backup persistence
 - `src/lib/autosave-manager.ts` — autosave policy and scheduling
@@ -161,7 +166,8 @@ This map is for source navigation. It is not a full API reference.
 
 ## Assets and media
 
-- `src/lib/asset-manager.ts` — asset CRUD helpers, including batch delete IPC for manager-panel multi-select workflows
+- `src/lib/asset-manager.ts` — asset CRUD helpers, including batch delete and batch rename IPC for manager-panel multi-select workflows
+- `src/lib/asset-batch-rename.ts` — pure asset batch rename preview and conflict-planning helper
 - `src/lib/asset-runtime.ts` — asset runtime resolution
 - `src/lib/image-compressor.ts` — asset compression helpers
 - `src/lib/avatar.ts` / `src/lib/avatar-ui.ts` — avatar rendering/state

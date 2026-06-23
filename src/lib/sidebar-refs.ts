@@ -66,7 +66,13 @@ export interface RefsSidebarDeps {
   closeTab(id: string): void;
 
   // External text editing
-  openExternalTextTab(id: string, label: string, value: string, persist: (val: string) => void | Promise<void>): void;
+  openExternalTextTab(
+    id: string,
+    label: string,
+    value: string,
+    persist: (val: string) => void | Promise<void>,
+    language?: string,
+  ): void;
 
   // IPC (tokiAPI wrappers)
   openReference(): Promise<unknown>;
@@ -134,6 +140,43 @@ export async function buildRefsSidebar(container: HTMLElement, deps: RefsSidebar
   const guideFolder = createFolderItem('가이드', '📖', 0);
   container.appendChild(guideFolder.header);
   container.appendChild(guideFolder.children);
+  const guidePathFolders = new Map<string, HTMLDivElement>();
+  let sessionGuideRoot: HTMLDivElement | null = null;
+
+  function guideDestination(
+    fileName: string,
+    isSession: boolean,
+  ): { parent: HTMLElement; label: string; indent: number } {
+    const parts = fileName.replace(/\\/g, '/').split('/').filter(Boolean);
+    const label = parts.pop() || fileName;
+    let parent = guideFolder.children;
+    let indent = 1;
+    let key = isSession ? 'session' : 'built-in';
+    if (isSession) {
+      if (!sessionGuideRoot) {
+        const sessionFolder = createFolderItem('세션 가이드', '⏳', 1);
+        sessionFolder.header.dataset.label = '세션 가이드';
+        guideFolder.children.append(sessionFolder.header, sessionFolder.children);
+        sessionGuideRoot = sessionFolder.children;
+      }
+      parent = sessionGuideRoot;
+      indent = 2;
+    }
+    for (const segment of parts) {
+      key += `/${segment}`;
+      let children = guidePathFolders.get(key);
+      if (!children) {
+        const folder = createFolderItem(segment, '📁', indent);
+        folder.header.dataset.label = segment;
+        parent.append(folder.header, folder.children);
+        children = folder.children;
+        guidePathFolders.set(key, children);
+      }
+      parent = children;
+      indent += 1;
+    }
+    return { parent, label, indent };
+  }
 
   // Right-click on guide folder: new / import
   guideFolder.header.addEventListener('contextmenu', (e: MouseEvent) => {
@@ -148,7 +191,13 @@ export async function buildRefsSidebar(container: HTMLElement, deps: RefsSidebar
           const fn = name.endsWith('.md') ? name : name + '.md';
           await deps.writeGuide(fn, '');
           buildRefsSidebar(container, deps);
-          deps.openExternalTextTab(`guide_${fn}`, `[가이드] ${fn}`, '', (val: string) => deps.writeGuide(fn, val));
+          deps.openExternalTextTab(
+            `guide_${fn}`,
+            `[가이드] ${fn}`,
+            '',
+            (val: string) => deps.writeGuide(fn, val),
+            'markdown',
+          );
           deps.setStatus(`가이드 생성: ${fn}`);
         },
       },
@@ -167,8 +216,9 @@ export async function buildRefsSidebar(container: HTMLElement, deps: RefsSidebar
 
   // Helper: create guide item with click + context menu
   function addGuideItem(fileName: string, isSession: boolean) {
-    const prefix = isSession ? '⏳ ' : '';
-    const el = createTreeItem(prefix + fileName, '·', 1);
+    const destination = guideDestination(fileName, isSession);
+    const el = createTreeItem(destination.label, '·', destination.indent);
+    el.title = fileName;
     el.addEventListener('click', async () => {
       const tabId = `guide_${fileName}`;
       const existing = deps.findOpenTab(tabId);
@@ -181,7 +231,13 @@ export async function buildRefsSidebar(container: HTMLElement, deps: RefsSidebar
         deps.setStatus('가이드 파일 읽기 실패');
         return;
       }
-      deps.openExternalTextTab(tabId, `[가이드] ${fileName}`, content, (val: string) => deps.writeGuide(fileName, val));
+      deps.openExternalTextTab(
+        tabId,
+        `[가이드] ${fileName}`,
+        content,
+        (val: string) => deps.writeGuide(fileName, val),
+        'markdown',
+      );
     });
     el.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
@@ -222,16 +278,11 @@ export async function buildRefsSidebar(container: HTMLElement, deps: RefsSidebar
       });
       deps.showContextMenu(e.clientX, e.clientY, items);
     });
-    guideFolder.children.appendChild(el);
+    destination.parent.appendChild(el);
   }
 
   for (const fileName of builtInFiles) addGuideItem(fileName, false);
-  if (sessionFiles.length > 0) {
-    const sep = document.createElement('div');
-    sep.style.cssText = 'height:1px;background:var(--border-color);margin:4px 8px;';
-    guideFolder.children.appendChild(sep);
-    for (const fileName of sessionFiles) addGuideItem(fileName, true);
-  }
+  for (const fileName of sessionFiles) addGuideItem(fileName, true);
 
   // ---- Reference files section ----
   const refHeader = document.createElement('div');
@@ -264,9 +315,29 @@ export async function buildRefsSidebar(container: HTMLElement, deps: RefsSidebar
   });
   container.appendChild(refHeader);
 
-  // Render each reference file
+  // Render reference paths as nested folders when their display name contains
+  // slash-separated directories.
+  const referencePathFolders = new Map<string, HTMLDivElement>();
   for (let ri = 0; ri < referenceFiles.length; ri++) {
-    renderReferenceFile(container, deps, referenceFiles, ri);
+    const parts = referenceFiles[ri].fileName.replace(/\\/g, '/').split('/').filter(Boolean);
+    const displayName = parts.pop() || referenceFiles[ri].fileName;
+    let parent = container;
+    let indent = 0;
+    let key = '';
+    for (const segment of parts) {
+      key += `/${segment}`;
+      let children = referencePathFolders.get(key);
+      if (!children) {
+        const folder = createFolderItem(segment, '📁', indent);
+        folder.header.dataset.label = segment;
+        parent.append(folder.header, folder.children);
+        children = folder.children;
+        referencePathFolders.set(key, children);
+      }
+      parent = children;
+      indent += 1;
+    }
+    renderReferenceFile(parent, deps, referenceFiles, ri, displayName, indent);
   }
 }
 
@@ -277,10 +348,14 @@ function renderReferenceFile(
   deps: RefsSidebarDeps,
   referenceFiles: ReferenceFile[],
   ri: number,
+  displayName = referenceFiles[ri].fileName,
+  indent = 0,
 ): void {
   const ref = referenceFiles[ri];
   const fileType = ref.fileType || getRefFileType(ref);
-  const refFolder = createFolderItem(ref.fileName, '📎', 0);
+  const refFolder = createFolderItem(displayName, '📎', indent);
+  refFolder.header.dataset.label = displayName;
+  refFolder.header.title = ref.filePath || ref.fileName;
   container.appendChild(refFolder.header);
   container.appendChild(refFolder.children);
 

@@ -65,6 +65,39 @@ describe('App shell', () => {
     }
   });
 
+  it('keeps a hover-switched menu open when the click completes the switch', async () => {
+    const wrapper = mount(MenuBar, { attachTo: document.body });
+
+    try {
+      const fileButton = wrapper.get('[data-menu-button="file"]');
+      const editButton = wrapper.get('[data-menu-button="edit"]');
+      // Menu order is file, edit, view, terminal — the Edit container is index 1.
+      const editItem = wrapper.findAll('.menu-item')[1];
+
+      // Open the File menu with a deliberate click.
+      await fileButton.trigger('click');
+      await nextTick();
+      expect(fileButton.attributes('aria-expanded')).toBe('true');
+
+      // Moving the pointer onto Edit hover-switches openMenu; the click that
+      // lands on Edit then completes the switch. Previously this immediately
+      // toggled Edit shut, so switching menus required a second click.
+      await editItem.trigger('mouseenter');
+      await editButton.trigger('click');
+      await nextTick();
+
+      expect(editButton.attributes('aria-expanded')).toBe('true');
+      expect(fileButton.attributes('aria-expanded')).toBe('false');
+
+      // Clicking the already-open Edit menu still closes it (toggle preserved).
+      await editButton.trigger('click');
+      await nextTick();
+      expect(editButton.attributes('aria-expanded')).toBe('false');
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it('renders the dark-mode title variant from store', () => {
     const pinia = createPinia();
     const wrapper = mount(App, { global: { plugins: [pinia] } });
@@ -134,8 +167,56 @@ describe('App shell', () => {
       await nextTick();
 
       expect(wrapper.text()).toContain('파일로 내보내기');
+      expect(wrapper.text()).toContain('프로젝트 폴더 복제');
       expect(wrapper.text()).not.toContain('CharX로 내보내기');
       expect(wrapper.text()).not.toContain('CharX로 재조립');
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('renders recent items and emits the selected item payload', async () => {
+    const recentItem = {
+      kind: 'file' as const,
+      path: 'C:\\cards\\avatar.png',
+      sourceFormat: 'png' as const,
+      openedAt: 10,
+    };
+    const wrapper = mount(MenuBar, {
+      attachTo: document.body,
+      props: { recentItems: [recentItem] },
+    });
+
+    try {
+      await wrapper.get('[data-menu-button="file"]').trigger('click');
+      await nextTick();
+
+      expect(wrapper.text()).toContain('최근 항목');
+      expect(wrapper.text()).toContain('[PNG] avatar.png');
+
+      const recentButton = wrapper.findAll('.menu-action').find((button) => button.text().includes('avatar.png'));
+      expect(recentButton).toBeTruthy();
+      await recentButton!.trigger('click');
+
+      expect(wrapper.emitted('action')?.at(-1)).toEqual(['open-recent-item', recentItem]);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('renders an empty recent items state', async () => {
+    const wrapper = mount(MenuBar, {
+      attachTo: document.body,
+      props: { recentItems: [] },
+    });
+
+    try {
+      await wrapper.get('[data-menu-button="file"]').trigger('click');
+      await nextTick();
+
+      expect(wrapper.text()).toContain('최근 항목 없음');
+      const emptyButton = wrapper.findAll('.menu-action').find((button) => button.text().includes('최근 항목 없음'));
+      expect(emptyButton?.attributes('disabled')).toBeDefined();
     } finally {
       wrapper.unmount();
     }
@@ -152,8 +233,6 @@ describe('App shell', () => {
     expect(wrapper.get('#btn-refs-panel-popout').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-refs-panel-dock').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-avatar-collapse').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#btn-rp-mode').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#btn-bgm').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-chat-mode').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-terminal-bg').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-terminal-toggle').attributes('aria-label')).toBeTruthy();
@@ -198,6 +277,34 @@ describe('App shell', () => {
 
     expect(store.statusText).toBe('');
     expect(bar.classes()).not.toContain('visible');
+  });
+
+  it('keeps persistent document stats visible beside transient status messages', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore() as ReturnType<typeof useAppStore> & {
+      clearStatus(): void;
+      setDocumentStatsText(text: string): void;
+      setStatus(text: string, options?: { kind?: 'info' | 'error'; sticky?: boolean }): void;
+    };
+
+    store.setDocumentStatsText('CHARX · 저장됨 · 로어북 2 · 정규식 1 · 에셋 3 · 탭 10자');
+    await nextTick();
+
+    const bar = wrapper.get('#statusbar');
+    expect(bar.classes()).toContain('visible');
+    expect(wrapper.get('#status-stats').text()).toContain('로어북 2');
+
+    store.setStatus('저장 완료');
+    await nextTick();
+    expect(wrapper.get('#status-text').text()).toBe('저장 완료');
+    expect(wrapper.get('#status-stats').text()).toContain('에셋 3');
+
+    await wrapper.get('#status-dismiss').trigger('click');
+    await nextTick();
+    expect(store.statusText).toBe('');
+    expect(bar.classes()).toContain('visible');
+    expect(wrapper.get('#status-stats').text()).toContain('CHARX');
   });
 
   it('renders an additive restored-session badge in the file label', async () => {

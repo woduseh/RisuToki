@@ -75,7 +75,7 @@ interface SaveResult {
 }
 
 type OpenFileResult =
-  | { success: true; data: Record<string, unknown> }
+  | { success: true; data: Record<string, unknown>; path?: string; sourceFormat?: string; imported?: boolean }
   | { success: false; canceled: true }
   | { success: false; canceled?: false; error: string };
 
@@ -140,6 +140,10 @@ const {
   mergePrimaryLuaIntoTriggerScripts: (triggerScripts: unknown, lua: unknown) => unknown[];
   normalizeTriggerScripts: (triggerScripts: unknown) => unknown[];
   stringifyTriggerScripts: (triggerScripts: unknown) => string;
+};
+
+const { importCharacterCardByPath } = require('./src/lib/character-card-import') as {
+  importCharacterCardByPath: (filePath: string) => { data: CharxData; format: 'png' | 'json'; sourcePath: string };
 };
 
 const {
@@ -425,15 +429,35 @@ const RENDERER_SESSION_STATUS_TIMEOUT_MS = 5000;
 let projectWatcher: fs.FSWatcher | null = null;
 let projectWatchTimer: NodeJS.Timeout | null = null;
 let suppressProjectWatchUntil = 0;
+let currentImportSourcePath: string | null = null;
+let currentImportSourceFormat: string | null = null;
 
 // ---------------------------------------------------------------------------
 // Document open helper (shared by open-file and recovery)
 // ---------------------------------------------------------------------------
 
 function openDocumentByPath(filePath: string): CharxData {
-  if (filePath.endsWith('.risum')) return openRisum(filePath);
-  if (filePath.endsWith('.risup')) return openRisup(filePath);
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.risum') return openRisum(filePath);
+  if (ext === '.risup') return openRisup(filePath);
   return openCharx(filePath);
+}
+
+function getSourceFormat(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase().replace('.', '');
+  if (ext === 'charx' || ext === 'risum' || ext === 'risup' || ext === 'png' || ext === 'json') return ext;
+  if (ext === 'jpg' || ext === 'jpeg') return ext;
+  return ext || 'file';
+}
+
+function isCharacterCardImportPath(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return ext === '.png' || ext === '.json';
+}
+
+function clearImportSource(): void {
+  currentImportSourcePath = null;
+  currentImportSourceFormat = null;
 }
 
 function getDocumentFileType(data: CharxData): 'charx' | 'risum' | 'risup' {
@@ -481,6 +505,7 @@ function sameDocumentPath(a: string, b: string): boolean {
 
 function activateOpenedDocument(filePath: string, nextData: CharxData): Record<string, unknown> {
   stopProjectWatcher();
+  clearImportSource();
   mainState.setCurrentDocument(filePath, nextData);
   mainState.setCurrentFileBaseline(captureFileBaseline(filePath));
   invalidateAssetsMapCache();
@@ -501,6 +526,7 @@ function activateProjectDocument(
   nextData: CharxData,
   sourceFilePath?: string | null,
 ): Record<string, unknown> {
+  clearImportSource();
   mainState.setCurrentProject(projectPath, nextData, sourceFilePath || null);
   mainState.setCurrentFileBaseline(null);
   invalidateAssetsMapCache();
@@ -514,10 +540,53 @@ function activateProjectDocument(
   return serializeForRenderer(mainState.currentData!);
 }
 
-function openDocumentIntoWorkspace(filePath: string): Record<string, unknown> {
+function activateImportedDocument(
+  sourcePath: string,
+  sourceFormat: string,
+  nextData: CharxData,
+): Record<string, unknown> {
+  stopProjectWatcher();
+  mainState.resetCurrentDocument(nextData);
+  mainState.setCurrentFileBaseline(null);
+  currentImportSourcePath = sourcePath;
+  currentImportSourceFormat = sourceFormat;
+  invalidateAssetsMapCache();
+  if (mcpApi) mcpApi.invalidateSectionCaches();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setTitle(`RisuToki - ${path.basename(sourcePath)} [Imported]`);
+  }
+  if (apiPort) writeCurrentMcpConfig();
+  broadcastSidebarDataChanged();
+  return serializeForRenderer(mainState.currentData!);
+}
+
+function openDocumentIntoWorkspaceResult(filePath: string): {
+  data: Record<string, unknown>;
+  path: string;
+  sourceFormat: string;
+  imported?: boolean;
+} {
   const normalizedPath = path.normalize(filePath);
+  const sourceFormat = getSourceFormat(normalizedPath);
   console.log('[main] Opening:', normalizedPath);
-  const nextData = openDocumentByPath(normalizedPath);
+  if (isCharacterCardImportPath(normalizedPath)) {
+    const imported = importCharacterCardByPath(normalizedPath);
+    const serialized = activateImportedDocument(normalizedPath, imported.format, imported.data);
+    console.log('[main] Imported OK, name:', mainState.currentData!.name, 'format:', imported.format);
+    return { data: serialized, path: normalizedPath, sourceFormat: imported.format, imported: true };
+  }
+
+  let nextData: CharxData;
+  try {
+    nextData = openDocumentByPath(normalizedPath);
+  } catch (error) {
+    if (sourceFormat === 'jpg' || sourceFormat === 'jpeg') {
+      throw new Error(
+        `JPEG Character Card 데이터를 찾지 못했습니다. RisuAI 카드 ZIP 프리루드가 포함된 .jpg/.jpeg 파일인지 확인하세요. (${(error as Error).message})`,
+      );
+    }
+    throw error;
+  }
   const serialized = activateOpenedDocument(normalizedPath, nextData);
   console.log(
     '[main] Parsed OK, name:',
@@ -525,7 +594,11 @@ function openDocumentIntoWorkspace(filePath: string): Record<string, unknown> {
     'type:',
     getDocumentFileType(mainState.currentData!),
   );
-  return serialized;
+  return { data: serialized, path: normalizedPath, sourceFormat };
+}
+
+function openDocumentIntoWorkspace(filePath: string): Record<string, unknown> {
+  return openDocumentIntoWorkspaceResult(filePath).data;
 }
 
 function stopProjectWatcher(): void {
@@ -1205,6 +1278,7 @@ app.on('window-all-closed', () => {
 
 // New file
 ipcMain.handle('new-file', async () => {
+  clearImportSource();
   mainState.resetCurrentDocument({
     spec: 'chara_card_v3',
     specVersion: '3.0',
@@ -1280,15 +1354,18 @@ ipcMain.handle('open-file', async (): Promise<OpenFileResult> => {
   try {
     const result = await dialog.showOpenDialog(mainWindow!, {
       filters: [
-        { name: 'RisuAI Files', extensions: ['charx', 'risum', 'risup'] },
+        { name: 'RisuAI Files', extensions: ['charx', 'risum', 'risup', 'png', 'json', 'jpg', 'jpeg'] },
         { name: 'Character Card', extensions: ['charx'] },
+        { name: 'PNG/JSON Character Card', extensions: ['png', 'json'] },
+        { name: 'JPEG Character Card', extensions: ['jpg', 'jpeg'] },
         { name: 'RisuAI Module', extensions: ['risum'] },
         { name: 'Bot Preset', extensions: ['risup'] },
       ],
       properties: ['openFile'],
     });
     if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true };
-    return { success: true, data: openDocumentIntoWorkspace(result.filePaths[0]) };
+    const opened = openDocumentIntoWorkspaceResult(result.filePaths[0]);
+    return { success: true, ...opened };
   } catch (err) {
     console.error('[main] open-file error:', err);
     return {
@@ -1358,6 +1435,67 @@ ipcMain.handle('open-project-folder', async () => {
       success: true,
       data: activateProjectDocument(result.filePaths[0], data),
       projectPath: result.filePaths[0],
+    };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('open-project-folder-path', async (_event, projectPath: string) => {
+  try {
+    if (typeof projectPath !== 'string' || !projectPath.trim()) {
+      throw new Error('Missing project folder path');
+    }
+    const normalizedPath = path.normalize(projectPath.trim());
+    const data = loadProjectData(normalizedPath);
+    return {
+      success: true,
+      data: activateProjectDocument(normalizedPath, data),
+      projectPath: normalizedPath,
+    };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+});
+
+function assertProjectCloneTarget(sourcePath: string, targetPath: string): void {
+  const source = path.resolve(sourcePath);
+  const target = path.resolve(targetPath);
+  if (source === target) {
+    throw new Error('원본 프로젝트 폴더와 같은 위치로는 복제할 수 없습니다.');
+  }
+  const relative = path.relative(source, target);
+  if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) {
+    throw new Error('원본 프로젝트 폴더 내부로는 복제할 수 없습니다.');
+  }
+  if (fs.existsSync(target) && fs.readdirSync(target).length > 0) {
+    throw new Error('복제 대상 폴더가 비어 있지 않습니다.');
+  }
+}
+
+ipcMain.handle('clone-project-folder', async () => {
+  try {
+    if (!mainState.currentProjectPath) {
+      return { success: false, error: 'No project folder open' };
+    }
+    const defaultName = `${path.basename(mainState.currentProjectPath)}_copy`;
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: '프로젝트 복제 대상 폴더 선택',
+      defaultPath: path.join(path.dirname(mainState.currentProjectPath), defaultName),
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true };
+
+    const sourcePath = path.resolve(mainState.currentProjectPath);
+    const targetPath = path.resolve(result.filePaths[0]);
+    assertProjectCloneTarget(sourcePath, targetPath);
+    fs.mkdirSync(targetPath, { recursive: true });
+    fs.cpSync(sourcePath, targetPath, { recursive: true });
+    const data = loadProjectData(targetPath);
+    return {
+      success: true,
+      data: activateProjectDocument(targetPath, data, mainState.currentFilePath),
+      projectPath: targetPath,
     };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -1517,6 +1655,7 @@ async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promis
     } else {
       saveCharx(result.filePath, mainState.currentData!);
     }
+    clearImportSource();
     mainState.setCurrentDocument(result.filePath, mainState.currentData!);
     mainState.setCurrentFileBaseline(captureFileBaseline(result.filePath));
     mainWindow!.setTitle(`RisuToki - ${path.basename(mainState.currentFilePath!)}`);
@@ -1656,6 +1795,7 @@ ipcMain.handle('get-cwd', () => {
   return (
     (cwd && path.isAbsolute(cwd) ? cwd : null) ||
     (mainState.currentProjectPath ? mainState.currentProjectPath : null) ||
+    (currentImportSourcePath ? path.dirname(currentImportSourcePath) : null) ||
     (mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : null) ||
     process.cwd()
   );
@@ -1679,6 +1819,20 @@ ipcMain.handle('toggle-devtools', () => {
 // --- Open folder in file explorer ---
 ipcMain.handle('open-folder', (_event, folderPath: string) => {
   shell.openPath(folderPath);
+});
+
+// Open links from rendered guide previews without allowing local files or
+// executable/custom protocols to cross the renderer boundary.
+ipcMain.handle('open-external-url', async (_event, rawUrl: string): Promise<boolean> => {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) return false;
+  try {
+    const url = new URL(rawUrl.trim());
+    if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) return false;
+    await shell.openExternal(url.toString());
+    return true;
+  } catch {
+    return false;
+  }
 });
 
 // --- Get autosave info ---
@@ -1738,7 +1892,11 @@ ipcMain.handle('resolve-pending-session-recovery', async (_event, action: 'resto
 // --- Assistant prompt info ---
 ipcMain.handle('get-claude-prompt', () => {
   if (!mainState.currentData) return null;
-  const fileName = mainState.currentFilePath ? path.basename(mainState.currentFilePath) : 'new file';
+  const fileName = mainState.currentFilePath
+    ? path.basename(mainState.currentFilePath)
+    : currentImportSourcePath
+      ? `${path.basename(currentImportSourcePath)} (${currentImportSourceFormat || 'import'})`
+      : 'new file';
   const stats: string[] = [];
   if (mainState.currentData.lua) stats.push(`Lua: ${(mainState.currentData.lua.length / 1024).toFixed(0)}KB`);
   if (mainState.currentData.lorebook?.length) stats.push(`로어북: ${mainState.currentData.lorebook.length}개`);
@@ -1751,7 +1909,11 @@ ipcMain.handle('get-claude-prompt', () => {
     fileName,
     name: mainState.currentData.name || '',
     stats: stats.join(', '),
-    cwd: mainState.currentFilePath ? path.dirname(mainState.currentFilePath) : process.cwd(),
+    cwd: mainState.currentFilePath
+      ? path.dirname(mainState.currentFilePath)
+      : currentImportSourcePath
+        ? path.dirname(currentImportSourcePath)
+        : process.cwd(),
   };
 });
 

@@ -5,6 +5,7 @@ import {
   showRegexEditor,
   showRisupEditor,
   showBooleanEditor,
+  showModuleSettingsEditor,
   showToggleTemplateEditor,
   disposeFormEditors,
   type FormTabInfo,
@@ -106,7 +107,7 @@ beforeEach(() => {
 });
 
 describe('showBooleanEditor', () => {
-  it('writes true and false through radio options', () => {
+  it('writes independent boolean values through an accessible switch', () => {
     const deps = createDeps();
     initFormEditor(deps);
     let value = false;
@@ -121,18 +122,13 @@ describe('showBooleanEditor', () => {
       },
     });
 
-    const radios = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
-    expect(radios).toHaveLength(2);
-    expect(radios.map((radio) => radio.value)).toEqual(['true', 'false']);
-    expect(radios[1].checked).toBe(true);
-
-    radios[0].checked = true;
-    radios[0].dispatchEvent(new Event('change'));
+    const control = document.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    expect(control.getAttribute('aria-checked')).toBe('false');
+    control.click();
     expect(value).toBe(true);
     expect(deps.tabMgr.markDirtyForTabId).toHaveBeenCalledWith('lowLevelAccess');
-
-    radios[1].checked = true;
-    radios[1].dispatchEvent(new Event('change'));
+    expect(control.getAttribute('aria-checked')).toBe('true');
+    control.click();
     expect(value).toBe(false);
   });
 
@@ -148,10 +144,43 @@ describe('showBooleanEditor', () => {
       setValue: null,
     });
 
-    const radios = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
-    expect(radios[0].checked).toBe(true);
-    expect(radios.every((radio) => radio.disabled)).toBe(true);
+    const control = document.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    expect(control.getAttribute('aria-checked')).toBe('true');
+    expect(control.disabled).toBe(true);
     expect(document.querySelector('.readonly-badge')?.textContent).toContain('읽기');
+  });
+});
+
+describe('showModuleSettingsEditor', () => {
+  it('edits module identity and boolean settings in one form', () => {
+    const deps = createDeps();
+    initFormEditor(deps);
+    const data = {
+      moduleName: 'Old',
+      moduleDescription: 'Description',
+      moduleNamespace: 'old.namespace',
+      lowLevelAccess: false,
+      hideIcon: true,
+    };
+
+    showModuleSettingsEditor({
+      id: 'moduleSettings',
+      label: '모듈 설정',
+      language: '_modulesettingsform',
+      getValue: () => data,
+      setValue: (value) => Object.assign(data, value),
+    });
+
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('.module-settings-form input')];
+    inputs[0].value = 'New';
+    inputs[0].dispatchEvent(new Event('input'));
+    const switches = [...document.querySelectorAll<HTMLButtonElement>('.module-settings-form [role="switch"]')];
+    switches[0].click();
+
+    expect(data.moduleName).toBe('New');
+    expect(data.lowLevelAccess).toBe(true);
+    expect(data.hideIcon).toBe(true);
+    expect(deps.tabMgr.markDirtyForTabId).toHaveBeenCalledWith('moduleSettings');
   });
 });
 

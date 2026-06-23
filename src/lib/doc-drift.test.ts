@@ -286,6 +286,15 @@ describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
     'compress_assets',
     'RISUTOKI_MCP_TOOL_PROFILE',
     'replace_text',
+    'field_stats',
+    'token_count',
+    'simulate_lorebook',
+    'test_regex',
+    'verify_risup_prompt_import',
+    'max_matches',
+    'applied_count',
+    'failed_operation',
+    'remaining_count',
   ]);
 
   it('every tool name in MCP_TOOL_SURFACE.md exists in taxonomy', () => {

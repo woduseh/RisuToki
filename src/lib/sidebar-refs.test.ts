@@ -118,6 +118,26 @@ describe('buildRefsSidebar race-condition guard', () => {
     );
     expect(container.querySelector('[data-label="설명"]')).toBeNull();
   });
+
+  it('nests slash-separated guide and reference paths', async () => {
+    const container = document.getElementById('sidebar-refs')!;
+    const deps = createMockDeps(0);
+    deps.listGuides = vi.fn().mockResolvedValue({ builtIn: ['bot/guides/intro.md'], session: [] });
+    const refs = [{ fileName: 'common/examples/card.charx', data: {} }];
+    deps.getReferenceFiles = () => refs as never[];
+    deps.syncReferenceFiles = vi.fn().mockResolvedValue(refs as never[]);
+
+    await buildRefsSidebar(container, deps);
+
+    expect(container.querySelector('[data-label="bot"]')).not.toBeNull();
+    expect(container.querySelector('[data-label="guides"]')).not.toBeNull();
+    expect(container.querySelector('[data-label="intro.md"]')?.getAttribute('title')).toBe('bot/guides/intro.md');
+    expect(container.querySelector('[data-label="common"]')).not.toBeNull();
+    expect(container.querySelector('[data-label="examples"]')).not.toBeNull();
+    expect(container.querySelector('[data-label="card.charx"]')?.getAttribute('title')).toBe(
+      'common/examples/card.charx',
+    );
+  });
 });
 
 describe('openRefTabById', () => {

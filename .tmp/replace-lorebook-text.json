@@ -1,0 +1,203 @@
+{
+  "file": "C:\\Users\\wodus\\ai-workspace\\RisuToki\\risu\\bot\\거대녀 하숙집\\거대녀 하숙집.charx",
+  "allow_writes": true,
+  "tool_profile": "advanced-full",
+  "output_path": ".tmp/replace-lorebook-text-output.json",
+  "steps": [
+    {
+      "id": "replace",
+      "tool": "replace_in_lorebook_batch",
+      "args": {
+        "dry_run": false,
+        "replacements": [
+          {
+            "index": 0,
+            "find": "Yeon-ha (서연하)",
+            "replace": "Yeon-ha",
+            "expected_comment": "scale_core"
+          },
+          {
+            "index": 0,
+            "find": "Se-rin (강세린)",
+            "replace": "Se-rin",
+            "expected_comment": "scale_core"
+          },
+          {
+            "index": 0,
+            "find": "Eun-seo (한은서)",
+            "replace": "Eun-seo",
+            "expected_comment": "scale_core"
+          },
+          {
+            "index": 0,
+            "find": "So-yul (윤소율)",
+            "replace": "So-yul",
+            "expected_comment": "scale_core"
+          },
+          {
+            "index": 2,
+            "find": "**서연하 (Seo Yeon-ha),",
+            "replace": "**Seo Yeon-ha,",
+            "expected_comment": "cast_anchor"
+          },
+          {
+            "index": 2,
+            "find": "**한은서 (Han Eun-seo),",
+            "replace": "**Han Eun-seo,",
+            "expected_comment": "cast_anchor"
+          },
+          {
+            "index": 2,
+            "find": "**강세린 (Kang Se-rin / Céline),",
+            "replace": "**Kang Se-rin / Céline,",
+            "expected_comment": "cast_anchor"
+          },
+          {
+            "index": 2,
+            "find": "**윤소율 (Yoon So-yul),",
+            "replace": "**Yoon So-yul,",
+            "expected_comment": "cast_anchor"
+          },
+          {
+            "index": 3,
+            "find": "### Giant Constitution (거대 체질)",
+            "replace": "### Giant Constitution",
+            "expected_comment": "world_setting"
+          },
+          {
+            "index": 3,
+            "find": "### Hanulmaru Boarding House (하늘마루 하숙집)",
+            "replace": "### Hanulmaru Boarding House",
+            "expected_comment": "world_setting"
+          },
+          {
+            "index": 3,
+            "find": "\"the boarding house\" — 하숙집 —",
+            "replace": "\"the boarding house\" —",
+            "expected_comment": "world_setting"
+          },
+          {
+            "index": 4,
+            "find": "## Entrance / Foyer (현관)",
+            "replace": "## Entrance / Foyer",
+            "expected_comment": "loc_entrance"
+          },
+          {
+            "index": 5,
+            "find": "## Living Room (거실)",
+            "replace": "## Living Room",
+            "expected_comment": "loc_living_room"
+          },
+          {
+            "index": 6,
+            "find": "## Kitchen / Dining Area (주방/식당)",
+            "replace": "## Kitchen / Dining Area",
+            "expected_comment": "loc_kitchen"
+          },
+          {
+            "index": 7,
+            "find": "## Bathroom (욕실)",
+            "replace": "## Bathroom",
+            "expected_comment": "loc_bathroom"
+          },
+          {
+            "index": 8,
+            "find": "## Bedrooms (침실)",
+            "replace": "## Bedrooms",
+            "expected_comment": "loc_bedroom"
+          },
+          {
+            "index": 9,
+            "find": "## Laundry Room (빨래방)",
+            "replace": "## Laundry Room",
+            "expected_comment": "loc_laundry"
+          },
+          {
+            "index": 10,
+            "find": "## Garden (정원)",
+            "replace": "## Garden",
+            "expected_comment": "loc_garden"
+          },
+          {
+            "index": 11,
+            "find": "## Morning Wake-Up (아침 기상)",
+            "replace": "## Morning Wake-Up",
+            "expected_comment": "routine_morning"
+          },
+          {
+            "index": 12,
+            "find": "## Mealtime (식사)",
+            "replace": "## Mealtime",
+            "expected_comment": "routine_meal"
+          },
+          {
+            "index": 13,
+            "find": "## Bath / Shower (목욕·샤워)",
+            "replace": "## Bath / Shower",
+            "expected_comment": "routine_bath"
+          },
+          {
+            "index": 14,
+            "find": "## Before Bed (취침 전)",
+            "replace": "## Before Bed",
+            "expected_comment": "routine_bedtime"
+          },
+          {
+            "index": 22,
+            "find": "# 서연하 — Seo Yeon-ha",
+            "replace": "# Seo Yeon-ha",
+            "expected_comment": "character_yeonha_surface"
+          },
+          {
+            "index": 23,
+            "find": "# 한은서 — Han Eun-seo",
+            "replace": "# Han Eun-seo",
+            "expected_comment": "character_eunseo_surface"
+          },
+          {
+            "index": 24,
+            "find": "# 강세린 — Kang Se-rin / Céline",
+            "replace": "# Kang Se-rin / Céline",
+            "expected_comment": "character_serin_surface"
+          },
+          {
+            "index": 25,
+            "find": "# 윤소율 — Yoon So-yul",
+            "replace": "# Yoon So-yul",
+            "expected_comment": "character_soyul_surface"
+          },
+          {
+            "index": 26,
+            "find": "# 서연하 — the possessiveness underneath",
+            "replace": "# Seo Yeon-ha — the possessiveness underneath",
+            "expected_comment": "character_yeonha_desire"
+          },
+          {
+            "index": 27,
+            "find": "# 한은서 — the novel, and the goddess",
+            "replace": "# Han Eun-seo — the novel, and the goddess",
+            "expected_comment": "character_eunseo_desire"
+          },
+          {
+            "index": 27,
+            "find": "**Crimson Goddess** (진홍의 여신)",
+            "replace": "**Crimson Goddess**",
+            "expected_comment": "character_eunseo_desire"
+          },
+          {
+            "index": 28,
+            "find": "# 강세린 — the quiet underneath the noise",
+            "replace": "# Kang Se-rin — the quiet underneath the noise",
+            "expected_comment": "character_serin_desire"
+          },
+          {
+            "index": 29,
+            "find": "# 윤소율 — what's behind the wall",
+            "replace": "# Yoon So-yul — what's behind the wall",
+            "expected_comment": "character_soyul_reveal"
+          }
+        ]
+      }
+    }
+  ]
+}

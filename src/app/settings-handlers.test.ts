@@ -1,15 +1,49 @@
-import { describe, expect, it } from 'vitest';
-import { getRpLabel } from './settings-handlers';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readAppSettingsSnapshot, writeRpMode } from '../lib/app-settings';
+import type { CustomThemePalette, ThemeId } from '../lib/theme-registry';
+import { changeTheme } from './settings-handlers';
 
 describe('settings-handlers', () => {
-  it('getRpLabel returns correct labels for existing modes', () => {
-    expect(getRpLabel('off')).toBe('OFF');
-    expect(getRpLabel('toki')).toBe('토키');
-    expect(getRpLabel('aris')).toBe('아리스');
-    expect(getRpLabel('custom')).toBe('커스텀');
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
   });
 
-  it('getRpLabel returns OFF for unknown modes', () => {
-    expect(getRpLabel('unknown')).toBe('OFF');
+  it('changes and persists the app theme without changing RP mode', () => {
+    let themeId: ThemeId = 'toki';
+    let customTheme: CustomThemePalette | null = null;
+    writeRpMode('aris');
+
+    changeTheme('millennium', {
+      getEditorInstance: () => null,
+      getFormEditors: () => [],
+      getTerminal: () => null,
+      getThemeId: () => themeId,
+      getCustomTheme: () => customTheme,
+      setThemeId: (value) => {
+        themeId = value;
+      },
+      setCustomTheme: (value) => {
+        customTheme = value;
+      },
+    });
+
+    expect(themeId).toBe('millennium');
+    expect(readAppSettingsSnapshot().themeId).toBe('millennium');
+    expect(readAppSettingsSnapshot().rpMode).toBe('aris');
+  });
+
+  it('does not require RP or dark-mode mutation callbacks in the theme contract', () => {
+    const setThemeId = vi.fn();
+    changeTheme('trinity', {
+      getEditorInstance: () => null,
+      getFormEditors: () => [],
+      getTerminal: () => null,
+      getThemeId: () => 'toki',
+      getCustomTheme: () => null,
+      setThemeId,
+      setCustomTheme: vi.fn(),
+    });
+    expect(setThemeId).toHaveBeenCalledWith('trinity');
   });
 });

@@ -143,4 +143,61 @@ describe('asset-manager mutation consistency', () => {
     expect(currentData.cardAssets).toEqual([]);
     expect(currentData.xMeta).not.toHaveProperty('new');
   });
+
+  it('renames assets in batches only after preflighting all conflicts', () => {
+    const currentData = {
+      assets: [
+        { path: 'assets/icon/old.png', data: Buffer.from('old') },
+        { path: 'assets/other/image/portrait.webp', data: Buffer.from('portrait') },
+        { path: 'assets/other/image/existing.png', data: Buffer.from('existing') },
+      ],
+      cardAssets: [
+        { type: 'icon', uri: 'embeded://assets/icon/old.png', name: 'old', ext: 'png' },
+        { type: 'x-risu-asset', uri: 'embeded://assets/other/image/portrait.webp', name: 'portrait', ext: 'webp' },
+      ],
+      xMeta: { old: { type: 'PNG' }, portrait: { type: 'WEBP' }, existing: { type: 'PNG' } },
+    };
+    initAssetManager({
+      getCurrentData: () => currentData,
+      getMainWindow: () => null,
+    });
+
+    const renameAssetsBatch = getRegisteredHandler('rename-assets-batch');
+    expect(
+      renameAssetsBatch({}, [
+        { oldPath: 'assets/icon/old.png', newName: 'portrait.webp' },
+        { oldPath: 'assets/other/image/portrait.webp', newName: 'face.webp' },
+      ]),
+    ).toMatchObject({
+      ok: false,
+      conflicts: expect.arrayContaining([expect.stringContaining('확장자는 .png')]),
+    });
+    expect(currentData.assets[0].path).toBe('assets/icon/old.png');
+
+    expect(
+      renameAssetsBatch({}, [
+        { oldPath: 'assets/icon/old.png', newName: 'hero.png' },
+        { oldPath: 'assets/other/image/portrait.webp', newName: 'face.webp' },
+      ]),
+    ).toEqual({
+      ok: true,
+      renamed: [
+        { oldPath: 'assets/icon/old.png', newPath: 'assets/icon/hero.png' },
+        { oldPath: 'assets/other/image/portrait.webp', newPath: 'assets/other/image/face.webp' },
+      ],
+    });
+    expect(currentData.assets.map((asset) => asset.path)).toEqual([
+      'assets/icon/hero.png',
+      'assets/other/image/face.webp',
+      'assets/other/image/existing.png',
+    ]);
+    expect(currentData.cardAssets).toEqual([
+      { type: 'icon', uri: 'embeded://assets/icon/hero.png', name: 'hero', ext: 'png' },
+      { type: 'x-risu-asset', uri: 'embeded://assets/other/image/face.webp', name: 'face', ext: 'webp' },
+    ]);
+    expect(currentData.xMeta).not.toHaveProperty('old');
+    expect(currentData.xMeta).not.toHaveProperty('portrait');
+    expect(currentData.xMeta).toHaveProperty('hero');
+    expect(currentData.xMeta).toHaveProperty('face');
+  });
 });

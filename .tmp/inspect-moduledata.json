@@ -1,0 +1,45 @@
+{
+  "file": "C:\\Users\\wodus\\ai-workspace\\RisuToki\\risu\\bot\\거대녀 하숙집\\거대녀 하숙집.charx",
+  "allow_writes": false,
+  "tool_profile": "advanced-full",
+  "output_path": ".tmp/inspect-moduledata-output.json",
+  "steps": [
+    {
+      "id": "module",
+      "tool": "read_content",
+      "args": {
+        "target": {
+          "kind": "active"
+        },
+        "selectors": [
+          {
+            "family": "surface",
+            "path": "/_moduleData"
+          }
+        ],
+        "max_bytes": 32000
+      }
+    },
+    {
+      "id": "tags_creator",
+      "tool": "read_content",
+      "args": {
+        "target": {
+          "kind": "active"
+        },
+        "selectors": [
+          {
+            "family": "surface",
+            "path": "/tags",
+            "include_raw": true
+          },
+          {
+            "family": "field",
+            "field": "creator"
+          }
+        ],
+        "max_bytes": 32000
+      }
+    }
+  ]
+}

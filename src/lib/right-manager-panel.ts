@@ -1,4 +1,7 @@
 import { getFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
+import Sortable from 'sortablejs';
+import { SHARED_OPTIONS, makeFlatOnEnd } from './sidebar-dnd';
+import { planAssetBatchRename, type AssetBatchRenameMode, type AssetBatchRenameOperation } from './asset-batch-rename';
 
 interface LorebookEntryLike {
   key?: string;
@@ -27,16 +30,26 @@ export interface RightManagerPanelDeps {
   addLorebookEntry: () => void;
   addLorebookFolder: () => void;
   renameLorebook: (idx: number) => void;
+  commitLorebookName: (idx: number, name: string) => string | null;
+  reorderLorebook: (fromIdx: number, toPositionInFolder: number, targetFolder: string) => void;
   deleteLorebook: (idx: number) => void;
   deleteLorebookMany: (indices: number[]) => Promise<void>;
   moveLorebookManyToFolder: (indices: number[], folderRef: string) => Promise<void>;
   openImageTab: (path: string, fileName: string) => void;
   addAssetFromDialog: (folder: string) => void;
   addAssetBuffer: (fileName: string, base64: string, folder: string) => Promise<unknown>;
-  renameAsset: (path: string, fileName: string) => Promise<void>;
+  renameAsset: (path: string, fileName: string) => Promise<string | null>;
+  renameAssetsBatch: (operations: AssetBatchRenameOperation[]) => Promise<{
+    ok: boolean;
+    renamed?: Array<{ oldPath: string; newPath: string }>;
+    error?: string;
+    conflicts?: string[];
+  }>;
   deleteAssets: (paths: string[]) => Promise<void>;
   getAssetList: () => Promise<AssetListEntry[]>;
   getAssetData: (path: string) => Promise<string | null>;
+  showPrompt: (msg: string, defaultValue?: string) => Promise<string | null>;
+  showConfirm: (msg: string) => Promise<boolean>;
   setStatus: (msg: string) => void;
   refresh: () => void;
   afterRender?: () => void;
@@ -64,6 +77,18 @@ const state = {
 };
 
 let depsRef: RightManagerPanelDeps | null = null;
+let loreSortable: Sortable | null = null;
+let assetRenderToken = 0;
+
+function destroyLoreSortable(): void {
+  if (!loreSortable) return;
+  try {
+    loreSortable.destroy();
+  } catch {
+    /* already destroyed */
+  }
+  loreSortable = null;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -130,6 +155,39 @@ function renderRightManagerPanelWithFocus(rootId: string): void {
   if (root) restoreFocus(root, focus);
 }
 
+function bindManagerSearchInput(input: HTMLInputElement, rootId: string, setValue: (value: string) => void): void {
+  let composing = false;
+  let pendingRender: number | null = null;
+  const clearPendingRender = (): void => {
+    if (pendingRender === null) return;
+    window.clearTimeout(pendingRender);
+    pendingRender = null;
+  };
+  const syncValue = (): void => setValue(input.value);
+  const renderWithFocus = (): void => renderRightManagerPanelWithFocus(rootId);
+
+  input.addEventListener('compositionstart', () => {
+    composing = true;
+    clearPendingRender();
+  });
+  input.addEventListener('compositionend', () => {
+    composing = false;
+    syncValue();
+    clearPendingRender();
+    pendingRender = window.setTimeout(() => {
+      pendingRender = null;
+      renderWithFocus();
+    }, 0);
+  });
+  input.addEventListener('input', (event) => {
+    syncValue();
+    const eventIsComposing = typeof InputEvent !== 'undefined' && event instanceof InputEvent && event.isComposing;
+    if (composing || eventIsComposing) return;
+    clearPendingRender();
+    renderWithFocus();
+  });
+}
+
 function normalizeText(value: unknown): string {
   return String(value ?? '').toLowerCase();
 }
@@ -189,8 +247,27 @@ function makeToolbarButton(label: string, title: string, onClick: () => void): H
   button.type = 'button';
   button.title = title;
   button.setAttribute('aria-label', title);
-  button.addEventListener('click', onClick);
+  // Keep row/card click handlers (e.g. open-on-click) from also firing when a
+  // row action button is pressed.
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    onClick();
+  });
   return button;
+}
+
+function showInlineError(host: HTMLElement, message: string): void {
+  host.querySelector('.manager-inline-error')?.remove();
+  const error = el('div', 'manager-inline-error', message);
+  host.appendChild(error);
+}
+
+function makeDragHandle(title: string): HTMLElement {
+  const handle = el('span', 'manager-drag-handle disabled', '⋮⋮');
+  handle.title = title;
+  handle.setAttribute('aria-label', title);
+  handle.setAttribute('aria-disabled', 'true');
+  return handle;
 }
 
 function renderPanelShell(
@@ -220,6 +297,8 @@ function renderPanelShell(
 }
 
 function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): void {
+  // The panel rebuilds its DOM on each render; tear down the stale drag instance.
+  destroyLoreSortable();
   const data = deps.getFileData();
   const lorebook = data?.lorebook || [];
 
@@ -228,13 +307,15 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
   query.setAttribute('data-manager-focus-key', 'lore-search');
   query.placeholder = '검색...';
   query.value = state.loreQuery;
-  query.addEventListener('input', () => {
-    state.loreQuery = query.value;
-    renderRightManagerPanelWithFocus('lore-manager-panel');
+  bindManagerSearchInput(query, 'lore-manager-panel', (value) => {
+    state.loreQuery = value;
   });
   toolbar.appendChild(query);
-  toolbar.appendChild(makeToolbarButton('+', '새 로어북 항목', () => deps.addLorebookEntry()));
-  toolbar.appendChild(makeToolbarButton('+폴더', '새 폴더', () => deps.addLorebookFolder()));
+  const addEntry = makeToolbarButton('＋ 항목', '새 로어북 항목', () => deps.addLorebookEntry());
+  const addFolder = makeToolbarButton('＋ 폴더', '새 폴더', () => deps.addLorebookFolder());
+  addEntry.classList.add('manager-primary-action');
+  addFolder.classList.add('manager-primary-action');
+  toolbar.append(addEntry, addFolder);
   body.appendChild(toolbar);
 
   const filterBar = el('div', 'manager-filter-row');
@@ -259,7 +340,9 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
   if (state.loreSelected.size > 0) {
     const selectedBar = el('div', 'manager-selected-bar');
     selectedBar.appendChild(el('span', '', `${state.loreSelected.size}개 선택됨`));
-    selectedBar.appendChild(makeToolbarButton('이동', '선택 항목 폴더 이동', () => void promptMoveLoreSelection(deps)));
+    selectedBar.appendChild(
+      makeToolbarButton('이동', '선택 항목 폴더 이동', () => showFolderMovePicker(deps, selectedBar)),
+    );
     selectedBar.appendChild(
       makeToolbarButton('삭제', '선택 항목 삭제', async () => {
         await deps.deleteLorebookMany([...state.loreSelected]);
@@ -293,10 +376,56 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
       else state.loreExpanded.add(folderKey);
       renderRightManagerPanel();
     });
-    const label = el('div', 'manager-folder-label', entryLabel(folder.entry, folder.index));
+    const folderName = entryLabel(folder.entry, folder.index);
+    const label = el('div', 'manager-folder-label', folderName);
+    label.title = `${folderName} - 더블클릭하여 이름 변경`;
+    label.setAttribute('aria-label', `${folderName} 폴더, 더블클릭하여 이름 변경`);
     const badge = el('span', 'manager-badge', '폴더');
     folderRow.append(arrow, label, badge);
-    folderRow.addEventListener('dblclick', () => deps.renameLorebook(folder.index));
+
+    function beginFolderRename(): void {
+      if (label.querySelector('input')) return;
+      const original = entryLabel(folder.entry, folder.index);
+      const input = el('input', 'manager-inline-rename') as HTMLInputElement;
+      input.type = 'text';
+      input.value = String(folder.entry.comment ?? '');
+      label.replaceChildren(input);
+      input.focus();
+      input.select();
+      let settled = false;
+      const cancel = (): void => {
+        if (settled) return;
+        settled = true;
+        label.textContent = original;
+      };
+      const commit = (): void => {
+        if (settled) return;
+        const error = deps.commitLorebookName(folder.index, input.value);
+        if (error) {
+          showInlineError(label, error);
+          input.focus();
+          return;
+        }
+        settled = true;
+        label.textContent = input.value.trim() || original;
+      };
+      input.addEventListener('click', (event) => event.stopPropagation());
+      input.addEventListener('keydown', (event) => {
+        event.stopPropagation();
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commit();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancel();
+        }
+      });
+      input.addEventListener('blur', commit);
+    }
+    folderRow.addEventListener('dblclick', (event) => {
+      event.stopPropagation();
+      beginFolderRename();
+    });
     list.appendChild(folderRow);
     if (state.loreExpanded.has(folderKey)) {
       const childList = el('div', 'manager-folder-children');
@@ -308,10 +437,35 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
   renderEntries(rootEntries, list);
 
   if (!list.childElementCount) list.appendChild(el('div', 'right-manager-empty', '표시할 로어북 항목이 없습니다.'));
+
+  // Drag reordering only when the visible order is unambiguous: a flat list
+  // (no folders) with no active search/filters. With folders or filters the DOM
+  // order no longer maps 1:1 to root positions, so the ↑/↓-free fallback is to
+  // reorder via the folder move tools instead.
+  const loreFilterActive =
+    state.loreQuery.trim() !== '' || state.loreFilters.always || state.loreFilters.selective || state.loreFilters.regex;
+  const loreDndEnabled = folders.length === 0 && !loreFilterActive && rootEntries.length > 1;
+  if (loreDndEnabled) {
+    list.classList.add('manager-lore-list-sortable');
+    list.querySelectorAll<HTMLElement>(':scope > .manager-lore-row > .manager-drag-handle').forEach((handle) => {
+      handle.classList.remove('disabled');
+      handle.setAttribute('aria-disabled', 'false');
+    });
+    loreSortable = Sortable.create(list, {
+      ...SHARED_OPTIONS,
+      handle: '.manager-drag-handle',
+      filter: 'input, button, .no-sort',
+      preventOnFilter: false,
+      onEnd: makeFlatOnEnd((fromIdx, toIdx) => {
+        deps.reorderLorebook(fromIdx, toIdx, '');
+      }),
+    });
+  }
 }
 
 function createLoreRow(deps: RightManagerPanelDeps, entry: LorebookEntryLike, index: number): HTMLElement {
   const row = el('div', 'manager-lore-row');
+  row.dataset.dndIdx = String(index);
   row.classList.toggle('selected', state.loreSelected.has(index));
 
   const checkbox = el('input', 'manager-check') as HTMLInputElement;
@@ -323,7 +477,58 @@ function createLoreRow(deps: RightManagerPanelDeps, entry: LorebookEntryLike, in
   });
 
   const main = el('div', 'manager-row-main');
-  main.appendChild(el('div', 'manager-row-title', entryLabel(entry, index)));
+  const titleEl = el('div', 'manager-row-title', entryLabel(entry, index));
+  main.appendChild(titleEl);
+
+  // Inline rename: swap the title text for an input instead of a blocking modal.
+  function beginInlineRename(): void {
+    if (titleEl.querySelector('input')) return; // already editing
+    const input = el('input', 'manager-inline-rename') as HTMLInputElement;
+    input.type = 'text';
+    input.value = String(entry.comment ?? '');
+    titleEl.replaceChildren(input);
+    input.focus();
+    input.select();
+
+    let settled = false;
+    const commit = (): void => {
+      if (settled) return;
+      const error = deps.commitLorebookName(index, input.value);
+      if (error) {
+        showInlineError(titleEl, error);
+        input.focus();
+        return;
+      }
+      settled = true;
+      // If the commit did not trigger a rebuild (e.g. unchanged name), make sure
+      // the label text is restored rather than leaving a stray input.
+      titleEl.textContent = entryLabel({ ...entry, comment: input.value.trim() || entry.comment }, index);
+    };
+    const cancel = (): void => {
+      if (settled) return;
+      settled = true;
+      titleEl.textContent = entryLabel(entry, index);
+    };
+
+    input.addEventListener('click', (event) => event.stopPropagation());
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        commit();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        cancel();
+      }
+    });
+    input.addEventListener('blur', commit);
+  }
+
+  titleEl.addEventListener('dblclick', (event) => {
+    event.stopPropagation();
+    beginInlineRename();
+  });
+
   const contentPreview = String(entry.content || '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -337,10 +542,30 @@ function createLoreRow(deps: RightManagerPanelDeps, entry: LorebookEntryLike, in
   if (entry.useRegex || entry.mode === 'regex') tags.appendChild(el('span', 'manager-chip', '정규식'));
 
   const actions = el('div', 'manager-row-actions');
-  actions.appendChild(makeToolbarButton('✎', '이름 변경', () => deps.renameLorebook(index)));
+  const lorebook = deps.getFileData()?.lorebook || [];
+  const folderRef = resolveLorebookFolderRef(entry.folder, lorebook);
+  const siblings = lorebook
+    .map((candidate, candidateIndex) => ({ entry: candidate, index: candidateIndex }))
+    .filter(
+      (candidate) =>
+        candidate.entry.mode !== 'folder' && resolveLorebookFolderRef(candidate.entry.folder, lorebook) === folderRef,
+    );
+  const siblingPosition = siblings.findIndex((candidate) => candidate.index === index);
+  const moveUp = makeToolbarButton('↑', '위로 이동', () => {
+    if (siblingPosition > 0) deps.reorderLorebook(index, siblingPosition - 1, folderRef);
+  });
+  const moveDown = makeToolbarButton('↓', '아래로 이동', () => {
+    if (siblingPosition >= 0 && siblingPosition < siblings.length - 1) {
+      deps.reorderLorebook(index, siblingPosition + 1, folderRef);
+    }
+  });
+  moveUp.disabled = siblingPosition <= 0;
+  moveDown.disabled = siblingPosition < 0 || siblingPosition >= siblings.length - 1;
+  actions.append(moveUp, moveDown);
+  actions.appendChild(makeToolbarButton('✎', '이름 변경', () => beginInlineRename()));
   actions.appendChild(makeToolbarButton('✕', '삭제', () => void deps.deleteLorebook(index)));
 
-  row.append(checkbox, main, tags, actions);
+  row.append(makeDragHandle('로어북 순서 드래그'), checkbox, main, tags, actions);
   row.addEventListener('click', (event) => {
     if ((event as MouseEvent).ctrlKey || (event as MouseEvent).metaKey) {
       toggleLoreSelection(index, true);
@@ -358,30 +583,45 @@ function toggleLoreSelection(index: number, additive: boolean): void {
   renderRightManagerPanel();
 }
 
-async function promptMoveLoreSelection(deps: RightManagerPanelDeps): Promise<void> {
+function showFolderMovePicker(deps: RightManagerPanelDeps, host: HTMLElement): void {
+  host.querySelector('.manager-folder-picker')?.remove();
   const data = deps.getFileData();
   const lorebook = data?.lorebook || [];
   const { folders } = getLoreGroups(lorebook);
-  const names = ['루트', ...folders.map((folder) => entryLabel(folder.entry, folder.index))].join(', ');
-  const target = window.prompt(`이동할 폴더 이름을 입력하세요.\n사용 가능: ${names}`, '루트');
-  if (target === null) return;
-  const folder = folders.find((item) => entryLabel(item.entry, item.index) === target);
-  await deps.moveLorebookManyToFolder([...state.loreSelected], folder ? folder.ref : '');
+  const picker = el('div', 'manager-folder-picker');
+  const title = el('div', 'manager-folder-picker-title', '이동할 폴더');
+  const options = el('div', 'manager-folder-picker-options');
+  const addOption = (label: string, folderRef: string): void => {
+    const button = makeToolbarButton(label, `${label}(으)로 이동`, () => {
+      void deps.moveLorebookManyToFolder([...state.loreSelected], folderRef).then(() => {
+        state.loreSelected.clear();
+        renderRightManagerPanel();
+      });
+    });
+    button.classList.add('manager-folder-option');
+    options.appendChild(button);
+  };
+  addOption('루트', '');
+  for (const folder of folders) addOption(entryLabel(folder.entry, folder.index), folder.ref);
+  picker.append(title, options);
+  host.appendChild(picker);
 }
 
-async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement): Promise<void> {
+async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement, renderToken: number): Promise<void> {
   const toolbar = el('div', 'manager-toolbar');
   const query = el('input', 'manager-search') as HTMLInputElement;
   query.setAttribute('data-manager-focus-key', 'asset-search');
   query.placeholder = '검색...';
   query.value = state.assetQuery;
-  query.addEventListener('input', () => {
-    state.assetQuery = query.value;
-    renderRightManagerPanelWithFocus('asset-manager-panel');
+  bindManagerSearchInput(query, 'asset-manager-panel', (value) => {
+    state.assetQuery = value;
   });
   toolbar.appendChild(query);
-  toolbar.appendChild(makeToolbarButton('+', '추가 에셋 추가', () => deps.addAssetFromDialog('other')));
-  toolbar.appendChild(makeToolbarButton('★', '캐릭터 아이콘 추가', () => deps.addAssetFromDialog('icon')));
+  const addAsset = makeToolbarButton('＋ 에셋', '추가 에셋 추가', () => deps.addAssetFromDialog('other'));
+  const addIcon = makeToolbarButton('★ 아이콘', '캐릭터 아이콘 추가', () => deps.addAssetFromDialog('icon'));
+  addAsset.classList.add('manager-primary-action');
+  addIcon.classList.add('manager-primary-action');
+  toolbar.append(addAsset, addIcon);
   body.appendChild(toolbar);
 
   const groupBar = el('div', 'manager-filter-row');
@@ -402,6 +642,11 @@ async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement):
   if (state.assetSelected.size > 0) {
     const selectedBar = el('div', 'manager-selected-bar');
     selectedBar.appendChild(el('span', '', `${state.assetSelected.size}개 선택됨`));
+    if (state.assetSelected.size >= 2) {
+      selectedBar.appendChild(
+        makeToolbarButton('이름 일괄 변경', '선택 에셋 이름 일괄 변경', () => void beginAssetBatchRename(deps)),
+      );
+    }
     selectedBar.appendChild(
       makeToolbarButton('삭제', '선택 에셋 삭제', async () => {
         await deps.deleteAssets([...state.assetSelected]);
@@ -426,6 +671,7 @@ async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement):
   });
   body.appendChild(grid);
   const assets = await deps.getAssetList();
+  if (renderToken !== assetRenderToken || !grid.isConnected) return;
   const queryLower = state.assetQuery.trim().toLowerCase();
   const filtered = assets.filter((asset) => {
     const group = asset.path.split('/')[1] === 'icon' ? 'icon' : 'other';
@@ -434,16 +680,79 @@ async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement):
     return asset.path.toLowerCase().includes(queryLower);
   });
 
-  for (const asset of filtered) {
-    grid.appendChild(await createAssetCard(deps, asset));
-  }
+  const cards = await Promise.all(filtered.map((asset) => createAssetCard(deps, asset)));
+  if (renderToken !== assetRenderToken || !grid.isConnected) return;
+  grid.append(...cards);
   if (!filtered.length) grid.appendChild(el('div', 'right-manager-empty', '표시할 에셋이 없습니다.'));
+}
+
+async function promptAssetBatchRenameMode(deps: RightManagerPanelDeps): Promise<AssetBatchRenameMode | null> {
+  const modeText = await deps.showPrompt('일괄 이름 변경 모드: "패턴+번호" 또는 "찾기/바꾸기"', '패턴+번호');
+  if (modeText === null) return null;
+  const normalized = modeText.trim().toLowerCase();
+  if (normalized.startsWith('찾') || normalized.includes('replace') || normalized.includes('바꾸')) {
+    const find = await deps.showPrompt('찾을 문자열', '');
+    if (find === null) return null;
+    const replace = await deps.showPrompt('바꿀 문자열', '');
+    if (replace === null) return null;
+    return { kind: 'replace', find, replace };
+  }
+
+  const baseName = await deps.showPrompt('새 이름 패턴', 'asset');
+  if (baseName === null) return null;
+  const startText = await deps.showPrompt('시작 번호', '1');
+  if (startText === null) return null;
+  const paddingText = await deps.showPrompt('번호 자릿수', '3');
+  if (paddingText === null) return null;
+  return {
+    kind: 'pattern',
+    baseName,
+    start: Number.parseInt(startText, 10) || 1,
+    padding: Number.parseInt(paddingText, 10) || 3,
+  };
+}
+
+async function beginAssetBatchRename(deps: RightManagerPanelDeps): Promise<void> {
+  const selectedPaths = [...state.assetSelected];
+  const mode = await promptAssetBatchRenameMode(deps);
+  if (!mode) return;
+
+  const assets = await deps.getAssetList();
+  const plan = planAssetBatchRename(assets, selectedPaths, mode);
+  if (plan.errors.length > 0) {
+    deps.setStatus(`에셋 일괄 이름 변경 실패: ${plan.errors[0]}`);
+    return;
+  }
+
+  const preview = plan.preview
+    .slice(0, 20)
+    .map((item) => `${item.oldPath} -> ${item.newPath}`)
+    .join('\n');
+  const suffix = plan.preview.length > 20 ? `\n...외 ${plan.preview.length - 20}개` : '';
+  const confirmed = await deps.showConfirm(
+    `선택한 에셋 ${plan.operations.length}개의 이름을 변경하시겠습니까?\n\n${preview}${suffix}`,
+  );
+  if (!confirmed) return;
+
+  const result = await deps.renameAssetsBatch(plan.operations);
+  if (!result.ok) {
+    deps.setStatus(`에셋 일괄 이름 변경 실패: ${result.conflicts?.[0] || result.error || '알 수 없는 오류'}`);
+    return;
+  }
+
+  state.assetSelected.clear();
+  renderRightManagerPanel();
+  deps.refresh();
+  deps.setStatus(`에셋 ${result.renamed?.length ?? plan.operations.length}개 이름 변경됨`);
 }
 
 async function createAssetCard(deps: RightManagerPanelDeps, asset: AssetListEntry): Promise<HTMLElement> {
   const card = el('div', 'manager-asset-card');
   card.classList.toggle('selected', state.assetSelected.has(asset.path));
   const fileName = asset.path.split('/').pop() || asset.path;
+  // Thumbnails crop similarly-named sprites (e.g. Hari_Daily_a…); expose the
+  // full name on hover anywhere over the card, not just the truncated label.
+  card.title = fileName;
 
   const check = el('input', 'manager-asset-check') as HTMLInputElement;
   check.type = 'checkbox';
@@ -468,9 +777,51 @@ async function createAssetCard(deps: RightManagerPanelDeps, asset: AssetListEntr
   card.appendChild(el('div', 'manager-asset-size', `${Math.round(asset.size / 1024)} KB`));
 
   const actions = el('div', 'manager-asset-actions');
-  actions.appendChild(makeToolbarButton('✎', '이름 변경', () => void deps.renameAsset(asset.path, fileName)));
+  actions.appendChild(makeToolbarButton('✎', '이름 변경', () => beginInlineRename()));
   actions.appendChild(makeToolbarButton('✕', '삭제', () => void deps.deleteAssets([asset.path])));
   card.appendChild(actions);
+
+  function beginInlineRename(): void {
+    if (label.querySelector('input')) return;
+    const input = el('input', 'manager-inline-rename') as HTMLInputElement;
+    input.type = 'text';
+    input.value = fileName;
+    label.replaceChildren(input);
+    input.focus();
+    input.select();
+    let settled = false;
+    let committing = false;
+    const cancel = (): void => {
+      if (settled || committing) return;
+      settled = true;
+      label.textContent = fileName;
+    };
+    const commit = async (): Promise<void> => {
+      if (settled || committing) return;
+      committing = true;
+      const error = await deps.renameAsset(asset.path, input.value);
+      committing = false;
+      if (error) {
+        showInlineError(label, error);
+        input.focus();
+        return;
+      }
+      settled = true;
+      label.textContent = input.value.trim() || fileName;
+    };
+    input.addEventListener('click', (event) => event.stopPropagation());
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        void commit();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        cancel();
+      }
+    });
+    input.addEventListener('blur', () => void commit());
+  }
 
   card.addEventListener('click', (event) => {
     if ((event as MouseEvent).ctrlKey || (event as MouseEvent).metaKey) {
@@ -540,13 +891,14 @@ export function initRightManagerPanel(deps: RightManagerPanelDeps): void {
 
 export function renderRightManagerPanel(): void {
   if (!depsRef) return;
+  const renderToken = ++assetRenderToken;
   const loreRoot = document.getElementById('lore-manager-panel');
   const assetRoot = document.getElementById('asset-manager-panel');
   if (loreRoot) {
     renderPanelShell(depsRef, loreRoot, '로어북 관리자', (body) => renderLorebookPanel(depsRef!, body));
   }
   if (assetRoot) {
-    renderPanelShell(depsRef, assetRoot, '에셋 관리자', (body) => void renderAssetPanel(depsRef!, body));
+    renderPanelShell(depsRef, assetRoot, '에셋 관리자', (body) => void renderAssetPanel(depsRef!, body, renderToken));
   }
   depsRef.afterRender?.();
 }

@@ -9,6 +9,67 @@
 
 ---
 
+## [1.11.0] - 2026-06-23
+
+### Added
+
+- Added persistent document stats in the status bar, including document type, dirty state, lorebook/regex/asset counts, and active-tab character count.
+- Added File → **프로젝트 폴더 복제** for cloning the active project folder to an empty target folder and immediately opening the clone.
+- Added SillyTavern `world_info` JSON detection and conversion in lorebook JSON import.
+- Added asset-manager batch rename for multi-selected assets, with pattern-number and find/replace modes, preview confirmation, extension preservation, and all-or-nothing conflict checks.
+
+### Changed
+
+- Asset batch rename now reuses the same `cardAssets` / `xMeta` reference synchronization path as single asset rename.
+- Lorebook JSON import preserves additional SillyTavern-compatible fields such as activation percentage, depth, disabled state, position, priority, and regex flags where RisuToki can represent them.
+
+## [1.10.0] - 2026-06-23
+
+### Added
+
+- Added PNG/JSON Character Card import for PNG `ccv3` / `chara` `tEXt` metadata, including embedded `chara-ext-asset_:` assets, while opening imports directly in the structured `.charx` editor.
+- Added a **최근 항목** file menu for the last 10 files and project folders, with duplicate removal, failed-entry cleanup, and a clear action.
+- Added multi-session terminal tabs with session-scoped input, resize, status, data, and exit IPC. AI CLI launch actions now create and switch to dedicated Claude, Copilot, Codex, or Gemini tabs.
+
+### Changed
+
+- Imported PNG/JSON cards now keep their source path only as window-title, recent-item, and terminal-CWD context; saving prompts for a `.charx` target instead of overwriting the import source.
+- Terminal pop-outs bind to the active session at the time they are opened, while legacy single-terminal IPC remains wired to the default session for compatibility.
+
+### Fixed
+
+- Fixed Korean IME composition in lorebook and asset manager search fields so Hangul stays composed while filtering.
+- Removed the redundant lorebook folder rename button from manager folder headers; folder names remain editable by double-click.
+
+## [1.9.0] - 2026-06-18
+
+### Added
+
+- Added sanitized Markdown guide previews with table/code/image rendering and protocol-checked external links.
+- Added focused prose editing with per-tab code view switching, plus a unified `.risum` module settings form.
+- Added drag handles to flat lorebook and `.risup` prompt lists, disabled whenever search, filtering, or alternate sorting makes the visible order ambiguous.
+
+### Changed
+
+- Made the app theme selector the single appearance control and decoupled theme changes from RP mode. RP and BGM controls now live only in Settings; autosave still defaults to off.
+- Empty lorebook, asset, and prompt managers now collapse to an expand handle while preserving first-item creation and per-document manual expansion.
+- Unified independent booleans as accessible switches and kept all lorebook activation flags losslessly independent with explanatory labels.
+- Reworked manager actions with inline lorebook/folder/asset renaming, an in-panel folder picker, two-line asset names, nested guide/reference paths, collapsible prompt filters, and clearer primary buttons.
+- Clarified layout placement labels as left/right inner/outer and moved hidden legacy fields into a collapsed compatibility warning folder at the bottom.
+
+### Fixed
+
+- Fixed the menu bar requiring two clicks to switch between top-level menus: hovering onto an adjacent menu while another is open no longer lets the completing click immediately close it. Clicking an already-open menu still toggles it shut.
+- Restored BGM file picking through the settings dependency chain and preserved the selected theme across document loads.
+- Kept hidden manager DOM mounted for rendering, ignored stale asynchronous asset responses after document switches, and preserved Monaco content, undo history, and dirty state when toggling prose/code views.
+- Applied theme variables to the dark menu bar and synchronized `marked`, the lockfile, bundled runtime assets, and module-map coverage for the 1.9.0 build.
+
+## [1.8.1] - 2026-06-14
+
+### Fixed
+
+- Packaged the tiktoken and Wasmoon WASM runtime assets beside the unpacked MCP server so Codex no longer loses the MCP connection before `initialize`, and Lua validation works in installer and portable builds.
+
 ## [1.8.0] - 2026-06-13
 
 ### Added

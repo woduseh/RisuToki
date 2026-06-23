@@ -1,0 +1,326 @@
+{
+  "results": {
+    "preview": {
+      "isError": false,
+      "body": {
+        "facade": {
+          "contract": "risutoki.facade.v1",
+          "version": "v1",
+          "tool": "manage_items",
+          "mutability": "preview",
+          "target": {
+            "kind": "active"
+          },
+          "family": "lorebook",
+          "max_bytes": 65536
+        },
+        "result": {
+          "dry_run": true,
+          "action": "add_items",
+          "family": "lorebook",
+          "before_count": 30,
+          "after_count": 36,
+          "insertAt": 30,
+          "count": 6,
+          "items": [
+            {
+              "index": 30,
+              "id": "lb_2ca0b217b0b7ec12",
+              "comment": "⚙️ 핵심 규칙",
+              "key": "folder:406bf914-1da4-4a31-950c-07893fba6b42",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            },
+            {
+              "index": 31,
+              "id": "lb_82be347877282412",
+              "comment": "🏡 세계와 공간",
+              "key": "folder:6a31f90c-0f1c-40c1-bfe3-c21266ebd456",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            },
+            {
+              "index": 32,
+              "id": "lb_7c684fd0c9907ae5",
+              "comment": "🕰️ 일상 장면",
+              "key": "folder:15fb03c5-fccf-4b01-8085-7c8574bfa06e",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            },
+            {
+              "index": 33,
+              "id": "lb_75a18c8d8e90d89e",
+              "comment": "🔗 인물 관계",
+              "key": "folder:f42e8631-407b-42cb-9dd6-c87fc51471d1",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            },
+            {
+              "index": 34,
+              "id": "lb_288657add2d55064",
+              "comment": "👤 인물 설정",
+              "key": "folder:08dac80b-17fd-4e9b-af84-6ff679ecd366",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            },
+            {
+              "index": 35,
+              "id": "lb_14dded1a2abc7618",
+              "comment": "🔒 숨겨진 내면",
+              "key": "folder:844de636-97b0-4b21-9892-f834787ee928",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            }
+          ],
+          "item_collection_digest": "d7ca09c3129bdeb96936df2b29f82292ac70c9f9258f56b681aca3dc37150661",
+          "changed": 6,
+          "touched": ["lorebook"],
+          "before_hash": "752166c6bd21188327ffd1003faddf435e5fbe3783e29c89c109e3e448c1200f",
+          "after_hash": "c72b748c8b337a5093cdf7bd65a88494044fe3f61760adb72538b0560a9ec3de",
+          "status": 200,
+          "summary": "Dry-run: patch 6 operation(s)",
+          "next_actions": ["list_surfaces", "read_surface", "patch_surface", "replace_in_surface"],
+          "artifacts": {
+            "byte_size": 367
+          },
+          "routed_legacy": [
+            {
+              "tool": "read_surface",
+              "method": "POST",
+              "route": "/surface/read"
+            },
+            {
+              "tool": "patch_surface",
+              "method": "POST",
+              "route": "/surface/patch"
+            }
+          ],
+          "touched_targets": ["active:lorebook:/lorebook"],
+          "guard_values": [
+            {
+              "name": "expected_item_collection_digest",
+              "value": "d7ca09c3129bdeb96936df2b29f82292ac70c9f9258f56b681aca3dc37150661",
+              "payloadPath": "/guard_values/*",
+              "sourceOperations": ["manage_items"],
+              "sourceResultPath": "/result/item_collection_digest"
+            },
+            {
+              "name": "expected_hash",
+              "value": "752166c6bd21188327ffd1003faddf435e5fbe3783e29c89c109e3e448c1200f",
+              "payloadPath": "/guard_values/*",
+              "sourceOperations": ["manage_items"],
+              "sourceResultPath": "/result/before_hash"
+            }
+          ]
+        },
+        "preview": {
+          "preview_token": "facade-preview-v1.MmH-Mmg3ypSI6AJMd6GC45WA",
+          "operation_digest": "d3ef40554b4e52d805934982601c037ea23e329941038efa79d55604c7f41d38",
+          "expires_at": "2026-06-13T18:45:57.412Z",
+          "required_guards": [
+            {
+              "name": "expected_item_collection_digest",
+              "value": "d7ca09c3129bdeb96936df2b29f82292ac70c9f9258f56b681aca3dc37150661",
+              "payloadPath": "/guard_values/*",
+              "sourceOperations": ["manage_items"],
+              "sourceResultPath": "/result/item_collection_digest"
+            },
+            {
+              "name": "expected_hash",
+              "value": "752166c6bd21188327ffd1003faddf435e5fbe3783e29c89c109e3e448c1200f",
+              "payloadPath": "/guard_values/*",
+              "sourceOperations": ["manage_items"],
+              "sourceResultPath": "/result/before_hash"
+            }
+          ]
+        },
+        "status": 200,
+        "summary": "Previewed manage_items lorebook add_items",
+        "next_actions": ["manage_items", "read_content", "validate_content"],
+        "artifacts": {
+          "family": "lorebook",
+          "action": "add_items",
+          "routed_tools": ["read_surface", "patch_surface"],
+          "touched_targets": ["active:lorebook:/lorebook"],
+          "byte_size": 3482
+        }
+      }
+    },
+    "apply": {
+      "isError": false,
+      "body": {
+        "facade": {
+          "contract": "risutoki.facade.v1",
+          "version": "v1",
+          "tool": "manage_items",
+          "mutability": "mutating",
+          "target": {
+            "kind": "active"
+          },
+          "max_bytes": 65536,
+          "response_bytes": 2503,
+          "original_response_bytes": 2503
+        },
+        "result": {
+          "success": true,
+          "changed": 6,
+          "touched": ["lorebook"],
+          "before_hash": "752166c6bd21188327ffd1003faddf435e5fbe3783e29c89c109e3e448c1200f",
+          "after_hash": "c72b748c8b337a5093cdf7bd65a88494044fe3f61760adb72538b0560a9ec3de",
+          "status": 200,
+          "summary": "Patched 6 operation(s)",
+          "next_actions": ["list_surfaces", "read_surface", "patch_surface", "replace_in_surface"],
+          "artifacts": {
+            "count": 6,
+            "byte_size": 369
+          },
+          "action": "add_items",
+          "family": "lorebook",
+          "before_count": 30,
+          "after_count": 36,
+          "insertAt": 30,
+          "count": 6,
+          "items": [
+            {
+              "index": 30,
+              "id": "lb_2ca0b217b0b7ec12",
+              "comment": "⚙️ 핵심 규칙",
+              "key": "folder:406bf914-1da4-4a31-950c-07893fba6b42",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            },
+            {
+              "index": 31,
+              "id": "lb_82be347877282412",
+              "comment": "🏡 세계와 공간",
+              "key": "folder:6a31f90c-0f1c-40c1-bfe3-c21266ebd456",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            },
+            {
+              "index": 32,
+              "id": "lb_7c684fd0c9907ae5",
+              "comment": "🕰️ 일상 장면",
+              "key": "folder:15fb03c5-fccf-4b01-8085-7c8574bfa06e",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            },
+            {
+              "index": 33,
+              "id": "lb_75a18c8d8e90d89e",
+              "comment": "🔗 인물 관계",
+              "key": "folder:f42e8631-407b-42cb-9dd6-c87fc51471d1",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            },
+            {
+              "index": 34,
+              "id": "lb_288657add2d55064",
+              "comment": "👤 인물 설정",
+              "key": "folder:08dac80b-17fd-4e9b-af84-6ff679ecd366",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            },
+            {
+              "index": 35,
+              "id": "lb_14dded1a2abc7618",
+              "comment": "🔒 숨겨진 내면",
+              "key": "folder:844de636-97b0-4b21-9892-f834787ee928",
+              "secondkey": "",
+              "mode": "folder",
+              "contentSize": 0,
+              "preview": ""
+            }
+          ],
+          "item_collection_digest": "d7ca09c3129bdeb96936df2b29f82292ac70c9f9258f56b681aca3dc37150661",
+          "routed_legacy": [
+            {
+              "tool": "read_surface",
+              "method": "POST",
+              "route": "/surface/read"
+            },
+            {
+              "tool": "patch_surface",
+              "method": "POST",
+              "route": "/surface/patch"
+            }
+          ],
+          "touched_targets": ["active:lorebook:/lorebook"],
+          "guard_values": [
+            {
+              "name": "expected_item_collection_digest",
+              "value": "d7ca09c3129bdeb96936df2b29f82292ac70c9f9258f56b681aca3dc37150661",
+              "payloadPath": "/guard_values/*",
+              "sourceOperations": ["manage_items"],
+              "sourceResultPath": "/result/item_collection_digest"
+            },
+            {
+              "name": "expected_hash",
+              "value": "752166c6bd21188327ffd1003faddf435e5fbe3783e29c89c109e3e448c1200f",
+              "payloadPath": "/guard_values/*",
+              "sourceOperations": ["manage_items"],
+              "sourceResultPath": "/result/before_hash"
+            }
+          ],
+          "preview_token": "facade-preview-v1.MmH-Mmg3ypSI6AJMd6GC45WA",
+          "operation_digest": "d3ef40554b4e52d805934982601c037ea23e329941038efa79d55604c7f41d38"
+        },
+        "status": 200,
+        "summary": "Applied manage_items lorebook add_items",
+        "next_actions": ["read_content", "validate_content", "manage_items"],
+        "artifacts": {
+          "family": "lorebook",
+          "action": "add_items",
+          "routed_tools": ["read_surface", "patch_surface"],
+          "touched_targets": ["active:lorebook:/lorebook"],
+          "result_byte_size": 2503,
+          "returned_byte_size": 2503,
+          "byte_size": 3048
+        }
+      }
+    }
+  },
+  "stderr": [
+    "[toki-mcp] info: Loaded 6549 Danbooru tags\n",
+    "[main] MCP API server on 127.0.0.1:50146\n",
+    "[toki-mcp] processStart {\"timestamp\":\"2026-06-13T18:35:57.373Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"processStart\",\"serverVersion\":\"1.8.1\",\"appVersion\":\"1.8.1\",\"packageVersion\":\"1.8.1\",\"buildTime\":\"2026-06-13T18:34:00.678Z\",\"commit\":\"314afd09729c\",\"allowWrites\":true,\"userDataPath\":\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"toolProfile\":\"advanced-full\",\"resolvedToolProfile\":\"advanced-full\",\"strictToolFiltering\":true,\"registeredTools\":203,\"api\":\"127.0.0.1:50146\"}\n",
+    "[toki-mcp] transportConnectStart {\"timestamp\":\"2026-06-13T18:35:57.376Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"transportConnectStart\"}\n",
+    "[toki-mcp] transportConnected {\"timestamp\":\"2026-06-13T18:35:57.376Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"transportConnected\"}\n",
+    "[toki-mcp] toolStart {\"timestamp\":\"2026-06-13T18:35:57.384Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"toolStart\",\"toolName\":\"manage_items\",\"tool\":\"manage_items\",\"family\":\"item-management\",\"surfaceKind\":\"facade\",\"recommendation\":\"preferred\",\"profile\":\"advanced-full\",\"strictFiltering\":true,\"args\":{\"target\":{\"type\":\"object\",\"keys\":[\"kind\"]},\"family\":{\"type\":\"string\",\"length\":8},\"mode\":{\"type\":\"string\",\"length\":7},\"operation\":{\"type\":\"object\",\"keys\":[\"action\",\"items\"]},\"max_bytes\":{\"type\":\"number\"}}}\n",
+    "[toki-mcp] apiRequestStart {\"timestamp\":\"2026-06-13T18:35:57.385Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"apiRequestStart\",\"method\":\"POST\",\"path\":\"/surface/read\",\"payloadBytes\":20}\n",
+    "[toki-mcp] apiResponse {\"timestamp\":\"2026-06-13T18:35:57.403Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"apiResponse\",\"method\":\"POST\",\"path\":\"/surface/read\",\"status\":200,\"elapsedMs\":18,\"responseBytes\":87024}\n",
+    "[toki-mcp] apiRequestStart {\"timestamp\":\"2026-06-13T18:35:57.404Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"apiRequestStart\",\"method\":\"POST\",\"path\":\"/surface/patch\",\"payloadBytes\":1824}\n",
+    "[toki-mcp] apiResponse {\"timestamp\":\"2026-06-13T18:35:57.411Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"apiResponse\",\"method\":\"POST\",\"path\":\"/surface/patch\",\"status\":200,\"elapsedMs\":7,\"responseBytes\":382}\n",
+    "[toki-mcp] toolSuccess {\"timestamp\":\"2026-06-13T18:35:57.412Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"toolSuccess\",\"toolName\":\"manage_items\",\"tool\":\"manage_items\",\"family\":\"item-management\",\"surfaceKind\":\"facade\",\"recommendation\":\"preferred\",\"profile\":\"advanced-full\",\"strictFiltering\":true,\"status\":\"ok\",\"elapsedMs\":28,\"responseBytes\":3960}\n",
+    "[toki-mcp] toolStart {\"timestamp\":\"2026-06-13T18:35:57.414Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"toolStart\",\"toolName\":\"manage_items\",\"tool\":\"manage_items\",\"family\":\"item-management\",\"surfaceKind\":\"facade\",\"recommendation\":\"preferred\",\"profile\":\"advanced-full\",\"strictFiltering\":true,\"args\":{\"target\":{\"type\":\"object\",\"keys\":[\"kind\"]},\"family\":{\"type\":\"string\",\"length\":8},\"mode\":{\"type\":\"string\",\"length\":5},\"preview_token\":{\"type\":\"string\",\"length\":42},\"operation_digest\":{\"type\":\"string\",\"length\":64},\"guard_values\":{\"type\":\"array\",\"length\":2},\"max_bytes\":{\"type\":\"number\"}}}\n",
+    "[toki-mcp] apiRequestStart {\"timestamp\":\"2026-06-13T18:35:57.415Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"apiRequestStart\",\"method\":\"POST\",\"path\":\"/surface/read\",\"payloadBytes\":20}\n",
+    "[toki-mcp] apiResponse {\"timestamp\":\"2026-06-13T18:35:57.417Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"apiResponse\",\"method\":\"POST\",\"path\":\"/surface/read\",\"status\":200,\"elapsedMs\":2,\"responseBytes\":87024}\n",
+    "[toki-mcp] apiRequestStart {\"timestamp\":\"2026-06-13T18:35:57.419Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"apiRequestStart\",\"method\":\"POST\",\"path\":\"/surface/patch\",\"payloadBytes\":1892}\n",
+    "[toki-mcp] apiResponse {\"timestamp\":\"2026-06-13T18:35:57.425Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"apiResponse\",\"method\":\"POST\",\"path\":\"/surface/patch\",\"status\":200,\"elapsedMs\":6,\"responseBytes\":385}\n",
+    "[toki-mcp] toolSuccess {\"timestamp\":\"2026-06-13T18:35:57.426Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"toolSuccess\",\"toolName\":\"manage_items\",\"tool\":\"manage_items\",\"family\":\"item-management\",\"surfaceKind\":\"facade\",\"recommendation\":\"preferred\",\"profile\":\"advanced-full\",\"strictFiltering\":true,\"status\":\"ok\",\"elapsedMs\":12,\"responseBytes\":3484}\n",
+    "[toki-mcp] stdioEvent {\"timestamp\":\"2026-06-13T18:35:57.427Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"end\",\"stream\":\"stdin\"}\n",
+    "[toki-mcp] stdioEvent {\"timestamp\":\"2026-06-13T18:35:57.427Z\",\"pid\":12332,\"argv\":[\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\toki-mcp-server.js\",\"--standalone\",\"--file\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\risu\\\\bot\\\\거대녀 하숙집\\\\거대녀 하숙집.charx\",\"--user-data-dir\",\"C:\\\\Users\\\\wodus\\\\ai-workspace\\\\RisuToki\\\\.tmp\\\\mcp-runner-data\",\"--tool-profile\",\"advanced-full\",\"--allow-writes\"],\"runtimeMode\":\"standalone\",\"event\":\"close\",\"stream\":\"stdin\"}\n"
+  ]
+}

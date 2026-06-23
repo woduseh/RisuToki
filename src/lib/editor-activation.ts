@@ -10,6 +10,7 @@ export const NON_MONACO_EDITOR_TAB_TYPES = new Set([
   '_regexform',
   '_risupform',
   '_toggleform',
+  '_modulesettingsform',
   '_triggerform',
 ]);
 

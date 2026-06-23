@@ -56,6 +56,19 @@ describe('createTokiApi', () => {
     expect(ipcRenderer.invoke).toHaveBeenCalledWith('resolve-pending-session-recovery', 'ignore');
   });
 
+  test('forwards project clone and batch asset rename IPC calls', async () => {
+    const ipcRenderer = makeMockIpc();
+    ipcRenderer.invoke.mockResolvedValue(null);
+    const api = createTokiApi(ipcRenderer as unknown as IpcRenderer);
+    const operations = [{ oldPath: 'assets/icon/a.png', newName: 'b.png' }];
+
+    await api.cloneProjectFolder();
+    await api.renameAssetsBatch(operations);
+
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('clone-project-folder');
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('rename-assets-batch', operations);
+  });
+
   test('exposes MCP session status IPC bridge methods', () => {
     const ipcRenderer = makeMockIpc();
     const api = createTokiApi(ipcRenderer as unknown as IpcRenderer) as unknown as {

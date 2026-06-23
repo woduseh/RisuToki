@@ -12,6 +12,7 @@ function createLayoutDom() {
     <div id="lore-manager-panel"></div>
     <div id="asset-manager-panel"></div>
     <div id="prompt-manager-panel"></div>
+    <div id="panel-parking"></div>
     <div id="toki-avatar"></div>
     <button id="btn-terminal-toggle"></button>
     <button id="sidebar-expand"></button>
@@ -164,6 +165,39 @@ describe('layout manager refs sync', () => {
     expect(document.getElementById('lore-manager-expand')?.style.display).toBe('none');
     expect(document.getElementById('asset-manager-expand')?.style.display).toBe('none');
     expect(document.getElementById('prompt-manager-expand')?.style.display).toBe('none');
+    vi.useRealTimers();
+  });
+
+  it('collapses an empty manager to its expand handle without losing the visibility preference', () => {
+    vi.useFakeTimers();
+    createLayoutDom();
+
+    const state = createDefaultLayoutState();
+    const layoutManager = createLayoutManager({
+      state,
+      saveState: vi.fn(),
+      onRefit: vi.fn(),
+      onStatus: vi.fn(),
+    });
+
+    layoutManager.setManagerAvailability({ lore: true, asset: true, prompt: false });
+    // Lorebook has no entries → the panel collapses to its expand handle even
+    // though the user's visibility preference stays on.
+    layoutManager.setManagerContent({ lore: false });
+    vi.runOnlyPendingTimers();
+
+    expect(state.loreManagerVisible).toBe(true);
+    expect(document.getElementById('lore-manager-panel')?.style.display).toBe('none');
+    expect(document.getElementById('lore-manager-expand')?.style.display).toBe('block');
+
+    // Opening the empty manager forces it visible so the first entry can be added.
+    layoutManager.toggleLoreManager();
+    expect(document.getElementById('slot-right')?.contains(document.getElementById('lore-manager-panel'))).toBe(true);
+    expect(document.getElementById('lore-manager-expand')?.style.display).toBe('none');
+
+    // Gaining content keeps it shown under the normal preference.
+    layoutManager.setManagerContent({ lore: true });
+    expect(document.getElementById('slot-right')?.contains(document.getElementById('lore-manager-panel'))).toBe(true);
     vi.useRealTimers();
   });
 });

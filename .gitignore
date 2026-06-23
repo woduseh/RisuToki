@@ -11,6 +11,8 @@ main.js
 preload.js
 popout-preload.js
 toki-mcp-server.js
+tiktoken_bg.wasm
+glue.wasm
 charx-io.js
 rpack.js
 lorebook-convert.js

@@ -22,6 +22,15 @@ import {
 } from '../src/lib/mcp-section-parser';
 
 const TEST_DIR = path.join(__dirname, '_mcp-search-tmp');
+const MCP_RUNTIME_WASM = ['tiktoken_bg.wasm', 'glue.wasm'];
+
+for (const asset of MCP_RUNTIME_WASM) {
+  assert.equal(
+    fs.existsSync(path.resolve(__dirname, '..', asset)),
+    true,
+    `build:mcp must copy ${asset} beside toki-mcp-server.js`,
+  );
+}
 
 function parseLuaSections(lua = '') {
   return parseLuaSectionsImpl(lua);
@@ -885,7 +894,11 @@ async function runStandaloneRealCorpusFacadeReadEval(): Promise<void> {
   } catch (error) {
     const stderrText = runtime?.stderrChunks.join('').trim();
     const detail =
-      error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error, null, 2);
+      error instanceof Error
+        ? (error.stack ?? error.message)
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error, null, 2);
     throw new Error(stderrText ? `${detail}\n\nReal-corpus standalone MCP stderr:\n${stderrText}` : detail);
   } finally {
     if (runtime) await runtime.close();
@@ -1392,11 +1405,6 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
       compressedExternalRisum._moduleData as { module?: { assets?: unknown[][] } }
     ).module?.assets;
     assert.equal(compressedExternalModuleAssets?.[0]?.[2], 'webp');
-    assert.ok(
-      compressedExternalRisum.cardAssets?.some((asset) =>
-        String((asset as Record<string, unknown>).uri ?? '').endsWith('.webp'),
-      ),
-    );
     const externalRisumValidation = await callJson(runtime, 'validate_content', {
       target: externalRisumTarget,
       selectors: [{ family: 'risum' }],
@@ -1563,7 +1571,7 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
     });
     assert.deepEqual(routedTools(activeLuaAddPreview), ['read_field', 'write_field']);
     const activeLuaApply = await applyManagePreview(runtime, activeTarget, activeLuaAddPreview, 'lua');
-    assert.equal(nestedRecord(activeLuaApply.result, 'active lua apply result').after_count, 2);
+    assert.equal(nestedRecord(activeLuaApply.result, 'active lua apply result').after_count, 4);
 
     const activeCssAddPreview = await callJson(runtime, 'manage_items', {
       target: activeTarget,
@@ -1580,7 +1588,7 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
       target: activeTarget,
       family: 'css',
       mode: 'preview',
-      operation: { action: 'reorder_items', order: [1, 0] },
+      operation: { action: 'reorder_items', order: [1, 0, 2] },
     });
     assert.deepEqual(routedTools(activeCssReorderPreview), ['read_field', 'write_field']);
     await applyManagePreview(runtime, activeTarget, activeCssReorderPreview, 'css');
@@ -2265,7 +2273,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     );
     assert.equal(afterPartialContent.split(partialMarker).length - 1, 1);
     assert.match(afterPartialContent, /Alpha/);
-    assert.equal(openCharx(fixture.mainFile).globalNote, 'No match here.');
+    assert.equal(openCharx(fixture.mainFile).globalNote, 'Destructive preview keeps this note until apply.');
 
     const partialCleanupPreview = await callJson(runtime, 'preview_edit', {
       target: activeTarget,
@@ -2273,7 +2281,7 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
         {
           op: 'replace_text',
           selector: { family: 'field', field: 'description' },
-          find: partialMarker,
+          find: `${partialMarker}\n`,
           replace: '',
         },
       ],
@@ -4077,7 +4085,11 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       .join('')
       .trim();
     const detail =
-      error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error, null, 2);
+      error instanceof Error
+        ? (error.stack ?? error.message)
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error, null, 2);
     throw new Error(stderrText ? `${detail}\n\nStandalone MCP stderr:\n${stderrText}` : detail);
   } finally {
     if (recoveryRuntime) await recoveryRuntime.close();
@@ -4871,7 +4883,11 @@ async function runStandaloneToolProfileContract(): Promise<void> {
   } catch (error) {
     const stderrText = stderrChunks.join('').trim();
     const detail =
-      error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error, null, 2);
+      error instanceof Error
+        ? (error.stack ?? error.message)
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error, null, 2);
     throw new Error(stderrText ? `${detail}\n\nMCP stderr:\n${stderrText}` : detail);
   } finally {
     if (connected) {

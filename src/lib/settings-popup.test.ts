@@ -7,7 +7,6 @@ function makeState(overrides: Partial<SettingsState> = {}): SettingsState {
     autosaveEnabled: false,
     autosaveInterval: 60000,
     autosaveDir: '',
-    darkMode: false,
     themeId: 'toki',
     customTheme: null,
     bgmEnabled: false,
@@ -24,10 +23,10 @@ function makeCallbacks(overrides: Partial<SettingsCallbacks> = {}): SettingsCall
     onPickAutosaveDir: vi.fn().mockResolvedValue(null),
     onResetAutosaveDir: vi.fn(),
     onOpenAutosaveDir: vi.fn().mockResolvedValue(undefined),
-    onDarkModeToggle: vi.fn(),
     onThemeChange: vi.fn(),
     onCustomThemeChange: vi.fn(),
     onBgmToggle: vi.fn(),
+    onPickBgm: vi.fn().mockResolvedValue(null),
     onRpModeChange: vi.fn(),
     onRpCustomTextChange: vi.fn(),
     onOpenPersonaTab: vi.fn().mockResolvedValue(undefined),
@@ -98,6 +97,23 @@ describe('settings popup', () => {
     themeSelect.dispatchEvent(new Event('change'));
 
     expect(callbacks.onThemeChange).toHaveBeenCalledWith('millennium');
+  });
+
+  it('uses accessible switches and forwards BGM file picking', () => {
+    const callbacks = makeCallbacks({ onPickBgm: vi.fn().mockResolvedValue('music.ogg') });
+    showSettingsPopup(makeState(), callbacks);
+    const overlay = getOverlay()!;
+    const autosave = overlay.querySelector<HTMLButtonElement>('[role="switch"][aria-label="자동 저장"]')!;
+    expect(autosave.getAttribute('aria-checked')).toBe('false');
+    autosave.click();
+    expect(autosave.getAttribute('aria-checked')).toBe('true');
+    expect(callbacks.onAutosaveToggle).toHaveBeenCalledWith(true);
+
+    const pickBgm = [...overlay.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent === '파일 선택',
+    )!;
+    pickBgm.click();
+    expect(callbacks.onPickBgm).toHaveBeenCalledOnce();
   });
 
   it('shows custom palette editor and persists palette edits', () => {

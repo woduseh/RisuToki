@@ -5,16 +5,19 @@
  * Controller.ts registers handlers; App.vue dispatches by action name.
  */
 
-const actionMap: Record<string, () => void> = {};
+export type ActionPayload = unknown;
+export type ActionHandler = (payload?: ActionPayload) => void;
 
-export function registerActions(handlers: Record<string, () => void>): void {
+const actionMap: Record<string, ActionHandler> = {};
+
+export function registerActions(handlers: Record<string, ActionHandler>): void {
   Object.assign(actionMap, handlers);
 }
 
-export function executeAction(name: string): boolean {
+export function executeAction(name: string, payload?: ActionPayload): boolean {
   const handler = actionMap[name];
   if (handler) {
-    handler();
+    handler(payload);
     return true;
   }
   return false;

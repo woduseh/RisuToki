@@ -15,6 +15,7 @@ import {
   type TriggerFormTabInfo,
 } from './trigger-form-editor';
 import { parseTriggerScriptsText, serializeTriggerScriptModel, type TriggerScriptModel } from './trigger-script-model';
+import { createSwitchControl } from './switch-control';
 
 type MonacoWindow = Window & {
   _baDarkThemeDefined?: boolean;
@@ -65,6 +66,10 @@ export interface BooleanFormTabInfo extends FormTabInfo {
 
 export interface ToggleFormTabInfo extends FormTabInfo {
   language: '_toggleform';
+}
+
+export interface ModuleSettingsFormTabInfo extends FormTabInfo {
+  language: '_modulesettingsform';
 }
 
 export interface TriggerScriptsFormTabOptions {
@@ -514,32 +519,38 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
   orderRow.appendChild(orderInput);
   body.appendChild(orderRow);
 
-  // Checkboxes row
+  // Independent activation switches. Preserve every existing boolean instead of
+  // collapsing the three fields into a mutually-exclusive mode.
   const checks = document.createElement('div');
-  checks.className = 'form-checks';
+  checks.className = 'form-checks lore-activation-switches';
 
-  function addCheck(labelText: string, field: string): void {
-    const item = document.createElement('label');
-    item.className = 'form-check-item';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = !!data[field];
-    if (readonly) {
-      cb.disabled = true;
-    } else {
-      cb.addEventListener('change', () => {
-        data[field] = cb.checked;
+  function addCheck(labelText: string, description: string, field: string): void {
+    const item = document.createElement('div');
+    item.className = 'form-check-item lore-activation-switch';
+    const copy = document.createElement('div');
+    const label = document.createElement('div');
+    label.className = 'settings-label';
+    label.textContent = labelText;
+    const desc = document.createElement('div');
+    desc.className = 'settings-desc';
+    desc.textContent = description;
+    copy.append(label, desc);
+    const control = createSwitchControl({
+      checked: !!data[field],
+      label: labelText,
+      disabled: readonly,
+      onChange: (checked) => {
+        data[field] = checked;
         markDirty();
-      });
-    }
-    item.appendChild(cb);
-    item.appendChild(document.createTextNode(labelText));
+      },
+    });
+    item.append(copy, control);
     checks.appendChild(item);
   }
 
-  addCheck('언제나 활성화', 'alwaysActive');
-  addCheck('강제 활성화', 'forceActivation');
-  addCheck('선택적', 'selective');
+  addCheck('언제나 활성화', '키워드가 없어도 항상 컨텍스트에 포함합니다.', 'alwaysActive');
+  addCheck('강제 활성화', '일반 활성화 제한보다 우선하여 항목을 포함합니다.', 'forceActivation');
+  addCheck('선택적', '기본 키와 보조 키 조건을 함께 사용합니다.', 'selective');
   body.appendChild(checks);
 
   // Content label
@@ -1206,41 +1217,100 @@ export function showBooleanEditor(tabInfo: BooleanFormTabInfo): void {
   const body = document.createElement('div');
   body.className = 'form-editor-body';
 
-  const group = document.createElement('div');
-  group.className = 'form-checks';
-  group.setAttribute('role', 'radiogroup');
-  group.setAttribute('aria-label', tabInfo.label);
-
-  function addOption(value: boolean, labelText: string): void {
-    const item = document.createElement('label');
-    item.className = 'form-check-item';
-    item.style.cssText = 'display:flex;align-items:center;gap:8px;';
-    const input = document.createElement('input');
-    input.type = 'radio';
-    input.name = `boolean-${tabInfo.id}`;
-    input.value = value ? 'true' : 'false';
-    input.checked = currentValue === value;
-    input.disabled = readonly;
-    if (!readonly) {
-      input.addEventListener('change', () => {
-        if (!input.checked) return;
-        tabInfo.setValue!(value);
-        const d = deps!;
-        d.tabMgr.markDirtyForTabId(tabInfo.id);
-        d.tabMgr.renderTabs();
-      });
-    }
-    item.appendChild(input);
-    item.appendChild(document.createTextNode(labelText));
-    group.appendChild(item);
-  }
-
-  addOption(true, tabInfo.trueLabel || 'On');
-  addOption(false, tabInfo.falseLabel || 'Off');
-
-  body.appendChild(group);
+  const row = document.createElement('div');
+  row.className = 'settings-row boolean-form-switch-row';
+  const stateLabel = document.createElement('span');
+  stateLabel.className = 'settings-label';
+  stateLabel.textContent = currentValue ? tabInfo.trueLabel || 'On' : tabInfo.falseLabel || 'Off';
+  const control = createSwitchControl({
+    checked: currentValue,
+    label: tabInfo.label,
+    disabled: readonly,
+    onChange: (value) => {
+      tabInfo.setValue!(value);
+      stateLabel.textContent = value ? tabInfo.trueLabel || 'On' : tabInfo.falseLabel || 'Off';
+      const d = deps!;
+      d.tabMgr.markDirtyForTabId(tabInfo.id);
+      d.tabMgr.renderTabs();
+    },
+  });
+  row.append(stateLabel, control);
+  body.appendChild(row);
   form.appendChild(header);
   form.appendChild(body);
+  container.appendChild(form);
+}
+
+// ── Unified .risum module settings editor ──
+
+export function showModuleSettingsEditor(tabInfo: ModuleSettingsFormTabInfo): void {
+  saveCurrentMonacoState(tabInfo);
+  const container = clearEditorContainer();
+  const rawData = tabInfo.getValue();
+  if (!rawData || typeof rawData !== 'object') return;
+  const data = rawData as Record<string, unknown>;
+  const readonly = !tabInfo.setValue;
+  const markDirty = buildMarkDirty(tabInfo, data);
+
+  const form = document.createElement('div');
+  form.className = 'form-editor module-settings-form';
+  const header = document.createElement('div');
+  header.className = 'form-editor-header';
+  header.textContent = '📦 모듈 설정';
+  const body = document.createElement('div');
+  body.className = 'form-editor-body';
+
+  const addTextField = (labelText: string, field: string, multiline = false): void => {
+    const row = document.createElement('label');
+    row.className = multiline ? 'form-row module-description-row' : 'form-row';
+    const label = document.createElement('span');
+    label.className = 'form-label';
+    label.textContent = labelText;
+    const input = multiline ? document.createElement('textarea') : document.createElement('input');
+    input.className = 'form-input';
+    input.value = String(data[field] ?? '');
+    if (input instanceof HTMLTextAreaElement) input.rows = 8;
+    if (readonly) input.disabled = true;
+    else {
+      input.addEventListener('input', () => {
+        data[field] = input.value;
+        markDirty();
+      });
+    }
+    row.append(label, input);
+    body.appendChild(row);
+  };
+
+  addTextField('모듈 이름', 'moduleName');
+  addTextField('설명', 'moduleDescription', true);
+  addTextField('네임스페이스', 'moduleNamespace');
+
+  const switches = document.createElement('div');
+  switches.className = 'module-settings-switches';
+  const addSwitch = (labelText: string, description: string, field: string): void => {
+    const row = document.createElement('div');
+    row.className = 'settings-row module-settings-switch-row';
+    const copy = document.createElement('div');
+    copy.innerHTML = `<div class="settings-label"></div><div class="settings-desc"></div>`;
+    copy.querySelector<HTMLElement>('.settings-label')!.textContent = labelText;
+    copy.querySelector<HTMLElement>('.settings-desc')!.textContent = description;
+    const control = createSwitchControl({
+      checked: !!data[field],
+      label: labelText,
+      disabled: readonly,
+      onChange: (checked) => {
+        data[field] = checked;
+        markDirty();
+      },
+    });
+    row.append(copy, control);
+    switches.appendChild(row);
+  };
+  addSwitch('저수준 접근', '모듈이 제한된 저수준 API를 사용할 수 있게 합니다.', 'lowLevelAccess');
+  addSwitch('아이콘 숨김', 'RisuAI의 모듈 목록에서 아이콘을 숨깁니다.', 'hideIcon');
+  body.appendChild(switches);
+
+  form.append(header, body);
   container.appendChild(form);
 }
 

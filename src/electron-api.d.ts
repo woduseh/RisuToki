@@ -1,5 +1,6 @@
 type DataUpdatedCallback = (field: string, value: unknown) => void;
 type TerminalDataCallback = (data: string) => void;
+type TerminalSessionDataCallback = (sessionId: string, data: string) => void;
 type VoidCallback = () => void;
 
 interface SaveResult {
@@ -24,6 +25,18 @@ interface McpInfo {
 interface AssetListEntry {
   path: string;
   size: number;
+}
+
+interface AssetBatchRenameOperation {
+  oldPath: string;
+  newName: string;
+}
+
+interface AssetBatchRenameResult {
+  ok: boolean;
+  renamed?: Array<{ oldPath: string; newPath: string }>;
+  error?: string;
+  conflicts?: string[];
 }
 
 interface AssetsMapResult {
@@ -92,7 +105,7 @@ interface McpOpenFileResponse {
 }
 
 type OpenFileResult =
-  | { success: true; data: Record<string, unknown> }
+  | { success: true; data: Record<string, unknown>; path?: string; sourceFormat?: string; imported?: boolean }
   | { success: false; canceled: true }
   | { success: false; canceled?: false; error: string };
 
@@ -143,6 +156,14 @@ interface TerminalStatusEvent {
   detail?: string;
   level: 'info' | 'warn' | 'error';
   message: string;
+}
+
+interface TerminalSessionInfo {
+  id: string;
+  name: string;
+  running: boolean;
+  createdAt: number;
+  updatedAt: number;
 }
 
 interface ReferenceManifestStatusEvent {
@@ -202,6 +223,8 @@ interface TokiAPI {
   extractDocumentToProject: () => Promise<ProjectActionResult>;
   extractCharxToProject: () => Promise<ProjectActionResult>;
   openProjectFolder: () => Promise<ProjectActionResult>;
+  openProjectFolderPath: (projectPath: string) => Promise<ProjectActionResult>;
+  cloneProjectFolder: () => Promise<ProjectActionResult>;
   reloadProjectFolder: () => Promise<ProjectActionResult>;
   saveProjectFolder: (updatedFields: Record<string, unknown>) => Promise<SaveResult>;
   reassembleProjectDocument: (updatedFields?: Record<string, unknown>) => Promise<SaveResult>;
@@ -224,13 +247,24 @@ interface TokiAPI {
   getCwd: () => Promise<string>;
   setTerminalCwd: (cwd: string | null) => Promise<boolean>;
   terminalStart: (cols?: number, rows?: number) => Promise<boolean>;
+  terminalNewSession: (name?: string) => Promise<TerminalSessionInfo>;
+  terminalStartSession: (sessionId: string, cols?: number, rows?: number, name?: string) => Promise<boolean>;
+  terminalInputSession: (sessionId: string, data: string) => void;
+  terminalResizeSession: (sessionId: string, cols: number, rows: number) => void;
+  terminalStopSession: (sessionId: string) => Promise<boolean>;
+  terminalListSessions: () => Promise<TerminalSessionInfo[]>;
+  terminalRenameSession: (sessionId: string, name: string) => Promise<boolean>;
+  terminalIsSessionRunning: (sessionId: string) => Promise<boolean>;
   terminalIsRunning: () => Promise<boolean>;
   terminalInput: (data: string) => void;
   terminalResize: (cols: number, rows: number) => void;
   terminalStop: () => Promise<boolean>;
   onTerminalData: (cb: TerminalDataCallback) => void;
+  onTerminalDataSession: (cb: TerminalSessionDataCallback) => VoidCallback;
   onTerminalExit: (cb: VoidCallback) => void;
+  onTerminalExitSession: (cb: (sessionId: string) => void) => VoidCallback;
   onTerminalStatus: (cb: (event: TerminalStatusEvent) => void) => void;
+  onTerminalStatusSession: (cb: (sessionId: string, event: TerminalStatusEvent) => void) => VoidCallback;
   getClaudePrompt: () => Promise<ClaudePromptInfo | null>;
   getMcpInfo: () => Promise<McpInfo | null>;
   writeMcpConfig: () => Promise<string | null>;
@@ -258,6 +292,7 @@ interface TokiAPI {
   deleteAsset: (assetPath: string) => Promise<boolean>;
   deleteAssets: (assetPaths: string[]) => Promise<boolean>;
   renameAsset: (oldPath: string, newName: string) => Promise<string | null>;
+  renameAssetsBatch: (operations: AssetBatchRenameOperation[]) => Promise<AssetBatchRenameResult>;
   reorderAsset: (fromPath: string, toIdx: number) => Promise<boolean>;
   compressAssetsWebp: (opts?: {
     quality?: number;
@@ -288,6 +323,7 @@ interface TokiAPI {
   pickBgImage: () => Promise<string | null>;
   pickBgm: () => Promise<string | null>;
   openFolder: (folderPath: string) => Promise<string>;
+  openExternalUrl: (url: string) => Promise<boolean>;
   getAutosaveInfo: (customDir?: string) => Promise<AutosaveInfo | null>;
   pickAutosaveDir: () => Promise<string | null>;
   getPendingSessionRecovery: () => Promise<PendingRecoveryCandidateIpc | null>;
@@ -311,12 +347,19 @@ interface PopoutAPI {
   getRequestId: () => string | null;
   dock: () => Promise<string | null>;
   terminalIsRunning: () => Promise<boolean>;
+  terminalIsSessionRunning: (sessionId: string) => Promise<boolean>;
   terminalStart: (cols?: number, rows?: number) => Promise<boolean>;
+  terminalStartSession: (sessionId: string, cols?: number, rows?: number, name?: string) => Promise<boolean>;
   terminalInput: (data: string) => void;
+  terminalInputSession: (sessionId: string, data: string) => void;
   terminalResize: (cols: number, rows: number) => void;
+  terminalResizeSession: (sessionId: string, cols: number, rows: number) => void;
   onTerminalData: (cb: TerminalDataCallback) => VoidCallback;
+  onTerminalDataSession: (cb: TerminalSessionDataCallback) => VoidCallback;
   onTerminalExit: (cb: VoidCallback) => VoidCallback;
+  onTerminalExitSession: (cb: (sessionId: string) => void) => VoidCallback;
   onTerminalStatus: (cb: (event: TerminalStatusEvent) => void) => VoidCallback;
+  onTerminalStatusSession: (cb: (sessionId: string, event: TerminalStatusEvent) => void) => VoidCallback;
   getSidebarData: () => Promise<PopoutSidebarData>;
   onSidebarDataChanged: (cb: VoidCallback) => VoidCallback;
   sidebarClick: (itemId: string) => void;

@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-1.11.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -15,13 +15,13 @@ RisuToki is a **desktop editor** purpose-built for [RisuAI](https://risuai.net/)
 
 | Feature                    | Description                                                                                                                                                                                                                                                                                                                                                                                                    |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 📝 **Monaco Editor**       | Same editing engine as VS Code — syntax highlighting, autocomplete, find & replace                                                                                                                                                                                                                                                                                                                             |
-| 🤖 **AI CLI Integration**  | Run Claude Code · GitHub Copilot CLI · Codex · Gemini CLI inside the terminal with automatic MCP connection                                                                                                                                                                                                                                                                                                    |
-| 📦 **Three File Formats**  | Open, edit, and save `.charx` (character cards) · `.risum` (modules) · `.risup` (presets)                                                                                                                                                                                                                                                                                                                      |
-| 📁 **Project Folders**     | Use a folder workspace as the save backend for the normal structured editor, with advanced raw markdown/json/assets access for external-tool collaboration and `.charx`/`.risum`/`.risup` export                                                                                                                                                                                                               |
-| 📚 **Movable Managers**    | RisuMari-style `.charx`/`.risum` lorebook and asset panels plus a `.risup` prompt manager, with search, filters, thumbnails or badges, multi-select, bulk actions, and normal layout drag-and-drop placement                                                                                                                                                                                                   |
+| 📝 **Monaco Editor**       | Same editing engine as VS Code, with a focused prose view for descriptions and messages plus per-tab code-view switching                                                                                                                                                                                                                                                                                       |
+| 🤖 **AI CLI Integration**  | Run Claude Code · GitHub Copilot CLI · Codex · Gemini CLI in dedicated terminal tabs with automatic MCP connection                                                                                                                                                                                                                                                                                             |
+| 📦 **File & Card Import**  | Open, edit, and save `.charx` (character cards) · `.risum` (modules) · `.risup` (presets), plus import PNG/JSON Character Cards into the structured editor                                                                                                                                                                                                                                                     |
+| 📁 **Project Folders**     | Use a folder workspace as the save backend for the normal structured editor, with advanced raw markdown/json/assets access for external-tool collaboration, project-folder cloning, and `.charx`/`.risum`/`.risup` export                                                                                                                                                                                      |
+| 📚 **Movable Managers**    | RisuMari-style `.charx`/`.risum` lorebook and asset panels plus a `.risup` prompt manager, with search, filters, thumbnails or badges, SillyTavern `world_info` JSON import, asset batch rename, multi-select, bulk actions, and normal layout drag-and-drop placement                                                                                                                                         |
 | 🔧 **200+ MCP Tools**      | Read/write fields, lorebooks, regex, Lua/CSS sections, greetings, triggers, risup `promptTemplate`/`formatingOrder`, assets, CBS validation, references, Danbooru tags, skill docs + unopened-file probe/open + batch search/replace + structured `4xx/409` error envelopes + machine-readable confirmation / dry-run tool metadata + indexed-write stale-index guards + normalized batch `results[]` payloads |
-| 🎭 **Preview Mode**        | `.charx`-only chat simulation (F5) with CBS/Lua rendering, lorebook decorator matching/debug, and inline loading/error diagnostics                                                                                                                                                                                                                                                                             |
+| 🎭 **Preview Mode**        | `.charx` chat simulation plus sanitized rendered Markdown guide previews (F5), including tables, code, images, and safe external links                                                                                                                                                                                                                                                                         |
 | 📚 **References**          | Load other `.charx`/`.risum`/`.risup` files as read-only references and drill into individual entries                                                                                                                                                                                                                                                                                                          |
 | 🐰 **RP Mode**             | Adjust AI CLI response style with Toki / Aris / custom personas                                                                                                                                                                                                                                                                                                                                                |
 | 🔀 **Sidebar Drag & Drop** | Reorder lorebook entries, regex scripts, Lua/CSS sections, greetings, and assets by dragging                                                                                                                                                                                                                                                                                                                   |
@@ -127,6 +127,7 @@ Double-click the RisuToki executable (`.exe`) to launch.
 - Reposition the sidebar and terminal from the **View** menu.
 - Drag panel borders to resize.
 - Toggle the sidebar with `Ctrl+B`, the terminal with `` Ctrl+` ``.
+- The status bar keeps document stats visible while transient save/open/error messages appear beside them.
 
 ---
 
@@ -134,14 +135,16 @@ Double-click the RisuToki executable (`.exe`) to launch.
 
 <img width="240" height="258" alt="File menu" src="https://github.com/user-attachments/assets/d7dca751-3044-44dc-b93b-d99dc02226c2" />
 
-| Action      | How                                                               |
-| ----------- | ----------------------------------------------------------------- |
-| **New**     | `Ctrl+N` or File → New                                            |
-| **Open**    | `Ctrl+O` or File → Open (select a `.charx` / `.risum` / `.risup`) |
-| **Save**    | `Ctrl+S` or File → Save                                           |
-| **Save As** | `Ctrl+Shift+S` or File → Save As                                  |
+| Action      | How                                                                                            |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| **New**     | `Ctrl+N` or File → New                                                                         |
+| **Open**    | `Ctrl+O` or File → Open (select a `.charx` / `.risum` / `.risup` / PNG or JSON Character Card) |
+| **Save**    | `Ctrl+S` or File → Save                                                                        |
+| **Save As** | `Ctrl+Shift+S` or File → Save As                                                               |
 
-- **Project folders**: File → **프로젝트 폴더로 추출** expands `.charx`, `.risum`, or `.risup` files into folder workspaces. `.charx` keeps the RisuMari-compatible `card.json` shape; `.risum` uses `module.json`; `.risup` uses `preset.json` with sensitive key fields removed.
+- **PNG/JSON Character Card import**: PNG cards with `ccv3` / `chara` `tEXt` metadata and JSON Character Cards open directly in the structured `.charx` editor. Imported PNG/JSON files are remembered as sources, but **Save** opens a `.charx` save dialog instead of overwriting the import source.
+- **최근 항목**: File → **최근 항목** lists the last 10 files and project folders. Failed entries are removed automatically, and the menu includes **최근 항목 지우기**.
+- **Project folders**: File → **프로젝트 폴더로 추출** expands `.charx`, `.risum`, or `.risup` files into folder workspaces. File → **프로젝트 폴더 복제** copies the active project folder to an empty target folder and opens the clone. `.charx` keeps the RisuMari-compatible `card.json` shape; `.risum` uses `module.json`; `.risup` uses `preset.json` with sensitive key fields removed.
 - In a project folder, **Save** writes the structured editor state back to the folder files. File → **파일로 내보내기** and **Save As** create the matching `.charx`, `.risum`, or `.risup` output when you want to import the result into RisuAI.
 - `.charx` project folders track only the generated `assets/**` and `x_meta/**` files they manage. Removing or renaming an asset removes the stale generated file on save, while unrelated files added by external tools are preserved.
 - Raw project files remain available under the collapsed **프로젝트 원본 파일** advanced sidebar area. Direct raw edits are debounced and synchronized back into the structured editor state.
@@ -220,13 +223,13 @@ Which items appear depends on the file type:
 <img width="1627" height="709" alt="Lorebook" src="https://github.com/user-attachments/assets/556eadc9-e377-4955-b7bf-7963562dc00a" />
 
 - Supports folder hierarchy. Click an entry to open a form editor (comment, key, content, mode, etc.).
-- Right-click to add entries/folders, import JSON, rename, delete, or restore from backup.
+- Right-click to add entries/folders, import JSON, rename, delete, or restore from backup. SillyTavern `world_info` JSON is detected and converted automatically.
 - Drag & drop to reorder entries or move them between folders.
 
 #### Regex / Assets
 
 - **Regex**: Form editor (find, replace, type, flag) with right-click CRUD and drag-&-drop reordering.
-- **Assets**: Image file list. Click to open an image viewer (zoom / pan). Right-click to add or delete.
+- **Assets**: Image file list. Click to open an image viewer (zoom / pan). Right-click to add or delete. Select 2+ assets in the asset manager to batch rename by pattern-number or find/replace preview.
 
 ### References Tab
 
@@ -261,13 +264,14 @@ RisuToki uses the same Monaco editing engine that powers VS Code.
 <img width="259" height="38" alt="Terminal header" src="https://github.com/user-attachments/assets/a336229d-dc6d-4dc2-bf5d-64ee75e98f45" />
 
 - Runs shell commands (bash / PowerShell). **Copy**: `Ctrl+C`. **Paste**: `Ctrl+V` or right-click.
+- Use the terminal tab bar to keep multiple shell sessions open. The `+` button creates a new Shell tab; closing the last tab creates a fresh Shell tab automatically.
 
 ### Terminal Menu
 
 <img width="227" height="148" alt="Terminal menu" src="https://github.com/user-attachments/assets/e4f5397a-6925-4d70-83d6-5b7e8b4ca7cb" />
 
-- **Start Claude Code / Copilot CLI / Codex / Gemini** — launches the AI CLI with the current file context.
-- **Clear Terminal** / **Restart Terminal**
+- **Start Claude Code / Copilot CLI / Codex / Gemini** — creates a new dedicated tab, switches to it, and launches the AI CLI with the current file context.
+- **Clear Terminal** / **Restart Terminal** act on the active terminal tab.
 
 ### Header Buttons
 
@@ -643,6 +647,7 @@ Encrypted AI preset file containing model settings, generation parameters, promp
 - Config files are auto-created when each CLI starts: `~/.mcp.json` (Claude Code), `~/.copilot/mcp-config.json` (Copilot CLI), `~/.codex/config.toml` (Codex), `~/.gemini/settings.json` (Gemini).
 - Restarting the editor may change the port; the new port is picked up automatically.
 - You must start each CLI **from inside the editor** for RisuToki's MCP tools to connect.
+- If Codex reports that the MCP connection closed before the `initialize` response, update to RisuToki 1.8.1 or later; 1.8.0 portable packages omitted the tiktoken WASM runtime asset.
 - If `search_all_fields` still reports `MCP server 'risutoki': Not found` right after an update, an older CLI session may be running. Fully restart the CLI from the terminal menu.
 
 ### File won't open

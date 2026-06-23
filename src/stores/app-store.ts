@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { Section } from '../lib/section-parser';
 import { getTalkTitleForTheme, type CustomThemePalette, type ThemeId } from '../lib/theme-registry';
+import type { RecentItem } from '../lib/app-settings';
 // Layout types available for future use via '../lib/layout-manager'
 
 // CharxData represents the loaded .charx file data
@@ -193,6 +194,7 @@ export const useAppStore = defineStore('app', () => {
   // === Editor state ===
   const monacoReady = ref(false);
   const activeTabId = ref<string | null>(null);
+  const activeTabLanguage = ref<string>('');
 
   // === UI state ===
   const darkMode = ref(false);
@@ -205,7 +207,9 @@ export const useAppStore = defineStore('app', () => {
   const statusText = ref('');
   const statusKind = ref<StatusKind>('info');
   const statusSticky = ref(false);
+  const documentStatsText = ref('');
   const fileLabel = ref('');
+  const recentItems = ref<RecentItem[]>([]);
   const restoredSessionLabel = ref('');
   const restoredSessionStatusText = ref('');
 
@@ -223,6 +227,9 @@ export const useAppStore = defineStore('app', () => {
   const hasFile = computed(() => fileData.value !== null);
   const isRisum = computed(() => fileData.value?._fileType === 'risum');
   const canPreviewCurrentFile = computed(() => {
+    // Markdown documents (e.g. guide files) can be previewed even with no charx
+    // file loaded.
+    if (activeTabLanguage.value === 'markdown') return true;
     if (!fileData.value) return false;
     const fileType = fileData.value._fileType || 'charx';
     return fileType === 'charx';
@@ -256,8 +263,16 @@ export const useAppStore = defineStore('app', () => {
     statusSticky.value = false;
   }
 
+  function setDocumentStatsText(text: string) {
+    documentStatsText.value = text;
+  }
+
   function setFileLabel(label: string) {
     fileLabel.value = label;
+  }
+
+  function setRecentItems(items: RecentItem[]) {
+    recentItems.value = items.slice();
   }
 
   function setRestoredSessionLabel(label: string) {
@@ -301,6 +316,10 @@ export const useAppStore = defineStore('app', () => {
     activeTabId.value = id;
   }
 
+  function setActiveTabLanguage(language: string) {
+    activeTabLanguage.value = language;
+  }
+
   function setLuaSections(sections: Section[]) {
     luaSections.value = sections;
   }
@@ -325,6 +344,7 @@ export const useAppStore = defineStore('app', () => {
     referenceFiles,
     monacoReady,
     activeTabId,
+    activeTabLanguage,
     darkMode,
     themeId,
     customTheme,
@@ -335,7 +355,9 @@ export const useAppStore = defineStore('app', () => {
     statusText,
     statusKind,
     statusSticky,
+    documentStatsText,
     fileLabel,
+    recentItems,
     restoredSessionLabel,
     autosaveEnabled,
     autosaveInterval,
@@ -354,7 +376,9 @@ export const useAppStore = defineStore('app', () => {
     setFileData,
     setStatus,
     clearStatus,
+    setDocumentStatsText,
     setFileLabel,
+    setRecentItems,
     setRestoredSessionLabel,
     showRestoredSessionStatus,
     clearRestoredSessionState,
@@ -364,6 +388,7 @@ export const useAppStore = defineStore('app', () => {
     setRpMode,
     setMonacoReady,
     setActiveTabId,
+    setActiveTabLanguage,
     setLuaSections,
     setCssSections,
     setReferenceFiles,

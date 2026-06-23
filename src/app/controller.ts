@@ -22,10 +22,12 @@ import {
   handleGeminiStart as _handleGeminiStart,
 } from '../lib/assistant-prompt';
 import {
-  getDefaultRpModeForDarkMode,
-  getDefaultRpModeForThemeId,
+  addRecentItem,
+  clearRecentItems,
   readAppSettingsSnapshot,
+  readRecentItems,
   readStoredLayoutState,
+  removeRecentItem,
   subscribeToAppSettings,
   writeAutosaveDir,
   writeAutosaveEnabled,
@@ -36,11 +38,11 @@ import {
   writeRpCustomText,
   writeRpMode,
 } from '../lib/app-settings';
-import type { StoredLayoutState } from '../lib/app-settings';
+import type { RecentItem, RecentSourceFormat, StoredLayoutState } from '../lib/app-settings';
 import { initTokiAvatar as initTokiAvatarUi, setTokiActive } from '../lib/avatar-ui';
 import { defineAppMonacoTheme } from '../lib/dark-mode';
 import { showImageViewer as renderImageViewer } from '../lib/image-viewer';
-import { handleTerminalDataForBgm, isBgmEnabled, pauseBgm, setBgmEnabled, setBgmFilePath } from '../lib/bgm';
+import { handleTerminalDataForBgm, initBgm, isBgmEnabled, pauseBgm, setBgmEnabled, setBgmFilePath } from '../lib/bgm';
 import { ensureBlueArchiveMonacoTheme, loadMonacoRuntime } from '../lib/monaco-loader';
 import { createBufferedTerminalChatSession } from '../lib/chat-session';
 import { feedBgBuffer, initChatMode as initChatModeUi, isChatMode, onChatData } from '../lib/chat-ui';
@@ -62,6 +64,7 @@ import {
   updatePopoutButtons,
 } from '../lib/popout-window';
 import { showPreviewPanel as renderPreviewPanel } from '../lib/preview-panel';
+import { showMarkdownPreview } from '../lib/markdown-preview';
 import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
 import {
@@ -70,24 +73,26 @@ import {
   initFormEditor,
   showLoreEditor,
   showBooleanEditor,
+  showModuleSettingsEditor,
   showToggleTemplateEditor,
   showTriggerEditor,
   showRisupEditor,
   showRisupPromptItemEditor,
   showRegexEditor,
 } from '../lib/form-editor';
-import type { BooleanFormTabInfo, FormTabInfo, RisupPromptItemTabInfo, ToggleFormTabInfo } from '../lib/form-editor';
+import type {
+  BooleanFormTabInfo,
+  FormTabInfo,
+  ModuleSettingsFormTabInfo,
+  RisupPromptItemTabInfo,
+  ToggleFormTabInfo,
+} from '../lib/form-editor';
 import type { RisupFormTabInfo } from '../lib/risup-form-editor';
 import { showConfirm, showCloseConfirm, showPrompt, showSessionRecoveryDialog } from '../lib/dialog';
 import { showContextMenu } from '../lib/context-menu';
 import type { ContextMenuItem } from '../lib/context-menu';
 import { initPanelDragDrop as _initPanelDragDrop } from '../lib/panel-drag';
-import {
-  initializeTerminalUi,
-  shouldTreatTerminalDataAsActivity,
-  TERM_THEME_DARK,
-  TERM_THEME_LIGHT,
-} from '../lib/terminal-ui';
+import { initializeTerminalUi, shouldTreatTerminalDataAsActivity, type TerminalUiHandle } from '../lib/terminal-ui';
 import { TerminalSessionContext } from '../lib/terminal-session-context';
 import {
   applySelectedChoice,
@@ -100,6 +105,7 @@ import {
 import { createBackup, formatBackupTime, getBackups, showBackupMenu } from '../lib/backup-store';
 import { initDragDrop } from '../lib/drag-drop-import';
 import { setStatus } from '../lib/status-bar';
+import { formatDocumentStats, summarizeDocumentStats } from '../lib/document-stats';
 import { showHelpPopup } from '../lib/help-popup';
 import { createSidebarActions } from '../lib/sidebar-actions';
 import { initSidebarDnD, destroyAllSortables } from '../lib/sidebar-dnd';
@@ -132,12 +138,6 @@ import { collectHiddenFieldWarnings } from '../lib/mcp-field-access';
 import { isTriggerScriptsLuaMode } from '../lib/trigger-script-model';
 import { initKeyboard } from './keyboard-shortcuts';
 import {
-  getRpLabel,
-  updateRpButtonStyle,
-  updateBgmButtonStyle,
-  initBgmUi,
-  toggleDarkMode as _toggleDarkMode,
-  refreshDarkModeUi as _refreshDarkModeUi,
   changeTheme as _changeTheme,
   refreshThemeUi as _refreshThemeUi,
   updateCustomTheme as _updateCustomTheme,
@@ -230,6 +230,26 @@ let autosaveDir = settingsSnapshot.autosaveDir; // empty = same as file
 let documentSwitchInProgress = false;
 let rendererOpenRequestInProgress = false;
 
+function refreshRecentItems(): void {
+  useAppStore().setRecentItems(readRecentItems());
+}
+
+function rememberRecentFile(path: string | undefined, sourceFormat?: string): void {
+  if (!path) return;
+  addRecentItem({
+    kind: 'file',
+    path,
+    sourceFormat: sourceFormat as RecentSourceFormat | undefined,
+  });
+  refreshRecentItems();
+}
+
+function rememberRecentProject(projectPath: string | undefined): void {
+  if (!projectPath) return;
+  addRecentItem({ kind: 'project', path: projectPath });
+  refreshRecentItems();
+}
+
 /** Sync imperative controller state → Pinia store for reactive UI */
 function syncStoreState(): void {
   const store = useAppStore();
@@ -238,6 +258,7 @@ function syncStoreState(): void {
   store.setCustomTheme(customTheme);
   store.setRpMode(rpMode as RpMode);
   store.bgmEnabled = isBgmEnabled();
+  store.setRecentItems(readRecentItems());
 }
 
 // Chat mode state — UI lives in ../lib/chat-ui, session created here for wiring
@@ -277,6 +298,7 @@ const tabMgr = new TabManager(
     isPanelPoppedOut: (panelId) => isPanelPoppedOut(panelId),
     onPopOutTab: (tabId) => popOutEditorPanel(tabId),
     isFormTabType: (language) => FORM_TAB_TYPES.has(language),
+    onTabsRendered: () => updateDocumentStats(),
   },
   confirmDirtyTabClose,
 );
@@ -487,8 +509,43 @@ function flushPendingEditorActivation(): void {
   }
 }
 
+function proseEditorOptions(simple: boolean, isLargeFile = false): Record<string, unknown> {
+  return {
+    minimap: { enabled: !simple && !isLargeFile },
+    lineNumbers: simple ? 'off' : 'on',
+    glyphMargin: !simple,
+    folding: !simple,
+    renderLineHighlight: simple ? 'none' : 'line',
+    overviewRulerLanes: simple ? 0 : 3,
+    hideCursorInOverviewRuler: simple,
+    padding: simple ? { top: 16, bottom: 16 } : { top: 0, bottom: 0 },
+    renderWhitespace: simple ? 'none' : 'selection',
+  };
+}
+
+function updateEditorModeToggle(tabInfo: Tab): void {
+  const button = document.getElementById('editor-mode-toggle') as HTMLButtonElement | null;
+  if (!button) return;
+  if (tabInfo.editorKind !== 'prose') {
+    button.style.display = 'none';
+    button.onclick = null;
+    return;
+  }
+  tabInfo.editorView ??= 'simple';
+  button.style.display = '';
+  button.textContent = tabInfo.editorView === 'simple' ? '코드 보기' : '단순 보기';
+  button.title = tabInfo.editorView === 'simple' ? '줄번호와 코드 도구 표시' : '산문에 집중하는 단순 보기';
+  button.onclick = () => {
+    tabInfo.editorView = tabInfo.editorView === 'simple' ? 'code' : 'simple';
+    const simple = tabInfo.editorView === 'simple';
+    editorInstance?.updateOptions(proseEditorOptions(simple, (editorInstance?.getValue().length ?? 0) > 100000));
+    updateEditorModeToggle(tabInfo);
+  };
+}
+
 function createOrSwitchEditor(tabInfo: Tab): void {
   const container = document.getElementById('editor-container')!;
+  updateEditorModeToggle(tabInfo);
 
   // Special tab types: image, lorebook form, regex form
 
@@ -512,6 +569,14 @@ function createOrSwitchEditor(tabInfo: Tab): void {
   if (tabInfo.language === '_booleanform') {
     tabMgr.activeTabId = tabInfo.id;
     showBooleanEditor(tabInfo as BooleanFormTabInfo);
+    tabMgr.renderTabs();
+    updateSidebarActive();
+    return;
+  }
+
+  if (tabInfo.language === '_modulesettingsform') {
+    tabMgr.activeTabId = tabInfo.id;
+    showModuleSettingsEditor(tabInfo as ModuleSettingsFormTabInfo);
     tabMgr.renderTabs();
     updateSidebarActive();
     return;
@@ -589,16 +654,16 @@ function createOrSwitchEditor(tabInfo: Tab): void {
   const isReadOnly = !tabInfo.setValue;
   const initialValue = tabInfo.getValue() as string;
   const isLargeFile = initialValue.length > 100000;
+  const simpleProse = tabInfo.editorKind === 'prose' && (tabInfo.editorView ?? 'simple') === 'simple';
   editorInstance = monaco.editor.create(container, {
     value: initialValue,
     language: tabInfo.language,
     theme: monacoThemeId,
     fontSize: 14,
-    minimap: { enabled: !isLargeFile },
     wordWrap: 'on',
     automaticLayout: true,
     scrollBeyondLastLine: false,
-    renderWhitespace: 'selection',
+    ...proseEditorOptions(simpleProse, isLargeFile),
     tabSize: 2,
     mouseWheelZoom: true,
     readOnly: isReadOnly,
@@ -650,7 +715,7 @@ function openExternalTextTab(
   id: string,
   label: string,
   initialValue: string,
-  persist: (value: string) => Promise<void> | void,
+  persist: (value: string) => Promise<unknown> | void,
   language = 'plaintext',
 ): Tab | null {
   const state = createExternalTextTabState(initialValue, persist);
@@ -662,7 +727,21 @@ function openExternalTextTab(
     (value) => {
       void state.setValue(value as string);
     },
+    { editorKind: 'prose', editorView: 'simple' },
   );
+}
+
+function openProseTab(
+  id: string,
+  label: string,
+  language: string,
+  getValue: () => unknown,
+  setValue: ((value: unknown) => void) | null,
+): Tab {
+  return tabMgr.openTab(id, label, language, getValue, setValue, {
+    editorKind: 'prose',
+    editorView: 'simple',
+  });
 }
 
 function buildLorebookTabState(index: number, tab: Tab): Record<string, unknown> | null {
@@ -774,6 +853,8 @@ function buildAltGreetTabState(index: number): Record<string, unknown> | null {
     setValue: (value: unknown) => {
       (fileData!.alternateGreetings as string[])[index] = value as string;
     },
+    editorKind: 'prose',
+    editorView: 'simple',
   };
 }
 
@@ -1097,7 +1178,10 @@ function appendHiddenFieldWarnings(tree: HTMLElement): void {
   const warnings = collectHiddenFieldWarnings(fileData as unknown as Record<string, unknown>);
   if (warnings.length === 0) return;
 
-  tree.appendChild(createSectionHeader('숨겨진 비권장 값'));
+  const folder = createFolderItem(`호환성 경고 (${warnings.length})`, '⚠️', 0);
+  folder.header.title = '구버전 호환을 위해 보존되지만 일반 편집에서는 숨겨지는 값';
+  tree.appendChild(folder.header);
+  tree.appendChild(folder.children);
   for (const warning of warnings) {
     const detail =
       warning.count !== undefined
@@ -1105,25 +1189,16 @@ function appendHiddenFieldWarnings(tree: HTMLElement): void {
         : `${warning.field} · ${warning.category} · ${warning.size ?? 0}자`;
     const el = createTreeItem(detail, '⚠️', 0);
     el.title = `${warning.reason}\n${warning.suggestion}\n값은 호환성을 위해 보존되지만 편집기와 MCP 일반 조회에서는 숨겨집니다.`;
-    tree.appendChild(el);
+    folder.children.appendChild(el);
   }
 }
 
 type RisumSidebarField = {
-  id: keyof Pick<
-    CharxData,
-    | 'moduleName'
-    | 'moduleDescription'
-    | 'moduleNamespace'
-    | 'lowLevelAccess'
-    | 'hideIcon'
-    | 'backgroundEmbedding'
-    | 'customModuleToggle'
-  >;
+  id: keyof Pick<CharxData, 'backgroundEmbedding' | 'customModuleToggle'>;
   label: string;
   icon: string;
   lang: string;
-  kind?: 'boolean' | 'toggle-template';
+  kind?: 'toggle-template';
 };
 
 interface ProjectTreeNode {
@@ -1134,11 +1209,6 @@ interface ProjectTreeNode {
 }
 
 const RISUM_MODULE_SIDEBAR_FIELDS: readonly RisumSidebarField[] = [
-  { id: 'moduleName', label: '모듈 이름', icon: '📦', lang: 'plaintext' },
-  { id: 'moduleDescription', label: '모듈 설명', icon: '📝', lang: 'plaintext' },
-  { id: 'moduleNamespace', label: '네임스페이스', icon: '#', lang: 'plaintext' },
-  { id: 'lowLevelAccess', label: '저수준 접근', icon: '🔓', lang: 'plaintext', kind: 'boolean' },
-  { id: 'hideIcon', label: '아이콘 숨김', icon: '◌', lang: 'plaintext', kind: 'boolean' },
   { id: 'backgroundEmbedding', label: '배경 임베딩', icon: '🎨', lang: 'html' },
   { id: 'customModuleToggle', label: '커스텀 토글', icon: '☑', lang: 'plaintext', kind: 'toggle-template' },
 ] as const;
@@ -1287,7 +1357,32 @@ async function appendProjectFilesSidebar(tree: HTMLElement): Promise<void> {
   for (const child of projectTree.children || []) appendProjectTreeNode(folder.children, child, 1);
 }
 
+// Tracks the most recent async asset-content probe so a slower, superseded
+// document load cannot overwrite the current document's manager state.
+let assetContentToken = 0;
+let documentStatsToken = 0;
+
+// Report whether the lorebook / asset managers currently have any items, so the
+// layout manager can auto-collapse empty managers and give the editor the width.
+function updateManagerContentFromFile(): void {
+  const data = fileData;
+  const loreHasContent = !!(data && Array.isArray(data.lorebook) && data.lorebook.length > 0);
+  layoutManager.setManagerContent({ lore: loreHasContent });
+
+  const token = ++assetContentToken;
+  Promise.resolve(window.tokiAPI.getAssetList())
+    .then((list) => {
+      if (token !== assetContentToken) return; // superseded by a newer document load
+      const count = Array.isArray(list) ? list.length : 0;
+      layoutManager.setManagerContent({ asset: count > 0 });
+    })
+    .catch(() => {
+      /* ignore asset-listing failures for layout purposes */
+    });
+}
+
 function buildSidebar(): void {
+  updateDocumentStats();
   destroyAllSortables();
   const tree = document.getElementById('sidebar-tree')!;
   tree.innerHTML = '';
@@ -1299,10 +1394,15 @@ function buildSidebar(): void {
   const managersAvailable = !!fileData && fileData._fileType !== 'risup';
   if (managersAvailable) {
     layoutManager.setManagerAvailability({ lore: true, asset: true, prompt: false });
+    updateManagerContentFromFile();
   } else {
     if (fileData?._fileType === 'risup') {
-      moveLoreManager('hide');
-      moveAssetManager('hide');
+      const promptModel = parsePromptTemplate(
+        typeof fileData.promptTemplate === 'string' ? fileData.promptTemplate : '',
+      );
+      layoutManager.setManagerContent({
+        prompt: promptModel.state === 'invalid' || promptModel.items.length > 0,
+      });
     }
     layoutManager.setManagerAvailability({ lore: false, asset: false, prompt: promptManagerAvailable });
   }
@@ -1326,10 +1426,9 @@ function buildSidebar(): void {
   const isRisum = fileData._fileType === 'risum';
   const isRisup = fileData._fileType === 'risup';
   const isCharx = !isRisum && !isRisup;
-  appendHiddenFieldWarnings(tree);
-
   if (isRisup) {
     buildRisupSidebar(tree);
+    appendHiddenFieldWarnings(tree);
     renderRightManagerPanel();
     renderPromptManagerPanel();
     return;
@@ -1495,7 +1594,9 @@ function buildSidebar(): void {
     for (const item of charInfoItems) {
       const el = createTreeItem(item.label, item.icon, 0);
       el.addEventListener('click', () => {
-        tabMgr.openTab(
+        const isProse = ['description', 'globalNote', 'creatorcomment', 'exampleMessage'].includes(item.id);
+        const open = isProse ? openProseTab : tabMgr.openTab.bind(tabMgr);
+        open(
           item.id,
           item.label,
           item.lang,
@@ -1520,18 +1621,31 @@ function buildSidebar(): void {
   if (isRisum) {
     tree.appendChild(createSectionHeader('모듈 정보'));
 
+    const settingsEl = createTreeItem('모듈 설정', '📦', 0);
+    settingsEl.addEventListener('click', () => {
+      tabMgr.openTab(
+        'moduleSettings',
+        '모듈 설정',
+        '_modulesettingsform',
+        () => fileData!,
+        (value: unknown) => {
+          Object.assign(fileData!, value as Record<string, unknown>);
+          useAppStore().setFileLabel(String(fileData!.moduleName || 'Untitled'));
+        },
+      );
+    });
+    tree.appendChild(settingsEl);
+
     for (const item of RISUM_MODULE_SIDEBAR_FIELDS) {
       const el = createTreeItem(item.label, item.icon, 0);
       el.addEventListener('click', () => {
         tabMgr.openTab(
           String(item.id),
           item.label,
-          item.kind === 'boolean' ? '_booleanform' : item.kind === 'toggle-template' ? '_toggleform' : item.lang,
-          () => (item.kind === 'boolean' ? !!fileData![item.id] : String(fileData![item.id] ?? '')),
+          item.kind === 'toggle-template' ? '_toggleform' : item.lang,
+          () => String(fileData![item.id] ?? ''),
           (v: unknown) => {
-            if (item.kind === 'boolean') {
-              (fileData! as Record<string, unknown>)[item.id] = !!v;
-            } else if (item.kind === 'toggle-template') {
+            if (item.kind === 'toggle-template') {
               (fileData! as Record<string, unknown>)[item.id] = String(v ?? '');
             } else {
               (fileData! as Record<string, unknown>)[item.id] = v as string;
@@ -1557,7 +1671,7 @@ function buildSidebar(): void {
     // 첫 메시지
     const fmEl = createTreeItem('첫 메시지', '💬', 0);
     fmEl.addEventListener('click', () => {
-      tabMgr.openTab(
+      openProseTab(
         'firstMessage',
         '첫 메시지',
         'html',
@@ -1601,7 +1715,7 @@ function buildSidebar(): void {
       itemEl.title = preview;
       itemEl.dataset.dndIdx = String(idx);
       itemEl.addEventListener('click', () => {
-        tabMgr.openTab(
+        openProseTab(
           `altGreet_${idx}`,
           `인사말 ${idx + 1}`,
           'html',
@@ -1628,7 +1742,7 @@ function buildSidebar(): void {
   if (!isCharx) {
     const descEl = createTreeItem('설명', '📄', 0);
     descEl.addEventListener('click', () => {
-      tabMgr.openTab(
+      openProseTab(
         'description',
         '설명',
         'plaintext',
@@ -1920,7 +2034,7 @@ function buildSidebar(): void {
     initSidebarDnD(getDndDeps());
     renderRightManagerPanel();
     initPanelDragDrop();
-    void appendProjectFilesSidebar(tree);
+    void appendProjectFilesSidebar(tree).then(() => appendHiddenFieldWarnings(tree));
   });
 }
 
@@ -1958,6 +2072,11 @@ function createLoreEntryItem(child: { entry: LorebookEntry; index: number }, ind
 
 function updateSidebarActive(): void {
   _updateSidebarActive(tabMgr.activeTabId, tabMgr.openTabs);
+  // Keep the store aware of the active tab's language so the preview menu can
+  // enable for markdown guide tabs (not just charx files).
+  const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
+  useAppStore().setActiveTabLanguage(activeTab?.language ?? '');
+  updateDocumentStats();
 }
 
 // ==================== Sidebar Actions (delegated to ../lib/sidebar-actions) ====================
@@ -1998,6 +2117,7 @@ const {
   importLorebook,
   deleteLorebook,
   renameLorebook,
+  renameLorebookTo,
   reorderLorebook,
   addNewRegex,
   importRegex,
@@ -2066,13 +2186,39 @@ async function moveLorebookManyToFolder(indices: number[], folderRef: string): P
   setStatus(`로어북 ${unique.length}개 항목 이동됨`);
 }
 
-async function renameAssetFromManager(assetPath: string, fileName: string): Promise<void> {
-  const newName = await showPrompt('새 파일명:', fileName);
-  if (!newName || newName === fileName) return;
+async function renameAssetFromManager(assetPath: string, fileName: string): Promise<string | null> {
+  const newName = fileName.trim();
+  const originalName = assetPath.split('/').pop() || assetPath;
+  if (!newName) return '파일명을 입력하세요.';
+  if (/[<>:"/\\|?*\u0000-\u001f]/.test(newName)) return '파일명에 사용할 수 없는 문자가 있습니다.';
+  const oldExtension = originalName.includes('.')
+    ? originalName.slice(originalName.lastIndexOf('.')).toLocaleLowerCase()
+    : '';
+  const newExtension = newName.includes('.') ? newName.slice(newName.lastIndexOf('.')).toLocaleLowerCase() : '';
+  if (!newExtension || newExtension !== oldExtension) return `확장자는 ${oldExtension || '(없음)'} 그대로 유지하세요.`;
+  const assets = await window.tokiAPI.getAssetList();
+  const parent = assetPath.includes('/') ? assetPath.slice(0, assetPath.lastIndexOf('/') + 1) : '';
+  const nextPath = `${parent}${newName}`.toLocaleLowerCase();
+  if (assets.some((asset) => asset.path !== assetPath && asset.path.toLocaleLowerCase() === nextPath)) {
+    return '같은 경로에 동일한 파일명이 이미 있습니다.';
+  }
+  if (newName === originalName) return null;
   const newPath = await window.tokiAPI.renameAsset(assetPath, newName);
-  if (!newPath) return;
+  if (!newPath) return '에셋 이름 변경에 실패했습니다.';
   buildSidebar();
   setStatus(`에셋 이름 변경: ${newName}`);
+  return null;
+}
+
+async function renameAssetsBatchFromManager(operations: Array<{ oldPath: string; newName: string }>): Promise<{
+  ok: boolean;
+  renamed?: Array<{ oldPath: string; newPath: string }>;
+  error?: string;
+  conflicts?: string[];
+}> {
+  const result = await window.tokiAPI.renameAssetsBatch(operations);
+  if (result.ok) buildSidebar();
+  return result;
 }
 
 async function deleteAssetsFromManager(paths: string[]): Promise<void> {
@@ -2245,31 +2391,168 @@ let term: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- xterm.js FitAddon type
 let fitAddon: any = null;
 
-async function initTerminal(): Promise<void> {
-  const container = document.getElementById('terminal-container')!;
+interface TerminalSessionUi {
+  id: string;
+  name: string;
+  container: HTMLElement;
+  context: TerminalSessionContext;
+  ui: TerminalUiHandle | null;
+}
+
+const terminalSessions = new Map<string, TerminalSessionUi>();
+let activeTerminalSessionId: string | null = null;
+const fallbackTerminalSession = new TerminalSessionContext();
+
+function getActiveTerminalSession(): TerminalSessionUi | null {
+  return activeTerminalSessionId ? terminalSessions.get(activeTerminalSessionId) || null : null;
+}
+
+function getActiveTerminalContext(): TerminalSessionContext {
+  return getActiveTerminalSession()?.context || fallbackTerminalSession;
+}
+
+function syncActiveTerminalHandles(): void {
+  const active = getActiveTerminalSession();
+  term = active?.ui?.term || null;
+  fitAddon = active?.ui?.fitAddon || null;
+}
+
+function renderTerminalTabs(): void {
+  const tabs = document.getElementById('terminal-tabs');
+  if (!tabs) return;
+  tabs.innerHTML = '';
+
+  for (const session of terminalSessions.values()) {
+    const tab = document.createElement('div');
+    tab.className = `terminal-tab${session.id === activeTerminalSessionId ? ' active' : ''}`;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', String(session.id === activeTerminalSessionId));
+    tab.tabIndex = 0;
+    tab.title = session.name;
+    tab.addEventListener('click', () => setActiveTerminalSession(session.id));
+    tab.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        setActiveTerminalSession(session.id);
+      }
+    });
+
+    const label = document.createElement('span');
+    label.className = 'terminal-tab-label';
+    label.textContent = session.name;
+    tab.appendChild(label);
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'terminal-tab-close';
+    close.title = '터미널 탭 닫기';
+    close.setAttribute('aria-label', `${session.name} 탭 닫기`);
+    close.textContent = '×';
+    close.addEventListener('click', (event) => {
+      event.stopPropagation();
+      void closeTerminalSession(session.id);
+    });
+    tab.appendChild(close);
+    tabs.appendChild(tab);
+  }
+
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'terminal-tab-add';
+  add.title = '새 터미널';
+  add.setAttribute('aria-label', '새 터미널');
+  add.textContent = '+';
+  add.addEventListener('click', () => {
+    void createTerminalSession('Shell');
+  });
+  tabs.appendChild(add);
+}
+
+function setActiveTerminalSession(sessionId: string): void {
+  if (!terminalSessions.has(sessionId)) return;
+  activeTerminalSessionId = sessionId;
+  for (const session of terminalSessions.values()) {
+    session.container.classList.toggle('active', session.id === sessionId);
+  }
+  syncActiveTerminalHandles();
+  renderTerminalTabs();
+  const cwd = getActiveTerminalContext().cwd;
+  if (cwd) void window.tokiAPI.setTerminalCwd(cwd);
+  if (fitAddon && term) {
+    window.setTimeout(() => fitAddon.fit(), 20);
+  }
+}
+
+async function closeTerminalSession(sessionId: string): Promise<void> {
+  const session = terminalSessions.get(sessionId);
+  if (!session) return;
+  await window.tokiAPI.terminalStopSession(session.id);
+  session.ui?.dispose();
+  session.container.remove();
+  terminalSessions.delete(session.id);
+
+  if (activeTerminalSessionId === session.id) {
+    activeTerminalSessionId = terminalSessions.keys().next().value || null;
+  }
+
+  if (!activeTerminalSessionId) {
+    await createTerminalSession('Shell');
+    return;
+  }
+
+  setActiveTerminalSession(activeTerminalSessionId);
+}
+
+async function createTerminalSession(name = 'Shell'): Promise<TerminalSessionUi> {
+  const root = document.getElementById('terminal-container')!;
+  const info = await window.tokiAPI.terminalNewSession(name);
+  const sessionContainer = document.createElement('div');
+  sessionContainer.className = 'terminal-session';
+  sessionContainer.dataset.sessionId = info.id;
+  root.appendChild(sessionContainer);
+
+  const session: TerminalSessionUi = {
+    id: info.id,
+    name: info.name,
+    container: sessionContainer,
+    context: new TerminalSessionContext(),
+    ui: null,
+  };
+  terminalSessions.set(session.id, session);
+  setActiveTerminalSession(session.id);
+
   const terminalUi = await initializeTerminalUi({
     api: {
-      onTerminalData: (callback) => window.tokiAPI.onTerminalData(callback),
-      onTerminalExit: (callback) => window.tokiAPI.onTerminalExit(callback),
-      onTerminalStatus: (callback) => window.tokiAPI.onTerminalStatus(callback),
-      terminalInput: (data) => window.tokiAPI.terminalInput(data),
-      terminalIsRunning: () => window.tokiAPI.terminalIsRunning(),
-      terminalResize: (cols, rows) => window.tokiAPI.terminalResize(cols, rows),
-      terminalStart: (cols, rows) => window.tokiAPI.terminalStart(cols, rows),
+      onTerminalData: (callback) =>
+        window.tokiAPI.onTerminalDataSession((sessionId, data) => {
+          if (sessionId === session.id) callback(data);
+        }),
+      onTerminalExit: (callback) =>
+        window.tokiAPI.onTerminalExitSession((sessionId) => {
+          if (sessionId === session.id) callback();
+        }),
+      onTerminalStatus: (callback) =>
+        window.tokiAPI.onTerminalStatusSession((sessionId, event) => {
+          if (sessionId === session.id) callback(event);
+        }),
+      terminalInput: (data) => window.tokiAPI.terminalInputSession(session.id, data),
+      terminalIsRunning: () => window.tokiAPI.terminalIsSessionRunning(session.id),
+      terminalResize: (cols, rows) => window.tokiAPI.terminalResizeSession(session.id, cols, rows),
+      terminalStart: (cols, rows) => window.tokiAPI.terminalStartSession(session.id, cols, rows, session.name),
     },
-    container,
+    container: session.container,
     onActivity: () => handleTerminalDataForBgm(),
     onTerminalData: (data) => {
+      if (session.id !== activeTerminalSessionId) return;
       if (isChatMode()) onChatData(data);
       feedBgBuffer(data);
     },
     onUserInput: (data) => {
       lastUserInputTime = Date.now();
-      const prevCwd = terminalSession.cwd;
-      terminalSession.feedInput(data);
-      // Sync tracked terminal cwd to main process when it changes
-      if (terminalSession.cwd !== prevCwd) {
-        window.tokiAPI.setTerminalCwd(terminalSession.cwd);
+      const prevCwd = session.context.cwd;
+      session.context.feedInput(data);
+      if (session.id === activeTerminalSessionId && session.context.cwd !== prevCwd) {
+        window.tokiAPI.setTerminalCwd(session.context.cwd);
       }
     },
     preserveAmdLoader: true,
@@ -2279,8 +2562,19 @@ async function initTerminal(): Promise<void> {
     theme: getTheme(themeId, customTheme).terminal,
     writeStatusToTerminal: true,
   });
-  term = terminalUi.term;
-  fitAddon = terminalUi.fitAddon;
+
+  session.ui = terminalUi;
+  if (session.id === activeTerminalSessionId) {
+    syncActiveTerminalHandles();
+  }
+  return session;
+}
+
+async function initTerminal(): Promise<void> {
+  document.getElementById('terminal-container')!.innerHTML = '';
+  terminalSessions.clear();
+  activeTerminalSessionId = null;
+  await createTerminalSession('Shell');
 }
 
 // ==================== Image Viewer ====================
@@ -2379,20 +2673,64 @@ function resetLayout(): void {
 }
 
 async function restartTerminal(): Promise<void> {
-  if (!term) return;
-  await window.tokiAPI.terminalStop();
+  const active = getActiveTerminalSession();
+  if (!active?.ui) return;
+  await window.tokiAPI.terminalStopSession(active.id);
   // Wait for pty to fully terminate before starting a new one
   await new Promise((r) => setTimeout(r, 200));
-  term.clear();
-  terminalSession.reset();
-  const restarted = await window.tokiAPI.terminalStart(term.cols, term.rows);
+  active.ui.term.clear();
+  active.context.reset();
+  const restarted = await window.tokiAPI.terminalStartSession(
+    active.id,
+    active.ui.term.cols,
+    active.ui.term.rows,
+    active.name,
+  );
   setStatus(restarted ? '터미널 재시작됨' : '터미널 재시작 실패');
 }
 
 // ==================== Actions ====================
+function getActiveTabForStats(): Pick<Tab, 'getValue'> | null {
+  const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
+  if (!activeTab) return null;
+  if (editorInstance && !FORM_TAB_TYPES.has(activeTab.language)) {
+    return { getValue: () => editorInstance!.getValue() };
+  }
+  return activeTab;
+}
+
+function updateDocumentStats(): void {
+  const store = useAppStore();
+  const token = ++documentStatsToken;
+  if (!fileData) {
+    store.setDocumentStatsText('');
+    return;
+  }
+  const stats = summarizeDocumentStats({
+    data: fileData,
+    dirty: tabMgr.dirtyFields.size > 0,
+    activeTab: getActiveTabForStats(),
+  });
+  store.setDocumentStatsText(formatDocumentStats(stats));
+
+  if (fileData._fileType === 'risup') return;
+  void window.tokiAPI
+    .getAssetList()
+    .then((assets) => {
+      if (token !== documentStatsToken) return;
+      stats.assetCount = Array.isArray(assets) ? assets.length : stats.assetCount;
+      store.setDocumentStatsText(formatDocumentStats(stats));
+    })
+    .catch(() => {
+      /* keep the synchronous stats if asset listing fails */
+    });
+}
+
 function setCurrentFileData(data: CharxData | null): void {
   fileData = data;
+  layoutManager.resetManagerContentState();
   useAppStore().setFileData(data);
+  updateDocumentStats();
 }
 
 function resetDocumentWorkspace(): void {
@@ -2404,6 +2742,7 @@ function resetDocumentWorkspace(): void {
   }
   document.getElementById('editor-container')!.innerHTML = '<div class="empty-state">항목을 선택하세요</div>';
   document.getElementById('editor-tabs')!.innerHTML = '';
+  updateDocumentStats();
 }
 
 function applyLoadedDocument(data: Record<string, unknown>): void {
@@ -2438,8 +2777,10 @@ async function handleNew(): Promise<void> {
   currentProjectPath = null;
 }
 async function handleOpen(): Promise<void> {
-  await _handleOpen(fileActionDeps);
+  const result = await _handleOpen(fileActionDeps);
+  if (!result) return;
   currentProjectPath = null;
+  rememberRecentFile(result.path, result.sourceFormat);
 }
 
 async function handleExtractDocumentProject(): Promise<void> {
@@ -2450,6 +2791,7 @@ async function handleExtractDocumentProject(): Promise<void> {
   }
   setCurrentFileData(result.data as CharxData);
   currentProjectPath = result.projectPath || null;
+  rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
   tabMgr.reset();
   buildSidebar();
@@ -2465,11 +2807,74 @@ async function handleOpenProjectFolder(): Promise<void> {
   }
   setCurrentFileData(result.data as CharxData);
   currentProjectPath = result.projectPath || null;
+  rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
   tabMgr.reset();
   buildSidebar();
   await window.tokiAPI.watchProjectFolder();
   setStatus(`프로젝트 폴더 열림: 구조화 편집을 기본으로 사용합니다. (${result.projectPath})`);
+}
+
+async function handleCloneProjectFolder(): Promise<void> {
+  if (!currentProjectPath) {
+    setStatus('복제할 프로젝트 폴더가 열려 있지 않습니다');
+    return;
+  }
+  if (!(await syncActiveProjectFileTab())) return;
+  if (tabMgr.dirtyFields.size > 0) {
+    await handleSave();
+    if (tabMgr.dirtyFields.size > 0) return;
+  }
+  const result = await window.tokiAPI.cloneProjectFolder();
+  if (!result.success) {
+    if (!result.canceled) setStatus(`프로젝트 복제 실패: ${result.error || '알 수 없는 오류'}`);
+    return;
+  }
+  setCurrentFileData(result.data as CharxData);
+  currentProjectPath = result.projectPath || null;
+  rememberRecentProject(result.projectPath);
+  useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
+  tabMgr.reset();
+  buildSidebar();
+  await window.tokiAPI.watchProjectFolder();
+  setStatus(`프로젝트 복제본 열림: ${result.projectPath}`);
+}
+
+async function handleOpenRecentItem(payload?: unknown): Promise<void> {
+  const item = payload as RecentItem | undefined;
+  if (!item?.path) return;
+  try {
+    if (item.kind === 'project') {
+      const result = await window.tokiAPI.openProjectFolderPath(item.path);
+      if (!result.success) {
+        throw new Error(result.error || '알 수 없는 오류');
+      }
+      setCurrentFileData(result.data as CharxData);
+      currentProjectPath = result.projectPath || null;
+      useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
+      tabMgr.reset();
+      buildSidebar();
+      await window.tokiAPI.watchProjectFolder();
+      rememberRecentProject(result.projectPath || item.path);
+      setStatus(`최근 프로젝트 열림: ${result.projectPath || item.path}`);
+      return;
+    }
+
+    await _handleOpenPath(fileActionDeps, item.path, { targetLabel: item.path });
+    currentProjectPath = null;
+    rememberRecentFile(item.path, item.sourceFormat);
+    setStatus(`최근 파일 열림: ${item.path}`);
+  } catch (error) {
+    removeRecentItem(item.path);
+    refreshRecentItems();
+    setStatus(`최근 항목 열기 실패: ${(error as Error).message}`);
+  }
+}
+
+function handleClearRecentItems(): void {
+  clearRecentItems();
+  refreshRecentItems();
+  setStatus('최근 항목을 지웠습니다');
 }
 
 async function syncActiveProjectFileTab(): Promise<boolean> {
@@ -2505,11 +2910,24 @@ async function handleReassembleProjectDocument(): Promise<void> {
 
 // Trigger script text helpers are in ./trigger-script-utils.ts
 
-function getAssistantDeps() {
+function sendTerminalInputToSession(sessionId: string | null | undefined, text: string): void {
+  const targetId = sessionId || activeTerminalSessionId;
+  if (!targetId) return;
+  window.tokiAPI.terminalInputSession(targetId, text);
+}
+
+async function createAssistantTerminalSession(name: string): Promise<TerminalSessionUi> {
+  const session = await createTerminalSession(name);
+  setActiveTerminalSession(session.id);
+  return session;
+}
+
+function getAssistantDeps(sessionId?: string) {
+  const session = sessionId ? terminalSessions.get(sessionId) || null : getActiveTerminalSession();
   return {
     rpMode,
     rpCustomText,
-    hasTerminal: !!term,
+    hasTerminal: !!session?.ui,
     readPersona: (mode: string) => window.tokiAPI.readPersona(mode),
     getClaudePrompt: () => window.tokiAPI.getClaudePrompt(),
     writeMcpConfig: () => window.tokiAPI.writeMcpConfig(),
@@ -2519,29 +2937,33 @@ function getAssistantDeps() {
     cleanupAgentsMd: () => window.tokiAPI.cleanupAgentsMd(),
     writeSystemPrompt: (content: string) => window.tokiAPI.writeSystemPrompt(content),
     writeAgentsMd: (content: string, projectRoot?: string | null) => window.tokiAPI.writeAgentsMd(content, projectRoot),
-    terminalInput: (text: string) => window.tokiAPI.terminalInput(text),
+    terminalInput: (text: string) => sendTerminalInputToSession(session?.id, text),
     setStatus,
     navigatorLike: window.navigator,
-    projectRoot: currentProjectPath || terminalSession.cwd,
+    projectRoot: currentProjectPath || session?.context.cwd || null,
   };
 }
 
 async function handleClaudeStart(): Promise<void> {
+  const session = await createAssistantTerminalSession('Claude');
   // getAssistantDeps() is structurally compatible at runtime; minor return-type
   // mismatches (Promise<boolean> vs Promise<void>) require the double assertion.
-  await _handleClaudeStart(getAssistantDeps() as unknown as Parameters<typeof _handleClaudeStart>[0]);
+  await _handleClaudeStart(getAssistantDeps(session.id) as unknown as Parameters<typeof _handleClaudeStart>[0]);
 }
 
 async function handleCopilotStart(): Promise<void> {
-  await _handleCopilotStart(getAssistantDeps() as unknown as Parameters<typeof _handleCopilotStart>[0]);
+  const session = await createAssistantTerminalSession('Copilot');
+  await _handleCopilotStart(getAssistantDeps(session.id) as unknown as Parameters<typeof _handleCopilotStart>[0]);
 }
 
 async function handleCodexStart(): Promise<void> {
-  await _handleCodexStart(getAssistantDeps() as unknown as Parameters<typeof _handleCodexStart>[0]);
+  const session = await createAssistantTerminalSession('Codex');
+  await _handleCodexStart(getAssistantDeps(session.id) as unknown as Parameters<typeof _handleCodexStart>[0]);
 }
 
 async function handleGeminiStart(): Promise<void> {
-  await _handleGeminiStart(getAssistantDeps() as unknown as Parameters<typeof _handleGeminiStart>[0]);
+  const session = await createAssistantTerminalSession('Gemini');
+  await _handleGeminiStart(getAssistantDeps(session.id) as unknown as Parameters<typeof _handleGeminiStart>[0]);
 }
 
 // ==================== Terminal Background ====================
@@ -2579,38 +3001,19 @@ function initResizers(): void {
   // Terminal toggle — handled by Vue @click in App.vue (action 'toggle-terminal')
 }
 
-// ==================== Dark Mode ====================
+// ==================== App Theme ====================
 
-function getDarkModeDeps() {
+function getThemeUiDeps() {
   return {
     getEditorInstance: () => editorInstance as { updateOptions(opts: unknown): void } | null,
     getFormEditors: () => getFormEditors() as Array<{ updateOptions(opts: unknown): void }>,
     getTerminal: () => term as { options: { theme: unknown } } | null,
-    getRpMode: () => rpMode,
-    setRpMode: (mode: string) => {
-      rpMode = mode as RpMode;
-    },
-    termThemeDark: TERM_THEME_DARK,
-    termThemeLight: TERM_THEME_LIGHT,
-    themeId,
-    customTheme,
   };
-}
-
-function toggleDarkMode(): void {
-  darkMode = _toggleDarkMode(darkMode, getDarkModeDeps());
-  themeId = darkMode ? 'aris' : 'toki';
-  customTheme = settingsSnapshot.customTheme;
-  syncStoreState();
-}
-
-function refreshDarkModeUi(): void {
-  _refreshDarkModeUi(darkMode, getDarkModeDeps());
 }
 
 function getThemeDeps() {
   return {
-    ...getDarkModeDeps(),
+    ...getThemeUiDeps(),
     getThemeId: () => themeId,
     getCustomTheme: () => customTheme,
     setThemeId: (nextThemeId: ThemeId) => {
@@ -2631,7 +3034,7 @@ function changeTheme(nextThemeId: ThemeId): void {
 }
 
 function refreshThemeUi(): void {
-  _refreshThemeUi(themeId, customTheme, getDarkModeDeps());
+  _refreshThemeUi(themeId, customTheme, getThemeUiDeps());
 }
 
 // ==================== BGM (Terminal Response Music) ====================
@@ -2639,9 +3042,6 @@ function refreshThemeUi(): void {
 
 // Echo filter: ignore terminal data within 300ms of user input
 let lastUserInputTime = 0;
-
-// Terminal session context — tracks cwd, line buffer, and command history
-const terminalSession = new TerminalSessionContext();
 
 // Help popup and syntax reference are now in '../lib/help-popup'
 
@@ -2672,7 +3072,6 @@ function showSettingsPopup(): void {
       autosaveEnabled,
       autosaveInterval,
       autosaveDir,
-      darkMode,
       themeId,
       customTheme,
       bgmEnabled: isBgmEnabled(),
@@ -2711,9 +3110,6 @@ function showSettingsPopup(): void {
         else setStatus('파일을 먼저 열어주세요');
       }
     },
-    onDarkModeToggle() {
-      toggleDarkMode();
-    },
     onThemeChange(nextThemeId) {
       changeTheme(nextThemeId);
     },
@@ -2725,15 +3121,19 @@ function showSettingsPopup(): void {
     onBgmToggle(enabled) {
       setBgmEnabled(enabled);
       writeBgmEnabled(isBgmEnabled());
-      const bgmBtn = document.getElementById('btn-bgm');
-      if (bgmBtn) updateBgmButtonStyle(bgmBtn);
       if (!isBgmEnabled()) pauseBgm();
+    },
+    async onPickBgm() {
+      const filePath = await window.tokiAPI.pickBgm();
+      if (!filePath) return null;
+      setBgmFilePath(filePath);
+      writeBgmPath(filePath);
+      setStatus(`BGM 변경: ${filePath.split(/[/\\]/).pop()}`);
+      return filePath;
     },
     onRpModeChange(mode: string) {
       rpMode = mode as RpMode;
       writeRpMode(rpMode);
-      const btn = document.getElementById('btn-rp-mode');
-      if (btn) updateRpButtonStyle(btn, rpMode);
     },
     onRpCustomTextChange(text) {
       rpCustomText = text;
@@ -2761,6 +3161,14 @@ function showSettingsPopup(): void {
 // ==================== Preview Test Panel ====================
 
 async function showPreviewPanel(): Promise<void> {
+  // Markdown documents (e.g. bundled guide files) get a rendered HTML preview
+  // regardless of whether a charx file is loaded.
+  const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
+  if (activeTab && activeTab.language === 'markdown') {
+    showMarkdownPreview(String(activeTab.getValue() ?? ''), activeTab.label);
+    return;
+  }
+
   if (!fileData) {
     setStatus('파일을 먼저 열어주세요');
     return;
@@ -2850,7 +3258,8 @@ function getPopoutDeps() {
 }
 
 function popOutPanel(panelId: string, requestId: string | null = null): Promise<void> {
-  return _popOutPanel(panelId, getPopoutDeps() as unknown as PopoutDeps, requestId);
+  const effectiveRequestId = panelId === 'terminal' ? activeTerminalSessionId || requestId : requestId;
+  return _popOutPanel(panelId, getPopoutDeps() as unknown as PopoutDeps, effectiveRequestId);
 }
 
 function popOutEditorPanel(tabId: string): Promise<void> {
@@ -2996,9 +3405,13 @@ function openTabById(tabId: string): void {
         setStatus('가이드 파일 읽기 실패');
         return;
       }
-      openExternalTextTab(tabId, `[가이드] ${fileName}`, content, (val: string) => {
-        window.tokiAPI.writeGuide(fileName, val);
-      });
+      openExternalTextTab(
+        tabId,
+        `[가이드] ${fileName}`,
+        content,
+        (val: string) => window.tokiAPI.writeGuide(fileName, val),
+        'markdown',
+      );
     });
   } else if (tabId.startsWith('ref_')) {
     // Reference file item from refs popout
@@ -3037,9 +3450,12 @@ export async function initMainRenderer(): Promise<void> {
     // File
     new: () => handleNew(),
     open: () => handleOpen(),
+    'open-recent-item': (payload) => handleOpenRecentItem(payload),
+    'clear-recent-items': () => handleClearRecentItems(),
     'open-project-folder': () => handleOpenProjectFolder(),
     'extract-document-project': () => handleExtractDocumentProject(),
     'extract-charx-project': () => handleExtractDocumentProject(),
+    'clone-project-folder': () => handleCloneProjectFolder(),
     save: () => handleSave(),
     'save-as': () => handleSaveAs(),
     'reassemble-project-document': () => handleReassembleProjectDocument(),
@@ -3136,7 +3552,6 @@ export async function initMainRenderer(): Promise<void> {
     'zoom-reset': () => {
       if (editorInstance) editorInstance.updateOptions({ fontSize: 14 });
     },
-    'toggle-dark': () => toggleDarkMode(),
     'preview-test': () => showPreviewPanel(),
     devtools: () => window.tokiAPI.toggleDevTools(),
 
@@ -3152,36 +3567,11 @@ export async function initMainRenderer(): Promise<void> {
 
     // Settings & buttons (now handled by Vue template @click)
     settings: () => showSettingsPopup(),
-    'rp-toggle': () => {
-      if (rpMode === 'off') {
-        rpMode = getDefaultRpModeForDarkMode(darkMode);
-      } else {
-        rpMode = 'off';
-      }
-      writeRpMode(rpMode);
-      syncStoreState();
-      setStatus(rpMode === 'off' ? 'RP 모드 OFF' : `RP 모드 ON (${getRpLabel(rpMode)}) — 다음 AI CLI 시작 시 적용`);
-    },
-    'bgm-toggle': () => {
-      setBgmEnabled(!isBgmEnabled());
-      writeBgmEnabled(isBgmEnabled());
-      if (!isBgmEnabled()) pauseBgm();
-      syncStoreState();
-      setStatus(isBgmEnabled() ? 'BGM ON' : 'BGM OFF');
-    },
-    'bgm-pick': async () => {
-      const filePath = await window.tokiAPI.pickBgm();
-      if (!filePath) return;
-      setBgmFilePath(filePath);
-      writeBgmPath(filePath);
-      setStatus(`BGM 변경: ${filePath.split(/[/\\]/).pop()}`);
-    },
     'terminal-bg': () => handleTerminalBg(),
     'sidebar-expand': () => moveItems(layoutState.itemsPos),
     help: () => showHelpPopup(),
   });
-  // Initialize BGM module (state + UI)
-  initBgmUi(settingsSnapshot.bgmEnabled, settingsSnapshot.bgmPath);
+  initBgm(settingsSnapshot.bgmEnabled, settingsSnapshot.bgmPath);
   syncStoreState();
   initResizers();
   initKeyboard({
@@ -3281,14 +3671,14 @@ export async function initMainRenderer(): Promise<void> {
 
   initSidebarSplitResizer();
   initTokiAvatarUi(document.getElementById('toki-avatar-display')!, { darkMode, setStatus });
-  refreshDarkModeUi(); // Apply saved dark mode preference
+  refreshThemeUi(); // Apply the persisted app theme without changing RP mode
   initChatModeUi(document.getElementById('terminal-area')!, {
     chatSession,
     fitTerminal: () => {
       if (fitAddon && term) setTimeout(() => fitAddon.fit(), 20);
     },
     isTerminalReady: () => !!term,
-    terminalInput: (text) => window.tokiAPI.terminalInput(text),
+    terminalInput: (text) => sendTerminalInputToSession(activeTerminalSessionId, text),
   });
   initRightManagerPanel({
     getFileData: () => fileData,
@@ -3297,6 +3687,8 @@ export async function initMainRenderer(): Promise<void> {
     addLorebookEntry: addNewLorebook,
     addLorebookFolder: addNewLorebookFolder,
     renameLorebook,
+    commitLorebookName: renameLorebookTo,
+    reorderLorebook,
     deleteLorebook,
     deleteLorebookMany,
     moveLorebookManyToFolder,
@@ -3304,9 +3696,12 @@ export async function initMainRenderer(): Promise<void> {
     addAssetFromDialog,
     addAssetBuffer: (name, data, folder) => window.tokiAPI.addAssetBuffer(name, data, folder),
     renameAsset: renameAssetFromManager,
+    renameAssetsBatch: renameAssetsBatchFromManager,
     deleteAssets: deleteAssetsFromManager,
     getAssetList: () => window.tokiAPI.getAssetList(),
     getAssetData: (path) => window.tokiAPI.getAssetData(path),
+    showPrompt,
+    showConfirm,
     setStatus,
     refresh: buildSidebar,
     afterRender: initPanelDragDrop,
