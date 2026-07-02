@@ -61,7 +61,8 @@
     "test/test-popout-payload-store.ts",
     "test/test-terminal-shell.ts",
     "test/test-main-state-store.ts",
-    "test/test-mcp-search-all.ts"
+    "test/test-mcp-search-all.ts",
+    "test/run-workflow-eval-replay.ts"
   ],
   "exclude": ["dist", "node_modules"]
 }
