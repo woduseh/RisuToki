@@ -2,6 +2,7 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as lorebookIo from './lorebook-io';
 import { handleAssetRoute } from './mcp-asset-routes';
 import { handleCbsRoute } from './mcp-cbs-routes';
 import { handleProbeRoute, type ProbeDocumentRequest } from './mcp-probe-routes';
@@ -2257,6 +2258,16 @@ function createCssCache(parse: (css: string) => CssCacheEntry): {
 
 export function startApiServer(deps: McpApiDeps): McpApiServer {
   const token = crypto.randomBytes(32).toString('hex');
+  const expectedAuthDigest = crypto.createHash('sha256').update(`Bearer ${token}`).digest();
+
+  // Constant-time bearer comparison: hash both sides to a fixed length so
+  // timingSafeEqual never throws on length mismatch and leaks no prefix timing.
+  function isAuthorized(authorization: string | undefined): boolean {
+    if (typeof authorization !== 'string') return false;
+    const providedDigest = crypto.createHash('sha256').update(authorization).digest();
+    return crypto.timingSafeEqual(providedDigest, expectedAuthDigest);
+  }
+
   const luaCache = createLuaCache(deps.parseLuaSections);
   const cssCache = createCssCache(deps.parseCssSections);
   let openFileRequestInFlight = false;
@@ -2437,8 +2448,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
   }
 
   const server = http.createServer(async (req, res) => {
-    // Auth check
-    if (req.headers.authorization !== `Bearer ${token}`) {
+    // Auth check (constant-time comparison)
+    if (!isAuthorized(req.headers.authorization)) {
       return mcpError(res, 401, {
         action: 'authenticate request',
         target: 'request:auth',
@@ -11971,10 +11982,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const entries = [...((currentData.lorebook as Record<string, unknown>[]) || [])];
 
         try {
-          // Lazy-load lorebook-io
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const lorebookIo = require('./lorebook-io') as typeof import('./lorebook-io');
-
           const options = {
             format: format as 'md' | 'json',
             groupByFolder,
@@ -12059,10 +12066,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const dryRun = !!(body.dry_run ?? body.dryRun);
 
         try {
-          // Lazy-load lorebook-io
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const lorebookIo = require('./lorebook-io') as typeof import('./lorebook-io');
-
           // Parse import entries
           const importEntries =
             format === 'json' ? await lorebookIo.importFromJson(source) : await lorebookIo.importFromMarkdown(source);
@@ -12291,8 +12294,6 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
 
         try {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          const lorebookIo = require('./lorebook-io') as typeof import('./lorebook-io');
           const result = await lorebookIo.exportFieldToFile(field, content, filePath, format);
 
           broadcastStatus({

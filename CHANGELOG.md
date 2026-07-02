@@ -9,6 +9,19 @@
 
 ---
 
+## [1.11.1] - 2026-07-02
+
+### Fixed
+
+- Fixed the in-app AI assistant bootstrap prompt teaching granular MCP tools that are not registered under the default `facade-first` profile; the prompt now teaches exactly the 13 registered facade/bootstrap tools with the discover → read/search → validate/preview → apply workflow, and a drift test guards that every tool mentioned in the prompt is registered in the default profile.
+- Fixed lorebook JSON imports so RisuToki exports are not mistaken for SillyTavern `world_info`, preserving `alwaysActive` and folder placement during JSON roundtrips and MCP rename-conflict imports.
+
+### Changed
+
+- MCP API server bearer-token authentication now uses a constant-time (`timingSafeEqual`) digest comparison.
+- Facade preview-token `404` error suggestions and `docs/MCP_TOOL_SURFACE.md` now state the token lifetime explicitly: one-shot, in-process memory only, 10-minute TTL, not surviving MCP server restarts.
+- The shared MCP HTTP test harness (`mcp-api-test-harness.ts`) now defaults to the production Lua/CSS section parsers from `mcp-section-parser` instead of no-op stubs, so harness defaults match runtime behavior; tests can still inject overrides.
+
 ## [1.11.0] - 2026-06-23
 
 ### Added

@@ -34,12 +34,53 @@ function worldInfoEntries(input: unknown): JsonRecord[] | null {
   return null;
 }
 
+function hasAnyKey(entry: JsonRecord, keys: string[]): boolean {
+  return keys.some((key) => key in entry);
+}
+
+const RISUTOKI_ENTRY_MARKERS = [
+  'alwaysActive',
+  'forceActivation',
+  'secondkey',
+  'insertorder',
+  'activationPercent',
+  'mode',
+  'folder',
+  'extentions',
+];
+
+const SILLYTAVERN_ENTRY_MARKERS = [
+  'keysecondary',
+  'secondary_keys',
+  'insertion_order',
+  'insertionOrder',
+  'displayIndex',
+  'display_index',
+  'probability',
+  'useProbability',
+  'uid',
+  'disabled',
+];
+
 export function isSillyTavernWorldInfo(input: unknown): boolean {
   const entries = worldInfoEntries(input);
   if (!entries || entries.length === 0) return false;
+  if (!isRecord(input)) return false;
+  if ('exportMeta' in input || 'folders' in input) return false;
+  if (entries.some((entry) => hasAnyKey(entry, RISUTOKI_ENTRY_MARKERS))) return false;
+
+  const rawEntries = input.entries;
+  const entriesObjectShape = isRecord(rawEntries);
+  if (entriesObjectShape) {
+    return entries.some((entry) => 'content' in entry || 'key' in entry || hasAnyKey(entry, SILLYTAVERN_ENTRY_MARKERS));
+  }
+
   return entries.some(
     (entry) =>
-      'content' in entry || 'key' in entry || 'keysecondary' in entry || 'constant' in entry || 'selective' in entry,
+      hasAnyKey(entry, SILLYTAVERN_ENTRY_MARKERS) ||
+      Array.isArray(entry.key) ||
+      Array.isArray(entry.keysecondary) ||
+      Array.isArray(entry.secondary_keys),
   );
 }
 

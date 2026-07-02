@@ -136,6 +136,7 @@ interface ResolvedImportMeta {
   sourcePath: string;
 }
 
+const IMPORT_FOLDER_NAME_PROPERTY = '__risutokiImportFolderName';
 const resolvedImportMeta = new WeakMap<LorebookEntry, ResolvedImportMeta>();
 
 // ---------------------------------------------------------------------------
@@ -715,9 +716,10 @@ export function getResolvedImportMeta(entry: LorebookEntry): ResolvedImportMeta 
 
 export function resolveImportedFolderRef(entry: LorebookEntry, folderByName: Map<string, string>): string {
   const meta = getResolvedImportMeta(entry);
-  if (!meta) return normalizeFolderRef(entry.folder);
-  if (!meta.folderName) return '';
-  return folderByName.get(meta.folderName) || '';
+  const hiddenFolderName = (entry as Record<string, unknown>)[IMPORT_FOLDER_NAME_PROPERTY];
+  const folderName = meta?.folderName ?? (typeof hiddenFolderName === 'string' ? hiddenFolderName : undefined);
+  if (!folderName) return normalizeFolderRef(entry.folder);
+  return folderByName.get(folderName) || normalizeFolderRef(entry.folder);
 }
 
 // ---------------------------------------------------------------------------
@@ -783,6 +785,15 @@ export function resolveImportConflicts(
 
   for (const entry of importEntries) {
     const data = { ...entry.data };
+    if (entry.folderName) {
+      Object.defineProperty(data, IMPORT_FOLDER_NAME_PROPERTY, {
+        configurable: true,
+        enumerable: false,
+        value: entry.folderName,
+      });
+      const existingFolderRef = existingFolderByName.get(entry.folderName);
+      if (existingFolderRef) data.folder = existingFolderRef;
+    }
     resolvedImportMeta.set(data, {
       comment: entry.comment,
       folderName: entry.folderName,

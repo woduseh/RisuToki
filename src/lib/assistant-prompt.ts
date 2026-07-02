@@ -92,82 +92,60 @@ export async function buildAssistantPrompt(
 
   if (mcpConnected) {
     lines.push(``);
-    lines.push(`== RisuToki MCP 도구 ==`);
-    lines.push(`연결됨. 다음 도구로 에디터 데이터를 직접 읽기/쓰기할 수 있습니다:`);
+    lines.push(`== RisuToki MCP 도구 (facade-first 프로필) ==`);
+    lines.push(`연결됨. 기본 프로필은 facade-first이며 아래 13개 도구만 등록되어 있습니다.`);
+    lines.push(`정확한 파라미터 스키마는 각 도구의 tools/list 설명을 따르세요.`);
     lines.push(``);
-    lines.push(`[필드]`);
-    lines.push(`- list_fields: 필드 목록 + 크기 확인`);
-    lines.push(`- read_field(field) / write_field(field, content): 필드 읽기/쓰기`);
+    lines.push(`[세션/문서 파악]`);
+    lines.push(`- list_tool_profiles: 현재 프로필, 등록/숨김 도구 수, 런타임 상태 확인`);
+    lines.push(`- inspect_document(target): 세션 상태, 필드 인벤토리, 구조 요약`);
+    lines.push(`  - target.kind: "session" | "active" | "external" (file_path) | "reference" | "guidance"`);
     lines.push(``);
-    lines.push(`[로어북]`);
-    lines.push(`- list_lorebook(filter?, folder?) / read_lorebook(index) / write_lorebook(index, data)`);
-    lines.push(`- add_lorebook(data) / delete_lorebook(index)`);
-    lines.push(`- list_lorebook 응답에 폴더 요약(folders)과 각 항목의 folder 필드 포함`);
+    lines.push(`[읽기/검색] (기본 24KB 바운디드 응답)`);
+    lines.push(`- read_content(target, selector): 필드/구조 항목 단위 읽기`);
+    lines.push(`  - selector.family: "lorebook" | "regex" | "greeting" | "trigger" | "lua" | "css" | "risup-prompt"`);
+    lines.push(`  - 목록 응답이 제공하는 안정 셀렉터(id / identity / hash)를 인덱스보다 우선 사용`);
+    lines.push(`- search_document(target, query, selector?): 텍스트 위치 탐색. 큰 필드는 읽기 전에 먼저 검색`);
     lines.push(``);
-    lines.push(`[정규식]`);
-    lines.push(`- list_regex / read_regex(index) / write_regex(index, data)`);
-    lines.push(`- add_regex(data) / delete_regex(index)`);
+    lines.push(`[분석/검증] (읽기 전용)`);
+    lines.push(`- analyze_content: 필드 통계, 토큰 수, 로어북/정규식 시뮬레이션, CBS/Danbooru 분석, diff`);
+    lines.push(`- validate_content: 로어북/정규식/CBS/Lua 문법/구조의 pass-fail 진단`);
     lines.push(``);
-    lines.push(`[인사말] ← alternateGreetings 세분화 접근`);
-    lines.push(`- list_greetings(type) / read_greeting(type, index) / write_greeting(type, index, content)`);
-    lines.push(`- add_greeting(type, content) / delete_greeting(type, index)`);
-    lines.push(`- type: "alternate" (추가 첫 메시지)`);
+    lines.push(`[편집] (preview 토큰 필수 2단계)`);
+    lines.push(`- preview_edit(target, operations[]) → preview_token + operation_digest 반환`);
+    lines.push(`- apply_edit(preview_token, operation_digest, target, guard_values?)`);
+    lines.push(`  - 토큰은 1회용이며 만료/서버 재시작 시 소멸 → preview_edit부터 다시 실행`);
+    lines.push(`  - 409(stale guard) 응답 시 안내된 도구로 최신 값을 다시 읽고 재시도`);
     lines.push(``);
-    lines.push(`[트리거]`);
-    lines.push(`- list_triggers / read_trigger(index) / write_trigger(index, ...)`);
-    lines.push(`- add_trigger(...) / delete_trigger(index)`);
-    lines.push(``);
-    lines.push(`[Lua 섹션] (-- ===== 섹션명 ===== 구분자 기준)`);
-    lines.push(`- list_lua / read_lua(index) / write_lua(index, content)`);
-    lines.push(`- replace_in_lua(index, find, replace, regex?, flags?)`);
-    lines.push(`- insert_in_lua(index, content, position?, anchor?)`);
-    lines.push(``);
-    lines.push(`[CSS 섹션] (/* ===== 섹션명 ===== */ 구분자 기준)`);
-    lines.push(`- list_css / read_css(index) / write_css(index, content)`);
-    lines.push(`- replace_in_css(index, find, replace, regex?, flags?)`);
-    lines.push(`- insert_in_css(index, content, position?, anchor?)`);
-    lines.push(``);
-    lines.push(`[참고 자료] (읽기 전용)`);
-    lines.push(`- list_references: 참고 자료 파일 목록`);
-    lines.push(`- read_reference_field(index, field): 참고 파일의 필드 읽기`);
-    lines.push(`- read_reference_field_batch(index, fields) / search_in_reference_field(index, field, query)`);
-    lines.push(`- read_reference_field_range(index, field, offset?, length?): 큰 reference 필드 부분 읽기`);
-    lines.push(`- list_reference_greetings(index, type) / read_reference_greeting(index, type, entryIndex)`);
-    lines.push(`- list_reference_triggers(index) / read_reference_trigger(index, triggerIndex)`);
-    lines.push(`- list_reference_lorebook(index, filter?) / read_reference_lorebook(index, entryIndex)`);
-    lines.push(`- list_reference_lua(index) / read_reference_lua(index, sectionIndex)`);
-    lines.push(`- list_reference_css(index) / read_reference_css(index, sectionIndex)`);
+    lines.push(`[항목/에셋/파일 관리] (mode: "read" → "preview" → "apply")`);
     lines.push(
-      `- .risup reference → list_reference_risup_prompt_items / read_reference_risup_prompt_item / read_reference_risup_formating_order`,
+      `- manage_items: .risup 프롬프트 add/reorder/import/스니펫, 로어북/정규식/인사말/트리거/Lua/CSS add/reorder`,
     );
-    lines.push(`- 메인 파일이 없어도 참고 자료만 로드되어 있다면 list_references로 먼저 확인 가능`);
+    lines.push(`- manage_assets: .charx/.risum 에셋 list/read/add/delete/rename/WebP 압축`);
+    lines.push(
+      `- manage_file: 파일 열기/저장, 스냅샷/복원, 필드 export, 로어북 import/export, 프로젝트 폴더 추출/재조립`,
+    );
     lines.push(``);
     lines.push(`[스킬 문서]`);
     lines.push(
       `- list_skills / read_skill(name, file?): MCP 워크플로, 파일 구조, CBS, Lua API, 로어북, 정규식, Danbooru 태그 등 가이드`,
     );
     lines.push(``);
-    lines.push(`write/add/delete 도구 사용 시 에디터에서 사용자 확인 팝업이 뜹니다.`);
+    lines.push(`뮤테이션 apply 시 에디터에서 사용자 확인 팝업이 뜹니다.`);
     lines.push(`도구를 적극 활용하여 사용자의 요청을 수행하세요.`);
+    lines.push(
+      `granular 도구가 필요하면 MCP 서버를 --tool-profile advanced-full (또는 환경변수 RISUTOKI_MCP_TOOL_PROFILE) 로 재시작해야 합니다. 현재 프로필에는 등록되어 있지 않습니다.`,
+    );
     lines.push(``);
-    lines.push(`== 중요: 읽기 규칙 ==`);
-    lines.push(`- lua → list_lua → read_lua(index) (섹션 단위)`);
-    lines.push(`- css → list_css → read_css(index) (섹션 단위)`);
-    lines.push(`- 로어북 → list_lorebook(folder?) → read_lorebook(index) (폴더별 필터 가능)`);
-    lines.push(`- 정규식 → list_regex → read_regex(index) (개별)`);
-    lines.push(`- 인사말 → list_greetings(type) → read_greeting(type, index) (개별)`);
-    lines.push(`- 트리거 → list_triggers → read_trigger(index) (개별)`);
-    lines.push(`- 참고 자료 인사말 → list_reference_greetings(type) → read_reference_greeting(type, index)`);
-    lines.push(`- 참고 자료 트리거 → list_reference_triggers → read_reference_trigger(index)`);
-    lines.push(`- 참고 자료 로어북 → list_reference_lorebook(folder?) → read_reference_lorebook (개별)`);
+    lines.push(`== 중요: 작업 순서 ==`);
+    lines.push(`- discover(inspect_document) → read/search → validate/preview → apply → 재읽기 검증 순서를 따르세요`);
+    lines.push(`- ⚠️ 큰 필드 전체 덤프 금지 → search_document로 위치를 좁힌 뒤 read_content로 범위/항목 단위 읽기`);
+    lines.push(`- 로어북/정규식/인사말/트리거/Lua/CSS/.risup 프롬프트는 반드시 selector.family로 항목 단위 접근`);
+    lines.push(`- 형제 항목 여러 개 수정 시 단건 반복 대신 배치 operations 사용`);
     lines.push(
-      `- 참고 자료 Lua/CSS/regex → list_reference_lua / list_reference_css / list_reference_regex → read_reference_* (개별)`,
+      `- 참고 자료(읽기 전용)는 target.kind="reference"로 접근. 메인 파일이 없어도 inspect_document(target.kind="reference")로 먼저 확인 가능`,
     );
-    lines.push(`- 참고 자료 큰 필드 → search_in_reference_field / read_reference_field_range`);
-    lines.push(`- ⚠️ read_field("lua/css/alternateGreetings/triggerScripts")는 전체 덤프 → 사용 금지`);
-    lines.push(
-      `- ⚠️ read_reference_field("lorebook/lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts/regex")도 전체 덤프 → list_reference_* / read_reference_* 사용`,
-    );
+    lines.push(`- 응답의 summary / next_actions / artifacts.byte_size를 후속 도구 선택에 활용`);
   } else {
     lines.push(`편집 중인 항목의 내용을 알려주면 수정을 도와드리겠습니다.`);
   }

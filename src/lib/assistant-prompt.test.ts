@@ -10,6 +10,7 @@ import {
   handleCodexStart,
   handleGeminiStart,
 } from './assistant-prompt';
+import { ALL_TOOL_NAMES, DEFAULT_TOOL_SURFACE_PROFILE, listToolsForSurfaceProfile } from './mcp-tool-taxonomy';
 
 function createMockDeps(overrides: Partial<AssistantDeps> = {}): AssistantDeps {
   return {
@@ -82,30 +83,34 @@ describe('buildAssistantPrompt', () => {
     const deps = createMockDeps();
     const result = await buildAssistantPrompt(samplePromptInfo, true, deps);
     expect(result).toContain('RisuToki MCP 도구');
-    expect(result).toContain('list_fields');
-    expect(result).toContain('replace_in_lua');
-    expect(result).toContain('replace_in_css');
-    expect(result).toContain('list_greetings');
-    expect(result).toContain('read_greeting');
-    expect(result).toContain('list_triggers');
-    expect(result).toContain('read_trigger');
-    expect(result).toContain('list_reference_lorebook');
-    expect(result).toContain('read_reference_lorebook');
-    expect(result).toContain('list_reference_greetings');
-    expect(result).toContain('read_reference_greeting');
-    expect(result).toContain('list_reference_triggers');
-    expect(result).toContain('read_reference_trigger');
-    expect(result).toContain('search_in_reference_field');
-    expect(result).toContain('read_reference_field_range');
-    expect(result).toContain('list_reference_risup_prompt_items');
-    expect(result).toContain('list_skills');
-    expect(result).toContain('메인 파일이 없어도 참고 자료만 로드되어 있다면 list_references로 먼저 확인 가능');
-    expect(result).toContain(
-      'read_reference_field("lorebook/lua/css/alternateGreetings/groupOnlyGreetings/triggerScripts/regex")',
-    );
-    expect(result).toContain('읽기 규칙');
-    expect(result).toContain('사용 금지');
+    expect(result).toContain('facade-first');
+    expect(result).toContain('읽기 전용');
+    expect(result).toContain('작업 순서');
+    expect(result).toContain('전체 덤프 금지');
+    expect(result).toContain('target.kind="reference"');
+    expect(result).toContain('advanced-full');
     expect(result).not.toContain('편집 중인 항목의 내용을 알려주면');
+  });
+
+  it('teaches every tool registered in the default profile', async () => {
+    const deps = createMockDeps();
+    const result = await buildAssistantPrompt(samplePromptInfo, true, deps);
+    for (const tool of listToolsForSurfaceProfile(DEFAULT_TOOL_SURFACE_PROFILE)) {
+      expect(result, `bootstrap prompt should mention default-profile tool "${tool}"`).toContain(tool);
+    }
+  });
+
+  it('only references MCP tools that are registered in the default profile (drift guard)', async () => {
+    const deps = createMockDeps();
+    const result = await buildAssistantPrompt(samplePromptInfo, true, deps);
+    const registered = new Set(listToolsForSurfaceProfile(DEFAULT_TOOL_SURFACE_PROFILE));
+    const knownTools = new Set(ALL_TOOL_NAMES);
+    const mentioned = [...new Set(result.match(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g) ?? [])];
+    const unregistered = mentioned.filter((name) => knownTools.has(name) && !registered.has(name));
+    expect(
+      unregistered,
+      'bootstrap prompt must not teach tools missing from the default tools/list registration',
+    ).toEqual([]);
   });
 
   it('appends RP persona section when rpMode is on', async () => {

@@ -13233,7 +13233,7 @@ server.tool(
         facadeApiError(
           404,
           'Unknown or expired preview token',
-          'Run preview_edit again, then retry apply_edit with the new token.',
+          'Preview tokens are one-shot, held only in this MCP server process memory, and expire after 10 minutes or when the server restarts. Run preview_edit again, then retry apply_edit with the new token.',
         ),
       );
     }
@@ -13455,7 +13455,7 @@ server.tool(
           facadeApiError(
             404,
             'Unknown or expired manage_items preview token',
-            'Run manage_items preview again, then retry apply with the new token.',
+            'Preview tokens are one-shot, held only in this MCP server process memory, and expire after 10 minutes or when the server restarts. Run manage_items preview again, then retry apply with the new token.',
           ),
         );
       }
@@ -13630,7 +13630,7 @@ server.tool(
           facadeApiError(
             404,
             'Unknown or expired manage_assets preview token',
-            'Run manage_assets preview again, then retry apply with the new token.',
+            'Preview tokens are one-shot, held only in this MCP server process memory, and expire after 10 minutes or when the server restarts. Run manage_assets preview again, then retry apply with the new token.',
           ),
         );
       }
@@ -13808,7 +13808,7 @@ server.tool(
           facadeApiError(
             404,
             'Unknown or expired manage_file preview token',
-            'Run manage_file preview again, then retry apply with the new token.',
+            'Preview tokens are one-shot, held only in this MCP server process memory, and expire after 10 minutes or when the server restarts. Run manage_file preview again, then retry apply with the new token.',
           ),
         );
       }

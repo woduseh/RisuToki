@@ -183,6 +183,7 @@ Mutations are preview-token-first:
 1. `preview_edit` accepts bounded `operations[]`, while `manage_items` accepts one item-management operation for `.risup` prompts/snippets or lorebook/regex/alternate greeting/trigger/Lua/CSS add/reorder, `manage_assets` accepts one asset-management operation, and `manage_file` accepts one file-management operation. These preview tools return a `facade-preview-v1.*` `preview_token`, an `operation_digest`, and `required_guards`.
 2. `apply_edit`, `manage_items`, `manage_assets`, or `manage_file` apply mode requires the preview token, operation digest, target, and current guard values.
 3. Guard metadata must be propagated from granular `risutoki/staleGuardDetails` into preview/apply plans. Stale apply attempts should fail with the existing structured `409` recovery pattern and refresh from `sourceOperations`.
+4. Preview tokens are one-shot and held only in the MCP server process memory: they expire after 10 minutes and do not survive an MCP server (stdio proxy) restart, including CLI client reconnects. A `404` "Unknown or expired preview token" response is always recoverable by running the preview step again with the same operation.
 
 ### Stable structured selectors
 

@@ -84,4 +84,34 @@ describe('SillyTavern world_info conversion', () => {
       activationPercent: 25,
     });
   });
+
+  it('does not treat RisuToki lorebook exports as world_info', () => {
+    expect(
+      isSillyTavernWorldInfo({
+        exportMeta: { format: 'json' },
+        folders: [{ id: 'folder:characters', name: 'Characters' }],
+        entries: [
+          {
+            comment: 'Alice',
+            key: 'alice',
+            content: 'RisuToki export.',
+            alwaysActive: true,
+            folder: 'folder:characters',
+          },
+        ],
+      }),
+    ).toBe(false);
+
+    expect(
+      isSillyTavernWorldInfo({
+        entries: [
+          {
+            comment: 'Plain Lore',
+            key: 'plain',
+            content: 'Plain RisuToki-compatible lorebook JSON.',
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
 });
