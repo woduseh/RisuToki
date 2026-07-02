@@ -1,6 +1,6 @@
 # PLAN-2 / PLAN-3 execution progress
 
-Updated: 2026-07-02 21:38 Asia/Seoul
+Updated: 2026-07-02 21:50 Asia/Seoul
 
 ## Goal
 
@@ -13,9 +13,9 @@ Updated: 2026-07-02 21:38 Asia/Seoul
 
 ## Current state
 
-- Done: PLAN-2 implementation, canonical replay, regression-sensitivity proof, CI/script/docs wiring, skill mirror sync, and 1.12.0 metadata.
+- Done: PLAN-2 release and PLAN-3 pre-refactor contract baseline.
 - Partial: none.
-- Not started: PLAN-3 contract baseline and module slices.
+- Not started: PLAN-3 production module slices.
 - Blocked: none.
 
 ## Decisions
@@ -29,16 +29,17 @@ Updated: 2026-07-02 21:38 Asia/Seoul
 ## Files and areas
 
 - Read: project workflow rules, both plans, eval matrix, MCP client harness, CI, TypeScript build config, monolith route boundaries.
-- Changed: plan/progress docs, MCP client harness, workflow catalog/static eval, synthetic fixtures, replay runner, CI/script/docs wiring, and 1.12.0 metadata.
-- Likely next: freeze PLAN-3 transport contracts, then begin low-coupling module slices.
+- Changed: PLAN-2 replay/CI/docs/version files plus the PLAN-3 contract runner, golden fingerprints, Node build entry, and API test harness import.
+- Likely next: commit the contract baseline, then begin the low-coupling tool-description extraction.
 
 ## Validation
 
 - Run: lint, typecheck, static agent eval, MCP test, and packaged replay pass; replay completed in 11.8 seconds with all measured ratios at 1.0 and zero wrong-target incidents.
 - Regression proof: redirecting active lorebook reads to a nonexistent route reduced route accuracy and first-pass success to 0.6 and failed the measured gate; restoring the route returned all metrics to 1.0 with no source diff.
+- Contract baseline: four `tools/list` profiles and 18 normalized HTTP list/read/write/error responses pass byte-count, SHA-256, and top-level key-order checks.
 - Known external failure: the full unit suite has two failures in skill catalog expectations caused by concurrent user-owned skill metadata changes; 105 files and 2,013 tests passed.
 
 ## Next steps
 
-1. Commit PLAN-2 CI/docs/version wiring.
-2. Add PLAN-3 tools/list and HTTP contract baselines before refactoring production code.
+1. Commit the PLAN-3 contract baseline.
+2. Extract tool description constants and verify the frozen contracts before proceeding.

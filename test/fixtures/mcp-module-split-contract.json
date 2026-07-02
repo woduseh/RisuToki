@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "toolsList": {
+    "facade-first": {
+      "toolCount": 13,
+      "rawBytes": 52647,
+      "sha256": "7b4b9c08db40d362f132ba6dc5283f9839873a4e48c33e355bfc28fdd2dba10b"
+    },
+    "authoring": {
+      "toolCount": 175,
+      "rawBytes": 249675,
+      "sha256": "02131ad8bc955cfe55433c2f64c2d0db89cd0fbf070c6e874d29d14d7ce183a5"
+    },
+    "advanced-full": {
+      "toolCount": 203,
+      "rawBytes": 279708,
+      "sha256": "db1e1df1051a5b3dbaecec60d303970187444f3a24bc35d5dabc47fd6f12a6c5"
+    },
+    "readonly": {
+      "toolCount": 108,
+      "rawBytes": 115235,
+      "sha256": "dcefa5ae93a9f6ed2a843b8034f5f3e2c0725c328af81376b573aeaf8166cc6c"
+    }
+  },
+  "http": {
+    "fields-list": {
+      "status": 200,
+      "rawBytes": 1326,
+      "sha256": "7443c01612558f51fee7fef18a9709a9f0dca14177014f9e57963a80ba916cdc",
+      "topLevelKeys": ["fileType", "fields", "hiddenFieldWarnings", "status", "summary", "next_actions", "artifacts"]
+    },
+    "field-read": {
+      "status": 200,
+      "rawBytes": 292,
+      "sha256": "9ab45c5f905075c7fdeebb7a6f812e59fb0efb24f442345d761c2e5bb1e09697",
+      "topLevelKeys": ["field", "content", "status", "summary", "next_actions", "artifacts"]
+    },
+    "field-write": {
+      "status": 200,
+      "rawBytes": 278,
+      "sha256": "4c37b5b8a3a8261978e0bd96041b895967d9d1eb2bd84568b1c4c6c7bf4a08d6",
+      "topLevelKeys": ["success", "field", "size", "status", "summary", "next_actions", "artifacts"]
+    },
+    "field-error": {
+      "status": 400,
+      "rawBytes": 422,
+      "sha256": "5b64ddf280ea3be3512b9da063f0e422406c4a13a75b0757bc6b5653735f5b58",
+      "topLevelKeys": ["action", "error", "next_actions", "rejected", "retryable", "status", "suggestion", "target"]
+    },
+    "lorebook-list": {
+      "status": 200,
+      "rawBytes": 581,
+      "sha256": "2abe41866a73284726d0e14a9964a1bb2ee1a68dbe66fb3a28b67a06c3214fd5",
+      "topLevelKeys": ["count", "folders", "entries", "status", "summary", "next_actions", "artifacts"]
+    },
+    "lorebook-batch-read": {
+      "status": 200,
+      "rawBytes": 438,
+      "sha256": "f9cdd1750156e00980b344cf02afce83ab5d61c449cdb7a14af304ea997debfa",
+      "topLevelKeys": ["count", "total", "entries", "status", "summary", "next_actions", "artifacts"]
+    },
+    "regex-list": {
+      "status": 200,
+      "rawBytes": 344,
+      "sha256": "fb8c8335e451e602b70a39b72ce956a55c1c835e853defb884e32cf47e3ecf44",
+      "topLevelKeys": ["count", "entries", "status", "summary", "next_actions", "artifacts"]
+    },
+    "greeting-list": {
+      "status": 200,
+      "rawBytes": 523,
+      "sha256": "9d81dad21c52dadc6439df1c6eda5cb7ab5b095cc2d5b616dc8bc7c62d2c6028",
+      "topLevelKeys": ["type", "field", "count", "total", "items", "status", "summary", "next_actions", "artifacts"]
+    },
+    "trigger-list": {
+      "status": 200,
+      "rawBytes": 279,
+      "sha256": "8c07cca64224bb4233f10ffa4eb8478a33676610da84d1f2b48076d4cf14f8ea",
+      "topLevelKeys": ["count", "items", "status", "summary", "next_actions", "artifacts"]
+    },
+    "lua-list": {
+      "status": 200,
+      "rawBytes": 326,
+      "sha256": "e15be787ed2045c27278f53413a50c7650ce4088c03889946191ddaf09e0f89a",
+      "topLevelKeys": ["count", "sections", "status", "summary", "next_actions", "artifacts"]
+    },
+    "css-list": {
+      "status": 200,
+      "rawBytes": 318,
+      "sha256": "23079517fe6260f7f27d844cc6d436dad337e2e91b50c775f5cb00bd70b5a482",
+      "topLevelKeys": ["count", "sections", "status", "summary", "next_actions", "artifacts"]
+    },
+    "surface-list": {
+      "status": 200,
+      "rawBytes": 2331,
+      "sha256": "ac112e8bd6d8bb777b5741fe555c889afe545878f265494d16e90fe0d0172d89",
+      "topLevelKeys": [
+        "fileType",
+        "count",
+        "document_hash",
+        "surfaces",
+        "hiddenFieldWarnings",
+        "status",
+        "summary",
+        "next_actions",
+        "artifacts"
+      ]
+    },
+    "reference-list": {
+      "status": 200,
+      "rawBytes": 429,
+      "sha256": "a6ef8c03518be825a803ae387d44e4558b76fab4ac66c2c865c8cce83f1a589a",
+      "topLevelKeys": ["count", "references", "status", "summary", "next_actions", "artifacts"]
+    },
+    "reference-field-read": {
+      "status": 200,
+      "rawBytes": 321,
+      "sha256": "01cf7acb612e651f825c73230c6a417bd6e066cf4c65f5660486d234bcf8a164",
+      "topLevelKeys": ["index", "fileName", "field", "content", "status", "summary", "next_actions", "artifacts"]
+    },
+    "external-inspect": {
+      "status": 200,
+      "rawBytes": 1536,
+      "sha256": "dd70dc81285f8f0edc511a93324c0813eab32bba780ea0e93dd1f511976529a4",
+      "topLevelKeys": [
+        "file_path",
+        "file_type",
+        "integrity",
+        "name",
+        "fieldCount",
+        "fields",
+        "hiddenFieldWarnings",
+        "surfaceCounts",
+        "status",
+        "summary",
+        "next_actions",
+        "artifacts"
+      ]
+    },
+    "risup-prompt-list": {
+      "status": 200,
+      "rawBytes": 761,
+      "sha256": "e5a5c04d8082f7e70a4b46cbb147da5ddf53758126a9adefcc9d49393496d7bb",
+      "topLevelKeys": [
+        "count",
+        "state",
+        "hasUnsupportedContent",
+        "items",
+        "status",
+        "summary",
+        "next_actions",
+        "artifacts"
+      ]
+    },
+    "risup-prompt-write": {
+      "status": 200,
+      "rawBytes": 338,
+      "sha256": "557dd3fee1e4a1d02b9a62f67781e04cffca401100da228a1eff3336e4a3e524",
+      "topLevelKeys": ["success", "index", "orderWarnings", "status", "summary", "next_actions", "artifacts"]
+    },
+    "risup-order-read": {
+      "status": 200,
+      "rawBytes": 633,
+      "sha256": "2b2f6e1a7244e07cdc95abc4772803aaf1ded3f55662cac9274b32480d248e88",
+      "topLevelKeys": ["state", "items", "warnings", "status", "summary", "next_actions", "artifacts"]
+    }
+  }
+}

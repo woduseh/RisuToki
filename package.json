@@ -23,6 +23,7 @@
     "test:unit": "vitest run",
     "test:evals": "vitest run src/lib/mcp-agent-workflow-eval.test.ts src/lib/creative-skill-routing-eval.test.ts src/lib/mcp-response-envelope.test.ts src/lib/mcp-tool-taxonomy.test.ts src/lib/mcp-runtime-contract.test.ts src/lib/section-parser.test.ts src/lib/mcp-api-server.test.ts --reporter=verbose -t \"agent eval\"",
     "test:evals:replay": "npm run build:node-libs && npm run build:mcp && node test/run-workflow-eval-replay.js",
+    "test:mcp:contracts": "npm run build:node-libs && npm run build:mcp && node test/mcp-contract-baseline.js",
     "test:mcp": "npm run build:node-libs && npm run build:mcp && node test/test-mcp-search-all.js",
     "test": "npm run build:node-libs && npm run test-rpack && npm run test-charx && npm run test:references && npm run test:unit && npm run test:mcp",
     "build:electron": "npm run build:node-libs && npm run build:mcp && tsc -p tsconfig.electron.json && npm run build:preload",

@@ -184,7 +184,7 @@ export async function startTestApiServer(
   const initialStatus = overrides?.getSessionStatus?.();
   let activeFilePath: string | null =
     initialStatus && !(initialStatus instanceof Promise) ? initialStatus.currentFilePath : null;
-  const { startApiServer } = (await import('./mcp-api-server')) as { startApiServer: StartApiServer };
+  const { startApiServer } = (await import('./mcp-api-server.js')) as { startApiServer: StartApiServer };
   let resolvePort!: (port: number) => void;
   const portPromise = new Promise<number>((resolve) => {
     resolvePort = resolve;
