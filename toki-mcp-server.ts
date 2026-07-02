@@ -5,8 +5,6 @@
 // Communicates with RisuToki via local HTTP API
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-import http = require('http');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 import https = require('https');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import fs = require('fs');
@@ -71,6 +69,7 @@ import {
   type FacadeRoute,
 } from './src/lib/mcp-facade-runtime';
 import { MCP_TOOL_DESCRIPTIONS } from './src/lib/mcp-tool-descriptions';
+import { createMcpProxyClient } from './src/lib/mcp-proxy-client';
 import {
   FACADE_V1_CONTRACT_ID,
   FACADE_V1_LIMITS,
@@ -696,10 +695,6 @@ function summarizeArgsForDiagnostic(args: Record<string, unknown>): Record<strin
   return Object.fromEntries(Object.entries(args).map(([key, value]) => [key, summarizeValueForDiagnostic(value)]));
 }
 
-function byteLengthForDiagnostic(value: string | null): number {
-  return value ? Buffer.byteLength(value) : 0;
-}
-
 function noteRuntimeError(kind: 'apiTimeout' | 'apiNetworkError' | 'uncaughtException', summary: string): void {
   if (kind === 'apiTimeout') runtimeHealthCounters.apiTimeoutCount++;
   if (kind === 'apiNetworkError') runtimeHealthCounters.apiNetworkErrorCount++;
@@ -848,122 +843,13 @@ function safeToolHandler<TArgs extends Record<string, unknown>>(
 
 // ==================== HTTP Client ====================
 
-async function apiRequest(method: string, urlPath: string, body?: Record<string, unknown>): Promise<unknown> {
-  return new Promise((resolve) => {
-    const payload = body ? JSON.stringify(body) : null;
-    const payloadBytes = byteLengthForDiagnostic(payload);
-    const startedAt = Date.now();
-    logProcessDiagnostic('apiRequestStart', { method, path: urlPath, payloadBytes });
-    const headers: Record<string, string | number> = {
-      Authorization: `Bearer ${TOKI_TOKEN}`,
-      'Content-Type': 'application/json',
-    };
-    if (payload) {
-      headers['Content-Length'] = Buffer.byteLength(payload);
-    }
-
-    const options: http.RequestOptions = {
-      hostname: '127.0.0.1',
-      port: TOKI_PORT,
-      path: urlPath,
-      method: method,
-      headers: headers,
-    };
-
-    const req = http.request(options, (res) => {
-      const chunks: string[] = [];
-      res.on('data', (chunk) => chunks.push(chunk as string));
-      res.on('end', () => {
-        const data = chunks.join('');
-        const elapsedMs = Date.now() - startedAt;
-        try {
-          const parsed = JSON.parse(data);
-          logProcessDiagnostic('apiResponse', {
-            method,
-            path: urlPath,
-            status: res.statusCode ?? null,
-            elapsedMs,
-            responseBytes: Buffer.byteLength(data),
-          });
-          if (res.statusCode && res.statusCode >= 400) {
-            // Preserve the full structured error envelope from mcp-api-server
-            // (action, target, suggestion, retryable, next_actions, details, etc.)
-            resolve({ [API_ERROR_KEY]: true, status: res.statusCode, ...parsed });
-          } else {
-            resolve(parsed);
-          }
-        } catch (error) {
-          noteRuntimeError('apiNetworkError', `Invalid JSON response from ${method} ${urlPath}`);
-          logProcessDiagnostic('apiInvalidJson', {
-            method,
-            path: urlPath,
-            status: res.statusCode ?? null,
-            elapsedMs,
-            responseBytes: Buffer.byteLength(data),
-            error,
-          });
-          resolve({
-            [API_ERROR_KEY]: true,
-            status: res.statusCode ?? 502,
-            error: `Invalid JSON response from API server`,
-            suggestion: 'This may indicate a server-side crash. Check RisuToki editor logs.',
-          });
-        }
-      });
-    });
-
-    req.on('error', (err: NodeJS.ErrnoException) => {
-      noteRuntimeError('apiNetworkError', `${err.code ?? 'network'} ${method} ${urlPath}: ${err.message}`);
-      logProcessDiagnostic('apiNetworkError', {
-        method,
-        path: urlPath,
-        elapsedMs: Date.now() - startedAt,
-        code: err.code,
-        error: err,
-      });
-      if (err.code === 'ECONNREFUSED') {
-        mcpLog('error', 'API connection refused — RisuToki editor not running');
-        resolve({
-          [API_ERROR_KEY]: true,
-          status: 503,
-          error: 'RisuToki editor is not running',
-          suggestion: 'Start the RisuToki editor application, then retry.',
-          retryable: true,
-        });
-      } else {
-        mcpLog('error', `API network error: ${err.message}`);
-        resolve({
-          [API_ERROR_KEY]: true,
-          status: 502,
-          error: `Network error: ${err.message}`,
-          suggestion: 'Check that RisuToki editor is running and accessible.',
-          retryable: true,
-        });
-      }
-    });
-    req.setTimeout(120000, () => {
-      req.destroy();
-      noteRuntimeError('apiTimeout', `${method} ${urlPath} timed out after 120 seconds`);
-      logProcessDiagnostic('apiTimeout', {
-        method,
-        path: urlPath,
-        elapsedMs: Date.now() - startedAt,
-        payloadBytes,
-      });
-      mcpLog('error', `API request timed out: ${method} ${urlPath}`);
-      resolve({
-        [API_ERROR_KEY]: true,
-        status: 504,
-        error: 'Request timed out after 120 seconds',
-        suggestion: 'For large data, try narrowing the scope (e.g. use field ranges or smaller batch sizes).',
-        retryable: true,
-      });
-    });
-
-    if (payload) req.write(payload);
-    req.end();
-  });
-}
+const apiRequest = createMcpProxyClient({
+  getPort: () => TOKI_PORT,
+  getToken: () => TOKI_TOKEN,
+  logProcessDiagnostic,
+  noteRuntimeError,
+  mcpLog,
+});
 
 // ==================== Facade v1 Helpers ====================
 
