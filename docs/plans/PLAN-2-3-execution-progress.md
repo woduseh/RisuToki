@@ -1,6 +1,6 @@
 # PLAN-2 / PLAN-3 execution progress
 
-Updated: 2026-07-02 21:54 Asia/Seoul
+Updated: 2026-07-02 21:59 Asia/Seoul
 
 ## Goal
 
@@ -13,7 +13,7 @@ Updated: 2026-07-02 21:54 Asia/Seoul
 
 ## Current state
 
-- Done: PLAN-2 release, PLAN-3 contract baseline, and the tool-description catalog slice.
+- Done: PLAN-2 release, PLAN-3 contract baseline, tool-description catalog, and facade runtime slices.
 - Partial: `toki-mcp-server.ts` production module split.
 - Not started: facade runtime/proxy/bootstrap/engine/registration slices and `mcp-api-server.ts` route slices.
 - Blocked: none.
@@ -29,8 +29,8 @@ Updated: 2026-07-02 21:54 Asia/Seoul
 ## Files and areas
 
 - Read: project workflow rules, both plans, eval matrix, MCP client harness, CI, TypeScript build config, monolith route boundaries.
-- Changed: PLAN-2 release files, PLAN-3 contract baseline, and `mcp-tool-descriptions.ts` with all 203 registered tool descriptions.
-- Likely next: commit the description catalog, then extract facade preview/runtime primitives.
+- Changed: PLAN-2 release files, PLAN-3 baseline, `mcp-tool-descriptions.ts`, and `mcp-facade-runtime.ts`.
+- Likely next: commit facade runtime, then extract the HTTP proxy client and diagnostic hooks.
 
 ## Validation
 
@@ -38,9 +38,10 @@ Updated: 2026-07-02 21:54 Asia/Seoul
 - Regression proof: redirecting active lorebook reads to a nonexistent route reduced route accuracy and first-pass success to 0.6 and failed the measured gate; restoring the route returned all metrics to 1.0 with no source diff.
 - Contract baseline: four `tools/list` profiles and 18 normalized HTTP list/read/write/error responses pass byte-count, SHA-256, and top-level key-order checks.
 - Tool descriptions: lint, Node TypeScript no-emit, 18 doc-drift tests, and the full contract baseline pass; `toki-mcp-server.ts` is 16,890 lines and the new catalog is 368 lines.
+- Facade runtime: the same checks plus canonical replay pass with all measured ratios at 1.0; `toki-mcp-server.ts` is 16,723 lines and the new runtime module is 204 lines.
 - Known external failure: the full unit suite has two failures in skill catalog expectations caused by concurrent user-owned skill metadata changes; 105 files and 2,013 tests passed.
 
 ## Next steps
 
-1. Commit the tool-description catalog slice.
-2. Extract facade preview/runtime primitives and rerun the frozen contracts.
+1. Commit the facade runtime slice.
+2. Extract the HTTP proxy client and preserve runtime diagnostics through injected hooks.

@@ -37,6 +37,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-section-parser.ts` — compatibility re-export of the shared Lua/CSS section parser
 - `src/lib/mcp-tool-taxonomy.ts` — tool-family single source of truth
 - `src/lib/mcp-tool-descriptions.ts` — byte-stable MCP tool description catalog used by `tools/list`
+- `src/lib/mcp-facade-runtime.ts` — shared facade preview stores, digests, target labels, and API-error helpers
 - `src/lib/mcp-response-envelope.ts` — additive success envelope, deterministic `next_actions`, and success-response size metadata
 - `src/lib/mcp-search.ts` — search behavior for MCP search tools
 - `src/lib/mcp-data-update.ts` — shared MCP-side data update helpers

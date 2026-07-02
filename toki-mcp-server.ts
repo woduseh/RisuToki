@@ -46,6 +46,30 @@ import {
   type ToolCatalogHealthSummary,
 } from './src/lib/mcp-runtime-contract';
 import { mcpSuccess } from './src/lib/mcp-response-envelope';
+import {
+  API_ERROR_KEY,
+  cleanupFacadePreviews,
+  facadeApiError,
+  facadePreviewStore,
+  FACADE_PREVIEW_TTL_MS,
+  isReadOnlyFacadeFieldPayload,
+  makePreviewToken,
+  manageAssetsOperationDigest,
+  manageAssetsPreviewStore,
+  manageFileOperationDigest,
+  manageFilePreviewStore,
+  manageItemsOperationDigest,
+  manageItemsPreviewStore,
+  operationDigest,
+  route,
+  sameTarget,
+  selectorFamily,
+  selectorTarget,
+  stableJson,
+  type ApiErrorResult,
+  type FacadePreviewEntry,
+  type FacadeRoute,
+} from './src/lib/mcp-facade-runtime';
 import { MCP_TOOL_DESCRIPTIONS } from './src/lib/mcp-tool-descriptions';
 import {
   FACADE_V1_CONTRACT_ID,
@@ -624,15 +648,6 @@ loadTags();
 
 // ==================== Helper ====================
 
-/** Sentinel key marking an API or infrastructure error resolved (not thrown) by apiRequest(). */
-const API_ERROR_KEY = '__apiError' as const;
-
-interface ApiErrorResult {
-  [API_ERROR_KEY]: true;
-  status: number;
-  [key: string]: unknown;
-}
-
 interface RuntimeHealthSummary {
   startedAt: string;
   pid: number;
@@ -951,188 +966,6 @@ async function apiRequest(method: string, urlPath: string, body?: Record<string,
 }
 
 // ==================== Facade v1 Helpers ====================
-
-const FACADE_PREVIEW_TTL_MS = 10 * 60 * 1000;
-
-interface FacadeRoute {
-  tool: string;
-  method: string;
-  route: string;
-}
-
-interface FacadePreviewEntry {
-  token: string;
-  operationDigest: string;
-  target: FacadeV1Target;
-  operations: FacadeV1EditOperation[];
-  routes: FacadeRoute[];
-  touchedTargets: string[];
-  requiredGuards: FacadeV1Guard[];
-  expiresAtMs: number;
-}
-
-interface ManageItemsPreviewEntry {
-  token: string;
-  operationDigest: string;
-  target: FacadeV1Target;
-  family: ManageItemsFamily;
-  operation: ManageItemsOperation;
-  routes: FacadeRoute[];
-  touchedTargets: string[];
-  requiredGuards: FacadeV1Guard[];
-  expiresAtMs: number;
-}
-
-interface ManageAssetsPreviewEntry {
-  token: string;
-  operationDigest: string;
-  target: FacadeV1Target;
-  assetFamily: ManageAssetsFamily | undefined;
-  operation: ManageAssetsOperation;
-  routes: FacadeRoute[];
-  touchedTargets: string[];
-  requiredGuards: FacadeV1Guard[];
-  expiresAtMs: number;
-}
-
-interface ManageFilePreviewEntry {
-  token: string;
-  operationDigest: string;
-  target: FacadeV1Target;
-  operation: ManageFileOperation;
-  routes: FacadeRoute[];
-  touchedTargets: string[];
-  requiredGuards: FacadeV1Guard[];
-  expiresAtMs: number;
-}
-
-const facadePreviewStore = new Map<string, FacadePreviewEntry>();
-const manageItemsPreviewStore = new Map<string, ManageItemsPreviewEntry>();
-const manageAssetsPreviewStore = new Map<string, ManageAssetsPreviewEntry>();
-const manageFilePreviewStore = new Map<string, ManageFilePreviewEntry>();
-
-function facadeApiError(
-  status: number,
-  error: string,
-  suggestion: string,
-  details?: Record<string, unknown>,
-  nextActions?: string[],
-): ApiErrorResult {
-  return {
-    [API_ERROR_KEY]: true as const,
-    status,
-    error,
-    suggestion,
-    ...(details ? { details } : {}),
-    ...(nextActions ? { next_actions: nextActions } : {}),
-  };
-}
-
-function isReadOnlyFacadeFieldPayload(data: unknown): boolean {
-  if (!data || typeof data !== 'object') return false;
-  const record = data as Record<string, unknown>;
-  return record.readOnly === true || record.deprecated === true;
-}
-
-function cleanupFacadePreviews(): void {
-  const now = Date.now();
-  for (const [token, entry] of facadePreviewStore.entries()) {
-    if (entry.expiresAtMs <= now) facadePreviewStore.delete(token);
-  }
-  for (const [token, entry] of manageItemsPreviewStore.entries()) {
-    if (entry.expiresAtMs <= now) manageItemsPreviewStore.delete(token);
-  }
-  for (const [token, entry] of manageAssetsPreviewStore.entries()) {
-    if (entry.expiresAtMs <= now) manageAssetsPreviewStore.delete(token);
-  }
-  for (const [token, entry] of manageFilePreviewStore.entries()) {
-    if (entry.expiresAtMs <= now) manageFilePreviewStore.delete(token);
-  }
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value as Record<string, unknown>)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function operationDigest(target: FacadeV1Target, operations: FacadeV1EditOperation[]): string {
-  return crypto.createHash('sha256').update(stableJson({ target, operations })).digest('hex');
-}
-
-function manageItemsOperationDigest(
-  target: FacadeV1Target,
-  family: ManageItemsFamily,
-  operation: ManageItemsOperation,
-): string {
-  return crypto.createHash('sha256').update(stableJson({ target, family, operation })).digest('hex');
-}
-
-function manageAssetsOperationDigest(
-  target: FacadeV1Target,
-  assetFamily: ManageAssetsFamily | undefined,
-  operation: ManageAssetsOperation,
-): string {
-  return crypto.createHash('sha256').update(stableJson({ target, assetFamily, operation })).digest('hex');
-}
-
-function manageFileOperationDigest(target: FacadeV1Target, operation: ManageFileOperation): string {
-  return crypto.createHash('sha256').update(stableJson({ target, operation })).digest('hex');
-}
-
-function makePreviewToken(): string {
-  return `facade-preview-v1.${crypto.randomBytes(18).toString('base64url')}`;
-}
-
-function sameTarget(a: FacadeV1Target, b: FacadeV1Target): boolean {
-  return stableJson(a) === stableJson(b);
-}
-
-function route(tool: string, method: string, routePath: string): FacadeRoute {
-  return { tool, method, route: routePath };
-}
-
-function selectorTarget(selector: FacadeV1ContentSelector): string {
-  if (selector.family === 'lorebook') {
-    if (selector.id) return `lorebook:${selector.id}${selector.field ? `:${selector.field}` : ''}`;
-    if (selector.ids) return `lorebook:[${selector.ids.join(',')}]${selector.field ? `:${selector.field}` : ''}`;
-    if (selector.index !== undefined) return `lorebook:${selector.index}${selector.field ? `:${selector.field}` : ''}`;
-    if (selector.indices)
-      return `lorebook:[${selector.indices.join(',')}]${selector.field ? `:${selector.field}` : ''}`;
-    return 'lorebook';
-  }
-  if (selector.family === 'greeting') {
-    const type = selector.greeting_type ?? 'unknown';
-    if (selector.identity) return `greeting:${type}:identity`;
-    if (selector.index !== undefined) return `greeting:${type}:${selector.index}`;
-    if (selector.indices) return `greeting:${type}:[${selector.indices.join(',')}]`;
-    return `greeting:${type}`;
-  }
-  if (selector.family === 'regex' || selector.family === 'risup-prompt') {
-    if (selector.id) return `${selector.family}:${selector.id}`;
-    if (selector.ids) return `${selector.family}:[${selector.ids.join(',')}]`;
-    if (selector.identity) return `${selector.family}:identity`;
-    if (selector.index !== undefined) return `${selector.family}:${selector.index}`;
-    if (selector.indices) return `${selector.family}:[${selector.indices.join(',')}]`;
-    return selector.family;
-  }
-  if (selector.family === 'surface' || selector.path) return `surface:${selector.path ?? '/'}`;
-  if (selector.field) return `field:${selector.field}`;
-  if (selector.family && selector.index !== undefined) return `${selector.family}:${selector.index}`;
-  return selector.family ?? 'document';
-}
-
-function selectorFamily(selector: FacadeV1ContentSelector): string {
-  if (selector.family) return selector.family;
-  if (selector.path) return 'surface';
-  if (selector.field) return 'field';
-  return 'document';
-}
 
 function surfaceValueOverview(value: unknown): Record<string, unknown> {
   if (Array.isArray(value)) {
