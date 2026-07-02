@@ -13,8 +13,8 @@ Updated: 2026-07-02 Asia/Seoul
 
 ## Current state
 
-- Done: reviewed and corrected both plans; committed the pre-existing 1.11.1 work; created `refactor/mcp-replay-and-split`.
-- Partial: execution notes.
+- Done: reviewed and corrected both plans; created the work branch; extracted the reusable MCP test client without changing `test:mcp` behavior.
+- Partial: PLAN-2 catalog and replay implementation.
 - Not started: PLAN-2 code; PLAN-3 contract baseline and module slices.
 - Blocked: none.
 
@@ -29,16 +29,16 @@ Updated: 2026-07-02 Asia/Seoul
 ## Files and areas
 
 - Read: project workflow rules, both plans, eval matrix, MCP client harness, CI, TypeScript build config, monolith route boundaries.
-- Changed: both plan documents and this progress note.
-- Likely next: extract the reusable MCP test client.
+- Changed: both plan documents, this progress note, `test/mcp-test-client.ts`, and the existing MCP smoke runner.
+- Likely next: separate the workflow eval catalog and build synthetic fixtures.
 
 ## Validation
 
-- Run: baseline `npm run lint`, `npm run typecheck`, targeted tests, and `npm test` passed at `f6cedfd6`.
-- Not run: new PLAN-2/PLAN-3 validation.
+- Run: client slice passed `npm run lint`, `npm run typecheck`, and `npm run test:mcp`.
+- Not run: replay and PLAN-3 validation.
 - Known existing failures: none.
 
 ## Next steps
 
-1. Commit the finalized plan corrections and progress note.
-2. Implement PLAN-2 client extraction, catalog, fixtures, replay runner, CI, docs, and 1.12.0.
+1. Commit the reusable MCP client slice.
+2. Separate the workflow eval catalog and add synthetic fixtures.
