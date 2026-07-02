@@ -59,6 +59,7 @@ npm run start:build  # Rebuild Electron + renderer files, then start the built a
 npm run lint         # ESLint
 npm run typecheck    # Vue + TypeScript type checking
 npm run test:evals   # Deterministic agent/harness eval scenarios, including src/lib/mcp-agent-workflow-eval.test.ts
+npm run test:evals:replay # Measured synthetic workflow replay through MCP stdio
 npm test             # Node regression tests + Vitest
 npm run build        # lint + typecheck + test + Electron + Vite build
 npm run dist:all     # Windows NSIS + portable build
@@ -71,7 +72,8 @@ npm run mcp:standalone -- --file C:\path\to\card.charx --allow-writes
 - `AGENTS.md` + local `risu/*/AGENTS.md` routers — Product-first root routing plus subtree-specific authoring guidance
 - `docs/MCP_WORKFLOW.md` — MCP tool selection, read rules, and workflow patterns
 - `docs/MCP_TOOL_SURFACE.md` — MCP tool families, boundaries, and follow-up action map
-- `src/lib/mcp-agent-workflow-eval.test.ts` — Real-artifact workflow eval matrix for route choice, bounded reads, guards, preview/apply, and validation coverage
+- `src/lib/mcp-agent-workflow-eval.test.ts` — Declarative route/safety matrix and documentation guards
+- `test/run-workflow-eval-replay.ts` — Synthetic measured replay for route accuracy, recovery, bounded reads, validation, and final artifact state
 - `docs/MCP_ERROR_CONTRACT.md` — MCP success/error/no-op response contract and agent recovery rules
 - `docs/PROJECT_RULES.md` — Project rules (versioning, CI, and guide locations)
 - `docs/MODULE_MAP.md` — TypeScript source navigation module map

@@ -2,7 +2,7 @@
 name: project-workflow
 description: 'Project-level MCP workflow rules and contribution conventions for RisuToki agents. Use when onboarding into a session, choosing MCP tools, or following versioning/CI rules.'
 tags: ['workflow', 'project', 'onboarding', 'mcp', 'rules']
-related_tools: ['list_skills', 'read_skill', 'list_fields', 'read_field_batch', 'write_field_batch']
+related_tools: ['list_skills', 'read_skill', 'inspect_document', 'read_content', 'preview_edit', 'apply_edit']
 ---
 
 # Project Workflow
@@ -77,7 +77,7 @@ These apply when a task modifies tracked RisuToki source, product docs, or tooli
 ### CI / Validation
 
 - PR validation: Ubuntu (`lint` + `typecheck` + `test`) + Windows (`build:electron` + `build:renderer`)
-- MCP contract or workflow-routing changes → run `npm run test:evals` first; it includes `src/lib/mcp-agent-workflow-eval.test.ts`
+- MCP contract or workflow-routing changes → run `npm run test:evals` and `npm run test:evals:replay`; the first checks declarations and the second measures built MCP stdio behavior
 - No packaging in PR — only on tag release
 
 > Complete versioning rules, CI workflow, and guide locations: [`PROJECT_RULES.md`](PROJECT_RULES.md)

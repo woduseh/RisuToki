@@ -33,6 +33,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Workflow replay eval
+        run: npm run test:evals:replay
+
       - name: Build
         run: npm run build:renderer
 

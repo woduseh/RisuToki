@@ -1,6 +1,6 @@
 {
   "name": "risutoki",
-  "version": "1.11.1",
+  "version": "1.12.0",
   "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
   "main": "main.js",
   "scripts": {
@@ -22,6 +22,7 @@
     "test:references": "node test/test-reference-store.js && node test/test-refs-popout-data.js && node test/test-popout-payload-store.js && node test/test-terminal-shell.js && node test/test-main-state-store.js",
     "test:unit": "vitest run",
     "test:evals": "vitest run src/lib/mcp-agent-workflow-eval.test.ts src/lib/creative-skill-routing-eval.test.ts src/lib/mcp-response-envelope.test.ts src/lib/mcp-tool-taxonomy.test.ts src/lib/mcp-runtime-contract.test.ts src/lib/section-parser.test.ts src/lib/mcp-api-server.test.ts --reporter=verbose -t \"agent eval\"",
+    "test:evals:replay": "npm run build:node-libs && npm run build:mcp && node test/run-workflow-eval-replay.js",
     "test:mcp": "npm run build:node-libs && npm run build:mcp && node test/test-mcp-search-all.js",
     "test": "npm run build:node-libs && npm run test-rpack && npm run test-charx && npm run test:references && npm run test:unit && npm run test:mcp",
     "build:electron": "npm run build:node-libs && npm run build:mcp && tsc -p tsconfig.electron.json && npm run build:preload",

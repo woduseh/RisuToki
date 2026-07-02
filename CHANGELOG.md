@@ -9,6 +9,17 @@
 
 ---
 
+## [1.12.0] - 2026-07-02
+
+### Added
+
+- Added a deterministic MCP stdio workflow replay eval with synthetic `.charx`, `.risum`, and `.risup` fixtures for active/external/reference routing, batch editing, stale-guard recovery, destructive preview/apply, and no-file-open recovery.
+- Added `npm run test:evals:replay` and a dedicated Ubuntu CI step that gate measured route accuracy, first-pass success, wrong-target incidents, validation coverage, and bounded-read coverage.
+
+### Changed
+
+- Split the workflow eval declarations into a shared 39-task catalog, classified 35 tasks as replayable and four Plugin API v3 tasks as static, and removed self-referential hardcoded metric literals from the Vitest matrix.
+
 ## [1.11.1] - 2026-07-02
 
 ### Fixed

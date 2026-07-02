@@ -11,11 +11,12 @@ Use the other canonical documents for details owned elsewhere:
 | Profiles, facade coverage, tool families, and tool metadata | [`docs/MCP_TOOL_SURFACE.md`](MCP_TOOL_SURFACE.md)           |
 | Success, error, no-op, and recovery envelopes               | [`docs/MCP_ERROR_CONTRACT.md`](MCP_ERROR_CONTRACT.md)       |
 | Runtime implementation and application caveats              | [`docs/analysis/ARCHITECTURE.md`](analysis/ARCHITECTURE.md) |
-| Real-artifact routing and validation coverage               | `src/lib/mcp-agent-workflow-eval.test.ts`                   |
+| Declarative routing and validation coverage                 | `src/lib/mcp-agent-workflow-eval.test.ts`                   |
+| Measured synthetic workflow replay                          | `test/run-workflow-eval-replay.ts`                          |
 
 If documents overlap, follow the source that owns the concern in this table.
 
-The test file above is the real-artifact workflow eval matrix used to keep documented routes aligned with executable coverage.
+The Vitest matrix keeps declared routes aligned with documentation. `npm run test:evals:replay` separately exercises the canonical workflows through MCP stdio and gates metrics derived from actual responses.
 
 ## 1. Runtime Modes
 

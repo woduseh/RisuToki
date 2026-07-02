@@ -19,17 +19,17 @@ Only `project-workflow` is mandatory at session start. Load the other references
 
 ### Additional repo-local references (may not be available outside the repo)
 
-| Document                                                                             | Contents                                                                                       |
-| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| [`docs/analysis/ARCHITECTURE.md`](docs/analysis/ARCHITECTURE.md)                     | Runtime architecture, process boundaries, hotspots (canonical)                                 |
-| [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)                                       | Runtime modes and common execution sequence                                                    |
-| [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)                               | Profiles, facade coverage, tool families, and tool contracts                                   |
-| [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md)                           | Error / no-op / success response contracts                                                     |
-| [`src/lib/mcp-agent-workflow-eval.test.ts`](src/lib/mcp-agent-workflow-eval.test.ts) | Real-artifact workflow eval matrix for `.charx`, `.risup`, `.risum`, and Plugin API v3 routing |
-| `toki-mcp-server.js --standalone`                                                    | File-backed MCP runtime for Codex/CLI use without Electron                                     |
-| [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)                                     | Versioning and CI rules                                                                        |
-| [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                                           | TypeScript source navigation map                                                               |
-| [`docs/README.md`](docs/README.md)                                                   | Full knowledge-base index                                                                      |
+| Document                                                                             | Contents                                                                                                                 |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| [`docs/analysis/ARCHITECTURE.md`](docs/analysis/ARCHITECTURE.md)                     | Runtime architecture, process boundaries, hotspots (canonical)                                                           |
+| [`docs/MCP_WORKFLOW.md`](docs/MCP_WORKFLOW.md)                                       | Runtime modes and common execution sequence                                                                              |
+| [`docs/MCP_TOOL_SURFACE.md`](docs/MCP_TOOL_SURFACE.md)                               | Profiles, facade coverage, tool families, and tool contracts                                                             |
+| [`docs/MCP_ERROR_CONTRACT.md`](docs/MCP_ERROR_CONTRACT.md)                           | Error / no-op / success response contracts                                                                               |
+| [`src/lib/mcp-agent-workflow-eval.test.ts`](src/lib/mcp-agent-workflow-eval.test.ts) | Declarative workflow matrix and documentation guards; measured stdio replay runs from `test/run-workflow-eval-replay.ts` |
+| `toki-mcp-server.js --standalone`                                                    | File-backed MCP runtime for Codex/CLI use without Electron                                                               |
+| [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md)                                     | Versioning and CI rules                                                                                                  |
+| [`docs/MODULE_MAP.md`](docs/MODULE_MAP.md)                                           | TypeScript source navigation map                                                                                         |
+| [`docs/README.md`](docs/README.md)                                                   | Full knowledge-base index                                                                                                |
 
 ---
 

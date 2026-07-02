@@ -135,8 +135,8 @@ describe('agent eval: real artifact workflow routing matrix', () => {
       ['AGENTS.md', 'mcp-agent-workflow-eval.test.ts'],
       ['docs/README.md', 'mcp-agent-workflow-eval.test.ts'],
       ['docs/MCP_TOOL_SURFACE.md', 'mcp-agent-workflow-eval.test.ts'],
-      ['docs/MCP_WORKFLOW.md', 'real-artifact workflow eval matrix'],
-      ['skills/project-workflow/MCP_WORKFLOW.md', 'real-artifact workflow eval matrix'],
+      ['docs/MCP_WORKFLOW.md', 'Measured synthetic workflow replay'],
+      ['skills/project-workflow/MCP_WORKFLOW.md', 'Measured synthetic workflow replay'],
       ['skills/using-mcp-tools/SKILL.md', 'mcp-agent-workflow-eval.test.ts'],
       ['README.md', 'mcp-agent-workflow-eval.test.ts'],
     ] as const;
