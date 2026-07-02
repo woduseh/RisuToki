@@ -1,6 +1,6 @@
 # PLAN-2 / PLAN-3 execution progress
 
-Updated: 2026-07-03 05:29 Asia/Seoul
+Updated: 2026-07-03 05:40 Asia/Seoul
 
 ## Goal
 
@@ -13,9 +13,9 @@ Updated: 2026-07-03 05:29 Asia/Seoul
 
 ## Current state
 
-- Done: PLAN-2 release, PLAN-3 contract baseline, tool-description catalog, facade runtime, HTTP proxy, and standalone bootstrap slices.
-- Partial: `toki-mcp-server.ts` facade engine split.
-- Not started: facade engine/registration slices and `mcp-api-server.ts` route slices.
+- Done: PLAN-2 release, PLAN-3 contract baseline, tool-description catalog, facade runtime, HTTP proxy, standalone bootstrap, and facade script/style slices.
+- Partial: remaining `toki-mcp-server.ts` facade engine split.
+- Not started: facade registration and `mcp-api-server.ts` route slices.
 - Blocked: none.
 
 ## Decisions
@@ -29,8 +29,8 @@ Updated: 2026-07-03 05:29 Asia/Seoul
 ## Files and areas
 
 - Read: project workflow rules, both plans, eval matrix, MCP client harness, CI, TypeScript build config, monolith route boundaries.
-- Changed: PLAN-2 release files, PLAN-3 baseline, three committed production modules, plus validated `toki-standalone-bootstrap.ts` wiring.
-- Likely next: commit standalone bootstrap, then extract facade content/script/item/asset/file/validation/edit engines.
+- Changed: PLAN-2 release files, PLAN-3 baseline, committed runtime/proxy/bootstrap modules, plus validated `mcp-facade-script-style.ts` wiring.
+- Likely next: commit the script/style engine, then extract item/asset/file and content/validation/edit engines.
 
 ## Validation
 
@@ -41,9 +41,10 @@ Updated: 2026-07-03 05:29 Asia/Seoul
 - Facade runtime: the same checks plus canonical replay pass with all measured ratios at 1.0; `toki-mcp-server.ts` is 16,723 lines and the new runtime module is 204 lines.
 - HTTP proxy: injected port/token accessors and diagnostic hooks preserve the same contracts and replay metrics; `toki-mcp-server.ts` is 16,609 lines and the new proxy module is 137 lines.
 - Standalone bootstrap: lint, Node TypeScript no-emit, contract baseline, canonical replay, and doc drift pass; `toki-mcp-server.ts` is 16,520 lines and the new bootstrap module is 98 lines.
+- Facade script/style engine: lint, Node TypeScript no-emit, contract baseline, canonical replay, full MCP tests, and doc drift pass; `toki-mcp-server.ts` is 14,267 lines, the new script/style module is 2,267 lines, and the shared runtime module is 350 lines.
 - Known external failure: the full unit suite has two failures in skill catalog expectations caused by concurrent user-owned skill metadata changes; 105 files and 2,013 tests passed.
 
 ## Next steps
 
-1. Commit the standalone bootstrap slice.
-2. Extract the facade engine families while preserving contract fingerprints after every slice.
+1. Commit the facade script/style engine slice.
+2. Extract the remaining facade engine families while preserving contract fingerprints after every slice.

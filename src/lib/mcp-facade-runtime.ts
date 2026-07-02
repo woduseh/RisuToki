@@ -80,6 +80,10 @@ export const manageItemsPreviewStore = new Map<string, ManageItemsPreviewEntry>(
 export const manageAssetsPreviewStore = new Map<string, ManageAssetsPreviewEntry>();
 export const manageFilePreviewStore = new Map<string, ManageFilePreviewEntry>();
 
+export function isApiError(data: unknown): data is ApiErrorResult {
+  return !!data && typeof data === 'object' && (data as Record<string, unknown>)[API_ERROR_KEY] === true;
+}
+
 export function facadeApiError(
   status: number,
   error: string,
@@ -201,4 +205,146 @@ export function selectorFamily(selector: FacadeV1ContentSelector): string {
   if (selector.path) return 'surface';
   if (selector.field) return 'field';
   return 'document';
+}
+
+export function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+export function guardValue(guards: FacadeV1Guard[] | undefined, name: string): unknown {
+  return guards?.find((guard) => guard.name === name)?.value;
+}
+
+export function stringGuardValue(guards: FacadeV1Guard[] | undefined, name: string): string | undefined {
+  const value = guardValue(guards, name);
+  return typeof value === 'string' ? value : undefined;
+}
+
+export function stringGuardValueAtPath(
+  guards: FacadeV1Guard[] | undefined,
+  name: string,
+  payloadPath: string,
+): string | undefined {
+  const value = guards?.find((guard) => guard.name === name && guard.payloadPath === payloadPath)?.value;
+  return typeof value === 'string' ? value : undefined;
+}
+
+export function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+export function recordString(value: Record<string, unknown> | undefined, key: string): string | undefined {
+  const item = value?.[key];
+  return typeof item === 'string' ? item : undefined;
+}
+
+export function recordNumber(value: Record<string, unknown> | undefined, key: string): number | undefined {
+  const item = value?.[key];
+  return typeof item === 'number' && Number.isInteger(item) ? item : undefined;
+}
+
+export function buildGuard(
+  name: string,
+  value: string,
+  payloadPath: string,
+  sourceOperations: string[],
+  sourceResultPath: string,
+): FacadeV1Guard {
+  return { name, value, payloadPath, sourceOperations, sourceResultPath };
+}
+
+export function normalizeBatchEntries(
+  operation: FacadeV1EditOperation,
+  payloadKey: 'data' | 'content' | 'item',
+): Array<Record<string, unknown>> | ApiErrorResult {
+  const indices = operation.selector.indices;
+  const ids = operation.selector.ids;
+  const targetKeys = indices ?? ids;
+  if (!targetKeys || targetKeys.length === 0) {
+    return facadeApiError(
+      400,
+      'Batch structured edits require selector.indices or selector.ids',
+      'Provide selector.indices or selector.ids and align content entries to those targets.',
+      { operation },
+      ['read_content', 'preview_edit'],
+    );
+  }
+
+  const content = operation.content;
+  const contentRecord = asRecord(content);
+  const rawEntries =
+    (contentRecord && Array.isArray(contentRecord.entries) && contentRecord.entries) ||
+    (contentRecord && Array.isArray(contentRecord.writes) && contentRecord.writes) ||
+    (Array.isArray(content) && content);
+
+  if (!rawEntries || rawEntries.length !== targetKeys.length) {
+    return facadeApiError(
+      400,
+      'Batch structured edit content must align with selector.indices or selector.ids',
+      'Use content.entries/content.writes or a content array with the same length and order as the selector targets.',
+      { selector: operation.selector },
+      ['read_content', 'preview_edit'],
+    );
+  }
+
+  return rawEntries.map((entry, position) => {
+    const record = asRecord(entry);
+    const base =
+      indices !== undefined
+        ? { index: record ? (recordNumber(record, 'index') ?? indices[position]) : indices[position] }
+        : { item_id: record ? (recordString(record, 'item_id') ?? ids?.[position]) : ids?.[position] };
+    if (!record) return { ...base, [payloadKey]: entry };
+    if (
+      payloadKey in record ||
+      'expected_comment' in record ||
+      'expected_preview' in record ||
+      'expected_type' in record
+    ) {
+      return { ...record, ...base };
+    }
+    return { ...base, [payloadKey]: record };
+  });
+}
+
+export function mergeGuards(
+  existingGuards: FacadeV1Guard[] | undefined,
+  derivedGuards: Array<FacadeV1Guard | undefined>,
+): FacadeV1Guard[] {
+  const merged = [...(existingGuards ?? [])];
+  for (const guard of derivedGuards) {
+    if (!guard) continue;
+    if (!merged.some((candidate) => candidate.name === guard.name && candidate.payloadPath === guard.payloadPath)) {
+      merged.push(guard);
+    }
+  }
+  return merged;
+}
+
+export function guardConflict(
+  guards: FacadeV1Guard[] | undefined,
+  guardName: string,
+  currentValue: string | undefined,
+  target: string,
+): ApiErrorResult | undefined {
+  const expectedValue = stringGuardValue(guards, guardName);
+  if (expectedValue === undefined || currentValue === undefined || expectedValue === currentValue) return undefined;
+  return facadeApiError(
+    409,
+    `Stale guard mismatch for ${guardName}`,
+    'Refresh the item list/read result, then run preview_edit again with the current guard value.',
+    { target, guard: guardName, expected: expectedValue, actual: currentValue },
+  );
+}
+
+export function lorebookReplaceField(operation: FacadeV1EditOperation): string | undefined {
+  return operation.field ?? operation.selector.field;
+}
+
+export function replacementString(value: unknown): string {
+  if (typeof value === 'string') return value;
+  return JSON.stringify(value);
+}
+
+export function greetingPreview(content: string): string {
+  return content.slice(0, 100) + (content.length > 100 ? '…' : '');
 }
