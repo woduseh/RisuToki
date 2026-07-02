@@ -12,29 +12,29 @@ import fs = require('fs');
 import path = require('path');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import crypto = require('crypto');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import os = require('os');
-
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { get_encoding } from '@dqbd/tiktoken';
 import { LuaFactory } from 'wasmoon';
-import { startHeadlessMcpApiServer } from './src/lib/mcp-headless-server';
 import {
   ALL_TOOL_NAMES,
   buildToolSurfaceProfileCatalog,
-  DEFAULT_TOOL_SURFACE_PROFILE,
   getToolFamily,
   getToolMeta,
   getToolWorkflowStages,
   listToolsForSurfaceProfile,
-  resolveToolSurfaceProfileName,
   TOOL_RECOMMENDATIONS,
   TOOL_SURFACE_KINDS,
   TOOL_TAXONOMY,
   type ToolSurfaceProfileName,
 } from './src/lib/mcp-tool-taxonomy';
+import {
+  getConfiguredToolProfile,
+  getStandaloneAllowWrites,
+  getStandaloneUserDataPath,
+  startHeadlessFromArgs,
+} from './src/lib/toki-standalone-bootstrap';
 import {
   buildRuntimeMetadata,
   mergeRuntimeMetadata,
@@ -12120,28 +12120,6 @@ function getToolCatalogHealthSummary(): ToolCatalogHealthSummary {
   });
 }
 
-interface ConfiguredToolProfile {
-  raw: string | undefined;
-  source: 'argv' | 'env' | null;
-  resolved: ToolSurfaceProfileName;
-  invalid: boolean;
-  strictFiltering: boolean;
-}
-
-function getConfiguredToolProfile(args = process.argv.slice(2)): ConfiguredToolProfile {
-  const argValue = readArgValue(args, '--tool-profile');
-  const envValue = process.env.RISUTOKI_MCP_TOOL_PROFILE;
-  const raw = argValue ?? envValue;
-  const requestedProfile = resolveToolSurfaceProfileName(raw);
-  return {
-    raw,
-    source: argValue !== undefined ? 'argv' : envValue !== undefined ? 'env' : null,
-    resolved: requestedProfile ?? DEFAULT_TOOL_SURFACE_PROFILE,
-    invalid: raw !== undefined && requestedProfile === undefined,
-    strictFiltering: true,
-  };
-}
-
 const configuredToolProfile = getConfiguredToolProfile();
 const configuredToolProfileNames = new Set(listToolsForSurfaceProfile(configuredToolProfile.resolved));
 
@@ -16398,26 +16376,6 @@ server.prompt(
 
 // ==================== Start ====================
 
-function getDefaultStandaloneUserDataPath(): string {
-  return path.join(os.homedir(), '.risutoki', 'mcp-standalone');
-}
-
-function getStandaloneUserDataPath(args = process.argv.slice(2)): string {
-  return (
-    readArgValue(args, '--user-data-dir') ??
-    process.env.RISUTOKI_MCP_USER_DATA_DIR ??
-    getDefaultStandaloneUserDataPath()
-  );
-}
-
-function getStandaloneAllowWrites(args = process.argv.slice(2)): boolean {
-  return (
-    hasFlag(args, '--allow-writes') ||
-    process.env.RISUTOKI_MCP_ALLOW_WRITES === '1' ||
-    process.env.RISUTOKI_MCP_ALLOW_WRITES === 'true'
-  );
-}
-
 function serializeDiagnosticValue(value: unknown): unknown {
   if (value instanceof Error) {
     return {
@@ -16494,7 +16452,7 @@ function attachStdioDiagnostics(): void {
 
 async function main() {
   if (process.argv.includes('--standalone')) {
-    const runtime = await startHeadlessFromArgs(process.argv.slice(2));
+    const runtime = await startHeadlessFromArgs(process.argv.slice(2), __dirname);
     TOKI_PORT = String(runtime.port);
     TOKI_TOKEN = runtime.token;
     process.env.TOKI_PORT = TOKI_PORT;
@@ -16552,53 +16510,6 @@ async function main() {
     registeredTools: registeredToolNames().length,
     skew: runtime.skew,
     api: `127.0.0.1:${TOKI_PORT}`,
-  });
-}
-
-function readArgValue(args: string[], name: string): string | undefined {
-  const inlinePrefix = `${name}=`;
-  const inline = args.find((arg) => arg.startsWith(inlinePrefix));
-  if (inline) return inline.slice(inlinePrefix.length);
-  const index = args.indexOf(name);
-  if (index >= 0 && index + 1 < args.length) return args[index + 1];
-  return undefined;
-}
-
-function readRepeatedArgValues(args: string[], name: string): string[] {
-  const values: string[] = [];
-  const inlinePrefix = `${name}=`;
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg.startsWith(inlinePrefix)) {
-      values.push(arg.slice(inlinePrefix.length));
-      continue;
-    }
-    if (arg === name && i + 1 < args.length) {
-      values.push(args[i + 1]);
-      i++;
-    }
-  }
-  return values;
-}
-
-function hasFlag(args: string[], name: string): boolean {
-  return args.includes(name);
-}
-
-async function startHeadlessFromArgs(args: string[]) {
-  const filePath = readArgValue(args, '--file') ?? process.env.RISUTOKI_MCP_FILE;
-  const referencePaths = [
-    ...readRepeatedArgValues(args, '--ref'),
-    ...(process.env.RISUTOKI_MCP_REFS ? process.env.RISUTOKI_MCP_REFS.split(path.delimiter).filter(Boolean) : []),
-  ];
-  const allowWrites = getStandaloneAllowWrites(args);
-  const userDataPath = getStandaloneUserDataPath(args);
-  return startHeadlessMcpApiServer({
-    filePath,
-    referencePaths,
-    allowWrites,
-    userDataPath,
-    baseRoot: __dirname,
   });
 }
 
