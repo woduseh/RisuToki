@@ -42,18 +42,19 @@
    - standalone 모드 기동 옵션 (`--standalone`, `--file`, `--ref`, `--allow-writes`, `--tool-profile`)
    - 기존 `test-mcp-search-all.ts`는 추출된 모듈을 import하도록 변경. **동작 변화 없음을 `npm run test:mcp`로 확인.**
 2. `test/workflow-eval-fixtures.ts`: 시나리오별 synthetic 아티팩트 팩토리 (임시 디렉터리에 생성, 종료 시 정리).
+3. `test/workflow-eval-catalog.ts`: 39개 선언 태스크와 타입을 Vitest 파일에서 분리해 정적 테스트와 Node replay 러너가 함께 import한다. 기존 `mcp-agent-workflow-eval.test.ts` 파일명과 문서 동기화 가드는 유지한다.
 
 ### Phase B — canonical 5개 시나리오 replay
 
 `docs/MCP_TOOL_SURFACE.md`의 기존 eval 비교표와 1:1 대응하는 5개를 먼저 구현한다 (`test/run-workflow-eval-replay.ts`):
 
-| 시나리오                          | 실행 내용                                                                              | 실측 판정                                                    |
-| --------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Active/external/reference routing | facade-first로 spawn → `inspect_document`(session/external/reference) → `read_content` | 각 호출 성공 + 반환 내용이 픽스처 값과 일치                  |
-| Batch vs single edit              | 로어북 3항목 배치 수정 (preview→apply)                                                 | 호출 횟수 상한, 최종 파일 상태 diff 일치                     |
-| Stale-guard refresh/retry         | 의도적으로 낡은 guard로 apply → `409` 확인 → 재읽기 → 재시도 성공                      | 409 envelope 구조(`details.expected_*`), 재시도 후 최종 상태 |
-| Dry-run-first destructive edit    | `manage_assets` preview→apply (WebP 압축 또는 delete)                                  | preview 없이 apply 시 거부되는지 + apply 후 상태             |
-| No-file-open workflow             | 파일 없이 spawn → 오류 응답의 `next_actions` 확인 → `manage_file` open → 재시도 성공   | `No file open` 구조화 오류 + 복구 경로                       |
+| 시나리오                          | 실행 내용                                                                              | 실측 판정                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Active/external/reference routing | facade-first로 spawn → `inspect_document`(session/external/reference) → `read_content` | 각 호출 성공 + 반환 내용이 픽스처 값과 일치                                 |
+| Batch vs single edit              | 로어북 3항목 배치 수정 (preview→apply)                                                 | 호출 횟수 상한, 최종 파일 상태 diff 일치                                    |
+| Stale-guard refresh/retry         | 의도적으로 낡은 guard로 apply → `409` 확인 → 재읽기 → 재시도 성공                      | 409 envelope 구조(`details.guard`/`expected`/`actual`), 재시도 후 최종 상태 |
+| Dry-run-first destructive edit    | `manage_assets` delete preview→apply                                                   | preview 없이 apply 시 거부되는지 + apply 후 상태                            |
+| No-file-open workflow             | 파일 없이 spawn → 오류 응답의 `next_actions` 확인 → `manage_file` open → 재시도 성공   | `No file open` 구조화 오류 + 복구 경로                                      |
 
 각 시나리오는 종료 후 파일을 다시 열어(별도 `openCharx` 등) **최종 아티팩트 상태를 독립 검증**한다.
 
@@ -71,21 +72,24 @@ interface ReplayStep {
 }
 ```
 
-- 전부를 한 번에 하지 않아도 된다. **커버리지 게이트**: replayable로 분류된 task의 replay 등록률을 테스트로 강제하고, 초기 임계값을 낮게 시작해(예: 0.4) 확장마다 올린다.
+- 초기 분류는 현재 39개 태스크 기준 `replayable: 35`, `static: 4`, `app-only: 0`으로 고정한다.
+- 첫 릴리스는 canonical 5개 primary task 등록을 게이트로 강제하고 등록 수와 비율을 결과에 출력한다. 이후 시나리오를 추가할 때 floor를 함께 올린다.
 
 ### Phase D — metrics 실측 전환
 
 - `summarizeMetrics`가 참조하는 하드코딩 필드를 제거하거나 `declaredMetrics`로 개명하고, replay 결과에서 도출한 `measuredMetrics`를 별도 산출한다:
-  - `routeCorrect`: 선언된 모든 tool이 해당 프로필의 `tools/list`에 존재하고 호출이 4xx/5xx 없이 완료
-  - `firstPassSuccess`: 재시도 없이 전체 스텝 완료 (stale-guard 시나리오는 의도된 409 1회를 허용 예산으로 명시)
-  - `wrongTargetIncidents`: guard 불일치·잘못된 target.kind 거부 발생 횟수
+  - `routeCorrect`: 선언된 모든 tool이 해당 프로필의 `tools/list`에 존재하고 각 호출이 선언된 성공 또는 의도된 오류 결과와 일치
+  - `firstPassSuccess`: 예산에 없는 재시도 없이 전체 스텝 완료
+  - `wrongTargetIncidents`: 예상하지 않은 target/identity 거부 발생 횟수
+  - `expectedRejections`: stale-guard `409`와 preview-token `404`처럼 시나리오가 의도한 안전 거부 횟수. incident와 분리한다.
   - `validationCovered`: 마지막 validate 스텝 실행 및 통과
   - `boundedReadCovered`: 모든 read 응답의 `artifacts.byte_size` ≤ 계약 상한
-- `TARGET_METRICS` 게이트는 **measured** 값에 적용한다. `docsSync`는 기존 needle 검사 그대로 유지.
+- `TARGET_METRICS` 게이트는 Node replay 러너가 **measured** 값에 직접 적용하고 실패 시 non-zero로 종료한다. 정적 Vitest와 프로세스 간 결과 파일 전달은 만들지 않는다. `docsSync`는 기존 needle 검사 그대로 유지.
 
 ### Phase E — 배선과 문서 동기화
 
 - `package.json`: `"test:evals:replay": "npm run build:node-libs && npm run build:mcp && node test/run-workflow-eval-replay.js"` 추가. `npm test` 체인에는 넣지 않고 `test:evals` 안내와 CI에 별도 스텝으로 추가 (`.github/workflows/ci.yml`).
+- `tsconfig.node-libs.json`: Node로 직접 실행할 `test/run-workflow-eval-replay.ts`를 진입점에 추가한다. 이 파일이 import하는 client/catalog/fixture 모듈은 전이 컴파일한다.
 - `docs/MCP_TOOL_SURFACE.md`·`docs/MCP_WORKFLOW.md`·`skills/` 사본에서 "measurable task matrix" 서술을 "선언 매트릭스 + 실측 replay" 구조로 갱신. `npm run sync:skills` 실행.
 - `docs/MODULE_MAP.md`에 새 test 모듈은 해당 없음(`src/lib` 외부)이지만, 새 `src/lib` 파일을 만들었다면 반드시 추가 (doc-drift가 강제).
 - `CHANGELOG.md` Added 항목 + `package.json` **MINOR** bump.
@@ -95,7 +99,7 @@ interface ReplayStep {
 1. **회귀 민감성 증명**: 임시로 facade 라우트 하나를 깨뜨렸을 때(예: `read_content`의 lorebook selector 라우팅 주석 처리) replay가 실패하는 것을 확인하고, 그 확인 과정을 최종 요약에 기록한다. 커밋에는 포함하지 않는다.
 2. 하드코딩 metrics가 measured 값으로 대체되고, 게이트는 measured에 걸린다.
 3. 로컬 전체 replay 실행 시간 < 90초.
-4. `npm run lint && npm run typecheck && npm test && npm run test:evals` 전부 통과. doc-drift 테스트 통과.
+4. `npm run lint && npm run typecheck && npm test && npm run test:evals && npm run test:evals:replay` 전부 통과. doc-drift 테스트 통과.
 5. `test-mcp-search-all.ts`는 헬퍼 추출 후에도 결과 동일.
 
 ## 알려진 함정
