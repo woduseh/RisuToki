@@ -2265,3 +2265,5 @@ export function createFacadeScriptStyleEngine(apiRequest: FacadeApiRequest) {
     applyExternalStructuredMutation,
   };
 }
+
+export type FacadeScriptStyleEngine = ReturnType<typeof createFacadeScriptStyleEngine>;
