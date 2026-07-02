@@ -13,8 +13,8 @@ Updated: 2026-07-02 Asia/Seoul
 
 ## Current state
 
-- Done: reviewed and corrected both plans; created the work branch; extracted the reusable MCP test client without changing `test:mcp` behavior.
-- Partial: PLAN-2 catalog and replay implementation.
+- Done: corrected both plans; extracted the reusable MCP client; separated and classified the 39-task workflow catalog; added synthetic replay fixtures.
+- Partial: PLAN-2 replay runner.
 - Not started: PLAN-2 code; PLAN-3 contract baseline and module slices.
 - Blocked: none.
 
@@ -29,16 +29,16 @@ Updated: 2026-07-02 Asia/Seoul
 ## Files and areas
 
 - Read: project workflow rules, both plans, eval matrix, MCP client harness, CI, TypeScript build config, monolith route boundaries.
-- Changed: both plan documents, this progress note, `test/mcp-test-client.ts`, and the existing MCP smoke runner.
-- Likely next: separate the workflow eval catalog and build synthetic fixtures.
+- Changed: plan/progress docs, MCP client harness, workflow catalog/static eval, and synthetic fixtures.
+- Likely next: implement and measure the canonical five replay scenarios.
 
 ## Validation
 
-- Run: client slice passed `npm run lint`, `npm run typecheck`, and `npm run test:mcp`.
+- Run: client slice passed lint/typecheck/test:mcp; catalog slice passed lint/typecheck and all workflow matrix tests.
 - Not run: replay and PLAN-3 validation.
 - Known existing failures: none.
 
 ## Next steps
 
-1. Commit the reusable MCP client slice.
-2. Separate the workflow eval catalog and add synthetic fixtures.
+1. Commit the catalog and synthetic fixture slice.
+2. Implement the canonical replay runner and measured gates.
