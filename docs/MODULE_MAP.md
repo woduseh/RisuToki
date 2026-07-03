@@ -39,6 +39,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-tool-descriptions.ts` — byte-stable MCP tool description catalog used by `tools/list`
 - `src/lib/mcp-facade-runtime.ts` — shared facade preview stores, digests, target labels, and API-error helpers
 - `src/lib/mcp-facade-content.ts` — facade reads, validation, analysis, reference routing, and response envelopes
+- `src/lib/mcp-facade-edit.ts` — guarded preview/apply planning for active and external facade edits
 - `src/lib/mcp-facade-script-style.ts` — external structured reads/patch plans and active/external trigger, Lua, and CSS facade operations
 - `src/lib/mcp-facade-items.ts` — structured collections, script/style items, RISUP prompts, and prompt-snippet facade operations
 - `src/lib/mcp-facade-assets.ts` — active/external asset reads, mutation plans, compression, and guarded apply operations

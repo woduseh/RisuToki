@@ -1,6 +1,6 @@
 # PLAN-2 / PLAN-3 execution progress
 
-Updated: 2026-07-03 06:01 Asia/Seoul
+Updated: 2026-07-03 10:54 Asia/Seoul
 
 ## Goal
 
@@ -13,8 +13,8 @@ Updated: 2026-07-03 06:01 Asia/Seoul
 
 ## Current state
 
-- Done: PLAN-2 release, PLAN-3 contract baseline, tool-description catalog, facade runtime, HTTP proxy, standalone bootstrap, facade script/style, asset, file, item, and content slices.
-- Partial: remaining `toki-mcp-server.ts` facade engine split.
+- Done: PLAN-2 release, PLAN-3 contract baseline, tool-description catalog, facade runtime, HTTP proxy, standalone bootstrap, facade script/style, asset, file, item, content, and edit slices.
+- Partial: remaining `toki-mcp-server.ts` registration split.
 - Not started: facade registration and `mcp-api-server.ts` route slices.
 - Blocked: none.
 
@@ -29,8 +29,8 @@ Updated: 2026-07-03 06:01 Asia/Seoul
 ## Files and areas
 
 - Read: project workflow rules, both plans, eval matrix, MCP client harness, CI, TypeScript build config, monolith route boundaries.
-- Changed: PLAN-2 release files, PLAN-3 baseline, committed runtime/proxy/bootstrap/script-style/asset/file/item modules, plus validated `mcp-facade-content.ts` wiring.
-- Likely next: commit the content engine, then extract the edit engine and registration.
+- Changed: PLAN-2 release files, PLAN-3 baseline, committed runtime/proxy/bootstrap/script-style/asset/file/item/content modules, plus validated `mcp-facade-edit.ts` wiring.
+- Likely next: commit the edit engine, then extract registration until `toki-mcp-server.ts` is below 5,000 lines.
 
 ## Validation
 
@@ -46,9 +46,10 @@ Updated: 2026-07-03 06:01 Asia/Seoul
 - Facade file engine: lint, Node TypeScript no-emit/build, contract baseline, canonical replay, full MCP tests, and doc drift pass; `toki-mcp-server.ts` is 12,031 lines and the new file module is 858 lines.
 - Facade item engine: lint, Node TypeScript no-emit/build, contract baseline, canonical replay, full MCP tests, and doc drift pass; `toki-mcp-server.ts` is 9,843 lines, the new item module is 2,270 lines, and the script/style module is 2,269 lines.
 - Facade content engine: lint, Node TypeScript no-emit/build, contract baseline, canonical replay, full MCP tests, and doc drift pass; `toki-mcp-server.ts` is 8,293 lines and the new content module is 1,700 lines.
+- Facade edit engine: lint, Node TypeScript no-emit/build, contract baseline, canonical replay, full MCP tests, and doc drift pass; `toki-mcp-server.ts` is 5,379 lines and the new edit module is 3,000 lines.
 - Known external failure: the full unit suite has two failures in skill catalog expectations caused by concurrent user-owned skill metadata changes; 105 files and 2,013 tests passed.
 
 ## Next steps
 
-1. Commit the facade content engine slice.
-2. Extract the edit engine and registration while preserving contract fingerprints after every slice.
+1. Commit the facade edit engine slice.
+2. Extract registration while preserving contract fingerprints after every slice.
