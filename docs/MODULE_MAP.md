@@ -33,6 +33,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-structured-item-routes.ts` — regex, greeting, and trigger CRUD, identity, batch, and text-edit routes
 - `src/lib/mcp-section-routes.ts` — active-document Lua and CSS section list, CRUD, batch, and text-edit routes
 - `src/lib/mcp-reference-routes.ts` — loaded-reference inventory, field, lorebook, regex, greeting, trigger, section, and RISUP read routes
+- `src/lib/mcp-external-routes.ts` — unopened-document inspection, field read/write/search, surface patch, and UI open-file routes
 - `src/lib/mcp-headless-server.ts` — standalone/file-backed MCP session bootstrap and lifecycle
 - `src/lib/mcp-cbs-routes.ts` — extracted CBS route-family helpers and dispatcher
 - `src/lib/mcp-probe-routes.ts` — extracted unopened-file probe route helpers and dispatcher
