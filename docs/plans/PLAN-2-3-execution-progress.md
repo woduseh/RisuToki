@@ -1,6 +1,6 @@
 # PLAN-2 / PLAN-3 execution progress
 
-Updated: 2026-07-03 11:07 Asia/Seoul
+Updated: 2026-07-03 11:13 Asia/Seoul
 
 ## Goal
 
@@ -13,9 +13,9 @@ Updated: 2026-07-03 11:07 Asia/Seoul
 
 ## Current state
 
-- Done: PLAN-2 release, PLAN-3 `toki-mcp-server.ts` split, and `mcp-api-server.ts` shared-helper slice.
+- Done: PLAN-2 release, PLAN-3 `toki-mcp-server.ts` split, and `mcp-api-server.ts` helper/lorebook slices.
 - Partial: `mcp-api-server.ts` route-family split.
-- Not started: lorebook, RISUP prompt, structured-item, section, reference, external, and field route slices.
+- Not started: RISUP prompt, structured-item, section, reference, external, and field route slices.
 - Blocked: none.
 
 ## Decisions
@@ -29,8 +29,8 @@ Updated: 2026-07-03 11:07 Asia/Seoul
 ## Files and areas
 
 - Read: project workflow rules, both plans, eval matrix, MCP client harness, CI, TypeScript build config, monolith route boundaries.
-- Changed: PLAN-2 release files, PLAN-3 facade modules, and validated `mcp-api-helpers.ts` wiring.
-- Likely next: commit API helpers, then extract the lorebook route family.
+- Changed: PLAN-2 release files, PLAN-3 facade/helper modules, and validated `mcp-lorebook-routes.ts` wiring.
+- Likely next: commit lorebook routes, then extract the RISUP prompt route family.
 
 ## Validation
 
@@ -49,9 +49,10 @@ Updated: 2026-07-03 11:07 Asia/Seoul
 - Facade edit engine: lint, Node TypeScript no-emit/build, contract baseline, canonical replay, full MCP tests, and doc drift pass; `toki-mcp-server.ts` is 5,379 lines and the new edit module is 3,000 lines.
 - Facade registration: lint, Node TypeScript no-emit/build, contract baseline, static agent evals, canonical replay, full MCP tests, and doc drift pass; `toki-mcp-server.ts` is 4,023 lines and `mcp-tool-register-facade.ts` is 1,438 lines.
 - API helpers: lint, Node TypeScript no-emit/build, contract baseline, canonical replay, full MCP tests, and doc drift pass; `mcp-api-server.ts` is 13,282 lines and `mcp-api-helpers.ts` is 2,077 lines. The full API test file passed 319 of 320 tests; its sole failure is the known concurrent user-owned skill-catalog expectation mismatch.
+- Lorebook routes: lint, Node TypeScript no-emit/build, 84 focused API tests, contract baseline, canonical replay, full MCP tests, and doc drift pass; `mcp-api-server.ts` is 11,193 lines and `mcp-lorebook-routes.ts` is 2,139 lines.
 - Known external failure: the full unit suite has two failures in skill catalog expectations caused by concurrent user-owned skill metadata changes; 105 files and 2,013 tests passed.
 
 ## Next steps
 
-1. Commit the API helper slice.
-2. Extract the lorebook route family while preserving HTTP fingerprints.
+1. Commit the lorebook route slice.
+2. Extract the RISUP prompt route family while preserving HTTP fingerprints.
