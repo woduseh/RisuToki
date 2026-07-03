@@ -1,6 +1,6 @@
 # PLAN-2 / PLAN-3 execution progress
 
-Updated: 2026-07-03 11:18 Asia/Seoul
+Updated: 2026-07-03 17:30 Asia/Seoul
 
 ## Goal
 
@@ -13,9 +13,9 @@ Updated: 2026-07-03 11:18 Asia/Seoul
 
 ## Current state
 
-- Done: PLAN-2 release, PLAN-3 `toki-mcp-server.ts` split, and `mcp-api-server.ts` helper/lorebook/RISUP slices.
-- Partial: `mcp-api-server.ts` route-family split.
-- Not started: structured-item, section, reference, external, and field route slices.
+- Done: PLAN-2 release, PLAN-3 `toki-mcp-server.ts` split, and `mcp-api-server.ts` helper/lorebook/RISUP/structured-item slices.
+- Partial: remaining `mcp-api-server.ts` route-family split continues with section routes.
+- Not started: section, reference, external, and field route slices.
 - Blocked: none.
 
 ## Decisions
@@ -29,8 +29,8 @@ Updated: 2026-07-03 11:18 Asia/Seoul
 ## Files and areas
 
 - Read: project workflow rules, both plans, eval matrix, MCP client harness, CI, TypeScript build config, monolith route boundaries.
-- Changed: PLAN-2 release files, PLAN-3 facade/helper/lorebook modules, and validated `mcp-risup-prompt-routes.ts` wiring.
-- Likely next: commit RISUP prompt routes, then extract structured-item routes.
+- Changed: PLAN-2 release files, PLAN-3 committed facade/helper/lorebook/RISUP modules, plus the validated structured-item route slice.
+- Likely next: commit the structured-item slice, then extract section routes.
 
 ## Validation
 
@@ -51,9 +51,10 @@ Updated: 2026-07-03 11:18 Asia/Seoul
 - API helpers: lint, Node TypeScript no-emit/build, contract baseline, canonical replay, full MCP tests, and doc drift pass; `mcp-api-server.ts` is 13,282 lines and `mcp-api-helpers.ts` is 2,077 lines. The full API test file passed 319 of 320 tests; its sole failure is the known concurrent user-owned skill-catalog expectation mismatch.
 - Lorebook routes: lint, Node TypeScript no-emit/build, 84 focused API tests, contract baseline, canonical replay, full MCP tests, and doc drift pass; `mcp-api-server.ts` is 11,193 lines and `mcp-lorebook-routes.ts` is 2,139 lines.
 - RISUP prompt routes: lint, Node TypeScript no-emit/build, 98 focused API tests, contract baseline, canonical replay, full MCP tests, and doc drift pass; `mcp-api-server.ts` is 8,442 lines and `mcp-risup-prompt-routes.ts` is 2,803 lines.
+- Structured-item routes: lint, Node TypeScript no-emit, 38 focused API tests, contract baseline, canonical replay, full MCP tests, and 18 doc-drift tests pass; `mcp-api-server.ts` is 6,477 lines and `mcp-structured-item-routes.ts` is 2,010 lines.
 - Known external failure: the full unit suite has two failures in skill catalog expectations caused by concurrent user-owned skill metadata changes; 105 files and 2,013 tests passed.
 
 ## Next steps
 
-1. Commit the RISUP prompt route slice.
-2. Extract structured-item routes while preserving HTTP fingerprints.
+1. Commit the structured-item route slice.
+2. Extract section routes while preserving HTTP fingerprints.

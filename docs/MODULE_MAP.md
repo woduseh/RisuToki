@@ -30,6 +30,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-api-helpers.ts` — shared HTTP parsing, response, identity, surface, list, external-field, and section-cache helpers
 - `src/lib/mcp-lorebook-routes.ts` — lorebook CRUD, stable-id, batch, diff, validation, text-edit, and charx compatibility routes
 - `src/lib/mcp-risup-prompt-routes.ts` — RISUP prompt-item, formatting-order, diff, text import/export, and snippet routes
+- `src/lib/mcp-structured-item-routes.ts` — regex, greeting, and trigger CRUD, identity, batch, and text-edit routes
 - `src/lib/mcp-headless-server.ts` — standalone/file-backed MCP session bootstrap and lifecycle
 - `src/lib/mcp-cbs-routes.ts` — extracted CBS route-family helpers and dispatcher
 - `src/lib/mcp-probe-routes.ts` — extracted unopened-file probe route helpers and dispatcher
