@@ -1,7 +1,5 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import fs = require('fs');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import path = require('path');
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { get_encoding } from '@dqbd/tiktoken';
 import { LuaFactory } from 'wasmoon';

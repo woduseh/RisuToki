@@ -1,5 +1,4 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import http = require('http');
+import * as http from 'http';
 
 import { API_ERROR_KEY } from './mcp-facade-runtime';
 

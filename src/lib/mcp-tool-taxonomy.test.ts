@@ -31,29 +31,50 @@ import {
   getToolsByFamily,
 } from './mcp-tool-taxonomy';
 import type { StaleGuardDetail } from './mcp-tool-taxonomy';
+import { MCP_TOOL_DESCRIPTIONS } from './mcp-tool-descriptions';
 import { FAMILY_NEXT_ACTIONS } from './mcp-response-envelope';
 
 // ────────────────────────────────────────────────────────────────────────────
-// Extract tool names from toki-mcp-server.ts source
+// Extract tool names from the MCP entrypoint and split registration modules
 // ────────────────────────────────────────────────────────────────────────────
 
+function readToolRegistrationSources(): string[] {
+  const rootDir = path.resolve(__dirname, '../..');
+  const registrationModules = fs
+    .readdirSync(path.resolve(rootDir, 'src/lib'))
+    .filter((name) => /^mcp-tool-register-.*\.ts$/.test(name))
+    .sort()
+    .map((name) => path.resolve(rootDir, 'src/lib', name));
+  return [path.resolve(rootDir, 'toki-mcp-server.ts'), ...registrationModules].map((filePath) =>
+    fs.readFileSync(filePath, 'utf-8'),
+  );
+}
+
 function extractRegisteredToolNames(): string[] {
-  const serverSrc = fs.readFileSync(path.resolve(__dirname, '../../toki-mcp-server.ts'), 'utf-8');
-  const matches = serverSrc.matchAll(/server\.tool\(\s*'([^']+)'/g);
-  return [...matches].map((m) => m[1]).sort();
+  return readToolRegistrationSources()
+    .flatMap((source) => [...source.matchAll(/server\.tool\(\s*'([^']+)'/g)].map((match) => match[1]))
+    .sort();
 }
 
 function extractRegisteredToolBlocks(): Map<string, string> {
-  const serverSrc = fs.readFileSync(path.resolve(__dirname, '../../toki-mcp-server.ts'), 'utf-8');
-  const matches = [...serverSrc.matchAll(/server\.tool\(\s*'([^']+)'/g)];
   const blocks = new Map<string, string>();
-  for (let i = 0; i < matches.length; i += 1) {
-    const name = matches[i][1];
-    const start = matches[i].index ?? 0;
-    const end = i + 1 < matches.length ? (matches[i + 1].index ?? serverSrc.length) : serverSrc.length;
-    blocks.set(name, serverSrc.slice(start, end));
+  for (const source of readToolRegistrationSources()) {
+    const matches = [...source.matchAll(/server\.tool\(\s*'([^']+)'/g)];
+    for (let i = 0; i < matches.length; i += 1) {
+      const name = matches[i][1];
+      const start = matches[i].index ?? 0;
+      const end = i + 1 < matches.length ? (matches[i + 1].index ?? source.length) : source.length;
+      blocks.set(name, source.slice(start, end));
+    }
   }
   return blocks;
+}
+
+function getRegisteredToolContractText(name: string): string | undefined {
+  const block = registeredToolBlocks.get(name);
+  if (!block) return undefined;
+  const description = (MCP_TOOL_DESCRIPTIONS as Record<string, string>)[name] ?? '';
+  return `${block}\n${description}`;
 }
 
 const registeredTools = extractRegisteredToolNames();
@@ -173,13 +194,13 @@ function jsonByteLength(value: unknown): number {
 describe('MCP Tool Taxonomy', () => {
   // ── Completeness ──────────────────────────────────────────────────────
 
-  it('covers every tool registered in toki-mcp-server.ts (no orphans)', () => {
+  it('covers every tool registered by the MCP entrypoint (no orphans)', () => {
     const taxonomyNames = new Set(ALL_TOOL_NAMES);
     const orphans = registeredTools.filter((name) => !taxonomyNames.has(name));
     expect(orphans).toEqual([]);
   });
 
-  it('contains no phantom tools absent from toki-mcp-server.ts', () => {
+  it('contains no phantom tools absent from MCP registration sources', () => {
     const registeredSet = new Set(registeredTools);
     const phantoms = ALL_TOOL_NAMES.filter((name) => !registeredSet.has(name));
     expect(phantoms).toEqual([]);
@@ -796,7 +817,7 @@ describe('MCP Tool Taxonomy', () => {
     for (const name of ALL_TOOL_NAMES) {
       const meta = getToolMutationMeta(name);
       if (!meta?.requiresConfirmation) continue;
-      const block = registeredToolBlocks.get(name);
+      const block = getRegisteredToolContractText(name);
       expect(block, `${name} should have a registered tool block`).toBeDefined();
       expect(block, `${name} description should mention confirmation`).toMatch(
         /사용자 확인 필요|Requires user confirmation/,
@@ -806,7 +827,7 @@ describe('MCP Tool Taxonomy', () => {
 
   it('tools marked as supporting dry_run mention dry_run in the registered tool block', () => {
     for (const name of DRY_RUN_TOOL_NAMES) {
-      const block = registeredToolBlocks.get(name);
+      const block = getRegisteredToolContractText(name);
       expect(block, `${name} should have a registered tool block`).toBeDefined();
       expect(block, `${name} should mention dry_run`).toMatch(/\bdry_run\b/);
     }

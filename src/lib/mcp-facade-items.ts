@@ -1,5 +1,4 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import crypto = require('crypto');
+import * as crypto from 'crypto';
 
 import { combineCssSections, combineLuaSections, parseCssSections, parseLuaSections } from './mcp-section-parser';
 import {

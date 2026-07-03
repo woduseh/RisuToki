@@ -9,6 +9,12 @@
 
 ---
 
+## [1.12.1] - 2026-07-03
+
+### Changed
+
+- Split the MCP stdio proxy and HTTP API server into focused internal modules while preserving public tool contracts, HTTP response fingerprints, runtime state ownership, and the single-file bundled distribution.
+
 ## [1.12.0] - 2026-07-02
 
 ### Added

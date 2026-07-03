@@ -1,6 +1,6 @@
 # PLAN-2 / PLAN-3 execution progress
 
-Updated: 2026-07-03 17:56 Asia/Seoul
+Updated: 2026-07-03 22:35 Asia/Seoul
 
 ## Goal
 
@@ -13,8 +13,8 @@ Updated: 2026-07-03 17:56 Asia/Seoul
 
 ## Current state
 
-- Done: PLAN-2 release and every PLAN-3 module extraction slice for both MCP entrypoints.
-- Partial: 1.12.1 version/changelog closeout and final full validation remain.
+- Done: PLAN-2 release, every PLAN-3 module extraction slice, 1.12.1 metadata, and the final validation matrix.
+- Partial: none.
 - Not started: none.
 - Blocked: none.
 
@@ -29,8 +29,8 @@ Updated: 2026-07-03 17:56 Asia/Seoul
 ## Files and areas
 
 - Read: project workflow rules, both plans, eval matrix, MCP client harness, CI, TypeScript build config, monolith route boundaries.
-- Changed: PLAN-2 release files, PLAN-3 committed facade/helper/lorebook/RISUP/structured-item/section/reference/external modules, plus the validated field route slice.
-- Likely next: commit the field slice, then complete the 1.12.1 release metadata and final validation.
+- Changed: PLAN-2/PLAN-3 modules, 1.12.1 package metadata/changelog, ESM-compatible imports for extracted facade modules, and taxonomy guards that scan split registration modules.
+- Likely next: none; the 1.12.1 closeout is ready to commit.
 
 ## Validation
 
@@ -56,9 +56,11 @@ Updated: 2026-07-03 17:56 Asia/Seoul
 - Reference routes: lint, Node TypeScript no-emit/build, 26 focused API tests excluding the known user-owned skill-catalog mismatch, contract baseline, canonical replay, full MCP tests, and 18 doc-drift tests pass; `mcp-api-server.ts` is 3,779 lines and `mcp-reference-routes.ts` is 1,708 lines.
 - External routes: lint, Node TypeScript no-emit/build, 30 focused API tests, contract baseline, canonical replay, full MCP tests, and 18 doc-drift tests pass; `mcp-api-server.ts` is 2,578 lines and `mcp-external-routes.ts` is 1,341 lines.
 - Field routes: lint, Node TypeScript no-emit/build, 129 focused API tests, contract baseline, canonical replay, full MCP tests, and 18 doc-drift tests pass; `mcp-api-server.ts` is 1,048 lines and `mcp-field-routes.ts` is 1,628 lines.
-- Known external failure: the full unit suite has two failures in skill catalog expectations caused by concurrent user-owned skill metadata changes; 105 files and 2,013 tests passed.
+- Release closeout: version metadata is 1.12.1; final lint, full typecheck, MCP contract baseline, full MCP smoke/real-corpus checks, 18 doc-drift tests, 43 static agent evals, Electron build, and renderer build pass. The canonical replay passes all five scenarios in 11.7 seconds with route accuracy, first-pass success, validation coverage, and bounded-read coverage at 1.0 and zero wrong-target incidents.
+- Full test result: rpack, charx, reference-store, popout, terminal, and main-state tests pass; Vitest reports 2,014 passed, 2 skipped, and one known skill-catalog expectation mismatch caused by concurrent user-owned Skill metadata changes. The MCP suite that `npm test` could not reach after that external failure was run separately and passed.
+- Final entrypoint sizes: `toki-mcp-server.ts` is 4,023 lines and `mcp-api-server.ts` is 1,042 lines; every extracted production module remains below 5,000 lines.
+- Known external failure: the API skill discovery expectation still reflects the pre-existing Skill metadata while the user-owned generated Skill files are concurrently modified.
 
 ## Next steps
 
-1. Commit the field route slice.
-2. Bump to 1.12.1, update the changelog, and run the final validation matrix.
+1. Commit the 1.12.1 closeout without staging user-owned Skill, authoring, or later-plan changes.

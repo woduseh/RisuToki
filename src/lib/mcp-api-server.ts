@@ -19,7 +19,7 @@ import {
   jsonRes,
   logMcpMutation,
   promptItemPreview,
-  McpNoOpInfo,
+  type McpNoOpInfo,
   jsonMcpError,
   jsonMcpNoOp,
   readJsonBody,

@@ -1,5 +1,4 @@
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import path = require('path');
+import * as path from 'path';
 
 import { addAssetReferences, deleteAssetReferences, renameAssetReferences, validateAssetFileName } from './asset-utils';
 import { compressAssetsToWebP, updateAssetReferences, type CharxAssetLike } from './image-compressor';
@@ -17,6 +16,7 @@ import {
   type FacadeRoute,
 } from './mcp-facade-runtime';
 import type { FacadeV1Guard, FacadeV1Target, ManageAssetsFamily, ManageAssetsOperation } from './mcp-request-schemas';
+import { cloneJson } from './shared-utils';
 
 type FacadeApiRequest = (method: string, urlPath: string, body?: Record<string, unknown>) => Promise<unknown>;
 type ExternalSurfaceValueReader = (
@@ -646,7 +646,7 @@ export function createFacadeAssetsEngine({
   }
 
   function cloneJsonValue<T>(value: T): T {
-    return JSON.parse(JSON.stringify(value)) as T;
+    return cloneJson(value);
   }
 
   function withRisumModuleAssets(
