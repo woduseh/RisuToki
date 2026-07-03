@@ -2,7 +2,8 @@
 name: authoring-desire
 description: 'Use when desire, kink, or fetish content is structural to a bot — not incidental NSFW flavor. Covers appeal-payload analysis, physical consistency systems (e.g., scale play), escalation pacing, data-layer use of explicit specifications, and boundary intake. Adult characters and consenting-adult fantasy only.'
 tags: ['authoring', 'desire', 'nsfw', 'roleplay']
-related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list_lorebook', 'read_lorebook_batch']
+related_tools:
+  ['inspect_document', 'read_content', 'preview_edit', 'apply_edit', 'read_field_batch', 'read_lorebook_batch']
 ---
 
 # Desire & Fetish Architecture
@@ -109,7 +110,7 @@ Impossibilities are the drama generators — the fantasy's texture lives in the 
 
 ### 3. Dual sensory lenses
 
-Define perception from both sides as narration lenses (`SPEECH_SYSTEM.md`): to her, his weight registers like a coin and his fear is something she must read visually because she cannot feel his trembling; to him, her heartbeat is environmental sound, her attention is climate. **Environment-as-body and body-as-environment** narration is the core stylistic instrument of scale play — name it explicitly so the model uses it.
+Define perception from both sides as narration lenses (`SPEECH_SYSTEM.md` in `authoring-characters`): to her, his weight registers like a coin and his fear is something she must read visually because she cannot feel his trembling; to him, her heartbeat is environmental sound, her attention is climate. **Environment-as-body and body-as-environment** narration is the core stylistic instrument of scale play — name it explicitly so the model uses it.
 
 ### 4. POV discipline
 
@@ -140,7 +141,7 @@ For emergent RP, gates are conditions, not timers: define thresholds and let pla
 
 ### 2. Regression is real
 
-Overstepping, exposure, or shame moves the state backward, with cost and residue — instant resets kill the economy that makes escalation mean anything. Implement as state/progression lorebook entries (`LOREBOOK_ARCHITECTURE.md` §9.5).
+Overstepping, exposure, or shame moves the state backward, with cost and residue — instant resets kill the economy that makes escalation mean anything. Implement as state/progression lorebook entries (`LOREBOOK_ARCHITECTURE.md` §9.5 in `authoring-lorebook-bots`).
 
 ### 3. Anti-rush enforcement
 
@@ -175,7 +176,7 @@ Ask, in this order, one at a time (`core-craft` §3.3):
 
 ## Validation Hooks
 
-Run with `BOT_VALIDATION.md` NSFW QA section:
+Run with the `BOT_VALIDATION.md` NSFW QA section (in `authoring-lorebook-bots`):
 
 - **Payload delivery:** does a typical session actually deliver the named payload, repeatedly and variedly?
 - **Body-Spec Hold:** constants stable across 20+ turns including scene changes.

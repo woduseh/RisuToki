@@ -4,22 +4,15 @@ description: 'Use when creating, editing, or reviewing RisuAI .risup preset prom
 tags: ['preset', 'risup', 'prompt', 'template']
 related_tools:
   [
+    'read_content',
+    'search_document',
+    'analyze_content',
+    'preview_edit',
+    'apply_edit',
+    'manage_items',
     'list_risup_prompt_items',
-    'read_risup_prompt_item',
     'read_risup_prompt_item_batch',
-    'search_in_risup_prompt_items',
-    'write_risup_prompt_item',
-    'write_risup_prompt_item_batch',
-    'read_risup_formating_order',
-    'write_risup_formating_order',
-    'diff_risup_prompt',
     'export_risup_prompt_to_text',
-    'list_risup_prompt_snippets',
-    'read_risup_prompt_snippet',
-    'validate_risup_prompt_import',
-    'batch_delete_risup_prompt_items',
-    'import_risup_prompt_from_text',
-    'copy_risup_prompt_items_as_text',
   ]
 artifact_types: ['risup']
 canonical_sources:
@@ -63,13 +56,14 @@ A **preset** is a reusable request-assembly pack. It controls model selection, s
 
 `promptTemplate` is the structured prompt pipeline. It is a JSON array of prompt items such as free-text system blocks, dynamic description/persona inserts, chat slices, author notes, and cache blocks.
 
-Preferred MCP workflow:
+Preferred MCP workflow (facade-first; see `using-mcp-tools` for the full routing contract):
 
-1. `list_risup_prompt_items`
-2. `search_in_risup_prompt_items` or `read_risup_prompt_item_batch`
-3. `write_risup_prompt_item` / `write_risup_prompt_item_batch`
+1. Facade `read_content` / `search_document` for covered prompt-item reads and searches.
+2. Facade `preview_edit` → `apply_edit` for covered item writes and deletes.
+3. Facade `manage_items` for add, reorder, copy-as-text, text import, and snippet workflows.
+4. Granular fallback only when the facade rejects the selector or an exact legacy payload is required: `list_risup_prompt_items` → `read_risup_prompt_item_batch` → `write_risup_prompt_item(_batch)` carrying `expected_type` / `expected_preview`.
 
-Use raw `write_field("promptTemplate")` only when you need to preserve or edit unsupported/legacy JSON structures that the structured editor cannot model directly.
+Use raw `write_field("promptTemplate")` only when you need to preserve or edit unsupported/legacy JSON structures that neither the facade nor the structured editor can model directly.
 
 Supported item families in RisuToki:
 
@@ -141,22 +135,25 @@ Treat these as part of the preset's identity, not an afterthought. A prompt arch
 
 ## Recommended MCP workflow
 
+Facade-first. Use granular prompt tools only when the facade rejects the selector/operation or an exact legacy payload is required, and state the fallback reason in one line of the final task summary.
+
 ### Small edits
 
-1. `list_risup_prompt_items`
-2. `read_risup_prompt_item` / `read_risup_prompt_item_batch`
-3. write back with `expected_type` and, when possible, `expected_preview`
+1. `read_content` / `search_document` to locate the target items.
+2. `preview_edit` → `apply_edit` for the covered write or delete.
+3. Fallback: `list_risup_prompt_items` → `read_risup_prompt_item_batch`, then granular writes carrying `expected_type` and, when possible, `expected_preview`.
 
 ### Large restructures
 
-1. `export_risup_prompt_to_text`
-2. edit the exported text while preserving its block headers/metadata
-3. import or write back through the prompt-text workflow
+1. `manage_items` copy-as-text and text-import workflows for the export → edit → reimport loop.
+2. Edit the exported text while preserving its block headers/metadata.
+3. After any text import, verify with `analyze_content` (`operation.action="verify_risup_prompt_import"`) and the same source text.
+4. Fallback: `export_risup_prompt_to_text` / `import_risup_prompt_from_text` when the facade cannot express the operation or full serializer output is needed.
 
 ### Comparing / reusing blocks
 
-1. `diff_risup_prompt` to compare against a reference preset
-2. `list_risup_prompt_snippets` / `read_risup_prompt_snippet` for reusable blocks
+1. `analyze_content` to compare against a reference preset (granular `diff_risup_prompt` only for exact legacy diff payloads).
+2. `manage_items` snippet workflows for reusable blocks (fallback: `list_risup_prompt_snippets` / `read_risup_prompt_snippet`).
 
 ## Composition patterns
 
@@ -240,8 +237,8 @@ When maintaining multiple related presets (e.g. provider variants of the same pr
 1. **Item count and type sequence** — all variants should have the same number of items in the same type order unless a provider legitimately requires a different structure.
 2. **Toggle name/value consistency** — toggles referenced in CBS blocks must exist in every variant's `customPromptTemplateToggle`. A toggle present in one preset but missing in another causes silent CBS evaluation failures.
 3. **`formatingOrder` cross-verification** — token lists should match across variants. A missing `lorebook` or `authorNote` token in one variant silently drops that content.
-4. **Automated comparison** — use `diff_risup_prompt` with one preset open and the other loaded as a reference to surface structural differences.
-5. **Post-import validation** — after `import_risup_prompt_from_text`, use `validate_risup_prompt_import` to confirm content integrity (round-trip fidelity, item count, CBS balance).
+4. **Automated comparison** — use `analyze_content` preset comparison with one preset open and the other loaded as a reference to surface structural differences (granular `diff_risup_prompt` only for exact legacy payloads).
+5. **Post-import validation** — after any prompt-text import, run `analyze_content` with `operation.action="verify_risup_prompt_import"` and the same source text to confirm content integrity (round-trip fidelity, item count, CBS balance). The old `validate_risup_prompt_import` action remains a legacy alias.
 
 ## Chat Item Range Rules
 
@@ -282,17 +279,13 @@ Every CBS `{{#when toggle_NAME …}}` block that references the old toggle name 
 
 ### `customPromptTemplateToggle` field structure
 
-Toggle declarations are **newline-separated** lines in a single string field. Each line follows a specific syntax depending on the control type (checkbox, select, text, etc.). Edit via:
-
-```
-replace_in_field("customPromptTemplateToggle", find, replace)
-```
+Toggle declarations are **newline-separated** lines in a single string field. Each line follows a specific syntax depending on the control type (checkbox, select, text, etc.). Edit via facade `preview_edit` → `apply_edit` string replacement on `customPromptTemplateToggle`; use granular `replace_in_field` only when the facade rejects the operation.
 
 ### Cross-check workflow
 
-1. **Discover all toggle references:** `list_cbs_toggles` scans every CBS-bearing field and returns which toggles are used and where.
-2. **Find stale references after rename/delete:** `search_all_fields` with the old toggle name to locate CBS blocks that still reference a renamed or deleted toggle.
-3. **Batch-update CBS blocks:** use `replace_in_field` or `replace_in_lorebook_batch` to rewrite `toggle_OldName` → `toggle_NewName` across all affected fields.
+1. **Discover all toggle references:** `analyze_content` toggle listing (`list_cbs_toggles` action) scans every CBS-bearing field and returns which toggles are used and where.
+2. **Find stale references after rename/delete:** `search_document` with the old toggle name to locate CBS blocks that still reference a renamed or deleted toggle (granular `search_all_fields` only for legacy result shapes).
+3. **Batch-update CBS blocks:** use `preview_edit` → `apply_edit` replacements to rewrite `toggle_OldName` → `toggle_NewName` across all affected fields (fallback: `replace_in_field` / `replace_in_lorebook_batch`).
 
 ## Shared/reference skills
 

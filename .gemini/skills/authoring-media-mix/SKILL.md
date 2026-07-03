@@ -2,7 +2,7 @@
 name: authoring-media-mix
 description: 'Use when designing or adapting a character/world IP across two or more media, building a franchise core, creating iconic visual identity, or translating the same creative promise between RisuAI roleplay, prose, manga/webtoon, animation, games, live-action drama, and merchandise.'
 tags: ['authoring', 'media-mix', 'franchise', 'adaptation', 'visual-identity']
-related_tools: ['session_status', 'read_field_batch', 'list_lorebook']
+related_tools: ['inspect_document', 'read_content', 'read_field_batch']
 ---
 
 # Media-Mix IP Authoring

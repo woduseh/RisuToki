@@ -2,7 +2,8 @@
 name: authoring-characters
 description: 'Use when creating, refactoring, or diagnosing a character for LLM roleplay. Supports two design tracks (psychology-first and attribute-first), explicit appeal engineering, scale-aware depth, and translation-survivable voice. Use for solo, ensemble, or large-cast bots when the character itself is the main design problem.'
 tags: ['authoring', 'character', 'roleplay']
-related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list_lorebook', 'read_lorebook_batch']
+related_tools:
+  ['inspect_document', 'read_content', 'preview_edit', 'apply_edit', 'read_field_batch', 'read_lorebook_batch']
 ---
 
 # Character Authoring

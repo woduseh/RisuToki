@@ -2,8 +2,7 @@
 name: file-structure-reference
 description: 'Reference for RisuAI .charx, .risum, and .risup file structures plus lorebook and regex item schemas. Use when you need exact field names, file-type boundaries, or JSON shapes before reading or writing content.'
 tags: ['reference', 'charx', 'risum', 'risup']
-related_tools:
-  ['list_fields', 'read_field_batch', 'list_lorebook', 'read_lorebook_batch', 'list_regex', 'read_regex_batch']
+related_tools: ['inspect_document', 'read_content', 'read_field_batch', 'read_lorebook_batch', 'read_regex_batch']
 ---
 
 # File Structure Reference

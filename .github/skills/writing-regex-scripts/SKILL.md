@@ -2,7 +2,7 @@
 name: writing-regex-scripts
 description: 'Guides writing regex scripts for RisuAI charx and risum files. Covers four modification types (editInput, editOutput, editDisplay, editRequest), capture group substitution, special OUT prefixes (@@emo, @@inject, @@move_top/bottom), flag options, and CBS/HTML integration in OUT fields. Use when creating or editing regex entries.'
 tags: ['regex', 'scripting', 'display']
-related_tools: ['list_regex', 'read_regex', 'write_regex', 'replace_in_regex']
+related_tools: ['read_content', 'preview_edit', 'apply_edit', 'manage_items', 'list_regex', 'read_regex_batch']
 ---
 
 # Writing Regex Scripts

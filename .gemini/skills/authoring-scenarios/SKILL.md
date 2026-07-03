@@ -3,7 +3,7 @@ name: authoring-scenarios
 description: 'Use when designing what happens in a bot: event systems, simulator structures, random and periodic events, day cycles, stat-gated content, routes and endings, escalation rhythm. Use for simulator bots, management/raising games, region sandboxes, and any bot where events — not a single relationship arc — carry the experience.'
 tags: ['authoring', 'scenario', 'events', 'simulator', 'roleplay']
 related_tools:
-  ['session_status', 'list_lorebook', 'read_lorebook_batch', 'write_lorebook_batch', 'validate_lorebook_keys']
+  ['inspect_document', 'read_content', 'preview_edit', 'apply_edit', 'validate_content', 'read_lorebook_batch']
 ---
 
 # Scenario & Event Authoring
@@ -75,7 +75,7 @@ Write each event entry as: **setup pressure → forced choice or scene → resid
 
 - Stats and meters live in the data layer: exact values, CBS variables or status panels, with defined thresholds.
 - Each threshold owns a **behavioral expression rule** (what visibly changes at affection 50 vs. 70) — this is what the model performs; the number is what it consults.
-- User-choice residue: decisions constrain later banks (refused the gang's offer → protection events unlock, recruitment events lock). See `LOREBOOK_ARCHITECTURE.md` §9.5.
+- User-choice residue: decisions constrain later banks (refused the gang's offer → protection events unlock, recruitment events lock). See `LOREBOOK_ARCHITECTURE.md` §9.5 in `authoring-lorebook-bots`.
 
 ### Step 5 — Design the rhythm
 
@@ -117,7 +117,7 @@ Exact syntax: `writing-lorebooks`, `writing-cbs-syntax`, `writing-trigger-script
 - **Residue audit:** sample 10 events; every one names what is different after it.
 - **Tin-can test:** play 15 loop turns with no user-initiated drama — does the bot generate meaningful pressure on its own, with consequences?
 - **Soap test:** check the escalation budget held; no back-to-back unearned crises.
-- **Gate integrity:** payoff and ending events cannot fire early via keyword accident (`BOT_VALIDATION.md` secret-leakage logic applies to events).
+- **Gate integrity:** payoff and ending events cannot fire early via keyword accident (the secret-leakage logic in `authoring-lorebook-bots`' `BOT_VALIDATION.md` applies to events).
 - **Calendar coherence:** time markers stay consistent across 30+ turns.
 
 ## Smoke Tests

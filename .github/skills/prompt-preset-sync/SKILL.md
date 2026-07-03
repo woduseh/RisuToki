@@ -4,18 +4,26 @@ description: Synchronize RisuToki prompt and .risup preset variants across canon
 tags: ['prompt', 'preset', 'sync', 'variants']
 related_tools:
   [
-    'diff_risup_prompt',
-    'list_risup_prompt_items',
+    'analyze_content',
+    'read_content',
+    'search_document',
+    'preview_edit',
+    'apply_edit',
+    'manage_items',
     'read_risup_prompt_item_batch',
-    'validate_risup_prompt_import',
-    'list_cbs_toggles',
-    'search_all_fields',
+    'diff_risup_prompt',
   ]
 ---
 
 # Prompt Preset Sync
 
-Use this skill when the task is not just revising one prompt, but keeping a RisuToki prompt family consistent across Markdown sources, `.risup` presets, and model-specific variants.
+## Agent Operating Contract
+
+- **Use when:** keeping a RisuToki prompt family consistent across Markdown sources, `.risup` presets, and model-specific variants — updating a canonical Source and mirroring it to GPT/Claude/Gemini/DeepSeek or other versions, comparing families, or validating toggle/CBS/regex/prefill/version consistency.
+- **Do not use when:** the target is the Mythos suite specifically (`mythos-prompt-maintenance` for audits, `mythos-prompt-development` for principle judgment), only one prompt is being revised with no variants, or the task is `.risup` structure editing itself (`writing-risup-presets`).
+- **Read first:** this `SKILL.md`.
+- **Load deeper only if:** structured `.risup` promptTemplate or formatingOrder edits are needed (`writing-risup-presets`), or exact CBS syntax, balance, or toggle expansion rules are unclear (`writing-cbs-syntax`).
+- **Output/validation contract:** summarize the canonical Source and targets, Source-level versus intentional variant-specific changes, validations performed, and any remaining divergence and why — see the Output Contract section.
 
 ## Workflow
 
@@ -47,3 +55,11 @@ Summarize:
 - Source-level changes versus intentional variant-specific changes.
 - CBS, toggle, regex, prefill, and version validation performed.
 - Any divergence that remains and why.
+
+## Smoke Tests
+
+| Prompt                                                                  | Expected routing                                                             | Expected output                                                                    | Forbidden behavior                                                  |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| "I updated the Source prompt; mirror it to the GPT and Gemini presets." | Primary: `prompt-preset-sync`; `writing-risup-presets` for structured edits. | Source-first propagation with toggle/CBS/version validation on every target.       | Editing variants before Source; leaving version strings mismatched. |
+| "Why does the DeepSeek variant behave differently — is that intended?"  | Primary: `prompt-preset-sync`.                                               | Delta map separating intentional provider-specific behavior from stale divergence. | Flattening intentional provider-specific blocks into Source.        |
+| "Is this Mythos instruction still right as always-on default text?"     | Route to `mythos-prompt-development`.                                        | Handoff note naming `mythos-prompt-development`.                                   | Making principle judgments inside a sync pass.                      |

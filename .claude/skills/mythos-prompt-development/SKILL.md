@@ -2,12 +2,18 @@
 name: mythos-prompt-development
 description: Develop and evaluate Mythos / 뮈토스 prompts using the three Mythos principles, CBS conditional logic, toggle design, Source-first architecture, and model-specific variant policy. Use when deciding whether Mythos instructions should be default text, CBS toggles, removed, renamed, or adapted for GPT, Claude, Gemini, DeepSeek, or other .risup prompt variants.
 tags: ['mythos', 'prompt', 'preset', 'cbs']
-related_tools: ['list_cbs_toggles', 'validate_cbs', 'diff_risup_prompt', 'list_risup_prompt_items']
+related_tools: ['analyze_content', 'validate_content', 'read_content', 'list_cbs_toggles', 'diff_risup_prompt']
 ---
 
 # Mythos Prompt Development
 
-Use this skill to decide what a Mythos prompt should say before syncing it into files or model-specific preset variants.
+## Agent Operating Contract
+
+- **Use when:** deciding what a Mythos prompt should say — whether an instruction is default text, a CBS toggle, a model-specific exception, or should be removed; toggle naming and UI design; variant policy judgment against the three Mythos principles.
+- **Do not use when:** the change is already decided and only needs propagation (`prompt-preset-sync`), the task is auditing an existing Mythos suite for drift (`mythos-prompt-maintenance`), or the work is ordinary `.risup` structure editing (`writing-risup-presets`).
+- **Read first:** this `SKILL.md`; the principles and decision rules below are the whole execution layer.
+- **Load deeper only if:** exact CBS syntax or toggle expansion is unclear (`writing-cbs-syntax`), or structured `.risup` edits follow the decision (`writing-risup-presets`).
+- **Output/validation contract:** report principle impact, the CBS decision, naming/UI changes, variant policy, and the required handoff — see the Output Contract section.
 
 ## Core Principles
 
@@ -66,3 +72,11 @@ Summarize:
 - Toggle naming or UI changes if any.
 - Variant policy: Source-only or Source plus named model exceptions.
 - Handoff needed for `.md` / `.risup` synchronization.
+
+## Smoke Tests
+
+| Prompt                                                                          | Expected routing                                                                          | Expected output                                                                            | Forbidden behavior                                              |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| "Should the paragraph forcing a melancholy tone in every reply stay in Mythos?" | Primary: `mythos-prompt-development`.                                                     | Principle-based verdict (likely remove or rewrite as abstract guidance) with CBS decision. | Editing prompt files or variants before the principle judgment. |
+| "Add a first-person/third-person perspective switch to the Mythos prompt."      | This skill for toggle design; hand off to `prompt-preset-sync` / `writing-risup-presets`. | Toggle name, UI label, and self-contained CBS branch design plus a named handoff.          | Describing unselected modes in always-active text.              |
+| "Copy the approved new memory instruction into the GPT and Gemini variants."    | Route to `prompt-preset-sync`; the decision is already made.                              | Handoff note naming `prompt-preset-sync` as the sync executor.                             | Re-litigating the settled decision instead of propagating it.   |

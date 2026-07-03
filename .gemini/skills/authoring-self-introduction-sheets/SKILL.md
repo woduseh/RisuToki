@@ -2,7 +2,8 @@
 name: authoring-self-introduction-sheets
 description: 'Use when writing a character through a self-introduction monologue: factual profile plus character-voiced introduction that lets the model infer personality through tone, evasions, and omission rather than explicit behavioral over-explanation.'
 tags: ['authoring', 'self-introduction', 'monologue', 'roleplay']
-related_tools: ['session_status', 'read_field_batch', 'write_field_batch', 'list_lorebook', 'read_lorebook_batch']
+related_tools:
+  ['inspect_document', 'read_content', 'preview_edit', 'apply_edit', 'read_field_batch', 'read_lorebook_batch']
 ---
 
 # Self-Introduction Character Sheets

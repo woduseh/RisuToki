@@ -2,7 +2,7 @@
 name: core-craft
 description: 'Shared craft doctrine for all bot composition skills. Read alongside any authoring-* skill. Covers creative modes, model baseline, data/register layers, prose guards, multilingual voice preservation, trope stance, familiarity/signature design, and shared design tests.'
 tags: ['authoring', 'craft', 'shared', 'doctrine']
-related_tools: ['session_status', 'read_field_batch', 'list_lorebook']
+related_tools: ['inspect_document', 'read_content']
 ---
 
 # Core Craft — Shared Doctrine
@@ -65,8 +65,8 @@ Frontier models extract patterns well: 3–5 example lines per important registe
 
 **Bots are written in English.** Token efficiency, model competence, and compatibility with English prompt presets make this the default source layer. Korean (and other languages) enter at three controlled points:
 
-1. **Output translation layer.** A per-bot translation guide renders English responses into Korean. Consequence for composition: relational speech — address forms, formality, honorific dynamics — must be **explicitly encoded in the English source**, or it will not survive translation. English has no built-in 존비어; if formality is implicit, the translation layer has nothing to map. See `SPEECH_SYSTEM.md` (translation-survivable voice) and `writing-translation-guides`.
-2. **User input.** Triggers scan the chat log, so user language governs key design. **English keys are mandatory.** Korean, Japanese, and Chinese key support is the documented multilingual pattern — see the trigger language section in `LOREBOOK_ARCHITECTURE.md`.
+1. **Output translation layer.** A per-bot translation guide renders English responses into Korean. Consequence for composition: relational speech — address forms, formality, honorific dynamics — must be **explicitly encoded in the English source**, or it will not survive translation. English has no built-in 존비어; if formality is implicit, the translation layer has nothing to map. See `SPEECH_SYSTEM.md` in `authoring-characters` (translation-survivable voice) and `writing-translation-guides`.
+2. **User input.** Triggers scan the chat log, so user language governs key design. **English keys are mandatory.** Korean, Japanese, and Chinese key support is the documented multilingual pattern — see the trigger language section in `LOREBOOK_ARCHITECTURE.md` (in `authoring-lorebook-bots`).
 3. **Target-language voice capsule.** When identity depends on features English cannot faithfully encode — first-person pronouns, sentence-final particles, dialect, honorific punning, fixed wordplay, name readings — record the exact target-language forms plus conditions and meaning. The capsule is reference data for the translation guide, not a second full character sheet and not permission to mix languages randomly in English prose.
 
 ---

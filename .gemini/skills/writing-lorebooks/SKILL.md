@@ -4,12 +4,13 @@ description: 'Guides writing and structuring lorebook entries for RisuAI charx a
 tags: ['lorebook', 'reference', 'worldbuilding']
 related_tools:
   [
-    'session_status',
-    'list_lorebook',
+    'inspect_document',
+    'read_content',
+    'preview_edit',
+    'apply_edit',
+    'validate_content',
     'read_lorebook_batch',
     'write_lorebook_batch',
-    'replace_in_lorebook_batch',
-    'validate_lorebook_keys',
   ]
 ---
 

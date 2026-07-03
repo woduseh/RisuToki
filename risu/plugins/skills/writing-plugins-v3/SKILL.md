@@ -2,7 +2,7 @@
 name: writing-plugins-v3
 description: 'Use when creating, editing, or reviewing RisuAI Plugin API v3.0 .js/.ts files. Covers metadata headers, iframe sandbox model, all-async API, SafeElement/SafeDocument wrappers, storage tiers, UI registration, provider/MCP integration, security boundaries, and permissions.'
 tags: ['plugin', 'v3', 'sandbox', 'api', 'javascript']
-related_tools: ['read_field_batch', 'write_field_batch', 'list_lorebook', 'read_lorebook_batch']
+related_tools: ['read_content', 'preview_edit', 'apply_edit', 'read_field_batch']
 artifact_types: ['plugin-v3']
 canonical_sources:
   [

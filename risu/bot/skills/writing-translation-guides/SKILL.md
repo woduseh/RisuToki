@@ -2,7 +2,7 @@
 name: writing-translation-guides
 description: 'Use when creating or maintaining a per-bot translation guide that renders English bot output into Korean (or another target language). Covers character voice mapping (registers to speech levels and sentence endings), address-form progression, formality state conversion, catchphrase and persona-marker rendering, translation-ese avoidance, and consistency validation.'
 tags: ['authoring', 'translation', 'voice', 'roleplay']
-related_tools: ['session_status', 'read_field_batch', 'write_field_batch']
+related_tools: ['inspect_document', 'read_content', 'preview_edit', 'apply_edit']
 ---
 
 # Writing Translation Guides
@@ -95,7 +95,7 @@ The capsule supplies exact target-language evidence. It does not override the fi
 2. Draft sections 1–4 per major character; minor cast can share a default block plus exceptions.
 3. Write section 5 once per bot.
 4. **Calibrate with samples:** translate 5–10 representative lines per register (including one leak transition and one address-form shift) and review them against the character's intent. Revise mappings, not just samples.
-5. Store as the bot's `translation_guide.md`; update whenever speech design changes (`BOT_VALIDATION.md` checks this pairing).
+5. Store as the bot's `translation_guide.md`; update whenever speech design changes (`BOT_VALIDATION.md` in `authoring-lorebook-bots` checks this pairing).
 
 ## Validation
 

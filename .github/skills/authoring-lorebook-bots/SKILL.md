@@ -4,12 +4,13 @@ description: 'Use when writing a lorebook-driven bot description that frames ton
 tags: ['authoring', 'lorebook', 'roleplay']
 related_tools:
   [
-    'session_status',
-    'list_lorebook',
+    'inspect_document',
+    'read_content',
+    'preview_edit',
+    'apply_edit',
+    'validate_content',
     'read_lorebook_batch',
     'write_lorebook_batch',
-    'replace_in_lorebook_batch',
-    'validate_lorebook_keys',
   ]
 ---
 
@@ -312,49 +313,11 @@ If the opening scene depends on one core character landing with protagonist-grad
 
 ## Scale Notes
 
-### Single-character with lorebook support
+Cast size changes the design economics. This is the quick chooser; concrete recipes live in [STRUCTURE_SCALES.md](STRUCTURE_SCALES.md).
 
-Use the description to keep the character emotionally alive on every turn.
-
-Use lorebook for:
-
-- state progression
-- topic-based reactions
-- deeper world support
-- gated revelations
-
-### 2–4 recurring characters
-
-The description should carry:
-
-- group tension
-- each recurring character's thumbnail
-- the relationship shape between {{user}} and the cast
-- what kinds of scenes the ensemble creates
-
-The lorebook should carry:
-
-- full profiles
-- pair dynamics
-- rivalries, secrets, and progression
-- scene-dependent behavior
-
-Small ensembles can be structurally simple. If the cast chemistry works with short always-on dossiers and no trigger gating, that is a valid structure — not every ensemble needs a complex scaffolding stack.
-
-### 10+ world/cast
-
-The description should carry:
-
-- world tone
-- POV rules
-- core cast only
-- scene-management expectations
-
-The lorebook should carry almost everything else.
-
-If the description starts resembling a cast index, stop and compress.
-
-Use [STRUCTURE_SCALES.md](STRUCTURE_SCALES.md) for concrete recipes.
+- **Single character with lorebook support** — the description keeps the character emotionally alive on every turn; the lorebook carries state progression, topic-based reactions, deeper world support, and gated revelations.
+- **2–4 recurring characters** — the description carries group tension, each recurring character's thumbnail, the {{user}}-cast relationship shape, and the scenes the ensemble creates; the lorebook carries full profiles, pair dynamics, rivalries/secrets/progression, and scene-dependent behavior. Small ensembles may stay structurally simple — short always-on dossiers with no trigger gating are a valid structure.
+- **10+ world/cast** — the description carries world tone, POV rules, the core cast only, and scene-management expectations; the lorebook carries almost everything else. If the description starts resembling a cast index, stop and compress.
 
 ---
 

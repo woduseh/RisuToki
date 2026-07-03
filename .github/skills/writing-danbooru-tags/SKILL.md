@@ -2,7 +2,8 @@
 name: writing-danbooru-tags
 description: 'Guides validating, searching, and composing Danbooru tags for RisuAI asset prompts. Use when building image prompts or checking whether a tag is valid before saving prompt text.'
 tags: ['danbooru', 'assets', 'image-prompts']
-related_tools: ['validate_danbooru_tags', 'search_danbooru_tags', 'get_popular_danbooru_tags']
+related_tools:
+  ['analyze_content', 'validate_content', 'search_danbooru_tags', 'validate_danbooru_tags', 'get_popular_danbooru_tags']
 ---
 
 # Writing Danbooru Tags

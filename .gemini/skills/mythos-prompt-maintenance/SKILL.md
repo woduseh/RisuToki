@@ -3,12 +3,27 @@ name: mythos-prompt-maintenance
 description: Maintain the Mythos prompt suite across source and model-specific variants. Use when revising Mythos prompt files, comparing Source/GPT/Claude/Gemini/DeepSeek versions, changing CBS toggles or UI names, syncing `.md` and `.risup` prompt artifacts, validating CBS syntax, or checking the Mythos principles of abstract narration, systematic character handling, and concise non-duplicative prompts.
 tags: ['mythos', 'prompt', 'maintenance', 'sync']
 related_tools:
-  ['diff_risup_prompt', 'list_risup_prompt_items', 'read_risup_prompt_item_batch', 'validate_cbs', 'search_all_fields']
+  [
+    'analyze_content',
+    'read_content',
+    'search_document',
+    'validate_content',
+    'preview_edit',
+    'apply_edit',
+    'read_risup_prompt_item_batch',
+    'diff_risup_prompt',
+  ]
 ---
 
 # Mythos Prompt Maintenance
 
-Use this skill when a Mythos prompt task needs repeatable source-aware maintenance rather than generic prompt advice.
+## Agent Operating Contract
+
+- **Use when:** auditing or updating an existing Mythos prompt suite — drift checks between Source and GPT/Claude/Gemini/DeepSeek variants, stale or duplicated text, toggle variable/UI name drift, coordinated multi-variant updates, or release-style version bumps.
+- **Do not use when:** the prompt family is not the Mythos suite (`prompt-preset-sync`), the question is whether an instruction is right at all (`mythos-prompt-development`), or the task is plain `.risup` structure editing (`writing-risup-presets`).
+- **Read first:** this `SKILL.md`; then `project-workflow` for version/docs rules when working in the RisuToki workspace.
+- **Load deeper only if:** structured `.risup` reads or edits are needed (`using-mcp-tools`, `writing-risup-presets`) or exact CBS syntax is unclear (`writing-cbs-syntax`).
+- **Output/validation contract:** findings by variant with evidence for analysis; changed artifacts, sync status, validations run, and residual risks for implementation — see the Output Contract section.
 
 ## Core Principles
 
@@ -38,3 +53,11 @@ Use this skill when a Mythos prompt task needs repeatable source-aware maintenan
 ## Output Contract
 
 For analysis, report findings by variant with evidence and a recommended action. For implementation, finish with changed artifacts, variants synchronized or intentionally left different, validations run, and residual risks.
+
+## Smoke Tests
+
+| Prompt                                                                       | Expected routing                                                     | Expected output                                                                            | Forbidden behavior                                        |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| "Audit the Mythos suite: has the Claude variant drifted from Source?"        | Primary: `mythos-prompt-maintenance`.                                | Variant-by-variant delta report with evidence and recommended actions.                     | Broad rewrites without comparing Source first.            |
+| "Rename `toggle_StatusWindow` across the Mythos suite and bump the version." | This skill; `writing-cbs-syntax` if CBS expansion rules are unclear. | Coordinated rename across variants with CBS reference checks and version/changelog update. | Renaming in one variant only; skipping CBS validation.    |
+| "Mirror this approved change across my (non-Mythos) preset family."          | Route to `prompt-preset-sync`.                                       | Handoff note naming `prompt-preset-sync`.                                                  | Applying Mythos-specific doctrine to a non-Mythos family. |

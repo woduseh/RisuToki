@@ -2916,17 +2916,28 @@ related_tools:
           expect.objectContaining({
             name: 'file-structure-reference',
             tags: expect.arrayContaining(['reference', 'charx']),
-            relatedTools: expect.arrayContaining(['list_fields', 'read_field_batch']),
+            relatedTools: expect.arrayContaining(['inspect_document', 'read_content', 'read_field_batch']),
           }),
           expect.objectContaining({
             name: 'using-mcp-tools',
             tags: expect.arrayContaining(['workflow', 'mcp']),
-            relatedTools: expect.arrayContaining(['inspect_document', 'read_content', 'apply_edit']),
+            relatedTools: expect.arrayContaining([
+              'inspect_document',
+              'read_content',
+              'search_document',
+              'preview_edit',
+              'apply_edit',
+            ]),
           }),
           expect.objectContaining({
             name: 'writing-danbooru-tags',
             tags: expect.arrayContaining(['danbooru', 'assets']),
-            relatedTools: expect.arrayContaining(['validate_danbooru_tags', 'search_danbooru_tags']),
+            relatedTools: expect.arrayContaining([
+              'analyze_content',
+              'validate_content',
+              'search_danbooru_tags',
+              'validate_danbooru_tags',
+            ]),
           }),
         ]),
       );

@@ -30,7 +30,7 @@ Every `SKILL.md` starts with YAML frontmatter.
 name: using-mcp-tools
 description: 'Workflow guide for choosing RisuToki MCP tools safely.'
 tags: ['workflow', 'mcp', 'editing']
-related_tools: ['search_all_fields', 'write_field_batch', 'read_skill']
+related_tools: ['read_content', 'search_document', 'preview_edit', 'apply_edit', 'read_skill']
 ---
 ```
 
@@ -57,7 +57,7 @@ Every skill should make the first read decisive. Keep `SKILL.md` as the executio
 - Prefer one primary skill per task. Add shared syntax skills only when the current artifact actually uses that syntax.
 - Put decision boundaries before examples so the model can route without scanning the whole file.
 - End with smoke tests in a table: `Prompt`, `Expected routing`, `Expected output`, `Forbidden behavior`.
-- In `related_tools`, prefer dedicated structured/batch MCP surfaces over broad generic field reads whenever those surfaces exist.
+- In `related_tools`, list facade tools first (`inspect_document`, `read_content`, `search_document`, `analyze_content`, `validate_content`, `preview_edit`/`apply_edit`, `manage_items`/`manage_assets`/`manage_file`) and keep only the domain-specific granular tools that remain real fallback surfaces after them — list order signals priority. See `using-mcp-tools` for the facade-first routing contract.
 - Treat large reference files as opt-in depth, not required startup context.
 
 `npm run sync:skills` rebuilds `.copilot-skill-catalog/` from the tracked skill roots above so Codex (via a generated `.agents/skills` path) plus Claude Code, Gemini CLI, and GitHub Copilot CLI (`.claude/skills`, `.gemini/skills`, `.github/skills`) all see the same unified catalog.

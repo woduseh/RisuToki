@@ -2,7 +2,7 @@
 name: trope-library
 description: 'Archetype and trope vocabulary for character and world design: expected beats, play-straight quality bars, proven subversion directions, and common degradation patterns. Use when choosing, executing, or deliberately breaking a recognizable archetype, relationship dynamic, or genre convention.'
 tags: ['authoring', 'tropes', 'archetypes', 'reference']
-related_tools: ['session_status']
+related_tools: ['read_skill', 'inspect_document']
 ---
 
 # Trope Library
@@ -37,9 +37,10 @@ This is a living catalog — extend it as designs encounter new archetypes. New 
 
 ## Smoke Tests
 
-| Prompt                                                           | Expected routing                                                                                  | Expected output                                                             | Forbidden behavior                                              |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| "Classic tsundere, played 100% straight."                        | `core-craft` §4 → this skill → `CHARACTER_TROPES.md`                                              | Beat-complete straight execution with degradation blocks.                   | Sneaking in a subversion; dismissing the request as cliché.     |
-| "I want a childhood friend who actually wins for once."          | `CHARACTER_TROPES.md` childhood-friend entry                                                      | One-axis subversion keeping the archetype's surface.                        | Rebuilding the character until the archetype is unrecognizable. |
-| "Build a collectible faction cast for a gacha game."             | This skill → `MEDIA_CONVENTIONS.md`; pair `authoring-media-mix` when cross-media identity matters | Faction echo, individual anchors, and degradation guards.                   | Giving every unit protagonist-scale lore.                       |
-| "Make a classic vampire maid without reducing her to a costume." | This skill → `SPECIES_ROLE_TROPES.md`; pair `authoring-characters`                                | Two legible surfaces with specific labor, appetite, and degradation guards. | Treating species and role as a tag list.                        |
+| Prompt                                                           | Expected routing                                                                                  | Expected output                                                              | Forbidden behavior                                              |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| "Classic tsundere, played 100% straight."                        | `core-craft` §4 → this skill → `CHARACTER_TROPES.md`                                              | Beat-complete straight execution with degradation blocks.                    | Sneaking in a subversion; dismissing the request as cliché.     |
+| "I want a childhood friend who actually wins for once."          | `CHARACTER_TROPES.md` childhood-friend entry                                                      | One-axis subversion keeping the archetype's surface.                         | Rebuilding the character until the archetype is unrecognizable. |
+| "Enemies-to-lovers that doesn't melt into romance by turn 20."   | This skill → `RELATIONSHIP_TROPES.md`; pair `authoring-desire` for escalation gating              | Beat map with degradation blocks that keep the hostility phase load-bearing. | Letting intimacy arrive before the enmity has cost anything.    |
+| "Build a collectible faction cast for a gacha game."             | This skill → `MEDIA_CONVENTIONS.md`; pair `authoring-media-mix` when cross-media identity matters | Faction echo, individual anchors, and degradation guards.                    | Giving every unit protagonist-scale lore.                       |
+| "Make a classic vampire maid without reducing her to a costume." | This skill → `SPECIES_ROLE_TROPES.md`; pair `authoring-characters`                                | Two legible surfaces with specific labor, appetite, and degradation guards.  | Treating species and role as a tag list.                        |

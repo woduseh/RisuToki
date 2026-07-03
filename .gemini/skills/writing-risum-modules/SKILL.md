@@ -4,18 +4,16 @@ description: 'Use when creating, editing, or reviewing RisuAI .risum module desi
 tags: ['module', 'risum', 'composition', 'architecture']
 related_tools:
   [
-    'session_status',
+    'inspect_document',
+    'read_content',
+    'search_document',
+    'preview_edit',
+    'apply_edit',
+    'manage_items',
     'read_field_batch',
-    'write_field_batch',
-    'list_lorebook',
     'read_lorebook_batch',
-    'write_lorebook_batch',
-    'list_regex',
     'read_regex_batch',
-    'list_triggers',
     'read_trigger_batch',
-    'list_lua',
-    'read_lua',
   ]
 artifact_types: ['risum']
 canonical_sources: ['Risuai/src/ts/process/modules.ts', 'Risuai/src/ts/process/processzip.ts', 'src/charx-io.ts']

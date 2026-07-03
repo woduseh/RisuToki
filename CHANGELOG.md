@@ -9,6 +9,13 @@
 
 ---
 
+## [1.12.2] - 2026-07-03
+
+### Changed
+
+- Updated bundled authoring and prompt skills with explicit operating contracts, routing smoke tests, and facade-first tool guidance while retaining granular fallbacks.
+- Synchronized the refreshed skill catalog across the tracked Claude, Gemini, and GitHub CLI discovery copies.
+
 ## [1.12.1] - 2026-07-03
 
 ### Changed
