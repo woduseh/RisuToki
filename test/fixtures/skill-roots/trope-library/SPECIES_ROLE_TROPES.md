@@ -1,0 +1,3 @@
+# Species Role Tropes
+
+## Vampire

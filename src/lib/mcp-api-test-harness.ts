@@ -1,4 +1,5 @@
 // @vitest-environment node
+import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
@@ -41,6 +42,11 @@ export interface SearchFixture {
     flag?: string;
     ableFlag?: string;
   }>;
+  [key: string]: unknown;
+}
+
+export interface SearchSurface {
+  target: string;
   [key: string]: unknown;
 }
 
@@ -89,15 +95,75 @@ export interface TestSessionStatus {
   runtime?: RuntimeMetadata | null;
 }
 
+export interface TestSessionStatusPayload {
+  document: Record<string, unknown>;
+  references: {
+    manifestStatus: unknown;
+    files: unknown[];
+  };
+  integrity: {
+    activeFile: Record<string, unknown>;
+    save: Record<string, unknown>;
+    dirty: Record<string, unknown>;
+    referenceManifest: Record<string, unknown>;
+  };
+}
+
+export interface McpErrorEnvelope {
+  action: string;
+  error: string;
+  status: number;
+  target: string;
+  retryable?: boolean;
+  next_actions?: string[];
+  rejected?: boolean;
+  suggestion?: string;
+  details?: unknown;
+}
+
+export interface McpNoOpEnvelope extends McpErrorEnvelope {
+  success: false;
+  message: string;
+  matchCount?: number;
+  field?: string;
+  results?: unknown;
+  errors?: unknown;
+  startAnchorFoundAt?: number;
+  dryRun?: boolean;
+}
+
+export interface McpRecoveryEnvelope {
+  action: string;
+  error: string;
+  status: number;
+  target: string;
+  retryable: boolean;
+  next_actions: string[];
+  suggestion?: string;
+  rejected?: boolean;
+  details?: unknown;
+}
+
+export interface McpNoOpRecoveryEnvelope extends McpRecoveryEnvelope {
+  success: false;
+  message: string;
+}
+
 export interface TestDepsOverrides {
   getSessionStatus?: () => TestSessionStatus | Promise<TestSessionStatus>;
   getRuntimeInfo?: () => RuntimeMetadata;
   parseLuaSections?: (lua: string) => Array<{ name: string; content: string }>;
+  combineLuaSections?: (sections: Array<{ name: string; content: string }>) => string;
+  detectLuaSection?: (line: string) => string | null;
   parseCssSections?: (css: string) => {
     sections: Array<{ name: string; content: string }>;
     prefix: string;
     suffix: string;
   };
+  combineCssSections?: (sections: Array<{ name: string; content: string }>, prefix: string, suffix: string) => string;
+  detectCssSectionInline?: (line: string) => string | null;
+  detectCssBlockOpen?: (line: string) => boolean;
+  detectCssBlockClose?: (line: string) => boolean;
   openExternalDocument?: (filePath: string) => CharxData;
   userDataPath?: string;
   broadcastToAll?: (channel: string, ...args: unknown[]) => void;
@@ -120,12 +186,13 @@ export interface TestDepsOverrides {
 }
 
 export const MCP_API_TEST_DIR = path.join(__dirname, '..', '..', 'test', '_mcp-api-server-tmp');
+export const MCP_API_FIXED_SKILL_ROOT = path.join(__dirname, '..', '..', 'test', 'fixtures', 'skill-roots');
 
 // Defaults intentionally use the production section parsers from mcp-section-parser
 // (same as the headless server) so harness behavior matches runtime behavior.
 // Tests that need custom section shapes can still inject overrides.
 
-function openExternalDocumentForTest(filePath: string): CharxData {
+export function openExternalDocumentForTest(filePath: string): CharxData {
   if (filePath.endsWith('.risum')) return openRisum(filePath);
   if (filePath.endsWith('.risup')) return openRisup(filePath);
   return openCharx(filePath);
@@ -163,6 +230,132 @@ export function createSearchFixture(): SearchFixture {
       },
     ],
   };
+}
+
+export function createExternalFixtureHelpers(testDir: string) {
+  function createExternalCharxFixture(overrides: Partial<CharxData> = {}): { dir: string; filePath: string } {
+    const dir = fs.mkdtempSync(path.join(testDir, 'external-charx-'));
+    const filePath = path.join(dir, 'external.charx');
+    const data = {
+      spec: 'chara_card_v3',
+      specVersion: '3.0',
+      name: 'External Char',
+      description: 'External description text.',
+      personality: '',
+      scenario: '',
+      creatorcomment: '',
+      tags: [],
+      exampleMessage: '',
+      systemPrompt: '',
+      creator: '',
+      characterVersion: '1.0.0',
+      nickname: '',
+      source: [],
+      creationDate: 0,
+      modificationDate: 0,
+      additionalText: '',
+      license: '',
+      firstMessage: 'Hello external.',
+      alternateGreetings: ['Alt external'],
+      groupOnlyGreetings: ['Group external'],
+      globalNote: 'External note.',
+      css: '/* section: main */',
+      defaultVariables: 'mode=external',
+      lua: '-- ===== main =====\nprint("external")\n',
+      triggerScripts: [
+        {
+          comment: 'main',
+          type: 'start',
+          conditions: [],
+          effect: [{ type: 'triggerlua', code: '-- ===== main =====\nprint("external")\n' }],
+          lowLevelAccess: false,
+        },
+      ],
+      lorebook: [
+        {
+          comment: 'External Lore',
+          key: 'alpha',
+          secondkey: '',
+          content: 'Lore body',
+          insertorder: 100,
+          alwaysActive: false,
+          selective: false,
+          mode: 'normal',
+        },
+      ],
+      regex: [{ comment: 'External Regex', type: 'editoutput', find: 'foo', replace: 'bar', flag: 'g' }],
+      assets: [],
+      xMeta: {},
+      risumAssets: [],
+      cardAssets: [],
+      _risuExt: {},
+      _card: {
+        spec: 'chara_card_v3',
+        spec_version: '3.0',
+        data: {},
+      },
+      ...overrides,
+    } as CharxData;
+    saveCharx(filePath, data);
+    return { dir, filePath };
+  }
+
+  function createExternalRisumFixture(overrides: SearchFixture = {}): { dir: string; filePath: string } {
+    const dir = fs.mkdtempSync(path.join(testDir, 'external-risum-'));
+    const filePath = path.join(dir, 'external.risum');
+    saveRisum(filePath, {
+      _fileType: 'risum',
+      name: 'External Module',
+      description: 'Module description',
+      moduleName: 'External Module',
+      moduleNamespace: 'external.module',
+      lowLevelAccess: false,
+      hideIcon: false,
+      lorebook: [],
+      regex: [],
+      ...overrides,
+    } as unknown as CharxData);
+    return { dir, filePath };
+  }
+
+  function createExternalRisupFixture(overrides: SearchFixture = {}): { dir: string; filePath: string } {
+    const dir = fs.mkdtempSync(path.join(testDir, 'external-risup-'));
+    const filePath = path.join(dir, 'external.risup');
+    saveRisup(filePath, {
+      _fileType: 'risup',
+      name: 'External Preset',
+      promptTemplate: JSON.stringify([{ type: 'plain', type2: 'normal', text: 'External preset', role: 'system' }]),
+      formatingOrder: JSON.stringify(['main', 'description']),
+      presetBias: '[]',
+      localStopStrings: '[]',
+      ...overrides,
+    } as unknown as CharxData);
+    return { dir, filePath };
+  }
+
+  return {
+    createExternalCharxFixture,
+    createExternalRisumFixture,
+    createExternalRisupFixture,
+  };
+}
+
+export function mapSurfacesByTarget(surfaces: SearchSurface[]) {
+  return new Map(surfaces.map((surface) => [surface.target, surface]));
+}
+
+export async function writeSkillFixture(
+  rootDir: string,
+  skillName: string,
+  files: Record<string, string>,
+): Promise<void> {
+  const skillDir = path.join(rootDir, skillName);
+  await fs.promises.mkdir(skillDir, { recursive: true });
+  await Promise.all(
+    Object.entries(files).map(([fileName, content]) =>
+      fs.promises.writeFile(path.join(skillDir, fileName), content, 'utf-8'),
+    ),
+  );
 }
 
 export function closeServer(server: http.Server): Promise<void> {
@@ -221,13 +414,13 @@ export async function startTestApiServer(
     },
     onListening: (port) => resolvePort(port),
     parseLuaSections: overrides?.parseLuaSections ?? parseLuaSections,
-    combineLuaSections,
-    detectLuaSection,
+    combineLuaSections: overrides?.combineLuaSections ?? combineLuaSections,
+    detectLuaSection: overrides?.detectLuaSection ?? detectLuaSection,
     parseCssSections: overrides?.parseCssSections ?? parseCssSections,
-    combineCssSections,
-    detectCssSectionInline,
-    detectCssBlockOpen,
-    detectCssBlockClose,
+    combineCssSections: overrides?.combineCssSections ?? combineCssSections,
+    detectCssSectionInline: overrides?.detectCssSectionInline ?? detectCssSectionInline,
+    detectCssBlockOpen: overrides?.detectCssBlockOpen ?? detectCssBlockOpen,
+    detectCssBlockClose: overrides?.detectCssBlockClose ?? detectCssBlockClose,
     openExternalDocument: overrides?.openExternalDocument ?? openExternalDocumentForTest,
     saveExternalDocument: (filePath: string, _fileType: 'charx' | 'risum' | 'risup', data: SearchFixture | CharxData) =>
       saveExternalDocumentForTest(filePath, data),
@@ -262,6 +455,38 @@ export async function startTestApiServer(
   api.invalidateSectionCaches();
   const port = await portPromise;
   return { ...api, port };
+}
+
+export async function startLegacyTestApiServer(
+  currentData: SearchFixture | CharxData | null,
+  referenceFiles: Array<{ id?: string; fileName: string; filePath?: string; data: SearchFixture | CharxData }> = [],
+  skillRoots?: string | string[],
+  overrides?: TestDepsOverrides,
+) {
+  return startTestApiServer(currentData, referenceFiles, skillRoots, {
+    parseLuaSections: () => [],
+    combineLuaSections: () => '',
+    detectLuaSection: () => null,
+    parseCssSections: () => ({ sections: [], prefix: '', suffix: '' }),
+    combineCssSections: () => '',
+    detectCssSectionInline: () => null,
+    detectCssBlockOpen: () => false,
+    detectCssBlockClose: () => false,
+    ...overrides,
+  });
+}
+
+export function createLegacyTestApiServer(testDir: string) {
+  return (
+    currentData: SearchFixture | CharxData | null,
+    referenceFiles: Array<{ id?: string; fileName: string; filePath?: string; data: SearchFixture | CharxData }> = [],
+    skillRoots?: string | string[],
+    overrides?: TestDepsOverrides,
+  ) =>
+    startLegacyTestApiServer(currentData, referenceFiles, skillRoots, {
+      userDataPath: path.join(testDir, 'user-data'),
+      ...overrides,
+    });
 }
 
 export async function postJson<T>(

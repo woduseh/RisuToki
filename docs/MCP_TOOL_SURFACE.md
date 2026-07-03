@@ -29,7 +29,7 @@ If this file and code diverge, the TypeScript source wins.
 - Agents should treat larger `artifacts.byte_size` values as a cue to keep follow-up reads narrow: search first, then read ranges/items/sections instead of broad dumps.
 - High-traffic tools may return narrower per-tool `next_actions` than the family default; trust the response metadata first, then fall back to the family map when no override is present.
 - `tools/list` exposes additive per-tool `_meta` for agent planning: every tool includes `risutoki/family`, legacy `risutoki/staleGuards`, and structured `risutoki/staleGuardDetails`; mutation-capable tools also include `risutoki/requiresConfirmation` and `risutoki/supportsDryRun`. Use these to choose family-specific workflows, carry stale guards, prefer preview-first routes when available, and anticipate approval pauses before mutating.
-- `tools/list` also exposes additive taxonomy preference/profile metadata: preferred facade/catalog tools use `risutoki/recommendation=preferred`, granular escape hatches use `advanced`, and retained compatibility routes use `legacy`. Current legacy recommendations include `load_guidance`, `session_status`, `list_references`, `probe_*`, `read_reference_*` / `list_reference_*`, and facade-covered indexed mutation variants. Every tool reports `risutoki/profiles` plus `risutoki/defaultProfile=facade-first`.
+- `tools/list` also exposes additive taxonomy preference/profile metadata: preferred facade/catalog tools use `risutoki/recommendation=preferred`, granular escape hatches use `advanced`, and retained compatibility routes use `legacy`. The exact 51-tool legacy inventory and its Stage-1 evidence status are recorded below; `load_guidance` is the one compatibility-facade exception and the other 50 entries are granular routes. Every tool reports `risutoki/profiles` plus `risutoki/defaultProfile=facade-first`.
 - `tools/list` and `list_tool_profiles` also expose additive `risutoki/workflowStages` metadata. Stage meanings are: `discover` for routing/catalog/list/session preflight, `read` for bounded content retrieval, `search` for query-based retrieval, `validate` for validators/diffs/simulators, `preview` for dry-run or preview-token generation, and `apply` for state-changing operations. Plan task order as **discover -> read/search -> validate/preview -> apply -> validate**; the final validation is a repeated workflow step using validators or focused reads, not a duplicated metadata value.
 - `risutoki/staleGuardDetails` describes each guard with `name`, `payloadPath`, `sourceOperations`, `sourceResultPath`, retry guidance, and (for aligned batch arrays or nested batch payloads) `alignedWithPath`. Prefer this structured metadata over guessing from the flat guard-name list; keep using `risutoki/staleGuards` only for backward-compatible clients.
 - Structured item mutation tools accept additive stale-target guards across the structured families: carry the latest `id` for `.risup` prompt items and lorebook entries when available, the latest regex/greeting `identity` / `hash` when available, the latest `comment` into `expected_comment` for index-based lorebook/regex/trigger writes/deletes, the latest `preview` into `expected_preview` or `expected_previews` for greeting writes/deletes, and the latest `type` / `preview` into `expected_type` / `expected_preview` for risup prompt-item writes/deletes. Mismatches fail with `409` plus family-specific `details.expected_*` / `details.actual_*` fields instead of silently touching the wrong entry.
@@ -105,12 +105,92 @@ Agents should still choose granular tools when one of these criteria is true:
 
 ### Deprecation stages and compatibility window
 
-| Stage                               | Metadata/profile signal                                                                                                                                                       | Agent behavior                                                                                          | Removal readiness                                                                                                              |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Stage 0 — additive facade (current) | Facade tools advertise `risutoki/surfaceKind=facade` and `risutoki/recommendation=preferred`; granular tools default to `surfaceKind=granular` and `recommendation=advanced`. | Prefer first-wave facade rows for new workflows; keep granular routes for criteria above.               | Not removable. Granular tools are required for unsupported operations and backward compatibility.                              |
-| Stage 1 — soft legacy               | Covered granular routes may move from `recommendation=advanced` to `recommendation=legacy` after parity evidence exists.                                                      | New prompts should avoid legacy-covered routes unless a legacy-use criterion is documented in the task. | Only routes with facade parity, eval coverage, and migration docs can be marked soft legacy.                                   |
-| Stage 2 — warning window            | Tool descriptions or metadata may emit deprecation hints while tools still function.                                                                                          | Clients should log/update workflows and keep fallback tests until replacements are verified.            | Requires at least one release cycle with warnings and no uncovered first-party usage.                                          |
-| Stage 3 — removal candidate         | Covered routes are no longer required by first-party docs, skills, evals, or smoke tests.                                                                                     | Use facade only, except for explicitly retained advanced tools outside the covered matrix.              | Removal requires coordinator approval, changelog/release notes, migration notes, and passing full MCP/doc-drift/eval coverage. |
+| Stage                                      | Metadata/profile signal                                                                                                                                                       | Agent behavior                                                                                                                      | Removal readiness                                                                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Stage 0 — additive facade (baseline)       | Facade tools advertise `risutoki/surfaceKind=facade` and `risutoki/recommendation=preferred`; granular tools default to `surfaceKind=granular` and `recommendation=advanced`. | Prefer first-wave facade rows for new workflows; keep granular routes for criteria above.                                           | Not removable. Granular tools are required for unsupported operations and backward compatibility.                              |
+| Stage 1 — soft legacy (entered 2026-07-03) | The 51-entry inventory below emits `recommendation=legacy`; facade parity, declared eval mapping, migration docs, and the measured 12-scenario replay are recorded.           | Continue facade-first routing. Treat listed routes as compatibility paths, while retaining them for documented legacy-use criteria. | Soft-legacy evidence is complete; no warning text, profile removal, or tool removal is implied.                                |
+| Stage 2 — warning window                   | Tool descriptions or metadata may emit deprecation hints while tools still function.                                                                                          | Clients should log/update workflows and keep fallback tests until replacements are verified.                                        | Requires at least one release cycle with warnings and no uncovered first-party usage.                                          |
+| Stage 3 — removal candidate                | Covered routes are no longer required by first-party docs, skills, evals, or smoke tests.                                                                                     | Use facade only, except for explicitly retained advanced tools outside the covered matrix.                                          | Removal requires coordinator approval, changelog/release notes, migration notes, and passing full MCP/doc-drift/eval coverage. |
+
+### Stage-1 soft-legacy inventory and evidence
+
+Static taxonomy state exposes **51** tools with `risutoki/recommendation=legacy`: **50 granular routes** plus the pre-existing `load_guidance` compatibility facade. These metadata values were already present in HEAD before the Stage-1 documentation/evidence alignment; this pass records the inventory and evidence rather than claiming to have introduced the metadata.
+
+Stage 1 entered soft legacy on **2026-07-03** after `npm run test:evals:replay` completed **12/12 scenarios** and **35/35 replayable tasks** in **29,521 ms**. `routeAccuracy`, `firstPassSuccess`, `validationCoverage`, and `boundedReadCoverage` were all **1.0**, with `wrongTargetIncidents` at **0**.
+
+`load_guidance` is the sole exception to the granular parity rule. It was already a compatibility facade outside the default profile and delegates to bootstrap-capable `list_skills` / `read_skill`; it therefore stays in the inventory without claiming a granular-route replay migration.
+
+The following marker-delimited list is canonical for the documentation gate in `mcp-tool-taxonomy.test.ts`.
+
+<!-- stage1-legacy-inventory:start -->
+
+- `batch_delete_lorebook`
+- `batch_delete_risup_prompt_items`
+- `delete_greeting`
+- `delete_lorebook`
+- `delete_regex`
+- `delete_risup_prompt_item`
+- `list_reference_css`
+- `list_reference_greetings`
+- `list_reference_lorebook`
+- `list_reference_lua`
+- `list_reference_regex`
+- `list_reference_risup_prompt_items`
+- `list_reference_triggers`
+- `list_references`
+- `load_guidance`
+- `probe_css`
+- `probe_field`
+- `probe_field_batch`
+- `probe_greetings`
+- `probe_lorebook`
+- `probe_lua`
+- `probe_regex`
+- `probe_risup_formating_order`
+- `probe_risup_prompt_items`
+- `probe_triggers`
+- `read_reference_css`
+- `read_reference_css_batch`
+- `read_reference_field`
+- `read_reference_field_batch`
+- `read_reference_field_range`
+- `read_reference_greeting`
+- `read_reference_greeting_batch`
+- `read_reference_lorebook`
+- `read_reference_lorebook_batch`
+- `read_reference_lua`
+- `read_reference_lua_batch`
+- `read_reference_regex`
+- `read_reference_regex_batch`
+- `read_reference_risup_formating_order`
+- `read_reference_risup_prompt_item`
+- `read_reference_risup_prompt_item_batch`
+- `read_reference_trigger`
+- `read_reference_trigger_batch`
+- `reorder_risup_prompt_items`
+- `session_status`
+- `write_greeting`
+- `write_lorebook`
+- `write_lorebook_batch`
+- `write_regex`
+- `write_risup_prompt_item`
+- `write_risup_prompt_item_batch`
+<!-- stage1-legacy-inventory:end -->
+
+Declared evidence maps the inventory to implemented first-wave rows and the current 35 replayable workflow tasks. The scenario ids below are the canonical routes included in the successful 2026-07-03 measured run.
+
+| Inventory slice                                                                                                                                         | First-wave matrix row                                                                       | Representative workflow task ids                                                                                                                     | Declared replay scenario ids                                         | Evidence state                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `load_guidance`                                                                                                                                         | Profile/bootstrap contract; compatibility-facade exception                                  | Static skill bootstrap and guidance-target guards                                                                                                    | Not applicable — delegates to `list_skills` / `read_skill`           | Inventory documented; no granular migration claim                                                                          |
+| `session_status`                                                                                                                                        | `session_status` before reads/writes                                                        | `charx-metadata-description-read`, `charx-open-file-facade`                                                                                          | `active-external-reference-routing`, `no-file-open-workflow`         | Verified in the 2026-07-03 measured replay                                                                                 |
+| `probe_field`, `probe_field_batch`                                                                                                                      | External field reads through `read_content`                                                 | `charx-metadata-description-read`                                                                                                                    | `active-external-reference-routing`                                  | Verified in the 2026-07-03 measured replay                                                                                 |
+| `probe_lorebook`, `probe_regex`, `probe_greetings`, `probe_triggers`, `probe_lua`, `probe_css`                                                          | External structured reads and trigger/Lua/CSS facade reads                                  | `external-charx-structured-item-facade-parity`, `charx-trigger-lua-edit`, `charx-css-section-edit`                                                   | `charx-facade-indexed-mutations`                                     | Verified in the 2026-07-03 measured replay                                                                                 |
+| `probe_risup_prompt_items`, `probe_risup_formating_order`                                                                                               | External `.risup` prompt reads plus formatting-order validation                             | `external-risup-prompt-facade-parity`, `risup-formating-order-edit`                                                                                  | `risup-facade-indexed-mutations`, `risup-formatting-order-authoring` | Verified in the 2026-07-03 measured replay                                                                                 |
+| `write_lorebook`, `write_lorebook_batch`, `delete_lorebook`, `batch_delete_lorebook`                                                                    | Stable/indexed lorebook edits through `preview_edit` / `apply_edit`                         | `charx-lorebook-id-facade-replace`, `external-charx-structured-item-facade-parity`                                                                   | `batch-vs-single-edit`, `charx-facade-indexed-mutations`             | Verified in the 2026-07-03 measured replay                                                                                 |
+| `write_regex`, `delete_regex`                                                                                                                           | Stable/indexed regex edits through `preview_edit` / `apply_edit`                            | `charx-regex-identity-facade-write`, `charx-regex-identity-facade-delete`, `charx-regex-batch-edit`                                                  | `charx-facade-indexed-mutations`                                     | Verified in the 2026-07-03 measured replay                                                                                 |
+| `write_greeting`, `delete_greeting`                                                                                                                     | Stable/indexed greeting edits through `preview_edit` / `apply_edit`                         | `charx-greeting-identity-facade-write`, `charx-greeting-identity-facade-delete`, `charx-greeting-batch-edit`                                         | `charx-facade-indexed-mutations`                                     | Verified in the 2026-07-03 measured replay                                                                                 |
+| `list_references` plus the 25 `list_reference_*` / `read_reference_*` routes in the inventory                                                           | Reference discovery and covered reference reads through `inspect_document` / `read_content` | `charx-metadata-description-read`                                                                                                                    | `active-external-reference-routing`                                  | Verified at the representative reference-target task level; selector breadth remains guarded by request/taxonomy contracts |
+| `write_risup_prompt_item`, `write_risup_prompt_item_batch`, `delete_risup_prompt_item`, `batch_delete_risup_prompt_items`, `reorder_risup_prompt_items` | Stable/indexed prompt edits plus `manage_items` reorder                                     | `risup-prompt-template-id-facade-write`, `risup-prompt-template-id-facade-delete`, `risup-prompt-template-batch-edit`, `external-risup-manage-items` | `risup-facade-indexed-mutations`, `risup-manage-items-workflows`     | Verified in the 2026-07-03 measured replay                                                                                 |
 
 No first-wave granular tool is currently scheduled for removal. Treat this as a migration guide and future fade-out checklist, not as a breaking-change announcement.
 
@@ -119,7 +199,7 @@ No first-wave granular tool is currently scheduled for removal. Treat this as a 
 - **Implemented parity:** first-wave read/search/preview/apply routes plus the `manage_items`, `manage_assets`, and `manage_file` facades compose existing routes where possible and report routed_legacy, touched_targets, guard values/previews, facade bounds/truncation metadata, and facade `next_actions`.
 - **Known gaps:** unsupported batch structured item editors, unsupported trigger/Lua/CSS batch mutations, external block replacement, `.risup` final model-message assembly preview, cross-surface replacement workflows, non-artifact filesystem operations, broad validators without enough selector context, and exact legacy/debug payloads remain outside facade scope.
 - **Follow-up backlog:** extend mutating facade parity into remaining structured families only when preview can show exact insertion/order/file effects and stale guard policy is unambiguous. Until then, keep using granular validators and structured mutation families for unsupported cases.
-- **Test/eval references:** request-shape contract coverage lives in `src/lib/mcp-request-schemas.test.ts`; the declarative workflow catalog and guards live in `test/workflow-eval-catalog.ts` and `src/lib/mcp-agent-workflow-eval.test.ts`; measured canonical stdio replay lives in `test/run-workflow-eval-replay.ts`; taxonomy/profile metadata coverage lives in `src/lib/mcp-tool-taxonomy.test.ts`; doc/tool drift guards live in `src/lib/doc-drift.test.ts`; runtime MCP facade smoke coverage lives in `test/test-mcp-search-all.ts`.
+- **Test/eval references:** request-shape contract coverage lives in `src/lib/mcp-request-schemas.test.ts`; the declarative workflow catalog and guards live in `test/workflow-eval-catalog.ts` and `src/lib/mcp-agent-workflow-eval.test.ts`; measured canonical stdio replay lives in `test/run-workflow-eval-replay.ts`; tools/list and raw HTTP fingerprints live in `test/fixtures/mcp-module-split-contract.json` and are verified by `npm run test:mcp:contracts` (after an intentional contract change, regenerate them with `npm run test:mcp:contracts:update` and record the printed summary in the changelog); taxonomy/profile metadata coverage lives in `src/lib/mcp-tool-taxonomy.test.ts`; doc/tool drift guards live in `src/lib/doc-drift.test.ts`; runtime MCP facade smoke coverage lives in `test/test-mcp-search-all.ts`.
 - **Safe fade-out tracking:** before marking a granular route legacy or removal-candidate, add or update parity tests that compare facade output with the legacy route, keep stale-guard/dry-run coverage, update this matrix, update `skills/using-mcp-tools/SKILL.md`, regenerate skill copies, and run targeted doc-drift/taxonomy/MCP smoke tests.
 
 Agent eval coverage still keeps comparison fixtures for the earlier proposed compact names `mcp_session`, `mcp_read`, and `mcp_edit`; those names remain fixtures only and are not registered MCP tools:

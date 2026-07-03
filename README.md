@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.11.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-1.13.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -59,7 +59,9 @@ npm run start:build  # Rebuild Electron + renderer files, then start the built a
 npm run lint         # ESLint
 npm run typecheck    # Vue + TypeScript type checking
 npm run test:evals   # Deterministic agent/harness eval scenarios, including src/lib/mcp-agent-workflow-eval.test.ts
-npm run test:evals:replay # Measured synthetic workflow replay through MCP stdio
+npm run test:evals:replay # Measured 35-task synthetic workflow replay through MCP stdio
+npm run test:mcp:contracts # Verify tools/list and HTTP contract fingerprints
+npm run test:mcp:contracts:update # Intentionally regenerate contract fingerprints with a change summary
 npm test             # Node regression tests + Vitest
 npm run build        # lint + typecheck + test + Electron + Vite build
 npm run dist:all     # Windows NSIS + portable build
@@ -73,7 +75,7 @@ npm run mcp:standalone -- --file C:\path\to\card.charx --allow-writes
 - `docs/MCP_WORKFLOW.md` — MCP tool selection, read rules, and workflow patterns
 - `docs/MCP_TOOL_SURFACE.md` — MCP tool families, boundaries, and follow-up action map
 - `src/lib/mcp-agent-workflow-eval.test.ts` — Declarative route/safety matrix and documentation guards
-- `test/run-workflow-eval-replay.ts` — Synthetic measured replay for route accuracy, recovery, bounded reads, validation, and final artifact state
+- `test/run-workflow-eval-replay.ts` — Synthetic measured replay covering all 35 replayable workflow tasks across 12 scenarios, including route accuracy, recovery, bounded reads, validation, and final artifact state
 - `docs/MCP_ERROR_CONTRACT.md` — MCP success/error/no-op response contract and agent recovery rules
 - `docs/PROJECT_RULES.md` — Project rules (versioning, CI, and guide locations)
 - `docs/MODULE_MAP.md` — TypeScript source navigation module map

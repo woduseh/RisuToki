@@ -16,7 +16,7 @@ Use the other canonical documents for details owned elsewhere:
 
 If documents overlap, follow the source that owns the concern in this table.
 
-The Vitest matrix keeps declared routes aligned with documentation. `npm run test:evals:replay` separately exercises the canonical workflows through MCP stdio and gates metrics derived from actual responses.
+The Vitest matrix keeps declared routes aligned with documentation. `npm run test:evals:replay` separately exercises all 35 replayable workflow tasks through 12 canonical MCP stdio scenarios and gates metrics derived from actual responses. The 2026-07-03 coverage run completed in 29.521 seconds with every measured ratio at 1.0 and zero wrong-target incidents.
 
 ## 1. Runtime Modes
 

@@ -77,6 +77,17 @@ function getRegisteredToolContractText(name: string): string | undefined {
   return `${block}\n${description}`;
 }
 
+function readDocumentedStageOneLegacyInventory(): { markerFound: boolean; tools: string[] } {
+  const rootDir = path.resolve(__dirname, '../..');
+  const source = fs.readFileSync(path.resolve(rootDir, 'docs/MCP_TOOL_SURFACE.md'), 'utf-8');
+  const section = source.match(/<!-- stage1-legacy-inventory:start -->([\s\S]*?)<!-- stage1-legacy-inventory:end -->/);
+  if (!section) return { markerFound: false, tools: [] };
+  return {
+    markerFound: true,
+    tools: [...section[1].matchAll(/^- `([^`]+)`$/gm)].map((match) => match[1]).sort(),
+  };
+}
+
 const registeredTools = extractRegisteredToolNames();
 const registeredToolBlocks = extractRegisteredToolBlocks();
 const noConfirmationToolSet = new Set<string>(NO_CONFIRMATION_TOOL_NAMES);
@@ -449,6 +460,20 @@ describe('MCP Tool Taxonomy', () => {
         legacy ? 'legacy' : facadeNames.has(name) ? 'preferred' : 'advanced',
       );
     }
+  });
+
+  it('documents every legacy recommendation in the canonical Stage-1 inventory', () => {
+    const documented = readDocumentedStageOneLegacyInventory();
+    const legacyTools = Object.entries(TOOL_TAXONOMY)
+      .filter(([, entry]) => entry.recommendation === 'legacy')
+      .map(([name]) => name)
+      .sort();
+
+    expect(documented.markerFound, 'MCP_TOOL_SURFACE.md should contain the Stage-1 legacy inventory markers').toBe(
+      true,
+    );
+    expect(legacyTools).toHaveLength(51);
+    expect(documented.tools).toEqual(legacyTools);
   });
 
   it('defines facade-first as the registered default with advanced-full as the opt-in escape hatch', () => {

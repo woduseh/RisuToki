@@ -53,7 +53,14 @@ export type CanonicalReplayScenarioId =
   | 'batch-vs-single-edit'
   | 'stale-guard-refresh-retry'
   | 'dry-run-first-destructive-edit'
-  | 'no-file-open-workflow';
+  | 'no-file-open-workflow'
+  | 'charx-facade-indexed-mutations'
+  | 'charx-manage-items-families'
+  | 'risup-facade-indexed-mutations'
+  | 'risup-manage-items-workflows'
+  | 'risup-formatting-order-authoring'
+  | 'risup-project-file-roundtrip'
+  | 'risum-facade-surface-roundtrip';
 
 export interface WorkflowRoute {
   profile: ToolProfile;
@@ -195,6 +202,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['character metadata'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -224,6 +232,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['lorebooks', 'regex scripts', 'alternate greetings'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -255,6 +264,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['alternate greetings', 'group greetings'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -281,6 +291,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['alternate greetings', 'group greetings'],
     editRisk: 'destructive-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -307,6 +318,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['alternate greetings', 'group greetings'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -364,6 +376,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['regex scripts'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -390,6 +403,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['regex scripts'],
     editRisk: 'destructive-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -416,6 +430,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['regex scripts'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -442,6 +457,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['regex scripts'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document', 'list_regex'],
@@ -472,6 +488,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['triggers', 'Lua'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -500,6 +517,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['CSS'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -561,6 +579,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['promptTemplate items'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risup-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -587,6 +606,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['promptTemplate items'],
     editRisk: 'destructive-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risup-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -616,6 +636,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['promptTemplate items'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risup-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -643,6 +664,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['promptTemplate items'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risup-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -674,6 +696,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['promptTemplate items', 'prompt snippets', 'import/export'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risup-manage-items-workflows'],
     route: {
       profile: 'facade-first',
       discover: ['list_tool_profiles', 'inspect_document'],
@@ -702,6 +725,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['lorebooks', 'regex scripts', 'alternate greetings'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-manage-items-families'],
     route: {
       profile: 'facade-first',
       discover: ['list_tool_profiles', 'inspect_document'],
@@ -736,6 +760,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['triggers', 'Lua', 'CSS'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['charx-manage-items-families'],
     route: {
       profile: 'facade-first',
       discover: ['list_tool_profiles', 'inspect_document'],
@@ -772,6 +797,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['promptTemplate items'],
     editRisk: 'read-only',
     execution: 'replayable',
+    replayScenarioIds: ['risup-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['list_tool_profiles', 'inspect_document'],
@@ -798,6 +824,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['formatingOrder'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risup-formatting-order-authoring'],
     route: {
       profile: 'authoring',
       discover: ['inspect_document'],
@@ -825,6 +852,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['toggles'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risup-facade-indexed-mutations'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -851,6 +879,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['prompt snippets'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risup-manage-items-workflows'],
     route: {
       profile: 'facade-first',
       discover: ['list_tool_profiles', 'inspect_document'],
@@ -877,6 +906,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['import/export', 'prompt diffs'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risup-manage-items-workflows'],
     route: {
       profile: 'facade-first',
       discover: ['list_tool_profiles', 'inspect_document'],
@@ -904,6 +934,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['import/export'],
     editRisk: 'destructive-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risup-project-file-roundtrip'],
     route: {
       profile: 'facade-first',
       discover: ['list_tool_profiles', 'inspect_document'],
@@ -932,6 +963,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['module metadata'],
     editRisk: 'read-only',
     execution: 'replayable',
+    replayScenarioIds: ['risum-facade-surface-roundtrip'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -958,6 +990,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['lowLevelAccess behavior'],
     editRisk: 'destructive-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risum-facade-surface-roundtrip'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -984,6 +1017,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['backgroundEmbedding'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risum-facade-surface-roundtrip'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -1010,6 +1044,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['customModuleToggle'],
     editRisk: 'guarded-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risum-facade-surface-roundtrip'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],
@@ -1036,6 +1071,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['assets'],
     editRisk: 'destructive-edit',
     execution: 'replayable',
+    replayScenarioIds: ['risum-facade-surface-roundtrip'],
     route: {
       profile: 'facade-first',
       discover: ['list_tool_profiles', 'inspect_document'],
@@ -1064,6 +1100,7 @@ export const WORKFLOW_EVAL_TASKS = [
     surfaces: ['module-specific surfaces'],
     editRisk: 'read-only',
     execution: 'replayable',
+    replayScenarioIds: ['risum-facade-surface-roundtrip'],
     route: {
       profile: 'facade-first',
       discover: ['inspect_document'],

@@ -9,6 +9,27 @@
 
 ---
 
+## [1.13.0] - 2026-07-03
+
+### Added
+
+- Added `npm run test:mcp:contracts:update` for intentional tools/list and HTTP baseline regeneration with per-profile and per-case byte/status summaries.
+- Expanded measured MCP stdio replay coverage from five canonical tasks to all 35 replayable workflow tasks across 12 synthetic `.charx`, `.risup`, and `.risum` scenarios.
+
+### Changed
+
+- Split the Danbooru engine and all ordered granular MCP registrations out of `toki-mcp-server.ts`, reducing the entrypoint to bootstrap and orchestration while preserving the 191-tool registration order.
+- Split the 320-test MCP API monolith into route-family suites backed by a shared, Vitest-free core harness and isolated per-file temporary workspaces.
+
+### Fixed
+
+- Isolated skill-catalog tests from mutable repository authoring skills by using a fixed test fixture.
+- Decoupled contract fingerprints from evolving replay fixtures so replay coverage additions do not create false public-contract drift.
+
+### Deprecated
+
+- Entered Stage 1 soft legacy for the documented compatibility inventory: `load_guidance`, `session_status`, `list_references`, covered `probe_*` and reference readers, and facade-covered indexed lorebook, regex, greeting, and RISUP prompt mutations. Tools remain available with unchanged schemas, behavior, and profile membership.
+
 ## [1.12.2] - 2026-07-03
 
 ### Changed

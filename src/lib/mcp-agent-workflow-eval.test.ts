@@ -122,11 +122,13 @@ describe('agent eval: real artifact workflow routing matrix', () => {
       },
       { replayable: 0, static: 0, 'app-only': 0 },
     );
+    const replayableTasks = tasks.filter((task) => task.execution === 'replayable');
     const replayScenarioIds = tasks.flatMap((task) => task.replayScenarioIds ?? []);
 
     expect(executionCounts).toEqual({ replayable: 35, static: 4, 'app-only': 0 });
-    expect(new Set(replayScenarioIds).size).toBe(5);
-    expect(replayScenarioIds).toHaveLength(5);
+    expect(replayableTasks.every((task) => (task.replayScenarioIds?.length ?? 0) > 0)).toBe(true);
+    expect(replayScenarioIds).toHaveLength(replayableTasks.length);
+    expect(new Set(replayScenarioIds).size).toBeGreaterThan(5);
     expect(tasks.filter((task) => task.execution === 'static').every((task) => task.family === 'plugin-v3')).toBe(true);
   });
 

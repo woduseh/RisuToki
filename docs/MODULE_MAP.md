@@ -14,7 +14,7 @@ This map is for source navigation. It is not a full API reference.
 - `preload.ts` / `popout-preload.ts` — typed renderer bridges
 - `src/main.ts` — main-window renderer entrypoint
 - `src/popout.ts` — popout renderer entrypoint
-- `toki-mcp-server.ts` — MCP tool registration and transport surface
+- `toki-mcp-server.ts` — MCP tool-registration orchestration and stdio transport entrypoint
 
 ## Integration layers
 
@@ -52,7 +52,14 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-facade-items.ts` — structured collections, script/style items, RISUP prompts, and prompt-snippet facade operations
 - `src/lib/mcp-facade-assets.ts` — active/external asset reads, mutation plans, compression, and guarded apply operations
 - `src/lib/mcp-facade-files.ts` — guarded file, snapshot, lorebook import/export, and project-folder facade operations
+- `src/lib/mcp-danbooru-engine.ts` — local Danbooru tag database, search/validation caches, online fallback, and prompt-guide generation
 - `src/lib/mcp-tool-register-facade.ts` — ordered registration for Facade v1, manage-items, manage-assets, and manage-file tools
+- `src/lib/mcp-tool-register-fields.ts` — ordered field, external-document, surface, search, and session tool registration
+- `src/lib/mcp-tool-register-authoring.ts` — ordered lorebook, regex, greeting, trigger, Lua, and CSS tool registration
+- `src/lib/mcp-tool-register-reference.ts` — ordered reference, asset, project-folder, and skill tool registration
+- `src/lib/mcp-tool-register-validation.ts` — ordered Danbooru and CBS validation tool registration
+- `src/lib/mcp-tool-register-risup.ts` — ordered `.risup` prompt and snippet tool registration
+- `src/lib/mcp-tool-registration.ts` — shared registration dependency and handler result types
 - `src/lib/mcp-proxy-client.ts` — injected localhost HTTP proxy client with structured errors and runtime diagnostics
 - `src/lib/toki-standalone-bootstrap.ts` — standalone argv/env parsing, tool-profile resolution, and headless API startup
 - `src/lib/mcp-response-envelope.ts` — additive success envelope, deterministic `next_actions`, and success-response size metadata
@@ -62,6 +69,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-runtime-contract.ts` — MCP build/runtime metadata and tool-catalog health summaries
 - `src/lib/mcp-request-schemas.ts` — MCP request parameter validation schemas
 - `src/lib/mcp-api-test-harness.ts` — shared MCP HTTP test server harness for route-family tests
+- `src/lib/mcp-api-vitest-helpers.ts` — Vitest-only lifecycle and assertion helpers kept out of the Node contract harness
 - `src/lib/assistant-launch.ts` — assistant process launch flow
 - `src/lib/assistant-prompt.ts` — assistant bootstrap prompt assembly
 - `src/lib/agents-md-manager.ts` — runtime `AGENTS.md` generation

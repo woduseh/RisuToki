@@ -5,6 +5,7 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+import { saveCharx, type CharxData } from '../src/charx-io';
 import {
   closeServer,
   createSearchFixture,
@@ -12,11 +13,13 @@ import {
   type SearchFixture,
 } from '../src/lib/mcp-api-test-harness';
 import { startStandaloneClient } from './mcp-test-client';
-import { createWorkflowEvalFixtures } from './workflow-eval-fixtures';
 
 const BASELINE_PATH = path.join(__dirname, 'fixtures', 'mcp-module-split-contract.json');
 const TOOL_PROFILES = ['facade-first', 'authoring', 'advanced-full', 'readonly'] as const;
 const PRINT_CASE = process.argv.find((arg) => arg.startsWith('--print-case='))?.slice('--print-case='.length);
+const UPDATE_GUIDANCE =
+  'If this contract change is intentional, regenerate the baseline with ' +
+  '`node test/mcp-contract-baseline.js --update` and record the change summary in CHANGELOG.md.';
 
 interface ContractFingerprint {
   rawBytes: number;
@@ -231,8 +234,71 @@ function createRisupContractFixture(): SearchFixture {
   };
 }
 
+function createExternalContractFixture(): { filePath: string; cleanup: () => void } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-contract-external-'));
+  const filePath = path.join(dir, 'external.charx');
+  saveCharx(filePath, {
+    spec: 'chara_card_v3',
+    specVersion: '3.0',
+    name: 'Workflow Replay External',
+    description: 'workflow-replay-external-marker',
+    personality: '',
+    scenario: '',
+    creatorcomment: 'Synthetic workflow replay fixture',
+    tags: ['workflow-replay'],
+    exampleMessage: '',
+    systemPrompt: '',
+    creator: 'RisuToki',
+    characterVersion: '1.0.0',
+    nickname: '',
+    source: [],
+    creationDate: 0,
+    modificationDate: 0,
+    additionalText: '',
+    license: '',
+    firstMessage: 'Workflow replay hello.',
+    alternateGreetings: ['Workflow replay alternate hello.'],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {
+        extensions: { risuai: {} },
+        character_book: { entries: [] },
+        assets: [],
+      },
+    },
+    _moduleData: null,
+    _presetData: null,
+  } as CharxData);
+
+  return {
+    filePath,
+    cleanup: () => {
+      const resolvedDir = path.resolve(dir);
+      assert.ok(
+        resolvedDir.startsWith(`${path.resolve(os.tmpdir())}${path.sep}`),
+        'Refusing to clean an external contract fixture outside os.tmpdir()',
+      );
+      fs.rmSync(resolvedDir, { recursive: true, force: true });
+    },
+  };
+}
+
 async function captureHttp(): Promise<ContractBaseline['http']> {
-  const workflowFixtures = createWorkflowEvalFixtures();
+  const externalFixture = createExternalContractFixture();
   const charxCases: HttpCase[] = [
     { id: 'fields-list', method: 'GET', path: '/fields', expectedStatus: 200 },
     { id: 'field-read', method: 'GET', path: '/field/description', expectedStatus: 200 },
@@ -270,7 +336,7 @@ async function captureHttp(): Promise<ContractBaseline['http']> {
       method: 'POST',
       path: '/external/inspect',
       expectedStatus: 200,
-      body: { file_path: workflowFixtures.externalCharx },
+      body: { file_path: externalFixture.filePath },
       normalize: normalizeDynamicExternalValues,
     },
   ];
@@ -324,7 +390,7 @@ async function captureHttp(): Promise<ContractBaseline['http']> {
     }
     return result;
   } finally {
-    workflowFixtures.cleanup();
+    externalFixture.cleanup();
   }
 }
 
@@ -347,6 +413,38 @@ function verifyBaseline(actual: ContractBaseline, expected: ContractBaseline): v
   }
 }
 
+function formatByteChange(previous: number | undefined, next: number | undefined): string {
+  if (previous === undefined) return `added at ${next} bytes`;
+  if (next === undefined) return `removed (was ${previous} bytes)`;
+  const delta = next - previous;
+  return `${previous} -> ${next} bytes (${delta >= 0 ? '+' : ''}${delta})`;
+}
+
+function summarizeBaselineChanges(actual: ContractBaseline, expected: ContractBaseline): string[] {
+  const changes: string[] = [];
+  for (const profile of TOOL_PROFILES) {
+    const previous = expected.toolsList[profile];
+    const next = actual.toolsList[profile];
+    if (JSON.stringify(previous) === JSON.stringify(next)) continue;
+    const toolCountChange =
+      previous?.toolCount === next?.toolCount
+        ? ''
+        : `; tools ${previous?.toolCount ?? 'n/a'} -> ${next?.toolCount ?? 'n/a'}`;
+    changes.push(`tools/list ${profile}: ${formatByteChange(previous?.rawBytes, next?.rawBytes)}${toolCountChange}`);
+  }
+
+  const httpCaseIds = new Set([...Object.keys(expected.http), ...Object.keys(actual.http)]);
+  for (const id of httpCaseIds) {
+    const previous = expected.http[id];
+    const next = actual.http[id];
+    if (JSON.stringify(previous) === JSON.stringify(next)) continue;
+    const statusChange =
+      previous?.status === next?.status ? '' : `; status ${previous?.status ?? 'n/a'} -> ${next?.status ?? 'n/a'}`;
+    changes.push(`HTTP ${id}: ${formatByteChange(previous?.rawBytes, next?.rawBytes)}${statusChange}`);
+  }
+  return changes;
+}
+
 async function main(): Promise<void> {
   const actual = await captureBaseline();
   if (process.argv.includes('--print')) {
@@ -355,7 +453,23 @@ async function main(): Promise<void> {
   }
 
   const expected = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8')) as ContractBaseline;
-  verifyBaseline(actual, expected);
+  if (process.argv.includes('--update')) {
+    const changes = summarizeBaselineChanges(actual, expected);
+    fs.writeFileSync(BASELINE_PATH, `${JSON.stringify(actual, null, 2)}\n`, 'utf8');
+    process.stdout.write(
+      changes.length === 0
+        ? `MCP contract baseline updated with no fingerprint changes (${BASELINE_PATH})\n`
+        : `MCP contract baseline updated (${BASELINE_PATH}):\n${changes.map((change) => `- ${change}`).join('\n')}\n`,
+    );
+    return;
+  }
+
+  try {
+    verifyBaseline(actual, expected);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${message}\n${UPDATE_GUIDANCE}`);
+  }
   process.stdout.write(
     `MCP contract baseline passed (${TOOL_PROFILES.length} profiles, ${Object.keys(actual.http).length} HTTP cases)\n`,
   );

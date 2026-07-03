@@ -21,7 +21,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 - **`docs/MCP_TOOL_SURFACE.md`** — profile, facade coverage, MCP family, tool-boundary, and metadata contracts
 - **`docs/MCP_ERROR_CONTRACT.md`** — success / error / no-op response contracts and the recovery playbook
 - **`src/lib/mcp-agent-workflow-eval.test.ts`** — declarative workflow matrix, coverage invariants, optional local-corpus checks, and documentation guards
-- **`test/run-workflow-eval-replay.ts`** — deterministic synthetic MCP stdio replay with measured route, recovery, validation, bounded-read, and final-artifact gates
+- **`test/run-workflow-eval-replay.ts`** — deterministic synthetic MCP stdio replay covering all 35 replayable tasks across 12 scenarios, with measured route, recovery, validation, bounded-read, and final-artifact gates
 - **`docs/PROJECT_RULES.md`** — versioning, CI/release workflow, and guide locations
 - **`docs/MODULE_MAP.md`** — source navigation map for the active TypeScript codebase
 - **`docs/analysis/ARCHITECTURE.md`** — **canonical** TypeScript runtime architecture, process boundaries, ownership rules, and large-module hotspots
@@ -34,7 +34,8 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 - Built-in authoring docs live under `risu/common/docs/` and `risu/{bot,prompts,modules,plugins}/docs/`.
 - Success envelopes expose `artifacts.byte_size`; use it as a context-budget cue before asking for adjacent content.
 - `npm run test:evals` runs the deterministic static harness scenarios and declarative workflow matrix.
-- `npm run test:evals:replay` builds the MCP server and runs the measured canonical workflow replay against synthetic artifacts.
+- `npm run test:evals:replay` builds the MCP server and runs the measured 35-task canonical workflow replay against synthetic artifacts.
+- `npm run test:mcp:contracts` verifies tools/list and HTTP fingerprints; use `npm run test:mcp:contracts:update` only for an intentional contract change and review its change summary.
 - `guides/` is the default writable guide location for imported/user-created guide files and may be empty in the repo.
 - When both `.ts` and `.js` siblings exist under `src/lib/`, prefer the `.ts` source. The `.js` file is generated output.
 - When a `.test.ts` sits next to a module, treat it as the nearest executable behavior spec.
