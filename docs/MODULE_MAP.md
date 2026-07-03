@@ -44,6 +44,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-facade-items.ts` — structured collections, script/style items, RISUP prompts, and prompt-snippet facade operations
 - `src/lib/mcp-facade-assets.ts` — active/external asset reads, mutation plans, compression, and guarded apply operations
 - `src/lib/mcp-facade-files.ts` — guarded file, snapshot, lorebook import/export, and project-folder facade operations
+- `src/lib/mcp-tool-register-facade.ts` — ordered registration for Facade v1, manage-items, manage-assets, and manage-file tools
 - `src/lib/mcp-proxy-client.ts` — injected localhost HTTP proxy client with structured errors and runtime diagnostics
 - `src/lib/toki-standalone-bootstrap.ts` — standalone argv/env parsing, tool-profile resolution, and headless API startup
 - `src/lib/mcp-response-envelope.ts` — additive success envelope, deterministic `next_actions`, and success-response size metadata

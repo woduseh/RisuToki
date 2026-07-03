@@ -856,3 +856,5 @@ export function createFacadeFilesEngine({
     applyManageFileOperation,
   };
 }
+
+export type FacadeFilesEngine = ReturnType<typeof createFacadeFilesEngine>;

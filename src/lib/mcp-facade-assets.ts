@@ -1509,3 +1509,5 @@ export function createFacadeAssetsEngine({
     applyManageAssetsOperation,
   };
 }
+
+export type FacadeAssetsEngine = ReturnType<typeof createFacadeAssetsEngine>;
