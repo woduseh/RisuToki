@@ -2268,3 +2268,5 @@ export function createFacadeItemsEngine(apiRequest: FacadeApiRequest, scriptStyl
     applyManageItemsOperation,
   };
 }
+
+export type FacadeItemsEngine = ReturnType<typeof createFacadeItemsEngine>;
