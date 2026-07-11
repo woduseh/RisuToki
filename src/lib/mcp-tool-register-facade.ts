@@ -106,6 +106,7 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
   const {
     analyzeFacadeOperation,
     applyEditPostEditMetadata,
+    boundFacadePayload,
     facadeEnvelope,
     readFacadeSelector,
     referenceEntriesFromResponse,
@@ -763,34 +764,42 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
         expiresAtMs,
       });
       return textResult(
-        mcpSuccess(
-          {
-            facade: {
-              contract: FACADE_V1_CONTRACT_ID,
-              version: 'v1',
-              tool: 'preview_edit',
-              mutability: 'preview',
-              target,
-              ...(max_bytes ? { max_bytes } : {}),
+        boundFacadePayload(
+          mcpSuccess(
+            {
+              facade: {
+                contract: FACADE_V1_CONTRACT_ID,
+                version: 'v1',
+                tool: 'preview_edit',
+                mutability: 'preview',
+                target,
+                ...(max_bytes ? { max_bytes } : {}),
+              },
+              result: {
+                previews,
+                routed_legacy: routes,
+                touched_targets: touchedTargets,
+                guard_values: requiredGuards,
+              },
+              preview: {
+                preview_token: token,
+                operation_digest: digest,
+                expires_at: new Date(expiresAtMs).toISOString(),
+                required_guards: requiredGuards,
+              },
             },
-            result: { previews, routed_legacy: routes, touched_targets: touchedTargets, guard_values: requiredGuards },
-            preview: {
-              preview_token: token,
-              operation_digest: digest,
-              expires_at: new Date(expiresAtMs).toISOString(),
-              required_guards: requiredGuards,
+            {
+              toolName: 'preview_edit',
+              summary: `Previewed ${operations.length} facade edit operation(s)`,
+              nextActions: ['apply_edit', 'read_content'],
+              artifacts: {
+                count: operations.length,
+                routed_tools: routes.map((entry) => entry.tool),
+                touched_targets: touchedTargets,
+              },
             },
-          },
-          {
-            toolName: 'preview_edit',
-            summary: `Previewed ${operations.length} facade edit operation(s)`,
-            nextActions: ['apply_edit', 'read_content'],
-            artifacts: {
-              count: operations.length,
-              routed_tools: routes.map((entry) => entry.tool),
-              touched_targets: touchedTargets,
-            },
-          },
+          ),
+          max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
         ),
       );
     }),
@@ -885,7 +894,7 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
             touched_targets: touchedTargets,
             ...postEdit.artifacts,
           },
-          max_bytes,
+          max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
         ),
       );
     }),
@@ -945,7 +954,7 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
                 routed_tools: read.routes.map((entry) => entry.tool),
                 touched_targets: read.touched,
               },
-              max_bytes,
+              max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
             ),
           );
         }
@@ -973,41 +982,44 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
             expiresAtMs,
           });
           return textResult(
-            mcpSuccess(
-              {
-                facade: {
-                  contract: FACADE_V1_CONTRACT_ID,
-                  version: 'v1',
-                  tool: 'manage_items',
-                  mutability: 'preview',
-                  target,
-                  family,
-                  ...(max_bytes ? { max_bytes } : {}),
+            boundFacadePayload(
+              mcpSuccess(
+                {
+                  facade: {
+                    contract: FACADE_V1_CONTRACT_ID,
+                    version: 'v1',
+                    tool: 'manage_items',
+                    mutability: 'preview',
+                    target,
+                    family,
+                    ...(max_bytes ? { max_bytes } : {}),
+                  },
+                  result: {
+                    ...preview.result,
+                    routed_legacy: preview.routes,
+                    touched_targets: preview.touched,
+                    guard_values: preview.requiredGuards,
+                  },
+                  preview: {
+                    preview_token: token,
+                    operation_digest: digest,
+                    expires_at: new Date(expiresAtMs).toISOString(),
+                    required_guards: preview.requiredGuards,
+                  },
                 },
-                result: {
-                  ...preview.result,
-                  routed_legacy: preview.routes,
-                  touched_targets: preview.touched,
-                  guard_values: preview.requiredGuards,
+                {
+                  toolName: 'manage_items',
+                  summary: `Previewed manage_items ${family} ${operation.action}`,
+                  nextActions: ['manage_items', 'read_content', 'validate_content'],
+                  artifacts: {
+                    family,
+                    action: operation.action,
+                    routed_tools: preview.routes.map((entry) => entry.tool),
+                    touched_targets: preview.touched,
+                  },
                 },
-                preview: {
-                  preview_token: token,
-                  operation_digest: digest,
-                  expires_at: new Date(expiresAtMs).toISOString(),
-                  required_guards: preview.requiredGuards,
-                },
-              },
-              {
-                toolName: 'manage_items',
-                summary: `Previewed manage_items ${family} ${operation.action}`,
-                nextActions: ['manage_items', 'read_content', 'validate_content'],
-                artifacts: {
-                  family,
-                  action: operation.action,
-                  routed_tools: preview.routes.map((entry) => entry.tool),
-                  touched_targets: preview.touched,
-                },
-              },
+              ),
+              max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
             ),
           );
         }
@@ -1053,9 +1065,9 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
             ),
           );
         }
+        manageItemsPreviewStore.delete(preview_token);
         const applied = await applyManageItemsOperation(target, entry.family, entry.operation, guard_values);
         if (isApiError(applied)) return textResult(applied);
-        manageItemsPreviewStore.delete(preview_token);
         return textResult(
           facadeEnvelope(
             'manage_items',
@@ -1078,7 +1090,7 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
               routed_tools: applied.routes.map((routeEntry) => routeEntry.tool),
               touched_targets: applied.touched,
             },
-            max_bytes,
+            max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
           ),
         );
       },
@@ -1147,7 +1159,7 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
                 routed_tools: read.routes.map((entry) => entry.tool),
                 touched_targets: read.touched,
               },
-              body.max_bytes,
+              body.max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
             ),
           );
         }
@@ -1170,41 +1182,44 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
             expiresAtMs,
           });
           return textResult(
-            mcpSuccess(
-              {
-                facade: {
-                  contract: FACADE_V1_CONTRACT_ID,
-                  version: 'v1',
-                  tool: 'manage_assets',
-                  mutability: 'preview',
-                  target: body.target,
-                  asset_family: requestedFamily,
-                  ...(body.max_bytes ? { max_bytes: body.max_bytes } : {}),
+            boundFacadePayload(
+              mcpSuccess(
+                {
+                  facade: {
+                    contract: FACADE_V1_CONTRACT_ID,
+                    version: 'v1',
+                    tool: 'manage_assets',
+                    mutability: 'preview',
+                    target: body.target,
+                    asset_family: requestedFamily,
+                    ...(body.max_bytes ? { max_bytes: body.max_bytes } : {}),
+                  },
+                  result: {
+                    ...preview.result,
+                    routed_legacy: preview.routes,
+                    touched_targets: preview.touched,
+                    guard_values: preview.requiredGuards,
+                  },
+                  preview: {
+                    preview_token: token,
+                    operation_digest: digest,
+                    expires_at: new Date(expiresAtMs).toISOString(),
+                    required_guards: preview.requiredGuards,
+                  },
                 },
-                result: {
-                  ...preview.result,
-                  routed_legacy: preview.routes,
-                  touched_targets: preview.touched,
-                  guard_values: preview.requiredGuards,
+                {
+                  toolName: 'manage_assets',
+                  summary: `Previewed manage_assets ${preview.result.family ?? requestedFamily} ${body.operation!.action}`,
+                  nextActions: ['manage_assets', 'read_content', 'validate_content'],
+                  artifacts: {
+                    family: preview.result.family ?? requestedFamily,
+                    action: body.operation!.action,
+                    routed_tools: preview.routes.map((entry) => entry.tool),
+                    touched_targets: preview.touched,
+                  },
                 },
-                preview: {
-                  preview_token: token,
-                  operation_digest: digest,
-                  expires_at: new Date(expiresAtMs).toISOString(),
-                  required_guards: preview.requiredGuards,
-                },
-              },
-              {
-                toolName: 'manage_assets',
-                summary: `Previewed manage_assets ${preview.result.family ?? requestedFamily} ${body.operation!.action}`,
-                nextActions: ['manage_assets', 'read_content', 'validate_content'],
-                artifacts: {
-                  family: preview.result.family ?? requestedFamily,
-                  action: body.operation!.action,
-                  routed_tools: preview.routes.map((entry) => entry.tool),
-                  touched_targets: preview.touched,
-                },
-              },
+              ),
+              body.max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
             ),
           );
         }
@@ -1232,6 +1247,7 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
             ),
           );
         }
+        manageAssetsPreviewStore.delete(body.preview_token!);
         const applied = await applyManageAssetsOperation(
           body.target,
           entry.assetFamily ?? 'auto',
@@ -1239,7 +1255,6 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
           body.guard_values,
         );
         if (isApiError(applied)) return textResult(applied);
-        manageAssetsPreviewStore.delete(body.preview_token!);
         return textResult(
           facadeEnvelope(
             'manage_assets',
@@ -1262,7 +1277,7 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
               routed_tools: applied.routes.map((routeEntry) => routeEntry.tool),
               touched_targets: applied.touched,
             },
-            body.max_bytes,
+            body.max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
           ),
         );
       },
@@ -1328,7 +1343,7 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
                 routed_tools: read.routes.map((entry) => entry.tool),
                 touched_targets: read.touched,
               },
-              body.max_bytes,
+              body.max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
             ),
           );
         }
@@ -1350,39 +1365,42 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
             expiresAtMs,
           });
           return textResult(
-            mcpSuccess(
-              {
-                facade: {
-                  contract: FACADE_V1_CONTRACT_ID,
-                  version: 'v1',
-                  tool: 'manage_file',
-                  mutability: 'preview',
-                  target: body.target,
-                  ...(body.max_bytes ? { max_bytes: body.max_bytes } : {}),
+            boundFacadePayload(
+              mcpSuccess(
+                {
+                  facade: {
+                    contract: FACADE_V1_CONTRACT_ID,
+                    version: 'v1',
+                    tool: 'manage_file',
+                    mutability: 'preview',
+                    target: body.target,
+                    ...(body.max_bytes ? { max_bytes: body.max_bytes } : {}),
+                  },
+                  result: {
+                    ...preview.result,
+                    routed_legacy: preview.routes,
+                    touched_targets: preview.touched,
+                    guard_values: preview.requiredGuards,
+                  },
+                  preview: {
+                    preview_token: token,
+                    operation_digest: digest,
+                    expires_at: new Date(expiresAtMs).toISOString(),
+                    required_guards: preview.requiredGuards,
+                  },
                 },
-                result: {
-                  ...preview.result,
-                  routed_legacy: preview.routes,
-                  touched_targets: preview.touched,
-                  guard_values: preview.requiredGuards,
+                {
+                  toolName: 'manage_file',
+                  summary: `Previewed manage_file ${body.operation!.action}`,
+                  nextActions: ['manage_file', 'inspect_document'],
+                  artifacts: {
+                    action: body.operation!.action,
+                    routed_tools: preview.routes.map((entry) => entry.tool),
+                    touched_targets: preview.touched,
+                  },
                 },
-                preview: {
-                  preview_token: token,
-                  operation_digest: digest,
-                  expires_at: new Date(expiresAtMs).toISOString(),
-                  required_guards: preview.requiredGuards,
-                },
-              },
-              {
-                toolName: 'manage_file',
-                summary: `Previewed manage_file ${body.operation!.action}`,
-                nextActions: ['manage_file', 'inspect_document'],
-                artifacts: {
-                  action: body.operation!.action,
-                  routed_tools: preview.routes.map((entry) => entry.tool),
-                  touched_targets: preview.touched,
-                },
-              },
+              ),
+              body.max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
             ),
           );
         }
@@ -1406,9 +1424,9 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
             ),
           );
         }
+        manageFilePreviewStore.delete(body.preview_token!);
         const applied = await applyManageFileOperation(body.target, entry.operation, body.guard_values);
         if (isApiError(applied)) return textResult(applied);
-        manageFilePreviewStore.delete(body.preview_token!);
         return textResult(
           facadeEnvelope(
             'manage_file',
@@ -1429,7 +1447,7 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
               routed_tools: applied.routes.map((routeEntry) => routeEntry.tool),
               touched_targets: applied.touched,
             },
-            body.max_bytes,
+            body.max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
           ),
         );
       },

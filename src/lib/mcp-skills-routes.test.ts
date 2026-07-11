@@ -74,6 +74,7 @@ related_tools: ["list_lorebook", "read_lorebook"]
           tags: string[];
           relatedTools: string[];
           files: string[];
+          scope: string;
         }>;
       }>(api.port, api.token, '/skills');
 
@@ -86,6 +87,7 @@ related_tools: ["list_lorebook", "read_lorebook"]
           tags: ['reference', 'metadata'],
           relatedTools: ['list_lorebook', 'read_lorebook'],
           files: ['REFERENCE.md', 'SKILL.md'],
+          scope: 'product',
         },
       ]);
     } finally {
@@ -117,6 +119,7 @@ description: 'Minimal frontmatter'
           tags: string[];
           relatedTools: string[];
           files: string[];
+          scope: string;
         }>;
       }>(api.port, api.token, '/skills');
 
@@ -128,6 +131,7 @@ description: 'Minimal frontmatter'
           tags: [],
           relatedTools: [],
           files: ['SKILL.md'],
+          scope: 'product',
         },
       ]);
     } finally {
@@ -161,6 +165,7 @@ related_tools: ['search_all_fields', 'write_field_batch']
           tags: string[];
           relatedTools: string[];
           files: string[];
+          scope: string;
         }>;
       }>(api.port, api.token, '/skills');
 
@@ -172,6 +177,7 @@ related_tools: ['search_all_fields', 'write_field_batch']
           tags: ['workflow', 'metadata'],
           relatedTools: ['search_all_fields', 'write_field_batch'],
           files: ['SKILL.md'],
+          scope: 'product',
         },
       ]);
     } finally {

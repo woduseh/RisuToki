@@ -8,7 +8,7 @@ Skill documents for agents working on **the RisuToki editor itself** — MCP wor
 
 | Skill                                 | Description                                                                                 | Files                                                   |
 | ------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| [project-workflow](project-workflow/) | Project rules, MCP workflow, and agent onboarding guide                                     | `SKILL.md` + `MCP_WORKFLOW.md` + `PROJECT_RULES.md`     |
+| [project-workflow](project-workflow/) | Repository code, validation, documentation, versioning, and release workflow                | `SKILL.md` + `MCP_WORKFLOW.md` + `PROJECT_RULES.md`     |
 | [using-mcp-tools](using-mcp-tools/)   | MCP tool choice, batch-safe workflows, unopened-file probe/write routing, and anti-patterns | `SKILL.md` + `TOOL_REFERENCE.md` + `FILE_STRUCTURES.md` |
 
 ## Authoring skills
@@ -28,7 +28,7 @@ Every `SKILL.md` starts with YAML frontmatter.
 ```yaml
 ---
 name: using-mcp-tools
-description: 'Workflow guide for choosing RisuToki MCP tools safely.'
+description: 'Primary skill. Use when choosing RisuToki MCP reads, previews, applies, or validation. Do not use when the task is repository code or release workflow; hand off to project-workflow.'
 tags: ['workflow', 'mcp', 'editing']
 related_tools: ['read_content', 'search_document', 'preview_edit', 'apply_edit', 'read_skill']
 ---
@@ -56,7 +56,7 @@ Every skill should make the first read decisive. Keep `SKILL.md` as the executio
 - Start with an `Agent Operating Contract` containing `Use when`, `Do not use when`, `Read first`, `Load deeper only if`, and `Output/validation contract`.
 - Prefer one primary skill per task. Add shared syntax skills only when the current artifact actually uses that syntax.
 - Put decision boundaries before examples so the model can route without scanning the whole file.
-- End with smoke tests in a table: `Prompt`, `Expected routing`, `Expected output`, `Forbidden behavior`.
+- Keep routing/evaluation cases in deterministic test fixtures, not in the runtime `SKILL.md` context.
 - In `related_tools`, list facade tools first (`inspect_document`, `read_content`, `search_document`, `analyze_content`, `validate_content`, `preview_edit`/`apply_edit`, `manage_items`/`manage_assets`/`manage_file`) and keep only the domain-specific granular tools that remain real fallback surfaces after them — list order signals priority. See `using-mcp-tools` for the facade-first routing contract.
 - Treat large reference files as opt-in depth, not required startup context.
 
@@ -68,9 +68,9 @@ The catalog is **repo-root scoped in this repository**: Copilot CLI, Claude Code
 
 ### For AI assistants
 
-1. Use `list_skills` to discover the unified skill catalog.
-2. Read `SKILL.md` first.
-3. Load auxiliary reference files only when deeper detail is needed.
+1. Let the root or nearest subtree router choose one primary Skill from the client-visible catalog.
+2. If discovery is still needed, call `list_skills` with the current `scopes`, a narrow `query`, and `detail: "summary"`; the no-argument call remains the full compatibility view.
+3. Read that Skill's `SKILL.md` first and load auxiliary references only when its routing rules expose a concrete need.
 
 ### For humans
 

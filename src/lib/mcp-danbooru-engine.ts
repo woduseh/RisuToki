@@ -275,7 +275,7 @@ export function createDanbooruEngine(options: DanbooruEngineOptions) {
     | { status: 'not_found' }
     | { status: 'degraded'; reason: string };
 
-  const danbooruApiValidate = (tagName: string): Promise<DanbooruValidationLookup> => {
+  const danbooruApiValidate = (tagName: string, signal?: AbortSignal): Promise<DanbooruValidationLookup> => {
     const key = `validate:${tagName}`;
     if (apiCache.has(key)) {
       const cached = apiCache.get(key);
@@ -284,7 +284,7 @@ export function createDanbooruEngine(options: DanbooruEngineOptions) {
 
     return new Promise((resolve) => {
       const url = `https://danbooru.donmai.us/tags.json?search%5Bname%5D=${encodeURIComponent(tagName)}&limit=1`;
-      const request = https.get(url, { timeout: 5000 }, (response) => {
+      const request = https.get(url, { timeout: 5000, signal }, (response) => {
         const chunks: string[] = [];
         response.on('data', (chunk: string) => chunks.push(chunk));
         response.on('end', () => {
@@ -328,11 +328,11 @@ export function createDanbooruEngine(options: DanbooruEngineOptions) {
     });
   };
 
-  const danbooruApiSearch = (query: string, limit = 20): Promise<DanbooruTag[]> =>
+  const danbooruApiSearch = (query: string, limit = 20, signal?: AbortSignal): Promise<DanbooruTag[]> =>
     new Promise((resolve) => {
       const nameMatch = query.includes('*') ? query : `*${query}*`;
       const url = `https://danbooru.donmai.us/tags.json?search%5Bname_matches%5D=${encodeURIComponent(nameMatch)}&search%5Border%5D=count&limit=${limit}`;
-      const request = https.get(url, { timeout: 5000 }, (response) => {
+      const request = https.get(url, { timeout: 5000, signal }, (response) => {
         const chunks: string[] = [];
         response.on('data', (chunk: string) => chunks.push(chunk));
         response.on('end', () => {
@@ -364,7 +364,11 @@ export function createDanbooruEngine(options: DanbooruEngineOptions) {
       });
     });
 
-  const validateTags = async (tags: string[], onlineFallback = true): Promise<TagValidationResult[]> => {
+  const validateTags = async (
+    tags: string[],
+    onlineFallback = true,
+    signal?: AbortSignal,
+  ): Promise<TagValidationResult[]> => {
     const results: TagValidationResult[] = [];
     for (const tagName of tags) {
       const normalized = tagName.trim().toLowerCase().replace(/\s+/g, '_');
@@ -381,7 +385,7 @@ export function createDanbooruEngine(options: DanbooruEngineOptions) {
         continue;
       }
       if (onlineFallback) {
-        const onlineLookup = await danbooruApiValidate(normalized);
+        const onlineLookup = await danbooruApiValidate(normalized, signal);
         if (onlineLookup.status === 'found') {
           const onlineTag = onlineLookup.tag;
           results.push({
@@ -416,12 +420,17 @@ export function createDanbooruEngine(options: DanbooruEngineOptions) {
     return results;
   };
 
-  const searchWithOnline = async (query: string, category?: string, limit = 20): Promise<DanbooruTag[]> => {
+  const searchWithOnline = async (
+    query: string,
+    category?: string,
+    limit = 20,
+    signal?: AbortSignal,
+  ): Promise<DanbooruTag[]> => {
     const localResults = searchTags(query, category, limit);
     if (localResults.length >= limit) return localResults;
     try {
       const remaining = limit - localResults.length;
-      const onlineResults = await danbooruApiSearch(query, remaining);
+      const onlineResults = await danbooruApiSearch(query, remaining, signal);
       const localNames = new Set(localResults.map((tag) => tag.name));
       for (const online of onlineResults) {
         if (localNames.has(online.name)) continue;

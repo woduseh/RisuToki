@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { ResolvedSkillRoot } from './content-roots';
+import type { ResolvedSkillRoot, SkillScope } from './content-roots';
 
 export interface SkillCatalogEntry {
   readonly name: string;
   readonly dirPath: string;
   readonly rootPath: string;
   readonly rootRelativePath: string;
+  readonly scope: SkillScope;
   readonly files: string[];
 }
 
@@ -40,6 +41,7 @@ export function listSkillCatalogEntries(skillRoots: readonly ResolvedSkillRoot[]
         dirPath,
         rootPath: skillRoot.absolutePath,
         rootRelativePath: skillRoot.relativePath,
+        scope: skillRoot.scope,
         files: getSkillMarkdownFiles(dirPath),
       });
     }

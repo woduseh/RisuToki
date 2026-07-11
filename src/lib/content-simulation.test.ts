@@ -62,6 +62,38 @@ describe('content simulation', () => {
     expect(errors[0].message).toBeTruthy();
   });
 
+  it('stops a lorebook iteration after the request signal is aborted', () => {
+    const controller = new AbortController();
+    expect(() =>
+      matchLorebookEntries(
+        [{ role: 'user', content: 'anything' }],
+        [
+          { key: '[', useRegex: true, content: 'Invalid regex lore' },
+          { key: 'anything', content: 'Must not be inspected' },
+        ],
+        10,
+        {
+          signal: controller.signal,
+          onRegexError: () => controller.abort(),
+        },
+      ),
+    ).toThrow();
+  });
+
+  it('stops a regex iteration when the request was already cancelled', () => {
+    const controller = new AbortController();
+    controller.abort();
+    expect(() =>
+      runRegexPipeline(
+        'alpha',
+        [{ type: 'editinput', comment: 'first', find: 'alpha', replace: 'beta', ableFlag: true, flag: 'g' }],
+        'editinput',
+        undefined,
+        controller.signal,
+      ),
+    ).toThrow();
+  });
+
   it('recursively activates chained entries and terminates cycles', () => {
     const result = simulateLorebookActivation({
       messages: [{ role: 'user', content: 'seed' }],

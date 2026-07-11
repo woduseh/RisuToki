@@ -20,7 +20,7 @@ import {
 } from './risup-prompt-model';
 import { isRisupJsonTextFieldName, validateRisupJsonTextField } from './risup-json-fields';
 import { getRisupPromptSnippetLibraryPath, type RisupPromptSnippet } from './risup-prompt-snippet-store';
-import { errorRecoveryMeta, type McpErrorInfo } from './mcp-response-envelope';
+import { errorRecoveryMeta, normalizeMcpErrorEnvelope, type McpErrorInfo } from './mcp-response-envelope';
 import { cloneJson, normalizeLF } from './shared-utils';
 import { REF_ALLOWED_READ_FIELDS, getGreetingFieldName, getRefFileType } from './reference-shared';
 import {
@@ -359,18 +359,19 @@ export function jsonMcpError(
   broadcastStatus: (payload: Record<string, unknown>) => void,
   error?: unknown,
 ): void {
-  const recovery = errorRecoveryMeta(info.target, status);
-  const payload: Record<string, unknown> = {
+  const payload = normalizeMcpErrorEnvelope({
     action: info.action,
+    code: info.code,
     details: info.details,
     error: info.message,
-    next_actions: recovery.next_actions,
+    outcome: info.outcome,
     rejected: !!info.rejected,
-    retryable: recovery.retryable,
+    retryable: info.retryable,
+    retry_mode: info.retry_mode,
     status,
     suggestion: info.suggestion,
     target: info.target,
-  };
+  });
   const logger = status >= 500 ? console.error : console.warn;
   if (error) {
     logger(`[main][mcp] ${info.action}:`, payload, error);
@@ -394,11 +395,14 @@ export function jsonMcpNoOp(res: http.ServerResponse, info: McpNoOpInfo, extra: 
   jsonRes(res, {
     ...extra,
     action: info.action,
+    code: recovery.code,
     details: info.details,
     error: info.message,
     message: info.message,
     next_actions: recovery.next_actions,
+    outcome: recovery.outcome,
     retryable: false,
+    retry_mode: recovery.retry_mode,
     status: 200,
     success: false,
     suggestion: info.suggestion,

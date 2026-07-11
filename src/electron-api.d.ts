@@ -10,6 +10,7 @@ interface SaveResult {
 }
 
 interface ClaudePromptInfo {
+  artifactType: 'charx' | 'risum' | 'risup' | 'unknown';
   fileName: string;
   name: string;
   stats: string;

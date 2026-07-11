@@ -4,6 +4,8 @@ import * as path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
+import { isStructuredDefaultToolName } from '../src/lib/mcp-compact-input';
+
 export type McpCallJson = Record<string, unknown>;
 
 export interface StandaloneClientRuntime {
@@ -112,5 +114,9 @@ export async function callClientJson(
   } else {
     assert.ok(!result.isError, `${name} should succeed: ${text}`);
   }
-  return JSON.parse(text) as McpCallJson;
+  const parsed = JSON.parse(text) as McpCallJson;
+  if (isStructuredDefaultToolName(name)) {
+    assert.deepEqual(result.structuredContent, parsed, `${name} structuredContent must equal its existing text JSON`);
+  }
+  return parsed;
 }

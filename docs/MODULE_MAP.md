@@ -45,6 +45,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-section-parser.ts` — compatibility re-export of the shared Lua/CSS section parser
 - `src/lib/mcp-tool-taxonomy.ts` — tool-family single source of truth
 - `src/lib/mcp-tool-descriptions.ts` — byte-stable MCP tool description catalog used by `tools/list`
+- `src/lib/mcp-compact-input.ts` — compact public schemas, detailed handler validation, and static `tools/list` byte budgets for the 13 default tools
 - `src/lib/mcp-facade-runtime.ts` — shared facade preview stores, digests, target labels, and API-error helpers
 - `src/lib/mcp-facade-content.ts` — facade reads, validation, analysis, reference routing, and response envelopes
 - `src/lib/mcp-facade-edit.ts` — guarded preview/apply planning for active and external facade edits

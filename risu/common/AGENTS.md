@@ -1,35 +1,17 @@
-# Shared Authoring Syntax — Agent Routing
+# Shared Authoring Syntax — Router
 
-> Thin routing file. Full content lives in the linked skills and docs.
+Choose one primary syntax Skill for the surface being edited:
 
-## What to read / when
+- Exact artifact fields and item shapes: `file-structure-reference`
+- CBS expressions: `writing-cbs-syntax`
+- Lorebook entry syntax: `writing-lorebooks`
+- Regex entries: `writing-regex-scripts`
+- Lua function bodies and APIs: `writing-lua-scripts`
+- RisuAI HTML/CSS: `writing-html-css`
+- Limited Arca/WYSIWYG HTML: `writing-arca-html`
+- Structured/V2 trigger orchestration: `writing-trigger-scripts`
+- Standing-image prompts: `writing-asset-prompts`; Danbooru validation: `writing-danbooru-tags`
 
-| Order | Topic                           | How to load                                             |
-| ----- | ------------------------------- | ------------------------------------------------------- |
-| 1     | Project rules & MCP workflow    | `read_skill("project-workflow")`                        |
-| 2     | MCP tool selection              | `read_skill("using-mcp-tools")` before MCP reads/writes |
-| 3     | Shared syntax/reference index   | `risu/common/skills/README.md`                          |
-| 4     | Shared docs/reference materials | `risu/common/docs/`                                     |
+This subtree is syntax/reference, not bot, preset, module, or plugin composition. Switch to the nearest artifact router when composition is the main task. Add another syntax Skill only when the current surface genuinely combines both syntaxes.
 
-## Shared syntax skills
-
-| Topic             | Skill                                    |
-| ----------------- | ---------------------------------------- |
-| File structures   | `read_skill("file-structure-reference")` |
-| CBS templates     | `read_skill("writing-cbs-syntax")`       |
-| Lorebooks         | `read_skill("writing-lorebooks")`        |
-| Regex scripts     | `read_skill("writing-regex-scripts")`    |
-| Lua scripting     | `read_skill("writing-lua-scripts")`      |
-| HTML/CSS          | `read_skill("writing-html-css")`         |
-| Arca/WYSIWYG HTML | `read_skill("writing-arca-html")`        |
-| Trigger scripts   | `read_skill("writing-trigger-scripts")`  |
-| Asset prompts     | `read_skill("writing-asset-prompts")`    |
-| Danbooru tags     | `read_skill("writing-danbooru-tags")`    |
-
-## Mandatory rules
-
-1. **Read `project-workflow` first** every session.
-2. This subtree is shared syntax/reference only. Do not treat bot, preset, module, or plugin composition workflows as the default path here.
-3. Use dedicated MCP surfaces for `lua`, `css`, greetings, lorebooks, regex, triggers, and risup prompt structures instead of broad `read_field` dumps.
-4. If the task is artifact-specific, switch to the nearest `risu/{bot,prompts,modules,plugins}/AGENTS.md` router.
-5. Pick one shared syntax/reference skill first. Load additional syntax skills only when the current surface actually combines those syntaxes.
+Use `using-mcp-tools` only when selecting concrete artifact read/write operations. Prefer dedicated Lua, CSS, greeting, lorebook, regex, trigger, and `.risup` prompt surfaces over broad field dumps.

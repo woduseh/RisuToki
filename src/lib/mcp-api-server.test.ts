@@ -153,6 +153,123 @@ describe('MCP API structured error envelopes — global guards', () => {
     }
   });
 
+  it('filters and paginates skills by true content-root scope and keeps read cursors UTF-8 safe', async () => {
+    const root = path.join(TEST_DIR, `skill-pagination-${Date.now()}`);
+    const productRoot = path.join(root, 'skills');
+    const botRoot = path.join(root, 'risu', 'bot', 'skills');
+    const writeSkill = (skillRoot: string, name: string, description: string, body: string) => {
+      const dir = path.join(skillRoot, name);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, 'SKILL.md'),
+        `---\nname: ${name}\ndescription: "${description}"\ntags: [test]\nrelated_tools: [read_skill]\n---\n\n${body}`,
+        'utf8',
+      );
+    };
+    writeSkill(productRoot, 'product-only', 'Product workflow', '# Product\n');
+    writeSkill(botRoot, 'bot-alpha', 'Bot alpha authoring', '# Alpha\n가나다라마바사아자차카타파하\n');
+    writeSkill(botRoot, 'bot-beta', 'Bot beta authoring', '# Beta\nsecond page\n');
+    fs.writeFileSync(path.join(botRoot, 'bot-alpha', 'UTF8.md'), '🙂abc', 'utf8');
+    const api = await startTestApiServer(null, [], [productRoot, botRoot]);
+    try {
+      const full = await getJson<{
+        count: number;
+        skills: Array<{ name: string; scope: string; files: string[] }>;
+      }>(api.port, api.token, '/skills');
+      expect(full.status).toBe(200);
+      expect(full.data.count).toBe(3);
+      expect(full.data.skills.find((skill) => skill.name === 'product-only')?.scope).toBe('product');
+      expect(full.data.skills.find((skill) => skill.name === 'bot-alpha')?.scope).toBe('bot');
+      expect(full.data.skills.every((skill) => Array.isArray(skill.files))).toBe(true);
+
+      const first = await getJson<{
+        count: number;
+        total_count: number;
+        next_cursor: string;
+        skills: Array<{ name: string; scope: string; files?: string[] }>;
+      }>(api.port, api.token, '/skills?scope=bot&query=authoring&detail=summary&limit=1');
+      expect(first.status).toBe(200);
+      expect(first.data.count).toBe(1);
+      expect(first.data.total_count).toBe(2);
+      expect(first.data.skills[0].scope).toBe('bot');
+      expect(first.data.skills[0].files).toBeUndefined();
+      expect(typeof first.data.next_cursor).toBe('string');
+
+      const second = await getJson<{ next_cursor: null; skills: Array<{ name: string }> }>(
+        api.port,
+        api.token,
+        `/skills?scope=bot&query=authoring&detail=summary&limit=1&cursor=${encodeURIComponent(first.data.next_cursor)}`,
+      );
+      expect(second.status).toBe(200);
+      expect(second.data.skills[0].name).not.toBe(first.data.skills[0].name);
+      expect(second.data.next_cursor).toBeNull();
+
+      const changedFilterCursor = await getJson<Record<string, unknown>>(
+        api.port,
+        api.token,
+        `/skills?scope=bot&query=beta&detail=summary&limit=1&cursor=${encodeURIComponent(first.data.next_cursor)}`,
+      );
+      expect(changedFilterCursor.status).toBe(400);
+      expect(changedFilterCursor.data.code).toBe('invalid_request');
+
+      const firstRead = await getJson<{
+        content: string;
+        returned_bytes: number;
+        next_cursor: string;
+        truncated: boolean;
+      }>(api.port, api.token, '/skills/bot-alpha?max_bytes=30');
+      expect(firstRead.status).toBe(200);
+      expect(firstRead.data.returned_bytes).toBeLessThanOrEqual(30);
+      expect(firstRead.data.content).not.toContain('\uFFFD');
+      expect(firstRead.data.truncated).toBe(true);
+
+      const continuedRead = await getJson<{ content: string }>(
+        api.port,
+        api.token,
+        `/skills/bot-alpha?max_bytes=65536&cursor=${encodeURIComponent(firstRead.data.next_cursor)}`,
+      );
+      expect(continuedRead.status).toBe(200);
+      const original = fs.readFileSync(path.join(botRoot, 'bot-alpha', 'SKILL.md'), 'utf8');
+      expect(firstRead.data.content + continuedRead.data.content).toBe(original);
+
+      const differentFileCursor = await getJson<Record<string, unknown>>(
+        api.port,
+        api.token,
+        `/skills/bot-beta?max_bytes=30&cursor=${encodeURIComponent(firstRead.data.next_cursor)}`,
+      );
+      expect(differentFileCursor.status).toBe(400);
+      expect(differentFileCursor.data.code).toBe('invalid_request');
+
+      fs.appendFileSync(path.join(botRoot, 'bot-alpha', 'SKILL.md'), '\nchanged', 'utf8');
+      const changedContentCursor = await getJson<Record<string, unknown>>(
+        api.port,
+        api.token,
+        `/skills/bot-alpha?max_bytes=30&cursor=${encodeURIComponent(firstRead.data.next_cursor)}`,
+      );
+      expect(changedContentCursor.status).toBe(400);
+      expect(changedContentCursor.data.code).toBe('invalid_request');
+
+      const tinyUtf8Page = await getJson<Record<string, unknown>>(
+        api.port,
+        api.token,
+        '/skills/bot-alpha/UTF8.md?max_bytes=1',
+      );
+      expect(tinyUtf8Page.status).toBe(400);
+      expect(tinyUtf8Page.data.error).toContain('next complete UTF-8 code point');
+
+      const crossCursor = await getJson<Record<string, unknown>>(
+        api.port,
+        api.token,
+        `/skills/bot-alpha?max_bytes=30&cursor=${encodeURIComponent(first.data.next_cursor)}`,
+      );
+      expect(crossCursor.status).toBe(400);
+      expect(crossCursor.data.code).toBe('invalid_request');
+    } finally {
+      await closeServer(api.server);
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('allows GET /references without a main document and includes fileType metadata', async () => {
     const api = await startTestApiServer(null, [
       {

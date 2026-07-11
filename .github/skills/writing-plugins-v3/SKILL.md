@@ -1,262 +1,33 @@
 ---
 name: writing-plugins-v3
-description: 'Use when creating, editing, or reviewing RisuAI Plugin API v3.0 .js/.ts files. Covers metadata headers, iframe sandbox model, all-async API, SafeElement/SafeDocument wrappers, storage tiers, UI registration, provider/MCP integration, security boundaries, and permissions.'
+description: 'Use when creating, editing, reviewing, or debugging RisuAI Plugin API v3 JavaScript or TypeScript. Primary skill for plugin sandbox, async API, storage, UI, and permissions; hand emitted CBS/HTML syntax to common skills. Do not use when authoring .charx, .risum, .risup, Lua, or regex without plugin code.'
 tags: ['plugin', 'v3', 'sandbox', 'api', 'javascript']
-related_tools: ['read_content', 'preview_edit', 'apply_edit', 'read_field_batch']
+related_tools: ['read_content', 'preview_edit', 'apply_edit']
 artifact_types: ['plugin-v3']
 canonical_sources:
-  [
-    'Risuai/plugins.md',
-    'Risuai/src/ts/plugins/apiV3/risuai.d.ts',
-    'Risuai/src/ts/plugins/migrationGuide.md',
-    'Risuai/src/ts/plugins/apiV3/v3.svelte.ts',
-    'Risuai/src/ts/plugins/apiV3/factory.ts',
-    'Risuai/src/ts/plugins/pluginSafety.ts',
-  ]
+  ['Risuai/plugins.md', 'Risuai/src/ts/plugins/apiV3/risuai.d.ts', 'Risuai/src/ts/plugins/migrationGuide.md']
 ---
 
-# Writing RisuAI Plugins (API v3.0)
+# Writing RisuAI Plugins — API v3
 
-## Agent Operating Contract
+## Runtime contract
 
-- **Use when:** creating, editing, reviewing, or debugging RisuAI Plugin API v3.0 JavaScript/TypeScript files.
-- **Do not use when:** the task is `.charx`, `.risum`, `.risup`, Lua trigger, regex, or CBS authoring without plugin API code.
-- **Read first:** this `SKILL.md`; it captures the async iframe model and metadata requirements.
-- **Load deeper only if:** official API quick reference, migration notes, or generated UI/CBS/lorebook integration is directly needed.
-- **Output/validation contract:** keep `//@api 3.0`, await all `risuai.*`/`SafeElement` calls, respect sandbox permissions, and include cleanup/error handling.
+Plugins run in a sandboxed iframe and communicate with the host across an async message boundary. Await every `risuai.*`, `SafeDocument`, and `SafeElement` call. Keep `//@api 3.0`; treat `//@name` as stable identity after release. Both plugins need matching `//@allowed-ipc` declarations for IPC.
 
-RisuAI plugins are JavaScript/TypeScript extensions that run inside a **sandboxed iframe**. API v3.0 is the current recommended surface for new plugins.
+## Minimal workflow
 
-Every host call crosses an iframe `postMessage` boundary, so **all `risuai.*` methods and all `SafeElement` methods are async**.
+1. Inspect the metadata header, declared permissions, and existing entry/cleanup lifecycle.
+2. Use an async IIFE or explicit async entry point with visible error handling.
+3. Build plugin-owned UI with the iframe's normal `document`. Call `getRootDocument()` only for necessary host-DOM access and use its async safe wrappers.
+4. Keep boundary data structured-clone-safe. Use safe setters/listeners; do not assume raw DOM nodes or functions cross the boundary.
+5. Choose storage deliberately: syncable/save-owned plugin storage, device-local string/JSON storage, arguments, or permission-gated database access.
+6. Register settings/buttons/providers/MCP/hooks with stable IDs where update/reload should replace prior registration. MCP identifiers begin with `plugin:`.
+7. Track listener/registration handles and clean them up on unload or replacement when the API supports it.
 
-## Canonical upstream sources
+Safe host DOM access may sanitize HTML, restrict attributes/tags/links, filter events, and require permissions. Respect CSP, AST safety checks, guarded globals, structured cloning, and user consent; do not design an escape. TypeScript uses the supported transform only—do not assume JSX or a full bundler.
 
-- `Risuai/src/ts/plugins/apiV3/risuai.d.ts`
-- `Risuai/plugins.md`
-- `Risuai/src/ts/plugins/migrationGuide.md`
-- `Risuai/src/ts/plugins/apiV3/v3.svelte.ts`
-- `Risuai/src/ts/plugins/apiV3/factory.ts`
-- `Risuai/src/ts/plugins/pluginSafety.ts`
+Load `risu/plugins/docs/API_QUICKREF.md` for exact API signatures and `MIGRATION.md` only for legacy migration. Preserve upstream spelling where an API name intentionally contains a typo.
 
-## Supporting files
+## Validation
 
-| File                                                    | Contents                            |
-| ------------------------------------------------------- | ----------------------------------- |
-| [`../docs/API_QUICKREF.md`](../../docs/API_QUICKREF.md) | API categories and method reminders |
-| [`../docs/MIGRATION.md`](../../docs/MIGRATION.md)       | v2.x → v3.0 migration steps         |
-
-## Mental model
-
-```text
-Plugin code
-  -> runs inside sandboxed iframe
-  -> talks to host through postMessage
-  -> receives SafeElement/SafeDocument wrappers for host DOM
-```
-
-Key implications:
-
-1. **All API calls are async**
-2. **Your iframe `document` is different from the host/root document**
-3. **Data crossing the boundary must be structured-clone-safe**
-4. **Each plugin is isolated unless you intentionally use storage or IPC**
-
-## Metadata header
-
-Place metadata comments at the top of the script:
-
-```javascript
-//@name my_plugin
-//@display-name My Plugin
-//@api 3.0
-//@version 1.2.0
-//@arg api_key string Your API key
-//@arg max_items int Maximum items
-//@link https://example.com Docs
-//@update-url https://raw.githubusercontent.com/user/repo/main/plugin.js
-```
-
-### Critical rules
-
-- `//@name` is the internal identity; do not rename it after release.
-- `//@api 3.0` opts into the v3 sandbox/runtime contract.
-- `//@allowed-ipc other_plugin` is required on both sides for plugin IPC.
-
-## Entry-point pattern
-
-```javascript
-//@name my_plugin
-//@api 3.0
-
-(async () => {
-  try {
-    const char = await risuai.getCharacter();
-    console.log(char?.name);
-  } catch (error) {
-    console.log(`Plugin failed: ${error.message}`);
-  }
-})();
-```
-
-Wrap top-level logic in an async IIFE and handle failures explicitly. Silent async mistakes are otherwise hard to diagnose.
-
-## The all-async rule
-
-```javascript
-// Wrong
-const char = risuai.getCharacter();
-
-// Right
-const char = await risuai.getCharacter();
-
-// Wrong
-element.setTextContent('hello');
-
-// Right
-await element.setTextContent('hello');
-```
-
-Missing `await` is the most common plugin v3 mistake.
-
-## Two DOM contexts
-
-### 1. Iframe DOM (preferred for plugin UI)
-
-Your plugin owns its iframe `document`. Use it for custom screens, settings UIs, and applets.
-
-```javascript
-document.body.innerHTML = '<button id="close">Close</button>';
-document.getElementById('close').addEventListener('click', async () => {
-  await risuai.hideContainer();
-});
-await risuai.showContainer('fullscreen');
-```
-
-### 2. Host DOM (`getRootDocument()`)
-
-This returns `SafeDocument` / `SafeElement` wrappers and usually requires `mainDom` permission.
-
-Use it only when you must touch the main app DOM.
-
-## `SafeElement` essentials
-
-| Standard DOM instinct       | v3 equivalent                       | Notes               |
-| --------------------------- | ----------------------------------- | ------------------- |
-| `el.textContent = 'x'`      | `await el.setTextContent('x')`      | async setter        |
-| `el.innerHTML = ...`        | `await el.setInnerHTML(...)`        | sanitized           |
-| `el.setAttribute('id','x')` | `await el.setAttribute('x-id','x')` | `x-` prefix only    |
-| `el.style.color = 'red'`    | `await el.setStyle('color', 'red')` | style helper        |
-| `el.addEventListener(...)`  | `await el.addEventListener(...)`    | returns listener id |
-
-Extra constraints:
-
-- keyboard events are filtered/delayed
-- non-whitelisted tags may downgrade to `<div>`
-- only `http:` / `https:` anchors are allowed
-
-## Storage tiers
-
-| Storage                           | Scope                | Notes             |
-| --------------------------------- | -------------------- | ----------------- |
-| `pluginStorage`                   | save-file / syncable | JSON-serializable |
-| `safeLocalStorage`                | device-local         | strings only      |
-| `getLocalPluginStorage()`         | device-local         | JSON-serializable |
-| plugin arguments                  | plugin config        | `string` / `int`  |
-| `getDatabase()` / `setDatabase()` | app DB subset        | permission-gated  |
-
-Prefer `pluginStorage` for plugin-owned durable state that should move with the save.
-
-## UI registration
-
-### Settings entry
-
-```javascript
-await risuai.registerSetting(
-  'My Plugin',
-  async () => {
-    await risuai.showContainer('fullscreen');
-  },
-  '⚙️',
-  'html',
-);
-```
-
-### Buttons
-
-```javascript
-await risuai.registerButton({ name: 'Quick Action', icon: '🔥', iconType: 'html', location: 'action' }, async () => {
-  /* ... */
-});
-```
-
-Use stable `id` values when you want reload/update behavior to replace existing UI cleanly.
-
-## Advanced capabilities
-
-| Capability           | API                                                                  | Notes                                   |
-| -------------------- | -------------------------------------------------------------------- | --------------------------------------- |
-| custom provider      | `addProvider(...)`                                                   | permission-gated                        |
-| MCP bridge           | `registerMCP(...)`                                                   | identifier must start with `plugin:`    |
-| prompt/request hooks | `addRisuScriptHandler`, `addRisuReplacer`, `registerBodyIntercepter` | note upstream misspelling `Intercepter` |
-| LLM calls            | `runLLMModel(...)`                                                   | async helper                            |
-| plugin IPC           | `addPluginChannelListener`, `postPluginChannelMessage`               | both sides need `//@allowed-ipc`        |
-
-## Security boundary
-
-| Layer              | Mechanism                                           |
-| ------------------ | --------------------------------------------------- |
-| iframe sandbox     | plugin runs outside the main app DOM/context        |
-| CSP                | no freeform network from iframe itself              |
-| AST safety         | blocks patterns such as `eval()` / `new Function()` |
-| global rewrites    | guarded globals and storage wrappers                |
-| structured cloning | no raw DOM/function transfer across boundary        |
-| permissions        | sensitive areas require explicit user consent       |
-
-Design with these limits, do not fight them.
-
-## TypeScript support
-
-Plugins can be written in TypeScript. RisuAI transpiles plugin TS with Sucrase (TypeScript transform only; no JSX). The app can generate a plugin template that includes `risuai.d.ts`.
-
-## Best practices
-
-1. `await` every `risuai.*` and `SafeElement` call.
-2. Use iframe `document` for plugin-owned UI before reaching for host DOM.
-3. Clean up listeners/UI with `onUnload(...)`.
-4. Keep metadata stable, especially `//@name`.
-5. Prefer official APIs (`registerSetting`, `registerButton`, `registerMCP`) over DOM hacks.
-6. Respect permission prompts and fail explicitly when access is denied.
-
-## Pre-Submission Checklist
-
-- [ ] `//@api 3.0` declared in metadata header
-- [ ] `//@name` is unique and will not change after release
-- [ ] All `risuai.*` and `SafeElement` calls use `await`
-- [ ] Top-level logic wrapped in async IIFE with `try/catch`
-- [ ] `onUnload(...)` cleans up listeners, intervals, and registered UI
-- [ ] Only `x-` prefixed attributes used on host DOM elements
-- [ ] `pluginStorage` used for durable state (not raw `localStorage`)
-- [ ] `//@allowed-ipc` declared on both sides if using plugin IPC
-
-## Debugging Checklist
-
-- [ ] Check browser console for `postMessage` errors (common with missing `await`)
-- [ ] Verify permissions are granted — `getRootDocument()` requires `mainDom`
-- [ ] Confirm `SafeElement` wrappers — direct DOM methods don't work cross-boundary
-- [ ] Test `showContainer()` / `hideContainer()` lifecycle for UI panels
-- [ ] Check that `//@arg` values are being read correctly (string vs int types)
-
-## Related Skills
-
-| Skill                | Relationship                                                             |
-| -------------------- | ------------------------------------------------------------------------ |
-| `writing-html-css`   | Host DOM manipulation via `SafeElement` follows RisuAI's CSS constraints |
-| `writing-cbs-syntax` | Plugins can hook into CBS via `addRisuReplacer` for custom template tags |
-| `writing-lorebooks`  | Plugins can access lorebook data through the database API                |
-
-## Smoke Tests
-
-| Prompt                                                          | Expected routing                                                                 | Expected output                                             | Forbidden behavior                                                 |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ |
-| "My plugin's `SafeElement.setTextContent()` is not updating."   | Primary: `writing-plugins-v3`.                                                   | Async/SafeElement/postMessage diagnosis.                    | Treating `SafeElement` like a synchronous DOM node.                |
-| "Build a plugin that adds a settings panel and custom CBS tag." | Primary: `writing-plugins-v3`; load `writing-cbs-syntax` only for tag semantics. | Metadata, async entrypoint, UI registration, replacer plan. | Escaping the iframe sandbox or using host DOM directly by default. |
+Check metadata stability, awaited calls, rejected-promise paths, permissions, iframe versus host DOM choice, structured-clone compatibility, reload idempotence, cleanup, storage scope, and failure behavior when a capability is denied. Hand generated RisuAI HTML/CSS or CBS to its syntax Skill.

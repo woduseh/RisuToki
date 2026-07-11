@@ -1,105 +1,36 @@
 ---
 name: writing-asset-prompts
-description: 'Guides writing image generation prompts for character standing illustrations optimized for the Anima model. Covers the 6-step prompt pipeline (base framing, expression/pose, attire, props/effects, lighting/background, natural language summary), minimalist background strategy, and output format. Use when a user needs a standing image prompt from a character description.'
-tags: ['assets', 'image-prompts', 'character-art']
-related_tools: ['analyze_content', 'validate_content', 'read_content', 'search_danbooru_tags', 'validate_danbooru_tags']
+description: 'Use when converting an established character design into one finished standing-image prompt, especially for the Anima model. Primary skill for prompt assembly; hand tag verification to writing-danbooru-tags and identity design to authoring-media-mix. Do not use when generating an image or the character design is unresolved.'
+tags: ['image-prompt', 'assets', 'anima']
+related_tools: ['analyze_content', 'validate_content']
 ---
 
-# Writing Asset Prompts (Anima Model)
+# Writing Standing-Image Prompts
 
-## Agent Operating Contract
+## Outcome
 
-- **Use when:** the user needs a character standing-image prompt optimized for the Anima model.
-- **Do not use when:** the task is actual image generation/editing, Danbooru tag validation alone, or non-character visual design.
-- **Read first:** this `SKILL.md`; it contains the complete 6-step prompt pipeline.
-- **Load deeper only if:** tags must be validated or searched (`writing-danbooru-tags`) or the character source lives in lorebook/description fields.
-- **Output/validation contract:** return the requested prompt format with character-defining visual details, minimal background, and no unsupported or unverified tag claims.
+Return a concise design summary and a model-ready prompt that preserves the character's recognizable visual signals while leaving the background subordinate.
 
-Generates standing (profile) illustration prompts for character assets from character descriptions, optimized for the **Anima** image generation model.
+## Six-step workflow
 
-## Core Principles
+1. **Base and framing:** subject count, character type, view, crop, camera distance, and silhouette.
+2. **Expression, pose, and vibe:** visible emotional state, gaze, posture, hands, weight distribution, and energy.
+3. **Attire:** silhouette first, then layered garments, materials, fit, color placement, wear, and distinctive construction.
+4. **Props and effects:** include only identity-bearing objects, weapons, markings, or effects; state placement and interaction.
+5. **Lighting and background:** use lighting that reveals form and a simple, low-detail background suitable for a standing asset unless the user requests a scene.
+6. **Natural-language summary:** restate identity and composition in coherent prose when the target model benefits from it.
 
-1. **Hybrid prompting** — Tag sequences + a natural language summary sentence at the end. The summary dramatically improves detail and composition.
-2. **Minimalist backgrounds** — Standing images for chat UI need clean backgrounds. Use solid colors or simple patterns matching the character's theme.
-3. **No quality tags** — Exclude `masterpiece, best quality, worst quality` etc. Users set these globally. Output only character-specific prompt content.
+Favor concrete visible details over personality adjectives. Resolve contradictions, avoid redundant quality boilerplate, and keep culturally or physically important details explicit. Use `writing-danbooru-tags` only when tags must be searched or validated; do not guess tag validity.
 
-## 6-Step Prompt Pipeline
+## Output
 
-### Step 1: Base & Framing
+Return:
 
-- Subject count: `1girl`, `1boy`, `solo`
-- Framing: Prefer `cowboy shot` (thigh-up) or `three-quarter view` (semi-profile) for face + outfit detail. Use `full body` only when full proportions are essential.
-- Physical features: body type, hairstyle, hair color, eye color, etc.
+1. `Character Design Summary` — silhouette, palette, key materials, identity signals, and intended mood.
+2. `Anima Prompt` — ordered visual tokens/phrases plus a short coherent summary when useful.
 
-### Step 2: Expression, Pose & Vibe
+Do not add negative prompts, generation settings, or alternate variants unless requested.
 
-- Personality/mood through expression and pose
-- Examples: `cheerful smile`, `arrogant expression`, `arms crossed`, `dynamic pose`, `mysterious aura`
+## Validation
 
-### Step 3: Attire (Detailed Layering)
-
-- Describe garments from outer to inner layer
-- Specify materials and styles
-- Examples: `oversized techwear jacket`, `black crop top`, `denim shorts`, `choker`, `thigh-high boots`
-
-### Step 4: Weapons, Props & Effects
-
-- Items held or worn, magical/sci-fi effects
-- Examples: `holding a futuristic tablet`, `holographic interface floating`, `floating magical orbs`
-
-### Step 5: Lighting & Minimalist Background
-
-- Theme-appropriate lighting + forced simple background with weight emphasis
-- Examples: `(minimalist solid pale green background:1.2)`, `simple background`, `soft lighting`
-
-### Step 6: Natural Language Summary (Critical)
-
-- **Final line** of the prompt: one English sentence summarizing the entire image
-- Example: `A cheerful hacker girl in oversized techwear, holding a glowing holographic tablet.`
-
-## Output Format
-
-```
-### 💡 Character Design Summary
-- **Visual highlights:** (1-2 line summary of defining features, outfit, props)
-- **Mood & background color:** (suggested background color and overall mood)
-
-### 🎨 Anima Prompt
-(Single comma-separated English prompt following Steps 1-6)
-```
-
-## Complete Example
-
-**Input:** A cheerful, mischievous genius hacker girl. Short messy silver hair with emerald green eyes. Wears an oversized black techwear jacket over a crop top. Holds a tablet with floating hologram screens, grinning confidently.
-
-**Output:**
-
-### 💡 Character Design Summary
-
-- **Visual highlights:** Messy silver hair with bright green eyes, hip oversized techwear with crop top, holographic tablet
-- **Mood & background color:** Cyber-tech vibe with pale neon green solid background and bright lighting
-
-### 🎨 Anima Prompt
-
-1girl, solo, cowboy shot, short silver hair, messy hair, emerald green eyes, cheerful smile, confident and playful expression, oversized black techwear jacket, off-shoulder jacket, white crop top, black shorts, holding a futuristic tablet, glowing holographic interface floating, dynamic and energetic pose, (minimalist solid pale neon green background:1.2), simple background, no background, soft bright lighting, vibrant colors, cyberpunk aesthetic, A cheerful genius hacker girl with messy silver hair wearing oversized techwear, confidently holding a glowing holographic tablet.
-
-## Best Practices
-
-1. **Always end with the NL summary** — this is the biggest quality boost for Anima.
-2. **Use weight emphasis `(tag:1.2)`** for the background to ensure minimalism.
-3. **Be specific about clothing layers** — vague descriptions produce inconsistent results.
-4. **Match background color to character theme** — warm characters get warm tones, cool characters get cool tones.
-5. **Avoid contradictory tags** — `simple background` + `detailed cityscape` will produce muddy results.
-
-## Related Skills
-
-| Skill                   | Relationship                                                              |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `writing-danbooru-tags` | Use to validate and search Danbooru tags before including them in prompts |
-
-## Smoke Tests
-
-| Prompt                                                     | Expected routing                                                                                    | Expected output                                       | Forbidden behavior                                  |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------- |
-| "Turn this character sheet into an Anima standing prompt." | Primary: `writing-asset-prompts`; load `writing-danbooru-tags` only if tag validation is requested. | 6-part standing-image prompt with minimal background. | Generating the image instead of writing the prompt. |
-| "Check whether these Danbooru tags are valid."             | Primary: `writing-danbooru-tags`, not this skill.                                                   | Tag validation/search result.                         | Rewriting the whole art prompt unnecessarily.       |
+Check subject count, crop, anatomy/pose compatibility, garment layering, prop placement, palette consistency, background simplicity, and whether the character remains recognizable without a name label.

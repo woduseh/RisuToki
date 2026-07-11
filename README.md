@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.13.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-1.14.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
@@ -59,7 +59,7 @@ npm run start:build  # Rebuild Electron + renderer files, then start the built a
 npm run lint         # ESLint
 npm run typecheck    # Vue + TypeScript type checking
 npm run test:evals   # Deterministic agent/harness eval scenarios, including src/lib/mcp-agent-workflow-eval.test.ts
-npm run test:evals:replay # Measured 35-task synthetic workflow replay through MCP stdio
+npm run test:evals:replay # Deterministic 12-scenario MCP replay covering 35 catalog mappings
 npm run test:mcp:contracts # Verify tools/list and HTTP contract fingerprints
 npm run test:mcp:contracts:update # Intentionally regenerate contract fingerprints with a change summary
 npm test             # Node regression tests + Vitest
@@ -294,18 +294,18 @@ RisuToki uses the same Monaco editing engine that powers VS Code.
 
 ## 7. AI CLI Integration + MCP
 
-This is a core feature of RisuToki. When you launch an AI CLI from the terminal, the structure and content of the currently open file are automatically provided.
+This is a core feature of RisuToki. When you launch an AI CLI from the terminal, RisuToki supplies compact, type-aware artifact metadata and configures MCP so the CLI can inspect only the document content needed for the task.
 
 When a project folder is open, the terminal starts in that project folder and generated `AGENTS.md` context uses the folder as the project root. For ordinary files, the terminal continues to use the opened file's directory.
 
 ### Supported CLIs
 
-| CLI                | MCP Config Location          | Context Delivery                                  |
-| ------------------ | ---------------------------- | ------------------------------------------------- |
-| Claude Code        | `~/.mcp.json`                | File info injected via `--append-system-prompt`   |
-| GitHub Copilot CLI | `~/.copilot/mcp-config.json` | `AGENTS.md` auto-generated + project guide merged |
-| Codex              | `~/.codex/config.toml`       | `AGENTS.md` auto-generated + project guide merged |
-| Gemini CLI         | `~/.gemini/settings.json`    | `AGENTS.md` auto-generated + project guide merged |
+| CLI                | MCP Config Location          | Context Delivery                                      |
+| ------------------ | ---------------------------- | ----------------------------------------------------- |
+| Claude Code        | `~/.mcp.json`                | Compact artifact context via `--append-system-prompt` |
+| GitHub Copilot CLI | `~/.copilot/mcp-config.json` | Managed `AGENTS.md` session block + project guide     |
+| Codex              | `~/.codex/config.toml`       | Managed `AGENTS.md` session block + project guide     |
+| Gemini CLI         | `~/.gemini/settings.json`    | Managed `AGENTS.md` session block + project guide     |
 
 > All four CLI config files are created automatically at app startup and cleaned up on exit.
 
@@ -363,7 +363,7 @@ This repository ships skills from multiple tracked roots:
 | `risu/modules/skills/` | `.risum` module composition                                           |
 | `risu/plugins/skills/` | RisuAI plugin v3 authoring                                            |
 
-`list_skills` returns a unified catalog across all of these roots with each skill's `name`, `description`, `tags`, `relatedTools`, and `files`, so an AI can discover and read only the guides it needs on demand instead of loading the full `AGENTS.md`.
+`list_skills` returns a unified catalog across all of these roots with each Skill's source `scope`, `name`, `description`, `tags`, `relatedTools`, and optional file detail. Existing no-argument calls retain the full catalog; newer clients can use `scopes`, `query`, `detail: "summary"`, `limit`, and `cursor`, then continue large `read_skill` documents with `cursor` and `max_bytes`.
 
 `npm run sync:skills` rebuilds a generated `.copilot-skill-catalog/` from the tracked skill roots above, then repairs the local CLI discovery paths that expose that aggregate catalog: a generated repo-local `.agents/skills` link for Codex plus `.claude/skills`, `.gemini/skills`, and `.github/skills` for the other supported CLIs. On Windows the app tries a real symlink first and falls back to a junction if permissions do not allow it; if those paths already exist as managed checked-out directories, it refreshes them in place instead of failing.
 
@@ -375,7 +375,7 @@ If a Windows git checkout turns those discovery paths into plain text placeholde
 
 | Category                | Key Skills                                                                                                                                                                                                                                 | Purpose                                                                                                        |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| **Onboarding**          | `project-workflow`                                                                                                                                                                                                                         | Project rules and MCP workflow onboarding at session start                                                     |
+| **Project workflow**    | `project-workflow`                                                                                                                                                                                                                         | Repository code, validation, documentation, versioning, and release work                                       |
 | **Tool Selection**      | `using-mcp-tools`                                                                                                                                                                                                                          | MCP tool selection, large-field editing, batch-first principle                                                 |
 | **Shared Syntax/Ref**   | `file-structure-reference`, `writing-cbs-syntax`, `writing-lua-scripts`, `writing-lorebooks`, `writing-regex-scripts`, `writing-html-css`, `writing-trigger-scripts`                                                                       | Shared authoring mechanics across RisuAI artifact types                                                        |
 | **Shared Presentation** | `writing-arca-html`                                                                                                                                                                                                                        | Restricted WYSIWYG intro/profile HTML for paste targets like Arca.live                                         |
@@ -387,7 +387,7 @@ If a Windows git checkout turns those discovery paths into plain text placeholde
 
 ### MCP Tool Catalogue
 
-When an AI CLI starts, the MCP server connects automatically so the AI can read and write the active document directly. By default `tools/list` contains 13 `facade-first` bootstrap tools; `advanced-full` exposes all 203 compatible facade and granular tools.
+When an AI CLI starts, the MCP server connects automatically so the AI can read and write the active document directly. By default `tools/list` contains 13 `facade-first` bootstrap tools; each preserves its JSON text response and also exposes a compact public input schema, compact `outputSchema`, and equivalent `structuredContent`. Detailed Zod validation still runs immediately before the existing handler. The current full response is 29,484 bytes and is guarded at 42 KiB overall and 10 KiB per tool. `advanced-full` exposes all 203 compatible facade and granular tools with their legacy text contract.
 
 | Category             | Tools                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -407,13 +407,13 @@ When an AI CLI starts, the MCP server connects automatically so the AI can read 
 | **Assets**           | facade: `manage_assets` for active/external `.charx`/`.risum` asset list/read/add/delete/rename/compress / granular: `list_charx_assets` · `read_charx_asset` · `add_charx_asset` · `delete_charx_asset` · `rename_charx_asset` · `list_risum_assets` · `read_risum_asset` · `add_risum_asset` · `delete_risum_asset` · `compress_assets_webp`                                                                                                                    |
 | **Danbooru**         | `validate_danbooru_tags` · `search_danbooru_tags` · `get_popular_danbooru_tags`                                                                                                                                                                                                                                                                                                                                                                                   |
 | **CBS Validation**   | `validate_cbs` · `list_cbs_toggles` · `simulate_cbs` · `diff_cbs` — structural CBS validation + toggle simulation                                                                                                                                                                                                                                                                                                                                                 |
-| **Skills**           | `list_skills` · `read_skill` — CBS/Lua/lorebook/regex syntax guides                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Skills**           | `list_skills` · `read_skill` — scope/query/summary discovery and UTF‑8-safe paged Skill/reference reads                                                                                                                                                                                                                                                                                                                                                           |
 
 - `write` / `add` / `delete` calls trigger a **MomoTalk-style confirmation popup** (a "Allow all for this session" toggle lets you skip it).
 - Changes made by the AI CLI are reflected in the editor in real time.
 - `analyze_content` owns transformation/statistics/simulation (`field_stats`, exact encoding-based `token_count`, `simulate_lorebook`, `test_regex`, CBS/Danbooru/diff/import verification). `validate_content` owns pass/fail diagnostics, including compile-only Lua and `triggerlua` syntax checks.
 - For unopened files, the recommended flow is facade `inspect_document` / `read_content` first, then `preview_edit` / `apply_edit` for covered field, surface, lorebook, regex, alternate greeting, trigger, Lua/CSS section, or `.risup` prompt-item mutations; use `manage_assets` for covered external `.charx`/`.risum` asset management including WebP compression and `manage_file` for guarded open/extract/reassemble workflows; use `probe_*` / `external_*` for exact legacy shapes or unsupported direct path edits, and granular `open_file` only when exact legacy active-document switching is needed.
-- Route-local `4xx/409` errors across regex, greetings, Lua/CSS sections, fields, lorebook, references, assets, risup reorder/formating-order, skill-file reads, and unopened-file probe/open validation carry structured fields (`action`, `target`, `status`, `suggestion`, `retryable`, `next_actions`) so the AI CLI can diagnose and recover automatically. Global `Unauthorized` / `No file open` guards and HTTP-200 `success: false` no-op paths provide the same recovery metadata. Success responses include `artifacts.byte_size` as a context-budget hint, and high-traffic tools may narrow `next_actions` below the family default so agents are steered toward smaller follow-up reads or safer specialized tools. `session_status` also exposes a compact `surfaceSummary` (lorebook/regex/greetings/triggers/Lua/CSS/risup prompt counts) so agents can skip empty-surface discovery loops. The full contract is documented in `docs/MCP_ERROR_CONTRACT.md`.
+- Route-local failures carry `action`, `target`, `status`, stable `code`, `suggestion`, `retryable`, `retry_mode`, `outcome`, and `next_actions`. Stale conflicts refresh before retry; mutation timeout, cancellation after dispatch, and partial apply require state inspection and a new preview instead of automatic replay. Global guards and HTTP-200 no-op paths use the same additive recovery contract. Success responses include byte and semantic-truncation metadata so agents can narrow follow-up reads. The full contract is documented in `docs/MCP_ERROR_CONTRACT.md`.
 - Lorebook folders are tracked by the canonical `key` of the folder entry (`folder:UUID`). Child entries normalize their `folder` value to the same `folder:UUID` form. Legacy bare-UUID / `id`-based folder data is auto-upgraded on read.
 
 <img width="1593" height="380" alt="MCP integration" src="https://github.com/user-attachments/assets/bb2cf1b0-d8f9-4eb7-afe4-37491ca9cfc6" />

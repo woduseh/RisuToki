@@ -38,6 +38,10 @@ export interface McpErrorInfo {
   suggestion?: string;
   details?: Record<string, unknown>;
   rejected?: boolean;
+  code?: string;
+  retryable?: boolean;
+  retry_mode?: McpRetryMode;
+  outcome?: McpOutcome;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -278,20 +282,116 @@ const SPECIAL_TARGET_NEXT_ACTIONS: Record<string, string[]> = {
 };
 
 export interface McpErrorRecoveryMeta {
+  code: string;
   retryable: boolean;
+  retry_mode: McpRetryMode;
+  outcome: McpOutcome;
   next_actions: string[];
 }
+
+export type McpRetryMode = 'never' | 'backoff' | 'refresh_then_retry' | 'inspect_outcome';
+export type McpOutcome = 'complete' | 'not_started' | 'unchanged' | 'partial' | 'unknown';
 
 /**
  * Derive recovery metadata for error/no-op responses.
  *
- * - `retryable`: true only for conflict (409) and server-error (5xx) statuses
+ * - conflicts refresh state before retrying
+ * - transient server failures use bounded backoff
+ * - validation/auth/not-found failures are not retried
  * - `next_actions`: derived from the `target` prefix using the tool taxonomy
  */
 export function errorRecoveryMeta(target: string, status: number): McpErrorRecoveryMeta {
-  const retryable = status === 409 || status >= 500;
   const nextActions = resolveErrorNextActions(target);
-  return { retryable, next_actions: nextActions };
+  if (status === 409) {
+    return {
+      code: 'conflict',
+      retryable: true,
+      retry_mode: 'refresh_then_retry',
+      outcome: 'not_started',
+      next_actions: nextActions,
+    };
+  }
+  if (status === 501) {
+    return {
+      code: 'not_implemented',
+      retryable: false,
+      retry_mode: 'never',
+      outcome: 'not_started',
+      next_actions: nextActions,
+    };
+  }
+  if (status >= 500) {
+    return {
+      code: status === 504 ? 'timeout' : 'server_error',
+      retryable: true,
+      retry_mode: 'backoff',
+      outcome: 'not_started',
+      next_actions: nextActions,
+    };
+  }
+  if (status === 200) {
+    return {
+      code: 'no_op',
+      retryable: false,
+      retry_mode: 'never',
+      outcome: 'unchanged',
+      next_actions: nextActions,
+    };
+  }
+  return {
+    code:
+      status === 400
+        ? 'invalid_request'
+        : status === 401
+          ? 'unauthorized'
+          : status === 403
+            ? 'forbidden'
+            : status === 404
+              ? 'not_found'
+              : status === 413
+                ? 'response_too_large'
+                : status === 499
+                  ? 'request_cancelled'
+                  : 'request_failed',
+    retryable: false,
+    retry_mode: 'never',
+    outcome: status === 499 ? 'unchanged' : 'not_started',
+    next_actions: nextActions,
+  };
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+/** Add the common recovery contract without discarding server-specific fields. */
+export function normalizeMcpErrorEnvelope(payload: Record<string, unknown>): Record<string, unknown> {
+  const status = typeof payload.status === 'number' ? payload.status : 500;
+  const target = typeof payload.target === 'string' ? payload.target : 'request:unknown';
+  const action = typeof payload.action === 'string' ? payload.action : 'request failed';
+  const recovery = errorRecoveryMeta(target, status);
+  const details = recordValue(payload.details);
+  const partial = payload.outcome === 'partial' || details?.partial === true;
+  const unknownOutcome = payload.outcome === 'unknown';
+  const outcome = partial ? 'partial' : unknownOutcome ? 'unknown' : recovery.outcome;
+  const explicitRetryMode =
+    typeof payload.retry_mode === 'string' &&
+    ['never', 'backoff', 'refresh_then_retry', 'inspect_outcome'].includes(payload.retry_mode)
+      ? (payload.retry_mode as McpRetryMode)
+      : undefined;
+  const retryMode = partial || unknownOutcome ? 'inspect_outcome' : (explicitRetryMode ?? recovery.retry_mode);
+  const explicitRetryable = typeof payload.retryable === 'boolean' ? payload.retryable : recovery.retryable;
+  return {
+    ...payload,
+    status,
+    action,
+    target,
+    code: typeof payload.code === 'string' ? payload.code : partial ? 'partial_apply' : recovery.code,
+    retryable: partial || unknownOutcome ? false : explicitRetryable,
+    retry_mode: retryMode,
+    outcome,
+    next_actions: Array.isArray(payload.next_actions) ? payload.next_actions : recovery.next_actions,
+  };
 }
 
 function resolveErrorNextActions(target: string): string[] {

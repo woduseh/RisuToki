@@ -4,11 +4,11 @@ For tool-family boundaries and routing rules, pair this document with `docs/MCP_
 
 RisuToki MCP routes use three additive response helpers:
 
-| Helper                      | HTTP status           | Meaning                                                         | Required additive fields                                                                                             | Compatibility rule                                                                                      |
-| --------------------------- | --------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `mcpSuccess(payload, opts)` | `200`                 | The mutation or read succeeded.                                 | `status`, `summary`, `next_actions`, `artifacts`, `artifacts.byte_size`                                              | Never wrap or remove the existing payload.                                                              |
-| `mcpError(status, info)`    | `4xx` / `409` / `5xx` | The request failed and the caller must recover before retrying. | `action`, `target`, `error`, `status`, `suggestion`, `retryable`, `next_actions`                                     | Keep the top-level `error` field for MCP bridge compatibility.                                          |
-| `mcpNoOp(info, extra)`      | `200`                 | The request was valid, but nothing was applied.                 | `success: false`, `message`, `action`, `target`, `error`, `status`, `suggestion`, `retryable: false`, `next_actions` | Preserve legacy route-local fields such as `matchCount`, `results`, `errors`, and `startAnchorFoundAt`. |
+| Helper                      | HTTP status           | Meaning                                                         | Required additive fields                                                                                                                                  | Compatibility rule                                                                                      |
+| --------------------------- | --------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `mcpSuccess(payload, opts)` | `200`                 | The mutation or read succeeded.                                 | `status`, `summary`, `next_actions`, `artifacts`, `artifacts.byte_size`                                                                                   | Never wrap or remove the existing payload.                                                              |
+| `mcpError(status, info)`    | `4xx` / `409` / `5xx` | The request failed and the caller must recover before retrying. | `action`, `target`, `error`, `status`, `code`, `suggestion`, `retryable`, `retry_mode`, `outcome`, `next_actions`                                         | Keep the top-level `error` field for MCP bridge compatibility.                                          |
+| `mcpNoOp(info, extra)`      | `200`                 | The request was valid, but nothing was applied.                 | `success: false`, `message`, `action`, `target`, `error`, `status`, `code`, `retryable: false`, `retry_mode: never`, `outcome: unchanged`, `next_actions` | Preserve legacy route-local fields such as `matchCount`, `results`, `errors`, and `startAnchorFoundAt`. |
 
 ## 1. `mcpError()` — hard failure
 
@@ -41,8 +41,13 @@ Notes:
 
 Both `mcpError()` and `mcpNoOp()` responses include machine-readable recovery hints:
 
-- `retryable` (boolean) — `true` only for conflict (409) and server-error (5xx) statuses; `false` for validation errors (4xx) and no-op (200) responses.
+- `code` — stable category such as `invalid_request`, `conflict`, `timeout`, or `partial_apply`.
+- `retryable` — whether a retry is permitted after following `retry_mode`; an unknown mutation outcome is never automatically retryable.
+- `retry_mode` — `never`, `backoff`, `refresh_then_retry`, or `inspect_outcome`.
+- `outcome` — `complete`, `not_started`, `unchanged`, `partial`, or `unknown`.
 - `next_actions` (string[]) — deterministic list of suggested follow-up MCP tool names. Success responses prefer explicit override → per-tool override → family default. Error/no-op responses derive from the `target` prefix using the MCP tool taxonomy family map. Special cases: `document:current` → `['open_file', 'list_references', 'session_status']`; unknown prefixes → `[]`.
+
+Stale/conflict `409` uses `refresh_then_retry/not_started`; transient read-only infrastructure failures use `backoff/not_started`; a mutation timeout, network interruption, cancellation after dispatch, or partial apply uses `inspect_outcome` with `unknown` or `partial`. Inspect the target and create a fresh preview instead of replaying the mutation.
 
 These fields are additive and do not replace existing fields.
 
@@ -92,8 +97,8 @@ Intentional exception:
 
 ## 5. Agent recovery playbook
 
-1. If `status >= 400`, treat the result as a hard failure. The MCP protocol-level `isError` flag is set to `true`, and the full structured error envelope (action, target, error, suggestion, retryable, next*actions, details) is preserved end-to-end from the API server through the MCP stdio transport. Check `retryable` to decide whether to retry after delay. Read `suggestion` first, then inspect `details` or `rejected`. Use `next_actions` to discover recovery tools. For indexed-write `409` stale-index conflicts, refresh the relevant family list route and carry the latest `comment`, `preview`, or `type` value forward as the matching `expected*\*` guard.
-2. Infrastructure errors (editor not running, network failure, timeout) return `isError: true` with HTTP-style status codes (`502`, `503`, `504`), a human-readable `error` message, and `retryable: true`. These are distinct from domain errors and should be retried after verifying the RisuToki editor is running.
+1. If `status >= 400`, treat the result as a hard failure. The MCP protocol-level `isError` flag and full structured envelope are preserved end-to-end. Follow `retry_mode`, not status alone. For indexed-write `409` conflicts, refresh the family list/read and carry the latest guard into a new preview.
+2. Infrastructure errors use HTTP-style `502`, `503`, or `504`. Read-only requests may use bounded backoff. A mutation failure after dispatch uses `inspect_outcome/unknown`; inspect current state and never replay it automatically.
 3. If `status === 200` and `success === false`, treat the result as a no-op (`retryable` is always `false`). Use the preserved route-local fields to recover:
    - `matchCount: 0` means the search string or regex needs adjustment
    - `startAnchorFoundAt` means the start anchor matched, but the end anchor did not
@@ -101,7 +106,13 @@ Intentional exception:
    - `errors[]` shows which batch insert items need repair
 4. If the result is a success envelope, prefer `next_actions` over free-form guessing. High-traffic tools may narrow the family defaults to a smaller per-tool set. Check `artifacts.byte_size` before asking for more data: if the response is already large, switch to narrower reads (`list_*`, `search_in_field`, `read_field_range`, per-item reads, or probes) instead of dumping adjacent surfaces. Successful lorebook, regex, greeting, and risup batch mutations may include `results[]` for per-entry verification without an immediate re-read.
 
-## 6. Contributor rule
+## 6. MCP stdio structured compatibility
+
+The 13 default `facade-first` tools are registered with a compact common `outputSchema`. Each call returns the existing JSON string in `content` and the semantically identical parsed object in `structuredContent`; text-only clients remain compatible. Legacy-profile tools retain their existing `server.tool` registration and text response.
+
+This contract does not enable Programmatic Tool Calling or add an OpenAI-specific caller. Caller runtimes may opt into bounded read-only orchestration using the documented fields, while approval, preview/apply, and final validation remain direct.
+
+## 7. Contributor rule
 
 When adding or changing an MCP route:
 

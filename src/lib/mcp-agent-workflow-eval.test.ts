@@ -132,14 +132,12 @@ describe('agent eval: real artifact workflow routing matrix', () => {
     expect(tasks.filter((task) => task.execution === 'static').every((task) => task.family === 'plugin-v3')).toBe(true);
   });
 
-  it('keeps workflow eval references synchronized across docs, skills, and AGENTS routing', () => {
+  it('keeps workflow eval references synchronized across canonical docs', () => {
     const requiredRefs = [
-      ['AGENTS.md', 'mcp-agent-workflow-eval.test.ts'],
       ['docs/README.md', 'mcp-agent-workflow-eval.test.ts'],
       ['docs/MCP_TOOL_SURFACE.md', 'mcp-agent-workflow-eval.test.ts'],
-      ['docs/MCP_WORKFLOW.md', 'Measured synthetic workflow replay'],
-      ['skills/project-workflow/MCP_WORKFLOW.md', 'Measured synthetic workflow replay'],
-      ['skills/using-mcp-tools/SKILL.md', 'mcp-agent-workflow-eval.test.ts'],
+      ['docs/MCP_WORKFLOW.md', 'Deterministic synthetic MCP contract replay'],
+      ['skills/project-workflow/MCP_WORKFLOW.md', 'Deterministic synthetic MCP contract replay'],
       ['README.md', 'mcp-agent-workflow-eval.test.ts'],
     ] as const;
 

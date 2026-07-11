@@ -1,305 +1,42 @@
 ---
 name: writing-risup-presets
-description: 'Use when creating, editing, or reviewing RisuAI .risup preset prompt/system/model settings — promptTemplate, formatingOrder, toggle syntax, module integration, structured output, and sampling.'
+description: 'Use when creating, editing, or reviewing .risup request assembly, promptTemplate items, formatingOrder, toggles, module integration, structured output, or model/sampling settings. Primary skill for preset composition; hand variant propagation to the matching sync skill. Do not use when the task is bot identity, reusable runtime modules, or plugin code.'
 tags: ['preset', 'risup', 'prompt', 'template']
-related_tools:
-  [
-    'read_content',
-    'search_document',
-    'analyze_content',
-    'preview_edit',
-    'apply_edit',
-    'manage_items',
-    'list_risup_prompt_items',
-    'read_risup_prompt_item_batch',
-    'export_risup_prompt_to_text',
-  ]
+related_tools: ['read_content', 'search_document', 'analyze_content', 'preview_edit', 'apply_edit', 'manage_items']
 artifact_types: ['risup']
-canonical_sources:
-  [
-    'Risuai/src/ts/process/prompt.ts',
-    'Risuai/src/ts/storage/database.svelte.ts',
-    'src/lib/risup-prompt-model.ts',
-    'src/lib/risup-toggle-model.ts',
-    'src/charx-io.ts',
-  ]
+canonical_sources: ['Risuai/src/ts/process/prompt.ts', 'src/lib/risup-prompt-model.ts', 'src/lib/risup-toggle-model.ts']
 ---
 
 # Writing .risup Presets
 
-## Agent Operating Contract
+## Boundary
 
-- **Use when:** the task concerns `.risup` preset composition, request assembly, `promptTemplate`, `formatingOrder`, toggles, structured output, sampling, or module pairing.
-- **Do not use when:** the artifact should be a bot, module, plugin, or only needs shared CBS prose editing.
-- **Read first:** this `SKILL.md`; it is the preset decision and structured prompt workflow layer.
-- **Load deeper only if:** field inventory is needed (`risu/prompts/docs/PRESET_FIELDS.md`), CBS syntax is unclear (`writing-cbs-syntax`), or module pairing affects `moduleIntergration`.
-- **Output/validation contract:** use structured risup prompt tools, avoid bulk-reading `promptTemplate`, verify `formatingOrder` against prompt items, and run import/diff/toggle validation after structural changes.
+A preset owns reusable model/request behavior: prompt assembly, provider adaptation, sampling/reasoning, structured output, and optional module activation. It does not own character identity, reusable lore/regex/Lua/CSS packs, or sandboxed plugin code.
 
-A **preset** is a reusable request-assembly pack. It controls model selection, sampling, prompt formatting, structured output, and optional module pairing **without** editing the character itself.
+## Core surfaces
 
-## When to use a preset
+- `promptTemplate` defines structured prompt items and dynamic channels.
+- `formatingOrder` places high-level runtime channels; it does not replace `promptTemplate`. Review both after structural changes.
+- `customPromptTemplateToggle` defines line-based UI controls; every CBS variable and UI label must match.
+- `templateDefaultVariables` supplies newline `key=value` defaults, subject to character/runtime precedence.
+- `moduleIntergration` lists module IDs the preset activates.
+- Model/provider, sampling/reasoning, stop/fallback, role replacement, schema/JSON extraction, and output controls form one explicit request contract.
 
-| If you need…                                         | Use                | Why                                                                 |
-| ---------------------------------------------------- | ------------------ | ------------------------------------------------------------------- |
-| Reusable prompt/model behavior across many cards     | **Preset**         | Applies non-destructively to any compatible character/chat          |
-| A reusable lorebook/regex/Lua/CSS behavior pack      | **Module**         | Modules add runtime content; presets change request assembly        |
-| A standalone roleplay identity with greeting/persona | **Bot** (`.charx`) | A preset has no character identity of its own                       |
-| External integrations or sandboxed custom UI         | **Plugin**         | Plugins run code; presets only configure prompting/request behavior |
+## Minimal workflow
 
-**Rule of thumb:** if the main question is "how should this chat be formatted and requested?" the answer is usually a preset.
+1. Inspect/list/search structured prompt items; do not bulk-read raw `promptTemplate` first.
+2. Read only target items and carry current identity/type/preview guards for index-based operations.
+3. Use preview/apply for focused writes and `manage_items` for add, reorder, copy-as-text, import, or snippet workflows.
+4. For large restructuring, export/copy as text, preserve item header metadata, keep every CBS block self-contained within one item, then import and verify with `analyze_content` action `verify_risup_prompt_import` using the same source.
+5. Compare related presets with structured analysis and preserve justified provider-specific prefill or request behavior.
+6. Re-read changed items and validate order, imports, toggles, CBS, ranges, and request settings.
 
-> For the full field inventory and file format, see `risu/prompts/docs/PRESET_FIELDS.md`.
+Chat item ranges must be intentional, non-overlapping when split, and cover the desired history. Assistant prefill belongs in a separate `plain`/`assistant`/`normal` item at the intended turn boundary; do not bury it in a system block. Provider-native prefill shapes may differ and must remain explicit.
 
-## Preset-specific surfaces
+When renaming/removing toggles, discover all CBS references, update declarations and every use, search for the old name, and validate inactive branches. Use `writing-cbs-syntax` for exact expressions and `writing-risum-modules` only for module-pairing behavior.
 
-### `promptTemplate`
+Load `risu/prompts/docs/PRESET_FIELDS.md` only for the complete field inventory. Use `prompt-preset-sync` for non-Mythos variants, `mythos-prompt-development` for Mythos design, and `mythos-prompt-maintenance` for Mythos drift/application.
 
-`promptTemplate` is the structured prompt pipeline. It is a JSON array of prompt items such as free-text system blocks, dynamic description/persona inserts, chat slices, author notes, and cache blocks.
+## Validation
 
-Preferred MCP workflow (facade-first; see `using-mcp-tools` for the full routing contract):
-
-1. Facade `read_content` / `search_document` for covered prompt-item reads and searches.
-2. Facade `preview_edit` → `apply_edit` for covered item writes and deletes.
-3. Facade `manage_items` for add, reorder, copy-as-text, text import, and snippet workflows.
-4. Granular fallback only when the facade rejects the selector or an exact legacy payload is required: `list_risup_prompt_items` → `read_risup_prompt_item_batch` → `write_risup_prompt_item(_batch)` carrying `expected_type` / `expected_preview`.
-
-Use raw `write_field("promptTemplate")` only when you need to preserve or edit unsupported/legacy JSON structures that neither the facade nor the structured editor can model directly.
-
-Supported item families in RisuToki:
-
-| Type                                                             | Use                                          |
-| ---------------------------------------------------------------- | -------------------------------------------- |
-| `plain`, `jailbreak`, `cot`                                      | Fixed prompt blocks with `role` + `type2`    |
-| `chatML`                                                         | Raw ChatML fragment                          |
-| `persona`, `description`, `lorebook`, `postEverything`, `memory` | Dynamic channels with optional `innerFormat` |
-| `authornote`                                                     | Author-note insertion with optional defaults |
-| `chat`                                                           | Chat-history slice                           |
-| `cache`                                                          | Cached context slot                          |
-
-### `formatingOrder`
-
-`formatingOrder` is a JSON array of high-level placement tokens:
-
-`main`, `description`, `personaPrompt`, `chats`, `lastChat`, `jailbreak`, `lorebook`, `globalNote`, `authorNote`, `postEverything`
-
-It does **not** replace `promptTemplate`. Instead:
-
-- `promptTemplate` defines **what blocks exist**
-- `formatingOrder` defines **where key runtime channels land**
-
-Changing one without checking the other is a common way to misplace lorebook, author note, or post-history content.
-
-### `customPromptTemplateToggle`
-
-Preset toggles are line-based UI declarations. They support:
-
-- checkboxes
-- text inputs
-- textareas
-- selects
-- groups/dividers/captions
-
-Preset toggles are concatenated with active module toggles at runtime, so preset/module UX should be designed together instead of independently.
-
-### `templateDefaultVariables`
-
-Template default variables are newline `key=value` pairs used when a chat/script variable has no runtime value. In the current upstream lookup flow, character-level defaults are checked first, so duplicated keys on the character still win.
-
-### `moduleIntergration`
-
-This is a comma-separated list of module IDs. It lets a preset automatically activate specific modules so a prompt style can ship with the behavior packs it expects.
-
-### Structured output / response shaping
-
-These fields usually travel together:
-
-| Field family                                                         | Use                                               |
-| -------------------------------------------------------------------- | ------------------------------------------------- |
-| `jsonSchemaEnabled`, `jsonSchema`, `strictJsonSchema`, `extractJson` | schema-constrained / JSON-extraction workflows    |
-| `systemContentReplacement`, `systemRoleReplacement`                  | provider adaptation when `system` needs remapping |
-| `localStopStrings`, `fallbackWhenBlankResponse`                      | response control / blank-output recovery          |
-| `outputImageModal`, `verbosity`                                      | provider/UI-specific output behavior              |
-
-### Model and sampling layer
-
-Presets also carry the model and sampling contract:
-
-- `apiType`, `aiModel`, `subModel`
-- `promptPreprocess`
-- `temperature`, `maxContext`, `maxResponse`
-- `frequencyPenalty`, `presencePenalty`
-- `top_p`, `top_k`, `repetition_penalty`, `min_p`, `top_a`
-- `reasonEffort`, `thinkingTokens`, `thinkingType`, `adaptiveThinkingEffort`
-
-Treat these as part of the preset's identity, not an afterthought. A prompt architecture written for one provider or reasoning mode can degrade badly if the preset's model layer is changed carelessly.
-
-## Recommended MCP workflow
-
-Facade-first. Use granular prompt tools only when the facade rejects the selector/operation or an exact legacy payload is required, and state the fallback reason in one line of the final task summary.
-
-### Small edits
-
-1. `read_content` / `search_document` to locate the target items.
-2. `preview_edit` → `apply_edit` for the covered write or delete.
-3. Fallback: `list_risup_prompt_items` → `read_risup_prompt_item_batch`, then granular writes carrying `expected_type` and, when possible, `expected_preview`.
-
-### Large restructures
-
-1. `manage_items` copy-as-text and text-import workflows for the export → edit → reimport loop.
-2. Edit the exported text while preserving its block headers/metadata.
-3. After any text import, verify with `analyze_content` (`operation.action="verify_risup_prompt_import"`) and the same source text.
-4. Fallback: `export_risup_prompt_to_text` / `import_risup_prompt_from_text` when the facade cannot express the operation or full serializer output is needed.
-
-### Comparing / reusing blocks
-
-1. `analyze_content` to compare against a reference preset (granular `diff_risup_prompt` only for exact legacy diff payloads).
-2. `manage_items` snippet workflows for reusable blocks (fallback: `list_risup_prompt_snippets` / `read_risup_prompt_snippet`).
-
-## Composition patterns
-
-### Minimal general-purpose preset
-
-```json
-[
-  { "type": "plain", "type2": "main", "role": "system", "text": "You are {{char}}." },
-  { "type": "description" },
-  { "type": "persona" },
-  { "type": "chat", "rangeStart": 0, "rangeEnd": "end" },
-  { "type": "jailbreak", "type2": "normal", "role": "system", "text": "Stay in character." }
-]
-```
-
-Typical paired order:
-
-```json
-["main", "description", "personaPrompt", "chats", "lastChat", "jailbreak", "lorebook", "globalNote", "authorNote"]
-```
-
-### Provider-adaptation preset
-
-Use this when the prompt architecture is stable but the provider needs:
-
-- remapped `system` handling
-- schema extraction
-- special stop strings
-- different reasoning controls
-
-Do **not** hide those changes inside a module or bot. Keep them inside the preset so the request contract stays explicit.
-
-## MD-to-risup Migration Workflow
-
-When migrating a prompt from a Markdown source document into a `.risup` promptTemplate:
-
-### Source MD format convention
-
-Each prompt item is represented by a heading of the form:
-
-```
-## N · type · role · type2
-```
-
-where **N** is the 1-based item index, **type** is the prompt item type (e.g. `plain`, `jailbreak`, `chat`), **role** is the ChatML role (`system`, `user`, `assistant`), and **type2** is the subtype (`main`, `normal`, `globalNote`, etc.). The body under the heading becomes the item's `text` field.
-
-### CBS cross-section pitfalls
-
-If CBS `{{#when}}…{{/when}}` blocks span across item boundaries in the source document, they **break** when split into separate prompt items because each item is resolved independently at runtime.
-
-**Rebalancing strategy:** every prompt item must be CBS-self-contained — each `{{#when}}` must have its matching `{{/when}}` within the same item. When splitting, duplicate or restructure the conditional wrappers so no block crosses an item boundary.
-
-### Code fence prefill extraction
-
-Code fences in the source MD that represent assistant prefill (e.g. `{"type": "prefill", …}` or raw JSON/XML intended as the start of the assistant turn) must be extracted into **separate** prompt items with `type: "plain"`, `role: "assistant"`, and `type2: "normal"`.
-
-Do not leave prefill content merged into a system-role item.
-
-## Prefill Pattern Guide
-
-Different providers use different conventions for assistant-turn prefill:
-
-| Provider   | Pattern                                              | Notes                                                          |
-| ---------- | ---------------------------------------------------- | -------------------------------------------------------------- |
-| **Claude** | `<invoke>…</invoke>` XML tag, or direct JSON prefill | Used for tool-use steering and structured first-token guidance |
-| **Gemini** | `function_call` object                               | Mirrors Gemini's native function-calling prefill format        |
-| **GPT**    | `tool_calls` array                                   | Matches OpenAI tool-call prefill convention                    |
-
-Prefill items should always use:
-
-```json
-{ "type": "plain", "role": "assistant", "type2": "normal", "text": "…" }
-```
-
-Place them at the position where the assistant turn should begin (typically after the last user/system block).
-
-## Multi-Preset Verification Checklist
-
-When maintaining multiple related presets (e.g. provider variants of the same prompt architecture):
-
-1. **Item count and type sequence** — all variants should have the same number of items in the same type order unless a provider legitimately requires a different structure.
-2. **Toggle name/value consistency** — toggles referenced in CBS blocks must exist in every variant's `customPromptTemplateToggle`. A toggle present in one preset but missing in another causes silent CBS evaluation failures.
-3. **`formatingOrder` cross-verification** — token lists should match across variants. A missing `lorebook` or `authorNote` token in one variant silently drops that content.
-4. **Automated comparison** — use `analyze_content` preset comparison with one preset open and the other loaded as a reference to surface structural differences (granular `diff_risup_prompt` only for exact legacy payloads).
-5. **Post-import validation** — after any prompt-text import, run `analyze_content` with `operation.action="verify_risup_prompt_import"` and the same source text to confirm content integrity (round-trip fidelity, item count, CBS balance). The old `validate_risup_prompt_import` action remains a legacy alias.
-
-## Chat Item Range Rules
-
-Chat-type prompt items use `rangeStart` and `rangeEnd` to slice the conversation history:
-
-| Field        | Allowed values       | Meaning                                                         |
-| ------------ | -------------------- | --------------------------------------------------------------- |
-| `rangeStart` | Non-negative integer | Index of the first message to include (0 = first message)       |
-| `rangeEnd`   | `"end"`              | Include all remaining messages from `rangeStart` onward         |
-|              | Non-negative integer | Stop at message index N (exclusive)                             |
-|              | Negative integer     | Exclude the last \|N\| messages (e.g. `-2` = all except last 2) |
-
-Examples:
-
-```jsonc
-// All messages
-{ "type": "chat", "rangeStart": 0, "rangeEnd": "end" }
-
-// First 10 messages only
-{ "type": "chat", "rangeStart": 0, "rangeEnd": 10 }
-
-// Everything except the last 3 messages
-{ "type": "chat", "rangeStart": 0, "rangeEnd": -3 }
-
-// Only the last 3 messages (pair with the above)
-{ "type": "chat", "rangeStart": -3, "rangeEnd": "end" }
-```
-
-When using multiple chat items to split the history (e.g. cache boundary), ensure ranges are non-overlapping and jointly cover the full history.
-
-## Toggle Migration Guide
-
-When adding, deleting, or renaming toggles in a preset:
-
-### Update all CBS references
-
-Every CBS `{{#when toggle_NAME …}}` block that references the old toggle name must be updated. A renamed toggle with stale CBS references silently evaluates as unset (value `""`), which usually means the conditional body is skipped.
-
-### `customPromptTemplateToggle` field structure
-
-Toggle declarations are **newline-separated** lines in a single string field. Each line follows a specific syntax depending on the control type (checkbox, select, text, etc.). Edit via facade `preview_edit` → `apply_edit` string replacement on `customPromptTemplateToggle`; use granular `replace_in_field` only when the facade rejects the operation.
-
-### Cross-check workflow
-
-1. **Discover all toggle references:** `analyze_content` toggle listing (`list_cbs_toggles` action) scans every CBS-bearing field and returns which toggles are used and where.
-2. **Find stale references after rename/delete:** `search_document` with the old toggle name to locate CBS blocks that still reference a renamed or deleted toggle (granular `search_all_fields` only for legacy result shapes).
-3. **Batch-update CBS blocks:** use `preview_edit` → `apply_edit` replacements to rewrite `toggle_OldName` → `toggle_NewName` across all affected fields (fallback: `replace_in_field` / `replace_in_lorebook_batch`).
-
-## Shared/reference skills
-
-Load these on demand instead of duplicating their syntax here:
-
-| Topic                                   | Skill                      |
-| --------------------------------------- | -------------------------- |
-| CBS inside prompt text                  | `writing-cbs-syntax`       |
-| File structures / JSON shapes           | `file-structure-reference` |
-| Module pairing for `moduleIntergration` | `writing-risum-modules`    |
-
-## Smoke Tests
-
-| Prompt                                                                 | Expected routing                                                                | Expected output                                  | Forbidden behavior                                         |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------- |
-| "What's the difference between `formatingOrder` and `promptTemplate`?" | Primary: `writing-risup-presets`.                                               | Clear distinction plus structured tool sequence. | Bulk-reading or rewriting raw `promptTemplate` JSON first. |
-| "Compare these two preset variants and migrate toggles safely."        | Primary: `writing-risup-presets`; load `writing-cbs-syntax` for CBS references. | Diff/import/toggle validation workflow.          | Renaming toggles without scanning CBS-bearing fields.      |
+Verify item count/type/order, `formatingOrder` coverage, CBS balance, toggle/UI names, chat ranges, prefill role, module IDs, structured-output compatibility, sampling/model intent, and import round-trip fidelity. State any granular fallback reason.

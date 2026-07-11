@@ -465,6 +465,14 @@ function getDocumentFileType(data: CharxData): 'charx' | 'risum' | 'risup' {
   return 'charx';
 }
 
+function getArtifactTypeFromPath(filePath: string | null): 'charx' | 'risum' | 'risup' | 'unknown' {
+  const extension = filePath ? path.extname(filePath).toLowerCase() : '';
+  if (extension === '.charx') return 'charx';
+  if (extension === '.risum') return 'risum';
+  if (extension === '.risup') return 'risup';
+  return 'unknown';
+}
+
 function getSaveDialogOptionsForFileType(fileType: 'charx' | 'risum' | 'risup'): {
   filters: { name: string; extensions: string[] }[];
   defaultExt: string;
@@ -1906,6 +1914,7 @@ ipcMain.handle('get-claude-prompt', () => {
   if (mainState.currentData.css) stats.push(`CSS: ${(mainState.currentData.css.length / 1024).toFixed(0)}KB`);
 
   return {
+    artifactType: getArtifactTypeFromPath(mainState.currentFilePath || currentImportSourcePath),
     fileName,
     name: mainState.currentData.name || '',
     stats: stats.join(', '),

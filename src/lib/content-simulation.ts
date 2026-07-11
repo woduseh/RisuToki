@@ -41,6 +41,7 @@ export interface LorebookSimulationResult {
 
 export interface LorebookMatchOptions {
   onRegexError?: (error: { entryIndex: number; key: string; message: string }) => void;
+  signal?: AbortSignal;
 }
 
 type LoreRuntimeEntry = PreviewLorebookEntry & {
@@ -79,6 +80,7 @@ export function runRegexPipeline(
   scripts: PreviewRegexScript[],
   mode: string,
   selectedIndices?: number[],
+  signal?: AbortSignal,
 ): RegexPipelineResult {
   const original = text;
   const modeLower = mode.toLowerCase();
@@ -102,6 +104,7 @@ export function runRegexPipeline(
 
   const trace: RegexTraceEntry[] = [];
   for (const { script, index } of ordered) {
+    signal?.throwIfAborted();
     const before = text;
     const find = script.find || script.in || '';
     const replace = script.replace || script.out || '';
@@ -222,6 +225,7 @@ export function matchLorebookEntries(
   const activated: LoreMatchWithEntry[] = [];
 
   for (let index = 0; index < lorebook.length; index++) {
+    options.signal?.throwIfAborted();
     const entry = lorebook[index] as LoreRuntimeEntry;
     if (entry.mode === 'folder') continue;
     const parsed = entry.content ? parseLorebookDecorators(String(entry.content)) : null;
@@ -305,6 +309,7 @@ export function simulateLorebookActivation(options: {
   recursive?: boolean;
   maxPasses?: number;
   includeContent?: boolean;
+  signal?: AbortSignal;
 }): LorebookSimulationResult {
   const scanDepth = options.scanDepth ?? 10;
   const recursive = options.recursive ?? false;
@@ -316,13 +321,15 @@ export function simulateLorebookActivation(options: {
   let foundOnLastPass = false;
 
   while (passes < (recursive ? maxPasses : 1)) {
+    options.signal?.throwIfAborted();
     passes++;
-    const passMatches = matchLorebookEntries(corpus, options.lorebook, scanDepth).filter(
+    const passMatches = matchLorebookEntries(corpus, options.lorebook, scanDepth, { signal: options.signal }).filter(
       (match) => !active.has(match.index),
     );
     foundOnLastPass = passMatches.length > 0;
     if (!foundOnLastPass) break;
     for (const match of passMatches) {
+      options.signal?.throwIfAborted();
       active.add(match.index);
       const entry = options.lorebook[match.index] as LoreRuntimeEntry;
       const content = String(entry.content || '');

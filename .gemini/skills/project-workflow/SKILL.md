@@ -1,90 +1,36 @@
 ---
 name: project-workflow
-description: 'Project-level MCP workflow rules and contribution conventions for RisuToki agents. Use when onboarding into a session, choosing MCP tools, or following versioning/CI rules.'
-tags: ['workflow', 'project', 'onboarding', 'mcp', 'rules']
-related_tools: ['list_skills', 'read_skill', 'inspect_document', 'read_content', 'preview_edit', 'apply_edit']
+description: 'Use when changing RisuToki code, harnesses, tests, CI, documentation tied to behavior, versions, or releases. Primary skill for repository contribution work; hand MCP artifact operations to using-mcp-tools. Do not use when only authoring or inspecting a .charx, .risum, or .risup artifact.'
+tags: ['workflow', 'project', 'contribution', 'release']
+related_tools: ['list_skills', 'read_skill']
 ---
 
 # Project Workflow
 
-## Agent Operating Contract
+## Outcome
 
-- **Use when:** starting a RisuToki session, checking project rules, choosing whether to load MCP workflow details, or preparing repo/documentation changes.
-- **Do not use when:** the task only needs an artifact-specific authoring skill after project rules are already known.
-- **Read first:** this `SKILL.md` at session start; if MCP is unavailable, open this file directly from `skills/project-workflow/SKILL.md`.
-- **Load deeper only if:** runtime-mode or common-sequence details are needed (`MCP_WORKFLOW.md`) or versioning/CI/release rules affect the change (`PROJECT_RULES.md`).
-- **Output/validation contract:** route to the smallest relevant skill set, keep docs/versioning rules in sync, and treat `using-mcp-tools` as the detailed MCP tool-choice source of truth.
+Deliver an in-scope repository change with the relevant documentation, version metadata, and validation evidence synchronized. This is not a session-start preload.
 
-This skill is the agent-facing entrypoint for **project-level guidance** that every coding agent should know before making changes. It covers two areas:
+## Minimal workflow
 
-1. **MCP workflow** — tool selection, read rules, workflow patterns, and caveats
-2. **Project rules** — versioning, documentation updates, CI, and guide locations
+1. Inspect the nearest `AGENTS.md`, affected implementation, and current working-tree state.
+2. Define the smallest source, documentation, and test surfaces that must move together.
+3. Load only the supporting reference that affects the task:
+   - [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md) for runtime modes or MCP execution sequences.
+   - [`PROJECT_RULES.md`](PROJECT_RULES.md) for semver, changelog, CI, and release details.
+4. Implement without overwriting unrelated user changes.
+5. Run proportionate checks and report what ran, what passed, and any remaining limit.
 
-## Supporting Files
+For concrete artifact tool selection, hand off to `using-mcp-tools`. Authoring syntax and composition belong to the nearest `risu/*/AGENTS.md` route.
 
-| File                                   | Contents                                                                        |
-| -------------------------------------- | ------------------------------------------------------------------------------- |
-| [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)   | Runtime modes, startup profiles, common execution sequence, and skill discovery |
-| [`PROJECT_RULES.md`](PROJECT_RULES.md) | Versioning, CI/release workflow, and guide locations                            |
+## Repository rules
 
-Load these via `read_skill("project-workflow", "MCP_WORKFLOW.md")` and `read_skill("project-workflow", "PROJECT_RULES.md")` when you need complete detail.
+- Changes to tracked source, product behavior, or workflow/tooling require a semver version update and a new top `CHANGELOG.md` entry. Update user-facing documentation when behavior changes.
+- Pure `.charx`/`.risum`/`.risup` authoring does not require a version bump. Documentation-only corrections that do not change product behavior also do not require one.
+- Keep `AGENTS.md`, docs, Skills, tests, and tool metadata synchronized when an MCP surface or routing contract changes.
+- PR validation covers lint, typecheck, tests, and platform builds as documented in `PROJECT_RULES.md`. MCP contract or routing changes also require `npm run test:evals` and `npm run test:evals:replay`.
+- Packaging and publishing occur only for an explicitly authorized tag release.
 
-## When to Use This Skill
+## Validation
 
-- **Session start**: Read this SKILL.md for orientation, then load supporting files as needed.
-- **Before MCP edits**: Load `MCP_WORKFLOW.md` for runtime context, then `using-mcp-tools` for tool choice.
-- **Before committing**: Load `PROJECT_RULES.md` for versioning and documentation update rules.
-
----
-
-## MCP Tool Routing — Startup Pointer
-
-This skill only orients you. Before concrete MCP reads or writes, load `using-mcp-tools` and treat it as the detailed source of truth for structured surfaces, batch workflows, stale-index guards, and large-field edits.
-
-Startup principles:
-
-1. Prefer facade selectors over broad field dumps for covered reads/edits, and prefer stable `id` / `identity` selectors over indexes when lorebook, regex, greeting, or `.risup` prompt item lists provide them.
-2. Batch related reads/writes instead of looping single-item tools.
-3. Probe unopened files before switching the active UI document.
-4. Search/range-read before replacing large fields.
-5. Snapshot or use dry-run/hash guards before risky edits.
-
-The MCP server registers `facade-first` by default. Restart it with `--tool-profile advanced-full` or `RISUTOKI_MCP_TOOL_PROFILE=advanced-full` before using granular routes that are not in the active profile.
-
-### Runtime Modes
-
-- App-backed MCP is started by the Electron app and works against the active editor document.
-- Standalone MCP is started with `node toki-mcp-server.js --standalone` and works against files supplied by `--file`, `open_file`, and repeated `--ref`; pass `--allow-writes` when mutation tools should be permitted. `session_status` reports `allowWrites` / `userDataPath`, and process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log`.
-- When a `.charx`, `.risum`, or `.risup` project folder is active, the folder is the save backend for the normal structured editor. AI terminal cwd and generated `AGENTS.md` project-root context resolve to the workspace folder, while MCP field visibility and hidden/deprecated-field policy remain the same as the underlying document type. Raw project files are an advanced fallback for external tools or precise filesystem edits, not the default editing surface.
-
-> Runtime modes and common execution sequence: [`MCP_WORKFLOW.md`](MCP_WORKFLOW.md)
->
-> For **detailed MCP tool-selection guidance** (batch-first patterns, large-field editing, context-budget sizing), load `read_skill("using-mcp-tools")` when the task reaches an MCP read/write decision.
-
----
-
-## Project Rules — Quick Reference
-
-### Versioning & Documentation (mandatory when the repo itself changes)
-
-These apply when a task modifies tracked RisuToki source, product docs, or tooling — **not** for pure authoring work (`.charx`/`.risum`/`.risup` content) or documentation-only edits.
-
-1. **`package.json` version bump** — semver
-2. **`CHANGELOG.md`** — Keep a Changelog format, newest entry at top
-3. **`README.md`** — update if the change is user-visible
-4. **`AGENTS.md` / `docs/` / `skills/`** — update when MCP tools, fields, workflows, or Copilot routing change
-
-### CI / Validation
-
-- PR validation: Ubuntu (`lint` + `typecheck` + `test`) + Windows (`build:electron` + `build:renderer`)
-- MCP contract or workflow-routing changes → run `npm run test:evals` and `npm run test:evals:replay`; the first checks declarations and the second measures built MCP stdio behavior
-- No packaging in PR — only on tag release
-
-> Complete versioning rules, CI workflow, and guide locations: [`PROJECT_RULES.md`](PROJECT_RULES.md)
-
-## Smoke Tests
-
-| Prompt                                                                     | Expected routing                                                                           | Expected output                             | Forbidden behavior                                                |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- | ----------------------------------------------------------------- |
-| "I changed a MCP tool handler; what version bump and CI checks do I need?" | Primary: `project-workflow`; load `PROJECT_RULES.md` for full detail.                      | Versioning/docs/CI guidance.                | Guessing release rules without loading project rules when needed. |
-| "Walk me through onboarding for a RisuToki session."                       | Primary: `project-workflow`; load `using-mcp-tools` only before concrete MCP reads/writes. | Minimal startup order and routing guidance. | Preloading every authoring skill.                                 |
+Choose checks by risk. At minimum, run focused tests for changed behavior and the repository's lint/type checks when applicable. For generated Skill discovery surfaces, run the canonical sync command and verify mirrors rather than editing generated copies directly.

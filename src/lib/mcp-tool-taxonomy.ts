@@ -218,6 +218,7 @@ export const TOOL_META_KEYS = {
   requiresConfirmation: 'risutoki/requiresConfirmation',
   supportsDryRun: 'risutoki/supportsDryRun',
   batchAlternative: 'risutoki/batchAlternative',
+  modes: 'risutoki/modes',
 } as const;
 
 export const TOOL_MUTATION_META_KEYS = {
@@ -1189,6 +1190,13 @@ export function getToolMeta(name: string): Record<string, unknown> | undefined {
   }
   if (TOOL_BATCH_ALTERNATIVES[name]) {
     meta[TOOL_META_KEYS.batchAlternative] = TOOL_BATCH_ALTERNATIVES[name];
+  }
+  if (name === 'manage_items' || name === 'manage_assets' || name === 'manage_file') {
+    meta[TOOL_META_KEYS.modes] = {
+      read: { sideEffect: false, requiresConfirmation: false },
+      preview: { sideEffect: false, requiresConfirmation: false },
+      apply: { sideEffect: true, requiresConfirmation: true },
+    };
   }
   return meta;
 }

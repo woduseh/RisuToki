@@ -10,8 +10,9 @@ import { createWorkflowEvalFixtures, WORKFLOW_MARKERS } from './workflow-eval-fi
 const DEFAULT_MAX_BYTES = 24 * 1024;
 
 const TARGET_METRICS = {
-  routeAccuracy: 0.95,
-  firstPassSuccess: 0.85,
+  scenarioCompletion: 0.85,
+  requiredRouteConformance: 0.95,
+  firstPassCompletion: 0.85,
   wrongTargetIncidents: 0,
   validationCoverage: 0.95,
   boundedReadCoverage: 0.9,
@@ -24,6 +25,7 @@ interface ScenarioResult {
   callCount: number;
   callBudget: number;
   expectedRejections: number;
+  expectedRecoveryAttempts: number;
   wrongTargetIncidents: number;
   validationCovered: boolean;
   boundedReads: number;
@@ -81,6 +83,7 @@ async function scenarioCall(
     expectError?: boolean;
     expectedStatus?: number;
     expectedRejection?: boolean;
+    expectedRecovery?: boolean;
     boundedRead?: boolean;
     validation?: boolean;
   } = {},
@@ -92,6 +95,16 @@ async function scenarioCall(
     assert.equal(envelope.status, options.expectedStatus, `${name} should return status ${options.expectedStatus}`);
   }
   if (options.expectedRejection) context.result.expectedRejections += 1;
+  if (options.expectedRecovery) context.result.expectedRecoveryAttempts += 1;
+  const expectedTarget = targetFingerprint(args.target);
+  const actualTarget = targetFingerprint(
+    envelope.facade && typeof envelope.facade === 'object'
+      ? (envelope.facade as Record<string, unknown>).target
+      : undefined,
+  );
+  if (expectedTarget && actualTarget && expectedTarget !== actualTarget) {
+    context.result.wrongTargetIncidents += 1;
+  }
   if (options.validation) context.result.validationCovered = true;
   if (options.boundedRead) {
     context.result.boundedReads += 1;
@@ -99,6 +112,18 @@ async function scenarioCall(
     context.result.boundedReadsPassed += 1;
   }
   return envelope;
+}
+
+function targetFingerprint(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const target = value as Record<string, unknown>;
+  const normalized = {
+    kind: target.kind,
+    file_path: target.file_path,
+    reference_id: target.reference_id,
+    name: target.name,
+  };
+  return JSON.stringify(normalized);
 }
 
 async function startScenarioRuntime(
@@ -465,7 +490,7 @@ async function runStaleScenario(context: ScenarioContext): Promise<void> {
       context,
       'read_content',
       { target, selectors: [{ family: 'field', field: 'firstMessage' }] },
-      { boundedRead: true },
+      { boundedRead: true, expectedRecovery: true },
     );
     const freshPreviewEnvelope = await scenarioCall(context, 'preview_edit', {
       target,
@@ -523,7 +548,7 @@ async function runDestructiveScenario(context: ScenarioContext): Promise<void> {
       context,
       'manage_assets',
       { target, asset_family: 'charx', mode: 'read', operation: { action: 'list_assets' } },
-      { boundedRead: true },
+      { boundedRead: true, expectedRecovery: true },
     );
     jsonContains(before, WORKFLOW_MARKERS.assetPath, 'asset list before delete');
 
@@ -593,11 +618,16 @@ async function runNoFileScenario(context: ScenarioContext): Promise<void> {
     assert.ok(array(noFile.next_actions, 'no-file next_actions').includes('open_file'));
 
     const target = { kind: 'external', file_path: fixtures.externalCharx };
-    const openPreviewEnvelope = await scenarioCall(context, 'manage_file', {
-      target,
-      mode: 'preview',
-      operation: { action: 'open_file' },
-    });
+    const openPreviewEnvelope = await scenarioCall(
+      context,
+      'manage_file',
+      {
+        target,
+        mode: 'preview',
+        operation: { action: 'open_file' },
+      },
+      { expectedRecovery: true },
+    );
     const openPreview = preview(openPreviewEnvelope, 'open file preview');
     await scenarioCall(context, 'manage_file', {
       target,
@@ -699,37 +729,42 @@ async function runCharxIndexedMutationScenario(context: ScenarioContext): Promis
       },
       { expectError: true, expectedStatus: 409, expectedRejection: true },
     );
-    const regexWritePreview = await scenarioCall(context, 'preview_edit', {
-      target,
-      operations: [
-        {
-          op: 'write_content',
-          selector: { family: 'regex', indices: [0, 1] },
-          content: {
-            entries: [
-              {
-                data: {
-                  comment: 'Workflow Replay Regex Updated',
-                  type: 'editoutput',
-                  find: WORKFLOW_MARKERS.regexBefore,
-                  replace: 'workflow-replay-regex-updated',
-                  flag: 'g',
+    const regexWritePreview = await scenarioCall(
+      context,
+      'preview_edit',
+      {
+        target,
+        operations: [
+          {
+            op: 'write_content',
+            selector: { family: 'regex', indices: [0, 1] },
+            content: {
+              entries: [
+                {
+                  data: {
+                    comment: 'Workflow Replay Regex Updated',
+                    type: 'editoutput',
+                    find: WORKFLOW_MARKERS.regexBefore,
+                    replace: 'workflow-replay-regex-updated',
+                    flag: 'g',
+                  },
                 },
-              },
-              {
-                data: {
-                  comment: 'Workflow Replay Duplicate',
-                  type: 'editoutput',
-                  find: 'workflow-replay-duplicate-one',
-                  replace: 'duplicate-one-updated',
-                  flag: 'g',
+                {
+                  data: {
+                    comment: 'Workflow Replay Duplicate',
+                    type: 'editoutput',
+                    find: 'workflow-replay-duplicate-one',
+                    replace: 'duplicate-one-updated',
+                    flag: 'g',
+                  },
                 },
-              },
-            ],
+              ],
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+      { expectedRecovery: true },
+    );
     await applyEditPreview(context, target, regexWritePreview);
     const regexDeletePreview = await scenarioCall(context, 'preview_edit', {
       target,
@@ -1566,6 +1601,7 @@ async function executeScenario(definition: ScenarioDefinition): Promise<Scenario
     callCount: 0,
     callBudget: definition.callBudget,
     expectedRejections: 0,
+    expectedRecoveryAttempts: 0,
     wrongTargetIncidents: 0,
     validationCovered: false,
     boundedReads: 0,
@@ -1611,12 +1647,14 @@ async function main(): Promise<void> {
   const registeredTaskIds = new Set(results.flatMap((result) => result.taskIds));
   assert.equal(registeredTaskIds.size, replayableTasks.length);
 
+  const firstPassEligibleScenarios = results.filter((result) => result.expectedRejections === 0);
   const measuredMetrics = {
-    routeAccuracy: ratio(
-      results.filter((result) => result.passed && result.requiredToolsPresent).length,
-      results.length,
+    scenarioCompletion: ratio(results.filter((result) => result.passed).length, results.length),
+    requiredRouteConformance: ratio(results.filter((result) => result.requiredToolsPresent).length, results.length),
+    firstPassCompletion: ratio(
+      firstPassEligibleScenarios.filter((result) => result.passed).length,
+      firstPassEligibleScenarios.length,
     ),
-    firstPassSuccess: ratio(results.filter((result) => result.passed).length, results.length),
     wrongTargetIncidents: results.reduce((sum, result) => sum + result.wrongTargetIncidents, 0),
     validationCoverage: ratio(results.filter((result) => result.validationCovered).length, results.length),
     boundedReadCoverage: ratio(
@@ -1625,22 +1663,34 @@ async function main(): Promise<void> {
     ),
   };
   const summary = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     durationMs: Date.now() - started,
     coverage: {
       totalTasks: WORKFLOW_EVAL_TASKS.length,
       replayableTasks: replayableTasks.length,
       registeredReplayableTasks: registeredTaskIds.size,
-      replayableRegistrationRatio: registeredTaskIds.size / replayableTasks.length,
+      catalogScenarioCoverage: registeredTaskIds.size / replayableTasks.length,
+      firstPassEligibleScenarios: firstPassEligibleScenarios.length,
     },
     measuredMetrics,
     expectedRejections: results.reduce((sum, result) => sum + result.expectedRejections, 0),
+    expectedRecoveryAttempts: results.reduce((sum, result) => sum + result.expectedRecoveryAttempts, 0),
     scenarios: results,
   };
   console.log(JSON.stringify(summary, null, 2));
 
-  assert.ok(measuredMetrics.routeAccuracy >= TARGET_METRICS.routeAccuracy, 'routeAccuracy target not met');
-  assert.ok(measuredMetrics.firstPassSuccess >= TARGET_METRICS.firstPassSuccess, 'firstPassSuccess target not met');
+  assert.ok(
+    measuredMetrics.scenarioCompletion >= TARGET_METRICS.scenarioCompletion,
+    'scenarioCompletion target not met',
+  );
+  assert.ok(
+    measuredMetrics.requiredRouteConformance >= TARGET_METRICS.requiredRouteConformance,
+    'requiredRouteConformance target not met',
+  );
+  assert.ok(
+    measuredMetrics.firstPassCompletion >= TARGET_METRICS.firstPassCompletion,
+    'firstPassCompletion target not met',
+  );
   assert.equal(measuredMetrics.wrongTargetIncidents, TARGET_METRICS.wrongTargetIncidents);
   assert.ok(
     measuredMetrics.validationCoverage >= TARGET_METRICS.validationCoverage,
@@ -1650,7 +1700,7 @@ async function main(): Promise<void> {
     measuredMetrics.boundedReadCoverage >= TARGET_METRICS.boundedReadCoverage,
     'boundedReadCoverage target not met',
   );
-  assert.equal(summary.coverage.replayableRegistrationRatio, 1);
+  assert.equal(summary.coverage.catalogScenarioCoverage, 1);
   assert.ok(summary.durationMs < 90_000, `workflow replay should finish under 90 seconds, got ${summary.durationMs}ms`);
 }
 

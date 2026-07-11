@@ -3,23 +3,23 @@
   "toolsList": {
     "facade-first": {
       "toolCount": 13,
-      "rawBytes": 52647,
-      "sha256": "7b4b9c08db40d362f132ba6dc5283f9839873a4e48c33e355bfc28fdd2dba10b"
+      "rawBytes": 29484,
+      "sha256": "061922c7a6b5dac65d4e37c18243f792fb61354b1dabb8db6326ada2c434178a"
     },
     "authoring": {
       "toolCount": 175,
-      "rawBytes": 249675,
-      "sha256": "02131ad8bc955cfe55433c2f64c2d0db89cd0fbf070c6e874d29d14d7ce183a5"
+      "rawBytes": 226512,
+      "sha256": "b67203d32baa67c8de42cd37801ec277f0fd47cd21d6b79451b5c46d2cb45831"
     },
     "advanced-full": {
       "toolCount": 203,
-      "rawBytes": 279708,
-      "sha256": "db1e1df1051a5b3dbaecec60d303970187444f3a24bc35d5dabc47fd6f12a6c5"
+      "rawBytes": 256545,
+      "sha256": "720c569c30ad0d9c1dda82cf9140eb2d6c1bc003056d4f5ee7496ed47dd60c0c"
     },
     "readonly": {
       "toolCount": 108,
-      "rawBytes": 115235,
-      "sha256": "dcefa5ae93a9f6ed2a843b8034f5f3e2c0725c328af81376b573aeaf8166cc6c"
+      "rawBytes": 110095,
+      "sha256": "546962b24ae9f9f91c0b4d62ef15498b4aec5931cd657e6a0d5ad30961f12ab4"
     }
   },
   "http": {
@@ -43,9 +43,21 @@
     },
     "field-error": {
       "status": 400,
-      "rawBytes": 422,
-      "sha256": "5b64ddf280ea3be3512b9da063f0e422406c4a13a75b0757bc6b5653735f5b58",
-      "topLevelKeys": ["action", "error", "next_actions", "rejected", "retryable", "status", "suggestion", "target"]
+      "rawBytes": 492,
+      "sha256": "7e3d6e77b09705202215c6c43663a4ebd3333afc4a265bb5cd0ad36180ea0ee1",
+      "topLevelKeys": [
+        "action",
+        "code",
+        "error",
+        "outcome",
+        "rejected",
+        "retryable",
+        "retry_mode",
+        "status",
+        "suggestion",
+        "target",
+        "next_actions"
+      ]
     },
     "lorebook-list": {
       "status": 200,

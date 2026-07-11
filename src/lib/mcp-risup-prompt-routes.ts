@@ -2318,6 +2318,10 @@ export async function handleRisupPromptRoute(
             'save_risup_prompt_snippet으로 같은 이름의 snippet을 덮어쓰거나 delete_risup_prompt_snippet으로 제거하세요.',
           target: 'risup:prompt-snippets',
           details: { snippet: buildRisupPromptSnippetSummary(snippet), error: (error as Error).message },
+          code: 'invalid_stored_data',
+          retryable: false,
+          retry_mode: 'never',
+          outcome: 'not_started',
         });
       }
     }

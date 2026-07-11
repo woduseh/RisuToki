@@ -12,11 +12,11 @@ Use the other canonical documents for details owned elsewhere:
 | Success, error, no-op, and recovery envelopes               | [`docs/MCP_ERROR_CONTRACT.md`](../../docs/MCP_ERROR_CONTRACT.md)       |
 | Runtime implementation and application caveats              | [`docs/analysis/ARCHITECTURE.md`](../../docs/analysis/ARCHITECTURE.md) |
 | Declarative routing and validation coverage                 | `src/lib/mcp-agent-workflow-eval.test.ts`                              |
-| Measured synthetic workflow replay                          | `test/run-workflow-eval-replay.ts`                                     |
+| Deterministic synthetic MCP contract replay                 | `test/run-workflow-eval-replay.ts`                                     |
 
 If documents overlap, follow the source that owns the concern in this table.
 
-The Vitest matrix keeps declared routes aligned with documentation. `npm run test:evals:replay` separately exercises all 35 replayable workflow tasks through 12 canonical MCP stdio scenarios and gates metrics derived from actual responses. The 2026-07-03 coverage run completed in 29.521 seconds with every measured ratio at 1.0 and zero wrong-target incidents.
+The Vitest matrix keeps declared routes aligned with documentation. `npm run test:evals:replay` separately executes 12 scripted MCP stdio scenarios whose catalog mappings cover all 35 replayable workflow declarations. It measures deterministic server-contract behavior from actual responses; it does not execute the catalog prompts or claim model routing quality. The 2026-07-03 run completed in 29.521 seconds with every contract ratio at 1.0 and zero detected response-target mismatches.
 
 ## 1. Runtime Modes
 
@@ -71,7 +71,7 @@ The complete profile and coverage contract lives in [`docs/MCP_TOOL_SURFACE.md`]
 
 Use this sequence for reads and edits:
 
-1. **Load guidance.** At session start, load `project-workflow`. Before concrete MCP reads or writes, load `using-mcp-tools`.
+1. **Load only task-relevant guidance.** Use `project-workflow` for repository code, validation, or release work. Use `using-mcp-tools` for concrete MCP artifact reads or writes. Authoring work starts from the nearest subtree router and one primary authoring Skill.
 2. **Discover.** Use `list_tool_profiles` when profile state matters, then `inspect_document` for active, session, reference, or external preflight.
 3. **Read, search, or analyze narrowly.** Prefer bounded `read_content`, selector-based `search_document`, and `analyze_content`. Analysis owns transformation/statistics/simulation, including field/token counts and lorebook/regex behavior previews.
 4. **Validate or preview.** Use `validate_content` for pass/fail diagnostics, including compile-only Lua syntax and Danbooru `valid | invalid | unknown`; use `preview_edit` or the read/preview mode of `manage_items`, `manage_assets`, and `manage_file` before mutation.
@@ -116,5 +116,7 @@ The generated skill catalog is repository-root scoped:
 - Copilot CLI: `.github/skills`
 
 `npm run sync:skills` rebuilds `.copilot-skill-catalog/` from the tracked skill roots and refreshes those discovery paths. Subtree routing is handled by the nearest `risu/{scope}/AGENTS.md`, not by separate nested catalogs.
+
+When the client-visible catalog does not already identify the Skill, use `list_skills` with the current `scopes`, a narrow `query`, and `detail: "summary"`. Existing no-argument calls retain the full compatibility view. Use the returned opaque `next_cursor` for catalog pages; `read_skill` uses its own cursor type with `max_bytes` for UTF-8-safe reference paging, and list/read cursors are intentionally not interchangeable.
 
 If MCP is unavailable, read `skills/project-workflow/SKILL.md` directly, then open only the supporting file needed for the task. If the generated catalog is empty, run `npm run sync:skills` and verify the tracked skill roots before falling back to repo-local docs.

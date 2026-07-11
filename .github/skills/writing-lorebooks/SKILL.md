@@ -1,7 +1,7 @@
 ---
 name: writing-lorebooks
-description: 'Guides writing and structuring lorebook entries for RisuAI charx and risum files. Covers keyword activation, insertion order, decorator syntax (@@depth, @@role, @@position, etc.), folder organization, CBS integration, and conditional activation. Use when creating, editing, or organizing lorebook entries.'
-tags: ['lorebook', 'reference', 'worldbuilding']
+description: 'Use when creating, editing, organizing, or diagnosing lorebook entries, folders, keys, decorators, order, and activation. Primary skill for entry syntax and mechanics; hand bot-level information architecture to authoring-lorebook-bots. Do not use when character/world composition or preset request assembly is the main problem.'
+tags: ['lorebook', 'reference', 'syntax']
 related_tools:
   [
     'inspect_document',
@@ -16,181 +16,27 @@ related_tools:
 
 # Writing Lorebook Entries
 
-## Agent Operating Contract
+## Entry contract
 
-- **Use when:** writing, editing, organizing, validating, or diagnosing lorebook entries, folders, activation keys, decorators, or insertion behavior.
-- **Do not use when:** the main problem is bot-level description/lorebook distribution, character voice design, or preset request assembly.
-- **Read first:** this `SKILL.md`; it is the entry-level structure and gotcha layer.
-- **Load deeper only if:** CBS appears in `content`, Lua accesses entries by comment, or a bot architecture skill needs entry groups.
-- **Output/validation contract:** preserve entry identity, use batch/index guards for multiple edits, validate keyword/folder behavior, and keep model-visible content concise.
+`key` holds comma-separated triggers; `comment` is the management name and may be used by Lua lookup; `content` is model-visible and supports CBS; `insertorder` controls relative placement and lower-priority material is cut earlier. Activation also depends on `alwaysActive`, `selective`/`secondkey`, `mode`, `useRegex`, `folder`, and `activationPercent`.
 
-Lorebooks are collections of context entries injected into the AI prompt **only when their keywords match** the conversation, enabling targeted context injection for world-building, character details, and game systems.
+Folder identity lives in the folder entry's normalized `key` (`folder:<uuid>`), not its item ID. Children store that same value in `folder`; use folder-aware tools instead of copying private/raw upstream prefixes. Empty key plus `alwaysActive=false` is useful for Lua-only storage.
 
-Source-grounded areas: fields, folder refs, decorators, and prompt loading are checked against `Risuai/src/ts/process/lorebook.svelte.ts` and `Risuai/src/ts/storage/database.svelte.ts`.
+## Minimal workflow
 
-## Entry Fields
+1. Define one entry purpose and the scenes in which it should activate.
+2. Choose specific multilingual keys users or model output will actually contain. Shared keys are allowed when layered activation is intentional.
+3. Keep content concise, non-duplicative, and written for its insertion role.
+4. Add only necessary decorators at the top of content. Common controls include `@@depth`, `@@reverse_depth`, `@@role`, `@@position`, message/scan limits, additional/excluded keys, full-word matching, probability, force activation/deactivation, and max-context behavior.
+5. Group entries with canonical folder references and preserve identity/guards during edits.
+6. Preview or simulate likely chat contexts, then apply and validate focused results.
 
-| Field                     | Description                                                                                                                          |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `key`                     | Comma-separated activation keywords. Empty = never keyword-triggered. Keywords do **not** need to be globally unique across entries. |
-| `comment`                 | Management name. Also used by Lua `getLoreBooks(id, commentFilter)`.                                                                 |
-| `content`                 | Text sent to AI. Supports CBS `{{}}` syntax.                                                                                         |
-| `insertorder`             | Higher = placed later in prompt. Low-order entries are **cut first** when hitting token limits.                                      |
-| `alwaysActive`            | If `true`, always injected regardless of keyword match.                                                                              |
-| `selective` + `secondkey` | When both set, **both** key and secondkey must match to activate.                                                                    |
-| `mode`                    | `normal` \| `constant` \| `multiple` \| `child` \| `folder`                                                                          |
-| `useRegex`                | Interpret `key` as regex pattern.                                                                                                    |
-| `folder`                  | Reference to parent folder. RisuToki normalizes this as `"folder:UUID"` and resolves it against the folder entry's key.              |
-| `activationPercent`       | Activation probability 0–100. Default 100.                                                                                           |
+`normal` entries match keys; `constant`/always-active entries consume context every turn; `multiple` requires its configured matches; `child` and `folder` express hierarchy. Use always-active content sparingly.
 
-**Zero-token pattern:** `key=""` + `alwaysActive=false` → entry is completely skipped. Use for data storage accessed only by Lua.
+## Boundaries
 
-**Keyword overlap note:** Lorebook trigger keywords are not unique IDs. Multiple entries can share the same trigger when you want layered activation or different slices of context to wake up together. That said, overlapping keywords are still worth reviewing intentionally — `validate_lorebook_keys` reports duplicates as a quality signal because many duplicate triggers are accidental rather than planned.
+CBS syntax belongs to `writing-cbs-syntax`; Lua lookup logic belongs to `writing-lua-scripts`; bot-wide distribution belongs to `authoring-lorebook-bots`. For complete decorator notes, load `risu/common/docs/문법가이드_로어북.md` only when needed.
 
-## Mode Values
+## Validation
 
-| Mode       | Behavior                                            |
-| ---------- | --------------------------------------------------- |
-| `normal`   | Activates on keyword match                          |
-| `constant` | Always active (like `alwaysActive: true`)           |
-| `multiple` | All keywords must match                             |
-| `child`    | Child of another entry                              |
-| `folder`   | Folder container (no content, groups other entries) |
-
-## Folder Management
-
-**IMPORTANT:** Folder identity is stored in the folder entry's **`key`** field, not in the `id` field. RisuToki tools normalize folder refs as `"folder:<UUID v4>"`; upstream RisuAI-created folders may store the key with an internal private prefix before `folder:<UUID>`, so use RisuToki folder tools/helpers instead of hand-copying raw keys when possible.
-
-- **Create folder:** use the dedicated folder/lorebook tool when available, or create an entry with `mode: "folder"` and a normalized folder key.
-  - Generate a proper UUID v4 for each folder (e.g., `"folder:35c826ba-36aa-46ac-abb3-c2d93714be6b"` after RisuToki normalization)
-- **Move to folder:** `write_lorebook(index, { folder: "folder:<UUID>" })` — must match the folder entry's `key` value
-- **Remove from folder:** `write_lorebook(index, { folder: "" })`
-
-```json
-// Folder entry after RisuToki normalization
-{ "key": "folder:35c826ba-36aa-46ac-abb3-c2d93714be6b", "comment": "🌍 World", "mode": "folder", "content": "" }
-
-// Child entry (folder field matches parent's key)
-{ "key": "keyword1, keyword2", "folder": "folder:35c826ba-36aa-46ac-abb3-c2d93714be6b", "mode": "normal", ... }
-```
-
-## Decorator Syntax
-
-Add `@@decorator` lines at the **top of the content field** to control entry behavior:
-
-| Decorator                 | Description                                           | Example                         |
-| ------------------------- | ----------------------------------------------------- | ------------------------------- |
-| `@@depth N`               | Insert at depth N in prompt (higher = more important) | `@@depth 0`                     |
-| `@@reverse_depth N`       | Insert at reverse depth N (less important)            | `@@reverse_depth 3`             |
-| `@@role A`                | Set message role: `user`, `assistant`, `system`       | `@@role user`                   |
-| `@@position A`            | Position in prompt: `personality`, `scenario`, `pt_*` | `@@position personality`        |
-| `@@activate_only_after N` | Only activate after message N                         | `@@activate_only_after 5`       |
-| `@@activate_only_every N` | Activate every N messages                             | `@@activate_only_every 3`       |
-| `@@scan_depth N`          | Keyword search depth override                         | `@@scan_depth 10`               |
-| `@@additional_keys A,B`   | Require additional keywords to activate               | `@@additional_keys magic,spell` |
-| `@@exclude_keys A,B`      | Deactivate if these keywords present                  | `@@exclude_keys safe,peaceful`  |
-| `@@match_full_word`       | Match plain keywords as whole words only              |                                 |
-| `@@probability N`         | N% chance of activation                               | `@@probability 50`              |
-| `@@activate`              | Force activate unconditionally                        |                                 |
-| `@@dont_activate`         | Force deactivate unconditionally                      |                                 |
-| `@@ignore_on_max_context` | Skip when context window is full                      |                                 |
-| `@@is_greeting N`         | Treat as greeting message N                           | `@@is_greeting 2`               |
-
-**Multiple decorators** can be stacked:
-
-```
-@@role user
-@@depth 0
-@@activate_only_after 5
-
-The actual content starts here...
-```
-
-## Preview Support in RisuToki
-
-RisuToki's F5 preview currently models the core lorebook decorator subset:
-
-- `@@depth`, `@@position`, `@@role`, `@@scan_depth`
-- `@@probability`, `@@activate`, `@@dont_activate`
-- `@@match_full_word`, `@@additional_keys`, `@@exclude_keys`
-
-Preview uses a deterministic simulated roll for `@@probability` so repeated renders and debug output stay reproducible. The preview debug panel exposes matched keys, checked exclude keys, decorator tags, probability outcomes, and warnings for the supported subset.
-
-## CBS in Lorebook Content
-
-Lorebook content supports full CBS template syntax:
-
-```
-# Character Status
-- Name: {{getvar::char_name}}
-- Level: {{getvar::char_level}}
-- HP: {{calc::{{getvar::base_hp}}+{{getvar::bonus_hp}}}}
-- Mood: {{random::good::neutral::bad}}
-
-{{#when::{{getvar::char_level}}::>::10}}
-## Veteran Warrior
-You are a battle-hardened veteran of many conflicts.
-{{/when}}
-```
-
-## Global Settings
-
-| Setting                 | Description                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------ |
-| **Recursive search**    | Lorebook content itself is scanned for keyword matches (entry A can trigger entry B) |
-| **Word-level matching** | Keywords match whole words only (key "Jin" matches "Jin" but not "Jingle")           |
-| **Search depth**        | Number of recent messages scanned for keywords                                       |
-| **Max lorebook tokens** | Token cap for all lorebook entries combined. Low-order entries cut first.            |
-
-## Best Practices
-
-1. **Comment naming matters** — Lua scripts search by `comment` via `getLoreBooks()`. Keep naming patterns consistent.
-2. **Insertion order strategy** — Critical lore (world rules, character core) at high order; flavor text at low order.
-3. **Keep entries self-contained** — Each entry may activate in isolation. Don't depend on other entries being present.
-4. **Match description voice** — Write entries in the same tone as the bot description to avoid tonal whiplash.
-5. **Signal density over token count** — The question isn't "how long?" but "does every sentence change LLM output?" A cohesive 600-token entry with high signal density outperforms 3 scattered 200-token fragments. Split only when narrative coherence breaks, not at an arbitrary token threshold.
-6. **Natural trigger keywords** — Choose words that naturally appear when the info is relevant.
-7. **Duplicate triggers are allowed, but should be deliberate** — Shared keywords can be useful for layered activation, but accidental overlap can make the lorebook noisy. Treat `validate_lorebook_keys` duplicate reports as review prompts, not as proof the file is invalid.
-8. **Layer secrets by trigger depth** — Deep secrets should be triggered by words that only appear after trust is built, not by the character's name.
-9. **Watch alwaysActive budget** — Every alwaysActive entry competes for attention on every turn. Reserve always-on for core world rules and system instructions; move detailed content to keyword triggers.
-
-## Critical Gotchas
-
-| Issue                                             | Detail                                                                                                                                                                                                                                                  |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Folder identity is `key`, not `id`**            | Folder entries use the `key` field as their identity. RisuToki normalizes refs as `"folder:<UUID>"`, while upstream RisuAI may store an internal private prefix before that marker. Using the entry's `id` instead will silently fail to group entries. |
-| **`alwaysActive` + empty key still costs tokens** | An entry with `alwaysActive: true` is injected every turn even if `key` is empty. This is intentional but often accidental — review always-on entries for signal dilution — unnecessary always-on content reduces model focus on what matters.          |
-| **`comment` field renaming breaks Lua**           | Lua's `getLoreBooks(id, commentFilter)` matches against the `comment` field. Renaming a comment without updating corresponding Lua calls silently breaks the integration.                                                                               |
-| **`upsertLocalLoreBook` takes effect next turn**  | Lorebook entries created or updated via Lua `upsertLocalLoreBook` are not included in the current turn's prompt — they appear on the next turn only.                                                                                                    |
-| **Decorator stacking order matters**              | `@@role` and `@@depth` must come before content text. Placing decorators after the first line of content causes them to be treated as literal text in the prompt.                                                                                       |
-| **Recursive search can cause loops**              | With "Recursive search" enabled, entry A's content can trigger entry B, and B's content can trigger A. Large mutual-trigger chains inject cascading irrelevant content with no visible error.                                                           |
-
-## Lorebook–Lua Integration
-
-```lua
--- Search entries by comment filter
-local entries = getLoreBooks(id, "inventory")
-
--- Dynamically create/update entries (takes effect NEXT turn)
-upsertLocalLoreBook(id, "castle-lore", "A vast castle with...", {
-  key = {"castle", "fortress"},
-  alwaysActive = false
-})
-```
-
-**Important:** `upsertLocalLoreBook` entries are injected **next turn**, not the current one.
-
-## Related Skills
-
-| Skill                     | Relationship                                                                   |
-| ------------------------- | ------------------------------------------------------------------------------ |
-| `writing-cbs-syntax`      | CBS `{{}}` syntax is fully supported inside lorebook `content` fields          |
-| `writing-lua-scripts`     | Lua accesses lorebooks via `getLoreBooks()` and `upsertLocalLoreBook()`        |
-| `writing-trigger-scripts` | Triggers can activate lorebook entries and manipulate variables they reference |
-
-## Smoke Tests
-
-| Prompt                                                                      | Expected routing                                                                     | Expected output                                                                          | Forbidden behavior                                           |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| "My Lua script calls `getLoreBooks()` but returns empty; the entry exists." | Primary: `writing-lorebooks`; load `writing-lua-scripts` only for API details.       | Diagnosis covering comment filters, folder identity, activation, and next-turn behavior. | Bulk-reading the whole lorebook through generic field reads. |
-| "Organize these 20 entries into folders and fix duplicate triggers."        | Primary: `writing-lorebooks`; use batch lorebook tools and `validate_lorebook_keys`. | Folder plan plus guarded batch edits.                                                    | Moving entries by folder `id` instead of folder `key`.       |
+Check dead entries, accidental broad/duplicate triggers, folder integrity, comment references used by Lua, insertion/token priority, decorator support in the chosen runtime, recursive activation loops, and whether conditional content contradicts persistent facts. Use batch reads/writes and current identity or index guards for multi-entry changes.

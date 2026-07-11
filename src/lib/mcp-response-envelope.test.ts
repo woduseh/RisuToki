@@ -1,6 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { mcpSuccess, FAMILY_NEXT_ACTIONS, TOOL_NEXT_ACTIONS, errorRecoveryMeta } from './mcp-response-envelope';
+import {
+  mcpSuccess,
+  FAMILY_NEXT_ACTIONS,
+  TOOL_NEXT_ACTIONS,
+  errorRecoveryMeta,
+  normalizeMcpErrorEnvelope,
+} from './mcp-response-envelope';
 import { TOOL_FAMILIES, TOOL_TAXONOMY, getToolsByFamily } from './mcp-tool-taxonomy';
 import type { ToolFamily } from './mcp-tool-taxonomy';
 
@@ -659,11 +665,69 @@ describe('errorRecoveryMeta()', () => {
   it('returns retryable: true for 409 status', () => {
     const meta = errorRecoveryMeta('asset:test.png', 409);
     expect(meta.retryable).toBe(true);
+    expect(meta.retry_mode).toBe('refresh_then_retry');
+    expect(meta.outcome).toBe('not_started');
   });
 
   it('returns retryable: true for 500 status', () => {
     const meta = errorRecoveryMeta('open:file', 500);
     expect(meta.retryable).toBe(true);
+    expect(meta.retry_mode).toBe('backoff');
+    expect(meta.outcome).toBe('not_started');
+  });
+
+  it('does not retry permanent 501 responses', () => {
+    const meta = errorRecoveryMeta('document:save', 501);
+    expect(meta.code).toBe('not_implemented');
+    expect(meta.retryable).toBe(false);
+    expect(meta.retry_mode).toBe('never');
+    expect(meta.outcome).toBe('not_started');
+  });
+
+  it('marks partial facade applies for outcome inspection without automatic retry', () => {
+    const normalized = normalizeMcpErrorEnvelope({
+      status: 409,
+      error: 'second operation failed',
+      target: 'field:description',
+      details: { partial: true, applied_count: 1 },
+    });
+    expect(normalized.code).toBe('partial_apply');
+    expect(normalized.retryable).toBe(false);
+    expect(normalized.retry_mode).toBe('inspect_outcome');
+    expect(normalized.outcome).toBe('partial');
+  });
+
+  it('overrides conflicting explicit retry metadata for partial outcomes', () => {
+    const normalized = normalizeMcpErrorEnvelope({
+      status: 500,
+      details: { partial: true },
+      retryable: true,
+      retry_mode: 'backoff',
+    });
+    expect(normalized.retryable).toBe(false);
+    expect(normalized.retry_mode).toBe('inspect_outcome');
+    expect(normalized.outcome).toBe('partial');
+  });
+
+  it('materializes fallback action and target fields', () => {
+    const normalized = normalizeMcpErrorEnvelope({ status: 502, error: 'proxy failure' });
+    expect(normalized.action).toBe('request failed');
+    expect(normalized.target).toBe('request:unknown');
+    expect(normalized.code).toBe('server_error');
+  });
+
+  it('preserves mutation timeout outcome-unknown recovery metadata', () => {
+    const normalized = normalizeMcpErrorEnvelope({
+      status: 504,
+      error: 'timed out',
+      code: 'timeout',
+      retryable: false,
+      retry_mode: 'inspect_outcome',
+      outcome: 'unknown',
+    });
+    expect(normalized.retryable).toBe(false);
+    expect(normalized.retry_mode).toBe('inspect_outcome');
+    expect(normalized.outcome).toBe('unknown');
   });
 
   it('returns retryable: false for 200 status (no-op)', () => {

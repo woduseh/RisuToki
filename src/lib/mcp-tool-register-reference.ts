@@ -630,8 +630,29 @@ export function registerReferenceTools(server: McpToolServer, deps: ReferenceToo
 
   // ===== Skill Tools =====
 
-  server.tool('list_skills', MCP_TOOL_DESCRIPTIONS['list_skills'], {}, async () =>
-    textResult(await apiRequest('GET', '/skills')),
+  server.tool(
+    'list_skills',
+    MCP_TOOL_DESCRIPTIONS['list_skills'],
+    {
+      scopes: z
+        .array(z.enum(['product', 'common', 'bot', 'prompts', 'modules', 'plugins']))
+        .max(6)
+        .optional(),
+      query: z.string().max(200).optional(),
+      detail: z.enum(['summary', 'full']).optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+      cursor: z.string().max(200).optional(),
+    },
+    async ({ scopes, query, detail, limit, cursor }) => {
+      const params = new URLSearchParams();
+      for (const scope of scopes ?? []) params.append('scope', scope);
+      if (query) params.set('query', query);
+      if (detail) params.set('detail', detail);
+      if (limit !== undefined) params.set('limit', String(limit));
+      if (cursor) params.set('cursor', cursor);
+      const queryString = params.toString();
+      return textResult(await apiRequest('GET', `/skills${queryString ? `?${queryString}` : ''}`));
+    },
   );
 
   server.tool(
@@ -640,12 +661,24 @@ export function registerReferenceTools(server: McpToolServer, deps: ReferenceToo
     {
       name: z.string().describe('스킬 이름 (예: writing-lua-scripts, authoring-characters)'),
       file: z.string().optional().describe('읽을 파일명 (기본: SKILL.md). list_skills에서 확인한 파일명 사용.'),
+      cursor: z.string().max(200).optional().describe('이전 응답의 불투명 next_cursor.'),
+      max_bytes: z
+        .number()
+        .int()
+        .min(1)
+        .max(64 * 1024)
+        .optional()
+        .describe('UTF-8 응답 바이트 상한 (최대 64KB).'),
     },
-    async ({ name, file }) => {
+    async ({ name, file, cursor, max_bytes }) => {
       const filePart = file ? encodeURIComponent(file) : '';
-      const skillPath = filePart
+      const basePath = filePart
         ? `/skills/${encodeURIComponent(name)}/${filePart}`
         : `/skills/${encodeURIComponent(name)}`;
+      const params = new URLSearchParams();
+      params.set('max_bytes', String(max_bytes ?? 64 * 1024));
+      if (cursor) params.set('cursor', cursor);
+      const skillPath = `${basePath}?${params.toString()}`;
       return textResult(await apiRequest('GET', skillPath));
     },
   );

@@ -49,6 +49,7 @@ import {
 } from './mcp-api-helpers';
 import { handleSurfaceRoute } from './mcp-surface-routes';
 import { canonicalizeLorebookFolderRefs, getFolderRef } from './lorebook-folders';
+import { inferSkillRootScope, type ResolvedSkillRoot, type SkillScope } from './content-roots';
 import { listSkillCatalogEntries, resolveSkillCatalogFile } from './skill-catalog';
 import { mcpSuccess, type McpErrorInfo, type McpSuccessOptions } from './mcp-response-envelope';
 import type { RuntimeMetadata } from './mcp-runtime-contract';
@@ -185,6 +186,47 @@ export interface McpApiServer {
   token: string;
   /** Force-invalidate the internal Lua / CSS section caches. */
   invalidateSectionCaches: () => void;
+}
+
+const SKILL_SCOPES = new Set<SkillScope>(['product', 'common', 'bot', 'prompts', 'modules', 'plugins']);
+const SKILL_BOOTSTRAP_MAX_BYTES = 64 * 1024;
+
+function resolvedSkillRoots(rootPaths: string[]): ResolvedSkillRoot[] {
+  return rootPaths.map((rootPath) => ({
+    absolutePath: rootPath,
+    relativePath: rootPath,
+    scope: inferSkillRootScope(rootPath),
+  }));
+}
+
+function skillCursorBinding(value: Record<string, unknown>): string {
+  return crypto.createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex').slice(0, 24);
+}
+
+function encodeSkillCursor(kind: 'list' | 'read', offset: number, binding: string): string {
+  return Buffer.from(`risutoki-skill-v2:${kind}:${binding}:${offset}`, 'utf8').toString('base64url');
+}
+
+function decodeSkillCursor(kind: 'list' | 'read', cursor: string | null, binding: string): number | null {
+  if (!cursor) return 0;
+  try {
+    const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
+    const match = new RegExp(`^risutoki-skill-v2:${kind}:${binding}:(\\d+)$`).exec(decoded);
+    return match ? Number(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function utf8SliceAtBoundary(source: Buffer, offset: number, maxBytes: number): { text: string; nextOffset: number } {
+  let end = Math.min(source.length, offset + maxBytes);
+  while (end > offset) {
+    const candidate = source.subarray(offset, end);
+    const text = candidate.toString('utf8');
+    if (Buffer.from(text, 'utf8').equals(candidate)) return { text, nextOffset: end };
+    end -= 1;
+  }
+  return { text: '', nextOffset: offset };
 }
 
 // ---------------------------------------------------------------------------
@@ -609,6 +651,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           ? (body.conflict as 'skip' | 'overwrite' | 'rename')
           : 'skip';
         const dryRun = !!(body.dry_run ?? body.dryRun);
+        let lorebookRollback: typeof currentData.lorebook | null = null;
 
         try {
           // Parse import entries
@@ -692,6 +735,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
 
           // Execute import
+          lorebookRollback = cloneJson(currentData.lorebook || []) as typeof currentData.lorebook;
           const errors: string[] = [];
           let foldersCreated = 0;
 
@@ -779,10 +823,24 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             },
           );
         } catch (err: unknown) {
+          const rolledBack = lorebookRollback !== null;
+          if (lorebookRollback) {
+            currentData.lorebook = lorebookRollback;
+            try {
+              deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
+            } catch {
+              // The in-memory rollback is authoritative even if renderer notification fails.
+            }
+          }
           return mcpError(res, 500, {
             action: 'import-lorebook',
             message: `Import failed: ${err instanceof Error ? err.message : String(err)}`,
             target: 'lorebook',
+            details: { rolled_back: rolledBack },
+            code: 'mutation_failed',
+            retryable: false,
+            retry_mode: 'never',
+            outcome: rolledBack ? 'unchanged' : 'not_started',
           });
         }
       }
@@ -898,11 +956,56 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       if (parts[0] === 'skills' && !parts[1] && req.method === 'GET') {
         try {
-          const skillRoots = deps.getSkillRoots().map((rootPath) => ({
-            absolutePath: rootPath,
-            relativePath: rootPath,
-            scope: 'product' as const,
-          }));
+          const requestedScopes = url.searchParams
+            .getAll('scope')
+            .flatMap((value) => value.split(','))
+            .map((value) => value.trim())
+            .filter(Boolean);
+          if (requestedScopes.some((scope) => !SKILL_SCOPES.has(scope as SkillScope))) {
+            return mcpError(res, 400, {
+              action: 'list_skills',
+              message: 'Invalid skill scope',
+              suggestion: 'Use product, common, bot, prompts, modules, or plugins.',
+              target: 'skills:catalog',
+            });
+          }
+          const detail = url.searchParams.get('detail') ?? 'full';
+          if (detail !== 'summary' && detail !== 'full') {
+            return mcpError(res, 400, {
+              action: 'list_skills',
+              message: 'Invalid skill detail mode',
+              suggestion: 'Use detail=summary or detail=full.',
+              target: 'skills:catalog',
+            });
+          }
+          const limitValue = url.searchParams.get('limit');
+          const limit = limitValue === null ? null : Number(limitValue);
+          if (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > 50)) {
+            return mcpError(res, 400, {
+              action: 'list_skills',
+              message: 'Invalid skill page limit',
+              suggestion: 'Use an integer limit from 1 through 50.',
+              target: 'skills:catalog',
+            });
+          }
+          const query = (url.searchParams.get('query') ?? '').trim().toLocaleLowerCase();
+          const cursorBinding = skillCursorBinding({
+            scopes: [...requestedScopes].sort(),
+            query,
+            detail,
+            limit,
+          });
+          const cursorValue = url.searchParams.get('cursor');
+          const offset = decodeSkillCursor('list', cursorValue, cursorBinding);
+          if (offset === null) {
+            return mcpError(res, 400, {
+              action: 'list_skills',
+              message: 'Invalid skill cursor',
+              suggestion: 'Use the opaque next_cursor returned by list_skills.',
+              target: 'skills:catalog',
+            });
+          }
+          const skillRoots = resolvedSkillRoots(deps.getSkillRoots());
           const entries = listSkillCatalogEntries(skillRoots);
           const skills: Array<{
             name: string;
@@ -910,6 +1013,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             tags: string[];
             relatedTools: string[];
             files: string[];
+            scope: SkillScope;
           }> = [];
           for (const entry of entries) {
             const skillMdPath = path.join(entry.dirPath, 'SKILL.md');
@@ -921,16 +1025,57 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               tags: fm.tags,
               relatedTools: fm.relatedTools,
               files: entry.files,
+              scope: entry.scope,
             });
           }
           skills.sort((a, b) => a.name.localeCompare(b.name));
+          const scopeSet = new Set(requestedScopes as SkillScope[]);
+          const filtered = skills.filter((skill) => {
+            if (scopeSet.size > 0 && !scopeSet.has(skill.scope)) return false;
+            if (!query) return true;
+            return [skill.name, skill.description, ...skill.tags, ...skill.relatedTools]
+              .join('\n')
+              .toLocaleLowerCase()
+              .includes(query);
+          });
+          if (offset > filtered.length) {
+            return mcpError(res, 400, {
+              action: 'list_skills',
+              message: 'Skill cursor is outside the filtered catalog',
+              suggestion: 'Restart pagination without cursor after changing filters.',
+              target: 'skills:catalog',
+            });
+          }
+          const pageSize = limit ?? (cursorValue ? 50 : filtered.length);
+          const page = filtered.slice(offset, offset + pageSize);
+          const nextOffset = offset + page.length;
+          const nextCursor = nextOffset < filtered.length ? encodeSkillCursor('list', nextOffset, cursorBinding) : null;
+          const projected =
+            detail === 'summary' ? page.map(({ name, description, scope }) => ({ name, description, scope })) : page;
+          const optionsUsed =
+            requestedScopes.length > 0 ||
+            query.length > 0 ||
+            detail !== 'full' ||
+            limit !== null ||
+            cursorValue !== null;
           return jsonResSuccess(
             res,
-            { count: skills.length, skills },
+            {
+              count: projected.length,
+              skills: projected,
+              ...(optionsUsed
+                ? {
+                    total_count: filtered.length,
+                    detail,
+                    next_cursor: nextCursor,
+                    truncated: nextCursor !== null,
+                  }
+                : {}),
+            },
             {
               toolName: 'list_skills',
-              summary: `Listed ${skills.length} skill(s)`,
-              artifacts: { count: skills.length },
+              summary: `Listed ${projected.length} of ${filtered.length} skill(s)`,
+              artifacts: { count: projected.length, total_count: filtered.length, next_cursor: nextCursor },
             },
           );
         } catch {
@@ -969,24 +1114,95 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `skills:${skillName}:${fileName}`,
           });
         }
-        const skillRoots = deps.getSkillRoots().map((rootPath) => ({
-          absolutePath: rootPath,
-          relativePath: rootPath,
-          scope: 'product' as const,
-        }));
+        const skillRoots = resolvedSkillRoots(deps.getSkillRoots());
         const filePath = resolveSkillCatalogFile(skillRoots, skillName, fileName);
         try {
           if (!filePath) {
             throw new Error('missing skill file');
           }
-          const content = fs.readFileSync(filePath, 'utf-8');
+          const fullContent = fs.readFileSync(filePath, 'utf-8');
+          const cursorBinding = skillCursorBinding({
+            skill: skillName,
+            file: fileName,
+            content_sha256: crypto.createHash('sha256').update(fullContent, 'utf8').digest('hex'),
+          });
+          const maxBytesValue = url.searchParams.get('max_bytes');
+          const requestedMaxBytes = maxBytesValue === null ? null : Number(maxBytesValue);
+          if (
+            requestedMaxBytes !== null &&
+            (!Number.isInteger(requestedMaxBytes) ||
+              requestedMaxBytes < 1 ||
+              requestedMaxBytes > SKILL_BOOTSTRAP_MAX_BYTES)
+          ) {
+            return mcpError(res, 400, {
+              action: 'read_skill',
+              message: 'Invalid max_bytes',
+              suggestion: `Use an integer max_bytes from 1 through ${SKILL_BOOTSTRAP_MAX_BYTES}.`,
+              target: `skills:${skillName}:${fileName}`,
+            });
+          }
+          const cursorValue = url.searchParams.get('cursor');
+          const offset = decodeSkillCursor('read', cursorValue, cursorBinding);
+          const source = Buffer.from(fullContent, 'utf8');
+          if (offset === null || offset > source.length) {
+            return mcpError(res, 400, {
+              action: 'read_skill',
+              message: 'Invalid skill cursor',
+              suggestion: 'Use the opaque next_cursor returned by read_skill.',
+              target: `skills:${skillName}:${fileName}`,
+            });
+          }
+          const prefix = source.subarray(0, offset).toString('utf8');
+          if (Buffer.byteLength(prefix, 'utf8') !== offset) {
+            return mcpError(res, 400, {
+              action: 'read_skill',
+              message: 'Skill cursor is not on a UTF-8 boundary',
+              suggestion: 'Use the opaque next_cursor returned by read_skill.',
+              target: `skills:${skillName}:${fileName}`,
+            });
+          }
+          const bounded = requestedMaxBytes !== null || cursorValue !== null;
+          const maxBytes = requestedMaxBytes ?? SKILL_BOOTSTRAP_MAX_BYTES;
+          const slice = bounded
+            ? utf8SliceAtBoundary(source, offset, maxBytes)
+            : { text: fullContent, nextOffset: source.length };
+          if (bounded && slice.nextOffset === offset && offset < source.length) {
+            return mcpError(res, 400, {
+              action: 'read_skill',
+              message: 'max_bytes is too small to include the next complete UTF-8 code point',
+              suggestion: 'Increase max_bytes to at least 4 and retry without changing the cursor.',
+              target: `skills:${skillName}:${fileName}`,
+            });
+          }
+          const nextCursor =
+            slice.nextOffset < source.length ? encodeSkillCursor('read', slice.nextOffset, cursorBinding) : null;
           return jsonResSuccess(
             res,
-            { skill: skillName, file: fileName, content },
+            {
+              skill: skillName,
+              file: fileName,
+              content: slice.text,
+              ...(bounded
+                ? {
+                    offset_bytes: offset,
+                    returned_bytes: Buffer.byteLength(slice.text, 'utf8'),
+                    total_bytes: source.length,
+                    max_bytes: maxBytes,
+                    next_cursor: nextCursor,
+                    truncated: nextCursor !== null,
+                  }
+                : {}),
+            },
             {
               toolName: 'read_skill',
-              summary: `Read skill ${skillName}/${fileName} (${content.length} chars)`,
-              artifacts: { skill: skillName, file: fileName, size: content.length },
+              summary: `Read skill ${skillName}/${fileName} (${Buffer.byteLength(slice.text, 'utf8')} bytes)`,
+              artifacts: {
+                skill: skillName,
+                file: fileName,
+                size: Buffer.byteLength(slice.text, 'utf8'),
+                total_size: source.length,
+                next_cursor: nextCursor,
+              },
             },
           );
         } catch {

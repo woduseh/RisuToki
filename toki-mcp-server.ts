@@ -8,7 +8,8 @@
 import fs = require('fs');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import path = require('path');
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import {
@@ -52,6 +53,13 @@ import { registerReferenceTools } from './src/lib/mcp-tool-register-reference';
 import { registerRisupTools } from './src/lib/mcp-tool-register-risup';
 import { registerValidationTools } from './src/lib/mcp-tool-register-validation';
 import { createMcpProxyClient } from './src/lib/mcp-proxy-client';
+import { normalizeMcpErrorEnvelope } from './src/lib/mcp-response-envelope';
+import { getCompactInputSchema, withDetailedInputValidationHandler } from './src/lib/mcp-compact-input';
+import {
+  MCP_COMPACT_OUTPUT_SCHEMA,
+  withStructuredContentHandler,
+  type McpToolHandler,
+} from './src/lib/mcp-tool-registration';
 import { listProjectTree, type ProjectTreeNode } from './src/lib/folder-workspace';
 
 let TOKI_PORT = process.env.TOKI_PORT;
@@ -98,6 +106,14 @@ const runtimeHealthCounters = {
   uncaughtExceptionCount: 0,
   lastErrorSummary: null as string | null,
 };
+
+interface McpRequestContext {
+  requestId: string | number;
+  signal: AbortSignal;
+  mutating: boolean;
+}
+
+const mcpRequestContext = new AsyncLocalStorage<McpRequestContext>();
 
 function summarizeValueForDiagnostic(value: unknown): unknown {
   if (value === null || value === undefined) return value;
@@ -199,7 +215,8 @@ function textResult(data: unknown) {
     // Strip the sentinel key before serialising — agents see the clean error envelope.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { [API_ERROR_KEY]: _sentinel, ...rest } = data;
-    return { content: [{ type: 'text' as const, text: JSON.stringify(rest) }], isError: true as const };
+    const normalized = normalizeMcpErrorEnvelope(rest);
+    return { content: [{ type: 'text' as const, text: JSON.stringify(normalized) }], isError: true as const };
   }
   return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
 }
@@ -271,6 +288,7 @@ const apiRequest = createMcpProxyClient({
   logProcessDiagnostic,
   noteRuntimeError,
   mcpLog,
+  getRequestContext: () => mcpRequestContext.getStore(),
 });
 const danbooruEngine = createDanbooruEngine({
   tagFilePath: path.join(__dirname, 'resources', 'Danbooru Tag.txt'),
@@ -286,6 +304,7 @@ const facadeAssetsEngine = createFacadeAssetsEngine({
 const facadeItemsEngine = createFacadeItemsEngine(apiRequest, facadeScriptStyleEngine);
 const facadeContentEngine = createFacadeContentEngine({
   apiRequest,
+  getAbortSignal: () => mcpRequestContext.getStore()?.signal,
   danbooru: {
     ensureTagsLoaded: danbooruEngine.ensureTagsLoaded,
     formatTags: danbooruEngine.formatTags,
@@ -457,6 +476,15 @@ function toolDiagnosticBase(name: string): Record<string, unknown> {
   };
 }
 
+function isMutatingToolCall(name: string, args: Record<string, unknown>): boolean {
+  if (name === 'preview_edit') return false;
+  if (name === 'apply_edit') return true;
+  if (name === 'manage_items' || name === 'manage_assets' || name === 'manage_file') {
+    return args.mode === 'apply';
+  }
+  return TOOL_TAXONOMY[name]?.hints.readOnlyHint !== true;
+}
+
 function resultByteSize(result: unknown): number | null {
   try {
     return Buffer.byteLength(JSON.stringify(result), 'utf8');
@@ -469,29 +497,48 @@ function instrumentToolHandler(name: string, handler: (...args: unknown[]) => un
   return async (...handlerArgs: unknown[]) => {
     const startedAt = Date.now();
     const callArgs = asRecord(handlerArgs[0]) ?? {};
-    logProcessDiagnostic('toolStart', {
-      ...toolDiagnosticBase(name),
-      args: summarizeArgsForDiagnostic(callArgs),
-    });
-    try {
-      const result = await handler(...handlerArgs);
-      const isError = asRecord(result)?.isError === true;
-      logProcessDiagnostic('toolSuccess', {
+    const extra = asRecord(handlerArgs[1]);
+    const requestId =
+      typeof extra?.requestId === 'string' || typeof extra?.requestId === 'number' ? extra.requestId : undefined;
+    const signalCandidate = extra?.signal;
+    const signal =
+      signalCandidate &&
+      typeof signalCandidate === 'object' &&
+      'aborted' in signalCandidate &&
+      'addEventListener' in signalCandidate
+        ? (signalCandidate as AbortSignal)
+        : undefined;
+    const run = async () => {
+      logProcessDiagnostic('toolStart', {
         ...toolDiagnosticBase(name),
-        status: isError ? 'error' : 'ok',
-        elapsedMs: Date.now() - startedAt,
-        responseBytes: resultByteSize(result),
+        ...(requestId !== undefined ? { requestId } : {}),
+        args: summarizeArgsForDiagnostic(callArgs),
       });
-      return result;
-    } catch (error) {
-      logProcessDiagnostic('toolError', {
-        ...toolDiagnosticBase(name),
-        status: 'thrown',
-        elapsedMs: Date.now() - startedAt,
-        error,
-      });
-      throw error;
-    }
+      try {
+        const result = await handler(...handlerArgs);
+        const isError = asRecord(result)?.isError === true;
+        logProcessDiagnostic('toolSuccess', {
+          ...toolDiagnosticBase(name),
+          ...(requestId !== undefined ? { requestId } : {}),
+          status: isError ? 'error' : 'ok',
+          elapsedMs: Date.now() - startedAt,
+          responseBytes: resultByteSize(result),
+        });
+        return result;
+      } catch (error) {
+        logProcessDiagnostic('toolError', {
+          ...toolDiagnosticBase(name),
+          ...(requestId !== undefined ? { requestId } : {}),
+          status: 'thrown',
+          elapsedMs: Date.now() - startedAt,
+          error,
+        });
+        throw error;
+      }
+    };
+    return requestId !== undefined && signal
+      ? mcpRequestContext.run({ requestId, signal, mutating: isMutatingToolCall(name, callArgs) }, run)
+      : run();
   };
 }
 
@@ -502,7 +549,17 @@ const server = new McpServer({
 
 // Collect RegisteredTool handles for annotation patching via public API.
 // Each server.tool() return is stored so we avoid accessing _registeredTools.
-const _registeredToolHandles = new Map<string, ReturnType<typeof server.tool>>();
+const _registeredToolHandles = new Map<string, RegisteredTool>();
+function skippedToolHandle(): RegisteredTool {
+  return {
+    handler: async () => ({ content: [] }),
+    enabled: false,
+    enable: () => undefined,
+    disable: () => undefined,
+    update: () => undefined,
+    remove: () => undefined,
+  };
+}
 const _origServerTool = server.tool.bind(server) as typeof server.tool;
 server.tool = ((...args: unknown[]) => {
   const toolName = typeof args[0] === 'string' ? args[0] : undefined;
@@ -514,10 +571,7 @@ server.tool = ((...args: unknown[]) => {
         resolvedProfile: configuredToolProfile.resolved,
       });
     }
-    return {
-      update: () => undefined,
-      remove: () => undefined,
-    } as unknown as ReturnType<typeof server.tool>;
+    return skippedToolHandle();
   }
   const wrappedArgs = [...args];
   if (toolName) {
@@ -528,12 +582,61 @@ server.tool = ((...args: unknown[]) => {
       }
     }
   }
+  const publicInputSchema = toolName ? getCompactInputSchema(toolName) : undefined;
+  if (
+    toolName &&
+    publicInputSchema &&
+    typeof wrappedArgs[1] === 'string' &&
+    wrappedArgs[2] &&
+    typeof wrappedArgs[2] === 'object' &&
+    typeof args[3] === 'function'
+  ) {
+    const validatedHandler = withDetailedInputValidationHandler(
+      toolName,
+      wrappedArgs[2] as z.ZodRawShape,
+      args[3] as McpToolHandler<Record<string, unknown>>,
+    );
+    const structuredHandler = withStructuredContentHandler(validatedHandler);
+    const result = (_origServerRegisterTool as (...registrationArgs: unknown[]) => RegisteredTool)(
+      toolName,
+      {
+        description: wrappedArgs[1],
+        inputSchema: publicInputSchema,
+        outputSchema: MCP_COMPACT_OUTPUT_SCHEMA,
+      },
+      instrumentToolHandler(toolName, structuredHandler as (...handlerArgs: unknown[]) => unknown),
+    );
+    _registeredToolHandles.set(toolName, result);
+    return result;
+  }
   const result = (_origServerTool as (...a: unknown[]) => ReturnType<typeof server.tool>)(...wrappedArgs);
   if (toolName) {
     _registeredToolHandles.set(toolName, result);
   }
   return result;
 }) as typeof server.tool;
+
+const _origServerRegisterTool = server.registerTool.bind(server) as typeof server.registerTool;
+server.registerTool = ((...args: unknown[]) => {
+  const toolName = typeof args[0] === 'string' ? args[0] : undefined;
+  if (toolName && !shouldRegisterMcpTool(toolName)) {
+    if (configuredToolProfile.source) {
+      logProcessDiagnostic('toolSkippedByProfile', {
+        ...toolDiagnosticBase(toolName),
+        requestedProfile: configuredToolProfile.raw,
+        resolvedProfile: configuredToolProfile.resolved,
+      });
+    }
+    return skippedToolHandle();
+  }
+  const wrappedArgs = [...args];
+  if (toolName && typeof wrappedArgs[2] === 'function') {
+    wrappedArgs[2] = instrumentToolHandler(toolName, wrappedArgs[2] as (...handlerArgs: unknown[]) => unknown);
+  }
+  const result = (_origServerRegisterTool as (...registrationArgs: unknown[]) => RegisteredTool)(...wrappedArgs);
+  if (toolName) _registeredToolHandles.set(toolName, result);
+  return result;
+}) as typeof server.registerTool;
 
 registerFacadeTools(server, {
   apiRequest,

@@ -12,6 +12,7 @@ import {
   startTestApiServer,
   type SearchFixture,
 } from '../src/lib/mcp-api-test-harness';
+import { MCP_DEFAULT_TOOLS_LIST_MAX_BYTES, MCP_SINGLE_TOOL_MAX_BYTES } from '../src/lib/mcp-compact-input';
 import { startStandaloneClient } from './mcp-test-client';
 
 const BASELINE_PATH = path.join(__dirname, 'fixtures', 'mcp-module-split-contract.json');
@@ -167,6 +168,20 @@ async function captureToolsList(): Promise<ContractBaseline['toolsList']> {
       try {
         const response = await runtime.client.listTools();
         const raw = JSON.stringify(response);
+        if (profile === 'facade-first') {
+          const rawBytes = Buffer.byteLength(raw, 'utf8');
+          assert.ok(
+            rawBytes <= MCP_DEFAULT_TOOLS_LIST_MAX_BYTES,
+            `facade-first tools/list is ${rawBytes} bytes; budget is ${MCP_DEFAULT_TOOLS_LIST_MAX_BYTES}`,
+          );
+          for (const tool of response.tools) {
+            const toolBytes = Buffer.byteLength(JSON.stringify(tool), 'utf8');
+            assert.ok(
+              toolBytes <= MCP_SINGLE_TOOL_MAX_BYTES,
+              `${tool.name} schema is ${toolBytes} bytes; budget is ${MCP_SINGLE_TOOL_MAX_BYTES}`,
+            );
+          }
+        }
         result[profile] = {
           toolCount: response.tools.length,
           ...fingerprint(raw),

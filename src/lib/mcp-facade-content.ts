@@ -59,8 +59,17 @@ interface FacadeContentDanbooruDeps {
   };
   getPopular: (category?: string, limit?: number) => DanbooruTagLike[];
   getPopularGrouped: () => Record<string, string[]>;
-  searchWithOnline: (query: string, category?: string, limit?: number) => Promise<DanbooruTagLike[]>;
-  validateTags: (tags: string[], onlineFallback?: boolean) => Promise<DanbooruTagValidationLike[]>;
+  searchWithOnline: (
+    query: string,
+    category?: string,
+    limit?: number,
+    signal?: AbortSignal,
+  ) => Promise<DanbooruTagLike[]>;
+  validateTags: (
+    tags: string[],
+    onlineFallback?: boolean,
+    signal?: AbortSignal,
+  ) => Promise<DanbooruTagValidationLike[]>;
 }
 
 type FacadeContentItemsDeps = Pick<FacadeItemsEngine, 'resolveRisupPromptSelectorIndices'>;
@@ -84,9 +93,16 @@ export interface FacadeContentEngineDeps {
   danbooru: FacadeContentDanbooruDeps;
   items: FacadeContentItemsDeps;
   scriptStyle: FacadeContentScriptStyleDeps;
+  getAbortSignal?: () => AbortSignal | undefined;
 }
 
-export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptStyle }: FacadeContentEngineDeps) {
+export function createFacadeContentEngine({
+  apiRequest,
+  danbooru,
+  items,
+  scriptStyle,
+  getAbortSignal,
+}: FacadeContentEngineDeps) {
   const {
     ensureTagsLoaded,
     formatTags,
@@ -110,6 +126,18 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
     scriptStyleRouteParts,
     selectorTags,
   } = scriptStyle;
+
+  function requestCancelledError(): ApiErrorResult | null {
+    return getAbortSignal?.()?.aborted
+      ? facadeApiError(
+          499,
+          'Request cancelled by MCP client',
+          'Start a new request only if the analysis is still required.',
+          undefined,
+          ['inspect_document', 'read_content'],
+        )
+      : null;
+  }
 
   // ==================== Facade v1 Helpers ====================
 
@@ -271,6 +299,208 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
     };
   }
 
+  const CRITICAL_RESULT_KEYS = new Set([
+    'preview_token',
+    'operation_digest',
+    'guard_values',
+    'required_guards',
+    'target',
+    'touched_targets',
+    'evidence',
+    'success',
+    'changed',
+  ]);
+
+  function utf8Prefix(value: string, maxBytes: number): string {
+    const source = Buffer.from(value, 'utf8');
+    let end = Math.min(source.length, maxBytes);
+    while (end > 0) {
+      const candidate = source.subarray(0, end);
+      const text = candidate.toString('utf8');
+      if (Buffer.from(text, 'utf8').equals(candidate)) return text;
+      end -= 1;
+    }
+    return '';
+  }
+
+  interface CompactStats {
+    omittedCount: number;
+    truncatedFields: string[];
+  }
+
+  function compactSemanticValue(
+    value: unknown,
+    key: string,
+    limits: { stringBytes: number; arrayItems: number; objectKeys: number; depth: number },
+    stats: CompactStats,
+    depth = 0,
+    protectedSubtree = false,
+  ): unknown {
+    const preserveValue = protectedSubtree || CRITICAL_RESULT_KEYS.has(key);
+    if (value === null || value === undefined || typeof value === 'number' || typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      if (preserveValue || Buffer.byteLength(value, 'utf8') <= limits.stringBytes) return value;
+      stats.omittedCount += 1;
+      stats.truncatedFields.push(key);
+      return utf8Prefix(value, limits.stringBytes);
+    }
+    if (Array.isArray(value)) {
+      const preserveAll = preserveValue;
+      const selected = preserveAll ? value : value.slice(0, limits.arrayItems);
+      if (selected.length < value.length) {
+        stats.omittedCount += value.length - selected.length;
+        stats.truncatedFields.push(key);
+      }
+      return selected.map((item) => compactSemanticValue(item, key, limits, stats, depth + 1, preserveAll));
+    }
+    if (typeof value !== 'object') return String(value);
+    const entries = Object.entries(value as Record<string, unknown>);
+    const prioritized = entries.sort(([left], [right]) => {
+      const leftPriority = CRITICAL_RESULT_KEYS.has(left) ? 0 : 1;
+      const rightPriority = CRITICAL_RESULT_KEYS.has(right) ? 0 : 1;
+      return leftPriority - rightPriority;
+    });
+    const selected = preserveValue
+      ? prioritized
+      : depth >= limits.depth
+        ? prioritized.filter(([childKey]) => CRITICAL_RESULT_KEYS.has(childKey))
+        : prioritized;
+    const bounded = preserveValue ? selected : selected.slice(0, limits.objectKeys);
+    if (bounded.length < entries.length) {
+      stats.omittedCount += entries.length - bounded.length;
+      stats.truncatedFields.push(key || 'result');
+    }
+    return Object.fromEntries(
+      bounded.map(([childKey, child]) => [
+        childKey,
+        compactSemanticValue(child, childKey, limits, stats, depth + 1, preserveValue),
+      ]),
+    );
+  }
+
+  function protectedResultProjection(result: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(result).filter(([key]) => CRITICAL_RESULT_KEYS.has(key)));
+  }
+
+  function jsonByteLength(value: unknown): number {
+    return Buffer.byteLength(JSON.stringify(value) ?? 'null', 'utf8');
+  }
+
+  function withReturnedByteSize(result: Record<string, unknown>): Record<string, unknown> {
+    let size = 0;
+    for (let iteration = 0; iteration < 5; iteration++) {
+      result.returned_byte_size = size;
+      const next = Buffer.byteLength(JSON.stringify(result), 'utf8');
+      if (next === size) break;
+      size = next;
+    }
+    result.returned_byte_size = Buffer.byteLength(JSON.stringify(result), 'utf8');
+    return result;
+  }
+
+  function semanticBoundResult(result: Record<string, unknown>, maxBytes: number): Record<string, unknown> {
+    const originalByteSize = Buffer.byteLength(JSON.stringify(result), 'utf8');
+    if (originalByteSize <= maxBytes) return result;
+    const configurations = [
+      { stringBytes: 4096, arrayItems: 20, objectKeys: 40, depth: 6 },
+      { stringBytes: 2048, arrayItems: 10, objectKeys: 30, depth: 5 },
+      { stringBytes: 1024, arrayItems: 5, objectKeys: 20, depth: 4 },
+      { stringBytes: 512, arrayItems: 2, objectKeys: 12, depth: 4 },
+      { stringBytes: 128, arrayItems: 1, objectKeys: 8, depth: 3 },
+    ];
+    for (const limits of configurations) {
+      const stats: CompactStats = { omittedCount: 0, truncatedFields: [] };
+      const compacted = compactSemanticValue(result, 'result', limits, stats) as Record<string, unknown>;
+      const candidate = withReturnedByteSize({
+        ...compacted,
+        truncated: true,
+        original_byte_size: originalByteSize,
+        omitted_count: Math.max(1, stats.omittedCount),
+        next_cursor: null,
+        ...(maxBytes >= 1024
+          ? {
+              truncated_fields: uniqueStrings(stats.truncatedFields).filter(Boolean),
+              continuation_hint: 'Narrow the selector or use search_document to retrieve omitted content.',
+            }
+          : {}),
+      });
+      if (Buffer.byteLength(JSON.stringify(candidate), 'utf8') <= maxBytes) return candidate;
+    }
+    const protectedFields = protectedResultProjection(result);
+    const protectedBase = {
+      ...protectedFields,
+      truncated: true,
+      original_byte_size: originalByteSize,
+      omitted_count: Math.max(1, Object.keys(result).length - Object.keys(protectedFields).length),
+      next_cursor: null,
+      protected_fields_preserved: true,
+    };
+    const withinRequested = withReturnedByteSize({ ...protectedBase });
+    if (jsonByteLength(withinRequested) <= maxBytes) return withinRequested;
+
+    const protectedOverflow = withReturnedByteSize({
+      ...protectedBase,
+      requested_max_bytes_exceeded: true,
+      hard_max_bytes: FACADE_V1_LIMITS.maxBytes,
+    });
+    if (jsonByteLength(protectedOverflow) <= FACADE_V1_LIMITS.maxBytes) return protectedOverflow;
+
+    const essentialProtected = Object.fromEntries(
+      Object.entries(protectedFields).filter(([key, value]) => {
+        if (key === 'evidence' || key === 'guard_values' || key === 'required_guards') return false;
+        return jsonByteLength(value) <= 4096;
+      }),
+    );
+    return withReturnedByteSize({
+      ...essentialProtected,
+      truncated: true,
+      original_byte_size: originalByteSize,
+      omitted_count: Math.max(1, Object.keys(result).length - Object.keys(essentialProtected).length),
+      next_cursor: null,
+      protected_fields_preserved: false,
+      code: 'protected_result_exceeds_hard_cap',
+      error: `Protected result fields exceed the ${FACADE_V1_LIMITS.maxBytes}-byte hard cap.`,
+      retryable: false,
+      retry_mode: 'inspect_outcome',
+      outcome: 'unknown',
+      protected_field_sizes: Object.fromEntries(
+        Object.entries(protectedFields).map(([key, value]) => [key, jsonByteLength(value)]),
+      ),
+    });
+  }
+
+  function boundFacadePayload(payload: Record<string, unknown>, maxBytes?: number): Record<string, unknown> {
+    if (!maxBytes) return payload;
+    const result = asRecord(payload.result) ?? {};
+    const originalResultBytes = Buffer.byteLength(JSON.stringify(result), 'utf8');
+    const boundedResult = semanticBoundResult(result, maxBytes);
+    const returnedResultBytes = Buffer.byteLength(JSON.stringify(boundedResult), 'utf8');
+    const truncated = returnedResultBytes < originalResultBytes;
+    return {
+      ...payload,
+      facade: {
+        ...(asRecord(payload.facade) ?? {}),
+        max_bytes: maxBytes,
+        ...(truncated ? { truncated: true } : {}),
+        response_bytes: returnedResultBytes,
+        original_response_bytes: originalResultBytes,
+      },
+      result: boundedResult,
+      artifacts: {
+        ...(asRecord(payload.artifacts) ?? {}),
+        result_byte_size: originalResultBytes,
+        returned_byte_size: returnedResultBytes,
+        ...(truncated
+          ? {
+              truncated: true,
+              original_byte_size: originalResultBytes,
+              continuation_hint: 'Narrow the selector or use search_document to retrieve omitted content.',
+            }
+          : {}),
+      },
+    };
+  }
+
   function facadeEnvelope(
     tool: string,
     mutability: FacadeV1ToolMutability,
@@ -281,62 +511,7 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
     artifacts: Record<string, unknown> = {},
     maxBytes?: number,
   ) {
-    let truncated = false;
-    let finalResult: Record<string, unknown> = result;
-    const serializedResult = JSON.stringify(result);
-    const resultBytes = Buffer.byteLength(serializedResult, 'utf8');
-    if (maxBytes && resultBytes > maxBytes) {
-      truncated = true;
-      const continuationHint =
-        'Narrow the selector, use search_document, or pass an explicit max_bytes when you need a larger bounded read.';
-      const sourceBytes = Buffer.from(serializedResult, 'utf8');
-      let low = 0;
-      let high = Math.min(sourceBytes.length, maxBytes);
-      let best: Record<string, unknown> = {
-        truncated: true,
-        preview: '',
-        original_byte_size: resultBytes,
-        returned_byte_size: 0,
-        continuation_hint: continuationHint,
-      };
-      while (low <= high) {
-        const mid = Math.floor((low + high) / 2);
-        let end = mid;
-        let preview = '';
-        while (end >= 0) {
-          const candidateBytes = sourceBytes.subarray(0, end);
-          preview = candidateBytes.toString('utf8');
-          if (Buffer.from(preview, 'utf8').equals(candidateBytes)) break;
-          end--;
-        }
-        const candidate: Record<string, unknown> = {
-          truncated: true,
-          preview,
-          original_byte_size: resultBytes,
-          preview_byte_size: end,
-          returned_byte_size: 0,
-          continuation_hint: continuationHint,
-        };
-        let candidateSize = 0;
-        for (let iteration = 0; iteration < 4; iteration++) {
-          candidate.returned_byte_size = candidateSize;
-          const nextSize = Buffer.byteLength(JSON.stringify(candidate), 'utf8');
-          if (nextSize === candidateSize) break;
-          candidateSize = nextSize;
-        }
-        candidate.returned_byte_size = Buffer.byteLength(JSON.stringify(candidate), 'utf8');
-        if (Buffer.byteLength(JSON.stringify(candidate), 'utf8') <= maxBytes) {
-          best = candidate;
-          low = mid + 1;
-        } else {
-          high = mid - 1;
-        }
-      }
-      finalResult = best;
-    }
-    const returnedResultBytes = Buffer.byteLength(JSON.stringify(finalResult), 'utf8');
-
-    return mcpSuccess(
+    const payload = mcpSuccess(
       {
         facade: {
           contract: FACADE_V1_CONTRACT_ID,
@@ -344,32 +519,12 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
           tool,
           mutability,
           ...(target ? { target } : {}),
-          ...(maxBytes ? { max_bytes: maxBytes } : {}),
-          ...(truncated ? { truncated: true } : {}),
-          response_bytes: returnedResultBytes,
-          original_response_bytes: resultBytes,
         },
-        result: finalResult,
+        result,
       },
-      {
-        toolName: tool,
-        summary,
-        nextActions,
-        artifacts: {
-          ...artifacts,
-          result_byte_size: resultBytes,
-          returned_byte_size: returnedResultBytes,
-          ...(truncated
-            ? {
-                truncated: true,
-                original_byte_size: resultBytes,
-                continuation_hint:
-                  'Narrow the selector, use search_document, or pass an explicit max_bytes when you need a larger bounded read.',
-              }
-            : {}),
-        },
-      },
+      { toolName: tool, summary, nextActions, artifacts },
     );
+    return boundFacadePayload(payload, maxBytes);
   }
 
   async function resolveReferenceIndex(target: FacadeV1Target): Promise<number | ApiErrorResult> {
@@ -950,7 +1105,9 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
           );
         }
         ensureTagsLoaded();
-        const data = await validateTags(tags, true);
+        const data = await validateTags(tags, true, getAbortSignal?.());
+        const cancelledAfterValidation = requestCancelledError();
+        if (cancelledAfterValidation) return cancelledAfterValidation;
         const counts = {
           valid: data.filter((result) => result.status === 'valid').length,
           invalid: data.filter((result) => result.status === 'invalid').length,
@@ -1237,6 +1394,8 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
     target: FacadeV1Target,
     operation: FacadeV1AnalyzeOperation,
   ): Promise<{ data: unknown; routes: FacadeRoute[]; touchedTargets: string[] } | ApiErrorResult> {
+    const cancelledBeforeStart = requestCancelledError();
+    if (cancelledBeforeStart) return cancelledBeforeStart;
     if (operation.action === 'tag_db_status') {
       return {
         data: getDanbooruStatus(),
@@ -1247,7 +1406,14 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
 
     if (operation.action === 'search_danbooru_tags') {
       ensureTagsLoaded();
-      const results = await searchWithOnline(operation.query, operation.category, operation.limit ?? 20);
+      const results = await searchWithOnline(
+        operation.query,
+        operation.category,
+        operation.limit ?? 20,
+        getAbortSignal?.(),
+      );
+      const cancelledAfterSearch = requestCancelledError();
+      if (cancelledAfterSearch) return cancelledAfterSearch;
       return {
         data: { query: operation.query, count: results.length, tags: formatTags(results) },
         routes: [route('search_danbooru_tags', 'MCP', 'mcp://search_danbooru_tags')],
@@ -1287,6 +1453,8 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
           sources.push({ input: 'text', text: operation.text });
         } else {
           for (const selector of operation.selectors ?? []) {
+            const cancelled = requestCancelledError();
+            if (cancelled) return cancelled;
             const read = await readFacadeSelector(target, selector);
             if (isApiError(read)) return read;
             routes.push(...read.routes);
@@ -1303,6 +1471,8 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
           );
         }
         for (const source of sources) {
+          const cancelled = requestCancelledError();
+          if (cancelled) return cancelled;
           items.push({
             ...(source.selector ? { selector: source.selector } : { input: 'text' as const }),
             characters: Array.from(source.text).length,
@@ -1335,28 +1505,41 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
         role: message.role === 'assistant' || message.role === 'system' ? ('char' as const) : message.role,
         content: message.content,
       }));
-      return {
-        data: simulateLorebookActivation({
-          messages,
-          lorebook: collection.entries,
-          scanDepth: operation.scan_depth,
-          recursive: operation.recursive,
-          maxPasses: operation.max_passes,
-          includeContent: operation.include_content,
-        }),
-        routes: collection.routes,
-        touchedTargets: ['lorebook'],
-      };
+      try {
+        return {
+          data: simulateLorebookActivation({
+            messages,
+            lorebook: collection.entries,
+            scanDepth: operation.scan_depth,
+            recursive: operation.recursive,
+            maxPasses: operation.max_passes,
+            includeContent: operation.include_content,
+            signal: getAbortSignal?.(),
+          }),
+          routes: collection.routes,
+          touchedTargets: ['lorebook'],
+        };
+      } catch (error) {
+        const cancelled = requestCancelledError();
+        if (cancelled) return cancelled;
+        throw error;
+      }
     }
 
     if (operation.action === 'test_regex') {
       const collection = await readAllFacadeCollectionEntries(target, 'regex', operation.indices);
       if (isApiError(collection)) return collection;
-      return {
-        data: runRegexPipeline(operation.text, collection.entries, operation.mode),
-        routes: collection.routes,
-        touchedTargets: operation.indices?.map((index) => `regex:${index}`) ?? ['regex'],
-      };
+      try {
+        return {
+          data: runRegexPipeline(operation.text, collection.entries, operation.mode, undefined, getAbortSignal?.()),
+          routes: collection.routes,
+          touchedTargets: operation.indices?.map((index) => `regex:${index}`) ?? ['regex'],
+        };
+      } catch (error) {
+        const cancelled = requestCancelledError();
+        if (cancelled) return cancelled;
+        throw error;
+      }
     }
 
     if (target.kind !== 'active') {
@@ -1686,6 +1869,7 @@ export function createFacadeContentEngine({ apiRequest, danbooru, items, scriptS
   return {
     hasRisupPromptImportContext,
     applyEditPostEditMetadata,
+    boundFacadePayload,
     facadeEnvelope,
     resolveReferenceIndex,
     referenceEntriesFromResponse,

@@ -1,150 +1,36 @@
 ---
 name: file-structure-reference
-description: 'Reference for RisuAI .charx, .risum, and .risup file structures plus lorebook and regex item schemas. Use when you need exact field names, file-type boundaries, or JSON shapes before reading or writing content.'
+description: 'Use when exact .charx, .risum, .risup, lorebook, or regex field names and container boundaries affect a task. Primary skill for schema lookup; hand editing workflow to using-mcp-tools and content semantics to the matching authoring skill. Do not use when creative composition has no schema uncertainty.'
 tags: ['reference', 'charx', 'risum', 'risup']
-related_tools: ['inspect_document', 'read_content', 'read_field_batch', 'read_lorebook_batch', 'read_regex_batch']
+related_tools: ['inspect_document', 'read_content']
 ---
 
 # File Structure Reference
 
-## Agent Operating Contract
+## Artifact boundaries
 
-- **Use when:** exact `.charx`, `.risum`, `.risup`, lorebook, or regex field names/shapes affect the answer or edit route.
-- **Do not use when:** the task is creative composition, prose revision, or UI design with no schema uncertainty.
-- **Read first:** this `SKILL.md`; it is intentionally a compact schema map.
-- **Load deeper only if:** `using-mcp-tools` points to `FILE_STRUCTURES.md` for MCP route selection or an artifact-specific skill needs format details.
-- **Output/validation contract:** cite the relevant field shape and choose the narrowest dedicated MCP surface before proposing or making edits.
+| Extension | Meaning           | Container                                           |
+| --------- | ----------------- | --------------------------------------------------- |
+| `.charx`  | Character card v3 | ZIP with `card.json`, `module.risum`, and `assets/` |
+| `.risum`  | Module            | RPACK binary                                        |
+| `.risup`  | Preset            | RPACK containing compressed/encrypted JSON          |
 
-Use this skill when you need the **shape of the data**, not the editing workflow.
+Use structured MCP surfaces rather than editing binary/container internals directly.
 
-> For tool choice and safe mutation patterns, read `using-mcp-tools`.
+## Core surfaces
 
-## File Types
+- `.charx`: `name`, `description`, `firstMessage`, `globalNote`, `css`, `defaultVariables`, `lua`, `alternateGreetings`, `triggerScripts`, `exampleMessage`, creator/version fields, lorebook, regex, and assets.
+- `.risum`: `name`, `description`, `lua`, `backgroundEmbedding`, `lowLevelAccess`, `hideIcon`, `moduleNamespace`, `customModuleToggle`, `mcpUrl`, assets, lorebook, regex, and triggers. `cjs` is reserved/hidden; `moduleId` is read-only.
+- `.risup`: model/provider settings, `promptTemplate`, `formatingOrder`, `customPromptTemplateToggle`, `templateDefaultVariables`, `moduleIntergration`, sampling/reasoning fields, structured-output settings, and advanced provider JSON.
 
-| Extension | Meaning           | Container                                      |
-| --------- | ----------------- | ---------------------------------------------- |
-| `.charx`  | Character card v3 | ZIP (`card.json` + `module.risum` + `assets/`) |
-| `.risum`  | Module            | RPACK binary                                   |
-| `.risup`  | Preset            | RPACK + compressed/encrypted JSON              |
+Compatibility/deprecated fields are not normal RisuToki surfaces. Preserve the product's hidden/save-stripped policy rather than routing around it.
 
-## charx Core Fields
+## Compatibility invariants
 
-| Field                | Purpose                     |
-| -------------------- | --------------------------- |
-| `name`               | Character name              |
-| `description`        | Main character description  |
-| `firstMessage`       | First visible greeting      |
-| `globalNote`         | Post-history instruction    |
-| `css`                | Background HTML/CSS surface |
-| `defaultVariables`   | CBS default variables       |
-| `lua`                | Lua trigger script source   |
-| `alternateGreetings` | Additional greeting array   |
-| `triggerScripts`     | Structured trigger data     |
-| `exampleMessage`     | Example dialogue            |
-| `creator`            | Creator                     |
-| `creatorcomment`     | Creator note                |
-| `characterVersion`   | Character version           |
+`.charx` exports mirror module lorebook and regex data into `card.json`. Canonical persisted regex bodies are `in` and `out`; `find` and `replace` are convenience aliases. Validate export compatibility after external edits, including mirrors, protected fields, asset references, and zero-byte assets.
 
-Compatibility-only `.charx` fields such as `systemPrompt`, `personality`, `scenario`, `nickname`, `source`, `additionalText`, `license`, and `groupOnlyGreetings` should be preserved when round-tripping existing files, but they are not normal RisuToki editor/MCP content surfaces. Empty compatibility-only fields are omitted on `.charx` export/save so RisuAI does not show blank deprecated sections.
+Lorebook folder identity is the folder entry's normalized `key` (`folder:<uuid>`); child `folder` values use the same key. A lorebook `comment` may be a Lua lookup key, so renaming can break scripts. Exact item fields and mutation rules belong to `writing-lorebooks` and `writing-regex-scripts`.
 
-### charx Export Mirrors
+## Validation
 
-- `.charx` archives contain both `card.json` and embedded `module.risum`. For RisuToki/RisuAI compatibility, `module.risum.module.lorebook` and `module.risum.module.regex` are the editor-visible source of truth and must stay mirrored into `card.json.data.character_book.entries` and `card.json.data.extensions.risuai.customScripts` on export.
-- Run export compatibility validation before RisuAI upload when the archive may have been edited outside RisuToki. It checks lorebook/regex mirror counts and content, canonical regex fields, empty compatibility-only fields, asset references, and 0-byte assets.
-
-## risum Core Fields
-
-| Field                 | Purpose                            |
-| --------------------- | ---------------------------------- |
-| `name`                | Module name                        |
-| `description`         | Module description                 |
-| `cjs`                 | Reserved CommonJS slot; hidden     |
-| `lua`                 | Lua trigger script source          |
-| `backgroundEmbedding` | Shared HTML/CSS background surface |
-| `lowLevelAccess`      | Enables restricted Lua APIs        |
-| `hideIcon`            | Hides the character icon in chat   |
-| `moduleNamespace`     | Module namespace                   |
-| `customModuleToggle`  | Module toggle definition text      |
-| `mcpUrl`              | External MCP endpoint URL          |
-| `moduleId`            | Read-only module UUID              |
-
-## risup Core Groups
-
-| Group                       | Examples                                                                                     |
-| --------------------------- | -------------------------------------------------------------------------------------------- |
-| Model                       | `aiModel`, `subModel`, `apiType`                                                             |
-| Prompt                      | `promptTemplate`, `formatingOrder`, `customPromptTemplateToggle`, `templateDefaultVariables` |
-| Legacy prompt compatibility | `mainPrompt`, `jailbreak`, `globalNote`, `JinjaTemplate`                                     |
-| Sampling                    | `temperature`, `top_p`, `top_k`, `repetition_penalty`                                        |
-| Reasoning                   | `reasonEffort`, `thinkingTokens`, `thinkingType`                                             |
-| JSON schema                 | `jsonSchemaEnabled`, `jsonSchema`, `strictJsonSchema`                                        |
-| Provider/endpoint           | `proxyRequestModel`, `openrouterRequestModel`, `koboldURL`, `forceReplaceUrl`                |
-| Advanced JSON               | `promptSettings`, `customAPIFormat`, `openrouterProvider`, `customFlags`, `dynamicOutput`    |
-
-## Lorebook Item Shape
-
-```json
-{
-  "key": "keyword1, keyword2",
-  "comment": "Management name",
-  "content": "Prompt text sent to the AI",
-  "mode": "normal",
-  "insertorder": 100,
-  "alwaysActive": false,
-  "secondkey": "",
-  "selective": false,
-  "useRegex": false,
-  "folder": "folder:uuid",
-  "activationPercent": 100,
-  "id": "uuid"
-}
-```
-
-### Lorebook Notes
-
-- Folder identity is tracked by the folder entry's **`key`** in `folder:UUID` form.
-- Child entries store that same canonical `folder:UUID` in their `folder` field.
-- `comment` is often part of Lua lookup flows, so renaming it can break scripts.
-
-## Regex Item Shape
-
-```json
-{
-  "comment": "Script name",
-  "type": "editdisplay",
-  "in": "pattern",
-  "out": "replacement",
-  "find": "pattern",
-  "replace": "replacement",
-  "flag": "gi",
-  "ableFlag": true
-}
-```
-
-RisuAI's canonical persisted regex fields are `in` and `out`. RisuToki/MCP also expose `find` and `replace` as convenience aliases, but exported `.charx` / `.risum` data must include canonical `in` / `out`. `ableFlag` means "use custom flags"; `ableFlag: false` is not disabled. Disabled regex entries use `type: "disabled"`.
-
-### Regex Types
-
-| Type          | Stage                                  |
-| ------------- | -------------------------------------- |
-| `editinput`   | Before user input is sent              |
-| `editoutput`  | After AI output, before storing        |
-| `editdisplay` | During rendering only                  |
-| `editrequest` | After prompt assembly, before API send |
-
-## Related Skills
-
-| Skill                   | Relationship                                                                                        |
-| ----------------------- | --------------------------------------------------------------------------------------------------- |
-| `writing-lorebooks`     | Lorebook entry field shapes are documented here; editing workflow in `writing-lorebooks`            |
-| `writing-regex-scripts` | Regex item field shapes are documented here; scripting workflow in `writing-regex-scripts`          |
-| `writing-lua-scripts`   | Lua accesses fields documented here via API functions                                               |
-| `writing-html-css`      | HTML/CSS fields like `backgroundEmbedding` are documented here; styling rules in `writing-html-css` |
-
-## Smoke Tests
-
-| Prompt                                                                     | Expected routing                                                                              | Expected output                         | Forbidden behavior                                             |
-| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------- |
-| "What fields does a lorebook entry have? Show me the complete JSON shape." | Primary: `file-structure-reference`; load `writing-lorebooks` only for editing workflow.      | Lorebook item shape and field meanings. | Recommending generic writes as the default edit route.         |
-| "What's the difference between `.charx`, `.risum`, and `.risup`?"          | Primary: `file-structure-reference`.                                                          | File-type boundary summary.             | Loading composition skills before a target artifact is chosen. |
-| "List all regex script item fields and explain them."                      | Primary: `file-structure-reference`; load `writing-regex-scripts` only for behavior patterns. | Regex item schema.                      | Treating schema lookup as a full regex authoring task.         |
+Confirm the detected artifact type before naming fields, preserve canonical export forms, and choose a dedicated family reader/writer. Load `using-mcp-tools/FILE_STRUCTURES.md` only when a complete JSON shape is required.

@@ -295,6 +295,8 @@ describe('MCP_TOOL_SURFACE.md ↔ taxonomy alignment', () => {
     'applied_count',
     'failed_operation',
     'remaining_count',
+    'retry_mode',
+    'omitted_count',
   ]);
 
   it('every tool name in MCP_TOOL_SURFACE.md exists in taxonomy', () => {
@@ -385,9 +387,13 @@ describe('agent guidance ownership and startup budget', () => {
   const surfacePath = path.join(DOCS_DIR, 'MCP_TOOL_SURFACE.md');
 
   it('keeps canonical guidance ownership explicit', () => {
-    expect(fs.readFileSync(agentsPath, 'utf-8')).toContain('startup and routing source of truth');
-    expect(fs.readFileSync(usingMcpToolsPath, 'utf-8')).toContain(
-      'tool-choice and task-intent playbook source of truth',
+    const agents = fs.readFileSync(agentsPath, 'utf-8');
+    const usingMcpTools = fs.readFileSync(usingMcpToolsPath, 'utf-8');
+    expect(agents).toContain('# RisuToki — Agent Router');
+    expect(agents).toContain('**Selecting or sequencing MCP artifact tools:** `using-mcp-tools`.');
+    expect(usingMcpTools).toContain('# Using MCP Tools Safely');
+    expect(usingMcpTools).toContain(
+      'This Skill selects tools; the relevant authoring Skill owns content quality and syntax.',
     );
     expect(fs.readFileSync(surfacePath, 'utf-8')).toContain('profile, coverage, and tool-contract source of truth');
     expect(fs.readFileSync(workflowPath, 'utf-8')).toContain('runtime-mode and common-sequence source of truth');

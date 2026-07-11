@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+
+import { withDetailedInputValidationHandler } from './mcp-compact-input';
+import { withStructuredContentHandler } from './mcp-tool-registration';
 
 import {
   assetAddBodySchema,
@@ -1760,5 +1764,22 @@ describe('facade v1 contract schemas', () => {
     );
 
     expect(result.success).toBe(true);
+  });
+});
+
+describe('compact public schema handler validation', () => {
+  it('returns matching JSON text and structuredContent for detailed validation failures', async () => {
+    const validated = withDetailedInputValidationHandler('test_tool', { mode: z.literal('valid') }, async () => ({
+      content: [{ type: 'text', text: JSON.stringify({ status: 200 }) }],
+    }));
+    const result = await withStructuredContentHandler(validated)({ mode: 'invalid' });
+    const parsed = JSON.parse(result.content[0].text) as Record<string, unknown>;
+
+    expect(result.isError).toBe(true);
+    expect(parsed.status).toBe(400);
+    expect(parsed.code).toBe('invalid_request');
+    expect(parsed.retry_mode).toBe('never');
+    expect(parsed.outcome).toBe('not_started');
+    expect(result.structuredContent).toEqual(parsed);
   });
 });

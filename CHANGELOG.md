@@ -9,6 +9,28 @@
 
 ---
 
+## [1.14.0] - 2026-07-10
+
+### Added
+
+- Added compact `outputSchema` and semantically equivalent `structuredContent` to the 13 default `facade-first` tools while preserving their existing JSON text responses and all legacy tool contracts.
+- Added scope/query/summary pagination to `list_skills`, UTF-8-safe cursor paging to `read_skill`, request cancellation propagation, request-ID diagnostics, mode-specific `manage_*` metadata, and stable `code` / `retry_mode` / `outcome` recovery fields.
+
+### Changed
+
+- Replaced the AI CLI bootstrap catalog dump with a type-aware, escaped untrusted-metadata block and a compact autonomy/tool workflow; generated `AGENTS.md` context now uses idempotent managed markers and atomic updates that preserve project-guide edits.
+- Reduced the root and subtree routers plus all 28 runtime Skill files to progressive-disclosure contracts, removing mandatory `project-workflow` / `core-craft` preloads and moving detailed material behind existing references.
+- Applied 24KB default semantic result bounds across facade reads, previews, applies, and `manage_*` operations while preserving preview tokens, digests, guards, targets, and validation evidence.
+- Replaced expanded public unions with compact discriminator schemas while retaining the original detailed handler-side Zod validation. The intentional MCP baseline changed as follows: `facade-first` 52,647 -> 29,484 bytes, `authoring` 249,675 -> 226,512, `advanced-full` 279,708 -> 256,545, `readonly` 115,235 -> 110,095, and the enriched `field-error` envelope 422 -> 492 bytes.
+- Renamed deterministic replay metrics to describe scripted server-contract conformance and catalog-scenario coverage without claiming language-model routing performance.
+- Added a shared creative-latitude contract that permits deliberate strangeness and productive “wrong” choices while preserving canon, factual/runtime constraints, consent, user agency, and safety boundaries.
+
+### Fixed
+
+- Fixed `.risum`, `.risup`, and unknown artifacts receiving hard-coded `.charx` prompt instructions, stale session context nesting after abnormal shutdowns, all Skill roots being reported as `product`, and mutation timeout/cancellation paths being advertised as automatically retryable when their outcome may be unknown.
+- Fixed managed session marker literals embedded in persona content and protected preview/evidence overflow fallback so cleanup boundaries and the 64KB hard cap remain explicit.
+- Fixed one-shot facade apply tokens surviving failed mutations, cross-query Skill cursor reuse, zero-progress UTF-8 paging, mutation-side 5xx retry guidance, non-JSON success responses, and detailed validation errors bypassing structured MCP envelopes.
+
 ## [1.13.0] - 2026-07-03
 
 ### Added

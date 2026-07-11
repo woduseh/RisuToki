@@ -3,9 +3,11 @@ import path from 'node:path';
 
 export const COPILOT_SKILL_CATALOG_DIR = '.copilot-skill-catalog';
 
+export type SkillScope = 'product' | 'common' | 'bot' | 'prompts' | 'modules' | 'plugins';
+
 export interface SkillRootSpec {
   readonly relativePath: string;
-  readonly scope: 'product' | 'common' | 'bot' | 'prompts' | 'modules' | 'plugins';
+  readonly scope: SkillScope;
 }
 
 export interface GuideRootSpec {
@@ -48,6 +50,17 @@ export function resolveSkillRootDirs(baseRoot: string): ResolvedSkillRoot[] {
     ...spec,
     absolutePath: path.join(baseRoot, spec.relativePath),
   })).filter((spec) => isDirectory(spec.absolutePath));
+}
+
+/** Recover content-root scope when an integration passes only absolute paths. */
+export function inferSkillRootScope(rootPath: string): SkillScope {
+  const normalized = path.normalize(rootPath).replace(/\\/g, '/').replace(/\/$/, '').toLowerCase();
+  const matches = [...SKILL_ROOT_SPECS].sort((a, b) => b.relativePath.length - a.relativePath.length);
+  for (const spec of matches) {
+    const suffix = path.normalize(spec.relativePath).replace(/\\/g, '/').toLowerCase();
+    if (normalized === suffix || normalized.endsWith(`/${suffix}`)) return spec.scope;
+  }
+  return 'product';
 }
 
 export function resolveGuideRootDirs(baseRoot: string): ResolvedGuideRoot[] {

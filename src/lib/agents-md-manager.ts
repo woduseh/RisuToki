@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { writeFileAtomicSync } from './atomic-write';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -11,6 +12,8 @@ export interface AgentsMdDeps {
   getTerminalCwd: () => string | null;
   getDirname: () => string;
   resolveGuidePath: (filename: string) => string | null;
+  /** Test seam; production uses the same-directory atomic writer. */
+  writeFileAtomicSync?: (filePath: string, data: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -19,8 +22,23 @@ export interface AgentsMdDeps {
 
 let deps: AgentsMdDeps;
 let activeAgentsFilePath: string | null = null;
-let activeAgentsOriginalContent: string | null = null;
-let activeAgentsHadExistingFile = false;
+let activeAgentsCreatedFile = false;
+
+const MANAGED_BLOCK_START = '<!-- RisuToki:session-context:start -->';
+const MANAGED_BLOCK_END = '<!-- RisuToki:session-context:end -->';
+const MANAGED_BLOCK_PATTERN = new RegExp(
+  `${MANAGED_BLOCK_START.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${MANAGED_BLOCK_END.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    '\\$&',
+  )}(?:\\r?\\n)?`,
+  'g',
+);
+
+function neutralizeManagedMarkerLiterals(content: string): string {
+  return content
+    .replaceAll(MANAGED_BLOCK_START, '&lt;!-- RisuToki:session-context:start -->')
+    .replaceAll(MANAGED_BLOCK_END, '&lt;!-- RisuToki:session-context:end -->');
+}
 
 // ---------------------------------------------------------------------------
 // Core helpers
@@ -47,33 +65,48 @@ function resolveProjectRoot(explicitRoot?: string | null): string {
 }
 
 export function cleanupAgentsMd(): void {
+  if (!activeAgentsFilePath) return;
+
+  let completed = false;
   try {
-    if (!activeAgentsFilePath) {
-      // No AGENTS.md to restore — nothing to do.
-    } else if (activeAgentsHadExistingFile) {
-      if (activeAgentsOriginalContent !== null) {
-        fs.writeFileSync(activeAgentsFilePath, activeAgentsOriginalContent, 'utf-8');
-      } else {
-        console.warn('[main] AGENTS.md restore skipped: original content missing despite pre-existing file flag');
+    if (!fs.existsSync(activeAgentsFilePath)) {
+      completed = true;
+    } else {
+      const currentContent = fs.readFileSync(activeAgentsFilePath, 'utf-8');
+      const cleanedContent = stripManagedSessionBlocks(currentContent);
+
+      if (activeAgentsCreatedFile && !cleanedContent.trim()) {
+        fs.unlinkSync(activeAgentsFilePath);
+      } else if (cleanedContent !== currentContent) {
+        atomicWrite(activeAgentsFilePath, cleanedContent);
       }
-    } else if (fs.existsSync(activeAgentsFilePath)) {
-      fs.unlinkSync(activeAgentsFilePath);
+      completed = true;
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.warn('[main] Agents.md cleanup failed:', msg);
   }
 
-  activeAgentsFilePath = null;
-  activeAgentsOriginalContent = null;
-  activeAgentsHadExistingFile = false;
+  if (completed) {
+    activeAgentsFilePath = null;
+    activeAgentsCreatedFile = false;
+  }
+}
+
+function atomicWrite(filePath: string, content: string): void {
+  const writer =
+    deps.writeFileAtomicSync ??
+    ((targetPath: string, data: string) => {
+      writeFileAtomicSync(targetPath, data, { encoding: 'utf8' });
+    });
+  writer(filePath, content);
+}
+
+function stripManagedSessionBlocks(content: string): string {
+  return content.replace(MANAGED_BLOCK_PATTERN, '');
 }
 
 function readProjectGuideContent(cwd: string, agentsPath: string): string {
-  if (activeAgentsFilePath === agentsPath && typeof activeAgentsOriginalContent === 'string') {
-    return activeAgentsOriginalContent;
-  }
-
   if (fs.existsSync(agentsPath)) {
     return fs.readFileSync(agentsPath, 'utf-8');
   }
@@ -102,19 +135,18 @@ function readProjectGuideContent(cwd: string, agentsPath: string): string {
 }
 
 function buildAgentsDocument(sessionContent: string | null, projectGuideContent: string | null): string {
-  const sections: string[] = [];
-  const trimmedSessionContent = String(sessionContent || '').trim();
-  const trimmedProjectGuide = String(projectGuideContent || '').trim();
+  const trimmedSessionContent = neutralizeManagedMarkerLiterals(String(sessionContent || '').trim());
+  const projectGuide = stripManagedSessionBlocks(String(projectGuideContent || ''));
+  if (!trimmedSessionContent) return projectGuide;
 
-  if (trimmedSessionContent) {
-    sections.push(`# RisuToki Session Context\n\n${trimmedSessionContent}`);
-  }
-
-  if (trimmedProjectGuide) {
-    sections.push(trimmedProjectGuide);
-  }
-
-  return sections.join('\n\n---\n\n');
+  const managedBlock = [
+    MANAGED_BLOCK_START,
+    '# RisuToki Session Context',
+    '',
+    trimmedSessionContent,
+    MANAGED_BLOCK_END,
+  ].join('\n');
+  return projectGuide ? `${managedBlock}\n${projectGuide}` : managedBlock;
 }
 
 function writeAgentsMd(content: string, projectRoot?: string | null): string | null {
@@ -122,40 +154,33 @@ function writeAgentsMd(content: string, projectRoot?: string | null): string | n
   const agentsPath = path.join(cwd, 'AGENTS.md');
 
   if (activeAgentsFilePath && activeAgentsFilePath !== agentsPath) {
+    const previousAgentsPath = activeAgentsFilePath;
     cleanupAgentsMd();
+    if (activeAgentsFilePath === previousAgentsPath) {
+      throw new Error('Previous managed AGENTS.md cleanup failed; refusing to replace lifecycle state');
+    }
   }
 
-  if (activeAgentsFilePath !== agentsPath) {
-    activeAgentsHadExistingFile = fs.existsSync(agentsPath);
-    activeAgentsOriginalContent = activeAgentsHadExistingFile ? fs.readFileSync(agentsPath, 'utf-8') : null;
-  }
-
-  const projectGuideContent = readProjectGuideContent(cwd, agentsPath);
+  const fileExisted = fs.existsSync(agentsPath);
+  const rawProjectGuideContent = readProjectGuideContent(cwd, agentsPath);
+  const hadManagedBlock = rawProjectGuideContent.includes(MANAGED_BLOCK_START);
+  const projectGuideContent = stripManagedSessionBlocks(rawProjectGuideContent);
+  const createdFile = !fileExisted || (hadManagedBlock && !projectGuideContent.trim());
   const finalContent = buildAgentsDocument(content, projectGuideContent);
   if (!finalContent.trim()) {
-    cleanupAgentsMd();
+    if (fileExisted && hadManagedBlock && createdFile) {
+      fs.unlinkSync(agentsPath);
+    }
+    activeAgentsFilePath = null;
+    activeAgentsCreatedFile = false;
     return null;
   }
 
-  fs.writeFileSync(agentsPath, finalContent, 'utf-8');
+  atomicWrite(agentsPath, finalContent);
   activeAgentsFilePath = agentsPath;
+  activeAgentsCreatedFile = createdFile;
   console.log('[main] AGENTS.md written:', agentsPath);
   return agentsPath;
-}
-
-// ---------------------------------------------------------------------------
-// Test-only state setter
-// ---------------------------------------------------------------------------
-
-/** @internal Exported only for unit tests — sets AGENTS.md restore state directly. */
-export function _setAgentsMdRestoreStateForTesting(
-  filePath: string | null,
-  hadExisting: boolean,
-  originalContent: string | null,
-): void {
-  activeAgentsFilePath = filePath;
-  activeAgentsHadExistingFile = hadExisting;
-  activeAgentsOriginalContent = originalContent;
 }
 
 // ---------------------------------------------------------------------------

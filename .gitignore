@@ -61,6 +61,7 @@ Thumbs.db
 .analysis/
 output/
 tmp/
+.tmp/
 
 # Generated Copilot skill catalog
 .copilot-skill-catalog/

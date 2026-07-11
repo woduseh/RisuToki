@@ -9,6 +9,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../src/charx-io';
 import { startApiServer } from '../src/lib/mcp-api-server';
+import { MCP_DEFAULT_TOOLS_LIST_MAX_BYTES, MCP_SINGLE_TOOL_MAX_BYTES } from '../src/lib/mcp-compact-input';
 import { buildRuntimeMetadata, type RuntimeMetadata } from '../src/lib/mcp-runtime-contract';
 import {
   combineCssSections as combineCssSectionsImpl,
@@ -603,6 +604,29 @@ function nestedArray(value: unknown, label: string): unknown[] {
   return value;
 }
 
+function assertDefaultToolSchemas(tools: Array<{ name: string; inputSchema: unknown; outputSchema?: unknown }>): void {
+  const commonOutputFields = ['status', 'summary', 'result', 'artifacts', 'next_actions', 'preview', 'error'];
+  const unboundedTools = new Set(['list_skills', 'list_tool_profiles']);
+  for (const tool of tools) {
+    const toolBytes = Buffer.byteLength(JSON.stringify(tool), 'utf8');
+    assert.ok(
+      toolBytes <= MCP_SINGLE_TOOL_MAX_BYTES,
+      `${tool.name} schema is ${toolBytes} bytes; budget is ${MCP_SINGLE_TOOL_MAX_BYTES}`,
+    );
+    const outputSchema = nestedRecord(tool.outputSchema, `${tool.name} output schema`);
+    const outputProperties = nestedRecord(outputSchema.properties, `${tool.name} output properties`);
+    for (const field of commonOutputFields) {
+      assert.ok(field in outputProperties, `${tool.name} output schema should expose ${field}`);
+    }
+    if (!unboundedTools.has(tool.name)) {
+      const inputSchema = nestedRecord(tool.inputSchema, `${tool.name} input schema`);
+      const inputProperties = nestedRecord(inputSchema.properties, `${tool.name} input properties`);
+      const maxBytes = nestedRecord(inputProperties.max_bytes, `${tool.name} max_bytes schema`);
+      assert.equal(maxBytes.maximum, 64 * 1024, `${tool.name} max_bytes should retain the 64KB hard cap`);
+    }
+  }
+}
+
 function assertToolProfileRuntimeHealth(catalog: McpCallJson, expectedRuntime?: RuntimeMetadata): McpCallJson {
   const runtime = nestedRecord(catalog.runtime, 'tool profile runtime');
   assert.equal(typeof runtime.serverVersion, 'string');
@@ -1049,7 +1073,27 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
       },
       { expectError: true },
     );
-    await applyManagePreview(runtime, activeTarget, staleDelete);
+    const consumedDelete = await callJson(
+      runtime,
+      'manage_items',
+      {
+        target: activeTarget,
+        family: 'risup-prompt',
+        mode: 'apply',
+        preview_token: stalePreview.preview_token,
+        operation_digest: stalePreview.operation_digest,
+        guard_values: stalePreview.required_guards,
+      },
+      { expectError: true },
+    );
+    assert.equal(consumedDelete.status, 404);
+    const freshDelete = await callJson(runtime, 'manage_items', {
+      target: activeTarget,
+      family: 'risup-prompt',
+      mode: 'preview',
+      operation: { action: 'delete_snippet', identifier: 'Managed snippet' },
+    });
+    await applyManagePreview(runtime, activeTarget, freshDelete);
 
     const externalAddPreview = await callJson(runtime, 'manage_items', {
       target: externalTarget,
@@ -1132,7 +1176,46 @@ async function runStandaloneManageItemsDogfood(): Promise<void> {
       },
     });
     assert.ok(routedTools(activeAssetRenamePreview).includes('rename_charx_asset'));
-    await applyManageAssetsPreview(runtime, activeTarget, activeAssetRenamePreview, 'charx');
+    const activeRenameToken = previewToken(activeAssetRenamePreview, 'active asset rename preview');
+    const staleAssetRename = await callJson(
+      runtime,
+      'manage_assets',
+      {
+        target: activeTarget,
+        asset_family: 'charx',
+        mode: 'apply',
+        preview_token: activeRenameToken.preview_token,
+        operation_digest: activeRenameToken.operation_digest,
+        guard_values: [{ name: 'expected_asset_collection_digest', value: 'stale' }],
+      },
+      { expectError: true },
+    );
+    assert.equal(staleAssetRename.status, 409);
+    const consumedAssetRename = await callJson(
+      runtime,
+      'manage_assets',
+      {
+        target: activeTarget,
+        asset_family: 'charx',
+        mode: 'apply',
+        preview_token: activeRenameToken.preview_token,
+        operation_digest: activeRenameToken.operation_digest,
+        guard_values: activeRenameToken.required_guards,
+      },
+      { expectError: true },
+    );
+    assert.equal(consumedAssetRename.status, 404);
+    const freshAssetRenamePreview = await callJson(runtime, 'manage_assets', {
+      target: activeTarget,
+      asset_family: 'charx',
+      mode: 'preview',
+      operation: {
+        action: 'rename_asset',
+        selector: { path: 'assets/other/image/managed-asset.png' },
+        newName: 'managed-asset-renamed.png',
+      },
+    });
+    await applyManageAssetsPreview(runtime, activeTarget, freshAssetRenamePreview, 'charx');
 
     const activeAssetDeletePreview = await callJson(runtime, 'manage_assets', {
       target: activeTarget,
@@ -1625,7 +1708,26 @@ async function runStandaloneManageFileDogfood(): Promise<void> {
       { expectError: true },
     );
     assert.equal(staleSave.status, 409);
-    await applyManageFilePreview(runtime, activeTarget, staleSavePreview);
+    const staleSaveToken = previewToken(staleSavePreview, 'stale save preview');
+    const consumedSave = await callJson(
+      runtime,
+      'manage_file',
+      {
+        target: activeTarget,
+        mode: 'apply',
+        preview_token: staleSaveToken.preview_token,
+        operation_digest: staleSaveToken.operation_digest,
+        guard_values: staleSaveToken.required_guards,
+      },
+      { expectError: true },
+    );
+    assert.equal(consumedSave.status, 404);
+    const freshSavePreview = await callJson(runtime, 'manage_file', {
+      target: activeTarget,
+      mode: 'preview',
+      operation: { action: 'save_current_file' },
+    });
+    await applyManageFilePreview(runtime, activeTarget, freshSavePreview);
 
     const snapshotPreview = await callJson(runtime, 'manage_file', {
       target: activeTarget,
@@ -1840,9 +1942,13 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
     });
 
     const tools = await runtime.client.listTools();
-    metrics.toolListByteCost = Buffer.byteLength(JSON.stringify(tools.tools), 'utf-8');
+    metrics.toolListByteCost = Buffer.byteLength(JSON.stringify(tools), 'utf-8');
     metrics.facadeToolListByteCost = metrics.toolListByteCost;
-    assert.ok(metrics.toolListByteCost <= 52 * 1024, 'default tools/list should stay within a 52 KiB budget');
+    assert.ok(
+      metrics.toolListByteCost <= MCP_DEFAULT_TOOLS_LIST_MAX_BYTES,
+      'default tools/list should stay within a 42 KiB budget',
+    );
+    assertDefaultToolSchemas(tools.tools);
 
     const expectedFacadeTools = [
       'inspect_document',
@@ -2148,6 +2254,10 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       { expectError: true },
     );
     const partialDetails = nestedRecord(partialApply.details, 'partial apply details');
+    assert.equal(partialApply.code, 'partial_apply');
+    assert.equal(partialApply.retryable, false);
+    assert.equal(partialApply.retry_mode, 'inspect_outcome');
+    assert.equal(partialApply.outcome, 'partial');
     assert.equal(partialDetails.preview_token_consumed, true);
     assert.equal(partialDetails.partial, true);
     assert.equal(partialDetails.applied_count, 1);
@@ -2392,6 +2502,9 @@ async function runStandaloneFacadeDogfood(): Promise<void> {
       { expectError: true },
     );
     assert.equal(staleFieldBlockApply.status, 409);
+    assert.equal(staleFieldBlockApply.retryable, true);
+    assert.equal(staleFieldBlockApply.retry_mode, 'refresh_then_retry');
+    assert.equal(staleFieldBlockApply.outcome, 'not_started');
     const restoreFieldPreview = await callJson(runtime, 'preview_edit', {
       target: activeTarget,
       operations: [
@@ -4033,7 +4146,7 @@ async function runStandaloneToolProfileContract(): Promise<void> {
       const tools = await runtime.client.listTools();
       return {
         names: tools.tools.map((tool) => tool.name).sort(),
-        bytes: Buffer.byteLength(JSON.stringify(tools.tools), 'utf-8'),
+        bytes: Buffer.byteLength(JSON.stringify(tools), 'utf-8'),
         runtime,
         userDataDir,
       };
@@ -4047,17 +4160,43 @@ async function runStandaloneToolProfileContract(): Promise<void> {
   let advancedProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
   let authoringProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
   let readonlyProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
+  let noWritesRuntime: StandaloneClientRuntime | null = null;
   let invalidProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
   let argvPrecedenceProfile: Awaited<ReturnType<typeof inspectProfile>> | null = null;
   try {
     defaultProfile = await inspectProfile(undefined, 'default');
     assert.deepEqual(defaultProfile.names, expectedDefaultTools);
     assert.equal(defaultProfile.names.length, 13);
-    assert.ok(defaultProfile.bytes <= 52 * 1024, 'default tools/list should stay within a 52 KiB budget');
+    assert.ok(
+      defaultProfile.bytes <= MCP_DEFAULT_TOOLS_LIST_MAX_BYTES,
+      'default tools/list should stay within a 42 KiB budget',
+    );
     const skills = await callJson(defaultProfile.runtime, 'list_skills', {});
     assert.ok(Number(skills.count) > 0);
     const skill = await callJson(defaultProfile.runtime, 'read_skill', { name: 'project-workflow' });
     assert.match(String(skill.content), /Project Workflow/);
+    const scopedSkills = await callJson(defaultProfile.runtime, 'list_skills', {
+      scopes: ['bot'],
+      query: 'authoring',
+      detail: 'summary',
+      limit: 1,
+    });
+    const firstScopedSkill = nestedRecord(nestedArray(scopedSkills.skills, 'scoped skills')[0], 'scoped skill');
+    assert.equal(firstScopedSkill.scope, 'bot');
+    assert.equal(firstScopedSkill.files, undefined);
+    assert.equal(typeof scopedSkills.next_cursor, 'string');
+    const nextScopedSkills = await callJson(defaultProfile.runtime, 'list_skills', {
+      scopes: ['bot'],
+      query: 'authoring',
+      detail: 'summary',
+      limit: 1,
+      cursor: scopedSkills.next_cursor,
+    });
+    const secondScopedSkill = nestedRecord(
+      nestedArray(nextScopedSkills.skills, 'next scoped skills')[0],
+      'next scoped skill',
+    );
+    assert.notEqual(secondScopedSkill.name, firstScopedSkill.name);
     const guidanceInspect = await callJson(defaultProfile.runtime, 'inspect_document', {
       target: { kind: 'guidance', skill: 'project-workflow' },
     });
@@ -4093,6 +4232,40 @@ async function runStandaloneToolProfileContract(): Promise<void> {
     assert.ok(!readonlyProfile.names.includes('apply_edit'));
     assert.ok(!readonlyProfile.names.includes('open_file'));
 
+    const noWritesFile = path.join(rootDir, 'no-writes.charx');
+    saveCharx(noWritesFile, dogfoodCardData('No writes card', 'Original no-writes description.'));
+    noWritesRuntime = await startStandaloneClient({
+      file: noWritesFile,
+      userDataDir: path.join(rootDir, 'no-writes'),
+    });
+    const noWritesPreview = await callJson(noWritesRuntime, 'preview_edit', {
+      target: { kind: 'active', document: 'current' },
+      operations: [
+        {
+          op: 'replace_text',
+          selector: { family: 'field', field: 'description' },
+          find: 'Original',
+          replace: 'Changed',
+        },
+      ],
+    });
+    const noWritesPreviewInfo = previewToken(noWritesPreview, 'no-writes preview');
+    const rejectedApply = await callJson(
+      noWritesRuntime,
+      'apply_edit',
+      {
+        preview_token: noWritesPreviewInfo.preview_token,
+        operation_digest: noWritesPreviewInfo.operation_digest,
+        target: { kind: 'active', document: 'current' },
+      },
+      { expectError: true },
+    );
+    assert.equal(rejectedApply.status, 403);
+    assert.equal(rejectedApply.retryable, false);
+    assert.equal(rejectedApply.retry_mode, 'never');
+    assert.equal(rejectedApply.outcome, 'not_started');
+    assert.equal(openCharx(noWritesFile).description, 'Original no-writes description.');
+
     invalidProfile = await inspectProfile('not-a-profile', 'invalid');
     assert.deepEqual(invalidProfile.names, expectedDefaultTools);
     assert.match(readStandaloneLog(invalidProfile.userDataDir), /toolProfileWarning/);
@@ -4111,6 +4284,7 @@ async function runStandaloneToolProfileContract(): Promise<void> {
     ]) {
       if (profile) await profile.runtime.close();
     }
+    if (noWritesRuntime) await noWritesRuntime.close();
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
 }
