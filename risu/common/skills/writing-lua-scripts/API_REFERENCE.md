@@ -2,6 +2,10 @@
 
 Complete API for Lua 5.4 trigger scripts in RisuAI `.charx` and `.risum` files.
 
+> Verified against RisuAI `2026.6.214`, commit `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, on 2026-07-11.
+> Canonical source: `src/ts/process/scriptings.ts`; callback consumption is verified at callers in `src/ts/process/index.svelte.ts` and `src/ts/process/triggers.ts`.
+> Function exposure is reference data; engine caching and callback propagation are version-bound implementation behavior.
+
 **Legend:**
 
 - ⚡ = Direct async host call — must call `:await()` on the result
@@ -17,9 +21,9 @@ These are **defined** by the script author, **called** by the engine.
 
 | Function                     | Description                                                                                                                                                                      |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `onInput(id)`                | Called when the user presses send, before the new user message is appended and before prompt assembly.                                                                           |
-| `onStart(id)`                | Called when the prompt is being built (before the AI call).                                                                                                                      |
-| `onOutput(id)`               | Called after the AI response is received.                                                                                                                                        |
+| `onInput(id)`                | Called when the user presses send, before the new user message is appended. A false result sets `stopSending`, but the normal input caller does not use it to cancel the send.   |
+| `onStart(id)`                | Called during prompt assembly on every send. The normal send caller consumes `stopSending` here, so this is the reliable cancellation point.                                     |
+| `onOutput(id)`               | Called after the response is stored and its `runVar` pass completes. A false result does not retroactively cancel the completed provider call.                                   |
 | `listenEdit(type, callback)` | Registers an edit listener. `type`: `"editInput"`, `"editOutput"`, `"editRequest"`, `"editDisplay"`. Callback signature: `function(id, data, meta) ... return modifiedData end`. |
 
 **Button callbacks** — defined as global functions, invoked by HTML attributes:
@@ -76,6 +80,8 @@ These are **defined** by the script author, **called** by the engine.
 | `setState(id, name, value)`  | Write a state value. Tables are auto-serialized to JSON.          |
 
 > **Safe context**: write functions work only during callbacks with a valid runtime `id`. All modes except `editDisplay` receive Safe access. `editDisplay` has display-only access for `setChatVar`, but alerts, state writes, chat edits, and low-level APIs require Safe/low-level access. Top-level code has no valid access key.
+
+> Engines are cached by execution mode. Globals can survive repeated calls in one mode, but modes do not share globals and source reload/restart discards them. Use chat state for durable or cross-mode data.
 
 ---
 
@@ -211,11 +217,11 @@ end
 
 ## 11. Chat Control
 
-| Function                | Description                                                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `stopChat(id)`          | Cancel the in-progress send from a safe callback. Returning literal `false` from `onInput`/`onOutput`/`onStart` has the same effect. |
-| `reloadDisplay(id)`     | Force the UI to re-render all messages.                                                                                              |
-| `reloadChat(id, index)` | Force re-render of a specific message at `index`.                                                                                    |
+| Function                | Description                                                                                                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `stopChat(id)`          | Set `stopSending` on the current scripted result. Returning literal `false` sets the same flag. Cancellation occurs only when the caller consumes it; the verified normal send path does so after `onStart`. |
+| `reloadDisplay(id)`     | Force the UI to re-render all messages.                                                                                                                                                                      |
+| `reloadChat(id, index)` | Force re-render of a specific message at `index`.                                                                                                                                                            |
 
 ---
 
@@ -236,11 +242,13 @@ end
 | `async(callback)` | Wraps a Lua function into an async context (coroutine → Promise) and forwards the original callback arguments. |
 | `promise:await()` | Blocks the coroutine until the async operation completes and returns the result.                               |
 
+Event callbacks that call internally-awaiting wrappers such as `LLM` must themselves run in a coroutine, for example `onOutput = async(function(id) ... end)`. `callListenMain` is already wrapped with `async`, so a function registered by `listenEdit` can call direct Promise APIs with `:await()` without wrapping that individual listener again.
+
 ```lua
-listenEdit('editOutput', async(function(id, value, meta)
+listenEdit('editOutput', function(id, value, meta)
     local tokens = getTokens(id, value):await()
     return value .. "\n[tokens: " .. tokens .. "]"
-end))
+end)
 ```
 
 ---

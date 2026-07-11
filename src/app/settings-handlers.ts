@@ -1,4 +1,5 @@
 import { writeCustomTheme, writeThemeId } from '../lib/app-settings';
+import type { McpApprovalMode } from '../lib/app-settings';
 import { applyTheme } from '../lib/dark-mode';
 import { refreshAvatarForDarkMode } from '../lib/avatar-ui';
 import { setStatus } from '../lib/status-bar';
@@ -105,6 +106,7 @@ export interface SettingsPopupDeps {
     bgmEnabled: boolean;
     rpMode: string;
     rpCustomText: string;
+    mcpApprovalMode: McpApprovalMode;
   };
   onAutosaveToggle(enabled: boolean): void;
   onAutosaveIntervalChange(interval: number): void;
@@ -117,6 +119,7 @@ export interface SettingsPopupDeps {
   onPickBgm(): Promise<string | null>;
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
+  onMcpApprovalModeChange(mode: McpApprovalMode): void;
   onOpenPersonaTab(name: string): Promise<void>;
 }
 
@@ -134,6 +137,7 @@ export function showSettingsPopup(deps: SettingsPopupDeps): void {
     onPickBgm: deps.onPickBgm,
     onRpModeChange: deps.onRpModeChange,
     onRpCustomTextChange: deps.onRpCustomTextChange,
+    onMcpApprovalModeChange: deps.onMcpApprovalModeChange,
     onOpenPersonaTab: deps.onOpenPersonaTab,
   });
 }

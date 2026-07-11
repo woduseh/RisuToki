@@ -1,6 +1,7 @@
 # Module Fields Reference
 
-> Canonical sources: `Risuai/src/ts/process/modules.ts`, `Risuai/src/ts/process/processzip.ts`, `RisuToki/src/charx-io.ts`.
+> Verified against RisuAI `2026.6.214`, commit `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, on 2026-07-11.
+> Canonical sources: RisuAI `src/ts/process/modules.ts`, `src/ts/process/processzip.ts`, and RisuToki `src/charx-io.ts`.
 > If this document and source diverge, the TypeScript wins.
 
 ## `RisuModule` interface

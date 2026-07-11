@@ -16,6 +16,33 @@ const { createExternalCharxFixture } = createExternalFixtureHelpers(TEST_DIR);
 const startTestApiServer = createLegacyTestApiServer(TEST_DIR);
 
 describe('MCP API surface routes', () => {
+  it('lists current document surfaces when an optional field is undefined', async () => {
+    const currentData: SearchFixture = {
+      _fileType: 'risup',
+      name: 'Sparse Preset',
+      presetBias: undefined,
+    };
+    const api = await startTestApiServer(currentData);
+
+    try {
+      const list = await getJson<{
+        surfaces: Array<{ name: string; type: string; byteSize: number; hash: string }>;
+      }>(api.port, api.token, '/surfaces');
+
+      expect(list.status).toBe(200);
+      expect(list.data.surfaces).toContainEqual(
+        expect.objectContaining({
+          name: 'presetBias',
+          type: 'undefined',
+          byteSize: 9,
+          hash: expect.any(String),
+        }),
+      );
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('lists, reads, and patches current document surfaces by JSON Pointer', async () => {
     const currentData: SearchFixture = {
       name: 'Surface Bot',

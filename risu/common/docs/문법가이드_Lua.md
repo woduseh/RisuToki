@@ -2,6 +2,10 @@
 
 Lua 5.4 문법과 RisuAI 스크립트 작성·API를 하나로 정리한 가이드입니다.
 
+> 검증 기준: RisuAI `2026.6.214`, 커밋 `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, 2026-07-11.
+> 기준 소스: `src/ts/process/scriptings.ts`, `src/ts/process/index.svelte.ts`, `src/ts/process/triggers.ts`.
+> API 이름은 참조 계약이며 엔진 수명·이벤트 전파 순서는 이 기준선에서 확인한 구현 동작입니다.
+
 ---
 
 ## 목차
@@ -224,7 +228,7 @@ function onButtonClick(triggerId, data)
 end
 ```
 
-> 이벤트 함수(`onStart`, `onOutput`, `onInput`)는 **전역**으로 정의: `function onStart(id) ... end` / `local function onStart(id) ... end`
+> 이벤트 함수(`onStart`, `onOutput`, `onInput`)는 엔진이 이름으로 찾을 수 있게 **전역**으로 정의합니다: `function onStart(id) ... end`. `local function onStart(...)` 형태는 이벤트 진입점으로 사용하지 않습니다.
 
 ### JSON 라이브러리
 
@@ -245,7 +249,7 @@ local data = json.decode(getChatVar(id, "player_data"))
    리터럴 검색: `str:find("text", 1, true)` (4번째 인자 `true`).
 3. **인덱스 불일치**: `getChatLength(id)`는 **1부터**, `getChat(id, i)` / `setChat(id, i, ...)`는 **0부터**.
 4. **비동기**: 해당 함수는 반드시 `:await()` 사용 (3장에 표시).
-5. **stopChat(id)** 는 버그로 사용 불가.
+5. **stopChat(id)** 는 현재 스크립트 결과의 `stopSending`을 설정합니다. 실제 취소는 호출부가 이 값을 확인할 때만 일어나며, 일반 전송 경로에서는 `onStart` 뒤가 신뢰할 수 있는 취소 지점입니다.
 6. **보안 컨텍스트**: `setChatVar`, `setChat`, `addChat` 등 쓰기 함수는 safe 컨텍스트(editInput/editOutput/editDisplay)에서만 작동.
 7. **저수준 접근**: `request`, `generateImage`, `similarity`는 `lowLevelAccess` 플래그가 활성화된 모듈/캐릭터에서만 사용 가능.
 
@@ -326,7 +330,7 @@ local data = json.decode(getChatVar(id, "player_data"))
 
 ### 3.9 채팅 제어
 
-`stopChat(id)`, `reloadDisplay(id)`, `reloadChat(id, index)` — stopChat 현재 오류로 비추천.
+`stopChat(id)`, `reloadDisplay(id)`, `reloadChat(id, index)` — `stopChat`은 `onStart`에서 사용하고, input/output에서는 취소 효과를 가정하지 않습니다.
 
 ### 3.10 배경/메타데이터
 
@@ -418,4 +422,4 @@ end)
 
 ---
 
-_RisuAI 프로젝트 템플릿 · 문법가이드 Lua · 마지막 업데이트: 2026년 3월_
+_RisuAI 프로젝트 템플릿 · 문법가이드 Lua · 마지막 검증: 2026년 7월_

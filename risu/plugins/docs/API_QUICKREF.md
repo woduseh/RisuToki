@@ -1,8 +1,9 @@
 # RisuAI Plugin API v3.0 — Quick Reference
 
-> Distilled from `Risuai/src/ts/plugins/apiV3/risuai.d.ts`.
-> All methods below are exposed through the global `risuai` object.
-> **Every method returns a Promise** — always use `await`.
+> Verified against RisuAI `2026.6.214`, commit `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, on 2026-07-11.
+> Canonical sources: `src/ts/plugins/apiV3/risuai.d.ts`, `factory.ts`, and the repository-root `plugins.md`.
+> Both global names `risuai` and `Risuai` reference the same API proxy. Examples prefer lowercase `risuai` consistently.
+> API and safe-wrapper methods are asynchronous. Cached properties such as `apiVersion` are read directly.
 
 ## Runtime / version
 
@@ -115,6 +116,7 @@
 
 ## High-level rules
 
-1. `await` everything on `risuai` and `SafeElement`.
+1. Await API and safe-wrapper method calls; read cached properties such as `apiVersion` directly.
 2. Use iframe `document` for plugin-owned UI; it is simpler and less restricted.
 3. Treat API spellings literally, including upstream typos such as `registerBodyIntercepter`.
+4. Handle permission denial and rejected calls as normal failure paths, and unregister listeners/UI/hooks on unload where supported.

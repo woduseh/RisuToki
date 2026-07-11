@@ -10,6 +10,7 @@ import {
 } from './theme-registry';
 
 export type RpMode = 'off' | 'toki' | 'aris' | 'custom';
+export type McpApprovalMode = 'ask' | 'auto' | 'allow-all';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -41,6 +42,7 @@ export interface AppSettingsSnapshot {
   customTheme: CustomThemePalette | null;
   rpMode: RpMode;
   rpCustomText: string;
+  mcpApprovalMode: McpApprovalMode;
   bgmEnabled: boolean;
   bgmPath: string;
   autosaveEnabled: boolean;
@@ -77,6 +79,7 @@ export const STORAGE_KEYS = {
   darkMode: 'toki-dark-mode',
   customTheme: 'toki-custom-theme',
   layoutState: 'toki-layout-state',
+  mcpApprovalMode: 'toki-mcp-approval-mode',
   rpCustom: 'toki-rp-custom',
   rpMode: 'toki-rp-mode',
   recentItems: 'toki-recent-items',
@@ -98,6 +101,10 @@ function parseBoolean(value: string | null): boolean {
 function parseInteger(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value || '', 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+export function normalizeMcpApprovalMode(value: string | null): McpApprovalMode {
+  return value === 'auto' || value === 'allow-all' ? value : 'ask';
 }
 
 function normalizeRecentFormat(value: unknown): RecentSourceFormat | undefined {
@@ -180,6 +187,7 @@ export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnaps
     customTheme,
     rpMode: normalizeRpMode(target.getItem(STORAGE_KEYS.rpMode), darkMode),
     rpCustomText: target.getItem(STORAGE_KEYS.rpCustom) || '',
+    mcpApprovalMode: normalizeMcpApprovalMode(target.getItem(STORAGE_KEYS.mcpApprovalMode)),
     bgmEnabled: parseBoolean(target.getItem(STORAGE_KEYS.bgmEnabled)),
     bgmPath: target.getItem(STORAGE_KEYS.bgmPath) || '',
     autosaveEnabled: parseBoolean(target.getItem(STORAGE_KEYS.autosaveEnabled)),
@@ -301,6 +309,10 @@ export function writeRpMode(rpMode: RpMode, storage?: StorageLike): void {
 
 export function writeRpCustomText(text: string, storage?: StorageLike): void {
   getDefaultStorage(storage).setItem(STORAGE_KEYS.rpCustom, text);
+}
+
+export function writeMcpApprovalMode(mode: McpApprovalMode, storage?: StorageLike): void {
+  getDefaultStorage(storage).setItem(STORAGE_KEYS.mcpApprovalMode, mode);
 }
 
 export function writeBgmEnabled(enabled: boolean, storage?: StorageLike): void {

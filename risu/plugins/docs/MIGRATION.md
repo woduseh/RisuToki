@@ -1,6 +1,8 @@
 # Migrating RisuAI Plugins to API v3.0
 
-> Condensed from `Risuai/src/ts/plugins/migrationGuide.md`.
+> Verified against RisuAI `2026.6.214`, commit `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, on 2026-07-11.
+> Canonical sources: `src/ts/plugins/migrationGuide.md`, `apiV3/risuai.d.ts`, and `apiV3/factory.ts`.
+> `risuai` and `Risuai` are equivalent runtime globals; this guide uses lowercase consistently.
 
 ## Why migrate?
 

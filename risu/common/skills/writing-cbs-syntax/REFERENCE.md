@@ -2,6 +2,10 @@
 
 Full catalog of 170+ CBS tags organized by category. For quick-start guide, see **SKILL.md**.
 
+> Verified against RisuAI `2026.6.214`, commit `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, on 2026-07-11.
+> Canonical sources: `src/ts/cbs.ts`, `src/ts/parser/parser.svelte.ts`, and `src/ts/parser/chatVar.svelte.ts`.
+> Tag names/types are reference data; exact parser pass ordering is version-bound implementation behavior.
+
 ---
 
 ## 1. Character/User Tokens
@@ -72,6 +76,8 @@ These variables persist across messages within one chat session.
 | `getglobalvar`  | —       | `{{getglobalvar::name}}`           | Read global variable (shared across chats) | No              |
 
 > **runVar context:** `setvar`, `addvar`, and `setdefaultvar` only execute when the caller runs CBS with runVar enabled. In current upstream prompt flow this is explicit for current chat message parsing during generation; do not assume lorebook, first-message, regex, or display-only surfaces mutate variables without verifying the caller.
+>
+> At the verified baseline, the pass runs on stored chat messages at send start and after an assistant response is stored. It replaces each stored message with the complete parsed result, so non-mutating tags in the same message are flattened too.
 
 ---
 

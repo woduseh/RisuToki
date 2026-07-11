@@ -1,8 +1,8 @@
+import type { McpApprovalMode } from './app-settings';
+
 // ==================== Custom Confirm (MomoTalk style) ====================
-let confirmAllowAll = false;
 
 export function showConfirm(message: string): Promise<boolean> {
-  if (confirmAllowAll) return Promise.resolve(true);
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.style.cssText =
@@ -23,16 +23,6 @@ export function showConfirm(message: string): Promise<boolean> {
       'font-size:13px;color:var(--text-primary);margin-bottom:14px;line-height:1.5;white-space:pre-wrap;';
     msg.textContent = message;
     body.appendChild(msg);
-
-    // "전부 허용" toggle
-    const toggleRow = document.createElement('label');
-    toggleRow.style.cssText =
-      'display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary);margin-bottom:14px;cursor:pointer;user-select:none;';
-    const toggleCb = document.createElement('input');
-    toggleCb.type = 'checkbox';
-    toggleRow.appendChild(toggleCb);
-    toggleRow.appendChild(document.createTextNode('이번 작업 동안 전부 허용'));
-    body.appendChild(toggleRow);
 
     const btns = document.createElement('div');
     btns.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
@@ -55,7 +45,6 @@ export function showConfirm(message: string): Promise<boolean> {
     btnYes.focus();
 
     const close = (val: boolean): void => {
-      if (val && toggleCb.checked) confirmAllowAll = true;
       overlay.remove();
       resolve(val);
     };
@@ -72,8 +61,88 @@ export function showConfirm(message: string): Promise<boolean> {
   });
 }
 
-export function resetConfirmAllowAll(): void {
-  confirmAllowAll = false;
+let mcpConfirmAllowAllForSession = false;
+
+const SENSITIVE_MCP_CONFIRM_PATTERNS = [
+  /delete|remove|삭제|제거/i,
+  /external|unopened|외부\s*파일|열지\s*않은/i,
+  /open\s+file|switch|파일\s*열기|전환/i,
+  /import|restore|reassemble|가져오기|복원|재조립/i,
+  /compress|rename|압축|이름\s*변경/i,
+  /overwrite|replace\s+entire|전체\s*(교체|덮어쓰기)|덮어쓰기/i,
+];
+
+export function mcpConfirmationNeedsPrompt(title: string, message: string): boolean {
+  const source = `${title}\n${message}`;
+  return SENSITIVE_MCP_CONFIRM_PATTERNS.some((pattern) => pattern.test(source));
+}
+
+export function showMcpConfirm(title: string, message: string, mode: McpApprovalMode): Promise<boolean> {
+  if (mode === 'allow-all' || mcpConfirmAllowAllForSession) return Promise.resolve(true);
+  if (mode === 'auto' && !mcpConfirmationNeedsPrompt(title, message)) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText =
+      'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    const box = document.createElement('div');
+    box.className = 'settings-popup';
+    box.style.cssText += 'min-width:320px;max-width:440px;';
+    const header = document.createElement('div');
+    header.className = 'help-popup-header';
+    header.innerHTML = '<span>MCP 작업 승인</span>';
+    const body = document.createElement('div');
+    body.style.cssText = 'padding:16px;';
+    const msg = document.createElement('div');
+    msg.style.cssText =
+      'font-size:13px;color:var(--text-primary);margin-bottom:14px;line-height:1.5;white-space:pre-wrap;';
+    msg.textContent = `[${title}]\n${message}`;
+    body.appendChild(msg);
+
+    const toggleRow = document.createElement('label');
+    toggleRow.style.cssText =
+      'display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary);margin-bottom:14px;cursor:pointer;user-select:none;';
+    const toggleCb = document.createElement('input');
+    toggleCb.type = 'checkbox';
+    toggleRow.append(toggleCb, document.createTextNode('앱을 종료할 때까지 MCP 작업 전부 허용'));
+    body.appendChild(toggleRow);
+
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+    const btnNo = document.createElement('button');
+    btnNo.textContent = '거부';
+    btnNo.className = 'settings-btn';
+    const btnYes = document.createElement('button');
+    btnYes.textContent = '허용';
+    btnYes.className = 'settings-btn';
+    btns.append(btnNo, btnYes);
+    body.appendChild(btns);
+    box.append(header, body);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    btnYes.focus();
+
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Enter') close(true);
+      if (event.key === 'Escape') close(false);
+    };
+    const close = (allowed: boolean): void => {
+      if (allowed && toggleCb.checked) mcpConfirmAllowAllForSession = true;
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve(allowed);
+    };
+    btnYes.addEventListener('click', () => close(true));
+    btnNo.addEventListener('click', () => close(false));
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) close(false);
+    });
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+export function resetMcpConfirmAllowAll(): void {
+  mcpConfirmAllowAllForSession = false;
 }
 
 // ==================== Close Confirm (3-button MomoTalk popup) ====================

@@ -63,3 +63,35 @@ describe('showSessionRecoveryDialog', () => {
     await expect(pending).resolves.toBe('ignore');
   });
 });
+
+describe('MCP confirmation policy', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+  });
+
+  it('automatically approves ordinary edits in auto mode', async () => {
+    const { showMcpConfirm } = await import('./dialog');
+    await expect(showMcpConfirm('필드 수정', 'description 필드를 수정합니다.', 'auto')).resolves.toBe(true);
+    expect(document.querySelector('.settings-popup')).toBeNull();
+  });
+
+  it('still prompts for destructive edits in auto mode', async () => {
+    const { showMcpConfirm } = await import('./dialog');
+    const pending = showMcpConfirm('항목 삭제', '선택한 로어북을 삭제합니다.', 'auto');
+    expect(document.body.textContent).toContain('MCP 작업 승인');
+    document.querySelector<HTMLButtonElement>('button')!.click();
+    await expect(pending).resolves.toBe(false);
+  });
+
+  it('allows all MCP operations without changing ordinary confirmation behavior', async () => {
+    const { showConfirm, showMcpConfirm } = await import('./dialog');
+    await expect(showMcpConfirm('항목 삭제', '외부 파일을 삭제합니다.', 'allow-all')).resolves.toBe(true);
+
+    const ordinary = showConfirm('수동 삭제 확인');
+    expect(document.body.textContent).toContain('수동 삭제 확인');
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('button')];
+    buttons.find((button) => button.textContent === '아니오')!.click();
+    await expect(ordinary).resolves.toBe(false);
+  });
+});

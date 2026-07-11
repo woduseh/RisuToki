@@ -6,6 +6,7 @@ import {
   clearRecentItems,
   getDefaultCustomTheme,
   normalizeRpMode,
+  normalizeMcpApprovalMode,
   readAppSettingsSnapshot,
   readRecentItems,
   readStoredLayoutState,
@@ -16,6 +17,7 @@ import {
   writeDarkMode,
   writeCustomTheme,
   writeLayoutState,
+  writeMcpApprovalMode,
   writeRecentItems,
   writeRpMode,
   writeThemeId,
@@ -55,6 +57,7 @@ describe('app settings', () => {
     expect(snapshot.customTheme).toBeNull();
     expect(snapshot.autosaveInterval).toBe(DEFAULT_AUTOSAVE_INTERVAL);
     expect(snapshot.rpMode).toBe('off');
+    expect(snapshot.mcpApprovalMode).toBe('ask');
     expect(snapshot.layoutState).toBeNull();
   });
 
@@ -113,6 +116,7 @@ describe('app settings', () => {
     writeAutosaveInterval(120_000, storage);
     writeAutosaveDir('C:\\temp', storage);
     writeLayoutState({ itemsPos: 'right', terminalVisible: false }, storage);
+    writeMcpApprovalMode('auto', storage);
 
     let snapshot = readAppSettingsSnapshot(storage);
     expect(snapshot.rpMode).toBe('custom');
@@ -120,10 +124,17 @@ describe('app settings', () => {
     expect(snapshot.autosaveInterval).toBe(120_000);
     expect(snapshot.autosaveDir).toBe('C:\\temp');
     expect(snapshot.layoutState?.itemsPos).toBe('right');
+    expect(snapshot.mcpApprovalMode).toBe('auto');
 
     clearAutosaveDir(storage);
     snapshot = readAppSettingsSnapshot(storage);
     expect(snapshot.autosaveDir).toBe('');
+  });
+
+  it('normalizes unknown MCP approval modes to always ask', () => {
+    expect(normalizeMcpApprovalMode('auto')).toBe('auto');
+    expect(normalizeMcpApprovalMode('allow-all')).toBe('allow-all');
+    expect(normalizeMcpApprovalMode('unsafe-value')).toBe('ask');
   });
 
   it('returns null instead of throwing when stored layout JSON is corrupted', () => {

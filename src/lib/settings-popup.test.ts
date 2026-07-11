@@ -12,6 +12,7 @@ function makeState(overrides: Partial<SettingsState> = {}): SettingsState {
     bgmEnabled: false,
     rpMode: 'off',
     rpCustomText: '',
+    mcpApprovalMode: 'ask',
     ...overrides,
   };
 }
@@ -29,6 +30,7 @@ function makeCallbacks(overrides: Partial<SettingsCallbacks> = {}): SettingsCall
     onPickBgm: vi.fn().mockResolvedValue(null),
     onRpModeChange: vi.fn(),
     onRpCustomTextChange: vi.fn(),
+    onMcpApprovalModeChange: vi.fn(),
     onOpenPersonaTab: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -85,6 +87,20 @@ describe('settings popup', () => {
 
     const optionValues = Array.from(themeSelect.options).map((o) => o.value);
     expect(optionValues).toEqual(['toki', 'aris', 'momotalk', 'millennium', 'gehenna', 'trinity', 'custom']);
+  });
+
+  it('renders and persists the MCP approval policy', () => {
+    const callbacks = makeCallbacks();
+    showSettingsPopup(makeState({ mcpApprovalMode: 'auto' }), callbacks);
+    const select = [...document.querySelectorAll<HTMLSelectElement>('select')].find((element) =>
+      [...element.options].some((option) => option.value === 'allow-all'),
+    )!;
+
+    expect(select.value).toBe('auto');
+    expect([...select.options].map((option) => option.value)).toEqual(['ask', 'auto', 'allow-all']);
+    select.value = 'allow-all';
+    select.dispatchEvent(new Event('change'));
+    expect(callbacks.onMcpApprovalModeChange).toHaveBeenCalledWith('allow-all');
   });
 
   it('calls theme callback when choosing a preset', () => {

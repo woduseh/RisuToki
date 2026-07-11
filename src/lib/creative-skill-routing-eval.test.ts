@@ -158,6 +158,29 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
     expect(coreDescription).toContain('return to the primary');
   });
 
+  it('keeps RisuAI scripting layers distinct while exposing verified interoperability', () => {
+    const cbs = skillSource('writing-cbs-syntax');
+    const lua = skillSource('writing-lua-scripts');
+    const regex = skillSource('writing-regex-scripts');
+    const triggers = skillSource('writing-trigger-scripts');
+    const plugins = skillSource('writing-plugins-v3');
+    const interop = read('risu/common/skills/writing-trigger-scripts/RUNTIME_INTEROP.md');
+    const pluginQuickRef = read('risu/plugins/docs/API_QUICKREF.md');
+
+    expect(cbs).toContain('runVar');
+    expect(cbs).toContain('../writing-trigger-scripts/RUNTIME_INTEROP.md');
+    expect(lua).toContain('engines are cached by execution mode');
+    expect(lua).toContain('Returning `false` only sets `stopSending`');
+    expect(regex).toContain('`editprocess`: canonical upstream/persisted');
+    expect(regex).toContain('`editrequest`: RisuToki convenience alias');
+    expect(triggers).toContain('[`RUNTIME_INTEROP.md`](RUNTIME_INTEROP.md)');
+    expect(plugins).toContain('Both `risuai` and its runtime alias `Risuai` are valid');
+    expect(pluginQuickRef).toContain('Cached properties such as `apiVersion` are read directly');
+    expect(interop).toContain('The saved chat receives a `runVar` pass');
+    expect(interop).toContain("RisuToki's `editrequest` is an input alias");
+    expect(interop).toContain('Returning `false` or calling `stopChat` sets `stopSending`');
+  });
+
   it('authorizes productive creative wrongness without weakening hard boundaries', () => {
     const botRouter = read('risu/bot/AGENTS.md');
     const coreCraft = skillSource('core-craft');

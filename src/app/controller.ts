@@ -35,10 +35,11 @@ import {
   writeBgmEnabled,
   writeBgmPath,
   writeLayoutState,
+  writeMcpApprovalMode,
   writeRpCustomText,
   writeRpMode,
 } from '../lib/app-settings';
-import type { RecentItem, RecentSourceFormat, StoredLayoutState } from '../lib/app-settings';
+import type { McpApprovalMode, RecentItem, RecentSourceFormat, StoredLayoutState } from '../lib/app-settings';
 import { initTokiAvatar as initTokiAvatarUi, setTokiActive } from '../lib/avatar-ui';
 import { defineAppMonacoTheme } from '../lib/dark-mode';
 import { showImageViewer as renderImageViewer } from '../lib/image-viewer';
@@ -88,7 +89,14 @@ import type {
   ToggleFormTabInfo,
 } from '../lib/form-editor';
 import type { RisupFormTabInfo } from '../lib/risup-form-editor';
-import { showConfirm, showCloseConfirm, showPrompt, showSessionRecoveryDialog } from '../lib/dialog';
+import {
+  resetMcpConfirmAllowAll,
+  showConfirm,
+  showCloseConfirm,
+  showMcpConfirm,
+  showPrompt,
+  showSessionRecoveryDialog,
+} from '../lib/dialog';
 import { showContextMenu } from '../lib/context-menu';
 import type { ContextMenuItem } from '../lib/context-menu';
 import { initPanelDragDrop as _initPanelDragDrop } from '../lib/panel-drag';
@@ -222,6 +230,7 @@ let customTheme: CustomThemePalette | null = settingsSnapshot.customTheme;
 // Migrate old boolean value
 let rpMode = settingsSnapshot.rpMode;
 let rpCustomText = settingsSnapshot.rpCustomText;
+let mcpApprovalMode: McpApprovalMode = settingsSnapshot.mcpApprovalMode;
 
 // Autosave state
 let autosaveEnabled = settingsSnapshot.autosaveEnabled;
@@ -355,7 +364,7 @@ const layoutManager = createLayoutManager({
 // ==================== MCP Confirm Handler ====================
 // Listen for MCP confirm requests from main process → show MomoTalk popup
 window.tokiAPI.onMcpConfirmRequest(async (id, title, message) => {
-  const result = await showConfirm(`[${title}]\n${message}`);
+  const result = await showMcpConfirm(title, message, mcpApprovalMode);
   window.tokiAPI.sendMcpConfirmResponse(id, result);
 });
 
@@ -3079,6 +3088,7 @@ function showSettingsPopup(): void {
       bgmEnabled: isBgmEnabled(),
       rpMode,
       rpCustomText,
+      mcpApprovalMode,
     }),
     onAutosaveToggle(enabled) {
       autosaveEnabled = enabled;
@@ -3140,6 +3150,11 @@ function showSettingsPopup(): void {
     onRpCustomTextChange(text) {
       rpCustomText = text;
       writeRpCustomText(rpCustomText);
+    },
+    onMcpApprovalModeChange(mode) {
+      mcpApprovalMode = mode;
+      resetMcpConfirmAllowAll();
+      writeMcpApprovalMode(mode);
     },
     async onOpenPersonaTab(name) {
       const tabId = `persona_${name}`;

@@ -12,7 +12,7 @@ canonical_sources:
 
 ## Runtime contract
 
-Plugins run in a sandboxed iframe and communicate with the host across an async message boundary. Await every `risuai.*`, `SafeDocument`, and `SafeElement` call. Keep `//@api 3.0`; treat `//@name` as stable identity after release. Both plugins need matching `//@allowed-ipc` declarations for IPC.
+Plugins run in a sandboxed iframe and communicate with the host across an async message boundary. Both `risuai` and its runtime alias `Risuai` are valid; prefer one spelling consistently within a plugin. Await API and safe-wrapper method calls, while reading cached properties such as `apiVersion` directly. Keep `//@api 3.0`; treat `//@name` as stable identity after release. Both plugins need matching `//@allowed-ipc` declarations for IPC.
 
 ## Minimal workflow
 
@@ -24,9 +24,13 @@ Plugins run in a sandboxed iframe and communicate with the host across an async 
 6. Register settings/buttons/providers/MCP/hooks with stable IDs where update/reload should replace prior registration. MCP identifiers begin with `plugin:`.
 7. Track listener/registration handles and clean them up on unload or replacement when the API supports it.
 
+Keep metadata directives copyable: place only the directive and its value on each `//@...` line, with explanations outside the code block. Permission denial is a normal failure path; handle `null`, `false`, or rejected operations without assuming host access.
+
 Safe host DOM access may sanitize HTML, restrict attributes/tags/links, filter events, and require permissions. Respect CSP, AST safety checks, guarded globals, structured cloning, and user consent; do not design an escape. TypeScript uses the supported transform only—do not assume JSX or a full bundler.
 
 Load `risu/plugins/docs/API_QUICKREF.md` for exact API signatures and `MIGRATION.md` only for legacy migration. Preserve upstream spelling where an API name intentionally contains a typo.
+
+If plugin hooks must be ordered against CBS, Lua, triggers, or regex, read `RUNTIME_INTEROP.md` from `writing-trigger-scripts` through the Skill reader rather than treating this Skill as the owner of those layers.
 
 ## Validation
 

@@ -7,6 +7,7 @@ import {
   type ThemeId,
 } from './theme-registry';
 import { createSwitchControl } from './switch-control';
+import type { McpApprovalMode } from './app-settings';
 
 /**
  * Settings popup dialog.
@@ -25,6 +26,7 @@ export interface SettingsState {
   bgmEnabled: boolean;
   rpMode: string;
   rpCustomText: string;
+  mcpApprovalMode: McpApprovalMode;
 }
 
 export interface SettingsCallbacks {
@@ -39,6 +41,7 @@ export interface SettingsCallbacks {
   onPickBgm(): Promise<string | null>;
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
+  onMcpApprovalModeChange(mode: McpApprovalMode): void;
   onOpenPersonaTab(name: string): Promise<void>;
 }
 
@@ -213,6 +216,30 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   autoPathRow.appendChild(autoPathDisplay);
   autoPathRow.appendChild(autoPathBtns);
   body.appendChild(autoPathRow);
+
+  const approvalRow = document.createElement('div');
+  approvalRow.className = 'settings-row';
+  const approvalLeft = document.createElement('div');
+  approvalLeft.innerHTML =
+    '<div class="settings-label">MCP 작업 승인</div><div class="settings-desc">AI가 파일을 변경할 때 적용할 승인 정책</div>';
+  const approvalSelect = document.createElement('select');
+  approvalSelect.className = 'settings-select';
+  for (const option of [
+    { value: 'ask', label: '항상 확인' },
+    { value: 'auto', label: '자동 승인 (권장)' },
+    { value: 'allow-all', label: '모두 허용' },
+  ] satisfies Array<{ value: McpApprovalMode; label: string }>) {
+    const element = document.createElement('option');
+    element.value = option.value;
+    element.textContent = option.label;
+    element.selected = state.mcpApprovalMode === option.value;
+    approvalSelect.appendChild(element);
+  }
+  approvalSelect.addEventListener('change', () => {
+    callbacks.onMcpApprovalModeChange(approvalSelect.value as McpApprovalMode);
+  });
+  approvalRow.append(approvalLeft, approvalSelect);
+  body.appendChild(approvalRow);
 
   // --- Theme Preset ---
   const themeRow = document.createElement('div');

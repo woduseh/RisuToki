@@ -22,8 +22,10 @@ Lua mode is stored through the first `triggerlua` wrapper but is edited as a ded
 
 Core events include `onInput`, `onStart`, `onOutput`, named manual/button handlers, and `listenEdit` modes such as `editInput`, `editOutput`, `editDisplay`, and `editRequest`. Display edits are UI-only; request edits affect model input but not saved history. CBS is not evaluated as Lua syntax—use Lua APIs for state and place CBS only in strings destined for a CBS-enabled surface.
 
-Load [`API_REFERENCE.md`](API_REFERENCE.md) only for exact function signatures. Hand CBS strings, HTML rendering, lorebook mechanics, or regex stages to their owning Skills.
+At the verified RisuAI `2026.6.214` baseline, engines are cached by execution mode and serialized with a per-engine mutex. Globals may survive repeated calls in the same mode but do not cross modes and disappear after source reload or application restart; persist durable state with chat variables or `getState`/`setState`. The callback access key is a capability token, not a chat ID. Edit listeners are forced to non-LLA execution, while `editDisplay` writes are temporary. Returning `false` only sets `stopSending`; cancellation occurs only where the caller consumes it, which the current send path does for `onStart`.
+
+Load [`API_REFERENCE.md`](API_REFERENCE.md) only for exact function signatures. For a genuinely mixed runtime-order problem, load [`RUNTIME_INTEROP.md`](../writing-trigger-scripts/RUNTIME_INTEROP.md). Hand CBS strings, HTML rendering, lorebook mechanics, or regex stages to their owning Skills.
 
 ## Safety and validation
 
-Respect low-level-access and sandbox boundaries. Avoid unbounded loops, recursive event feedback, duplicate listeners, uncontrolled LLM calls, and hidden mutation in display handlers. Verify event order, async completion, state persistence, nil handling, id scoping, and that manual handlers match their button names.
+Respect low-level-access and sandbox boundaries. Await direct Promise APIs only inside a coroutine/async callback; do not add `:await()` to wrappers that already await internally. Avoid unbounded loops, recursive event feedback, duplicate listeners, uncontrolled LLM calls, and hidden mutation in display handlers. Verify event order, async completion, state persistence, nil handling, id scoping, reroll/repeated-send behavior, and that manual handlers match their button names.

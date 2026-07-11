@@ -9,6 +9,34 @@
 
 ---
 
+## [1.16.0] - 2026-07-11
+
+### Added
+
+- Added persistent MCP approval policies for always asking, automatically approving ordinary guarded edits, or allowing all MCP mutations.
+
+### Fixed
+
+- Separated MCP session-wide approval from ordinary editor confirmations so allowing AI edits no longer suppresses manual deletion prompts.
+
+## [1.15.2] - 2026-07-11
+
+### Fixed
+
+- Fixed active-document inspection returning a server error when an optional document surface exists with an `undefined` value.
+
+## [1.15.1] - 2026-07-11
+
+### Changed
+
+- Integrated source-verified RisuAI scripting knowledge into the existing CBS, Lua, structured-trigger, regex, plugin, schema, and module Skills without adding an overlapping umbrella Skill.
+- Added a shared scripting runtime interoperability reference covering turn order, shared state, permissions, rerolls, module merging, and plugin hook boundaries against RisuAI `2026.6.214`.
+- Documented the canonical upstream `editprocess` regex stage alongside RisuToki's `editrequest` input alias, and clarified the equivalent `risuai` / `Risuai` plugin globals.
+
+### Fixed
+
+- Corrected Lua cancellation, callback timing, engine-lifetime, edit-listener access, regex flag, and stale translation-stage guidance using the pinned upstream source baseline.
+
 ## [1.15.0] - 2026-07-11
 
 ### Changed

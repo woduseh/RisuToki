@@ -23,7 +23,7 @@ A module is a reusable behavior/content pack that can attach lorebooks, regex, t
 6. Prefer soft activation by module ID. Hard `applyModule` copies data into the character and is not reversibly module-owned.
 7. Test merge and enable scope across global, chat, character, and preset `moduleIntergration` activation.
 
-`cjs` is reserved and unused for new runtime logic. `mcp` declares external MCP integration and changes the management path. `hideIcon` combines across active modules. Runtime merge order places module lorebooks, regex, and triggers after their character/chat predecessors; design dependencies accordingly. Lua-created local lorebooks may affect the next turn rather than the current one.
+`cjs` is reserved and unused for new runtime logic. `mcp` declares external MCP integration and changes the management path. `hideIcon` combines across active modules. Module `lowLevelAccess` is independent from character trust. Runtime merge order places module lorebooks and triggers after their character/chat predecessors, while regex ordering also includes the active preset; design dependencies accordingly. Lua-created local lorebooks may affect the next turn rather than the current one.
 
 Load `risu/modules/docs/MODULE_FIELDS.md` only for the full field inventory. Hand exact embedded syntax to the matching common Skill.
 
