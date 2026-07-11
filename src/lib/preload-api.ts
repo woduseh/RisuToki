@@ -79,7 +79,7 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     writeMcpConfig: () => ipcRenderer.invoke('write-mcp-config'),
     writeCopilotMcpConfig: () => ipcRenderer.invoke('write-copilot-mcp-config'),
     writeCodexMcpConfig: (projectRoot) => ipcRenderer.invoke('write-codex-mcp-config', projectRoot),
-    writeGeminiMcpConfig: () => ipcRenderer.invoke('write-gemini-mcp-config'),
+    writeAntigravityMcpConfig: () => ipcRenderer.invoke('write-antigravity-mcp-config'),
     writeAgentsMd: (content, projectRoot) => ipcRenderer.invoke('write-agents-md', content, projectRoot),
     cleanupAgentsMd: () => ipcRenderer.invoke('cleanup-agents-md'),
     onDataUpdated: (cb) => {

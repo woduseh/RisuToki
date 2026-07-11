@@ -17,7 +17,7 @@ Every feature improvement or bug fix **that modifies tracked RisuToki source cod
    - Use headings: `### Added` / `### Changed` / `### Fixed` / `### Removed`
 3. **`README.md` update** — refresh the relevant section when a change is user-visible
 4. **`AGENTS.md` and related routing docs update**
-   - When MCP tools, fields, workflows, or Copilot routing change, update `AGENTS.md`, `docs/`, `skills/README.md`, and the affected `skills/*` files together
+   - When MCP tools, fields, workflows, or AI CLI routing change, update `AGENTS.md`, `docs/`, `skills/README.md`, and the affected `skills/*` files together
 
 These rules apply **automatically** when the task changes the repo itself — even without an explicit reminder.
 
@@ -54,9 +54,9 @@ These rules apply **automatically** when the task changes the repo itself — ev
 | `risu/common/AGENTS.md`, `risu/{bot,prompts,modules,plugins}/AGENTS.md` | Subtree-specific authoring routers used by AI CLIs to choose the active workflow       |
 | `risu/common/docs/`, `risu/{bot,prompts,modules,plugins}/docs/`         | Bundled authoring docs and quick references                                            |
 | `guides/`                                                               | Default writable guide location for imported/user-authored guides                      |
-| `.copilot-skill-catalog/`                                               | Generated aggregate CLI skill catalog rebuilt from the tracked skill roots             |
-| `.agents/skills`, `.claude/skills`, `.gemini/skills`, `.github/skills`  | Local CLI search paths backed by `.copilot-skill-catalog/`                             |
+| `.skill-catalog/`                                                       | Generated aggregate CLI skill catalog rebuilt from the tracked skill roots             |
+| `.agents/skills`, `.claude/skills`                                      | Codex and Claude Code search paths backed by `.skill-catalog/`                         |
 
-> `npm run sync:skills` rebuilds `.copilot-skill-catalog/` from `skills/` plus the tracked `risu/*/skills/` roots, then repairs the CLI discovery paths (`.agents/skills`, `.claude/skills`, `.gemini/skills`, `.github/skills`). It prefers real symlinks on Windows and falls back to junctions when symlinks are not available; if a path already exists as a managed checked-out directory copy, it refreshes that directory in place instead of failing. It silently skips if no tracked skill roots exist.
+> `npm run sync:skills` rebuilds `.skill-catalog/` from `skills/` plus the tracked `risu/*/skills/` roots, then repairs the Codex and Claude Code discovery paths (`.agents/skills`, `.claude/skills`). It removes the retired `.copilot-skill-catalog/`, prefers real symlinks on Windows, and falls back to junctions when symlinks are not available. If a path already exists as a managed checked-out directory copy, it refreshes that directory in place instead of failing. It silently skips if no tracked skill roots exist.
 
 ---

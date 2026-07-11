@@ -19,7 +19,7 @@ import {
   handleClaudeStart as _handleClaudeStart,
   handleCopilotStart as _handleCopilotStart,
   handleCodexStart as _handleCodexStart,
-  handleGeminiStart as _handleGeminiStart,
+  handleAntigravityStart as _handleAntigravityStart,
 } from '../lib/assistant-prompt';
 import {
   addRecentItem,
@@ -2933,7 +2933,7 @@ function getAssistantDeps(sessionId?: string) {
     writeMcpConfig: () => window.tokiAPI.writeMcpConfig(),
     writeCopilotMcpConfig: () => window.tokiAPI.writeCopilotMcpConfig(),
     writeCodexMcpConfig: (projectRoot?: string | null) => window.tokiAPI.writeCodexMcpConfig(projectRoot),
-    writeGeminiMcpConfig: () => window.tokiAPI.writeGeminiMcpConfig(),
+    writeAntigravityMcpConfig: () => window.tokiAPI.writeAntigravityMcpConfig(),
     cleanupAgentsMd: () => window.tokiAPI.cleanupAgentsMd(),
     writeSystemPrompt: (content: string) => window.tokiAPI.writeSystemPrompt(content),
     writeAgentsMd: (content: string, projectRoot?: string | null) => window.tokiAPI.writeAgentsMd(content, projectRoot),
@@ -2961,9 +2961,11 @@ async function handleCodexStart(): Promise<void> {
   await _handleCodexStart(getAssistantDeps(session.id) as unknown as Parameters<typeof _handleCodexStart>[0]);
 }
 
-async function handleGeminiStart(): Promise<void> {
-  const session = await createAssistantTerminalSession('Gemini');
-  await _handleGeminiStart(getAssistantDeps(session.id) as unknown as Parameters<typeof _handleGeminiStart>[0]);
+async function handleAntigravityStart(): Promise<void> {
+  const session = await createAssistantTerminalSession('Antigravity');
+  await _handleAntigravityStart(
+    getAssistantDeps(session.id) as unknown as Parameters<typeof _handleAntigravityStart>[0],
+  );
 }
 
 // ==================== Terminal Background ====================
@@ -3559,7 +3561,7 @@ export async function initMainRenderer(): Promise<void> {
     'claude-start': () => handleClaudeStart(),
     'copilot-start': () => handleCopilotStart(),
     'codex-start': () => handleCodexStart(),
-    'gemini-start': () => handleGeminiStart(),
+    'antigravity-start': () => handleAntigravityStart(),
     'terminal-clear': () => {
       if (term) term.clear();
     },

@@ -29,7 +29,7 @@ export interface AssistantDeps {
   writeMcpConfig(): Promise<unknown>;
   writeCopilotMcpConfig(): Promise<unknown>;
   writeCodexMcpConfig(projectRoot?: string | null): Promise<unknown>;
-  writeGeminiMcpConfig(): Promise<unknown>;
+  writeAntigravityMcpConfig(): Promise<unknown>;
   cleanupAgentsMd(): Promise<void>;
   writeSystemPrompt(content: string): Promise<{ filePath: string; platform?: string }>;
   writeAgentsMd(content: string, projectRoot?: string | null): Promise<void>;
@@ -140,8 +140,8 @@ export async function startAssistantCli(agent: AssistantAgent, deps: AssistantDe
   } else if (agent === 'codex') {
     mcpConnected = !!(await deps.writeCodexMcpConfig(deps.projectRoot));
     await deps.cleanupAgentsMd();
-  } else if (agent === 'gemini') {
-    mcpConnected = !!(await deps.writeGeminiMcpConfig());
+  } else if (agent === 'antigravity') {
+    mcpConnected = !!(await deps.writeAntigravityMcpConfig());
     await deps.cleanupAgentsMd();
   }
 
@@ -200,6 +200,6 @@ export async function handleCodexStart(deps: AssistantDeps): Promise<void> {
   await startAssistantCli('codex', deps);
 }
 
-export async function handleGeminiStart(deps: AssistantDeps): Promise<void> {
-  await startAssistantCli('gemini', deps);
+export async function handleAntigravityStart(deps: AssistantDeps): Promise<void> {
+  await startAssistantCli('antigravity', deps);
 }

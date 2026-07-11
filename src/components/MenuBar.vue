@@ -208,7 +208,7 @@ const menus = computed<{ id: string; label: string; items: MenuEntry[] }[]>(() =
       { label: 'Claude Code 시작', action: 'claude-start' },
       { label: 'GitHub Copilot CLI 시작', action: 'copilot-start' },
       { label: 'Codex 시작', action: 'codex-start' },
-      { label: 'Gemini 시작', action: 'gemini-start' },
+      { label: 'Antigravity CLI 시작', action: 'antigravity-start' },
       { separator: true },
       { label: '터미널 지우기', action: 'terminal-clear' },
       { label: '터미널 재시작', action: 'terminal-restart' },

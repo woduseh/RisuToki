@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const COPILOT_SKILL_CATALOG_DIR = '.copilot-skill-catalog';
+export const SKILL_CATALOG_DIR = '.skill-catalog';
 
 export type SkillScope = 'product' | 'common' | 'bot' | 'prompts' | 'modules' | 'plugins';
 
@@ -70,6 +70,6 @@ export function resolveGuideRootDirs(baseRoot: string): ResolvedGuideRoot[] {
   })).filter((spec) => isDirectory(spec.absolutePath));
 }
 
-export function getCopilotSkillCatalogPath(baseRoot: string) {
-  return path.join(baseRoot, COPILOT_SKILL_CATALOG_DIR);
+export function getSkillCatalogPath(baseRoot: string) {
+  return path.join(baseRoot, SKILL_CATALOG_DIR);
 }

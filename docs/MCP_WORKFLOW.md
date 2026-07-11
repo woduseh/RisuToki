@@ -112,10 +112,8 @@ The generated skill catalog is repository-root scoped:
 
 - Codex: `.agents/skills`
 - Claude Code: `.claude/skills`
-- Gemini CLI: `.gemini/skills`
-- Copilot CLI: `.github/skills`
 
-`npm run sync:skills` rebuilds `.copilot-skill-catalog/` from the tracked skill roots and refreshes those discovery paths. Subtree routing is handled by the nearest `risu/{scope}/AGENTS.md`, not by separate nested catalogs.
+`npm run sync:skills` rebuilds `.skill-catalog/` from the tracked skill roots and refreshes those two discovery paths. Gemini and GitHub Copilot Skill mirrors are not supported. Subtree routing is handled by the nearest `risu/{scope}/AGENTS.md`, not by separate nested catalogs.
 
 When the client-visible catalog does not already identify the Skill, use `list_skills` with the current `scopes`, a narrow `query`, and `detail: "summary"`. Existing no-argument calls retain the full compatibility view. Use the returned opaque `next_cursor` for catalog pages; `read_skill` uses its own cursor type with `max_bytes` for UTF-8-safe reference paging, and list/read cursors are intentionally not interchangeable.
 

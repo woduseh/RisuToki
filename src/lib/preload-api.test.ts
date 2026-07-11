@@ -80,6 +80,16 @@ describe('createTokiApi', () => {
     expect(typeof api.sendMcpSessionStatusResponse).toBe('function');
   });
 
+  test('exposes Antigravity MCP configuration without the retired Gemini bridge', async () => {
+    const ipcRenderer = makeMockIpc();
+    const api = createTokiApi(ipcRenderer as unknown as IpcRenderer);
+
+    await api.writeAntigravityMcpConfig();
+
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('write-antigravity-mcp-config');
+    expect(Object.prototype.hasOwnProperty.call(api, 'writeGeminiMcpConfig')).toBe(false);
+  });
+
   test('MCP session status bridge uses the correct IPC channels', () => {
     const ipcRenderer = makeMockIpc();
     const api = createTokiApi(ipcRenderer as unknown as IpcRenderer) as unknown as {

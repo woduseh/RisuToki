@@ -209,7 +209,7 @@ Recovery flow: on startup, `get-pending-session-recovery` IPC → if a recovery 
 
 | Module                 | Lines | Purpose                                                   |
 | ---------------------- | ----- | --------------------------------------------------------- |
-| `assistant-prompt.ts`  | ~280  | Bootstrap prompt assembly for Claude/Copilot/Codex/Gemini |
+| `assistant-prompt.ts`  | ~280  | Bootstrap prompt assembly for Claude/Copilot/Codex/Antigravity |
 | `assistant-launch.ts`  | ~70   | Assistant process launcher                                |
 | `agents-md-manager.ts` | ~150  | Runtime `AGENTS.md` dynamic generation                    |
 

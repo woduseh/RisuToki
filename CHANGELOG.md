@@ -9,6 +9,21 @@
 
 ---
 
+## [1.15.0] - 2026-07-11
+
+### Changed
+
+- Renamed the generated aggregate Skill catalog from `.copilot-skill-catalog/` to the client-neutral `.skill-catalog/`.
+- Limited repository Skill synchronization to Codex (`.agents/skills`) and Claude Code (`.claude/skills`).
+- Replaced the Gemini CLI terminal launcher with Antigravity CLI (`agy`) and moved its MCP configuration to `~/.gemini/config/mcp_config.json`.
+- Corrected the prompt manager card grid so drag handles, selection checkboxes, prompt text, badges, and actions no longer displace one another in narrow side panels.
+
+### Removed
+
+- Removed generated and tracked Gemini CLI (`.gemini/skills`) and GitHub Copilot CLI (`.github/skills`) Skill mirrors.
+- Removed the retired `.copilot-skill-catalog/` during Skill synchronization.
+- Removed the legacy Gemini CLI (`gemini`) launcher and runtime configuration writer.
+
 ## [1.14.0] - 2026-07-10
 
 ### Added

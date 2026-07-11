@@ -266,9 +266,9 @@ export function writeCurrentMcpConfig(): string | null {
     console.warn('[main] Codex MCP config failed:', e.message);
   }
   try {
-    writeGeminiMcpConfig();
+    writeAntigravityMcpConfig();
   } catch (e: any) {
-    console.warn('[main] Gemini MCP config failed:', e.message);
+    console.warn('[main] Antigravity MCP config failed:', e.message);
   }
 
   return writtenPath;
@@ -329,10 +329,10 @@ export function cleanupCodexMcpConfig(): void {
   }
 }
 
-function writeGeminiMcpConfig(): string | null {
-  const configPath = path.join(os.homedir(), '.gemini', 'settings.json');
+function writeAntigravityMcpConfig(): string | null {
+  const configPath = path.join(os.homedir(), '.gemini', 'config', 'mcp_config.json');
   const writtenPath = upsertJsonMcpConfig(configPath);
-  if (writtenPath) console.log('[main] Gemini MCP config written:', writtenPath);
+  if (writtenPath) console.log('[main] Antigravity MCP config written:', writtenPath);
   return writtenPath;
 }
 
@@ -355,7 +355,7 @@ export function initMcpConfig(d: McpConfigDeps): void {
     return writeCodexMcpConfig(projectRoot);
   });
 
-  ipcMain.handle('write-gemini-mcp-config', () => {
-    return writeGeminiMcpConfig();
+  ipcMain.handle('write-antigravity-mcp-config', () => {
+    return writeAntigravityMcpConfig();
   });
 }

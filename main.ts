@@ -1273,6 +1273,8 @@ app.on('window-all-closed', () => {
   }
   cleanupJsonMcpConfig(path.join(os.homedir(), '.mcp.json'));
   cleanupJsonMcpConfig(path.join(os.homedir(), '.copilot', 'mcp-config.json'));
+  cleanupJsonMcpConfig(path.join(os.homedir(), '.gemini', 'config', 'mcp_config.json'));
+  // Remove any RisuToki entry left by versions that configured legacy Gemini CLI.
   cleanupJsonMcpConfig(path.join(os.homedir(), '.gemini', 'settings.json'));
   // Cleanup Codex MCP config
   cleanupCodexMcpConfig();

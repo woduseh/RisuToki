@@ -1,10 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { getCopilotSkillCatalogPath, resolveSkillRootDirs } from './content-roots';
+import { getSkillCatalogPath, resolveSkillRootDirs } from './content-roots';
 import { listSkillCatalogEntries } from './skill-catalog';
 
-const PROJECT_SKILL_DIRS = ['.agents', '.claude', '.gemini', '.github'] as const;
-const LEGACY_PLACEHOLDER_TARGETS = ['../skills', '..\\skills'] as const;
+const PROJECT_SKILL_DIRS = ['.agents', '.claude'] as const;
+const LEGACY_PLACEHOLDER_TARGETS = [
+  '../skills',
+  '..\\skills',
+  '../.copilot-skill-catalog',
+  '..\\.copilot-skill-catalog',
+] as const;
+const LEGACY_SKILL_CATALOG_DIR = '.copilot-skill-catalog';
 
 export type SkillLinkStatus = 'created' | 'repaired' | 'ok';
 
@@ -164,13 +170,13 @@ function rebuildManagedDirectoryCopy(directoryPath: string, sourcePath: string) 
   });
 }
 
-function rebuildCopilotSkillCatalog(projectRoot: string, platform: NodeJS.Platform | string) {
+function rebuildSkillCatalog(projectRoot: string, platform: NodeJS.Platform | string) {
   const skillRoots = resolveSkillRootDirs(projectRoot);
   if (skillRoots.length === 0) {
     return null;
   }
 
-  const catalogPath = getCopilotSkillCatalogPath(projectRoot);
+  const catalogPath = getSkillCatalogPath(projectRoot);
   const entries = listSkillCatalogEntries(skillRoots);
 
   fs.rmSync(catalogPath, { recursive: true, force: true });
@@ -182,6 +188,10 @@ function rebuildCopilotSkillCatalog(projectRoot: string, platform: NodeJS.Platfo
   }
 
   return catalogPath;
+}
+
+function removeLegacySkillCatalog(projectRoot: string) {
+  fs.rmSync(path.join(projectRoot, LEGACY_SKILL_CATALOG_DIR), { recursive: true, force: true });
 }
 
 function repairProjectSkillLink(spec: ProjectSkillLinkSpec, platform: NodeJS.Platform | string): SkillLinkStatus {
@@ -238,7 +248,7 @@ function repairProjectSkillLink(spec: ProjectSkillLinkSpec, platform: NodeJS.Pla
 }
 
 export function getProjectSkillLinkSpecs(projectRoot: string): ProjectSkillLinkSpec[] {
-  const sourcePath = getCopilotSkillCatalogPath(projectRoot);
+  const sourcePath = getSkillCatalogPath(projectRoot);
 
   return PROJECT_SKILL_DIRS.map((projectSkillDir) => {
     const linkPath = path.join(projectRoot, projectSkillDir, 'skills');
@@ -255,11 +265,13 @@ export function ensureProjectSkillLinks(
   options: EnsureProjectSkillLinksOptions = {},
 ): SkillLinkResult[] {
   const platform = options.platform ?? process.platform;
-  const sourcePath = rebuildCopilotSkillCatalog(projectRoot, platform);
+  const sourcePath = rebuildSkillCatalog(projectRoot, platform);
 
   if (!sourcePath) {
     return [];
   }
+
+  removeLegacySkillCatalog(projectRoot);
 
   const specs = getProjectSkillLinkSpecs(projectRoot);
   if (specs.length === 0) {
@@ -278,7 +290,7 @@ function formatRelativePath(projectRoot: string, entryPath: string) {
 
 export function syncProjectSkillLinks(projectRoot = process.cwd()) {
   const results = ensureProjectSkillLinks(projectRoot);
-  const relativeSourcePath = formatRelativePath(projectRoot, getCopilotSkillCatalogPath(projectRoot));
+  const relativeSourcePath = formatRelativePath(projectRoot, getSkillCatalogPath(projectRoot));
 
   for (const result of results) {
     console.log(

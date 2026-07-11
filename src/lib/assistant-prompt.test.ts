@@ -8,7 +8,7 @@ import {
   handleClaudeStart,
   handleCopilotStart,
   handleCodexStart,
-  handleGeminiStart,
+  handleAntigravityStart,
 } from './assistant-prompt';
 
 function createMockDeps(overrides: Partial<AssistantDeps> = {}): AssistantDeps {
@@ -26,7 +26,7 @@ function createMockDeps(overrides: Partial<AssistantDeps> = {}): AssistantDeps {
     writeMcpConfig: vi.fn(async () => 'ok'),
     writeCopilotMcpConfig: vi.fn(async () => 'ok'),
     writeCodexMcpConfig: vi.fn(async () => 'ok'),
-    writeGeminiMcpConfig: vi.fn(async () => 'ok'),
+    writeAntigravityMcpConfig: vi.fn(async () => 'ok'),
     cleanupAgentsMd: vi.fn(async () => {}),
     writeSystemPrompt: vi.fn(async () => ({ filePath: '/tmp/prompt.txt' })),
     writeAgentsMd: vi.fn(async () => {}),
@@ -203,12 +203,12 @@ describe('startAssistantCli', () => {
     expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('Codex'));
   });
 
-  it('writes agents.md for gemini', async () => {
+  it('writes agents.md for Antigravity', async () => {
     const deps = createMockDeps();
-    await startAssistantCli('gemini', deps);
-    expect(deps.writeGeminiMcpConfig).toHaveBeenCalled();
+    await startAssistantCli('antigravity', deps);
+    expect(deps.writeAntigravityMcpConfig).toHaveBeenCalled();
     expect(deps.writeAgentsMd).toHaveBeenCalled();
-    expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('Gemini'));
+    expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('Antigravity'));
   });
 
   it('sends bootstrap command on win32', async () => {
@@ -296,9 +296,9 @@ describe('handle* convenience wrappers', () => {
     expect(deps.writeCodexMcpConfig).toHaveBeenCalled();
   });
 
-  it('handleGeminiStart delegates to startAssistantCli with gemini', async () => {
+  it('handleAntigravityStart delegates to startAssistantCli with Antigravity', async () => {
     const deps = createMockDeps();
-    await handleGeminiStart(deps);
-    expect(deps.writeGeminiMcpConfig).toHaveBeenCalled();
+    await handleAntigravityStart(deps);
+    expect(deps.writeAntigravityMcpConfig).toHaveBeenCalled();
   });
 });

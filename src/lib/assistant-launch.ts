@@ -1,5 +1,5 @@
 export type RuntimePlatform = 'win32' | 'darwin' | 'linux' | string;
-export type AssistantAgent = 'claude' | 'copilot' | 'codex' | 'gemini';
+export type AssistantAgent = 'claude' | 'copilot' | 'codex' | 'antigravity';
 
 interface NavigatorLike {
   platform?: string;
@@ -27,14 +27,18 @@ export function detectRuntimePlatform(navigatorLike: NavigatorLike = globalThis.
 }
 
 function getCliExecutable(agent: AssistantAgent | string, platform: RuntimePlatform): string {
+  const executable = agent === 'antigravity' ? 'agy' : agent;
   if (platform === 'win32') {
+    if (agent === 'antigravity') {
+      return executable;
+    }
     if (agent === 'copilot') {
       return 'copilot.ps1';
     }
-    return `${agent}.cmd`;
+    return `${executable}.cmd`;
   }
 
-  return agent;
+  return executable;
 }
 
 export function buildWindowsAssistantBootstrapCommand(): string {
@@ -44,7 +48,7 @@ export function buildWindowsAssistantBootstrapCommand(): string {
     "function global:copilot { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'copilot.ps1' @('copilot.bat', 'copilot.cmd', 'copilot.exe') $argv }",
     "function global:claude { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'claude.cmd' @('claude.exe', 'claude.bat') $argv }",
     "function global:codex { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'codex.cmd' @('codex.exe', 'codex.bat') $argv }",
-    "function global:gemini { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'gemini.cmd' @('gemini.exe', 'gemini.bat') $argv }",
+    "function global:agy { param([Parameter(ValueFromRemainingArguments = $true)][object[]]$argv) __TokiInvokeCommand 'agy.cmd' @('agy.exe', 'agy.bat') $argv }",
     "$ErrorActionPreference='Continue'\r",
   ].join('; ');
 }
@@ -74,7 +78,7 @@ export function buildAssistantLaunchCommand({
     return `${executable} --append-system-prompt "$(cat '${systemPromptPath}')"\r`;
   }
 
-  if (agent === 'copilot' || agent === 'codex' || agent === 'gemini') {
+  if (agent === 'copilot' || agent === 'codex' || agent === 'antigravity') {
     return `${executable}\r`;
   }
 

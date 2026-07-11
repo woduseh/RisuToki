@@ -2,14 +2,14 @@ export const AI_AGENT_LABELS = {
   claude: 'Claude Code',
   copilot: 'GitHub Copilot CLI',
   codex: 'Codex',
-  gemini: 'Gemini CLI',
+  antigravity: 'Antigravity CLI',
 } as const;
 
 export interface AiAgentLabels {
   claude: string;
   codex: string;
   copilot: string;
-  gemini: string;
+  antigravity: string;
 }
 
 export interface AssistantWelcomeInfo {

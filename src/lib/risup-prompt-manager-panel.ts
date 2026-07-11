@@ -419,6 +419,7 @@ function renderPromptPanel(body: HTMLElement): void {
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
+    checkbox.className = 'manager-check';
     checkbox.checked = state.selected.has(id);
     checkbox.addEventListener('change', () => {
       if (checkbox.checked) state.selected.add(id);

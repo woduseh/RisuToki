@@ -43,14 +43,12 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Claude (except skills symlink)
-.claude/*
-!.claude/skills
+# Claude repo-local state and generated skills link
+.claude/
 .worktrees/
 
-# Gemini (except skills symlink)
-.gemini/*
-!.gemini/skills
+# Gemini repo-local state
+.gemini/
 
 # Codex repo-local skills link
 .agents/
@@ -63,7 +61,9 @@ output/
 tmp/
 .tmp/
 
-# Generated Copilot skill catalog
+# Generated aggregate skill catalog
+.skill-catalog/
+# Retired generated catalog; sync removes it when present
 .copilot-skill-catalog/
 
 # RisuAI Resources

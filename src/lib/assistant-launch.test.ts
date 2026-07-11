@@ -16,7 +16,7 @@ describe('assistant launch helpers', () => {
     expect(buildAssistantLaunchCommand({ agent: 'copilot', platform: 'win32' })).toBe('copilot.ps1\r');
     expect(buildAssistantLaunchCommand({ agent: 'codex', platform: 'win32' })).toBe('codex.cmd\r');
     expect(buildAssistantLaunchCommand({ agent: 'claude', platform: 'win32' })).toBe('claude.cmd\r');
-    expect(buildAssistantLaunchCommand({ agent: 'gemini', platform: 'win32' })).toBe('gemini.cmd\r');
+    expect(buildAssistantLaunchCommand({ agent: 'antigravity', platform: 'win32' })).toBe('agy\r');
   });
 
   it('builds prompt-appending commands per shell platform', () => {
@@ -63,7 +63,8 @@ describe('assistant launch helpers', () => {
     expect(command).toContain('copilot.ps1');
     expect(command).toContain('function global:claude');
     expect(command).toContain('function global:codex');
-    expect(command).toContain('function global:gemini');
+    expect(command).toContain('function global:agy');
+    expect(command).toContain("'agy.cmd'");
     expect(command.endsWith('\r')).toBe(true);
   });
 });

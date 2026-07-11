@@ -2,21 +2,21 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.14.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-1.15.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
 
 ## What is RisuToki?
 
-RisuToki is a **desktop editor** purpose-built for [RisuAI](https://risuai.net/) character cards (`.charx`), modules (`.risum`), and presets (`.risup`). It pairs a VS Code–grade Monaco editor with a built-in terminal that connects directly to AI CLIs (Claude Code, GitHub Copilot CLI, Codex, Gemini CLI) and automatically exposes the open file's structure to those CLIs through MCP (Model Context Protocol).
+RisuToki is a **desktop editor** purpose-built for [RisuAI](https://risuai.net/) character cards (`.charx`), modules (`.risum`), and presets (`.risup`). It pairs a VS Code–grade Monaco editor with a built-in terminal that connects directly to AI CLIs (Claude Code, GitHub Copilot CLI, Codex, Antigravity CLI) and automatically exposes the open file's structure to those CLIs through MCP (Model Context Protocol).
 
 ### Key Features
 
 | Feature                    | Description                                                                                                                                                                                                                                                                                                                                                                                                    |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 📝 **Monaco Editor**       | Same editing engine as VS Code, with a focused prose view for descriptions and messages plus per-tab code-view switching                                                                                                                                                                                                                                                                                       |
-| 🤖 **AI CLI Integration**  | Run Claude Code · GitHub Copilot CLI · Codex · Gemini CLI in dedicated terminal tabs with automatic MCP connection                                                                                                                                                                                                                                                                                             |
+| 🤖 **AI CLI Integration**  | Run Claude Code · GitHub Copilot CLI · Codex · Antigravity CLI in dedicated terminal tabs with automatic MCP connection                                                                                                                                                                                                                                                                                        |
 | 📦 **File & Card Import**  | Open, edit, and save `.charx` (character cards) · `.risum` (modules) · `.risup` (presets), plus import PNG/JSON Character Cards into the structured editor                                                                                                                                                                                                                                                     |
 | 📁 **Project Folders**     | Use a folder workspace as the save backend for the normal structured editor, with advanced raw markdown/json/assets access for external-tool collaboration, project-folder cloning, and `.charx`/`.risum`/`.risup` export                                                                                                                                                                                      |
 | 📚 **Movable Managers**    | RisuMari-style `.charx`/`.risum` lorebook and asset panels plus a `.risup` prompt manager, with search, filters, thumbnails or badges, SillyTavern `world_info` JSON import, asset batch rename, multi-select, bulk actions, and normal layout drag-and-drop placement                                                                                                                                         |
@@ -112,7 +112,7 @@ Double-click the RisuToki executable (`.exe`) to launch.
 ### Prerequisites
 
 - To use the AI CLI integration, the CLI you want must be on your system PATH:
-  - **Claude Code**: `claude` · **GitHub Copilot CLI**: `copilot` · **Codex**: `codex` · **Gemini CLI**: `gemini`
+  - **Claude Code**: `claude` · **GitHub Copilot CLI**: `copilot` · **Codex**: `codex` · **Antigravity CLI**: `agy`
 - If no CLI is installed the editor itself works normally — AI integration is optional.
 
 ---
@@ -274,7 +274,7 @@ RisuToki uses the same Monaco editing engine that powers VS Code.
 
 <img width="227" height="148" alt="Terminal menu" src="https://github.com/user-attachments/assets/e4f5397a-6925-4d70-83d6-5b7e8b4ca7cb" />
 
-- **Start Claude Code / Copilot CLI / Codex / Gemini** — creates a new dedicated tab, switches to it, and launches the AI CLI with the current file context.
+- **Start Claude Code / Copilot CLI / Codex / Antigravity** — creates a new dedicated tab, switches to it, and launches the AI CLI with the current file context.
 - **Clear Terminal** / **Restart Terminal** act on the active terminal tab.
 
 ### Header Buttons
@@ -300,12 +300,12 @@ When a project folder is open, the terminal starts in that project folder and ge
 
 ### Supported CLIs
 
-| CLI                | MCP Config Location          | Context Delivery                                      |
-| ------------------ | ---------------------------- | ----------------------------------------------------- |
-| Claude Code        | `~/.mcp.json`                | Compact artifact context via `--append-system-prompt` |
-| GitHub Copilot CLI | `~/.copilot/mcp-config.json` | Managed `AGENTS.md` session block + project guide     |
-| Codex              | `~/.codex/config.toml`       | Managed `AGENTS.md` session block + project guide     |
-| Gemini CLI         | `~/.gemini/settings.json`    | Managed `AGENTS.md` session block + project guide     |
+| CLI                | MCP Config Location                | Context Delivery                                      |
+| ------------------ | ---------------------------------- | ----------------------------------------------------- |
+| Claude Code        | `~/.mcp.json`                      | Compact artifact context via `--append-system-prompt` |
+| GitHub Copilot CLI | `~/.copilot/mcp-config.json`       | Managed `AGENTS.md` session block + project guide     |
+| Codex              | `~/.codex/config.toml`             | Managed `AGENTS.md` session block + project guide     |
+| Antigravity CLI    | `~/.gemini/config/mcp_config.json` | Managed `AGENTS.md` session block + project guide     |
 
 > All four CLI config files are created automatically at app startup and cleaned up on exit.
 
@@ -365,11 +365,11 @@ This repository ships skills from multiple tracked roots:
 
 `list_skills` returns a unified catalog across all of these roots with each Skill's source `scope`, `name`, `description`, `tags`, `relatedTools`, and optional file detail. Existing no-argument calls retain the full catalog; newer clients can use `scopes`, `query`, `detail: "summary"`, `limit`, and `cursor`, then continue large `read_skill` documents with `cursor` and `max_bytes`.
 
-`npm run sync:skills` rebuilds a generated `.copilot-skill-catalog/` from the tracked skill roots above, then repairs the local CLI discovery paths that expose that aggregate catalog: a generated repo-local `.agents/skills` link for Codex plus `.claude/skills`, `.gemini/skills`, and `.github/skills` for the other supported CLIs. On Windows the app tries a real symlink first and falls back to a junction if permissions do not allow it; if those paths already exist as managed checked-out directories, it refreshes them in place instead of failing.
+`npm run sync:skills` rebuilds a generated `.skill-catalog/` from the tracked skill roots above, then repairs the two supported Skill discovery paths: `.agents/skills` for Codex and `.claude/skills` for Claude Code. On Windows the app tries a real symlink first and falls back to a junction if permissions do not allow it; if either path already exists as a managed checked-out directory copy, it refreshes that directory in place instead of failing. The retired Gemini and GitHub Copilot Skill mirrors are not generated.
 
-> **Skill discovery uses the repo-root catalog in this repository.** Copilot CLI, Claude Code, and Gemini CLI read the repository-root `.github/skills`, `.claude/skills`, and `.gemini/skills` discovery paths. Codex reads `.agents/skills`; Codex itself can scan that directory from the current working directory up to the repository root, but RisuToki only provisions a generated repo-root `.agents/skills` path after `npm run sync:skills` (or `npm install`, via `prepare`). Placing a `skills/` folder in a subdirectory (for example `risu/bot/.agents/skills/`) does **not** create a subtree-specific catalog in this repo. Subtree scoping is handled by `AGENTS.md` routing: the nearest `risu/{scope}/AGENTS.md` decides which skills from the global catalog are relevant to the current task.
+> **Skill discovery uses the repo-root catalog in this repository.** Claude Code reads `.claude/skills`, while Codex reads `.agents/skills`; Codex itself can scan that directory from the current working directory up to the repository root, but RisuToki only provisions a generated repo-root link after `npm run sync:skills` (or `npm install`, via `prepare`). Placing a `skills/` folder in a subdirectory (for example `risu/bot/.agents/skills/`) does **not** create a subtree-specific catalog in this repo. Subtree scoping is handled by `AGENTS.md` routing: the nearest `risu/{scope}/AGENTS.md` decides which skills from the global catalog are relevant to the current task.
 
-If a Windows git checkout turns those discovery paths into plain text placeholder files containing the link target (for example `../.copilot-skill-catalog`, or older `../skills`), leaves behind stale managed directory copies, or the generated catalog looks empty, run `npm run sync:skills`. This also runs automatically during the `prepare` phase of `npm install` (and is silently skipped if no tracked skill roots exist).
+If a Windows git checkout leaves behind stale managed directory copies or the generated catalog looks empty, run `npm run sync:skills`. The command also removes the retired `.copilot-skill-catalog/` directory. It runs automatically during the `prepare` phase of `npm install` and silently skips if no tracked skill roots exist.
 
 ### Built-in Skill Map
 
@@ -642,13 +642,13 @@ Encrypted AI preset file containing model settings, generation parameters, promp
 
 ### AI CLI won't start
 
-- Verify that the CLI you want (`claude`, `copilot`, `codex`, `gemini`) is on your PATH.
+- Verify that the CLI you want (`claude`, `copilot`, `codex`, `agy`) is on your PATH.
 - Try running the command directly in the terminal.
 - GitHub Copilot CLI may require `/login` authentication on first use.
 
 ### MCP connection failure
 
-- Config files are auto-created when each CLI starts: `~/.mcp.json` (Claude Code), `~/.copilot/mcp-config.json` (Copilot CLI), `~/.codex/config.toml` (Codex), `~/.gemini/settings.json` (Gemini).
+- Config files are auto-created when each CLI starts: `~/.mcp.json` (Claude Code), `~/.copilot/mcp-config.json` (Copilot CLI), `~/.codex/config.toml` (Codex), and `~/.gemini/config/mcp_config.json` (Antigravity CLI).
 - Restarting the editor may change the port; the new port is picked up automatically.
 - You must start each CLI **from inside the editor** for RisuToki's MCP tools to connect.
 - If Codex reports that the MCP connection closed before the `initialize` response, update to RisuToki 1.8.1 or later; 1.8.0 portable packages omitted the tiktoken WASM runtime asset.

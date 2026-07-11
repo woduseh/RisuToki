@@ -83,6 +83,12 @@ describe('app.css – manager panels', () => {
     expect(css).toMatch(/\.manager-expand\s*\{/);
     expect(css).toMatch(/\.manager-expand-right\s*\{/);
   });
+
+  it('keeps prompt manager controls in dedicated columns beside the full-width content', () => {
+    expect(css).toMatch(/\.prompt-manager-row\s*\{[^}]*grid-template-columns:\s*20px 18px minmax\(0,\s*1fr\);[^}]*\}/s);
+    expect(css).toMatch(/\.prompt-manager-badges\s*\{[^}]*grid-column:\s*3;[^}]*\}/s);
+    expect(css).toMatch(/\.prompt-manager-row\s+\.manager-row-actions\s*\{[^}]*grid-column:\s*3;[^}]*\}/s);
+  });
 });
 
 describe('app.css – risup prompt editor layout', () => {

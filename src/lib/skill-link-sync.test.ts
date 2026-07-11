@@ -20,7 +20,7 @@ function makeProjectRoot() {
     'utf8',
   );
 
-  for (const projectSkillDir of ['.agents', '.claude', '.gemini', '.github']) {
+  for (const projectSkillDir of ['.agents', '.claude']) {
     fs.mkdirSync(path.join(root, projectSkillDir), { recursive: true });
   }
 
@@ -31,7 +31,7 @@ function makeProjectRootWithoutSkills() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-skill-links-missing-'));
   tempRoots.push(root);
 
-  for (const projectSkillDir of ['.agents', '.claude', '.gemini', '.github']) {
+  for (const projectSkillDir of ['.agents', '.claude']) {
     fs.mkdirSync(path.join(root, projectSkillDir), { recursive: true });
   }
 
@@ -97,6 +97,14 @@ afterEach(() => {
 const windowsSymlinkIt = canCreateWindowsDirectorySymlink() ? it : it.skip;
 
 describe('skill link sync', () => {
+  it('exposes discovery links only for Codex and Claude Code', () => {
+    const root = makeProjectRoot();
+
+    expect(
+      getProjectSkillLinkSpecs(root).map((spec) => path.relative(root, spec.linkPath).replace(/\\/g, '/')),
+    ).toEqual(['.agents/skills', '.claude/skills']);
+  });
+
   it('skips link creation when the root skills directory is missing', () => {
     const root = makeProjectRootWithoutSkills();
 
@@ -136,6 +144,18 @@ describe('skill link sync', () => {
       expect(fs.existsSync(path.join(spec.linkPath, 'authoring-characters', 'SKILL.md'))).toBe(true);
       expect(fs.existsSync(path.join(spec.linkPath, 'writing-cbs-syntax', 'SKILL.md'))).toBe(true);
     }
+  });
+
+  it('removes the retired Copilot catalog while rebuilding the neutral catalog', () => {
+    const root = makeProjectRoot();
+    const legacyCatalog = path.join(root, '.copilot-skill-catalog');
+    fs.mkdirSync(legacyCatalog, { recursive: true });
+    fs.writeFileSync(path.join(legacyCatalog, 'stale.txt'), 'stale', 'utf8');
+
+    ensureProjectSkillLinks(root, { platform: process.platform });
+
+    expect(fs.existsSync(legacyCatalog)).toBe(false);
+    expect(fs.existsSync(path.join(root, '.skill-catalog', 'authoring-characters', 'SKILL.md'))).toBe(true);
   });
 
   it('keeps existing links stable even if existsSync would misreport them as missing', () => {
