@@ -128,6 +128,7 @@ import {
 } from '../lib/file-actions';
 import type { FileActionDeps } from '../lib/file-actions';
 import { runStartupSessionRecovery } from './session-recovery-controller';
+import { createProjectWorkspaceController } from './project-workspace-controller';
 import {
   stringifyStringArray,
   buildRefsSidebar as _buildRefsSidebar,
@@ -200,9 +201,6 @@ let currentProjectPath: string | null = null;
 let editorInstance: MonacoEditorInstance | null = null; // Monaco editor instance
 let monacoReady = false;
 let monacoLoadTask: Promise<boolean> | null = null;
-const PROJECT_RAW_SYNC_DELAY_MS = 700;
-const projectRawSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const projectRawSyncState = new Map<string, 'syncing' | 'synced' | 'error'>();
 
 // IME composition guard — skip DOM-heavy side-effects during CJK composition
 let isComposing = false;
@@ -311,6 +309,19 @@ const tabMgr = new TabManager(
   },
   confirmDirtyTabClose,
 );
+
+const projectWorkspace = createProjectWorkspaceController({
+  api: window.tokiAPI,
+  tabManager: tabMgr,
+  applyReloadedProject: (data, projectPath) => {
+    setCurrentFileData(data as CharxData);
+    currentProjectPath = projectPath || currentProjectPath;
+    buildSidebar();
+  },
+  getEditorValue: () => editorInstance?.getValue() ?? null,
+  openImageTab,
+  setStatus,
+});
 
 initFormEditor({
   isMonacoReady: () => monacoReady,
@@ -1210,161 +1221,10 @@ type RisumSidebarField = {
   kind?: 'toggle-template';
 };
 
-interface ProjectTreeNode {
-  name: string;
-  type: 'directory' | 'file';
-  relativePath: string;
-  children?: ProjectTreeNode[];
-}
-
 const RISUM_MODULE_SIDEBAR_FIELDS: readonly RisumSidebarField[] = [
   { id: 'backgroundEmbedding', label: '배경 임베딩', icon: '🎨', lang: 'html' },
   { id: 'customModuleToggle', label: '커스텀 토글', icon: '☑', lang: 'plaintext', kind: 'toggle-template' },
 ] as const;
-
-function projectFileLanguage(relativePath: string): string {
-  const lower = relativePath.toLowerCase();
-  if (lower.endsWith('.json')) return 'json';
-  if (lower.endsWith('.md')) return 'markdown';
-  if (lower.endsWith('.css')) return 'css';
-  if (lower.endsWith('.lua')) return 'lua';
-  return 'plaintext';
-}
-
-function projectFileIcon(relativePath: string): string {
-  const lower = relativePath.toLowerCase();
-  if (lower.match(/\.(png|jpg|jpeg|webp|gif)$/)) return '🖼';
-  if (lower.endsWith('.json')) return '{}';
-  if (lower.endsWith('.md')) return '📝';
-  return '·';
-}
-
-function validateProjectRawFile(relativePath: string, content: string): string | null {
-  if (!relativePath.toLowerCase().endsWith('.json')) return null;
-  try {
-    JSON.parse(content);
-    return null;
-  } catch (error) {
-    return (error as Error).message;
-  }
-}
-
-function getProjectRelativePathFromTabId(tabId: string): string | null {
-  return tabId.startsWith('project:') ? tabId.slice('project:'.length) : null;
-}
-
-async function reloadProjectAfterRawFileSync(tabId: string, relativePath: string): Promise<boolean> {
-  const result = await window.tokiAPI.reloadProjectFolder();
-  if (!result.success || !result.data) {
-    projectRawSyncState.set(tabId, 'error');
-    setStatus(`프로젝트 원본 파일 오류: ${result.error || '프로젝트를 다시 읽을 수 없습니다.'}`);
-    return false;
-  }
-  setCurrentFileData(result.data as CharxData);
-  currentProjectPath = result.projectPath || currentProjectPath;
-  buildSidebar();
-  projectRawSyncState.set(tabId, 'synced');
-  tabMgr.dirtyFields.delete(tabId);
-  tabMgr.renderTabs();
-  setStatus(`프로젝트 원본 파일 동기화됨: ${relativePath}`);
-  return true;
-}
-
-async function syncProjectRawFileTab(tabId: string, relativePath: string, content: string): Promise<boolean> {
-  const validationError = validateProjectRawFile(relativePath, content);
-  if (validationError) {
-    projectRawSyncState.set(tabId, 'error');
-    setStatus(`프로젝트 원본 파일 오류: ${relativePath} JSON 형식 오류 - ${validationError}`);
-    return false;
-  }
-
-  try {
-    projectRawSyncState.set(tabId, 'syncing');
-    await window.tokiAPI.writeProjectFile(relativePath, content);
-    return await reloadProjectAfterRawFileSync(tabId, relativePath);
-  } catch (error) {
-    projectRawSyncState.set(tabId, 'error');
-    setStatus(`프로젝트 원본 파일 오류: ${(error as Error).message}`);
-    return false;
-  }
-}
-
-function scheduleProjectRawFileSync(tabId: string, relativePath: string, getContent: () => string): void {
-  const existing = projectRawSyncTimers.get(tabId);
-  if (existing) clearTimeout(existing);
-  projectRawSyncState.set(tabId, 'syncing');
-  const timer = setTimeout(() => {
-    projectRawSyncTimers.delete(tabId);
-    if (!tabMgr.findTab(tabId)) return;
-    void syncProjectRawFileTab(tabId, relativePath, getContent());
-  }, PROJECT_RAW_SYNC_DELAY_MS);
-  projectRawSyncTimers.set(tabId, timer);
-}
-
-async function flushProjectRawFileTab(tabId: string, content: string): Promise<boolean> {
-  const relativePath = getProjectRelativePathFromTabId(tabId);
-  if (!relativePath) return true;
-  const timer = projectRawSyncTimers.get(tabId);
-  if (timer) {
-    clearTimeout(timer);
-    projectRawSyncTimers.delete(tabId);
-  }
-  return syncProjectRawFileTab(tabId, relativePath, content);
-}
-
-function clearProjectRawSyncState(): void {
-  for (const timer of projectRawSyncTimers.values()) clearTimeout(timer);
-  projectRawSyncTimers.clear();
-  projectRawSyncState.clear();
-}
-
-async function openProjectFileTab(relativePath: string): Promise<void> {
-  const lower = relativePath.toLowerCase();
-  if (lower.match(/\.(png|jpg|jpeg|webp|gif)$/)) {
-    openImageTab(relativePath, relativePath.split('/').pop() || relativePath);
-    return;
-  }
-  let content = await window.tokiAPI.readProjectFile(relativePath);
-  const tabId = `project:${relativePath}`;
-  tabMgr.openTab(
-    tabId,
-    `[원본] ${relativePath}`,
-    projectFileLanguage(relativePath),
-    () => content,
-    (value) => {
-      content = String(value ?? '');
-      scheduleProjectRawFileSync(tabId, relativePath, () => content);
-    },
-  );
-}
-
-function appendProjectTreeNode(parent: HTMLElement, node: ProjectTreeNode, indent: number): void {
-  if (node.type === 'directory') {
-    const folder = createFolderItem(node.name, '📁', indent);
-    parent.appendChild(folder.header);
-    parent.appendChild(folder.children);
-    for (const child of node.children || []) appendProjectTreeNode(folder.children, child, indent + 1);
-    return;
-  }
-  const item = createTreeItem(node.name, projectFileIcon(node.relativePath), indent);
-  item.addEventListener('click', () => void openProjectFileTab(node.relativePath));
-  parent.appendChild(item);
-}
-
-async function appendProjectFilesSidebar(tree: HTMLElement): Promise<void> {
-  const projectTree = await window.tokiAPI.getProjectTree();
-  if (!projectTree) return;
-  tree.appendChild(createSectionHeader('고급'));
-  const folder = createFolderItem('프로젝트 원본 파일', '📁', 0);
-  folder.header.title = '고급: 폴더의 원본 파일을 직접 열어 편집합니다.';
-  tree.appendChild(folder.header);
-  tree.appendChild(folder.children);
-  const hint = document.createElement('div');
-  hint.className = 'project-raw-hint';
-  hint.textContent = '고급 원본 파일 · 일반 편집은 위 구조화 항목을 사용하세요';
-  folder.children.appendChild(hint);
-  for (const child of projectTree.children || []) appendProjectTreeNode(folder.children, child, 1);
-}
 
 // Tracks the most recent async asset-content probe so a slower, superseded
 // document load cannot overwrite the current document's manager state.
@@ -2043,7 +1903,7 @@ function buildSidebar(): void {
     initSidebarDnD(getDndDeps());
     renderRightManagerPanel();
     initPanelDragDrop();
-    void appendProjectFilesSidebar(tree).then(() => appendHiddenFieldWarnings(tree));
+    void projectWorkspace.appendFilesSidebar(tree).then(() => appendHiddenFieldWarnings(tree));
   });
 }
 
@@ -2743,7 +2603,7 @@ function setCurrentFileData(data: CharxData | null): void {
 }
 
 function resetDocumentWorkspace(): void {
-  clearProjectRawSyncState();
+  projectWorkspace.clearRawSyncState();
   tabMgr.reset();
   if (editorInstance) {
     editorInstance.dispose();
@@ -2829,7 +2689,7 @@ async function handleCloneProjectFolder(): Promise<void> {
     setStatus('복제할 프로젝트 폴더가 열려 있지 않습니다');
     return;
   }
-  if (!(await syncActiveProjectFileTab())) return;
+  if (!(await projectWorkspace.syncActiveFileTab())) return;
   if (tabMgr.dirtyFields.size > 0) {
     await handleSave();
     if (tabMgr.dirtyFields.size > 0) return;
@@ -2886,29 +2746,17 @@ function handleClearRecentItems(): void {
   setStatus('최근 항목을 지웠습니다');
 }
 
-async function syncActiveProjectFileTab(): Promise<boolean> {
-  if (!tabMgr.activeTabId?.startsWith('project:') || !editorInstance) return true;
-  const tab = tabMgr.openTabs.find((entry) => entry.id === tabMgr.activeTabId);
-  if (!tab?.setValue) return true;
-  const ok = await flushProjectRawFileTab(tab.id, editorInstance.getValue());
-  if (ok) {
-    tabMgr.dirtyFields.delete(tab.id);
-    tabMgr.renderTabs();
-  }
-  return ok;
-}
-
 async function handleSave(): Promise<void> {
-  if (!(await syncActiveProjectFileTab())) return;
+  if (!(await projectWorkspace.syncActiveFileTab())) return;
   return _handleSave(fileActionDeps);
 }
 async function handleSaveAs(): Promise<void> {
-  if (!(await syncActiveProjectFileTab())) return;
+  if (!(await projectWorkspace.syncActiveFileTab())) return;
   return _handleSaveAs(fileActionDeps);
 }
 
 async function handleReassembleProjectDocument(): Promise<void> {
-  if (!(await syncActiveProjectFileTab())) return;
+  if (!(await projectWorkspace.syncActiveFileTab())) return;
   const fileData = fileActionDeps.getFileData();
   const result = await window.tokiAPI.reassembleProjectDocument(fileData || undefined);
   setStatus(result.success ? `파일 내보내기 완료: ${result.path}` : `파일 내보내기 실패: ${result.error}`);
@@ -3820,22 +3668,8 @@ export async function initMainRenderer(): Promise<void> {
     openTabById(tabId);
   });
 
-  window.tokiAPI.onProjectFolderChanged(async (payload) => {
-    if (tabMgr.dirtyFields.size > 0) {
-      setStatus(
-        `프로젝트 파일 변경 감지됨: ${payload.fileName || payload.path}. 저장되지 않은 탭이 있어 자동 반영하지 않았습니다.`,
-      );
-      return;
-    }
-    const result = await window.tokiAPI.reloadProjectFolder();
-    if (!result.success || !result.data) {
-      setStatus(`프로젝트 다시 불러오기 실패: ${result.error || '알 수 없는 오류'}`);
-      return;
-    }
-    setCurrentFileData(result.data as CharxData);
-    currentProjectPath = result.projectPath || currentProjectPath;
-    buildSidebar();
-    setStatus(`프로젝트 변경 반영됨: ${payload.fileName || payload.path}`);
+  window.tokiAPI.onProjectFolderChanged((payload) => {
+    void projectWorkspace.handleFolderChanged(payload);
   });
 
   // Listen for MCP data updates (AI assistant modified data via MCP server)

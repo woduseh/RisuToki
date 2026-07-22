@@ -9,6 +9,12 @@
 
 ---
 
+## [1.18.0] - 2026-07-22
+
+### Changed
+
+- Extracted project raw-file validation, debounced synchronization, reload handling, and sidebar rendering from the main renderer controller into a dedicated, unit-tested project workspace controller.
+
 ## [1.17.0] - 2026-07-22
 
 ### Changed

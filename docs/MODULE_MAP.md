@@ -18,7 +18,8 @@ This map is for source navigation. It is not a full API reference.
 
 ## Integration layers
 
-- `src/app/controller.ts` — main-window orchestration, including project-folder raw file tabs and debounced structured-state sync
+- `src/app/controller.ts` — main-window integration and UI orchestration
+- `src/app/project-workspace-controller.ts` — project-folder raw file tabs, validation, debounced writes, reloads, and sidebar rendering
 - `src/popout/controller.ts` — popout orchestration
 - `src/components/` — Vue UI components
 - `src/stores/` — shared renderer stores
