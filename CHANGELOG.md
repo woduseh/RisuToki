@@ -9,6 +9,59 @@
 
 ---
 
+## [1.26.0] - 2026-07-22
+
+### Added
+
+- Added visible-result **Select all / Clear all** controls to the asset workspace.
+- Added **Reset UI layout** to the View menu for restoring the default navigator, inspector, terminal, avatar, and references arrangement.
+- Added editable RISUP prompt types to the contextual prompt inspector.
+
+### Changed
+
+- Restored lorebook drag-and-drop ordering across both root entries and folders while retaining prompt and custom-toggle drag ordering.
+- Moved the asset tree/thumbnail switch into a compact result-header control next to bulk selection.
+- Coalesced workspace and regex-editor resize updates to animation frames, delayed layout persistence until dragging settles, and disabled layout transitions during active resizing.
+
+### Fixed
+
+- Made asset and lorebook selection checkboxes toggle selected items off instead of immediately reselecting them.
+- Standardized vertical resize handles so dragging upward expands their associated editor or terminal and dragging downward contracts it.
+
+## [1.25.5] - 2026-07-22
+
+### Fixed
+
+- Kept the references drawer on the outer-right side of lorebook and asset inspectors on wide windows, reserving its width instead of shifting it to the inspector's left.
+- Preserved the single-overlay compact-window behavior below 1180px so references and contextual inspectors do not compete for the same narrow viewport.
+
+## [1.25.4] - 2026-07-22
+
+### Fixed
+
+- Replaced the contextual lorebook inspector's raw folder UUID input with a human-readable folder selector that shows folder names while preserving canonical folder references in the document model.
+- Hid orphaned folder UUIDs behind a clear missing-folder label so internal identifiers never leak into the editing UI.
+
+## [1.25.3] - 2026-07-22
+
+### Changed
+
+- Replaced built-in avatar GIF playback with transparent animated WebP assets so semi-transparent hair, halo, and outline pixels render cleanly in Electron.
+- Added character-specific idle and working dialogue for all ten built-in themes in both the docked terminal and terminal pop-out.
+
+### Fixed
+
+- Made lorebook form headers, avatar status surfaces, terminal chat controls, pop-out headers, help headers, hover states, and scrollbars use the active theme's semantic accent colors instead of fixed blue or pink overrides.
+- Kept embedded lorebook and form Monaco editors on the selected character theme instead of resetting them to the legacy generic blue theme.
+
+## [1.25.2] - 2026-07-22
+
+### Changed
+
+- Replaced the legacy Toki and Aris terminal avatar assets with official-design-inspired four-frame idle and working animations, including their distinct concentric-target and rectangular-circuit halos.
+- Corrected Kei's halo to the neon-pink overlapping rectangular circuit design and Momoi's halo to the asymmetric angular pink outline shown in their official references.
+- Kept the compact Toki app mark for the menu and welcome screen while separating it from the full-body terminal avatar.
+
 ## [1.25.1] - 2026-07-22
 
 ### Fixed

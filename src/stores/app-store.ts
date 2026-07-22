@@ -7,6 +7,7 @@ import {
   getDefaultWorkspace,
   getInspectorContext,
   getWorkspaceDefinitions,
+  defaultWorkspaceLayout,
   inferWorkspaceFromTab,
   isWorkspaceAvailable,
   type UtilityToolId,
@@ -413,6 +414,19 @@ export const useAppStore = defineStore('app', () => {
     utilityHeight.value = Math.min(520, Math.max(130, height));
   }
 
+  function resetWorkspaceLayout() {
+    const layout = defaultWorkspaceLayout();
+    navigatorWidth.value = layout.navigatorWidth;
+    inspectorWidth.value = layout.inspectorWidth;
+    utilityHeight.value = layout.utilityHeight;
+    navigatorVisible.value = layout.navigatorVisible;
+    inspectorVisible.value = layout.inspectorVisible;
+    avatarVisible.value = layout.avatarVisible;
+    referencesVisible.value = layout.referencesVisible;
+    activeUtility.value = layout.activeUtility;
+    workspaceId.value = getDefaultWorkspace(fileData.value);
+  }
+
   function setActiveTabLanguage(language: string) {
     activeTabLanguage.value = language;
   }
@@ -507,6 +521,7 @@ export const useAppStore = defineStore('app', () => {
     setNavigatorWidth,
     setInspectorWidth,
     setUtilityHeight,
+    resetWorkspaceLayout,
     setActiveTabLanguage,
     setLuaSections,
     setCssSections,

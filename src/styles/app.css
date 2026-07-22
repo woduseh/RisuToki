@@ -1019,6 +1019,37 @@ body {
   flex-wrap: wrap;
 }
 
+.manager-asset-display-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.manager-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+
+.manager-view-toggle .manager-icon-btn {
+  height: 26px;
+  border: 0;
+  background: transparent;
+}
+
+.manager-view-toggle .manager-icon-btn.active {
+  color: var(--ui-on-accent, white);
+  background: var(--accent);
+}
+
+.manager-asset-select-all {
+  min-width: 72px;
+}
+
 .manager-filter-label {
   color: var(--text-secondary);
   font-size: 10px;
@@ -1169,7 +1200,15 @@ body {
   line-clamp: 2;
 }
 
-/* Flat (folder-free) lorebook lists are drag-reorderable. */
+/* Lorebook root and expanded folder lists support within/cross-folder drag. */
+.manager-root-entries,
+.manager-lore-dropzone {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 8px;
+}
+
 .manager-lore-list-sortable .manager-lore-row {
   cursor: grab;
 }
@@ -1386,8 +1425,8 @@ body {
   justify-content: center;
   gap: 6px;
   padding: 8px;
-  background: linear-gradient(135deg, #fc96ab 0%, #f8b4c8 100%);
-  color: #fff;
+  background: linear-gradient(135deg, var(--ui-accent, var(--accent)), var(--ui-accent-strong, var(--accent-hover)));
+  color: var(--ui-on-accent, #fff);
   font-size: 12px;
   font-weight: 600;
   width: 100%;
@@ -1395,7 +1434,7 @@ body {
 }
 
 #toki-status.working {
-  background: linear-gradient(135deg, #4a90d9 0%, #6fb3f2 100%);
+  background: linear-gradient(135deg, var(--ui-accent-strong, var(--accent-hover)), var(--ui-accent, var(--accent)));
 }
 
 #toki-help-btn {
@@ -1421,7 +1460,11 @@ body {
 }
 
 #toki-avatar.active {
-  background: linear-gradient(180deg, rgba(52, 147, 249, 0.02) 0%, var(--bg-secondary) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ui-accent, var(--accent)) 6%, transparent),
+    var(--bg-secondary)
+  );
 }
 
 /* ===== Terminal area (TokiTalk) ===== */
@@ -1641,8 +1684,8 @@ body {
   align-items: center;
   gap: 8px;
   padding: 0 8px 0 12px;
-  background: linear-gradient(135deg, #4a90d9 0%, #6fb3f2 100%);
-  color: #fff;
+  background: linear-gradient(135deg, var(--ui-accent, var(--accent)), var(--ui-accent-strong, var(--accent-hover)));
+  color: var(--ui-on-accent, #fff);
   font-size: 12px;
   font-weight: 500;
   transition:
@@ -1800,8 +1843,8 @@ body {
 
 .chat-bubble.user {
   align-self: flex-end;
-  background: #4a90d9;
-  color: #fff;
+  background: var(--ui-accent, var(--accent));
+  color: var(--ui-on-accent, #fff);
   border-bottom-right-radius: 4px;
   box-shadow: 0 1px 4px rgba(74, 144, 217, 0.2);
 }
@@ -1810,7 +1853,7 @@ body {
   align-self: flex-start;
   background: var(--bg-secondary);
   color: var(--text-primary);
-  border: 1px solid #e8e0e4;
+  border: 1px solid var(--ui-border, var(--border-color));
   border-bottom-left-radius: 4px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
@@ -1827,7 +1870,7 @@ body {
 }
 
 .chat-bubble.system .chat-bubble-name {
-  color: #fc96ab;
+  color: var(--ui-accent, var(--accent));
 }
 
 .chat-bubble-text {
@@ -1860,8 +1903,8 @@ body {
 
 #chat-send-btn {
   padding: 8px 18px;
-  background: #fc96ab;
-  color: #fff;
+  background: var(--ui-accent, var(--accent));
+  color: var(--ui-on-accent, #fff);
   border: none;
   border-radius: 20px;
   cursor: pointer;
@@ -1872,7 +1915,7 @@ body {
 }
 
 #chat-send-btn:hover {
-  background: #f06292;
+  background: var(--ui-accent-strong, var(--accent-hover));
 }
 
 /* ===== Chat Choice Buttons (MomoTalk style) ===== */
@@ -1888,8 +1931,8 @@ body {
 .chat-choice-btn {
   padding: 9px 18px;
   background: var(--bg-secondary);
-  color: #4a90d9;
-  border: 1.5px solid #4a90d9;
+  color: var(--ui-accent-strong, var(--accent));
+  border: 1.5px solid var(--ui-accent, var(--accent));
   border-radius: 20px;
   cursor: pointer;
   font-size: 13px;
@@ -1976,7 +2019,7 @@ body {
 }
 
 .popout-header-main--editor {
-  background: linear-gradient(135deg, var(--accent) 0%, #6fb3f2 100%);
+  background: linear-gradient(135deg, var(--ui-accent, var(--accent)), var(--ui-accent-strong, var(--accent-hover)));
 }
 
 .popout-header-title {
@@ -2630,8 +2673,8 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: linear-gradient(135deg, var(--accent), #6bb5f0);
-  color: #fff;
+  background: linear-gradient(135deg, var(--ui-accent, var(--accent)), var(--ui-accent-strong, var(--accent-hover)));
+  color: var(--ui-on-accent, #fff);
   border-radius: var(--radius) var(--radius) 0 0;
   font-weight: 700;
   font-size: 14px;
@@ -2827,6 +2870,10 @@ body {
 .form-monaco-resize-handle:hover {
   opacity: 1;
   background: var(--accent);
+}
+
+body.form-resizing {
+  user-select: none;
 }
 
 .form-section-label {
@@ -3486,7 +3533,7 @@ body.dark-mode .popout-action-btn.active {
 }
 
 body.dark-mode .popout-header-main--editor {
-  background: linear-gradient(135deg, #2f5e9f 0%, #4a90d9 100%);
+  background: linear-gradient(135deg, var(--ui-accent, var(--accent)), var(--ui-accent-strong, var(--accent-hover)));
 }
 
 body.dark-mode #terminal-container.has-bg .xterm-viewport {
@@ -3498,51 +3545,54 @@ body.dark-mode #chat-view {
 }
 
 body.dark-mode .chat-bubble.system {
-  background: #202846;
-  border-color: #2e3a56;
+  background: var(--ui-panel, var(--bg-secondary));
+  border-color: var(--ui-border, var(--border-color));
   color: var(--text-primary);
 }
 
 body.dark-mode .chat-bubble.system .chat-bubble-name {
-  color: #fc96ab;
+  color: var(--ui-accent-strong, var(--accent));
 }
 
 body.dark-mode #chat-input-area {
-  border-top-color: #2e3a56;
-  background: #18203a;
+  border-top-color: var(--ui-border, var(--border-color));
+  background: var(--ui-panel, var(--bg-secondary));
 }
 
 body.dark-mode #chat-input {
-  background: #10172d;
-  border-color: #2e3a56;
+  background: var(--ui-input, var(--bg-primary));
+  border-color: var(--ui-input-border, var(--border-color));
   color: var(--text-primary);
 }
 
 body.dark-mode #chat-input:focus {
-  border-color: #f06292;
+  border-color: var(--ui-focus, var(--accent));
 }
 
 body.dark-mode .chat-choice-btn {
-  background: #18203a;
-  border-color: #4a90d9;
-  color: #8fc2ff;
+  background: var(--ui-panel, var(--bg-secondary));
+  border-color: var(--ui-accent, var(--accent));
+  color: var(--ui-accent-strong, var(--accent));
 }
 
 body.dark-mode .chat-choice-btn:hover {
-  background: #4a90d9;
-  color: #fff;
+  background: var(--ui-accent, var(--accent));
+  color: var(--ui-on-accent, #fff);
 }
 
 body.dark-mode #toki-status {
-  background: linear-gradient(135deg, #4a90d9, #6fb3f2);
+  background: linear-gradient(135deg, var(--ui-accent, var(--accent)), var(--ui-accent-strong, var(--accent-hover)));
+  color: var(--ui-on-accent, #fff);
 }
 
 body.dark-mode .help-popup-header {
-  background: #f06292;
+  background: linear-gradient(135deg, var(--ui-accent, var(--accent)), var(--ui-accent-strong, var(--accent-hover)));
+  color: var(--ui-on-accent, #fff);
 }
 
 body.dark-mode .form-editor-header {
-  background: linear-gradient(135deg, #4a90d9, #6fb3f2);
+  background: linear-gradient(135deg, var(--ui-accent, var(--accent)), var(--ui-accent-strong, var(--accent-hover)));
+  color: var(--ui-on-accent, #fff);
 }
 
 body.dark-mode .menu-dropdown,
@@ -3553,11 +3603,11 @@ body.dark-mode .menu-submenu {
 }
 
 body.dark-mode ::-webkit-scrollbar-thumb {
-  background: #2e3a56;
+  background: color-mix(in srgb, var(--ui-accent, var(--accent)) 28%, var(--ui-panel, var(--bg-tertiary)) 72%);
 }
 
 body.dark-mode ::-webkit-scrollbar-thumb:hover {
-  background: #4a90d9;
+  background: color-mix(in srgb, var(--ui-accent, var(--accent)) 62%, var(--ui-panel, var(--bg-tertiary)) 38%);
 }
 
 @media (prefers-reduced-motion: reduce) {

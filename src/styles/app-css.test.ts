@@ -63,10 +63,26 @@ describe('app.css – status bar affordances', () => {
 });
 
 describe('app.css – form editor controls', () => {
+  it('uses semantic theme colors for lorebook form headers', () => {
+    expect(css).toMatch(
+      /\.form-editor-header\s*\{[^}]*background:\s*linear-gradient\([^;]*var\(--ui-accent[^;]*var\(--ui-accent-strong/s,
+    );
+    expect(css).not.toMatch(/body\.dark-mode\s+\.form-editor-header\s*\{[^}]*#4a90d9/s);
+  });
+
   it('styles the risup numeric disable action as a themed form control', () => {
     expect(css).toMatch(/\.form-disable-number-btn\s*\{[^}]*background:\s*var\(--accent-light\);[^}]*\}/s);
     expect(css).toMatch(/\.form-disable-number-btn:hover,\s*\.form-disable-number-btn:focus-visible\s*\{/);
     expect(css).toMatch(/\.form-disable-number-btn:disabled\s*\{/);
+  });
+});
+
+describe('app.css – character theme surfaces', () => {
+  it('uses semantic character accents for avatar and terminal chat surfaces', () => {
+    expect(css).toMatch(/#toki-status\s*\{[^}]*var\(--ui-accent[^}]*var\(--ui-on-accent/s);
+    expect(css).toMatch(/\.chat-bubble\.user\s*\{[^}]*background:\s*var\(--ui-accent/s);
+    expect(css).toMatch(/#chat-send-btn\s*\{[^}]*background:\s*var\(--ui-accent/s);
+    expect(css).toMatch(/\.popout-header-main--editor\s*\{[^}]*var\(--ui-accent-strong/s);
   });
 });
 

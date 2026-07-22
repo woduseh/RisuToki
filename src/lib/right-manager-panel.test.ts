@@ -99,6 +99,25 @@ describe('right-manager-panel', () => {
     ]);
   });
 
+  it('supports drag ordering within and across expanded lorebook folders', () => {
+    const reorderLorebook = vi.fn();
+    const deps = makeDeps({ reorderLorebook });
+    initRightManagerPanel(deps);
+
+    document.querySelector<HTMLButtonElement>('.manager-folder-arrow')!.click();
+    const source = document.querySelector<HTMLElement>('.manager-root-entries')!;
+    const target = document.querySelector<HTMLElement>('.manager-folder-children')!;
+    const moved = source.querySelector<HTMLElement>('[data-dnd-idx="2"]')!;
+    target.appendChild(moved);
+    const sortableCall = sortableCreate.mock.calls.find(([element]) => element === target)!;
+    const options = sortableCall[1] as { onEnd: (event: unknown) => void };
+
+    options.onEnd({ oldIndex: 0, newIndex: 1, item: moved, from: source, to: target });
+
+    expect(reorderLorebook).toHaveBeenCalledWith(2, 1, 'folder:heroes');
+    expect(source.querySelector('[data-dnd-idx="2"]')).toBe(moved);
+  });
+
   it('renders lorebook folders and opens entries through the provided callback', () => {
     const deps = makeDeps();
     initRightManagerPanel(deps);
@@ -276,6 +295,42 @@ describe('right-manager-panel', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await Promise.resolve();
     expect(renameAsset).toHaveBeenCalledWith('assets/icon/current.webp', 'renamed.webp');
+  });
+
+  it('places bulk selection beside the view switch and lets a checked asset toggle off', async () => {
+    const deps = makeDeps({
+      getAssetList: vi.fn().mockResolvedValue([
+        { path: 'assets/icon/hero.webp', size: 2048 },
+        { path: 'assets/other/scene.webp', size: 1024 },
+      ]),
+    });
+    initRightManagerPanel(deps);
+    await flushTimers();
+
+    document.querySelector<HTMLButtonElement>('button[aria-label="파일명 트리 보기"]')!.click();
+    await flushTimers();
+    const displayRow = document.querySelector<HTMLElement>('.manager-asset-display-row')!;
+    expect(displayRow.querySelector('.manager-view-toggle')).not.toBeNull();
+    expect(
+      displayRow.querySelector<HTMLButtonElement>('button[aria-label="현재 표시된 에셋 전체 선택"]'),
+    ).not.toBeNull();
+
+    let checkbox = document.querySelector<HTMLInputElement>('.asset-tree-file input[type="checkbox"]')!;
+    checkbox.click();
+    await flushTimers();
+    expect(document.querySelector('.manager-selected-bar')?.textContent).toContain('1개 선택됨');
+
+    checkbox = document.querySelector<HTMLInputElement>('.asset-tree-file input[type="checkbox"]')!;
+    checkbox.click();
+    await flushTimers();
+    expect(document.querySelector('.manager-selected-bar')).toBeNull();
+
+    document.querySelector<HTMLButtonElement>('button[aria-label="현재 표시된 에셋 전체 선택"]')!.click();
+    await flushTimers();
+    expect(document.querySelector('.manager-selected-bar')?.textContent).toContain('2개 선택됨');
+    expect(
+      document.querySelector<HTMLButtonElement>('button[aria-label="현재 표시된 에셋 전체 선택 해제"]'),
+    ).not.toBeNull();
   });
 
   it('plans and applies asset batch rename from the selected asset bar', async () => {

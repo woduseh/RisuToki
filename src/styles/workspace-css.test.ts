@@ -12,6 +12,16 @@ describe('workspace.css – reference drawer', () => {
     expect(css).toMatch(/#app-body\.utility-open\s+#reference-drawer\s*\{[^}]*bottom:\s*calc\(/s);
   });
 
+  it('keeps references on the outer-right side of the contextual inspector on wide windows', () => {
+    expect(css).toMatch(
+      /#app-body\.references-open\s+#workspace-shell\s*\{[^}]*margin-right:\s*calc\(clamp\(320px,\s*28vw,\s*420px\)\s*\+\s*var\(--ui-gap\)\);/s,
+    );
+    expect(css).not.toMatch(/#app-body\.inspector-open\.references-open\s+#reference-drawer/);
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*1179px\)[\s\S]*#app-body\.references-open\s+#workspace-shell\s*\{[^}]*margin-right:\s*0;/,
+    );
+  });
+
   it('gives the open terminal its full shelf height without a redundant tab row', () => {
     expect(css).toMatch(/#app-body\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\);[^}]*height:\s*100%;/s);
     expect(css).toMatch(/#app-body\.utility-open\s*\{[^}]*padding-bottom:\s*calc\(var\(--utility-height\) \+ 10px\);/s);

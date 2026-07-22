@@ -1,5 +1,3 @@
-import { ensureBlueArchiveMonacoTheme } from './monaco-loader';
-import { defineDarkMonacoTheme } from './dark-mode';
 import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
 import { getFolderRef, normalizeFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
 import { getRisupFieldGroup, isRisupDisableableNumberFieldId } from './risup-fields';
@@ -18,7 +16,6 @@ import { parseTriggerScriptsText, serializeTriggerScriptModel, type TriggerScrip
 import { createSwitchControl } from './switch-control';
 
 type MonacoWindow = Window & {
-  _baDarkThemeDefined?: boolean;
   monaco?: {
     editor: {
       create: (container: HTMLElement, options: Record<string, unknown>) => MonacoEditor;
@@ -132,7 +129,7 @@ export function openTriggerScriptsFormTab(
 
 export interface FormEditorDeps {
   isMonacoReady: () => boolean;
-  isDarkMode: () => boolean;
+  getMonacoThemeId: () => string;
   getEditorInstance: () => MonacoEditor | null;
   setEditorInstance: (ed: MonacoEditor | null) => void;
   getFileData: () => Record<string, unknown> | null;
@@ -230,16 +227,11 @@ export function createMiniMonaco(
     return fallbackEditor;
   }
 
-  ensureBlueArchiveMonacoTheme();
-  if (d.isDarkMode() && !win._baDarkThemeDefined) {
-    defineDarkMonacoTheme();
-  }
-
   try {
     const ed = win.monaco!.editor.create(container, {
       value: value || '',
       language: language,
-      theme: d.isDarkMode() ? 'blue-archive-dark' : 'blue-archive',
+      theme: d.getMonacoThemeId(),
       fontSize: 13,
       minimap: { enabled: false },
       wordWrap: 'on',
@@ -1691,9 +1683,14 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
   // Drag-to-resize for replace out
   let startY = 0;
   let startH = 0;
-  const onResizeMove = (e: MouseEvent) => {
-    const dy = e.clientY - startY;
-    replaceContainer.style.height = Math.max(40, startH + dy) + 'px';
+  let pendingResizeY: number | null = null;
+  let resizeFrame: number | null = null;
+  const applyResize = () => {
+    resizeFrame = null;
+    if (pendingResizeY === null) return;
+    const nextY = pendingResizeY;
+    pendingResizeY = null;
+    replaceContainer.style.height = Math.max(40, startH + startY - nextY) + 'px';
     for (const fe of formEditors) {
       if (
         fe &&
@@ -1704,8 +1701,18 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
       }
     }
   };
+  const onResizeMove = (e: MouseEvent) => {
+    pendingResizeY = e.clientY;
+    if (resizeFrame === null) resizeFrame = window.requestAnimationFrame(applyResize);
+  };
   const onResizeUp = () => {
+    if (resizeFrame !== null) {
+      window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = null;
+    }
+    applyResize();
     document.body.style.cursor = '';
+    document.body.classList.remove('form-resizing');
     document.removeEventListener('mousemove', onResizeMove);
     document.removeEventListener('mouseup', onResizeUp);
   };
@@ -1714,6 +1721,7 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
     startY = e.clientY;
     startH = replaceContainer.offsetHeight;
     document.body.style.cursor = 'ns-resize';
+    document.body.classList.add('form-resizing');
     document.addEventListener('mousemove', onResizeMove);
     document.addEventListener('mouseup', onResizeUp);
   });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, onBeforeUnmount, watch } from 'vue';
 import {
   IconArrowUpRight,
   IconBook2,
@@ -23,7 +23,7 @@ import WorkspaceBar from './components/WorkspaceBar.vue';
 import ContextInspector from './components/ContextInspector.vue';
 import AssetOutputWizard from './components/AssetOutputWizard.vue';
 import { writeWorkspaceLayoutState } from './lib/workspace-layout-state';
-import { TOKI_IDLE } from './lib/avatar';
+import { TOKI_APP_ICON } from './lib/avatar';
 import { showHelpPopup } from './lib/help-popup';
 
 const store = useAppStore();
@@ -33,6 +33,29 @@ const shellStyle = computed(() => ({
   '--utility-height': `${store.utilityHeight}px`,
 }));
 const hasEditorContent = computed(() => store.hasFile || store.activeTabId !== null);
+
+function currentWorkspaceLayout() {
+  return {
+    version: 2 as const,
+    navigatorWidth: store.navigatorWidth,
+    inspectorWidth: store.inspectorWidth,
+    utilityHeight: store.utilityHeight,
+    navigatorVisible: store.navigatorVisible,
+    inspectorVisible: store.inspectorVisible,
+    avatarVisible: store.avatarVisible,
+    referencesVisible: store.referencesVisible,
+    activeUtility: store.activeUtility,
+  };
+}
+
+let layoutWriteTimer: number | null = null;
+function scheduleWorkspaceLayoutWrite() {
+  if (layoutWriteTimer !== null) window.clearTimeout(layoutWriteTimer);
+  layoutWriteTimer = window.setTimeout(() => {
+    layoutWriteTimer = null;
+    writeWorkspaceLayoutState(currentWorkspaceLayout());
+  }, 120);
+}
 
 watch(
   () =>
@@ -46,19 +69,15 @@ watch(
       store.referencesVisible,
       store.activeUtility,
     ] as const,
-  () =>
-    writeWorkspaceLayoutState({
-      version: 2,
-      navigatorWidth: store.navigatorWidth,
-      inspectorWidth: store.inspectorWidth,
-      utilityHeight: store.utilityHeight,
-      navigatorVisible: store.navigatorVisible,
-      inspectorVisible: store.inspectorVisible,
-      avatarVisible: store.avatarVisible,
-      referencesVisible: store.referencesVisible,
-      activeUtility: store.activeUtility,
-    }),
+  scheduleWorkspaceLayoutWrite,
 );
+
+onBeforeUnmount(() => {
+  if (layoutWriteTimer === null) return;
+  window.clearTimeout(layoutWriteTimer);
+  layoutWriteTimer = null;
+  writeWorkspaceLayoutState(currentWorkspaceLayout());
+});
 
 function startPaneResize(kind: 'navigator' | 'inspector' | 'utility', event: PointerEvent) {
   event.preventDefault();
@@ -66,18 +85,38 @@ function startPaneResize(kind: 'navigator' | 'inspector' | 'utility', event: Poi
   const startY = event.clientY;
   const startValue =
     kind === 'navigator' ? store.navigatorWidth : kind === 'inspector' ? store.inspectorWidth : store.utilityHeight;
+  let pendingPosition: { x: number; y: number } | null = null;
+  let resizeFrame: number | null = null;
+  const applyPosition = ({ x, y }: { x: number; y: number }) => {
+    if (kind === 'navigator') store.setNavigatorWidth(startValue + x - startX);
+    else if (kind === 'inspector') store.setInspectorWidth(startValue - x + startX);
+    else store.setUtilityHeight(startValue + startY - y);
+  };
+  const flushPosition = () => {
+    resizeFrame = null;
+    if (!pendingPosition) return;
+    const position = pendingPosition;
+    pendingPosition = null;
+    applyPosition(position);
+  };
   const onMove = (moveEvent: PointerEvent) => {
-    if (kind === 'navigator') store.setNavigatorWidth(startValue + moveEvent.clientX - startX);
-    else if (kind === 'inspector') store.setInspectorWidth(startValue - moveEvent.clientX + startX);
-    else store.setUtilityHeight(startValue + startY - moveEvent.clientY);
+    pendingPosition = { x: moveEvent.clientX, y: moveEvent.clientY };
+    if (resizeFrame === null) resizeFrame = window.requestAnimationFrame(flushPosition);
   };
   const onUp = () => {
+    if (resizeFrame !== null) {
+      window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = null;
+    }
+    flushPosition();
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
     document.removeEventListener('pointercancel', onUp);
+    document.body.classList.remove('workspace-resizing', `workspace-resizing-${kind}`);
     if (kind === 'utility') document.body.classList.remove('utility-resizing');
     window.dispatchEvent(new Event('resize'));
   };
+  document.body.classList.add('workspace-resizing', `workspace-resizing-${kind}`);
   if (kind === 'utility') document.body.classList.add('utility-resizing');
   document.addEventListener('pointermove', onMove);
   document.addEventListener('pointerup', onUp);
@@ -100,6 +139,12 @@ function resizeWithKeyboard(kind: 'navigator' | 'inspector' | 'utility', event: 
 function handleAction(action: string, payload?: unknown) {
   if (action === 'toggle-references') {
     toggleReferences();
+    return;
+  }
+  if (action === 'reset-workspace-layout') {
+    store.resetWorkspaceLayout();
+    store.setStatus('UI 배치를 초기 상태로 되돌렸습니다.');
+    window.dispatchEvent(new Event('resize'));
     return;
   }
   executeAction(action, payload);
@@ -170,7 +215,7 @@ function recentName(path: string) {
 
       <section id="workspace-editor" aria-label="편집기">
         <div v-if="!hasEditorContent" id="welcome-screen">
-          <img class="welcome-mark" :src="TOKI_IDLE" alt="" />
+          <img class="welcome-mark" :src="TOKI_APP_ICON" alt="" />
           <h1>무엇을 만들까요?</h1>
           <p>캐릭터, 모듈, 프롬프트 파일을 열거나 새 작업을 시작하세요.</p>
           <div class="welcome-actions">

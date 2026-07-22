@@ -1,6 +1,6 @@
 import { getFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
 import Sortable from 'sortablejs';
-import { SHARED_OPTIONS, makeFlatOnEnd } from './sidebar-dnd';
+import { SHARED_OPTIONS } from './sidebar-dnd';
 import { planAssetBatchRename, type AssetBatchRenameMode, type AssetBatchRenameOperation } from './asset-batch-rename';
 
 interface LorebookEntryLike {
@@ -77,17 +77,35 @@ const state = {
 };
 
 let depsRef: RightManagerPanelDeps | null = null;
-let loreSortable: Sortable | null = null;
+let loreSortables: Sortable[] = [];
 let assetRenderToken = 0;
 
 function destroyLoreSortable(): void {
-  if (!loreSortable) return;
-  try {
-    loreSortable.destroy();
-  } catch {
-    /* already destroyed */
+  for (const sortable of loreSortables) {
+    try {
+      sortable.destroy();
+    } catch {
+      /* already destroyed */
+    }
   }
-  loreSortable = null;
+  loreSortables = [];
+}
+
+function revertLoreDropDom(event: Sortable.SortableEvent): void {
+  if (event.oldIndex == null || event.newIndex == null) return;
+  if (event.from !== event.to && event.item.parentNode === event.to) {
+    event.to.removeChild(event.item);
+    const reference = event.from.children[event.oldIndex];
+    if (reference) event.from.insertBefore(event.item, reference);
+    else event.from.appendChild(event.item);
+    return;
+  }
+  if (event.from !== event.to || event.oldIndex === event.newIndex) return;
+  if (event.oldIndex < event.newIndex) {
+    event.from.insertBefore(event.item, event.from.children[event.oldIndex]);
+  } else {
+    event.from.insertBefore(event.item, event.from.children[event.oldIndex + 1] ?? null);
+  }
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -357,7 +375,15 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
   body.appendChild(list);
 
   const { folders, rootEntries } = getLoreGroups(lorebook);
-  const renderEntries = (entries: Array<{ entry: LorebookEntryLike; index: number }>, parent: HTMLElement) => {
+  const sortableContainers: HTMLElement[] = [];
+  const renderEntries = (
+    entries: Array<{ entry: LorebookEntryLike; index: number }>,
+    parent: HTMLElement,
+    folderRef: string,
+  ) => {
+    parent.classList.add('manager-lore-dropzone');
+    parent.dataset.managerLoreFolder = folderRef;
+    sortableContainers.push(parent);
     for (const child of entries.filter((item) => entryMatchesFilters(item.entry))) {
       parent.appendChild(createLoreRow(deps, child.entry, child.index));
     }
@@ -429,37 +455,54 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
     list.appendChild(folderRow);
     if (state.loreExpanded.has(folderKey)) {
       const childList = el('div', 'manager-folder-children');
-      renderEntries(matchingChildren, childList);
+      renderEntries(matchingChildren, childList, folder.ref);
       list.appendChild(childList);
     }
   }
 
-  renderEntries(rootEntries, list);
+  const rootList = el('div', 'manager-root-entries');
+  renderEntries(rootEntries, rootList, '');
+  list.appendChild(rootList);
 
-  if (!list.childElementCount) list.appendChild(el('div', 'right-manager-empty', '표시할 로어북 항목이 없습니다.'));
+  if (!list.querySelector('.manager-lore-row') && folders.length === 0) {
+    list.appendChild(el('div', 'right-manager-empty', '표시할 로어북 항목이 없습니다.'));
+  }
 
-  // Drag reordering only when the visible order is unambiguous: a flat list
-  // (no folders) with no active search/filters. With folders or filters the DOM
-  // order no longer maps 1:1 to root positions, so the ↑/↓-free fallback is to
-  // reorder via the folder move tools instead.
+  // Keep the visible folder containers sortable whenever the list is not
+  // filtered. This restores both within-folder ordering and cross-folder moves
+  // without exposing document indices in the UI.
   const loreFilterActive =
     state.loreQuery.trim() !== '' || state.loreFilters.always || state.loreFilters.selective || state.loreFilters.regex;
-  const loreDndEnabled = folders.length === 0 && !loreFilterActive && rootEntries.length > 1;
+  const loreDndEnabled = !loreFilterActive && lorebook.some((entry) => entry.mode !== 'folder');
   if (loreDndEnabled) {
-    list.classList.add('manager-lore-list-sortable');
-    list.querySelectorAll<HTMLElement>(':scope > .manager-lore-row > .manager-drag-handle').forEach((handle) => {
+    list.querySelectorAll<HTMLElement>('.manager-lore-row > .manager-drag-handle').forEach((handle) => {
       handle.classList.remove('disabled');
       handle.setAttribute('aria-disabled', 'false');
     });
-    loreSortable = Sortable.create(list, {
-      ...SHARED_OPTIONS,
-      handle: '.manager-drag-handle',
-      filter: 'input, button, .no-sort',
-      preventOnFilter: false,
-      onEnd: makeFlatOnEnd((fromIdx, toIdx) => {
-        deps.reorderLorebook(fromIdx, toIdx, '');
-      }),
-    });
+    for (const sortableContainer of sortableContainers) {
+      sortableContainer.classList.add('manager-lore-list-sortable');
+      loreSortables.push(
+        Sortable.create(sortableContainer, {
+          ...SHARED_OPTIONS,
+          group: 'manager-lorebook',
+          handle: '.manager-drag-handle',
+          filter: 'input, button, .no-sort',
+          preventOnFilter: false,
+          emptyInsertThreshold: 14,
+          onEnd: (event) => {
+            if (event.oldIndex == null || event.newIndex == null) return;
+            if (event.from === event.to && event.oldIndex === event.newIndex) return;
+            const movedIndex = Number.parseInt(event.item.dataset.dndIdx ?? '', 10);
+            if (!Number.isInteger(movedIndex)) return;
+            const targetFolder = (event.to as HTMLElement).dataset.managerLoreFolder ?? '';
+            const targetRows = [...event.to.querySelectorAll<HTMLElement>(':scope > [data-dnd-idx]')];
+            const targetPosition = targetRows.indexOf(event.item);
+            revertLoreDropDom(event);
+            deps.reorderLorebook(movedIndex, Math.max(0, targetPosition), targetFolder);
+          },
+        }),
+      );
+    }
   }
 }
 
@@ -577,8 +620,9 @@ function createLoreRow(deps: RightManagerPanelDeps, entry: LorebookEntryLike, in
 }
 
 function toggleLoreSelection(index: number, additive: boolean): void {
+  const wasSelected = state.loreSelected.has(index);
   if (!additive) state.loreSelected.clear();
-  if (state.loreSelected.has(index)) state.loreSelected.delete(index);
+  if (wasSelected) state.loreSelected.delete(index);
   else state.loreSelected.add(index);
   renderRightManagerPanel();
 }
@@ -637,7 +681,37 @@ async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement, 
     setButtonActive(button, state.assetGroup === key);
     groupBar.appendChild(button);
   }
-  const viewSpacer = el('span', 'manager-filter-spacer');
+  body.appendChild(groupBar);
+
+  const assets = await deps.getAssetList();
+  if (renderToken !== assetRenderToken || !body.isConnected) return;
+  const queryLower = state.assetQuery.trim().toLowerCase();
+  const filtered = assets.filter((asset) => {
+    const group = asset.path.split('/')[1] === 'icon' ? 'icon' : 'other';
+    if (state.assetGroup !== 'all' && state.assetGroup !== group) return false;
+    if (!queryLower) return true;
+    return asset.path.toLowerCase().includes(queryLower);
+  });
+
+  const displayBar = el('div', 'manager-asset-display-row');
+  const visiblePaths = filtered.map((asset) => asset.path);
+  const allVisibleSelected = visiblePaths.length > 0 && visiblePaths.every((path) => state.assetSelected.has(path));
+  const selectAll = makeToolbarButton(
+    allVisibleSelected ? '전체 해제' : '전체 선택',
+    allVisibleSelected ? '현재 표시된 에셋 전체 선택 해제' : '현재 표시된 에셋 전체 선택',
+    () => {
+      if (allVisibleSelected) visiblePaths.forEach((path) => state.assetSelected.delete(path));
+      else visiblePaths.forEach((path) => state.assetSelected.add(path));
+      renderRightManagerPanel();
+    },
+  );
+  selectAll.disabled = visiblePaths.length === 0;
+  selectAll.classList.add('manager-asset-select-all');
+  displayBar.appendChild(selectAll);
+
+  const viewToggle = el('div', 'manager-view-toggle');
+  viewToggle.setAttribute('role', 'group');
+  viewToggle.setAttribute('aria-label', '에셋 보기 방식');
   const treeView = makeToolbarButton('트리', '파일명 트리 보기', () => {
     state.assetView = 'tree';
     renderRightManagerPanel();
@@ -648,8 +722,9 @@ async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement, 
   });
   setButtonActive(treeView, state.assetView === 'tree');
   setButtonActive(gridView, state.assetView === 'grid');
-  groupBar.append(viewSpacer, treeView, gridView);
-  body.appendChild(groupBar);
+  viewToggle.append(treeView, gridView);
+  displayBar.appendChild(viewToggle);
+  body.appendChild(displayBar);
 
   if (state.assetSelected.size > 0) {
     const selectedBar = el('div', 'manager-selected-bar');
@@ -682,15 +757,6 @@ async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement, 
     void addDroppedAssetFiles(deps, event.dataTransfer?.files || null, folder);
   });
   body.appendChild(assetHost);
-  const assets = await deps.getAssetList();
-  if (renderToken !== assetRenderToken || !assetHost.isConnected) return;
-  const queryLower = state.assetQuery.trim().toLowerCase();
-  const filtered = assets.filter((asset) => {
-    const group = asset.path.split('/')[1] === 'icon' ? 'icon' : 'other';
-    if (state.assetGroup !== 'all' && state.assetGroup !== group) return false;
-    if (!queryLower) return true;
-    return asset.path.toLowerCase().includes(queryLower);
-  });
 
   if (state.assetView === 'tree') {
     assetHost.appendChild(buildAssetFilenameTree(deps, filtered));
@@ -951,14 +1017,26 @@ function readFileAsBase64(file: File): Promise<string> {
 }
 
 function toggleAssetSelection(path: string, additive: boolean): void {
+  const wasSelected = state.assetSelected.has(path);
   if (!additive) state.assetSelected.clear();
-  if (state.assetSelected.has(path)) state.assetSelected.delete(path);
+  if (wasSelected) state.assetSelected.delete(path);
   else state.assetSelected.add(path);
   renderRightManagerPanel();
 }
 
 export function initRightManagerPanel(deps: RightManagerPanelDeps): void {
   depsRef = deps;
+  state.loreQuery = '';
+  state.loreFilters.always = false;
+  state.loreFilters.selective = false;
+  state.loreFilters.regex = false;
+  state.loreExpanded.clear();
+  state.loreExpanded.add('root');
+  state.loreSelected.clear();
+  state.assetQuery = '';
+  state.assetGroup = 'all';
+  state.assetView = 'tree';
+  state.assetSelected.clear();
   renderRightManagerPanel();
 }
 

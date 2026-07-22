@@ -3,7 +3,16 @@ import { computed, ref, watch } from 'vue';
 import { IconBook2, IconBraces, IconInfoCircle, IconPhoto, IconSparkles, IconX } from '@tabler/icons-vue';
 import { useAppStore, type LorebookEntry, type RegexEntry } from '../stores/app-store';
 import { executeAction } from '../lib/action-registry';
-import { parsePromptTemplate, serializePromptTemplate, type PromptItemModel } from '../lib/risup-prompt-model';
+import { buildFolderInfoMap, resolveLorebookFolderRef } from '../lib/lorebook-folders';
+import {
+  SUPPORTED_PROMPT_ITEM_TYPES,
+  defaultPromptItem,
+  parsePromptTemplate,
+  serializePromptTemplate,
+  type PromptItemModel,
+  type SupportedPromptItemType,
+} from '../lib/risup-prompt-model';
+import { promptTypeLabel } from '../lib/risup-prompt-editor';
 
 interface AssetDetails {
   path: string;
@@ -18,6 +27,19 @@ const loreIndex = computed(() => {
   return match ? Number(match[1]) : -1;
 });
 const lore = computed(() => store.fileData?.lorebook?.[loreIndex.value] ?? null);
+const loreFolderOptions = computed(() =>
+  Array.from(buildFolderInfoMap(store.fileData?.lorebook ?? []).values()).map(({ name, ref: value }) => ({
+    name,
+    value,
+  })),
+);
+const loreFolderValue = computed(() =>
+  lore.value ? resolveLorebookFolderRef(lore.value.folder, store.fileData?.lorebook ?? []) : '',
+);
+const hasMissingLoreFolder = computed(
+  () =>
+    loreFolderValue.value !== '' && !loreFolderOptions.value.some((folder) => folder.value === loreFolderValue.value),
+);
 
 const regexIndex = computed(() => {
   const match = store.activeTabId?.match(/^regex_(\d+)$/);
@@ -70,6 +92,10 @@ function updateLore<K extends keyof LorebookEntry>(key: K, value: LorebookEntry[
   executeAction('workspace-model-change', { tabId: store.activeTabId, field: 'lorebook' });
 }
 
+function updateLoreFolder(value: string) {
+  updateLore('folder', resolveLorebookFolderRef(value, store.fileData?.lorebook ?? []));
+}
+
 function updateRegex<K extends keyof RegexEntry>(key: K, value: RegexEntry[K]) {
   if (!regex.value) return;
   regex.value[key] = value;
@@ -83,6 +109,10 @@ function updatePrompt(key: string, value: string) {
   const model = parsePromptTemplate(typeof data.promptTemplate === 'string' ? data.promptTemplate : '');
   const item = model.items.find((entry) => entry.id === current.id);
   if (!item || item.supported === false) return;
+  if (key === 'type') {
+    const index = model.items.indexOf(item);
+    model.items[index] = { ...defaultPromptItem(value as SupportedPromptItemType), id: item.id };
+  }
   if (key === 'name' && 'name' in item) item.name = value || undefined;
   if (key === 'role' && 'role' in item) item.role = value as never;
   if (key === 'type2' && 'type2' in item) item.type2 = value as never;
@@ -115,8 +145,18 @@ function formatBytes(size: number): string {
         >이름<input :value="lore.comment" @input="updateLore('comment', ($event.target as HTMLInputElement).value)"
       /></label>
       <label
-        >폴더<input :value="lore.folder" @input="updateLore('folder', ($event.target as HTMLInputElement).value)"
-      /></label>
+        >폴더<select
+          data-testid="lore-folder-select"
+          :value="loreFolderValue"
+          @change="updateLoreFolder(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="">폴더 없음</option>
+          <option v-for="folder in loreFolderOptions" :key="folder.value" :value="folder.value">
+            {{ folder.name }}
+          </option>
+          <option v-if="hasMissingLoreFolder" :value="loreFolderValue">찾을 수 없는 폴더</option>
+        </select></label
+      >
       <label
         >활성화 키<textarea
           :value="lore.key"
@@ -204,7 +244,17 @@ function formatBytes(size: number): string {
           :value="promptItem.name || ''"
           @input="updatePrompt('name', ($event.target as HTMLInputElement).value)"
       /></label>
-      <label>타입<input :value="promptItem.type || ''" disabled /></label>
+      <label v-if="promptItem.supported"
+        >타입<select
+          :value="promptItem.type"
+          @change="updatePrompt('type', ($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="type in SUPPORTED_PROMPT_ITEM_TYPES" :key="type" :value="type">
+            {{ promptTypeLabel(type) }}
+          </option>
+        </select></label
+      >
+      <label v-else>타입<input :value="promptItem.type || ''" disabled /></label>
       <label v-if="promptItem.supported && 'type2' in promptItem"
         >형식<select
           :value="promptItem.type2"

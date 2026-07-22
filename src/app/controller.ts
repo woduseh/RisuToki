@@ -329,7 +329,7 @@ const projectWorkspace = createProjectWorkspaceController({
 
 initFormEditor({
   isMonacoReady: () => monacoReady,
-  isDarkMode: () => darkMode,
+  getMonacoThemeId: () => defineAppMonacoTheme(themeId, customTheme),
   getEditorInstance: (() => editorInstance) as Parameters<typeof initFormEditor>[0]['getEditorInstance'],
   setEditorInstance: (ed) => {
     editorInstance = ed as MonacoEditorInstance | null;

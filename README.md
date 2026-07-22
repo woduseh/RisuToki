@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.25.1-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-1.26.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-20.19%2B%20%7C%2022.13%2B%20%7C%2024%2B-339933.svg)](https://nodejs.org/)
@@ -130,6 +130,7 @@ Double-click the RisuToki executable (`.exe`) to launch.
 | **Navigator**          | Search, select, create, filter, and sort items for the active workspace                   |
 | **Editor**             | Wide Monaco/form/image canvas with persistent document tabs                               |
 | **Context inspector**  | Metadata for the selected lorebook, asset, prompt, regex, or trigger                      |
+| **References drawer**  | Guide and reference files on the outer-right side of the contextual inspector             |
 | **Reference drawer**   | Independent tall guide/reference drawer with its own OS popout                            |
 | **Terminal shelf**     | Bottom-anchored terminal with an optional avatar beside it and a shared OS popout         |
 
@@ -159,9 +160,10 @@ Double-click the RisuToki executable (`.exe`) to launch.
 - In a project folder, **Save** writes the structured editor state back to the folder files. File → **파일로 내보내기** and **Save As** create the matching `.charx`, `.risum`, or `.risup` output when you want to import the result into RisuAI.
 - `.charx` project folders track only the generated `assets/**` and `x_meta/**` files they manage. Removing or renaming an asset removes the stale generated file on save, while unrelated files added by external tools are preserved.
 - Raw project files remain available under the collapsed **프로젝트 원본 파일** advanced sidebar area. Direct raw edits are debounced and synchronized back into the structured editor state.
-- `.charx` and `.risum` files expose integrated **로어북** and **에셋** workspaces. Selecting an item opens the central editor and the matching inspector together. `.risup` uses **기본 / 프롬프트 / 모델·API / 파라미터 / 고급** progressive disclosure while preserving every supported field on save.
+- `.charx` and `.risum` files expose integrated **로어북** and **에셋** workspaces. Selecting an item opens the central editor and the matching inspector together. Lorebook entries can be reordered by dragging, including moves between folders, and folder membership is edited by its visible name rather than an internal UUID. `.risup` uses **기본 / 프롬프트 / 모델·API / 파라미터 / 고급** progressive disclosure while preserving every supported field on save; prompt and custom-toggle rows also support drag reordering, and prompt type can be changed in the inspector.
 - Opening another document clears the previous document's tab selection and contextual inspector, while keeping any compatible workspace (for example, 로어북) selected for rapid cross-file editing.
-- The asset workspace defaults to a filename-derived tree and can switch to thumbnails. **출력식 마법사** analyzes only `assets/other`, never invents missing combinations, and replaces only its stable generated block when run again.
+- The asset workspace defaults to a filename-derived tree and uses a compact **트리 / 썸네일** view switch above the results. **전체 선택 / 전체 해제** applies to the currently visible filtered assets, and clicking an already-selected asset checkbox deselects it. **출력식 마법사** analyzes only `assets/other`, never invents missing combinations, and replaces only its stable generated block when run again.
+- View → **UI 배치 초기화** restores the default navigator, inspector, terminal, avatar, and reference-panel layout. Workspace splitters update at most once per animation frame, and vertical handles consistently grow their panel when dragged upward.
 - MCP agents can also use the `manage_file` facade for preview-first project-folder extract/reassemble workflows when a field or whole document is too large to handle comfortably through MCP responses.
 - Modified tabs show a **●** dot next to their name. Closing the window triggers a MomoTalk-style save confirmation popup.
 - **New** and **Open** also prompt to save if the current document has unsaved changes.
@@ -486,14 +488,16 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 
 - Settings provide Toki, Aris, Kei, Yuzu, Midori, Momoi, Yuuka, Hina, Mika, Kisaki, and Custom themes in that order.
 - Custom themes are palette-based: background, surface, text, secondary text, accent, warning, pink, and border colors can be edited safely without arbitrary CSS.
-- Theme selection updates the app chrome, Monaco editors, terminal colors, pop-outs, and matching `TokiTalk` / `ArisTalk` / character-specific terminal title together.
+- Theme selection updates the app chrome, lorebook forms and embedded editors, terminal colors, pop-outs, and matching `TokiTalk` / `ArisTalk` / character-specific terminal title together.
 
 ### Avatar Panel
 
 <img width="184" height="250" alt="Avatar" src="https://github.com/user-attachments/assets/8c3f79b3-e7e4-4b13-92a2-dade8ddeb5a9" />
 <img width="522" height="509" alt="Avatar settings" src="https://github.com/user-attachments/assets/83c4ee4a-f726-45df-8713-4b25883a5c76" />
 
-- Each built-in character theme supplies a matching idle (💤) and working (✨) animation; the terminal pop-out uses the same avatar.
+- Each built-in character theme supplies matching transparent animated WebP idle (💤) and working (✨) states; the terminal pop-out uses the same avatar without palette-fringe artifacts.
+- Toki and Aris use the same generated four-frame animation system as the other themes, while the compact Toki icon remains the app and welcome-screen mark.
+- The status line uses distinct idle and working dialogue written for the selected theme character in both docked and pop-out terminals.
 - The avatar stays beside the terminal and can be shown or hidden from the robot button in the terminal header.
 - Select **도움말** below the avatar to open the built-in usage guide.
 - Right-click to register a custom image. Green-screen GIF backgrounds are chroma-keyed automatically.
@@ -675,7 +679,7 @@ Encrypted AI preset file containing model settings, generation parameters, promp
 - `.charx` files must be valid ZIP archives.
 - `.risup` files must be presets exported from RisuAI. gzip, zlib, and raw-deflate exports are all supported.
 
-### GIF avatar not animating
+### Avatar animation not playing
 
 - Check that the terminal shelf is open and the avatar is enabled from the robot button in its header (or View → toggle avatar).
 

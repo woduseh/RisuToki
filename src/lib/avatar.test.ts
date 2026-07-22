@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getAvatarAssetsForTheme, getBuiltInAvatarOptions } from './avatar';
+import { getAvatarAssetsForTheme, getBuiltInAvatarOptions, loadAvatarImage } from './avatar';
 
 describe('theme avatar assets', () => {
   it('provides idle and working animations for every character theme', () => {
@@ -24,8 +24,20 @@ describe('theme avatar assets', () => {
   });
 
   it('uses the matching character for built-in themes and mode fallback for custom themes', () => {
-    expect(getAvatarAssetsForTheme('kisaki', true).idle).toContain('avatar-kisaki-idle.gif');
-    expect(getAvatarAssetsForTheme('custom', false).idle).toContain('icon.png');
-    expect(getAvatarAssetsForTheme('custom', true).idle).toContain('icon_risu.png');
+    expect(getAvatarAssetsForTheme('toki', false).idle).toContain('avatar-toki-idle.webp');
+    expect(getAvatarAssetsForTheme('aris', true).working).toContain('avatar-aris-working.webp');
+    expect(getAvatarAssetsForTheme('kei', false).idle).toContain('avatar-kei-idle.webp');
+    expect(getAvatarAssetsForTheme('momoi', false).working).toContain('avatar-momoi-working.webp');
+    expect(getAvatarAssetsForTheme('kisaki', true).idle).toContain('avatar-kisaki-idle.webp');
+    expect(getAvatarAssetsForTheme('custom', false).idle).toContain('avatar-toki-idle.webp');
+    expect(getAvatarAssetsForTheme('custom', true).idle).toContain('avatar-aris-idle.webp');
+  });
+
+  it('restarts animated WebP images without corrupting existing query parameters', () => {
+    const image = document.createElement('img');
+
+    loadAvatarImage('app-assets/avatar-toki-idle.webp?variant=default', image);
+
+    expect(image.src).toContain('avatar-toki-idle.webp?variant=default&t=');
   });
 });

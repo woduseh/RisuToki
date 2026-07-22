@@ -113,11 +113,11 @@ export default defineConfig(({ command }) => ({
           dest: 'vendor/wasmoon/dist',
         },
         {
-          src: 'assets/{icon.png,icon_risu.png,Dancing_risu.gif,Dancing_toki.gif,toki-cute.gif,Usagi_Flap.mp3}',
+          src: 'assets/{icon.png,toki-cute.gif,Usagi_Flap.mp3}',
           dest: 'app-assets',
         },
         {
-          src: 'assets/avatar-*.gif',
+          src: 'assets/avatar-*.webp',
           dest: 'app-assets',
         },
       ],

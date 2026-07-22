@@ -199,7 +199,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/asset-batch-rename.ts` — pure asset batch rename preview and conflict-planning helper
 - `src/lib/asset-runtime.ts` — asset runtime resolution
 - `src/lib/image-compressor.ts` — asset compression helpers
-- `src/lib/avatar.ts` / `src/lib/avatar-ui.ts` — avatar rendering/state
+- `src/lib/avatar.ts` / `src/lib/avatar-dialogue.ts` / `src/lib/avatar-ui.ts` — avatar assets, character dialogue, rendering/state
 - `src/lib/bgm.ts` — background music helpers
 
 ## Shared infrastructure

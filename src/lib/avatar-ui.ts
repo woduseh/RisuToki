@@ -1,32 +1,6 @@
 import { readAppSettingsSnapshot, writeIdleAvatarState, writeWorkingAvatarState } from './app-settings';
 import { TOKI_CUTE, getAvatarAssetsForTheme, getBuiltInAvatarOptions, loadAvatarImage } from './avatar';
-import type { ThemeId } from './theme-registry';
-
-// ==================== Dialogue Lines ====================
-
-const TOKI_IDLE_LINES = ['분부대로.', '완벽한 보좌를 약속드립니다.', '대기 중입니다.', '지시를 기다리겠습니다.'];
-const TOKI_WORKING_LINES = [
-  '신속히 처리하겠습니다.',
-  '...집중하고 있습니다.',
-  '작업 진행 중입니다.',
-  '완벽하게 수행하겠습니다.',
-];
-const RISU_IDLE_LINES = [
-  '오늘은 어떤 모험을 떠나실 건가요?',
-  '아리스, 대기 중입니다!',
-  '선생님! 지시를!',
-  '다음 퀘스트는 뭔가요?',
-];
-const RISU_WORKING_LINES = [
-  '아리스, 전력으로 갑니다!',
-  '마력 충전 중...!',
-  '퀘스트 진행 중입니다!',
-  '빛이여, 힘을 빌려줘...!',
-];
-
-function randomLine(arr: readonly string[]): string {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+import { getAvatarDialogueLine } from './avatar-dialogue';
 
 // ==================== Dependency Injection ====================
 
@@ -48,18 +22,6 @@ let _statusIconEl: HTMLElement | null;
 let _statusTextEl: HTMLElement | null;
 
 // ==================== Public API ====================
-
-/**
- * Return a character dialogue line for the current dark-mode & active state.
- * Used by the controller's refreshDarkModeUi to update the status text.
- */
-function getDialogueLine(themeId: ThemeId, darkMode: boolean, active: boolean): string {
-  const useArisVoice = themeId === 'aris' || (themeId === 'custom' && darkMode);
-  if (active) {
-    return useArisVoice ? randomLine(RISU_WORKING_LINES) : randomLine(TOKI_WORKING_LINES);
-  }
-  return useArisVoice ? randomLine(RISU_IDLE_LINES) : randomLine(TOKI_IDLE_LINES);
-}
 
 function getConfiguredAvatarSource(active: boolean): string {
   const snapshot = readAppSettingsSnapshot();
@@ -104,7 +66,7 @@ export function initTokiAvatar(container: HTMLElement, deps: AvatarUIDeps): void
   // Set initial dialogue
   const initStatusText = document.getElementById('toki-status-text');
   if (initStatusText) {
-    initStatusText.textContent = getDialogueLine(initialSnapshot.themeId, initialSnapshot.darkMode, false);
+    initStatusText.textContent = getAvatarDialogueLine(initialSnapshot.themeId, initialSnapshot.darkMode, false);
   }
 
   // Right-click to switch avatar
@@ -299,7 +261,7 @@ export function setTokiActive(active: boolean): void {
     if (statusIcon) statusIcon.textContent = '✨';
     loadTokiImage(getConfiguredAvatarSource(true));
     if (statusText) {
-      statusText.textContent = getDialogueLine(themeId, darkMode, true);
+      statusText.textContent = getAvatarDialogueLine(themeId, darkMode, true);
     }
   } else if (!active && tokiActive) {
     tokiActive = false;
@@ -308,7 +270,7 @@ export function setTokiActive(active: boolean): void {
     if (statusIcon) statusIcon.textContent = '💤';
     loadTokiImage(getConfiguredAvatarSource(false));
     if (statusText) {
-      statusText.textContent = getDialogueLine(themeId, darkMode, false);
+      statusText.textContent = getAvatarDialogueLine(themeId, darkMode, false);
     }
   }
 }
@@ -321,7 +283,7 @@ export function refreshAvatarForDarkMode(darkMode: boolean): void {
   const snapshot = readAppSettingsSnapshot();
   const statusText = document.getElementById('toki-status-text');
   if (statusText) {
-    statusText.textContent = getDialogueLine(snapshot.themeId, darkMode, tokiActive);
+    statusText.textContent = getAvatarDialogueLine(snapshot.themeId, darkMode, tokiActive);
   }
 
   if (tokiImg) {

@@ -2,6 +2,7 @@ import PreviewEngine from '../lib/preview-engine';
 import { readAppSettingsSnapshot, subscribeToAppSettings } from '../lib/app-settings';
 import type { AppSettingsSnapshot } from '../lib/app-settings';
 import { getAvatarAssetsForTheme } from '../lib/avatar';
+import { getAvatarDialogueLine } from '../lib/avatar-dialogue';
 import { createDirectTerminalChatSession } from '../lib/chat-session';
 import { getTalkTitle, toMediaAsset } from '../lib/asset-runtime';
 import { applyTheme, defineAppMonacoTheme } from '../lib/dark-mode';
@@ -143,7 +144,11 @@ async function buildTerminalPopout(): Promise<void> {
     </div>
     <div class="popout-status" id="toki-status">
       <span id="toki-status-icon">💤</span>
-      <span id="toki-status-text">대기중~</span>
+      <span id="toki-status-text">${getAvatarDialogueLine(
+        currentSettingsSnapshot.themeId,
+        currentSettingsSnapshot.darkMode,
+        false,
+      )}</span>
     </div>
   `;
   body.appendChild(avatar);
@@ -286,6 +291,9 @@ function initPopoutSettingsSync(): () => void {
     if (_poImg) {
       _poImg.src = getPopoutAvatarSource(_popoutIsActive);
     }
+    if (_poText) {
+      _poText.textContent = getAvatarDialogueLine(nextSnapshot.themeId, nextSnapshot.darkMode, _popoutIsActive);
+    }
   });
   return disposeSettingsSubscription;
 }
@@ -312,12 +320,20 @@ function setPopoutActive(active: boolean): void {
     _poImg.src = getPopoutAvatarSource(true);
     _poStatus.classList.add('working');
     _poIcon.textContent = '✨';
-    _poText.textContent = '작업중~';
+    _poText.textContent = getAvatarDialogueLine(
+      currentSettingsSnapshot.themeId,
+      currentSettingsSnapshot.darkMode,
+      true,
+    );
   } else {
     _poImg.src = getPopoutAvatarSource(false);
     _poStatus.classList.remove('working');
     _poIcon.textContent = '💤';
-    _poText.textContent = '대기중~';
+    _poText.textContent = getAvatarDialogueLine(
+      currentSettingsSnapshot.themeId,
+      currentSettingsSnapshot.darkMode,
+      false,
+    );
   }
 }
 

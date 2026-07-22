@@ -14,6 +14,7 @@ describe('App shell', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it('renders the terminal launch menu entries', async () => {
@@ -318,6 +319,7 @@ describe('App shell', () => {
     resizer.element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientY: 600 }));
     expect(document.body.classList.contains('utility-resizing')).toBe(true);
     document.dispatchEvent(new MouseEvent('pointermove', { clientY: 540 }));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     await nextTick();
 
     expect(store.utilityHeight).toBe(310);
@@ -325,6 +327,65 @@ describe('App shell', () => {
 
     document.dispatchEvent(new MouseEvent('pointerup'));
     expect(document.body.classList.contains('utility-resizing')).toBe(false);
+  });
+
+  it('coalesces rapid pane drag events into one animation-frame layout update', async () => {
+    let frameCallback: FrameRequestCallback | null = null;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameCallback = callback;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+    store.setNavigatorWidth(280);
+
+    const resizer = wrapper.get('#navigator-resizer');
+    resizer.element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 280 }));
+    document.dispatchEvent(new MouseEvent('pointermove', { clientX: 300 }));
+    document.dispatchEvent(new MouseEvent('pointermove', { clientX: 340 }));
+
+    expect(store.navigatorWidth).toBe(280);
+    expect(document.body.classList.contains('workspace-resizing')).toBe(true);
+    (frameCallback as FrameRequestCallback | null)?.(0);
+    await nextTick();
+    expect(store.navigatorWidth).toBe(340);
+
+    document.dispatchEvent(new MouseEvent('pointerup'));
+    expect(document.body.classList.contains('workspace-resizing')).toBe(false);
+  });
+
+  it('resets saved panel visibility and dimensions from the View menu', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+    store.setNavigatorWidth(440);
+    store.setInspectorWidth(480);
+    store.setUtilityHeight(500);
+    store.navigatorVisible = false;
+    store.inspectorVisible = false;
+    store.avatarVisible = false;
+    store.referencesVisible = true;
+    store.activeUtility = null;
+
+    const viewMenu = wrapper.findAll('.menu-item').find((item) => item.text().includes('보기'))!;
+    await viewMenu.get('.menu-label').trigger('click');
+    const reset = wrapper
+      .findAll<HTMLButtonElement>('.menu-action')
+      .find((button) => button.text().includes('UI 배치 초기화'))!;
+    await reset.trigger('click');
+    await nextTick();
+
+    expect(store.navigatorWidth).toBe(280);
+    expect(store.inspectorWidth).toBe(320);
+    expect(store.utilityHeight).toBe(250);
+    expect(store.navigatorVisible).toBe(true);
+    expect(store.inspectorVisible).toBe(true);
+    expect(store.avatarVisible).toBe(true);
+    expect(store.referencesVisible).toBe(false);
+    expect(store.activeUtility).toBe('terminal');
+    expect(store.statusText).toContain('UI 배치');
   });
 
   it('uses icon-only background and reactive BGM/RP quick controls', async () => {

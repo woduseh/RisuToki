@@ -2,7 +2,7 @@
 import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { IconBook2, IconSettings } from '@tabler/icons-vue';
 import type { RecentItem } from '../lib/app-settings';
-import { TOKI_IDLE } from '../lib/avatar';
+import { TOKI_APP_ICON } from '../lib/avatar';
 
 interface MenuItem {
   label: string;
@@ -123,6 +123,8 @@ const menus = computed<{ id: string; label: string; items: MenuEntry[] }[]>(() =
       { label: '확대', shortcut: 'Ctrl++', action: 'zoom-in' },
       { label: '축소', shortcut: 'Ctrl+-', action: 'zoom-out' },
       { label: '기본 크기', shortcut: 'Ctrl+0', action: 'zoom-reset' },
+      { separator: true },
+      { label: 'UI 배치 초기화', action: 'reset-workspace-layout' },
       { separator: true },
       { label: '프리뷰', shortcut: 'F5', action: 'preview-test' },
       { separator: true },
@@ -321,7 +323,7 @@ defineExpose({ closeMenus });
 
 <template>
   <div id="menubar" role="menubar" aria-label="주 메뉴" @mouseleave="hoveringMenu = false">
-    <div class="app-brand" aria-label="RisuToki"><img :src="TOKI_IDLE" alt="" /><strong>RISUTOKI</strong></div>
+    <div class="app-brand" aria-label="RisuToki"><img :src="TOKI_APP_ICON" alt="" /><strong>RISUTOKI</strong></div>
     <div
       v-for="menu in menus"
       :key="menu.id"

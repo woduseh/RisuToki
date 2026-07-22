@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   initFormEditor,
+  createMiniMonaco,
   showLoreEditor,
   showRegexEditor,
   showRisupEditor,
@@ -13,12 +14,6 @@ import {
 } from './form-editor';
 import type { RisupFormTabInfo } from './risup-form-editor';
 
-vi.mock('./monaco-loader', () => ({
-  ensureBlueArchiveMonacoTheme: vi.fn(),
-}));
-vi.mock('./dark-mode', () => ({
-  defineDarkMonacoTheme: vi.fn(),
-}));
 vi.mock('./editor-activation', () => ({
   NON_MONACO_EDITOR_TAB_TYPES: new Set([
     '_booleanform',
@@ -83,7 +78,7 @@ vi.mock('./trigger-script-model', () => ({
 function createDeps(): FormEditorDeps {
   return {
     isMonacoReady: () => false,
-    isDarkMode: () => false,
+    getMonacoThemeId: () => 'risutoki-toki',
     getEditorInstance: () => null,
     setEditorInstance: vi.fn(),
     getFileData: () => ({}),
@@ -104,6 +99,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = '<div id="editor-container"></div>';
   disposeFormEditors();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('showBooleanEditor', () => {
@@ -148,6 +147,35 @@ describe('showBooleanEditor', () => {
     expect(control.getAttribute('aria-checked')).toBe('true');
     expect(control.disabled).toBe(true);
     expect(document.querySelector('.readonly-badge')?.textContent).toContain('읽기');
+  });
+});
+
+describe('createMiniMonaco', () => {
+  it('uses the active character theme supplied by the workspace controller', () => {
+    const create = vi.fn(() => ({
+      dispose: vi.fn(),
+      getValue: () => '',
+      getDomNode: () => null,
+      layout: vi.fn(),
+      updateOptions: vi.fn(),
+      onDidChangeModelContent: vi.fn(),
+    }));
+    Object.assign(window, { monaco: { editor: { create } } });
+    const deps = createDeps();
+    deps.isMonacoReady = () => true;
+    deps.getMonacoThemeId = () => 'risutoki-kisaki';
+    initFormEditor(deps);
+    const container = document.createElement('div');
+
+    createMiniMonaco(container, 'lore content', 'plaintext', vi.fn());
+
+    expect(create).toHaveBeenCalledWith(
+      container,
+      expect.objectContaining({
+        theme: 'risutoki-kisaki',
+        value: 'lore content',
+      }),
+    );
   });
 });
 
@@ -300,6 +328,48 @@ describe('form-editor read-only badge', () => {
     const badge = container.querySelector('.readonly-badge');
     expect(badge).not.toBeNull();
     expect(badge?.textContent).toContain('읽기');
+  });
+
+  it('grows the Replace editor upward and coalesces Monaco layouts by animation frame', () => {
+    let frameCallback: FrameRequestCallback | null = null;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameCallback = callback;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const deps = createDeps();
+    initFormEditor(deps);
+    const value = {
+      comment: '크기 조절',
+      type: 'editdisplay',
+      find: 'pattern',
+      replace: 'replacement',
+      flag: 'g',
+      ableFlag: true,
+    };
+
+    showRegexEditor({
+      id: 'regex_0',
+      label: '크기 조절',
+      language: '_regexform',
+      getValue: () => value,
+      setValue: vi.fn(),
+    });
+
+    const replaceEditor = document.querySelector<HTMLElement>('.form-monaco-resizable')!;
+    Object.defineProperty(replaceEditor, 'offsetHeight', { configurable: true, value: 100 });
+    const handle = document.querySelector<HTMLElement>('.form-monaco-resize-handle')!;
+    handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientY: 300 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientY: 250 }));
+    expect(replaceEditor.style.height).toBe('');
+    (frameCallback as FrameRequestCallback | null)?.(0);
+    expect(replaceEditor.style.height).toBe('150px');
+
+    document.dispatchEvent(new MouseEvent('mousemove', { clientY: 340 }));
+    (frameCallback as FrameRequestCallback | null)?.(0);
+    expect(replaceEditor.style.height).toBe('60px');
+    document.dispatchEvent(new MouseEvent('mouseup'));
+    expect(document.body.classList.contains('form-resizing')).toBe(false);
   });
 
   it('read-only badges should not use inline styles for badge appearance', () => {

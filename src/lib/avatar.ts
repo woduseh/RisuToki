@@ -1,12 +1,14 @@
 import { toMediaAsset } from './asset-runtime';
 import type { ThemeId } from './theme-registry';
 
-// Built-in avatar asset paths
-export const RISU_IDLE = toMediaAsset('icon_risu.png');
-export const RISU_DANCING = toMediaAsset('Dancing_risu.gif');
-export const TOKI_IDLE = toMediaAsset('icon.png');
+// Keep the compact app mark separate from the full-body terminal avatar.
+export const TOKI_APP_ICON = toMediaAsset('icon.png');
 export const TOKI_CUTE = toMediaAsset('toki-cute.gif');
-export const TOKI_DANCING = toMediaAsset('Dancing_toki.gif');
+
+const TOKI_IDLE = toMediaAsset('avatar-toki-idle.webp');
+const TOKI_WORKING = toMediaAsset('avatar-toki-working.webp');
+const ARIS_IDLE = toMediaAsset('avatar-aris-idle.webp');
+const ARIS_WORKING = toMediaAsset('avatar-aris-working.webp');
 
 export interface AvatarAssetPair {
   idle: string;
@@ -14,16 +16,16 @@ export interface AvatarAssetPair {
 }
 
 const CHARACTER_AVATARS: Partial<Record<ThemeId, AvatarAssetPair>> = {
-  toki: { idle: TOKI_IDLE, working: TOKI_DANCING },
-  aris: { idle: RISU_IDLE, working: RISU_DANCING },
-  kei: { idle: toMediaAsset('avatar-kei-idle.gif'), working: toMediaAsset('avatar-kei-working.gif') },
-  yuzu: { idle: toMediaAsset('avatar-yuzu-idle.gif'), working: toMediaAsset('avatar-yuzu-working.gif') },
-  midori: { idle: toMediaAsset('avatar-midori-idle.gif'), working: toMediaAsset('avatar-midori-working.gif') },
-  momoi: { idle: toMediaAsset('avatar-momoi-idle.gif'), working: toMediaAsset('avatar-momoi-working.gif') },
-  yuuka: { idle: toMediaAsset('avatar-yuuka-idle.gif'), working: toMediaAsset('avatar-yuuka-working.gif') },
-  hina: { idle: toMediaAsset('avatar-hina-idle.gif'), working: toMediaAsset('avatar-hina-working.gif') },
-  mika: { idle: toMediaAsset('avatar-mika-idle.gif'), working: toMediaAsset('avatar-mika-working.gif') },
-  kisaki: { idle: toMediaAsset('avatar-kisaki-idle.gif'), working: toMediaAsset('avatar-kisaki-working.gif') },
+  toki: { idle: TOKI_IDLE, working: TOKI_WORKING },
+  aris: { idle: ARIS_IDLE, working: ARIS_WORKING },
+  kei: { idle: toMediaAsset('avatar-kei-idle.webp'), working: toMediaAsset('avatar-kei-working.webp') },
+  yuzu: { idle: toMediaAsset('avatar-yuzu-idle.webp'), working: toMediaAsset('avatar-yuzu-working.webp') },
+  midori: { idle: toMediaAsset('avatar-midori-idle.webp'), working: toMediaAsset('avatar-midori-working.webp') },
+  momoi: { idle: toMediaAsset('avatar-momoi-idle.webp'), working: toMediaAsset('avatar-momoi-working.webp') },
+  yuuka: { idle: toMediaAsset('avatar-yuuka-idle.webp'), working: toMediaAsset('avatar-yuuka-working.webp') },
+  hina: { idle: toMediaAsset('avatar-hina-idle.webp'), working: toMediaAsset('avatar-hina-working.webp') },
+  mika: { idle: toMediaAsset('avatar-mika-idle.webp'), working: toMediaAsset('avatar-mika-working.webp') },
+  kisaki: { idle: toMediaAsset('avatar-kisaki-idle.webp'), working: toMediaAsset('avatar-kisaki-working.webp') },
 };
 
 export function getAvatarAssetsForTheme(themeId: ThemeId, darkMode: boolean): AvatarAssetPair {
@@ -47,13 +49,13 @@ export function getBuiltInAvatarOptions(): Array<{ id: string; label: string; as
 
 /**
  * Load an arbitrary image source into an avatar element.
- * Forces GIF reload so the animation restarts from frame 1.
+ * Forces animated image reload so the animation restarts from frame 1.
  */
 export function loadAvatarImage(src: string, avatarEl: HTMLImageElement | null): void {
   if (!avatarEl) return;
-  if (src.endsWith('.gif')) {
+  if (/\.(?:gif|webp)(?:[?#].*)?$/i.test(src)) {
     avatarEl.src = '';
-    avatarEl.src = src + '?t=' + Date.now();
+    avatarEl.src = `${src}${src.includes('?') ? '&' : '?'}t=${Date.now()}`;
   } else {
     avatarEl.src = src;
   }

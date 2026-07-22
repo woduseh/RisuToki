@@ -18,6 +18,7 @@ body {
   --ui-selected-border: color-mix(in srgb, var(--accent) 42%, transparent);
   --ui-accent: var(--accent);
   --ui-accent-strong: color-mix(in srgb, var(--accent) 70%, #bffcf2 30%);
+  --ui-on-accent: #f8fafc;
   --ui-focus: var(--accent);
   --ui-danger: #fb7185;
   --ui-radius-sm: 9px;
@@ -37,6 +38,7 @@ body:not(.dark-mode) {
   --ui-text-muted: var(--text-secondary);
   --ui-text-faint: color-mix(in srgb, var(--text-secondary) 72%, transparent);
   --ui-border: color-mix(in srgb, var(--border-color) 64%, transparent);
+  --ui-on-accent: color-mix(in srgb, var(--text-highlight) 88%, #000 12%);
 }
 
 body[data-theme='aris'] {
@@ -183,7 +185,12 @@ body[data-theme='kisaki'] {
   grid-template-columns: 0 0 minmax(0, 1fr) 0 0;
   padding: 8px 10px 10px;
   overflow: hidden;
-  transition: grid-template-columns 0.18s ease;
+  transition:
+    grid-template-columns 0.18s ease,
+    margin-right 0.18s ease;
+}
+#app-body.references-open #workspace-shell {
+  margin-right: calc(clamp(320px, 28vw, 420px) + var(--ui-gap));
 }
 #app-body.navigator-open #workspace-shell {
   grid-template-columns: var(--navigator-width) var(--ui-gap) minmax(0, 1fr) 0 0;
@@ -193,6 +200,17 @@ body[data-theme='kisaki'] {
 }
 #app-body.navigator-open.inspector-open #workspace-shell {
   grid-template-columns: var(--navigator-width) var(--ui-gap) minmax(0, 1fr) var(--ui-gap) var(--inspector-width);
+}
+body.workspace-resizing {
+  user-select: none;
+}
+body.workspace-resizing #workspace-shell,
+body.workspace-resizing #context-inspector,
+body.workspace-resizing #workspace-navigator {
+  transition: none !important;
+}
+body.workspace-resizing iframe {
+  pointer-events: none;
 }
 #workspace-navigator,
 #context-inspector,
@@ -500,9 +518,6 @@ body[data-theme='kisaki'] {
 }
 #app-body.utility-open #reference-drawer {
   bottom: calc(var(--utility-height) + 20px);
-}
-#app-body.inspector-open.references-open #reference-drawer {
-  right: calc(var(--inspector-width) + var(--ui-gap) + 10px);
 }
 .reference-drawer-header {
   min-width: 0;
@@ -939,8 +954,8 @@ body .help-popup-overlay:not(.settings-overlay) .help-popup-header {
 }
 
 @media (max-width: 1179px) {
-  #app-body.inspector-open.references-open #reference-drawer {
-    right: 10px;
+  #app-body.references-open #workspace-shell {
+    margin-right: 0;
   }
 
   #app-body.inspector-open #workspace-shell,
