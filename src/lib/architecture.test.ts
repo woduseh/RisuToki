@@ -367,4 +367,15 @@ describe('packaged MCP runtime assets', () => {
     expect(packageJson.build?.files).toEqual(expect.arrayContaining(runtimeFiles));
     expect(packageJson.build?.asarUnpack).toEqual(expect.arrayContaining(runtimeFiles));
   });
+
+  it('ships compiled src runtime files without TypeScript, Vue, or test sources', () => {
+    const packagedFiles = packageJson.build?.files ?? [];
+    const srcPatterns = packagedFiles.filter((file) => file.startsWith('src/'));
+
+    expect(packagedFiles).toEqual(
+      expect.arrayContaining(['src/**/*.js', '!src/**/*.test.js', '!src/**/*.spec.js', 'src/rpack_map.bin']),
+    );
+    expect(packagedFiles).not.toContain('src/**/*');
+    expect(srcPatterns.some((file) => /\.(?:ts|tsx|vue)$/.test(file))).toBe(false);
+  });
 });

@@ -9,6 +9,21 @@
 
 ---
 
+## [1.16.2] - 2026-07-22
+
+### Changed
+
+- Aligned the declared Node.js support range and developer documentation with the installed Vite and ESLint runtime requirements.
+- Restricted packaged `src/` content to generated runtime JavaScript and `rpack_map.bin`, excluding TypeScript, Vue, and test sources from release archives.
+- Moved tracked temporary outputs and unrelated local authoring work out of the repository source tree while retaining local copies under the ignored `work/` directory.
+
+## [1.16.1] - 2026-07-22
+
+### Changed
+
+- Prioritized KISS over YAGNI and DRY for repository and executable artifact code, and limited defensive logic and tests to supported, reachable behavior and evidenced failures.
+- Scoped conditional-prompt validation to developer-defined meaningful combinations instead of hypothetical or unreachable state matrices.
+
 ## [1.16.0] - 2026-07-11
 
 ### Added

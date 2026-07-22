@@ -1,6 +1,6 @@
 {
   "name": "risutoki",
-  "version": "1.16.0",
+  "version": "1.16.2",
   "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
   "main": "main.js",
   "scripts": {
@@ -86,7 +86,7 @@
     "wait-on": "^9.0.4"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
   },
   "author": "toki",
   "build": {
@@ -129,7 +129,10 @@
       "toki-mcp-server.js",
       "tiktoken_bg.wasm",
       "glue.wasm",
-      "src/**/*",
+      "src/**/*.js",
+      "!src/**/*.test.js",
+      "!src/**/*.spec.js",
+      "src/rpack_map.bin",
       "assets/**/*",
       "guides/**/*",
       "resources/**/*",

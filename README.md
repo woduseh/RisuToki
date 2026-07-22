@@ -2,10 +2,10 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.15.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-1.16.2-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
-[![Node](https://img.shields.io/badge/Node-%3E%3D18-339933.svg)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/Node-20.19%2B%20%7C%2022.13%2B%20%7C%2024%2B-339933.svg)](https://nodejs.org/)
 
 ## What is RisuToki?
 
@@ -42,6 +42,8 @@ Grab the latest release from the [Releases](https://github.com/woduseh/RisuToki/
 - **RisuToki-x.x.x-portable.exe** — portable (no installation required)
 
 ### From Source (developers)
+
+Node.js 20.19+, 22.13+, or 24+ is required. The repository's `.node-version` pins Node 22.13 as the recommended CI-compatible baseline.
 
 ```bash
 git clone https://github.com/woduseh/RisuToki.git
@@ -83,7 +85,7 @@ npm run mcp:standalone -- --file C:\path\to\card.charx --allow-writes
 - `skills/project-workflow` — Project onboarding skill (`read_skill("project-workflow")`)
 - `CONTRIBUTING.md` — Change principles and validation procedures
 - `CHANGELOG.md` — Version-by-version change history
-- GitHub Actions `CI` — On push/PR: Ubuntu lint · typecheck · test + Windows Electron/Renderer build
+- GitHub Actions `CI` — On push/PR: Ubuntu lint · typecheck · test · MCP workflow replay + Windows Electron/Renderer build
 - GitHub Actions `Release` — On `v*` tag push: automated Windows build and release
 
 ---

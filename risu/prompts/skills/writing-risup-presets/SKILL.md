@@ -29,14 +29,14 @@ A preset owns reusable model/request behavior: prompt assembly, provider adaptat
 3. Use preview/apply for focused writes and `manage_items` for add, reorder, copy-as-text, import, or snippet workflows.
 4. For large restructuring, export/copy as text, preserve item header metadata, keep every CBS block self-contained within one item, then import and verify with `analyze_content` action `verify_risup_prompt_import` using the same source.
 5. Compare related presets with structured analysis and preserve justified provider-specific prefill or request behavior.
-6. Re-read changed items and validate order, imports, toggles, CBS, ranges, and request settings.
+6. Re-read changed items and validate the affected order, imports, toggles, CBS, ranges, and request settings.
 
 Chat item ranges must be intentional, non-overlapping when split, and cover the desired history. Assistant prefill belongs in a separate `plain`/`assistant`/`normal` item at the intended turn boundary; do not bury it in a system block. Provider-native prefill shapes may differ and must remain explicit.
 
-When renaming/removing toggles, discover all CBS references, update declarations and every use, search for the old name, and validate inactive branches. Use `writing-cbs-syntax` for exact expressions and `writing-risum-modules` only for module-pairing behavior.
+When renaming/removing toggles, discover all CBS references, update declarations and every use, search for the old name, and validate supported alternate branches. Use `writing-cbs-syntax` for exact expressions and `writing-risum-modules` only for module-pairing behavior.
 
 Load `risu/prompts/docs/PRESET_FIELDS.md` only for the complete field inventory. Use `prompt-preset-sync` for non-Mythos variants, `mythos-prompt-development` for Mythos design, and `mythos-prompt-maintenance` for Mythos drift/application.
 
 ## Validation
 
-Verify item count/type/order, `formatingOrder` coverage, CBS balance, toggle/UI names, chat ranges, prefill role, module IDs, structured-output compatibility, sampling/model intent, and import round-trip fidelity. State any granular fallback reason.
+For affected supported surfaces, verify item count/type/order, `formatingOrder` coverage, CBS balance, toggle/UI names, chat ranges, prefill role, module IDs, structured-output compatibility, sampling/model intent, and import round-trip fidelity. State any granular fallback reason.
