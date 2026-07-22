@@ -100,8 +100,6 @@ import {
 import { showContextMenu } from '../lib/context-menu';
 import type { ContextMenuItem } from '../lib/context-menu';
 import { initPanelDragDrop as _initPanelDragDrop } from '../lib/panel-drag';
-import { initializeTerminalUi, shouldTreatTerminalDataAsActivity, type TerminalUiHandle } from '../lib/terminal-ui';
-import { TerminalSessionContext } from '../lib/terminal-session-context';
 import {
   applySelectedChoice,
   cleanTuiOutput,
@@ -129,6 +127,7 @@ import {
 import type { FileActionDeps } from '../lib/file-actions';
 import { runStartupSessionRecovery } from './session-recovery-controller';
 import { createProjectWorkspaceController } from './project-workspace-controller';
+import { createTerminalSessionsController, type TerminalSessionUi } from './terminal-sessions-controller';
 import {
   stringifyStringArray,
   buildRefsSidebar as _buildRefsSidebar,
@@ -278,6 +277,18 @@ const chatSession = createBufferedTerminalChatSession({
   stripAnsi,
 });
 
+const terminalSessions = createTerminalSessionsController({
+  api: window.tokiAPI,
+  getTheme: () => getTheme(themeId, customTheme).terminal,
+  onActivity: handleTerminalDataForBgm,
+  onActiveTerminalData: (data) => {
+    if (isChatMode()) onChatData(data);
+    feedBgBuffer(data);
+  },
+  setActive: setTokiActive,
+  setStatus,
+});
+
 // Form tab types that use special editors (not Monaco)
 const FORM_TAB_TYPES = NON_MONACO_EDITOR_TAB_TYPES;
 
@@ -365,7 +376,7 @@ function saveLayout(): void {
 const layoutManager = createLayoutManager({
   onRefit: () => {
     if (editorInstance) editorInstance.layout();
-    if (fitAddon && term) fitAddon.fit();
+    terminalSessions.fit();
   },
   onStatus: (message) => setStatus(message),
   saveState: saveLayout,
@@ -2254,198 +2265,6 @@ function restoreBackup(tabId: string, backupIdx: number): void {
   setStatus(`백업 v${backupIdx + 1} 복원됨 (${formatBackupTime(backup.time)})`);
 }
 
-// ==================== Terminal (xterm.js + node-pty) ====================
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- xterm.js types would need additional imports
-let term: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- xterm.js FitAddon type
-let fitAddon: any = null;
-
-interface TerminalSessionUi {
-  id: string;
-  name: string;
-  container: HTMLElement;
-  context: TerminalSessionContext;
-  ui: TerminalUiHandle | null;
-}
-
-const terminalSessions = new Map<string, TerminalSessionUi>();
-let activeTerminalSessionId: string | null = null;
-const fallbackTerminalSession = new TerminalSessionContext();
-
-function getActiveTerminalSession(): TerminalSessionUi | null {
-  return activeTerminalSessionId ? terminalSessions.get(activeTerminalSessionId) || null : null;
-}
-
-function getActiveTerminalContext(): TerminalSessionContext {
-  return getActiveTerminalSession()?.context || fallbackTerminalSession;
-}
-
-function syncActiveTerminalHandles(): void {
-  const active = getActiveTerminalSession();
-  term = active?.ui?.term || null;
-  fitAddon = active?.ui?.fitAddon || null;
-}
-
-function renderTerminalTabs(): void {
-  const tabs = document.getElementById('terminal-tabs');
-  if (!tabs) return;
-  tabs.innerHTML = '';
-
-  for (const session of terminalSessions.values()) {
-    const tab = document.createElement('div');
-    tab.className = `terminal-tab${session.id === activeTerminalSessionId ? ' active' : ''}`;
-    tab.setAttribute('role', 'tab');
-    tab.setAttribute('aria-selected', String(session.id === activeTerminalSessionId));
-    tab.tabIndex = 0;
-    tab.title = session.name;
-    tab.addEventListener('click', () => setActiveTerminalSession(session.id));
-    tab.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        setActiveTerminalSession(session.id);
-      }
-    });
-
-    const label = document.createElement('span');
-    label.className = 'terminal-tab-label';
-    label.textContent = session.name;
-    tab.appendChild(label);
-
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'terminal-tab-close';
-    close.title = '터미널 탭 닫기';
-    close.setAttribute('aria-label', `${session.name} 탭 닫기`);
-    close.textContent = '×';
-    close.addEventListener('click', (event) => {
-      event.stopPropagation();
-      void closeTerminalSession(session.id);
-    });
-    tab.appendChild(close);
-    tabs.appendChild(tab);
-  }
-
-  const add = document.createElement('button');
-  add.type = 'button';
-  add.className = 'terminal-tab-add';
-  add.title = '새 터미널';
-  add.setAttribute('aria-label', '새 터미널');
-  add.textContent = '+';
-  add.addEventListener('click', () => {
-    void createTerminalSession('Shell');
-  });
-  tabs.appendChild(add);
-}
-
-function setActiveTerminalSession(sessionId: string): void {
-  if (!terminalSessions.has(sessionId)) return;
-  activeTerminalSessionId = sessionId;
-  for (const session of terminalSessions.values()) {
-    session.container.classList.toggle('active', session.id === sessionId);
-  }
-  syncActiveTerminalHandles();
-  renderTerminalTabs();
-  const cwd = getActiveTerminalContext().cwd;
-  if (cwd) void window.tokiAPI.setTerminalCwd(cwd);
-  if (fitAddon && term) {
-    window.setTimeout(() => fitAddon.fit(), 20);
-  }
-}
-
-async function closeTerminalSession(sessionId: string): Promise<void> {
-  const session = terminalSessions.get(sessionId);
-  if (!session) return;
-  await window.tokiAPI.terminalStopSession(session.id);
-  session.ui?.dispose();
-  session.container.remove();
-  terminalSessions.delete(session.id);
-
-  if (activeTerminalSessionId === session.id) {
-    activeTerminalSessionId = terminalSessions.keys().next().value || null;
-  }
-
-  if (!activeTerminalSessionId) {
-    await createTerminalSession('Shell');
-    return;
-  }
-
-  setActiveTerminalSession(activeTerminalSessionId);
-}
-
-async function createTerminalSession(name = 'Shell'): Promise<TerminalSessionUi> {
-  const root = document.getElementById('terminal-container')!;
-  const info = await window.tokiAPI.terminalNewSession(name);
-  const sessionContainer = document.createElement('div');
-  sessionContainer.className = 'terminal-session';
-  sessionContainer.dataset.sessionId = info.id;
-  root.appendChild(sessionContainer);
-
-  const session: TerminalSessionUi = {
-    id: info.id,
-    name: info.name,
-    container: sessionContainer,
-    context: new TerminalSessionContext(),
-    ui: null,
-  };
-  terminalSessions.set(session.id, session);
-  setActiveTerminalSession(session.id);
-
-  const terminalUi = await initializeTerminalUi({
-    api: {
-      onTerminalData: (callback) =>
-        window.tokiAPI.onTerminalDataSession((sessionId, data) => {
-          if (sessionId === session.id) callback(data);
-        }),
-      onTerminalExit: (callback) =>
-        window.tokiAPI.onTerminalExitSession((sessionId) => {
-          if (sessionId === session.id) callback();
-        }),
-      onTerminalStatus: (callback) =>
-        window.tokiAPI.onTerminalStatusSession((sessionId, event) => {
-          if (sessionId === session.id) callback(event);
-        }),
-      terminalInput: (data) => window.tokiAPI.terminalInputSession(session.id, data),
-      terminalIsRunning: () => window.tokiAPI.terminalIsSessionRunning(session.id),
-      terminalResize: (cols, rows) => window.tokiAPI.terminalResizeSession(session.id, cols, rows),
-      terminalStart: (cols, rows) => window.tokiAPI.terminalStartSession(session.id, cols, rows, session.name),
-    },
-    container: session.container,
-    onActivity: () => handleTerminalDataForBgm(),
-    onTerminalData: (data) => {
-      if (session.id !== activeTerminalSessionId) return;
-      if (isChatMode()) onChatData(data);
-      feedBgBuffer(data);
-    },
-    onUserInput: (data) => {
-      lastUserInputTime = Date.now();
-      const prevCwd = session.context.cwd;
-      session.context.feedInput(data);
-      if (session.id === activeTerminalSessionId && session.context.cwd !== prevCwd) {
-        window.tokiAPI.setTerminalCwd(session.context.cwd);
-      }
-    },
-    preserveAmdLoader: true,
-    rightClickSelectsWord: true,
-    setActive: setTokiActive,
-    shouldActivateOnData: () => shouldTreatTerminalDataAsActivity(lastUserInputTime),
-    theme: getTheme(themeId, customTheme).terminal,
-    writeStatusToTerminal: true,
-  });
-
-  session.ui = terminalUi;
-  if (session.id === activeTerminalSessionId) {
-    syncActiveTerminalHandles();
-  }
-  return session;
-}
-
-async function initTerminal(): Promise<void> {
-  document.getElementById('terminal-container')!.innerHTML = '';
-  terminalSessions.clear();
-  activeTerminalSessionId = null;
-  await createTerminalSession('Shell');
-}
-
 // ==================== Image Viewer ====================
 function openImageTab(assetPath: string, fileName: string): void {
   const tabId = `img_${assetPath}`;
@@ -2539,23 +2358,6 @@ function moveRefs(pos: PanelPosition): void {
 
 function resetLayout(): void {
   layoutManager.resetLayout();
-}
-
-async function restartTerminal(): Promise<void> {
-  const active = getActiveTerminalSession();
-  if (!active?.ui) return;
-  await window.tokiAPI.terminalStopSession(active.id);
-  // Wait for pty to fully terminate before starting a new one
-  await new Promise((r) => setTimeout(r, 200));
-  active.ui.term.clear();
-  active.context.reset();
-  const restarted = await window.tokiAPI.terminalStartSession(
-    active.id,
-    active.ui.term.cols,
-    active.ui.term.rows,
-    active.name,
-  );
-  setStatus(restarted ? '터미널 재시작됨' : '터미널 재시작 실패');
 }
 
 // ==================== Actions ====================
@@ -2767,20 +2569,12 @@ async function handleReassembleProjectDocument(): Promise<void> {
 
 // Trigger script text helpers are in ./trigger-script-utils.ts
 
-function sendTerminalInputToSession(sessionId: string | null | undefined, text: string): void {
-  const targetId = sessionId || activeTerminalSessionId;
-  if (!targetId) return;
-  window.tokiAPI.terminalInputSession(targetId, text);
-}
-
 async function createAssistantTerminalSession(name: string): Promise<TerminalSessionUi> {
-  const session = await createTerminalSession(name);
-  setActiveTerminalSession(session.id);
-  return session;
+  return terminalSessions.createSession(name);
 }
 
 function getAssistantDeps(sessionId?: string) {
-  const session = sessionId ? terminalSessions.get(sessionId) || null : getActiveTerminalSession();
+  const session = sessionId ? terminalSessions.getSession(sessionId) : terminalSessions.getActiveSession();
   return {
     rpMode,
     rpCustomText,
@@ -2794,7 +2588,7 @@ function getAssistantDeps(sessionId?: string) {
     cleanupAgentsMd: () => window.tokiAPI.cleanupAgentsMd(),
     writeSystemPrompt: (content: string) => window.tokiAPI.writeSystemPrompt(content),
     writeAgentsMd: (content: string, projectRoot?: string | null) => window.tokiAPI.writeAgentsMd(content, projectRoot),
-    terminalInput: (text: string) => sendTerminalInputToSession(session?.id, text),
+    terminalInput: (text: string) => terminalSessions.sendInput(text, session?.id),
     setStatus,
     navigatorLike: window.navigator,
     projectRoot: currentProjectPath || session?.context.cwd || null,
@@ -2850,7 +2644,7 @@ function initResizers(): void {
         avatarResizer.classList.remove('active');
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-        if (fitAddon && term) fitAddon.fit();
+        terminalSessions.fit();
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
@@ -2866,7 +2660,7 @@ function getThemeUiDeps() {
   return {
     getEditorInstance: () => editorInstance as { updateOptions(opts: unknown): void } | null,
     getFormEditors: () => getFormEditors() as Array<{ updateOptions(opts: unknown): void }>,
-    getTerminal: () => term as { options: { theme: unknown } } | null,
+    getTerminal: () => terminalSessions.getTerminal() as { options: { theme: unknown } } | null,
   };
 }
 
@@ -2898,9 +2692,6 @@ function refreshThemeUi(): void {
 
 // ==================== BGM (Terminal Response Music) ====================
 // BGM UI initialization is in ./settings-handlers.ts
-
-// Echo filter: ignore terminal data within 300ms of user input
-let lastUserInputTime = 0;
 
 // Help popup and syntax reference are now in '../lib/help-popup'
 
@@ -3117,13 +2908,13 @@ function getPopoutDeps() {
     createOrSwitchEditor,
     tabMgr,
     fitTerminal: () => {
-      if (fitAddon && term) fitAddon.fit();
+      terminalSessions.fit();
     },
   };
 }
 
 function popOutPanel(panelId: string, requestId: string | null = null): Promise<void> {
-  const effectiveRequestId = panelId === 'terminal' ? activeTerminalSessionId || requestId : requestId;
+  const effectiveRequestId = panelId === 'terminal' ? terminalSessions.activeSessionId || requestId : requestId;
   return _popOutPanel(panelId, getPopoutDeps() as unknown as PopoutDeps, effectiveRequestId);
 }
 
@@ -3426,9 +3217,9 @@ export async function initMainRenderer(): Promise<void> {
     'codex-start': () => handleCodexStart(),
     'antigravity-start': () => handleAntigravityStart(),
     'terminal-clear': () => {
-      if (term) term.clear();
+      terminalSessions.clearActiveTerminal();
     },
-    'terminal-restart': () => restartTerminal(),
+    'terminal-restart': () => terminalSessions.restart(),
 
     // Settings & buttons (now handled by Vue template @click)
     settings: () => showSettingsPopup(),
@@ -3540,10 +3331,10 @@ export async function initMainRenderer(): Promise<void> {
   initChatModeUi(document.getElementById('terminal-area')!, {
     chatSession,
     fitTerminal: () => {
-      if (fitAddon && term) setTimeout(() => fitAddon.fit(), 20);
+      terminalSessions.fit(20);
     },
-    isTerminalReady: () => !!term,
-    terminalInput: (text) => sendTerminalInputToSession(activeTerminalSessionId, text),
+    isTerminalReady: () => !!terminalSessions.getTerminal(),
+    terminalInput: (text) => terminalSessions.sendInput(text),
   });
   initRightManagerPanel({
     getFileData: () => fileData,
@@ -3625,9 +3416,7 @@ export async function initMainRenderer(): Promise<void> {
       delete layoutState._refsPosBefore;
     }
     rebuildLayout();
-    if (panelType === 'terminal' && fitAddon && term) {
-      setTimeout(() => fitAddon.fit(), 50);
-    }
+    if (panelType === 'terminal') terminalSessions.fit(50);
     updatePopoutButtons();
     const panelName =
       panelType === 'sidebar'
@@ -3781,7 +3570,7 @@ export async function initMainRenderer(): Promise<void> {
 
   // Load Terminal (async, non-blocking)
   try {
-    await initTerminal();
+    await terminalSessions.init();
   } catch (err) {
     console.error('[init] Terminal load failed:', err);
     document.getElementById('terminal-container')!.innerHTML =

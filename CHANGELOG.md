@@ -9,6 +9,12 @@
 
 ---
 
+## [1.19.0] - 2026-07-22
+
+### Changed
+
+- Extracted renderer terminal session creation, activation, tab rendering, CWD tracking, input routing, and restart lifecycle from the main controller into a dedicated, unit-tested controller.
+
 ## [1.18.0] - 2026-07-22
 
 ### Changed

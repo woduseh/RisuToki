@@ -20,6 +20,7 @@ This map is for source navigation. It is not a full API reference.
 
 - `src/app/controller.ts` — main-window integration and UI orchestration
 - `src/app/project-workspace-controller.ts` — project-folder raw file tabs, validation, debounced writes, reloads, and sidebar rendering
+- `src/app/terminal-sessions-controller.ts` — renderer terminal session lifecycle, active-session routing, tabs, CWD tracking, and xterm handles
 - `src/popout/controller.ts` — popout orchestration
 - `src/components/` — Vue UI components
 - `src/stores/` — shared renderer stores
