@@ -126,7 +126,8 @@ This map is for source navigation. It is not a full API reference.
 
 ## Editor, layout, and sidebar UI
 
-- `src/lib/layout-manager.ts` — panel layout orchestration
+- `src/lib/workspace-model.ts` — file-type workspace definitions plus navigator and contextual inspector selection contracts
+- `src/lib/workspace-layout-state.ts` — normalized/persisted V2 navigator, inspector, reference-drawer, and terminal-shelf layout state, including one-way legacy-state migration
 - `src/lib/tab-manager.ts` — tab lifecycle management
 - `src/lib/indexed-tabs.ts` — indexed tab helpers
 - `src/lib/list-reorder.ts` — shared flat-list reorder helper for structured editors
@@ -134,8 +135,8 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/charx-sidebar-fields.ts` — charx sidebar field model
 - `src/lib/sidebar-builder.ts` — sidebar tree construction
 - `src/lib/sidebar-actions.ts` — sidebar mutations/actions
-- `src/lib/sidebar-dnd.ts` — sidebar drag-and-drop behavior
-- `src/lib/right-manager-panel.ts` — RisuMari-style `.charx`/`.risum` lorebook and asset manager panels rendered as independent movable layout panels
+- `src/lib/sidebar-dnd.ts` — document-item drag-and-drop behavior for lorebook, regex, Lua/CSS, greetings, and assets; independent from workspace panel placement
+- `src/lib/right-manager-panel.ts` — contextual lorebook, asset-tree, and thumbnail navigator rendering inside the unified shell
 - `src/lib/sidebar-refs.ts` — sidebar reference integration
 - `src/lib/editor-activation.ts` — editor focus/activation state
 - `src/lib/editor-dirty-fields.ts` — dirty-field tracking
@@ -147,7 +148,6 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/switch-control.ts` — shared accessible boolean switch control
 - `src/lib/markdown-preview.ts` — sanitized rendered preview for Markdown guide and project tabs
 - `src/lib/status-bar.ts` — status-bar rendering/state
-- `src/lib/panel-drag.ts` — panel drag/resize logic
 - `src/lib/image-viewer.ts` — image preview helpers
 - `src/lib/monaco-loader.ts` — Monaco bootstrap
 - `src/lib/dark-mode.ts` — dark-mode state
@@ -180,8 +180,7 @@ This map is for source navigation. It is not a full API reference.
 ## Popouts, references, and guide material
 
 - `src/lib/popout-manager.ts` — popout creation/lifecycle
-- `src/lib/popout-window.ts` — popout window helpers
-- `src/lib/popout-state.ts` — popout state model
+- `src/lib/popout-window.ts` — terminal/reference fixed-workspace popout coordination plus editor popout helpers
 - `src/lib/popout-payload-store.ts` — popout payload persistence
 - `src/lib/external-text-tab.ts` — external text tab handling
 - `src/lib/reference-item-registry.ts` — shared read-only reference item descriptors and visibility rules
@@ -195,6 +194,7 @@ This map is for source navigation. It is not a full API reference.
 
 ## Assets and media
 
+- `src/lib/asset-output-wizard.ts` — pure asset-filename analysis, exact-key output plan generation, and marked lorebook/globalNote block application
 - `src/lib/asset-manager.ts` — asset CRUD helpers, including batch delete and batch rename IPC for manager-panel multi-select workflows
 - `src/lib/asset-batch-rename.ts` — pure asset batch rename preview and conflict-planning helper
 - `src/lib/asset-runtime.ts` — asset runtime resolution

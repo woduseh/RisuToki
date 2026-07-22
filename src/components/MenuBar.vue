@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { IconBook2, IconSettings } from '@tabler/icons-vue';
 import type { RecentItem } from '../lib/app-settings';
+import { TOKI_IDLE } from '../lib/avatar';
 
 interface MenuItem {
   label: string;
@@ -25,6 +27,7 @@ type MenuEntry = MenuItem | MenuSeparator | SubMenu;
 const props = defineProps<{
   canPreviewCurrentFile?: boolean;
   recentItems?: RecentItem[];
+  referencesOpen?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -112,85 +115,10 @@ const menus = computed<{ id: string; label: string; items: MenuEntry[] }[]>(() =
     id: 'view',
     label: '보기',
     items: [
-      { label: '사이드바 토글', shortcut: 'Ctrl+B', action: 'toggle-sidebar' },
-      { label: '터미널 토글', shortcut: 'Ctrl+`', action: 'toggle-terminal' },
-      { label: '아바타 토글', action: 'toggle-avatar' },
-      { separator: true },
-      {
-        label: '항목 배치',
-        children: [
-          { label: '왼쪽 안쪽 (편집기 옆)', action: 'items-left' },
-          { label: '왼쪽 바깥쪽', action: 'items-far-left' },
-          { label: '오른쪽 안쪽 (편집기 옆)', action: 'items-right' },
-          { label: '오른쪽 바깥쪽', action: 'items-far-right' },
-          { label: '상단', action: 'items-top' },
-          { label: '하단', action: 'items-bottom' },
-        ],
-      },
-      {
-        label: '참고자료 배치',
-        children: [
-          { label: '사이드바', action: 'refs-sidebar' },
-          { label: '왼쪽 안쪽 (편집기 옆)', action: 'refs-left' },
-          { label: '왼쪽 바깥쪽', action: 'refs-far-left' },
-          { label: '오른쪽 안쪽 (편집기 옆)', action: 'refs-right' },
-          { label: '오른쪽 바깥쪽', action: 'refs-far-right' },
-          { label: '상단', action: 'refs-top' },
-          { label: '하단', action: 'refs-bottom' },
-        ],
-      },
-      {
-        label: '터미널 배치',
-        children: [
-          { label: '하단', action: 'terminal-bottom' },
-          { label: '왼쪽 안쪽 (편집기 옆)', action: 'terminal-left' },
-          { label: '왼쪽 바깥쪽', action: 'terminal-far-left' },
-          { label: '오른쪽 안쪽 (편집기 옆)', action: 'terminal-right' },
-          { label: '오른쪽 바깥쪽', action: 'terminal-far-right' },
-          { label: '상단', action: 'terminal-top' },
-        ],
-      },
-      {
-        label: '로어북 관리자',
-        children: [
-          { label: '표시/숨김', action: 'toggle-lore-manager' },
-          { separator: true },
-          { label: '왼쪽 안쪽 (편집기 옆)', action: 'lore-manager-left' },
-          { label: '왼쪽 바깥쪽', action: 'lore-manager-far-left' },
-          { label: '오른쪽 안쪽 (편집기 옆)', action: 'lore-manager-right' },
-          { label: '오른쪽 바깥쪽', action: 'lore-manager-far-right' },
-          { label: '상단', action: 'lore-manager-top' },
-          { label: '하단', action: 'lore-manager-bottom' },
-        ],
-      },
-      {
-        label: '에셋 관리자',
-        children: [
-          { label: '표시/숨김', action: 'toggle-asset-manager' },
-          { separator: true },
-          { label: '왼쪽 안쪽 (편집기 옆)', action: 'asset-manager-left' },
-          { label: '왼쪽 바깥쪽', action: 'asset-manager-far-left' },
-          { label: '오른쪽 안쪽 (편집기 옆)', action: 'asset-manager-right' },
-          { label: '오른쪽 바깥쪽', action: 'asset-manager-far-right' },
-          { label: '상단', action: 'asset-manager-top' },
-          { label: '하단', action: 'asset-manager-bottom' },
-        ],
-      },
-      {
-        label: '프롬프트 관리자',
-        children: [
-          { label: '표시/숨김', action: 'toggle-prompt-manager' },
-          { separator: true },
-          { label: '왼쪽 안쪽 (편집기 옆)', action: 'prompt-manager-left' },
-          { label: '왼쪽 바깥쪽', action: 'prompt-manager-far-left' },
-          { label: '오른쪽 안쪽 (편집기 옆)', action: 'prompt-manager-right' },
-          { label: '오른쪽 바깥쪽', action: 'prompt-manager-far-right' },
-          { label: '상단', action: 'prompt-manager-top' },
-          { label: '하단', action: 'prompt-manager-bottom' },
-        ],
-      },
-      { separator: true },
-      { label: '레이아웃 초기화', action: 'layout-reset' },
+      { label: '탐색기 전환', shortcut: 'Ctrl+B', action: 'toggle-sidebar' },
+      { label: '참고자료 서랍 전환', action: 'toggle-references' },
+      { label: '터미널 표시 전환', shortcut: 'Ctrl+`', action: 'toggle-terminal' },
+      { label: '터미널 아바타 표시 전환', action: 'toggle-avatar' },
       { separator: true },
       { label: '확대', shortcut: 'Ctrl++', action: 'zoom-in' },
       { label: '축소', shortcut: 'Ctrl+-', action: 'zoom-out' },
@@ -393,6 +321,7 @@ defineExpose({ closeMenus });
 
 <template>
   <div id="menubar" role="menubar" aria-label="주 메뉴" @mouseleave="hoveringMenu = false">
+    <div class="app-brand" aria-label="RisuToki"><img :src="TOKI_IDLE" alt="" /><strong>RISUTOKI</strong></div>
     <div
       v-for="menu in menus"
       :key="menu.id"
@@ -478,8 +407,21 @@ defineExpose({ closeMenus });
       </div>
     </div>
     <div class="menu-item">
-      <button type="button" class="menu-label" role="menuitem" @click="onSettingsClick">설정</button>
+      <button type="button" class="menu-label menu-settings" role="menuitem" @click="onSettingsClick">
+        <IconSettings :size="16" /> 설정
+      </button>
     </div>
+    <button
+      id="btn-references-toggle"
+      type="button"
+      class="menu-label menu-quick-action"
+      :class="{ active: props.referencesOpen }"
+      role="menuitem"
+      :aria-pressed="props.referencesOpen"
+      @click.stop="emit('action', 'toggle-references')"
+    >
+      <IconBook2 :size="16" /> <span>참고자료</span>
+    </button>
     <span style="flex: 1; -webkit-app-region: drag"></span>
     <slot name="file-label"></slot>
   </div>

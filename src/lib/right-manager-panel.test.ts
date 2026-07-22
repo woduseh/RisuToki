@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const sortableCreate = vi.hoisted(() => vi.fn());
+vi.mock('sortablejs', () => ({ default: { create: sortableCreate } }));
+
 import { initRightManagerPanel, renderRightManagerPanel, type RightManagerPanelDeps } from './right-manager-panel';
 
 function makeDeps(overrides: Partial<RightManagerPanelDeps> = {}): RightManagerPanelDeps {
@@ -59,7 +63,40 @@ function flushTimers(): Promise<void> {
 
 describe('right-manager-panel', () => {
   beforeEach(() => {
+    sortableCreate.mockReset();
+    sortableCreate.mockImplementation(() => ({ destroy: vi.fn() }));
     document.body.innerHTML = '<div id="lore-manager-panel"></div><div id="asset-manager-panel"></div>';
+  });
+
+  it('connects flat lorebook drag completion to the document reorder callback', () => {
+    const reorderLorebook = vi.fn();
+    const deps = makeDeps({
+      getFileData: () => ({
+        lorebook: [
+          { comment: 'First', key: 'first', content: '' },
+          { comment: 'Second', key: 'second', content: '' },
+          { comment: 'Third', key: 'third', content: '' },
+        ],
+      }),
+      reorderLorebook,
+    });
+    initRightManagerPanel(deps);
+    clearLoreSearch();
+
+    const list = document.querySelector<HTMLElement>('.manager-lore-list-sortable')!;
+    const first = list.querySelector<HTMLElement>('[data-dnd-idx="0"]')!;
+    list.appendChild(first);
+    const sortableCall = sortableCreate.mock.calls.find(([element]) => element === list)!;
+    const options = sortableCall[1] as { onEnd: (event: unknown) => void };
+
+    options.onEnd({ oldIndex: 0, newIndex: 2, item: first, from: list, to: list });
+
+    expect(reorderLorebook).toHaveBeenCalledWith(0, 2, '');
+    expect([...list.querySelectorAll<HTMLElement>('[data-dnd-idx]')].map((row) => row.dataset.dndIdx)).toEqual([
+      '0',
+      '1',
+      '2',
+    ]);
   });
 
   it('renders lorebook folders and opens entries through the provided callback', () => {
@@ -142,6 +179,8 @@ describe('right-manager-panel', () => {
   it('renders asset thumbnails in the asset tab', async () => {
     const deps = makeDeps();
     initRightManagerPanel(deps);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    document.querySelector<HTMLButtonElement>('button[aria-label="썸네일 보기"]')!.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(deps.getAssetList).toHaveBeenCalled();
@@ -228,6 +267,8 @@ describe('right-manager-panel', () => {
 
     expect(document.getElementById('asset-manager-panel')?.textContent).toContain('current.webp');
     expect(document.getElementById('asset-manager-panel')?.textContent).not.toContain('stale.webp');
+    document.querySelector<HTMLButtonElement>('button[aria-label="썸네일 보기"]')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const card = document.querySelector<HTMLElement>('.manager-asset-card')!;
     card.querySelector<HTMLButtonElement>('button[aria-label="이름 변경"]')!.click();
     const input = card.querySelector<HTMLInputElement>('.manager-inline-rename')!;
@@ -262,6 +303,8 @@ describe('right-manager-panel', () => {
       showConfirm,
     });
     initRightManagerPanel(deps);
+    await flushTimers();
+    document.querySelector<HTMLButtonElement>('button[aria-label="썸네일 보기"]')!.click();
     await flushTimers();
 
     let checks = document.querySelectorAll<HTMLInputElement>('#asset-manager-panel .manager-asset-check');

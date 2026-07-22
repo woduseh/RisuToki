@@ -52,7 +52,6 @@ export interface RightManagerPanelDeps {
   showConfirm: (msg: string) => Promise<boolean>;
   setStatus: (msg: string) => void;
   refresh: () => void;
-  afterRender?: () => void;
 }
 
 interface LoreFolderGroup {
@@ -73,6 +72,7 @@ const state = {
   loreSelected: new Set<number>(),
   assetQuery: '',
   assetGroup: 'all' as 'all' | 'icon' | 'other',
+  assetView: 'tree' as 'tree' | 'grid',
   assetSelected: new Set<string>(),
 };
 
@@ -637,6 +637,18 @@ async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement, 
     setButtonActive(button, state.assetGroup === key);
     groupBar.appendChild(button);
   }
+  const viewSpacer = el('span', 'manager-filter-spacer');
+  const treeView = makeToolbarButton('트리', '파일명 트리 보기', () => {
+    state.assetView = 'tree';
+    renderRightManagerPanel();
+  });
+  const gridView = makeToolbarButton('썸네일', '썸네일 보기', () => {
+    state.assetView = 'grid';
+    renderRightManagerPanel();
+  });
+  setButtonActive(treeView, state.assetView === 'tree');
+  setButtonActive(gridView, state.assetView === 'grid');
+  groupBar.append(viewSpacer, treeView, gridView);
   body.appendChild(groupBar);
 
   if (state.assetSelected.size > 0) {
@@ -657,21 +669,21 @@ async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement, 
     body.appendChild(selectedBar);
   }
 
-  const grid = el('div', 'manager-asset-grid');
-  grid.addEventListener('dragover', (event) => {
+  const assetHost = el('div', state.assetView === 'tree' ? 'manager-asset-tree' : 'manager-asset-grid');
+  assetHost.addEventListener('dragover', (event) => {
     event.preventDefault();
-    grid.classList.add('drag-over');
+    assetHost.classList.add('drag-over');
   });
-  grid.addEventListener('dragleave', () => grid.classList.remove('drag-over'));
-  grid.addEventListener('drop', (event) => {
+  assetHost.addEventListener('dragleave', () => assetHost.classList.remove('drag-over'));
+  assetHost.addEventListener('drop', (event) => {
     event.preventDefault();
-    grid.classList.remove('drag-over');
+    assetHost.classList.remove('drag-over');
     const folder = state.assetGroup === 'icon' ? 'icon' : 'other';
     void addDroppedAssetFiles(deps, event.dataTransfer?.files || null, folder);
   });
-  body.appendChild(grid);
+  body.appendChild(assetHost);
   const assets = await deps.getAssetList();
-  if (renderToken !== assetRenderToken || !grid.isConnected) return;
+  if (renderToken !== assetRenderToken || !assetHost.isConnected) return;
   const queryLower = state.assetQuery.trim().toLowerCase();
   const filtered = assets.filter((asset) => {
     const group = asset.path.split('/')[1] === 'icon' ? 'icon' : 'other';
@@ -680,10 +692,71 @@ async function renderAssetPanel(deps: RightManagerPanelDeps, body: HTMLElement, 
     return asset.path.toLowerCase().includes(queryLower);
   });
 
-  const cards = await Promise.all(filtered.map((asset) => createAssetCard(deps, asset)));
-  if (renderToken !== assetRenderToken || !grid.isConnected) return;
-  grid.append(...cards);
-  if (!filtered.length) grid.appendChild(el('div', 'right-manager-empty', '표시할 에셋이 없습니다.'));
+  if (state.assetView === 'tree') {
+    assetHost.appendChild(buildAssetFilenameTree(deps, filtered));
+  } else {
+    const cards = await Promise.all(filtered.map((asset) => createAssetCard(deps, asset)));
+    if (renderToken !== assetRenderToken || !assetHost.isConnected) return;
+    assetHost.append(...cards);
+  }
+  if (!filtered.length) assetHost.appendChild(el('div', 'right-manager-empty', '표시할 에셋이 없습니다.'));
+}
+
+interface AssetTreeNode {
+  children: Map<string, AssetTreeNode>;
+  assets: AssetListEntry[];
+}
+
+function buildAssetFilenameTree(deps: RightManagerPanelDeps, assets: AssetListEntry[]): HTMLElement {
+  const root: AssetTreeNode = { children: new Map(), assets: [] };
+  for (const asset of assets) {
+    const fileName = asset.path.split('/').pop() || asset.path;
+    const key = fileName.replace(/\.[^.]+$/, '');
+    const segments = key.split(/[_\-. ]+/).filter(Boolean);
+    let node = root;
+    for (const segment of segments.slice(0, -1)) {
+      const child = node.children.get(segment) || { children: new Map<string, AssetTreeNode>(), assets: [] };
+      node.children.set(segment, child);
+      node = child;
+    }
+    node.assets.push(asset);
+  }
+
+  const renderNode = (node: AssetTreeNode): HTMLElement => {
+    const container = el('div', 'asset-tree-children');
+    for (const [label, child] of [...node.children].sort(([a], [b]) => a.localeCompare(b))) {
+      const details = el('details', 'asset-tree-group') as HTMLDetailsElement;
+      details.open = true;
+      const summary = el('summary');
+      summary.append(el('span', 'asset-tree-folder-name', label), el('small', '', String(countAssetTree(child))));
+      details.append(summary, renderNode(child));
+      container.appendChild(details);
+    }
+    for (const asset of node.assets.sort((a, b) => a.path.localeCompare(b.path))) {
+      const fileName = asset.path.split('/').pop() || asset.path;
+      const row = el('button', 'asset-tree-file') as HTMLButtonElement;
+      row.type = 'button';
+      row.classList.toggle('selected', state.assetSelected.has(asset.path));
+      const check = el('input') as HTMLInputElement;
+      check.type = 'checkbox';
+      check.checked = state.assetSelected.has(asset.path);
+      check.addEventListener('click', (event) => {
+        event.stopPropagation();
+        toggleAssetSelection(asset.path, (event as MouseEvent).ctrlKey || (event as MouseEvent).metaKey);
+      });
+      row.append(check, el('span', '', fileName), el('small', '', `${Math.round(asset.size / 1024)} KB`));
+      row.addEventListener('click', () => deps.openImageTab(asset.path, fileName));
+      container.appendChild(row);
+    }
+    return container;
+  };
+  return renderNode(root);
+}
+
+function countAssetTree(node: AssetTreeNode): number {
+  let count = node.assets.length;
+  for (const child of node.children.values()) count += countAssetTree(child);
+  return count;
 }
 
 async function promptAssetBatchRenameMode(deps: RightManagerPanelDeps): Promise<AssetBatchRenameMode | null> {
@@ -900,5 +973,4 @@ export function renderRightManagerPanel(): void {
   if (assetRoot) {
     renderPanelShell(depsRef, assetRoot, '에셋 관리자', (body) => void renderAssetPanel(depsRef!, body, renderToken));
   }
-  depsRef.afterRender?.();
 }

@@ -1,7 +1,6 @@
 import { parseLuaSections, combineLuaSections, parseCssSections, combineCssSections } from '../lib/section-parser';
 import type { Section } from '../lib/section-parser';
 import type { Tab } from '../lib/tab-manager';
-import type { LayoutState, LayoutSlot, PanelPosition } from '../lib/layout-manager';
 import { registerActions } from '../lib/action-registry';
 import { useAppStore } from '../stores/app-store';
 import type { RpMode, CharxData, LorebookEntry, RegexEntry, ReferenceFile } from '../stores/app-store';
@@ -10,7 +9,6 @@ import {
   createFolderItem,
   createSectionHeader,
   updateSidebarActive as _updateSidebarActive,
-  initSidebarSplitResizer as _initSidebarSplitResizer,
   buildAssetsSidebar as _buildAssetsSidebar,
   createLoreEntryItem as _createLoreEntryItem,
 } from '../lib/sidebar-builder';
@@ -26,7 +24,6 @@ import {
   clearRecentItems,
   readAppSettingsSnapshot,
   readRecentItems,
-  readStoredLayoutState,
   removeRecentItem,
   subscribeToAppSettings,
   writeAutosaveDir,
@@ -34,12 +31,11 @@ import {
   writeAutosaveInterval,
   writeBgmEnabled,
   writeBgmPath,
-  writeLayoutState,
   writeMcpApprovalMode,
   writeRpCustomText,
   writeRpMode,
 } from '../lib/app-settings';
-import type { McpApprovalMode, RecentItem, RecentSourceFormat, StoredLayoutState } from '../lib/app-settings';
+import type { McpApprovalMode, RecentItem, RecentSourceFormat } from '../lib/app-settings';
 import { initTokiAvatar as initTokiAvatarUi, setTokiActive } from '../lib/avatar-ui';
 import { defineAppMonacoTheme } from '../lib/dark-mode';
 import { showImageViewer as renderImageViewer } from '../lib/image-viewer';
@@ -53,16 +49,13 @@ import { collectDirtyEditorFields } from '../lib/editor-dirty-fields';
 import { resolveCloseWindowAction } from '../lib/close-window-policy';
 import { getFolderRef, resolveLorebookFolderRef } from '../lib/lorebook-folders';
 import { TabManager } from '../lib/tab-manager';
-import { applyStoredLayoutState, createDefaultLayoutState, createLayoutManager, V_SLOTS } from '../lib/layout-manager';
 import { planMcpDataUpdate } from '../lib/mcp-data-update';
-import type { PopoutDeps } from '../lib/popout-window';
+import type { DockablePanelId, PopoutDeps } from '../lib/popout-window';
 import {
-  dockPanel as _dockPanel,
   isPanelPoppedOut,
   popOutEditorPanel as _popOutEditorPanel,
   popOutPanel as _popOutPanel,
   removePoppedOut,
-  updatePopoutButtons,
 } from '../lib/popout-window';
 import { showPreviewPanel as renderPreviewPanel } from '../lib/preview-panel';
 import { showMarkdownPreview } from '../lib/markdown-preview';
@@ -99,7 +92,6 @@ import {
 } from '../lib/dialog';
 import { showContextMenu } from '../lib/context-menu';
 import type { ContextMenuItem } from '../lib/context-menu';
-import { initPanelDragDrop as _initPanelDragDrop } from '../lib/panel-drag';
 import {
   applySelectedChoice,
   cleanTuiOutput,
@@ -312,6 +304,7 @@ const tabMgr = new TabManager(
     onClearEditor: () => {
       document.getElementById('editor-container')!.innerHTML = '<div class="empty-state">항목을 선택하세요</div>';
       editorInstance = null;
+      updateSidebarActive();
     },
     isPanelPoppedOut: (panelId) => isPanelPoppedOut(panelId),
     onPopOutTab: (tabId) => popOutEditorPanel(tabId),
@@ -346,41 +339,6 @@ initFormEditor({
   createBackup,
   showPrompt,
   buildSidebar,
-});
-
-const layoutState = createDefaultLayoutState();
-try {
-  applyStoredLayoutState(layoutState, readStoredLayoutState() as (StoredLayoutState & Partial<LayoutState>) | null);
-} catch (error) {
-  reportRuntimeError({
-    context: '레이아웃 상태 복원 실패',
-    error,
-    logPrefix: '[Layout]',
-    setStatus,
-  });
-}
-
-function saveLayout(): void {
-  try {
-    writeLayoutState(layoutState);
-  } catch (error) {
-    reportRuntimeError({
-      context: '레이아웃 상태 저장 실패',
-      error,
-      logPrefix: '[Layout]',
-      setStatus,
-    });
-  }
-}
-
-const layoutManager = createLayoutManager({
-  onRefit: () => {
-    if (editorInstance) editorInstance.layout();
-    terminalSessions.fit();
-  },
-  onStatus: (message) => setStatus(message),
-  saveState: saveLayout,
-  state: layoutState,
 });
 
 // ==================== MCP Confirm Handler ====================
@@ -1040,10 +998,13 @@ function getRefsSidebarDeps() {
   };
 }
 
-function buildRefsSidebar(): void {
-  const refsEl = document.getElementById('sidebar-refs');
+async function buildRefsSidebar(): Promise<void> {
+  // The unified workspace owns references in an independent drawer. Rendering
+  // directly into its canonical container also keeps recursive refreshes
+  // (add/remove/import) visible instead of rebuilding the parked legacy tree.
+  const refsEl = document.getElementById('refs-panel-content') ?? document.getElementById('sidebar-refs');
   if (!refsEl) return;
-  _buildRefsSidebar(refsEl, getRefsSidebarDeps() as unknown as Parameters<typeof _buildRefsSidebar>[1]);
+  await _buildRefsSidebar(refsEl, getRefsSidebarDeps() as unknown as Parameters<typeof _buildRefsSidebar>[1]);
 }
 
 function openRefTabById(tabId: string): void {
@@ -1151,6 +1112,14 @@ function buildRisupSidebar(tree: HTMLElement): void {
 
   for (const group of getVisibleRisupFieldGroups()) {
     const el = createTreeItem(group.label, group.icon, 0);
+    el.dataset.workspace =
+      group.id === 'basic'
+        ? 'basic'
+        : group.id === 'model-api'
+          ? 'model'
+          : ['parameters', 'sampling', 'thinking'].includes(group.id)
+            ? 'parameters'
+            : 'advanced';
     el.addEventListener('click', () => openRisupGroupTab(group.id));
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -1178,6 +1147,7 @@ function buildRisupSidebar(tree: HTMLElement): void {
 
   for (const item of getRisupSidebarExtraItems()) {
     const el = createTreeItem(item.label, item.icon, 0);
+    el.dataset.workspace = item.id === 'risup_prompt' ? 'prompts' : 'advanced';
     el.addEventListener('click', () => {
       tabMgr.openTab(
         item.id,
@@ -1201,7 +1171,31 @@ function buildRisupSidebar(tree: HTMLElement): void {
 
   tree.appendChild(createSectionHeader('스크립트'));
   buildRegexSidebar(tree);
+  for (const child of Array.from(tree.children)) {
+    if (!child.getAttribute('data-workspace') && child !== tree.firstElementChild) {
+      (child as HTMLElement).dataset.workspace = 'advanced';
+    }
+  }
   initSidebarDnD(getDndDeps());
+}
+
+function tagSidebarSections(tree: HTMLElement): void {
+  const sectionMap: Record<string, string> = {
+    '캐릭터 정보': 'character',
+    '모듈 정보': 'module',
+    메시지: 'messages',
+    스크립트: 'scripts',
+    데이터: 'lorebook',
+    에셋: 'assets',
+  };
+  let workspace = '';
+  for (const child of Array.from(tree.children)) {
+    const element = child as HTMLElement;
+    if (element.classList.contains('sidebar-section-header')) {
+      workspace = sectionMap[element.textContent?.trim() || ''] || workspace;
+    }
+    if (workspace) element.dataset.workspace = workspace;
+  }
 }
 
 function appendHiddenFieldWarnings(tree: HTMLElement): void {
@@ -1237,29 +1231,7 @@ const RISUM_MODULE_SIDEBAR_FIELDS: readonly RisumSidebarField[] = [
   { id: 'customModuleToggle', label: '커스텀 토글', icon: '☑', lang: 'plaintext', kind: 'toggle-template' },
 ] as const;
 
-// Tracks the most recent async asset-content probe so a slower, superseded
-// document load cannot overwrite the current document's manager state.
-let assetContentToken = 0;
 let documentStatsToken = 0;
-
-// Report whether the lorebook / asset managers currently have any items, so the
-// layout manager can auto-collapse empty managers and give the editor the width.
-function updateManagerContentFromFile(): void {
-  const data = fileData;
-  const loreHasContent = !!(data && Array.isArray(data.lorebook) && data.lorebook.length > 0);
-  layoutManager.setManagerContent({ lore: loreHasContent });
-
-  const token = ++assetContentToken;
-  Promise.resolve(window.tokiAPI.getAssetList())
-    .then((list) => {
-      if (token !== assetContentToken) return; // superseded by a newer document load
-      const count = Array.isArray(list) ? list.length : 0;
-      layoutManager.setManagerContent({ asset: count > 0 });
-    })
-    .catch(() => {
-      /* ignore asset-listing failures for layout purposes */
-    });
-}
 
 function buildSidebar(): void {
   updateDocumentStats();
@@ -1269,23 +1241,6 @@ function buildSidebar(): void {
 
   // Always build refs sidebar regardless of fileData
   buildRefsSidebar();
-
-  const promptManagerAvailable = !!fileData && fileData._fileType === 'risup';
-  const managersAvailable = !!fileData && fileData._fileType !== 'risup';
-  if (managersAvailable) {
-    layoutManager.setManagerAvailability({ lore: true, asset: true, prompt: false });
-    updateManagerContentFromFile();
-  } else {
-    if (fileData?._fileType === 'risup') {
-      const promptModel = parsePromptTemplate(
-        typeof fileData.promptTemplate === 'string' ? fileData.promptTemplate : '',
-      );
-      layoutManager.setManagerContent({
-        prompt: promptModel.state === 'invalid' || promptModel.items.length > 0,
-      });
-    }
-    layoutManager.setManagerAvailability({ lore: false, asset: false, prompt: promptManagerAvailable });
-  }
 
   if (!fileData) {
     const empty = document.createElement('div');
@@ -1908,12 +1863,12 @@ function buildSidebar(): void {
 
   // ==== Section: 에셋 ====
   tree.appendChild(createSectionHeader('에셋'));
+  tagSidebarSections(tree);
 
   // Assets (images) folder — then initialize drag-and-drop
   buildAssetsSidebar(tree).then(() => {
     initSidebarDnD(getDndDeps());
     renderRightManagerPanel();
-    initPanelDragDrop();
     void projectWorkspace.appendFilesSidebar(tree).then(() => appendHiddenFieldWarnings(tree));
   });
 }
@@ -1924,16 +1879,6 @@ function buildAssetsSidebar(tree: HTMLElement): Promise<void> {
     addAssetFromDialog,
     openImageTab,
     attachAssetContextMenu,
-  });
-}
-
-function initSidebarSplitResizer(): void {
-  _initSidebarSplitResizer({
-    moveRefs: moveRefs as (pos: string) => void,
-    popOutPanel,
-    dockPanel,
-    isPanelPoppedOut,
-    showContextMenu,
   });
 }
 
@@ -1955,7 +1900,9 @@ function updateSidebarActive(): void {
   // Keep the store aware of the active tab's language so the preview menu can
   // enable for markdown guide tabs (not just charx files).
   const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
-  useAppStore().setActiveTabLanguage(activeTab?.language ?? '');
+  const store = useAppStore();
+  store.setActiveTabId(tabMgr.activeTabId);
+  store.setActiveTabLanguage(activeTab?.language ?? '');
   updateDocumentStats();
 }
 
@@ -2314,50 +2261,23 @@ async function showImageViewer(tabId: string, assetPath: string): Promise<void> 
   await renderImageViewer(container, assetPath);
 }
 
-// ==================== Layout Management ====================
+// ==================== Fixed Workspace Layout ====================
 
-function rebuildLayout(): void {
-  layoutManager.rebuild();
+function refitWorkspace(): void {
+  if (editorInstance) editorInstance.layout();
+  terminalSessions.fit();
 }
 
 function toggleSidebar(): void {
-  layoutManager.toggleSidebar();
+  useAppStore().toggleNavigator();
 }
 
 function toggleTerminal(): void {
-  layoutManager.toggleTerminal();
+  useAppStore().toggleUtility('terminal');
 }
 
 function toggleAvatar(): void {
-  layoutManager.toggleAvatar();
-}
-
-function moveItems(pos: LayoutSlot | 'hide'): void {
-  layoutManager.moveItems(pos);
-}
-
-function moveTerminal(pos: LayoutSlot): void {
-  layoutManager.moveTerminal(pos);
-}
-
-function moveLoreManager(pos: LayoutSlot | 'hide'): void {
-  layoutManager.moveLoreManager(pos);
-}
-
-function moveAssetManager(pos: LayoutSlot | 'hide'): void {
-  layoutManager.moveAssetManager(pos);
-}
-
-function movePromptManager(pos: LayoutSlot | 'hide'): void {
-  layoutManager.movePromptManager(pos);
-}
-
-function moveRefs(pos: PanelPosition): void {
-  layoutManager.moveRefs(pos);
-}
-
-function resetLayout(): void {
-  layoutManager.resetLayout();
+  useAppStore().toggleAvatar();
 }
 
 // ==================== Actions ====================
@@ -2399,7 +2319,6 @@ function updateDocumentStats(): void {
 
 function setCurrentFileData(data: CharxData | null): void {
   fileData = data;
-  layoutManager.resetManagerContentState();
   useAppStore().setFileData(data);
   updateDocumentStats();
 }
@@ -2622,38 +2541,6 @@ async function handleAntigravityStart(): Promise<void> {
 // ==================== Terminal Background ====================
 // Terminal background handler is in ./settings-handlers.ts
 
-// ==================== Resizers ====================
-function initResizers(): void {
-  // Slot resizers are initialized by rebuildLayout() → initSlotResizers()
-  // Only avatar-terminal resizer needs static init here
-
-  const avatarResizer = document.getElementById('avatar-resizer');
-  const avatar = document.getElementById('toki-avatar')!;
-  if (avatarResizer) {
-    avatarResizer.addEventListener('mousedown', (e) => {
-      if (!V_SLOTS.has(layoutState.terminalPos)) return; // only in vertical slots
-      e.preventDefault();
-      avatarResizer.classList.add('active');
-      const startY = e.clientY;
-      const startH = avatar.offsetHeight;
-      const onMove = (ev: MouseEvent) => {
-        const dy = ev.clientY - startY;
-        avatar.style.height = Math.max(60, Math.min(400, startH + dy)) + 'px';
-      };
-      const onUp = () => {
-        avatarResizer.classList.remove('active');
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-        terminalSessions.fit();
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
-  }
-
-  // Terminal toggle — handled by Vue @click in App.vue (action 'toggle-terminal')
-}
-
 // ==================== App Theme ====================
 
 function getThemeUiDeps() {
@@ -2773,6 +2660,7 @@ function showSettingsPopup(): void {
       setBgmEnabled(enabled);
       writeBgmEnabled(isBgmEnabled());
       if (!isBgmEnabled()) pauseBgm();
+      syncStoreState();
     },
     async onPickBgm() {
       const filePath = await window.tokiAPI.pickBgm();
@@ -2785,6 +2673,7 @@ function showSettingsPopup(): void {
     onRpModeChange(mode: string) {
       rpMode = mode as RpMode;
       writeRpMode(rpMode);
+      syncStoreState();
     },
     onRpCustomTextChange(text) {
       rpCustomText = text;
@@ -2869,37 +2758,18 @@ async function showPreviewPanel(): Promise<void> {
   });
 }
 
-// ==================== Panel Drag & Drop ====================
-// Core logic lives in ../lib/panel-drag.ts; thin wrapper below closes
-// over controller-level state via a lazily-built deps object.
-
-function initPanelDragDrop(): void {
-  _initPanelDragDrop({
-    moveItems,
-    moveTerminal,
-    moveLoreManager,
-    moveAssetManager,
-    movePromptManager,
-    toggleSidebar,
-    toggleTerminal,
-    toggleLoreManager: () => layoutManager.toggleLoreManager(),
-    toggleAssetManager: () => layoutManager.toggleAssetManager(),
-    togglePromptManager: () => layoutManager.togglePromptManager(),
-    isPanelPoppedOut,
-    popOutPanel,
-    dockPanel,
-    showContextMenu,
-  });
-}
-
 // ==================== Pop-out Mode (External Window) ====================
 // Core logic lives in ../lib/popout-window.ts; thin wrappers below close
 // over controller-level state via a lazily-built deps object.
 
 function getPopoutDeps() {
   return {
-    layoutState,
-    rebuildLayout,
+    setPanelPoppedOut: (panelId: DockablePanelId, poppedOut: boolean) => {
+      const store = useAppStore();
+      if (panelId === 'terminal') store.setActiveUtility(poppedOut ? null : 'terminal');
+      else store.setReferencesVisible(!poppedOut);
+    },
+    refitWorkspace,
     setStatus,
     getEditorInstance: () => editorInstance,
     setEditorInstance: (ed: MonacoEditorInstance | null) => {
@@ -2907,23 +2777,16 @@ function getPopoutDeps() {
     },
     createOrSwitchEditor,
     tabMgr,
-    fitTerminal: () => {
-      terminalSessions.fit();
-    },
   };
 }
 
-function popOutPanel(panelId: string, requestId: string | null = null): Promise<void> {
+function popOutPanel(panelId: DockablePanelId, requestId: string | null = null): Promise<void> {
   const effectiveRequestId = panelId === 'terminal' ? terminalSessions.activeSessionId || requestId : requestId;
-  return _popOutPanel(panelId, getPopoutDeps() as unknown as PopoutDeps, effectiveRequestId);
+  return _popOutPanel(panelId, getPopoutDeps() as PopoutDeps, effectiveRequestId);
 }
 
 function popOutEditorPanel(tabId: string): Promise<void> {
   return _popOutEditorPanel(tabId, getPopoutDeps() as unknown as PopoutDeps);
-}
-
-function dockPanel(panelId: string): void {
-  _dockPanel(panelId, getPopoutDeps() as unknown as PopoutDeps);
 }
 
 // Tab open by ID (used for sidebar popout clicks)
@@ -3144,55 +3007,50 @@ export async function initMainRenderer(): Promise<void> {
     'toggle-sidebar': () => toggleSidebar(),
     'toggle-terminal': () => toggleTerminal(),
     'toggle-avatar': () => toggleAvatar(),
-    'toggle-lore-manager': () => layoutManager.toggleLoreManager(),
-    'toggle-asset-manager': () => layoutManager.toggleAssetManager(),
-    'toggle-prompt-manager': () => layoutManager.togglePromptManager(),
-    // Items position
-    'items-left': () => moveItems('left'),
-    'items-right': () => moveItems('right'),
-    'items-far-left': () => moveItems('far-left'),
-    'items-far-right': () => moveItems('far-right'),
-    'items-top': () => moveItems('top'),
-    'items-bottom': () => moveItems('bottom'),
-    // Refs position
-    'refs-sidebar': () => moveRefs('sidebar'),
-    'refs-left': () => moveRefs('left'),
-    'refs-right': () => moveRefs('right'),
-    'refs-far-left': () => moveRefs('far-left'),
-    'refs-far-right': () => moveRefs('far-right'),
-    'refs-top': () => moveRefs('top'),
-    'refs-bottom': () => moveRefs('bottom'),
-    // Terminal position
-    'terminal-bottom': () => moveTerminal('bottom'),
-    'terminal-left': () => moveTerminal('left'),
-    'terminal-right': () => moveTerminal('right'),
-    'terminal-far-left': () => moveTerminal('far-left'),
-    'terminal-far-right': () => moveTerminal('far-right'),
-    'terminal-top': () => moveTerminal('top'),
-    // Manager positions
-    'lore-manager-left': () => moveLoreManager('left'),
-    'lore-manager-right': () => moveLoreManager('right'),
-    'lore-manager-far-left': () => moveLoreManager('far-left'),
-    'lore-manager-far-right': () => moveLoreManager('far-right'),
-    'lore-manager-top': () => moveLoreManager('top'),
-    'lore-manager-bottom': () => moveLoreManager('bottom'),
-    'lore-manager-hide': () => moveLoreManager('hide'),
-    'asset-manager-left': () => moveAssetManager('left'),
-    'asset-manager-right': () => moveAssetManager('right'),
-    'asset-manager-far-left': () => moveAssetManager('far-left'),
-    'asset-manager-far-right': () => moveAssetManager('far-right'),
-    'asset-manager-top': () => moveAssetManager('top'),
-    'asset-manager-bottom': () => moveAssetManager('bottom'),
-    'asset-manager-hide': () => moveAssetManager('hide'),
-    'prompt-manager-left': () => movePromptManager('left'),
-    'prompt-manager-right': () => movePromptManager('right'),
-    'prompt-manager-far-left': () => movePromptManager('far-left'),
-    'prompt-manager-far-right': () => movePromptManager('far-right'),
-    'prompt-manager-top': () => movePromptManager('top'),
-    'prompt-manager-bottom': () => movePromptManager('bottom'),
-    'prompt-manager-hide': () => movePromptManager('hide'),
-    // Reset
-    'layout-reset': () => resetLayout(),
+    'refresh-references': () => {
+      void buildRefsSidebar();
+    },
+    'popout-references': () => {
+      void popOutPanel('refs');
+    },
+    'popout-terminal': () => {
+      void popOutPanel('terminal');
+    },
+    'asset-output-wizard': () => useAppStore().setAssetWizardOpen(true),
+    'workspace-model-change': (payload) => {
+      const change = (payload || {}) as { tabId?: string; field?: string };
+      if (!change.field) return;
+      tabMgr.markFieldDirty(change.field);
+      if (change.tabId) tabMgr.markDirtyForTabId(change.tabId);
+      if (change.field === 'lorebook') tabMgr.refreshIndexedTabs('lore_', buildLorebookTabState);
+      if (change.field === 'regex') tabMgr.refreshIndexedTabs('regex_', buildRegexTabState);
+      if (change.field === 'promptTemplate') {
+        tabMgr.refreshIndexedTabs('risup_prompt_item_', (_index, tab) =>
+          buildRisupPromptItemTabState(String(tab._promptItemId || tab.id.replace('risup_prompt_item_', '')), tab),
+        );
+        tabMgr.refreshIndexedTabs('risup_', (_index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
+      }
+      buildSidebar();
+      renderRightManagerPanel();
+      renderPromptManagerPanel();
+      setStatus('변경사항이 문서에 반영되었습니다');
+    },
+    'asset-rename-selected': async (payload) => {
+      const path = typeof payload === 'string' ? payload : '';
+      if (!path) return;
+      const currentName = path.split('/').pop() || path;
+      const nextName = await showPrompt('새 파일명을 입력하세요. 확장자는 유지해야 합니다.', currentName);
+      if (nextName === null) return;
+      const error = await renameAssetFromManager(path, nextName);
+      if (error) setStatus(error);
+      else renderRightManagerPanel();
+    },
+    'asset-delete-selected': async (payload) => {
+      const path = typeof payload === 'string' ? payload : '';
+      if (!path) return;
+      await deleteAssetsFromManager([path]);
+      renderRightManagerPanel();
+    },
     'zoom-in': () => {
       if (editorInstance) {
         const sz = editorInstance.getOption(monaco.editor.EditorOption.fontSize) as number;
@@ -3220,16 +3078,30 @@ export async function initMainRenderer(): Promise<void> {
       terminalSessions.clearActiveTerminal();
     },
     'terminal-restart': () => terminalSessions.restart(),
+    'toggle-bgm': () => {
+      const enabled = !isBgmEnabled();
+      setBgmEnabled(enabled);
+      writeBgmEnabled(enabled);
+      if (!enabled) pauseBgm();
+      syncStoreState();
+      setStatus(`BGM ${enabled ? '켜짐' : '꺼짐'}`);
+    },
+    'cycle-rp-mode': () => {
+      const modes: RpMode[] = rpCustomText.trim() ? ['off', 'toki', 'aris', 'custom'] : ['off', 'toki', 'aris'];
+      const currentIndex = modes.indexOf(rpMode);
+      rpMode = modes[(currentIndex + 1) % modes.length] || 'off';
+      writeRpMode(rpMode);
+      syncStoreState();
+      setStatus(`RP 모드: ${useAppStore().rpLabel}`);
+    },
 
     // Settings & buttons (now handled by Vue template @click)
     settings: () => showSettingsPopup(),
     'terminal-bg': () => handleTerminalBg(),
-    'sidebar-expand': () => moveItems(layoutState.itemsPos),
     help: () => showHelpPopup(),
   });
   initBgm(settingsSnapshot.bgmEnabled, settingsSnapshot.bgmPath);
   syncStoreState();
-  initResizers();
   initKeyboard({
     handleNew,
     handleOpen,
@@ -3325,7 +3197,6 @@ export async function initMainRenderer(): Promise<void> {
     });
   }
 
-  initSidebarSplitResizer();
   initTokiAvatarUi(document.getElementById('toki-avatar-display')!, { darkMode, setStatus });
   refreshThemeUi(); // Apply the persisted app theme without changing RP mode
   initChatModeUi(document.getElementById('terminal-area')!, {
@@ -3360,7 +3231,6 @@ export async function initMainRenderer(): Promise<void> {
     showConfirm,
     setStatus,
     refresh: buildSidebar,
-    afterRender: initPanelDragDrop,
   });
   initPromptManagerPanel({
     getFileData: () => fileData,
@@ -3369,21 +3239,7 @@ export async function initMainRenderer(): Promise<void> {
     confirm: showConfirm,
     setStatus,
     refresh: buildSidebar,
-    afterRender: initPanelDragDrop,
   });
-  // Refs panel dock button
-  const refsPanelDockBtn = document.getElementById('btn-refs-panel-dock');
-  if (refsPanelDockBtn) refsPanelDockBtn.addEventListener('click', () => moveRefs('sidebar'));
-  // Refs panel popout button (in separated refs-panel header)
-  const refsPanelPopoutBtn = document.getElementById('btn-refs-panel-popout');
-  if (refsPanelPopoutBtn) {
-    refsPanelPopoutBtn.addEventListener('click', () => {
-      if (isPanelPoppedOut('refs')) dockPanel('refs');
-      else popOutPanel('refs');
-    });
-  }
-  // Apply saved layout (restore positions)
-  rebuildLayout();
   if (autosaveEnabled) startAutosave(getAutosaveDeps());
   await buildRefsSidebar(); // Load guides & refs even without a file open
   const referenceManifestStatus = await window.tokiAPI.getReferenceManifestStatus();
@@ -3396,11 +3252,8 @@ export async function initMainRenderer(): Promise<void> {
   // Listen for popout window events
   window.tokiAPI.onPopoutClosed((panelType) => {
     removePoppedOut(panelType);
-    // Show the panel back in main window
-    if (panelType === 'sidebar') {
-      layoutState.itemsVisible = true;
-    } else if (panelType === 'terminal') {
-      layoutState.terminalVisible = true;
+    if (panelType === 'terminal' || panelType === 'refs') {
+      getPopoutDeps().setPanelPoppedOut(panelType, false);
     } else if (panelType === 'editor') {
       // Re-open editor in main window
       if (tabMgr.activeTabId) {
@@ -3411,23 +3264,17 @@ export async function initMainRenderer(): Promise<void> {
     } else if (panelType === 'preview') {
       // Re-open inline preview when popout docks
       showPreviewPanel();
-    } else if (panelType === 'refs') {
-      layoutState.refsPos = layoutState._refsPosBefore || 'sidebar';
-      delete layoutState._refsPosBefore;
     }
-    rebuildLayout();
-    if (panelType === 'terminal') terminalSessions.fit(50);
-    updatePopoutButtons();
+    refitWorkspace();
+    if (panelType === 'terminal') setTimeout(() => terminalSessions.fit(), 50);
     const panelName =
-      panelType === 'sidebar'
-        ? '항목'
-        : panelType === 'editor'
-          ? '에디터'
-          : panelType === 'preview'
-            ? '프리뷰'
-            : panelType === 'refs'
-              ? '참고자료'
-              : 'TokiTalk';
+      panelType === 'editor'
+        ? '에디터'
+        : panelType === 'preview'
+          ? '프리뷰'
+          : panelType === 'refs'
+            ? '참고자료'
+            : 'TokiTalk';
     setStatus(`${panelName} 도킹됨`);
   });
 
@@ -3445,11 +3292,6 @@ export async function initMainRenderer(): Promise<void> {
   // Listen for editor popout save request
   window.tokiAPI.onEditorPopoutSave(() => {
     handleSave();
-  });
-
-  // Listen for sidebar popout clicks → open tab in main editor
-  window.tokiAPI.onPopoutSidebarClick((itemId) => {
-    openTabById(itemId);
   });
 
   // Listen for refs popout clicks → open tab in main editor

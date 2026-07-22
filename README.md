@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.20.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-1.25.1-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-20.19%2B%20%7C%2022.13%2B%20%7C%2024%2B-339933.svg)](https://nodejs.org/)
@@ -19,16 +19,17 @@ RisuToki is a **desktop editor** purpose-built for [RisuAI](https://risuai.net/)
 | 🤖 **AI CLI Integration**  | Run Claude Code · GitHub Copilot CLI · Codex · Antigravity CLI in dedicated terminal tabs with automatic MCP connection                                                                                                                                                                                                                                                                                        |
 | 📦 **File & Card Import**  | Open, edit, and save `.charx` (character cards) · `.risum` (modules) · `.risup` (presets), plus import PNG/JSON Character Cards into the structured editor                                                                                                                                                                                                                                                     |
 | 📁 **Project Folders**     | Use a folder workspace as the save backend for the normal structured editor, with advanced raw markdown/json/assets access for external-tool collaboration, project-folder cloning, and `.charx`/`.risum`/`.risup` export                                                                                                                                                                                      |
-| 📚 **Movable Managers**    | RisuMari-style `.charx`/`.risum` lorebook and asset panels plus a `.risup` prompt manager, with search, filters, thumbnails or badges, SillyTavern `world_info` JSON import, asset batch rename, multi-select, bulk actions, and normal layout drag-and-drop placement                                                                                                                                         |
+| 📚 **Unified Workspaces**  | Document-specific CHARX/RISUM/RISUP workspaces with focused navigation, a wide editor canvas, and a contextual inspector for lorebooks, assets, prompts, regex, and triggers                                                                                                                                                                                                                                   |
+| 🪄 **Asset Rule Wizard**   | Analyze real `assets/other` filenames, map name/outfit/emotion/custom dimensions, and safely generate editable `<img src="Asset_Name">` rules into a lorebook or CHARX `globalNote` block                                                                                                                                                                                                                      |
 | 🔧 **200+ MCP Tools**      | Read/write fields, lorebooks, regex, Lua/CSS sections, greetings, triggers, risup `promptTemplate`/`formatingOrder`, assets, CBS validation, references, Danbooru tags, skill docs + unopened-file probe/open + batch search/replace + structured `4xx/409` error envelopes + machine-readable confirmation / dry-run tool metadata + indexed-write stale-index guards + normalized batch `results[]` payloads |
 | 🎭 **Preview Mode**        | `.charx` chat simulation plus sanitized rendered Markdown guide previews (F5), including tables, code, images, and safe external links                                                                                                                                                                                                                                                                         |
 | 📚 **References**          | Load other `.charx`/`.risum`/`.risup` files as read-only references and drill into individual entries                                                                                                                                                                                                                                                                                                          |
 | 🐰 **RP Mode**             | Adjust AI CLI response style with Toki / Aris / custom personas                                                                                                                                                                                                                                                                                                                                                |
 | 🔀 **Sidebar Drag & Drop** | Reorder lorebook entries, regex scripts, Lua/CSS sections, greetings, and assets by dragging                                                                                                                                                                                                                                                                                                                   |
-| 🖼 **Slot Layout**         | Freely arrange panels with drag & drop + pop-out editors in separate windows                                                                                                                                                                                                                                                                                                                                   |
+| 🧰 **Utility Tools**       | Open guides and reference files from the independent top-bar reference drawer while keeping the bottom terminal and its optional animated avatar visible; both tools have their own popout action                                                                                                                                                                                                              |
 | 💾 **Autosave & Backup**   | Configurable-interval autosave per file type (`.charx`/`.risum`/`.risup`) with `.toki-recovery.json` provenance sidecar + up to 20 backup versions per item                                                                                                                                                                                                                                                    |
 | 🔄 **Session Recovery**    | After an abnormal exit, offers to **Restore autosave / Open original / Ignore** with an `[Auto-restored]` badge and provenance status                                                                                                                                                                                                                                                                          |
-| 🎵 **MomoTalk UI**         | MomoTalk-themed popups, NSIS installer, animated avatar GIF system                                                                                                                                                                                                                                                                                                                                             |
+| 🎨 **Character Themes**    | Ten character-driven palettes with matching editor, terminal, pop-out, and animated-avatar presentation                                                                                                                                                                                                                                                                                                        |
 
 ---
 
@@ -123,16 +124,20 @@ Double-click the RisuToki executable (`.exe`) to launch.
 
 <img width="1913" height="1004" alt="Interface layout" src="https://github.com/user-attachments/assets/6398e854-f7a8-49bb-a8e2-c73861446b97" />
 
-| Area                  | Description                                             |
-| --------------------- | ------------------------------------------------------- |
-| **Sidebar**           | Item tree + References tab                              |
-| **Editor**            | Monaco-based code/text editor                           |
-| **TokiTalk Terminal** | Built-in terminal (shell + AI CLI)                      |
-| **Avatar Panel**      | Toki/Aris character (idle: icon / working: dancing GIF) |
+| Area                   | Description                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| **Workspace switcher** | CHARX, RISUM, or RISUP task groups backed only by fields supported for that document type |
+| **Navigator**          | Search, select, create, filter, and sort items for the active workspace                   |
+| **Editor**             | Wide Monaco/form/image canvas with persistent document tabs                               |
+| **Context inspector**  | Metadata for the selected lorebook, asset, prompt, regex, or trigger                      |
+| **Reference drawer**   | Independent tall guide/reference drawer with its own OS popout                            |
+| **Terminal shelf**     | Bottom-anchored terminal with an optional avatar beside it and a shared OS popout         |
 
-- Reposition the sidebar and terminal from the **View** menu.
-- Drag panel borders to resize.
-- Toggle the sidebar with `Ctrl+B`, the terminal with `` Ctrl+` ``.
+- Drag the navigator, inspector, or utility border to resize it; the dimensions persist between launches.
+- Workspace panels use fixed semantic homes and do not support arbitrary panel repositioning. Drag-and-drop inside lorebook, regex, prompt, script, greeting, and asset lists continues to reorder document content.
+- Below 1180px the inspector becomes an overlay, and below 1020px the navigator does too. Opening one compact overlay closes the other.
+- Toggle the navigator with `Ctrl+B` and the terminal shelf with `` Ctrl+` ``.
+- References can pop out independently. The terminal and its optional avatar share one OS pop-out and return to the shelf when docked.
 - The status bar keeps document stats visible while transient save/open/error messages appear beside them.
 
 ---
@@ -154,7 +159,9 @@ Double-click the RisuToki executable (`.exe`) to launch.
 - In a project folder, **Save** writes the structured editor state back to the folder files. File → **파일로 내보내기** and **Save As** create the matching `.charx`, `.risum`, or `.risup` output when you want to import the result into RisuAI.
 - `.charx` project folders track only the generated `assets/**` and `x_meta/**` files they manage. Removing or renaming an asset removes the stale generated file on save, while unrelated files added by external tools are preserved.
 - Raw project files remain available under the collapsed **프로젝트 원본 파일** advanced sidebar area. Direct raw edits are debounced and synchronized back into the structured editor state.
-- `.charx` and `.risum` files show independent **로어북 관리자** and **에셋 관리자** panels. `.risup` files instead show a movable **프롬프트 관리자** panel for promptTemplate search, type/role/special filters, badges, item selection, add, duplicate, delete, reorder, and multi-delete.
+- `.charx` and `.risum` files expose integrated **로어북** and **에셋** workspaces. Selecting an item opens the central editor and the matching inspector together. `.risup` uses **기본 / 프롬프트 / 모델·API / 파라미터 / 고급** progressive disclosure while preserving every supported field on save.
+- Opening another document clears the previous document's tab selection and contextual inspector, while keeping any compatible workspace (for example, 로어북) selected for rapid cross-file editing.
+- The asset workspace defaults to a filename-derived tree and can switch to thumbnails. **출력식 마법사** analyzes only `assets/other`, never invents missing combinations, and replaces only its stable generated block when run again.
 - MCP agents can also use the `manage_file` facade for preview-first project-folder extract/reassemble workflows when a field or whole document is too large to handle comfortably through MCP responses.
 - Modified tabs show a **●** dot next to their name. Closing the window triggers a MomoTalk-style save confirmation popup.
 - **New** and **Open** also prompt to save if the current document has unsaved changes.
@@ -207,7 +214,7 @@ Which items appear depends on the file type:
 - `customPromptTemplateToggle` opens in a **visual/raw dual-mode editor** that keeps the original line syntax while making toggles, groups, captions, dividers, and select/text inputs easier to manage, including drag-and-drop reorder in visual mode.
 - For persistent block reuse across sessions, MCP now exposes a **sidecar-backed risup prompt snippet library** on top of the text serializer (`list_risup_prompt_snippets`, `save_risup_prompt_snippet`, `insert_risup_prompt_snippet`, etc.).
 - For prompt-vs-reference review, MCP also exposes **`diff_risup_prompt`**, which compares the current preset against a loaded reference `.risup` using serializer-backed `promptTemplate` line diffs plus `formatingOrder` token/warning diffs.
-- Legacy fields (`mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, `JinjaTemplate`) are hidden from the primary prompt UI and removed on save; use structured `promptTemplate` / `formatingOrder` for persisted prompt content.
+- Legacy and provider-specific fields remain preserved for compatibility. The primary RISUP workspaces prioritize current fields, while the **고급** workspace and search keep supported less-common fields reachable.
 - `.charx` saving follows RisuToki's stricter practical protection boundary: `personality`, `scenario`, `systemPrompt`, `nickname`, `source`, `groupOnlyGreetings`, `additionalText`, `license`, and unsafe `virtualscript` are hidden from normal editing and removed on save.
 - RisuToki can open `.risup` exports in gzip, zlib, and raw-deflate variants, and it preserves the detected compression mode on save.
 - If any JSON-backed preset field contains malformed data, saving is blocked and the status bar shows the offending field. Structured fields (`promptTemplate`, `formatingOrder`, `presetBias`, `localStopStrings`) also enforce their expected array/item shapes.
@@ -243,6 +250,7 @@ Which items appear depends on the file type:
 
 - **Guides**: Built-in syntax guides (Lua, CBS, lorebook, regex, HTML/CSS, etc.).
 - **Reference files**: Load other `.charx`/`.risum`/`.risup` files as read-only references — you can drill down to individual lorebook/Lua/CSS items and narrow large fields with MCP search/range readers.
+- Guides and reference fields open directly in the main editor even when no primary document is loaded; closing the last such tab restores the welcome screen.
 - References are automatically restored on app restart and are also accessible to AI CLIs via MCP tools, even when no main file is currently open.
 
 ### Backup System
@@ -270,7 +278,9 @@ RisuToki uses the same Monaco editing engine that powers VS Code.
 <img width="259" height="38" alt="Terminal header" src="https://github.com/user-attachments/assets/a336229d-dc6d-4dc2-bf5d-64ee75e98f45" />
 
 - Runs shell commands (bash / PowerShell). **Copy**: `Ctrl+C`. **Paste**: `Ctrl+V` or right-click.
-- Use the terminal tab bar to keep multiple shell sessions open. The `+` button creates a new Shell tab; closing the last tab creates a fresh Shell tab automatically.
+- Use the terminal tab bar to keep multiple shell sessions open. The `+` button creates uniquely named tabs (`Shell`, `Shell (2)`, and so on); closing the last tab creates a fresh Shell tab automatically.
+- Use a tab's edit button, double-click its label, or press `F2` on the focused tab to rename it inline. Duplicate names are automatically numbered.
+- Drag the terminal's upper edge upward to expand it; its lower edge remains anchored to the bottom of the workspace, including when a guide or reference is the only open editor tab. The navigator and editor always stretch down to meet the shelf, so resizing does not leave an unused strip between them.
 
 ### Terminal Menu
 
@@ -281,13 +291,14 @@ RisuToki uses the same Monaco editing engine that powers VS Code.
 
 ### Header Buttons
 
-| Button | Function                                            |
-| ------ | --------------------------------------------------- |
-| 🐰     | Toggle RP mode (Toki/Aris persona for AI responses) |
-| 🔇     | BGM on/off (right-click to change the track)        |
-| 🖼     | Set terminal background image                       |
-| ⚙      | Open settings panel                                 |
-| ━      | Collapse / expand the terminal panel                |
+| Button        | Function                                                    |
+| ------------- | ----------------------------------------------------------- |
+| Avatar        | Show or hide the character avatar beside the terminal       |
+| Music         | Toggle BGM without opening Settings                         |
+| `RP OFF/토키` | Cycle through the available RP modes                        |
+| Image         | Set the terminal background image                           |
+| Pop out       | Open the terminal and avatar in their own window            |
+| Close         | Hide the terminal; a compact launcher restores it afterward |
 
 - Terminal pop-outs reuse the main window's layout, avatar, and surface styles so light and dark modes look consistent.
 - If xterm fails to initialize in a pop-out, a message is shown instead of a blank screen. Closing the pop-out cleans up both terminal UI and settings subscriptions to avoid stale state on re-open.
@@ -473,18 +484,20 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 
 ### Theme Presets
 
-- Settings now provide Toki, Aris, MomoTalk, Millennium, Gehenna, Trinity, and Custom themes.
+- Settings provide Toki, Aris, Kei, Yuzu, Midori, Momoi, Yuuka, Hina, Mika, Kisaki, and Custom themes in that order.
 - Custom themes are palette-based: background, surface, text, secondary text, accent, warning, pink, and border colors can be edited safely without arbitrary CSS.
-- Theme selection updates the app chrome, Monaco editors, terminal colors, pop-outs, and light/dark avatar behavior together.
+- Theme selection updates the app chrome, Monaco editors, terminal colors, pop-outs, and matching `TokiTalk` / `ArisTalk` / character-specific terminal title together.
 
 ### Avatar Panel
 
 <img width="184" height="250" alt="Avatar" src="https://github.com/user-attachments/assets/8c3f79b3-e7e4-4b13-92a2-dade8ddeb5a9" />
 <img width="522" height="509" alt="Avatar settings" src="https://github.com/user-attachments/assets/83c4ee4a-f726-45df-8713-4b25883a5c76" />
 
-- Idle: default icon (💤) / Working: dancing GIF (✨).
+- Each built-in character theme supplies a matching idle (💤) and working (✨) animation; the terminal pop-out uses the same avatar.
+- The avatar stays beside the terminal and can be shown or hidden from the robot button in the terminal header.
+- Select **도움말** below the avatar to open the built-in usage guide.
 - Right-click to register a custom image. Green-screen GIF backgrounds are chroma-keyed automatically.
-- Dark mode automatically switches between Toki and Aris.
+- Changing the app theme automatically switches the default avatar, while a manually selected custom avatar remains in place.
 
 ---
 
@@ -664,7 +677,7 @@ Encrypted AI preset file containing model settings, generation parameters, promp
 
 ### GIF avatar not animating
 
-- Check that the avatar panel is visible (View → toggle avatar).
+- Check that the terminal shelf is open and the avatar is enabled from the robot button in its header (or View → toggle avatar).
 
 ### Modified indicator remains after saving
 

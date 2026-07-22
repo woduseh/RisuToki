@@ -353,7 +353,7 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
   const header = document.createElement('div');
   header.className = 'form-editor-header';
   const headerTitle = document.createElement('span');
-  headerTitle.textContent = `📚 로어북: ${(data.comment as string) || tabInfo.label}`;
+  headerTitle.textContent = `로어북 · ${(data.comment as string) || tabInfo.label}`;
   header.appendChild(headerTitle);
   if (readonly) {
     const badge = document.createElement('span');
@@ -365,6 +365,27 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
   // Body
   const body = document.createElement('div');
   body.className = 'form-editor-body';
+
+  // Editable lorebook tabs use the workspace inspector for metadata. Keeping
+  // the center dedicated to content removes duplicate controls and preserves a
+  // wide writing surface. Reference lorebooks remain self-contained/read-only.
+  if (!readonly) {
+    const contentLabel = document.createElement('div');
+    contentLabel.className = 'form-section-label';
+    contentLabel.textContent = '내용';
+    const monacoContainer = document.createElement('div');
+    monacoContainer.className = 'form-monaco form-monaco-lore workspace-lore-content';
+    body.append(contentLabel, monacoContainer);
+    form.append(header, body);
+    container.appendChild(form);
+    setTimeout(() => {
+      createMiniMonaco(monacoContainer, (data.content as string) || '', 'plaintext', (value) => {
+        data.content = value;
+        markDirty();
+      });
+    }, 10);
+    return;
+  }
 
   // Helper: create text input row
   function addTextRow(labelText: string, field: string): HTMLInputElement {

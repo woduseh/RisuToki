@@ -14,10 +14,27 @@ describe('theme registry', () => {
     expect(BUILT_IN_THEMES.map((theme) => theme.id)).toEqual([
       'toki',
       'aris',
-      'momotalk',
-      'millennium',
-      'gehenna',
-      'trinity',
+      'kei',
+      'yuzu',
+      'midori',
+      'momoi',
+      'yuuka',
+      'hina',
+      'mika',
+      'kisaki',
+    ]);
+
+    expect(BUILT_IN_THEMES.map((theme) => theme.talkTitle)).toEqual([
+      'TokiTalk',
+      'ArisTalk',
+      'KeiTalk',
+      'YuzuTalk',
+      'MidoriTalk',
+      'MomoiTalk',
+      'YuukaTalk',
+      'HinaTalk',
+      'MikaTalk',
+      'KisakiTalk',
     ]);
 
     for (const theme of BUILT_IN_THEMES) {

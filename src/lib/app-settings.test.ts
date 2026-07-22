@@ -9,14 +9,12 @@ import {
   normalizeMcpApprovalMode,
   readAppSettingsSnapshot,
   readRecentItems,
-  readStoredLayoutState,
   removeRecentItem,
   writeAutosaveDir,
   writeAutosaveEnabled,
   writeAutosaveInterval,
   writeDarkMode,
   writeCustomTheme,
-  writeLayoutState,
   writeMcpApprovalMode,
   writeRecentItems,
   writeRpMode,
@@ -58,7 +56,6 @@ describe('app settings', () => {
     expect(snapshot.autosaveInterval).toBe(DEFAULT_AUTOSAVE_INTERVAL);
     expect(snapshot.rpMode).toBe('off');
     expect(snapshot.mcpApprovalMode).toBe('ask');
-    expect(snapshot.layoutState).toBeNull();
   });
 
   it('maps legacy dark mode to the matching built-in theme id', () => {
@@ -76,11 +73,11 @@ describe('app settings', () => {
   it('prefers stored theme id over legacy dark mode', () => {
     const storage = createStorage();
     storage.setItem('toki-dark-mode', 'true');
-    writeThemeId('millennium', storage);
+    writeThemeId('yuuka', storage);
 
     const snapshot = readAppSettingsSnapshot(storage);
 
-    expect(snapshot.themeId).toBe('millennium');
+    expect(snapshot.themeId).toBe('yuuka');
     expect(snapshot.darkMode).toBe(false);
   });
 
@@ -115,7 +112,6 @@ describe('app settings', () => {
     writeAutosaveEnabled(true, storage);
     writeAutosaveInterval(120_000, storage);
     writeAutosaveDir('C:\\temp', storage);
-    writeLayoutState({ itemsPos: 'right', terminalVisible: false }, storage);
     writeMcpApprovalMode('auto', storage);
 
     let snapshot = readAppSettingsSnapshot(storage);
@@ -123,7 +119,6 @@ describe('app settings', () => {
     expect(snapshot.autosaveEnabled).toBe(true);
     expect(snapshot.autosaveInterval).toBe(120_000);
     expect(snapshot.autosaveDir).toBe('C:\\temp');
-    expect(snapshot.layoutState?.itemsPos).toBe('right');
     expect(snapshot.mcpApprovalMode).toBe('auto');
 
     clearAutosaveDir(storage);
@@ -135,31 +130,6 @@ describe('app settings', () => {
     expect(normalizeMcpApprovalMode('auto')).toBe('auto');
     expect(normalizeMcpApprovalMode('allow-all')).toBe('allow-all');
     expect(normalizeMcpApprovalMode('unsafe-value')).toBe('ask');
-  });
-
-  it('returns null instead of throwing when stored layout JSON is corrupted', () => {
-    const storage = createStorage();
-    storage.setItem('toki-layout-state', '{broken');
-
-    expect(readStoredLayoutState(storage)).toBeNull();
-  });
-
-  it('normalizes legacy sidebar layout keys instead of dropping stored state', () => {
-    const storage = createStorage();
-    storage.setItem(
-      'toki-layout-state',
-      JSON.stringify({
-        sidebarPos: 'right',
-        sidebarVisible: false,
-        terminalPos: 'bottom',
-      }),
-    );
-
-    expect(readStoredLayoutState(storage)).toEqual({
-      itemsPos: 'right',
-      itemsVisible: false,
-      terminalPos: 'bottom',
-    });
   });
 
   it('drops avatar state objects that do not contain a string src field', () => {

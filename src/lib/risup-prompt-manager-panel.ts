@@ -20,7 +20,6 @@ export interface PromptManagerPanelDeps {
   confirm: (message: string) => Promise<boolean>;
   setStatus: (msg: string) => void;
   refresh: () => void;
-  afterRender?: () => void;
 }
 
 const TYPE_FILTERS = [
@@ -537,5 +536,4 @@ export function renderPromptManagerPanel(): void {
   const root = document.getElementById('prompt-manager-panel');
   if (!root) return;
   renderPanelShell(root, '프롬프트 관리자', renderPromptPanel);
-  depsRef?.afterRender?.();
 }

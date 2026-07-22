@@ -8,6 +8,7 @@ function createFixture() {
   const initialized = new Map<string, TerminalUiOptions>();
   const handles = new Map<string, TerminalUiHandle>();
   const terminalInputSession = vi.fn();
+  const terminalRenameSession = vi.fn().mockResolvedValue(true);
   const terminalStopSession = vi.fn().mockResolvedValue(true);
   const setTerminalCwd = vi.fn().mockResolvedValue(true);
   const onActiveTerminalData = vi.fn();
@@ -23,6 +24,7 @@ function createFixture() {
       id: `session-${++sequence}`,
       name,
     })),
+    terminalRenameSession,
     terminalResizeSession: vi.fn(),
     terminalStartSession: vi.fn().mockResolvedValue(true),
     terminalStopSession,
@@ -61,6 +63,7 @@ function createFixture() {
     onActiveTerminalData,
     setTerminalCwd,
     terminalInputSession,
+    terminalRenameSession,
     terminalStopSession,
   };
 }
@@ -95,6 +98,38 @@ describe('terminal-sessions-controller', () => {
     expect(fixture.terminalInputSession).toHaveBeenNthCalledWith(2, 'session-1', 'explicit');
     expect(fixture.controller.activeSessionId).toBe('session-1');
     expect(document.querySelector('[data-session-id="session-1"]')?.classList.contains('active')).toBe(true);
+  });
+
+  it('creates uniquely named shell cells', async () => {
+    const fixture = createFixture();
+    await fixture.controller.init();
+
+    const second = await fixture.controller.createSession('Shell');
+    const third = await fixture.controller.createSession('Shell');
+
+    expect(second.name).toBe('Shell (2)');
+    expect(third.name).toBe('Shell (3)');
+    expect(fixture.api.terminalNewSession).toHaveBeenNthCalledWith(2, 'Shell (2)');
+    expect(fixture.api.terminalNewSession).toHaveBeenNthCalledWith(3, 'Shell (3)');
+  });
+
+  it('renames a cell inline and resolves name collisions', async () => {
+    const fixture = createFixture();
+    await fixture.controller.init();
+    await fixture.controller.createSession('Notes');
+    fixture.controller.setActiveSession('session-1');
+
+    const renameButton = document.querySelector<HTMLButtonElement>('.terminal-tab.active .terminal-tab-rename-button')!;
+    expect(renameButton.getAttribute('aria-label')).toBe('Shell 이름 변경');
+    renameButton.click();
+    const input = document.querySelector<HTMLInputElement>('.terminal-tab-rename')!;
+    input.value = 'Notes';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await Promise.resolve();
+
+    expect(fixture.terminalRenameSession).toHaveBeenCalledWith('session-1', 'Notes (2)');
+    expect(fixture.controller.getSession('session-1')?.name).toBe('Notes (2)');
+    expect(document.querySelector('.terminal-tab.active')?.textContent).toContain('Notes (2)');
   });
 
   it('tracks cwd and forwards output only for the active session', async () => {

@@ -9,6 +9,126 @@
 
 ---
 
+## [1.25.1] - 2026-07-22
+
+### Fixed
+
+- Kept the terminal shelf's lower edge fixed to the workspace when resizing with only a guide or reference tab open and no primary document loaded.
+- Isolated the terminal shelf from editor grid sizing so dragging its upper handle upward always expands the terminal upward, regardless of the active editor content.
+- Kept the navigator and editor stretched to the terminal edge when the optional workspace bar is absent, removing the large empty strip on the no-project and reference-only screens.
+
+## [1.25.0] - 2026-07-22
+
+### Added
+
+- Added the dark Kisaki theme with ink-black, jade-blue, and muted-gold surfaces, matching Monaco and terminal colors, and the `KisakiTalk` terminal title.
+- Added official-design-inspired idle and working avatar animations for Kei, Yuzu, Midori, Momoi, Yuuka, Hina, Mika, and Kisaki.
+
+### Changed
+
+- Character themes now select their matching terminal avatar in both the docked terminal and terminal pop-out while preserving explicitly chosen custom avatar images.
+- Expanded the avatar picker with idle and working choices for every built-in character theme.
+
+## [1.24.0] - 2026-07-22
+
+### Changed
+
+- Replaced the legacy freely movable panel layout with fixed semantic homes: the active navigator or manager stays on the left, the editor stays central, contextual properties stay on the right, and the terminal stays in the bottom shelf.
+- Limited general-purpose OS popouts to the terminal and references while preserving the existing editor and preview popouts.
+- Kept content-level drag-and-drop ordering independent from panel layout, including lorebook folder moves, regex/Lua/CSS/greeting/asset ordering, flat lorebook manager ordering, and RISUP prompt ordering.
+
+### Removed
+
+- Removed legacy panel parking slots, edge expand buttons, panel drop zones, arbitrary position actions, split reference-sidebar resizing, and the old layout-state writer.
+
+### Fixed
+
+- Prevented legacy layout code from moving live manager, navigator, terminal, or avatar DOM into hidden parking containers.
+- Added explicit regression coverage that verifies regex, lorebook, and RISUP prompt drag completion updates the real document order while the fixed workspace shell remains in place.
+
+## [1.23.2] - 2026-07-22
+
+### Fixed
+
+- Show an opened guide or reference editor in place of the welcome screen when no primary document is loaded, instead of rendering the editor underneath the welcome content.
+- Removed the conflicting forced editor-surface display rule so Vue can switch cleanly between the welcome and editor states.
+
+## [1.23.1] - 2026-07-22
+
+### Fixed
+
+- Anchored the terminal shelf to the bottom edge so dragging its upper resize handle upward expands the terminal upward instead of growing the layout downward.
+- Added consistent resize-cursor feedback and prevented accidental text selection while resizing the terminal.
+
+## [1.23.0] - 2026-07-22
+
+### Added
+
+- Added terminal-header BGM and RP quick controls using the current app settings and real RP modes.
+- Added inline terminal-cell renaming with double-click or F2, plus collision-free automatic names such as `Shell (2)`.
+
+### Changed
+
+- Removed the redundant terminal shelf tab row so the terminal and avatar use the full configured shelf height.
+- Replaced the terminal background text control with an icon and removed the duplicate terminal close control.
+
+## [1.22.2] - 2026-07-22
+
+### Changed
+
+- Separated references from the terminal utility: references now use a persistent top-bar action and independent right drawer, while the terminal and avatar remain exclusively in the bottom shelf.
+- Allow the reference drawer and terminal shelf to stay open together without covering each other, while retaining independent popout actions.
+
+## [1.22.1] - 2026-07-22
+
+### Changed
+
+- Replaced the shallow bottom reference shelf with a tall, non-modal side drawer that preserves the editor's vertical space and expands to the available width on smaller windows.
+
+### Fixed
+
+- Refresh guides and reference files every time the reference drawer opens, including from the no-document welcome screen.
+
+## [1.22.0] - 2026-07-22
+
+### Added
+
+- Added character-driven Kei, Yuzu, and Midori themes, each with its own app, Monaco, terminal palette, and matching `KeiTalk`, `YuzuTalk`, or `MidoriTalk` title.
+
+### Changed
+
+- Reworked the former MomoTalk, Millennium, Gehenna, and Trinity presets as Momoi, Yuuka, Hina, and Mika themes with character-matched colors and terminal titles.
+- Rounded workspace controls and panels more consistently and added breathing room between the navigator, editor, inspector, and utility shelf.
+- Restored the avatar to its intended place beside the terminal, with an independent visibility toggle instead of a separate utility tab.
+
+### Fixed
+
+- Restored the avatar help action and ensured the avatar display initializes in the docked terminal layout.
+- Rendered guides and reference files into the visible reference shelf instead of the parked legacy sidebar.
+- Migrated the retired avatar shelf selection to the combined terminal-and-avatar layout.
+
+## [1.21.1] - 2026-07-22
+
+### Fixed
+
+- Cleared document-scoped tab and inspector selection when a different file opens, preventing stale lorebook, asset, or prompt properties from appearing beside an empty editor.
+
+## [1.21.0] - 2026-07-22
+
+### Added
+
+- Added document-specific CHARX, RISUM, and RISUP workspaces with a contextual navigator, focused editor canvas, and selection-aware inspector.
+- Added a filename-tree asset explorer and an asset output-rule wizard that analyzes only real `assets/other` keys, previews editable `<img src="Asset_Name">` rules, and safely updates marked lorebook or CHARX `globalNote` blocks.
+- Added a one-tool-at-a-time references, terminal, and avatar shelf with existing OS pop-outs retained for advanced workflows.
+- Added persisted, keyboard-accessible workspace pane sizing and responsive navigator/inspector overlays.
+
+### Changed
+
+- Replaced arbitrary manager docking with a fixed, task-oriented workspace shell and consolidated lorebook, asset, and RISUP prompt selection flows.
+- Reorganized settings into Save & Approval, Appearance, and Terminal & Persona sections.
+- Added semantic workspace tokens for all built-in and custom themes and replaced the shell controls with Tabler icons.
+- Simplified editable lorebook tabs to a wide content editor while moving metadata controls into the shared inspector.
+
 ## [1.20.0] - 2026-07-22
 
 ### Removed

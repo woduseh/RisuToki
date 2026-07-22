@@ -1,13 +1,118 @@
 <script setup lang="ts">
+import { computed, watch } from 'vue';
+import {
+  IconArrowUpRight,
+  IconBook2,
+  IconClock,
+  IconFilePlus,
+  IconFolderOpen,
+  IconHelpCircle,
+  IconMasksTheater,
+  IconMusic,
+  IconMusicOff,
+  IconPhoto,
+  IconRobot,
+  IconTerminal2,
+  IconX,
+} from '@tabler/icons-vue';
 import { useAppStore } from './stores/app-store';
 import { executeAction } from './lib/action-registry';
 import MenuBar from './components/MenuBar.vue';
 import StatusBar from './components/StatusBar.vue';
+import WorkspaceBar from './components/WorkspaceBar.vue';
+import ContextInspector from './components/ContextInspector.vue';
+import AssetOutputWizard from './components/AssetOutputWizard.vue';
+import { writeWorkspaceLayoutState } from './lib/workspace-layout-state';
+import { TOKI_IDLE } from './lib/avatar';
+import { showHelpPopup } from './lib/help-popup';
 
 const store = useAppStore();
+const shellStyle = computed(() => ({
+  '--navigator-width': `${store.navigatorWidth}px`,
+  '--inspector-width': `${store.inspectorWidth}px`,
+  '--utility-height': `${store.utilityHeight}px`,
+}));
+const hasEditorContent = computed(() => store.hasFile || store.activeTabId !== null);
+
+watch(
+  () =>
+    [
+      store.navigatorWidth,
+      store.inspectorWidth,
+      store.utilityHeight,
+      store.navigatorVisible,
+      store.inspectorVisible,
+      store.avatarVisible,
+      store.referencesVisible,
+      store.activeUtility,
+    ] as const,
+  () =>
+    writeWorkspaceLayoutState({
+      version: 2,
+      navigatorWidth: store.navigatorWidth,
+      inspectorWidth: store.inspectorWidth,
+      utilityHeight: store.utilityHeight,
+      navigatorVisible: store.navigatorVisible,
+      inspectorVisible: store.inspectorVisible,
+      avatarVisible: store.avatarVisible,
+      referencesVisible: store.referencesVisible,
+      activeUtility: store.activeUtility,
+    }),
+);
+
+function startPaneResize(kind: 'navigator' | 'inspector' | 'utility', event: PointerEvent) {
+  event.preventDefault();
+  const startX = event.clientX;
+  const startY = event.clientY;
+  const startValue =
+    kind === 'navigator' ? store.navigatorWidth : kind === 'inspector' ? store.inspectorWidth : store.utilityHeight;
+  const onMove = (moveEvent: PointerEvent) => {
+    if (kind === 'navigator') store.setNavigatorWidth(startValue + moveEvent.clientX - startX);
+    else if (kind === 'inspector') store.setInspectorWidth(startValue - moveEvent.clientX + startX);
+    else store.setUtilityHeight(startValue + startY - moveEvent.clientY);
+  };
+  const onUp = () => {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('pointercancel', onUp);
+    if (kind === 'utility') document.body.classList.remove('utility-resizing');
+    window.dispatchEvent(new Event('resize'));
+  };
+  if (kind === 'utility') document.body.classList.add('utility-resizing');
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+  document.addEventListener('pointercancel', onUp);
+}
+
+function resizeWithKeyboard(kind: 'navigator' | 'inspector' | 'utility', event: KeyboardEvent) {
+  const step = event.shiftKey ? 50 : 10;
+  if (kind === 'utility' && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+    event.preventDefault();
+    store.setUtilityHeight(store.utilityHeight + (event.key === 'ArrowUp' ? step : -step));
+  } else if (kind !== 'utility' && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+    event.preventDefault();
+    const direction = event.key === 'ArrowRight' ? step : -step;
+    if (kind === 'navigator') store.setNavigatorWidth(store.navigatorWidth + direction);
+    else store.setInspectorWidth(store.inspectorWidth - direction);
+  }
+}
 
 function handleAction(action: string, payload?: unknown) {
+  if (action === 'toggle-references') {
+    toggleReferences();
+    return;
+  }
   executeAction(action, payload);
+}
+
+function toggleReferences() {
+  const opening = !store.referencesVisible;
+  store.toggleReferences();
+  if (opening) handleAction('refresh-references');
+}
+
+function recentName(path: string) {
+  return path.split(/[\\/]/).filter(Boolean).pop() || path;
 }
 </script>
 
@@ -15,6 +120,7 @@ function handleAction(action: string, payload?: unknown) {
   <MenuBar
     :can-preview-current-file="store.canPreviewCurrentFile"
     :recent-items="store.recentItems"
+    :references-open="store.referencesVisible"
     @action="handleAction"
   >
     <template #file-label>
@@ -22,224 +128,255 @@ function handleAction(action: string, payload?: unknown) {
     </template>
   </MenuBar>
 
-  <div id="app-body">
-    <div id="slot-far-left" class="layout-slot slot-v"></div>
-    <div id="resizer-far-left" class="slot-resizer slot-resizer-v"></div>
+  <div
+    id="app-body"
+    :class="{
+      'navigator-open': store.navigatorVisible,
+      'inspector-open': store.inspectorVisible && store.hasInspectorContext,
+      'utility-open': store.activeUtility,
+      'avatar-visible': store.avatarVisible,
+      'references-open': store.referencesVisible,
+    }"
+    :data-workspace="store.workspaceId"
+    :data-utility="store.activeUtility || 'closed'"
+    :style="shellStyle"
+  >
+    <WorkspaceBar @action="handleAction" />
 
-    <div id="layout-center">
-      <div id="slot-top" class="layout-slot slot-h"></div>
-      <div id="resizer-top" class="slot-resizer slot-resizer-h"></div>
+    <div id="workspace-shell">
+      <aside id="workspace-navigator" aria-label="작업공간 탐색기">
+        <div id="slot-left" class="layout-slot slot-v active">
+          <div id="sidebar">
+            <div id="sidebar-items-section" class="sidebar-section">
+              <div class="sidebar-header"><span>탐색기</span></div>
+              <div id="sidebar-tree"></div>
+            </div>
+          </div>
+          <div id="lore-manager-panel" class="manager-panel"></div>
+          <div id="asset-manager-panel" class="manager-panel"></div>
+          <div id="prompt-manager-panel" class="manager-panel"></div>
+        </div>
+      </aside>
+      <div
+        id="navigator-resizer"
+        class="workspace-resizer"
+        role="separator"
+        aria-label="탐색기 너비 조절"
+        aria-orientation="vertical"
+        tabindex="0"
+        @pointerdown="startPaneResize('navigator', $event)"
+        @keydown="resizeWithKeyboard('navigator', $event)"
+      ></div>
 
-      <div id="main-container">
-        <div id="slot-left" class="layout-slot slot-v active"></div>
-        <div id="resizer-left" class="slot-resizer slot-resizer-v active"></div>
-
-        <div id="editor-area">
+      <section id="workspace-editor" aria-label="편집기">
+        <div v-if="!hasEditorContent" id="welcome-screen">
+          <img class="welcome-mark" :src="TOKI_IDLE" alt="" />
+          <h1>무엇을 만들까요?</h1>
+          <p>캐릭터, 모듈, 프롬프트 파일을 열거나 새 작업을 시작하세요.</p>
+          <div class="welcome-actions">
+            <button type="button" class="primary" @click="handleAction('open')">
+              <IconFolderOpen :size="19" /> 파일 열기
+            </button>
+            <button type="button" @click="handleAction('new')"><IconFilePlus :size="19" /> 새 문서</button>
+          </div>
+          <div v-if="store.recentItems.length" class="recent-work">
+            <div class="recent-heading"><IconClock :size="16" /> 최근 작업</div>
+            <button
+              v-for="item in store.recentItems.slice(0, 6)"
+              :key="`${item.kind}:${item.path}`"
+              type="button"
+              @click="handleAction('open-recent-item', item)"
+            >
+              <span>
+                <strong>{{ recentName(item.path) }}</strong>
+                <small>{{ item.path }}</small>
+              </span>
+              <IconArrowUpRight :size="16" />
+            </button>
+          </div>
+        </div>
+        <div v-show="hasEditorContent" id="editor-surface">
           <div id="editor-header">
             <div id="editor-tabs"></div>
             <button id="editor-mode-toggle" type="button" style="display: none">코드 보기</button>
           </div>
           <div id="editor-container"></div>
         </div>
+      </section>
 
-        <div id="resizer-right" class="slot-resizer slot-resizer-v"></div>
-        <div id="slot-right" class="layout-slot slot-v"></div>
-      </div>
-
-      <div id="resizer-bottom" class="slot-resizer slot-resizer-h active"></div>
-      <div id="slot-bottom" class="layout-slot slot-h active"></div>
+      <div
+        id="inspector-resizer"
+        class="workspace-resizer"
+        role="separator"
+        aria-label="속성 패널 너비 조절"
+        aria-orientation="vertical"
+        tabindex="0"
+        @pointerdown="startPaneResize('inspector', $event)"
+        @keydown="resizeWithKeyboard('inspector', $event)"
+      ></div>
+      <ContextInspector v-show="store.hasInspectorContext" />
     </div>
 
-    <div id="resizer-far-right" class="slot-resizer slot-resizer-v"></div>
-    <div id="slot-far-right" class="layout-slot slot-v"></div>
-
-    <div id="panel-parking" hidden>
-      <div id="lore-manager-panel" class="manager-panel"></div>
-      <div id="asset-manager-panel" class="manager-panel"></div>
-      <div id="prompt-manager-panel" class="manager-panel"></div>
-    </div>
-    <button
-      id="lore-manager-expand"
-      type="button"
-      class="manager-expand"
-      title="로어북 관리자 열기"
-      aria-label="로어북 관리자 열기"
-      style="display: none"
-      @click="handleAction('toggle-lore-manager')"
-    >
-      ▶
-    </button>
-    <button
-      id="asset-manager-expand"
-      type="button"
-      class="manager-expand"
-      title="에셋 관리자 열기"
-      aria-label="에셋 관리자 열기"
-      style="display: none"
-      @click="handleAction('toggle-asset-manager')"
-    >
-      ▶
-    </button>
-    <button
-      id="prompt-manager-expand"
-      type="button"
-      class="manager-expand"
-      title="프롬프트 관리자 열기"
-      aria-label="프롬프트 관리자 열기"
-      style="display: none"
-      @click="handleAction('toggle-prompt-manager')"
-    >
-      ▶
-    </button>
-
-    <div id="sidebar">
-      <div id="sidebar-items-section" class="sidebar-section">
-        <div class="sidebar-header">
-          <span>항목</span>
-          <div class="sidebar-header-btns">
-            <button
-              id="btn-sidebar-collapse"
-              class="panel-collapse-btn"
-              title="사이드바 접기"
-              aria-label="사이드바 접기"
-              @click="handleAction('toggle-sidebar')"
-            >
-              ◀
-            </button>
-          </div>
-        </div>
-        <div id="sidebar-tree"></div>
-      </div>
-      <div id="sidebar-split-resizer" class="resizer resizer-h"></div>
-      <div id="sidebar-refs-section" class="sidebar-section">
-        <div class="sidebar-header sidebar-header-refs">
-          <span>참고자료</span>
-          <div class="sidebar-header-btns">
-            <button
-              id="btn-refs-extpopout"
-              class="panel-collapse-btn"
-              title="팝아웃 (외부 창)"
-              aria-label="참고자료 팝아웃"
-              data-popout-panel="refs"
-            >
-              ↗
-            </button>
-            <button id="btn-refs-separate" class="panel-collapse-btn" title="분리" aria-label="참고자료 분리">⧉</button>
-            <button id="btn-refs-collapse" class="panel-collapse-btn" title="접기" aria-label="참고자료 접기">▼</button>
-            <button id="btn-refs-close" class="panel-collapse-btn" title="닫기" aria-label="참고자료 닫기">✕</button>
-          </div>
-        </div>
-        <div id="sidebar-refs"></div>
-      </div>
-    </div>
-
-    <div id="refs-panel">
-      <div class="refs-panel-header">
-        <span>참고자료</span>
-        <div class="sidebar-header-btns">
+    <aside v-show="store.referencesVisible" id="reference-drawer" aria-label="참고자료 서랍">
+      <header class="reference-drawer-header">
+        <span><IconBook2 :size="17" /> 참고자료</span>
+        <div>
           <button
-            id="btn-refs-panel-popout"
-            class="panel-collapse-btn"
-            title="팝아웃 (외부 창)"
+            type="button"
+            class="icon-only"
+            title="참고자료 팝아웃"
             aria-label="참고자료 팝아웃"
-            data-popout-panel="refs"
+            @click="handleAction('popout-references')"
           >
-            ↗
+            <IconArrowUpRight :size="17" />
           </button>
           <button
-            id="btn-refs-panel-dock"
-            class="panel-collapse-btn"
-            title="사이드바로 복귀"
-            aria-label="참고자료 사이드바로 복귀"
+            type="button"
+            class="icon-only"
+            title="참고자료 닫기"
+            aria-label="참고자료 닫기"
+            @click="store.toggleReferences()"
           >
-            ⇲
+            <IconX :size="17" />
           </button>
         </div>
-      </div>
-      <div id="refs-panel-content" class="refs-panel-content"></div>
-    </div>
-
-    <div id="bottom-area">
-      <div id="toki-avatar">
-        <button
-          id="btn-avatar-collapse"
-          type="button"
-          class="panel-collapse-btn avatar-collapse"
-          title="아바타 접기"
-          aria-label="아바타 접기"
-          @click="handleAction('toggle-avatar')"
-        >
-          ✕
-        </button>
-        <div id="toki-avatar-display"></div>
-        <div id="toki-status">
-          <span id="toki-status-icon">💤</span>
-          <span id="toki-status-text"></span>
+      </header>
+      <div id="reference-drawer-body">
+        <div id="refs-panel">
+          <div id="refs-panel-content" class="refs-panel-content"></div>
         </div>
-        <button id="toki-help-btn" type="button" aria-label="도움말 열기" @click="handleAction('help')">
-          ❓ 도움말
-        </button>
       </div>
-      <div id="avatar-resizer" class="resizer resizer-h" style="display: none"></div>
-      <div id="terminal-area">
-        <div id="terminal-header">
-          <div class="momo-header-left">
-            <span class="momo-icon">💬</span>
-            <span class="momo-title">{{ store.talkTitle }}</span>
-          </div>
-          <div class="momo-header-right">
-            <!-- RP 모드 / BGM 컨트롤은 설정(⚙) 모달로 일원화됨 (중복 제거). -->
+    </aside>
+
+    <section id="utility-shelf" aria-label="터미널 선반">
+      <div
+        v-if="store.activeUtility"
+        id="utility-resizer"
+        role="separator"
+        aria-label="터미널 선반 높이 조절"
+        aria-orientation="horizontal"
+        aria-valuemin="130"
+        aria-valuemax="520"
+        :aria-valuenow="store.utilityHeight"
+        tabindex="0"
+        @pointerdown="startPaneResize('utility', $event)"
+        @keydown="resizeWithKeyboard('utility', $event)"
+      ></div>
+      <div id="slot-bottom" class="layout-slot slot-h active">
+        <div id="bottom-area" class="panel-in-h">
+          <div id="toki-avatar">
             <button
-              id="btn-chat-mode"
-              title="채팅 모드"
-              aria-label="채팅 모드"
-              style="display: none"
-              @click="handleAction('chat-mode')"
+              id="btn-avatar-collapse"
+              type="button"
+              class="panel-collapse-btn avatar-collapse"
+              aria-label="아바타 숨기기"
+              @click="store.toggleAvatar()"
             >
-              💭
+              <IconX :size="16" />
             </button>
-            <button
-              id="btn-terminal-bg"
-              title="배경 이미지 설정"
-              aria-label="배경 이미지 설정"
-              @click="handleAction('terminal-bg')"
-            >
-              🖼
-            </button>
-            <button
-              id="btn-terminal-toggle"
-              title="터미널 토글"
-              aria-label="터미널 토글"
-              @click="handleAction('toggle-terminal')"
-            >
-              ━
+            <div id="toki-avatar-display"></div>
+            <div id="toki-status"><span id="toki-status-icon"></span><span id="toki-status-text"></span></div>
+            <button id="toki-help-btn" type="button" aria-label="사용 설명서 열기" @click="showHelpPopup()">
+              <IconHelpCircle :size="16" /><span>도움말</span>
             </button>
           </div>
+          <div id="terminal-area">
+            <div id="terminal-header">
+              <div class="momo-header-left">
+                <IconTerminal2 :size="17" /><span class="momo-title">{{ store.talkTitle }}</span>
+              </div>
+              <div class="momo-header-right">
+                <button
+                  id="btn-avatar-toggle"
+                  :title="store.avatarVisible ? '아바타 숨기기' : '아바타 표시'"
+                  :aria-label="store.avatarVisible ? '아바타 숨기기' : '아바타 표시'"
+                  :aria-pressed="store.avatarVisible"
+                  @click="store.toggleAvatar()"
+                >
+                  <IconRobot :size="16" />
+                </button>
+                <button
+                  id="btn-chat-mode"
+                  style="display: none"
+                  aria-label="채팅 모드"
+                  @click="handleAction('chat-mode')"
+                >
+                  채팅
+                </button>
+                <button
+                  id="btn-terminal-bg"
+                  title="배경 이미지 설정"
+                  aria-label="배경 이미지 설정"
+                  @click="handleAction('terminal-bg')"
+                >
+                  <IconPhoto :size="16" />
+                </button>
+                <button
+                  id="btn-bgm-toggle"
+                  :class="{ active: store.bgmEnabled }"
+                  :title="store.bgmEnabled ? 'BGM 끄기' : 'BGM 켜기'"
+                  :aria-label="store.bgmEnabled ? 'BGM 끄기' : 'BGM 켜기'"
+                  :aria-pressed="store.bgmEnabled"
+                  @click="handleAction('toggle-bgm')"
+                >
+                  <IconMusic v-if="store.bgmEnabled" :size="16" />
+                  <IconMusicOff v-else :size="16" />
+                </button>
+                <button
+                  id="btn-rp-mode"
+                  class="terminal-mode-control"
+                  :class="{ active: store.rpMode !== 'off' }"
+                  :title="`RP 모드 전환 (현재: ${store.rpLabel})`"
+                  :aria-label="`RP 모드 전환, 현재 ${store.rpLabel}`"
+                  @click="handleAction('cycle-rp-mode')"
+                >
+                  <IconMasksTheater :size="16" /><span>RP {{ store.rpLabel }}</span>
+                </button>
+                <button
+                  id="btn-terminal-popout"
+                  title="터미널 팝아웃"
+                  aria-label="터미널 팝아웃"
+                  @click="handleAction('popout-terminal')"
+                >
+                  <IconArrowUpRight :size="16" />
+                </button>
+                <button
+                  id="btn-terminal-toggle"
+                  title="터미널 닫기"
+                  aria-label="터미널 닫기"
+                  @click="store.toggleUtility('terminal')"
+                >
+                  <IconX :size="16" />
+                </button>
+              </div>
+            </div>
+            <div id="terminal-tabs" class="terminal-tabs" role="tablist" aria-label="터미널 세션"></div>
+            <div id="terminal-container"></div>
+          </div>
         </div>
-        <div id="terminal-tabs" class="terminal-tabs" role="tablist" aria-label="터미널 세션"></div>
-        <div id="terminal-container"></div>
       </div>
-    </div>
-
+    </section>
     <button
-      id="sidebar-expand"
+      v-if="!store.activeUtility"
+      id="terminal-shelf-launcher"
       type="button"
-      title="사이드바 열기"
-      aria-label="사이드바 열기"
-      style="display: none"
-      @click="handleAction('sidebar-expand')"
+      aria-label="터미널 열기"
+      title="터미널 열기 (Ctrl+`)"
+      @click="store.toggleUtility('terminal')"
     >
-      ▶
+      <IconTerminal2 :size="16" /><span>터미널 열기</span>
     </button>
   </div>
 
   <StatusBar />
+  <AssetOutputWizard />
 </template>
 
 <style>
 #app {
   width: 100%;
   height: 100%;
-  display: block;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 </style>

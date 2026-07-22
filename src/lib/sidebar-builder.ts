@@ -15,14 +15,6 @@ export interface LoreEntryChild {
   entry: { comment?: string; [key: string]: unknown };
 }
 
-export interface SplitResizerDeps {
-  moveRefs: (pos: string) => void;
-  popOutPanel: (panelId: string) => void;
-  dockPanel: (panelId: string) => void;
-  isPanelPoppedOut: (panelId: string) => boolean;
-  showContextMenu: (x: number, y: number, items: ContextMenuItem[]) => void;
-}
-
 export interface AssetsSidebarDeps {
   showContextMenu: (x: number, y: number, items: ContextMenuItem[]) => void;
   addAssetFromDialog: (folder: string) => void;
@@ -134,120 +126,6 @@ export function updateSidebarActive(activeTabId: string | null, openTabs: TabLik
       targetLabel !== null && (el as HTMLElement).dataset.label === targetLabel,
     );
   });
-}
-
-export function initSidebarSplitResizer(deps: SplitResizerDeps): void {
-  const resizer = document.getElementById('sidebar-split-resizer');
-  const itemsSection = document.getElementById('sidebar-items-section');
-  const refsSection = document.getElementById('sidebar-refs-section');
-  if (!resizer || !itemsSection || !refsSection) return;
-
-  let startY = 0;
-  let startItemsH = 0;
-  let startRefsH = 0;
-
-  const updateResizerValue = () => {
-    resizer.setAttribute('aria-valuenow', String(itemsSection.offsetHeight));
-    resizer.setAttribute('aria-valuetext', `${itemsSection.offsetHeight}px`);
-  };
-
-  const resizeSections = (itemsHeight: number, refsHeight: number) => {
-    const newItemsH = Math.max(60, itemsHeight);
-    const newRefsH = Math.max(60, refsHeight);
-    itemsSection.style.flex = `0 0 ${newItemsH}px`;
-    refsSection.style.flex = `0 0 ${newRefsH}px`;
-    resizer.setAttribute('aria-valuenow', String(newItemsH));
-    resizer.setAttribute('aria-valuetext', `${newItemsH}px`);
-  };
-
-  resizer.setAttribute('role', 'separator');
-  resizer.setAttribute('aria-orientation', 'horizontal');
-  resizer.setAttribute('aria-label', '항목과 참고자료 패널 크기 조절');
-  resizer.setAttribute('aria-valuemin', '60');
-  resizer.tabIndex = 0;
-  updateResizerValue();
-
-  const onMove = (e: MouseEvent) => {
-    const dy = e.clientY - startY;
-    resizeSections(startItemsH + dy, startRefsH - dy);
-  };
-  const onUp = () => {
-    document.body.style.cursor = '';
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-  };
-  resizer.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    startY = e.clientY;
-    startItemsH = itemsSection.offsetHeight;
-    startRefsH = refsSection.offsetHeight;
-    document.body.style.cursor = 'ns-resize';
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  });
-  resizer.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-    e.preventDefault();
-    const step = e.shiftKey ? 50 : 10;
-    const delta = e.key === 'ArrowDown' ? step : -step;
-    resizeSections(itemsSection.offsetHeight + delta, refsSection.offsetHeight - delta);
-  });
-
-  // --- Refs section buttons ---
-  const refsContent = document.getElementById('sidebar-refs');
-  const collapseBtn = document.getElementById('btn-refs-collapse');
-  const closeBtn = document.getElementById('btn-refs-close');
-  const separateBtn = document.getElementById('btn-refs-separate');
-  const extPopoutBtn = document.getElementById('btn-refs-extpopout');
-
-  if (collapseBtn && refsContent) {
-    let refsCollapsed = false;
-    collapseBtn.addEventListener('click', () => {
-      refsCollapsed = !refsCollapsed;
-      refsContent.style.display = refsCollapsed ? 'none' : '';
-      collapseBtn.textContent = refsCollapsed ? '▶' : '▼';
-      collapseBtn.title = refsCollapsed ? '참고자료 펼치기' : '참고자료 접기';
-    });
-  }
-  if (closeBtn && refsSection && resizer) {
-    closeBtn.addEventListener('click', () => {
-      refsSection.style.display = 'none';
-      resizer.style.display = 'none';
-      itemsSection.style.flex = '1';
-    });
-  }
-  if (separateBtn) {
-    separateBtn.addEventListener('click', () => {
-      deps.moveRefs('right');
-    });
-  }
-  if (extPopoutBtn) {
-    extPopoutBtn.addEventListener('click', () => {
-      if (deps.isPanelPoppedOut('refs')) {
-        deps.dockPanel('refs');
-      } else {
-        deps.popOutPanel('refs');
-      }
-    });
-  }
-  // Right-click on refs header for position options
-  const refsHeader = document.querySelector('.sidebar-header-refs');
-  if (refsHeader) {
-    refsHeader.addEventListener('contextmenu', (e: Event) => {
-      const me = e as MouseEvent;
-      me.preventDefault();
-      me.stopPropagation();
-      deps.showContextMenu(me.clientX, me.clientY, [
-        { label: '→ 사이드바', action: () => deps.moveRefs('sidebar') },
-        { label: '→ 좌측', action: () => deps.moveRefs('left') },
-        { label: '→ 우측', action: () => deps.moveRefs('right') },
-        { label: '→ 좌끝', action: () => deps.moveRefs('far-left') },
-        { label: '→ 우끝', action: () => deps.moveRefs('far-right') },
-        { label: '→ 상단', action: () => deps.moveRefs('top') },
-        { label: '→ 하단', action: () => deps.moveRefs('bottom') },
-      ]);
-    });
-  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

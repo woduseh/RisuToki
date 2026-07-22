@@ -1,4 +1,4 @@
-import { parseStoredJson, storedAvatarStateSchema, storedLayoutStateSchema } from './stored-state-validation';
+import { parseStoredJson, storedAvatarStateSchema } from './stored-state-validation';
 import {
   DEFAULT_CUSTOM_THEME_PALETTE,
   getDefaultRpModeForTheme,
@@ -22,20 +22,6 @@ export interface StoredAvatarState {
   src: string;
 }
 
-export interface StoredLayoutState {
-  itemsPos?: string;
-  refsPos?: string;
-  terminalPos?: string;
-  loreManagerPos?: string;
-  assetManagerPos?: string;
-  itemsVisible?: boolean;
-  terminalVisible?: boolean;
-  avatarVisible?: boolean;
-  loreManagerVisible?: boolean;
-  assetManagerVisible?: boolean;
-  slotSizes?: Record<string, number>;
-}
-
 export interface AppSettingsSnapshot {
   darkMode: boolean;
   themeId: ThemeId;
@@ -50,7 +36,6 @@ export interface AppSettingsSnapshot {
   autosaveDir: string;
   avatarIdle: StoredAvatarState | null;
   avatarWorking: StoredAvatarState | null;
-  layoutState: StoredLayoutState | null;
 }
 
 export type RecentItemKind = 'file' | 'project';
@@ -78,7 +63,6 @@ export const STORAGE_KEYS = {
   bgmPath: 'toki-bgm-path',
   darkMode: 'toki-dark-mode',
   customTheme: 'toki-custom-theme',
-  layoutState: 'toki-layout-state',
   mcpApprovalMode: 'toki-mcp-approval-mode',
   rpCustom: 'toki-rp-custom',
   rpMode: 'toki-rp-mode',
@@ -195,12 +179,7 @@ export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnaps
     autosaveDir: target.getItem(STORAGE_KEYS.autosaveDir) || '',
     avatarIdle: parseStoredJson(target.getItem(STORAGE_KEYS.avatarIdle), storedAvatarStateSchema),
     avatarWorking: parseStoredJson(target.getItem(STORAGE_KEYS.avatarWorking), storedAvatarStateSchema),
-    layoutState: parseStoredJson(target.getItem(STORAGE_KEYS.layoutState), storedLayoutStateSchema),
   };
-}
-
-export function readStoredLayoutState(storage?: StorageLike): StoredLayoutState | null {
-  return parseStoredJson(getDefaultStorage(storage).getItem(STORAGE_KEYS.layoutState), storedLayoutStateSchema);
 }
 
 export function readRecentItems(storage?: StorageLike): RecentItem[] {
@@ -337,10 +316,6 @@ export function writeAutosaveDir(path: string, storage?: StorageLike): void {
 
 export function clearAutosaveDir(storage?: StorageLike): void {
   getDefaultStorage(storage).removeItem(STORAGE_KEYS.autosaveDir);
-}
-
-export function writeLayoutState(layoutState: StoredLayoutState, storage?: StorageLike): void {
-  getDefaultStorage(storage).setItem(STORAGE_KEYS.layoutState, JSON.stringify(layoutState));
 }
 
 function writeAvatarState(key: string, value: StoredAvatarState | null, storage?: StorageLike): void {

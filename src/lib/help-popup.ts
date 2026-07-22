@@ -117,25 +117,24 @@ export function showHelpPopup(): void {
     <div class="help-shortcut"><span>프리뷰</span><kbd>F5</kbd></div>
     <div class="help-shortcut"><span>확대 / 축소 / 기본</span><kbd>Ctrl++ / Ctrl+- / Ctrl+0</kbd></div>
 
-    <h3>💬 TokiTalk 터미널</h3>
-    <div class="help-shortcut"><span>채팅 모드 전환</span><span>💭 버튼</span></div>
-    <div class="help-shortcut"><span>배경 이미지 설정</span><span>🖼 버튼</span></div>
+    <h3>💬 캐릭터 터미널</h3>
+    <div class="help-shortcut"><span>아바타 표시 전환</span><span>터미널 헤더의 로봇 버튼</span></div>
+    <div class="help-shortcut"><span>셀 이름 변경</span><span>탭의 ✎ 버튼 · 더블클릭 · F2</span></div>
+    <div class="help-shortcut"><span>새 셀</span><span>+ 버튼 · Shell (2)처럼 자동 구분</span></div>
+    <div class="help-shortcut"><span>BGM 전환</span><span>터미널 헤더의 음악 버튼</span></div>
+    <div class="help-shortcut"><span>RP 모드 전환</span><span>터미널 헤더의 RP 버튼</span></div>
+    <div class="help-shortcut"><span>배경 이미지 설정</span><span>터미널 헤더의 이미지 버튼</span></div>
     <div class="help-shortcut"><span>Claude Code 시작</span><span>터미널 메뉴</span></div>
     <div class="help-shortcut"><span>GitHub Copilot CLI 시작</span><span>터미널 메뉴</span></div>
     <div class="help-shortcut"><span>Codex 시작</span><span>터미널 메뉴</span></div>
 
-    <h3>🔘 터미널 헤더 버튼</h3>
-    <div class="help-shortcut"><span>🐰 RP 모드 / 🔇 BGM</span><span>설정(⚙) 모달에서 변경</span></div>
-    <div class="help-shortcut"><span>🖼 배경</span><span>터미널 배경 이미지 설정</span></div>
-    <div class="help-shortcut"><span>━ 토글</span><span>터미널 표시/숨김</span></div>
-
-    <h3>🖱️ 패널 관리</h3>
-    <div class="help-shortcut"><span>패널 이동</span><span>헤더 드래그</span></div>
-    <div class="help-shortcut"><span>팝아웃 (분리)</span><span>우클릭 → 팝아웃</span></div>
-    <div class="help-shortcut"><span>사이드바 위치</span><span>보기 메뉴</span></div>
-    <div class="help-shortcut"><span>터미널 위치</span><span>보기 메뉴</span></div>
+    <h3>🧰 작업공간과 도구</h3>
+    <div class="help-shortcut"><span>참고자료 서랍</span><span>상단 참고자료 버튼</span></div>
+    <div class="help-shortcut"><span>터미널 표시</span><span>헤더 닫기 / 하단 열기 버튼</span></div>
+    <div class="help-shortcut"><span>탐색기 / 속성 패널</span><span>작업공간 상단 버튼</span></div>
+    <div class="help-shortcut"><span>참고자료·터미널 팝아웃</span><span>각 패널의 ↗ 버튼</span></div>
     <div class="help-shortcut"><span>아바타 우클릭</span><span>이미지 수동 변경</span></div>
-    <div class="help-shortcut"><span>앱 테마</span><span>설정 → 앱 테마 (색상·마스코트)</span></div>
+    <div class="help-shortcut"><span>앱 테마 / RP 모드 / BGM</span><span>설정</span></div>
 
     <h3>🔧 편집 항목 안내</h3>
     <div class="help-shortcut"><span>Lua</span><span>트리거 스크립트 (게임 로직)</span></div>

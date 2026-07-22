@@ -118,3 +118,7 @@ risu/plugins/**
 
 /docs/analysis/
 work/
+
+# Local UI and avatar research artifacts
+/scratch/
+/design/avatar-candidates/

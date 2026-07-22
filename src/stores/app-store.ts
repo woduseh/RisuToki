@@ -3,7 +3,16 @@ import { ref, computed } from 'vue';
 import type { Section } from '../lib/section-parser';
 import { getTalkTitleForTheme, type CustomThemePalette, type ThemeId } from '../lib/theme-registry';
 import type { RecentItem } from '../lib/app-settings';
-// Layout types available for future use via '../lib/layout-manager'
+import {
+  getDefaultWorkspace,
+  getInspectorContext,
+  getWorkspaceDefinitions,
+  inferWorkspaceFromTab,
+  isWorkspaceAvailable,
+  type UtilityToolId,
+  type WorkspaceId,
+} from '../lib/workspace-model';
+import { readWorkspaceLayoutState } from '../lib/workspace-layout-state';
 
 // CharxData represents the loaded .charx file data
 export interface CharxData {
@@ -219,9 +228,17 @@ export const useAppStore = defineStore('app', () => {
   const autosaveDir = ref('');
 
   // === Layout ===
-  const sidebarVisible = ref(true);
-  const terminalVisible = ref(true);
-  const avatarVisible = ref(true);
+  const initialWorkspaceLayout = readWorkspaceLayoutState();
+  const avatarVisible = ref(initialWorkspaceLayout.avatarVisible);
+  const referencesVisible = ref(initialWorkspaceLayout.referencesVisible);
+  const workspaceId = ref<WorkspaceId>('character');
+  const navigatorVisible = ref(initialWorkspaceLayout.navigatorVisible);
+  const inspectorVisible = ref(initialWorkspaceLayout.inspectorVisible);
+  const activeUtility = ref<UtilityToolId | null>(initialWorkspaceLayout.activeUtility);
+  const navigatorWidth = ref(initialWorkspaceLayout.navigatorWidth);
+  const inspectorWidth = ref(initialWorkspaceLayout.inspectorWidth);
+  const utilityHeight = ref(initialWorkspaceLayout.utilityHeight);
+  const assetWizardOpen = ref(false);
 
   // === Computed ===
   const hasFile = computed(() => fileData.value !== null);
@@ -245,10 +262,19 @@ export const useAppStore = defineStore('app', () => {
   const displayFileLabel = computed(() =>
     restoredSessionLabel.value ? `${fileLabel.value} [${restoredSessionLabel.value}]` : fileLabel.value,
   );
+  const workspaceDefinitions = computed(() => getWorkspaceDefinitions(fileData.value));
+  const inspectorContext = computed(() => getInspectorContext(activeTabId.value));
+  const hasInspectorContext = computed(() => inspectorContext.value.kind !== 'empty');
 
   // === Actions ===
   function setFileData(data: CharxData | null) {
     fileData.value = data;
+    // A tab id only has meaning inside the document that created it. Clearing
+    // it here prevents a newly opened CHARX/RISUM/RISUP file from inheriting
+    // the previous document's contextual inspector while its editor is empty.
+    activeTabId.value = null;
+    activeTabLanguage.value = '';
+    if (!isWorkspaceAvailable(data, workspaceId.value)) workspaceId.value = getDefaultWorkspace(data);
   }
 
   function setStatus(text: string, options: StatusOptions = {}) {
@@ -314,6 +340,77 @@ export const useAppStore = defineStore('app', () => {
 
   function setActiveTabId(id: string | null) {
     activeTabId.value = id;
+    const inferred = inferWorkspaceFromTab(id, fileData.value);
+    if (inferred && isWorkspaceAvailable(fileData.value, inferred)) workspaceId.value = inferred;
+    if (getInspectorContext(id).kind !== 'empty') {
+      inspectorVisible.value = true;
+      if (typeof window !== 'undefined' && window.innerWidth < 1020) navigatorVisible.value = false;
+    }
+  }
+
+  function setWorkspaceId(id: WorkspaceId) {
+    if (isWorkspaceAvailable(fileData.value, id)) workspaceId.value = id;
+  }
+
+  function toggleNavigator() {
+    navigatorVisible.value = !navigatorVisible.value;
+    if (navigatorVisible.value && typeof window !== 'undefined' && window.innerWidth < 1020) {
+      inspectorVisible.value = false;
+      referencesVisible.value = false;
+    }
+  }
+
+  function toggleInspector() {
+    inspectorVisible.value = !inspectorVisible.value;
+    if (inspectorVisible.value && typeof window !== 'undefined' && window.innerWidth < 1180) {
+      navigatorVisible.value = false;
+      referencesVisible.value = false;
+    }
+  }
+
+  function toggleUtility(tool: UtilityToolId) {
+    activeUtility.value = activeUtility.value === tool ? null : tool;
+  }
+
+  function setActiveUtility(tool: UtilityToolId | null) {
+    activeUtility.value = tool;
+  }
+
+  function toggleReferences() {
+    referencesVisible.value = !referencesVisible.value;
+    if (referencesVisible.value && typeof window !== 'undefined' && window.innerWidth < 1180) {
+      inspectorVisible.value = false;
+      if (window.innerWidth < 1020) navigatorVisible.value = false;
+    }
+  }
+
+  function setReferencesVisible(visible: boolean) {
+    referencesVisible.value = visible;
+  }
+
+  function toggleAvatar() {
+    if (activeUtility.value !== 'terminal') {
+      activeUtility.value = 'terminal';
+      avatarVisible.value = true;
+      return;
+    }
+    avatarVisible.value = !avatarVisible.value;
+  }
+
+  function setAssetWizardOpen(open: boolean) {
+    assetWizardOpen.value = open;
+  }
+
+  function setNavigatorWidth(width: number) {
+    navigatorWidth.value = Math.min(440, Math.max(220, width));
+  }
+
+  function setInspectorWidth(width: number) {
+    inspectorWidth.value = Math.min(480, Math.max(260, width));
+  }
+
+  function setUtilityHeight(height: number) {
+    utilityHeight.value = Math.min(520, Math.max(130, height));
   }
 
   function setActiveTabLanguage(language: string) {
@@ -362,9 +459,16 @@ export const useAppStore = defineStore('app', () => {
     autosaveEnabled,
     autosaveInterval,
     autosaveDir,
-    sidebarVisible,
-    terminalVisible,
     avatarVisible,
+    referencesVisible,
+    workspaceId,
+    navigatorVisible,
+    inspectorVisible,
+    activeUtility,
+    assetWizardOpen,
+    navigatorWidth,
+    inspectorWidth,
+    utilityHeight,
     // Computed
     hasFile,
     isRisum,
@@ -372,6 +476,9 @@ export const useAppStore = defineStore('app', () => {
     talkTitle,
     rpLabel,
     displayFileLabel,
+    workspaceDefinitions,
+    inspectorContext,
+    hasInspectorContext,
     // Actions
     setFileData,
     setStatus,
@@ -388,6 +495,18 @@ export const useAppStore = defineStore('app', () => {
     setRpMode,
     setMonacoReady,
     setActiveTabId,
+    setWorkspaceId,
+    toggleNavigator,
+    toggleInspector,
+    toggleUtility,
+    setActiveUtility,
+    toggleReferences,
+    setReferencesVisible,
+    toggleAvatar,
+    setAssetWizardOpen,
+    setNavigatorWidth,
+    setInspectorWidth,
+    setUtilityHeight,
     setActiveTabLanguage,
     setLuaSections,
     setCssSections,

@@ -26,6 +26,7 @@ interface TerminalSessionsApi {
   terminalInputSession(sessionId: string, data: string): void;
   terminalIsSessionRunning(sessionId: string): Promise<boolean>;
   terminalNewSession(name?: string): Promise<{ id: string; name: string }>;
+  terminalRenameSession(sessionId: string, name: string): Promise<boolean>;
   terminalResizeSession(sessionId: string, cols: number, rows: number): void;
   terminalStartSession(sessionId: string, cols?: number, rows?: number, name?: string): Promise<boolean>;
   terminalStopSession(sessionId: string): Promise<boolean>;
@@ -52,9 +53,22 @@ export interface TerminalSessionsController {
   getSession(sessionId: string): TerminalSessionUi | null;
   getTerminal(): TerminalUiHandle['term'] | null;
   init(): Promise<void>;
+  renameSession(sessionId: string, name: string): Promise<boolean>;
   restart(): Promise<boolean | null>;
   sendInput(text: string, sessionId?: string | null): void;
   setActiveSession(sessionId: string): void;
+}
+
+export function makeUniqueTerminalSessionName(requested: string, existingNames: Iterable<string>): string {
+  const preferred = requested.trim() || 'Shell';
+  const occupied = new Set(Array.from(existingNames, (name) => name.trim().toLocaleLowerCase()));
+  if (!occupied.has(preferred.toLocaleLowerCase())) return preferred;
+
+  const match = preferred.match(/^(.*?)(?:\s+\((\d+)\))?$/);
+  const stem = match?.[1]?.trim() || preferred;
+  let suffix = Math.max(2, Number(match?.[2] || 1) + 1);
+  while (occupied.has(`${stem} (${suffix})`.toLocaleLowerCase())) suffix += 1;
+  return `${stem} (${suffix})`;
 }
 
 export function createTerminalSessionsController(deps: TerminalSessionsControllerDeps): TerminalSessionsController {
@@ -72,6 +86,53 @@ export function createTerminalSessionsController(deps: TerminalSessionsControlle
     return getActiveSession()?.context || fallbackContext;
   }
 
+  function beginSessionRename(session: TerminalSessionUi, label: HTMLElement): void {
+    const tab = label.closest<HTMLElement>('.terminal-tab');
+    if (!tab || tab.querySelector('.terminal-tab-rename')) return;
+
+    const input = document.createElement('input');
+    input.className = 'terminal-tab-rename';
+    input.type = 'text';
+    input.value = session.name;
+    input.setAttribute('aria-label', '터미널 셀 이름');
+    let settled = false;
+
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      renderTabs();
+    };
+    const commit = () => {
+      if (settled) return;
+      const nextName = input.value.trim();
+      if (!nextName) {
+        cancel();
+        return;
+      }
+      settled = true;
+      void renameSession(session.id, nextName).then((renamed) => {
+        if (!renamed) renderTabs();
+      });
+    };
+
+    input.addEventListener('click', (event) => event.stopPropagation());
+    input.addEventListener('dblclick', (event) => event.stopPropagation());
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        commit();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        cancel();
+      }
+    });
+    input.addEventListener('blur', commit);
+    label.replaceWith(input);
+    input.focus();
+    input.select();
+  }
+
   function renderTabs(): void {
     const tabs = document.getElementById('terminal-tabs');
     if (!tabs) return;
@@ -83,10 +144,14 @@ export function createTerminalSessionsController(deps: TerminalSessionsControlle
       tab.setAttribute('role', 'tab');
       tab.setAttribute('aria-selected', String(session.id === activeSessionId));
       tab.tabIndex = 0;
-      tab.title = session.name;
+      tab.title = `${session.name} · 더블클릭하거나 F2를 눌러 이름 변경`;
       tab.addEventListener('click', () => setActiveSession(session.id));
       tab.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (event.key === 'F2') {
+          event.preventDefault();
+          const label = tab.querySelector<HTMLElement>('.terminal-tab-label');
+          if (label) beginSessionRename(session, label);
+        } else if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           setActiveSession(session.id);
         }
@@ -95,7 +160,24 @@ export function createTerminalSessionsController(deps: TerminalSessionsControlle
       const label = document.createElement('span');
       label.className = 'terminal-tab-label';
       label.textContent = session.name;
+      label.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        beginSessionRename(session, label);
+      });
       tab.appendChild(label);
+
+      const rename = document.createElement('button');
+      rename.type = 'button';
+      rename.className = 'terminal-tab-rename-button';
+      rename.title = '터미널 셀 이름 변경';
+      rename.setAttribute('aria-label', `${session.name} 이름 변경`);
+      rename.textContent = '✎';
+      rename.addEventListener('click', (event) => {
+        event.stopPropagation();
+        beginSessionRename(session, label);
+      });
+      tab.appendChild(rename);
 
       const close = document.createElement('button');
       close.type = 'button';
@@ -165,7 +247,11 @@ export function createTerminalSessionsController(deps: TerminalSessionsControlle
 
   async function createSession(name = 'Shell'): Promise<TerminalSessionUi> {
     const root = document.getElementById('terminal-container')!;
-    const info = await deps.api.terminalNewSession(name);
+    const uniqueName = makeUniqueTerminalSessionName(
+      name,
+      Array.from(sessions.values(), (session) => session.name),
+    );
+    const info = await deps.api.terminalNewSession(uniqueName);
     const sessionContainer = document.createElement('div');
     sessionContainer.className = 'terminal-session';
     sessionContainer.dataset.sessionId = info.id;
@@ -225,6 +311,34 @@ export function createTerminalSessionsController(deps: TerminalSessionsControlle
     return session;
   }
 
+  async function renameSession(sessionId: string, name: string): Promise<boolean> {
+    const session = sessions.get(sessionId);
+    const trimmed = name.trim();
+    if (!session || !trimmed) return false;
+
+    const uniqueName = makeUniqueTerminalSessionName(
+      trimmed,
+      Array.from(sessions.values())
+        .filter((candidate) => candidate.id !== sessionId)
+        .map((candidate) => candidate.name),
+    );
+    if (uniqueName === session.name) {
+      renderTabs();
+      return true;
+    }
+
+    const renamed = await deps.api.terminalRenameSession(sessionId, uniqueName);
+    if (!renamed) {
+      deps.setStatus('터미널 이름을 변경하지 못했습니다');
+      return false;
+    }
+
+    session.name = uniqueName;
+    renderTabs();
+    deps.setStatus(`터미널 이름 변경: ${uniqueName}`);
+    return true;
+  }
+
   return {
     get activeSessionId() {
       return activeSessionId;
@@ -248,6 +362,8 @@ export function createTerminalSessionsController(deps: TerminalSessionsControlle
       activeSessionId = null;
       await createSession('Shell');
     },
+
+    renameSession,
 
     async restart() {
       const active = getActiveSession();

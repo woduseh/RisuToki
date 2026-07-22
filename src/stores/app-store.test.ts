@@ -78,8 +78,37 @@ describe('app-store reactive state', () => {
     store.setThemeId('aris');
     expect(store.talkTitle).toBe('ArisTalk');
 
-    store.setThemeId('millennium');
-    expect(store.talkTitle).toBe('TokiTalk');
+    store.setThemeId('yuuka');
+    expect(store.talkTitle).toBe('YuukaTalk');
+  });
+
+  it('keeps the avatar attached to the terminal and toggles only its visibility', () => {
+    const store = useAppStore();
+
+    if (store.activeUtility === 'terminal') store.toggleUtility('terminal');
+    expect(store.activeUtility).toBeNull();
+
+    store.toggleAvatar();
+    expect(store.activeUtility).toBe('terminal');
+    expect(store.avatarVisible).toBe(true);
+
+    store.toggleAvatar();
+    expect(store.activeUtility).toBe('terminal');
+    expect(store.avatarVisible).toBe(false);
+  });
+
+  it('toggles references independently from the terminal shelf', () => {
+    const store = useAppStore();
+    expect(store.activeUtility).toBe('terminal');
+    expect(store.referencesVisible).toBe(false);
+
+    store.toggleReferences();
+    expect(store.referencesVisible).toBe(true);
+    expect(store.activeUtility).toBe('terminal');
+
+    store.toggleUtility('terminal');
+    expect(store.referencesVisible).toBe(true);
+    expect(store.activeUtility).toBeNull();
   });
 });
 
@@ -115,5 +144,20 @@ describe('app-store previewability', () => {
     const store = useAppStore();
     store.setFileData({ _fileType: 'risup', name: 'Preset' } as never);
     expect(store.canPreviewCurrentFile).toBe(false);
+  });
+
+  it('clears document-scoped tab and inspector context when another file is loaded', () => {
+    const store = useAppStore();
+    store.setFileData({ _fileType: 'charx', name: 'Character', lorebook: [{}] } as never);
+    store.setActiveTabId('lore_0');
+    store.setActiveTabLanguage('plaintext');
+
+    expect(store.hasInspectorContext).toBe(true);
+
+    store.setFileData({ _fileType: 'risum', name: 'Module', lorebook: [] } as never);
+
+    expect(store.activeTabId).toBeNull();
+    expect(store.activeTabLanguage).toBe('');
+    expect(store.hasInspectorContext).toBe(false);
   });
 });

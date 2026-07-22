@@ -78,10 +78,11 @@ describe('app.css – project raw files', () => {
 });
 
 describe('app.css – manager panels', () => {
-  it('styles lorebook and asset managers as movable panels with edge expand buttons', () => {
+  it('styles lorebook and asset managers without legacy free-placement controls', () => {
     expect(css).toMatch(/\.manager-panel\s*\{/);
-    expect(css).toMatch(/\.manager-expand\s*\{/);
-    expect(css).toMatch(/\.manager-expand-right\s*\{/);
+    expect(css).not.toMatch(/\.manager-expand\s*\{/);
+    expect(css).not.toMatch(/\.panel-drop-zone\s*\{/);
+    expect(css).not.toMatch(/\.slot-resizer\s*\{/);
   });
 
   it('keeps prompt manager controls in dedicated columns beside the full-width content', () => {

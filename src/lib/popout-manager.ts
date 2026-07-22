@@ -29,6 +29,7 @@ export interface PopoutManagerDeps {
 
 let deps: PopoutManagerDeps;
 const popoutWindows: Record<string, BrowserWindow> = {};
+const SUPPORTED_POPOUT_TYPES = new Set(['terminal', 'refs', 'editor', 'preview']);
 
 // ---------------------------------------------------------------------------
 // Public helpers
@@ -49,6 +50,10 @@ export function initPopoutManager(d: PopoutManagerDeps): void {
   // --- Popout create / lifecycle ---
 
   ipcMain.handle('popout-create', async (_, panelType: string, requestId?: string) => {
+    if (!SUPPORTED_POPOUT_TYPES.has(panelType)) {
+      console.warn(`[main] unsupported popout panel: ${panelType}`);
+      return false;
+    }
     if (popoutWindows[panelType] && !popoutWindows[panelType].isDestroyed()) {
       popoutWindows[panelType].close();
       delete popoutWindows[panelType];
@@ -58,8 +63,6 @@ export function initPopoutManager(d: PopoutManagerDeps): void {
     const isEditor = panelType === 'editor';
     const isPreview = panelType === 'preview';
     const isRefs = panelType === 'refs';
-    const isLoreManager = panelType === 'lore-manager';
-    const isAssetManager = panelType === 'asset-manager';
     if ((isEditor || isPreview) && !requestId) {
       console.warn(`[main] missing popout payload requestId for ${panelType}`);
       return false;
@@ -74,17 +77,7 @@ export function initPopoutManager(d: PopoutManagerDeps): void {
       minHeight: isPreview ? 400 : 200,
       parent: mainWindow!,
       frame: false,
-      title: isEditor
-        ? 'RisuToki'
-        : isTerminal
-          ? 'TokiTalk'
-          : isRefs
-            ? '참고자료'
-            : isLoreManager
-              ? '로어북 관리자'
-              : isAssetManager
-                ? '에셋 관리자'
-                : '항목',
+      title: isEditor ? 'RisuToki' : isTerminal ? 'TokiTalk' : isRefs ? '참고자료' : 'RisuToki',
       icon: path.join(dirname, 'assets', 'icon.png'),
       webPreferences: {
         preload: path.join(dirname, 'popout-preload.js'),

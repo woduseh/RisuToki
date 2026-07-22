@@ -14,7 +14,7 @@ describe('settings-handlers', () => {
     let customTheme: CustomThemePalette | null = null;
     writeRpMode('aris');
 
-    changeTheme('millennium', {
+    changeTheme('yuuka', {
       getEditorInstance: () => null,
       getFormEditors: () => [],
       getTerminal: () => null,
@@ -28,14 +28,14 @@ describe('settings-handlers', () => {
       },
     });
 
-    expect(themeId).toBe('millennium');
-    expect(readAppSettingsSnapshot().themeId).toBe('millennium');
+    expect(themeId).toBe('yuuka');
+    expect(readAppSettingsSnapshot().themeId).toBe('yuuka');
     expect(readAppSettingsSnapshot().rpMode).toBe('aris');
   });
 
   it('does not require RP or dark-mode mutation callbacks in the theme contract', () => {
     const setThemeId = vi.fn();
-    changeTheme('trinity', {
+    changeTheme('mika', {
       getEditorInstance: () => null,
       getFormEditors: () => [],
       getTerminal: () => null,
@@ -44,6 +44,6 @@ describe('settings-handlers', () => {
       setThemeId,
       setCustomTheme: vi.fn(),
     });
-    expect(setThemeId).toHaveBeenCalledWith('trinity');
+    expect(setThemeId).toHaveBeenCalledWith('mika');
   });
 });

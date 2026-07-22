@@ -39,9 +39,9 @@ describe('asset runtime helpers', () => {
 
   it('derives the talk title from the stored theme id when present', () => {
     localStorage.setItem('toki-dark-mode', 'true');
-    localStorage.setItem('toki-theme-id', 'millennium');
+    localStorage.setItem('toki-theme-id', 'yuuka');
 
     expect(isDarkModeEnabled()).toBe(false);
-    expect(getTalkTitle()).toBe('TokiTalk');
+    expect(getTalkTitle()).toBe('YuukaTalk');
   });
 });

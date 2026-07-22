@@ -122,10 +122,10 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   const header = document.createElement('div');
   header.className = 'help-popup-header';
   const title = document.createElement('span');
-  title.textContent = '⚙ 설정';
+  title.textContent = '설정';
   header.appendChild(title);
   const closeBtn = document.createElement('button');
-  closeBtn.textContent = '✕';
+  closeBtn.textContent = '닫기';
   closeBtn.setAttribute('aria-label', '닫기');
   header.appendChild(closeBtn);
 
@@ -422,6 +422,51 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   rpCustomArea.addEventListener('input', () => {
     callbacks.onRpCustomTextChange(rpCustomArea.value);
   });
+
+  const settingsLayout = document.createElement('div');
+  settingsLayout.className = 'settings-layout';
+  const settingsNav = document.createElement('nav');
+  settingsNav.className = 'settings-nav';
+  settingsNav.setAttribute('aria-label', '설정 섹션');
+  const settingsSections = document.createElement('div');
+  settingsSections.className = 'settings-sections';
+
+  const sectionDefinitions = [
+    { id: 'save', label: '저장 및 승인', rows: [autoRow, intervalRow, autoPathRow, approvalRow] },
+    { id: 'appearance', label: '외형', rows: [themeRow, customThemeRow] },
+    { id: 'tools', label: '터미널 및 페르소나', rows: [bgmRow, rpRow, rpCustomRow, rpEditRow] },
+  ];
+  const sectionElements = new Map<string, HTMLElement>();
+  const navButtons = new Map<string, HTMLButtonElement>();
+  function activateSection(id: string): void {
+    for (const [sectionId, section] of sectionElements) section.hidden = sectionId !== id;
+    for (const [sectionId, button] of navButtons) {
+      const active = sectionId === id;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', String(active));
+    }
+  }
+  for (const definition of sectionDefinitions) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = definition.label;
+    button.addEventListener('click', () => activateSection(definition.id));
+    navButtons.set(definition.id, button);
+    settingsNav.appendChild(button);
+
+    const section = document.createElement('section');
+    section.className = 'settings-section';
+    section.dataset.settingsSection = definition.id;
+    const heading = document.createElement('div');
+    heading.className = 'settings-section-heading';
+    heading.textContent = definition.label;
+    section.append(heading, ...definition.rows);
+    sectionElements.set(definition.id, section);
+    settingsSections.appendChild(section);
+  }
+  activateSection('save');
+  settingsLayout.append(settingsNav, settingsSections);
+  body.replaceChildren(settingsLayout);
 
   popup.appendChild(header);
   popup.appendChild(body);

@@ -1,20 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  dockPanel,
-  isPanelPoppedOut,
-  popOutEditorPanel,
-  popOutPanel,
-  removePoppedOut,
-  updatePopoutButtons,
-} from './popout-window';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { isPanelPoppedOut, popOutEditorPanel, popOutPanel, removePoppedOut } from './popout-window';
 import type { PopoutDeps } from './popout-window';
-
-/* ---------- helpers ---------- */
 
 function makeDeps(overrides: Partial<PopoutDeps> = {}): PopoutDeps {
   return {
-    layoutState: { itemsVisible: true, terminalVisible: true, refsPos: 'sidebar' },
-    rebuildLayout: vi.fn(),
+    setPanelPoppedOut: vi.fn(),
+    refitWorkspace: vi.fn(),
     setStatus: vi.fn(),
     getEditorInstance: vi.fn(() => null),
     setEditorInstance: vi.fn(),
@@ -24,82 +15,62 @@ function makeDeps(overrides: Partial<PopoutDeps> = {}): PopoutDeps {
       openTabs: [],
       renderTabs: vi.fn(),
     },
-    fitTerminal: vi.fn(),
     ...overrides,
   };
 }
 
-/* Stub window.tokiAPI for all tests */
 const stubTokiAPI = {
   popoutPanel: vi.fn(async () => true),
-  closePopout: vi.fn(async () => true),
   setEditorPopoutData: vi.fn(async () => 'req-123'),
 };
 
 beforeEach(() => {
   (window as unknown as Record<string, unknown>).tokiAPI = stubTokiAPI;
   vi.clearAllMocks();
-  // Ensure clean state between tests
-  removePoppedOut('sidebar');
   removePoppedOut('editor');
   removePoppedOut('terminal');
   removePoppedOut('refs');
+  document.body.innerHTML = '';
 });
 
-/* ---------- tests ---------- */
-
-describe('isPanelPoppedOut / removePoppedOut', () => {
-  it('returns false for unknown panels', () => {
-    expect(isPanelPoppedOut('sidebar')).toBe(false);
-  });
-
-  it('tracks panels after popOutPanel', async () => {
+describe('fixed workspace popouts', () => {
+  it.each(['terminal', 'refs'] as const)('pops out the supported %s panel through workspace state', async (panelId) => {
     const deps = makeDeps();
-    await popOutPanel('sidebar', deps);
-    expect(isPanelPoppedOut('sidebar')).toBe(true);
-  });
 
-  it('removePoppedOut clears state without IPC', () => {
-    // Force add via popOutPanel first
-    const deps = makeDeps();
-    popOutPanel('terminal', deps);
-    // Clear
-    removePoppedOut('terminal');
-    expect(isPanelPoppedOut('terminal')).toBe(false);
-    // closePopout should NOT have been called
-    expect(stubTokiAPI.closePopout).not.toHaveBeenCalled();
-  });
-});
+    await popOutPanel(panelId, deps, 'request-id');
 
-describe('popOutPanel', () => {
-  it('calls tokiAPI.popoutPanel and applies layout state', async () => {
-    const deps = makeDeps();
-    await popOutPanel('sidebar', deps);
-
-    expect(stubTokiAPI.popoutPanel).toHaveBeenCalledWith('sidebar', null);
-    expect(deps.layoutState.itemsVisible).toBe(false);
-    expect(deps.rebuildLayout).toHaveBeenCalled();
+    expect(stubTokiAPI.popoutPanel).toHaveBeenCalledWith(panelId, 'request-id');
+    expect(isPanelPoppedOut(panelId)).toBe(true);
+    expect(deps.setPanelPoppedOut).toHaveBeenCalledWith(panelId, true);
+    expect(deps.refitWorkspace).toHaveBeenCalledOnce();
     expect(deps.setStatus).toHaveBeenCalledWith(expect.stringContaining('팝아웃'));
   });
 
-  it('is a no-op when already popped out', async () => {
+  it('does not request a duplicate popout for the same panel', async () => {
     const deps = makeDeps();
-    await popOutPanel('sidebar', deps);
+    await popOutPanel('terminal', deps);
     vi.clearAllMocks();
 
-    await popOutPanel('sidebar', deps);
+    await popOutPanel('terminal', deps);
+
     expect(stubTokiAPI.popoutPanel).not.toHaveBeenCalled();
+    expect(deps.setPanelPoppedOut).not.toHaveBeenCalled();
   });
 
-  it('forwards requestId to IPC', async () => {
+  it('removes tracked state without changing workspace state', async () => {
     const deps = makeDeps();
-    await popOutPanel('refs', deps, 'custom-req');
-    expect(stubTokiAPI.popoutPanel).toHaveBeenCalledWith('refs', 'custom-req');
+    await popOutPanel('refs', deps);
+    vi.clearAllMocks();
+
+    removePoppedOut('refs');
+
+    expect(isPanelPoppedOut('refs')).toBe(false);
+    expect(deps.setPanelPoppedOut).not.toHaveBeenCalled();
   });
 });
 
-describe('popOutEditorPanel', () => {
-  it('sends editor content and creates popout window', async () => {
+describe('editor popout', () => {
+  it('sends editor content and creates a popout window', async () => {
     const mockEditor = { getValue: () => 'hello', dispose: vi.fn() };
     const mockTab = {
       id: 'tab-1',
@@ -120,11 +91,7 @@ describe('popOutEditorPanel', () => {
     await popOutEditorPanel(null, deps);
 
     expect(stubTokiAPI.setEditorPopoutData).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tabId: 'tab-1',
-        content: 'hello',
-        language: 'lua',
-      }),
+      expect.objectContaining({ tabId: 'tab-1', content: 'hello', language: 'lua' }),
     );
     expect(stubTokiAPI.popoutPanel).toHaveBeenCalledWith('editor', 'req-123');
     expect(isPanelPoppedOut('editor')).toBe(true);
@@ -132,7 +99,7 @@ describe('popOutEditorPanel', () => {
     expect(deps.setEditorInstance).toHaveBeenCalledWith(null);
   });
 
-  it('shows a richer placeholder hint after editor popout', async () => {
+  it('shows the inline docking hint while the editor is popped out', async () => {
     const container = document.createElement('div');
     container.id = 'editor-container';
     document.body.appendChild(container);
@@ -146,16 +113,11 @@ describe('popOutEditorPanel', () => {
     };
     const deps = makeDeps({
       getEditorInstance: () => mockEditor,
-      tabMgr: {
-        activeTabId: 'tab-1',
-        openTabs: [mockTab],
-        renderTabs: vi.fn(),
-      },
+      tabMgr: { activeTabId: 'tab-1', openTabs: [mockTab], renderTabs: vi.fn() },
     });
 
     await popOutEditorPanel(null, deps);
 
-    expect(container.innerHTML).toContain('empty-state-hint');
     expect(container.textContent).toContain('팝아웃 창에서 작업 중');
     expect(container.textContent).toContain('도킹하면 여기로 복원됩니다');
   });
@@ -170,88 +132,7 @@ describe('popOutEditorPanel', () => {
     });
 
     await popOutEditorPanel(null, deps);
+
     expect(stubTokiAPI.popoutPanel).not.toHaveBeenCalled();
-  });
-});
-
-describe('dockPanel', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-  it('closes popout and restores layout for non-editor panels', async () => {
-    const deps = makeDeps();
-    await popOutPanel('terminal', deps);
-    vi.clearAllMocks();
-
-    dockPanel('terminal', deps);
-
-    expect(stubTokiAPI.closePopout).toHaveBeenCalledWith('terminal');
-    expect(isPanelPoppedOut('terminal')).toBe(false);
-    expect(deps.layoutState.terminalVisible).toBe(true);
-    expect(deps.rebuildLayout).toHaveBeenCalled();
-    // fitTerminal is deferred via setTimeout(50)
-    vi.advanceTimersByTime(60);
-    expect(deps.fitTerminal).toHaveBeenCalled();
-  });
-
-  it('re-opens editor tab when docking editor panel', async () => {
-    const mockTab = {
-      id: 'tab-1',
-      label: 'main.lua',
-      language: 'lua',
-      getValue: () => 'code',
-      setValue: vi.fn(),
-    };
-    const deps = makeDeps({
-      getEditorInstance: () => ({ getValue: () => 'code', dispose: vi.fn() }),
-      tabMgr: {
-        activeTabId: 'tab-1',
-        openTabs: [mockTab],
-        renderTabs: vi.fn(),
-      },
-    });
-
-    await popOutEditorPanel(null, deps);
-    vi.clearAllMocks();
-
-    dockPanel('editor', deps);
-
-    expect(deps.createOrSwitchEditor).toHaveBeenCalledWith(mockTab);
-    expect(deps.tabMgr.renderTabs).toHaveBeenCalled();
-  });
-
-  it('is a no-op when panel is not popped out', () => {
-    const deps = makeDeps();
-    dockPanel('sidebar', deps);
-    expect(stubTokiAPI.closePopout).not.toHaveBeenCalled();
-  });
-});
-
-describe('updatePopoutButtons', () => {
-  afterEach(() => {
-    document.body.innerHTML = '';
-  });
-
-  it('toggles button text based on popout state', async () => {
-    document.body.innerHTML = '<button data-popout-panel="sidebar">↗</button>';
-    const deps = makeDeps();
-
-    await popOutPanel('sidebar', deps);
-    updatePopoutButtons();
-
-    const btn = document.querySelector('[data-popout-panel="sidebar"]') as HTMLElement;
-    expect(btn.textContent).toBe('📌');
-    expect(btn.title).toBe('도킹 (복원)');
-    expect(btn.getAttribute('aria-label')).toBe('도킹 (복원)');
-
-    dockPanel('sidebar', deps);
-    updatePopoutButtons();
-
-    expect(btn.textContent).toBe('↗');
-    expect(btn.title).toBe('팝아웃 (분리)');
-    expect(btn.getAttribute('aria-label')).toBe('팝아웃 (분리)');
   });
 });

@@ -1,7 +1,6 @@
-import { applyDockedLayoutState, applyPopoutLayoutState } from './popout-state';
-import type { LayoutStateLike } from './popout-state';
-
 // ---- Minimal type slices so the module stays decoupled ----
+
+export type DockablePanelId = 'terminal' | 'refs';
 
 export interface EditorLike {
   getValue(): string;
@@ -27,15 +26,13 @@ export interface TabMgrLike {
  * free of direct references to controller-level state.
  */
 export interface PopoutDeps {
-  layoutState: LayoutStateLike;
-  rebuildLayout(): void;
+  setPanelPoppedOut(panelId: DockablePanelId, poppedOut: boolean): void;
+  refitWorkspace(): void;
   setStatus(msg: string): void;
   getEditorInstance(): EditorLike | null;
   setEditorInstance(ed: EditorLike | null): void;
   createOrSwitchEditor(tab: TabLike): void;
   tabMgr: TabMgrLike;
-  /** Safely call fitAddon.fit() when available. */
-  fitTerminal(): void;
 }
 
 // ---- Internal state ----
@@ -43,13 +40,10 @@ export interface PopoutDeps {
 const poppedOutPanels = new Set<string>();
 
 const PANEL_LABELS: Record<string, string> = {
-  sidebar: '항목',
   editor: '에디터',
   refs: '참고자료',
   preview: '프리뷰',
   terminal: 'TokiTalk',
-  'lore-manager': '로어북 관리자',
-  'asset-manager': '에셋 관리자',
 };
 
 function labelFor(panelId: string): string {
@@ -72,16 +66,17 @@ export function removePoppedOut(panelId: string): void {
   poppedOutPanels.delete(panelId);
 }
 
-export async function popOutPanel(panelId: string, deps: PopoutDeps, requestId: string | null = null): Promise<void> {
+export async function popOutPanel(
+  panelId: DockablePanelId,
+  deps: PopoutDeps,
+  requestId: string | null = null,
+): Promise<void> {
   if (isPanelPoppedOut(panelId)) return;
 
   await window.tokiAPI.popoutPanel(panelId, requestId);
   poppedOutPanels.add(panelId);
-
-  applyPopoutLayoutState(panelId, deps.layoutState);
-  deps.rebuildLayout();
-
-  updatePopoutButtons();
+  deps.setPanelPoppedOut(panelId, true);
+  deps.refitWorkspace();
   deps.setStatus(`${labelFor(panelId)} 팝아웃됨 (외부 창)`);
 }
 
@@ -142,44 +137,4 @@ export async function popOutEditorPanel(tabId: string | null, deps: PopoutDeps):
 
   deps.tabMgr.renderTabs();
   deps.setStatus(`에디터 팝아웃됨: ${curTab.label}`);
-}
-
-export function dockPanel(panelId: string, deps: PopoutDeps): void {
-  if (!isPanelPoppedOut(panelId)) return;
-
-  window.tokiAPI.closePopout(panelId);
-  poppedOutPanels.delete(panelId);
-
-  if (panelId === 'editor') {
-    if (deps.tabMgr.activeTabId) {
-      const curTab = deps.tabMgr.openTabs.find((t) => t.id === deps.tabMgr.activeTabId);
-      if (curTab) deps.createOrSwitchEditor(curTab);
-    }
-  } else {
-    applyDockedLayoutState(panelId, deps.layoutState);
-  }
-  deps.rebuildLayout();
-
-  if (panelId === 'terminal') {
-    setTimeout(() => deps.fitTerminal(), 50);
-  }
-
-  updatePopoutButtons();
-  deps.tabMgr.renderTabs();
-  deps.setStatus(`${labelFor(panelId)} 도킹됨`);
-}
-
-export function updatePopoutButtons(): void {
-  document.querySelectorAll<HTMLElement>('[data-popout-panel]').forEach((btn) => {
-    const panel = btn.dataset.popoutPanel;
-    if (panel && poppedOutPanels.has(panel)) {
-      btn.textContent = '📌';
-      btn.title = '도킹 (복원)';
-      btn.setAttribute('aria-label', '도킹 (복원)');
-    } else {
-      btn.textContent = '↗';
-      btn.title = '팝아웃 (분리)';
-      btn.setAttribute('aria-label', '팝아웃 (분리)');
-    }
-  });
 }

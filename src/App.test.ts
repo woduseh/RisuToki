@@ -4,6 +4,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import App from './App.vue';
 import MenuBar from './components/MenuBar.vue';
+import { registerActions } from './lib/action-registry';
 import { useAppStore } from './stores/app-store';
 
 describe('App shell', () => {
@@ -106,6 +107,27 @@ describe('App shell', () => {
     expect(wrapper.find('.momo-title').text()).toBe('TokiTalk');
   });
 
+  it('replaces the welcome screen with an opened reference editor even when no document is loaded', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+
+    expect(store.hasFile).toBe(false);
+    expect(wrapper.find('#welcome-screen').exists()).toBe(true);
+    expect(wrapper.get('#editor-surface').attributes('style')).toContain('display: none');
+
+    store.setActiveTabId('guide_modules/MODULE_FIELDS.md');
+    store.setActiveTabLanguage('markdown');
+    await nextTick();
+
+    expect(wrapper.find('#welcome-screen').exists()).toBe(false);
+    expect(wrapper.get('#editor-surface').attributes('style') || '').not.toContain('display: none');
+
+    store.setActiveTabId(null);
+    await nextTick();
+    expect(wrapper.find('#welcome-screen').exists()).toBe(true);
+  });
+
   it('disables the preview action when the active file is non-charx', async () => {
     const pinia = createPinia();
     const wrapper = mount(App, { global: { plugins: [pinia] } });
@@ -152,9 +174,9 @@ describe('App shell', () => {
 
     await viewMenu!.trigger('click');
 
-    expect(wrapper.text()).toContain('사이드바 토글');
-    expect(wrapper.text()).toContain('로어북 관리자');
-    expect(wrapper.text()).toContain('에셋 관리자');
+    expect(wrapper.text()).toContain('탐색기 전환');
+    expect(wrapper.text()).toContain('터미널 표시 전환');
+    expect(wrapper.text()).toContain('터미널 아바타 표시 전환');
     expect(wrapper.text()).toContain('프리뷰');
     expect(wrapper.text()).not.toContain('프리뷰 테스트');
   });
@@ -225,27 +247,161 @@ describe('App shell', () => {
   it('adds aria labels to icon-only shell controls', () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } });
 
-    expect(wrapper.get('#btn-sidebar-collapse').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#btn-refs-extpopout').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#btn-refs-separate').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#btn-refs-collapse').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#btn-refs-close').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#btn-refs-panel-popout').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#btn-refs-panel-dock').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#context-inspector button').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#navigator-resizer').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#inspector-resizer').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#utility-resizer').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-avatar-collapse').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-chat-mode').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-terminal-bg').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-bgm-toggle').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-rp-mode').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-avatar-toggle').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-terminal-popout').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-terminal-toggle').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#sidebar-expand').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#sidebar-expand').element.tagName).toBe('BUTTON');
   });
 
-  it('renders the help affordance as a real button with an accessible label', () => {
+  it('mounts semantic panels directly in their fixed workspace homes', () => {
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } });
+
+    expect(wrapper.find('#legacy-layout-parking').exists()).toBe(false);
+    expect(wrapper.find('#panel-parking').exists()).toBe(false);
+    expect([...wrapper.get('#slot-left').element.children]).toEqual(
+      expect.arrayContaining([
+        wrapper.get('#sidebar').element,
+        wrapper.get('#lore-manager-panel').element,
+        wrapper.get('#asset-manager-panel').element,
+        wrapper.get('#prompt-manager-panel').element,
+      ]),
+    );
+    expect(wrapper.get('#bottom-area').element.parentElement).toBe(wrapper.get('#slot-bottom').element);
+  });
+
+  it('uses the terminal content as the shelf and restores it from a compact launcher', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+
+    expect(wrapper.find('.utility-tabs').exists()).toBe(false);
+    expect(wrapper.find('#terminal-header').exists()).toBe(true);
+
+    if (store.activeUtility !== 'terminal') store.toggleUtility('terminal');
+    await nextTick();
+    await wrapper.get('#btn-terminal-toggle').trigger('click');
+    await nextTick();
+
+    expect(store.activeUtility).toBeNull();
+    expect(wrapper.get('#terminal-shelf-launcher').attributes('aria-label')).toBe('터미널 열기');
+
+    await wrapper.get('#terminal-shelf-launcher').trigger('click');
+    await nextTick();
+    expect(store.activeUtility).toBe('terminal');
+  });
+
+  it('keeps the terminal anchored to the bottom for a reference-only editor while upward dragging increases its height', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+
+    store.setActiveTabId('guide_modules/MODULE_FIELDS.md');
+    store.setActiveTabLanguage('markdown');
+    if (store.activeUtility !== 'terminal') store.toggleUtility('terminal');
+    store.setUtilityHeight(250);
+    await nextTick();
+
+    expect(store.hasFile).toBe(false);
+    expect(wrapper.find('#welcome-screen').exists()).toBe(false);
+    expect(wrapper.get('#app-body').classes()).toContain('utility-open');
+    const resizer = wrapper.get('#utility-resizer');
+    expect(resizer.attributes('aria-valuenow')).toBe('250');
+
+    resizer.element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientY: 600 }));
+    expect(document.body.classList.contains('utility-resizing')).toBe(true);
+    document.dispatchEvent(new MouseEvent('pointermove', { clientY: 540 }));
+    await nextTick();
+
+    expect(store.utilityHeight).toBe(310);
+    expect(resizer.attributes('aria-valuenow')).toBe('310');
+
+    document.dispatchEvent(new MouseEvent('pointerup'));
+    expect(document.body.classList.contains('utility-resizing')).toBe(false);
+  });
+
+  it('uses icon-only background and reactive BGM/RP quick controls', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+    const toggleBgm = vi.fn();
+    const cycleRpMode = vi.fn();
+    registerActions({ 'toggle-bgm': toggleBgm, 'cycle-rp-mode': cycleRpMode });
+
+    expect(wrapper.get('#btn-terminal-bg').text()).toBe('');
+    expect(wrapper.get('#btn-terminal-bg').find('svg').exists()).toBe(true);
+    expect(wrapper.get('#btn-bgm-toggle').attributes('aria-pressed')).toBe('false');
+    expect(wrapper.get('#btn-rp-mode').text()).toContain('RP OFF');
+
+    await wrapper.get('#btn-bgm-toggle').trigger('click');
+    await wrapper.get('#btn-rp-mode').trigger('click');
+    expect(toggleBgm).toHaveBeenCalledOnce();
+    expect(cycleRpMode).toHaveBeenCalledOnce();
+
+    store.bgmEnabled = true;
+    store.setRpMode('toki');
+    await nextTick();
+    expect(wrapper.get('#btn-bgm-toggle').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('#btn-bgm-toggle').classes()).toContain('active');
+    expect(wrapper.get('#btn-rp-mode').text()).toContain('RP 토키');
+  });
+
+  it('renders the help affordance as a real button and opens the usage guide', async () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } });
     const helpBtn = wrapper.get('#toki-help-btn');
 
     expect(helpBtn.element.tagName).toBe('BUTTON');
-    expect(helpBtn.attributes('aria-label')).toBe('도움말 열기');
+    expect(helpBtn.attributes('aria-label')).toBe('사용 설명서 열기');
+    expect(helpBtn.find('svg').exists()).toBe(true);
+
+    await helpBtn.trigger('click');
+    expect(document.querySelector('[data-overlay="help"]')).not.toBeNull();
+    document.querySelector<HTMLButtonElement>('[data-overlay="help"] .help-popup-header button')?.click();
+  });
+
+  it('keeps the avatar inside the terminal utility instead of rendering an avatar tab', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+
+    expect(wrapper.findAll('.utility-tabs > button').some((button) => button.text().trim() === '아바타')).toBe(false);
+
+    if (store.activeUtility !== 'terminal') store.toggleAvatar();
+    await nextTick();
+    expect(wrapper.get('#app-body').classes()).toContain('avatar-visible');
+    expect(wrapper.get('#btn-avatar-toggle').attributes('aria-pressed')).toBe('true');
+
+    await wrapper.get('#btn-avatar-toggle').trigger('click');
+    await nextTick();
+    expect(store.activeUtility).toBe('terminal');
+    expect(wrapper.get('#app-body').classes()).not.toContain('avatar-visible');
+    expect(wrapper.get('#btn-avatar-toggle').attributes('aria-pressed')).toBe('false');
+  });
+
+  it('refreshes references when opening the vertical drawer without a document', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+    const refreshReferences = vi.fn();
+    registerActions({ 'refresh-references': refreshReferences });
+
+    expect(store.hasFile).toBe(false);
+    const referencesButton = wrapper.get('#btn-references-toggle');
+
+    await referencesButton.trigger('click');
+    await nextTick();
+
+    expect(store.referencesVisible).toBe(true);
+    expect(store.activeUtility).toBe('terminal');
+    expect(wrapper.get('#reference-drawer').isVisible()).toBe(true);
+    expect(refreshReferences).toHaveBeenCalledOnce();
   });
 
   it('keeps sticky error statuses visible with accessible live-region semantics', async () => {

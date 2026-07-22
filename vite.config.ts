@@ -116,6 +116,10 @@ export default defineConfig(({ command }) => ({
           src: 'assets/{icon.png,icon_risu.png,Dancing_risu.gif,Dancing_toki.gif,toki-cute.gif,Usagi_Flap.mp3}',
           dest: 'app-assets',
         },
+        {
+          src: 'assets/avatar-*.gif',
+          dest: 'app-assets',
+        },
       ],
     }),
   ],

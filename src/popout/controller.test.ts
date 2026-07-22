@@ -23,7 +23,6 @@ function baseSettingsSnapshot() {
     autosaveDir: '',
     avatarIdle: null,
     avatarWorking: null,
-    layoutState: null,
   };
 }
 

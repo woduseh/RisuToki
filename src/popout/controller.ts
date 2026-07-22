@@ -1,6 +1,7 @@
 import PreviewEngine from '../lib/preview-engine';
 import { readAppSettingsSnapshot, subscribeToAppSettings } from '../lib/app-settings';
 import type { AppSettingsSnapshot } from '../lib/app-settings';
+import { getAvatarAssetsForTheme } from '../lib/avatar';
 import { createDirectTerminalChatSession } from '../lib/chat-session';
 import { getTalkTitle, toMediaAsset } from '../lib/asset-runtime';
 import { applyTheme, defineAppMonacoTheme } from '../lib/dark-mode';
@@ -45,6 +46,13 @@ function getPopoutTerminalTheme() {
 
 function getPopoutMonacoTheme(): string {
   return defineAppMonacoTheme(currentSettingsSnapshot.themeId, currentSettingsSnapshot.customTheme);
+}
+
+function getPopoutAvatarSource(active: boolean): string {
+  const saved = active ? currentSettingsSnapshot.avatarWorking : currentSettingsSnapshot.avatarIdle;
+  if (saved) return saved.src;
+  const assets = getAvatarAssetsForTheme(currentSettingsSnapshot.themeId, currentSettingsSnapshot.darkMode);
+  return active ? assets.working : assets.idle;
 }
 
 function createPopoutActionButton(
@@ -131,7 +139,7 @@ async function buildTerminalPopout(): Promise<void> {
   avatar.id = 'toki-avatar';
   avatar.innerHTML = `
     <div id="toki-avatar-display">
-      <img id="toki-avatar-img" src="${toMediaAsset('icon.png')}">
+      <img id="toki-avatar-img" src="${getPopoutAvatarSource(false)}">
     </div>
     <div class="popout-status" id="toki-status">
       <span id="toki-status-icon">💤</span>
@@ -275,14 +283,14 @@ function initPopoutSettingsSync(): () => void {
     if (popoutTerm) {
       popoutTerm.options.theme = getPopoutTerminalTheme();
     }
+    if (_poImg) {
+      _poImg.src = getPopoutAvatarSource(_popoutIsActive);
+    }
   });
   return disposeSettingsSubscription;
 }
 
 // ==================== Avatar State ====================
-
-const IDLE_IMG = toMediaAsset('icon.png');
-const DANCING_IMG = toMediaAsset('Dancing_toki.gif');
 
 let _popoutIsActive = false;
 let _poImg: HTMLImageElement | null,
@@ -301,12 +309,12 @@ function setPopoutActive(active: boolean): void {
   _popoutIsActive = active;
 
   if (active) {
-    _poImg.src = DANCING_IMG;
+    _poImg.src = getPopoutAvatarSource(true);
     _poStatus.classList.add('working');
     _poIcon.textContent = '✨';
     _poText.textContent = '작업중~';
   } else {
-    _poImg.src = IDLE_IMG;
+    _poImg.src = getPopoutAvatarSource(false);
     _poStatus.classList.remove('working');
     _poIcon.textContent = '💤';
     _poText.textContent = '대기중~';

@@ -6,16 +6,12 @@ import {
   validateRisupEnvelope,
   validateRisupPresetPayload,
 } from './document-validation';
-import { parseStoredJson, storedAvatarStateSchema, storedLayoutStateSchema } from './stored-state-validation';
+import { parseStoredJson, storedAvatarStateSchema } from './stored-state-validation';
 
 describe('document validation', () => {
   it('parses valid stored settings payloads and rejects malformed ones', () => {
     expect(parseStoredJson('{"src":"avatar.png"}', storedAvatarStateSchema)).toEqual({ src: 'avatar.png' });
     expect(parseStoredJson('{"foo":"bar"}', storedAvatarStateSchema)).toBeNull();
-    expect(parseStoredJson('{"slotSizes":{"left":120}}', storedLayoutStateSchema)).toEqual({
-      slotSizes: { left: 120 },
-    });
-    expect(parseStoredJson('{"slotSizes":{"left":-1}}', storedLayoutStateSchema)).toBeNull();
   });
 
   it('rejects charx cards without the v3 spec and required card.data object', () => {

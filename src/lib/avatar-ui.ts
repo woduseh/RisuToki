@@ -1,5 +1,6 @@
 import { readAppSettingsSnapshot, writeIdleAvatarState, writeWorkingAvatarState } from './app-settings';
-import { RISU_IDLE, RISU_DANCING, TOKI_IDLE, TOKI_CUTE, TOKI_DANCING, loadAvatarImage } from './avatar';
+import { TOKI_CUTE, getAvatarAssetsForTheme, getBuiltInAvatarOptions, loadAvatarImage } from './avatar';
+import type { ThemeId } from './theme-registry';
 
 // ==================== Dialogue Lines ====================
 
@@ -37,7 +38,7 @@ export interface AvatarUIDeps {
 // ==================== Module State ====================
 
 let tokiImg: HTMLImageElement | null = null;
-let tokiCurrentSrc: string = TOKI_IDLE;
+let tokiCurrentSrc = '';
 let tokiActive = false;
 
 // Cached avatar DOM elements (populated on first setTokiActive call)
@@ -52,11 +53,20 @@ let _statusTextEl: HTMLElement | null;
  * Return a character dialogue line for the current dark-mode & active state.
  * Used by the controller's refreshDarkModeUi to update the status text.
  */
-function getDialogueLine(darkMode: boolean, active: boolean): string {
+function getDialogueLine(themeId: ThemeId, darkMode: boolean, active: boolean): string {
+  const useArisVoice = themeId === 'aris' || (themeId === 'custom' && darkMode);
   if (active) {
-    return darkMode ? randomLine(RISU_WORKING_LINES) : randomLine(TOKI_WORKING_LINES);
+    return useArisVoice ? randomLine(RISU_WORKING_LINES) : randomLine(TOKI_WORKING_LINES);
   }
-  return darkMode ? randomLine(RISU_IDLE_LINES) : randomLine(TOKI_IDLE_LINES);
+  return useArisVoice ? randomLine(RISU_IDLE_LINES) : randomLine(TOKI_IDLE_LINES);
+}
+
+function getConfiguredAvatarSource(active: boolean): string {
+  const snapshot = readAppSettingsSnapshot();
+  const saved = active ? snapshot.avatarWorking : snapshot.avatarIdle;
+  if (saved) return saved.src;
+  const assets = getAvatarAssetsForTheme(snapshot.themeId, snapshot.darkMode);
+  return active ? assets.working : assets.idle;
 }
 
 /**
@@ -88,17 +98,13 @@ export function initTokiAvatar(container: HTMLElement, deps: AvatarUIDeps): void
   });
 
   // Load saved idle image or default
-  const savedIdleInit = readAppSettingsSnapshot().avatarIdle;
-  if (savedIdleInit) {
-    loadTokiImage(savedIdleInit.src);
-  } else {
-    loadTokiImage(deps.darkMode ? RISU_IDLE : TOKI_IDLE);
-  }
+  const initialSnapshot = readAppSettingsSnapshot();
+  loadTokiImage(getConfiguredAvatarSource(false));
 
   // Set initial dialogue
   const initStatusText = document.getElementById('toki-status-text');
   if (initStatusText) {
-    initStatusText.textContent = deps.darkMode ? randomLine(RISU_IDLE_LINES) : randomLine(TOKI_IDLE_LINES);
+    initStatusText.textContent = getDialogueLine(initialSnapshot.themeId, initialSnapshot.darkMode, false);
   }
 
   // Right-click to switch avatar
@@ -118,13 +124,15 @@ interface PickerImage {
   label: string;
 }
 
-const PICKER_IMAGES: readonly PickerImage[] = [
-  { src: TOKI_IDLE, label: '토키 (기본)' },
+const BUILT_IN_AVATAR_OPTIONS = getBuiltInAvatarOptions();
+const PICKER_IDLE_IMAGES: readonly PickerImage[] = [
+  ...BUILT_IN_AVATAR_OPTIONS.map(({ label, assets }) => ({ src: assets.idle, label })),
   { src: TOKI_CUTE, label: '토키 (cute)' },
-  { src: TOKI_DANCING, label: '토키 (dancing)' },
-  { src: RISU_IDLE, label: '아리스 (기본)' },
-  { src: RISU_DANCING, label: '아리스 (dancing)' },
 ];
+const PICKER_WORKING_IMAGES: readonly PickerImage[] = BUILT_IN_AVATAR_OPTIONS.map(({ label, assets }) => ({
+  src: assets.working,
+  label,
+}));
 
 function makeCard(img: PickerImage, currentSrc: string, onClick: () => void): HTMLElement {
   const card = document.createElement('div');
@@ -201,7 +209,7 @@ function showAvatarPicker(deps: AvatarUIDeps): void {
   const idleGrid = document.createElement('div');
   idleGrid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;';
   const idleSrc = savedIdle ? savedIdle.src : tokiCurrentSrc || '';
-  for (const img of PICKER_IMAGES) {
+  for (const img of PICKER_IDLE_IMAGES) {
     idleGrid.appendChild(
       makeCard(img, idleSrc, () => {
         writeIdleAvatarState({ src: img.src });
@@ -234,7 +242,7 @@ function showAvatarPicker(deps: AvatarUIDeps): void {
   const workGrid = document.createElement('div');
   workGrid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;';
   const workSrc = savedWork ? savedWork.src : '';
-  for (const img of PICKER_IMAGES) {
+  for (const img of PICKER_WORKING_IMAGES) {
     workGrid.appendChild(
       makeCard(img, workSrc, () => {
         writeWorkingAvatarState({ src: img.src });
@@ -282,39 +290,25 @@ export function setTokiActive(active: boolean): void {
   const statusEl = _statusEl;
   const statusIcon = _statusIconEl;
   const statusText = _statusTextEl;
-  const { darkMode } = readAppSettingsSnapshot();
+  const { darkMode, themeId } = readAppSettingsSnapshot();
 
   if (active && !tokiActive) {
     tokiActive = true;
     avatar?.classList.add('active');
     statusEl?.classList.add('working');
     if (statusIcon) statusIcon.textContent = '✨';
-    const savedWork = readAppSettingsSnapshot().avatarWorking;
-    if (savedWork) {
-      loadTokiImage(savedWork.src);
-    } else if (darkMode) {
-      loadTokiImage(RISU_DANCING);
-    } else {
-      loadTokiImage(TOKI_DANCING);
-    }
+    loadTokiImage(getConfiguredAvatarSource(true));
     if (statusText) {
-      statusText.textContent = darkMode ? randomLine(RISU_WORKING_LINES) : randomLine(TOKI_WORKING_LINES);
+      statusText.textContent = getDialogueLine(themeId, darkMode, true);
     }
   } else if (!active && tokiActive) {
     tokiActive = false;
     avatar?.classList.remove('active');
     statusEl?.classList.remove('working');
     if (statusIcon) statusIcon.textContent = '💤';
-    const savedIdle = readAppSettingsSnapshot().avatarIdle;
-    if (savedIdle) {
-      loadTokiImage(savedIdle.src);
-    } else if (darkMode) {
-      loadTokiImage(RISU_IDLE);
-    } else {
-      loadTokiImage(TOKI_IDLE);
-    }
+    loadTokiImage(getConfiguredAvatarSource(false));
     if (statusText) {
-      statusText.textContent = darkMode ? randomLine(RISU_IDLE_LINES) : randomLine(TOKI_IDLE_LINES);
+      statusText.textContent = getDialogueLine(themeId, darkMode, false);
     }
   }
 }
@@ -324,16 +318,13 @@ export function setTokiActive(active: boolean): void {
  * Called by the controller's refreshDarkModeUi.
  */
 export function refreshAvatarForDarkMode(darkMode: boolean): void {
+  const snapshot = readAppSettingsSnapshot();
   const statusText = document.getElementById('toki-status-text');
   if (statusText) {
-    statusText.textContent = getDialogueLine(darkMode, tokiActive);
+    statusText.textContent = getDialogueLine(snapshot.themeId, darkMode, tokiActive);
   }
 
   if (tokiImg) {
-    if (tokiActive) {
-      loadTokiImage(darkMode ? RISU_DANCING : TOKI_DANCING);
-    } else {
-      loadTokiImage(darkMode ? RISU_IDLE : TOKI_IDLE);
-    }
+    loadTokiImage(getConfiguredAvatarSource(tokiActive));
   }
 }

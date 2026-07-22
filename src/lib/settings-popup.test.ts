@@ -53,7 +53,7 @@ function getRpSelect(overlay: HTMLElement): HTMLSelectElement {
 function getThemeSelect(overlay: HTMLElement): HTMLSelectElement {
   const selects = overlay.querySelectorAll<HTMLSelectElement>('select.settings-select');
   for (const s of selects) {
-    if (Array.from(s.options).some((o) => o.value === 'millennium')) return s;
+    if (Array.from(s.options).some((o) => o.value === 'yuuka')) return s;
   }
   throw new Error('Theme select not found');
 }
@@ -86,7 +86,19 @@ describe('settings popup', () => {
     const themeSelect = getThemeSelect(overlay);
 
     const optionValues = Array.from(themeSelect.options).map((o) => o.value);
-    expect(optionValues).toEqual(['toki', 'aris', 'momotalk', 'millennium', 'gehenna', 'trinity', 'custom']);
+    expect(optionValues).toEqual([
+      'toki',
+      'aris',
+      'kei',
+      'yuzu',
+      'midori',
+      'momoi',
+      'yuuka',
+      'hina',
+      'mika',
+      'kisaki',
+      'custom',
+    ]);
   });
 
   it('renders and persists the MCP approval policy', () => {
@@ -109,10 +121,10 @@ describe('settings popup', () => {
     const overlay = getOverlay()!;
     const themeSelect = getThemeSelect(overlay);
 
-    themeSelect.value = 'millennium';
+    themeSelect.value = 'yuuka';
     themeSelect.dispatchEvent(new Event('change'));
 
-    expect(callbacks.onThemeChange).toHaveBeenCalledWith('millennium');
+    expect(callbacks.onThemeChange).toHaveBeenCalledWith('yuuka');
   });
 
   it('uses accessible switches and forwards BGM file picking', () => {
@@ -191,7 +203,10 @@ describe('settings popup', () => {
       overlay.querySelectorAll<HTMLElement>(
         'button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ),
-    ).filter((el) => el.closest<HTMLElement>('.settings-row')?.style.display !== 'none');
+    ).filter((el) => {
+      const section = el.closest<HTMLElement>('.settings-section');
+      return !section?.hidden && el.closest<HTMLElement>('.settings-row')?.style.display !== 'none';
+    });
     const last = visibleFocusable[visibleFocusable.length - 1];
 
     closeBtn.focus();

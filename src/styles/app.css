@@ -263,33 +263,6 @@ body {
   flex-shrink: 0;
 }
 
-/* ===== Slot Resizers ===== */
-.slot-resizer {
-  display: none;
-  flex-shrink: 0;
-  background: transparent;
-  transition: background 0.15s;
-}
-.slot-resizer.active {
-  display: block;
-}
-.slot-resizer-v {
-  width: 4px;
-  cursor: col-resize;
-}
-.slot-resizer-h {
-  height: 4px;
-  cursor: row-resize;
-}
-.slot-resizer:hover,
-.slot-resizer:focus-visible,
-.slot-resizer.dragging {
-  background: var(--accent);
-  border-radius: 2px;
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 /* ===== Sidebar (Items Panel) ===== */
 #sidebar {
   flex: 1;
@@ -310,9 +283,6 @@ body {
   overflow: hidden;
 }
 #sidebar-items-section {
-  flex: 1 1 0;
-}
-#sidebar-refs-section {
   flex: 1 1 0;
 }
 #sidebar-tree {
@@ -340,87 +310,6 @@ body {
   font-size: 12px;
   line-height: 1.5;
 }
-#sidebar-split-resizer {
-  height: 4px;
-  min-height: 4px;
-  cursor: ns-resize;
-  background: var(--border-color);
-  flex-shrink: 0;
-}
-#sidebar-split-resizer:hover {
-  background: var(--accent);
-}
-
-/* Sidebar expand strip */
-#sidebar-expand {
-  position: absolute;
-  left: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 20px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  text-align: center;
-  cursor: pointer;
-  font-size: 10px;
-  color: var(--text-secondary);
-  padding: 8px 0;
-  z-index: 10;
-  transition: background 0.15s;
-}
-
-.manager-expand {
-  position: absolute;
-  width: 20px;
-  min-height: 36px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  text-align: center;
-  cursor: pointer;
-  font-size: 10px;
-  color: var(--text-secondary);
-  padding: 8px 0;
-  z-index: 10;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-
-.manager-expand-left {
-  left: 4px;
-  top: 55%;
-  transform: translateY(-50%);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
-
-.manager-expand-right {
-  right: 4px;
-  top: 55%;
-  transform: translateY(-50%);
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-}
-
-.manager-expand-top {
-  left: 50%;
-  top: 68px;
-  transform: translateX(-50%);
-  width: 44px;
-  min-height: 20px;
-  padding: 0;
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-}
-
-.manager-expand-bottom {
-  left: 50%;
-  bottom: 26px;
-  transform: translateX(-50%);
-  width: 44px;
-  min-height: 20px;
-  padding: 0;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-}
-
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -434,16 +323,6 @@ body {
   border-bottom: 2px solid var(--accent-light);
   background: linear-gradient(180deg, var(--accent-light) 0%, var(--bg-secondary) 100%);
   border-radius: var(--radius) var(--radius) 0 0;
-}
-
-#sidebar-refs {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 0;
-}
-.sidebar-header-refs {
-  border-radius: 0 !important;
-  padding: 6px 14px !important;
 }
 
 /* Sidebar header button group (like MomoTalk) */
@@ -853,40 +732,13 @@ body {
 #bottom-area.panel-in-h {
   flex-direction: row;
 }
-/* Terminal panel in vertical slot: column (avatar top, terminal bottom) */
-#bottom-area.panel-in-v {
-  flex-direction: column;
-}
 /* Avatar sizing per orientation */
 #bottom-area.panel-in-h > #toki-avatar {
   width: 180px;
   height: auto;
   flex-shrink: 0;
 }
-#bottom-area.panel-in-v > #toki-avatar {
-  width: auto;
-  height: 180px;
-  flex-shrink: 0;
-}
-/* Avatar resizer in vertical orientation */
-#bottom-area.panel-in-v > #avatar-resizer {
-  display: block !important;
-  width: 100%;
-  height: 4px;
-  cursor: row-resize;
-  background: var(--border-color);
-}
-#bottom-area.panel-in-v > #avatar-resizer:hover {
-  background: var(--accent);
-}
-#bottom-area.panel-in-h > #avatar-resizer {
-  display: none !important;
-}
 /* Terminal fills remaining space */
-#bottom-area.panel-in-v > #terminal-area {
-  flex: 1;
-  min-height: 0;
-}
 #bottom-area.panel-in-h > #terminal-area {
   flex: 1;
   min-width: 0;
@@ -1638,7 +1490,7 @@ body {
   align-items: center;
   gap: 4px;
   min-height: 32px;
-  padding: 4px 6px 0;
+  padding: 4px 6px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   overflow-x: auto;
@@ -1655,8 +1507,7 @@ body {
   height: 28px;
   padding: 0 8px;
   border: 1px solid var(--border-color);
-  border-bottom-color: transparent;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   cursor: pointer;
@@ -1677,7 +1528,21 @@ body {
   white-space: nowrap;
 }
 
+.terminal-tab-rename {
+  min-width: 0;
+  width: 100%;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: inherit;
+  outline: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
 .terminal-tab-close,
+.terminal-tab-rename-button,
 .terminal-tab-add {
   display: inline-flex;
   align-items: center;
@@ -1693,9 +1558,21 @@ body {
 }
 
 .terminal-tab-close:hover,
+.terminal-tab-rename-button:hover,
 .terminal-tab-add:hover {
   background: var(--accent-light);
   color: var(--accent);
+}
+
+.terminal-tab-rename-button {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.terminal-tab:hover .terminal-tab-rename-button,
+.terminal-tab.active .terminal-tab-rename-button,
+.terminal-tab-rename-button:focus-visible {
+  opacity: 1;
 }
 
 #terminal-container {
@@ -2467,20 +2344,6 @@ body {
   color: var(--text-highlight);
 }
 
-#sidebar-expand:hover,
-#sidebar-expand:focus-visible,
-.manager-expand:hover,
-.manager-expand:focus-visible {
-  background: var(--accent-light);
-  color: var(--accent);
-}
-
-#sidebar-expand:focus-visible,
-.manager-expand:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 /* ===== Help Popup (MomoTalk style) ===== */
 .help-popup-overlay {
   position: fixed;
@@ -2751,42 +2614,6 @@ body {
 }
 .tree-item.no-sort {
   cursor: default;
-}
-
-/* ===== Panel Drop Zones ===== */
-.panel-drop-zone {
-  position: fixed;
-  z-index: 1500;
-  background: rgba(74, 144, 217, 0.15);
-  border: 2px dashed var(--accent);
-  border-radius: var(--radius);
-  pointer-events: all;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.panel-drop-zone.visible {
-  opacity: 1;
-}
-
-.panel-drop-zone.hover {
-  background: rgba(74, 144, 217, 0.3);
-  border-color: #3a7bc8;
-}
-
-.panel-drop-zone-label {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--accent);
-  color: #fff;
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  pointer-events: none;
 }
 
 /* ===== Form Editor (Lorebook / Regex) ===== */
