@@ -9,6 +9,12 @@
 
 ---
 
+## [1.17.0] - 2026-07-22
+
+### Changed
+
+- Split the monolithic MCP search smoke test into a focused orchestrator, shared fixtures, and standalone scenario modules without changing the executed contract coverage.
+
 ## [1.16.2] - 2026-07-22
 
 ### Changed
