@@ -9,6 +9,12 @@
 
 ---
 
+## [1.20.0] - 2026-07-22
+
+### Removed
+
+- Removed the unreferenced CBS JSON extractor, its isolated tests, and its obsolete Node-library build entry; active CBS parsing and evaluation remain unchanged.
+
 ## [1.19.0] - 2026-07-22
 
 ### Changed

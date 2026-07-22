@@ -38,7 +38,6 @@
     "src/lib/data-serializer.ts",
     "src/lib/cbs-parser.ts",
     "src/lib/cbs-evaluator.ts",
-    "src/lib/cbs-extractor.ts",
     "src/lib/lorebook-folders.ts",
     "src/lib/charx-export-compatibility.ts",
     "src/lib/document-validation.ts",

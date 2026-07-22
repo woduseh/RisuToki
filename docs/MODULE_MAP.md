@@ -112,7 +112,6 @@ This map is for source navigation. It is not a full API reference.
 
 - `src/lib/cbs-parser.ts` — CBS expression parser
 - `src/lib/cbs-evaluator.ts` — CBS expression evaluator
-- `src/lib/cbs-extractor.ts` — CBS tag extraction helpers
 
 ## Preview runtime
 
