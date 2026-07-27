@@ -9,6 +9,36 @@
 
 ---
 
+## [1.27.0] - 2026-07-27
+
+### Added
+
+- Added Codex-style workspace-bar buttons for opening and closing the bottom terminal and unified right sidebar.
+- Added tabbed properties and references views inside one resizable right sidebar.
+
+### Changed
+
+- Reused the contextual-inspector splitter and persisted width for the entire right sidebar, including references.
+- Removed the terminal header close button and detached bottom launcher in favor of the persistent workspace-bar toggle.
+
+## [1.26.3] - 2026-07-22
+
+### Fixed
+
+- Prevented constrained RISUM module-setting rows from shrinking beneath their controls, kept the description label aligned with its textarea, and aligned low-level access switches with the form input column.
+
+## [1.26.2] - 2026-07-22
+
+### Fixed
+
+- Kept RISUP prompt text editors within their detail cards, allowed them to shrink with the available workspace height, and removed the misleading native resize handle from fixed-layout prompt textareas.
+
+## [1.26.1] - 2026-07-22
+
+### Fixed
+
+- Kept expanded lorebook folder contents at their natural height so they push later folders downward instead of overlapping them in a constrained navigator.
+
 ## [1.26.0] - 2026-07-22
 
 ### Added

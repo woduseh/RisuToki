@@ -110,6 +110,23 @@ describe('app-store reactive state', () => {
     expect(store.referencesVisible).toBe(true);
     expect(store.activeUtility).toBeNull();
   });
+
+  it('uses mutually exclusive tabs inside the unified right sidebar', () => {
+    const store = useAppStore();
+    store.setFileData({ lorebook: [{ comment: 'Entry' }] } as never);
+    store.setActiveTabId('lore_0');
+
+    expect(store.inspectorVisible).toBe(true);
+    expect(store.referencesVisible).toBe(false);
+
+    store.toggleReferences();
+    expect(store.inspectorVisible).toBe(false);
+    expect(store.referencesVisible).toBe(true);
+
+    store.toggleInspector();
+    expect(store.inspectorVisible).toBe(true);
+    expect(store.referencesVisible).toBe(false);
+  });
 });
 
 describe('app-store previewability', () => {

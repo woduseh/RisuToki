@@ -75,6 +75,17 @@ describe('app.css – form editor controls', () => {
     expect(css).toMatch(/\.form-disable-number-btn:hover,\s*\.form-disable-number-btn:focus-visible\s*\{/);
     expect(css).toMatch(/\.form-disable-number-btn:disabled\s*\{/);
   });
+
+  it('keeps RISUM module rows in natural flow and aligns switches with the input column', () => {
+    expect(css).toMatch(/\.module-settings-form\s+\.form-editor-body\s*\{[^}]*gap:\s*8px;[^}]*\}/s);
+    expect(css).toMatch(
+      /\.module-settings-form\s+\.form-row,\s*\.module-settings-form\s+\.module-settings-switches\s*\{[^}]*flex-shrink:\s*0;[^}]*\}/s,
+    );
+    expect(css).toMatch(
+      /\.module-settings-form\s+\.module-description-row\s*\{[^}]*align-items:\s*flex-start;[^}]*\}/s,
+    );
+    expect(css).toMatch(/\.module-settings-switches\s*\{[^}]*margin-left:\s*calc\(80px \+ 8px\);[^}]*\}/s);
+  });
 });
 
 describe('app.css – character theme surfaces', () => {
@@ -106,6 +117,11 @@ describe('app.css – manager panels', () => {
     expect(css).toMatch(/\.prompt-manager-badges\s*\{[^}]*grid-column:\s*3;[^}]*\}/s);
     expect(css).toMatch(/\.prompt-manager-row\s+\.manager-row-actions\s*\{[^}]*grid-column:\s*3;[^}]*\}/s);
   });
+
+  it('keeps expanded lorebook folders in normal flow instead of shrinking beneath later folders', () => {
+    expect(css).toMatch(/\.manager-folder-children\s*\{[^}]*flex:\s*0 0 auto;[^}]*\}/s);
+    expect(css).toMatch(/\.manager-folder-row,\s*\.manager-root-entries\s*\{[^}]*flex-shrink:\s*0;[^}]*\}/s);
+  });
 });
 
 describe('app.css – risup prompt editor layout', () => {
@@ -125,12 +141,18 @@ describe('app.css – risup prompt editor layout', () => {
       /\.prompt-item-detail-card\s*\{[^}]*flex:\s*1;[^}]*min-height:\s*0;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*\}/s,
     );
     expect(css).toMatch(
-      /\.prompt-item-detail-card\s+\.prompt-editor-textarea\[data-field='text'\]\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*320px;[^}]*\}/s,
+      /\.prompt-item-detail-card\s+\.prompt-editor-textarea\[data-field='text'\]\s*\{[^}]*flex:\s*1 1 160px;[^}]*min-height:\s*160px;[^}]*max-height:\s*100%;[^}]*\}/s,
     );
   });
 
-  it('uses a taller default textarea for prompt template list items', () => {
-    expect(css).toMatch(/\.prompt-editor-textarea\s*\{[^}]*min-height:\s*126px;[^}]*\}/s);
+  it('keeps prompt textareas inside their cards without a misleading native resize handle', () => {
+    expect(css).toMatch(
+      /\.prompt-editor-textarea\s*\{[^}]*min-height:\s*126px;[^}]*max-width:\s*100%;[^}]*resize:\s*none;[^}]*\}/s,
+    );
+    expect(css).toMatch(/\.prompt-item-detail-card\s*\{[^}]*overflow:\s*hidden;[^}]*\}/s);
+    expect(css).toMatch(
+      /\.prompt-item-detail-card\s+\.prompt-editor-card-body\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*\}/s,
+    );
   });
 });
 

@@ -4,22 +4,23 @@ import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(resolve(__dirname, 'workspace.css'), 'utf-8');
 
-describe('workspace.css – reference drawer', () => {
-  it('renders references as a separate tall side drawer instead of consuming the terminal shelf', () => {
+describe('workspace.css – Codex-style docked panels', () => {
+  it('uses one resizable right sidebar column for properties and references', () => {
     expect(css).toMatch(
-      /#reference-drawer\s*\{[^}]*position:\s*absolute;[^}]*top:\s*8px;[^}]*right:\s*10px;[^}]*bottom:\s*10px;[^}]*width:\s*clamp\(320px,\s*28vw,\s*420px\);[^}]*grid-template-rows:\s*42px minmax\(0,\s*1fr\);/s,
+      /#app-body\.right-sidebar-open\s+#workspace-shell\s*\{[^}]*grid-template-columns:\s*0 0 minmax\(0,\s*1fr\) var\(--ui-gap\) var\(--inspector-width\);/s,
     );
-    expect(css).toMatch(/#app-body\.utility-open\s+#reference-drawer\s*\{[^}]*bottom:\s*calc\(/s);
+    expect(css).toMatch(
+      /#app-body\.navigator-open\.right-sidebar-open\s+#workspace-shell\s*\{[^}]*var\(--navigator-width\)[^}]*var\(--inspector-width\);/s,
+    );
+    expect(css).toMatch(/#right-sidebar\s*\{[^}]*grid-template-rows:\s*40px minmax\(0,\s*1fr\);/s);
+    expect(css).not.toMatch(/#reference-drawer\s*\{/);
   });
 
-  it('keeps references on the outer-right side of the contextual inspector on wide windows', () => {
+  it('styles the unified sidebar header as compact tabs with an active underline', () => {
     expect(css).toMatch(
-      /#app-body\.references-open\s+#workspace-shell\s*\{[^}]*margin-right:\s*calc\(clamp\(320px,\s*28vw,\s*420px\)\s*\+\s*var\(--ui-gap\)\);/s,
+      /\.right-sidebar-tabs\s+button\.active::after\s*\{[^}]*height:\s*2px;[^}]*background:\s*var\(--ui-accent\);/s,
     );
-    expect(css).not.toMatch(/#app-body\.inspector-open\.references-open\s+#reference-drawer/);
-    expect(css).toMatch(
-      /@media\s*\(max-width:\s*1179px\)[\s\S]*#app-body\.references-open\s+#workspace-shell\s*\{[^}]*margin-right:\s*0;/,
-    );
+    expect(css).toMatch(/\.right-sidebar-content\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/s);
   });
 
   it('gives the open terminal its full shelf height without a redundant tab row', () => {
@@ -32,6 +33,7 @@ describe('workspace.css – reference drawer', () => {
     expect(css).toMatch(/#workspace-bar\s*\{[^}]*grid-row:\s*1;/s);
     expect(css).toMatch(/#workspace-shell\s*\{[^}]*grid-row:\s*2;/s);
     expect(css).not.toMatch(/\.utility-tabs\s*\{/);
+    expect(css).not.toMatch(/#terminal-shelf-launcher\s*\{/);
   });
 
   it('allows Vue to hide the editor surface while the welcome screen is active', () => {
@@ -39,9 +41,9 @@ describe('workspace.css – reference drawer', () => {
     expect(css).not.toMatch(/#editor-surface\s*\{[^}]*display:\s*flex\s*!important;/s);
   });
 
-  it('uses the available width as a single overlay on smaller windows', () => {
+  it('uses the unified sidebar as a single overlay on smaller windows', () => {
     expect(css).toMatch(
-      /@media\s*\(max-width:\s*1019px\)[\s\S]*#reference-drawer\s*\{[^}]*left:\s*10px;[^}]*width:\s*auto;/,
+      /@media\s*\(max-width:\s*1179px\)[\s\S]*#right-sidebar\s*\{[^}]*position:\s*absolute;[^}]*right:\s*10px;[^}]*width:\s*min\(var\(--inspector-width\),\s*calc\(100% - 40px\)\);/,
     );
   });
 });

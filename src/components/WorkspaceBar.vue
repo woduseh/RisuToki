@@ -13,6 +13,7 @@ import {
   IconSettings,
   IconAdjustmentsHorizontal,
   IconSparkles,
+  IconTerminal2,
   IconUser,
   IconWand,
 } from '@tabler/icons-vue';
@@ -42,7 +43,7 @@ const showWizard = computed(
 </script>
 
 <template>
-  <nav v-if="store.hasFile" id="workspace-bar" aria-label="파일 작업공간">
+  <nav id="workspace-bar" aria-label="파일 작업공간">
     <button
       type="button"
       class="workspace-pane-toggle"
@@ -55,7 +56,7 @@ const showWizard = computed(
       <IconLayoutSidebarLeftCollapse :size="18" stroke-width="1.8" />
     </button>
 
-    <div class="workspace-tabs" role="tablist" aria-label="작업공간">
+    <div v-if="store.hasFile" class="workspace-tabs" role="tablist" aria-label="작업공간">
       <button
         v-for="workspace in store.workspaceDefinitions"
         :key="workspace.id"
@@ -71,28 +72,43 @@ const showWizard = computed(
       </button>
     </div>
 
-    <button
-      v-if="showWizard"
-      type="button"
-      class="workspace-primary-action"
-      @click="$emit('action', 'asset-output-wizard')"
-    >
-      <IconWand :size="17" stroke-width="1.8" />
-      <span>출력식 마법사</span>
-    </button>
+    <div class="workspace-trailing-actions">
+      <button
+        v-if="showWizard"
+        type="button"
+        class="workspace-primary-action"
+        @click="$emit('action', 'asset-output-wizard')"
+      >
+        <IconWand :size="17" stroke-width="1.8" />
+        <span>출력식 마법사</span>
+      </button>
 
-    <button
-      type="button"
-      class="workspace-pane-toggle"
-      :class="{ active: store.inspectorVisible }"
-      title="속성 패널 전환"
-      aria-label="속성 패널 전환"
-      :aria-pressed="store.inspectorVisible && store.hasInspectorContext"
-      :disabled="!store.hasInspectorContext"
-      @click="store.toggleInspector()"
-    >
-      <IconLayoutSidebarRightCollapse :size="18" stroke-width="1.8" />
-    </button>
+      <button
+        id="btn-workspace-terminal-toggle"
+        type="button"
+        class="workspace-pane-toggle"
+        :class="{ active: store.activeUtility === 'terminal' }"
+        :title="store.activeUtility === 'terminal' ? '터미널 닫기' : '터미널 열기'"
+        :aria-label="store.activeUtility === 'terminal' ? '터미널 닫기' : '터미널 열기'"
+        :aria-pressed="store.activeUtility === 'terminal'"
+        @click="store.toggleUtility('terminal')"
+      >
+        <IconTerminal2 :size="18" stroke-width="1.8" />
+      </button>
+
+      <button
+        id="btn-right-sidebar-toggle"
+        type="button"
+        class="workspace-pane-toggle"
+        :class="{ active: store.inspectorVisible || store.referencesVisible }"
+        title="사이드 패널 전환"
+        aria-label="사이드 패널 전환"
+        :aria-pressed="store.inspectorVisible || store.referencesVisible"
+        @click="$emit('action', 'toggle-right-sidebar')"
+      >
+        <IconLayoutSidebarRightCollapse :size="18" stroke-width="1.8" />
+      </button>
+    </div>
   </nav>
 </template>
 
@@ -116,6 +132,13 @@ const showWizard = computed(
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
+}
+
+.workspace-trailing-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .workspace-tabs::-webkit-scrollbar {
@@ -172,7 +195,6 @@ const showWizard = computed(
 }
 
 .workspace-primary-action {
-  margin-left: auto;
   padding: 0 12px;
   color: #062a27;
   background: var(--ui-accent, #2dd4bf);

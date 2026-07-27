@@ -129,7 +129,7 @@ export function showHelpPopup(): void {
     <div class="help-shortcut"><span>Codex 시작</span><span>터미널 메뉴</span></div>
 
     <h3>🧰 작업공간과 도구</h3>
-    <div class="help-shortcut"><span>참고자료 서랍</span><span>상단 참고자료 버튼</span></div>
+    <div class="help-shortcut"><span>참고자료 탭</span><span>상단 참고자료 버튼 또는 우측 사이드 패널</span></div>
     <div class="help-shortcut"><span>터미널 표시</span><span>헤더 닫기 / 하단 열기 버튼</span></div>
     <div class="help-shortcut"><span>탐색기 / 속성 패널</span><span>작업공간 상단 버튼</span></div>
     <div class="help-shortcut"><span>참고자료·터미널 팝아웃</span><span>각 패널의 ↗ 버튼</span></div>

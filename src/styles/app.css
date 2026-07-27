@@ -903,16 +903,32 @@ body {
   max-width: 760px;
   width: 100%;
   margin: 0 auto;
+  gap: 8px;
 }
 
-.module-description-row {
+.module-settings-form .form-row,
+.module-settings-form .module-settings-switches {
+  flex-shrink: 0;
+}
+
+.module-settings-form .module-description-row {
   align-items: flex-start;
 }
 
+.module-description-row .form-label {
+  padding-top: 7px;
+}
+
 .module-description-row textarea {
+  width: 100%;
+  min-width: 0;
   min-height: 150px;
   resize: vertical;
   line-height: 1.55;
+}
+
+.module-settings-switches {
+  margin-left: calc(80px + 8px);
 }
 
 .module-settings-switches,
@@ -1233,8 +1249,14 @@ body {
 .manager-folder-children {
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   gap: 6px;
   padding-left: 12px;
+}
+
+.manager-folder-row,
+.manager-root-entries {
+  flex-shrink: 0;
 }
 
 .manager-lore-row {
@@ -2929,6 +2951,7 @@ body.form-resizing {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .prompt-editor-card-header,
@@ -3001,6 +3024,8 @@ body.form-resizing {
 .prompt-item-detail-card .prompt-editor-card-body {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .prompt-editor-inline-row {
@@ -3035,11 +3060,16 @@ body.form-resizing {
 
 .prompt-editor-textarea {
   min-height: 126px;
+  min-width: 0;
+  max-width: 100%;
+  resize: none;
 }
 
 .prompt-item-detail-card .prompt-editor-textarea[data-field='text'] {
-  flex: 1 1 auto;
-  min-height: 320px;
+  flex: 1 1 160px;
+  min-height: 160px;
+  max-height: 100%;
+  overflow: auto;
 }
 
 .prompt-editor-number {

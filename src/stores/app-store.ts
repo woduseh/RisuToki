@@ -345,6 +345,7 @@ export const useAppStore = defineStore('app', () => {
     if (inferred && isWorkspaceAvailable(fileData.value, inferred)) workspaceId.value = inferred;
     if (getInspectorContext(id).kind !== 'empty') {
       inspectorVisible.value = true;
+      referencesVisible.value = false;
       if (typeof window !== 'undefined' && window.innerWidth < 1020) navigatorVisible.value = false;
     }
   }
@@ -363,9 +364,9 @@ export const useAppStore = defineStore('app', () => {
 
   function toggleInspector() {
     inspectorVisible.value = !inspectorVisible.value;
-    if (inspectorVisible.value && typeof window !== 'undefined' && window.innerWidth < 1180) {
-      navigatorVisible.value = false;
+    if (inspectorVisible.value) {
       referencesVisible.value = false;
+      if (typeof window !== 'undefined' && window.innerWidth < 1180) navigatorVisible.value = false;
     }
   }
 
@@ -379,14 +380,15 @@ export const useAppStore = defineStore('app', () => {
 
   function toggleReferences() {
     referencesVisible.value = !referencesVisible.value;
+    inspectorVisible.value = false;
     if (referencesVisible.value && typeof window !== 'undefined' && window.innerWidth < 1180) {
-      inspectorVisible.value = false;
-      if (window.innerWidth < 1020) navigatorVisible.value = false;
+      navigatorVisible.value = false;
     }
   }
 
   function setReferencesVisible(visible: boolean) {
     referencesVisible.value = visible;
+    if (visible) inspectorVisible.value = false;
   }
 
   function toggleAvatar() {

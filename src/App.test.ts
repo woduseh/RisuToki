@@ -248,10 +248,11 @@ describe('App shell', () => {
   it('adds aria labels to icon-only shell controls', () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } });
 
-    expect(wrapper.get('#context-inspector button').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#navigator-resizer').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#inspector-resizer').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#utility-resizer').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-workspace-terminal-toggle').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.get('#btn-right-sidebar-toggle').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-avatar-collapse').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-chat-mode').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-terminal-bg').attributes('aria-label')).toBeTruthy();
@@ -259,7 +260,6 @@ describe('App shell', () => {
     expect(wrapper.get('#btn-rp-mode').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-avatar-toggle').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-terminal-popout').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#btn-terminal-toggle').attributes('aria-label')).toBeTruthy();
   });
 
   it('mounts semantic panels directly in their fixed workspace homes', () => {
@@ -278,7 +278,7 @@ describe('App shell', () => {
     expect(wrapper.get('#bottom-area').element.parentElement).toBe(wrapper.get('#slot-bottom').element);
   });
 
-  it('uses the terminal content as the shelf and restores it from a compact launcher', async () => {
+  it('toggles the terminal shelf from the workspace bar', async () => {
     const pinia = createPinia();
     const wrapper = mount(App, { global: { plugins: [pinia] } });
     const store = useAppStore();
@@ -288,13 +288,17 @@ describe('App shell', () => {
 
     if (store.activeUtility !== 'terminal') store.toggleUtility('terminal');
     await nextTick();
-    await wrapper.get('#btn-terminal-toggle').trigger('click');
+    const toggle = wrapper.get('#btn-workspace-terminal-toggle');
+    expect(toggle.attributes('aria-label')).toBe('터미널 닫기');
+    await toggle.trigger('click');
     await nextTick();
 
     expect(store.activeUtility).toBeNull();
-    expect(wrapper.get('#terminal-shelf-launcher').attributes('aria-label')).toBe('터미널 열기');
+    expect(toggle.attributes('aria-label')).toBe('터미널 열기');
+    expect(wrapper.find('#terminal-shelf-launcher').exists()).toBe(false);
+    expect(wrapper.find('#btn-terminal-toggle').exists()).toBe(false);
 
-    await wrapper.get('#terminal-shelf-launcher').trigger('click');
+    await toggle.trigger('click');
     await nextTick();
     expect(store.activeUtility).toBe('terminal');
   });
@@ -446,7 +450,7 @@ describe('App shell', () => {
     expect(wrapper.get('#btn-avatar-toggle').attributes('aria-pressed')).toBe('false');
   });
 
-  it('refreshes references when opening the vertical drawer without a document', async () => {
+  it('opens references in the unified right sidebar and switches back to contextual properties', async () => {
     const pinia = createPinia();
     const wrapper = mount(App, { global: { plugins: [pinia] } });
     const store = useAppStore();
@@ -460,9 +464,39 @@ describe('App shell', () => {
     await nextTick();
 
     expect(store.referencesVisible).toBe(true);
+    expect(store.inspectorVisible).toBe(false);
     expect(store.activeUtility).toBe('terminal');
-    expect(wrapper.get('#reference-drawer').isVisible()).toBe(true);
+    expect(wrapper.get('#right-sidebar').isVisible()).toBe(true);
+    expect(wrapper.get('#right-sidebar-references-tab').classes()).toContain('active');
     expect(refreshReferences).toHaveBeenCalledOnce();
+
+    store.setFileData({ lorebook: [{ comment: 'Entry' }] } as never);
+    store.setActiveTabId('lore_0');
+    await nextTick();
+
+    expect(store.referencesVisible).toBe(false);
+    expect(store.inspectorVisible).toBe(true);
+    expect(wrapper.get('#right-sidebar-inspector-tab').text()).toBe('로어북 속성');
+    expect(wrapper.get('#right-sidebar-inspector-tab').classes()).toContain('active');
+  });
+
+  it('resizes the unified right sidebar from its left edge', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+    store.setFileData({ lorebook: [{ comment: 'Entry' }] } as never);
+    store.setActiveTabId('lore_0');
+    store.setInspectorWidth(320);
+    await nextTick();
+
+    const resizer = wrapper.get('#inspector-resizer');
+    resizer.element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 900 }));
+    document.dispatchEvent(new MouseEvent('pointermove', { clientX: 850 }));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await nextTick();
+
+    expect(store.inspectorWidth).toBe(370);
+    document.dispatchEvent(new MouseEvent('pointerup'));
   });
 
   it('keeps sticky error statuses visible with accessible live-region semantics', async () => {

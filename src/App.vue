@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, watch } from 'vue';
 import {
   IconArrowUpRight,
-  IconBook2,
   IconClock,
   IconFilePlus,
   IconFolderOpen,
@@ -33,6 +32,20 @@ const shellStyle = computed(() => ({
   '--utility-height': `${store.utilityHeight}px`,
 }));
 const hasEditorContent = computed(() => store.hasFile || store.activeTabId !== null);
+const rightSidebarVisible = computed(
+  () => store.referencesVisible || (store.inspectorVisible && store.hasInspectorContext),
+);
+const inspectorTabLabel = computed(() => {
+  const labels = {
+    lorebook: '로어북 속성',
+    asset: '에셋 정보',
+    prompt: '프롬프트 속성',
+    regex: '정규식 속성',
+    trigger: '트리거 속성',
+    empty: '속성',
+  } as const;
+  return labels[store.inspectorContext.kind];
+});
 
 function currentWorkspaceLayout() {
   return {
@@ -147,6 +160,17 @@ function handleAction(action: string, payload?: unknown) {
     window.dispatchEvent(new Event('resize'));
     return;
   }
+  if (action === 'toggle-right-sidebar') {
+    if (rightSidebarVisible.value) {
+      store.inspectorVisible = false;
+      store.setReferencesVisible(false);
+    } else if (store.hasInspectorContext) {
+      store.toggleInspector();
+    } else {
+      toggleReferences();
+    }
+    return;
+  }
   executeAction(action, payload);
 }
 
@@ -177,10 +201,9 @@ function recentName(path: string) {
     id="app-body"
     :class="{
       'navigator-open': store.navigatorVisible,
-      'inspector-open': store.inspectorVisible && store.hasInspectorContext,
+      'right-sidebar-open': rightSidebarVisible,
       'utility-open': store.activeUtility,
       'avatar-visible': store.avatarVisible,
-      'references-open': store.referencesVisible,
     }"
     :data-workspace="store.workspaceId"
     :data-utility="store.activeUtility || 'closed'"
@@ -250,48 +273,71 @@ function recentName(path: string) {
       </section>
 
       <div
+        v-show="rightSidebarVisible"
         id="inspector-resizer"
         class="workspace-resizer"
         role="separator"
-        aria-label="속성 패널 너비 조절"
+        aria-label="사이드 패널 너비 조절"
         aria-orientation="vertical"
         tabindex="0"
         @pointerdown="startPaneResize('inspector', $event)"
         @keydown="resizeWithKeyboard('inspector', $event)"
       ></div>
-      <ContextInspector v-show="store.hasInspectorContext" />
+      <aside v-show="rightSidebarVisible" id="right-sidebar" aria-label="사이드 패널">
+        <header class="right-sidebar-header">
+          <div class="right-sidebar-tabs" role="tablist" aria-label="사이드 패널">
+            <button
+              v-if="store.hasInspectorContext"
+              id="right-sidebar-inspector-tab"
+              type="button"
+              role="tab"
+              :aria-selected="store.inspectorVisible"
+              :class="{ active: store.inspectorVisible }"
+              @click="store.inspectorVisible || store.toggleInspector()"
+            >
+              {{ inspectorTabLabel }}
+            </button>
+            <button
+              id="right-sidebar-references-tab"
+              type="button"
+              role="tab"
+              :aria-selected="store.referencesVisible"
+              :class="{ active: store.referencesVisible }"
+              @click="store.referencesVisible || toggleReferences()"
+            >
+              참고자료
+            </button>
+          </div>
+          <div class="right-sidebar-actions">
+            <button
+              v-if="store.referencesVisible"
+              type="button"
+              title="참고자료 팝아웃"
+              aria-label="참고자료 팝아웃"
+              @click="handleAction('popout-references')"
+            >
+              <IconArrowUpRight :size="17" />
+            </button>
+            <button
+              type="button"
+              title="사이드 패널 닫기"
+              aria-label="사이드 패널 닫기"
+              @click="handleAction('toggle-right-sidebar')"
+            >
+              <IconX :size="17" />
+            </button>
+          </div>
+        </header>
+        <div class="right-sidebar-content">
+          <ContextInspector v-show="store.inspectorVisible && store.hasInspectorContext" />
+          <div v-show="store.referencesVisible" id="reference-drawer-body">
+            <div id="refs-panel">
+              <div id="refs-panel-content" class="refs-panel-content"></div>
+            </div>
+          </div>
+        </div>
+      </aside>
     </div>
-
-    <aside v-show="store.referencesVisible" id="reference-drawer" aria-label="참고자료 서랍">
-      <header class="reference-drawer-header">
-        <span><IconBook2 :size="17" /> 참고자료</span>
-        <div>
-          <button
-            type="button"
-            class="icon-only"
-            title="참고자료 팝아웃"
-            aria-label="참고자료 팝아웃"
-            @click="handleAction('popout-references')"
-          >
-            <IconArrowUpRight :size="17" />
-          </button>
-          <button
-            type="button"
-            class="icon-only"
-            title="참고자료 닫기"
-            aria-label="참고자료 닫기"
-            @click="store.toggleReferences()"
-          >
-            <IconX :size="17" />
-          </button>
-        </div>
-      </header>
-      <div id="reference-drawer-body">
-        <div id="refs-panel">
-          <div id="refs-panel-content" class="refs-panel-content"></div>
-        </div>
-      </div>
-    </aside>
 
     <section id="utility-shelf" aria-label="터미널 선반">
       <div
@@ -385,14 +431,6 @@ function recentName(path: string) {
                 >
                   <IconArrowUpRight :size="16" />
                 </button>
-                <button
-                  id="btn-terminal-toggle"
-                  title="터미널 닫기"
-                  aria-label="터미널 닫기"
-                  @click="store.toggleUtility('terminal')"
-                >
-                  <IconX :size="16" />
-                </button>
               </div>
             </div>
             <div id="terminal-tabs" class="terminal-tabs" role="tablist" aria-label="터미널 세션"></div>
@@ -401,16 +439,6 @@ function recentName(path: string) {
         </div>
       </div>
     </section>
-    <button
-      v-if="!store.activeUtility"
-      id="terminal-shelf-launcher"
-      type="button"
-      aria-label="터미널 열기"
-      title="터미널 열기 (Ctrl+`)"
-      @click="store.toggleUtility('terminal')"
-    >
-      <IconTerminal2 :size="16" /><span>터미널 열기</span>
-    </button>
   </div>
 
   <StatusBar />

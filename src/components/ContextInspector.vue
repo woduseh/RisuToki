@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { IconBook2, IconBraces, IconInfoCircle, IconPhoto, IconSparkles, IconX } from '@tabler/icons-vue';
+import { IconBook2, IconBraces, IconInfoCircle, IconPhoto, IconSparkles } from '@tabler/icons-vue';
 import { useAppStore, type LorebookEntry, type RegexEntry } from '../stores/app-store';
 import { executeAction } from '../lib/action-registry';
 import { buildFolderInfoMap, resolveLorebookFolderRef } from '../lib/lorebook-folders';
@@ -65,15 +65,6 @@ const triggerCount = computed(() => {
   }
 });
 
-const title = computed(() => {
-  if (lore.value) return '로어북 속성';
-  if (assetDetails.value) return '에셋 정보';
-  if (promptItem.value) return '프롬프트 속성';
-  if (regex.value) return '정규식 속성';
-  if (store.activeTabId === 'triggerScripts') return '트리거 속성';
-  return '속성';
-});
-
 watch(
   () => store.inspectorContext,
   async (context) => {
@@ -129,16 +120,6 @@ function formatBytes(size: number): string {
 
 <template>
   <aside id="context-inspector" aria-label="선택 항목 속성">
-    <header class="inspector-header">
-      <div>
-        <span class="inspector-eyebrow">INSPECTOR</span>
-        <strong>{{ title }}</strong>
-      </div>
-      <button type="button" title="속성 패널 닫기" aria-label="속성 패널 닫기" @click="store.toggleInspector()">
-        <IconX :size="18" />
-      </button>
-    </header>
-
     <div v-if="lore" class="inspector-content">
       <div class="inspector-kind"><IconBook2 :size="17" /> 선택한 로어북</div>
       <label
@@ -330,40 +311,6 @@ function formatBytes(size: number): string {
   color: var(--ui-text, #e6edf7);
 }
 
-.inspector-header {
-  min-height: 58px;
-  padding: 10px 12px 10px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--ui-border, rgba(148, 163, 184, 0.14));
-}
-
-.inspector-header > div {
-  display: grid;
-  gap: 2px;
-}
-.inspector-eyebrow {
-  font-size: 9px;
-  letter-spacing: 0.15em;
-  color: var(--ui-text-faint, #64748b);
-}
-.inspector-header strong {
-  font-size: 13px;
-}
-.inspector-header button {
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: 8px;
-  color: var(--ui-text-muted, #94a3b8);
-  background: transparent;
-  cursor: pointer;
-}
-.inspector-header button:hover {
-  background: var(--ui-control-hover, rgba(148, 163, 184, 0.1));
-  color: var(--ui-text, #fff);
-}
 .inspector-content {
   padding: 14px;
   overflow: auto;
