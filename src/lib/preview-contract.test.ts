@@ -219,7 +219,7 @@ function extractTransformCalls(calls: PipelineCall[]): PipelineCall[] {
 // ── Contract tests ───────────────────────────────────────────────────
 
 describe('preview pipeline contract: transform order', () => {
-  it('char role pipeline: regex(editoutput) → lua(editOutput) → cbs(runVar:true) → regex(editdisplay) → cbs(runVar:true) → lua(editDisplay) → cbs(runVar:false) → resolveAssets', async () => {
+  it('runs role transforms before the shared RisuAI display pipeline for user and char messages', async () => {
     const engine = createRecordingEngine();
     const session = makeSession(engine);
     await session.initialize();
@@ -235,17 +235,22 @@ describe('preview pipeline contract: transform order', () => {
     // Extract only transform-pipeline calls.
     const transformCalls = extractTransformCalls(engine.calls);
 
-    // User transform (first 4 calls)
-    const userCalls = transformCalls.slice(0, 4);
+    // User transform and shared display pipeline (first 9 calls)
+    const userCalls = transformCalls.slice(0, 9);
     expect(userCalls).toEqual([
       { op: 'processRegex', type: 'editinput' },
       { op: 'runLuaTrigger', triggerName: 'editInput' },
       { op: 'risuChatParser', runVar: true },
+      { op: 'processRegex', type: 'editdisplay' },
+      { op: 'risuChatParser', runVar: true },
+      { op: 'runLuaTrigger', triggerName: 'editDisplay' },
+      { op: 'risuChatParser', runVar: false },
+      { op: 'resolveAssetImages' },
       { op: 'resolveAssetImages' },
     ]);
 
-    // Char transform (next 8 calls)
-    const charCalls = transformCalls.slice(4, 12);
+    // Char transform and shared display pipeline (next 9 calls)
+    const charCalls = transformCalls.slice(9, 18);
     expect(charCalls).toEqual([
       { op: 'processRegex', type: 'editoutput' },
       { op: 'runLuaTrigger', triggerName: 'editOutput' },
@@ -255,10 +260,11 @@ describe('preview pipeline contract: transform order', () => {
       { op: 'runLuaTrigger', triggerName: 'editDisplay' },
       { op: 'risuChatParser', runVar: false },
       { op: 'resolveAssetImages' },
+      { op: 'resolveAssetImages' },
     ]);
   });
 
-  it('user role pipeline: regex(editinput) → lua(editInput) → cbs(runVar:true) → resolveAssets', async () => {
+  it('user role pipeline includes editInput and the complete shared display pipeline', async () => {
     const engine = createRecordingEngine();
     const session = makeSession(engine);
     await session.initialize();
@@ -268,11 +274,16 @@ describe('preview pipeline contract: transform order', () => {
     input.value = 'test';
     await session.handleSend(input);
 
-    const userCalls = extractTransformCalls(engine.calls).slice(0, 4);
+    const userCalls = extractTransformCalls(engine.calls).slice(0, 9);
     expect(userCalls).toEqual([
       { op: 'processRegex', type: 'editinput' },
       { op: 'runLuaTrigger', triggerName: 'editInput' },
       { op: 'risuChatParser', runVar: true },
+      { op: 'processRegex', type: 'editdisplay' },
+      { op: 'risuChatParser', runVar: true },
+      { op: 'runLuaTrigger', triggerName: 'editDisplay' },
+      { op: 'risuChatParser', runVar: false },
+      { op: 'resolveAssetImages' },
       { op: 'resolveAssetImages' },
     ]);
   });
@@ -294,8 +305,8 @@ describe('preview pipeline contract: transform order', () => {
 
     expect(sessionTriggers).toEqual(['input', 'output']);
 
-    // Verify resolveAssetImages appears exactly twice (user msg + char msg)
-    // plus potentially once more for background if luaHtml exists
+    // Each message resolves assets before display transforms, before Markdown,
+    // and once more after Markdown; background refresh may add more calls.
     const assetCalls = engine.calls.filter((c) => c.op === 'resolveAssetImages');
     expect(assetCalls.length).toBeGreaterThanOrEqual(2);
   });

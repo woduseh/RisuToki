@@ -311,7 +311,8 @@ describe('preview session', () => {
     await session.initialize();
 
     const snapshot = session.getSnapshot();
-    const chatText = chatFrame.contentDocument.querySelector('.chattext')?.innerHTML ?? '';
+    const chatText =
+      chatFrame.contentDocument.querySelector('#chat-container .chat-message-container .chattext')?.innerHTML ?? '';
     const backgroundHtml = chatFrame.contentDocument.getElementById('bg-dom')?.innerHTML ?? '';
 
     expect(snapshot.luaInitialized).toBe(true);
@@ -324,6 +325,29 @@ describe('preview session', () => {
     expect(stateSnapshots.length).toBeGreaterThan(0);
   });
 
+  it('renders character and embedded module backgrounds in their declared order', async () => {
+    const runtime = createNoopRuntime();
+    const setBackground = vi.spyOn(runtime, 'setBackground');
+    const session = createPreviewSession({
+      engine: createEngine(),
+      charData: {
+        name: 'Toki',
+        firstMessage: '',
+        css: '<div class="character-background">character</div>',
+        backgroundEmbedding: '<div class="module-background">module</div>',
+      },
+      chatFrame: createChatFrame(),
+      windowTarget: createWindowTarget(),
+      runtime,
+    });
+
+    await session.initialize();
+
+    expect(setBackground).toHaveBeenCalledWith(
+      '<div class="x-risu-character-background">character</div>\n<div class="x-risu-module-background">module</div>',
+    );
+  });
+
   it('renders richer markdown and structural html inside the message container without reparenting them out', async () => {
     const engine = createEngine();
     const chatFrame = createChatFrame();
@@ -333,7 +357,7 @@ describe('preview session', () => {
         name: 'Toki',
         description: '',
         firstMessage:
-          '# 제목\n- 첫째\n- 둘째\n[문서](https://example.com)\n<details open><summary>더보기</summary><p><u>강조</u> 내용</p></details>',
+          '# 제목\n\n- 첫째\n- 둘째\n\n[문서](https://example.com)\n\n<details open><summary>더보기</summary><p><u>강조</u> 내용</p></details>',
         defaultVariables: '',
         css: '',
         lorebook: [],
@@ -346,7 +370,7 @@ describe('preview session', () => {
 
     await session.initialize();
 
-    const chatText = chatFrame.contentDocument.querySelector('.chattext');
+    const chatText = chatFrame.contentDocument.querySelector('#chat-container .chat-message-container .chattext');
     const heading = chatText?.querySelector('h1');
     const listItems = [...(chatText?.querySelectorAll('ul li') ?? [])].map((item) => item.textContent);
     const link = chatText?.querySelector('a[href="https://example.com"]');
@@ -845,6 +869,43 @@ describe('preview session', () => {
     expect(tracker.writes).toHaveLength(0);
   });
 
+  it('keeps authored asset names through editdisplay regex before resolving data URIs', async () => {
+    const engine = createEngine();
+    const assetUri = 'data:image/png;base64,AAAA';
+    engine.processRegex = (content: string, _scripts, mode: string) => {
+      if (mode !== 'editdisplay') return content;
+      return content.replace(
+        /<img src="([^"]+)">/,
+        '<div class="image-container"><img src="$1"><span class="asset-tag">$1</span></div>',
+      );
+    };
+    engine.resolveAssetImages = (content: string) => content.replaceAll('src="FelixVance"', `src="${assetUri}"`);
+    const chatFrame = createChatFrame();
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        description: '',
+        firstMessage: '<img src="FelixVance">',
+        defaultVariables: '',
+        css: '',
+        lorebook: [],
+        regex: [{ type: 'editdisplay', find: '<img src="([^"]+)">', replace: '$1' }],
+        lua: '',
+      },
+      chatFrame,
+      windowTarget: createWindowTarget(),
+    });
+
+    await session.initialize();
+
+    const image = chatFrame.contentDocument.querySelector<HTMLImageElement>('[class$="image-container"] img');
+    const label = chatFrame.contentDocument.querySelector('[class$="asset-tag"]');
+    expect(image?.getAttribute('src')).toBe(assetUri);
+    expect(label?.textContent).toBe('FelixVance');
+    expect(label?.textContent).not.toContain('base64');
+  });
+
   it('does not scroll to bottom during initial first-message render', async () => {
     const engine = createEngine();
     const chatFrame = createChatFrame();
@@ -1289,5 +1350,83 @@ describe('preview session: button-driven state parity (Hinano regression)', () =
 
     // defaultVariables should be set on the engine
     expect(engine.state.defaultVariables).toBe('__hp = 100\n__status = normal\naffinity = 0');
+  });
+
+  it('switches to an alternate greeting and resets the runtime with that greeting selected', async () => {
+    const engine = createEngine();
+    const runtime = createNoopRuntime();
+    const appendMessage = vi.spyOn(runtime, 'appendMessage');
+    const session = createPreviewSession({
+      engine,
+      charData: {
+        name: 'Toki',
+        firstMessage: '기본 인사',
+        alternateGreetings: ['대체 인사 1', '대체 인사 2'],
+      },
+      chatFrame: createChatFrame(),
+      windowTarget: createWindowTarget(),
+      runtime,
+    });
+
+    await session.initialize();
+    await session.selectGreeting!(1);
+
+    expect(session.getSnapshot().selectedGreetingIndex).toBe(1);
+    expect(session.getSnapshot().messages).toEqual([{ role: 'char', content: '대체 인사 2' }]);
+    expect(engine.state.firstMessage).toBe('대체 인사 2');
+    expect(appendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('대체 인사 2') }),
+    );
+  });
+
+  it('injects user and character messages independently while running their matching Lua events', async () => {
+    const engine = createEngine();
+    const session = createPreviewSession({
+      engine,
+      charData: { name: 'Toki', firstMessage: '', lua: '-- test' },
+      chatFrame: createChatFrame(),
+      windowTarget: createWindowTarget(),
+      runtime: createNoopRuntime(),
+    });
+
+    await session.initialize();
+    await session.injectMessage!('user', '사용자 테스트');
+    await session.injectMessage!('char', '캐릭터 테스트');
+
+    expect(session.getSnapshot().messages).toEqual([
+      { role: 'user', content: '사용자 테스트' },
+      { role: 'char', content: '캐릭터 테스트' },
+    ]);
+    expect(engine.state.variables.lastInput).toBe('사용자 테스트');
+    expect(engine.state.variables.lastOutput).toBe('캐릭터 테스트');
+  });
+
+  it('passes the selected viewport and character avatar into display rendering', async () => {
+    const engine = createEngine();
+    const parserSpy = vi.spyOn(engine, 'risuChatParser');
+    const runtime = createNoopRuntime();
+    const appendMessage = vi.spyOn(runtime, 'appendMessage');
+    const session = createPreviewSession({
+      engine,
+      charData: { name: 'Toki', firstMessage: '안녕', largePortrait: true },
+      characterAvatar: 'data:image/png;base64,AAAA',
+      chatFrame: createChatFrame(),
+      windowTarget: createWindowTarget(),
+      runtime,
+    });
+
+    await session.initialize();
+    await session.setViewportSize!({ width: 390, height: 844 });
+
+    expect(session.getSnapshot().viewport).toEqual({ width: 390, height: 844 });
+    expect(
+      parserSpy.mock.calls.some(([, options]) => options?.screenWidth === 390 && options?.screenHeight === 844),
+    ).toBe(true);
+    expect(appendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        avatarSrc: 'data:image/png;base64,AAAA',
+        largePortrait: true,
+      }),
+    );
   });
 });

@@ -13,11 +13,29 @@ describe('content simulation', () => {
       'editinput',
     );
 
-    expect(result.result).toBe('gamma gamma');
+    expect(result.result).toBe('BETA gamma');
     expect(result.ok).toBe(false);
-    expect(result.trace.map((entry) => entry.comment)).toEqual(['first', 'second', 'invalid']);
-    expect(result.trace[0]).toEqual(expect.objectContaining({ matchCount: 1, changed: true }));
-    expect(result.trace[2].error).toBeTruthy();
+    expect(result.trace.map((entry) => entry.comment)).toEqual(['invalid', 'second', 'first']);
+    expect(result.trace[1]).toEqual(expect.objectContaining({ matchCount: 1, changed: true }));
+    expect(result.trace[0].error).toBeTruthy();
+  });
+
+  it('supports RisuAI move actions and newline replacement tokens', () => {
+    const result = runRegexPipeline(
+      'before [note] after',
+      [
+        {
+          type: 'editdisplay',
+          find: '\\[(note)\\]',
+          replace: '$1$nline',
+          ableFlag: true,
+          flag: 'g<move_top,no_end_nl>',
+        },
+      ],
+      'editdisplay',
+    );
+
+    expect(result.result).toBe('note\nline\nbefore  after');
   });
 
   it('matches keys, selective keys, decorators, and exclusions', () => {

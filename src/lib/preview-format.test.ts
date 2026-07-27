@@ -29,13 +29,17 @@ describe('preview format helpers', () => {
   });
 
   it('renders richer markdown blocks for headings, lists, links, strikethrough, and horizontal rules', () => {
-    const html = simpleMarkdown('# 제목\n- 첫째\n- 둘째\n1. 셋째\n2. 넷째\n[문서](https://example.com)\n~~취소~~\n---');
+    const html = simpleMarkdown(
+      '# 제목\n\n- 첫째\n- 둘째\n\n1. 셋째\n2. 넷째\n\n[문서](https://example.com)\n\n~~취소~~\n\n---',
+    );
 
     expect(html).toContain('<h1>제목</h1>');
-    expect(html).toContain('<ul><li>첫째</li><li>둘째</li></ul>');
-    expect(html).toContain('<ol><li>셋째</li><li>넷째</li></ol>');
+    expect(html).toContain('<ul>');
+    expect(html).toContain('<li>첫째</li>');
+    expect(html).toContain('<ol>');
+    expect(html).toContain('<li>넷째</li>');
     expect(html).toContain('<a href="https://example.com" target="_blank" rel="noopener noreferrer">문서</a>');
-    expect(html).toContain('<del>취소</del>');
+    expect(html).toContain('<s>취소</s>');
     expect(html).toContain('<hr>');
   });
 
@@ -45,16 +49,21 @@ describe('preview format helpers', () => {
     );
 
     expect(html).toContain('<strong>굵게</strong>');
-    expect(html).toContain('<details open><summary>더보기</summary><p>내용</p></details>');
-    expect(html).toContain('<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>');
-    expect(html).toContain('<blockquote>인용문</blockquote>');
+    expect(html).toMatch(/<details\b[^>]*open/);
+    expect(html).toContain('<summary>더보기</summary><p>내용</p></details>');
+    expect(html).toContain('<table>');
+    expect(html).toContain('<th>A</th>');
+    expect(html).toContain('<td>1</td>');
+    expect(html).toContain('<blockquote>');
+    expect(html).toContain('<p>인용문</p>');
   });
 
   it('escapes fenced code blocks and resolves risu private-use escape sequences', () => {
     const html = simpleMarkdown('```js\nconsole.log("<tag>")\n```\n\uE9B8name\uE9BE value\uE9B9');
 
-    expect(html).toContain('<pre><code>console.log(&quot;&lt;tag&gt;&quot;)<br></code></pre>');
-    expect(html).toContain('{{name: value}}');
+    expect(html).toContain('class="hljs');
+    expect(html).toContain('&lt;tag&gt;');
+    expect(html).toContain('{name: value}');
   });
 
   it('wraps plain css for preview and preserves explicit style tags', () => {
@@ -71,6 +80,13 @@ describe('preview format helpers', () => {
         engine,
       }),
     ).toBe('<style>.box { color: red; }</style>');
+
+    expect(
+      wrapCssForPreview({
+        raw: '<section class="module-background">module</section>',
+        engine,
+      }),
+    ).toBe('<section class="module-background">module</section>');
   });
 
   it('builds the preview document shell with a restrictive csp and empty scaffold', () => {
@@ -86,6 +102,21 @@ describe('preview format helpers', () => {
 
     expect(documentHtml).toContain('padding: 8px 0 8px;');
     expect(documentHtml).not.toContain('padding: 8px 0 80px;');
+  });
+
+  it('builds a character portrait with the RisuAI large-portrait hook', () => {
+    const messageHtml = buildPreviewMessageHtml({
+      index: 0,
+      name: 'Toki',
+      avatarBg: '#123456',
+      avatarSrc: 'data:image/png;base64,AAAA',
+      largePortrait: true,
+      content: '안녕',
+    });
+
+    expect(messageHtml).toContain('class="chat-avatar large-portrait"');
+    expect(messageHtml).toContain('class="chat-avatar-image"');
+    expect(messageHtml).toContain('src="data:image/png;base64,AAAA"');
   });
 
   it('builds message html with escaped names while keeping safe structural preview markup', () => {

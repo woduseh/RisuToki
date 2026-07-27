@@ -11,6 +11,7 @@ import { buildPreviewDebugClipboardText, renderPreviewDebugHtml } from '../lib/p
 import { createIframePreviewRuntime } from '../lib/preview-runtime';
 import { createPreviewSession } from '../lib/preview-session';
 import type { PreviewCharData } from '../lib/preview-session';
+import { createPreviewWorkbench, type PreviewAssetCatalog, type PreviewViewportPreset } from '../lib/preview-workbench';
 import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
 import { initializeTerminalUi } from '../lib/terminal-ui';
@@ -826,8 +827,10 @@ async function buildPreviewPopout(): Promise<void> {
     return;
   }
   let assetMapForEngine: Record<string, string> = {};
+  let previewAssets: PreviewAssetCatalog | null = null;
   try {
     const assetResult = await window.popoutAPI.getAllAssetsMap();
+    previewAssets = assetResult;
     assetMapForEngine = assetResult.assets || (assetResult as unknown as Record<string, string>);
   } catch (error) {
     reportRuntimeError({
@@ -877,6 +880,13 @@ async function buildPreviewPopout(): Promise<void> {
   const chatFrame = document.createElement('iframe');
   chatFrame.className = 'preview-chat-frame';
   chatFrame.setAttribute('sandbox', 'allow-scripts');
+  const frameStage = document.createElement('div');
+  frameStage.className = 'preview-frame-stage';
+  const frameShell = document.createElement('div');
+  frameShell.className = 'preview-frame-shell';
+  frameShell.dataset.viewport = 'desktop';
+  frameShell.appendChild(chatFrame);
+  frameStage.appendChild(frameShell);
 
   const inputBar = document.createElement('div');
   inputBar.className = 'preview-input-bar';
@@ -884,6 +894,19 @@ async function buildPreviewPopout(): Promise<void> {
   chatInput.className = 'preview-input-textarea';
   chatInput.placeholder = '메시지를 입력하세요...';
   chatInput.rows = 1;
+  const messageMode = document.createElement('select');
+  messageMode.className = 'preview-message-mode';
+  messageMode.setAttribute('aria-label', '프리뷰 메시지 표시 방식');
+  for (const [value, label] of [
+    ['conversation', '대화'],
+    ['user', '사용자만'],
+    ['char', '캐릭터만'],
+  ]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    messageMode.appendChild(option);
+  }
   chatInput.addEventListener('input', () => {
     chatInput.style.height = 'auto';
     chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
@@ -892,6 +915,7 @@ async function buildPreviewPopout(): Promise<void> {
   sendBtn.className = 'preview-send-btn';
   sendBtn.textContent = '전송';
   inputBar.appendChild(chatInput);
+  inputBar.appendChild(messageMode);
   inputBar.appendChild(sendBtn);
 
   // ── Debug drawer ──
@@ -961,6 +985,7 @@ async function buildPreviewPopout(): Promise<void> {
     chatFrame,
     windowTarget: window,
     assetMap: assetMapForEngine,
+    characterAvatar: previewAssets?.icon || assetMapForEngine['__source:char'] || null,
     runtime: createIframePreviewRuntime(chatFrame, window),
     wrapPlainCss: true,
     logPrefix: '[Popout Preview]',
@@ -971,9 +996,37 @@ async function buildPreviewPopout(): Promise<void> {
         logPrefix: '[Popout Preview]',
       });
     },
-    onStateChange: () => {
+    onStateChange: (snapshot) => {
+      const loading = snapshot.initState === 'loading';
+      chatInput.disabled = loading;
+      messageMode.disabled = loading;
+      sendBtn.disabled = loading;
+      resetBtn.disabled = loading;
+      workbench.setLoading(loading);
       if (debugOpen) updateDebugContent();
     },
+  });
+
+  function insertAssetToken(name: string): void {
+    const token = `{{asset::${name}}}`;
+    const start = chatInput.selectionStart ?? chatInput.value.length;
+    const end = chatInput.selectionEnd ?? start;
+    chatInput.value = `${chatInput.value.slice(0, start)}${token}${chatInput.value.slice(end)}`;
+    chatInput.selectionStart = chatInput.selectionEnd = start + token.length;
+    chatInput.dispatchEvent(new Event('input'));
+    chatInput.focus();
+  }
+
+  function applyViewport(preset: PreviewViewportPreset): void {
+    frameShell.dataset.viewport = preset.id;
+    frameShell.style.width = preset.id === 'desktop' ? '100%' : `min(100%, ${preset.width}px)`;
+    void session.setViewportSize?.({ width: preset.width, height: preset.height });
+  }
+
+  const workbench = createPreviewWorkbench(document, charData.alternateGreetings || [], previewAssets, {
+    onGreetingChange: (index) => session.selectGreeting?.(index),
+    onViewportChange: applyViewport,
+    onAssetInsert: insertAssetToken,
   });
 
   function updateDebugContent(): void {
@@ -1011,15 +1064,27 @@ async function buildPreviewPopout(): Promise<void> {
     if (debugOpen) updateDebugContent();
   });
 
+  async function submitPreviewInput(): Promise<void> {
+    if (messageMode.value === 'conversation') {
+      await session.handleSend(chatInput);
+    } else {
+      const text = chatInput.value.trim();
+      if (!text) return;
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+      await session.injectMessage?.(messageMode.value === 'user' ? 'user' : 'char', text);
+    }
+  }
+
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
-      void session.handleSend(chatInput);
+      void submitPreviewInput();
     }
   });
 
   sendBtn.addEventListener('click', () => {
-    void session.handleSend(chatInput);
+    void submitPreviewInput();
   });
 
   debugCopyBtn.addEventListener('click', () => {
@@ -1041,7 +1106,9 @@ async function buildPreviewPopout(): Promise<void> {
 
   root.style.cssText = 'display:flex;flex-direction:column;height:100%;background:#282a36;';
   root.appendChild(header);
-  root.appendChild(chatFrame);
+  root.appendChild(workbench.toolbar);
+  root.appendChild(workbench.assetDrawer);
+  root.appendChild(frameStage);
   root.appendChild(inputBar);
   root.appendChild(debugResizer);
   root.appendChild(debugDrawer);

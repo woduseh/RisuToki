@@ -5,6 +5,7 @@ import type {
   CreatePreviewSessionOptions,
   PreviewEngine,
   PreviewLorebookEntry,
+  PreviewSession,
   PreviewSnapshot,
 } from './preview-session';
 
@@ -170,6 +171,79 @@ describe('preview-panel', () => {
     dispose();
   });
 
+  it('renders greeting, viewport, role injection, and typed asset controls', async () => {
+    const container = document.createElement('div');
+    const injectMessage = vi.fn().mockResolvedValue(undefined);
+    const selectGreeting = vi.fn().mockResolvedValue(undefined);
+    const setViewportSize = vi.fn().mockResolvedValue(undefined);
+    const session: PreviewSession = {
+      dispose() {},
+      getSnapshot: () => ({
+        messages: [],
+        luaInitialized: false,
+        variables: {},
+        lorebook: [],
+        loreMatches: [],
+        scripts: [],
+        defaultVariables: '',
+        luaOutput: [],
+        initState: 'idle',
+        initError: null,
+        runtimeError: null,
+      }),
+      handleSend: vi.fn().mockResolvedValue(undefined),
+      injectMessage,
+      initialize: vi.fn().mockResolvedValue(undefined),
+      initializeLua: vi.fn().mockResolvedValue(false),
+      refreshBackground: vi.fn().mockResolvedValue(undefined),
+      reset: vi.fn().mockResolvedValue(undefined),
+      selectGreeting,
+      setViewportSize,
+    };
+
+    const { dispose } = showPreviewPanel(
+      container,
+      createDeps({
+        fileData: { alternateGreetings: ['대체 인사'] },
+        previewAssets: {
+          icon: 'data:image/png;base64,ICON',
+          manifest: [
+            {
+              name: 'scene',
+              uri: 'data:image/png;base64,SCENE',
+              ext: 'png',
+              mime: 'image/png',
+              type: 'asset',
+              source: 'card',
+            },
+          ],
+        },
+        createSession: () => session,
+      }),
+    );
+
+    const greeting = container.querySelector('.preview-tool-select') as HTMLSelectElement;
+    greeting.value = '0';
+    greeting.dispatchEvent(new Event('change'));
+    expect(selectGreeting).toHaveBeenCalledWith(0);
+
+    (container.querySelectorAll('.preview-viewport-group button')[2] as HTMLButtonElement).click();
+    expect(setViewportSize).toHaveBeenCalledWith({ width: 390, height: 844 });
+
+    (container.querySelector('.preview-asset-toggle') as HTMLButtonElement).click();
+    (container.querySelector('.preview-asset-card') as HTMLButtonElement).click();
+    const input = container.querySelector('.preview-input-textarea') as HTMLTextAreaElement;
+    expect(input.value).toBe('{{asset::scene}}');
+
+    const mode = container.querySelector('.preview-message-mode') as HTMLSelectElement;
+    mode.value = 'char';
+    input.value = '캐릭터 표시';
+    (container.querySelector('.preview-send-btn') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(injectMessage).toHaveBeenCalledWith('char', '캐릭터 표시'));
+
+    dispose();
+  });
+
   it('uses shared popout header styling hooks for docked preview controls', () => {
     const container = document.createElement('div');
     const deps = createDeps();
@@ -264,25 +338,25 @@ describe('preview-panel', () => {
     const createSession = vi.fn((options: CreatePreviewSessionOptions) => {
       void options;
       return {
-      dispose() {},
-      getSnapshot: () => ({
-        messages: [],
-        luaInitialized: false,
-        variables: {},
-        lorebook: [],
-        loreMatches: [],
-        scripts: [],
-        defaultVariables: '',
-        luaOutput: [],
-        initState: 'idle' as const,
-        initError: null,
-        runtimeError: null,
-      }),
-      handleSend: vi.fn().mockResolvedValue(undefined),
-      initialize: vi.fn().mockResolvedValue(undefined),
-      initializeLua: vi.fn().mockResolvedValue(false),
-      refreshBackground: vi.fn().mockResolvedValue(undefined),
-      reset: vi.fn().mockResolvedValue(undefined),
+        dispose() {},
+        getSnapshot: () => ({
+          messages: [],
+          luaInitialized: false,
+          variables: {},
+          lorebook: [],
+          loreMatches: [],
+          scripts: [],
+          defaultVariables: '',
+          luaOutput: [],
+          initState: 'idle' as const,
+          initError: null,
+          runtimeError: null,
+        }),
+        handleSend: vi.fn().mockResolvedValue(undefined),
+        initialize: vi.fn().mockResolvedValue(undefined),
+        initializeLua: vi.fn().mockResolvedValue(false),
+        refreshBackground: vi.fn().mockResolvedValue(undefined),
+        reset: vi.fn().mockResolvedValue(undefined),
       };
     });
 
@@ -296,11 +370,14 @@ describe('preview-panel', () => {
           personality: 'steady and kind',
           scenario: 'at the harbor',
           firstMessage: '안녕하세요',
+          alternateGreetings: ['다른 인사'],
           defaultVariables: '',
           css: '',
+          backgroundEmbedding: '<div>module</div>',
           lorebook: [],
           regex: [],
           lua: '',
+          _risuExt: { largePortrait: true },
         },
       }),
     );
@@ -309,6 +386,9 @@ describe('preview-panel', () => {
     const options = createSession.mock.calls[0][0];
     expect(options.charData.personality).toBe('steady and kind');
     expect(options.charData.scenario).toBe('at the harbor');
+    expect(options.charData.alternateGreetings).toEqual(['다른 인사']);
+    expect(options.charData.backgroundEmbedding).toBe('<div>module</div>');
+    expect(options.charData.largePortrait).toBe(true);
   });
 
   it('dispose removes the overlay', () => {

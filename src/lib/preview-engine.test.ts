@@ -3,6 +3,30 @@ import { PreviewEngine } from './preview-engine';
 import type { PreviewLorebookEntry, PreviewMessage } from './preview-session';
 
 describe('PreviewEngine CBS parity', () => {
+  it('evaluates RisuAI single-character equality and boolean operators in first-message blocks', () => {
+    PreviewEngine.resetVars();
+    PreviewEngine.setDefaultVars('greeting=1\nlang=0');
+
+    const output = PreviewEngine.risuChatParser(
+      [
+        '{{#if {{? ($greeting=1)&($lang=0)}}}}English{{/if}}',
+        '{{#if {{? ($greeting=1)&($lang=1)}}}}한국어{{/if}}',
+      ].join(''),
+    );
+
+    expect(output).toBe('English');
+  });
+
+  it('uses preview-selected viewport and greeting index values for responsive CBS tags', () => {
+    const output = PreviewEngine.risuChatParser('{{screenwidth}}x{{screenheight}} / {{firstmsgindex}}', {
+      screenWidth: 390,
+      screenHeight: 844,
+      firstMessageIndex: 2,
+    });
+
+    expect(output).toBe('390x844 / 2');
+  });
+
   it('records declare side effects in preview variables', () => {
     PreviewEngine.resetVars();
 
@@ -41,6 +65,15 @@ describe('PreviewEngine CBS parity', () => {
 });
 
 describe('PreviewEngine CBS compatibility regressions', () => {
+  it('resolves source::char from the normalized preview icon alias', () => {
+    PreviewEngine.setAssets({
+      '__source:char': 'data:image/png;base64,Q0hBUg==',
+    });
+
+    expect(PreviewEngine.risuChatParser('{{source::char}}')).toBe('data:image/png;base64,Q0hBUg==');
+    expect(PreviewEngine.risuChatParser('{{source::user}}')).toBe('');
+  });
+
   beforeEach(() => {
     PreviewEngine.resetVars();
   });

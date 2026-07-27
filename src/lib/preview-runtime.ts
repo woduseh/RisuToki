@@ -63,6 +63,15 @@ function createFragmentFromHtml(targetDocument: Document, html: string): Documen
   return fragment;
 }
 
+function wrapPreviewBackgroundHtml(html: string): string {
+  const styles: string[] = [];
+  const body = html.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, (styleTag) => {
+    styles.push(styleTag);
+    return '';
+  });
+  return `${styles.join('\n')}<div class="chattext preview-background-content">${body}</div>`;
+}
+
 function buildMessageContainerHtml(input: PreviewMessageHtmlInput): string {
   return `<div class="chat-message-container" x-hashed="${input.index}">${buildPreviewMessageHtml(input)}</div>`;
 }
@@ -215,7 +224,8 @@ export function createDocumentPreviewRuntime(chatFrame: PreviewRuntimeFrame): Pr
       const documentRef = getFrameDocument(chatFrame);
       const backgroundDom = documentRef?.getElementById('bg-dom');
       if (!documentRef || !backgroundDom) return;
-      backgroundDom.replaceChildren(createFragmentFromHtml(documentRef, sanitizePreviewBackgroundHtml(html)));
+      const scopedHtml = wrapPreviewBackgroundHtml(html);
+      backgroundDom.replaceChildren(createFragmentFromHtml(documentRef, sanitizePreviewBackgroundHtml(scopedHtml)));
     },
   };
 }
@@ -378,7 +388,8 @@ export function createIframePreviewRuntime(
     },
 
     async setBackground(html) {
-      await postCommand('set-background', { html: sanitizePreviewBackgroundHtml(html) });
+      const scopedHtml = wrapPreviewBackgroundHtml(html);
+      await postCommand('set-background', { html: sanitizePreviewBackgroundHtml(scopedHtml) });
     },
   };
 }

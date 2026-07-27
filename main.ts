@@ -1107,20 +1107,20 @@ function createWindow(): void {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(() => {
-  loadPersistedReferenceFiles();
-  createWindow();
-
-  // Initialize IPC confirm dialogs
-  initIpcConfirm({
-    getMainWindow: () => mainWindow,
-  });
-
   // Initialize data serialization helpers
   initDataSerializer({
     stringifyTriggerScripts,
     normalizeTriggerScripts,
     extractPrimaryLuaFromTriggerScripts,
     mergePrimaryLuaIntoTriggerScripts,
+  });
+
+  loadPersistedReferenceFiles();
+  createWindow();
+
+  // Initialize IPC confirm dialogs
+  initIpcConfirm({
+    getMainWindow: () => mainWindow,
   });
 
   mcpApi = startApiServerImpl({

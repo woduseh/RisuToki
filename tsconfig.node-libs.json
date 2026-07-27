@@ -12,6 +12,7 @@
   },
   "include": [
     "src/adm-zip.d.ts",
+    "src/css-inline.d.ts",
     "src/charx-io.ts",
     "src/lorebook-convert.ts",
     "src/rpack.ts",

@@ -9,12 +9,19 @@ import type {
   PreviewSnapshot,
 } from './preview-session';
 import { reportRuntimeError } from './runtime-feedback';
+import { createPreviewWorkbench, type PreviewAssetCatalog, type PreviewViewportPreset } from './preview-workbench';
 
 export interface PreviewPanelDeps {
-  fileData: PreviewCharData & { globalNote?: string; triggerScripts?: unknown };
+  fileData: PreviewCharData & {
+    globalNote?: string;
+    triggerScripts?: unknown;
+    _risuExt?: Record<string, unknown>;
+  };
   darkMode?: boolean;
   /** Loaded asset map (name → data URI). When null, skipped. */
   assetMap: Record<string, string> | null;
+  /** Typed asset metadata used by the avatar and asset gallery. */
+  previewAssets?: PreviewAssetCatalog | null;
   /** The PreviewEngine singleton used for CBS parsing. */
   engine: PreviewEngine;
   /** Status bar callback. */
@@ -36,7 +43,7 @@ interface DebugDragState {
  * Returns a `dispose` function that tears down the panel and listeners.
  */
 export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps): { dispose: () => void } {
-  const { engine, fileData, assetMap, setStatus, popoutPreview, createSession: sessionFactory } = deps;
+  const { engine, fileData, assetMap, previewAssets, setStatus, popoutPreview, createSession: sessionFactory } = deps;
   const makeSession = sessionFactory ?? createPreviewSession;
 
   const charData: PreviewCharData = {
@@ -45,7 +52,12 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     personality: fileData.personality || '',
     scenario: fileData.scenario || '',
     firstMessage: fileData.firstMessage || '',
+    alternateGreetings: fileData.alternateGreetings || [],
     css: fileData.css || '',
+    backgroundEmbedding: fileData.backgroundEmbedding || '',
+    largePortrait:
+      fileData.largePortrait ??
+      (typeof fileData._risuExt?.largePortrait === 'boolean' ? fileData._risuExt.largePortrait : false),
     defaultVariables: fileData.defaultVariables || '',
     lua: fileData.lua || '',
     triggerScripts: fileData.triggerScripts || [],
@@ -55,6 +67,9 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
 
   let debugOpen = false;
   let activeDebugTab = 'variables';
+  // Assigned after the DOM callbacks are created.
+  // eslint-disable-next-line prefer-const
+  let session: PreviewSession;
 
   // ══════════════ Build UI ══════════════
 
@@ -112,6 +127,13 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   const chatFrame = document.createElement('iframe');
   chatFrame.className = 'preview-chat-frame';
   chatFrame.setAttribute('sandbox', 'allow-scripts');
+  const frameStage = document.createElement('div');
+  frameStage.className = 'preview-frame-stage';
+  const frameShell = document.createElement('div');
+  frameShell.className = 'preview-frame-shell';
+  frameShell.dataset.viewport = 'desktop';
+  frameShell.appendChild(chatFrame);
+  frameStage.appendChild(frameShell);
 
   // ── Diagnostics banners ──
   const statusBanner = document.createElement('div');
@@ -129,6 +151,19 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   chatInput.className = 'preview-input-textarea';
   chatInput.placeholder = '메시지를 입력하세요...';
   chatInput.rows = 1;
+  const messageMode = document.createElement('select');
+  messageMode.className = 'preview-message-mode';
+  messageMode.setAttribute('aria-label', '프리뷰 메시지 표시 방식');
+  for (const [value, label] of [
+    ['conversation', '대화'],
+    ['user', '사용자만'],
+    ['char', '캐릭터만'],
+  ]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    messageMode.appendChild(option);
+  }
   const sendBtn = document.createElement('button');
   sendBtn.className = 'preview-send-btn';
   sendBtn.textContent = '전송';
@@ -138,7 +173,30 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
   });
   inputBar.appendChild(chatInput);
+  inputBar.appendChild(messageMode);
   inputBar.appendChild(sendBtn);
+
+  function insertAssetToken(name: string): void {
+    const token = `{{asset::${name}}}`;
+    const start = chatInput.selectionStart ?? chatInput.value.length;
+    const end = chatInput.selectionEnd ?? start;
+    chatInput.value = `${chatInput.value.slice(0, start)}${token}${chatInput.value.slice(end)}`;
+    chatInput.selectionStart = chatInput.selectionEnd = start + token.length;
+    chatInput.dispatchEvent(new Event('input'));
+    chatInput.focus();
+  }
+
+  function applyViewport(preset: PreviewViewportPreset): void {
+    frameShell.dataset.viewport = preset.id;
+    frameShell.style.width = preset.id === 'desktop' ? '100%' : `min(100%, ${preset.width}px)`;
+    void session.setViewportSize?.({ width: preset.width, height: preset.height });
+  }
+
+  const workbench = createPreviewWorkbench(document, charData.alternateGreetings || [], previewAssets || null, {
+    onGreetingChange: (index) => session.selectGreeting?.(index),
+    onViewportChange: applyViewport,
+    onAssetInsert: insertAssetToken,
+  });
 
   // ── Debug drawer (hidden by default) ──
   const debugDrawer = document.createElement('div');
@@ -267,9 +325,6 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   });
 
   // ── Session ──
-  // eslint-disable-next-line prefer-const -- assigned after updateDebugPanel is defined (circular reference)
-  let session: PreviewSession;
-
   function updateDebugPanel(): void {
     const snapshot = session.getSnapshot();
     debugContent.innerHTML = renderPreviewDebugHtml({
@@ -302,8 +357,10 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     errorBanner.textContent = errorMessage ?? '';
 
     chatInput.disabled = loading;
+    messageMode.disabled = loading;
     sendBtn.disabled = loading;
     resetBtn.disabled = loading;
+    workbench.setLoading(loading);
   }
 
   session = makeSession({
@@ -312,6 +369,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     chatFrame,
     windowTarget: window,
     assetMap,
+    characterAvatar: previewAssets?.icon || assetMap?.['__source:char'] || null,
     runtime: createIframePreviewRuntime(chatFrame, window),
     wrapPlainCss: true,
     logPrefix: '[Preview]',
@@ -344,10 +402,13 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
         personality: charData.personality,
         scenario: charData.scenario,
         firstMessage: charData.firstMessage,
+        alternateGreetings: charData.alternateGreetings,
         defaultVariables: charData.defaultVariables,
         lua: charData.lua,
         triggerScripts: charData.triggerScripts,
         css: charData.css,
+        backgroundEmbedding: charData.backgroundEmbedding,
+        largePortrait: charData.largePortrait,
         lorebook: charData.lorebook,
         regex: charData.regex,
         assets: null,
@@ -364,13 +425,25 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
 
   closeBtn.addEventListener('click', closePreview);
 
+  async function submitPreviewInput(): Promise<void> {
+    if (messageMode.value === 'conversation') {
+      await session.handleSend(chatInput);
+    } else {
+      const text = chatInput.value.trim();
+      if (!text) return;
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+      await session.injectMessage?.(messageMode.value === 'user' ? 'user' : 'char', text);
+    }
+  }
+
   sendBtn.addEventListener('click', () => {
-    void session.handleSend(chatInput);
+    void submitPreviewInput();
   });
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
-      void session.handleSend(chatInput);
+      void submitPreviewInput();
     }
   });
 
@@ -395,7 +468,9 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   panel.appendChild(header);
   panel.appendChild(statusBanner);
   panel.appendChild(errorBanner);
-  panel.appendChild(chatFrame);
+  panel.appendChild(workbench.toolbar);
+  panel.appendChild(workbench.assetDrawer);
+  panel.appendChild(frameStage);
   panel.appendChild(inputBar);
   panel.appendChild(debugResizer);
   panel.appendChild(debugDrawer);

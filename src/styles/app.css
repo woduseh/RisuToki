@@ -2232,7 +2232,7 @@ body {
 }
 
 .preview-panel {
-  width: 720px;
+  width: 900px;
   max-width: 95vw;
   height: 85vh;
   max-height: 95vh;
@@ -2252,11 +2252,26 @@ body {
 
 .preview-header {
   border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(135deg, var(--ui-accent, var(--accent)), var(--ui-accent-strong, var(--accent-hover)));
+  color: var(--ui-on-accent, #fff);
 }
 
 .preview-header-title {
   -webkit-app-region: drag;
   min-width: 0;
+  color: inherit;
+}
+
+.preview-header .popout-action-btn {
+  color: inherit;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border-color: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.preview-header .popout-action-btn:hover,
+.preview-header .popout-action-btn:focus-visible {
+  color: inherit;
+  background: color-mix(in srgb, currentColor 26%, transparent);
 }
 
 .preview-chat-frame {
@@ -2267,6 +2282,165 @@ body {
   min-height: 0;
 }
 
+.preview-workbench-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.preview-tool-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.preview-tool-select,
+.preview-message-mode {
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.preview-tool-select {
+  max-width: 180px;
+}
+
+.preview-viewport-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-secondary);
+}
+
+.preview-tool-button {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.preview-tool-button:hover,
+.preview-tool-button.active {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.preview-asset-toggle {
+  margin-left: auto;
+  border: 1px solid var(--border-color);
+}
+
+.preview-asset-drawer {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+  max-height: 220px;
+  padding: 10px;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.preview-asset-drawer[hidden] {
+  display: none;
+}
+
+.preview-asset-card {
+  min-width: 0;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.preview-asset-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.preview-asset-card img,
+.preview-asset-kind {
+  width: 100%;
+  height: 64px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bg-secondary);
+}
+
+.preview-asset-kind {
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.preview-asset-name {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.preview-asset-empty {
+  grid-column: 1 / -1;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.preview-frame-stage {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  background:
+    linear-gradient(45deg, color-mix(in srgb, var(--border-color) 35%, transparent) 25%, transparent 25%) 0 0 / 14px
+      14px,
+    linear-gradient(-45deg, color-mix(in srgb, var(--border-color) 35%, transparent) 25%, transparent 25%) 0 7px / 14px
+      14px,
+    var(--bg-primary);
+}
+
+.preview-frame-shell {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  box-shadow: 0 0 0 1px var(--border-color);
+  transition: width 160ms ease;
+}
+
 .preview-input-bar {
   display: flex;
   gap: 6px;
@@ -2275,6 +2449,12 @@ body {
   border-top: 1px solid var(--border-color);
   flex-shrink: 0;
   align-items: flex-end;
+}
+
+.preview-message-mode {
+  align-self: stretch;
+  max-width: 96px;
+  font-size: 12px;
 }
 
 .preview-input-textarea {

@@ -9,6 +9,68 @@
 
 ---
 
+## [2.0.0] - 2026-07-27
+
+### Changed
+
+- Raised the source install and build requirement to Node.js 22.13 or newer because the security-patched Electron toolchain no longer supports Node.js 20.
+
+### Fixed
+
+- Updated runtime, Electron, build, and test dependencies to patched releases, pinned safe transitive versions for the MCP HTTP server and glob expansion stack, and kept Sharp external to the MCP bundle for native-module loading.
+- Resolved the reported `npm audit` vulnerabilities in archive handling, image processing, development tooling, and packaged application dependencies.
+
+## [1.30.2] - 2026-07-27
+
+### Fixed
+
+- Added RisuAI-compatible single-character `=`, `&`, and `|` math operators so first-message `#if` CBS branches render the selected setup or greeting instead of failing their conditions.
+- Deferred display asset URI resolution until after `editdisplay` regex processing, preventing Base64 data URIs from appearing in collapsible image labels.
+- Added a theme-aware preview header surface and inherited action-button contrast so titles and controls remain legible in light and custom themes.
+
+## [1.30.1] - 2026-07-27
+
+### Fixed
+
+- Initialized renderer data serialization before restoring persisted reference files, preventing saved `.charx`, `.risum`, and `.risup` references from failing during application startup.
+
+## [1.30.0] - 2026-07-27
+
+### Added
+
+- Added shared docked/pop-out preview controls for selecting alternate greetings, switching desktop/tablet/mobile viewport presets, and injecting user or character messages independently.
+- Added a typed preview asset gallery that previews image/audio/video/font entries and inserts the selected `{{asset::name}}` token at the input cursor.
+- Added real character-card avatar rendering with RisuAI-compatible `largePortrait` proportions.
+
+### Changed
+
+- Propagated selected greeting and viewport state into CBS `firstmsgindex`, `screenwidth`, and `screenheight`, and reset the runtime when the active greeting changes.
+- Expanded the preview panel to a responsive workbench layout while preserving the sandboxed iframe boundary in both docked and pop-out modes.
+
+## [1.29.0] - 2026-07-27
+
+### Added
+
+- Added RisuAI-compatible Markdown rendering for preview tables, nested lists, fenced syntax highlighting, inline KaTeX, quote styling, and safe image/audio/video content.
+- Added PostCSS-based class prefixing and `.chattext` selector scoping for character and background CSS, including nested at-rules and keyframe preservation.
+
+### Changed
+
+- Aligned preview display processing with RisuAI's asset, regex, CBS, Lua, Markdown, and final asset-resolution order for character, user, and background content.
+- Aligned regex execution with RisuAI's descending order and supported display placement actions while retaining the sandboxed iframe and strict HTML/CSS/URL sanitization boundary.
+
+## [1.28.0] - 2026-07-27
+
+### Added
+
+- Added a typed preview asset manifest that preserves asset origin, kind, extension, MIME type, and resolved ZIP path for later runtime diagnostics and media rendering.
+- Added preview compatibility for legacy `__asset:N` references, raw v2 base64 assets, `{{source::char}}`, and `ccdefault:` character icons.
+
+### Changed
+
+- Normalized CCv2 extension assets, CCv3 card assets, embedded module assets, and ZIP fallbacks through one preview asset pipeline without allowing broken legacy references to hide valid card assets.
+- Rendered embedded `module.risum` background HTML after the character background so CHARX previews include both visual layers.
+
 ## [1.27.0] - 2026-07-27
 
 ### Added

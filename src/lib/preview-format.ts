@@ -1,4 +1,5 @@
 import { sanitizePreviewHtml } from './preview-sanitizer';
+import { getPreviewRendererStyles, renderPreviewMarkdown } from './preview-renderer';
 
 export interface PreviewParserEngine {
   risuChatParser(text: string, options?: Record<string, unknown>): string;
@@ -8,6 +9,8 @@ export interface PreviewMessageHtmlInput {
   index: number;
   name: string;
   avatarBg: string;
+  avatarSrc?: string;
+  largePortrait?: boolean;
   content: string;
 }
 
@@ -22,187 +25,8 @@ export function escapePreviewHtml(value: unknown): string {
 
 export { sanitizePreviewHtml } from './preview-sanitizer';
 
-const HTML_TAG_TOKEN = '\x00PHT';
-const BLOCK_HTML_TOKEN = '\x00PBH';
-const INLINE_HTML_TOKEN = '\x00PIH';
-const BLOCK_BREAK_TAGS =
-  '(?:article|blockquote|details|div|dl|figure|figcaption|h[1-6]|hr|ol|p|pre|section|summary|table|ul)';
-
-function restorePlaceholderValues(value: string, prefix: string, placeholders: string[]): string {
-  return value.replace(new RegExp(`${prefix}(\\d+)\\x00`, 'g'), (_match, index: string) => {
-    return placeholders[Number.parseInt(index, 10)] ?? '';
-  });
-}
-
-function transformMarkdownTables(value: string): string {
-  const lines = value.split('\n');
-  const tableBlocks: { start: number; end: number }[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    if (lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
-      const start = i;
-      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) i++;
-      tableBlocks.push({ start, end: i });
-    } else {
-      i++;
-    }
-  }
-
-  for (let t = tableBlocks.length - 1; t >= 0; t--) {
-    const block = tableBlocks[t];
-    const tableLines = lines.slice(block.start, block.end);
-    const isSepLine = (line: string) => /^\|[\s:|-]+\|$/.test(line.trim());
-    const rows: string[][] = [];
-    let headerCount = 0;
-
-    for (const tableLine of tableLines) {
-      if (isSepLine(tableLine)) {
-        if (rows.length > 0) headerCount = rows.length;
-        continue;
-      }
-      rows.push(
-        tableLine
-          .split('|')
-          .slice(1, -1)
-          .map((cell) => cell.trim()),
-      );
-    }
-
-    let html = '<table>';
-    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-      const tag = rowIndex < headerCount ? 'th' : 'td';
-      html += '<tr>' + rows[rowIndex].map((cell) => `<${tag}>${cell}</${tag}>`).join('') + '</tr>';
-    }
-    html += '</table>';
-    lines.splice(block.start, block.end - block.start, html);
-  }
-
-  return lines.join('\n');
-}
-
-function transformMarkdownLists(value: string): string {
-  const lines = value.split('\n');
-  const renderedLines: string[] = [];
-
-  for (let index = 0; index < lines.length; ) {
-    const unorderedMatch = lines[index].match(/^\s*[-*+]\s+(.+)$/);
-    if (unorderedMatch) {
-      const items: string[] = [];
-      while (index < lines.length) {
-        const currentMatch = lines[index].match(/^\s*[-*+]\s+(.+)$/);
-        if (!currentMatch) break;
-        items.push(currentMatch[1]);
-        index++;
-      }
-      renderedLines.push(`<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`);
-      continue;
-    }
-
-    const orderedMatch = lines[index].match(/^\s*(\d+)\.\s+(.+)$/);
-    if (orderedMatch) {
-      const items: string[] = [];
-      const start = Number.parseInt(orderedMatch[1], 10);
-      while (index < lines.length) {
-        const currentMatch = lines[index].match(/^\s*(\d+)\.\s+(.+)$/);
-        if (!currentMatch) break;
-        items.push(currentMatch[2]);
-        index++;
-      }
-      const startAttr = start === 1 ? '' : ` start="${start}"`;
-      renderedLines.push(`<ol${startAttr}>${items.map((item) => `<li>${item}</li>`).join('')}</ol>`);
-      continue;
-    }
-
-    renderedLines.push(lines[index]);
-    index++;
-  }
-
-  return renderedLines.join('\n');
-}
-
-function cleanupBlockLineBreaks(value: string): string {
-  let cleaned = value;
-  for (let pass = 0; pass < 2; pass++) {
-    cleaned = cleaned.replace(new RegExp(`(<\\/?${BLOCK_BREAK_TAGS}[^>]*>)<br>`, 'g'), '$1');
-    cleaned = cleaned.replace(new RegExp(`<br>(<\\/?${BLOCK_BREAK_TAGS}[^>]*>)`, 'g'), '$1');
-  }
-  return cleaned;
-}
-
 export function simpleMarkdown(text: string): string {
-  if (!text) return '';
-
-  let rendered = String(text);
-
-  // Resolve RisuAI Private Use Area escape characters
-  rendered = rendered
-    .replace(/\uE9B8/g, '{{')
-    .replace(/\uE9B9/g, '}}')
-    .replace(/\uE9BA/g, '{')
-    .replace(/\uE9BB/g, '}')
-    .replace(/\uE9BC/g, '(')
-    .replace(/\uE9BD/g, ')')
-    .replace(/\uE9BE/g, ':');
-
-  const blockHtml: string[] = [];
-  rendered = rendered.replace(/```([\w-]*)\n([\s\S]*?)```/g, (_match, _lang: string, code: string) => {
-    blockHtml.push(`<pre><code>${escapePreviewHtml(code)}</code></pre>`);
-    return `${BLOCK_HTML_TOKEN}${blockHtml.length - 1}\x00`;
-  });
-
-  const inlineHtml: string[] = [];
-  rendered = rendered.replace(/`([^`]+)`/g, (_match, code: string) => {
-    inlineHtml.push(`<code>${escapePreviewHtml(code)}</code>`);
-    return `${INLINE_HTML_TOKEN}${inlineHtml.length - 1}\x00`;
-  });
-
-  const htmlTags: string[] = [];
-  rendered = rendered.replace(/<[^>]+>/g, (match) => {
-    htmlTags.push(match);
-    return `${HTML_TAG_TOKEN}${htmlTags.length - 1}\x00`;
-  });
-
-  rendered = transformMarkdownTables(rendered);
-  rendered = transformMarkdownLists(rendered);
-
-  // Blockquote: lines starting with >
-  rendered = rendered.replace(/^(&gt;|>)\s?(.*)$/gm, '<blockquote>$2</blockquote>');
-  rendered = rendered.replace(/<\/blockquote>\n<blockquote>/g, '\n');
-
-  rendered = rendered.replace(/^(#{1,6})[ \t]+(.+)$/gm, (_match, hashes: string, heading: string) => {
-    return `<h${hashes.length}>${heading.trim()}</h${hashes.length}>`;
-  });
-
-  rendered = rendered.replace(/^(?:-{3,}|\*{3,}|_{3,})$/gm, '<hr>');
-
-  rendered = rendered.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  rendered = rendered.replace(/__(.+?)__/g, '<strong>$1</strong>');
-  rendered = rendered.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
-  rendered = rendered.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>');
-  rendered = rendered.replace(/~~(.+?)~~/g, '<del>$1</del>');
-  rendered = rendered.replace(
-    /\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/g,
-    (_match, label: string, href: string, title?: string) => {
-      const titleAttr = title ? ` title="${escapePreviewHtml(title)}"` : '';
-      return `<a href="${escapePreviewHtml(href)}" target="_blank" rel="noopener noreferrer"${titleAttr}>${label}</a>`;
-    },
-  );
-  rendered = rendered.replace(
-    /\u201C([^\u201D]+)\u201D/g,
-    '<span style="color:var(--FontColorQuote2)">\u201C$1\u201D</span>',
-  );
-  rendered = rendered.replace(
-    /(?:^|(?<=[\s\n(]))"([^"]+?)"(?=[\s\n).,!?;:]|$)/gm,
-    '<span style="color:var(--FontColorQuote2)">\u201C$1\u201D</span>',
-  );
-
-  rendered = restorePlaceholderValues(rendered, BLOCK_HTML_TOKEN, blockHtml);
-  rendered = restorePlaceholderValues(rendered, INLINE_HTML_TOKEN, inlineHtml);
-  rendered = restorePlaceholderValues(rendered, HTML_TAG_TOKEN, htmlTags);
-  rendered = rendered.replace(/\n/g, '<br>');
-
-  return cleanupBlockLineBreaks(rendered);
+  return renderPreviewMarkdown(text, 'normal');
 }
 
 export function wrapCssForPreview({
@@ -217,9 +41,10 @@ export function wrapCssForPreview({
   if (!raw || !raw.trim()) return '';
 
   const hasStyleTag = /<style[\s>]/i.test(raw);
+  const hasHtmlElement = /<\/?[a-z][^>]*>/i.test(raw);
   const processed = engine.risuChatParser(raw, { runVar: true });
 
-  if (!wrapInStyleTag || hasStyleTag) {
+  if (!wrapInStyleTag || hasStyleTag || hasHtmlElement) {
     return processed;
   }
 
@@ -236,6 +61,7 @@ export function buildPreviewDocument(_processedCss: string, runtimeScriptSource?
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${scriptCsp}; img-src * data: blob:; style-src 'unsafe-inline'; font-src * data: blob:; media-src * data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none';">
 <style>
+${getPreviewRendererStyles()}
 :root {
   --FontColorStandard: #fafafa;
   --FontColorBold: #e5e5e5;
@@ -311,6 +137,16 @@ body {
   background-position: center;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   flex-shrink: 0;
+  overflow: hidden;
+}
+.chat-avatar.large-portrait {
+  height: 60px;
+}
+.chat-avatar-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .chat-content {
   display: flex;
@@ -450,10 +286,21 @@ ${runtimeScriptSource ? `<script nonce="${nonce}">${runtimeScriptSource}</script
 </body></html>`;
 }
 
-export function buildPreviewMessageHtml({ index, name, avatarBg, content }: PreviewMessageHtmlInput): string {
+export function buildPreviewMessageHtml({
+  index,
+  name,
+  avatarBg,
+  avatarSrc,
+  largePortrait,
+  content,
+}: PreviewMessageHtmlInput): string {
+  const avatarClass = largePortrait ? 'chat-avatar large-portrait' : 'chat-avatar';
+  const avatarImage = avatarSrc
+    ? `<img class="chat-avatar-image" src="${escapePreviewHtml(avatarSrc)}" alt="${escapePreviewHtml(name)}">`
+    : '';
   return `<div class="risu-chat" data-chat-index="${index}">
   <div class="risu-chat-inner">
-    <div class="chat-avatar" style="background-color:${escapePreviewHtml(avatarBg)}"></div>
+    <div class="${avatarClass}" style="background-color:${escapePreviewHtml(avatarBg)}">${avatarImage}</div>
     <div class="chat-content">
       <div class="flexium items-center chat-width">
         <div class="chat-width chat-name">${escapePreviewHtml(name)}</div>

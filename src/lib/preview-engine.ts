@@ -194,7 +194,20 @@ export const PreviewEngine: PreviewEngineModule = (() => {
             continue;
           }
         }
-        if ('+-*/%^<>|&()'.includes(expr[i])) {
+        const upstreamOperator: Record<string, string> = {
+          '=': '==',
+          '&': '&&',
+          '|': '||',
+          '≤': '<=',
+          '≥': '>=',
+          '≠': '!=',
+        };
+        if (upstreamOperator[expr[i]]) {
+          tokens.push(upstreamOperator[expr[i]]);
+          i++;
+          continue;
+        }
+        if ('+-*/%^<>()'.includes(expr[i])) {
           tokens.push(expr[i]);
           i++;
           continue;
@@ -537,7 +550,15 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('asset', (_p1, arg, args) => {
       const name = args[0] || '';
       const uri = resolveAsset(name, arg);
-      if (uri) return `<img src="${uri}" alt="${name}" class="cbs-asset">`;
+      if (uri) {
+        if (/^data:video\//i.test(uri)) {
+          return `<video autoplay muted loop playsinline class="cbs-asset"><source src="${uri}"></video>`;
+        }
+        if (/^data:audio\//i.test(uri)) {
+          return `<audio controls class="cbs-asset"><source src="${uri}"></audio>`;
+        }
+        return `<img src="${uri}" alt="${name}" class="cbs-asset">`;
+      }
       return `[asset:${name}]`;
     });
     reg('emotion', (_p1, arg, args) => {
@@ -586,7 +607,12 @@ export const PreviewEngine: PreviewEngineModule = (() => {
       },
       ['inlayed', 'inlayeddata'],
     );
-    reg('source', () => '');
+    reg('source', (_p1, _arg, args) => {
+      const source = (args[0] || '').toLowerCase();
+      if (source === 'char') return assetMap['__source:char'] || '';
+      if (source === 'user') return assetMap['__source:user'] || '';
+      return '';
+    });
     reg('assetlist', () => {
       try {
         return JSON.stringify(Object.keys(assetMap));
@@ -937,8 +963,12 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('model', () => 'preview');
     reg('axmodel', () => 'preview');
     reg('jbtoggled', () => '0');
-    reg('screenwidth', () => String(window.innerWidth), ['screen_width']);
-    reg('screenheight', () => String(window.innerHeight), ['screen_height']);
+    reg('screenwidth', (_p1, arg) => String((arg.screenWidth as number | undefined) ?? window.innerWidth), [
+      'screen_width',
+    ]);
+    reg('screenheight', (_p1, arg) => String((arg.screenHeight as number | undefined) ?? window.innerHeight), [
+      'screen_height',
+    ]);
     reg('prefillsupported', () => '0', ['prefill_supported', 'prefill']);
     reg('metadata', () => '');
     reg('moduleenabled', () => '0', ['module_enabled']);
@@ -955,7 +985,10 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     reg('lorebook', () => '[]', ['worldinfo']);
     reg('messagetime', () => new Date().toLocaleTimeString('ko-KR'), ['message_time']);
     reg('messagedate', () => new Date().toLocaleDateString('ko-KR'), ['message_date']);
-    reg('firstmsgindex', () => '0', ['firstmessageindex', 'first_msg_index']);
+    reg('firstmsgindex', (_p1, arg) => String((arg.firstMessageIndex as number | undefined) ?? -1), [
+      'firstmessageindex',
+      'first_msg_index',
+    ]);
     reg('idleduration', () => '0', ['idle_duration']);
     reg('messageidleduration', () => '0', ['message_idle_duration']);
     reg('risu', (_p1, _arg, args) => `<img src="" alt="risu" style="width:${args[0] || '2em'};">`);
@@ -2255,21 +2288,23 @@ export const PreviewEngine: PreviewEngineModule = (() => {
     processRegex,
     matchLorebook,
     calcString,
-    // Replace img src with asset data URIs
+    // Replace media src attributes with normalized asset data URIs.
     resolveAssetImages: (html: string): string => {
       if (!html || !assetMap || Object.keys(assetMap).length === 0) return html;
       const unresolved = new Set<string>();
       const result = html.replace(
-        /<img\s([^>]*?)src="([^"]+)"([^>]*?)>/gi,
-        (match, pre: string, src: string, post: string) => {
+        /<(img|audio|video|source)\s([^>]*?)src=(["'])(.*?)\3([^>]*?)>/gi,
+        (match, tag: string, pre: string, quote: string, src: string, post: string) => {
           // Skip if already a data URI or full URL
           if (src.startsWith('data:') || src.startsWith('http') || src.startsWith('blob:')) return match;
           // Try exact match
-          if (assetMap[src]) return `<img ${pre}src="${assetMap[src]}"${post}>`;
+          if (assetMap[src]) return `<${tag} ${pre}src=${quote}${assetMap[src]}${quote}${post}>`;
           // Case-insensitive
           const srcLower = src.toLowerCase();
           for (const key of Object.keys(assetMap)) {
-            if (key.toLowerCase() === srcLower) return `<img ${pre}src="${assetMap[key]}"${post}>`;
+            if (key.toLowerCase() === srcLower) {
+              return `<${tag} ${pre}src=${quote}${assetMap[key]}${quote}${post}>`;
+            }
           }
           unresolved.add(src);
           return match;

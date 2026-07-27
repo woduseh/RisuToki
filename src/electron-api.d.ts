@@ -42,6 +42,16 @@ interface AssetBatchRenameResult {
 
 interface AssetsMapResult {
   assets: Record<string, string>;
+  manifest?: Array<{
+    name: string;
+    uri: string;
+    ext: string;
+    mime: string;
+    type: string;
+    source: 'risu-extension' | 'card' | 'module' | 'zip';
+    path?: string;
+  }>;
+  icon?: string | null;
   debug: Record<string, unknown> | string;
 }
 

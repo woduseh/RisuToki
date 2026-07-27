@@ -2,10 +2,10 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-1.27.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
-[![Node](https://img.shields.io/badge/Node-20.19%2B%20%7C%2022.13%2B%20%7C%2024%2B-339933.svg)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/Node-22.13%2B%20%7C%2024%2B-339933.svg)](https://nodejs.org/)
 
 ## What is RisuToki?
 
@@ -44,7 +44,7 @@ Grab the latest release from the [Releases](https://github.com/woduseh/RisuToki/
 
 ### From Source (developers)
 
-Node.js 20.19+, 22.13+, or 24+ is required. The repository's `.node-version` pins Node 22.13 as the recommended CI-compatible baseline.
+Node.js 22.13+ or 24+ is required. The repository's `.node-version` pins Node 22.13 as the recommended CI-compatible baseline.
 
 ```bash
 git clone https://github.com/woduseh/RisuToki.git
@@ -453,11 +453,19 @@ When an AI CLI starts, the MCP server connects automatically so the AI can read 
 Simulates a chat screen using the same rendering pipeline as RisuAI.
 
 - The **firstMessage** is displayed automatically → you type a user message → type an AI reply to test the conversation flow.
+- Select the default or any alternate greeting from the preview toolbar; changing it resets the runtime with the matching RisuAI `firstmsgindex`.
+- First-message CBS conditionals use RisuAI-compatible arithmetic and boolean operators, including the common single-character `=`, `&`, and `|` forms.
+- Switch the input role between **Conversation / User only / Character only** to inspect either side independently without invoking a model.
+- Use desktop, tablet, and mobile viewport presets to verify responsive CSS and CBS `screenwidth` / `screenheight` behavior in both docked and pop-out previews.
+- Open the typed asset gallery to inspect image/audio/video/font entries and insert `{{asset::name}}` at the current input cursor.
+- Character messages use the card's real icon and honor the RisuAI `largePortrait` aspect ratio.
 - Preview is available only for `.charx` files. When a `.risum` or `.risup` is the active tab, both the View menu entry and `F5` are disabled.
-- Preview now renders richer markdown (`#` headings, ordered/unordered lists, links, strikethrough, horizontal rules) plus safe structural HTML such as headings, lists, `details/summary`, `figure`, `section/article`, `u`, `sub`, and `sup`.
+- Preview uses a RisuAI-compatible Markdown pipeline with tables, nested lists, fenced syntax highlighting, inline KaTeX (`$$...$$`), safe structural HTML, and Risu quote styling.
+- Character CSS is class-prefixed and scoped to each `.chattext` surface like RisuAI, including nested at-rules and preserved keyframes, so card and background styling can be checked without leaking into preview controls.
 - **CBS (Conditional Block System)** execution — variable branching, button-click handling, functions (`#func`/`call`), loops (`#each`), dice/random, Unicode/encryption tags, and more, compatible with RisuAI.
-- Regex and Lua triggers are applied in order: editOutput → editDisplay → editInput.
-- Asset references are resolved automatically (`{{raw::name}}`, `{{asset::name}}`, `ccdefault:`, `embeded://`).
+- Character replies follow editOutput → CBS/Lua → editDisplay, while user messages follow editInput → CBS/Lua → editDisplay; regex entries run in RisuAI's descending order and support display placement actions.
+- Asset references are resolved automatically after display regex processing across CCv2/CCv3 and embedded modules (`{{raw::name}}`, `{{asset::name}}`, `{{source::char}}`, `__asset:N`, `ccdefault:`, `embeded://`), keeping authored asset names available to regex capture labels while preserving image, audio, video, and font MIME types.
+- Character background HTML and an embedded `module.risum` `backgroundEmbedding` are rendered together in RisuAI order.
 - Lorebook preview respects `@@depth` / `@@position` / `@@role` / `@@scan_depth` / `@@probability` / `@@activate` / `@@dont_activate` / `@@match_full_word` / `@@additional_keys` / `@@exclude_keys`. `@@probability` is simulated with a reproducible deterministic roll.
 - **Debug panel**: variable dump · lorebook activation summary (active/total + probability display) · matched/excluded keys · decorator tags · scan depth · probability verdict · warnings · insertion-order/selective badges · regex flags/inactive sections · live Lua logs.
 - Reset the preview or pop it out (`↗`) into a separate window.
@@ -471,7 +479,7 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 - In `npm run dev` mode, the preview bridge avoids conflicts with the sandbox iframe security policy — no `SecurityError` in the browser console.
 - `{{cbr}}` / `{{cnl}}` / `{{cnewline}}` render as actual line breaks. `chatindex`, `isfirstmsg`, and Lua `onOutput` follow the real message order.
 - During preview initialization an inline status banner appears: a timeout error if the iframe is not ready within 5 seconds, or a runtime error message (e.g., Lua trigger failure). While initializing, the input, send, and reset buttons are disabled.
-- Preview renders inside a sandboxed iframe. `<script>` tags, inline event attributes (`on*`), frame-escape HTML, and unsafe inline styles are not executed.
+- Preview renders inside a sandboxed iframe. `<script>` tags, inline event attributes (`on*`), frame-escape HTML, executable CSS, and unsafe URLs are not executed, while safe image/audio/video/font sources remain available for visual verification.
 - The app no longer opens a hidden local sync HTTP server; file exchange is handled exclusively through direct open/save and MCP.
 
 ### RP Mode

@@ -2,10 +2,11 @@ export interface PreviewSanitizeOptions {
   allowStyleTag?: boolean;
 }
 
-const DROP_ONLY_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'svg', 'math', 'link', 'meta']);
+const DROP_ONLY_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'svg', 'link', 'meta']);
 const MESSAGE_ALLOWED_TAGS = new Set([
   'a',
   'article',
+  'audio',
   'blockquote',
   'br',
   'button',
@@ -30,12 +31,22 @@ const MESSAGE_ALLOWED_TAGS = new Set([
   'img',
   'li',
   'mark',
+  'math',
+  'mfrac',
+  'mi',
+  'mn',
+  'mo',
+  'mrow',
+  'msqrt',
+  'msub',
+  'msup',
   'ol',
   'p',
   'pre',
   's',
   'section',
   'span',
+  'source',
   'strong',
   'sub',
   'summary',
@@ -48,23 +59,38 @@ const MESSAGE_ALLOWED_TAGS = new Set([
   'tr',
   'u',
   'ul',
+  'video',
 ]);
-const GLOBAL_ALLOWED_ATTRIBUTES = new Set(['aria-hidden', 'aria-label', 'class', 'id', 'role', 'title']);
+const GLOBAL_ALLOWED_ATTRIBUTES = new Set(['aria-hidden', 'aria-label', 'class', 'id', 'role', 'style', 'title']);
 const PER_TAG_ALLOWED_ATTRIBUTES: Record<string, Set<string>> = {
   a: new Set(['href', 'rel', 'target', 'title']),
+  audio: new Set(['autoplay', 'controls', 'loop', 'muted', 'preload', 'src']),
   button: new Set(['risu-btn', 'risu-trigger', 'type']),
   details: new Set(['open']),
   div: new Set(['risu-btn', 'risu-trigger']),
   form: new Set(['action', 'method']),
-  img: new Set(['alt', 'src']),
+  img: new Set(['alt', 'decoding', 'height', 'loading', 'src', 'width']),
   li: new Set(['value']),
   mark: new Set(['risu-mark']),
   ol: new Set(['start', 'type']),
   span: new Set(['risu-btn', 'risu-mark', 'risu-trigger', 'style']),
+  source: new Set(['src', 'type']),
   td: new Set(['colspan', 'rowspan']),
   th: new Set(['colspan', 'rowspan', 'scope']),
+  video: new Set([
+    'autoplay',
+    'controls',
+    'height',
+    'loop',
+    'muted',
+    'playsinline',
+    'poster',
+    'preload',
+    'src',
+    'width',
+  ]),
 };
-const URL_ATTRIBUTES = new Set(['action', 'href', 'src']);
+const URL_ATTRIBUTES = new Set(['action', 'href', 'poster', 'src']);
 
 function getAllowedTags(options?: PreviewSanitizeOptions): Set<string> {
   const allowed = new Set(MESSAGE_ALLOWED_TAGS);
@@ -75,7 +101,13 @@ function getAllowedTags(options?: PreviewSanitizeOptions): Set<string> {
 }
 
 function isSafeStyleValue(value: string): boolean {
-  return /^\s*color\s*:\s*var\(--FontColorQuote[12]\)\s*;?\s*$/i.test(value.trim());
+  if (/(?:expression\s*\(|javascript:|vbscript:|data:text\/html|behavior\s*:|-moz-binding|@import)/i.test(value)) {
+    return false;
+  }
+  for (const match of value.matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/gi)) {
+    if (!/^(?:https?:|data:(?:image|audio|video|font)\/|blob:|\/|\.{1,2}\/|#)/i.test(match[2].trim())) return false;
+  }
+  return true;
 }
 
 function isSafeUrl(tagName: string, attributeName: string, value: string): boolean {
@@ -84,6 +116,10 @@ function isSafeUrl(tagName: string, attributeName: string, value: string): boole
   if (/^(javascript:|vbscript:|data:text\/html)/i.test(normalized)) return false;
 
   if (attributeName === 'src') {
+    return /^(https?:|data:(?:image|audio|video|font)\/|blob:|\/|\.{1,2}\/|#)/i.test(normalized);
+  }
+
+  if (attributeName === 'poster') {
     return /^(https?:|data:image\/|blob:|\/|\.{1,2}\/|#)/i.test(normalized);
   }
 

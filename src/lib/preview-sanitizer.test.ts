@@ -72,15 +72,17 @@ describe('preview sanitizer contract', () => {
     expect(sanitized).toContain('<sup>위</sup>');
   });
 
-  it('keeps only the narrow safe inline style values on preview spans', () => {
+  it('keeps visual inline styles while rejecting executable CSS URLs', () => {
     const sanitized = sanitizePreviewHtml(
       '<span style="color:var(--FontColorQuote2)">허용</span>' +
-        '<span style="background:url(https://example.com/bg.png)">차단</span>',
+        '<span style="background:url(https://example.com/bg.png)">외부 이미지</span>' +
+        '<span style="background:url(javascript:alert(1))">차단</span>',
     );
 
     expect(sanitized).toContain('<span style="color:var(--FontColorQuote2)">허용</span>');
+    expect(sanitized).toContain('background:url(https://example.com/bg.png)');
     expect(sanitized).toContain('<span>차단</span>');
-    expect(sanitized).not.toContain('background:url');
+    expect(sanitized).not.toContain('javascript:');
   });
 
   it('allows style tags only on the background-html sanitization path', () => {

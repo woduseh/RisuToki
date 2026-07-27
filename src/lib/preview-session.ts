@@ -1,5 +1,6 @@
 import type { PreviewLoreDecorators } from './lorebook-decorators';
-import { simpleMarkdown, wrapCssForPreview, type PreviewParserEngine } from './preview-format';
+import { wrapCssForPreview, type PreviewParserEngine } from './preview-format';
+import { renderPreviewMarkdown, type PreviewRenderMode } from './preview-renderer';
 import { createDocumentPreviewRuntime, PreviewRuntimeTimeoutError, type PreviewRuntime } from './preview-runtime';
 
 export interface PreviewMessage {
@@ -47,8 +48,15 @@ export interface PreviewRegexScript {
 
 export type PreviewInitState = 'idle' | 'loading' | 'ready' | 'error';
 
+export interface PreviewViewportSize {
+  width: number;
+  height: number;
+}
+
 export interface PreviewSnapshot {
   messages: PreviewMessage[];
+  selectedGreetingIndex?: number;
+  viewport?: PreviewViewportSize;
   luaInitialized: boolean;
   variables: Record<string, unknown>;
   lorebook: PreviewLorebookEntry[];
@@ -67,8 +75,11 @@ export interface PreviewCharData {
   personality?: string;
   scenario?: string;
   firstMessage?: string;
+  alternateGreetings?: string[];
   defaultVariables?: string;
   css?: string;
+  backgroundEmbedding?: string;
+  largePortrait?: boolean;
   lorebook?: PreviewLorebookEntry[];
   regex?: PreviewRegexScript[];
   lua?: string;
@@ -120,6 +131,7 @@ export interface CreatePreviewSessionOptions {
   chatFrame: PreviewChatFrame;
   windowTarget?: PreviewWindowTarget;
   assetMap?: Record<string, string> | null;
+  characterAvatar?: string | null;
   wrapPlainCss?: boolean;
   logPrefix?: string;
   onError?: (message: string, error: unknown) => void;
@@ -131,10 +143,13 @@ export interface PreviewSession {
   dispose(): void;
   getSnapshot(): PreviewSnapshot;
   handleSend(inputElement: HTMLTextAreaElement | HTMLInputElement): Promise<void>;
+  injectMessage?(role: PreviewMessage['role'], content: string): Promise<void>;
   initialize(): Promise<void>;
   initializeLua(): Promise<boolean>;
   refreshBackground(): Promise<void>;
   reset(): Promise<void>;
+  selectGreeting?(index: number): Promise<void>;
+  setViewportSize?(size: PreviewViewportSize): Promise<void>;
 }
 
 function cloneMessages(messages: PreviewMessage[]): PreviewMessage[] {
@@ -147,6 +162,7 @@ export function createPreviewSession({
   chatFrame,
   windowTarget = window,
   assetMap = null,
+  characterAvatar = null,
   wrapPlainCss = true,
   logPrefix = '[Preview]',
   onError,
@@ -165,6 +181,13 @@ export function createPreviewSession({
   let initState: PreviewInitState = 'idle';
   let initError: string | null = null;
   let runtimeError: string | null = null;
+  let selectedGreetingIndex = -1;
+  let viewport: PreviewViewportSize = { width: 1024, height: 768 };
+
+  function getSelectedGreeting(): string {
+    if (selectedGreetingIndex < 0) return charData.firstMessage || '';
+    return charData.alternateGreetings?.[selectedGreetingIndex] || '';
+  }
 
   function buildEffectiveLuaCode(): string | undefined {
     if (Array.isArray(charData.triggerScripts) && charData.triggerScripts.length > 0) {
@@ -192,6 +215,8 @@ export function createPreviewSession({
   function getSnapshot(): PreviewSnapshot {
     return {
       messages: cloneMessages(previewMessages),
+      selectedGreetingIndex,
+      viewport: { ...viewport },
       luaInitialized,
       variables: engine.getVariables(),
       lorebook,
@@ -217,7 +242,7 @@ export function createPreviewSession({
     engine.setCharDescription(charData.description || '');
     engine.setCharPersonality(charData.personality || '');
     engine.setCharScenario(charData.scenario || '');
-    engine.setCharFirstMessage(charData.firstMessage || '');
+    engine.setCharFirstMessage(getSelectedGreeting());
     engine.setAssets(assetMap || {});
     engine.setLorebook(lorebook);
     engine.onReloadDisplay(() => {});
@@ -260,23 +285,42 @@ export function createPreviewSession({
       runVar,
       chatID,
       messageCount: previewMessages.length + 1,
+      firstMessageIndex: selectedGreetingIndex,
+      screenWidth: viewport.width,
+      screenHeight: viewport.height,
     });
 
     if (role === 'char') {
       content = engine.processRegex(content, scripts, 'editoutput');
       content = (await runLuaTrigger('editOutput', content)) || '';
       content = engine.risuChatParser(content, cbsOptions(true));
-      content = engine.processRegex(content, scripts, 'editdisplay');
-      content = engine.risuChatParser(content, cbsOptions(true));
-      content = (await runLuaTrigger('editDisplay', content)) || '';
-      content = engine.risuChatParser(content, cbsOptions(false));
     } else {
       content = engine.processRegex(content, scripts, 'editinput');
       content = (await runLuaTrigger('editInput', content)) || '';
       content = engine.risuChatParser(content, cbsOptions(true));
     }
 
-    content = simpleMarkdown(content);
+    return transformDisplayContent(content, chatID, 'normal');
+  }
+
+  async function transformDisplayContent(rawContent: string, chatID: number, mode: PreviewRenderMode): Promise<string> {
+    const cbsOptions = (runVar: boolean) => ({
+      runVar,
+      chatID,
+      messageCount: previewMessages.length + 1,
+      firstMessageIndex: selectedGreetingIndex,
+      screenWidth: viewport.width,
+      screenHeight: viewport.height,
+    });
+    // RisuAI applies editdisplay scripts while asset references still contain
+    // their authored names. Resolving to data URIs first leaks the full Base64
+    // value into regex capture groups and visible labels.
+    let content = engine.processRegex(rawContent, scripts, 'editdisplay');
+    content = engine.risuChatParser(content, cbsOptions(true));
+    content = (await runLuaTrigger('editDisplay', content)) || '';
+    content = engine.risuChatParser(content, cbsOptions(false));
+    content = engine.resolveAssetImages(content);
+    content = renderPreviewMarkdown(content, mode);
     return engine.resolveAssetImages(content);
   }
 
@@ -291,6 +335,8 @@ export function createPreviewSession({
       index: idx,
       name: role === 'char' ? charData.name || 'Character' : 'User',
       avatarBg: role === 'char' ? 'var(--risu-theme-selected)' : 'var(--risu-theme-borderc)',
+      avatarSrc: role === 'char' ? characterAvatar || undefined : undefined,
+      largePortrait: role === 'char' && charData.largePortrait === true,
       content,
     });
     previewMessages.push({ role, content: rawContent });
@@ -301,19 +347,23 @@ export function createPreviewSession({
   }
 
   async function refreshBackground(): Promise<void> {
-    let processed = wrapCssForPreview({
-      raw: charData.css || '',
-      engine,
-      wrapInStyleTag: wrapPlainCss,
-    });
+    let backgroundSource = [charData.css, charData.backgroundEmbedding]
+      .filter((source): source is string => typeof source === 'string' && source.trim().length > 0)
+      .map((raw) =>
+        wrapCssForPreview({
+          raw,
+          engine,
+          wrapInStyleTag: wrapPlainCss,
+        }),
+      )
+      .join('\n');
 
     const luaHtml = engine.getLuaOutputHTML();
     if (luaHtml) {
-      let parsedLuaHtml = engine.risuChatParser(luaHtml, { runVar: true });
-      parsedLuaHtml = engine.resolveAssetImages(parsedLuaHtml);
-      processed += parsedLuaHtml;
+      backgroundSource += `\n${engine.risuChatParser(luaHtml, { runVar: true })}`;
     }
 
+    const processed = await transformDisplayContent(backgroundSource, -1, 'back');
     await runtime.setBackground(processed);
     notifyStateChange();
   }
@@ -446,8 +496,9 @@ export function createPreviewSession({
       attachDocumentBridge();
       await initializeLua(true);
 
-      if (charData.firstMessage) {
-        await addMessage('char', charData.firstMessage, { scrollToBottom: false });
+      const greeting = getSelectedGreeting();
+      if (greeting) {
+        await addMessage('char', greeting, { scrollToBottom: false });
       }
 
       await refreshBackground();
@@ -479,8 +530,9 @@ export function createPreviewSession({
       attachDocumentBridge();
       await initializeLua(true);
 
-      if (charData.firstMessage) {
-        await addMessage('char', charData.firstMessage, { scrollToBottom: false });
+      const greeting = getSelectedGreeting();
+      if (greeting) {
+        await addMessage('char', greeting, { scrollToBottom: false });
       }
 
       await refreshBackground();
@@ -506,14 +558,51 @@ export function createPreviewSession({
     await addMessage('user', text);
     await runLuaTrigger('input', text);
 
+    const selectedGreeting = getSelectedGreeting();
     const response =
-      charData.firstMessage && previewMessages.length <= 2
-        ? charData.firstMessage
+      selectedGreeting && previewMessages.length <= 2
+        ? selectedGreeting
         : `${charData.name || 'Character'}: "${text}"에 대한 응답입니다.`;
 
     await runLuaTrigger('output', response);
     await addMessage('char', response);
     await refreshBackground();
+  }
+
+  async function injectMessage(role: PreviewMessage['role'], content: string): Promise<void> {
+    const text = content.trim();
+    if (!text) return;
+
+    if (role === 'user') {
+      await addMessage('user', text);
+      await runLuaTrigger('input', text);
+    } else {
+      await runLuaTrigger('output', text);
+      await addMessage('char', text);
+    }
+    await refreshBackground();
+  }
+
+  async function selectGreeting(index: number): Promise<void> {
+    const greetings = charData.alternateGreetings || [];
+    if (!Number.isInteger(index) || index < -1 || index >= greetings.length) {
+      throw new RangeError(`Greeting index ${index} is out of range`);
+    }
+    selectedGreetingIndex = index;
+    await reset();
+  }
+
+  async function setViewportSize(size: PreviewViewportSize): Promise<void> {
+    viewport = {
+      width: Math.max(1, Math.round(size.width)),
+      height: Math.max(1, Math.round(size.height)),
+    };
+    if (previewMessages.length > 0) {
+      await reRenderMessages();
+    } else {
+      await refreshBackground();
+    }
+    notifyStateChange();
   }
 
   return {
@@ -524,9 +613,12 @@ export function createPreviewSession({
     },
     getSnapshot,
     handleSend,
+    injectMessage,
     initialize,
     initializeLua: () => initializeLua(false),
     refreshBackground,
     reset,
+    selectGreeting,
+    setViewportSize,
   };
 }

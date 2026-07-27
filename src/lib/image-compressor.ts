@@ -72,10 +72,10 @@ export async function compressAssetsToWebP(
   options: CompressOptions = {},
 ): Promise<CompressResult> {
   // Lazy-load sharp to avoid issues when module isn't available
-  let sharp: typeof import('sharp');
+  let sharp: (input: Buffer, options?: import('sharp').SharpOptions) => import('sharp').Sharp;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    sharp = require('sharp');
+    sharp = require('sharp') as typeof sharp;
   } catch {
     throw new Error('sharp is not available. Install it with: npm install sharp');
   }

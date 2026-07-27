@@ -58,6 +58,7 @@ import {
   removePoppedOut,
 } from '../lib/popout-window';
 import { showPreviewPanel as renderPreviewPanel } from '../lib/preview-panel';
+import type { PreviewPanelDeps } from '../lib/preview-panel';
 import { showMarkdownPreview } from '../lib/markdown-preview';
 import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
@@ -2732,8 +2733,10 @@ async function showPreviewPanel(): Promise<void> {
 
   // Load all assets (name → data URI)
   let assetMapForEngine: Record<string, string> = {};
+  let previewAssets: PreviewPanelDeps['previewAssets'] = null;
   try {
     const assetResult = await window.tokiAPI.getAllAssetsMap();
+    previewAssets = assetResult;
     assetMapForEngine = assetResult.assets || assetResult;
   } catch (error) {
     reportRuntimeError({
@@ -2749,6 +2752,7 @@ async function showPreviewPanel(): Promise<void> {
   renderPreviewPanel(document.body, {
     fileData,
     assetMap: assetMapForEngine,
+    previewAssets,
     engine: PreviewEngine,
     setStatus,
     popoutPreview: async (charData) => {

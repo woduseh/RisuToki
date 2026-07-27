@@ -10,6 +10,13 @@ describe('app.css – preview-header', () => {
     // (see preview-panel.ts and popout/controller.ts), so CSS must style it.
     expect(css).toMatch(/\.popout-action-btn\.active\b/);
   });
+
+  it('gives the preview header a theme-aware contrasting surface and controls', () => {
+    expect(css).toMatch(
+      /\.preview-header\s*\{[^}]*background:\s*linear-gradient\([^}]*var\(--ui-accent[^}]*var\(--ui-accent-strong[^}]*color:\s*var\(--ui-on-accent/s,
+    );
+    expect(css).toMatch(/\.preview-header\s+\.popout-action-btn\s*\{[^}]*color:\s*inherit;/s);
+  });
 });
 
 describe('app.css – popout theme coherence', () => {
@@ -165,7 +172,7 @@ describe('app.css – preview layout', () => {
 
   it('defines the preview panel as a sized flex column container', () => {
     expect(css).toMatch(
-      /\.preview-panel\s*\{[^}]*width:\s*720px;[^}]*height:\s*85vh;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*\}/s,
+      /\.preview-panel\s*\{[^}]*width:\s*900px;[^}]*height:\s*85vh;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*\}/s,
     );
   });
 });

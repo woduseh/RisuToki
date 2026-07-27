@@ -61,10 +61,20 @@ function extractRegexOrder(flagStr: string): number {
   return match ? Number.parseInt(match[1], 10) : 0;
 }
 
+function extractRegexActions(flagStr: string): string[] {
+  return [...flagStr.matchAll(/<(.+?)>/g)].flatMap((match) =>
+    match[1]
+      .split(',')
+      .map((action) => action.trim())
+      .filter((action) => action && !action.startsWith('order ')),
+  );
+}
+
 function regexFlags(script: PreviewRegexScript): string {
   let flags = String(script.ableFlag === true ? (script.flag ?? script.flags ?? 'g') : 'g')
+    .replace(/<.+?>/g, '')
     .split('')
-    .filter((character) => 'gimsuy'.includes(character))
+    .filter((character) => 'dgimsuvy'.includes(character))
     .join('');
   if (!flags) flags = 'g';
   return [...new Set(flags)].join('');
@@ -99,7 +109,7 @@ export function runRegexPipeline(
     .sort(({ script: a }, { script: b }) => {
       const orderA = (a.replaceOrder as number | undefined) ?? extractRegexOrder(String(a.flag ?? a.flags ?? ''));
       const orderB = (b.replaceOrder as number | undefined) ?? extractRegexOrder(String(b.flag ?? b.flags ?? ''));
-      return orderA - orderB;
+      return orderB - orderA;
     });
 
   const trace: RegexTraceEntry[] = [];
@@ -108,13 +118,33 @@ export function runRegexPipeline(
     const before = text;
     const find = script.find || script.in || '';
     const replace = script.replace || script.out || '';
+    const flagSource = String(script.flag ?? script.flags ?? '');
+    const actions = extractRegexActions(flagSource);
     const flags = regexFlags(script);
     const order =
       (script.replaceOrder as number | undefined) ?? extractRegexOrder(String(script.flag ?? script.flags ?? ''));
     try {
       const regex = new RegExp(find, flags);
       const matchCount = countRegexMatches(before, regex);
-      text = before.replace(regex, replace);
+      let replacement = replace.replaceAll('$n', '\n').replaceAll('{{data}}', '$&');
+      if (replacement.endsWith('>') && !actions.includes('no_end_nl')) replacement += '\n';
+      const moveTop = replacement.startsWith('@@move_top') || actions.includes('move_top');
+      const moveBottom = replacement.startsWith('@@move_bottom') || actions.includes('move_bottom');
+
+      if (moveTop || moveBottom) {
+        const moveReplacement = replacement.replace(/^@@move_(?:top|bottom)\s*/, '');
+        const matches = regex.global ? [...before.matchAll(regex)] : [before.match(regex)].filter(Boolean);
+        text = before.replace(regex, '');
+        const singleFlags = flags.replace(/[gy]/g, '');
+        const singleRegex = new RegExp(find, singleFlags);
+        for (const match of matches) {
+          if (!match) continue;
+          const moved = match[0].replace(singleRegex, moveReplacement);
+          text = moveTop ? `${moved}\n${text}` : `${text}\n${moved}`;
+        }
+      } else {
+        text = before.replace(regex, replacement);
+      }
       trace.push({
         index,
         comment: String(script.comment || ''),

@@ -35,6 +35,7 @@ esbuild.buildSync({
   bundle: true,
   platform: 'node',
   format: 'cjs',
+  external: ['sharp'],
   outfile: mcpOutputPath,
   target: 'node20',
   define: {

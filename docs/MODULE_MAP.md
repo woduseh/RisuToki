@@ -117,6 +117,9 @@ This map is for source navigation. It is not a full API reference.
 
 - `src/lib/preview-session.ts` — preview session lifecycle
 - `src/lib/preview-engine.ts` — preview rendering engine
+- `src/lib/preview-assets.ts` — CCv2/CCv3/module/ZIP preview asset normalization, typed manifests, MIME preservation, and primary-icon aliases
+- `src/lib/preview-renderer.ts` — RisuAI-compatible Markdown, KaTeX, syntax highlighting, class prefixing, and scoped CSS rendering
+- `src/lib/preview-workbench.ts` — shared greeting, viewport, role-injection, and typed asset-gallery controls for docked and pop-out previews
 - `src/lib/content-simulation.ts` — shared pure regex execution and lorebook activation logic used by preview and MCP analysis
 - `src/lib/preview-runtime.ts` — runtime execution inside preview
 - `src/lib/preview-format.ts` — preview formatting helpers
