@@ -9,6 +9,13 @@
 
 ---
 
+## [2.1.0] - 2026-07-27
+
+### Changed
+
+- Deferred the CHARX preview renderer and its Markdown, syntax-highlighting, math, CSS-processing, and sanitization dependencies until the first inline or pop-out preview is opened.
+- Split preview-only vendor libraries into cacheable chunks and limited syntax highlighting to Highlight.js's common language set, removing the oversized renderer chunk warning and reducing initial renderer loading.
+
 ## [2.0.0] - 2026-07-27
 
 ### Changed

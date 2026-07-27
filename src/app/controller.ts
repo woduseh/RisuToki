@@ -12,7 +12,6 @@ import {
   buildAssetsSidebar as _buildAssetsSidebar,
   createLoreEntryItem as _createLoreEntryItem,
 } from '../lib/sidebar-builder';
-import PreviewEngine from '../lib/preview-engine';
 import {
   handleClaudeStart as _handleClaudeStart,
   handleCopilotStart as _handleCopilotStart,
@@ -57,9 +56,7 @@ import {
   popOutPanel as _popOutPanel,
   removePoppedOut,
 } from '../lib/popout-window';
-import { showPreviewPanel as renderPreviewPanel } from '../lib/preview-panel';
 import type { PreviewPanelDeps } from '../lib/preview-panel';
-import { showMarkdownPreview } from '../lib/markdown-preview';
 import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
 import {
@@ -2711,6 +2708,7 @@ async function showPreviewPanel(): Promise<void> {
   // regardless of whether a charx file is loaded.
   const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
   if (activeTab && activeTab.language === 'markdown') {
+    const { showMarkdownPreview } = await import('../lib/markdown-preview');
     showMarkdownPreview(String(activeTab.getValue() ?? ''), activeTab.label);
     return;
   }
@@ -2731,6 +2729,8 @@ async function showPreviewPanel(): Promise<void> {
   const existing = document.querySelector('.preview-overlay');
   if (existing) existing.remove();
 
+  const previewModulesPromise = Promise.all([import('../lib/preview-engine'), import('../lib/preview-panel')]);
+
   // Load all assets (name → data URI)
   let assetMapForEngine: Record<string, string> = {};
   let previewAssets: PreviewPanelDeps['previewAssets'] = null;
@@ -2748,6 +2748,11 @@ async function showPreviewPanel(): Promise<void> {
   }
 
   await ensureWasmoon();
+
+  const [{ default: PreviewEngine }, { showPreviewPanel: renderPreviewPanel }] = await previewModulesPromise;
+  PreviewEngine.setErrorHandler((context, message) => {
+    setStatus(`⚠️ ${context}: ${message}`);
+  });
 
   renderPreviewPanel(document.body, {
     fileData,
@@ -2965,10 +2970,6 @@ export async function initMainRenderer(): Promise<void> {
     syncStoreState();
   });
 
-  // Wire preview engine errors to status bar
-  PreviewEngine.setErrorHandler((context, message) => {
-    setStatus(`⚠️ ${context}: ${message}`);
-  });
   registerActions({
     // File
     new: () => handleNew(),

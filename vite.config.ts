@@ -142,6 +142,25 @@ export default defineConfig(({ command }) => ({
         main: resolve(rootDir, 'index.html'),
         popout: resolve(rootDir, 'popout.html'),
       },
+      output: {
+        manualChunks(id) {
+          if (id.includes('/node_modules/highlight.js/')) return 'vendor-preview-highlight';
+          if (id.includes('/node_modules/katex/')) return 'vendor-preview-katex';
+          if (
+            id.includes('/node_modules/markdown-it/') ||
+            id.includes('/node_modules/linkify-it/') ||
+            id.includes('/node_modules/mdurl/') ||
+            id.includes('/node_modules/uc.micro/') ||
+            id.includes('/node_modules/punycode.js/')
+          ) {
+            return 'vendor-preview-markdown';
+          }
+          if (id.includes('/node_modules/postcss/') || id.includes('/node_modules/postcss-selector-parser/')) {
+            return 'vendor-preview-css';
+          }
+          if (id.includes('/node_modules/dompurify/')) return 'vendor-preview-sanitize';
+        },
+      },
     },
   },
   test: {

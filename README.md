@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-22.13%2B%20%7C%2024%2B-339933.svg)](https://nodejs.org/)
@@ -461,6 +461,7 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 - Character messages use the card's real icon and honor the RisuAI `largePortrait` aspect ratio.
 - Preview is available only for `.charx` files. When a `.risum` or `.risup` is the active tab, both the View menu entry and `F5` are disabled.
 - Preview uses a RisuAI-compatible Markdown pipeline with tables, nested lists, fenced syntax highlighting, inline KaTeX (`$$...$$`), safe structural HTML, and Risu quote styling.
+- Preview-only Markdown, syntax-highlighting, math, CSS-processing, and sanitization libraries load on the first F5 or pop-out preview instead of during application startup.
 - Character CSS is class-prefixed and scoped to each `.chattext` surface like RisuAI, including nested at-rules and preserved keyframes, so card and background styling can be checked without leaking into preview controls.
 - **CBS (Conditional Block System)** execution — variable branching, button-click handling, functions (`#func`/`call`), loops (`#each`), dice/random, Unicode/encryption tags, and more, compatible with RisuAI.
 - Character replies follow editOutput → CBS/Lua → editDisplay, while user messages follow editInput → CBS/Lua → editDisplay; regex entries run in RisuAI's descending order and support display placement actions.

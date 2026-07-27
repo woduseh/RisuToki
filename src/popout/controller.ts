@@ -1,4 +1,3 @@
-import PreviewEngine from '../lib/preview-engine';
 import { readAppSettingsSnapshot, subscribeToAppSettings } from '../lib/app-settings';
 import type { AppSettingsSnapshot } from '../lib/app-settings';
 import { getAvatarAssetsForTheme } from '../lib/avatar';
@@ -7,11 +6,8 @@ import { createDirectTerminalChatSession } from '../lib/chat-session';
 import { getTalkTitle, toMediaAsset } from '../lib/asset-runtime';
 import { applyTheme, defineAppMonacoTheme } from '../lib/dark-mode';
 import { loadMonacoRuntime } from '../lib/monaco-loader';
-import { buildPreviewDebugClipboardText, renderPreviewDebugHtml } from '../lib/preview-debug';
-import { createIframePreviewRuntime } from '../lib/preview-runtime';
-import { createPreviewSession } from '../lib/preview-session';
 import type { PreviewCharData } from '../lib/preview-session';
-import { createPreviewWorkbench, type PreviewAssetCatalog, type PreviewViewportPreset } from '../lib/preview-workbench';
+import type { PreviewAssetCatalog, PreviewViewportPreset } from '../lib/preview-workbench';
 import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
 import { initializeTerminalUi } from '../lib/terminal-ui';
@@ -826,6 +822,13 @@ async function buildPreviewPopout(): Promise<void> {
     root.innerHTML = '<div style="padding:24px;color:#888;">프리뷰 데이터를 불러올 수 없습니다</div>';
     return;
   }
+  const previewModulesPromise = Promise.all([
+    import('../lib/preview-engine'),
+    import('../lib/preview-debug'),
+    import('../lib/preview-runtime'),
+    import('../lib/preview-session'),
+    import('../lib/preview-workbench'),
+  ]);
   let assetMapForEngine: Record<string, string> = {};
   let previewAssets: PreviewAssetCatalog | null = null;
   try {
@@ -841,6 +844,14 @@ async function buildPreviewPopout(): Promise<void> {
   }
 
   await ensureWasmoon();
+
+  const [
+    { default: PreviewEngine },
+    { buildPreviewDebugClipboardText, renderPreviewDebugHtml },
+    { createIframePreviewRuntime },
+    { createPreviewSession },
+    { createPreviewWorkbench },
+  ] = await previewModulesPromise;
 
   let debugOpen = false;
   let activeDebugTab = 'variables';
