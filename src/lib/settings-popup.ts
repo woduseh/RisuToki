@@ -27,6 +27,7 @@ export interface SettingsState {
   rpMode: string;
   rpCustomText: string;
   mcpApprovalMode: McpApprovalMode;
+  previewFocusByDefault: boolean;
 }
 
 export interface SettingsCallbacks {
@@ -42,6 +43,7 @@ export interface SettingsCallbacks {
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
   onMcpApprovalModeChange(mode: McpApprovalMode): void;
+  onPreviewFocusByDefaultChange(enabled: boolean): void;
   onOpenPersonaTab(name: string): Promise<void>;
 }
 
@@ -326,6 +328,18 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
   customThemeRow.appendChild(customThemeBtns);
   body.appendChild(customThemeRow);
 
+  const previewFocusRow = document.createElement('div');
+  previewFocusRow.className = 'settings-row';
+  const previewFocusLeft = document.createElement('div');
+  previewFocusLeft.innerHTML =
+    '<div class="settings-label">프리뷰 기본 집중 모드</div><div class="settings-desc">프리뷰를 열 때 주변 패널을 자동으로 접기 · Ctrl+Shift+F</div>';
+  const previewFocusToggle = createToggle(state.previewFocusByDefault, '프리뷰 기본 집중 모드');
+  previewFocusToggle.addEventListener('click', () => {
+    callbacks.onPreviewFocusByDefaultChange(previewFocusToggle.classList.contains('on'));
+  });
+  previewFocusRow.append(previewFocusLeft, previewFocusToggle);
+  body.appendChild(previewFocusRow);
+
   themeSelect.addEventListener('change', () => {
     const nextThemeId = themeSelect.value as ThemeId;
     callbacks.onThemeChange(nextThemeId);
@@ -433,7 +447,7 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
 
   const sectionDefinitions = [
     { id: 'save', label: '저장 및 승인', rows: [autoRow, intervalRow, autoPathRow, approvalRow] },
-    { id: 'appearance', label: '외형', rows: [themeRow, customThemeRow] },
+    { id: 'appearance', label: '외형', rows: [themeRow, customThemeRow, previewFocusRow] },
     { id: 'tools', label: '터미널 및 페르소나', rows: [bgmRow, rpRow, rpCustomRow, rpEditRow] },
   ];
   const sectionElements = new Map<string, HTMLElement>();

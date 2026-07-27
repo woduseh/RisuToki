@@ -26,8 +26,12 @@ export interface PreviewPanelDeps {
   engine: PreviewEngine;
   /** Status bar callback. */
   setStatus?: (message: string) => void;
-  /** Open a pop-out panel. Returns a cleanup function or void. */
-  popoutPreview?: (charData: PreviewCharData & { assets: null }) => Promise<void>;
+  /** Toggle the temporary workspace focus layout and return its next state. */
+  toggleFocusMode: () => boolean;
+  /** Restore the normal workspace layout when this preview is disposed. */
+  exitFocusMode: () => void;
+  /** Observe focus changes caused by workspace controls outside this panel. */
+  subscribeFocusMode: (listener: (focused: boolean) => void) => () => void;
   /** Optional factory for testing — defaults to the real `createPreviewSession`. */
   createSession?: (options: CreatePreviewSessionOptions) => PreviewSession;
 }
@@ -38,12 +42,22 @@ interface DebugDragState {
 }
 
 /**
- * Build the full preview-panel overlay DOM and wire up all interactions.
+ * Build the full preview workbench inside an editor-tab container.
  *
  * Returns a `dispose` function that tears down the panel and listeners.
  */
 export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps): { dispose: () => void } {
-  const { engine, fileData, assetMap, previewAssets, setStatus, popoutPreview, createSession: sessionFactory } = deps;
+  const {
+    engine,
+    fileData,
+    assetMap,
+    previewAssets,
+    setStatus,
+    toggleFocusMode,
+    exitFocusMode,
+    subscribeFocusMode,
+    createSession: sessionFactory,
+  } = deps;
   const makeSession = sessionFactory ?? createPreviewSession;
 
   const charData: PreviewCharData = {
@@ -73,53 +87,48 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
 
   // ══════════════ Build UI ══════════════
 
-  const overlay = document.createElement('div');
-  overlay.className = 'preview-overlay';
-
   const panel = document.createElement('div');
   panel.className = 'preview-panel';
-  panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-modal', 'true');
+  panel.setAttribute('role', 'region');
   panel.setAttribute('aria-label', `${charData.name} 프리뷰`);
 
   // ── Header ──
   const header = document.createElement('div');
   header.className = 'preview-header';
-  header.classList.add('popout-header-main');
   const headerLeft = document.createElement('span');
   headerLeft.className = 'preview-header-title';
   headerLeft.textContent = `${charData.name} — 프리뷰`;
   const headerBtns = document.createElement('div');
-  headerBtns.className = 'popout-header-actions';
-
-  const popoutPreviewBtn = document.createElement('button');
-  popoutPreviewBtn.className = 'popout-action-btn';
-  popoutPreviewBtn.textContent = '↗';
-  popoutPreviewBtn.title = '팝아웃 (별도 창)';
-  popoutPreviewBtn.setAttribute('aria-label', '팝아웃 (별도 창)');
+  headerBtns.className = 'preview-header-actions';
 
   const resetBtn = document.createElement('button');
-  resetBtn.className = 'popout-action-btn';
+  resetBtn.className = 'preview-action-btn';
   resetBtn.textContent = '↻';
   resetBtn.title = '초기화';
   resetBtn.setAttribute('aria-label', '초기화');
 
   const debugBtn = document.createElement('button');
-  debugBtn.className = 'popout-action-btn';
+  debugBtn.className = 'preview-action-btn';
   debugBtn.textContent = '🔧';
   debugBtn.title = '디버그 패널';
   debugBtn.setAttribute('aria-label', '디버그 패널');
 
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'popout-action-btn btn-close-popout';
-  closeBtn.textContent = '✕';
-  closeBtn.title = '닫기';
-  closeBtn.setAttribute('aria-label', '닫기');
+  const focusBtn = document.createElement('button');
+  focusBtn.className = 'preview-action-btn';
+  focusBtn.textContent = '⛶';
+  focusBtn.title = '프리뷰 집중 모드';
+  focusBtn.setAttribute('aria-label', '프리뷰 집중 모드');
+  focusBtn.setAttribute('aria-pressed', 'false');
+  const applyFocusButtonState = (focused: boolean) => {
+    focusBtn.classList.toggle('active', focused);
+    focusBtn.setAttribute('aria-pressed', String(focused));
+    focusBtn.title = focused ? '프리뷰 집중 모드 종료' : '프리뷰 집중 모드';
+  };
+  const unsubscribeFocusMode = subscribeFocusMode(applyFocusButtonState);
 
-  headerBtns.appendChild(popoutPreviewBtn);
   headerBtns.appendChild(resetBtn);
   headerBtns.appendChild(debugBtn);
-  headerBtns.appendChild(closeBtn);
+  headerBtns.appendChild(focusBtn);
   header.appendChild(headerLeft);
   header.appendChild(headerBtns);
 
@@ -387,43 +396,22 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     },
   });
 
-  function closePreview(): void {
+  let disposed = false;
+  function disposePreview(): void {
+    if (disposed) return;
+    disposed = true;
     session.dispose();
+    unsubscribeFocusMode();
+    exitFocusMode();
     if (debugDetached) debugDrawer.remove();
-    overlay.remove();
-    document.removeEventListener('keydown', onKey);
+    panel.remove();
   }
-
-  popoutPreviewBtn.addEventListener('click', async () => {
-    if (popoutPreview) {
-      await popoutPreview({
-        name: charData.name,
-        description: charData.description,
-        personality: charData.personality,
-        scenario: charData.scenario,
-        firstMessage: charData.firstMessage,
-        alternateGreetings: charData.alternateGreetings,
-        defaultVariables: charData.defaultVariables,
-        lua: charData.lua,
-        triggerScripts: charData.triggerScripts,
-        css: charData.css,
-        backgroundEmbedding: charData.backgroundEmbedding,
-        largePortrait: charData.largePortrait,
-        lorebook: charData.lorebook,
-        regex: charData.regex,
-        assets: null,
-      });
-    }
-    closePreview();
-  });
 
   resetBtn.addEventListener('click', async () => {
     chatInput.style.height = 'auto';
     await session.reset();
     if (debugOpen) updateDebugPanel();
   });
-
-  closeBtn.addEventListener('click', closePreview);
 
   async function submitPreviewInput(): Promise<void> {
     if (messageMode.value === 'conversation') {
@@ -464,6 +452,10 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     if (debugOpen) updateDebugPanel();
   });
 
+  focusBtn.addEventListener('click', () => {
+    applyFocusButtonState(toggleFocusMode());
+  });
+
   // ── Assemble ──
   panel.appendChild(header);
   panel.appendChild(statusBanner);
@@ -474,8 +466,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   panel.appendChild(inputBar);
   panel.appendChild(debugResizer);
   panel.appendChild(debugDrawer);
-  overlay.appendChild(panel);
-  container.appendChild(overlay);
+  container.appendChild(panel);
 
   // Initialize iframe after it's in the DOM
   requestAnimationFrame(async () => {
@@ -487,13 +478,5 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     }
   });
 
-  // Escape to close
-  const onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') {
-      closePreview();
-    }
-  };
-  document.addEventListener('keydown', onKey);
-
-  return { dispose: closePreview };
+  return { dispose: disposePreview };
 }

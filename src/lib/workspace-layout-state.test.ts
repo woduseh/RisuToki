@@ -1,51 +1,50 @@
 import { describe, expect, it } from 'vitest';
 import {
   migrateLegacyWorkspaceLayout,
+  migrateWorkspaceLayoutV2,
   readWorkspaceLayoutState,
   writeWorkspaceLayoutState,
 } from './workspace-layout-state';
 
-describe('workspace layout state v2', () => {
-  it('clamps persisted pane dimensions and drops obsolete popout positions', () => {
+describe('workspace layout state v3', () => {
+  it('clamps persisted pane dimensions and drops obsolete free-placement positions', () => {
     const storage = {
       getItem: () =>
         JSON.stringify({
-          version: 2,
+          version: 3,
           navigatorWidth: 999,
           inspectorWidth: 10,
           utilityHeight: 300,
           navigatorVisible: false,
-          inspectorVisible: true,
+          rightSidebarView: 'references',
           activeUtility: 'references',
           loreManagerPos: 'far-right',
         }),
       setItem: () => undefined,
     };
     expect(readWorkspaceLayoutState(storage)).toEqual({
-      version: 2,
+      version: 3,
       navigatorWidth: 440,
       inspectorWidth: 260,
       utilityHeight: 300,
       navigatorVisible: false,
-      inspectorVisible: true,
       avatarVisible: true,
-      referencesVisible: true,
+      rightSidebarView: 'references',
       activeUtility: null,
     });
   });
 
-  it('writes only the v2 workspace state', () => {
+  it('writes only the v3 workspace state', () => {
     let value = '';
     writeWorkspaceLayoutState(
       {
-        version: 2,
+        version: 3,
         navigatorWidth: 280,
         inspectorWidth: 320,
         utilityHeight: 250,
         navigatorVisible: true,
-        inspectorVisible: true,
         avatarVisible: false,
-        referencesVisible: true,
+        rightSidebarView: 'guides',
         activeUtility: null,
       },
       {
@@ -56,15 +55,39 @@ describe('workspace layout state v2', () => {
       },
     );
     expect(JSON.parse(value)).toEqual({
-      version: 2,
+      version: 3,
       navigatorWidth: 280,
       inspectorWidth: 320,
       utilityHeight: 250,
       navigatorVisible: true,
-      inspectorVisible: true,
       avatarVisible: false,
-      referencesVisible: true,
+      rightSidebarView: 'guides',
       activeUtility: null,
+    });
+  });
+
+  it('migrates mutually exclusive right sidebar state from v2 booleans', () => {
+    expect(
+      migrateWorkspaceLayoutV2({
+        version: 2,
+        navigatorWidth: 300,
+        inspectorWidth: 360,
+        utilityHeight: 280,
+        navigatorVisible: true,
+        inspectorVisible: true,
+        referencesVisible: true,
+        avatarVisible: false,
+        activeUtility: 'terminal',
+      }),
+    ).toEqual({
+      version: 3,
+      navigatorWidth: 300,
+      inspectorWidth: 360,
+      utilityHeight: 280,
+      navigatorVisible: true,
+      avatarVisible: false,
+      rightSidebarView: 'references',
+      activeUtility: 'terminal',
     });
   });
 
@@ -81,14 +104,13 @@ describe('workspace layout state v2', () => {
         slotSizes: { left: 310, right: 360, bottom: 290 },
       }),
     ).toEqual({
-      version: 2,
+      version: 3,
       navigatorWidth: 310,
       inspectorWidth: 360,
       utilityHeight: 290,
       navigatorVisible: false,
-      inspectorVisible: true,
       avatarVisible: true,
-      referencesVisible: false,
+      rightSidebarView: 'inspector',
       activeUtility: 'terminal',
     });
   });
@@ -97,12 +119,12 @@ describe('workspace layout state v2', () => {
     const storage = {
       getItem: () =>
         JSON.stringify({
-          version: 2,
+          version: 3,
           navigatorWidth: 280,
           inspectorWidth: 320,
           utilityHeight: 250,
           navigatorVisible: true,
-          inspectorVisible: true,
+          rightSidebarView: null,
           activeUtility: 'avatar',
         }),
       setItem: () => undefined,
@@ -111,7 +133,7 @@ describe('workspace layout state v2', () => {
     expect(readWorkspaceLayoutState(storage)).toMatchObject({
       activeUtility: 'terminal',
       avatarVisible: true,
-      referencesVisible: false,
+      rightSidebarView: null,
     });
   });
 });

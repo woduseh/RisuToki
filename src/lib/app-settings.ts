@@ -34,6 +34,7 @@ export interface AppSettingsSnapshot {
   autosaveEnabled: boolean;
   autosaveInterval: number;
   autosaveDir: string;
+  previewFocusByDefault: boolean;
   avatarIdle: StoredAvatarState | null;
   avatarWorking: StoredAvatarState | null;
 }
@@ -64,6 +65,7 @@ export const STORAGE_KEYS = {
   darkMode: 'toki-dark-mode',
   customTheme: 'toki-custom-theme',
   mcpApprovalMode: 'toki-mcp-approval-mode',
+  previewFocusByDefault: 'toki-preview-focus-default',
   rpCustom: 'toki-rp-custom',
   rpMode: 'toki-rp-mode',
   recentItems: 'toki-recent-items',
@@ -78,8 +80,10 @@ function getDefaultStorage(storage?: StorageLike): StorageLike {
   return window.localStorage;
 }
 
-function parseBoolean(value: string | null): boolean {
-  return value === 'true';
+function parseBoolean(value: string | null, fallback = false): boolean {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return fallback;
 }
 
 function parseInteger(value: string | null, fallback: number): number {
@@ -177,6 +181,7 @@ export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnaps
     autosaveEnabled: parseBoolean(target.getItem(STORAGE_KEYS.autosaveEnabled)),
     autosaveInterval: parseInteger(target.getItem(STORAGE_KEYS.autosaveInterval), DEFAULT_AUTOSAVE_INTERVAL),
     autosaveDir: target.getItem(STORAGE_KEYS.autosaveDir) || '',
+    previewFocusByDefault: parseBoolean(target.getItem(STORAGE_KEYS.previewFocusByDefault), true),
     avatarIdle: parseStoredJson(target.getItem(STORAGE_KEYS.avatarIdle), storedAvatarStateSchema),
     avatarWorking: parseStoredJson(target.getItem(STORAGE_KEYS.avatarWorking), storedAvatarStateSchema),
   };
@@ -300,6 +305,10 @@ export function writeBgmEnabled(enabled: boolean, storage?: StorageLike): void {
 
 export function writeBgmPath(path: string, storage?: StorageLike): void {
   getDefaultStorage(storage).setItem(STORAGE_KEYS.bgmPath, path);
+}
+
+export function writePreviewFocusByDefault(enabled: boolean, storage?: StorageLike): void {
+  getDefaultStorage(storage).setItem(STORAGE_KEYS.previewFocusByDefault, String(enabled));
 }
 
 export function writeAutosaveEnabled(enabled: boolean, storage?: StorageLike): void {

@@ -6,7 +6,7 @@ export type GreetingFieldName = 'alternateGreetings' | 'groupOnlyGreetings';
 // Shared reference scalar-field definitions
 // ---------------------------------------------------------------------------
 // Single source of truth for which scalar fields are exposed on references.
-// Used by sidebar-refs, refs-popout-data, mcp-api-server (list / read), and
+// Used by sidebar-refs, mcp-api-server (list / read), and
 // openRefTabById so they never drift out of sync.
 
 export interface RefScalarFieldDef {
@@ -23,7 +23,7 @@ export interface RefScalarFieldDef {
 /**
  * Scalar fields exposed on reference files — shared across all consumers.
  *
- * Order matters: sidebar/popout render fields in this order.
+ * Order matters: reference sidebar fields render in this order.
  * Complex surfaces (lua, css, lorebook, regex) are handled separately.
  */
 export const REF_SCALAR_FIELDS: readonly RefScalarFieldDef[] = [

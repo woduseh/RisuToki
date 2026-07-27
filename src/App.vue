@@ -22,6 +22,7 @@ import WorkspaceBar from './components/WorkspaceBar.vue';
 import ContextInspector from './components/ContextInspector.vue';
 import AssetOutputWizard from './components/AssetOutputWizard.vue';
 import { writeWorkspaceLayoutState } from './lib/workspace-layout-state';
+import type { RightSidebarView } from './lib/workspace-model';
 import { TOKI_APP_ICON } from './lib/avatar';
 import { showHelpPopup } from './lib/help-popup';
 
@@ -32,9 +33,8 @@ const shellStyle = computed(() => ({
   '--utility-height': `${store.utilityHeight}px`,
 }));
 const hasEditorContent = computed(() => store.hasFile || store.activeTabId !== null);
-const rightSidebarVisible = computed(
-  () => store.referencesVisible || (store.inspectorVisible && store.hasInspectorContext),
-);
+const rightSidebarVisible = computed(() => store.rightSidebarVisible);
+const referenceToolsVisible = computed(() => store.guidesVisible || store.referencesVisible);
 const inspectorTabLabel = computed(() => {
   const labels = {
     lorebook: '로어북 속성',
@@ -49,14 +49,13 @@ const inspectorTabLabel = computed(() => {
 
 function currentWorkspaceLayout() {
   return {
-    version: 2 as const,
+    version: 3 as const,
     navigatorWidth: store.navigatorWidth,
     inspectorWidth: store.inspectorWidth,
     utilityHeight: store.utilityHeight,
     navigatorVisible: store.navigatorVisible,
-    inspectorVisible: store.inspectorVisible,
     avatarVisible: store.avatarVisible,
-    referencesVisible: store.referencesVisible,
+    rightSidebarView: store.rightSidebarView,
     activeUtility: store.activeUtility,
   };
 }
@@ -64,8 +63,13 @@ function currentWorkspaceLayout() {
 let layoutWriteTimer: number | null = null;
 function scheduleWorkspaceLayoutWrite() {
   if (layoutWriteTimer !== null) window.clearTimeout(layoutWriteTimer);
+  if (store.previewFocusMode) {
+    layoutWriteTimer = null;
+    return;
+  }
   layoutWriteTimer = window.setTimeout(() => {
     layoutWriteTimer = null;
+    if (store.previewFocusMode) return;
     writeWorkspaceLayoutState(currentWorkspaceLayout());
   }, 120);
 }
@@ -77,10 +81,10 @@ watch(
       store.inspectorWidth,
       store.utilityHeight,
       store.navigatorVisible,
-      store.inspectorVisible,
       store.avatarVisible,
-      store.referencesVisible,
+      store.rightSidebarView,
       store.activeUtility,
+      store.previewFocusMode,
     ] as const,
   scheduleWorkspaceLayoutWrite,
 );
@@ -89,6 +93,7 @@ onBeforeUnmount(() => {
   if (layoutWriteTimer === null) return;
   window.clearTimeout(layoutWriteTimer);
   layoutWriteTimer = null;
+  if (store.previewFocusMode) return;
   writeWorkspaceLayoutState(currentWorkspaceLayout());
 });
 
@@ -162,12 +167,11 @@ function handleAction(action: string, payload?: unknown) {
   }
   if (action === 'toggle-right-sidebar') {
     if (rightSidebarVisible.value) {
-      store.inspectorVisible = false;
-      store.setReferencesVisible(false);
+      store.setRightSidebarView(null);
     } else if (store.hasInspectorContext) {
-      store.toggleInspector();
+      store.setRightSidebarView('inspector');
     } else {
-      toggleReferences();
+      selectRightSidebarView('references');
     }
     return;
   }
@@ -175,9 +179,34 @@ function handleAction(action: string, payload?: unknown) {
 }
 
 function toggleReferences() {
-  const opening = !store.referencesVisible;
-  store.toggleReferences();
-  if (opening) handleAction('refresh-references');
+  if (referenceToolsVisible.value) {
+    store.setRightSidebarView(null);
+    return;
+  }
+  selectRightSidebarView('references');
+}
+
+function selectRightSidebarView(view: RightSidebarView) {
+  if (store.rightSidebarView === view) return;
+  store.setRightSidebarView(view);
+  if (view === 'guides' || view === 'references') handleAction('refresh-references');
+}
+
+function handleRightSidebarTabKeydown(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  const tablist = (event.currentTarget as HTMLElement).closest('[role="tablist"]');
+  const tabs = [...(tablist?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])];
+  if (!tabs.length) return;
+  event.preventDefault();
+  const currentIndex = Math.max(0, tabs.indexOf(event.currentTarget as HTMLButtonElement));
+  const nextIndex =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? tabs.length - 1
+        : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+  tabs[nextIndex].focus();
+  tabs[nextIndex].click();
 }
 
 function recentName(path: string) {
@@ -189,7 +218,7 @@ function recentName(path: string) {
   <MenuBar
     :can-preview-current-file="store.canPreviewCurrentFile"
     :recent-items="store.recentItems"
-    :references-open="store.referencesVisible"
+    :references-open="referenceToolsVisible"
     @action="handleAction"
   >
     <template #file-label>
@@ -212,7 +241,7 @@ function recentName(path: string) {
     <WorkspaceBar @action="handleAction" />
 
     <div id="workspace-shell">
-      <aside id="workspace-navigator" aria-label="작업공간 탐색기">
+      <aside v-show="store.navigatorVisible" id="workspace-navigator" aria-label="작업공간 탐색기">
         <div id="slot-left" class="layout-slot slot-v active">
           <div id="sidebar">
             <div id="sidebar-items-section" class="sidebar-section">
@@ -226,6 +255,7 @@ function recentName(path: string) {
         </div>
       </aside>
       <div
+        v-show="store.navigatorVisible"
         id="navigator-resizer"
         class="workspace-resizer"
         role="separator"
@@ -292,32 +322,42 @@ function recentName(path: string) {
               type="button"
               role="tab"
               :aria-selected="store.inspectorVisible"
+              aria-controls="context-inspector"
               :class="{ active: store.inspectorVisible }"
-              @click="store.inspectorVisible || store.toggleInspector()"
+              @click="selectRightSidebarView('inspector')"
+              @keydown="handleRightSidebarTabKeydown"
             >
               {{ inspectorTabLabel }}
+            </button>
+            <button
+              id="right-sidebar-guides-tab"
+              type="button"
+              role="tab"
+              :aria-selected="store.guidesVisible"
+              aria-controls="reference-drawer-body"
+              :class="{ active: store.guidesVisible }"
+              @click="selectRightSidebarView('guides')"
+              @keydown="handleRightSidebarTabKeydown"
+            >
+              가이드
             </button>
             <button
               id="right-sidebar-references-tab"
               type="button"
               role="tab"
               :aria-selected="store.referencesVisible"
+              aria-controls="reference-drawer-body"
               :class="{ active: store.referencesVisible }"
-              @click="store.referencesVisible || toggleReferences()"
+              @click="selectRightSidebarView('references')"
+              @keydown="handleRightSidebarTabKeydown"
             >
-              참고자료
+              참고 파일
+              <span v-if="store.referenceFiles.length" class="right-sidebar-tab-count">{{
+                store.referenceFiles.length
+              }}</span>
             </button>
           </div>
           <div class="right-sidebar-actions">
-            <button
-              v-if="store.referencesVisible"
-              type="button"
-              title="참고자료 팝아웃"
-              aria-label="참고자료 팝아웃"
-              @click="handleAction('popout-references')"
-            >
-              <IconArrowUpRight :size="17" />
-            </button>
             <button
               type="button"
               title="사이드 패널 닫기"
@@ -330,7 +370,12 @@ function recentName(path: string) {
         </header>
         <div class="right-sidebar-content">
           <ContextInspector v-show="store.inspectorVisible && store.hasInspectorContext" />
-          <div v-show="store.referencesVisible" id="reference-drawer-body">
+          <div
+            v-show="referenceToolsVisible"
+            id="reference-drawer-body"
+            role="tabpanel"
+            :aria-labelledby="store.guidesVisible ? 'right-sidebar-guides-tab' : 'right-sidebar-references-tab'"
+          >
             <div id="refs-panel">
               <div id="refs-panel-content" class="refs-panel-content"></div>
             </div>
@@ -422,14 +467,6 @@ function recentName(path: string) {
                   @click="handleAction('cycle-rp-mode')"
                 >
                   <IconMasksTheater :size="16" /><span>RP {{ store.rpLabel }}</span>
-                </button>
-                <button
-                  id="btn-terminal-popout"
-                  title="터미널 팝아웃"
-                  aria-label="터미널 팝아웃"
-                  @click="handleAction('popout-terminal')"
-                >
-                  <IconArrowUpRight :size="16" />
                 </button>
               </div>
             </div>

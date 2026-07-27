@@ -22,8 +22,6 @@ function makeDeps(overrides: Partial<FileActionTestDeps> = {}): FileActionTestDe
     onActivateTab: vi.fn(),
     onDisposeFormEditors: vi.fn(),
     onClearEditor: vi.fn(),
-    isPanelPoppedOut: () => false,
-    onPopOutTab: vi.fn(),
     isFormTabType: () => false,
   });
   const setStatus = vi.fn((message: string) => {
@@ -34,6 +32,7 @@ function makeDeps(overrides: Partial<FileActionTestDeps> = {}): FileActionTestDe
     setFileData: vi.fn(),
     getEditorInstance: vi.fn(() => null),
     setEditorInstance: vi.fn(),
+    disposeEditorSurfaces: vi.fn(),
     getAutosaveDir: vi.fn(() => ''),
     tabMgr,
     buildSidebar: vi.fn(),
@@ -69,6 +68,7 @@ describe('file-actions', () => {
       await handleNew(deps);
 
       expect(deps.setFileData).toHaveBeenCalledWith(newData);
+      expect(deps.disposeEditorSurfaces).toHaveBeenCalledOnce();
       expect(deps.buildSidebar).toHaveBeenCalled();
       expect(deps.setStatus).toHaveBeenCalledWith('새 파일 생성됨');
       expect(useAppStore().fileLabel).toBe('New Character');

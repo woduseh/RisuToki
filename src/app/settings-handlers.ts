@@ -107,6 +107,7 @@ export interface SettingsPopupDeps {
     rpMode: string;
     rpCustomText: string;
     mcpApprovalMode: McpApprovalMode;
+    previewFocusByDefault: boolean;
   };
   onAutosaveToggle(enabled: boolean): void;
   onAutosaveIntervalChange(interval: number): void;
@@ -120,6 +121,7 @@ export interface SettingsPopupDeps {
   onRpModeChange(mode: string): void;
   onRpCustomTextChange(text: string): void;
   onMcpApprovalModeChange(mode: McpApprovalMode): void;
+  onPreviewFocusByDefaultChange(enabled: boolean): void;
   onOpenPersonaTab(name: string): Promise<void>;
 }
 
@@ -138,6 +140,7 @@ export function showSettingsPopup(deps: SettingsPopupDeps): void {
     onRpModeChange: deps.onRpModeChange,
     onRpCustomTextChange: deps.onRpCustomTextChange,
     onMcpApprovalModeChange: deps.onMcpApprovalModeChange,
+    onPreviewFocusByDefaultChange: deps.onPreviewFocusByDefaultChange,
     onOpenPersonaTab: deps.onOpenPersonaTab,
   });
 }

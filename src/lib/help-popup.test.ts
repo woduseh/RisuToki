@@ -76,6 +76,7 @@ describe('help popup', () => {
         rpMode: 'off',
         rpCustomText: '',
         mcpApprovalMode: 'ask',
+        previewFocusByDefault: true,
       },
       {
         onAutosaveToggle: vi.fn(),
@@ -90,6 +91,7 @@ describe('help popup', () => {
         onRpModeChange: vi.fn(),
         onRpCustomTextChange: vi.fn(),
         onMcpApprovalModeChange: vi.fn(),
+        onPreviewFocusByDefaultChange: vi.fn(),
         onOpenPersonaTab: vi.fn().mockResolvedValue(undefined),
       },
     );

@@ -21,10 +21,6 @@ export interface TabManagerCallbacks {
   onDisposeFormEditors(): void;
   /** Show empty-state placeholder when last tab is closed */
   onClearEditor(): void;
-  /** Check whether a panel is popped out */
-  isPanelPoppedOut(panelId: string): boolean;
-  /** Pop a tab out into a separate window */
-  onPopOutTab(tabId: string): void;
   /** Return true if the language represents a form tab (non-Monaco) */
   isFormTabType(language: string): boolean;
   /** Called after tab state is rendered or otherwise changes. */
@@ -262,21 +258,6 @@ export class TabManager {
         void this.requestCloseTab(tab.id);
       });
       el.appendChild(closeBtn);
-
-      // Per-tab popout button (text tabs including readonly, not images)
-      if (tab.language !== '_image' && !this.callbacks.isPanelPoppedOut('editor')) {
-        const popBtn = document.createElement('button');
-        popBtn.className = 'tab-popout-btn';
-        popBtn.title = '팝아웃 (분리)';
-        popBtn.setAttribute('aria-label', '탭 팝아웃');
-        popBtn.type = 'button';
-        popBtn.textContent = '↗';
-        popBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.callbacks.onPopOutTab(tab.id);
-        });
-        el.appendChild(popBtn);
-      }
 
       el.addEventListener('click', () => this.callbacks.onActivateTab(tab));
       tabBar.appendChild(el);

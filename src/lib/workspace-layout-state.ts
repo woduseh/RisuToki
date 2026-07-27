@@ -1,6 +1,7 @@
-import { defaultWorkspaceLayout, type WorkspaceLayoutStateV2 } from './workspace-model';
+import { defaultWorkspaceLayout, type RightSidebarView, type WorkspaceLayoutStateV3 } from './workspace-model';
 
-const STORAGE_KEY = 'toki-workspace-layout-v2';
+const STORAGE_KEY = 'toki-workspace-layout-v3';
+const PREVIOUS_STORAGE_KEY = 'toki-workspace-layout-v2';
 const LEGACY_STORAGE_KEY = 'toki-layout-state';
 
 interface StorageLike {
@@ -27,7 +28,40 @@ interface LegacyLayoutState {
   slotSizes?: Record<string, unknown>;
 }
 
-export function migrateLegacyWorkspaceLayout(legacy: LegacyLayoutState | null): WorkspaceLayoutStateV2 {
+interface WorkspaceLayoutStateV2 {
+  version?: 2;
+  navigatorWidth?: number;
+  inspectorWidth?: number;
+  utilityHeight?: number;
+  navigatorVisible?: boolean;
+  inspectorVisible?: boolean;
+  avatarVisible?: boolean;
+  referencesVisible?: boolean;
+  activeUtility?: unknown;
+}
+
+function normalizeRightSidebarView(value: unknown, fallback: RightSidebarView | null): RightSidebarView | null {
+  return value === 'inspector' || value === 'guides' || value === 'references' || value === null ? value : fallback;
+}
+
+export function migrateWorkspaceLayoutV2(previous: WorkspaceLayoutStateV2 | null): WorkspaceLayoutStateV3 {
+  const fallback = defaultWorkspaceLayout();
+  if (!previous) return fallback;
+  const persistedUtility = previous.activeUtility;
+  const referencesVisible = previous.referencesVisible ?? (persistedUtility === 'references' ? true : false);
+  return {
+    version: 3,
+    navigatorWidth: clamp(previous.navigatorWidth, 220, 440, fallback.navigatorWidth),
+    inspectorWidth: clamp(previous.inspectorWidth, 260, 480, fallback.inspectorWidth),
+    utilityHeight: clamp(previous.utilityHeight, 130, 520, fallback.utilityHeight),
+    navigatorVisible: previous.navigatorVisible ?? fallback.navigatorVisible,
+    avatarVisible: previous.avatarVisible ?? fallback.avatarVisible,
+    rightSidebarView: referencesVisible ? 'references' : previous.inspectorVisible === false ? null : 'inspector',
+    activeUtility: persistedUtility === 'terminal' || persistedUtility === 'avatar' ? 'terminal' : null,
+  };
+}
+
+export function migrateLegacyWorkspaceLayout(legacy: LegacyLayoutState | null): WorkspaceLayoutStateV3 {
   const fallback = defaultWorkspaceLayout();
   if (!legacy) return fallback;
   const sizes = legacy.slotSizes ?? {};
@@ -38,43 +72,42 @@ export function migrateLegacyWorkspaceLayout(legacy: LegacyLayoutState | null): 
   const utilityPosition = ['top', 'bottom'].includes(legacy.terminalPos || '') ? legacy.terminalPos! : 'bottom';
   const managerVisibility = [legacy.loreManagerVisible, legacy.assetManagerVisible, legacy.promptManagerVisible];
   return {
-    version: 2,
+    version: 3,
     navigatorWidth: clamp(sizes[legacy.itemsPos || 'left'], 220, 440, fallback.navigatorWidth),
     inspectorWidth: clamp(sizes[inspectorPosition], 260, 480, fallback.inspectorWidth),
     utilityHeight: clamp(sizes[utilityPosition], 130, 520, fallback.utilityHeight),
     navigatorVisible: legacy.itemsVisible ?? fallback.navigatorVisible,
-    inspectorVisible: managerVisibility.some((visible) => visible === true)
-      ? true
-      : managerVisibility.some((visible) => visible === false)
-        ? false
-        : fallback.inspectorVisible,
     avatarVisible: legacy.avatarVisible ?? fallback.avatarVisible,
-    referencesVisible: false,
+    rightSidebarView: managerVisibility.some((visible) => visible === true)
+      ? 'inspector'
+      : managerVisibility.some((visible) => visible === false)
+        ? null
+        : fallback.rightSidebarView,
     activeUtility: legacy.terminalVisible || legacy.avatarVisible ? 'terminal' : null,
   };
 }
 
 export function readWorkspaceLayoutState(
   storage: StorageLike | undefined = globalThis.localStorage,
-): WorkspaceLayoutStateV2 {
+): WorkspaceLayoutStateV3 {
   const fallback = defaultWorkspaceLayout();
   try {
-    const parsed = JSON.parse(storage?.getItem(STORAGE_KEY) || 'null') as Partial<WorkspaceLayoutStateV2> | null;
-    if (!parsed || parsed.version !== 2) {
+    const parsed = JSON.parse(storage?.getItem(STORAGE_KEY) || 'null') as Partial<WorkspaceLayoutStateV3> | null;
+    if (!parsed || parsed.version !== 3) {
+      const previous = JSON.parse(storage?.getItem(PREVIOUS_STORAGE_KEY) || 'null') as WorkspaceLayoutStateV2 | null;
+      if (previous?.version === 2) return migrateWorkspaceLayoutV2(previous);
       const legacy = JSON.parse(storage?.getItem(LEGACY_STORAGE_KEY) || 'null') as LegacyLayoutState | null;
       return migrateLegacyWorkspaceLayout(legacy);
     }
     const persistedUtility = (parsed as { activeUtility?: unknown }).activeUtility;
     return {
-      version: 2,
+      version: 3,
       navigatorWidth: clamp(parsed.navigatorWidth, 220, 440, fallback.navigatorWidth),
       inspectorWidth: clamp(parsed.inspectorWidth, 260, 480, fallback.inspectorWidth),
       utilityHeight: clamp(parsed.utilityHeight, 130, 520, fallback.utilityHeight),
       navigatorVisible: parsed.navigatorVisible ?? fallback.navigatorVisible,
-      inspectorVisible: parsed.inspectorVisible ?? fallback.inspectorVisible,
       avatarVisible: parsed.avatarVisible ?? fallback.avatarVisible,
-      referencesVisible:
-        parsed.referencesVisible ?? (persistedUtility === 'references' ? true : fallback.referencesVisible),
+      rightSidebarView: normalizeRightSidebarView(parsed.rightSidebarView, fallback.rightSidebarView),
       activeUtility: persistedUtility === 'terminal' || persistedUtility === 'avatar' ? 'terminal' : null,
     };
   } catch {
@@ -83,7 +116,7 @@ export function readWorkspaceLayoutState(
 }
 
 export function writeWorkspaceLayoutState(
-  state: WorkspaceLayoutStateV2,
+  state: WorkspaceLayoutStateV3,
   storage: StorageLike | undefined = globalThis.localStorage,
 ): void {
   try {

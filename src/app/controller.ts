@@ -31,6 +31,7 @@ import {
   writeBgmEnabled,
   writeBgmPath,
   writeMcpApprovalMode,
+  writePreviewFocusByDefault,
   writeRpCustomText,
   writeRpMode,
 } from '../lib/app-settings';
@@ -49,13 +50,6 @@ import { resolveCloseWindowAction } from '../lib/close-window-policy';
 import { getFolderRef, resolveLorebookFolderRef } from '../lib/lorebook-folders';
 import { TabManager } from '../lib/tab-manager';
 import { planMcpDataUpdate } from '../lib/mcp-data-update';
-import type { DockablePanelId, PopoutDeps } from '../lib/popout-window';
-import {
-  isPanelPoppedOut,
-  popOutEditorPanel as _popOutEditorPanel,
-  popOutPanel as _popOutPanel,
-  removePoppedOut,
-} from '../lib/popout-window';
 import type { PreviewPanelDeps } from '../lib/preview-panel';
 import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
@@ -188,6 +182,8 @@ interface MonacoEditorInstance {
 let fileData: CharxData | null = null; // Current charx data
 let currentProjectPath: string | null = null;
 let editorInstance: MonacoEditorInstance | null = null; // Monaco editor instance
+let previewPanelHandle: { dispose: () => void } | null = null;
+let previewRenderVersion = 0;
 let monacoReady = false;
 let monacoLoadTask: Promise<boolean> | null = null;
 
@@ -218,6 +214,7 @@ let customTheme: CustomThemePalette | null = settingsSnapshot.customTheme;
 let rpMode = settingsSnapshot.rpMode;
 let rpCustomText = settingsSnapshot.rpCustomText;
 let mcpApprovalMode: McpApprovalMode = settingsSnapshot.mcpApprovalMode;
+let previewFocusByDefault = settingsSnapshot.previewFocusByDefault;
 
 // Autosave state
 let autosaveEnabled = settingsSnapshot.autosaveEnabled;
@@ -282,6 +279,17 @@ const terminalSessions = createTerminalSessionsController({
 // Form tab types that use special editors (not Monaco)
 const FORM_TAB_TYPES = NON_MONACO_EDITOR_TAB_TYPES;
 
+function disposePreviewPanel(): void {
+  previewRenderVersion += 1;
+  previewPanelHandle?.dispose();
+  previewPanelHandle = null;
+}
+
+function disposeEditorSurfaces(): void {
+  disposeFormEditors();
+  disposePreviewPanel();
+}
+
 async function confirmDirtyTabClose(): Promise<boolean> {
   const decision = resolveCloseWindowAction({ choice: await showCloseConfirm() });
   if (decision.action === 'stay') {
@@ -298,14 +306,12 @@ const tabMgr = new TabManager(
   'editor-tabs',
   {
     onActivateTab: (tab) => createOrSwitchEditor(tab),
-    onDisposeFormEditors: () => disposeFormEditors(),
+    onDisposeFormEditors: () => disposeEditorSurfaces(),
     onClearEditor: () => {
       document.getElementById('editor-container')!.innerHTML = '<div class="empty-state">항목을 선택하세요</div>';
       editorInstance = null;
       updateSidebarActive();
     },
-    isPanelPoppedOut: (panelId) => isPanelPoppedOut(panelId),
-    onPopOutTab: (tabId) => popOutEditorPanel(tabId),
     isFormTabType: (language) => FORM_TAB_TYPES.has(language),
     onTabsRendered: () => updateDocumentStats(),
   },
@@ -534,7 +540,22 @@ function createOrSwitchEditor(tabInfo: Tab): void {
   const container = document.getElementById('editor-container')!;
   updateEditorModeToggle(tabInfo);
 
-  // Special tab types: image, lorebook form, regex form
+  // Special tab types: preview, image, and structured form editors.
+
+  if (tabInfo.language === '_preview') {
+    disposeEditorSurfaces();
+    editorInstance?.dispose();
+    editorInstance = null;
+    container.innerHTML = '';
+    tabMgr.activeTabId = tabInfo.id;
+    tabMgr.pendingEditorTabId = null;
+    tabMgr.renderTabs();
+    updateSidebarActive();
+    void renderCharacterPreview(container, tabInfo.id);
+    return;
+  }
+
+  disposePreviewPanel();
 
   if (tabInfo.language === '_image') {
     disposeFormEditors();
@@ -627,7 +648,7 @@ function createOrSwitchEditor(tabInfo: Tab): void {
     }
   }
 
-  disposeFormEditors();
+  disposeEditorSurfaces();
   container.innerHTML = '';
   if (editorInstance) {
     editorInstance.dispose();
@@ -997,12 +1018,10 @@ function getRefsSidebarDeps() {
 }
 
 async function buildRefsSidebar(): Promise<void> {
-  // The unified workspace owns references in an independent drawer. Rendering
-  // directly into its canonical container also keeps recursive refreshes
-  // (add/remove/import) visible instead of rebuilding the parked legacy tree.
   const refsEl = document.getElementById('refs-panel-content') ?? document.getElementById('sidebar-refs');
   if (!refsEl) return;
-  await _buildRefsSidebar(refsEl, getRefsSidebarDeps() as unknown as Parameters<typeof _buildRefsSidebar>[1]);
+  const view = useAppStore().rightSidebarView === 'guides' ? 'guides' : 'files';
+  await _buildRefsSidebar(refsEl, getRefsSidebarDeps() as unknown as Parameters<typeof _buildRefsSidebar>[1], view);
 }
 
 function openRefTabById(tabId: string): void {
@@ -2323,6 +2342,7 @@ function setCurrentFileData(data: CharxData | null): void {
 
 function resetDocumentWorkspace(): void {
   projectWorkspace.clearRawSyncState();
+  disposeEditorSurfaces();
   tabMgr.reset();
   if (editorInstance) {
     editorInstance.dispose();
@@ -2351,6 +2371,7 @@ const fileActionDeps: FileActionDeps = {
   setEditorInstance: (v) => {
     editorInstance = v;
   },
+  disposeEditorSurfaces,
   getAutosaveDir: () => autosaveDir,
   hasUnsavedChanges: () => tabMgr.dirtyFields.size > 0,
   requestDocumentReplacement: async (_targetLabel) => showCloseConfirm(),
@@ -2381,7 +2402,7 @@ async function handleExtractDocumentProject(): Promise<void> {
   currentProjectPath = result.projectPath || null;
   rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
-  tabMgr.reset();
+  resetDocumentWorkspace();
   buildSidebar();
   await window.tokiAPI.watchProjectFolder();
   setStatus(`프로젝트 폴더 열림: 구조화 편집을 기본으로 사용합니다. (${result.projectPath})`);
@@ -2397,7 +2418,7 @@ async function handleOpenProjectFolder(): Promise<void> {
   currentProjectPath = result.projectPath || null;
   rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
-  tabMgr.reset();
+  resetDocumentWorkspace();
   buildSidebar();
   await window.tokiAPI.watchProjectFolder();
   setStatus(`프로젝트 폴더 열림: 구조화 편집을 기본으로 사용합니다. (${result.projectPath})`);
@@ -2422,7 +2443,7 @@ async function handleCloneProjectFolder(): Promise<void> {
   currentProjectPath = result.projectPath || null;
   rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
-  tabMgr.reset();
+  resetDocumentWorkspace();
   buildSidebar();
   await window.tokiAPI.watchProjectFolder();
   setStatus(`프로젝트 복제본 열림: ${result.projectPath}`);
@@ -2440,7 +2461,7 @@ async function handleOpenRecentItem(payload?: unknown): Promise<void> {
       setCurrentFileData(result.data as CharxData);
       currentProjectPath = result.projectPath || null;
       useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
-      tabMgr.reset();
+      resetDocumentWorkspace();
       buildSidebar();
       await window.tokiAPI.watchProjectFolder();
       rememberRecentProject(result.projectPath || item.path);
@@ -2613,6 +2634,7 @@ function showSettingsPopup(): void {
       rpMode,
       rpCustomText,
       mcpApprovalMode,
+      previewFocusByDefault,
     }),
     onAutosaveToggle(enabled) {
       autosaveEnabled = enabled;
@@ -2682,6 +2704,10 @@ function showSettingsPopup(): void {
       resetMcpConfirmAllowAll();
       writeMcpApprovalMode(mode);
     },
+    onPreviewFocusByDefaultChange(enabled) {
+      previewFocusByDefault = enabled;
+      writePreviewFocusByDefault(enabled);
+    },
     async onOpenPersonaTab(name) {
       const tabId = `persona_${name}`;
       const existing = tabMgr.openTabs.find((t) => t.id === tabId);
@@ -2725,9 +2751,14 @@ async function showPreviewPanel(): Promise<void> {
     return;
   }
 
-  // Remove existing
-  const existing = document.querySelector('.preview-overlay');
-  if (existing) existing.remove();
+  tabMgr.openTab('preview', `${fileData.name || 'Character'} · 프리뷰`, '_preview', () => null, null);
+}
+
+async function renderCharacterPreview(container: HTMLElement, tabId: string): Promise<void> {
+  if (!fileData || (fileData._fileType || 'charx') !== 'charx') return;
+  const renderVersion = ++previewRenderVersion;
+  const activeFileData = fileData;
+  container.innerHTML = '<div class="preview-loading-state">프리뷰 준비 중…</div>';
 
   const previewModulesPromise = Promise.all([import('../lib/preview-engine'), import('../lib/preview-panel')]);
 
@@ -2750,205 +2781,37 @@ async function showPreviewPanel(): Promise<void> {
   await ensureWasmoon();
 
   const [{ default: PreviewEngine }, { showPreviewPanel: renderPreviewPanel }] = await previewModulesPromise;
+  if (renderVersion !== previewRenderVersion || tabMgr.activeTabId !== tabId || fileData !== activeFileData) return;
   PreviewEngine.setErrorHandler((context, message) => {
     setStatus(`⚠️ ${context}: ${message}`);
   });
 
-  renderPreviewPanel(document.body, {
-    fileData,
+  container.innerHTML = '';
+  previewPanelHandle = renderPreviewPanel(container, {
+    fileData: activeFileData,
     assetMap: assetMapForEngine,
     previewAssets,
     engine: PreviewEngine,
     setStatus,
-    popoutPreview: async (charData) => {
-      const requestId = await window.tokiAPI.setPreviewPopoutData(charData as unknown as Record<string, unknown>);
-      await window.tokiAPI.popoutPanel('preview', requestId);
+    toggleFocusMode: () => useAppStore().togglePreviewFocusMode(),
+    exitFocusMode: () => useAppStore().setPreviewFocusMode(false),
+    subscribeFocusMode: (listener) => {
+      const store = useAppStore();
+      listener(store.previewFocusMode);
+      return store.$subscribe((_mutation, state) => listener(state.previewFocusMode), { detached: true });
     },
   });
-}
-
-// ==================== Pop-out Mode (External Window) ====================
-// Core logic lives in ../lib/popout-window.ts; thin wrappers below close
-// over controller-level state via a lazily-built deps object.
-
-function getPopoutDeps() {
-  return {
-    setPanelPoppedOut: (panelId: DockablePanelId, poppedOut: boolean) => {
-      const store = useAppStore();
-      if (panelId === 'terminal') store.setActiveUtility(poppedOut ? null : 'terminal');
-      else store.setReferencesVisible(!poppedOut);
-    },
-    refitWorkspace,
-    setStatus,
-    getEditorInstance: () => editorInstance,
-    setEditorInstance: (ed: MonacoEditorInstance | null) => {
-      editorInstance = ed;
-    },
-    createOrSwitchEditor,
-    tabMgr,
-  };
-}
-
-function popOutPanel(panelId: DockablePanelId, requestId: string | null = null): Promise<void> {
-  const effectiveRequestId = panelId === 'terminal' ? terminalSessions.activeSessionId || requestId : requestId;
-  return _popOutPanel(panelId, getPopoutDeps() as PopoutDeps, effectiveRequestId);
-}
-
-function popOutEditorPanel(tabId: string): Promise<void> {
-  return _popOutEditorPanel(tabId, getPopoutDeps() as unknown as PopoutDeps);
-}
-
-// Tab open by ID (used for sidebar popout clicks)
-function openTabById(tabId: string): void {
-  if (!fileData) return;
-  const data = fileData;
-
-  if (tabId === 'triggerScripts') {
-    openTriggerScriptsControllerTab(tabMgr, fileData);
-    return;
-  }
-
-  const tabMap: Record<
-    string,
-    { label: string; lang: string; get: () => unknown; set: ((v: unknown) => void) | null }
-  > = {
-    lua: {
-      label: 'Lua (통합)',
-      lang: 'lua',
-      get: () => data.lua,
-      set: (v: unknown) => {
-        data.lua = v as string;
-        data.triggerScripts = mergeLuaIntoTriggerScriptsText(data.triggerScripts, v as string);
-        luaSections = parseLuaSections(v as string);
-      },
-    },
-    globalNote: {
-      label: '글로벌노트',
-      lang: 'plaintext',
-      get: () => data.globalNote,
-      set: (v: unknown) => {
-        data.globalNote = v as string;
-      },
-    },
-    firstMessage: {
-      label: '첫 메시지',
-      lang: 'html',
-      get: () => data.firstMessage,
-      set: (v: unknown) => {
-        data.firstMessage = v as string;
-      },
-    },
-    alternateGreetings: {
-      label: '추가 첫 메시지',
-      lang: 'json',
-      get: () => stringifyStringArray(data.alternateGreetings),
-      set: null,
-    },
-    css: {
-      label: 'CSS (통합)',
-      lang: 'css',
-      get: () => data.css,
-      set: (v: unknown) => {
-        data.css = v as string;
-        ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(v as string));
-      },
-    },
-  };
-
-  for (const item of getCharxInfoItems()) {
-    const field = item.field;
-    tabMap[item.id] = {
-      label: item.label,
-      lang: item.lang,
-      get: () => data[field] ?? '',
-      set: (v: unknown) => {
-        data[field] = v as string;
-      },
-    };
-  }
-
-  if (tabMap[tabId]) {
-    const t = tabMap[tabId];
-    if (tabId === 'lua') data.lua = combineLuaSections(luaSections);
-    tabMgr.openTab(tabId, t.label, t.lang, t.get, t.set);
-    return;
-  }
-
-  if (tabId.startsWith('risup_')) {
-    if (tabId.startsWith('risup_prompt_item_')) {
-      openRisupPromptItemTab(tabId.replace('risup_prompt_item_', ''));
-      return;
-    }
-    const groupId = tabId.replace('risup_', '') as RisupFieldGroupId;
-    if (getRisupFieldGroup(groupId)) {
-      openRisupGroupTab(groupId);
-    }
-    return;
-  }
-
-  if (tabId.startsWith('lore_')) {
-    const idx = parseInt(tabId.replace('lore_', ''), 10);
-    if (data.lorebook[idx]) {
-      const label = data.lorebook[idx].comment || `entry_${idx}`;
-      tabMgr.openTab(
-        tabId,
-        label,
-        'plaintext',
-        () => data.lorebook[idx].content || '',
-        (v: unknown) => {
-          data.lorebook[idx].content = v as string;
-        },
-      );
-    }
-  } else if (tabId.startsWith('regex_')) {
-    const idx = parseInt(tabId.replace('regex_', ''), 10);
-    if (data.regex[idx]) {
-      const label = data.regex[idx].comment || `regex_${idx}`;
-      tabMgr.openTab(
-        tabId,
-        label,
-        'json',
-        () => JSON.stringify(data.regex[idx], null, 2),
-        (v: unknown) => {
-          try {
-            data.regex[idx] = JSON.parse(v as string);
-          } catch (e) {
-            console.warn('[controller] Invalid JSON in regex editor:', (e as Error).message);
-          }
-        },
-      );
-    }
-  } else if (tabId.startsWith('guide_')) {
-    // Guide file from refs popout
-    const fileName = tabId.replace('guide_', '');
-    const existing = tabMgr.openTabs.find((t) => t.id === tabId);
-    if (existing) {
-      tabMgr.activeTabId = tabId;
-      createOrSwitchEditor(existing);
-      tabMgr.renderTabs();
-      return;
-    }
-    window.tokiAPI.readGuide(fileName).then((content) => {
-      if (content == null) {
-        setStatus('가이드 파일 읽기 실패');
-        return;
-      }
-      openExternalTextTab(
-        tabId,
-        `[가이드] ${fileName}`,
-        content,
-        (val: string) => window.tokiAPI.writeGuide(fileName, val),
-        'markdown',
-      );
-    });
-  } else if (tabId.startsWith('ref_')) {
-    // Reference file item from refs popout
-    openRefTabById(tabId);
-  }
+  if (previewFocusByDefault) useAppStore().setPreviewFocusMode(true);
 }
 
 // ==================== Keyboard Shortcuts ====================
 // Keyboard shortcuts are in ./keyboard-shortcuts.ts
+
+function togglePreviewFocusModeShortcut(): void {
+  const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
+  if (activeTab?.language !== '_preview') return;
+  useAppStore().togglePreviewFocusMode();
+}
 
 // ==================== Init ====================
 export async function initMainRenderer(): Promise<void> {
@@ -2963,6 +2826,7 @@ export async function initMainRenderer(): Promise<void> {
     autosaveEnabled = snapshot.autosaveEnabled;
     autosaveInterval = snapshot.autosaveInterval;
     autosaveDir = snapshot.autosaveDir;
+    previewFocusByDefault = snapshot.previewFocusByDefault;
     if (themeChanged) {
       refreshThemeUi();
     }
@@ -3014,12 +2878,6 @@ export async function initMainRenderer(): Promise<void> {
     'toggle-avatar': () => toggleAvatar(),
     'refresh-references': () => {
       void buildRefsSidebar();
-    },
-    'popout-references': () => {
-      void popOutPanel('refs');
-    },
-    'popout-terminal': () => {
-      void popOutPanel('terminal');
     },
     'asset-output-wizard': () => useAppStore().setAssetWizardOpen(true),
     'workspace-model-change': (payload) => {
@@ -3117,6 +2975,7 @@ export async function initMainRenderer(): Promise<void> {
     },
     toggleSidebar,
     toggleTerminal,
+    togglePreviewFocusMode: togglePreviewFocusModeShortcut,
     showPreviewPanel,
     showSettingsPopup,
   });
@@ -3253,56 +3112,6 @@ export async function initMainRenderer(): Promise<void> {
     const detail = referenceManifestStatus.detail ? ` — ${referenceManifestStatus.detail}` : '';
     setStatus(`${prefix}: ${referenceManifestStatus.message}${detail}`);
   }
-
-  // Listen for popout window events
-  window.tokiAPI.onPopoutClosed((panelType) => {
-    removePoppedOut(panelType);
-    if (panelType === 'terminal' || panelType === 'refs') {
-      getPopoutDeps().setPanelPoppedOut(panelType, false);
-    } else if (panelType === 'editor') {
-      // Re-open editor in main window
-      if (tabMgr.activeTabId) {
-        const curTab = tabMgr.openTabs.find((t) => t.id === tabMgr.activeTabId);
-        if (curTab) createOrSwitchEditor(curTab);
-      }
-      tabMgr.renderTabs();
-    } else if (panelType === 'preview') {
-      // Re-open inline preview when popout docks
-      showPreviewPanel();
-    }
-    refitWorkspace();
-    if (panelType === 'terminal') setTimeout(() => terminalSessions.fit(), 50);
-    const panelName =
-      panelType === 'editor'
-        ? '에디터'
-        : panelType === 'preview'
-          ? '프리뷰'
-          : panelType === 'refs'
-            ? '참고자료'
-            : 'TokiTalk';
-    setStatus(`${panelName} 도킹됨`);
-  });
-
-  // Listen for editor popout content changes
-  window.tokiAPI.onEditorPopoutChange((tabId, content) => {
-    const tab = tabMgr.openTabs.find((t) => t.id === tabId);
-    if (tab && tab.setValue) {
-      tab.setValue(content);
-      tab._lastValue = content;
-      tabMgr.dirtyFields.add(tabId);
-      tabMgr.renderTabs();
-    }
-  });
-
-  // Listen for editor popout save request
-  window.tokiAPI.onEditorPopoutSave(() => {
-    handleSave();
-  });
-
-  // Listen for refs popout clicks → open tab in main editor
-  window.tokiAPI.onPopoutRefsClick((tabId) => {
-    openTabById(tabId);
-  });
 
   window.tokiAPI.onProjectFolderChanged((payload) => {
     void projectWorkspace.handleFolderChanged(payload);

@@ -136,7 +136,7 @@ export interface McpApiDeps {
   requestRendererOpenFile: (request: RendererOpenFileRequest) => Promise<RendererOpenFileResponse>;
   /** Ask the app to save the current document. */
   saveCurrentDocument?: () => Promise<{ success: boolean; path?: string; error?: string }>;
-  /** Broadcast an IPC message to all windows (main + popouts). */
+  /** Broadcast an IPC message to the main renderer. */
   broadcastToAll: (channel: string, ...args: any[]) => void;
   /** Broadcast an MCP status event to the renderer. */
   broadcastMcpStatus: (payload: Record<string, unknown>) => void;

@@ -147,26 +147,6 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     getPendingSessionRecovery: () => ipcRenderer.invoke('get-pending-session-recovery'),
     resolvePendingSessionRecovery: (action) => ipcRenderer.invoke('resolve-pending-session-recovery', action),
     toggleDevTools: () => ipcRenderer.invoke('toggle-devtools'),
-    popoutPanel: (type, requestId) => ipcRenderer.invoke('popout-create', type, requestId),
-    closePopout: (type) => ipcRenderer.invoke('popout-close', type),
-    onPopoutClosed: (cb) => {
-      ipcRenderer.on('popout-closed', (_event, type: string) => cb(type));
-    },
-    onPopoutSidebarClick: (cb) => {
-      ipcRenderer.on('popout-sidebar-click', (_event, itemId: string) => cb(itemId));
-    },
-    onPopoutRefsClick: (cb) => {
-      ipcRenderer.on('popout-refs-click', (_event, tabId: string) => cb(tabId));
-    },
-    setEditorPopoutData: (data) => ipcRenderer.invoke('set-editor-popout-data', data),
-    onEditorPopoutChange: (cb) => {
-      ipcRenderer.on('editor-popout-change', (_event, tabId: string, content: string) => cb(tabId, content));
-    },
-    onEditorPopoutSave: (cb) => {
-      ipcRenderer.on('editor-popout-save', () => cb());
-    },
-    setPreviewPopoutData: (data) => ipcRenderer.invoke('set-preview-popout-data', data),
-    getGuidesPath: () => ipcRenderer.invoke('get-guides-path'),
     resolveGuidePath: (filename) => ipcRenderer.invoke('resolve-guide-path', filename),
   };
 }

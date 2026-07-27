@@ -172,8 +172,35 @@ describe('createMiniMonaco', () => {
     expect(create).toHaveBeenCalledWith(
       container,
       expect.objectContaining({
+        domReadOnly: false,
+        readOnly: false,
         theme: 'risutoki-kisaki',
         value: 'lore content',
+      }),
+    );
+  });
+
+  it('uses the DOM readonly attribute for reference Monaco editors', () => {
+    const create = vi.fn(() => ({
+      dispose: vi.fn(),
+      getValue: () => '',
+      getDomNode: () => null,
+      layout: vi.fn(),
+      updateOptions: vi.fn(),
+      onDidChangeModelContent: vi.fn(),
+    }));
+    Object.assign(window, { monaco: { editor: { create } } });
+    const deps = createDeps();
+    deps.isMonacoReady = () => true;
+    initFormEditor(deps);
+
+    createMiniMonaco(document.createElement('div'), 'reference content', 'plaintext', null);
+
+    expect(create).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      expect.objectContaining({
+        domReadOnly: true,
+        readOnly: true,
       }),
     );
   });
@@ -301,6 +328,8 @@ describe('form-editor read-only badge', () => {
     const badge = container.querySelector('.readonly-badge');
     expect(badge).not.toBeNull();
     expect(badge?.textContent).toContain('읽기');
+    expect(container.querySelector('.reference-readonly-notice')?.textContent).toContain('수정할 수 없습니다');
+    expect(container.querySelector('.form-editor')?.getAttribute('aria-readonly')).toBe('true');
   });
 
   it('showRegexEditor uses a shared .readonly-badge class for read-only badge', () => {

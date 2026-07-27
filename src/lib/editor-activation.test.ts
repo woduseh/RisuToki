@@ -6,11 +6,13 @@ describe('editor activation helpers', () => {
     expect(requiresMonacoEditor('plaintext')).toBe(true);
     expect(requiresMonacoEditor('lua')).toBe(true);
     expect(requiresMonacoEditor('_image')).toBe(false);
+    expect(requiresMonacoEditor('_preview')).toBe(false);
     expect(requiresMonacoEditor('_loreform')).toBe(false);
     expect(requiresMonacoEditor('_regexform')).toBe(false);
     expect(requiresMonacoEditor('_risupform')).toBe(false);
     expect(requiresMonacoEditor('_triggerform')).toBe(false);
     expect(NON_MONACO_EDITOR_TAB_TYPES.has('_image')).toBe(true);
+    expect(NON_MONACO_EDITOR_TAB_TYPES.has('_preview')).toBe(true);
     expect(NON_MONACO_EDITOR_TAB_TYPES.has('_risupform')).toBe(true);
     expect(NON_MONACO_EDITOR_TAB_TYPES.has('_triggerform')).toBe(true);
   });

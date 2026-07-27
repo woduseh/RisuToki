@@ -40,7 +40,7 @@ describe('buildRefsSidebar race-condition guard', () => {
   it('single build should populate guides', async () => {
     const container = document.getElementById('sidebar-refs')!;
     const deps = createMockDeps(0);
-    await buildRefsSidebar(container, deps);
+    await buildRefsSidebar(container, deps, 'guides');
     // Should have guide folder with at least one child item
     const items = container.querySelectorAll('[data-label]');
     expect(items.length).toBeGreaterThan(0);
@@ -51,8 +51,8 @@ describe('buildRefsSidebar race-condition guard', () => {
     const deps = createMockDeps(50); // 50ms delay on syncReferenceFiles
 
     // Fire two concurrent builds without awaiting first
-    const buildA = buildRefsSidebar(container, deps);
-    const buildB = buildRefsSidebar(container, deps);
+    const buildA = buildRefsSidebar(container, deps, 'guides');
+    const buildB = buildRefsSidebar(container, deps, 'guides');
     await Promise.all([buildA, buildB]);
 
     // Count guide items — should NOT be doubled
@@ -66,10 +66,10 @@ describe('buildRefsSidebar race-condition guard', () => {
     const slowDeps = createMockDeps(100);
     const fastDeps = createMockDeps(0);
 
-    const stale = buildRefsSidebar(container, slowDeps);
+    const stale = buildRefsSidebar(container, slowDeps, 'guides');
 
     // Start a new build immediately — this supersedes the first
-    await buildRefsSidebar(container, fastDeps);
+    await buildRefsSidebar(container, fastDeps, 'guides');
 
     // Slow build should bail out and NOT add duplicates
     await stale;
@@ -77,7 +77,7 @@ describe('buildRefsSidebar race-condition guard', () => {
     expect(guideItems.length).toBeLessThanOrEqual(1);
   });
 
-  it('renders structured reference parity items for charx and risup files', async () => {
+  it('renders guide and file views without a nested tab row and supports drill-in workspaces', async () => {
     const container = document.getElementById('sidebar-refs')!;
     const refs = [
       {
@@ -103,23 +103,55 @@ describe('buildRefsSidebar race-condition guard', () => {
     deps.getReferenceFiles = () => refs as never[];
     deps.syncReferenceFiles = vi.fn().mockResolvedValue(refs as never[]);
 
-    await buildRefsSidebar(container, deps);
+    await buildRefsSidebar(container, deps, 'guides');
+    expect(container.querySelector('[data-label="guide1.md"]')).not.toBeNull();
+    expect(container.querySelector('.reference-subtabs')).toBeNull();
 
+    await buildRefsSidebar(container, deps, 'files');
+    expect(container.querySelectorAll('.reference-file-row')).toHaveLength(2);
+
+    (container.querySelectorAll('.reference-file-row')[0] as HTMLButtonElement).click();
+    expect(
+      [...container.querySelectorAll('.reference-workspace-tabs button')].map((button) => button.textContent),
+    ).toEqual(['캐릭터', '메시지', '스크립트']);
     expect(container.querySelector('[data-label="제작자 코멘트"]')).not.toBeNull();
     expect(container.querySelector('[data-label="캐릭터 버전"]')).not.toBeNull();
+
+    (
+      [...container.querySelectorAll('.reference-workspace-tabs button')].find(
+        (button) => button.textContent === '메시지',
+      ) as HTMLButtonElement
+    ).click();
     expect(container.querySelector('[data-label="인사말 1"]')).not.toBeNull();
+
+    (
+      [...container.querySelectorAll('.reference-workspace-tabs button')].find(
+        (button) => button.textContent === '스크립트',
+      ) as HTMLButtonElement
+    ).click();
     expect(container.querySelector('[data-label="트리거 스크립트"]')).not.toBeNull();
-    expect([...container.querySelectorAll('.tree-item')].some((el) => el.textContent?.includes('기본'))).toBe(true);
+
+    (container.querySelector('[aria-label="참고 파일 목록으로 돌아가기"]') as HTMLButtonElement).click();
+    (container.querySelectorAll('.reference-file-row')[1] as HTMLButtonElement).click();
     expect(
-      [...container.querySelectorAll('.tree-item')].some((el) => el.textContent?.includes('프로바이더/엔드포인트')),
-    ).toBe(true);
-    expect([...container.querySelectorAll('.tree-item')].some((el) => el.textContent?.includes('JSON 스키마'))).toBe(
-      true,
-    );
+      [...container.querySelectorAll('.reference-workspace-tabs button')].map((button) => button.textContent),
+    ).toEqual(['기본', '프롬프트', '모델·API', '파라미터', '고급']);
+    (
+      [...container.querySelectorAll('.reference-workspace-tabs button')].find(
+        (button) => button.textContent === '모델·API',
+      ) as HTMLButtonElement
+    ).click();
+    expect(container.querySelector('[data-label="프로바이더/엔드포인트"]')).not.toBeNull();
+    (
+      [...container.querySelectorAll('.reference-workspace-tabs button')].find(
+        (button) => button.textContent === '고급',
+      ) as HTMLButtonElement
+    ).click();
+    expect(container.querySelector('[data-label="JSON 스키마"]')).not.toBeNull();
     expect(container.querySelector('[data-label="설명"]')).toBeNull();
   });
 
-  it('nests slash-separated guide and reference paths', async () => {
+  it('keeps nested guide paths and presents reference paths as compact file rows', async () => {
     const container = document.getElementById('sidebar-refs')!;
     const deps = createMockDeps(0);
     deps.listGuides = vi.fn().mockResolvedValue({ builtIn: ['bot/guides/intro.md'], session: [] });
@@ -127,16 +159,51 @@ describe('buildRefsSidebar race-condition guard', () => {
     deps.getReferenceFiles = () => refs as never[];
     deps.syncReferenceFiles = vi.fn().mockResolvedValue(refs as never[]);
 
-    await buildRefsSidebar(container, deps);
+    await buildRefsSidebar(container, deps, 'guides');
 
     expect(container.querySelector('[data-label="bot"]')).not.toBeNull();
     expect(container.querySelector('[data-label="guides"]')).not.toBeNull();
     expect(container.querySelector('[data-label="intro.md"]')?.getAttribute('title')).toBe('bot/guides/intro.md');
-    expect(container.querySelector('[data-label="common"]')).not.toBeNull();
-    expect(container.querySelector('[data-label="examples"]')).not.toBeNull();
-    expect(container.querySelector('[data-label="card.charx"]')?.getAttribute('title')).toBe(
-      'common/examples/card.charx',
-    );
+
+    await buildRefsSidebar(container, deps, 'files');
+    const row = container.querySelector('.reference-file-row') as HTMLButtonElement;
+    expect(row.title).toBe('common/examples/card.charx');
+    expect(row.querySelector('strong')?.textContent).toBe('card.charx');
+    expect(container.querySelector('[data-label="common"]')).toBeNull();
+  });
+
+  it('uses the manager tree language for reference lorebooks without edit controls', async () => {
+    const container = document.getElementById('sidebar-refs')!;
+    const deps = createMockDeps(0);
+    const refs = [
+      {
+        fileName: 'card.charx',
+        data: {
+          lorebook: [
+            { mode: 'folder', key: 'folder:world', comment: '세계관' },
+            { key: 'capital', comment: '수도', content: '도시 설명', folder: 'folder:world', alwaysActive: true },
+            { key: 'root', comment: '루트 항목', content: '루트 설명', folder: '' },
+          ],
+        },
+      },
+    ];
+    deps.getReferenceFiles = () => refs as never[];
+    deps.syncReferenceFiles = vi.fn().mockResolvedValue(refs as never[]);
+
+    await buildRefsSidebar(container, deps, 'files');
+    (container.querySelector('.reference-file-row') as HTMLButtonElement).click();
+    (
+      [...container.querySelectorAll('.reference-workspace-tabs button')].find(
+        (button) => button.textContent === '로어북',
+      ) as HTMLButtonElement
+    ).click();
+
+    expect(container.querySelector('.reference-lorebook-list')).not.toBeNull();
+    expect(container.querySelector('.reference-lorebook-folder .manager-folder-label')?.textContent).toBe('세계관');
+    expect(container.querySelectorAll('.reference-lorebook-row')).toHaveLength(2);
+    expect(container.querySelector('.reference-lorebook-row .manager-badge-accent')?.textContent).toBe('항상');
+    expect(container.querySelector('.manager-check')).toBeNull();
+    expect(container.querySelector('.manager-row-actions')).toBeNull();
   });
 });
 

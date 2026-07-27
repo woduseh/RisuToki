@@ -12,8 +12,25 @@ describe('workspace.css – Codex-style docked panels', () => {
     expect(css).toMatch(
       /#app-body\.navigator-open\.right-sidebar-open\s+#workspace-shell\s*\{[^}]*var\(--navigator-width\)[^}]*var\(--inspector-width\);/s,
     );
-    expect(css).toMatch(/#right-sidebar\s*\{[^}]*grid-template-rows:\s*40px minmax\(0,\s*1fr\);/s);
+    expect(css).toMatch(
+      /#right-sidebar\s*\{[^}]*grid-template-rows:\s*var\(--workspace-pane-header-height\) minmax\(0,\s*1fr\);/s,
+    );
     expect(css).not.toMatch(/#reference-drawer\s*\{/);
+  });
+
+  it('pins every workspace surface to its semantic grid column when neighboring panels are hidden', () => {
+    expect(css).toMatch(/#workspace-navigator\s*\{[^}]*grid-column:\s*1;/s);
+    expect(css).toMatch(/#navigator-resizer\s*\{[^}]*grid-column:\s*2;/s);
+    expect(css).toMatch(/#workspace-editor\s*\{[^}]*grid-column:\s*3;/s);
+    expect(css).toMatch(/#inspector-resizer\s*\{[^}]*grid-column:\s*4;/s);
+    expect(css).toMatch(/#right-sidebar\s*\{[^}]*grid-column:\s*5;/s);
+  });
+
+  it('uses one shared height for left, editor, manager, and right panel headers', () => {
+    expect(css).toMatch(/--workspace-pane-header-height:\s*40px;/);
+    expect(css).toMatch(/#editor-header\s*\{[^}]*height:\s*var\(--workspace-pane-header-height\);/s);
+    expect(css).toMatch(/\.sidebar-header\s*\{[^}]*height:\s*var\(--workspace-pane-header-height\);/s);
+    expect(css).toMatch(/\.right-manager-header\s*\{[^}]*height:\s*var\(--workspace-pane-header-height\);/s);
   });
 
   it('styles the unified sidebar header as compact tabs with an active underline', () => {

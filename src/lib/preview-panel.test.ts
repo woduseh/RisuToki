@@ -135,6 +135,12 @@ function createDeps(overrides: Partial<PreviewPanelDeps> = {}): PreviewPanelDeps
     },
     assetMap: null,
     engine: createEngine(),
+    toggleFocusMode: () => true,
+    exitFocusMode: () => {},
+    subscribeFocusMode: (listener) => {
+      listener(false);
+      return () => {};
+    },
     ...restOverrides,
   };
 }
@@ -155,18 +161,19 @@ describe('preview-panel', () => {
     expect(deps.fileData.firstMessage).toBe('안녕하세요');
   });
 
-  it('creates the overlay inside the given container', () => {
+  it('mounts the preview workbench directly inside the given editor container', () => {
     const container = document.createElement('div');
     const deps = createDeps();
 
     const { dispose } = showPreviewPanel(container, deps);
 
-    const overlay = container.querySelector('.preview-overlay');
-    expect(overlay).not.toBeNull();
-    expect(overlay!.querySelector('.preview-panel')).not.toBeNull();
-    expect(overlay!.querySelector('.preview-header')).not.toBeNull();
-    expect(overlay!.querySelector('.preview-chat-frame')).not.toBeNull();
-    expect(overlay!.querySelector('.preview-input-bar')).not.toBeNull();
+    const panel = container.querySelector('.preview-panel');
+    expect(panel).not.toBeNull();
+    expect(panel!.getAttribute('role')).toBe('region');
+    expect(panel!.querySelector('.preview-header')).not.toBeNull();
+    expect(panel!.querySelector('.preview-chat-frame')).not.toBeNull();
+    expect(panel!.querySelector('.preview-input-bar')).not.toBeNull();
+    expect(container.querySelector('.preview-overlay')).toBeNull();
 
     dispose();
   });
@@ -244,22 +251,19 @@ describe('preview-panel', () => {
     dispose();
   });
 
-  it('uses shared popout header styling hooks for docked preview controls', () => {
+  it('uses preview-specific header controls for the editor tab', () => {
     const container = document.createElement('div');
     const deps = createDeps();
     const { dispose } = showPreviewPanel(container, deps);
 
     const header = container.querySelector('.preview-header') as HTMLElement | null;
-    expect(header?.classList.contains('popout-header-main')).toBe(true);
-
     const title = header?.querySelector('.preview-header-title');
     expect(title?.textContent).toContain('Toki');
 
-    const actions = header?.querySelector('.popout-header-actions');
+    const actions = header?.querySelector('.preview-header-actions');
     const buttons = Array.from(actions?.querySelectorAll('button') ?? []);
-    expect(buttons).toHaveLength(4);
-    expect(buttons.every((button) => button.classList.contains('popout-action-btn'))).toBe(true);
-    expect(buttons.at(-1)?.classList.contains('btn-close-popout')).toBe(true);
+    expect(buttons).toHaveLength(3);
+    expect(buttons.every((button) => button.classList.contains('preview-action-btn'))).toBe(true);
 
     dispose();
   });
@@ -282,55 +286,6 @@ describe('preview-panel', () => {
     } finally {
       dispose();
     }
-  });
-
-  it('closes overlay when close button is clicked', () => {
-    const container = document.createElement('div');
-    const deps = createDeps();
-    showPreviewPanel(container, deps);
-
-    const closeBtn = container.querySelector('.preview-header button:last-child') as HTMLButtonElement;
-    expect(closeBtn).not.toBeNull();
-    closeBtn.click();
-
-    expect(container.querySelector('.preview-overlay')).toBeNull();
-  });
-
-  it('calls popoutPreview callback on popout button click', async () => {
-    const container = document.createElement('div');
-    const popoutPreview = vi.fn().mockResolvedValue(undefined);
-    const deps = createDeps({
-      popoutPreview,
-      fileData: {
-        name: 'Toki',
-        description: 'desc',
-        personality: 'cheerful and curious',
-        scenario: 'a rainy afternoon',
-        firstMessage: '안녕하세요',
-        defaultVariables: '',
-        css: '',
-        lorebook: [],
-        regex: [],
-        lua: '',
-      },
-    });
-    showPreviewPanel(container, deps);
-
-    const buttons = container.querySelectorAll('.preview-header button');
-    const popoutBtn = buttons[0] as HTMLButtonElement;
-    expect(popoutBtn.textContent).toBe('↗');
-
-    popoutBtn.click();
-    await vi.waitFor(() => {
-      expect(popoutPreview).toHaveBeenCalledTimes(1);
-    });
-
-    const callArg = popoutPreview.mock.calls[0][0];
-    expect(callArg.name).toBe('Toki');
-    expect(callArg.personality).toBe('cheerful and curious');
-    expect(callArg.scenario).toBe('a rainy afternoon');
-    expect(callArg.assets).toBeNull();
-    expect(callArg.triggerScripts).toEqual([]);
   });
 
   it('passes personality and scenario into the preview session charData', () => {
@@ -391,14 +346,14 @@ describe('preview-panel', () => {
     expect(options.charData.largePortrait).toBe(true);
   });
 
-  it('dispose removes the overlay', () => {
+  it('dispose removes the mounted preview panel', () => {
     const container = document.createElement('div');
     const deps = createDeps();
     const { dispose } = showPreviewPanel(container, deps);
 
-    expect(container.querySelector('.preview-overlay')).not.toBeNull();
+    expect(container.querySelector('.preview-panel')).not.toBeNull();
     dispose();
-    expect(container.querySelector('.preview-overlay')).toBeNull();
+    expect(container.querySelector('.preview-panel')).toBeNull();
   });
 
   it('toggles debug drawer on debug button click', () => {
@@ -410,7 +365,7 @@ describe('preview-panel', () => {
     expect(debugDrawer.style.display).toBe('none');
 
     const buttons = container.querySelectorAll('.preview-header button');
-    const debugBtn = buttons[2] as HTMLButtonElement;
+    const debugBtn = buttons[1] as HTMLButtonElement;
     expect(debugBtn.textContent).toBe('🔧');
 
     debugBtn.click();
@@ -485,7 +440,7 @@ describe('preview-panel', () => {
     const { dispose } = showPreviewPanel(container, deps);
 
     const buttons = container.querySelectorAll('.preview-header button');
-    const debugBtn = buttons[2] as HTMLButtonElement;
+    const debugBtn = buttons[1] as HTMLButtonElement;
     expect(debugBtn.getAttribute('aria-label')).toBe('디버그 패널');
 
     // Initially not active
@@ -502,6 +457,51 @@ describe('preview-panel', () => {
     dispose();
   });
 
+  it('toggles the temporary workspace focus mode and restores it on dispose', () => {
+    const container = document.createElement('div');
+    let focused = false;
+    const toggleFocusMode = vi.fn(() => {
+      focused = !focused;
+      return focused;
+    });
+    const exitFocusMode = vi.fn(() => {
+      focused = false;
+    });
+    const focusSubscription: { listener?: (nextFocused: boolean) => void } = {};
+    const unsubscribeFocusMode = vi.fn();
+    const subscribeFocusMode = vi.fn((listener: (nextFocused: boolean) => void) => {
+      focusSubscription.listener = listener;
+      listener(false);
+      return unsubscribeFocusMode;
+    });
+    const { dispose } = showPreviewPanel(container, createDeps({ toggleFocusMode, exitFocusMode, subscribeFocusMode }));
+    const focusBtn = container.querySelector('button[aria-label="프리뷰 집중 모드"]') as HTMLButtonElement;
+
+    expect(focusBtn.getAttribute('aria-pressed')).toBe('false');
+
+    focusBtn.click();
+    expect(toggleFocusMode).toHaveBeenCalledTimes(1);
+    expect(focusBtn.classList.contains('active')).toBe(true);
+    expect(focusBtn.getAttribute('aria-pressed')).toBe('true');
+    expect(focusBtn.title).toBe('프리뷰 집중 모드 종료');
+
+    focusBtn.click();
+    expect(toggleFocusMode).toHaveBeenCalledTimes(2);
+    expect(focusBtn.classList.contains('active')).toBe(false);
+    expect(focusBtn.getAttribute('aria-pressed')).toBe('false');
+
+    focusSubscription.listener?.(true);
+    expect(focusBtn.classList.contains('active')).toBe(true);
+    focusSubscription.listener?.(false);
+    expect(focusBtn.classList.contains('active')).toBe(false);
+
+    focusBtn.click();
+    dispose();
+    expect(unsubscribeFocusMode).toHaveBeenCalledTimes(1);
+    expect(exitFocusMode).toHaveBeenCalledTimes(1);
+    expect(focused).toBe(false);
+  });
+
   it('adds accessible labels to icon-only preview header buttons', () => {
     const container = document.createElement('div');
     const deps = createDeps();
@@ -509,10 +509,9 @@ describe('preview-panel', () => {
 
     const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('.preview-header button'));
     expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
-      '팝아웃 (별도 창)',
       '초기화',
       '디버그 패널',
-      '닫기',
+      '프리뷰 집중 모드',
     ]);
 
     dispose();

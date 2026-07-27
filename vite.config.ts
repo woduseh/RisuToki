@@ -140,7 +140,6 @@ export default defineConfig(({ command }) => ({
     rollupOptions: {
       input: {
         main: resolve(rootDir, 'index.html'),
-        popout: resolve(rootDir, 'popout.html'),
       },
       output: {
         manualChunks(id) {

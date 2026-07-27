@@ -14,6 +14,7 @@ export type WorkspaceId =
   | 'advanced';
 
 export type UtilityToolId = 'terminal';
+export type RightSidebarView = 'inspector' | 'guides' | 'references';
 
 export interface WorkspaceDefinition {
   id: WorkspaceId;
@@ -44,15 +45,14 @@ export interface InspectorContext {
   itemId: string | null;
 }
 
-export interface WorkspaceLayoutStateV2 {
-  version: 2;
+export interface WorkspaceLayoutStateV3 {
+  version: 3;
   navigatorWidth: number;
   inspectorWidth: number;
   utilityHeight: number;
   navigatorVisible: boolean;
-  inspectorVisible: boolean;
   avatarVisible: boolean;
-  referencesVisible: boolean;
+  rightSidebarView: RightSidebarView | null;
   activeUtility: UtilityToolId | null;
 }
 
@@ -140,16 +140,15 @@ export function getInspectorContext(tabId: string | null): InspectorContext {
   return { kind: 'empty', itemId: null };
 }
 
-export function defaultWorkspaceLayout(): WorkspaceLayoutStateV2 {
+export function defaultWorkspaceLayout(): WorkspaceLayoutStateV3 {
   return {
-    version: 2,
+    version: 3,
     navigatorWidth: 280,
     inspectorWidth: 320,
     utilityHeight: 250,
     navigatorVisible: true,
-    inspectorVisible: true,
     avatarVisible: true,
-    referencesVisible: false,
+    rightSidebarView: 'inspector',
     activeUtility: 'terminal',
   };
 }

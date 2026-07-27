@@ -10,6 +10,7 @@ import {
   defaultWorkspaceLayout,
   inferWorkspaceFromTab,
   isWorkspaceAvailable,
+  type RightSidebarView,
   type UtilityToolId,
   type WorkspaceId,
 } from '../lib/workspace-model';
@@ -231,15 +232,20 @@ export const useAppStore = defineStore('app', () => {
   // === Layout ===
   const initialWorkspaceLayout = readWorkspaceLayoutState();
   const avatarVisible = ref(initialWorkspaceLayout.avatarVisible);
-  const referencesVisible = ref(initialWorkspaceLayout.referencesVisible);
   const workspaceId = ref<WorkspaceId>('character');
   const navigatorVisible = ref(initialWorkspaceLayout.navigatorVisible);
-  const inspectorVisible = ref(initialWorkspaceLayout.inspectorVisible);
+  const rightSidebarView = ref<RightSidebarView | null>(initialWorkspaceLayout.rightSidebarView);
   const activeUtility = ref<UtilityToolId | null>(initialWorkspaceLayout.activeUtility);
   const navigatorWidth = ref(initialWorkspaceLayout.navigatorWidth);
   const inspectorWidth = ref(initialWorkspaceLayout.inspectorWidth);
   const utilityHeight = ref(initialWorkspaceLayout.utilityHeight);
   const assetWizardOpen = ref(false);
+  const previewFocusMode = ref(false);
+  let previewFocusSnapshot: {
+    navigatorVisible: boolean;
+    rightSidebarView: RightSidebarView | null;
+    activeUtility: UtilityToolId | null;
+  } | null = null;
 
   // === Computed ===
   const hasFile = computed(() => fileData.value !== null);
@@ -266,9 +272,16 @@ export const useAppStore = defineStore('app', () => {
   const workspaceDefinitions = computed(() => getWorkspaceDefinitions(fileData.value));
   const inspectorContext = computed(() => getInspectorContext(activeTabId.value));
   const hasInspectorContext = computed(() => inspectorContext.value.kind !== 'empty');
+  const inspectorVisible = computed(() => rightSidebarView.value === 'inspector');
+  const guidesVisible = computed(() => rightSidebarView.value === 'guides');
+  const referencesVisible = computed(() => rightSidebarView.value === 'references');
+  const rightSidebarVisible = computed(
+    () => rightSidebarView.value !== null && (rightSidebarView.value !== 'inspector' || hasInspectorContext.value),
+  );
 
   // === Actions ===
   function setFileData(data: CharxData | null) {
+    setPreviewFocusMode(false);
     fileData.value = data;
     // A tab id only has meaning inside the document that created it. Clearing
     // it here prevents a newly opened CHARX/RISUM/RISUP file from inheriting
@@ -344,8 +357,7 @@ export const useAppStore = defineStore('app', () => {
     const inferred = inferWorkspaceFromTab(id, fileData.value);
     if (inferred && isWorkspaceAvailable(fileData.value, inferred)) workspaceId.value = inferred;
     if (getInspectorContext(id).kind !== 'empty') {
-      inspectorVisible.value = true;
-      referencesVisible.value = false;
+      rightSidebarView.value = 'inspector';
       if (typeof window !== 'undefined' && window.innerWidth < 1020) navigatorVisible.value = false;
     }
   }
@@ -354,44 +366,64 @@ export const useAppStore = defineStore('app', () => {
     if (isWorkspaceAvailable(fileData.value, id)) workspaceId.value = id;
   }
 
+  function abandonPreviewFocusMode() {
+    if (!previewFocusMode.value) return;
+    previewFocusSnapshot = null;
+    previewFocusMode.value = false;
+  }
+
   function toggleNavigator() {
+    abandonPreviewFocusMode();
     navigatorVisible.value = !navigatorVisible.value;
     if (navigatorVisible.value && typeof window !== 'undefined' && window.innerWidth < 1020) {
-      inspectorVisible.value = false;
-      referencesVisible.value = false;
+      rightSidebarView.value = null;
     }
   }
 
   function toggleInspector() {
-    inspectorVisible.value = !inspectorVisible.value;
-    if (inspectorVisible.value) {
-      referencesVisible.value = false;
+    abandonPreviewFocusMode();
+    rightSidebarView.value = rightSidebarView.value === 'inspector' ? null : 'inspector';
+    if (rightSidebarView.value === 'inspector') {
       if (typeof window !== 'undefined' && window.innerWidth < 1180) navigatorVisible.value = false;
     }
   }
 
   function toggleUtility(tool: UtilityToolId) {
+    abandonPreviewFocusMode();
     activeUtility.value = activeUtility.value === tool ? null : tool;
   }
 
   function setActiveUtility(tool: UtilityToolId | null) {
+    abandonPreviewFocusMode();
     activeUtility.value = tool;
   }
 
   function toggleReferences() {
-    referencesVisible.value = !referencesVisible.value;
-    inspectorVisible.value = false;
-    if (referencesVisible.value && typeof window !== 'undefined' && window.innerWidth < 1180) {
+    abandonPreviewFocusMode();
+    rightSidebarView.value = rightSidebarView.value === 'references' ? null : 'references';
+    if (rightSidebarView.value === 'references' && typeof window !== 'undefined' && window.innerWidth < 1180) {
       navigatorVisible.value = false;
     }
   }
 
   function setReferencesVisible(visible: boolean) {
-    referencesVisible.value = visible;
-    if (visible) inspectorVisible.value = false;
+    abandonPreviewFocusMode();
+    if (visible) rightSidebarView.value = 'references';
+    else if (rightSidebarView.value === 'references' || rightSidebarView.value === 'guides') {
+      rightSidebarView.value = null;
+    }
+  }
+
+  function setRightSidebarView(view: RightSidebarView | null) {
+    abandonPreviewFocusMode();
+    rightSidebarView.value = view;
+    if (view && typeof window !== 'undefined' && window.innerWidth < 1180) {
+      navigatorVisible.value = false;
+    }
   }
 
   function toggleAvatar() {
+    abandonPreviewFocusMode();
     if (activeUtility.value !== 'terminal') {
       activeUtility.value = 'terminal';
       avatarVisible.value = true;
@@ -402,6 +434,36 @@ export const useAppStore = defineStore('app', () => {
 
   function setAssetWizardOpen(open: boolean) {
     assetWizardOpen.value = open;
+  }
+
+  function togglePreviewFocusMode(): boolean {
+    setPreviewFocusMode(!previewFocusMode.value);
+    return previewFocusMode.value;
+  }
+
+  function setPreviewFocusMode(focused: boolean) {
+    if (focused === previewFocusMode.value) return;
+    if (focused) {
+      previewFocusSnapshot = {
+        navigatorVisible: navigatorVisible.value,
+        rightSidebarView: rightSidebarView.value,
+        activeUtility: activeUtility.value,
+      };
+      previewFocusMode.value = true;
+      navigatorVisible.value = false;
+      rightSidebarView.value = null;
+      activeUtility.value = null;
+      return;
+    }
+
+    const snapshot = previewFocusSnapshot;
+    previewFocusSnapshot = null;
+    if (snapshot) {
+      navigatorVisible.value = snapshot.navigatorVisible;
+      rightSidebarView.value = snapshot.rightSidebarView;
+      activeUtility.value = snapshot.activeUtility;
+    }
+    previewFocusMode.value = false;
   }
 
   function setNavigatorWidth(width: number) {
@@ -417,14 +479,14 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function resetWorkspaceLayout() {
+    abandonPreviewFocusMode();
     const layout = defaultWorkspaceLayout();
     navigatorWidth.value = layout.navigatorWidth;
     inspectorWidth.value = layout.inspectorWidth;
     utilityHeight.value = layout.utilityHeight;
     navigatorVisible.value = layout.navigatorVisible;
-    inspectorVisible.value = layout.inspectorVisible;
     avatarVisible.value = layout.avatarVisible;
-    referencesVisible.value = layout.referencesVisible;
+    rightSidebarView.value = layout.rightSidebarView;
     activeUtility.value = layout.activeUtility;
     workspaceId.value = getDefaultWorkspace(fileData.value);
   }
@@ -476,12 +538,15 @@ export const useAppStore = defineStore('app', () => {
     autosaveInterval,
     autosaveDir,
     avatarVisible,
+    rightSidebarView,
+    guidesVisible,
     referencesVisible,
     workspaceId,
     navigatorVisible,
     inspectorVisible,
     activeUtility,
     assetWizardOpen,
+    previewFocusMode,
     navigatorWidth,
     inspectorWidth,
     utilityHeight,
@@ -495,6 +560,7 @@ export const useAppStore = defineStore('app', () => {
     workspaceDefinitions,
     inspectorContext,
     hasInspectorContext,
+    rightSidebarVisible,
     // Actions
     setFileData,
     setStatus,
@@ -518,8 +584,11 @@ export const useAppStore = defineStore('app', () => {
     setActiveUtility,
     toggleReferences,
     setReferencesVisible,
+    setRightSidebarView,
     toggleAvatar,
     setAssetWizardOpen,
+    togglePreviewFocusMode,
+    setPreviewFocusMode,
     setNavigatorWidth,
     setInspectorWidth,
     setUtilityHeight,

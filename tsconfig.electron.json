@@ -12,13 +12,6 @@
     "noEmitOnError": true,
     "types": ["node"]
   },
-  "include": [
-    "main.ts",
-    "preload.ts",
-    "popout-preload.ts",
-    "src/electron-api.d.ts",
-    "src/adm-zip.d.ts",
-    "src/css-inline.d.ts"
-  ],
+  "include": ["main.ts", "preload.ts", "src/electron-api.d.ts", "src/adm-zip.d.ts", "src/css-inline.d.ts"],
   "exclude": ["dist", "node_modules"]
 }

@@ -6,14 +6,13 @@ This map is for source navigation. It is not a full API reference.
 
 - Prefer `.ts` over generated `.js` siblings in `src/lib/`.
 - Use nearby `.test.ts` files as executable behavior specs.
-- Treat `main.ts`, `src/app/controller.ts`, and `src/popout/controller.ts` as integration layers; shared logic usually lives in `src/lib/`.
+- Treat `main.ts` and `src/app/controller.ts` as integration layers; shared logic usually lives in `src/lib/`.
 
 ## Runtime entrypoints
 
 - `main.ts` — Electron main-process entrypoint
-- `preload.ts` / `popout-preload.ts` — typed renderer bridges
+- `preload.ts` — typed renderer bridge
 - `src/main.ts` — main-window renderer entrypoint
-- `src/popout.ts` — popout renderer entrypoint
 - `toki-mcp-server.ts` — MCP tool-registration orchestration and stdio transport entrypoint
 
 ## Integration layers
@@ -21,7 +20,6 @@ This map is for source navigation. It is not a full API reference.
 - `src/app/controller.ts` — main-window integration and UI orchestration
 - `src/app/project-workspace-controller.ts` — project-folder raw file tabs, validation, debounced writes, reloads, and sidebar rendering
 - `src/app/terminal-sessions-controller.ts` — renderer terminal session lifecycle, active-session routing, tabs, CWD tracking, and xterm handles
-- `src/popout/controller.ts` — popout orchestration
 - `src/components/` — Vue UI components
 - `src/stores/` — shared renderer stores
 - `src/styles/` — renderer styling and style tests
@@ -119,12 +117,12 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/preview-engine.ts` — preview rendering engine
 - `src/lib/preview-assets.ts` — CCv2/CCv3/module/ZIP preview asset normalization, typed manifests, MIME preservation, and primary-icon aliases
 - `src/lib/preview-renderer.ts` — RisuAI-compatible Markdown, KaTeX, syntax highlighting, class prefixing, and scoped CSS rendering
-- `src/lib/preview-workbench.ts` — shared greeting, viewport, role-injection, and typed asset-gallery controls for docked and pop-out previews
+- `src/lib/preview-workbench.ts` — shared greeting, viewport, role-injection, and typed asset-gallery controls for the central preview tab
 - `src/lib/content-simulation.ts` — shared pure regex execution and lorebook activation logic used by preview and MCP analysis
 - `src/lib/preview-runtime.ts` — runtime execution inside preview
 - `src/lib/preview-format.ts` — preview formatting helpers
 - `src/lib/preview-debug.ts` — preview debug views
-- `src/lib/preview-panel.ts` — preview panel UI state
+- `src/lib/preview-panel.ts` — central editor preview-tab UI state
 - `src/lib/preview-sanitizer.ts` — preview HTML sanitization
 
 ## Editor, layout, and sidebar UI
@@ -182,14 +180,11 @@ This map is for source navigation. It is not a full API reference.
 
 ## Popouts, references, and guide material
 
-- `src/lib/popout-manager.ts` — popout creation/lifecycle
-- `src/lib/popout-window.ts` — terminal/reference fixed-workspace popout coordination plus editor popout helpers
-- `src/lib/popout-payload-store.ts` — popout payload persistence
 - `src/lib/external-text-tab.ts` — external text tab handling
 - `src/lib/reference-item-registry.ts` — shared read-only reference item descriptors and visibility rules
+- `src/lib/reference-explorer-model.ts` — compact CHARX/RISUM/RISUP workspace groups for the reference sidebar
 - `src/lib/reference-shared.ts` — browser-safe reference manifest helpers shared by reference UI and persistence code
 - `src/lib/reference-store.ts` — reference-file persistence
-- `src/lib/refs-popout-data.ts` — reference popout payload helpers
 - `src/lib/guides-manager.ts` — in-app guide loading
 - `src/lib/content-roots.ts` — tracked skill/doc root definitions and generated catalog paths
 - `src/lib/guide-catalog.ts` — multi-root built-in guide enumeration and resolution

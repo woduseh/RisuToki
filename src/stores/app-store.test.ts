@@ -123,9 +123,48 @@ describe('app-store reactive state', () => {
     expect(store.inspectorVisible).toBe(false);
     expect(store.referencesVisible).toBe(true);
 
+    store.setRightSidebarView('guides');
+    expect(store.guidesVisible).toBe(true);
+    expect(store.inspectorVisible).toBe(false);
+    expect(store.referencesVisible).toBe(false);
+
     store.toggleInspector();
     expect(store.inspectorVisible).toBe(true);
+    expect(store.guidesVisible).toBe(false);
     expect(store.referencesVisible).toBe(false);
+  });
+
+  it('collapses surrounding panels for preview focus and restores their prior state', () => {
+    const store = useAppStore();
+    store.setFileData({ lorebook: [{ comment: 'Entry' }] } as never);
+    store.setActiveTabId('lore_0');
+    store.setActiveUtility('terminal');
+
+    expect(store.previewFocusMode).toBe(false);
+    expect(store.togglePreviewFocusMode()).toBe(true);
+    expect(store.previewFocusMode).toBe(true);
+    expect(store.navigatorVisible).toBe(false);
+    expect(store.rightSidebarView).toBeNull();
+    expect(store.activeUtility).toBeNull();
+
+    store.setPreviewFocusMode(false);
+    expect(store.previewFocusMode).toBe(false);
+    expect(store.navigatorVisible).toBe(true);
+    expect(store.rightSidebarView).toBe('inspector');
+    expect(store.activeUtility).toBe('terminal');
+  });
+
+  it('leaves focus mode without reopening every panel when a panel is opened manually', () => {
+    const store = useAppStore();
+    store.setRightSidebarView('guides');
+    store.setPreviewFocusMode(true);
+
+    store.toggleNavigator();
+
+    expect(store.previewFocusMode).toBe(false);
+    expect(store.navigatorVisible).toBe(true);
+    expect(store.rightSidebarView).toBeNull();
+    expect(store.activeUtility).toBeNull();
   });
 });
 

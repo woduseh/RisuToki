@@ -19,8 +19,6 @@ function createTestTabManager(onActivateTab = vi.fn()) {
     onActivateTab,
     onDisposeFormEditors: vi.fn(),
     onClearEditor: vi.fn(),
-    isPanelPoppedOut: () => false,
-    onPopOutTab: vi.fn(),
     isFormTabType: () => false,
   });
 }

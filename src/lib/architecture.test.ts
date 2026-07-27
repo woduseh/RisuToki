@@ -81,11 +81,11 @@ function isLintedLibFile(filePath: string, coverage: LintCoverage): boolean {
   return coverage.explicitFiles.has(filePath) || coverage.globs.some((glob) => lintGlobCoversLibFile(glob, filePath));
 }
 
-type RuntimeDependencyGroup = 'app-popout' | 'stores';
+type RuntimeDependencyGroup = 'app' | 'stores';
 
 function classifyRuntimeDependency(specifier: string): RuntimeDependencyGroup | null {
-  if (specifier.startsWith('../app/') || specifier.startsWith('../popout/')) {
-    return 'app-popout';
+  if (specifier.startsWith('../app/')) {
+    return 'app';
   }
   if (specifier.startsWith('../stores/')) {
     return 'stores';
@@ -178,8 +178,8 @@ function collectRuntimeDependencyViolations(filePath: string, group: RuntimeDepe
   return scanRuntimeDependencyViolations(readRepoFile(filePath), filePath, group);
 }
 
-function collectRuntimeAppPopoutViolations(filePath: string): string[] {
-  return collectRuntimeDependencyViolations(filePath, 'app-popout');
+function collectRuntimeAppViolations(filePath: string): string[] {
+  return collectRuntimeDependencyViolations(filePath, 'app');
 }
 
 function collectRuntimeStoreViolations(filePath: string): string[] {
@@ -187,12 +187,12 @@ function collectRuntimeStoreViolations(filePath: string): string[] {
 }
 
 describe('runtime dependency scanner behavior', () => {
-  it('ignores type-only app/popout imports when checking runtime boundaries', () => {
+  it('ignores type-only app imports when checking runtime boundaries', () => {
     expect(
       scanRuntimeDependencyViolations(
         "import type { Controller } from '../app/controller';\n",
         '__fixture__.ts',
-        'app-popout',
+        'app',
       ),
     ).toEqual([]);
   });
@@ -203,14 +203,14 @@ describe('runtime dependency scanner behavior', () => {
       '  useAppStore,',
       "} from '../stores/app-store';",
       "import '../app/controller';",
-      'async function loadPopout() {',
-      "  return import('../popout/controller');",
+      'async function loadController() {',
+      "  return import('../app/controller');",
       '}',
       "const store = require('../stores/app-store');",
       '',
     ].join('\n');
     const violations = [
-      ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'app-popout'),
+      ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'app'),
       ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'stores'),
     ];
     expect(violations).toHaveLength(4);
@@ -221,7 +221,7 @@ describe('runtime dependency scanner behavior', () => {
       scanRuntimeDependencyViolations(
         "export type { Controller } from '../app/controller';\n",
         '__fixture__.ts',
-        'app-popout',
+        'app',
       ),
     ).toEqual([]);
   });
@@ -231,7 +231,7 @@ describe('runtime dependency scanner behavior', () => {
       '\n',
     );
     const violations = [
-      ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'app-popout'),
+      ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'app'),
       ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'stores'),
     ];
     expect(violations).toHaveLength(2);
@@ -245,21 +245,21 @@ describe('runtime dependency scanner behavior', () => {
     ].join('\n');
     const violations = [
       ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'stores'),
-      ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'app-popout'),
+      ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'app'),
     ];
     expect(violations).toHaveLength(2);
   });
 
   it('catches template-literal dynamic imports and require calls', () => {
     const source = [
-      'async function loadPopout() {',
-      '  return import(`../popout/controller`);',
+      'async function loadController() {',
+      '  return import(`../app/controller`);',
       '}',
       'const store = require(`../stores/app-store`);',
       '',
     ].join('\n');
     const violations = [
-      ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'app-popout'),
+      ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'app'),
       ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'stores'),
     ];
     expect(violations).toHaveLength(2);
@@ -268,14 +268,14 @@ describe('runtime dependency scanner behavior', () => {
   it('catches interpolated template-literal imports when their static prefix crosses a forbidden boundary', () => {
     const source = [
       "const name = 'controller';",
-      'async function loadPopout() {',
-      '  return import(`../popout/${name}`);',
+      'async function loadController() {',
+      '  return import(`../app/${name}`);',
       '}',
       'const store = require(`../stores/${name}`);',
       '',
     ].join('\n');
     const violations = [
-      ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'app-popout'),
+      ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'app'),
       ...scanRuntimeDependencyViolations(source, '__fixture__.ts', 'stores'),
     ];
     expect(violations).toHaveLength(2);
@@ -297,7 +297,7 @@ describe('runtime dependency scanner behavior', () => {
       scanRuntimeDependencyViolations(
         "import type { Controller } from '../app/controller';\n",
         '__fixture__.ts',
-        'app-popout',
+        'app',
       ),
     ).toEqual([]);
     expect(listLibFiles(true)).toEqual(before);
@@ -307,9 +307,9 @@ describe('runtime dependency scanner behavior', () => {
 describe('src/lib architecture boundaries', () => {
   const libProductionFiles = listLibFiles(false);
 
-  it('does not runtime-import src/app or src/popout from production src/lib modules', () => {
+  it('does not runtime-import src/app from production src/lib modules', () => {
     const violations = libProductionFiles.flatMap((filePath) =>
-      collectRuntimeAppPopoutViolations(filePath).map((line) => `${filePath}: ${line}`),
+      collectRuntimeAppViolations(filePath).map((line) => `${filePath}: ${line}`),
     );
 
     expect(violations).toEqual([]);

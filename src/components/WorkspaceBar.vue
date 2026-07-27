@@ -100,10 +100,10 @@ const showWizard = computed(
         id="btn-right-sidebar-toggle"
         type="button"
         class="workspace-pane-toggle"
-        :class="{ active: store.inspectorVisible || store.referencesVisible }"
+        :class="{ active: store.rightSidebarVisible }"
         title="사이드 패널 전환"
         aria-label="사이드 패널 전환"
-        :aria-pressed="store.inspectorVisible || store.referencesVisible"
+        :aria-pressed="store.rightSidebarVisible"
         @click="$emit('action', 'toggle-right-sidebar')"
       >
         <IconLayoutSidebarRightCollapse :size="18" stroke-width="1.8" />

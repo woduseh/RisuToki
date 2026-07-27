@@ -218,8 +218,12 @@ export function createMiniMonaco(
         return textarea.value;
       },
       updateOptions(options: Record<string, unknown>) {
-        if (options && Object.prototype.hasOwnProperty.call(options, 'readOnly')) {
-          textarea.readOnly = !!options.readOnly;
+        if (
+          options &&
+          (Object.prototype.hasOwnProperty.call(options, 'readOnly') ||
+            Object.prototype.hasOwnProperty.call(options, 'domReadOnly'))
+        ) {
+          textarea.readOnly = !!(options.readOnly || options.domReadOnly);
         }
       },
     };
@@ -245,6 +249,8 @@ export function createMiniMonaco(
       hideCursorInOverviewRuler: true,
       scrollbar: { vertical: 'auto', horizontal: 'auto' },
       tabSize: 2,
+      readOnly: !onChange,
+      domReadOnly: !onChange,
     });
 
     // Track IME composition to avoid DOM-heavy side effects during CJK input
@@ -299,6 +305,20 @@ function clearEditorContainer(): HTMLElement {
     d.setEditorInstance(null);
   }
   return container;
+}
+
+function appendFormSections(form: HTMLElement, header: HTMLElement, body: HTMLElement, readonly: boolean): void {
+  form.appendChild(header);
+  if (readonly) {
+    form.classList.add('form-editor-readonly');
+    form.setAttribute('aria-readonly', 'true');
+    const notice = document.createElement('div');
+    notice.className = 'reference-readonly-notice';
+    notice.setAttribute('role', 'note');
+    notice.textContent = '참고 파일에서 연 항목입니다. 내용은 수정할 수 없습니다.';
+    form.appendChild(notice);
+  }
+  form.appendChild(body);
 }
 
 type DirtyCallback = () => void;
@@ -577,8 +597,7 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
   monacoContainer.className = 'form-monaco form-monaco-lore';
   body.appendChild(monacoContainer);
 
-  form.appendChild(header);
-  form.appendChild(body);
+  appendFormSections(form, header, body, readonly);
   container.appendChild(form);
 
   // Create mini Monaco after DOM insertion
@@ -867,8 +886,7 @@ export function showRisupEditor(tabInfo: RisupFormTabInfo): void {
 
   updateValidation();
 
-  form.appendChild(header);
-  form.appendChild(body);
+  appendFormSections(form, header, body, readonly);
   container.appendChild(form);
 }
 
@@ -917,7 +935,7 @@ export function showRisupPromptItemEditor(tabInfo: RisupPromptItemTabInfo): void
   );
   formEditors.push(handle);
 
-  form.append(header, body);
+  appendFormSections(form, header, body, readonly);
   container.appendChild(form);
 }
 
@@ -1198,8 +1216,7 @@ export function showTriggerEditor(tabInfo: TriggerFormTabInfo): void {
   layout.appendChild(detailPanel);
   body.appendChild(layout);
 
-  form.appendChild(header);
-  form.appendChild(body);
+  appendFormSections(form, header, body, readonly);
   container.appendChild(form);
 }
 
@@ -1249,8 +1266,7 @@ export function showBooleanEditor(tabInfo: BooleanFormTabInfo): void {
   });
   row.append(stateLabel, control);
   body.appendChild(row);
-  form.appendChild(header);
-  form.appendChild(body);
+  appendFormSections(form, header, body, readonly);
   container.appendChild(form);
 }
 
@@ -1323,7 +1339,7 @@ export function showModuleSettingsEditor(tabInfo: ModuleSettingsFormTabInfo): vo
   addSwitch('아이콘 숨김', 'RisuAI의 모듈 목록에서 아이콘을 숨깁니다.', 'hideIcon');
   body.appendChild(switches);
 
-  form.append(header, body);
+  appendFormSections(form, header, body, readonly);
   container.appendChild(form);
 }
 
@@ -1371,8 +1387,7 @@ export function showToggleTemplateEditor(tabInfo: ToggleFormTabInfo): void {
   );
   formEditors.push(handle);
 
-  form.appendChild(header);
-  form.appendChild(body);
+  appendFormSections(form, header, body, readonly);
   container.appendChild(form);
 }
 
@@ -1676,8 +1691,7 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
 
   body.appendChild(flagsPanel);
 
-  form.appendChild(header);
-  form.appendChild(body);
+  appendFormSections(form, header, body, readonly);
   container.appendChild(form);
 
   // Drag-to-resize for replace out

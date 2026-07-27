@@ -187,38 +187,6 @@ interface CloseConfirmCallback {
   (id: number): void;
 }
 
-interface PopoutPanelData {
-  [key: string]: unknown;
-}
-
-interface EditorPopoutData {
-  tabId: string;
-  label: string;
-  language: string;
-  content: string;
-  readOnly: boolean;
-}
-
-interface PopoutTreeItem {
-  label: string;
-  icon: string;
-  id: string | null;
-  indent: number;
-  isHeader?: boolean;
-  isFolder?: boolean;
-  refIdx?: number;
-}
-
-interface PopoutSidebarData {
-  items: PopoutTreeItem[];
-}
-
-interface PopoutRefsData {
-  guides: string[];
-  sessionGuides?: string[];
-  refs: PopoutTreeItem[];
-}
-
 interface ReferenceRecord {
   id?: string;
   fileName: string;
@@ -340,54 +308,12 @@ interface TokiAPI {
   getPendingSessionRecovery: () => Promise<PendingRecoveryCandidateIpc | null>;
   resolvePendingSessionRecovery: (action: SessionRecoveryAction) => Promise<SessionRecoveryResolveResult | null>;
   toggleDevTools: () => Promise<void>;
-  popoutPanel: (type: string, requestId?: string | null) => Promise<boolean>;
-  closePopout: (type: string) => Promise<boolean>;
-  onPopoutClosed: (cb: (type: string) => void) => void;
-  onPopoutSidebarClick: (cb: (itemId: string) => void) => void;
-  onPopoutRefsClick: (cb: (tabId: string) => void) => void;
-  setEditorPopoutData: (data: EditorPopoutData) => Promise<string>;
-  onEditorPopoutChange: (cb: (tabId: string, content: string) => void) => void;
-  onEditorPopoutSave: (cb: VoidCallback) => void;
-  setPreviewPopoutData: (data: PopoutPanelData) => Promise<string>;
-  getGuidesPath: () => Promise<string>;
   resolveGuidePath: (filename: string) => Promise<string | null>;
-}
-
-interface PopoutAPI {
-  getType: () => string;
-  getRequestId: () => string | null;
-  dock: () => Promise<string | null>;
-  terminalIsRunning: () => Promise<boolean>;
-  terminalIsSessionRunning: (sessionId: string) => Promise<boolean>;
-  terminalStart: (cols?: number, rows?: number) => Promise<boolean>;
-  terminalStartSession: (sessionId: string, cols?: number, rows?: number, name?: string) => Promise<boolean>;
-  terminalInput: (data: string) => void;
-  terminalInputSession: (sessionId: string, data: string) => void;
-  terminalResize: (cols: number, rows: number) => void;
-  terminalResizeSession: (sessionId: string, cols: number, rows: number) => void;
-  onTerminalData: (cb: TerminalDataCallback) => VoidCallback;
-  onTerminalDataSession: (cb: TerminalSessionDataCallback) => VoidCallback;
-  onTerminalExit: (cb: VoidCallback) => VoidCallback;
-  onTerminalExitSession: (cb: (sessionId: string) => void) => VoidCallback;
-  onTerminalStatus: (cb: (event: TerminalStatusEvent) => void) => VoidCallback;
-  onTerminalStatusSession: (cb: (sessionId: string, event: TerminalStatusEvent) => void) => VoidCallback;
-  getSidebarData: () => Promise<PopoutSidebarData>;
-  onSidebarDataChanged: (cb: VoidCallback) => VoidCallback;
-  sidebarClick: (itemId: string) => void;
-  getEditorData: (requestId?: string | null) => Promise<EditorPopoutData | null>;
-  editorChange: (tabId: string, content: string) => void;
-  editorSave: () => void;
-  getPreviewData: (requestId?: string | null) => Promise<PopoutPanelData | null>;
-  getAllAssetsMap: () => Promise<AssetsMapResult>;
-  getRefsData: () => Promise<PopoutRefsData>;
-  refsItemClick: (tabId: string) => void;
-  onRefsDataChanged: (cb: VoidCallback) => VoidCallback;
 }
 
 declare global {
   interface Window {
     tokiAPI: TokiAPI;
-    popoutAPI: PopoutAPI;
   }
 }
 

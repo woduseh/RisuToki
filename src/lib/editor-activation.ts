@@ -5,6 +5,7 @@ export interface EditorActivationTabLike {
 
 export const NON_MONACO_EDITOR_TAB_TYPES = new Set([
   '_image',
+  '_preview',
   '_booleanform',
   '_loreform',
   '_regexform',

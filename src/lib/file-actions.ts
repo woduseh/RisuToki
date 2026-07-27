@@ -14,6 +14,7 @@ export interface FileActionDeps {
   setFileData: (data: Record<string, unknown>) => void;
   getEditorInstance: () => MonacoEditor | null;
   setEditorInstance: (instance: null) => void;
+  disposeEditorSurfaces: () => void;
   getAutosaveDir: () => string;
   hasUnsavedChanges: () => boolean;
   requestDocumentReplacement: (targetLabel: string) => Promise<number>;
@@ -61,6 +62,7 @@ function syncEditorToActiveTab(deps: FileActionDeps): void {
 
 function resetEditorUI(deps: FileActionDeps): void {
   const editor = deps.getEditorInstance();
+  deps.disposeEditorSurfaces();
   deps.tabMgr.reset();
   if (editor) {
     editor.dispose();

@@ -56,18 +56,6 @@ interface MainStateStore {
   setTerminalCwd(cwd: string | null): void;
 }
 
-interface PopoutPayloadStore {
-  clear: (type: string, requestId?: string) => void;
-  peek: (type: string) => { requestId: string; data: unknown } | null;
-  prepare: (type: string, data: unknown) => string;
-  waitFor: (type: string, requestId: string, timeoutMs?: number) => Promise<unknown>;
-}
-
-interface GuidesListResult {
-  builtIn: string[];
-  session: string[];
-}
-
 interface SaveResult {
   success: boolean;
   path?: string;
@@ -205,14 +193,6 @@ const {
   ) => { validPaths: string[]; issues: ReferenceManifestIssue[] };
 };
 
-const { buildRefsPopoutData } = require('./src/lib/refs-popout-data') as {
-  buildRefsPopoutData: (guidesListResult: GuidesListResult, referenceFiles: ReferenceRecord[]) => unknown;
-};
-
-const { createPopoutPayloadStore } = require('./src/lib/popout-payload-store') as {
-  createPopoutPayloadStore: () => PopoutPayloadStore;
-};
-
 const { createMainStateStore } = require('./src/lib/main-state-store') as {
   createMainStateStore: () => MainStateStore;
 };
@@ -313,41 +293,19 @@ const { initAssetManager, invalidateAssetsMapCache } = require('./src/lib/asset-
   invalidateAssetsMapCache: () => void;
 };
 
-const { initGuidesManager, getGuidesDir, getGuidesListResult, resolveBuiltInGuidePath } =
-  require('./src/lib/guides-manager') as {
-    initGuidesManager: (deps: {
-      getMainWindow: () => BrowserWindow | null;
-      getDirname: () => string;
-      broadcastRefsDataChanged: () => void;
-    }) => void;
-    getGuidesDir: () => string;
-    getGuidesListResult: () => GuidesListResult;
-    resolveBuiltInGuidePath: (filename: string) => string | null;
-  };
+const { initGuidesManager, resolveBuiltInGuidePath } = require('./src/lib/guides-manager') as {
+  initGuidesManager: (deps: {
+    getMainWindow: () => BrowserWindow | null;
+    getDirname: () => string;
+    broadcastRefsDataChanged: () => void;
+  }) => void;
+  resolveBuiltInGuidePath: (filename: string) => string | null;
+};
 
 const { initIpcConfirm, askRendererConfirm, askRendererCloseConfirm } = require('./src/lib/ipc-confirm') as {
   initIpcConfirm: (deps: { getMainWindow: () => BrowserWindow | null }) => void;
   askRendererConfirm: (title: string, message: string) => Promise<boolean>;
   askRendererCloseConfirm: () => Promise<number>;
-};
-
-const { initPopoutManager, getPopoutWindows } = require('./src/lib/popout-manager') as {
-  initPopoutManager: (deps: {
-    getMainWindow: () => BrowserWindow | null;
-    getCurrentData: () => CharxData | null;
-    getReferenceFiles: () => ReferenceRecord[];
-    loadRendererPage: (
-      win: BrowserWindow,
-      entryFile: string,
-      query?: Record<string, string | undefined>,
-    ) => Promise<void>;
-    getGuidesDir: () => string;
-    getGuidesListResult: () => GuidesListResult;
-    buildRefsPopoutData: (guidesListResult: GuidesListResult, referenceFiles: ReferenceRecord[]) => unknown;
-    getDirname: () => string;
-    popoutPayloadStore: PopoutPayloadStore;
-  }) => void;
-  getPopoutWindows: () => Record<string, BrowserWindow>;
 };
 
 const { initAutosaveManager } = require('./src/lib/autosave-manager') as {
@@ -411,7 +369,6 @@ const { initDataSerializer, serializeForRenderer, applyUpdates } = require('./sr
 
 let mainWindow: BrowserWindow | null = null;
 const mainState: MainStateStore = createMainStateStore();
-const popoutPayloadStore: PopoutPayloadStore = createPopoutPayloadStore();
 
 // MCP API server
 let mcpApi: McpApiServer | null = null;
@@ -935,15 +892,8 @@ function loadPersistedReferenceFiles(): void {
 // ---------------------------------------------------------------------------
 
 function broadcastToAll(channel: string, ...args: unknown[]): void {
-  const allWindows = [mainWindow, ...Object.values(getPopoutWindows())];
-  for (const win of allWindows) {
-    if (win && !win.isDestroyed()) {
-      win.webContents.send(channel, ...args);
-      // Send sidebar-data-changed to popout windows in the same loop
-      if (channel === 'data-updated' && win !== mainWindow) {
-        win.webContents.send('sidebar-data-changed');
-      }
-    }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, ...args);
   }
 }
 
@@ -1241,19 +1191,6 @@ app.whenReady().then(() => {
     userDataPath: app.getPath('userData'),
     openDocument: (filePath) => openDocumentByPath(filePath),
     setCurrentDocument: (filePath, data) => mainState.setCurrentDocument(filePath, data),
-  });
-
-  // Initialize popout window management
-  initPopoutManager({
-    getMainWindow: () => mainWindow,
-    getCurrentData: () => mainState.currentData,
-    getReferenceFiles: () => mainState.referenceFiles,
-    loadRendererPage,
-    getGuidesDir,
-    getGuidesListResult,
-    buildRefsPopoutData,
-    getDirname: () => __dirname,
-    popoutPayloadStore,
   });
 });
 

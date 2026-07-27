@@ -115,6 +115,7 @@ export function showHelpPopup(): void {
     <div class="help-shortcut"><span>터미널 토글</span><kbd>Ctrl+\`</kbd></div>
     <div class="help-shortcut"><span>설정</span><kbd>Ctrl+,</kbd></div>
     <div class="help-shortcut"><span>프리뷰</span><kbd>F5</kbd></div>
+    <div class="help-shortcut"><span>프리뷰 집중 모드</span><kbd>Ctrl+Shift+F</kbd></div>
     <div class="help-shortcut"><span>확대 / 축소 / 기본</span><kbd>Ctrl++ / Ctrl+- / Ctrl+0</kbd></div>
 
     <h3>💬 캐릭터 터미널</h3>
@@ -129,10 +130,9 @@ export function showHelpPopup(): void {
     <div class="help-shortcut"><span>Codex 시작</span><span>터미널 메뉴</span></div>
 
     <h3>🧰 작업공간과 도구</h3>
-    <div class="help-shortcut"><span>참고자료 탭</span><span>상단 참고자료 버튼 또는 우측 사이드 패널</span></div>
-    <div class="help-shortcut"><span>터미널 표시</span><span>헤더 닫기 / 하단 열기 버튼</span></div>
+    <div class="help-shortcut"><span>참고자료</span><span>우측 패널의 가이드 / 참고 파일 탭</span></div>
+    <div class="help-shortcut"><span>터미널 표시</span><span>작업공간 바 우측의 터미널 버튼</span></div>
     <div class="help-shortcut"><span>탐색기 / 속성 패널</span><span>작업공간 상단 버튼</span></div>
-    <div class="help-shortcut"><span>참고자료·터미널 팝아웃</span><span>각 패널의 ↗ 버튼</span></div>
     <div class="help-shortcut"><span>아바타 우클릭</span><span>이미지 수동 변경</span></div>
     <div class="help-shortcut"><span>앱 테마 / RP 모드 / BGM</span><span>설정</span></div>
 

@@ -15,6 +15,7 @@ describe('keyboard shortcuts', () => {
       closeActiveTab: vi.fn(),
       toggleSidebar: vi.fn(),
       toggleTerminal: vi.fn(),
+      togglePreviewFocusMode: vi.fn(),
       showPreviewPanel: vi.fn(),
       showSettingsPopup: vi.fn(),
     };
@@ -34,6 +35,7 @@ describe('keyboard shortcuts', () => {
       closeActiveTab: vi.fn(),
       toggleSidebar: vi.fn(),
       toggleTerminal: vi.fn(),
+      togglePreviewFocusMode: vi.fn(),
       showPreviewPanel: vi.fn(),
       showSettingsPopup: vi.fn(),
     };
@@ -42,5 +44,25 @@ describe('keyboard shortcuts', () => {
     dispatchKeyboardEvent({ ctrlKey: true, key: ',' });
 
     expect(deps.showSettingsPopup).toHaveBeenCalledTimes(1);
+  });
+
+  it('toggles preview focus mode on Ctrl+Shift+F', () => {
+    const deps = {
+      handleNew: vi.fn(),
+      handleOpen: vi.fn(),
+      handleSave: vi.fn(),
+      handleSaveAs: vi.fn(),
+      closeActiveTab: vi.fn(),
+      toggleSidebar: vi.fn(),
+      toggleTerminal: vi.fn(),
+      togglePreviewFocusMode: vi.fn(),
+      showPreviewPanel: vi.fn(),
+      showSettingsPopup: vi.fn(),
+    };
+
+    initKeyboard(deps);
+    dispatchKeyboardEvent({ ctrlKey: true, shiftKey: true, key: 'F' });
+
+    expect(deps.togglePreviewFocusMode).toHaveBeenCalledTimes(1);
   });
 });

@@ -3,9 +3,10 @@ import {
   findReferenceUiFieldItem,
   getReferenceGreetingItemLabel,
   getReferenceUiItems,
-  shouldRenderReferenceUiItem,
 } from './reference-item-registry';
 import { getRefFileType } from './reference-shared';
+import { getReferenceExplorerWorkspaces } from './reference-explorer-model';
+import { getFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
 import { parseLuaSections, parseCssSections } from './section-parser';
 import { parseTriggerScriptsText } from './trigger-script-model';
 import { normalizeTriggerScriptsText } from './trigger-scripts-runtime';
@@ -108,7 +109,7 @@ export async function addReferenceFile(container: HTMLElement, deps: RefsSidebar
   if (!result) return;
   const added = (await deps.syncReferenceFiles()).length - beforeCount;
   if (added > 0) {
-    await buildRefsSidebar(container, deps);
+    await buildRefsSidebar(container, deps, 'files');
     deps.setStatus(`참고 파일 추가: ${added}개`);
   } else {
     deps.setStatus('이미 로드된 파일입니다');
@@ -118,286 +119,446 @@ export async function addReferenceFile(container: HTMLElement, deps: RefsSidebar
 // ---- buildRefsSidebar ----
 
 let _buildVersion = 0;
+let _selectedReferenceKey: string | null = null;
+const _selectedWorkspaceByReference = new Map<string, string>();
+const _expandedReferenceLoreFolders = new Set<string>();
+export type ReferencePanelView = 'guides' | 'files';
 
 /** @internal — exposed for testing only */
 export function _resetBuildVersion(): void {
   _buildVersion = 0;
+  _selectedReferenceKey = null;
+  _selectedWorkspaceByReference.clear();
+  _expandedReferenceLoreFolders.clear();
 }
 
-export async function buildRefsSidebar(container: HTMLElement, deps: RefsSidebarDeps): Promise<void> {
+export async function buildRefsSidebar(
+  container: HTMLElement,
+  deps: RefsSidebarDeps,
+  view: ReferencePanelView = 'files',
+): Promise<void> {
   const myVersion = ++_buildVersion;
   container.innerHTML = '';
   await deps.syncReferenceFiles();
   if (myVersion !== _buildVersion) return;
   const referenceFiles = deps.getReferenceFiles();
 
-  // ---- Guides folder ----
-  const guideData = await deps.listGuides();
-  if (myVersion !== _buildVersion) return;
-  const builtInFiles =
-    (guideData as { builtIn?: string[] })?.builtIn || (Array.isArray(guideData) ? (guideData as string[]) : []);
-  const sessionFiles = (guideData as { session?: string[] })?.session || [];
-  const guideFolder = createFolderItem('가이드', '📖', 0);
-  container.appendChild(guideFolder.header);
-  container.appendChild(guideFolder.children);
-  const guidePathFolders = new Map<string, HTMLDivElement>();
-  let sessionGuideRoot: HTMLDivElement | null = null;
+  const body = document.createElement('div');
+  body.className = 'reference-subtab-body';
+  container.appendChild(body);
 
-  function guideDestination(
-    fileName: string,
-    isSession: boolean,
-  ): { parent: HTMLElement; label: string; indent: number } {
-    const parts = fileName.replace(/\\/g, '/').split('/').filter(Boolean);
-    const label = parts.pop() || fileName;
-    let parent = guideFolder.children;
-    let indent = 1;
-    let key = isSession ? 'session' : 'built-in';
-    if (isSession) {
-      if (!sessionGuideRoot) {
-        const sessionFolder = createFolderItem('세션 가이드', '⏳', 1);
-        sessionFolder.header.dataset.label = '세션 가이드';
-        guideFolder.children.append(sessionFolder.header, sessionFolder.children);
-        sessionGuideRoot = sessionFolder.children;
-      }
-      parent = sessionGuideRoot;
-      indent = 2;
-    }
-    for (const segment of parts) {
-      key += `/${segment}`;
-      let children = guidePathFolders.get(key);
-      if (!children) {
-        const folder = createFolderItem(segment, '📁', indent);
-        folder.header.dataset.label = segment;
-        parent.append(folder.header, folder.children);
-        children = folder.children;
-        guidePathFolders.set(key, children);
-      }
-      parent = children;
-      indent += 1;
-    }
-    return { parent, label, indent };
-  }
-
-  // Right-click on guide folder: new / import
-  guideFolder.header.addEventListener('contextmenu', (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    deps.showContextMenu(e.clientX, e.clientY, [
-      {
-        label: '새 가이드 작성',
-        action: async () => {
-          const name = await deps.showPrompt('파일 이름 (예: guide.md)', 'new_guide.md');
-          if (!name) return;
-          const fn = name.endsWith('.md') ? name : name + '.md';
-          await deps.writeGuide(fn, '');
-          buildRefsSidebar(container, deps);
-          deps.openExternalTextTab(
-            `guide_${fn}`,
-            `[가이드] ${fn}`,
-            '',
-            (val: string) => deps.writeGuide(fn, val),
-            'markdown',
-          );
-          deps.setStatus(`가이드 생성: ${fn}`);
-        },
-      },
-      {
-        label: '가이드 불러오기 (세션 전용)',
-        action: async () => {
-          const imported = await deps.importGuide();
-          if (imported.length > 0) {
-            buildRefsSidebar(container, deps);
-            deps.setStatus(`가이드 불러옴 (세션): ${imported.join(', ')}`);
-          }
-        },
-      },
-    ]);
-  });
-
-  // Helper: create guide item with click + context menu
-  function addGuideItem(fileName: string, isSession: boolean) {
-    const destination = guideDestination(fileName, isSession);
-    const el = createTreeItem(destination.label, '·', destination.indent);
-    el.title = fileName;
-    el.addEventListener('click', async () => {
-      const tabId = `guide_${fileName}`;
-      const existing = deps.findOpenTab(tabId);
-      if (existing) {
-        deps.activateTab(tabId);
-        return;
-      }
-      const content = await deps.readGuide(fileName);
-      if (content == null) {
-        deps.setStatus('가이드 파일 읽기 실패');
-        return;
-      }
-      deps.openExternalTextTab(
-        tabId,
-        `[가이드] ${fileName}`,
-        content,
-        (val: string) => deps.writeGuide(fileName, val),
-        'markdown',
-      );
-    });
-    el.addEventListener('contextmenu', (e: MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const items: unknown[] = [
-        {
-          label: '이름 복사',
-          action: () => {
-            navigator.clipboard.writeText(fileName);
-            deps.setStatus(`복사됨: ${fileName}`);
-          },
-        },
-      ];
-      if (!isSession) {
-        items.push({
-          label: '경로 복사',
-          action: async () => {
-            const resolvedPath = await deps.resolveGuidePath(fileName);
-            const fullPath = resolvedPath ? resolvedPath.replace(/\\/g, '/') : fileName;
-            navigator.clipboard.writeText(fullPath);
-            deps.setStatus(`복사됨: ${fullPath}`);
-          },
-        });
-      }
-      items.push('---');
-      items.push({
-        label: isSession ? '제거' : '삭제',
-        action: async () => {
-          const msg = isSession
-            ? `"${fileName}" 세션 가이드를 제거하시겠습니까?`
-            : `"${fileName}" 가이드를 삭제하시겠습니까?`;
-          if (!(await deps.showConfirm(msg))) return;
-          deps.closeTab(`guide_${fileName}`);
-          await deps.deleteGuide(fileName);
-          buildRefsSidebar(container, deps);
-          deps.setStatus(isSession ? `가이드 제거됨: ${fileName}` : `가이드 삭제됨: ${fileName}`);
-        },
-      });
-      deps.showContextMenu(e.clientX, e.clientY, items);
-    });
-    destination.parent.appendChild(el);
-  }
-
-  for (const fileName of builtInFiles) addGuideItem(fileName, false);
-  for (const fileName of sessionFiles) addGuideItem(fileName, true);
-
-  // ---- Reference files section ----
-  const refHeader = document.createElement('div');
-  refHeader.className = 'tree-item indent-0 ref-section-header';
-  refHeader.style.cssText =
-    'color:var(--accent);font-weight:700;font-size:11px;letter-spacing:0.5px;padding:10px 8px 4px;cursor:pointer;text-transform:uppercase;border-top:1px solid var(--border-color);margin-top:8px;';
-  refHeader.textContent = '── 참고 파일 ──';
-  refHeader.title = '클릭하여 참고 파일 추가';
-  refHeader.addEventListener('click', () => addReferenceFile(container, deps));
-  refHeader.addEventListener('contextmenu', (e: MouseEvent) => {
-    e.preventDefault();
-    deps.showContextMenu(e.clientX, e.clientY, [
-      {
-        label: '참고 파일 추가',
-        action: () => addReferenceFile(container, deps),
-      },
-      ...(referenceFiles.length > 0
-        ? [
-            '---',
-            {
-              label: '모두 제거',
-              action: async () => {
-                await deps.removeAllReferences();
-                await buildRefsSidebar(container, deps);
-              },
-            },
-          ]
-        : []),
-    ]);
-  });
-  container.appendChild(refHeader);
-
-  // Render reference paths as nested folders when their display name contains
-  // slash-separated directories.
-  const referencePathFolders = new Map<string, HTMLDivElement>();
-  for (let ri = 0; ri < referenceFiles.length; ri++) {
-    const parts = referenceFiles[ri].fileName.replace(/\\/g, '/').split('/').filter(Boolean);
-    const displayName = parts.pop() || referenceFiles[ri].fileName;
-    let parent = container;
-    let indent = 0;
-    let key = '';
-    for (const segment of parts) {
-      key += `/${segment}`;
-      let children = referencePathFolders.get(key);
-      if (!children) {
-        const folder = createFolderItem(segment, '📁', indent);
-        folder.header.dataset.label = segment;
-        parent.append(folder.header, folder.children);
-        children = folder.children;
-        referencePathFolders.set(key, children);
-      }
-      parent = children;
-      indent += 1;
-    }
-    renderReferenceFile(parent, deps, referenceFiles, ri, displayName, indent);
+  if (view === 'guides') {
+    const guideData = await deps.listGuides();
+    if (myVersion !== _buildVersion) return;
+    const builtInFiles =
+      (guideData as { builtIn?: string[] })?.builtIn || (Array.isArray(guideData) ? (guideData as string[]) : []);
+    const sessionFiles = (guideData as { session?: string[] })?.session || [];
+    renderGuidesView(body, container, deps, builtInFiles, sessionFiles);
+  } else {
+    renderReferenceFilesView(body, container, deps, referenceFiles);
   }
 }
 
-// ---- Per-reference-file rendering (private helper) ----
+function createToolbarButton(label: string, title: string, onClick: (event: MouseEvent) => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'reference-toolbar-button';
+  button.textContent = label;
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  button.addEventListener('click', onClick);
+  return button;
+}
 
-function renderReferenceFile(
-  container: HTMLElement,
+function renderGuidesView(
+  body: HTMLElement,
+  rootContainer: HTMLElement,
+  deps: RefsSidebarDeps,
+  builtInFiles: string[],
+  sessionFiles: string[],
+): void {
+  const toolbar = document.createElement('div');
+  toolbar.className = 'reference-toolbar';
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.placeholder = '가이드 검색…';
+  search.setAttribute('aria-label', '가이드 검색');
+  const actions = document.createElement('div');
+  actions.className = 'reference-toolbar-actions';
+  toolbar.append(search, actions);
+  const tree = document.createElement('div');
+  tree.className = 'reference-explorer-tree';
+  body.append(toolbar, tree);
+
+  const createGuide = async () => {
+    const name = await deps.showPrompt('파일 이름 (예: guide.md)', 'new_guide.md');
+    if (!name) return;
+    const fileName = name.endsWith('.md') ? name : `${name}.md`;
+    await deps.writeGuide(fileName, '');
+    await buildRefsSidebar(rootContainer, deps, 'guides');
+    deps.openExternalTextTab(
+      `guide_${fileName}`,
+      `[가이드] ${fileName}`,
+      '',
+      (value: string) => deps.writeGuide(fileName, value),
+      'markdown',
+    );
+    deps.setStatus(`가이드 생성: ${fileName}`);
+  };
+  const importGuide = async () => {
+    const imported = await deps.importGuide();
+    if (imported.length === 0) return;
+    await buildRefsSidebar(rootContainer, deps, 'guides');
+    deps.setStatus(`가이드 불러옴 (세션): ${imported.join(', ')}`);
+  };
+  actions.append(
+    createToolbarButton('+', '새 가이드 작성', () => void createGuide()),
+    createToolbarButton('⇩', '가이드 불러오기 (세션 전용)', () => void importGuide()),
+  );
+
+  const renderTree = () => {
+    tree.innerHTML = '';
+    const query = search.value.trim().toLocaleLowerCase();
+    const guidePathFolders = new Map<string, HTMLDivElement>();
+    let sessionGuideRoot: HTMLDivElement | null = null;
+
+    const destination = (fileName: string, isSession: boolean) => {
+      const parts = fileName.replace(/\\/g, '/').split('/').filter(Boolean);
+      const label = parts.pop() || fileName;
+      let parent = tree;
+      let indent = 0;
+      let key = isSession ? 'session' : 'built-in';
+      if (isSession) {
+        if (!sessionGuideRoot) {
+          const sessionFolder = createFolderItem('세션 가이드', '⏳', 0);
+          tree.append(sessionFolder.header, sessionFolder.children);
+          sessionGuideRoot = sessionFolder.children;
+        }
+        parent = sessionGuideRoot;
+        indent = 1;
+      }
+      for (const segment of parts) {
+        key += `/${segment}`;
+        let children = guidePathFolders.get(key);
+        if (!children) {
+          const folder = createFolderItem(segment, '📁', indent);
+          folder.header.dataset.label = segment;
+          parent.append(folder.header, folder.children);
+          children = folder.children;
+          guidePathFolders.set(key, children);
+        }
+        parent = children;
+        indent += 1;
+      }
+      return { parent, label, indent };
+    };
+
+    const addGuideItem = (fileName: string, isSession: boolean) => {
+      if (query && !fileName.toLocaleLowerCase().includes(query)) return;
+      const target = destination(fileName, isSession);
+      const item = createTreeItem(target.label, '·', target.indent);
+      item.title = fileName;
+      item.addEventListener('click', async () => {
+        const tabId = `guide_${fileName}`;
+        if (deps.findOpenTab(tabId)) {
+          deps.activateTab(tabId);
+          return;
+        }
+        const content = await deps.readGuide(fileName);
+        if (content == null) {
+          deps.setStatus('가이드 파일 읽기 실패');
+          return;
+        }
+        deps.openExternalTextTab(
+          tabId,
+          `[가이드] ${fileName}`,
+          content,
+          (value: string) => deps.writeGuide(fileName, value),
+          'markdown',
+        );
+      });
+      item.addEventListener('contextmenu', (event: MouseEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const items: unknown[] = [
+          {
+            label: '이름 복사',
+            action: () => {
+              void navigator.clipboard.writeText(fileName);
+              deps.setStatus(`복사됨: ${fileName}`);
+            },
+          },
+        ];
+        if (!isSession) {
+          items.push({
+            label: '경로 복사',
+            action: async () => {
+              const resolvedPath = await deps.resolveGuidePath(fileName);
+              const fullPath = resolvedPath ? resolvedPath.replace(/\\/g, '/') : fileName;
+              await navigator.clipboard.writeText(fullPath);
+              deps.setStatus(`복사됨: ${fullPath}`);
+            },
+          });
+        }
+        items.push('---', {
+          label: isSession ? '제거' : '삭제',
+          action: async () => {
+            const message = isSession
+              ? `"${fileName}" 세션 가이드를 제거하시겠습니까?`
+              : `"${fileName}" 가이드를 삭제하시겠습니까?`;
+            if (!(await deps.showConfirm(message))) return;
+            deps.closeTab(`guide_${fileName}`);
+            await deps.deleteGuide(fileName);
+            await buildRefsSidebar(rootContainer, deps, 'guides');
+            deps.setStatus(isSession ? `가이드 제거됨: ${fileName}` : `가이드 삭제됨: ${fileName}`);
+          },
+        });
+        deps.showContextMenu(event.clientX, event.clientY, items);
+      });
+      target.parent.appendChild(item);
+    };
+
+    for (const fileName of builtInFiles) addGuideItem(fileName, false);
+    for (const fileName of sessionFiles) addGuideItem(fileName, true);
+    if (!tree.childElementCount) {
+      const empty = document.createElement('div');
+      empty.className = 'reference-empty-state';
+      empty.textContent = query ? '검색 결과가 없습니다.' : '등록된 가이드가 없습니다.';
+      tree.appendChild(empty);
+    }
+  };
+  search.addEventListener('input', renderTree);
+  renderTree();
+}
+
+function referenceKey(reference: ReferenceFile, index: number): string {
+  return reference.id || reference.filePath || `${index}:${reference.fileName}`;
+}
+
+function referenceDisplayName(reference: ReferenceFile): string {
+  return reference.fileName.replace(/\\/g, '/').split('/').filter(Boolean).pop() || reference.fileName;
+}
+
+function renderReferenceFilesView(
+  body: HTMLElement,
+  rootContainer: HTMLElement,
   deps: RefsSidebarDeps,
   referenceFiles: ReferenceFile[],
-  ri: number,
-  displayName = referenceFiles[ri].fileName,
-  indent = 0,
 ): void {
-  const ref = referenceFiles[ri];
-  const fileType = ref.fileType || getRefFileType(ref);
-  const refFolder = createFolderItem(displayName, '📎', indent);
-  refFolder.header.dataset.label = displayName;
-  refFolder.header.title = ref.filePath || ref.fileName;
-  container.appendChild(refFolder.header);
-  container.appendChild(refFolder.children);
+  body.innerHTML = '';
+  const selectedIndex = referenceFiles.findIndex(
+    (reference, index) => referenceKey(reference, index) === _selectedReferenceKey,
+  );
+  if (selectedIndex >= 0) {
+    renderSelectedReference(body, rootContainer, deps, referenceFiles, selectedIndex);
+    return;
+  }
+  _selectedReferenceKey = null;
 
-  const refIdx = ri;
-  refFolder.header.addEventListener('contextmenu', (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const items: unknown[] = [
-      {
-        label: '이름 복사',
-        action: () => {
-          navigator.clipboard.writeText(ref.fileName);
-          deps.setStatus(`복사됨: ${ref.fileName}`);
-        },
-      },
-    ];
-    if (ref.filePath) {
-      items.push({
-        label: '경로 복사',
-        action: () => {
-          navigator.clipboard.writeText(ref.filePath!);
-          deps.setStatus(`복사됨: ${ref.filePath}`);
-        },
+  const toolbar = document.createElement('div');
+  toolbar.className = 'reference-toolbar';
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.placeholder = '참고 파일 검색…';
+  search.setAttribute('aria-label', '참고 파일 검색');
+  const actions = document.createElement('div');
+  actions.className = 'reference-toolbar-actions';
+  actions.append(
+    createToolbarButton('+', '참고 파일 추가', () => {
+      void addReferenceFile(rootContainer, deps);
+    }),
+  );
+  if (referenceFiles.length > 0) {
+    actions.append(
+      createToolbarButton('⋯', '참고 파일 메뉴', (event) => {
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        deps.showContextMenu(rect.right, rect.bottom, [
+          {
+            label: '모두 제거',
+            action: async () => {
+              await deps.removeAllReferences();
+              _selectedReferenceKey = null;
+              await buildRefsSidebar(rootContainer, deps, 'files');
+            },
+          },
+        ]);
+      }),
+    );
+  }
+  toolbar.append(search, actions);
+  const list = document.createElement('div');
+  list.className = 'reference-file-list';
+  body.append(toolbar, list);
+
+  const renderList = () => {
+    list.innerHTML = '';
+    const query = search.value.trim().toLocaleLowerCase();
+    referenceFiles.forEach((reference, index) => {
+      const haystack = `${reference.fileName} ${reference.filePath || ''}`.toLocaleLowerCase();
+      if (query && !haystack.includes(query)) return;
+      const fileType = reference.fileType || getRefFileType(reference);
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'reference-file-row';
+      row.title = reference.filePath || reference.fileName;
+      row.innerHTML = `<span class="reference-file-badge">${fileType.toUpperCase()}</span><span class="reference-file-copy"><strong></strong><small></small></span><span class="reference-file-chevron">›</span>`;
+      row.querySelector('strong')!.textContent = referenceDisplayName(reference);
+      row.querySelector('small')!.textContent = reference.filePath || reference.fileName;
+      row.addEventListener('click', () => {
+        _selectedReferenceKey = referenceKey(reference, index);
+        renderReferenceFilesView(body, rootContainer, deps, referenceFiles);
       });
+      row.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        showReferenceFileMenu(event.clientX, event.clientY, rootContainer, deps, referenceFiles, index);
+      });
+      list.appendChild(row);
+    });
+    if (!list.childElementCount) {
+      const empty = document.createElement('div');
+      empty.className = 'reference-empty-state';
+      empty.textContent = query ? '검색 결과가 없습니다.' : '등록된 참고 파일이 없습니다.';
+      list.appendChild(empty);
     }
-    items.push('---');
+  };
+  search.addEventListener('input', renderList);
+  renderList();
+}
+
+function showReferenceFileMenu(
+  x: number,
+  y: number,
+  rootContainer: HTMLElement,
+  deps: RefsSidebarDeps,
+  referenceFiles: ReferenceFile[],
+  index: number,
+): void {
+  const reference = referenceFiles[index];
+  const items: unknown[] = [
+    {
+      label: '이름 복사',
+      action: () => {
+        void navigator.clipboard.writeText(reference.fileName);
+        deps.setStatus(`복사됨: ${reference.fileName}`);
+      },
+    },
+  ];
+  if (reference.filePath) {
     items.push({
-      label: '참고 파일 제거',
-      action: async () => {
-        await deps.removeReference(referenceFiles[refIdx].filePath || referenceFiles[refIdx].fileName);
-        await buildRefsSidebar(container, deps);
+      label: '경로 복사',
+      action: () => {
+        void navigator.clipboard.writeText(reference.filePath!);
+        deps.setStatus(`복사됨: ${reference.filePath}`);
       },
     });
-    deps.showContextMenu(e.clientX, e.clientY, items);
+  }
+  items.push('---', {
+    label: '참고 파일 제거',
+    action: async () => {
+      await deps.removeReference(reference.filePath || reference.fileName);
+      _selectedReferenceKey = null;
+      await buildRefsSidebar(rootContainer, deps, 'files');
+    },
+  });
+  deps.showContextMenu(x, y, items);
+}
+
+function renderSelectedReference(
+  body: HTMLElement,
+  rootContainer: HTMLElement,
+  deps: RefsSidebarDeps,
+  referenceFiles: ReferenceFile[],
+  refIdx: number,
+): void {
+  const reference = referenceFiles[refIdx];
+  const fileType = reference.fileType || getRefFileType(reference);
+  const key = referenceKey(reference, refIdx);
+  const workspaces = getReferenceExplorerWorkspaces(fileType, reference.data);
+  let workspaceId = _selectedWorkspaceByReference.get(key);
+  if (!workspaceId || !workspaces.some((workspace) => workspace.id === workspaceId)) {
+    workspaceId = workspaces[0]?.id;
+  }
+  if (workspaceId) _selectedWorkspaceByReference.set(key, workspaceId);
+
+  const header = document.createElement('div');
+  header.className = 'reference-detail-header';
+  const back = createToolbarButton('‹', '참고 파일 목록으로 돌아가기', () => {
+    _selectedReferenceKey = null;
+    renderReferenceFilesView(body, rootContainer, deps, referenceFiles);
+  });
+  const identity = document.createElement('div');
+  identity.className = 'reference-detail-identity';
+  const name = document.createElement('strong');
+  name.textContent = referenceDisplayName(reference);
+  const badge = document.createElement('span');
+  badge.className = 'reference-file-badge';
+  badge.textContent = fileType.toUpperCase();
+  identity.append(name, badge);
+  const menu = createToolbarButton('⋯', '참고 파일 메뉴', (event) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    showReferenceFileMenu(rect.right, rect.bottom, rootContainer, deps, referenceFiles, refIdx);
+  });
+  header.append(back, identity, menu);
+
+  const workspaceTabs = document.createElement('div');
+  workspaceTabs.className = 'reference-workspace-tabs';
+  workspaceTabs.setAttribute('role', 'tablist');
+  workspaceTabs.setAttribute('aria-label', '참고 파일 작업공간');
+  const content = document.createElement('div');
+  content.className = 'reference-workspace-content';
+  body.append(header, workspaceTabs, content);
+
+  const renderWorkspace = () => {
+    content.innerHTML = '';
+    workspaceTabs.querySelectorAll('button').forEach((button) => {
+      const active = button.dataset.workspaceId === workspaceId;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', String(active));
+    });
+    const workspace = workspaces.find((candidate) => candidate.id === workspaceId);
+    if (!workspace) {
+      const empty = document.createElement('div');
+      empty.className = 'reference-empty-state';
+      empty.textContent = '표시할 항목이 없습니다.';
+      content.appendChild(empty);
+      return;
+    }
+    renderReferenceWorkspaceItems(content, deps, reference, refIdx, workspace.items);
+  };
+
+  for (const workspace of workspaces) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.workspaceId = workspace.id;
+    button.setAttribute('role', 'tab');
+    button.textContent = workspace.label;
+    button.addEventListener('click', () => {
+      workspaceId = workspace.id;
+      _selectedWorkspaceByReference.set(key, workspace.id);
+      renderWorkspace();
+    });
+    workspaceTabs.appendChild(button);
+  }
+  renderWorkspace();
+}
+
+function renderReferenceWorkspaceItems(
+  container: HTMLElement,
+  deps: RefsSidebarDeps,
+  ref: ReferenceFile,
+  refIdx: number,
+  items: ReturnType<typeof getReferenceExplorerWorkspaces>[number]['items'],
+): void {
+  container.addEventListener('click', (event) => {
+    const item = (event.target as HTMLElement).closest<HTMLElement>('.tree-item');
+    if (!item || !container.contains(item)) return;
+    container.querySelectorAll('.tree-item.active').forEach((candidate) => candidate.classList.remove('active'));
+    item.classList.add('active');
   });
 
-  for (const item of getReferenceUiItems(fileType)) {
-    if (!shouldRenderReferenceUiItem(item, ref.data)) {
-      continue;
-    }
+  for (const item of items) {
     if (item.kind === 'field') {
-      const el = createTreeItem(item.label, item.icon, 1);
+      const el = createTreeItem(item.label, item.icon, 0);
       const tabId = `ref_${refIdx}_${item.field}`;
       el.addEventListener('click', () => {
         deps.openTab(tabId, `[참고] ${ref.fileName} - ${item.label}`, item.language, () => ref.data[item.field], null);
@@ -415,41 +576,41 @@ function renderReferenceFile(
           },
         ]);
       });
-      refFolder.children.appendChild(el);
+      container.appendChild(el);
       continue;
     }
     if (item.kind === 'greetings') {
-      renderRefGreetings(refFolder.children, deps, ref, refIdx, item.label, item.greetingType, item.field, item.icon);
+      renderRefGreetings(container, deps, ref, refIdx, item.label, item.greetingType, item.field, item.icon);
       continue;
     }
     if (item.kind === 'lua') {
-      renderRefLua(refFolder.children, deps, ref, refIdx);
+      renderRefLua(container, deps, ref, refIdx);
       continue;
     }
     if (item.kind === 'css') {
-      renderRefCss(refFolder.children, deps, ref, refIdx);
+      renderRefCss(container, deps, ref, refIdx);
       continue;
     }
     if (item.kind === 'triggerScripts') {
-      renderRefTriggerScripts(refFolder.children, deps, ref, refIdx, item.label, item.icon);
+      renderRefTriggerScripts(container, deps, ref, refIdx, item.label, item.icon);
       continue;
     }
     if (item.kind === 'lorebook') {
-      renderRefLorebook(refFolder.children, deps, ref, refIdx);
+      renderRefLorebook(container, deps, ref, refIdx);
       continue;
     }
     if (item.kind === 'regex') {
-      renderRefRegex(refFolder.children, deps, ref, refIdx);
+      renderRefRegex(container, deps, ref, refIdx);
       continue;
     }
     if (item.kind === 'risup-group') {
-      const el = createTreeItem(item.label, item.icon, 1);
+      const el = createTreeItem(item.label, item.icon, 0);
       const tabId = `ref_${refIdx}_risup_${item.groupId}`;
       el.addEventListener('click', () => {
         const tab = deps.openTab(tabId, `[참고] ${ref.fileName} - ${item.label}`, '_risupform', () => ref.data, null);
         if (tab) tab._risupGroupId = item.groupId;
       });
-      refFolder.children.appendChild(el);
+      container.appendChild(el);
     }
   }
 }
@@ -668,43 +829,29 @@ function renderRefCss(parent: HTMLElement, deps: RefsSidebarDeps, ref: Reference
 
 function renderRefLorebook(parent: HTMLElement, deps: RefsSidebarDeps, ref: ReferenceFile, refIdx: number): void {
   const lorebook = ref.data.lorebook!;
-  const lbFolder = createFolderItem(`로어북 (${lorebook.length})`, '📚', 1);
-  parent.appendChild(lbFolder.header);
-  parent.appendChild(lbFolder.children);
-
-  // Group by folder
   const folderDataList: {
     entry: Record<string, unknown>;
     index: number;
+    ref: string;
     children: { entry: Record<string, unknown>; index: number }[];
   }[] = [];
-  const folderLookup: Record<string, (typeof folderDataList)[number]> = {};
+  const folderLookup = new Map<string, (typeof folderDataList)[number]>();
   const rootEntries: { entry: Record<string, unknown>; index: number }[] = [];
 
   for (let li = 0; li < lorebook.length; li++) {
     const entry = lorebook[li];
     if (entry.mode === 'folder') {
-      const fd = { entry, index: li, children: [] as typeof rootEntries };
+      const folderRef = getFolderRef(entry) || `idx:${li}`;
+      const fd = { entry, index: li, ref: folderRef, children: [] as typeof rootEntries };
       folderDataList.push(fd);
-      const k = (entry.key as string) || '';
-      const c = (entry.comment as string) || '';
-      if (k) {
-        folderLookup[`folder:${k}`] = fd;
-        folderLookup[k] = fd;
-      }
-      if (c) {
-        folderLookup[`folder:${c}`] = fd;
-        folderLookup[c] = fd;
-      }
-      folderLookup[`folder:${li}`] = fd;
-      folderLookup[String(li)] = fd;
+      if (folderRef.startsWith('folder:')) folderLookup.set(folderRef, fd);
     }
   }
   for (let li = 0; li < lorebook.length; li++) {
     const entry = lorebook[li];
     if (entry.mode === 'folder') continue;
-    const folderId = entry.folder as string | undefined;
-    const matched = folderId ? folderLookup[folderId] || folderLookup[String(folderId)] : null;
+    const folderRef = resolveLorebookFolderRef(entry.folder, lorebook);
+    const matched = folderLookup.get(folderRef);
     if (matched) {
       matched.children.push({ entry, index: li });
     } else {
@@ -712,14 +859,57 @@ function renderRefLorebook(parent: HTMLElement, deps: RefsSidebarDeps, ref: Refe
     }
   }
 
-  function makeRefLoreItem(child: { entry: Record<string, unknown>; index: number }, indent: number): HTMLDivElement {
+  const list = document.createElement('div');
+  list.className = 'manager-list reference-lorebook-list';
+  parent.appendChild(list);
+
+  function makeRefLoreItem(child: { entry: Record<string, unknown>; index: number }): HTMLDivElement {
     const lbLabel = (child.entry.comment as string) || (child.entry.key as string) || `#${child.index}`;
-    const lbEl = createTreeItem(lbLabel, '·', indent);
+    const lbEl = document.createElement('div');
+    lbEl.className = 'manager-lore-row reference-lorebook-row';
+    lbEl.tabIndex = 0;
+    lbEl.setAttribute('role', 'button');
+    const main = document.createElement('div');
+    main.className = 'manager-row-main';
+    const title = document.createElement('div');
+    title.className = 'manager-row-title';
+    title.textContent = lbLabel;
+    const subtitle = document.createElement('div');
+    subtitle.className = 'manager-row-subtitle';
+    subtitle.textContent = String(child.entry.key || '키 없음');
+    main.append(title, subtitle);
+    const tags = document.createElement('div');
+    tags.className = 'manager-row-tags';
+    if (child.entry.alwaysActive || child.entry.constant || child.entry.forceActivation) {
+      const chip = document.createElement('span');
+      chip.className = 'manager-chip manager-badge-accent';
+      chip.textContent = '항상';
+      tags.appendChild(chip);
+    }
+    if (child.entry.selective) {
+      const chip = document.createElement('span');
+      chip.className = 'manager-chip';
+      chip.textContent = '2키';
+      tags.appendChild(chip);
+    }
+    if (child.entry.useRegex || child.entry.mode === 'regex') {
+      const chip = document.createElement('span');
+      chip.className = 'manager-chip';
+      chip.textContent = '정규식';
+      tags.appendChild(chip);
+    }
+    lbEl.append(main, tags);
     const li = child.index;
     const lbTabId = `ref_${refIdx}_lb_${li}`;
-    lbEl.addEventListener('click', () => {
+    const openEntry = () => {
       const tab = deps.openTab(lbTabId, `[참고] ${ref.fileName} - ${lbLabel}`, '_loreform', () => lorebook[li], null);
       if (tab) tab._refLorebook = lorebook;
+    };
+    lbEl.addEventListener('click', openEntry);
+    lbEl.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      openEntry();
     });
     lbEl.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
@@ -752,15 +942,52 @@ function renderRefLorebook(parent: HTMLElement, deps: RefsSidebarDeps, ref: Refe
   }
 
   for (const folder of folderDataList) {
-    const subFolder = createFolderItem((folder.entry.comment as string) || `folder_${folder.index}`, '📁', 2);
-    lbFolder.children.appendChild(subFolder.header);
-    lbFolder.children.appendChild(subFolder.children);
+    const folderName = (folder.entry.comment as string) || (folder.entry.key as string) || `folder_${folder.index}`;
+    const folderRow = document.createElement('div');
+    folderRow.className = 'manager-folder-row reference-lorebook-folder';
+    const arrow = document.createElement('button');
+    arrow.type = 'button';
+    arrow.className = 'manager-folder-arrow';
+    const expanded = _expandedReferenceLoreFolders.has(folder.ref);
+    arrow.textContent = expanded ? '▼' : '▶';
+    arrow.setAttribute('aria-expanded', String(expanded));
+    arrow.setAttribute('aria-label', `${folderName} 폴더 ${expanded ? '접기' : '펼치기'}`);
+    const label = document.createElement('div');
+    label.className = 'manager-folder-label';
+    label.textContent = folderName;
+    label.title = folderName;
+    const badge = document.createElement('span');
+    badge.className = 'manager-badge';
+    badge.textContent = `${folder.children.length}`;
+    folderRow.append(arrow, label, badge);
+    const children = document.createElement('div');
+    children.className = 'manager-folder-children';
+    children.hidden = !expanded;
     for (const child of folder.children) {
-      subFolder.children.appendChild(makeRefLoreItem(child, 3));
+      children.appendChild(makeRefLoreItem(child));
     }
+    arrow.addEventListener('click', () => {
+      const nextExpanded = children.hidden;
+      children.hidden = !nextExpanded;
+      arrow.textContent = nextExpanded ? '▼' : '▶';
+      arrow.setAttribute('aria-expanded', String(nextExpanded));
+      arrow.setAttribute('aria-label', `${folderName} 폴더 ${nextExpanded ? '접기' : '펼치기'}`);
+      if (nextExpanded) _expandedReferenceLoreFolders.add(folder.ref);
+      else _expandedReferenceLoreFolders.delete(folder.ref);
+    });
+    list.append(folderRow, children);
   }
+  const rootList = document.createElement('div');
+  rootList.className = 'manager-root-entries reference-lorebook-root';
   for (const child of rootEntries) {
-    lbFolder.children.appendChild(makeRefLoreItem(child, 2));
+    rootList.appendChild(makeRefLoreItem(child));
+  }
+  list.appendChild(rootList);
+  if (!folderDataList.length && !rootEntries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'right-manager-empty';
+    empty.textContent = '표시할 로어북 항목이 없습니다.';
+    list.appendChild(empty);
   }
 }
 

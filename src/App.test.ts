@@ -259,7 +259,8 @@ describe('App shell', () => {
     expect(wrapper.get('#btn-bgm-toggle').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-rp-mode').attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('#btn-avatar-toggle').attributes('aria-label')).toBeTruthy();
-    expect(wrapper.get('#btn-terminal-popout').attributes('aria-label')).toBeTruthy();
+    expect(wrapper.find('#btn-terminal-popout').exists()).toBe(false);
+    expect(wrapper.find('#btn-refs-popout').exists()).toBe(false);
   });
 
   it('mounts semantic panels directly in their fixed workspace homes', () => {
@@ -368,9 +369,8 @@ describe('App shell', () => {
     store.setInspectorWidth(480);
     store.setUtilityHeight(500);
     store.navigatorVisible = false;
-    store.inspectorVisible = false;
     store.avatarVisible = false;
-    store.referencesVisible = true;
+    store.setRightSidebarView('references');
     store.activeUtility = null;
 
     const viewMenu = wrapper.findAll('.menu-item').find((item) => item.text().includes('보기'))!;
@@ -386,10 +386,23 @@ describe('App shell', () => {
     expect(store.utilityHeight).toBe(250);
     expect(store.navigatorVisible).toBe(true);
     expect(store.inspectorVisible).toBe(true);
+    expect(store.rightSidebarView).toBe('inspector');
     expect(store.avatarVisible).toBe(true);
     expect(store.referencesVisible).toBe(false);
     expect(store.activeUtility).toBe('terminal');
     expect(store.statusText).toContain('UI 배치');
+  });
+
+  it('fully hides the navigator shell and resizer when the left sidebar is collapsed', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+
+    store.navigatorVisible = false;
+    await nextTick();
+
+    expect(wrapper.get('#workspace-navigator').isVisible()).toBe(false);
+    expect(wrapper.get('#navigator-resizer').isVisible()).toBe(false);
   });
 
   it('uses icon-only background and reactive BGM/RP quick controls', async () => {
@@ -469,6 +482,14 @@ describe('App shell', () => {
     expect(wrapper.get('#right-sidebar').isVisible()).toBe(true);
     expect(wrapper.get('#right-sidebar-references-tab').classes()).toContain('active');
     expect(refreshReferences).toHaveBeenCalledOnce();
+
+    await wrapper.get('#right-sidebar-guides-tab').trigger('click');
+    await nextTick();
+    expect(store.guidesVisible).toBe(true);
+    expect(store.referencesVisible).toBe(false);
+    expect(wrapper.get('#right-sidebar-guides-tab').classes()).toContain('active');
+    expect(wrapper.find('.reference-subtabs').exists()).toBe(false);
+    expect(refreshReferences).toHaveBeenCalledTimes(2);
 
     store.setFileData({ lorebook: [{ comment: 'Entry' }] } as never);
     store.setActiveTabId('lore_0');

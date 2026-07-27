@@ -13,6 +13,7 @@ function makeState(overrides: Partial<SettingsState> = {}): SettingsState {
     rpMode: 'off',
     rpCustomText: '',
     mcpApprovalMode: 'ask',
+    previewFocusByDefault: true,
     ...overrides,
   };
 }
@@ -31,6 +32,7 @@ function makeCallbacks(overrides: Partial<SettingsCallbacks> = {}): SettingsCall
     onRpModeChange: vi.fn(),
     onRpCustomTextChange: vi.fn(),
     onMcpApprovalModeChange: vi.fn(),
+    onPreviewFocusByDefaultChange: vi.fn(),
     onOpenPersonaTab: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -142,6 +144,17 @@ describe('settings popup', () => {
     )!;
     pickBgm.click();
     expect(callbacks.onPickBgm).toHaveBeenCalledOnce();
+  });
+
+  it('shows the enabled-by-default preview focus preference and persists changes', () => {
+    const callbacks = makeCallbacks();
+    showSettingsPopup(makeState(), callbacks);
+    const toggle = document.querySelector<HTMLButtonElement>('[role="switch"][aria-label="프리뷰 기본 집중 모드"]')!;
+
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    toggle.click();
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(callbacks.onPreviewFocusByDefaultChange).toHaveBeenCalledWith(false);
   });
 
   it('shows custom palette editor and persists palette edits', () => {

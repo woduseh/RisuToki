@@ -9,6 +9,32 @@
 
 ---
 
+## [2.2.0] - 2026-07-28
+
+### Added
+
+- Added peer **Guides** and **Reference files** tabs to the resizable right sidebar beside contextual properties.
+- Added a compact reference-file explorer with document-specific workspace tabs for CHARX, RISUM, and RISUP files.
+- Added persistent read-only notices for reference forms and a manager-style read-only lorebook tree.
+- Added a preview focus control that temporarily collapses the navigator, right sidebar, and terminal through their normal layout state, then restores the previous arrangement without overwriting the saved workspace layout.
+- Added an enabled-by-default preview focus preference and a `Ctrl+Shift+F` shortcut for toggling focus while the preview tab is active.
+
+### Changed
+
+- Open or reuse the CHARX preview as a normal central editor tab, with its reset, viewport, asset, message-role, and debug controls contained in the editor workspace.
+- Kept the navigator, editor, references, preview, and terminal inside the main workspace.
+- Unified navigator, editor-tab, manager, and right-sidebar header heights and replaced competing sidebar visibility booleans with one persisted active-tab state.
+
+### Removed
+
+- Removed the pop-out window system and its Electron window manager, renderer entrypoint, preload bridge, payload relay, IPC surface, and terminal/reference/editor/preview-specific code.
+
+### Fixed
+
+- Pinned the navigator, editor, resizers, and right sidebar to explicit grid columns so collapsing either sidebar no longer collapses the editor, enlarges the opposite panel, or leaves a stray vertical border.
+- Prevented clipped Monaco read-only notifications by applying the DOM read-only state to embedded reference editors.
+- Prevented reference lorebook titles and keys from collapsing into the editable manager's narrow checkbox column.
+
 ## [2.1.0] - 2026-07-27
 
 ### Changed

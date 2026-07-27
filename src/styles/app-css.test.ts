@@ -5,28 +5,27 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(resolve(__dirname, 'app.css'), 'utf-8');
 
 describe('app.css – preview-header', () => {
-  it('defines a visual rule for shared popout action buttons in the active state', () => {
-    // JS toggles the "active" class on shared popout action buttons
-    // (see preview-panel.ts and popout/controller.ts), so CSS must style it.
-    expect(css).toMatch(/\.popout-action-btn\.active\b/);
+  it('defines an active state for preview action buttons', () => {
+    expect(css).toMatch(/\.preview-action-btn\.active\b/);
   });
 
   it('gives the preview header a theme-aware contrasting surface and controls', () => {
     expect(css).toMatch(
       /\.preview-header\s*\{[^}]*background:\s*linear-gradient\([^}]*var\(--ui-accent[^}]*var\(--ui-accent-strong[^}]*color:\s*var\(--ui-on-accent/s,
     );
-    expect(css).toMatch(/\.preview-header\s+\.popout-action-btn\s*\{[^}]*color:\s*inherit;/s);
+    expect(css).toMatch(/\.preview-header\s+\.preview-action-btn\s*\{[^}]*color:\s*inherit;/s);
+  });
+
+  it('fills the editor surface without modal sizing or resize handles', () => {
+    expect(css).toMatch(/\.preview-panel\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;/s);
+    expect(css).not.toMatch(/\.preview-overlay\s*\{/);
+    expect(css).not.toMatch(/\.preview-panel\s*\{[^}]*resize:\s*both;/s);
   });
 });
 
-describe('app.css – popout theme coherence', () => {
-  it('defines a shared popout action button rule', () => {
-    expect(css).toMatch(/\.popout-action-btn\b/);
-  });
-
-  it('defines extracted tree section header and popout empty-state rules', () => {
+describe('app.css – shell theme coherence', () => {
+  it('defines extracted tree section headers', () => {
     expect(css).toMatch(/\.tree-section-header\b/);
-    expect(css).toMatch(/\.popout-empty-state\b/);
   });
 
   it('defines dark-mode overrides for terminal chat surfaces', () => {
@@ -100,7 +99,7 @@ describe('app.css – character theme surfaces', () => {
     expect(css).toMatch(/#toki-status\s*\{[^}]*var\(--ui-accent[^}]*var\(--ui-on-accent/s);
     expect(css).toMatch(/\.chat-bubble\.user\s*\{[^}]*background:\s*var\(--ui-accent/s);
     expect(css).toMatch(/#chat-send-btn\s*\{[^}]*background:\s*var\(--ui-accent/s);
-    expect(css).toMatch(/\.popout-header-main--editor\s*\{[^}]*var\(--ui-accent-strong/s);
+    expect(css).toMatch(/\.preview-header\s*\{[^}]*var\(--ui-accent-strong/s);
   });
 });
 
@@ -128,6 +127,12 @@ describe('app.css – manager panels', () => {
   it('keeps expanded lorebook folders in normal flow instead of shrinking beneath later folders', () => {
     expect(css).toMatch(/\.manager-folder-children\s*\{[^}]*flex:\s*0 0 auto;[^}]*\}/s);
     expect(css).toMatch(/\.manager-folder-row,\s*\.manager-root-entries\s*\{[^}]*flex-shrink:\s*0;[^}]*\}/s);
+  });
+
+  it('uses the full available width for read-only reference lorebook titles', () => {
+    expect(css).toMatch(
+      /\.manager-lore-row\.reference-lorebook-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto;[^}]*\}/s,
+    );
   });
 });
 
@@ -164,15 +169,9 @@ describe('app.css – risup prompt editor layout', () => {
 });
 
 describe('app.css – preview layout', () => {
-  it('defines the fixed overlay shell needed to surface the preview above the app', () => {
+  it('defines the preview panel as a full editor-sized flex column container', () => {
     expect(css).toMatch(
-      /\.preview-overlay\s*\{[^}]*position:\s*fixed;[^}]*display:\s*flex;[^}]*z-index:\s*3000;[^}]*\}/s,
-    );
-  });
-
-  it('defines the preview panel as a sized flex column container', () => {
-    expect(css).toMatch(
-      /\.preview-panel\s*\{[^}]*width:\s*900px;[^}]*height:\s*85vh;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*\}/s,
+      /\.preview-panel\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*\}/s,
     );
   });
 });

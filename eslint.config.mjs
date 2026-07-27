@@ -12,7 +12,6 @@ const tsFiles = [
   'test/**/*.ts',
   'main.ts',
   'preload.ts',
-  'popout-preload.ts',
   'vite.config.ts',
   'vitest.setup.ts',
   'toki-mcp-server.ts',
@@ -110,12 +109,6 @@ export default [
       'no-useless-escape': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
-    },
-  },
-  {
-    files: ['src/popout/controller.ts'],
-    rules: {
-      '@typescript-eslint/no-unused-vars': 'off',
     },
   },
 ];

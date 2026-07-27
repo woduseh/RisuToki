@@ -8,6 +8,7 @@ export interface KeyboardDeps {
   closeActiveTab(): void;
   toggleSidebar(): void;
   toggleTerminal(): void;
+  togglePreviewFocusMode(): void;
   showPreviewPanel(): void;
   showSettingsPopup(): void;
 }
@@ -38,6 +39,9 @@ export function initKeyboard(deps: KeyboardDeps): void {
     } else if (e.ctrlKey && e.key === ',') {
       e.preventDefault();
       deps.showSettingsPopup();
+    } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      deps.togglePreviewFocusMode();
     } else if (e.key === 'F5') {
       e.preventDefault();
       deps.showPreviewPanel();

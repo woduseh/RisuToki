@@ -7,8 +7,6 @@ function makeCallbacks(overrides: Partial<TabManagerCallbacks> = {}): TabManager
     onActivateTab: vi.fn(),
     onDisposeFormEditors: vi.fn(),
     onClearEditor: vi.fn(),
-    isPanelPoppedOut: vi.fn(() => false),
-    onPopOutTab: vi.fn(),
     isFormTabType: vi.fn(() => false),
     ...overrides,
   };
@@ -216,19 +214,7 @@ describe('TabManager', () => {
       expect(tabs[1].querySelector('.modified')).toBeNull();
     });
 
-    it('includes popout button for non-image tabs when not popped out', () => {
-      mgr.openTabs = [makeTab('a')];
-      mgr.activeTabId = 'a';
-      mgr.renderTabs();
-
-      const popoutBtn = tabBar.querySelector('.tab-popout-btn');
-      expect(popoutBtn).not.toBeNull();
-      expect(popoutBtn?.tagName).toBe('BUTTON');
-      expect(popoutBtn?.getAttribute('aria-label')).toBe('탭 팝아웃');
-    });
-
-    it('hides popout button when panel is already popped out', () => {
-      cbs.isPanelPoppedOut = vi.fn(() => true);
+    it('does not render the removed editor popout action', () => {
       mgr.openTabs = [makeTab('a')];
       mgr.activeTabId = 'a';
       mgr.renderTabs();

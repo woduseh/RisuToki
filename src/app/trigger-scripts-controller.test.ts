@@ -50,8 +50,6 @@ function createTriggerScriptsControllerHarness() {
     onActivateTab: (tab) => activateTab(tab as TriggerFormTabInfo),
     onDisposeFormEditors: vi.fn(),
     onClearEditor: vi.fn(),
-    isPanelPoppedOut: () => false,
-    onPopOutTab: vi.fn(),
     isFormTabType: () => false,
   });
 

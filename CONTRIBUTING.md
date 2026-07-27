@@ -25,7 +25,6 @@ Use `npm run test:evals` when changing MCP contracts, taxonomy, or section-parsi
 
 - `main.ts`: Electron main process and IPC (compiles to `main.js`)
 - `src/app/controller.ts`: main renderer integration layer
-- `src/popout/controller.ts`: popout integration layer
 - `src/lib/*`: reusable renderer logic
 
 If a change touches the renderer and feels reusable, prefer adding or extending a shared module in `src/lib/` rather than expanding a controller further.
