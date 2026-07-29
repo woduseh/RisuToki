@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-2.2.1-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-22.13%2B%20%7C%2024%2B-339933.svg)](https://nodejs.org/)
@@ -75,7 +75,8 @@ npm run mcp:standalone -- --file C:\path\to\card.charx --allow-writes
 
 - `docs/README.md` — Knowledge-base index for agents and contributors
 - `AGENTS.md` + local `risu/*/AGENTS.md` routers — Product-first root routing plus subtree-specific authoring guidance
-- `docs/MCP_WORKFLOW.md` — MCP tool selection, read rules, and workflow patterns
+- `docs/MCP_WORKFLOW.md` — MCP runtime modes, startup profiles, and common execution sequence
+- `skills/using-mcp-tools` — MCP artifact tool selection and task-intent playbooks (`read_skill("using-mcp-tools")`)
 - `docs/MCP_TOOL_SURFACE.md` — MCP tool families, boundaries, and follow-up action map
 - `src/lib/mcp-agent-workflow-eval.test.ts` — Declarative route/safety matrix and documentation guards
 - `test/run-workflow-eval-replay.ts` — Synthetic measured replay covering all 35 replayable workflow tasks across 12 scenarios, including route accuracy, recovery, bounded reads, validation, and final artifact state
@@ -86,7 +87,7 @@ npm run mcp:standalone -- --file C:\path\to\card.charx --allow-writes
 - `skills/project-workflow` — Project onboarding skill (`read_skill("project-workflow")`)
 - `CONTRIBUTING.md` — Change principles and validation procedures
 - `CHANGELOG.md` — Version-by-version change history
-- GitHub Actions `CI` — On push/PR: Ubuntu lint · typecheck · test · MCP workflow replay + Windows Electron/Renderer build
+- GitHub Actions `CI` — On push/PR: Ubuntu lint · typecheck · test · MCP workflow replay · MCP contract baseline · renderer build + Windows Electron/Renderer build
 - GitHub Actions `Release` — On `v*` tag push: automated Windows build and release
 
 ---

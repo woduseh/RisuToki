@@ -178,7 +178,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/file-actions.ts` — file open/save actions
 - `src/lib/close-window-policy.ts` — close-window guards
 
-## Popouts, references, and guide material
+## References, external tabs, and guide material
 
 - `src/lib/external-text-tab.ts` — external text tab handling
 - `src/lib/reference-item-registry.ts` — shared read-only reference item descriptors and visibility rules

@@ -28,7 +28,7 @@ For concrete artifact tool selection, hand off to `using-mcp-tools`. Authoring s
 - Changes to tracked source, product behavior, or workflow/tooling require a semver version update and a new top `CHANGELOG.md` entry. Update user-facing documentation when behavior changes.
 - Pure `.charx`/`.risum`/`.risup` authoring does not require a version bump. Documentation-only corrections that do not change product behavior also do not require one.
 - Keep `AGENTS.md`, docs, Skills, tests, and tool metadata synchronized when an MCP surface or routing contract changes.
-- PR validation covers lint, typecheck, tests, and platform builds as documented in `PROJECT_RULES.md`. MCP contract or routing changes also require `npm run test:evals` and `npm run test:evals:replay`.
+- PR validation covers lint, typecheck, tests, replay, the MCP contract baseline, and platform builds as documented in `PROJECT_RULES.md`. MCP contract or routing changes also require the focused `npm run test:evals` check.
 - Packaging and publishing occur only for an explicitly authorized tag release.
 
 ## Validation

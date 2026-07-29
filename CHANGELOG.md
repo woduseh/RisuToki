@@ -9,6 +9,18 @@
 
 ---
 
+## [2.2.1] - 2026-07-29
+
+### Changed
+
+- Added the four-profile, 18-case MCP contract baseline to push and pull-request CI, and aligned the contributor validation sequence with replay, contract, Electron, and renderer checks.
+- Expanded document-drift guards to pin the single-renderer architecture, current runtime entrypoints, contributor/CI contract gates, MCP guidance ownership, and project-workflow reference mirrors.
+
+### Fixed
+
+- Replaced the canonical architecture guide's removed pop-out runtime and pre-split MCP topology with the current Electron, renderer, facade, route-family, standalone, build, and data-flow structure.
+- Removed stale pop-out contributor guidance and corrected README/tooling metadata for current MCP document ownership and `.charx` / `.risum` / `.risup` product scope.
+
 ## [2.2.0] - 2026-07-28
 
 ### Added

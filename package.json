@@ -1,7 +1,7 @@
 {
   "name": "risutoki",
-  "version": "2.2.0",
-  "description": "RisuAI .charx file editor with integrated terminal and MomoTalk UI",
+  "version": "2.2.1",
+  "description": "Desktop editor and MCP workspace for RisuAI .charx, .risum, and .risup artifacts",
   "main": "main.js",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",

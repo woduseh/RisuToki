@@ -9,6 +9,9 @@
  *   3. MODULE_MAP.md module listings against actual src/lib/*.ts files
  *   4. MCP_TOOL_SURFACE.md tool references against the taxonomy
  *   5. FAMILY_NEXT_ACTIONS tool references against the taxonomy
+ *   6. Canonical architecture entrypoints against the current single-renderer runtime
+ *   7. Contributor validation guidance against CI contract gates
+ *   8. Project workflow reference mirrors against their canonical docs
  */
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
@@ -364,6 +367,8 @@ describe('FAMILY_NEXT_ACTIONS ↔ taxonomy alignment', () => {
 describe('workflow doc mirrors stay in sync', () => {
   const docsWorkflowPath = path.join(DOCS_DIR, 'MCP_WORKFLOW.md');
   const skillWorkflowPath = path.join(ROOT, 'skills', 'project-workflow', 'MCP_WORKFLOW.md');
+  const docsProjectRulesPath = path.join(DOCS_DIR, 'PROJECT_RULES.md');
+  const skillProjectRulesPath = path.join(ROOT, 'skills', 'project-workflow', 'PROJECT_RULES.md');
 
   it('skills/project-workflow/MCP_WORKFLOW.md matches docs/MCP_WORKFLOW.md after link normalization', () => {
     expect(fs.existsSync(docsWorkflowPath), 'Missing docs/MCP_WORKFLOW.md').toBe(true);
@@ -371,6 +376,15 @@ describe('workflow doc mirrors stay in sync', () => {
 
     const docsContent = normalizeWorkflowMirrorMarkdown(fs.readFileSync(docsWorkflowPath, 'utf-8'));
     const skillContent = normalizeWorkflowMirrorMarkdown(fs.readFileSync(skillWorkflowPath, 'utf-8'));
+    expect(skillContent).toEqual(docsContent);
+  });
+
+  it('skills/project-workflow/PROJECT_RULES.md matches docs/PROJECT_RULES.md', () => {
+    expect(fs.existsSync(docsProjectRulesPath), 'Missing docs/PROJECT_RULES.md').toBe(true);
+    expect(fs.existsSync(skillProjectRulesPath), 'Missing skills/project-workflow/PROJECT_RULES.md').toBe(true);
+
+    const docsContent = fs.readFileSync(docsProjectRulesPath, 'utf-8').replace(/\r\n/g, '\n').trim();
+    const skillContent = fs.readFileSync(skillProjectRulesPath, 'utf-8').replace(/\r\n/g, '\n').trim();
     expect(skillContent).toEqual(docsContent);
   });
 });
@@ -419,5 +433,80 @@ describe('agent guidance ownership and startup budget', () => {
       return matches.map((match) => `${path.relative(ROOT, filePath)}: ${match}`);
     });
     expect(violations).toEqual([]);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 7. Canonical architecture and contributor workflow
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('canonical architecture and contributor workflow stay current', () => {
+  const architecturePath = path.join(DOCS_DIR, 'analysis', 'ARCHITECTURE.md');
+  const contributingPath = path.join(ROOT, 'CONTRIBUTING.md');
+  const readmePath = path.join(ROOT, 'README.md');
+  const ciPath = path.join(ROOT, '.github', 'workflows', 'ci.yml');
+
+  it('documents the current single-renderer runtime and existing entrypoints', () => {
+    const architecture = fs.readFileSync(architecturePath, 'utf-8');
+    const requiredEntrypoints = [
+      { docReference: 'main.ts', filePath: 'main.ts' },
+      { docReference: 'preload.ts', filePath: 'preload.ts' },
+      { docReference: 'src/main.ts', filePath: 'src/main.ts' },
+      { docReference: 'src/app/controller.ts', filePath: 'src/app/controller.ts' },
+      { docReference: 'toki-mcp-server.ts', filePath: 'toki-mcp-server.ts' },
+      { docReference: 'src/lib/mcp-api-server.ts', filePath: 'src/lib/mcp-api-server.ts' },
+      { docReference: 'mcp-tool-register-facade.ts', filePath: 'src/lib/mcp-tool-register-facade.ts' },
+      { docReference: 'mcp-facade-edit.ts', filePath: 'src/lib/mcp-facade-edit.ts' },
+    ];
+
+    expect(architecture).toContain('one main process, one Vue renderer, one preload bridge');
+    for (const entrypoint of requiredEntrypoints) {
+      expect(architecture, `ARCHITECTURE.md must document ${entrypoint.docReference}`).toContain(
+        entrypoint.docReference,
+      );
+      expect(fs.existsSync(path.join(ROOT, entrypoint.filePath)), `${entrypoint.filePath} must exist`).toBe(true);
+    }
+  });
+
+  it('does not reference removed pop-out runtime files or volatile line-count snapshots', () => {
+    const architecture = fs.readFileSync(architecturePath, 'utf-8');
+    const removedRuntimePaths = [
+      'popout-preload.ts',
+      'src/popout.ts',
+      'src/popout/controller.ts',
+      'src/lib/popout-manager.ts',
+      'window.popoutAPI',
+    ];
+
+    for (const removedPath of removedRuntimePaths) {
+      expect(architecture, `ARCHITECTURE.md references removed runtime path ${removedPath}`).not.toContain(removedPath);
+    }
+    expect(architecture).not.toMatch(/~\d[\d,]* lines/i);
+  });
+
+  it('keeps contributor validation and CI aligned on replay, contracts, and platform builds', () => {
+    const contributing = fs.readFileSync(contributingPath, 'utf-8');
+    const ci = fs.readFileSync(ciPath, 'utf-8');
+    const requiredCommands = [
+      'npm run test:evals:replay',
+      'npm run test:mcp:contracts',
+      'npm run build:electron',
+      'npm run build:renderer',
+    ];
+
+    for (const command of requiredCommands) {
+      expect(contributing, `CONTRIBUTING.md must include ${command}`).toContain(command);
+      expect(ci, `CI must include ${command}`).toContain(command);
+    }
+    expect(contributing).not.toContain('Popout terminal');
+  });
+
+  it('keeps MCP workflow ownership aligned in README and CONTRIBUTING', () => {
+    for (const filePath of [readmePath, contributingPath]) {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      expect(content).toContain('MCP runtime modes, startup profiles, and common execution sequence');
+      expect(content).toContain('using-mcp-tools');
+      expect(content).toContain('tool selection');
+    }
   });
 });

@@ -36,6 +36,9 @@ jobs:
       - name: Workflow replay eval
         run: npm run test:evals:replay
 
+      - name: MCP contract baseline
+        run: npm run test:mcp:contracts
+
       - name: Build
         run: npm run build:renderer
 
