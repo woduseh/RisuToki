@@ -1,17 +1,17 @@
+import type { LoadedDocumentData, TriggerScript } from '../charx-io';
 import { CHARX_DEPRECATED_FIELD_NAMES } from './deprecated-save-policy';
+import type { RendererDocumentData, RendererDocumentPatch } from './document-types';
 import { RISUP_JSON_TEXT_FIELD_NAMES, validateRisupJsonTextField } from './risup-json-fields';
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export interface DataSerializerDeps {
-  stringifyTriggerScripts: (ts: any) => string;
-  normalizeTriggerScripts: (ts: any) => any[];
-  extractPrimaryLuaFromTriggerScripts: (ts: any) => string;
-  mergePrimaryLuaIntoTriggerScripts: (ts: any, lua: string) => any[];
+  stringifyTriggerScripts: (scripts: unknown) => string;
+  normalizeTriggerScripts: (scripts: unknown) => TriggerScript[];
+  extractPrimaryLuaFromTriggerScripts: (scripts: unknown) => string;
+  mergePrimaryLuaIntoTriggerScripts: (scripts: unknown, lua: string) => TriggerScript[];
 }
 
 // ---------------------------------------------------------------------------
@@ -35,8 +35,8 @@ export function initDataSerializer(d: DataSerializerDeps): void {
 // ---------------------------------------------------------------------------
 
 /** Filter data for safe transfer to renderer (strips binary assets / internal fields). */
-export function serializeForRenderer(data: any): Record<string, any> {
-  const result: Record<string, any> = {
+export function serializeForRenderer(data: LoadedDocumentData): RendererDocumentData {
+  const result: RendererDocumentData = {
     _fileType: data._fileType || 'charx',
     name: data.name,
     description: data.description,
@@ -47,8 +47,8 @@ export function serializeForRenderer(data: any): Record<string, any> {
     css: data.css,
     defaultVariables: data.defaultVariables,
     lua: data.lua,
-    lorebook: data.lorebook,
-    regex: data.regex,
+    lorebook: data.lorebook as RendererDocumentData['lorebook'],
+    regex: data.regex as RendererDocumentData['regex'],
     moduleName: data.moduleName,
   };
 
@@ -163,7 +163,7 @@ export function serializeForRenderer(data: any): Record<string, any> {
 }
 
 /** Apply field updates with validation; keeps triggerScripts ↔ lua in sync. */
-export function applyUpdates(data: any, fields: any): void {
+export function applyUpdates(data: LoadedDocumentData, fields: RendererDocumentPatch | null | undefined): void {
   if (!fields) return;
   const allowed = [
     'name',

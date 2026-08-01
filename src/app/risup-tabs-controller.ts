@@ -1,4 +1,4 @@
-import type { CharxData } from '../stores/app-store';
+import type { RendererDocumentData } from '../stores/app-store';
 import { getRisupFieldGroup } from '../lib/risup-fields';
 
 export interface RisupTabLike {
@@ -39,7 +39,7 @@ export interface RisupTabsRestoreOptions<TTab extends RisupTabLike = RisupTabLik
   activateTab: (tab: TTab) => void;
   activeTab?: TTab | null;
   backupContent: unknown;
-  fileData: CharxData | null;
+  fileData: RendererDocumentData | null;
   setFileLabel?: ((name: string) => void) | null;
   tab?: TTab | null;
 }

@@ -1,4 +1,6 @@
 import type { FacadeContentEngine } from './mcp-facade-content';
+import { createFacadeBlockEditOperations } from './mcp-facade-edit-block';
+import { createFacadeLorebookEditOperations } from './mcp-facade-edit-lorebook';
 import type { FacadeItemsEngine } from './mcp-facade-items';
 import {
   asRecord,
@@ -215,6 +217,22 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
     };
   }
 
+  const { previewReplaceBlock, applyReplaceBlock } = createFacadeBlockEditOperations({
+    apiRequest,
+    readFacadeSelector,
+    readActiveLorebookEntryForEdit,
+    replaceableLorebookFields: EXTERNAL_LOREBOOK_REPLACEABLE_FIELDS,
+    hashStableValue,
+    contentHashGuard,
+    checkEditGuardValue,
+  });
+  const { previewReplaceAllText, applyReplaceAllText } = createFacadeLorebookEditOperations({
+    apiRequest,
+    readActiveLorebookCollection,
+    hashStableValue,
+    checkEditGuardValue,
+  });
+
   async function previewFacadeOperation(
     target: FacadeV1Target,
     operation: FacadeV1EditOperation,
@@ -231,131 +249,10 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
 
     const touched = [selectorTarget(operation.selector)];
     if (operation.op === 'replace_block') {
-      if (target.kind !== 'active') {
-        return facadeApiError(
-          400,
-          'replace_block supports active targets only',
-          'Open the document and retry with target.kind="active".',
-          { target, operation },
-        );
-      }
-      if (operation.selector.family === 'field' && operation.selector.field) {
-        const read = await readFacadeSelector(target, operation.selector);
-        if (isApiError(read)) return read;
-        const content = recordString(asRecord(read.data), 'content');
-        if (content === undefined) {
-          return facadeApiError(
-            400,
-            `"${operation.selector.field}" is not a string field`,
-            'Use replace_block only on active string fields.',
-          );
-        }
-        const routePath = `/field/${encodeURIComponent(operation.selector.field)}/block-replace`;
-        const data = await apiRequest('POST', routePath, {
-          start_anchor: operation.start_anchor,
-          end_anchor: operation.end_anchor,
-          content: operation.content,
-          include_anchors: operation.include_anchors,
-          dry_run: true,
-        });
-        return isApiError(data)
-          ? data
-          : {
-              data,
-              routes: [...read.routes, route('replace_block_in_field', 'POST', routePath)],
-              touched,
-              requiredGuards: [
-                contentHashGuard(content, '/result/items/*/data/content', ['read_field', 'read_content']),
-              ],
-            };
-      }
-      if (operation.selector.family === 'lorebook') {
-        const read = await readActiveLorebookEntryForEdit(operation.selector);
-        if (isApiError(read)) return read;
-        const field = lorebookReplaceField(operation) ?? 'content';
-        if (!EXTERNAL_LOREBOOK_REPLACEABLE_FIELDS.has(field)) {
-          return facadeApiError(
-            400,
-            `Unsupported lorebook block field "${field}"`,
-            'Use content, comment, key, or secondkey.',
-          );
-        }
-        const content = typeof read.entry[field] === 'string' ? (read.entry[field] as string) : '';
-        const comment = typeof read.entry.comment === 'string' ? read.entry.comment : '';
-        const routePath = `/lorebook/${read.index}/block-replace`;
-        const data = await apiRequest('POST', routePath, {
-          start_anchor: operation.start_anchor,
-          end_anchor: operation.end_anchor,
-          content: operation.content,
-          include_anchors: operation.include_anchors,
-          field,
-          expected_comment: comment,
-          dry_run: true,
-        });
-        return isApiError(data)
-          ? data
-          : {
-              data: {
-                ...(asRecord(data) ?? {}),
-                ...(read.resolvedId ? { resolved_id: read.resolvedId } : {}),
-                resolved_index: read.index,
-              },
-              routes: [...read.routes, route('replace_block_in_lorebook', 'POST', routePath)],
-              touched,
-              requiredGuards: [
-                buildGuard(
-                  'expected_comment',
-                  comment,
-                  '/guard_values/*',
-                  ['read_lorebook', 'read_content'],
-                  '/result/items/*/data/entry/comment',
-                ),
-                contentHashGuard(content, `/result/items/*/data/entry/${field}`, ['read_lorebook', 'read_content']),
-              ],
-            };
-      }
-      return facadeApiError(
-        400,
-        'replace_block requires a field or single lorebook selector',
-        'Use selector.family="field" with selector.field, or selector.family="lorebook" with selector.index/id.',
-      );
+      return previewReplaceBlock(target, operation);
     }
     if (operation.op === 'replace_all_text') {
-      if (target.kind !== 'active' || operation.selector.family !== 'lorebook') {
-        return facadeApiError(
-          400,
-          'replace_all_text supports the active lorebook only',
-          'Use target.kind="active" and selector.family="lorebook".',
-          { target, operation },
-        );
-      }
-      const collection = await readActiveLorebookCollection();
-      if (isApiError(collection)) return collection;
-      const routePath = '/lorebook/replace-all';
-      const data = await apiRequest('POST', routePath, {
-        find: operation.find,
-        replace: operation.replace ?? '',
-        regex: operation.regex,
-        flags: operation.flags,
-        field: operation.field ?? 'content',
-        dry_run: true,
-      });
-      return isApiError(data)
-        ? data
-        : {
-            data,
-            routes: [...collection.routes, route('replace_across_all_lorebook', 'POST', routePath)],
-            touched: ['active:lorebook'],
-            requiredGuards: [
-              buildGuard(
-                'expected_item_collection_digest',
-                hashStableValue(collection.entries),
-                '/guard_values/*',
-                ['read_content', 'manage_items'],
-                '/result/item_collection_digest',
-              ),
-            ],
-          };
+      return previewReplaceAllText(target, operation);
     }
     if (
       operation.selector.family === 'greeting' &&
@@ -2153,114 +2050,10 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
     const touched = [selectorTarget(operation.selector)];
     const guards = guardValues && guardValues.length > 0 ? guardValues : operation.guards;
     if (operation.op === 'replace_block') {
-      if (target.kind !== 'active') {
-        return facadeApiError(
-          400,
-          'replace_block supports active targets only',
-          'Open the document and retry with target.kind="active".',
-          { target, operation },
-        );
-      }
-      if (operation.selector.family === 'field' && operation.selector.field) {
-        const read = await readFacadeSelector(target, operation.selector);
-        if (isApiError(read)) return read;
-        const content = recordString(asRecord(read.data), 'content');
-        if (content === undefined) {
-          return facadeApiError(
-            400,
-            `"${operation.selector.field}" is not a string field`,
-            'Use replace_block only on active string fields.',
-          );
-        }
-        const conflict = checkEditGuardValue(guards, 'expected_content_hash', hashStableValue(content));
-        if (conflict) return conflict;
-        const routePath = `/field/${encodeURIComponent(operation.selector.field)}/block-replace`;
-        const data = await apiRequest('POST', routePath, {
-          start_anchor: operation.start_anchor,
-          end_anchor: operation.end_anchor,
-          content: operation.content,
-          include_anchors: operation.include_anchors,
-        });
-        return isApiError(data)
-          ? data
-          : {
-              data,
-              routes: [...read.routes, route('replace_block_in_field', 'POST', routePath)],
-              touched,
-            };
-      }
-      if (operation.selector.family === 'lorebook') {
-        const read = await readActiveLorebookEntryForEdit(operation.selector);
-        if (isApiError(read)) return read;
-        const field = lorebookReplaceField(operation) ?? 'content';
-        if (!EXTERNAL_LOREBOOK_REPLACEABLE_FIELDS.has(field)) {
-          return facadeApiError(
-            400,
-            `Unsupported lorebook block field "${field}"`,
-            'Use content, comment, key, or secondkey.',
-          );
-        }
-        const content = typeof read.entry[field] === 'string' ? (read.entry[field] as string) : '';
-        const comment = typeof read.entry.comment === 'string' ? read.entry.comment : '';
-        const commentConflict = checkEditGuardValue(guards, 'expected_comment', comment);
-        if (commentConflict) return commentConflict;
-        const contentConflict = checkEditGuardValue(guards, 'expected_content_hash', hashStableValue(content));
-        if (contentConflict) return contentConflict;
-        const routePath = `/lorebook/${read.index}/block-replace`;
-        const data = await apiRequest('POST', routePath, {
-          start_anchor: operation.start_anchor,
-          end_anchor: operation.end_anchor,
-          content: operation.content,
-          include_anchors: operation.include_anchors,
-          field,
-          expected_comment: comment,
-        });
-        return isApiError(data)
-          ? data
-          : {
-              data,
-              routes: [...read.routes, route('replace_block_in_lorebook', 'POST', routePath)],
-              touched,
-            };
-      }
-      return facadeApiError(
-        400,
-        'replace_block requires a field or single lorebook selector',
-        'Use selector.family="field" with selector.field, or selector.family="lorebook" with selector.index/id.',
-      );
+      return applyReplaceBlock(target, operation, guards);
     }
     if (operation.op === 'replace_all_text') {
-      if (target.kind !== 'active' || operation.selector.family !== 'lorebook') {
-        return facadeApiError(
-          400,
-          'replace_all_text supports the active lorebook only',
-          'Use target.kind="active" and selector.family="lorebook".',
-          { target, operation },
-        );
-      }
-      const collection = await readActiveLorebookCollection();
-      if (isApiError(collection)) return collection;
-      const conflict = checkEditGuardValue(
-        guards,
-        'expected_item_collection_digest',
-        hashStableValue(collection.entries),
-      );
-      if (conflict) return conflict;
-      const routePath = '/lorebook/replace-all';
-      const data = await apiRequest('POST', routePath, {
-        find: operation.find,
-        replace: operation.replace ?? '',
-        regex: operation.regex,
-        flags: operation.flags,
-        field: operation.field ?? 'content',
-      });
-      return isApiError(data)
-        ? data
-        : {
-            data,
-            routes: [...collection.routes, route('replace_across_all_lorebook', 'POST', routePath)],
-            touched: ['active:lorebook'],
-          };
+      return applyReplaceAllText(target, operation, guards);
     }
     if (
       target.kind === 'active' &&

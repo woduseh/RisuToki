@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 describe('character card import', () => {
-  it('imports PNG ccv3 tEXt chunks into CharxData', () => {
+  it('imports PNG ccv3 tEXt chunks into LoadedDocumentData', () => {
     const filePath = writeTempFile('card.png', makePng({ ccv3: b64(cardJson('CCV3 Card')) }));
 
     const imported = importPngCharacterCard(filePath);
@@ -70,7 +70,7 @@ describe('character card import', () => {
     expect(imported.data.assets[0]?.path).toBe('assets/icon/charicon.png');
   });
 
-  it('imports PNG chara/CCv2 chunks as v3-compatible CharxData', () => {
+  it('imports PNG chara/CCv2 chunks as v3-compatible LoadedDocumentData', () => {
     const v2Card = {
       spec: 'chara_card_v2',
       spec_version: '2.0',

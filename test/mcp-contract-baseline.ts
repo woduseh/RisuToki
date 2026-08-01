@@ -5,7 +5,7 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { saveCharx, type CharxData } from '../src/charx-io';
+import { saveCharx, type LoadedDocumentData } from '../src/charx-io';
 import {
   closeServer,
   createSearchFixture,
@@ -15,7 +15,7 @@ import {
 import { MCP_DEFAULT_TOOLS_LIST_MAX_BYTES, MCP_SINGLE_TOOL_MAX_BYTES } from '../src/lib/mcp-compact-input';
 import { startStandaloneClient } from './mcp-test-client';
 
-const BASELINE_PATH = path.join(__dirname, 'fixtures', 'mcp-module-split-contract.json');
+const BASELINE_PATH = path.join(process.cwd(), 'test', 'fixtures', 'mcp-module-split-contract.json');
 const TOOL_PROFILES = ['facade-first', 'authoring', 'advanced-full', 'readonly'] as const;
 const PRINT_CASE = process.argv.find((arg) => arg.startsWith('--print-case='))?.slice('--print-case='.length);
 const UPDATE_GUIDANCE =
@@ -297,7 +297,7 @@ function createExternalContractFixture(): { filePath: string; cleanup: () => voi
     },
     _moduleData: null,
     _presetData: null,
-  } as CharxData);
+  } as LoadedDocumentData);
 
   return {
     filePath,

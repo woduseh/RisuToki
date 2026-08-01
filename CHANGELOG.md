@@ -9,6 +9,18 @@
 
 ---
 
+## [2.2.2] - 2026-08-02
+
+### Changed
+
+- Separated loaded Node/I/O documents from renderer-serialized documents across serializer, IPC, autosave, store, and MCP boundaries.
+- Isolated generated Node and Electron JavaScript under `.build/node` and `.build/electron`, while preserving the public root standalone MCP command.
+- Split server-local snapshot/cache state, utility IPC registration, renderer MCP update orchestration, and guarded facade block/lorebook edit families into focused modules.
+
+### Fixed
+
+- Removed runtime and test reliance on generated JavaScript siblings beside TypeScript sources by using TypeScript-aware local imports.
+
 ## [2.2.1] - 2026-07-29
 
 ### Changed

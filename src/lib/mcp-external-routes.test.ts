@@ -4,7 +4,7 @@ import * as path from 'path';
 
 import AdmZip from 'adm-zip';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { openCharx, openRisum, openRisup, saveCharx, type CharxData } from '../charx-io';
+import { openCharx, openRisum, openRisup, saveCharx, type LoadedDocumentData } from '../charx-io';
 import {
   closeServer,
   createExternalFixtureHelpers,
@@ -276,13 +276,13 @@ describe('MCP API external file probe routes', () => {
   }
 
   /** Create a valid .charx fixture through the real serializer path. */
-  function writeCharxFixture(filePath: string, data: CharxData): void {
+  function writeCharxFixture(filePath: string, data: LoadedDocumentData): void {
     saveCharx(filePath, data);
     openCharx(filePath);
   }
 
   /** Canonical charx payload used by probe tests. */
-  function probeCardData(): CharxData {
+  function probeCardData(): LoadedDocumentData {
     return {
       name: 'ProbeChar',
       description: 'Probe description field.',

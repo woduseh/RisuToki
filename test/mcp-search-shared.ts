@@ -3,7 +3,15 @@ import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
 
-import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../src/charx-io';
+import {
+  openCharx,
+  openRisum,
+  openRisup,
+  saveCharx,
+  saveRisum,
+  saveRisup,
+  type LoadedDocumentData,
+} from '../src/charx-io';
 import { startApiServer } from '../src/lib/mcp-api-server';
 import { MCP_SINGLE_TOOL_MAX_BYTES } from '../src/lib/mcp-compact-input';
 import type { RuntimeMetadata } from '../src/lib/mcp-runtime-contract';
@@ -19,12 +27,13 @@ import {
 } from '../src/lib/mcp-section-parser';
 import { callJson, type McpCallJson, type StandaloneClientRuntime } from './mcp-test-client';
 
-export const TEST_DIR = path.join(__dirname, '_mcp-search-tmp');
+export const PROJECT_ROOT = process.cwd();
+export const TEST_DIR = path.join(PROJECT_ROOT, '.build', 'test-tmp', 'mcp-search');
 export const MCP_RUNTIME_WASM = ['tiktoken_bg.wasm', 'glue.wasm'];
 
 for (const asset of MCP_RUNTIME_WASM) {
   assert.equal(
-    fs.existsSync(path.resolve(__dirname, '..', asset)),
+    fs.existsSync(path.resolve(PROJECT_ROOT, asset)),
     true,
     `build:mcp must copy ${asset} beside toki-mcp-server.js`,
   );
@@ -77,19 +86,19 @@ export function detectCssBlockClose(line = '') {
   return detectCssBlockCloseImpl(line);
 }
 
-export function openExternalDocumentForTest(filePath: string): CharxData {
+export function openExternalDocumentForTest(filePath: string): LoadedDocumentData {
   if (filePath.endsWith('.risum')) return openRisum(filePath);
   if (filePath.endsWith('.risup')) return openRisup(filePath);
   return openCharx(filePath);
 }
 
-export function saveExternalDocumentForTest(filePath: string, data: CharxData): void {
+export function saveExternalDocumentForTest(filePath: string, data: LoadedDocumentData): void {
   if (filePath.endsWith('.risum')) {
-    saveRisum(filePath, data as unknown as CharxData);
+    saveRisum(filePath, data as unknown as LoadedDocumentData);
     return;
   }
   if (filePath.endsWith('.risup')) {
-    saveRisup(filePath, data as unknown as CharxData);
+    saveRisup(filePath, data as unknown as LoadedDocumentData);
     return;
   }
   saveCharx(filePath, data);
@@ -141,7 +150,7 @@ export function createProbeFixture(): { dir: string; filePath: string } {
   fs.mkdirSync(TEST_DIR, { recursive: true });
   const dir = fs.mkdtempSync(path.join(TEST_DIR, 'probe-mcp-'));
   const filePath = path.join(dir, 'probe-test.charx');
-  const data: CharxData = {
+  const data: LoadedDocumentData = {
     spec: 'chara_card_v3',
     specVersion: '3.0',
     name: 'ProbeChar',
@@ -223,7 +232,7 @@ export function createProbeFixture(): { dir: string; filePath: string } {
   return { dir, filePath };
 }
 
-export function dogfoodCardData(name: string, description: string): CharxData {
+export function dogfoodCardData(name: string, description: string): LoadedDocumentData {
   return {
     spec: 'chara_card_v3',
     specVersion: '3.0',
@@ -340,7 +349,7 @@ export function createDogfoodFixtures(): {
     alternateGreetings: ['Reference alternate hello.'],
     groupOnlyGreetings: ['Reference group hello.'],
     regex: [{ comment: 'Reference Regex', type: 'editoutput', find: 'Reference', replace: 'Mirror', flag: 'g' }],
-  } as unknown as CharxData);
+  } as unknown as LoadedDocumentData);
   saveRisup(referenceRisup, {
     _fileType: 'risup',
     name: 'Facade Reference Preset',
@@ -352,7 +361,7 @@ export function createDogfoodFixtures(): {
     formatingOrder: JSON.stringify(['main', 'description']),
     presetBias: '[]',
     localStopStrings: '[]',
-  } as unknown as CharxData);
+  } as unknown as LoadedDocumentData);
 
   return { dir, mainFile, externalFile, referenceRisum, referenceRisup, referenceCharx, userDataDir };
 }
@@ -375,7 +384,7 @@ export function createFolderWorkspaceMcpFixtures(dir: string): { risumFile: stri
     lorebook: [],
     regex: [],
     risumAssets: [Buffer.from('workspace-risum-asset')],
-  } as unknown as CharxData);
+  } as unknown as LoadedDocumentData);
 
   saveRisup(risupFile, {
     _fileType: 'risup',
@@ -398,7 +407,7 @@ export function createFolderWorkspaceMcpFixtures(dir: string): { risumFile: stri
       openAIKey: 'must-not-survive',
       proxyKey: 'must-not-survive',
     },
-  } as unknown as CharxData);
+  } as unknown as LoadedDocumentData);
 
   return { risumFile, risupFile };
 }
@@ -418,11 +427,11 @@ export async function startTestApiServer(currentData: SearchFixture, options: { 
     resolvePort = resolve;
   });
   const mcpStatuses: McpStatusPayload[] = [];
-  let activeData: SearchFixture | CharxData | null = currentData;
+  let activeData: SearchFixture | LoadedDocumentData | null = currentData;
   let activeFilePath: string | null = null;
 
   const api = startApiServer({
-    getCurrentData: () => activeData,
+    getCurrentData: () => activeData as LoadedDocumentData | null,
     getReferenceFiles: () => [],
     askRendererConfirm: async () => true,
     requestRendererOpenFile: async (request) => {
@@ -457,7 +466,7 @@ export async function startTestApiServer(currentData: SearchFixture, options: { 
     detectCssBlockClose,
     openExternalDocument: openExternalDocumentForTest,
     saveExternalDocument: (filePath, _fileType, data) => saveExternalDocumentForTest(filePath, data),
-    normalizeTriggerScripts: (data: unknown) => data,
+    normalizeTriggerScripts: (data: unknown) => (Array.isArray(data) ? data : []),
     extractPrimaryLua: (scripts: unknown) => {
       if (!Array.isArray(scripts)) return '';
       return scripts
@@ -479,10 +488,10 @@ export async function startTestApiServer(currentData: SearchFixture, options: { 
     },
     mergePrimaryLua: (scripts: unknown, lua: string) => {
       void lua;
-      return scripts;
+      return Array.isArray(scripts) ? scripts : [];
     },
     stringifyTriggerScripts: (scripts: unknown) => JSON.stringify(scripts),
-    getSkillRoots: () => [path.join(__dirname, '..', 'skills')],
+    getSkillRoots: () => [path.join(PROJECT_ROOT, 'skills')],
     getUserDataPath: () => path.join(TEST_DIR, 'api-user-data'),
     getCurrentFilePath: () => activeFilePath,
     ...(options.runtime ? { getRuntimeInfo: () => options.runtime as RuntimeMetadata } : {}),
@@ -678,7 +687,7 @@ export interface RealCorpusFacadeCase {
 }
 
 export function collectRealCorpusFiles(rootRelative: string, extension: string, limit = 80): string[] {
-  const root = path.join(__dirname, '..', rootRelative);
+  const root = path.join(PROJECT_ROOT, rootRelative);
   const files: string[] = [];
   if (!fs.existsSync(root)) return files;
 
@@ -784,7 +793,7 @@ export function createManageItemsFixtures(): {
       formatingOrder: JSON.stringify(['main', 'jailbreak']),
       presetBias: '[]',
       localStopStrings: '[]',
-    }) as unknown as CharxData;
+    }) as unknown as LoadedDocumentData;
   saveRisup(activeRisup, basePreset('Active managed'));
   saveRisup(externalRisup, basePreset('External managed'));
   saveRisum(activeRisum, {
@@ -802,7 +811,7 @@ export function createManageItemsFixtures(): {
     regex: [],
     risumAssets: [],
     _moduleData: { module: { assets: [] } },
-  } as unknown as CharxData);
+  } as unknown as LoadedDocumentData);
   saveCharx(activeCharx, dogfoodCardData('Active managed card', 'Active manage_items structured card.'));
   saveCharx(externalCharx, dogfoodCardData('External managed card', 'External manage_items structured card.'));
   saveRisum(externalRisum, {
@@ -820,7 +829,7 @@ export function createManageItemsFixtures(): {
     regex: [],
     risumAssets: [],
     _moduleData: { module: { assets: [] } },
-  } as unknown as CharxData);
+  } as unknown as LoadedDocumentData);
   return { dir, activeRisup, activeRisum, externalRisup, activeCharx, externalCharx, externalRisum, userDataDir };
 }
 

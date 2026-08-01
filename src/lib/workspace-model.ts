@@ -1,4 +1,4 @@
-import type { CharxData } from '../stores/app-store';
+import type { RendererDocumentData } from '../stores/app-store';
 
 export type WorkspaceId =
   | 'character'
@@ -79,31 +79,31 @@ const RISUP_WORKSPACES: WorkspaceDefinition[] = [
   { id: 'advanced', label: '고급', icon: 'dots' },
 ];
 
-export function getFileType(data: CharxData | null): 'charx' | 'risum' | 'risup' | null {
+export function getFileType(data: RendererDocumentData | null): 'charx' | 'risum' | 'risup' | null {
   if (!data) return null;
   if (data._fileType === 'risum' || data._fileType === 'risup') return data._fileType;
   return 'charx';
 }
 
-export function getWorkspaceDefinitions(data: CharxData | null): WorkspaceDefinition[] {
+export function getWorkspaceDefinitions(data: RendererDocumentData | null): WorkspaceDefinition[] {
   const fileType = getFileType(data);
   if (fileType === 'risum') return RISUM_WORKSPACES;
   if (fileType === 'risup') return RISUP_WORKSPACES;
   return CHARX_WORKSPACES;
 }
 
-export function getDefaultWorkspace(data: CharxData | null): WorkspaceId {
+export function getDefaultWorkspace(data: RendererDocumentData | null): WorkspaceId {
   const fileType = getFileType(data);
   if (fileType === 'risum') return 'module';
   if (fileType === 'risup') return 'basic';
   return 'character';
 }
 
-export function isWorkspaceAvailable(data: CharxData | null, workspaceId: WorkspaceId): boolean {
+export function isWorkspaceAvailable(data: RendererDocumentData | null, workspaceId: WorkspaceId): boolean {
   return getWorkspaceDefinitions(data).some((workspace) => workspace.id === workspaceId);
 }
 
-export function inferWorkspaceFromTab(tabId: string | null, data: CharxData | null): WorkspaceId | null {
+export function inferWorkspaceFromTab(tabId: string | null, data: RendererDocumentData | null): WorkspaceId | null {
   if (!tabId) return null;
   if (tabId.startsWith('lore_')) return 'lorebook';
   if (tabId.startsWith('img_')) return 'assets';

@@ -1,4 +1,4 @@
-import type { CharxData, LorebookEntry } from '../stores/app-store';
+import type { LorebookEntry, RendererDocumentData } from '../stores/app-store';
 
 export const ASSET_OUTPUT_BLOCK_START = '<!-- risutoki:asset-output:start -->';
 export const ASSET_OUTPUT_BLOCK_END = '<!-- risutoki:asset-output:end -->';
@@ -205,7 +205,7 @@ function createAssetLorebookEntry(content: string, order: number): LorebookEntry
 }
 
 export function applyAssetOutputPlan(
-  data: CharxData,
+  data: RendererDocumentData,
   plan: AssetOutputPlan,
   target: 'lorebook' | 'globalNote',
 ): { target: 'lorebook' | 'globalNote'; lorebookIndex?: number; created: boolean } {

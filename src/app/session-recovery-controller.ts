@@ -27,14 +27,14 @@ export async function runStartupSessionRecovery(deps: {
     } | null>;
     resolvePendingSessionRecovery: (
       action: 'restore' | 'open-original' | 'ignore',
-    ) => Promise<{ action: 'restore' | 'open-original'; data: Record<string, unknown> } | null>;
+    ) => Promise<{ action: 'restore' | 'open-original'; data: RendererDocumentData } | null>;
   };
   showRecoveryDialog: (summary: {
     sourceFileName: string;
     savedAt: string;
     staleWarning?: string | null;
   }) => Promise<'restore' | 'open-original' | 'ignore'>;
-  applyRecoveredDocument: (data: Record<string, unknown>) => void;
+  applyRecoveredDocument: (data: RendererDocumentData) => void;
   setRestoredSessionLabel: (label: string) => void;
   showRestoredSessionStatus: (text: string) => void;
 }): Promise<void> {
@@ -62,3 +62,4 @@ export async function runStartupSessionRecovery(deps: {
     deps.showRestoredSessionStatus(`자동 저장에서 복원됨: ${sourceFileName} (${savedAt})`);
   }
 }
+import type { RendererDocumentData } from '../lib/document-types';

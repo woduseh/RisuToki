@@ -53,12 +53,8 @@ export function extractTextContent(content: unknown): string {
 }
 
 export async function startStandaloneClient(options: StandaloneClientOptions): Promise<StandaloneClientRuntime> {
-  const args = [
-    path.join(__dirname, '..', 'toki-mcp-server.js'),
-    '--standalone',
-    '--user-data-dir',
-    options.userDataDir,
-  ];
+  const projectRoot = process.cwd();
+  const args = [path.join(projectRoot, 'toki-mcp-server.js'), '--standalone', '--user-data-dir', options.userDataDir];
   if (options.allowWrites) args.push('--allow-writes');
   if (options.toolProfile) args.push('--tool-profile', options.toolProfile);
   if (options.file) args.push('--file', options.file);
@@ -74,7 +70,7 @@ export async function startStandaloneClient(options: StandaloneClientOptions): P
   const transport = new StdioClientTransport({
     command: process.execPath,
     args,
-    cwd: path.join(__dirname, '..'),
+    cwd: projectRoot,
     env,
     stderr: 'pipe',
   });

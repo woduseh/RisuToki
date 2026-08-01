@@ -9,7 +9,6 @@ import {
   getRisupStructuredFieldSuggestion,
   logMcpMutation,
   readJsonBody,
-  type FieldSnapshot,
   type McpNoOpInfo,
 } from './mcp-api-helpers';
 import type { McpApiDeps } from './mcp-api-server';
@@ -43,6 +42,15 @@ import { cloneJson, normalizeLF } from './shared-utils';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 type JsonBody = Record<string, unknown>;
+
+export interface FieldSnapshot {
+  id: string;
+  field: string;
+  timestamp: string;
+  size: number;
+  content: unknown;
+}
+
 type ParseBody = <T>(
   res: http.ServerResponse,
   body: JsonBody,

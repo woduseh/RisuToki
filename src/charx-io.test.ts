@@ -9,7 +9,7 @@ import {
   extractPrimaryLuaFromTriggerScripts,
   mergePrimaryLuaIntoTriggerScripts,
   saveRisup,
-  type CharxData,
+  type LoadedDocumentData,
 } from './charx-io';
 
 describe('primary Lua trigger synchronization', () => {
@@ -73,7 +73,7 @@ describe('risup JSON field persistence', () => {
       name: 'Invalid preset',
       promptSettings: '{broken',
       _presetData: {},
-    } as unknown as CharxData;
+    } as unknown as LoadedDocumentData;
 
     expect(() => saveRisup(outputPath, data)).toThrow(/Invalid promptSettings/i);
     expect(fs.existsSync(outputPath)).toBe(false);

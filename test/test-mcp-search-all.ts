@@ -41,8 +41,8 @@ import {
   const client = new Client({ name: 'mcp-search-smoke-test', version: '1.0.0' }, { capabilities: {} });
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [path.join(__dirname, '..', 'toki-mcp-server.js')],
-    cwd: path.join(__dirname, '..'),
+    args: [path.join(process.cwd(), 'toki-mcp-server.js')],
+    cwd: process.cwd(),
     env: buildChildEnv(api.port, api.token),
     stderr: 'pipe',
   });

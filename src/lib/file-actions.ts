@@ -1,4 +1,5 @@
 import type { TabManager } from './tab-manager';
+import type { RendererDocumentData } from './document-types';
 import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
 import { resolveCloseWindowAction } from './close-window-policy';
 import { getRisupValidationMessage } from './risup-form-editor';
@@ -10,8 +11,8 @@ import { useAppStore } from '../stores/app-store';
 type MonacoEditor = any;
 
 export interface FileActionDeps {
-  getFileData: () => Record<string, unknown> | null;
-  setFileData: (data: Record<string, unknown>) => void;
+  getFileData: () => RendererDocumentData | null;
+  setFileData: (data: RendererDocumentData) => void;
   getEditorInstance: () => MonacoEditor | null;
   setEditorInstance: (instance: null) => void;
   disposeEditorSurfaces: () => void;
@@ -32,14 +33,14 @@ export interface OpenPathOptions {
 }
 
 type OpenFileResult =
-  | { success: true; data: Record<string, unknown>; path?: string; sourceFormat?: string; imported?: boolean }
+  | { success: true; data: RendererDocumentData; path?: string; sourceFormat?: string; imported?: boolean }
   | { success: false; canceled: true }
   | { success: false; canceled?: false; error: string };
 
-type OpenDocumentLoaderResult = Record<string, unknown> | OpenFileResult | null;
+type OpenDocumentLoaderResult = RendererDocumentData | OpenFileResult | null;
 
 export interface OpenedDocumentResult {
-  data: Record<string, unknown>;
+  data: RendererDocumentData;
   path?: string;
   sourceFormat?: string;
   imported?: boolean;
@@ -86,7 +87,7 @@ function getTriggerDraftValidationMessage(tabMgr: TabManager): string | null {
   return getTriggerFormValidationMessage(triggerTab.getValue() as TriggerScriptModel | null | undefined);
 }
 
-function getSaveValidationMessage(fileData: Record<string, unknown>, tabMgr: TabManager): string | null {
+function getSaveValidationMessage(fileData: RendererDocumentData, tabMgr: TabManager): string | null {
   if (fileData._fileType === 'risup') {
     const risupValidationMessage = getRisupValidationMessage(fileData);
     if (risupValidationMessage) {
@@ -97,12 +98,12 @@ function getSaveValidationMessage(fileData: Record<string, unknown>, tabMgr: Tab
   return getTriggerDraftValidationMessage(tabMgr);
 }
 
-function applyLoadedDocument(deps: FileActionDeps, data: Record<string, unknown>): void {
+function applyLoadedDocument(deps: FileActionDeps, data: RendererDocumentData): void {
   const store = useAppStore();
   deps.setFileData(data);
   resetEditorUI(deps);
   store.clearRestoredSessionState();
-  store.setFileLabel(`${(data as Record<string, unknown>).name || 'Untitled'}`);
+  store.setFileLabel(`${data.name || 'Untitled'}`);
   deps.buildSidebar();
 }
 
@@ -162,7 +163,7 @@ async function openDocumentWithLoader(
       return null;
     }
     applyLoadedDocument(deps, data);
-    deps.setStatus(`파일 열림: ${(data as Record<string, unknown>).name}`);
+    deps.setStatus(`파일 열림: ${data.name}`);
     if (isOpenFileResult(result) && result.success) {
       return {
         data,
@@ -180,8 +181,7 @@ async function openDocumentWithLoader(
 export async function handleNew(deps: FileActionDeps): Promise<void> {
   const store = useAppStore();
   if (!(await confirmDocumentReplacement(deps, '새 파일'))) return;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = await (window as any).tokiAPI.newFile();
+  const data = await window.tokiAPI.newFile();
   if (!data) return;
   deps.setFileData(data);
   resetEditorUI(deps);
@@ -195,12 +195,7 @@ export async function handleNew(deps: FileActionDeps): Promise<void> {
 
 export async function handleOpen(deps: FileActionDeps): Promise<OpenedDocumentResult | null> {
   try {
-    return await openDocumentWithLoader(
-      deps,
-      '파일 열기',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      () => (window as any).tokiAPI.openFile(),
-    );
+    return await openDocumentWithLoader(deps, '파일 열기', () => window.tokiAPI.openFile());
   } catch (err) {
     console.error('[renderer] handleOpen error:', err);
     deps.setStatus(`열기 실패: ${(err as Error).message}`);
@@ -212,13 +207,12 @@ export async function handleOpenPath(
   deps: FileActionDeps,
   filePath: string,
   options?: OpenPathOptions,
-): Promise<Record<string, unknown> | null> {
+): Promise<RendererDocumentData | null> {
   try {
     const result = await openDocumentWithLoader(
       deps,
       options?.targetLabel || filePath,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      () => (window as any).tokiAPI.openFilePath(filePath),
+      () => window.tokiAPI.openFilePath(filePath),
       options,
     );
     return result?.data || null;
@@ -240,16 +234,14 @@ export async function handleSave(deps: FileActionDeps): Promise<void> {
     return;
   }
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (window as any).tokiAPI.saveFile(fileData);
+    const result = await window.tokiAPI.saveFile(fileData);
     if (result.success) {
       deps.tabMgr.dirtyFields.clear();
       deps.tabMgr.renderTabs();
       deps.buildSidebar();
       store.clearRestoredSessionState();
       deps.setStatus('저장 완료');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).tokiAPI.cleanupAutosave(deps.getAutosaveDir() || undefined);
+      window.tokiAPI.cleanupAutosave(deps.getAutosaveDir() || undefined);
     } else {
       deps.setStatus(`저장 실패: ${result.error}`);
     }
@@ -269,8 +261,7 @@ export async function handleSaveAs(deps: FileActionDeps): Promise<void> {
     return;
   }
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (window as any).tokiAPI.saveFileAs(fileData);
+    const result = await window.tokiAPI.saveFileAs(fileData);
     if (result.success) {
       deps.tabMgr.dirtyFields.clear();
       deps.tabMgr.renderTabs();

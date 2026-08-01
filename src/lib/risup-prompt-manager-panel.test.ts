@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const sortableCreate = vi.hoisted(() => vi.fn());
 vi.mock('sortablejs', () => ({ default: { create: sortableCreate } }));
 
-import type { CharxData } from '../stores/app-store';
+import type { RendererDocumentData } from '../stores/app-store';
 import { initPromptManagerPanel, renderPromptManagerPanel } from './risup-prompt-manager-panel';
 
 describe('risup prompt manager drag reorder', () => {
@@ -21,7 +21,7 @@ describe('risup prompt manager drag reorder', () => {
         { type: 'plain', type2: 'normal', role: 'system', name: 'Second', text: 'second' },
         { type: 'plain', type2: 'normal', role: 'system', name: 'Third', text: 'third' },
       ]),
-    } as CharxData;
+    } as RendererDocumentData;
     const setPromptTemplate = vi.fn((value: string) => {
       data.promptTemplate = value;
     });

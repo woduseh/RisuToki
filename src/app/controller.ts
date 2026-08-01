@@ -3,7 +3,7 @@ import type { Section } from '../lib/section-parser';
 import type { Tab } from '../lib/tab-manager';
 import { registerActions } from '../lib/action-registry';
 import { useAppStore } from '../stores/app-store';
-import type { RpMode, CharxData, LorebookEntry, RegexEntry, ReferenceFile } from '../stores/app-store';
+import type { RpMode, LorebookEntry, RegexEntry, ReferenceFile, RendererDocumentData } from '../stores/app-store';
 import {
   createTreeItem,
   createFolderItem,
@@ -111,6 +111,7 @@ import {
 import type { FileActionDeps } from '../lib/file-actions';
 import { runStartupSessionRecovery } from './session-recovery-controller';
 import { createProjectWorkspaceController } from './project-workspace-controller';
+import { handleMcpDataUpdate } from './mcp-update-controller';
 import { createTerminalSessionsController, type TerminalSessionUi } from './terminal-sessions-controller';
 import {
   stringifyStringArray,
@@ -179,7 +180,7 @@ interface MonacoEditorInstance {
   [key: string]: unknown;
 }
 
-let fileData: CharxData | null = null; // Current charx data
+let fileData: RendererDocumentData | null = null; // Current serialized renderer document data
 let currentProjectPath: string | null = null;
 let editorInstance: MonacoEditorInstance | null = null; // Monaco editor instance
 let previewPanelHandle: { dispose: () => void } | null = null;
@@ -322,7 +323,7 @@ const projectWorkspace = createProjectWorkspaceController({
   api: window.tokiAPI,
   tabManager: tabMgr,
   applyReloadedProject: (data, projectPath) => {
-    setCurrentFileData(data as CharxData);
+    setCurrentFileData(data);
     currentProjectPath = projectPath || currentProjectPath;
     buildSidebar();
   },
@@ -387,7 +388,7 @@ window.tokiAPI.onMcpOpenFileRequest(async (id, request) => {
       success: true,
       filePath: request.filePath,
       fileType: getRendererDocumentFileType(opened),
-      name: String((opened as Record<string, unknown>).name || 'Untitled'),
+      name: opened.name || 'Untitled',
     });
   } catch (error) {
     window.tokiAPI.sendMcpOpenFileResponse(id, {
@@ -1236,7 +1237,7 @@ function appendHiddenFieldWarnings(tree: HTMLElement): void {
 }
 
 type RisumSidebarField = {
-  id: keyof Pick<CharxData, 'backgroundEmbedding' | 'customModuleToggle'>;
+  id: keyof Pick<RendererDocumentData, 'backgroundEmbedding' | 'customModuleToggle'>;
   label: string;
   icon: string;
   lang: string;
@@ -2334,7 +2335,7 @@ function updateDocumentStats(): void {
     });
 }
 
-function setCurrentFileData(data: CharxData | null): void {
+function setCurrentFileData(data: RendererDocumentData | null): void {
   fileData = data;
   useAppStore().setFileData(data);
   updateDocumentStats();
@@ -2353,11 +2354,10 @@ function resetDocumentWorkspace(): void {
   updateDocumentStats();
 }
 
-function applyLoadedDocument(data: Record<string, unknown>): void {
-  const nextData = data as CharxData;
-  setCurrentFileData(nextData);
+function applyLoadedDocument(data: RendererDocumentData): void {
+  setCurrentFileData(data);
   resetDocumentWorkspace();
-  useAppStore().setFileLabel((nextData.name as string) || 'Untitled');
+  useAppStore().setFileLabel(data.name || 'Untitled');
   buildSidebar();
 }
 
@@ -2365,7 +2365,7 @@ function applyLoadedDocument(data: Record<string, unknown>): void {
 const fileActionDeps: FileActionDeps = {
   getFileData: () => fileData,
   setFileData: (d) => {
-    setCurrentFileData(d as CharxData);
+    setCurrentFileData(d);
   },
   getEditorInstance: () => editorInstance,
   setEditorInstance: (v) => {
@@ -2398,7 +2398,7 @@ async function handleExtractDocumentProject(): Promise<void> {
     if (!result.canceled) setStatus(`프로젝트 추출 실패: ${result.error || '알 수 없는 오류'}`);
     return;
   }
-  setCurrentFileData(result.data as CharxData);
+  setCurrentFileData(result.data);
   currentProjectPath = result.projectPath || null;
   rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
@@ -2414,7 +2414,7 @@ async function handleOpenProjectFolder(): Promise<void> {
     if (!result.canceled) setStatus(`프로젝트 열기 실패: ${result.error || '알 수 없는 오류'}`);
     return;
   }
-  setCurrentFileData(result.data as CharxData);
+  setCurrentFileData(result.data);
   currentProjectPath = result.projectPath || null;
   rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
@@ -2439,7 +2439,7 @@ async function handleCloneProjectFolder(): Promise<void> {
     if (!result.canceled) setStatus(`프로젝트 복제 실패: ${result.error || '알 수 없는 오류'}`);
     return;
   }
-  setCurrentFileData(result.data as CharxData);
+  setCurrentFileData(result.data);
   currentProjectPath = result.projectPath || null;
   rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
@@ -2458,7 +2458,7 @@ async function handleOpenRecentItem(payload?: unknown): Promise<void> {
       if (!result.success) {
         throw new Error(result.error || '알 수 없는 오류');
       }
-      setCurrentFileData(result.data as CharxData);
+      setCurrentFileData(result.data);
       currentProjectPath = result.projectPath || null;
       useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
       resetDocumentWorkspace();
@@ -2610,7 +2610,7 @@ function getAutosaveDeps() {
     getAutosaveInterval: () => autosaveInterval,
     getAutosaveDir: () => autosaveDir,
     getDirtyFieldCount: () => (documentSwitchInProgress ? 0 : tabMgr.dirtyFields.size),
-    getFileData: () => fileData as Record<string, unknown> | null,
+    getFileData: () => fileData,
     collectDirtyFields: () =>
       collectDirtyEditorFields({
         dirtyFields: tabMgr.dirtyFields,
@@ -3119,111 +3119,41 @@ export async function initMainRenderer(): Promise<void> {
 
   // Listen for MCP data updates (AI assistant modified data via MCP server)
   window.tokiAPI.onDataUpdated((field, value) => {
-    if (!fileData) return;
-    // (debug log removed)
-
-    const updatePlan =
-      field === 'triggerScripts'
-        ? applyTriggerScriptsControllerMcpUpdate({
+    handleMcpDataUpdate(
+      {
+        tabManager: tabMgr,
+        getFileData: () => fileData,
+        getEditor: () => editorInstance,
+        formTabTypes: FORM_TAB_TYPES,
+        createBackup,
+        buildSidebar,
+        buildLorebookTabState,
+        buildRegexTabState,
+        buildLuaSectionTabState,
+        buildCssSectionTabState,
+        buildRisupTabState,
+        applyTriggerScriptsUpdate: (nextValue) =>
+          applyTriggerScriptsControllerMcpUpdate({
             tabMgr,
-            fileData,
-            value,
+            fileData: fileData!,
+            value: nextValue,
             createBackup,
             activateTab: (tab) => createOrSwitchEditor(tab),
-          })
-        : planMcpDataUpdate(field, tabMgr.openTabs);
-    if (field !== 'triggerScripts') {
-      for (const tabId of updatePlan.backupTabIds) {
-        const tab = tabMgr.openTabs.find((entry) => entry.id === tabId);
-        if (tab?.getValue) {
-          createBackup(tab.id, tab.getValue());
-        }
-      }
-    }
-
-    if (field === 'lorebook') {
-      fileData.lorebook = value as LorebookEntry[];
-      if (updatePlan.refreshSidebar) buildSidebar();
-      if (updatePlan.refreshIndexedPrefixes.includes('lore_')) {
-        tabMgr.refreshIndexedTabs('lore_', buildLorebookTabState);
-      }
-      const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
-      if (activeTab && activeTab.id.startsWith('lore_') && editorInstance && !FORM_TAB_TYPES.has(activeTab.language)) {
-        const pos = editorInstance.getPosition();
-        editorInstance.setValue((activeTab.getValue() as string) || '');
-        if (pos) editorInstance.setPosition(pos);
-      }
-    } else if (field === 'regex') {
-      fileData.regex = value as RegexEntry[];
-      if (updatePlan.refreshSidebar) buildSidebar();
-      if (updatePlan.refreshIndexedPrefixes.includes('regex_')) {
-        tabMgr.refreshIndexedTabs('regex_', buildRegexTabState);
-      }
-      const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
-      if (activeTab && activeTab.id.startsWith('regex_') && editorInstance && !FORM_TAB_TYPES.has(activeTab.language)) {
-        const pos = editorInstance.getPosition();
-        editorInstance.setValue((activeTab.getValue() as string) || '');
-        if (pos) editorInstance.setPosition(pos);
-      }
-    } else {
-      if (field !== 'triggerScripts') {
-        fileData[field] = value;
-      }
-      if (field === 'lua') {
-        fileData.triggerScripts = mergeLuaIntoTriggerScriptsText(fileData.triggerScripts, value as string);
-      }
-      if (field === 'lua') {
-        luaSections = parseLuaSections(value as string);
-      }
-      if (field === 'css') {
-        ({
-          sections: cssSections,
-          prefix: _cssStylePrefix,
-          suffix: _cssStyleSuffix,
-        } = parseCssSections(value as string));
-      }
-      if (updatePlan.refreshSidebar) {
-        buildSidebar();
-      }
-      for (const prefix of updatePlan.refreshIndexedPrefixes) {
-        if (prefix === 'lua_s') {
-          tabMgr.refreshIndexedTabs(prefix, buildLuaSectionTabState);
-        } else if (prefix === 'css_s') {
-          tabMgr.refreshIndexedTabs(prefix, buildCssSectionTabState);
-        } else if (prefix === 'risup_') {
-          tabMgr.refreshIndexedTabs(prefix, (_index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
-        }
-      }
-      if (field === tabMgr.activeTabId && editorInstance) {
-        const activeTab = tabMgr.openTabs.find((tab) => tab.id === field);
-        const pos = editorInstance.getPosition();
-        editorInstance.setValue(activeTab?.getValue ? (activeTab.getValue() as string) || '' : (value as string) || '');
-        if (pos) editorInstance.setPosition(pos);
-      }
-      if (field === 'lua' && tabMgr.activeTabId?.startsWith('lua_s') && editorInstance) {
-        const activeTab = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
-        if (activeTab) {
-          const pos = editorInstance.getPosition();
-          editorInstance.setValue((activeTab.getValue() as string) || '');
-          if (pos) editorInstance.setPosition(pos);
-        }
-      }
-      if (field === 'css' && tabMgr.activeTabId?.startsWith('css_s') && editorInstance) {
-        const activeTab = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
-        if (activeTab) {
-          const pos = editorInstance.getPosition();
-          editorInstance.setValue((activeTab.getValue() as string) || '');
-          if (pos) editorInstance.setPosition(pos);
-        }
-      }
-      if (updatePlan.updateFileLabel) {
-        useAppStore().setFileLabel((value as string) || 'Untitled');
-      }
-    }
-    setStatus(updatePlan.statusMessage);
-    tabMgr.markFieldDirty(field);
+          }),
+        mergeLuaIntoTriggerScripts: mergeLuaIntoTriggerScriptsText,
+        updateLuaSections: (lua) => {
+          luaSections = parseLuaSections(lua);
+        },
+        updateCssSections: (css) => {
+          ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(css));
+        },
+        setFileLabel: (label) => useAppStore().setFileLabel(label),
+        setStatus,
+      },
+      field,
+      value,
+    );
   });
-
   // Load Terminal (async, non-blocking)
   try {
     await terminalSessions.init();

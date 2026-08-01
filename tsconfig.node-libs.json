@@ -5,8 +5,10 @@
     "moduleResolution": "Node16",
     "strict": true,
     "noEmit": false,
+    "rootDir": ".",
+    "outDir": ".build/node",
     "incremental": true,
-    "tsBuildInfoFile": ".tsbuildinfo/node-libs.tsbuildinfo",
+    "tsBuildInfoFile": ".build/node/node-libs.tsbuildinfo",
     "esModuleInterop": true,
     "skipLibCheck": true
   },
@@ -60,5 +62,5 @@
     "test/mcp-contract-baseline.ts",
     "test/run-workflow-eval-replay.ts"
   ],
-  "exclude": ["dist", "node_modules"]
+  "exclude": [".build", "dist", "node_modules"]
 }

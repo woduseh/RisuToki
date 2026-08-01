@@ -1,5 +1,6 @@
 import { writeCustomTheme, writeThemeId } from '../lib/app-settings';
 import type { McpApprovalMode } from '../lib/app-settings';
+import type { RendererDocumentData, RendererDocumentPatch } from '../lib/document-types';
 import { applyTheme } from '../lib/dark-mode';
 import { refreshAvatarForDarkMode } from '../lib/avatar-ui';
 import { setStatus } from '../lib/status-bar';
@@ -63,8 +64,8 @@ export interface AutosaveDeps {
   getAutosaveInterval(): number;
   getAutosaveDir(): string;
   getDirtyFieldCount(): number;
-  getFileData(): Record<string, unknown> | null;
-  collectDirtyFields(): Record<string, unknown>;
+  getFileData(): RendererDocumentData | null;
+  collectDirtyFields(): RendererDocumentPatch;
 }
 
 let autosaveTimer: ReturnType<typeof setInterval> | null = null;

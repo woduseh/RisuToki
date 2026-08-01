@@ -291,12 +291,12 @@ main-process PTY output ── IPC ──► terminal session/controller/UI
 | Command or config | Responsibility |
 | --- | --- |
 | `vite.config.ts` | Builds the single `index.html` renderer entry and copies browser runtime assets |
-| `tsconfig.electron.json` | Type-checks/compiles `main.ts`, `preload.ts`, and Electron bridge declarations as CommonJS |
-| `build:preload` | Bundles `preload.ts` to root `preload.js` with esbuild |
-| `tsconfig.node-libs.json` | Compiles selected Node-compatible TypeScript modules and test harnesses to side-by-side JavaScript |
+| `tsconfig.electron.json` | Type-checks/compiles `main.ts`, `preload.ts`, and Electron bridge declarations as CommonJS under `.build/electron` |
+| `build:preload` | Bundles `preload.ts` to `.build/electron/preload.js` with esbuild |
+| `tsconfig.node-libs.json` | Compiles selected Node-compatible TypeScript modules and test harnesses under `.build/node` |
 | `build/build-mcp.js` | Bundles `toki-mcp-server.ts`, embeds runtime version metadata, and copies required WASM files |
 
-When `.ts` and `.js` siblings exist, the `.ts` file is the source of truth and the `.js` file is generated. Electron packaging includes the renderer bundle, compiled main/preload/MCP entrypoints, selected generated runtime modules, resources, and skill/document roots declared in `package.json`.
+TypeScript sources no longer receive generated JavaScript siblings. Node and Electron compiler outputs are cleaned and rebuilt in their respective `.build/` subdirectories; the public standalone `toki-mcp-server.js` bundle and its WASM assets remain at the repository/application root. Electron packaging includes `.build/electron`, the renderer and MCP bundles, resources, and skill/document roots declared in `package.json`.
 
 ---
 

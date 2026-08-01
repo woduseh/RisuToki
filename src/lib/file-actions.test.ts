@@ -10,12 +10,31 @@ import {
   CLOSE_CHOICE_SAVE_AND_CLOSE,
 } from './close-window-policy';
 import { useAppStore } from '../stores/app-store';
+import type { RendererDocumentData } from './document-types';
 
 type FileActionTestDeps = FileActionDeps & {
   hasUnsavedChanges: () => boolean;
   requestDocumentReplacement: (targetLabel: string) => Promise<number>;
   saveCurrentDocument: () => Promise<void>;
 };
+
+function makeRendererDocument(overrides: Partial<RendererDocumentData> = {}): RendererDocumentData {
+  return {
+    _fileType: 'charx',
+    name: 'Test',
+    description: '',
+    firstMessage: '',
+    alternateGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: '[]',
+    lorebook: [],
+    regex: [],
+    ...overrides,
+  };
+}
 
 function makeDeps(overrides: Partial<FileActionTestDeps> = {}): FileActionTestDeps {
   const tabMgr = new TabManager('editor-tabs', {
@@ -28,7 +47,7 @@ function makeDeps(overrides: Partial<FileActionTestDeps> = {}): FileActionTestDe
     useAppStore().setStatus(message);
   });
   return {
-    getFileData: vi.fn(() => ({ name: 'Test' })),
+    getFileData: vi.fn(() => makeRendererDocument()),
     setFileData: vi.fn(),
     getEditorInstance: vi.fn(() => null),
     setEditorInstance: vi.fn(),
@@ -339,15 +358,17 @@ describe('file-actions', () => {
         cleanupAutosave: vi.fn(),
       });
       const deps = makeDeps({
-        getFileData: vi.fn(() => ({
-          _fileType: 'risup',
-          name: 'Preset',
-          // promptTemplate and formatingOrder now use structured editors — no longer JSON-validated here
-          promptTemplate: '{',
-          presetBias: '{', // presetBias is still a 'json' field — invalid JSON should block save
-          formatingOrder: '["main"]',
-          localStopStrings: '[]',
-        })),
+        getFileData: vi.fn(() =>
+          makeRendererDocument({
+            _fileType: 'risup',
+            name: 'Preset',
+            // promptTemplate and formatingOrder now use structured editors — no longer JSON-validated here
+            promptTemplate: '{',
+            presetBias: '{', // presetBias is still a 'json' field — invalid JSON should block save
+            formatingOrder: '["main"]',
+            localStopStrings: '[]',
+          }),
+        ),
       });
 
       await handleSave(deps);
@@ -363,14 +384,16 @@ describe('file-actions', () => {
         cleanupAutosave: vi.fn(),
       });
       const deps = makeDeps({
-        getFileData: vi.fn(() => ({
-          _fileType: 'risup',
-          name: 'Preset',
-          promptTemplate: '{',
-          presetBias: '{}',
-          formatingOrder: '["main"]',
-          localStopStrings: '[]',
-        })),
+        getFileData: vi.fn(() =>
+          makeRendererDocument({
+            _fileType: 'risup',
+            name: 'Preset',
+            promptTemplate: '{',
+            presetBias: '{}',
+            formatingOrder: '["main"]',
+            localStopStrings: '[]',
+          }),
+        ),
       });
 
       await handleSave(deps);
@@ -386,11 +409,13 @@ describe('file-actions', () => {
         cleanupAutosave: vi.fn(),
       });
       const deps = makeDeps({
-        getFileData: vi.fn(() => ({
-          _fileType: 'charx',
-          name: 'Trigger Card',
-          triggerScripts: '[]',
-        })),
+        getFileData: vi.fn(() =>
+          makeRendererDocument({
+            _fileType: 'charx',
+            name: 'Trigger Card',
+            triggerScripts: '[]',
+          }),
+        ),
       });
       const draft = parseTriggerScriptsText(
         JSON.stringify(
@@ -504,14 +529,16 @@ describe('file-actions', () => {
         saveFileAs,
       });
       const deps = makeDeps({
-        getFileData: vi.fn(() => ({
-          _fileType: 'risup',
-          name: 'Preset',
-          promptTemplate: '[]',
-          presetBias: '[[',
-          formatingOrder: '["main"]',
-          localStopStrings: '[]',
-        })),
+        getFileData: vi.fn(() =>
+          makeRendererDocument({
+            _fileType: 'risup',
+            name: 'Preset',
+            promptTemplate: '[]',
+            presetBias: '[[',
+            formatingOrder: '["main"]',
+            localStopStrings: '[]',
+          }),
+        ),
       });
 
       await handleSaveAs(deps);
@@ -526,11 +553,13 @@ describe('file-actions', () => {
         saveFileAs,
       });
       const deps = makeDeps({
-        getFileData: vi.fn(() => ({
-          _fileType: 'charx',
-          name: 'Trigger Card',
-          triggerScripts: '[]',
-        })),
+        getFileData: vi.fn(() =>
+          makeRendererDocument({
+            _fileType: 'charx',
+            name: 'Trigger Card',
+            triggerScripts: '[]',
+          }),
+        ),
       });
       const draft = parseTriggerScriptsText(
         JSON.stringify(

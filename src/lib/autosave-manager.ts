@@ -1,5 +1,7 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as path from 'path';
+import type { LoadedDocumentData } from '../charx-io';
+import type { RendererDocumentPatch } from './document-types';
 import type { RecoveryFileType, AutosaveProvenance } from './session-recovery';
 import { SIDECAR_SUFFIX, getAutosaveExtension, getAutosaveSidecarPath } from './session-recovery';
 
@@ -12,22 +14,20 @@ const AUTOSAVE_EXTENSIONS = new Set(['.charx', '.risum', '.risup']);
 // Public types
 // ---------------------------------------------------------------------------
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export interface AutosaveManagerDeps {
-  getCurrentData: () => any;
+  getCurrentData: () => LoadedDocumentData | null;
   getCurrentFilePath: () => string | null;
   getMainWindow: () => BrowserWindow | null;
-  saveCharx: (filePath: string, data: any) => void;
-  saveRisum: (filePath: string, data: any) => void;
-  saveRisup: (filePath: string, data: any) => void;
+  saveCharx: (filePath: string, data: LoadedDocumentData) => void;
+  saveRisum: (filePath: string, data: LoadedDocumentData) => void;
+  saveRisup: (filePath: string, data: LoadedDocumentData) => void;
   readFileSync: (filePath: string, encoding: BufferEncoding) => string;
   writeFileSync: (filePath: string, data: string) => void;
   writeFileAtomicSync?: (filePath: string, data: string) => void;
   mkdirSync: (dirPath: string, options?: { recursive: boolean }) => void;
   readdirSync: (dirPath: string) => string[];
   unlinkSync: (filePath: string) => void;
-  applyUpdates: (data: any, fields: any) => void;
+  applyUpdates: (data: LoadedDocumentData, fields: RendererDocumentPatch) => void;
   onAutosaveSuccess?: (autosavePath: string, sidecarPath: string) => void;
 }
 
@@ -45,7 +45,10 @@ function normalizeRecoveryFileType(raw: unknown): RecoveryFileType {
   return 'charx';
 }
 
-function getWriterForType(fileType: RecoveryFileType, d: AutosaveManagerDeps): (filePath: string, data: any) => void {
+function getWriterForType(
+  fileType: RecoveryFileType,
+  d: AutosaveManagerDeps,
+): (filePath: string, data: LoadedDocumentData) => void {
   switch (fileType) {
     case 'risum':
       return d.saveRisum;
@@ -130,10 +133,10 @@ let deps: AutosaveManagerDeps;
 export function initAutosaveManager(d: AutosaveManagerDeps): void {
   deps = d;
 
-  ipcMain.handle('autosave-file', async (_, updatedFields: any) => {
+  ipcMain.handle('autosave-file', async (_, updatedFields: RendererDocumentPatch) => {
     const currentData = deps.getCurrentData();
     if (!currentData) return { success: false, error: 'No data' };
-    const customDir: string | undefined = updatedFields._autosaveDir;
+    const customDir = typeof updatedFields._autosaveDir === 'string' ? updatedFields._autosaveDir : undefined;
     const currentFilePath = deps.getCurrentFilePath();
     if (!currentFilePath && !customDir) return { success: false, error: 'No file path and no autosave dir' };
     let autosavePath: string | null = null;

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
 import type { ZodType } from 'zod';
+import type { LoadedDocumentData } from '../charx-io';
 
 import {
   applyExternalFieldMutation,
@@ -409,7 +410,7 @@ export async function handleExternalRoute(
             });
           }
         }
-        deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data);
+        deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data as LoadedDocumentData);
         logMcpMutation('external batch write field', 'external:field:batch-write', {
           filePath: probe.filePath,
           count: validatedEntries.length,
@@ -518,7 +519,7 @@ export async function handleExternalRoute(
 
       const release = await acquireFieldMutex(`external:${probe.filePath}:${fieldName}`);
       try {
-        deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data);
+        deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data as LoadedDocumentData);
         logMcpMutation('external write field', `external:field:${fieldName}`, {
           filePath: probe.filePath,
           oldSize,
@@ -874,7 +875,7 @@ export async function handleExternalRoute(
         if (fieldName === 'lua') {
           probe.data.triggerScripts = deps.mergePrimaryLua(probe.data.triggerScripts, String(probe.data.lua || ''));
         }
-        deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data);
+        deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data as LoadedDocumentData);
         logMcpMutation('external replace in field', `external:field:${fieldName}`, {
           filePath: probe.filePath,
           matchCount,
@@ -1024,7 +1025,7 @@ export async function handleExternalRoute(
         if (fieldName === 'lua') {
           probe.data.triggerScripts = deps.mergePrimaryLua(probe.data.triggerScripts, String(probe.data.lua || ''));
         }
-        deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data);
+        deps.saveExternalDocument(probe.filePath, probe.fileType, probe.data as LoadedDocumentData);
         logMcpMutation('external insert in field', `external:field:${fieldName}`, {
           filePath: probe.filePath,
           position,
@@ -1300,7 +1301,7 @@ export async function handleExternalRoute(
             target: 'external:surface:patch',
           });
         }
-        deps.saveExternalDocument(probe.filePath, probe.fileType, draft);
+        deps.saveExternalDocument(probe.filePath, probe.fileType, draft as LoadedDocumentData);
         logMcpMutation('external patch surface', 'external:surface:patch', {
           filePath: probe.filePath,
           changed: result.changed,

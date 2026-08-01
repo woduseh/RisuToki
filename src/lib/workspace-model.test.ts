@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { getInspectorContext, getWorkspaceDefinitions, inferWorkspaceFromTab } from './workspace-model';
-import type { CharxData } from '../stores/app-store';
+import type { RendererDocumentData } from '../stores/app-store';
 
-function data(fileType: 'charx' | 'risum' | 'risup'): CharxData {
+function data(fileType: 'charx' | 'risum' | 'risup'): RendererDocumentData {
   return {
     name: '',
     description: '',

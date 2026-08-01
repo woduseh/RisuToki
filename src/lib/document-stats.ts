@@ -1,4 +1,4 @@
-import type { CharxData } from '../stores/app-store';
+import type { RendererDocumentData } from '../stores/app-store';
 import type { Tab } from './tab-manager';
 
 export interface DocumentStats {
@@ -11,12 +11,12 @@ export interface DocumentStats {
 }
 
 export interface DocumentStatsInput {
-  data: CharxData | null;
+  data: RendererDocumentData | null;
   dirty: boolean;
   activeTab?: Pick<Tab, 'getValue'> | null;
 }
 
-function documentFileType(data: CharxData | null): string {
+function documentFileType(data: RendererDocumentData | null): string {
   const raw = data?._fileType || 'charx';
   if (raw === 'risum') return 'RISUM';
   if (raw === 'risup') return 'RISUP';

@@ -17,6 +17,7 @@ vi.mock('electron', () => ({
 
 import { initAutosaveManager, type AutosaveManagerDeps } from './autosave-manager';
 import { applyUpdates, initDataSerializer } from './data-serializer';
+import type { LoadedDocumentData } from '../charx-io';
 
 function getRegisteredHandler(name: string) {
   const call = ipcHandle.mock.calls.find((args: unknown[]) => args[0] === name);
@@ -26,11 +27,38 @@ function getRegisteredHandler(name: string) {
   return call[1] as (...args: unknown[]) => Promise<{ success: boolean; error?: string; path?: string }>;
 }
 
-function makeDeps(overrides: Partial<AutosaveManagerDeps> = {}): AutosaveManagerDeps {
+type TestAutosaveDepsOverrides = Omit<Partial<AutosaveManagerDeps>, 'getCurrentData'> & {
+  getCurrentData?: () => Record<string, unknown> | null;
+};
+
+function makeLoadedDocument(overrides: Record<string, unknown>): LoadedDocumentData {
+  return {
+    name: '',
+    description: '',
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    ...overrides,
+  } as unknown as LoadedDocumentData;
+}
+
+function makeDeps(overrides: TestAutosaveDepsOverrides = {}): AutosaveManagerDeps {
   const defaultGetCurrentFilePath = () => makeTestPath('data', 'test.charx');
   const getCurrentFilePath = overrides.getCurrentFilePath ?? defaultGetCurrentFilePath;
+  const { getCurrentData: overriddenGetCurrentData, ...remainingOverrides } = overrides;
+  const getCurrentData = overriddenGetCurrentData ?? (() => ({ _fileType: 'charx', name: 'TestChar' }));
   return {
-    getCurrentData: () => ({ _fileType: 'charx', name: 'TestChar' }),
+    getCurrentData: () => {
+      const data = getCurrentData();
+      return data ? makeLoadedDocument(data) : null;
+    },
     getCurrentFilePath,
     getMainWindow: () => null,
     saveCharx: vi.fn(),
@@ -42,7 +70,7 @@ function makeDeps(overrides: Partial<AutosaveManagerDeps> = {}): AutosaveManager
     readdirSync: vi.fn().mockReturnValue([]),
     unlinkSync: vi.fn(),
     applyUpdates: vi.fn(),
-    ...overrides,
+    ...remainingOverrides,
   };
 }
 

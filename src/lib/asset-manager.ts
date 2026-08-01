@@ -310,9 +310,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
     }
 
     try {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const mod = require('./image-compressor') as typeof import('./image-compressor');
-      /* eslint-enable @typescript-eslint/no-require-imports */
+      const mod = await import('./image-compressor.js');
       const { compressAssetsToWebP, updateAssetReferences } = mod;
 
       const result = await compressAssetsToWebP(data.assets, {
@@ -361,9 +359,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
     if (result.canceled || !result.filePaths[0]) return { ok: false, error: 'Cancelled' };
 
     try {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const mod = require('./lorebook-io') as typeof import('./lorebook-io');
-      /* eslint-enable @typescript-eslint/no-require-imports */
+      const mod = await import('./lorebook-io.js');
       const format = opts?.format || 'md';
       const exportOpts = {
         format: format as 'md' | 'json',
@@ -415,9 +411,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
       }
 
       try {
-        /* eslint-disable @typescript-eslint/no-require-imports */
-        const mod = require('./lorebook-io') as typeof import('./lorebook-io');
-        /* eslint-enable @typescript-eslint/no-require-imports */
+        const mod = await import('./lorebook-io.js');
 
         const importEntries =
           format === 'json' ? await mod.importFromJson(sourcePath) : await mod.importFromMarkdown(sourcePath);
@@ -495,9 +489,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
     if (result.canceled || !result.filePath) return { ok: false, error: 'Cancelled' };
 
     try {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const mod = require('./lorebook-io') as typeof import('./lorebook-io');
-      /* eslint-enable @typescript-eslint/no-require-imports */
+      const mod = await import('./lorebook-io.js');
       const content = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
       const exportResult = await mod.exportFieldToFile(field, content, result.filePath, format || 'txt');
       return { ok: true, ...exportResult };

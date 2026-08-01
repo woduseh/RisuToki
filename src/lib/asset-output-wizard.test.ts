@@ -9,9 +9,9 @@ import {
   ensureGeneratedAssetBlock,
   upsertGeneratedAssetBlock,
 } from './asset-output-wizard';
-import type { CharxData } from '../stores/app-store';
+import type { RendererDocumentData } from '../stores/app-store';
 
-function makeData(fileType: 'charx' | 'risum' = 'charx'): CharxData {
+function makeData(fileType: 'charx' | 'risum' = 'charx'): RendererDocumentData {
   return {
     name: 'test',
     description: '',

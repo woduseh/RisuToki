@@ -5,7 +5,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { buildCharxZip, openCharx, openRisum, openRisup, saveRisum, saveRisup, type CharxData } from '../charx-io';
+import {
+  buildCharxZip,
+  openCharx,
+  openRisum,
+  openRisup,
+  saveRisum,
+  saveRisup,
+  type LoadedDocumentData,
+} from '../charx-io';
 import {
   extractCharxToProject,
   extractDocumentToProject,
@@ -24,7 +32,7 @@ function makeTempDir(): string {
 }
 
 function writeFixtureCharx(filePath: string): void {
-  const data: CharxData = {
+  const data: LoadedDocumentData = {
     name: 'Folder Bot',
     description: 'Description in markdown',
     personality: 'Calm',
@@ -68,7 +76,7 @@ function writeFixtureCharx(filePath: string): void {
 }
 
 function writeFixtureRisum(filePath: string): void {
-  const data: CharxData = {
+  const data: LoadedDocumentData = {
     name: 'Module Fixture',
     description: 'Module description',
     moduleName: 'Module Fixture',
@@ -142,7 +150,7 @@ function writeFixtureRisup(filePath: string): void {
     mainPrompt: 'Main prompt',
     jailbreak: 'Jailbreak prompt',
     globalNote: 'Global note',
-  } as unknown as CharxData;
+  } as unknown as LoadedDocumentData;
   saveRisup(filePath, data);
 }
 
@@ -173,7 +181,7 @@ describe('folder-workspace', () => {
     expect(reopened.assets.map((asset) => asset.path)).toContain('assets/icon/main.png');
   });
 
-  it('loads and saves project folders through normalized CharxData', () => {
+  it('loads and saves project folders through normalized LoadedDocumentData', () => {
     const temp = makeTempDir();
     const charxPath = path.join(temp, 'source.charx');
     const projectPath = path.join(temp, 'project');
@@ -182,11 +190,11 @@ describe('folder-workspace', () => {
     extractCharxToProject(charxPath, projectPath);
 
     const data = loadProjectData(projectPath);
-    data.description = 'Saved through CharxData';
+    data.description = 'Saved through LoadedDocumentData';
     data.firstMessage = 'Saved first message';
     saveProjectData(projectPath, data);
 
-    expect(fs.readFileSync(path.join(projectPath, 'description.md'), 'utf-8')).toBe('Saved through CharxData');
+    expect(fs.readFileSync(path.join(projectPath, 'description.md'), 'utf-8')).toBe('Saved through LoadedDocumentData');
     expect(fs.readFileSync(path.join(projectPath, 'first_mes.md'), 'utf-8')).toBe('Saved first message');
 
     const tree = listProjectTree(projectPath);
@@ -194,7 +202,7 @@ describe('folder-workspace', () => {
 
     reassembleProjectCharx(projectPath, outputPath);
     const reopened = openCharx(outputPath);
-    expect(reopened.description).toBe('Saved through CharxData');
+    expect(reopened.description).toBe('Saved through LoadedDocumentData');
     expect(reopened.firstMessage).toBe('Saved first message');
   });
 

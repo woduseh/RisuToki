@@ -71,6 +71,8 @@ npm run dist:all     # Windows NSIS + portable build
 npm run mcp:standalone -- --file C:\path\to\card.charx --allow-writes
 ```
 
+Generated Node and Electron JavaScript is isolated under `.build/node` and `.build/electron`; source directories contain TypeScript only. The standalone `toki-mcp-server.js` bundle remains at the project root for its public command path.
+
 ### Developer Documentation
 
 - `docs/README.md` — Knowledge-base index for agents and contributors

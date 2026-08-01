@@ -239,7 +239,7 @@ describe('runtime dependency scanner behavior', () => {
 
   it('treats inline type-only imports and exports as runtime boundaries under verbatimModuleSyntax', () => {
     const source = [
-      "import { type CharxData } from '../stores/app-store';",
+      "import { type RendererDocumentData } from '../stores/app-store';",
       "export { type Controller } from '../app/controller';",
       '',
     ].join('\n');
@@ -359,6 +359,7 @@ describe('src/lib lint coverage guard', () => {
 
 describe('packaged MCP runtime assets', () => {
   const packageJson = JSON.parse(fs.readFileSync(PACKAGE_JSON, 'utf-8')) as {
+    main?: string;
     build?: { files?: string[]; asarUnpack?: string[] };
   };
 
@@ -368,14 +369,13 @@ describe('packaged MCP runtime assets', () => {
     expect(packageJson.build?.asarUnpack).toEqual(expect.arrayContaining(runtimeFiles));
   });
 
-  it('ships compiled src runtime files without TypeScript, Vue, or test sources', () => {
+  it('ships isolated Electron runtime files without source-side JavaScript', () => {
     const packagedFiles = packageJson.build?.files ?? [];
-    const srcPatterns = packagedFiles.filter((file) => file.startsWith('src/'));
-
-    expect(packagedFiles).toEqual(
-      expect.arrayContaining(['src/**/*.js', '!src/**/*.test.js', '!src/**/*.spec.js', 'src/rpack_map.bin']),
-    );
+    expect(packagedFiles).toEqual(expect.arrayContaining(['.build/electron/**/*', 'src/rpack_map.bin']));
+    expect(packagedFiles).not.toContain('main.js');
+    expect(packagedFiles).not.toContain('preload.js');
+    expect(packagedFiles).not.toContain('src/**/*.js');
     expect(packagedFiles).not.toContain('src/**/*');
-    expect(srcPatterns.some((file) => /\.(?:ts|tsx|vue)$/.test(file))).toBe(false);
+    expect(packageJson).toMatchObject({ main: '.build/electron/main.js' });
   });
 });

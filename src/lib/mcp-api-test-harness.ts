@@ -4,7 +4,7 @@ import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
 
-import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type CharxData } from '../charx-io';
+import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type LoadedDocumentData } from '../charx-io';
 import { resolveSkillRootDirs } from './content-roots';
 import type { RuntimeMetadata } from './mcp-runtime-contract';
 import {
@@ -164,7 +164,7 @@ export interface TestDepsOverrides {
   detectCssSectionInline?: (line: string) => string | null;
   detectCssBlockOpen?: (line: string) => boolean;
   detectCssBlockClose?: (line: string) => boolean;
-  openExternalDocument?: (filePath: string) => CharxData;
+  openExternalDocument?: (filePath: string) => LoadedDocumentData;
   userDataPath?: string;
   broadcastToAll?: (channel: string, ...args: unknown[]) => void;
   invalidateAssetsMapCache?: () => void;
@@ -192,22 +192,22 @@ export const MCP_API_FIXED_SKILL_ROOT = path.join(__dirname, '..', '..', 'test',
 // (same as the headless server) so harness behavior matches runtime behavior.
 // Tests that need custom section shapes can still inject overrides.
 
-export function openExternalDocumentForTest(filePath: string): CharxData {
+export function openExternalDocumentForTest(filePath: string): LoadedDocumentData {
   if (filePath.endsWith('.risum')) return openRisum(filePath);
   if (filePath.endsWith('.risup')) return openRisup(filePath);
   return openCharx(filePath);
 }
 
-function saveExternalDocumentForTest(filePath: string, data: SearchFixture | CharxData): void {
+function saveExternalDocumentForTest(filePath: string, data: SearchFixture | LoadedDocumentData): void {
   if (filePath.endsWith('.risum')) {
-    saveRisum(filePath, data as unknown as CharxData);
+    saveRisum(filePath, data as unknown as LoadedDocumentData);
     return;
   }
   if (filePath.endsWith('.risup')) {
-    saveRisup(filePath, data as unknown as CharxData);
+    saveRisup(filePath, data as unknown as LoadedDocumentData);
     return;
   }
-  saveCharx(filePath, data as unknown as CharxData);
+  saveCharx(filePath, data as unknown as LoadedDocumentData);
 }
 
 export function createSearchFixture(): SearchFixture {
@@ -233,7 +233,7 @@ export function createSearchFixture(): SearchFixture {
 }
 
 export function createExternalFixtureHelpers(testDir: string) {
-  function createExternalCharxFixture(overrides: Partial<CharxData> = {}): { dir: string; filePath: string } {
+  function createExternalCharxFixture(overrides: Partial<LoadedDocumentData> = {}): { dir: string; filePath: string } {
     const dir = fs.mkdtempSync(path.join(testDir, 'external-charx-'));
     const filePath = path.join(dir, 'external.charx');
     const data = {
@@ -295,7 +295,7 @@ export function createExternalFixtureHelpers(testDir: string) {
         data: {},
       },
       ...overrides,
-    } as CharxData;
+    } as LoadedDocumentData;
     saveCharx(filePath, data);
     return { dir, filePath };
   }
@@ -314,7 +314,7 @@ export function createExternalFixtureHelpers(testDir: string) {
       lorebook: [],
       regex: [],
       ...overrides,
-    } as unknown as CharxData);
+    } as unknown as LoadedDocumentData);
     return { dir, filePath };
   }
 
@@ -329,7 +329,7 @@ export function createExternalFixtureHelpers(testDir: string) {
       presetBias: '[]',
       localStopStrings: '[]',
       ...overrides,
-    } as unknown as CharxData);
+    } as unknown as LoadedDocumentData);
     return { dir, filePath };
   }
 
@@ -368,12 +368,17 @@ export function closeServer(server: http.Server): Promise<void> {
 }
 
 export async function startTestApiServer(
-  currentData: SearchFixture | CharxData | null,
-  referenceFiles: Array<{ id?: string; fileName: string; filePath?: string; data: SearchFixture | CharxData }> = [],
+  currentData: SearchFixture | LoadedDocumentData | null,
+  referenceFiles: Array<{
+    id?: string;
+    fileName: string;
+    filePath?: string;
+    data: SearchFixture | LoadedDocumentData;
+  }> = [],
   skillRoots?: string | string[],
   overrides?: TestDepsOverrides,
 ) {
-  let activeData: SearchFixture | CharxData | null = currentData;
+  let activeData: SearchFixture | LoadedDocumentData | null = currentData;
   const initialStatus = overrides?.getSessionStatus?.();
   let activeFilePath: string | null =
     initialStatus && !(initialStatus instanceof Promise) ? initialStatus.currentFilePath : null;
@@ -422,8 +427,11 @@ export async function startTestApiServer(
     detectCssBlockOpen: overrides?.detectCssBlockOpen ?? detectCssBlockOpen,
     detectCssBlockClose: overrides?.detectCssBlockClose ?? detectCssBlockClose,
     openExternalDocument: overrides?.openExternalDocument ?? openExternalDocumentForTest,
-    saveExternalDocument: (filePath: string, _fileType: 'charx' | 'risum' | 'risup', data: SearchFixture | CharxData) =>
-      saveExternalDocumentForTest(filePath, data),
+    saveExternalDocument: (
+      filePath: string,
+      _fileType: 'charx' | 'risum' | 'risup',
+      data: SearchFixture | LoadedDocumentData,
+    ) => saveExternalDocumentForTest(filePath, data),
     normalizeTriggerScripts: (data: unknown) => data,
     extractPrimaryLua: () => '',
     mergePrimaryLua: (scripts: unknown, lua: string) => {
@@ -458,8 +466,13 @@ export async function startTestApiServer(
 }
 
 export async function startLegacyTestApiServer(
-  currentData: SearchFixture | CharxData | null,
-  referenceFiles: Array<{ id?: string; fileName: string; filePath?: string; data: SearchFixture | CharxData }> = [],
+  currentData: SearchFixture | LoadedDocumentData | null,
+  referenceFiles: Array<{
+    id?: string;
+    fileName: string;
+    filePath?: string;
+    data: SearchFixture | LoadedDocumentData;
+  }> = [],
   skillRoots?: string | string[],
   overrides?: TestDepsOverrides,
 ) {
@@ -478,8 +491,13 @@ export async function startLegacyTestApiServer(
 
 export function createLegacyTestApiServer(testDir: string) {
   return (
-    currentData: SearchFixture | CharxData | null,
-    referenceFiles: Array<{ id?: string; fileName: string; filePath?: string; data: SearchFixture | CharxData }> = [],
+    currentData: SearchFixture | LoadedDocumentData | null,
+    referenceFiles: Array<{
+      id?: string;
+      fileName: string;
+      filePath?: string;
+      data: SearchFixture | LoadedDocumentData;
+    }> = [],
     skillRoots?: string | string[],
     overrides?: TestDepsOverrides,
   ) =>

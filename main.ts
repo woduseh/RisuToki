@@ -7,22 +7,22 @@ import * as os from 'os';
 import * as crypto from 'crypto';
 
 // Type-only imports from local TypeScript modules (erased at compile time)
-import type { CharxData } from './src/charx-io';
+import type { LoadedDocumentData } from './src/charx-io';
+import type { RendererDocumentData, RendererDocumentPatch } from './src/lib/document-types';
 import type { McpApiServer, Section, CssCacheEntry, McpSessionStatus } from './src/lib/mcp-api-server';
+import type { McpReferenceFile } from './src/lib/mcp-api-server';
 import type { RuntimeMetadata } from './src/lib/mcp-runtime-contract';
 import { writeFileAtomicSync } from './src/lib/atomic-write';
 import { resolveSkillRootDirs } from './src/lib/content-roots';
 import { markRecoveryDocumentActiveForPath, syncRecoveryAfterExplicitSave } from './src/lib/session-recovery-main';
+import { initMainUtilityIpc } from './src/lib/main-utility-ipc';
 
 // ---------------------------------------------------------------------------
 // Interfaces for .cjs modules and local types
 // ---------------------------------------------------------------------------
 
-interface ReferenceRecord {
-  id?: string;
+interface ReferenceRecord extends McpReferenceFile {
   fileName: string;
-  filePath: string;
-  fileType?: 'charx' | 'risum' | 'risup';
   data: Record<string, unknown>;
 }
 
@@ -41,14 +41,14 @@ interface ReferenceManifestStatus {
 interface MainStateStore {
   currentFilePath: string | null;
   currentProjectPath: string | null;
-  currentData: CharxData | null;
+  currentData: LoadedDocumentData | null;
   currentFileBaseline: Record<string, unknown> | null;
   referenceFiles: ReferenceRecord[];
   referenceManifestStatus: ReferenceManifestStatus | null;
   terminalCwd: string | null;
-  resetCurrentDocument(data: CharxData): void;
-  setCurrentDocument(filePath: string, data: CharxData): void;
-  setCurrentProject(projectPath: string, data: CharxData, sourceFilePath?: string | null): void;
+  resetCurrentDocument(data: LoadedDocumentData): void;
+  setCurrentDocument(filePath: string, data: LoadedDocumentData): void;
+  setCurrentProject(projectPath: string, data: LoadedDocumentData, sourceFilePath?: string | null): void;
   clearCurrentProject(): void;
   setCurrentFileBaseline(baseline: Record<string, unknown> | null): void;
   setReferenceFiles(files: ReferenceRecord[]): void;
@@ -102,6 +102,9 @@ interface RendererSessionStatusResponse {
   suggestion?: string;
 }
 
+const COMPILED_ROOT = __dirname;
+const APP_ROOT = path.resolve(COMPILED_ROOT, '..', '..');
+
 // ---------------------------------------------------------------------------
 // Runtime imports (typed require — compiled by tsconfig.node-libs.json)
 // ---------------------------------------------------------------------------
@@ -118,12 +121,12 @@ const {
   normalizeTriggerScripts,
   stringifyTriggerScripts,
 } = require('./src/charx-io') as {
-  openCharx: (filePath: string) => CharxData;
-  saveCharx: (filePath: string, data: CharxData) => void;
-  openRisum: (filePath: string) => CharxData;
-  saveRisum: (filePath: string, data: CharxData) => void;
-  openRisup: (filePath: string) => CharxData;
-  saveRisup: (filePath: string, data: CharxData) => void;
+  openCharx: (filePath: string) => LoadedDocumentData;
+  saveCharx: (filePath: string, data: LoadedDocumentData) => void;
+  openRisum: (filePath: string) => LoadedDocumentData;
+  saveRisum: (filePath: string, data: LoadedDocumentData) => void;
+  openRisup: (filePath: string) => LoadedDocumentData;
+  saveRisup: (filePath: string, data: LoadedDocumentData) => void;
   extractPrimaryLuaFromTriggerScripts: (triggerScripts: unknown) => string;
   mergePrimaryLuaIntoTriggerScripts: (triggerScripts: unknown, lua: unknown) => unknown[];
   normalizeTriggerScripts: (triggerScripts: unknown) => unknown[];
@@ -131,7 +134,11 @@ const {
 };
 
 const { importCharacterCardByPath } = require('./src/lib/character-card-import') as {
-  importCharacterCardByPath: (filePath: string) => { data: CharxData; format: 'png' | 'json'; sourcePath: string };
+  importCharacterCardByPath: (filePath: string) => {
+    data: LoadedDocumentData;
+    format: 'png' | 'json';
+    sourcePath: string;
+  };
 };
 
 const {
@@ -146,8 +153,8 @@ const {
 } = require('./src/lib/folder-workspace') as {
   extractDocumentToProject: (sourcePath: string, projectPath: string) => { success: true; projectPath: string };
   getProjectFileType: (projectPath: string) => 'charx' | 'risum' | 'risup';
-  loadProjectData: (projectPath: string) => CharxData;
-  saveProjectData: (projectPath: string, data: CharxData) => void;
+  loadProjectData: (projectPath: string) => LoadedDocumentData;
+  saveProjectData: (projectPath: string, data: LoadedDocumentData) => void;
   reassembleProjectDocument: (projectPath: string, outputPath: string) => { success: true; outputPath: string };
   listProjectTree: (projectPath: string) => unknown;
   readProjectFile: (projectPath: string, relativePath: string) => string;
@@ -197,17 +204,6 @@ const { createMainStateStore } = require('./src/lib/main-state-store') as {
   createMainStateStore: () => MainStateStore;
 };
 
-const { createPersonaStore } = require('./src/lib/persona-store') as {
-  createPersonaStore: (
-    bundledDir: string,
-    userDir: string,
-  ) => {
-    read: (name: string) => Promise<string | null>;
-    write: (name: string, content: string) => Promise<boolean>;
-    list: () => Promise<string[]>;
-  };
-};
-
 const { buildRuntimeMetadata } = require('./src/lib/mcp-runtime-contract') as {
   buildRuntimeMetadata: (input: {
     serverVersion: string;
@@ -221,8 +217,8 @@ const { buildRuntimeMetadata } = require('./src/lib/mcp-runtime-contract') as {
 
 const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server') as {
   startApiServer: (deps: {
-    getCurrentData: () => CharxData | null;
-    getReferenceFiles: () => ReferenceRecord[];
+    getCurrentData: () => LoadedDocumentData | null;
+    getReferenceFiles: () => McpReferenceFile[];
     askRendererConfirm: (title: string, message: string) => Promise<boolean>;
     requestRendererOpenFile: (request: RendererOpenFileRequest) => Promise<RendererOpenFileResponse>;
     saveCurrentDocument?: () => Promise<SaveResult>;
@@ -237,8 +233,8 @@ const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server
     detectCssSectionInline: (line: string) => string | null;
     detectCssBlockOpen: (line: string) => boolean;
     detectCssBlockClose: (line: string) => boolean;
-    openExternalDocument: (filePath: string) => CharxData;
-    saveExternalDocument: (filePath: string, fileType: 'charx' | 'risum' | 'risup', data: CharxData) => void;
+    openExternalDocument: (filePath: string) => LoadedDocumentData;
+    saveExternalDocument: (filePath: string, fileType: 'charx' | 'risum' | 'risup', data: LoadedDocumentData) => void;
     normalizeTriggerScripts: (data: unknown) => unknown;
     extractPrimaryLua: (scripts: unknown) => string;
     mergePrimaryLua: (scripts: unknown, lua: string) => unknown;
@@ -287,7 +283,7 @@ const { initAgentsMdManager, cleanupAgentsMd } = require('./src/lib/agents-md-ma
 
 const { initAssetManager, invalidateAssetsMapCache } = require('./src/lib/asset-manager') as {
   initAssetManager: (deps: {
-    getCurrentData: () => CharxData | null;
+    getCurrentData: () => LoadedDocumentData | null;
     getMainWindow: () => BrowserWindow | null;
   }) => void;
   invalidateAssetsMapCache: () => void;
@@ -310,19 +306,19 @@ const { initIpcConfirm, askRendererConfirm, askRendererCloseConfirm } = require(
 
 const { initAutosaveManager } = require('./src/lib/autosave-manager') as {
   initAutosaveManager: (deps: {
-    getCurrentData: () => CharxData | null;
+    getCurrentData: () => LoadedDocumentData | null;
     getCurrentFilePath: () => string | null;
     getMainWindow: () => BrowserWindow | null;
-    saveCharx: (filePath: string, data: CharxData) => void;
-    saveRisum: (filePath: string, data: CharxData) => void;
-    saveRisup: (filePath: string, data: CharxData) => void;
+    saveCharx: (filePath: string, data: LoadedDocumentData) => void;
+    saveRisum: (filePath: string, data: LoadedDocumentData) => void;
+    saveRisup: (filePath: string, data: LoadedDocumentData) => void;
     readFileSync: (filePath: string, encoding: BufferEncoding) => string;
     writeFileSync: (filePath: string, data: string) => void;
     writeFileAtomicSync?: (filePath: string, data: string) => void;
     mkdirSync: (dirPath: string, options?: { recursive: boolean }) => void;
     readdirSync: (dirPath: string) => string[];
     unlinkSync: (filePath: string) => void;
-    applyUpdates: (data: CharxData, fields: Record<string, unknown>) => void;
+    applyUpdates: (data: LoadedDocumentData, fields: RendererDocumentPatch) => void;
     onAutosaveSuccess?: (autosavePath: string, sidecarPath: string) => void;
   }) => void;
 };
@@ -347,8 +343,8 @@ const { createSessionRecoveryManager } = require('./src/lib/session-recovery-man
     statSync: (path: string) => { mtimeMs: number };
     unlinkSync: (path: string) => void;
     userDataPath: string;
-    openDocument: (filePath: string) => CharxData;
-    setCurrentDocument: (filePath: string, data: CharxData) => void;
+    openDocument: (filePath: string) => LoadedDocumentData;
+    setCurrentDocument: (filePath: string, data: LoadedDocumentData) => void;
   }) => import('./src/lib/session-recovery-manager').SessionRecoveryManager;
 };
 
@@ -359,8 +355,8 @@ const { initDataSerializer, serializeForRenderer, applyUpdates } = require('./sr
     extractPrimaryLuaFromTriggerScripts: (ts: unknown) => string;
     mergePrimaryLuaIntoTriggerScripts: (ts: unknown, lua: string) => unknown[];
   }) => void;
-  serializeForRenderer: (data: CharxData) => Record<string, unknown>;
-  applyUpdates: (data: CharxData, fields: Record<string, unknown>) => void;
+  serializeForRenderer: (data: LoadedDocumentData) => RendererDocumentData;
+  applyUpdates: (data: LoadedDocumentData, fields: RendererDocumentPatch) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -393,7 +389,7 @@ let currentImportSourceFormat: string | null = null;
 // Document open helper (shared by open-file and recovery)
 // ---------------------------------------------------------------------------
 
-function openDocumentByPath(filePath: string): CharxData {
+function openDocumentByPath(filePath: string): LoadedDocumentData {
   const ext = path.extname(filePath).toLowerCase();
   if (ext === '.risum') return openRisum(filePath);
   if (ext === '.risup') return openRisup(filePath);
@@ -417,7 +413,7 @@ function clearImportSource(): void {
   currentImportSourceFormat = null;
 }
 
-function getDocumentFileType(data: CharxData): 'charx' | 'risum' | 'risup' {
+function getDocumentFileType(data: LoadedDocumentData): 'charx' | 'risum' | 'risup' {
   if (data._fileType === 'risum' || data._fileType === 'risup') return data._fileType;
   return 'charx';
 }
@@ -468,7 +464,7 @@ function sameDocumentPath(a: string, b: string): boolean {
   return normalizedA === normalizedB;
 }
 
-function activateOpenedDocument(filePath: string, nextData: CharxData): Record<string, unknown> {
+function activateOpenedDocument(filePath: string, nextData: LoadedDocumentData): Record<string, unknown> {
   stopProjectWatcher();
   clearImportSource();
   mainState.setCurrentDocument(filePath, nextData);
@@ -488,7 +484,7 @@ function activateOpenedDocument(filePath: string, nextData: CharxData): Record<s
 
 function activateProjectDocument(
   projectPath: string,
-  nextData: CharxData,
+  nextData: LoadedDocumentData,
   sourceFilePath?: string | null,
 ): Record<string, unknown> {
   clearImportSource();
@@ -508,7 +504,7 @@ function activateProjectDocument(
 function activateImportedDocument(
   sourcePath: string,
   sourceFormat: string,
-  nextData: CharxData,
+  nextData: LoadedDocumentData,
 ): Record<string, unknown> {
   stopProjectWatcher();
   mainState.resetCurrentDocument(nextData);
@@ -541,7 +537,7 @@ function openDocumentIntoWorkspaceResult(filePath: string): {
     return { data: serialized, path: normalizedPath, sourceFormat: imported.format, imported: true };
   }
 
-  let nextData: CharxData;
+  let nextData: LoadedDocumentData;
   try {
     nextData = openDocumentByPath(normalizedPath);
   } catch (error) {
@@ -596,7 +592,7 @@ function startProjectWatcher(projectPath: string): void {
   }
 }
 
-function saveCurrentProject(updatedFields: Record<string, unknown>): SaveResult {
+function saveCurrentProject(updatedFields: RendererDocumentPatch): SaveResult {
   if (!mainState.currentData || !mainState.currentProjectPath) return { success: false, error: 'No project open' };
   applyUpdates(mainState.currentData, updatedFields);
   invalidateAssetsMapCache();
@@ -939,7 +935,7 @@ function loadRendererPage(
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined) cleanQuery[key] = value;
   }
-  return windowRef.loadFile(path.join(__dirname, 'dist', entryFile), { query: cleanQuery });
+  return windowRef.loadFile(path.join(APP_ROOT, 'dist', entryFile), { query: cleanQuery });
 }
 
 // ---------------------------------------------------------------------------
@@ -953,9 +949,9 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     title: 'RisuToki',
-    icon: path.join(__dirname, 'assets', 'icon.png'),
+    icon: path.join(APP_ROOT, 'assets', 'icon.png'),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(COMPILED_ROOT, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -1110,7 +1106,7 @@ app.whenReady().then(() => {
     mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,
     stringifyTriggerScripts,
     getSkillRoots: () =>
-      resolveSkillRootDirs(app.isPackaged ? process.resourcesPath! : __dirname).map((root) => root.absolutePath),
+      resolveSkillRootDirs(app.isPackaged ? process.resourcesPath! : APP_ROOT).map((root) => root.absolutePath),
     getUserDataPath: () => app.getPath('userData'),
     getSessionStatus: getCurrentMcpSessionStatus,
     getCurrentFilePath: () => mainState.currentFilePath,
@@ -1124,14 +1120,14 @@ app.whenReady().then(() => {
     getCurrentFilePath: () => mainState.currentFilePath,
     getApiPort: () => apiPort,
     getApiToken: () => apiToken,
-    getMcpServerPath: () => path.join(__dirname, 'toki-mcp-server.js').replace('app.asar', 'app.asar.unpacked'),
+    getMcpServerPath: () => path.join(APP_ROOT, 'toki-mcp-server.js').replace('app.asar', 'app.asar.unpacked'),
   });
 
   // Initialize MCP config management
   initMcpConfig({
     getApiPort: () => apiPort,
     getApiToken: () => apiToken,
-    getDirname: () => __dirname,
+    getDirname: () => APP_ROOT,
     isPackaged: () => app.isPackaged,
   });
 
@@ -1139,7 +1135,7 @@ app.whenReady().then(() => {
   initAgentsMdManager({
     getCurrentFilePath: () => mainState.currentFilePath,
     getTerminalCwd: () => mainState.terminalCwd,
-    getDirname: () => __dirname,
+    getDirname: () => APP_ROOT,
     resolveGuidePath: resolveBuiltInGuidePath,
   });
 
@@ -1152,7 +1148,7 @@ app.whenReady().then(() => {
   // Initialize guides management
   initGuidesManager({
     getMainWindow: () => mainWindow,
-    getDirname: () => __dirname,
+    getDirname: () => APP_ROOT,
     broadcastRefsDataChanged,
   });
 
@@ -1290,7 +1286,7 @@ ipcMain.handle('new-file', async () => {
     _card: { spec: 'chara_card_v3', spec_version: '3.0', data: { extensions: { risuai: {} } } },
     _moduleData: null,
     _presetData: null,
-  } as CharxData);
+  } as LoadedDocumentData);
   mainWindow!.setTitle('RisuToki - New');
   broadcastSidebarDataChanged();
   return serializeForRenderer(mainState.currentData!);
@@ -1463,7 +1459,7 @@ ipcMain.handle('reload-project-folder', async () => {
   }
 });
 
-ipcMain.handle('save-project-folder', async (_event, updatedFields: Record<string, unknown>) => {
+ipcMain.handle('save-project-folder', async (_event, updatedFields: RendererDocumentPatch) => {
   try {
     return saveCurrentProject(updatedFields || {});
   } catch (error) {
@@ -1471,7 +1467,7 @@ ipcMain.handle('save-project-folder', async (_event, updatedFields: Record<strin
   }
 });
 
-async function handleReassembleProjectDocument(_event: unknown, updatedFields?: Record<string, unknown>) {
+async function handleReassembleProjectDocument(_event: unknown, updatedFields?: RendererDocumentPatch) {
   if (!mainState.currentProjectPath) return { success: false, error: 'No project folder open' };
   try {
     if (updatedFields && mainState.currentData) saveCurrentProject(updatedFields);
@@ -1549,7 +1545,7 @@ async function saveCurrentDocumentFromMcp(): Promise<SaveResult> {
 }
 
 // Save to current path
-async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promise<SaveResult> {
+async function saveCurrentFileAs(updatedFields: RendererDocumentPatch): Promise<SaveResult> {
   try {
     if (mainState.currentProjectPath) {
       applyUpdates(mainState.currentData!, updatedFields);
@@ -1612,7 +1608,7 @@ async function saveCurrentFileAs(updatedFields: Record<string, unknown>): Promis
   }
 }
 
-ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown>) => {
+ipcMain.handle('save-file', async (_event, updatedFields: RendererDocumentPatch) => {
   if (!mainState.currentData) return { success: false, error: 'No file open' };
   try {
     if (mainState.currentProjectPath) {
@@ -1650,7 +1646,7 @@ ipcMain.handle('save-file', async (_event, updatedFields: Record<string, unknown
 });
 
 // Save As
-ipcMain.handle('save-file-as', async (_event, updatedFields: Record<string, unknown>) => {
+ipcMain.handle('save-file-as', async (_event, updatedFields: RendererDocumentPatch) => {
   if (!mainState.currentData) return { success: false, error: 'No file open' };
   const result = await saveCurrentFileAs(updatedFields);
   syncRecoveryAfterExplicitSave(recoveryManager, result).catch((e) =>
@@ -1865,72 +1861,9 @@ ipcMain.handle('get-claude-prompt', () => {
   };
 });
 
-// --- MCP ---
-ipcMain.handle('get-mcp-info', () => {
-  if (!apiPort || !apiToken) return null;
-  return {
-    port: apiPort,
-    token: apiToken,
-    mcpServerPath: path.join(__dirname, 'toki-mcp-server.js'),
-  };
-});
-
-// Import JSON file (for lorebook/regex)
-ipcMain.handle('import-json', async () => {
-  const result = await dialog.showOpenDialog(mainWindow!, {
-    filters: [{ name: 'JSON', extensions: ['json'] }],
-    properties: ['openFile', 'multiSelections'],
-  });
-  if (result.canceled || !result.filePaths.length) return null;
-
-  const imported: { fileName: string; data: unknown }[] = [];
-  for (const filePath of result.filePaths) {
-    try {
-      const content = await fs.promises.readFile(filePath, 'utf-8');
-      const json: unknown = JSON.parse(content);
-      imported.push({ fileName: path.basename(filePath), data: json });
-    } catch (e) {
-      console.warn('[main] Skipping invalid reference file:', filePath, (e as Error).message);
-    }
-  }
-  return imported;
-});
-
-// --- Persona files ---
-function getPersonaStore() {
-  return createPersonaStore(path.join(__dirname, 'assets', 'persona'), path.join(app.getPath('userData'), 'personas'));
-}
-
-ipcMain.handle('read-persona', async (_event, name: string) => {
-  try {
-    return await getPersonaStore().read(name);
-  } catch (e) {
-    console.warn('[main] Failed to read persona:', name, (e as Error).message);
-    return null;
-  }
-});
-
-ipcMain.handle('write-persona', async (_event, name: string, content: string) => {
-  try {
-    return await getPersonaStore().write(name, content);
-  } catch (e) {
-    console.warn('[main] Failed to write persona:', name, (e as Error).message);
-    return false;
-  }
-});
-
-ipcMain.handle('list-personas', async () => {
-  try {
-    return await getPersonaStore().list();
-  } catch (e) {
-    console.warn('[main] Failed to list personas:', (e as Error).message);
-    return [];
-  }
-});
-
-// --- System Prompt (temp file for Claude CLI) ---
-ipcMain.handle('write-system-prompt', async (_event, content: string) => {
-  const tmpFile = path.join(os.tmpdir(), 'toki-system-prompt.txt');
-  await fs.promises.writeFile(tmpFile, content, 'utf-8');
-  return { filePath: tmpFile, platform: process.platform };
+initMainUtilityIpc({
+  appRoot: APP_ROOT,
+  getMainWindow: () => mainWindow,
+  getMcpInfo: () => (apiPort && apiToken ? { port: apiPort, token: apiToken } : null),
+  getUserDataPath: () => app.getPath('userData'),
 });

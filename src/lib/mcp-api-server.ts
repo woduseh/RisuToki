@@ -2,6 +2,7 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { LoadedDocumentData, TriggerScript } from '../charx-io';
 import * as lorebookIo from './lorebook-io';
 import { handleAssetRoute } from './mcp-asset-routes';
 import { handleCbsRoute } from './mcp-cbs-routes';
@@ -11,10 +12,9 @@ import { handleSectionRoute } from './mcp-section-routes';
 import { handleRisupPromptRoute } from './mcp-risup-prompt-routes';
 import { handleReferenceRoute } from './mcp-reference-routes';
 import { createExternalDocumentReaders, handleExternalRoute } from './mcp-external-routes';
-import { handleFieldRoute } from './mcp-field-routes';
+import { handleFieldRoute, type FieldSnapshot } from './mcp-field-routes';
 import { handleLorebookRoute } from './mcp-lorebook-routes';
 import {
-  fieldSnapshots,
   parseYamlFrontmatter,
   jsonRes,
   logMcpMutation,
@@ -100,6 +100,15 @@ export interface McpRendererSessionStatus {
   hasUnsavedChanges: boolean;
 }
 
+export interface McpReferenceFile {
+  id?: string;
+  fileName?: string;
+  name?: string;
+  filePath: string;
+  fileType?: SupportedFileType;
+  data: Record<string, any>;
+}
+
 export interface McpReferenceManifestStatus {
   level: 'info' | 'warn' | 'error';
   message: string;
@@ -127,9 +136,9 @@ export interface McpSessionStatus {
 
 export interface McpApiDeps {
   /** Return the current in-memory document data (mutated directly by routes). */
-  getCurrentData: () => any;
+  getCurrentData: () => LoadedDocumentData | null;
   /** Return the loaded reference files array. */
-  getReferenceFiles: () => any[];
+  getReferenceFiles: () => McpReferenceFile[];
   /** Show a confirmation dialog in the renderer and resolve with the user's choice. */
   askRendererConfirm: (title: string, message: string) => Promise<boolean>;
   /** Ask the renderer to switch the active document to a specific external file path. */
@@ -137,7 +146,7 @@ export interface McpApiDeps {
   /** Ask the app to save the current document. */
   saveCurrentDocument?: () => Promise<{ success: boolean; path?: string; error?: string }>;
   /** Broadcast an IPC message to the main renderer. */
-  broadcastToAll: (channel: string, ...args: any[]) => void;
+  broadcastToAll: (channel: string, ...args: unknown[]) => void;
   /** Broadcast an MCP status event to the renderer. */
   broadcastMcpStatus: (payload: Record<string, unknown>) => void;
   /** Called once the HTTP server begins listening, providing the assigned port. */
@@ -156,12 +165,12 @@ export interface McpApiDeps {
   detectCssBlockClose: (line: string) => boolean;
 
   // charx-io helpers
-  openExternalDocument: (filePath: string) => any;
-  saveExternalDocument: (filePath: string, fileType: SupportedFileType, data: any) => void;
-  normalizeTriggerScripts: (data: any) => any;
-  extractPrimaryLua: (scripts: any) => string;
-  mergePrimaryLua: (scripts: any, lua: string) => any;
-  stringifyTriggerScripts: (scripts: any) => string;
+  openExternalDocument: (filePath: string) => LoadedDocumentData;
+  saveExternalDocument: (filePath: string, fileType: SupportedFileType, data: LoadedDocumentData) => void;
+  normalizeTriggerScripts: (data: unknown) => TriggerScript[];
+  extractPrimaryLua: (scripts: unknown) => string;
+  mergePrimaryLua: (scripts: unknown, lua: string) => TriggerScript[];
+  stringifyTriggerScripts: (scripts: unknown) => string;
 
   // skills directories
   getSkillRoots: () => string[];
@@ -256,6 +265,7 @@ export interface RendererOpenFileResponse {
 // ---------------------------------------------------------------------------
 
 export function startApiServer(deps: McpApiDeps): McpApiServer {
+  const fieldSnapshots = new Map<string, FieldSnapshot[]>();
   const token = crypto.randomBytes(32).toString('hex');
   const expectedAuthDigest = crypto.createHash('sha256').update(`Bearer ${token}`).digest();
 
@@ -395,9 +405,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             'open_file를 사용하거나 에디터에서 파일을 먼저 연 뒤 다시 시도하세요. 참고 자료가 로드되어 있다면 list_references는 파일 없이도 사용 가능합니다.',
         });
       }
+      // Routes that support an empty editor session return before reading the
+      // document. The remaining route handlers operate on a loaded document.
+      const activeData = currentData as LoadedDocumentData;
 
       if (
-        await handleSurfaceRoute(req, res, parts, currentData, {
+        await handleSurfaceRoute(req, res, parts, activeData, {
           askRendererConfirm: deps.askRendererConfirm,
           broadcastToAll: deps.broadcastToAll,
           getSessionStatus: deps.getSessionStatus,
@@ -461,7 +474,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       if (
-        await handleFieldRoute(req, res, parts, url, currentData, {
+        await handleFieldRoute(req, res, parts, url, activeData, {
           api: deps,
           fieldSnapshots,
           acquireFieldMutex,
@@ -478,7 +491,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       if (
-        await handleLorebookRoute(req, res, parts, url, currentData, {
+        await handleLorebookRoute(req, res, parts, url, activeData, {
           api: deps,
           broadcastStatus,
           jsonResSuccess,
@@ -490,7 +503,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       if (
-        await handleStructuredItemRoute(req, res, parts, url, currentData, {
+        await handleStructuredItemRoute(req, res, parts, url, activeData, {
           api: deps,
           broadcastStatus,
           jsonResSuccess,
@@ -502,7 +515,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       if (
-        await handleSectionRoute(req, res, parts, currentData, {
+        await handleSectionRoute(req, res, parts, activeData, {
           api: deps,
           luaCache,
           cssCache,
@@ -528,7 +541,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       if (
-        await handleAssetRoute(req, res, parts, currentData, {
+        await handleAssetRoute(req, res, parts, activeData, {
           askRendererConfirm: deps.askRendererConfirm,
           broadcastToAll: deps.broadcastToAll,
           invalidateAssetsMapCache: deps.invalidateAssetsMapCache,
@@ -566,14 +579,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         const filter = typeof body.filter === 'string' ? body.filter : undefined;
         const folder = typeof body.folder === 'string' ? body.folder : undefined;
 
-        const entries = [...((currentData.lorebook as Record<string, unknown>[]) || [])];
+        const entries = [...((activeData.lorebook as Record<string, unknown>[]) || [])];
 
         try {
           const options = {
             format: format as 'md' | 'json',
             groupByFolder,
             includeMetadata: true,
-            sourceName: String((currentData as Record<string, unknown>).name || 'unknown'),
+            sourceName: String((activeData as Record<string, unknown>).name || 'unknown'),
             filter,
             folder,
           };
@@ -651,7 +664,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           ? (body.conflict as 'skip' | 'overwrite' | 'rename')
           : 'skip';
         const dryRun = !!(body.dry_run ?? body.dryRun);
-        let lorebookRollback: typeof currentData.lorebook | null = null;
+        let lorebookRollback: typeof activeData.lorebook | null = null;
 
         try {
           // Parse import entries
@@ -676,7 +689,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
 
           // Resolve conflicts
-          const existingEntries = (currentData.lorebook as Record<string, unknown>[]) || [];
+          const existingEntries = (activeData.lorebook as Record<string, unknown>[]) || [];
           const existingFolderMap = lorebookIo.buildFolderMap(existingEntries);
           const resolution = lorebookIo.resolveImportConflicts(importEntries, existingEntries, existingFolderMap, {
             conflict,
@@ -735,7 +748,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           }
 
           // Execute import
-          lorebookRollback = cloneJson(currentData.lorebook || []) as typeof currentData.lorebook;
+          lorebookRollback = cloneJson(activeData.lorebook || []) as typeof activeData.lorebook;
           const errors: string[] = [];
           let foldersCreated = 0;
 
@@ -750,7 +763,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
               folder: '',
               insertorder: 100,
             };
-            (currentData.lorebook as unknown[]).push(folderEntry);
+            (activeData.lorebook as unknown[]).push(folderEntry);
             const folderRef = getFolderRef(folderEntry);
             if (folderRef) {
               newFolderIds.set(folderName, folderRef);
@@ -771,12 +784,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           for (const entry of resolution.toAdd) {
             entry.folder = lorebookIo.resolveImportedFolderRef(entry, allFolderByName);
             normalizeLorebookEntryFolderIdentity(entry);
-            (currentData.lorebook as unknown[]).push(entry);
+            (activeData.lorebook as unknown[]).push(entry);
           }
 
           // 3. Overwrite existing entries
           for (const { index, data } of resolution.toOverwrite) {
-            const existing = (currentData.lorebook as Record<string, unknown>[])[index];
+            const existing = (activeData.lorebook as Record<string, unknown>[])[index];
             if (existing) {
               for (const [key, value] of Object.entries(data)) {
                 if (LOREBOOK_ALLOWED_FIELDS.has(key)) {
@@ -788,10 +801,10 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             }
           }
 
-          canonicalizeLorebookFolderRefs((currentData.lorebook as Record<string, unknown>[]) || []);
+          canonicalizeLorebookFolderRefs((activeData.lorebook as Record<string, unknown>[]) || []);
 
           // Broadcast update
-          deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
+          deps.broadcastToAll('data-updated', 'lorebook', activeData.lorebook);
 
           broadcastStatus({
             type: 'success',
@@ -825,9 +838,9 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         } catch (err: unknown) {
           const rolledBack = lorebookRollback !== null;
           if (lorebookRollback) {
-            currentData.lorebook = lorebookRollback;
+            activeData.lorebook = lorebookRollback;
             try {
-              deps.broadcastToAll('data-updated', 'lorebook', currentData.lorebook);
+              deps.broadcastToAll('data-updated', 'lorebook', activeData.lorebook);
             } catch {
               // The in-memory rollback is authoritative even if renderer notification fails.
             }
@@ -871,7 +884,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           });
         }
 
-        const value = (currentData as Record<string, unknown>)[field];
+        const value = (activeData as Record<string, unknown>)[field];
         if (value === undefined || value === null) {
           return mcpError(res, 404, {
             action: 'export-field',
@@ -941,7 +954,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ================================================================
 
       if (
-        await handleRisupPromptRoute(req, res, parts, currentData, {
+        await handleRisupPromptRoute(req, res, parts, activeData, {
           api: deps,
           broadcastStatus,
           jsonResSuccess,

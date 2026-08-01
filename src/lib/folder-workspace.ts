@@ -11,7 +11,7 @@ import {
   saveRisum,
   saveRisup,
   saveRisupPresetPayload,
-  type CharxData,
+  type LoadedDocumentData,
   type RisupCompressionMode,
 } from '../charx-io';
 import { parseRisum, buildRisum } from '../rpack';
@@ -558,7 +558,7 @@ export function saveProjectData(projectPath: string, data: Record<string, unknow
   if (fileType === 'risum') {
     const tempPath = path.join(os.tmpdir(), `risutoki-project-save-${crypto.randomUUID()}.risum`);
     try {
-      saveRisum(tempPath, data as unknown as CharxData);
+      saveRisum(tempPath, data as unknown as LoadedDocumentData);
       const parsed = parseRisum(fs.readFileSync(tempPath));
       writeJson(path.join(projectPath, 'module.json'), parsed.module);
       const risumAssetFiles = writeRisumAssets(projectPath, parsed.assets || []);
@@ -576,7 +576,7 @@ export function saveProjectData(projectPath: string, data: Record<string, unknow
   if (fileType === 'risup') {
     const tempPath = path.join(os.tmpdir(), `risutoki-project-save-${crypto.randomUUID()}.risup`);
     try {
-      saveRisup(tempPath, data as unknown as CharxData);
+      saveRisup(tempPath, data as unknown as LoadedDocumentData);
       const normalized = openRisup(tempPath);
       const preset = sanitizePresetPayload((normalized._presetData as Record<string, unknown>) || {});
       extractTextFields(projectPath, preset, RISUP_EXTRACTABLE_FIELDS);

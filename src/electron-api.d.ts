@@ -1,3 +1,5 @@
+import type { RendererDocumentData, RendererDocumentPatch } from './lib/document-types';
+
 type DataUpdatedCallback = (field: string, value: unknown) => void;
 type TerminalDataCallback = (data: string) => void;
 type TerminalSessionDataCallback = (sessionId: string, data: string) => void;
@@ -86,7 +88,7 @@ type SessionRecoveryAction = 'restore' | 'open-original' | 'ignore';
 
 interface SessionRecoveryResolveResult {
   action: 'restore' | 'open-original';
-  data: Record<string, unknown>;
+  data: RendererDocumentData;
   recovery?: {
     autosavePath: string;
     provenance: PendingRecoveryCandidateIpc['provenance'];
@@ -116,18 +118,13 @@ interface McpOpenFileResponse {
 }
 
 type OpenFileResult =
-  | { success: true; data: Record<string, unknown>; path?: string; sourceFormat?: string; imported?: boolean }
+  | { success: true; data: RendererDocumentData; path?: string; sourceFormat?: string; imported?: boolean }
   | { success: false; canceled: true }
   | { success: false; canceled?: false; error: string };
 
-interface ProjectActionResult {
-  success: boolean;
-  canceled?: boolean;
-  data?: Record<string, unknown>;
-  path?: string;
-  projectPath?: string;
-  error?: string;
-}
+type ProjectActionResult =
+  | { success: true; data: RendererDocumentData; path?: string; projectPath: string }
+  | { success: false; canceled?: boolean; error?: string };
 
 interface ProjectTreeNode {
   name: string;
@@ -196,18 +193,18 @@ interface ReferenceRecord {
 }
 
 interface TokiAPI {
-  newFile: () => Promise<Record<string, unknown>>;
+  newFile: () => Promise<RendererDocumentData>;
   openFile: () => Promise<OpenFileResult>;
-  openFilePath: (filePath: string) => Promise<Record<string, unknown>>;
+  openFilePath: (filePath: string) => Promise<RendererDocumentData>;
   extractDocumentToProject: () => Promise<ProjectActionResult>;
   extractCharxToProject: () => Promise<ProjectActionResult>;
   openProjectFolder: () => Promise<ProjectActionResult>;
   openProjectFolderPath: (projectPath: string) => Promise<ProjectActionResult>;
   cloneProjectFolder: () => Promise<ProjectActionResult>;
   reloadProjectFolder: () => Promise<ProjectActionResult>;
-  saveProjectFolder: (updatedFields: Record<string, unknown>) => Promise<SaveResult>;
-  reassembleProjectDocument: (updatedFields?: Record<string, unknown>) => Promise<SaveResult>;
-  reassembleProjectCharx: (updatedFields?: Record<string, unknown>) => Promise<SaveResult>;
+  saveProjectFolder: (updatedFields: RendererDocumentPatch) => Promise<SaveResult>;
+  reassembleProjectDocument: (updatedFields?: RendererDocumentPatch) => Promise<SaveResult>;
+  reassembleProjectCharx: (updatedFields?: RendererDocumentPatch) => Promise<SaveResult>;
   getProjectPath: () => Promise<string | null>;
   getProjectTree: () => Promise<ProjectTreeNode | null>;
   readProjectFile: (relativePath: string) => Promise<string>;
@@ -220,8 +217,8 @@ interface TokiAPI {
   getReferenceManifestStatus: () => Promise<ReferenceManifestStatusEvent | null>;
   removeReference: (fileIdentifier: string) => Promise<boolean>;
   removeAllReferences: () => Promise<boolean>;
-  saveFile: (updatedFields: Record<string, unknown>) => Promise<SaveResult>;
-  saveFileAs: (updatedFields: Record<string, unknown>) => Promise<SaveResult>;
+  saveFile: (updatedFields: RendererDocumentPatch) => Promise<SaveResult>;
+  saveFileAs: (updatedFields: RendererDocumentPatch) => Promise<SaveResult>;
   getFilePath: () => Promise<string | null>;
   getCwd: () => Promise<string>;
   setTerminalCwd: (cwd: string | null) => Promise<boolean>;
@@ -288,7 +285,7 @@ interface TokiAPI {
   }) => Promise<{ ok: boolean; imported?: number; overwritten?: number; error?: string }>;
   exportField: (field: string, format?: 'md' | 'txt') => Promise<{ ok: boolean; filePath?: string; error?: string }>;
   importJson: () => Promise<unknown[] | null>;
-  autosaveFile: (updatedFields: Record<string, unknown>) => Promise<SaveResult>;
+  autosaveFile: (updatedFields: RendererDocumentPatch) => Promise<SaveResult>;
   cleanupAutosave: (customDir?: string) => Promise<boolean>;
   writeSystemPrompt: (content: string) => Promise<{ filePath: string; platform: string }>;
   readPersona: (name: string) => Promise<string | null>;

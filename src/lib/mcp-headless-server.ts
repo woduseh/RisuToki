@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
 
-import type { CharxData } from '../charx-io';
+import type { LoadedDocumentData } from '../charx-io';
 import {
   extractPrimaryLuaFromTriggerScripts,
   mergePrimaryLuaIntoTriggerScripts,
@@ -55,7 +55,7 @@ export interface HeadlessMcpRuntime {
 interface HeadlessReferenceFile {
   filePath: string;
   fileType: SupportedFileType;
-  data: CharxData;
+  data: LoadedDocumentData;
   name: string;
 }
 
@@ -76,7 +76,7 @@ function getFileType(filePath: string): SupportedFileType {
   return 'charx';
 }
 
-function openDocument(filePath: string): CharxData {
+function openDocument(filePath: string): LoadedDocumentData {
   const normalized = path.normalize(filePath);
   const fileType = getFileType(normalized);
   if (fileType === 'risum') return openRisum(normalized);
@@ -84,7 +84,7 @@ function openDocument(filePath: string): CharxData {
   return openCharx(normalized);
 }
 
-function saveDocument(filePath: string, fileType: SupportedFileType, data: CharxData): void {
+function saveDocument(filePath: string, fileType: SupportedFileType, data: LoadedDocumentData): void {
   if (fileType === 'risum') {
     saveRisum(filePath, data);
     return;
@@ -181,7 +181,7 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
   let currentFilePath: string | null = options.filePath
     ? ensureAbsoluteExistingFile(options.filePath, 'file path')
     : null;
-  let currentData: CharxData | null = currentFilePath ? openDocument(currentFilePath) : null;
+  let currentData: LoadedDocumentData | null = currentFilePath ? openDocument(currentFilePath) : null;
   let currentFileBaseline: McpSessionStatus['activeFileBaseline'] = currentFilePath
     ? captureFileBaseline(currentFilePath)
     : null;
@@ -247,7 +247,7 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
       detectCssBlockOpen,
       detectCssBlockClose,
       openExternalDocument: openDocument,
-      saveExternalDocument: (filePath, fileType, data) => saveDocument(filePath, fileType, data as CharxData),
+      saveExternalDocument: (filePath, fileType, data) => saveDocument(filePath, fileType, data as LoadedDocumentData),
       normalizeTriggerScripts,
       extractPrimaryLua: extractPrimaryLuaFromTriggerScripts,
       mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,

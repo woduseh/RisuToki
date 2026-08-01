@@ -1,4 +1,5 @@
 import { createFolderItem, createSectionHeader, createTreeItem } from '../lib/sidebar-builder';
+import type { RendererDocumentData } from '../lib/document-types';
 import type { TabManager } from '../lib/tab-manager';
 
 export interface ProjectWorkspaceTreeNode {
@@ -8,12 +9,9 @@ export interface ProjectWorkspaceTreeNode {
   children?: ProjectWorkspaceTreeNode[];
 }
 
-interface ProjectReloadResult {
-  success: boolean;
-  data?: Record<string, unknown>;
-  projectPath?: string;
-  error?: string;
-}
+type ProjectReloadResult =
+  | { success: true; data: RendererDocumentData; projectPath: string }
+  | { success: false; error?: string };
 
 interface ProjectWorkspaceApi {
   getProjectTree(): Promise<ProjectWorkspaceTreeNode | null>;
@@ -30,7 +28,7 @@ type ProjectWorkspaceTabManager = Pick<
 export interface ProjectWorkspaceControllerDeps {
   api: ProjectWorkspaceApi;
   tabManager: ProjectWorkspaceTabManager;
-  applyReloadedProject(data: Record<string, unknown>, projectPath?: string): void;
+  applyReloadedProject(data: RendererDocumentData, projectPath?: string): void;
   getEditorValue(): string | null;
   openImageTab(assetPath: string, fileName: string): void;
   setStatus(message: string): void;
@@ -81,7 +79,7 @@ export function createProjectWorkspaceController(deps: ProjectWorkspaceControlle
 
   async function reloadAfterRawFileSync(tabId: string, relativePath: string): Promise<boolean> {
     const result = await deps.api.reloadProjectFolder();
-    if (!result.success || !result.data) {
+    if (!result.success) {
       deps.setStatus(`프로젝트 원본 파일 오류: ${result.error || '프로젝트를 다시 읽을 수 없습니다.'}`);
       return false;
     }
@@ -192,7 +190,7 @@ export function createProjectWorkspaceController(deps: ProjectWorkspaceControlle
         return;
       }
       const result = await deps.api.reloadProjectFolder();
-      if (!result.success || !result.data) {
+      if (!result.success) {
         deps.setStatus(`프로젝트 다시 불러오기 실패: ${result.error || '알 수 없는 오류'}`);
         return;
       }

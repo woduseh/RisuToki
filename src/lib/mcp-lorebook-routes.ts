@@ -1,7 +1,7 @@
 import * as http from 'http';
 import * as crypto from 'crypto';
 
-import { buildCharxZip, type CharxData } from '../charx-io';
+import { buildCharxZip, type LoadedDocumentData } from '../charx-io';
 import { validateCharxExportCompatibilityZip } from './charx-export-compatibility';
 import { canonicalizeLorebookFolderRefs } from './lorebook-folders';
 import {
@@ -740,7 +740,7 @@ export async function handleLorebookRoute(
           target: `document:${fileType}`,
         });
       }
-      const zip = buildCharxZip(cloneJson(currentData) as CharxData);
+      const zip = buildCharxZip(cloneJson(currentData) as LoadedDocumentData);
       const result = validateCharxExportCompatibilityZip(zip);
       const payload: Record<string, unknown> = { ...result };
       return jsonResSuccess(res, payload, {

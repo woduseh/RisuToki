@@ -368,8 +368,7 @@ export async function handleAssetRoute(
     let updateAssetReferences: typeof import('./image-compressor').updateAssetReferences;
     let formatBytes: typeof import('./image-compressor').formatBytes;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require('./image-compressor') as typeof import('./image-compressor');
+      const mod = await import('./image-compressor.js');
       compressAssetsToWebP = mod.compressAssetsToWebP;
       updateAssetReferences = mod.updateAssetReferences;
       formatBytes = mod.formatBytes;

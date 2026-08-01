@@ -36,20 +36,12 @@ import {
   type SupportedFileType,
 } from './mcp-field-access';
 
+export { createCssCache, createLuaCache, type SectionCacheState } from './mcp-section-cache';
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
 const MAX_SURFACE_REPLACE_MATCHES = 1000;
-
-// In-memory snapshot storage for field rollback (cleared on file reload)
-export interface FieldSnapshot {
-  id: string;
-  field: string;
-  timestamp: string;
-  size: number;
-  content: unknown;
-}
-export const fieldSnapshots = new Map<string, FieldSnapshot[]>();
 
 export function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -2026,56 +2018,4 @@ export function normalizeRegexType(entry: Record<string, unknown>): void {
   if (entry.out === undefined && entry.replace !== undefined) entry.out = entry.replace;
   if (entry.find === undefined && entry.in !== undefined) entry.find = entry.in;
   if (entry.replace === undefined && entry.out !== undefined) entry.replace = entry.out;
-}
-
-// ---------------------------------------------------------------------------
-// Section caching (mirrors the hot-path cache from main.js)
-// ---------------------------------------------------------------------------
-
-export interface SectionCacheState<T> {
-  source: string | null;
-  result: T | null;
-}
-
-export function createLuaCache(parse: (lua: string) => Section[]): { get(lua: string): Section[]; invalidate(): void } {
-  const cache: SectionCacheState<Section[]> = { source: null, result: null };
-  return {
-    get(lua: string): Section[] {
-      if (lua !== cache.source) {
-        cache.source = lua;
-        cache.result = parse(lua);
-      }
-      // Return deep copy so callers can mutate safely
-      return cache.result!.map((s) => ({ name: s.name, content: s.content }));
-    },
-    invalidate() {
-      cache.source = null;
-      cache.result = null;
-    },
-  };
-}
-
-export function createCssCache(parse: (css: string) => CssCacheEntry): {
-  get(css: string): CssCacheEntry;
-  invalidate(): void;
-} {
-  const cache: SectionCacheState<CssCacheEntry> = { source: null, result: null };
-  return {
-    get(css: string): CssCacheEntry {
-      if (css !== cache.source) {
-        cache.source = css;
-        cache.result = parse(css);
-      }
-      // Return deep copy of sections
-      return {
-        sections: cache.result!.sections.map((s) => ({ name: s.name, content: s.content })),
-        prefix: cache.result!.prefix,
-        suffix: cache.result!.suffix,
-      };
-    },
-    invalidate() {
-      cache.source = null;
-      cache.result = null;
-    },
-  };
 }

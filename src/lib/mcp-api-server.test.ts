@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as nodeCrypto from 'crypto';
 
 import { describe, expect, it } from 'vitest';
-import { saveCharx, type CharxData } from '../charx-io';
+import { saveCharx, type LoadedDocumentData } from '../charx-io';
 import {
   MCP_API_FIXED_SKILL_ROOT,
   closeServer,
@@ -457,7 +457,7 @@ describe('MCP API structured error envelopes — global guards', () => {
 describe('MCP API open-file route', () => {
   const OPEN_FILE_DIR = path.join(TEST_DIR, 'open-file-fixtures');
 
-  function openRouteCardData(): CharxData {
+  function openRouteCardData(): LoadedDocumentData {
     return {
       name: 'Opened Via MCP',
       description: 'Opened through open-file route.',

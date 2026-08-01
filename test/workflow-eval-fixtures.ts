@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { saveCharx, saveRisum, saveRisup, type CharxData } from '../src/charx-io';
+import { saveCharx, saveRisum, saveRisup, type LoadedDocumentData } from '../src/charx-io';
 
 export interface WorkflowEvalFixtures {
   dir: string;
@@ -57,7 +57,7 @@ function lorebookEntry(index: number): Record<string, unknown> {
   };
 }
 
-function replayCard(name: string, marker: string, includeMutableSurfaces = false): CharxData {
+function replayCard(name: string, marker: string, includeMutableSurfaces = false): LoadedDocumentData {
   const assetData = Buffer.from('workflow-replay-asset');
   return {
     spec: 'chara_card_v3',
@@ -220,7 +220,7 @@ export function createWorkflowEvalFixtures(): WorkflowEvalFixtures {
       customPromptTemplateToggle: `workflow_toggle=${WORKFLOW_MARKERS.risupBefore}`,
       presetBias: '[]',
       localStopStrings: '[]',
-    }) as unknown as CharxData;
+    }) as unknown as LoadedDocumentData;
   saveRisup(activeRisup, preset('Workflow Replay Active Preset', 'workflow-replay-active-risup-marker'));
   saveRisup(externalRisup, preset('Workflow Replay External Preset', 'workflow-replay-external-risup-marker'));
   saveRisum(referenceRisum, {
@@ -234,7 +234,7 @@ export function createWorkflowEvalFixtures(): WorkflowEvalFixtures {
     lorebook: [],
     regex: [],
     alternateGreetings: [],
-  } as unknown as CharxData);
+  } as unknown as LoadedDocumentData);
   saveRisup(referenceRisup, {
     _fileType: 'risup',
     name: 'Workflow Replay Reference Preset',
@@ -245,7 +245,7 @@ export function createWorkflowEvalFixtures(): WorkflowEvalFixtures {
     formatingOrder: JSON.stringify(['main', 'description']),
     presetBias: '[]',
     localStopStrings: '[]',
-  } as unknown as CharxData);
+  } as unknown as LoadedDocumentData);
   const moduleData = (name: string, namespace: string) =>
     ({
       _fileType: 'risum',
@@ -265,7 +265,7 @@ export function createWorkflowEvalFixtures(): WorkflowEvalFixtures {
       regex: [],
       risumAssets: [],
       _moduleData: { module: { assets: [] } },
-    }) as unknown as CharxData;
+    }) as unknown as LoadedDocumentData;
   saveRisum(activeRisum, moduleData('Workflow Replay Active Module', 'workflow.replay.active'));
   saveRisum(externalRisum, moduleData('Workflow Replay External Module', 'workflow.replay.external'));
 

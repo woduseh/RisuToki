@@ -1,73 +1,35 @@
 'use strict';
+import type { DocumentFileType } from './lib/document-types';
+import { rpackDecode, rpackEncode, parseRisum, buildRisum } from './rpack';
+import { ccv3ArrayToRisu, risuArrayToCCV3, type Ccv3LorebookEntry, type RisuLorebookEntry } from './lorebook-convert';
+import {
+  validateCharxCardDocument,
+  validateRisupEnvelope,
+  validateRisupPresetPayload,
+} from './lib/document-validation';
+import {
+  validateCharxExportCompatibilityFile,
+  formatCharxExportCompatibilityFailure,
+} from './lib/charx-export-compatibility';
+import { normalizePromptTemplateForStorage, serializePromptTemplate } from './lib/risup-prompt-model';
+import { parseSubmittedRisupJsonFields } from './lib/risup-json-fields';
+import { cloneJson } from './lib/shared-utils';
+import { writeFileAtomicSync, writePathAtomicSync } from './lib/atomic-write';
+import {
+  stripDeprecatedCharxSaveFields,
+  stripDeprecatedRisumSaveFields,
+  stripDeprecatedRisupSaveFields,
+} from './lib/deprecated-save-policy';
+
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip') as typeof import('adm-zip');
-const { rpackDecode, rpackEncode, parseRisum, buildRisum } = require('./rpack') as {
-  rpackDecode: (input: Buffer | Uint8Array) => Buffer;
-  rpackEncode: (input: Buffer | Uint8Array) => Buffer;
-  parseRisum: (buf: Buffer) => { module: Record<string, unknown>; assets: Buffer[] };
-  buildRisum: (moduleJson: Record<string, unknown>, assets?: Buffer[]) => Buffer;
-};
 const { pack, unpack } = require('msgpackr') as {
   pack: (value: unknown) => Buffer;
   unpack: (buf: Buffer | Uint8Array) => unknown;
 };
-const { ccv3ArrayToRisu, risuArrayToCCV3 } = require('./lorebook-convert') as {
-  ccv3ArrayToRisu: (entries: unknown[]) => unknown[];
-  risuArrayToCCV3: (entries: unknown[]) => unknown[];
-};
-const { validateCharxCardDocument, validateRisupEnvelope, validateRisupPresetPayload } =
-  require('./lib/document-validation') as {
-    validateCharxCardDocument: (card: unknown) => {
-      spec: 'chara_card_v3';
-      spec_version?: string;
-      data: Record<string, unknown>;
-      [key: string]: unknown;
-    };
-    validateRisupEnvelope: (envelope: unknown) => {
-      type: 'preset';
-      presetVersion?: number;
-      preset?: Uint8Array;
-      pres?: Uint8Array;
-      [key: string]: unknown;
-    };
-    validateRisupPresetPayload: (preset: unknown) => Record<string, unknown>;
-  };
-const { validateCharxExportCompatibilityFile, formatCharxExportCompatibilityFailure } =
-  require('./lib/charx-export-compatibility') as {
-    validateCharxExportCompatibilityFile: (filePath: string) => {
-      ok: boolean;
-      issues: Array<{ severity: string }>;
-      summary: string;
-    };
-    formatCharxExportCompatibilityFailure: (result: {
-      ok: boolean;
-      issues: Array<{ severity: string }>;
-      summary: string;
-    }) => string;
-  };
-const { normalizePromptTemplateForStorage, serializePromptTemplate } = require('./lib/risup-prompt-model') as {
-  normalizePromptTemplateForStorage: (value: unknown) => { items: unknown[] };
-  serializePromptTemplate: (model: { items: unknown[] }) => string;
-};
-const { parseSubmittedRisupJsonFields } = require('./lib/risup-json-fields') as {
-  parseSubmittedRisupJsonFields: (data: Record<string, unknown>) => Record<string, unknown>;
-};
-const { cloneJson } = require('./lib/shared-utils') as {
-  cloneJson: <T>(value: T) => T;
-};
-const { writeFileAtomicSync, writePathAtomicSync } = require('./lib/atomic-write') as {
-  writeFileAtomicSync: (filePath: string, data: string | NodeJS.ArrayBufferView) => void;
-  writePathAtomicSync: (filePath: string, writeTempPath: (tempPath: string) => void) => void;
-};
-const { stripDeprecatedCharxSaveFields, stripDeprecatedRisumSaveFields, stripDeprecatedRisupSaveFields } =
-  require('./lib/deprecated-save-policy') as {
-    stripDeprecatedCharxSaveFields: (card: Record<string, unknown>) => void;
-    stripDeprecatedRisumSaveFields: (modulePayload: Record<string, unknown>) => void;
-    stripDeprecatedRisupSaveFields: (preset: Record<string, unknown>) => void;
-  };
 
 const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_FILE_SIZE: number = 200 * 1024 * 1024; // 200 MB
@@ -191,9 +153,9 @@ export interface CharxAsset {
   data: Buffer;
 }
 
-export interface CharxData {
-  // File type marker (only present for risum files)
-  _fileType?: string;
+export interface LoadedDocumentData {
+  // File type marker; older in-memory charx values may omit it.
+  _fileType?: DocumentFileType;
 
   // Spec metadata
   spec?: string;
@@ -341,6 +303,8 @@ export interface CharxData {
 
   // Compression format detected when opening a .risup file (used on save to preserve compatibility)
   _compressionMode?: 'gzip' | 'zlib' | 'raw';
+
+  [key: string]: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +315,7 @@ export interface CharxData {
 function extractRisumModuleFields(
   mod: Record<string, unknown>,
 ): Pick<
-  CharxData,
+  LoadedDocumentData,
   'cjs' | 'lowLevelAccess' | 'hideIcon' | 'backgroundEmbedding' | 'moduleNamespace' | 'customModuleToggle' | 'mcpUrl'
 > {
   const mcp = mod.mcp as Record<string, unknown> | undefined;
@@ -367,7 +331,7 @@ function extractRisumModuleFields(
 }
 
 /** Write risum module-specific fields back into a module JSON object. */
-function applyRisumModuleFields(mod: Record<string, unknown>, data: CharxData): void {
+function applyRisumModuleFields(mod: Record<string, unknown>, data: LoadedDocumentData): void {
   delete mod.cjs;
   mod.lowLevelAccess = data.lowLevelAccess || false;
   mod.hideIcon = data.hideIcon || false;
@@ -511,7 +475,7 @@ function readArrayField(record: Record<string, unknown>, key: string): unknown[]
   return Array.isArray(value) ? value : [];
 }
 
-function buildCharxDataFromCardParts({
+function buildLoadedDocumentDataFromCardParts({
   assets,
   card,
   moduleData,
@@ -523,7 +487,7 @@ function buildCharxDataFromCardParts({
   moduleData: Record<string, unknown> | null;
   risumAssets: Buffer[];
   xMeta: Record<string, unknown>;
-}): CharxData {
+}): LoadedDocumentData {
   const data = card.data || {};
   const extensions =
     data.extensions && typeof data.extensions === 'object' && !Array.isArray(data.extensions)
@@ -539,7 +503,7 @@ function buildCharxDataFromCardParts({
   const triggerScripts: TriggerScript[] = cloneTriggerScripts(mod.trigger || []);
   const characterBook = data.character_book as Record<string, unknown> | undefined;
   const cardLorebookEntries = Array.isArray(characterBook?.entries)
-    ? ccv3ArrayToRisu(characterBook.entries as unknown[])
+    ? ccv3ArrayToRisu(characterBook.entries as Partial<Ccv3LorebookEntry>[])
     : [];
   const moduleLorebookEntries = Array.isArray(mod.lorebook) ? (mod.lorebook as unknown[]) : null;
   const moduleRegexEntries = Array.isArray(mod.regex)
@@ -619,9 +583,9 @@ function buildCharxDataFromCardParts({
   };
 }
 
-export function openCharxCardDocument(cardInput: unknown, assets: CharxAsset[] = []): CharxData {
+export function openCharxCardDocument(cardInput: unknown, assets: CharxAsset[] = []): LoadedDocumentData {
   const card = validateCharxCardDocument(cardInput);
-  return buildCharxDataFromCardParts({
+  return buildLoadedDocumentDataFromCardParts({
     assets,
     card,
     moduleData: null,
@@ -637,7 +601,7 @@ export function openCharxCardDocument(cardInput: unknown, assets: CharxAsset[] =
 /**
  * Open and parse a .charx file
  */
-export function openCharx(filePath: string): CharxData {
+export function openCharx(filePath: string): LoadedDocumentData {
   const { zip, entries } = openZipEntriesWithPreludeSupport(filePath);
 
   // Parse card.json
@@ -682,13 +646,13 @@ export function openCharx(filePath: string): CharxData {
     }
   }
 
-  return buildCharxDataFromCardParts({ assets, card, moduleData, risumAssets, xMeta });
+  return buildLoadedDocumentDataFromCardParts({ assets, card, moduleData, risumAssets, xMeta });
 }
 
 /**
  * Build a .charx ZIP from normalized document data.
  */
-export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
+export function buildCharxZip(data: LoadedDocumentData): InstanceType<typeof AdmZip> {
   const zip = new AdmZip();
   const zipAssets = normalizeCharxAssetsForZip(data.assets);
 
@@ -741,7 +705,7 @@ export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
     (cardData as Record<string, unknown>).character_book = {};
   }
   const characterBook = (cardData as Record<string, unknown>).character_book as Record<string, unknown>;
-  characterBook.entries = risuArrayToCCV3(data.lorebook);
+  characterBook.entries = risuArrayToCCV3(data.lorebook as RisuLorebookEntry[]);
 
   // Preserve card assets
   const rawCardAssets = (data.cardAssets || []) as { type?: string; uri?: string; name?: string; ext?: string }[];
@@ -848,7 +812,7 @@ export function buildCharxZip(data: CharxData): InstanceType<typeof AdmZip> {
 /**
  * Save data back to .charx file
  */
-export function saveCharx(filePath: string, data: CharxData): void {
+export function saveCharx(filePath: string, data: LoadedDocumentData): void {
   const zip = buildCharxZip(data);
   writePathAtomicSync(filePath, (tempPath) => {
     fs.writeFileSync(tempPath, (zip as unknown as { toBuffer: () => Buffer }).toBuffer());
@@ -866,7 +830,7 @@ export function saveCharx(filePath: string, data: CharxData): void {
 /**
  * Open and parse a standalone .risum file
  */
-export function openRisum(filePath: string): CharxData {
+export function openRisum(filePath: string): LoadedDocumentData {
   validateFileSize(filePath);
   const buf: Buffer = fs.readFileSync(filePath);
   const parsed = parseRisum(buf);
@@ -934,7 +898,7 @@ export function openRisum(filePath: string): CharxData {
 /**
  * Save data back to a standalone .risum file
  */
-export function saveRisum(filePath: string, data: CharxData): void {
+export function saveRisum(filePath: string, data: LoadedDocumentData): void {
   const moduleJson: Record<string, unknown> = data._moduleData
     ? cloneJson(data._moduleData)
     : {
@@ -1027,8 +991,8 @@ function presetJson(preset: Record<string, unknown>, key: string, fallback: unkn
   return JSON.stringify(preset[key] ?? fallback, null, 2);
 }
 
-/** Extract preset fields from a botPreset object into CharxData. */
-function extractPresetFields(preset: Record<string, unknown>): Partial<CharxData> {
+/** Extract preset fields from a botPreset object into the loaded document model. */
+function extractPresetFields(preset: Record<string, unknown>): Partial<LoadedDocumentData> {
   return {
     name: (preset.name as string) || 'Unnamed Preset',
 
@@ -1135,7 +1099,7 @@ function extractPresetFields(preset: Record<string, unknown>): Partial<CharxData
 }
 
 /** Write edited preset fields back into a botPreset object. */
-function applyPresetFields(preset: Record<string, unknown>, data: CharxData): void {
+function applyPresetFields(preset: Record<string, unknown>, data: LoadedDocumentData): void {
   const parsedJsonFields = parseSubmittedRisupJsonFields(data as unknown as Record<string, unknown>);
   preset.name = data.name;
 
@@ -1269,7 +1233,7 @@ function risupCompress(data: Buffer, mode: RisupCompressionMode): Buffer {
  * Open and parse a .risup preset file
  * Format: RPack → decompress (gzip/zlib/raw) → msgpack → AES-GCM decrypt → msgpack → botPreset
  */
-export function openRisup(filePath: string): CharxData {
+export function openRisup(filePath: string): LoadedDocumentData {
   validateFileSize(filePath);
   const raw: Buffer = fs.readFileSync(filePath);
 
@@ -1322,7 +1286,7 @@ export function openRisup(filePath: string): CharxData {
     _fileType: 'risup',
 
     // Extract editable fields
-    ...(extractPresetFields(sanitized) as CharxData),
+    ...(extractPresetFields(sanitized) as LoadedDocumentData),
 
     // Fields not applicable to presets (empty defaults)
     description: '',
@@ -1354,7 +1318,7 @@ export function openRisup(filePath: string): CharxData {
  * Save data back to a .risup preset file
  * Format: botPreset → msgpack → AES-GCM encrypt → msgpack envelope → zlib deflate → RPack
  */
-export function saveRisup(filePath: string, data: CharxData): void {
+export function saveRisup(filePath: string, data: LoadedDocumentData): void {
   // Start from preserved preset data, or create minimal preset
   const preset: Record<string, unknown> = data._presetData ? cloneJson(data._presetData) : {};
 

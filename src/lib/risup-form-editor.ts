@@ -1,4 +1,4 @@
-import type { CharxData } from '../stores/app-store';
+import type { RendererDocumentData } from '../stores/app-store';
 import {
   RISUP_JSON_FIELD_IDS,
   getRisupFieldDefinition,
@@ -48,7 +48,7 @@ export function isDuplicateWarning(msg: string): boolean {
   return msg.startsWith('Duplicate ');
 }
 
-export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftValidationError[] {
+export function validateRisupDraftFields(data: Partial<RendererDocumentData>): RisupDraftValidationError[] {
   const errors: RisupDraftValidationError[] = [];
 
   for (const fieldId of RISUP_JSON_FIELD_IDS) {
@@ -134,7 +134,7 @@ export function validateRisupDraftFields(data: Partial<CharxData>): RisupDraftVa
   return errors;
 }
 
-export function getRisupValidationMessage(data: Partial<CharxData>): string | null {
+export function getRisupValidationMessage(data: Partial<RendererDocumentData>): string | null {
   const all = validateRisupDraftFields(data);
   const errors = all.filter((e) => e.severity === 'error');
   if (errors.length === 0) return null;

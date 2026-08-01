@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import * as os from 'os';
+import { buildTerminalLaunchAttempts } from './terminal-shell';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -144,11 +145,6 @@ export function killTerminal(sessionId?: string): void {
 
 export function initTerminalManager(deps: TerminalManagerDeps): void {
   const { broadcastToAll, getApiPort, getApiToken, getMcpServerPath } = deps;
-
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { buildTerminalLaunchAttempts } = require('./terminal-shell') as {
-    buildTerminalLaunchAttempts: (opts: Record<string, unknown>) => LaunchAttempt[];
-  };
 
   function broadcastTerminalStatus(
     sessionId: string,

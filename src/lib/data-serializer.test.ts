@@ -1,13 +1,58 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { initDataSerializer, serializeForRenderer, applyUpdates } from './data-serializer';
+import type { LoadedDocumentData } from '../charx-io';
+import {
+  applyUpdates as applyLoadedDocumentUpdates,
+  initDataSerializer,
+  serializeForRenderer as serializeLoadedDocumentForRenderer,
+} from './data-serializer';
+import type { RendererDocumentPatch } from './document-types';
 
 // Stub dependencies injected via initDataSerializer
 const stubDeps = {
   stringifyTriggerScripts: vi.fn((ts: unknown) => JSON.stringify(ts)),
-  normalizeTriggerScripts: vi.fn((ts: unknown) => (Array.isArray(ts) ? ts : [])),
+  normalizeTriggerScripts: vi.fn((ts: unknown) => {
+    if (Array.isArray(ts)) return ts;
+    if (typeof ts === 'string') return JSON.parse(ts) as unknown[];
+    return [];
+  }),
   extractPrimaryLuaFromTriggerScripts: vi.fn(() => 'extracted-lua'),
   mergePrimaryLuaIntoTriggerScripts: vi.fn((_ts: unknown, lua: string) => [{ type: 'lua', code: lua }]),
 };
+
+function makeLoadedDocument(overrides: Record<string, unknown> = {}): LoadedDocumentData {
+  return {
+    _fileType: 'charx',
+    name: '',
+    description: '',
+    firstMessage: '',
+    alternateGreetings: [],
+    groupOnlyGreetings: [],
+    globalNote: '',
+    css: '',
+    defaultVariables: '',
+    lua: '',
+    triggerScripts: [],
+    lorebook: [],
+    regex: [],
+    assets: [],
+    xMeta: {},
+    risumAssets: [],
+    cardAssets: [],
+    _risuExt: {},
+    _card: {},
+    _moduleData: null,
+    _presetData: null,
+    ...overrides,
+  } as LoadedDocumentData;
+}
+
+function serializeForRenderer(overrides: Record<string, unknown> = {}) {
+  return serializeLoadedDocumentForRenderer(makeLoadedDocument(overrides));
+}
+
+function applyUpdates(data: Record<string, unknown>, fields: RendererDocumentPatch | null | undefined): void {
+  applyLoadedDocumentUpdates(data as LoadedDocumentData, fields);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -57,8 +102,24 @@ describe('serializeForRenderer', () => {
 
   it('passes triggerScripts through stringifyTriggerScripts', () => {
     const ts = [{ type: 'lua', code: 'x' }];
-    serializeForRenderer({ triggerScripts: ts });
+    const result = serializeForRenderer({ triggerScripts: ts });
     expect(stubDeps.stringifyTriggerScripts).toHaveBeenCalledWith(ts);
+    expect(result.triggerScripts).toBe('[{"type":"lua","code":"x"}]');
+  });
+
+  it('preserves structured lorebook and regex collections while serializing trigger scripts to text', () => {
+    const lorebook = [{ key: 'alpha', content: 'lore' }];
+    const regex = [{ comment: 'cleanup', find: 'a', replace: 'b' }];
+
+    const result = serializeForRenderer({
+      triggerScripts: [{ type: 'start', effect: [] }],
+      lorebook,
+      regex,
+    });
+
+    expect(result.triggerScripts).toBe('[{"type":"start","effect":[]}]');
+    expect(result.lorebook).toBe(lorebook);
+    expect(result.regex).toBe(regex);
   });
 
   it('defaults alternateGreetings to an empty array', () => {
@@ -151,9 +212,11 @@ describe('applyUpdates', () => {
 
   it('syncs lua when triggerScripts is updated', () => {
     const data: Record<string, unknown> = { triggerScripts: [], lua: '' };
-    applyUpdates(data, { triggerScripts: [{ type: 'lua', code: 'abc' }] });
-    expect(stubDeps.normalizeTriggerScripts).toHaveBeenCalled();
+    const rendererText = '[{"type":"start","effect":[{"type":"triggerlua","code":"abc"}]}]';
+    applyUpdates(data, { triggerScripts: rendererText });
+    expect(stubDeps.normalizeTriggerScripts).toHaveBeenCalledWith(rendererText);
     expect(stubDeps.extractPrimaryLuaFromTriggerScripts).toHaveBeenCalled();
+    expect(data.triggerScripts).toEqual([{ type: 'start', effect: [{ type: 'triggerlua', code: 'abc' }] }]);
     expect(data.lua).toBe('extracted-lua');
   });
 

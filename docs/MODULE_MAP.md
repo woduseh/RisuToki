@@ -18,6 +18,7 @@ This map is for source navigation. It is not a full API reference.
 ## Integration layers
 
 - `src/app/controller.ts` — main-window integration and UI orchestration
+- `src/app/mcp-update-controller.ts` — renderer-side MCP update application, tab backup/refresh, and editor synchronization
 - `src/app/project-workspace-controller.ts` — project-folder raw file tabs, validation, debounced writes, reloads, and sidebar rendering
 - `src/app/terminal-sessions-controller.ts` — renderer terminal session lifecycle, active-session routing, tabs, CWD tracking, and xterm handles
 - `src/components/` — Vue UI components
@@ -27,7 +28,8 @@ This map is for source navigation. It is not a full API reference.
 ## MCP and agent harness
 
 - `src/lib/mcp-api-server.ts` — MCP HTTP route handling and response contracts
-- `src/lib/mcp-api-helpers.ts` — shared HTTP parsing, response, identity, surface, list, external-field, and section-cache helpers
+- `src/lib/mcp-api-helpers.ts` — shared HTTP parsing, response, identity, surface, list, and external-field helpers
+- `src/lib/mcp-section-cache.ts` — server-local Lua/CSS parse caches with defensive copies
 - `src/lib/mcp-lorebook-routes.ts` — lorebook CRUD, stable-id, batch, diff, validation, text-edit, and charx compatibility routes
 - `src/lib/mcp-risup-prompt-routes.ts` — RISUP prompt-item, formatting-order, diff, text import/export, and snippet routes
 - `src/lib/mcp-structured-item-routes.ts` — regex, greeting, and trigger CRUD, identity, batch, and text-edit routes
@@ -49,6 +51,8 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-facade-runtime.ts` — shared facade preview stores, digests, target labels, and API-error helpers
 - `src/lib/mcp-facade-content.ts` — facade reads, validation, analysis, reference routing, and response envelopes
 - `src/lib/mcp-facade-edit.ts` — guarded preview/apply planning for active and external facade edits
+- `src/lib/mcp-facade-edit-block.ts` — guarded field/lorebook `replace_block` preview and apply operations
+- `src/lib/mcp-facade-edit-lorebook.ts` — guarded active-lorebook `replace_all_text` preview and apply operations
 - `src/lib/mcp-facade-script-style.ts` — external structured reads/patch plans and active/external trigger, Lua, and CSS facade operations
 - `src/lib/mcp-facade-items.ts` — structured collections, script/style items, RISUP prompts, and prompt-snippet facade operations
 - `src/lib/mcp-facade-assets.ts` — active/external asset reads, mutation plans, compression, and guarded apply operations
@@ -78,6 +82,7 @@ This map is for source navigation. It is not a full API reference.
 ## File formats and RisuAI document modeling
 
 - `src/charx-io.ts` — `.charx`, `.risum`, `.risup` serialization and loading
+- `src/lib/document-types.ts` — renderer document, patch, reference, lorebook, and regex boundary types
 - `src/lib/character-card-import.ts` — PNG/JSON Character Card import into normalized `.charx` document data
 - `src/lib/folder-workspace.ts` — `.charx` / `.risum` / `.risup` project-folder extraction, loading, saving, tree reads, watching support, and type-aware export
 - `src/lib/deprecated-save-policy.ts` — save-time stripping policy for deprecated/unrecommended `.charx`, `.risum`, and `.risup` fields
@@ -175,6 +180,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/session-recovery-main.ts` — main-process recovery hooks
 - `src/lib/session-recovery-manager.ts` — recovery orchestration
 - `src/lib/main-state-store.ts` — main-process state store
+- `src/lib/main-utility-ipc.ts` — MCP info, JSON import, persona, and system-prompt IPC registration
 - `src/lib/file-actions.ts` — file open/save actions
 - `src/lib/close-window-policy.ts` — close-window guards
 

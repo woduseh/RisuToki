@@ -1,4 +1,4 @@
-import type { CharxData } from '../stores/app-store';
+import type { RendererDocumentData } from '../stores/app-store';
 import {
   SUPPORTED_PROMPT_ITEM_TYPES,
   defaultPromptItem,
@@ -14,7 +14,7 @@ import Sortable from 'sortablejs';
 import { SHARED_OPTIONS, makeFlatOnEnd } from './sidebar-dnd';
 
 export interface PromptManagerPanelDeps {
-  getFileData: () => CharxData | null;
+  getFileData: () => RendererDocumentData | null;
   openPromptItem: (itemId: string) => void;
   setPromptTemplate: (value: string) => void;
   confirm: (message: string) => Promise<boolean>;
@@ -107,7 +107,7 @@ function clear(node: HTMLElement): void {
   node.replaceChildren();
 }
 
-function isRisupDocument(data: CharxData | null): boolean {
+function isRisupDocument(data: RendererDocumentData | null): boolean {
   return !!data && data._fileType === 'risup';
 }
 
@@ -295,7 +295,7 @@ function renderPromptPanel(body: HTMLElement): void {
   const deps = depsRef;
   const data = deps?.getFileData() ?? null;
   if (!deps || !isRisupDocument(data)) return;
-  const risupData = data as CharxData;
+  const risupData = data as RendererDocumentData;
 
   const model = parsePromptTemplate(typeof risupData.promptTemplate === 'string' ? risupData.promptTemplate : '');
   if (model.state === 'invalid') {

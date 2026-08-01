@@ -15,175 +15,8 @@ import {
   type WorkspaceId,
 } from '../lib/workspace-model';
 import { readWorkspaceLayoutState } from '../lib/workspace-layout-state';
-
-// CharxData represents the loaded .charx file data
-export interface CharxData {
-  name: string;
-  description: string;
-  firstMessage: string;
-  alternateGreetings: string[];
-  groupOnlyGreetings: string[];
-  globalNote: string;
-  css: string;
-  defaultVariables: string;
-  lua: string;
-  triggerScripts: string;
-  lorebook: LorebookEntry[];
-  regex: RegexEntry[];
-  _fileType?: string;
-
-  // Charx card.data fields
-  personality?: string;
-  scenario?: string;
-  creatorcomment?: string;
-  tags?: string[];
-  exampleMessage?: string;
-  systemPrompt?: string;
-  creator?: string;
-  characterVersion?: string;
-  nickname?: string;
-  source?: string[];
-  creationDate?: number;
-  modificationDate?: number;
-
-  // RisuAI extension fields
-  additionalText?: string;
-  license?: string;
-
-  // Risum module-specific fields
-  moduleName?: string;
-  moduleDescription?: string;
-  moduleId?: string;
-  cjs?: string;
-  lowLevelAccess?: boolean;
-  hideIcon?: boolean;
-  backgroundEmbedding?: string;
-  moduleNamespace?: string;
-  customModuleToggle?: string;
-  mcpUrl?: string;
-
-  // Risup preset fields (basic)
-  mainPrompt?: string;
-  jailbreak?: string;
-  temperature?: number;
-  maxContext?: number;
-  maxResponse?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-  aiModel?: string;
-  subModel?: string;
-  apiType?: string;
-  promptPreprocess?: boolean;
-  promptTemplate?: string;
-  presetBias?: string;
-  formatingOrder?: string;
-  presetImage?: string;
-
-  // Risup preset fields (sampling)
-  top_p?: number;
-  top_k?: number;
-  repetition_penalty?: number;
-  min_p?: number;
-  top_a?: number;
-
-  // Risup preset fields (thinking/reasoning)
-  reasonEffort?: number;
-  thinkingTokens?: number;
-  thinkingType?: string;
-  adaptiveThinkingEffort?: string;
-
-  // Risup preset fields (templates & formatting)
-  useInstructPrompt?: boolean;
-  instructChatTemplate?: string;
-  JinjaTemplate?: string;
-  customPromptTemplateToggle?: string;
-  templateDefaultVariables?: string;
-  moduleIntergration?: string;
-
-  // Risup preset fields (JSON schema)
-  jsonSchemaEnabled?: boolean;
-  jsonSchema?: string;
-  strictJsonSchema?: boolean;
-  extractJson?: string;
-
-  // Risup preset fields (group & misc)
-  groupTemplate?: string;
-  groupOtherBotRole?: string;
-  autoSuggestPrompt?: string;
-  autoSuggestPrefix?: string;
-  autoSuggestClean?: boolean;
-  localStopStrings?: string;
-  outputImageModal?: boolean;
-  verbosity?: number;
-  fallbackWhenBlankResponse?: boolean;
-  systemContentReplacement?: string;
-  systemRoleReplacement?: string;
-  promptSettings?: string;
-  customAPIFormat?: string;
-  openrouterProvider?: string;
-  seperateParametersEnabled?: boolean;
-  seperateParameters?: string;
-  fallbackModels?: string;
-  seperateModels?: string;
-  modelTools?: string;
-  customFlags?: string;
-  enableCustomFlags?: boolean;
-  dynamicOutput?: string;
-  deepseekThinkingType?: string;
-  deepseekReasoningEffort?: string;
-  proxyRequestModel?: string;
-  openrouterRequestModel?: string;
-  customProxyRequestModel?: string;
-  reverseProxyOobaArgs?: string;
-  koboldURL?: string;
-  forceReplaceUrl?: string;
-  textgenWebUIStreamURL?: string;
-  textgenWebUIBlockingURL?: string;
-  localNetworkMode?: boolean;
-  localNetworkTimeoutSec?: number;
-
-  [key: string]: unknown;
-}
-
-export interface LorebookEntry {
-  key: string;
-  secondkey: string;
-  comment: string;
-  content: string;
-  mode: string;
-  insertorder: number;
-  order: number;
-  priority: number;
-  alwaysActive: boolean;
-  forceActivation: boolean;
-  selective: boolean;
-  constant: boolean;
-  useRegex: boolean;
-  folder: string;
-  extentions: Record<string, unknown>;
-  id?: string;
-  [key: string]: unknown;
-}
-
-export interface RegexEntry {
-  comment: string;
-  type: string;
-  find: string;
-  replace: string;
-  in?: string;
-  out?: string;
-  flag: string;
-  ableFlag?: boolean;
-  [key: string]: unknown;
-}
-
-export interface ReferenceFile {
-  id?: string;
-  fileName: string;
-  filePath: string;
-  fileType?: 'charx' | 'risum' | 'risup';
-  data: Record<string, unknown>;
-}
+import type { ReferenceFile, RendererDocumentData } from '../lib/document-types';
+export type { LorebookEntry, ReferenceFile, RegexEntry, RendererDocumentData } from '../lib/document-types';
 
 export type RpMode = 'off' | 'toki' | 'aris' | 'custom';
 export type StatusKind = 'info' | 'error';
@@ -195,7 +28,7 @@ export interface StatusOptions {
 
 export const useAppStore = defineStore('app', () => {
   // === File data ===
-  const fileData = ref<CharxData | null>(null);
+  const fileData = ref<RendererDocumentData | null>(null);
   const luaSections = ref<Section[]>([]);
   const cssSections = ref<Section[]>([]);
   const cssStylePrefix = ref('');
@@ -280,7 +113,7 @@ export const useAppStore = defineStore('app', () => {
   );
 
   // === Actions ===
-  function setFileData(data: CharxData | null) {
+  function setFileData(data: RendererDocumentData | null) {
     setPreviewFocusMode(false);
     fileData.value = data;
     // A tab id only has meaning inside the document that created it. Clearing

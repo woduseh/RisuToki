@@ -6,12 +6,14 @@
     "lib": ["ES2022", "DOM"],
     "strict": true,
     "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": ".build/electron",
     "incremental": true,
-    "tsBuildInfoFile": ".tsbuildinfo/electron.tsbuildinfo",
+    "tsBuildInfoFile": ".build/electron/electron.tsbuildinfo",
     "esModuleInterop": true,
     "noEmitOnError": true,
     "types": ["node"]
   },
   "include": ["main.ts", "preload.ts", "src/electron-api.d.ts", "src/adm-zip.d.ts", "src/css-inline.d.ts"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": [".build", "dist", "node_modules"]
 }
