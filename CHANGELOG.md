@@ -9,6 +9,19 @@
 
 ---
 
+## [2.2.4] - 2026-08-08
+
+### Fixed
+
+- Moved every local Electron main-process dependency into the static TypeScript import graph so complete runtime output is emitted instead of failing one module at a time after packaging.
+- Added an architecture guard that rejects local `require()` calls in the Electron entrypoint before they can bypass TypeScript dependency discovery again.
+
+## [2.2.3] - 2026-08-05
+
+### Fixed
+
+- Included the Character Card PNG/JSON importer in Electron build output so packaged and locally built apps start without a missing-module error.
+
 ## [2.2.2] - 2026-08-02
 
 ### Changed

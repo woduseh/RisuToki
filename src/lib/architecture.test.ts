@@ -378,4 +378,27 @@ describe('packaged MCP runtime assets', () => {
     expect(packagedFiles).not.toContain('src/**/*');
     expect(packageJson).toMatchObject({ main: '.build/electron/main.js' });
   });
+
+  it('keeps local Electron runtime modules in the static TypeScript build graph', () => {
+    const mainSource = readRepoFile('main.ts');
+    const sourceFile = ts.createSourceFile('main.ts', mainSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const localRequires: string[] = [];
+
+    function visit(node: ts.Node): void {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === 'require' &&
+        node.arguments.length === 1 &&
+        ts.isStringLiteral(node.arguments[0]) &&
+        node.arguments[0].text.startsWith('.')
+      ) {
+        localRequires.push(node.arguments[0].text);
+      }
+      ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+    expect(localRequires, 'Local require() calls can be omitted from the Electron TypeScript output').toEqual([]);
+  });
 });

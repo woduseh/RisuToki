@@ -6,16 +6,70 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as crypto from 'crypto';
 
-// Type-only imports from local TypeScript modules (erased at compile time)
-import type { LoadedDocumentData } from './src/charx-io';
-import type { RendererDocumentData, RendererDocumentPatch } from './src/lib/document-types';
-import type { McpApiServer, Section, CssCacheEntry, McpSessionStatus } from './src/lib/mcp-api-server';
-import type { McpReferenceFile } from './src/lib/mcp-api-server';
+import {
+  extractPrimaryLuaFromTriggerScripts,
+  mergePrimaryLuaIntoTriggerScripts,
+  normalizeTriggerScripts,
+  openCharx,
+  openRisum,
+  openRisup,
+  saveCharx,
+  saveRisum,
+  saveRisup,
+  stringifyTriggerScripts,
+  type LoadedDocumentData,
+} from './src/charx-io';
+import type { RendererDocumentPatch } from './src/lib/document-types';
+import {
+  startApiServer as startApiServerImpl,
+  type McpApiServer,
+  type McpReferenceFile,
+  type McpSessionStatus,
+} from './src/lib/mcp-api-server';
 import type { RuntimeMetadata } from './src/lib/mcp-runtime-contract';
+import { buildRuntimeMetadata } from './src/lib/mcp-runtime-contract';
+import { cleanupAgentsMd, initAgentsMdManager } from './src/lib/agents-md-manager';
+import { initAssetManager, invalidateAssetsMapCache } from './src/lib/asset-manager';
 import { writeFileAtomicSync } from './src/lib/atomic-write';
+import { initAutosaveManager } from './src/lib/autosave-manager';
+import { resolveCloseWindowAction, shouldPromptForUnsavedClose } from './src/lib/close-window-policy';
 import { resolveSkillRootDirs } from './src/lib/content-roots';
+import { applyUpdates, initDataSerializer, serializeForRenderer } from './src/lib/data-serializer';
+import {
+  extractDocumentToProject,
+  getProjectFileType,
+  listProjectTree,
+  loadProjectData as loadProjectDataImpl,
+  readProjectFile,
+  reassembleProjectDocument,
+  saveProjectData,
+  writeProjectFile,
+} from './src/lib/folder-workspace';
+import { initGuidesManager, resolveBuiltInGuidePath } from './src/lib/guides-manager';
+import { askRendererCloseConfirm, askRendererConfirm, initIpcConfirm } from './src/lib/ipc-confirm';
+import { createMainStateStore } from './src/lib/main-state-store';
+import {
+  cleanupCodexMcpConfig,
+  cleanupJsonMcpConfig,
+  initMcpConfig,
+  writeCurrentMcpConfig,
+} from './src/lib/mcp-config';
+import * as referenceStoreRuntime from './src/lib/reference-store';
+import {
+  combineCssSections,
+  combineLuaSections,
+  detectCssBlockClose,
+  detectCssBlockOpen,
+  detectCssSectionInline,
+  detectLuaSection,
+  parseCssSections,
+  parseLuaSections,
+} from './src/lib/section-parser';
 import { markRecoveryDocumentActiveForPath, syncRecoveryAfterExplicitSave } from './src/lib/session-recovery-main';
+import { createSessionRecoveryManager } from './src/lib/session-recovery-manager';
+import { initTerminalManager, killTerminal } from './src/lib/terminal-manager';
 import { initMainUtilityIpc } from './src/lib/main-utility-ipc';
+import { importCharacterCardByPath } from './src/lib/character-card-import';
 
 // ---------------------------------------------------------------------------
 // Interfaces for .cjs modules and local types
@@ -105,81 +159,7 @@ interface RendererSessionStatusResponse {
 const COMPILED_ROOT = __dirname;
 const APP_ROOT = path.resolve(COMPILED_ROOT, '..', '..');
 
-// ---------------------------------------------------------------------------
-// Runtime imports (typed require — compiled by tsconfig.node-libs.json)
-// ---------------------------------------------------------------------------
-
-const {
-  openCharx,
-  saveCharx,
-  openRisum,
-  saveRisum,
-  openRisup,
-  saveRisup,
-  extractPrimaryLuaFromTriggerScripts,
-  mergePrimaryLuaIntoTriggerScripts,
-  normalizeTriggerScripts,
-  stringifyTriggerScripts,
-} = require('./src/charx-io') as {
-  openCharx: (filePath: string) => LoadedDocumentData;
-  saveCharx: (filePath: string, data: LoadedDocumentData) => void;
-  openRisum: (filePath: string) => LoadedDocumentData;
-  saveRisum: (filePath: string, data: LoadedDocumentData) => void;
-  openRisup: (filePath: string) => LoadedDocumentData;
-  saveRisup: (filePath: string, data: LoadedDocumentData) => void;
-  extractPrimaryLuaFromTriggerScripts: (triggerScripts: unknown) => string;
-  mergePrimaryLuaIntoTriggerScripts: (triggerScripts: unknown, lua: unknown) => unknown[];
-  normalizeTriggerScripts: (triggerScripts: unknown) => unknown[];
-  stringifyTriggerScripts: (triggerScripts: unknown) => string;
-};
-
-const { importCharacterCardByPath } = require('./src/lib/character-card-import') as {
-  importCharacterCardByPath: (filePath: string) => {
-    data: LoadedDocumentData;
-    format: 'png' | 'json';
-    sourcePath: string;
-  };
-};
-
-const {
-  extractDocumentToProject,
-  getProjectFileType,
-  loadProjectData,
-  saveProjectData,
-  reassembleProjectDocument,
-  listProjectTree,
-  readProjectFile,
-  writeProjectFile,
-} = require('./src/lib/folder-workspace') as {
-  extractDocumentToProject: (sourcePath: string, projectPath: string) => { success: true; projectPath: string };
-  getProjectFileType: (projectPath: string) => 'charx' | 'risum' | 'risup';
-  loadProjectData: (projectPath: string) => LoadedDocumentData;
-  saveProjectData: (projectPath: string, data: LoadedDocumentData) => void;
-  reassembleProjectDocument: (projectPath: string, outputPath: string) => { success: true; outputPath: string };
-  listProjectTree: (projectPath: string) => unknown;
-  readProjectFile: (projectPath: string, relativePath: string) => string;
-  writeProjectFile: (projectPath: string, relativePath: string, content: string) => void;
-};
-
-const {
-  parseLuaSections,
-  combineLuaSections,
-  detectLuaSection,
-  parseCssSections,
-  combineCssSections,
-  detectCssSectionInline,
-  detectCssBlockOpen,
-  detectCssBlockClose,
-} = require('./src/lib/section-parser') as {
-  parseLuaSections: (lua: string) => Section[];
-  combineLuaSections: (sections: Section[]) => string;
-  detectLuaSection: (line: string) => string | null;
-  parseCssSections: (css: string) => CssCacheEntry;
-  combineCssSections: (sections: Section[], prefix: string, suffix: string) => string;
-  detectCssSectionInline: (line: string) => string | null;
-  detectCssBlockOpen: (line: string) => boolean;
-  detectCssBlockClose: (line: string) => boolean;
-};
+const loadProjectData = loadProjectDataImpl as (projectPath: string) => LoadedDocumentData;
 
 const {
   normalizeReferencePath,
@@ -188,7 +168,7 @@ const {
   serializeReferenceManifestPaths,
   parseReferenceManifest,
   validateReferenceManifestPaths,
-} = require('./src/lib/reference-store') as {
+} = referenceStoreRuntime as unknown as {
   normalizeReferencePath: (filePath: string) => string;
   upsertReferenceRecord: (records: ReferenceRecord[], record: ReferenceRecord) => ReferenceRecord[];
   removeReferenceRecord: (records: ReferenceRecord[], identifier: string) => ReferenceRecord[];
@@ -196,167 +176,8 @@ const {
   parseReferenceManifest: (value: unknown) => string[];
   validateReferenceManifestPaths: (
     paths: string[],
-    opts: { existsSync: (p: string) => boolean },
+    opts: { existsSync: (filePath: string) => boolean },
   ) => { validPaths: string[]; issues: ReferenceManifestIssue[] };
-};
-
-const { createMainStateStore } = require('./src/lib/main-state-store') as {
-  createMainStateStore: () => MainStateStore;
-};
-
-const { buildRuntimeMetadata } = require('./src/lib/mcp-runtime-contract') as {
-  buildRuntimeMetadata: (input: {
-    serverVersion: string;
-    appVersion: string;
-    packageVersion: string;
-    buildTime: string | null;
-    commit: string | null;
-    runtimeMode: 'app-backed' | 'standalone';
-  }) => RuntimeMetadata;
-};
-
-const { startApiServer: startApiServerImpl } = require('./src/lib/mcp-api-server') as {
-  startApiServer: (deps: {
-    getCurrentData: () => LoadedDocumentData | null;
-    getReferenceFiles: () => McpReferenceFile[];
-    askRendererConfirm: (title: string, message: string) => Promise<boolean>;
-    requestRendererOpenFile: (request: RendererOpenFileRequest) => Promise<RendererOpenFileResponse>;
-    saveCurrentDocument?: () => Promise<SaveResult>;
-    broadcastToAll: (channel: string, ...args: unknown[]) => void;
-    broadcastMcpStatus: (payload: Record<string, unknown>) => void;
-    onListening: (port: number) => void;
-    parseLuaSections: (lua: string) => Section[];
-    combineLuaSections: (sections: Section[]) => string;
-    detectLuaSection: (line: string) => string | null;
-    parseCssSections: (css: string) => CssCacheEntry;
-    combineCssSections: (sections: Section[], prefix: string, suffix: string) => string;
-    detectCssSectionInline: (line: string) => string | null;
-    detectCssBlockOpen: (line: string) => boolean;
-    detectCssBlockClose: (line: string) => boolean;
-    openExternalDocument: (filePath: string) => LoadedDocumentData;
-    saveExternalDocument: (filePath: string, fileType: 'charx' | 'risum' | 'risup', data: LoadedDocumentData) => void;
-    normalizeTriggerScripts: (data: unknown) => unknown;
-    extractPrimaryLua: (scripts: unknown) => string;
-    mergePrimaryLua: (scripts: unknown, lua: string) => unknown;
-    stringifyTriggerScripts: (scripts: unknown) => string;
-    getSkillRoots: () => string[];
-    getUserDataPath: () => string;
-    getSessionStatus: () => Promise<McpSessionStatus>;
-    getCurrentFilePath: () => string | null;
-    getRuntimeInfo: () => RuntimeMetadata;
-  }) => McpApiServer;
-};
-
-const { initTerminalManager, killTerminal } = require('./src/lib/terminal-manager') as {
-  initTerminalManager: (deps: {
-    broadcastToAll: (channel: string, ...args: unknown[]) => void;
-    getCurrentFilePath: () => string | null;
-    getApiPort: () => number | null;
-    getApiToken: () => string | null;
-    getMcpServerPath: () => string;
-  }) => void;
-  killTerminal: () => void;
-};
-
-const { initMcpConfig, writeCurrentMcpConfig, cleanupJsonMcpConfig, cleanupCodexMcpConfig } =
-  require('./src/lib/mcp-config') as {
-    initMcpConfig: (deps: {
-      getApiPort: () => number | null;
-      getApiToken: () => string | null;
-      getDirname: () => string;
-      isPackaged: () => boolean;
-    }) => void;
-    writeCurrentMcpConfig: () => string | null;
-    cleanupJsonMcpConfig: (configPath: string) => void;
-    cleanupCodexMcpConfig: () => void;
-  };
-
-const { initAgentsMdManager, cleanupAgentsMd } = require('./src/lib/agents-md-manager') as {
-  initAgentsMdManager: (deps: {
-    getCurrentFilePath: () => string | null;
-    getTerminalCwd: () => string | null;
-    getDirname: () => string;
-    resolveGuidePath: (filename: string) => string | null;
-  }) => void;
-  cleanupAgentsMd: () => void;
-};
-
-const { initAssetManager, invalidateAssetsMapCache } = require('./src/lib/asset-manager') as {
-  initAssetManager: (deps: {
-    getCurrentData: () => LoadedDocumentData | null;
-    getMainWindow: () => BrowserWindow | null;
-  }) => void;
-  invalidateAssetsMapCache: () => void;
-};
-
-const { initGuidesManager, resolveBuiltInGuidePath } = require('./src/lib/guides-manager') as {
-  initGuidesManager: (deps: {
-    getMainWindow: () => BrowserWindow | null;
-    getDirname: () => string;
-    broadcastRefsDataChanged: () => void;
-  }) => void;
-  resolveBuiltInGuidePath: (filename: string) => string | null;
-};
-
-const { initIpcConfirm, askRendererConfirm, askRendererCloseConfirm } = require('./src/lib/ipc-confirm') as {
-  initIpcConfirm: (deps: { getMainWindow: () => BrowserWindow | null }) => void;
-  askRendererConfirm: (title: string, message: string) => Promise<boolean>;
-  askRendererCloseConfirm: () => Promise<number>;
-};
-
-const { initAutosaveManager } = require('./src/lib/autosave-manager') as {
-  initAutosaveManager: (deps: {
-    getCurrentData: () => LoadedDocumentData | null;
-    getCurrentFilePath: () => string | null;
-    getMainWindow: () => BrowserWindow | null;
-    saveCharx: (filePath: string, data: LoadedDocumentData) => void;
-    saveRisum: (filePath: string, data: LoadedDocumentData) => void;
-    saveRisup: (filePath: string, data: LoadedDocumentData) => void;
-    readFileSync: (filePath: string, encoding: BufferEncoding) => string;
-    writeFileSync: (filePath: string, data: string) => void;
-    writeFileAtomicSync?: (filePath: string, data: string) => void;
-    mkdirSync: (dirPath: string, options?: { recursive: boolean }) => void;
-    readdirSync: (dirPath: string) => string[];
-    unlinkSync: (filePath: string) => void;
-    applyUpdates: (data: LoadedDocumentData, fields: RendererDocumentPatch) => void;
-    onAutosaveSuccess?: (autosavePath: string, sidecarPath: string) => void;
-  }) => void;
-};
-
-const { resolveCloseWindowAction, shouldPromptForUnsavedClose } = require('./src/lib/close-window-policy') as {
-  resolveCloseWindowAction: (input: { choice: number; saveResult?: SaveResult }) => {
-    action: 'save' | 'close' | 'stay';
-    errorMessage: string | null;
-  };
-  shouldPromptForUnsavedClose: (input: {
-    hasCurrentDocument: boolean;
-    status: RendererSessionStatusResponse | null;
-  }) => boolean;
-};
-
-const { createSessionRecoveryManager } = require('./src/lib/session-recovery-manager') as {
-  createSessionRecoveryManager: (deps: {
-    readFileSync: (path: string, encoding: BufferEncoding) => string;
-    writeFileSync: (path: string, data: string) => void;
-    writeFileAtomicSync?: (path: string, data: string) => void;
-    existsSync: (path: string) => boolean;
-    statSync: (path: string) => { mtimeMs: number };
-    unlinkSync: (path: string) => void;
-    userDataPath: string;
-    openDocument: (filePath: string) => LoadedDocumentData;
-    setCurrentDocument: (filePath: string, data: LoadedDocumentData) => void;
-  }) => import('./src/lib/session-recovery-manager').SessionRecoveryManager;
-};
-
-const { initDataSerializer, serializeForRenderer, applyUpdates } = require('./src/lib/data-serializer') as {
-  initDataSerializer: (deps: {
-    stringifyTriggerScripts: (ts: unknown) => string;
-    normalizeTriggerScripts: (ts: unknown) => unknown[];
-    extractPrimaryLuaFromTriggerScripts: (ts: unknown) => string;
-    mergePrimaryLuaIntoTriggerScripts: (ts: unknown, lua: string) => unknown[];
-  }) => void;
-  serializeForRenderer: (data: LoadedDocumentData) => RendererDocumentData;
-  applyUpdates: (data: LoadedDocumentData, fields: RendererDocumentPatch) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -364,7 +185,7 @@ const { initDataSerializer, serializeForRenderer, applyUpdates } = require('./sr
 // ---------------------------------------------------------------------------
 
 let mainWindow: BrowserWindow | null = null;
-const mainState: MainStateStore = createMainStateStore();
+const mainState = createMainStateStore() as unknown as MainStateStore;
 
 // MCP API server
 let mcpApi: McpApiServer | null = null;
