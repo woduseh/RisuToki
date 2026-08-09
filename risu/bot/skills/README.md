@@ -4,24 +4,24 @@ LLM-optimized skills for writing and reviewing `.charx` bots.
 
 ## Quick chooser
 
-| If the main problem is...                                                        | Load                                     |
-| -------------------------------------------------------------------------------- | ---------------------------------------- |
-| shared doctrine: model baseline, prose guards, trope stance, translation premise | `core-craft` (alongside any skill below) |
-| cross-media adaptation, franchise invariants, or iconic visual identity          | `authoring-media-mix`                    |
-| explicit engine, contradiction, voice, appeal, and pressure scaffolding          | `authoring-characters`                   |
-| worldbuilding substance: setting, culture, factions, systems, history, places    | `authoring-worlds`                       |
-| a factual profile plus a voice-led self-introduction sheet                       | `authoring-self-introduction-sheets`     |
-| description-vs-lorebook distribution, cast compression, or conditional depth     | `authoring-lorebook-bots`                |
-| events, simulators, day cycles, routes/endings, escalation rhythm                | `authoring-scenarios`                    |
-| structural desire/fetish content: consistency systems, escalation gates          | `authoring-desire`                       |
-| archetype vocabulary: expected beats, straight execution, subversions            | `trope-library`                          |
-| rendering English bot output into Korean with the voice intact                   | `writing-translation-guides`             |
+| If the main problem is...                                                      | Load                                 |
+| ------------------------------------------------------------------------------ | ------------------------------------ |
+| an explicit cross-cutting decision about mode, prose register, or trope stance | `core-craft` (support only)          |
+| cross-media adaptation, franchise invariants, or iconic visual identity        | `authoring-media-mix`                |
+| explicit engine, contradiction, voice, appeal, and pressure scaffolding        | `authoring-characters`               |
+| worldbuilding substance: setting, culture, factions, systems, history, places  | `authoring-worlds`                   |
+| a factual profile plus a voice-led self-introduction sheet                     | `authoring-self-introduction-sheets` |
+| description-vs-lorebook distribution, cast compression, or conditional depth   | `authoring-lorebook-bots`            |
+| events, simulators, day cycles, routes/endings, escalation rhythm              | `authoring-scenarios`                |
+| structural desire/fetish content: consistency systems, escalation gates        | `authoring-desire`                   |
+| archetype vocabulary: expected beats, straight execution, subversions          | `trope-library`                      |
+| rendering English bot output into Korean with the voice intact                 | `writing-translation-guides`         |
 
 ## Composition skills
 
 | Skill                                                                     | Description                                        | Files                                                                                                                  |
 | ------------------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| [core-craft](core-craft/)                                                 | Shared doctrine for all composition skills         | `SKILL.md` + `USER_POSITION.md` + `COMEDY_CRAFT.md`                                                                    |
+| [core-craft](core-craft/)                                                 | Optional support for cross-cutting craft decisions | `SKILL.md` + `USER_POSITION.md` + `COMEDY_CRAFT.md`                                                                    |
 | [authoring-media-mix](authoring-media-mix/)                               | Cross-media IP, adaptation, and visual identity    | `SKILL.md` + `MEDIA_PROFILES.md` + `VISUAL_IDENTITY.md` + `VALIDATION.md`                                              |
 | [authoring-characters](authoring-characters/)                             | Character authoring (two tracks, appeal, voice)    | `SKILL.md` + `APPEAL_PATTERNS.md` + `SPEECH_SYSTEM.md` + `VALIDATION.md` + `CHARACTER_SCALES.md` + `WORKED_EXAMPLE.md` |
 | [authoring-worlds](authoring-worlds/)                                     | Worldbuilding for LLM RP                           | `SKILL.md` + `VALIDATION.md` + `GENRE_PRESETS.md`                                                                      |

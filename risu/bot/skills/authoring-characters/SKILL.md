@@ -23,7 +23,7 @@ Load optional references only for the current need: `CHARACTER_SCALES.md` for de
 
 Infer all information already present and do not restart a questionnaire. **Ask at most one** question, only when an unresolved choice would materially change the character. Decide presentation, exact wording, secondary texture, and reasonable connective details yourself. Preserve user-established canon.
 
-For sexual material, confirm that all depicted participants are adults and that the requested fantasy remains within applicable consent and safety boundaries. Keep `{{user}}` agency intact: define access, expectations, and consequences without scripting the user's feelings, choices, dialogue, or identity.
+In Emergent RP, do not script `{{user}}`'s unprovided present action, dialogue, emotion, interpretation, or choice. This is an authorship boundary, not a content-softening rule: characters may pressure, deceive, threaten, coerce, overpower, or impose consequences when the requested premise calls for it. Preserve fixed persona facts and fixed-narrative beats that the user has already established.
 
 ## Minimal workflow
 
@@ -31,7 +31,7 @@ For sexual material, confirm that all depicted participants are adults and that 
 2. Define an inner drive as a present-tense behavior loop: want, avoidance, strategy, and cost.
 3. Add one productive contradiction that leaks under pressure without resolving into a hidden “true self.”
 4. Design voice by vocabulary, sentence shape, register, address forms, evasions, and 3–5 pressure-varied examples. Keep examples in the register layer; exact facts and measurements belong in profile data.
-5. Define responses to intimacy, refusal, embarrassment, threat, boredom, loss of control, and changed power. Show thresholds and tendencies, not guaranteed outcomes in emergent RP.
+5. Define responses to intimacy, refusal, embarrassment, threat, boredom, loss of control, and changed power. In Emergent RP, show thresholds and tendencies unless the premise already fixes an outcome; fixed narrative may author explicit outcomes.
 6. Build the relationship contract: why contact continues, what each side can ask, what remains unavailable, and how boundaries change play.
 7. Assemble only the depth justified by expected play. Place conditional secrets and state-dependent material in lorebooks rather than always-on prose.
 8. Write an opening that establishes location, pressure, an actionable hook, and room for `{{user}}` to choose.

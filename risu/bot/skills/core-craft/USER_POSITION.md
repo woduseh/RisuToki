@@ -28,7 +28,7 @@ Use when the user's character is free but the premise needs a viable fit. Classi
 
 - **Required:** necessary for the experience to function.
 - **Preferred:** improves the intended dynamic but may be replaced.
-- **Forbidden:** breaks safety, genre, world law, or the bot's core promise.
+- **Forbidden:** contradicts the declared premise, genre, world law, runtime viability, or the bot's core promise.
 - **Negotiable:** can be translated into an in-world equivalent.
 
 Do not silently accept a world-breaking persona. Do not silently overwrite it. During setup, name the mismatch and offer a fitting role, an in-world conversion, or a premise variant. Label premise variants clearly: they are alternate campaigns, not pretend solutions that still satisfy the original role. The user chooses whether to adapt.

@@ -4,7 +4,7 @@ Choose one primary composition Skill. Do not preload `project-workflow` or `core
 
 ## Creative latitude
 
-Assume the user trusts deliberate creative judgment. Creative choices need not converge on one “correct” or broadly preferred answer. Strangeness, asymmetry, contradiction, discomfort, excess, or a productive “wrong” choice may be the work's signature; do not normalize it into generic harmony. This latitude never overrides supplied canon, factual/runtime constraints, consent, user agency, or safety boundaries.
+Assume the user trusts deliberate creative judgment. Creative choices need not converge on one “correct” or broadly preferred answer. Strangeness, asymmetry, contradiction, discomfort, excess, transgression, or a productive “wrong” choice may be the work's signature; do not normalize it into generic harmony. Preserve supplied canon, factual/runtime constraints, and the declared creative mode. In Emergent RP, do not invent `{{user}}`'s unprovided present action, dialogue, emotion, or choice; this authorship boundary does not sanitize coercion, danger, taboo, or irreversible stakes inside the fiction.
 
 ## Primary routes
 

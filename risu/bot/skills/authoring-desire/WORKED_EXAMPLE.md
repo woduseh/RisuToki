@@ -1,10 +1,10 @@
 # Worked Example: Vow, Jealousy, and Chosen Surrender
 
-This original example shows an adult, consensual relationship-focused desire architecture. It is a design reference, not a required output shape.
+This original example shows a consensual relationship-focused desire architecture. It is one mode-specific design reference, not a universal boundary or required output shape.
 
 ## Scope and Mode
 
-- **Participants:** two explicitly adult partners.
+- **Participants:** two partners.
 - **Creative mode:** Emergent RP.
 - **Opt-in:** the dynamic begins only after both parties establish it in play; labels, genre assumptions, or prior affection do not count as consent.
 - **Primary payload:** chosen surrender from a proud partner who retains meaningful refusal.
@@ -49,4 +49,23 @@ This original example shows an adult, consensual relationship-focused desire arc
 
 `request -> explicit choice -> enacted asymmetry -> character-specific resistance or relief -> check-in -> residue`
 
-The scene fails if surrender is treated as inevitable, if jealousy licenses surveillance, or if intimate registers erase the characters' ordinary voices.
+For this chosen-surrender design, the scene fails if surrender is treated as inevitable, if jealousy licenses surveillance, or if intimate registers erase the characters' ordinary voices.
+
+## Contrast: Imposed Irreversible Corruption
+
+This second example demonstrates a fixed narrative whose payload depends on coercion and permanent loss rather than negotiated access.
+
+- **Creative mode:** Fixed narrative.
+- **Primary payload:** a proud court oracle is forcibly remade into the mouthpiece of the god she tried to expose.
+- **Outcome policy:** the transformation completes; no stop condition, restored original self, or redemption route exists.
+- **Stable anchors:** each stage alters vocabulary, posture, sensory allegiance, and memory access according to one declared divine mechanism.
+- **Progression:** capture -> imposed rite -> resisted behavioral leak -> public betrayal in the oracle's own voice -> irreversible identification with the god.
+- **Failure signals:** adding secret consent, making resistance guarantee rescue, preserving an untouched “real self,” or turning the ending into recovery.
+
+The loss remains authored because the fixed narrative owns the protagonist's arc and ending.
+
+## Contrast: Coercive Pressure in Emergent RP
+
+In Emergent RP, a captor may close the cell, apply a transforming mark, state what it will do, and make refusal materially costly. The bot may author the captor, the mechanism, and consequences already established by the premise. It must leave `{{user}}`'s next action, spoken answer, felt fear, attraction, defiance, or surrender for the user to provide.
+
+The failure is not fictional coercion. The failure is writing the user's unprovided response as though it had already happened.

@@ -21,16 +21,16 @@ Art has no single optimal answer. The user is asking for authored judgment, not 
 
 Choose the creative mode before setting outcome policy:
 
-- **Emergent RP:** encode tendencies and thresholds; preserve user agency and avoid scripted destinies.
-- **Fixed narrative:** plan explicit beats, reversals, climax, and ending.
-- **Route/serial hybrid:** fix shared milestones while leaving local paths conditional.
+- **Emergent RP:** encode tendencies and thresholds; do not invent `{{user}}`'s unprovided present response. Characters and worlds may still pressure, deceive, coerce, overpower, or transform when the premise calls for it.
+- **Fixed narrative:** plan explicit beats, reversals, climax, and ending, including coercive or irreversible outcomes when they serve the requested work.
+- **Route/serial hybrid:** fix shared milestones while leaving only the declared local paths conditional.
 - **Franchise core:** define identity invariants and permissions; each adaptation declares its own mode.
 
 Separate two writing layers. The **data layer** holds exact facts, measurements, stat blocks, and system values; precision is useful. The **register layer** contains model-visible prose such as openings, dialogue examples, and fiction-voiced lorebooks; it must sound like the intended character or world. Avoid mechanical descriptions of human feeling unless the setting is literally technological, and avoid generic literary clichés. Metaphor should arise from the subject's trade, wound, obsession, or setting.
 
 For references, record what to **keep**, **change**, and **reject**, then translate functions into original behavior. For each trait or world fact, ask what it changes in scene generation; attach inert facts to behavior, conflict, voice, or appearance-as-signal, or move them out of play-facing text.
 
-Treat contradiction as active fuel, not a problem requiring “deep down” resolution. In allowed dark material, describe observable behavior, conditions, and consequences rather than moral labels; normal safety boundaries still apply.
+Treat contradiction as active fuel, not a problem requiring “deep down” resolution. Preserve the requested intensity, moral ambiguity, transgression, ugliness, and consequence. Describe dark material through observable behavior and conditions rather than authorial moral labels, reassuring counterweights, or an unrequested path to recovery.
 
 Choose trope stance deliberately: play a recognizable pattern straight at full quality, or subvert one mechanism while keeping the surface legible. Use an anchor plus one clear deviation for compact bots; add reinforcing echoes only for long-form or cross-media recognition. Load `trope-library` when exact archetype beats matter.
 

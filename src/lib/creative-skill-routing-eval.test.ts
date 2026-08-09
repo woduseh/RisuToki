@@ -181,18 +181,44 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
     expect(interop).toContain('Returning `false` or calling `stopChat` sets `stopSending`');
   });
 
-  it('authorizes productive creative wrongness without weakening hard boundaries', () => {
+  it('preserves dark creative intent while separating RP authorship from content', () => {
     const botRouter = read('risu/bot/AGENTS.md');
     const coreCraft = skillSource('core-craft');
+    const characters = skillSource('authoring-characters');
+    const userPosition = read('risu/bot/skills/core-craft/USER_POSITION.md');
 
     expect(botRouter).toContain('Creative choices need not converge on one “correct”');
-    expect(botRouter).toContain(
-      'This latitude never overrides supplied canon, factual/runtime constraints, consent, user agency, or safety boundaries.',
-    );
+    expect(botRouter).toContain('this authorship boundary does not sanitize coercion');
+    expect(botRouter).not.toMatch(/normal safety boundaries|consent, user agency, or safety boundaries/iu);
     expect(coreCraft).toContain('Art has no single optimal answer.');
     expect(coreCraft).toContain(
       'Productive wrongness preserves chosen anchors and consequences; accidental incoherence loses them.',
     );
+    expect(coreCraft).toContain(
+      'Preserve the requested intensity, moral ambiguity, transgression, ugliness, and consequence.',
+    );
+    expect(coreCraft).not.toMatch(/allowed dark material|normal safety boundaries/iu);
+    expect(characters).toContain('This is an authorship boundary, not a content-softening rule');
+    expect(userPosition).not.toContain('breaks safety');
+  });
+
+  it('keeps desire outcome policy mode-specific instead of consent-defaulted', () => {
+    const desire = skillSource('authoring-desire');
+    const catalog = read('risu/bot/skills/authoring-desire/DESIRE_CATALOG.md');
+    const examples = read('risu/bot/skills/authoring-desire/WORKED_EXAMPLE.md');
+
+    expect(desire).toContain('## Mode contract');
+    expect(desire).toContain('This authorship boundary does not make fictional coercion');
+    expect(desire).toContain('including non-consensual, coercive, degrading, corruptive, or irreversible outcomes');
+    expect(desire).toContain('Treat consent, willingness, refusal, incapacity, and inevitability as possible facts');
+    expect(desire).not.toMatch(
+      /Turn an allowed fantasy|escalation responds to state and consent|coercive inevitability/iu,
+    );
+    expect(catalog).toContain('consensual, coerced, institutional, supernatural, or mixed');
+    expect(catalog).toContain('refusal is defined as possible, futile, forbidden, removed, or merely symbolic');
+    expect(catalog).toContain('including body-only focus when intended');
+    expect(examples).toContain('## Contrast: Imposed Irreversible Corruption');
+    expect(examples).toContain('## Contrast: Coercive Pressure in Emergent RP');
   });
 
   it('uses one material clarification instead of rigid questionnaires', () => {

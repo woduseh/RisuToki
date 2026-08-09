@@ -48,7 +48,7 @@ Convert physical appeal through:
 
 The fixed fact belongs in the data layer. The rest makes it perform. An observer response is viewpoint-specific, not an objective command that everyone must desire the character.
 
-Reject descriptions that stop at an inventory of body parts. Camera attention must preserve personhood, intention, and scene stakes.
+By default, connect body-part attention to viewpoint, intention, or scene effect so it does not become accidental inventory. When objectification, depersonalization, anatomical fixation, or a body-only camera is the requested aesthetic, commit to it deliberately instead of restoring personhood or interiority as an automatic correction.
 
 ## Clothing as Behavior
 
@@ -84,6 +84,6 @@ Overlap in surface type is allowed when the access fantasy, obstacle, gap, or pa
 
 - Can the gap remain hidden under ordinary pressure?
 - Does body or clothing attention alter behavior rather than pause the scene?
-- Does the camera preserve agency and interiority?
+- Does the camera follow the intended stance—interior, relational, objectifying, depersonalized, or mixed—without drifting toward a safer default?
 - Can a non-fanservice scene still recognize the character?
 - In an ensemble, can each route be identified from access fantasy and obstacle without names?

@@ -98,7 +98,7 @@ It is reasonable to bend the method when:
 
 - one signature habit is central enough to deserve always-on status
 - the character is genuinely plainspoken and would name feelings directly
-- direct safety or boundary language is more important than stylistic purity
+- an explicitly declared premise, role, or content constraint is more important than stylistic purity
 - a worldbuilding fact would become confusing if left too implicit
 
 The point is not minimalism for its own sake.

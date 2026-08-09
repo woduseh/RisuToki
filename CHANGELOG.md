@@ -9,6 +9,13 @@
 
 ---
 
+## [2.2.5] - 2026-08-09
+
+### Fixed
+
+- Replaced overbroad consent and safety defaults in creative authoring guidance with mode-specific contracts that preserve requested coercion, transgression, objectification, and irreversible outcomes.
+- Separated fictional content from Emergent RP user-authorship boundaries, added contrasting desire examples, and pinned the behavior with deterministic creative-skill evals.
+
 ## [2.2.4] - 2026-08-08
 
 ### Fixed
