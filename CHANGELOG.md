@@ -9,6 +9,13 @@
 
 ---
 
+## [2.2.6] - 2026-08-12
+
+### Fixed
+
+- Restored complete focused agent-eval coverage by including the split RISUP/Lua route test file in `npm run test:evals`.
+- Added workflow replay and MCP contract baseline gates to tag releases before packaging.
+
 ## [2.2.5] - 2026-08-09
 
 ### Fixed
