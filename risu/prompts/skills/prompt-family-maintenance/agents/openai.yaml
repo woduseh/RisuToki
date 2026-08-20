@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Prompt Family Maintenance'
+  short_description: 'Maintain canonical prompts and model variants'
+  default_prompt: 'Use $prompt-family-maintenance to audit, synchronize, and validate this RisuAI prompt family across its canonical artifact and derived variants.'

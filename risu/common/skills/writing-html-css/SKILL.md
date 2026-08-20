@@ -1,6 +1,6 @@
 ---
 name: writing-html-css
-description: 'Use when writing HTML/CSS for RisuAI backgroundEmbedding, lorebook content, regex display output, or CBS-rendered panels. Primary skill for RisuAI rendering constraints; hand restricted WYSIWYG output to writing-arca-html. Do not use when targeting a normal web frontend or HTML outside a RisuAI surface.'
+description: 'Use when writing HTML/CSS for RisuAI backgroundEmbedding, lorebook content, regex display output, or CBS-rendered panels. Primary skill for RisuAI rendering constraints; hand sanitized paste-target output to writing-restricted-wysiwyg-html. Do not use when targeting a normal web frontend or HTML outside a RisuAI surface.'
 tags: ['html', 'css', 'ui']
 related_tools: ['read_content', 'preview_edit', 'apply_edit', 'manage_items', 'list_css', 'read_css']
 ---
@@ -27,7 +27,7 @@ Put persistent `<style>` blocks in `backgroundEmbedding`; do not inject them rep
 4. Minify the injected HTML/CBS boundary while keeping source CSS readable.
 5. Preview representative states, including missing variables, long text, and mobile width.
 
-Load `writing-cbs-syntax` only for CBS behavior, `writing-regex-scripts` for regex-stage semantics, and `writing-lorebooks` for activation/placement. Use `writing-arca-html` for paste-only WYSIWYG targets.
+Load `writing-cbs-syntax` only for CBS behavior, `writing-regex-scripts` for regex-stage semantics, and `writing-lorebooks` for activation/placement. Use `writing-restricted-wysiwyg-html` for sanitized paste-only WYSIWYG targets.
 
 ## Validation
 

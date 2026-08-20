@@ -23,7 +23,7 @@ Presets do not redefine CBS or file structure syntax. Load the shared skills fro
 | ----------------------------------------- | ------------------------------------------ |
 | CBS in prompt text                        | `writing-cbs-syntax`                       |
 | File structures                           | `file-structure-reference`                 |
-| Asset prompt fields referenced by presets | `writing-asset-prompts`                    |
+| Asset prompt fields referenced by presets | `writing-standing-image-prompts`           |
 | Module integration pairs with             | `../modules/skills/writing-risum-modules/` |
 
 ## Quick orientation

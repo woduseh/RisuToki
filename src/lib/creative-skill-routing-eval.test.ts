@@ -42,9 +42,9 @@ const ROUTER_SKILLS: Record<string, readonly string[]> = {
     'writing-regex-scripts',
     'writing-lua-scripts',
     'writing-html-css',
-    'writing-arca-html',
+    'writing-restricted-wysiwyg-html',
     'writing-trigger-scripts',
-    'writing-asset-prompts',
+    'writing-standing-image-prompts',
     'writing-danbooru-tags',
   ],
   'risu/bot/AGENTS.md': [
@@ -59,20 +59,15 @@ const ROUTER_SKILLS: Record<string, readonly string[]> = {
     'writing-translation-guides',
     'core-craft',
   ],
-  'risu/prompts/AGENTS.md': [
-    'writing-risup-presets',
-    'prompt-preset-sync',
-    'mythos-prompt-development',
-    'mythos-prompt-maintenance',
-  ],
+  'risu/prompts/AGENTS.md': ['writing-risup-presets', 'prompt-family-development', 'prompt-family-maintenance'],
   'risu/modules/AGENTS.md': ['writing-risum-modules'],
   'risu/plugins/AGENTS.md': ['writing-plugins-v3'],
 };
 
 describe('agent eval: deterministic Skill routing and context budgets', () => {
-  it('keeps the unified 28-Skill catalog unique', () => {
+  it('keeps the unified 27-Skill catalog unique', () => {
     const names = CATALOG.map((entry) => entry.name);
-    expect(names).toHaveLength(28);
+    expect(names).toHaveLength(27);
     expect(new Set(names).size).toBe(names.length);
   });
 
@@ -116,6 +111,25 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
         expect(fs.existsSync(path.resolve(entry.dirPath, relativePath)), `${entry.name}: ${reference}`).toBe(true);
       }
     }
+  });
+
+  it('keeps reusable workflows generic while routing product detail to conditional profiles', () => {
+    const development = skillSource('prompt-family-development');
+    const maintenance = skillSource('prompt-family-maintenance');
+    const standingImage = skillSource('writing-standing-image-prompts');
+    const restrictedHtml = skillSource('writing-restricted-wysiwyg-html');
+
+    expect(skillDescription(development)).not.toMatch(/Mythos|Phēmē/u);
+    expect(skillDescription(maintenance)).not.toMatch(/Mythos|Phēmē/u);
+    expect(development).toContain('../../docs/families/MYTHOS.md');
+    expect(development).toContain('../../docs/families/PHEME.md');
+    expect(maintenance).toContain('../../docs/families/MYTHOS.md');
+    expect(maintenance).toContain('../../docs/families/PHEME.md');
+
+    expect(skillDescription(standingImage)).not.toContain('Anima');
+    expect(standingImage).toContain('references/ANIMA.md');
+    expect(skillDescription(restrictedHtml)).not.toContain('Arca');
+    expect(restrictedHtml).toContain('references/ARCA_LIVE.md');
   });
 
   it('keeps root and representative authoring routes below their budgets', () => {
@@ -190,8 +204,8 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
   it('makes known collision boundaries explicit in frontmatter', () => {
     const pairs = [
       ['project-workflow', 'using-mcp-tools'],
-      ['mythos-prompt-development', 'mythos-prompt-maintenance'],
-      ['prompt-preset-sync', 'mythos-prompt-maintenance'],
+      ['prompt-family-development', 'prompt-family-maintenance'],
+      ['prompt-family-maintenance', 'prompt-family-development'],
       ['writing-trigger-scripts', 'writing-lua-scripts'],
       ['authoring-lorebook-bots', 'writing-lorebooks'],
     ] as const;

@@ -36,8 +36,8 @@ LLM-optimized skills for writing and reviewing `.charx` bots.
 
 1. Load one composition skill first.
    - If two or more media, adaptation, franchise planning, or visual identity is the main problem, start with `authoring-media-mix`.
-   - For one finished image prompt, start with `writing-asset-prompts`, not `authoring-media-mix`.
-2. If you need a paste-target intro/profile page for a restricted WYSIWYG, load [writing-arca-html](../../common/skills/writing-arca-html/) from the shared skill set.
+   - For one finished image prompt, start with `writing-standing-image-prompts`, not `authoring-media-mix`.
+2. If you need a paste-target intro/profile page for a restricted WYSIWYG, load [writing-restricted-wysiwyg-html](../../common/skills/writing-restricted-wysiwyg-html/) from the shared skill set.
 3. If that skill references CBS, lorebook decorators, regex, Lua callbacks, or HTML/CSS rules, load the corresponding shared skill from `../../common/skills/`.
 4. Keep large references opt-in: use `USER_POSITION.md`, `COMEDY_CRAFT.md`, `APPEAL_PATTERNS.md`, `CHARACTER_SCALES.md`, `SPEECH_SYSTEM.md`, `VALIDATION.md`, or `LOREBOOK_ARCHITECTURE.md` only after the primary `SKILL.md` shows that depth is needed.
 
@@ -48,5 +48,5 @@ Examples:
 - `read_skill("authoring-worlds")`
 - `read_skill("authoring-self-introduction-sheets")`
 - `read_skill("authoring-lorebook-bots")`
-- `read_skill("writing-arca-html")`
+- `read_skill("writing-restricted-wysiwyg-html")`
 - `read_skill("writing-cbs-syntax")`

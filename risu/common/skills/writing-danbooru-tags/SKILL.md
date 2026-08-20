@@ -1,6 +1,6 @@
 ---
 name: writing-danbooru-tags
-description: 'Use when searching, validating, or composing Danbooru-style tags for a RisuAI image prompt. Primary skill for tag correctness; hand full natural-language prompt assembly to writing-asset-prompts. Do not use when generating an image or the character design is unresolved.'
+description: 'Use when searching, validating, or composing Danbooru-style tags for a RisuAI image prompt. Primary skill for tag correctness; hand full prompt assembly to writing-standing-image-prompts. Do not use when generating an image or the character design is unresolved.'
 tags: ['danbooru', 'assets', 'image-prompts']
 related_tools:
   ['analyze_content', 'validate_content', 'search_danbooru_tags', 'validate_danbooru_tags', 'get_popular_danbooru_tags']
@@ -20,4 +20,4 @@ Prefer concrete visible tags over mood labels. Avoid contradictions, duplicate c
 
 ## Output and validation
 
-Return valid tags, invalid/ambiguous tags with verified alternatives, and any unresolved visual conflict. Do not claim an unvalidated guess is valid. Hand complete prose prompt construction to `writing-asset-prompts`.
+Return valid tags, invalid/ambiguous tags with verified alternatives, and any unresolved visual conflict. Do not claim an unvalidated guess is valid. Hand complete prompt construction to `writing-standing-image-prompts`.

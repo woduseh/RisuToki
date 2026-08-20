@@ -3,11 +3,10 @@
 Choose one primary route:
 
 - General `.risup` structure, prompts, ordering, toggles, model settings, or sampling: `writing-risup-presets`
-- Designing new Mythos behavior, CBS decisions, or toggle semantics: `mythos-prompt-development`
-- Repairing drift within the existing Mythos Source and model variants: `mythos-prompt-maintenance`
-- Propagating a non-Mythos canonical prompt/preset to model variants: `prompt-preset-sync`
+- Designing or revising a reusable prompt family's behavior, CBS decisions, modes, or provider policy: `prompt-family-development`
+- Auditing or applying an approved change across a canonical prompt family and its Markdown or `.risup` variants: `prompt-family-maintenance`
 
-Do not combine the three sync/development Skills by default. Development hands off to Mythos maintenance only after the intended behavior is settled. Generic preset sync does not own Mythos design decisions.
+Do not combine development and maintenance by default. Development hands off only after the intended family behavior is settled; maintenance returns unresolved policy decisions instead of encoding them as drift repairs. Read only the matching family profile under `risu/prompts/docs/families/` when one exists.
 
 Treat developer-defined reachable modes as the supported state space. For interacting conditionals, verify intended modes, meaningful combinations, and relevant boundary transitions. Do not add fallback prose, guards, branches, or combinatorial tests for states that users or the runtime cannot meaningfully reach unless a concrete failure demonstrates the need.
 

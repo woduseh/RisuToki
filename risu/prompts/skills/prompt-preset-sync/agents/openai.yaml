@@ -1,4 +1,0 @@
-interface:
-  display_name: 'Prompt Preset Sync'
-  short_description: 'Sync RisuToki prompt variants'
-  default_prompt: 'Use $prompt-preset-sync to synchronize this RisuToki prompt or preset across Source and model-specific variants while preserving intent and validating CBS toggles and variables.'

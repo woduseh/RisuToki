@@ -1,4 +1,0 @@
-interface:
-  display_name: 'Mythos Prompt Maintenance'
-  short_description: 'Maintain Mythos prompt source and model variants.'
-  default_prompt: 'Use $mythos-prompt-maintenance to revise, sync, and validate the Mythos prompt suite.'

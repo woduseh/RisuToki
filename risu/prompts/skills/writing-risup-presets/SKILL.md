@@ -35,7 +35,7 @@ Chat item ranges must be intentional, non-overlapping when split, and cover the 
 
 When renaming/removing toggles, discover all CBS references, update declarations and every use, search for the old name, and validate supported alternate branches. Use `writing-cbs-syntax` for exact expressions and `writing-risum-modules` only for module-pairing behavior.
 
-Load `risu/prompts/docs/PRESET_FIELDS.md` only for the complete field inventory. Use `prompt-preset-sync` for non-Mythos variants, `mythos-prompt-development` for Mythos design, and `mythos-prompt-maintenance` for Mythos drift/application.
+Load `risu/prompts/docs/PRESET_FIELDS.md` only for the complete field inventory. Use `prompt-family-development` for unsettled family behavior and `prompt-family-maintenance` for canonical-to-variant audit or application, regardless of whether the family is Mythos, Phēmē, or another reusable prompt line.
 
 ## Validation
 

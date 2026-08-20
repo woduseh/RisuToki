@@ -1,4 +1,0 @@
-interface:
-  display_name: 'Mythos Prompt Development'
-  short_description: 'Develop Mythos prompts and CBS logic'
-  default_prompt: 'Use $mythos-prompt-development to develop or evaluate this Mythos prompt using the three Mythos principles, CBS toggle rules, and model-variant policy.'

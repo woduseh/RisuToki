@@ -20,7 +20,7 @@ Define an invariant creative promise and a set of medium-specific transformation
 5. Create an adaptation matrix for each medium: what it does best, what must remain invariant, what should change, and what must be omitted.
 6. Hand the RisuAI derivative to the relevant authoring Skill with explicit agency and outcome policy. A fixed anime ending does not become a guaranteed RP ending.
 
-Load `MEDIA_PROFILES.md` for medium-specific affordances and `VALIDATION.md` for extended cross-product review. A request for one finished standing-image prompt belongs to `writing-asset-prompts` unless visual identity itself must first be designed.
+Load `MEDIA_PROFILES.md` for medium-specific affordances and `VALIDATION.md` for extended cross-product review. A request for one finished standing-image prompt belongs to `writing-standing-image-prompts` unless visual identity itself must first be designed.
 
 ## Output
 

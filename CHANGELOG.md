@@ -9,6 +9,23 @@
 
 ---
 
+## [3.0.0] - 2026-08-20
+
+### Added
+
+- Added conditional Mythos and Phēmē family profiles so shared prompt-development and maintenance workflows can preserve each prompt line's distinct contract without loading unrelated doctrine.
+- Added conditional Anima and Arca.live profiles for target-specific standing-image prompts and sanitized WYSIWYG HTML.
+
+### Changed
+
+- Replaced the Mythos-only prompt development route with `prompt-family-development` for reusable RisuAI prompt-family behavior, controls, modes, and provider policy.
+- Consolidated `mythos-prompt-maintenance` and `prompt-preset-sync` into `prompt-family-maintenance`, with explicit canonical-artifact declarations instead of filename conventions.
+- Generalized `writing-asset-prompts` to `writing-standing-image-prompts` and `writing-arca-html` to `writing-restricted-wysiwyg-html`.
+
+### Removed
+
+- Removed the product-specific `mythos-prompt-development`, `mythos-prompt-maintenance`, `prompt-preset-sync`, `writing-asset-prompts`, and `writing-arca-html` Skill names in favor of the generalized routes above.
+
 ## [2.2.7] - 2026-08-20
 
 ### Changed

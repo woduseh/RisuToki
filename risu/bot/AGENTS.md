@@ -28,7 +28,7 @@ Do not add a support Skill merely because the task involves bot authoring. Retur
 
 ## Syntax handoffs
 
-Load one shared Skill only when the artifact needs that surface: `writing-cbs-syntax`, `writing-lorebooks`, `writing-regex-scripts`, `writing-lua-scripts`, `writing-html-css`, `writing-trigger-scripts`, `file-structure-reference`, `writing-asset-prompts`, `writing-danbooru-tags`, or `writing-arca-html`.
+Load one shared Skill only when the artifact needs that surface: `writing-cbs-syntax`, `writing-lorebooks`, `writing-regex-scripts`, `writing-lua-scripts`, `writing-html-css`, `writing-trigger-scripts`, `file-structure-reference`, `writing-standing-image-prompts`, `writing-danbooru-tags`, or `writing-restricted-wysiwyg-html`.
 
 Lorebook bot architecture belongs to `authoring-lorebook-bots`; entry fields, decorators, and activation syntax belong to `writing-lorebooks`. Structured/V2 trigger orchestration belongs to `writing-trigger-scripts`; Lua function bodies belong to `writing-lua-scripts`.
 
