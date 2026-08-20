@@ -56,6 +56,7 @@ Thumbs.db
 
 # Gemini repo-local state
 .gemini/
+.antigravitycli/
 
 # Codex repo-local skills link
 .agents/
@@ -123,7 +124,8 @@ risu/plugins/**
 !risu/plugins/skills/
 !risu/plugins/skills/**
 
-/docs/analysis/
+/docs/analysis/*
+!/docs/analysis/ARCHITECTURE.md
 work/
 
 # Local UI and avatar research artifacts
