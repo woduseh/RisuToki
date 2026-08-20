@@ -129,3 +129,8 @@ work/
 # Local UI and avatar research artifacts
 /scratch/
 /design/avatar-candidates/
+/design-qa.md
+
+# Completed local audits and execution plans
+/docs/plans/
+/docs/RISUAI_SCRIPTING_SKILL_AUDIT.md
