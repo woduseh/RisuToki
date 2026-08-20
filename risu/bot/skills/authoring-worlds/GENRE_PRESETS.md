@@ -2,7 +2,7 @@
 
 Starting frames for worlds built on recognizable genres. Each preset gives default pressures, norms/taboos, knowledge horizon, the model's likely default drift, texture starters, and scene generators.
 
-**Presets are launch pads, not finished worlds.** Use them to ride a genre deliberately (`core-craft` §4.1): keep the expected beats, raise the texture resolution, and place one signature deviation. Every preset still passes the same validation as a from-scratch world.
+**Presets are launch pads, not finished worlds.** Use them to ride a genre deliberately: keep the expected beats, raise the texture resolution, and place one signature deviation. Every preset still passes the same validation as a from-scratch world.
 
 ---
 
@@ -39,7 +39,7 @@ Starting frames for worlds built on recognizable genres. Each preset gives defau
 - **Default pressures:** the System as inscrutable institution (who made it? — usually unanswerable, always feared), gate/dungeon appearance as natural disaster, ranked licenses determining economy and class.
 - **Norms & taboos:** stat privacy (asking someone's level = asking their salary), guild contracts as feudal bonds, loot law as the most litigated field in existence.
 - **Knowledge horizon:** inhabitants treat game mechanics as physics — nobody says "RPG"; they say "that's how mana works." Block out-of-world gaming vocabulary unless the bot is explicitly meta.
-- **System Logic requirement:** stat windows, skills, and levels are _data-layer_ material — exact numbers, exact costs (`core-craft` §1.1). Pair with `authoring-scenarios` for gate events, and `writing-lorebooks` + CBS for live stat tracking.
+- **System Logic requirement:** stat windows, skills, and levels are _data-layer_ material — use exact numbers and exact costs. Pair with `authoring-scenarios` for gate events, and `writing-lorebooks` + CBS for live stat tracking.
 - **Default drift:** Solo-Leveling-shaped power fantasy with interchangeable dungeons. Anchor dungeons with ecology and economics: who sells torches, who buys monster parts, what a "safe floor" town smells like.
 - **Texture starters:** the queue outside a gate at dawn, insurance brokers at the entrance, the specific bureaucracy of registering a new skill.
 - **Scene generators:** a raid posting that smells wrong; a low-ranker's skill suddenly mattering; loot-rights dispute mid-dungeon; the floor that doesn't match the map; a licensing audit.

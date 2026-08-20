@@ -53,7 +53,7 @@ The MCP `list_skills` response currently exposes `name`, `description`, `tags`, 
 Every skill should make the first read decisive. Keep `SKILL.md` as the execution layer, not the archive:
 
 - Keep `SKILL.md` as short as it can be while still being complete; move long examples, catalogs, and theory into sibling reference files.
-- Start with an `Agent Operating Contract` containing `Use when`, `Do not use when`, `Read first`, `Load deeper only if`, and `Output/validation contract`.
+- Put `Use when`, the meaningful exclusion, and the Primary/Support role in the frontmatter description. In the body, state the outcome and only the boundaries, workflow, conditional references, and validation the skill actually needs; do not add a fixed boilerplate contract.
 - Prefer one primary skill per task. Add shared syntax skills only when the current artifact actually uses that syntax.
 - Put decision boundaries before examples so the model can route without scanning the whole file.
 - Keep routing/evaluation cases in deterministic test fixtures, not in the runtime `SKILL.md` context.

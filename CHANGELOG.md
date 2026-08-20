@@ -9,6 +9,19 @@
 
 ---
 
+## [2.2.7] - 2026-08-20
+
+### Changed
+
+- Reduced always-loaded agent context by moving repository contribution policy behind `project-workflow` and preferring RisuToki-specific routes over overlapping global Skills.
+- Made translation-guide work directly routable and made bot support Skills conditionally reachable without circular preloading.
+
+### Fixed
+
+- Removed stale numbered `core-craft` references, aligned the Skill authoring standard with the actual progressive-disclosure structure, and made Skill UI prompts explicitly invoke their Skills.
+- Added deterministic guards for local-route precedence, bot support reachability, semantic `core-craft` references, and Skill UI prompt invocation.
+- Ignored local Playwright captures and ad hoc diagnostic outputs so temporary artifacts no longer pollute the working tree.
+
 ## [2.2.6] - 2026-08-12
 
 ### Fixed

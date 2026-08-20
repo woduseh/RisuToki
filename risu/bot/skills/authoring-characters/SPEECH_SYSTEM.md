@@ -277,7 +277,7 @@ in formal settings, but not when tired or embarrassed.
 
 ## 7. Translation-Survivable Voice
 
-Bots are written in English but played through a translation layer (`core-craft` §2). English voice design that relies on implicit social register dies in translation: English has no grammatical formality system, so anything not encoded explicitly cannot be rendered into Korean speech levels.
+Bots are written in English but played through a translation layer. English voice design that relies on implicit social register dies in translation: English has no grammatical formality system, so anything not encoded explicitly cannot be rendered into Korean speech levels.
 
 ### Address-form state
 

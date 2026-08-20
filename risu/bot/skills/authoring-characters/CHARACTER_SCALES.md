@@ -6,7 +6,7 @@ Use this file after reading `SKILL.md` when the main problem is **how much chara
 
 > The scale recipes below are strong defaults drawn from real reference bots. They are not the only way to build at each scale — treat them as starting points, not constraints.
 >
-> **Model-tier note:** depth budgets are ranges, not constants. Frontier target models hold larger always-on casts and deeper sheets without attention collapse; the conservative ends of each recipe are `[weak-model note]` territory (`core-craft` §1).
+> **Model-tier note:** depth budgets are ranges, not constants. Frontier target models hold larger always-on casts and deeper sheets without attention collapse; the conservative ends of each recipe are `[weak-model note]` territory.
 
 ---
 

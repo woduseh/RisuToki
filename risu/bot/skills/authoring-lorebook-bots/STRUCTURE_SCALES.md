@@ -6,7 +6,7 @@ Use this file when the main question is **how to distribute description vs loreb
 
 > The recipes below are starting points drawn from common patterns, not rigid templates. Your bot may need more, less, or different structure depending on its goals and the model it runs on.
 >
-> **Model-tier note:** always-on budgets are ranges keyed to the target model (`core-craft` §1). Frontier models tolerate noticeably larger always-on stacks and entry sets; the conservative numbers in this file are safe floors, not ceilings.
+> **Model-tier note:** always-on budgets are ranges keyed to the target model. Frontier models tolerate noticeably larger always-on stacks and entry sets; the conservative numbers in this file are safe floors, not ceilings.
 
 ---
 

@@ -18,7 +18,7 @@ Use these checks **after** you have a draft. They are review tools, not purity t
 | **Silence Rules**           | Single / guarded characters       | Does the character avoid naming key feelings directly in a consistent way?                           | Add 2–4 direct-to-indirect substitutions                      |
 | **Truth Budget**            | Single / slow-burn / guarded bots | Is there any gating on when the character can admit fear, need, jealousy, etc.?                      | Add trust stages or at least explicit disclosure ceilings     |
 | **Narration Lens**          | All                               | Does the narration notice what _this_ character would notice first?                                  | Define 2–4 stable perception filters                          |
-| **Prose Guards**            | All (register-layer text)         | Is prose free of both mechanical metaphor for feeling _and_ stock literary slop? (`core-craft` §1.2) | Rewrite through embodied, character-specific imagery          |
+| **Prose Guards**            | All (register-layer text)         | Is prose free of both mechanical metaphor for feeling _and_ stock literary slop?                     | Rewrite through embodied, character-specific imagery          |
 | **Appeal Function**         | Single / major cast               | Does each designed appeal axis (gap, invitation/obstacle) actually change scene behavior?            | Attach appeal to offers, withholdings, and reveal conditions  |
 | **Layer Hygiene**           | All                               | Are specs/measurements in data-layer tables, and prose surfaces free of spec-sheet register?         | Move numbers to the profile; keep prose embodied              |
 | **Translation Survival**    | All bots shipping translated      | Are address-form states, formality states, and catchphrases explicitly encoded for the guide?        | Add the states per `SPEECH_SYSTEM.md` §7                      |
@@ -100,7 +100,7 @@ Use these when a character feels polished but still collapses into a default arc
 | **Future Leakage**          | Does the sheet tell the model where the arc will go?                                                  | Replace future outcomes with thresholds, tendencies, and current pressures                |
 | **Example-Line Leakage**    | Are examples too memorable or signature-like?                                                         | Make them plainer and strengthen the reusable speech pattern                              |
 | **Played-Straight Quality** | If the archetype is played straight, does it hit every beat its audience expects, at high resolution? | Study the expected beats (`trope-library`) and execute them specifically, not generically |
-| **Familiarity Budget**      | Is there one legible anchor and one deliberately placed deviation — not zero, not five?               | Re-budget per `core-craft` §4.2                                                           |
+| **Familiarity Budget**      | Is there one legible anchor and one deliberately placed deviation — not zero, not five?               | Keep one recognizable pattern and one purposeful deviation                                |
 
 ---
 

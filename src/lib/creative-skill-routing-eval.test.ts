@@ -121,7 +121,10 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
   it('keeps root and representative authoring routes below their budgets', () => {
     const rootRouter = read('AGENTS.md');
     const botRouter = read('risu/bot/AGENTS.md');
-    expect(wordCount(rootRouter)).toBeLessThanOrEqual(450);
+    expect(wordCount(rootRouter)).toBeLessThanOrEqual(250);
+    expect(rootRouter).toMatch(
+      /prefer these repository-specific routes over semantically overlapping generic global Skills/iu,
+    );
     expect(rootRouter).not.toMatch(/project-workflow.{0,80}(?:mandatory|every session)/isu);
     expect(botRouter).not.toMatch(/core-craft.{0,80}(?:always|alongside)/isu);
 
@@ -139,6 +142,48 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
       for (const skill of skills) {
         expect(router, `${routerPath}: ${skill}`).toContain(`\`${skill}\``);
       }
+    }
+  });
+
+  it('keeps bot primary and support routes directly reachable without circular preloading', () => {
+    const botRouter = read('risu/bot/AGENTS.md');
+    const primaryRoutes = botRouter.match(/## Primary routes([\s\S]*?)(?=\n## )/u)?.[1] ?? '';
+    const supportRoutes = botRouter.match(/## Optional support routes([\s\S]*?)(?=\n## )/u)?.[1] ?? '';
+
+    expect(primaryRoutes).toContain('`writing-translation-guides`');
+    for (const skill of ['authoring-desire', 'trope-library', 'core-craft']) {
+      expect(supportRoutes, skill).toContain(`\`${skill}\``);
+    }
+    expect(botRouter).not.toMatch(/only when the primary Skill explicitly hands off/iu);
+    expect(read('risu/bot/skills/trope-library/TROPES.md')).not.toMatch(/core-craft.+before loading entries/iu);
+  });
+
+  it('keeps core-craft references semantic instead of pointing at removed numbered sections', () => {
+    const botSkillRoot = path.join(ROOT, 'risu', 'bot', 'skills');
+    const pending = [botSkillRoot];
+    const staleReferences: string[] = [];
+
+    while (pending.length > 0) {
+      const current = pending.pop();
+      if (!current) continue;
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const absolutePath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          pending.push(absolutePath);
+        } else if (entry.name.endsWith('.md') && /`core-craft`\s*§\d/iu.test(fs.readFileSync(absolutePath, 'utf8'))) {
+          staleReferences.push(path.relative(ROOT, absolutePath));
+        }
+      }
+    }
+
+    expect(staleReferences).toEqual([]);
+  });
+
+  it('keeps Skill UI prompts explicit about the invoked Skill', () => {
+    for (const entry of CATALOG) {
+      const metadataPath = path.join(entry.dirPath, 'agents', 'openai.yaml');
+      if (!fs.existsSync(metadataPath)) continue;
+      expect(fs.readFileSync(metadataPath, 'utf8'), entry.name).toContain(`$${entry.name}`);
     }
   });
 

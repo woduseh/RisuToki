@@ -14,8 +14,17 @@ Assume the user trusts deliberate creative judgment. Creative choices need not c
 - Events, simulators, routes, or endings: `authoring-scenarios`
 - Self-introduction monologue sheet: `authoring-self-introduction-sheets`
 - Cross-media adaptation, franchise core, or visual identity: `authoring-media-mix`
+- Per-bot source-to-target-language voice and register mapping: `writing-translation-guides`
 
-Use `authoring-desire`, `trope-library`, `writing-translation-guides`, and support-only `core-craft` only when the primary Skill explicitly hands off to them. If a desire-led request omits its shell, use characters for person/relationship fantasy, worlds for body physics/ecology, and scenarios for escalation/simulator structure.
+## Optional support routes
+
+Add at most one support Skill when the current composition exposes its named need:
+
+- Desire, kink, body-scale logic, erotic escalation, or transgressive intimacy is structurally central: `authoring-desire`
+- Exact archetype beats, audience promise, or a play-straight/subversion choice matters: `trope-library`
+- A cross-cutting decision about creative mode, productive wrongness, prose register, references, or contradiction remains unresolved: `core-craft`
+
+Do not add a support Skill merely because the task involves bot authoring. Return its decision to the primary route. If a desire-led request omits its shell, use characters for person/relationship fantasy, worlds for body physics/ecology, and scenarios for escalation/simulator structure.
 
 ## Syntax handoffs
 

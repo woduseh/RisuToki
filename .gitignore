@@ -39,6 +39,12 @@ Thumbs.db
 *.swo
 *~
 
+# Local browser and diagnostic artifacts
+/.playwright-cli/
+/.tmp-*.log
+/detailed_diff.txt
+/diff_result.txt
+
 # Environment files
 .env
 .env.local

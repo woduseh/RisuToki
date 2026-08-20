@@ -16,4 +16,4 @@ Every entry contains:
 - **Proven subversions**
 - **Degradation patterns**
 
-Use `core-craft` to declare straight or subverted mode and set the familiarity budget before loading entries.
+Use the current primary composition Skill to set the play-straight or subversion stance. Load `core-craft` only when that cross-cutting craft decision remains unresolved.

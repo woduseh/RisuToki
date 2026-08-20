@@ -1,6 +1,6 @@
 # Whole-Bot Validation
 
-Use this after the bot has a draft description, opening message, and any planned lorebook structure. This is finished-bot QA and release-level review, not early invention. Checks are review tools, not purity tests (`core-craft` §5).
+Use this after the bot has a draft description, opening message, and any planned lorebook structure. This is finished-bot QA and release-level review, not early invention. Checks are review tools, not purity tests.
 
 ---
 
@@ -72,7 +72,7 @@ The same bot degrades differently by model strength. Test on the weakest model t
 | Always-on overload, voices blur | Cut always-on budget; re-tier cast; push detail behind triggers |
 | Trigger collisions dump facts   | Narrow keys, add secondary conditions, split mega-entries       |
 
-Frontier-model targets may safely run larger always-on budgets and richer example sets (`core-craft` §1).
+Frontier-model targets may safely run larger always-on budgets and richer example sets.
 
 ---
 
