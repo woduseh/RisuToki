@@ -33,6 +33,8 @@ Folder identity lives in the folder entry's normalized `key` (`folder:<uuid>`), 
 
 `normal` entries match keys; `constant`/always-active entries consume context every turn; `multiple` requires its configured matches; `child` and `folder` express hierarchy. Use always-active content sparingly.
 
+At the current RisuAI baseline, token budgeting and cutoff measure CBS-evaluated lore content with mutation disabled. A compact conditional branch can therefore fit differently from its raw source, but lorebook evaluation still must not be used for `setvar`-style side effects.
+
 ## Boundaries
 
 CBS syntax belongs to `writing-cbs-syntax`; Lua lookup logic belongs to `writing-lua-scripts`; bot-wide distribution belongs to `authoring-lorebook-bots`. For complete decorator notes, load `risu/common/docs/문법가이드_로어북.md` only when needed.

@@ -1,6 +1,6 @@
 # RisuAI scripting runtime interoperability
 
-> Verified against RisuAI `2026.6.214`, commit `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, on 2026-07-11.
+> Verified against RisuAI `2026.8.250`, commit `984f46b7306ca38312a043e0ef28d447f2a92766`, on 2026-08-31.
 > Canonical sources: `src/ts/process/index.svelte.ts`, `scriptings.ts`, `scripts.ts`, `triggers.ts`, `modules.ts`, `src/ts/parser/*`, and `src/ts/plugins/apiV3/*`.
 > Public types are contracts; exact ordering below is a version-bound implementation observation.
 
@@ -32,9 +32,10 @@ The following is the useful dependency order, not a promise that every internal 
 6. Each assembled message receives canonical `editprocess` regex processing. RisuToki's `editrequest` is an input alias for this persisted stage.
 7. Lua `editRequest` listeners and request-state structured triggers edit model input without changing saved chat.
 8. Plugin before-request replacers/body interceptors run before the provider request; after-request replacers run on the response side.
-9. Response processing applies Lua edit-output listeners, plugin output handlers, CBS parsing, and `editoutput` regex before storing the message.
+9. Response processing applies Lua edit-output listeners, plugin output handlers, CBS parsing, and `editoutput` regex before storing the message. In strong streaming-display optimization mode, this postprocessing is deferred until streaming ends; balanced mode coalesces display updates.
 10. The saved chat receives another `runVar` pass, so response mutation tags execute before `output` triggers/Lua `onOutput`.
-11. Display rendering repeatedly applies Lua edit-display listeners, display triggers, plugin display handlers, CBS, and `editdisplay` regex without changing the stored message.
+11. Plugin output chat listeners run after output triggers and inlay processing. They are awaited sequentially and receive a snapshot whose direct mutations are not persisted.
+12. Display rendering repeatedly applies Lua edit-display listeners, display triggers, plugin display handlers, CBS, and `editdisplay` regex without changing the stored message.
 
 Do not use this timeline to move a transformation casually between layers. The persistence, visibility, permissions, input shape, and repeat frequency differ.
 

@@ -4,7 +4,14 @@ description: 'Use when creating, editing, or reviewing .risup request assembly, 
 tags: ['preset', 'risup', 'prompt', 'template']
 related_tools: ['read_content', 'search_document', 'analyze_content', 'preview_edit', 'apply_edit', 'manage_items']
 artifact_types: ['risup']
-canonical_sources: ['Risuai/src/ts/process/prompt.ts', 'src/lib/risup-prompt-model.ts', 'src/lib/risup-toggle-model.ts']
+canonical_sources:
+  [
+    'Risuai/src/ts/process/prompt.ts',
+    'Risuai/src/ts/model/providers/*',
+    'Risuai/src/ts/process/request/*',
+    'src/lib/risup-prompt-model.ts',
+    'src/lib/risup-toggle-model.ts',
+  ]
 ---
 
 # Writing .risup Presets
@@ -32,6 +39,8 @@ A preset owns reusable model/request behavior: prompt assembly, provider adaptat
 6. Re-read changed items and validate the affected order, imports, toggles, CBS, ranges, and request settings.
 
 Chat item ranges must be intentional, non-overlapping when split, and cover the desired history. Assistant prefill belongs in a separate `plain`/`assistant`/`normal` item at the intended turn boundary; do not bury it in a system block. Provider-native prefill shapes may differ and must remain explicit.
+
+Preserve the parameter set advertised by the selected model instead of copying controls across providers. In current Gemini 3.x metadata, reasoning effort maps to provider thinking levels; `minimal` may be normalized to `low` for models that do not expose a minimal level. Do not rewrite it as a legacy thinking-token budget without checking the current provider adapter.
 
 When renaming/removing toggles, discover all CBS references, update declarations and every use, search for the old name, and validate supported alternate branches. Use `writing-cbs-syntax` for exact expressions and `writing-risum-modules` only for module-pairing behavior.
 

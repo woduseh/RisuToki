@@ -1,7 +1,7 @@
 # Module Fields Reference
 
-> Verified against RisuAI `2026.6.214`, commit `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, on 2026-07-11.
-> Canonical sources: RisuAI `src/ts/process/modules.ts`, `src/ts/process/processzip.ts`, and RisuToki `src/charx-io.ts`.
+> Verified against RisuAI `2026.8.250`, commit `984f46b7306ca38312a043e0ef28d447f2a92766`, on 2026-08-31.
+> Canonical sources: RisuAI `src/ts/process/modules.ts`, `src/ts/process/processzip.ts`, `src/ts/interchangeability.ts`, `src/ts/characterCards.ts`, and RisuToki `src/charx-io.ts`.
 > If this document and source diverge, the TypeScript wins.
 
 ## `RisuModule` interface
@@ -22,6 +22,7 @@
 | `customModuleToggle`  | `string`                     | `""`        | Toggle UI definition text                                       |
 | `assets`              | `[string, string, string][]` | `[]`        | `[name, dataUrl, hash]` tuples                                  |
 | `mcp`                 | `{ url: string }`            | `undefined` | External MCP endpoint; managed separately/read-only in RisuToki |
+| `icon`                | `string`                     | `undefined` | Module icon/image data preserved by character↔module conversion |
 
 RisuToki preserves `cjs` for round-trip compatibility, but treats it as a reserved/hidden/read-only field. RisuToki also preserves `mcp.url` as `mcpUrl`, but treats it as read-only because MCP modules are managed separately from normal module authoring. New module runtime logic should use Lua triggers and supported module fields instead.
 
@@ -178,3 +179,7 @@ Byte        : 0x00 end marker
 ```
 
 On import, RisuAI assigns a fresh UUID and prompts for confirmation when `lowLevelAccess` is enabled.
+
+## Character conversion compatibility
+
+Character↔module conversion preserves `icon`, `namespace`, `hideIcon`, `backgroundEmbedding`, `assets`, and `customModuleToggle`. Character global-note replacement is encoded as a constant lore entry beginning with `@@indicator replace_global_note`. Import also accepts the legacy `@@indicator phi` marker, but new output should use `replace_global_note`.

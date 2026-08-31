@@ -63,13 +63,13 @@ Full catalog of 170+ CBS tags organized by category. For quick-start guide, see 
 
 These variables persist across messages within one chat session.
 
-| Tag             | Aliases | Syntax                             | Description                                | Requires runVar |
-| --------------- | ------- | ---------------------------------- | ------------------------------------------ | --------------- |
-| `getvar`        | —       | `{{getvar::name}}`                 | Read chat variable                         | No              |
-| `setvar`        | —       | `{{setvar::name::value}}`          | Write chat variable                        | **Yes**         |
-| `addvar`        | —       | `{{addvar::name::number}}`         | Add number to variable                     | **Yes**         |
-| `setdefaultvar` | —       | `{{setdefaultvar::name::default}}` | Set only if undefined                      | **Yes**         |
-| `getglobalvar`  | —       | `{{getglobalvar::name}}`           | Read global variable (shared across chats) | No              |
+| Tag             | Aliases | Syntax                             | Description                                                    | Requires runVar |
+| --------------- | ------- | ---------------------------------- | -------------------------------------------------------------- | --------------- |
+| `getvar`        | —       | `{{getvar::name}}`                 | Read chat variable                                             | No              |
+| `setvar`        | —       | `{{setvar::name::value}}`          | Write chat variable                                            | **Yes**         |
+| `addvar`        | —       | `{{addvar::name::number}}`         | Add number to variable                                         | **Yes**         |
+| `setdefaultvar` | —       | `{{setdefaultvar::name::default}}` | Set only if undefined                                          | **Yes**         |
+| `getglobalvar`  | —       | `{{getglobalvar::name}}`           | Read current-chat local overlay, otherwise shared global value | No              |
 
 > **runVar context:** `setvar`, `addvar`, and `setdefaultvar` only execute when the caller runs CBS with runVar enabled. In current upstream prompt flow this is explicit for current chat message parsing during generation; do not assume lorebook, first-message, regex, or display-only surfaces mutate variables without verifying the caller.
 

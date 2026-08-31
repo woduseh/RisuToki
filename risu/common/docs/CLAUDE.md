@@ -339,7 +339,7 @@ alertInput(id, "프롬프트")       -- 비동기, :await() 필요
 alertSelect(id, {"옵션1","옵션2"}) / alertConfirm(id, "질문")
 
 -- 유틸리티
-sleep(id, 밀리초) / cbs(id, "CBS텍스트") / log(값)
+sleep(id, 밀리초) / cbs("CBS텍스트") / log(값)
 getTokens(id, "텍스트")         -- 비동기
 ```
 

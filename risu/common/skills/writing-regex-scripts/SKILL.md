@@ -18,6 +18,7 @@ Stages:
 - `editdisplay`: render-only transformation; the model and stored chat do not see it.
 - `editprocess`: canonical upstream/persisted request-stage value; change assembled model input without changing saved chat.
 - `editrequest`: RisuToki convenience alias accepted on input and normalized to `editprocess` on export.
+- `edittrans`: translation-output stage. Current RisuAI applies preset, then module, then character regex entries; it is separate from the ordinary send/display pipeline.
 
 ## Minimal workflow
 
@@ -28,7 +29,7 @@ Stages:
 5. Minify HTML/CBS injected by `editdisplay` to one continuous line; put persistent CSS in `backgroundEmbedding`.
 6. Preview/apply with current identity or index guards and validate the final stage behavior.
 
-Special OUT actions such as emotion display, inject, move-top, move-bottom, repeat-back, and execution `order` live in the `flag` metadata and have runtime-specific semantics; verify them in the existing entry or detailed syntax guide before use. In particular, inject is not arbitrary payload insertion.
+Special OUT actions such as emotion display, inject, move-top, move-bottom, repeat-back, and execution `order` live in the `flag` metadata and have runtime-specific semantics; verify them in the existing entry or detailed syntax guide before use. In particular, inject is not arbitrary payload insertion. Translation regex supports custom flags, CBS preprocessing, ordering, move-top/move-bottom, and capture substitutions, but receives translation text rather than a saved chat message.
 
 ## Boundaries and validation
 

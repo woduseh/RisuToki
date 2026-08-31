@@ -33,7 +33,7 @@ CBS uses `{{tag::arg1::arg2}}` and evaluates nested tags inside-out. Values are 
 
 Display tags such as media, emotion, button, and markup helpers usually affect rendered UI, not model instructions. Keep model-visible instructions in plain text unless the exact tag contract states otherwise.
 
-At the verified RisuAI `2026.6.214` baseline, saved chat messages receive a `runVar` pass at send start and again after an assistant response is stored. That pass executes mutation tags and replaces the stored message with the fully parsed result; greetings, lorebook text, and ordinary display rendering do not gain mutation permission merely because they evaluate CBS. Nested expressions resolve inside-out, and a block implementation may evaluate nested arguments before discarding an unselected branch, so do not hide mutations inside conditional display text.
+At the verified RisuAI `2026.8.250` baseline, saved chat messages receive a `runVar` pass at send start and again after an assistant response is stored. That pass executes mutation tags and replaces the stored message with the fully parsed result; greetings, lorebook text, and ordinary display rendering do not gain mutation permission merely because they evaluate CBS. Nested expressions resolve inside-out, and a block implementation may evaluate nested arguments before discarding an unselected branch, so do not hide mutations inside conditional display text.
 
 ## References and handoff
 

@@ -4,7 +4,14 @@ description: 'Use when creating, editing, or reviewing .risum module composition
 tags: ['module', 'risum', 'composition', 'architecture']
 related_tools: ['inspect_document', 'read_content', 'search_document', 'preview_edit', 'apply_edit', 'manage_items']
 artifact_types: ['risum']
-canonical_sources: ['Risuai/src/ts/process/modules.ts', 'Risuai/src/ts/process/processzip.ts', 'src/charx-io.ts']
+canonical_sources:
+  [
+    'Risuai/src/ts/process/modules.ts',
+    'Risuai/src/ts/process/processzip.ts',
+    'Risuai/src/ts/interchangeability.ts',
+    'Risuai/src/ts/characterCards.ts',
+    'src/charx-io.ts',
+  ]
 ---
 
 # Writing .risum Modules
@@ -24,6 +31,8 @@ A module is a reusable behavior/content pack that can attach lorebooks, regex, t
 7. Test merge and enable scope across global, chat, character, and preset `moduleIntergration` activation.
 
 `cjs` is reserved and unused for new runtime logic. `mcp` declares external MCP integration and changes the management path. `hideIcon` combines across active modules. Module `lowLevelAccess` is independent from character trust. Runtime merge order places module lorebooks and triggers after their character/chat predecessors, while regex ordering also includes the active preset; design dependencies accordingly. Lua-created local lorebooks may affect the next turn rather than the current one.
+
+Current character↔module conversion preserves the module icon, namespace, hide-icon setting, background embedding, assets, and custom toggles. Global-note replacement is carried through a constant lore entry marked `@@indicator replace_global_note`; accept legacy `@@indicator phi` only as an import compatibility marker.
 
 Load `risu/modules/docs/MODULE_FIELDS.md` only for the full field inventory. Hand exact embedded syntax to the matching common Skill.
 

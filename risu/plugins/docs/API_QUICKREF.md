@@ -1,6 +1,6 @@
 # RisuAI Plugin API v3.0 — Quick Reference
 
-> Verified against RisuAI `2026.6.214`, commit `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, on 2026-07-11.
+> Verified against RisuAI `2026.8.250`, commit `984f46b7306ca38312a043e0ef28d447f2a92766`, on 2026-08-31.
 > Canonical sources: `src/ts/plugins/apiV3/risuai.d.ts`, `factory.ts`, and the repository-root `plugins.md`.
 > Both global names `risuai` and `Risuai` reference the same API proxy. Examples prefer lowercase `risuai` consistently.
 > API and safe-wrapper methods are asynchronous. Cached properties such as `apiVersion` are read directly.
@@ -15,14 +15,15 @@
 
 ## Character / chat
 
-| API                                                             | Returns                | Notes                                     |
-| --------------------------------------------------------------- | ---------------------- | ----------------------------------------- |
-| `getCharacter()` / `setCharacter(char)`                         | current char / `void`  | preferred over legacy `getChar`/`setChar` |
-| `getCharacterFromIndex(idx)` / `setCharacterToIndex(idx, char)` | `any \| null` / `void` | indexed character access                  |
-| `getChatFromIndex(charIdx, chatIdx)` / `setChatToIndex(...)`    | `any \| null` / `void` | indexed chat access                       |
-| `getCurrentCharacterIndex()`                                    | `number`               | current character index                   |
-| `getCurrentChatIndex()`                                         | `number`               | current chat index                        |
-| `sendChat(message)`                                             | `boolean`              | requires `sendChat` permission            |
+| API                                                             | Returns                | Notes                                                                       |
+| --------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------- |
+| `getCharacter()` / `setCharacter(char)`                         | current char / `void`  | preferred over legacy `getChar`/`setChar`                                   |
+| `getCharacterFromIndex(idx)` / `setCharacterToIndex(idx, char)` | `any \| null` / `void` | indexed character access                                                    |
+| `getChatFromIndex(charIdx, chatIdx)` / `setChatToIndex(...)`    | `any \| null` / `void` | indexed chat access                                                         |
+| `getCurrentCharacterIndex()`                                    | `number`               | current character index                                                     |
+| `getCurrentChatIndex()`                                         | `number`               | current chat index                                                          |
+| `getCurrentLorebookEntries()`                                   | `any[]`                | raw current character/chat/module entries; no activation or token filtering |
+| `sendChat(message)`                                             | `boolean`              | requires `sendChat` permission                                              |
 
 ## Storage
 
@@ -50,6 +51,8 @@
 | `getRootDocument()`                | `SafeDocument \| null` | requires `mainDom` permission |
 | `createMutationObserver(callback)` | `SafeMutationObserver` | host-side observation         |
 | `unwarpSafeArray(safeArray)`       | `T[]`                  | unwrap helper                 |
+
+Call `await observer.disconnect()` when a safe mutation observer is no longer needed.
 
 ## `SafeElement`
 
@@ -95,6 +98,14 @@
 | `addRisuReplacer(type, func)` / `removeRisuReplacer(...)`             | types: `beforeRequest`, `afterRequest`                               |
 | `registerBodyIntercepter(callback)` / `unregisterBodyIntercepter(id)` | note upstream spelling `Intercepter`; requires `replacer` permission |
 
+### Output chat and TTS pipelines
+
+| API                                                                   | Notes                                                                                                                   |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `addRisuChatListener('output', func)` / `removeRisuChatListener(...)` | requires `replacer`; awaited sequentially after output triggers and inlay processing; snapshot mutations do not persist |
+| `addTTSPreprocessor(func)`                                            | sequentially transforms or skips text before synthesis                                                                  |
+| `addTTSPostprocessor(func)`                                           | sequentially transforms or skips encoded audio before playback; not used by Web Speech/VITS paths                       |
+
 ## MCP / IPC
 
 | API                                                      | Notes                                            |
@@ -106,13 +117,24 @@
 
 ## Permissions / logging / utility
 
-| API                                                              | Notes                                                            |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `requestPluginPermission(perm)`                                  | `fetchLogs`, `db`, `mainDom`, `replacer`, `provider`, `sendChat` |
-| `getFetchLogs()`                                                 | requires `fetchLogs` permission                                  |
-| `alert(msg)`, `alertConfirm(msg)`, `alertError(msg)`             | host dialogs                                                     |
-| `searchTranslationCache(partialKey)`, `getTranslationCache(key)` | translation-cache helpers                                        |
-| `onUnload(callback)`                                             | cleanup hook                                                     |
+| API                                                              | Notes                                                                     |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `requestPluginPermission(perm)`                                  | `fetchLogs`, `db`, `mainDom`, `replacer`, `provider`, `sendChat`, `inlay` |
+| `getFetchLogs()`                                                 | requires `fetchLogs` permission                                           |
+| `alert(msg)`, `alertConfirm(msg)`, `alertError(msg)`             | host dialogs                                                              |
+| `searchTranslationCache(partialKey)`, `getTranslationCache(key)` | translation-cache helpers                                                 |
+| `onUnload(callback)`                                             | cleanup hook                                                              |
+
+## Assets, inlays, themes, and host utilities
+
+| API                                                                | Notes                                                                                               |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `readInlay(id)`                                                    | returns `{ data, ext, type, name } \| null`; requires `inlay` permission with periodic confirmation |
+| `readImage(data)`, `saveAsset(data)`                               | decode image input / save an asset                                                                  |
+| `saveSecretHeader(key, value)`                                     | save a secret header value                                                                          |
+| `getColorScheme()` / `setColorScheme(...)` / `changeColorScheme()` | inspect, set, or open color-scheme controls                                                         |
+| `getTextTheme()` / `setCustomTextTheme(...)` / `changeTextTheme()` | inspect, set, or open text-theme controls                                                           |
+| `checkCharOrder()` / `loadPlugins()`                               | refresh character ordering / load plugin state                                                      |
 
 ## High-level rules
 

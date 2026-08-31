@@ -2,7 +2,7 @@
 
 Lua 5.4 문법과 RisuAI 스크립트 작성·API를 하나로 정리한 가이드입니다.
 
-> 검증 기준: RisuAI `2026.6.214`, 커밋 `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, 2026-07-11.
+> 검증 기준: RisuAI `2026.8.250`, 커밋 `984f46b7306ca38312a043e0ef28d447f2a92766`, 2026-08-31.
 > 기준 소스: `src/ts/process/scriptings.ts`, `src/ts/process/index.svelte.ts`, `src/ts/process/triggers.ts`.
 > API 이름은 참조 계약이며 엔진 수명·이벤트 전파 순서는 이 기준선에서 확인한 구현 동작입니다.
 
@@ -280,15 +280,19 @@ local data = json.decode(getChatVar(id, "player_data"))
 
 ### 3.3 상태 및 변수
 
-| 함수                                                 | 설명                            |
-| ---------------------------------------------------- | ------------------------------- |
-| `getChatVar(id, key)` / `setChatVar(id, key, value)` | 채팅 변수 (문자열)              |
-| `getGlobalVar(id, key)`                              | 전역 변수 (읽기, 채팅 간 공유)  |
-| `getState(id, name)` / `setState(id, name, value)`   | 객체/배열 저장 (JSON 자동 변환) |
+| 함수                                                 | 설명                                                                                 |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `getChatVar(id, key)` / `setChatVar(id, key, value)` | 채팅 변수 (문자열)                                                                   |
+| `setChatVarChanged(id, key, value)`                  | 값이 실제로 달라질 때만 쓰며, 변경 시 `true`, 아니면 `nil` 반환                      |
+| `getGlobalVar(id, key)`                              | 전역 변수 읽기. 현재 채팅의 로컬 오버레이가 있으면 우선하고, 없으면 공유 전역값 사용 |
+| `getState(id, name)` / `setState(id, name, value)`   | 객체/배열 저장 (JSON 자동 변환)                                                      |
+| `setStateChanged(id, name, value)`                   | 직렬화된 상태가 달라질 때만 쓰며, 변경 시 `true`, 아니면 `nil` 반환                  |
 
 > **주의:** `setChatVar`는 safe 컨텍스트(editInput, editOutput, editDisplay)에서만 작동합니다. 복잡한 데이터는 `getState`/`setState`를 사용하세요.
 
 ### 3.4 캐릭터 정보
+
+채팅 전체가 필요하지 않다면 `getChatData(id, index)`, `getChatRole(id, index)`, `getRecentChats(id, count)`를 사용하세요. `setFullChat`은 `{ role, data }`만 다시 구성하므로 기존 메시지 메타데이터를 보존하지 않습니다.
 
 **기본:** `getName(id)`, `setName(id, name)`, `getDescription(id)`, `setDescription(id, desc)`, `getCharacterFirstMessage(id)`, `setCharacterFirstMessage(id, data)`.
 
@@ -320,7 +324,7 @@ local data = json.decode(getChatVar(id, "player_data"))
 
 ### 3.8 유틸리티
 
-**텍스트:** `getTokens(id, value)`, `hash(id, value)`, `similarity(id, source, value)` — **await 필요**. `cbs(id, value)` — CBS 파싱.
+**텍스트:** `getTokens(id, value)`, `hash(id, value)`, `similarity(id, source, value)` — **await 필요**. `cbs(value)` — CBS 파싱 (`id` 인자 없음).
 
 **네트워크:** `request(id, url)` — **await 필요**, 120자 URL 제한·분당 5회 제한. `lowLevelAccess` 필요.
 

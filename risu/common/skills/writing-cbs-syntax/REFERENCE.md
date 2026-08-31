@@ -2,7 +2,7 @@
 
 Full catalog of 170+ CBS tags organized by category. For quick-start guide, see **SKILL.md**.
 
-> Verified against RisuAI `2026.6.214`, commit `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, on 2026-07-11.
+> Verified against RisuAI `2026.8.250`, commit `984f46b7306ca38312a043e0ef28d447f2a92766`, on 2026-08-31.
 > Canonical sources: `src/ts/cbs.ts`, `src/ts/parser/parser.svelte.ts`, and `src/ts/parser/chatVar.svelte.ts`.
 > Tag names/types are reference data; exact parser pass ordering is version-bound implementation behavior.
 
@@ -67,13 +67,13 @@ Full catalog of 170+ CBS tags organized by category. For quick-start guide, see 
 
 These variables persist across messages within one chat session.
 
-| Tag             | Aliases | Syntax                             | Description                                | Requires runVar |
-| --------------- | ------- | ---------------------------------- | ------------------------------------------ | --------------- |
-| `getvar`        | —       | `{{getvar::name}}`                 | Read chat variable                         | No              |
-| `setvar`        | —       | `{{setvar::name::value}}`          | Write chat variable                        | **Yes**         |
-| `addvar`        | —       | `{{addvar::name::number}}`         | Add number to variable                     | **Yes**         |
-| `setdefaultvar` | —       | `{{setdefaultvar::name::default}}` | Set only if undefined                      | **Yes**         |
-| `getglobalvar`  | —       | `{{getglobalvar::name}}`           | Read global variable (shared across chats) | No              |
+| Tag             | Aliases | Syntax                             | Description                                                    | Requires runVar |
+| --------------- | ------- | ---------------------------------- | -------------------------------------------------------------- | --------------- |
+| `getvar`        | —       | `{{getvar::name}}`                 | Read chat variable                                             | No              |
+| `setvar`        | —       | `{{setvar::name::value}}`          | Write chat variable                                            | **Yes**         |
+| `addvar`        | —       | `{{addvar::name::number}}`         | Add number to variable                                         | **Yes**         |
+| `setdefaultvar` | —       | `{{setdefaultvar::name::default}}` | Set only if undefined                                          | **Yes**         |
+| `getglobalvar`  | —       | `{{getglobalvar::name}}`           | Read current-chat local overlay, otherwise shared global value | No              |
 
 > **runVar context:** `setvar`, `addvar`, and `setdefaultvar` only execute when the caller runs CBS with runVar enabled. In current upstream prompt flow this is explicit for current chat message parsing during generation; do not assume lorebook, first-message, regex, or display-only surfaces mutate variables without verifying the caller.
 >

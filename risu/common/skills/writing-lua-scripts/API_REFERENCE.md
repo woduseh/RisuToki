@@ -2,7 +2,7 @@
 
 Complete API for Lua 5.4 trigger scripts in RisuAI `.charx` and `.risum` files.
 
-> Verified against RisuAI `2026.6.214`, commit `9d8791ea842404ef3c7e6410c2359a2db7ca4bcd`, on 2026-07-11.
+> Verified against RisuAI `2026.8.250`, commit `984f46b7306ca38312a043e0ef28d447f2a92766`, on 2026-08-31.
 > Canonical source: `src/ts/process/scriptings.ts`; callback consumption is verified at callers in `src/ts/process/index.svelte.ts` and `src/ts/process/triggers.ts`.
 > Function exposure is reference data; engine caching and callback propagation are version-bound implementation behavior.
 
@@ -51,12 +51,15 @@ These are **defined** by the script author, **called** by the engine.
 
 ### Batch Operations
 
-| Function                   | Description                                                                                                    |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `getFullChat(id)`          | Returns the entire chat array.                                                                                 |
-| `setFullChat(id, value)`   | Replaces the entire chat array.                                                                                |
-| `cutChat(id, start, end_)` | Trims the chat to messages in range `[start, end_)`.                                                           |
-| `getChatLength(id)`        | Returns the message count. Last message index = `getChatLength(id) - 1`; `-1` also refers to the last message. |
+| Function                    | Description                                                                                                    |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `getFullChat(id)`           | Returns the entire chat array.                                                                                 |
+| `getChatData(id, index)`    | Returns only message text at the 0-based index, or `""`. Negative indices follow JavaScript `Array.at`.        |
+| `getChatRole(id, index)`    | Returns only the role at the 0-based index, or `""`. Negative indices follow JavaScript `Array.at`.            |
+| `getRecentChats(id, count)` | Returns the last `count` messages as lightweight `{ role, data, time }` objects.                               |
+| `setFullChat(id, value)`    | Replaces the entire chat array using only `{ role, data }`; other message metadata is not preserved.           |
+| `cutChat(id, start, end_)`  | Trims the chat to messages in range `[start, end_)`.                                                           |
+| `getChatLength(id)`         | Returns the message count. Last message index = `getChatLength(id) - 1`; `-1` also refers to the last message. |
 
 ### Last Message Shortcuts
 
@@ -71,13 +74,15 @@ These are **defined** by the script author, **called** by the engine.
 
 ## 3. State and Variables
 
-| Function                     | Description                                                       |
-| ---------------------------- | ----------------------------------------------------------------- |
-| `getChatVar(id, key)`        | Read a chat variable (string).                                    |
-| `setChatVar(id, key, value)` | Write a chat variable (string only). **Safe context only.**       |
-| `getGlobalVar(id, key)`      | Read a global variable (shared across chats, read-only from Lua). |
-| `getState(id, name)`         | Read a state value. Tables are auto-deserialized from JSON.       |
-| `setState(id, name, value)`  | Write a state value. Tables are auto-serialized to JSON.          |
+| Function                            | Description                                                                                                                       |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `getChatVar(id, key)`               | Read a chat variable (string).                                                                                                    |
+| `setChatVar(id, key, value)`        | Write a chat variable (string only). **Safe context only.** Returns no change status.                                             |
+| `setChatVarChanged(id, key, value)` | Write only when the string value differs; returns `true` when changed and `nil` otherwise. **Safe context only.**                 |
+| `getGlobalVar(id, key)`             | Read a global variable. A current-chat local overlay wins when configured; otherwise reads shared global state. Lua is read-only. |
+| `getState(id, name)`                | Read a state value. Tables are auto-deserialized from JSON.                                                                       |
+| `setState(id, name, value)`         | Write a state value. Tables are auto-serialized to JSON.                                                                          |
+| `setStateChanged(id, name, value)`  | Serialize and write state only when changed; returns the same `true`/`nil` result as `setChatVarChanged`.                         |
 
 > **Safe context**: write functions work only during callbacks with a valid runtime `id`. All modes except `editDisplay` receive Safe access. `editDisplay` has display-only access for `setChatVar`, but alerts, state writes, chat edits, and low-level APIs require Safe/low-level access. Top-level code has no valid access key.
 

@@ -22,11 +22,13 @@ Plugins run in a sandboxed iframe and communicate with the host across an async 
 4. Keep boundary data structured-clone-safe. Use safe setters/listeners; do not assume raw DOM nodes or functions cross the boundary.
 5. Choose storage deliberately: syncable/save-owned plugin storage, device-local string/JSON storage, arguments, or permission-gated database access.
 6. Register settings/buttons/providers/MCP/hooks with stable IDs where update/reload should replace prior registration. MCP identifiers begin with `plugin:`.
-7. Track listener/registration handles and clean them up on unload or replacement when the API supports it.
+7. Track listener/registration handles and clean them up on unload or replacement when the API supports it. This includes chat listeners and `SafeMutationObserver.disconnect()`.
 
 Keep metadata directives copyable: place only the directive and its value on each `//@...` line, with explanations outside the code block. Permission denial is a normal failure path; handle `null`, `false`, or rejected operations without assuming host access.
 
 Safe host DOM access may sanitize HTML, restrict attributes/tags/links, filter events, and require permissions. Respect CSP, AST safety checks, guarded globals, structured cloning, and user consent; do not design an escape. TypeScript uses the supported transform only—do not assume JSX or a full bundler.
+
+Output chat listeners run after output triggers and inlay processing. They receive a snapshot, are awaited sequentially, and mutations to that snapshot are not persisted; use an explicit setter for durable changes. TTS pre/postprocessors also form sequential pipelines. `readInlay` requires the periodically confirmed `inlay` permission.
 
 Load `risu/plugins/docs/API_QUICKREF.md` for exact API signatures and `MIGRATION.md` only for legacy migration. Preserve upstream spelling where an API name intentionally contains a typo.
 
