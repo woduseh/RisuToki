@@ -1,6 +1,6 @@
 {
   "name": "risutoki",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "description": "Desktop editor and MCP workspace for RisuAI .charx, .risum, and .risup artifacts",
   "main": ".build/electron/main.js",
   "scripts": {
@@ -52,6 +52,7 @@
     "@xterm/xterm": "^6.0.0",
     "adm-zip": "^0.6.0",
     "dompurify": "^3.4.12",
+    "electron-updater": "^6.8.9",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.47",
     "markdown-it": "^14.3.0",
@@ -104,6 +105,13 @@
   "build": {
     "appId": "com.risutoki.editor",
     "productName": "RisuToki",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "woduseh",
+        "repo": "RisuToki"
+      }
+    ],
     "npmRebuild": false,
     "directories": {
       "output": "release"

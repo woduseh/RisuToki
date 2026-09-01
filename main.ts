@@ -1,6 +1,7 @@
 'use strict';
 
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, net, shell, type MessageBoxOptions } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -70,6 +71,12 @@ import { createSessionRecoveryManager } from './src/lib/session-recovery-manager
 import { initTerminalManager, killTerminal } from './src/lib/terminal-manager';
 import { initMainUtilityIpc } from './src/lib/main-utility-ipc';
 import { importCharacterCardByPath } from './src/lib/character-card-import';
+import {
+  checkForAppUpdates,
+  createUpdatePromptStore,
+  fetchLatestReleaseVersion,
+  LATEST_RELEASE_PAGE_URL,
+} from './src/lib/app-update-manager';
 
 // ---------------------------------------------------------------------------
 // Interfaces for .cjs modules and local types
@@ -869,6 +876,69 @@ function createWindow(): void {
   });
 }
 
+function showUpdateMessageBox(options: MessageBoxOptions) {
+  if (mainWindow && !mainWindow.isDestroyed()) return dialog.showMessageBox(mainWindow, options);
+  return dialog.showMessageBox(options);
+}
+
+function scheduleAppUpdateCheck(): void {
+  const timer = setTimeout(() => {
+    void checkForAppUpdates({
+      isPackaged: app.isPackaged,
+      isPortable: !!process.env.PORTABLE_EXECUTABLE_FILE,
+      currentVersion: app.getVersion(),
+      promptStore: createUpdatePromptStore(app.getPath('userData')),
+      installedUpdater: autoUpdater,
+      fetchLatestReleaseVersion: () => fetchLatestReleaseVersion(net.fetch.bind(net) as typeof fetch),
+      async confirmInstalledUpdate(latestVersion, currentVersion) {
+        const result = await showUpdateMessageBox({
+          type: 'info',
+          title: 'RisuToki 업데이트',
+          message: `RisuToki ${latestVersion} 업데이트가 있습니다.`,
+          detail: `현재 버전: ${currentVersion}\n업데이트를 다운로드할까요? 다운로드가 끝나면 앱을 정상 종료할 때 자동으로 설치됩니다.`,
+          buttons: ['업데이트', '나중에'],
+          defaultId: 0,
+          cancelId: 1,
+          noLink: true,
+        });
+        return result.response === 0;
+      },
+      async confirmPortableUpdate(latestVersion, currentVersion) {
+        const result = await showUpdateMessageBox({
+          type: 'info',
+          title: 'RisuToki 업데이트',
+          message: `RisuToki ${latestVersion} 업데이트가 있습니다.`,
+          detail: `현재 버전: ${currentVersion}\nGitHub 릴리스 페이지에서 새 포터블 버전을 받을 수 있습니다.`,
+          buttons: ['릴리스 페이지 열기', '나중에'],
+          defaultId: 0,
+          cancelId: 1,
+          noLink: true,
+        });
+        return result.response === 0;
+      },
+      async notifyInstalledUpdateReady(latestVersion) {
+        await showUpdateMessageBox({
+          type: 'info',
+          title: '업데이트 다운로드 완료',
+          message: `RisuToki ${latestVersion} 업데이트를 다운로드했습니다.`,
+          detail: '작업을 저장하고 앱을 정상 종료하면 업데이트가 자동으로 설치됩니다.',
+          buttons: ['확인'],
+          defaultId: 0,
+          noLink: true,
+        });
+      },
+      notifyInstalledUpdateError(message) {
+        dialog.showErrorBox('업데이트 다운로드 실패', `업데이트를 다운로드하지 못했습니다.\n\n${message}`);
+      },
+      openLatestRelease: () => shell.openExternal(LATEST_RELEASE_PAGE_URL),
+      logError(message, error) {
+        console.warn(`[update] ${message}:`, error);
+      },
+    });
+  }, 5000);
+  timer.unref();
+}
+
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
@@ -1009,6 +1079,8 @@ app.whenReady().then(() => {
     openDocument: (filePath) => openDocumentByPath(filePath),
     setCurrentDocument: (filePath, data) => mainState.setCurrentDocument(filePath, data),
   });
+
+  scheduleAppUpdateCheck();
 });
 
 app.on('window-all-closed', () => {

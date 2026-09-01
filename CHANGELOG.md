@@ -9,6 +9,13 @@
 
 ---
 
+## [3.1.0] - 2026-09-01
+
+### Added
+
+- Added once-per-release update prompts for packaged builds: installer users can approve an in-app download that installs on normal exit, while portable users can open the latest GitHub release page.
+- Added release-tag validation so packaged artifact versions cannot silently diverge from the Git tag.
+
 ## [3.0.1] - 2026-09-01
 
 ### Fixed

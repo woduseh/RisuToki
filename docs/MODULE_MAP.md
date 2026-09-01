@@ -172,6 +172,8 @@ This map is for source navigation. It is not a full API reference.
 
 ## Persistence, autosave, and recovery
 
+- `src/lib/app-update-policy.ts` — stable release version comparison and once-per-release prompt policy
+- `src/lib/app-update-manager.ts` — packaged installer/portable update checks, prompt persistence, and approved download orchestration
 - `src/lib/app-settings.ts` — normalized app settings and recent-item persistence
 - `src/lib/stored-state-validation.ts` — persisted-state validation
 - `src/lib/backup-store.ts` — backup persistence
