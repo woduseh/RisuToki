@@ -9,6 +9,14 @@
 
 ---
 
+## [3.0.1] - 2026-09-01
+
+### Fixed
+
+- Kept custom-toggle visual fields focused during continuous typing instead of rebuilding the editor after every character.
+- Kept damaged `promptTemplate` and `formatingOrder` JSON recovery textareas editable until their content becomes valid.
+- Preserved structured-editor scroll positions across item changes and deferred prompt filtering until Korean IME composition finishes.
+
 ## [3.0.0] - 2026-08-20
 
 ### Added

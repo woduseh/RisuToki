@@ -175,12 +175,20 @@ describe('createPromptTemplateEditor', () => {
 
   it('shows a raw repair editor for invalid prompt JSON and returns to the structured list once fixed', () => {
     const container = document.createElement('div');
+    document.body.appendChild(container);
     const onChange = vi.fn();
     const handle = createPromptTemplateEditor(container, '{', onChange);
 
     expect(container.textContent).toContain('JSON 파싱 오류');
     const repairInput = container.querySelector<HTMLTextAreaElement>('[data-field="raw-json"]');
     expect(repairInput).toBeTruthy();
+    repairInput!.focus();
+
+    repairInput!.value = '{"';
+    repairInput!.dispatchEvent(new Event('input'));
+
+    expect(container.querySelector('[data-field="raw-json"]')).toBe(repairInput);
+    expect(document.activeElement).toBe(repairInput);
 
     repairInput!.value = '[]';
     repairInput!.dispatchEvent(new Event('input'));
@@ -188,6 +196,7 @@ describe('createPromptTemplateEditor', () => {
     expect(onChange).toHaveBeenCalledWith('[]');
     expect(container.querySelector('[data-prompt-list]')).toBeTruthy();
     handle.dispose();
+    container.remove();
   });
 
   it('shows a type-aware add menu when the add button is clicked', () => {
@@ -303,6 +312,50 @@ describe('createPromptTemplateEditor', () => {
     expect(container.querySelector('.prompt-editor-list-summary')?.textContent).toContain('일치 2 / 6개');
 
     handle.dispose();
+  });
+
+  it('waits for IME composition to finish before rerendering prompt search results', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const handle = createPromptTemplateEditor(
+      container,
+      makePromptTemplate(['한국어 대상', '한국어 두 번째', 'alpha', 'beta', 'gamma', 'omega']),
+      vi.fn(),
+    );
+
+    const filterInput = container.querySelector<HTMLInputElement>('[data-action="filter-items"]')!;
+    filterInput.focus();
+    filterInput.dispatchEvent(new CompositionEvent('compositionstart'));
+    filterInput.value = '한국어';
+    filterInput.dispatchEvent(new InputEvent('input', { data: '한국어', isComposing: true }));
+
+    expect(container.querySelector('[data-action="filter-items"]')).toBe(filterInput);
+    expect(container.querySelectorAll('[data-prompt-item]').length).toBe(6);
+
+    filterInput.dispatchEvent(new CompositionEvent('compositionend', { data: '한국어' }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(container.querySelectorAll('[data-prompt-item]').length).toBe(2);
+    expect(document.activeElement).toBe(container.querySelector('[data-action="filter-items"]'));
+    handle.dispose();
+    container.remove();
+  });
+
+  it('preserves the form scroll position for prompt structural changes', () => {
+    const body = document.createElement('div');
+    body.className = 'form-editor-body';
+    const container = document.createElement('div');
+    body.appendChild(container);
+    document.body.appendChild(body);
+    const handle = createPromptTemplateEditor(container, makePromptTemplate(['alpha', 'beta']), vi.fn());
+    body.scrollTop = 240;
+
+    container.querySelectorAll<HTMLButtonElement>('[data-action="move-up"]')[1].click();
+
+    expect(body.scrollTop).toBe(240);
+    handle.dispose();
+    body.remove();
   });
 
   it('clears the prompt filter with the clear button and restores all items', () => {
@@ -576,12 +629,20 @@ describe('createFormatingOrderEditor', () => {
 
   it('shows a raw repair editor for invalid formatingOrder JSON', () => {
     const container = document.createElement('div');
+    document.body.appendChild(container);
     const onChange = vi.fn();
     const handle = createFormatingOrderEditor(container, '{', onChange);
 
     expect(container.textContent).toContain('JSON 파싱 오류');
     const repairInput = container.querySelector<HTMLTextAreaElement>('[data-field="raw-json"]');
     expect(repairInput).toBeTruthy();
+    repairInput!.focus();
+
+    repairInput!.value = '["';
+    repairInput!.dispatchEvent(new Event('input'));
+
+    expect(container.querySelector('[data-field="raw-json"]')).toBe(repairInput);
+    expect(document.activeElement).toBe(repairInput);
 
     repairInput!.value = '["main"]';
     repairInput!.dispatchEvent(new Event('input'));
@@ -589,6 +650,7 @@ describe('createFormatingOrderEditor', () => {
     expect(onChange).toHaveBeenCalledWith('["main"]');
     expect(container.querySelector('[data-order-token]')).toBeTruthy();
     handle.dispose();
+    container.remove();
   });
 
   it('lets users restore the default order when formatingOrder is empty', () => {

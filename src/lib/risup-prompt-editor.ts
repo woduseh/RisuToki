@@ -147,6 +147,17 @@ function appendInvalidRawEditor(
   container.appendChild(makeTextarea(rawText, false, onChange, 'raw-json', 8));
 }
 
+function renderWithPreservedScroll(container: HTMLElement, renderContent: () => void): void {
+  const scrollContainer = container.closest<HTMLElement>('.form-editor-body');
+  const scrollTop = scrollContainer?.scrollTop ?? 0;
+  const scrollLeft = scrollContainer?.scrollLeft ?? 0;
+  renderContent();
+  if (scrollContainer?.isConnected) {
+    scrollContainer.scrollTop = scrollTop;
+    scrollContainer.scrollLeft = scrollLeft;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Prompt item field renderers
 // ---------------------------------------------------------------------------
@@ -315,6 +326,10 @@ export function createPromptItemEditor(
   }
 
   function render(): void {
+    renderWithPreservedScroll(container, renderContent);
+  }
+
+  function renderContent(): void {
     container.innerHTML = '';
     const root = document.createElement('div');
     root.className = 'prompt-editor-shell prompt-item-detail-editor';
@@ -765,6 +780,10 @@ export function createPromptTemplateEditor(
   }
 
   function render(filterFocus?: { selectionStart: number | null; selectionEnd: number | null }): void {
+    renderWithPreservedScroll(container, () => renderContent(filterFocus));
+  }
+
+  function renderContent(filterFocus?: { selectionStart: number | null; selectionEnd: number | null }): void {
     destroyPromptSortable();
     container.innerHTML = '';
     const root = document.createElement('div');
@@ -777,8 +796,13 @@ export function createPromptTemplateEditor(
       errBox.textContent = `JSON 파싱 오류: ${model.parseError ?? '알 수 없는 오류'}`;
       root.appendChild(errBox);
       appendInvalidRawEditor(root, model.rawText, readonly, (value) => {
-        model = parsePromptTemplate(value);
+        const nextModel = parsePromptTemplate(value);
+        model = nextModel;
         if (onChange) onChange(value);
+        if (nextModel.state === 'invalid') {
+          errBox.textContent = `JSON 파싱 오류: ${nextModel.parseError ?? '알 수 없는 오류'}`;
+          return;
+        }
         render();
       });
       container.appendChild(root);
@@ -819,7 +843,23 @@ export function createPromptTemplateEditor(
       filterInput.className = 'form-input prompt-editor-input prompt-editor-filter-input';
       filterInput.placeholder = '프롬프트 검색...';
       filterInput.value = filterQuery;
-      filterInput.addEventListener('input', () => {
+      let composing = false;
+      filterInput.addEventListener('compositionstart', () => {
+        composing = true;
+      });
+      filterInput.addEventListener('compositionend', () => {
+        composing = false;
+        queueMicrotask(() => {
+          if (filterQuery === filterInput.value) return;
+          setFilterQuery(filterInput.value, {
+            selectionStart: filterInput.selectionStart,
+            selectionEnd: filterInput.selectionEnd,
+          });
+        });
+      });
+      filterInput.addEventListener('input', (event) => {
+        const eventIsComposing = typeof InputEvent !== 'undefined' && event instanceof InputEvent && event.isComposing;
+        if (composing || eventIsComposing) return;
         setFilterQuery(filterInput.value, {
           selectionStart: filterInput.selectionStart,
           selectionEnd: filterInput.selectionEnd,
@@ -1073,7 +1113,7 @@ export function createPromptTemplateEditor(
       const filterInput = container.querySelector<HTMLInputElement>('[data-action="filter-items"]');
       if (filterInput) {
         queueMicrotask(() => {
-          filterInput.focus();
+          filterInput.focus({ preventScroll: true });
           if (filterFocus.selectionStart !== null && filterFocus.selectionEnd !== null) {
             filterInput.setSelectionRange(filterFocus.selectionStart, filterFocus.selectionEnd);
           }
@@ -1127,6 +1167,10 @@ export function createFormatingOrderEditor(
   }
 
   function render(): void {
+    renderWithPreservedScroll(container, renderContent);
+  }
+
+  function renderContent(): void {
     destroyOrderSortable();
     container.innerHTML = '';
     const root = document.createElement('div');
@@ -1139,8 +1183,13 @@ export function createFormatingOrderEditor(
       errBox.textContent = `JSON 파싱 오류: ${model.parseError ?? '알 수 없는 오류'}`;
       root.appendChild(errBox);
       appendInvalidRawEditor(root, model.rawText, readonly, (value) => {
-        model = parseFormatingOrder(value);
+        const nextModel = parseFormatingOrder(value);
+        model = nextModel;
         if (onChange) onChange(value);
+        if (nextModel.state === 'invalid') {
+          errBox.textContent = `JSON 파싱 오류: ${nextModel.parseError ?? '알 수 없는 오류'}`;
+          return;
+        }
         render();
       });
       container.appendChild(root);

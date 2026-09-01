@@ -92,6 +92,23 @@ function getToggleItemLabel(item: ToggleTemplateItem): string {
   return 'value' in item ? (item.value ?? '') : '';
 }
 
+function getToggleItemSummary(item: ToggleTemplateItem): string {
+  return item.type === 'groupEnd'
+    ? 'group 종료'
+    : `${getToggleItemKey(item) || item.type} ${getToggleItemLabel(item) ? `• ${getToggleItemLabel(item)}` : ''}`.trim();
+}
+
+function renderWithPreservedScroll(container: HTMLElement, renderContent: () => void): void {
+  const scrollContainer = container.closest<HTMLElement>('.form-editor-body');
+  const scrollTop = scrollContainer?.scrollTop ?? 0;
+  const scrollLeft = scrollContainer?.scrollLeft ?? 0;
+  renderContent();
+  if (scrollContainer?.isConnected) {
+    scrollContainer.scrollTop = scrollTop;
+    scrollContainer.scrollLeft = scrollLeft;
+  }
+}
+
 function convertToggleItemType(item: ToggleTemplateItem, nextType: ToggleTemplateItemType): ToggleTemplateItem {
   if (item.type === nextType) return item;
 
@@ -146,19 +163,37 @@ export function createCustomPromptTemplateToggleEditor(
     if (onChange) onChange(nextValue);
   }
 
-  function structuralChange(newItems: ToggleTemplateItem[]): void {
-    const nextValue = serializeCustomPromptTemplateToggle({ items: newItems });
-    model = parseCustomPromptTemplateToggle(nextValue);
+  function commitVisualItems(nextItems: ToggleTemplateItem[]): void {
+    const nextValue = serializeCustomPromptTemplateToggle({ items: nextItems });
+    model = {
+      state: nextItems.length === 0 ? 'empty' : 'valid',
+      items: nextItems,
+      rawText: nextValue,
+    };
     if (onChange) onChange(nextValue);
+  }
+
+  function structuralChange(newItems: ToggleTemplateItem[]): void {
+    commitVisualItems(newItems);
     render();
   }
 
-  function updateItem(index: number, updater: (item: ToggleTemplateItem) => ToggleTemplateItem): void {
+  function updateItem(
+    index: number,
+    updater: (item: ToggleTemplateItem) => ToggleTemplateItem,
+    rerender = false,
+  ): void {
     const next = [...model.items];
     const item = next[index];
     if (!item) return;
     next[index] = updater(item);
-    structuralChange(next);
+    commitVisualItems(next);
+    if (rerender) {
+      render();
+      return;
+    }
+    const summary = container.querySelector<HTMLElement>(`[data-toggle-index="${index}"] .prompt-editor-summary`);
+    if (summary && model.items[index]) summary.textContent = getToggleItemSummary(model.items[index]);
   }
 
   function renderItemFields(item: ToggleTemplateItem, index: number, wrapper: HTMLElement, actions: HTMLElement): void {
@@ -322,6 +357,10 @@ export function createCustomPromptTemplateToggleEditor(
   }
 
   function render(): void {
+    renderWithPreservedScroll(container, renderContent);
+  }
+
+  function renderContent(): void {
     destroyToggleSortable();
     container.innerHTML = '';
 
@@ -386,6 +425,7 @@ export function createCustomPromptTemplateToggleEditor(
         const card = document.createElement('div');
         card.className = 'prompt-editor-card toggle-template-item';
         card.setAttribute('data-toggle-item', '');
+        card.dataset.toggleIndex = String(index);
         if (!readonly && model.items.length > 1) {
           card.dataset.dndIdx = String(index);
         }
@@ -397,7 +437,7 @@ export function createCustomPromptTemplateToggleEditor(
           item.type,
           readonly,
           (value) => {
-            updateItem(index, (current) => convertToggleItemType(current, value as ToggleTemplateItemType));
+            updateItem(index, (current) => convertToggleItemType(current, value as ToggleTemplateItemType), true);
           },
           'toggle-type',
         );
@@ -406,10 +446,7 @@ export function createCustomPromptTemplateToggleEditor(
 
         const summary = document.createElement('div');
         summary.className = 'prompt-editor-summary';
-        summary.textContent =
-          item.type === 'groupEnd'
-            ? 'group 종료'
-            : `${getToggleItemKey(item) || item.type} ${getToggleItemLabel(item) ? `• ${getToggleItemLabel(item)}` : ''}`.trim();
+        summary.textContent = getToggleItemSummary(item);
         header.appendChild(summary);
 
         const actions = document.createElement('div');

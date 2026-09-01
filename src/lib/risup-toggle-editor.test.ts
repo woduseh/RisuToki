@@ -16,16 +16,52 @@ describe('createCustomPromptTemplateToggleEditor', () => {
 
   it('updates the raw string when a visual field changes', () => {
     const container = document.createElement('div');
+    document.body.appendChild(container);
     const onChange = vi.fn();
     const handle = createCustomPromptTemplateToggleEditor(container, 'flag=Enable', onChange);
 
     const valueInput = container.querySelector<HTMLInputElement>('[data-field="toggle-value"]');
     expect(valueInput).toBeTruthy();
+    valueInput!.focus();
     valueInput!.value = 'Enabled';
     valueInput!.dispatchEvent(new Event('input'));
 
     expect(onChange).toHaveBeenCalledWith('flag=Enabled');
+    expect(container.querySelector('[data-field="toggle-value"]')).toBe(valueInput);
+    expect(document.activeElement).toBe(valueInput);
+
+    valueInput!.value = 'Enabled again';
+    valueInput!.dispatchEvent(new Event('input'));
+    expect(onChange).toHaveBeenLastCalledWith('flag=Enabled again');
+
+    const keyInput = container.querySelector<HTMLInputElement>('[data-field="toggle-key"]')!;
+    keyInput.focus();
+    keyInput.value = '';
+    keyInput.dispatchEvent(new Event('input'));
+    expect(container.querySelector('[data-field="toggle-key"]')).toBe(keyInput);
+    expect(document.activeElement).toBe(keyInput);
+
+    keyInput.value = 'renamed';
+    keyInput.dispatchEvent(new Event('input'));
+    expect(onChange).toHaveBeenLastCalledWith('renamed=Enabled again');
     handle.dispose();
+    container.remove();
+  });
+
+  it('preserves the form scroll position for structural changes', () => {
+    const body = document.createElement('div');
+    body.className = 'form-editor-body';
+    const container = document.createElement('div');
+    body.appendChild(container);
+    document.body.appendChild(body);
+    const handle = createCustomPromptTemplateToggleEditor(container, 'flag=Enable', vi.fn());
+    body.scrollTop = 180;
+
+    container.querySelector<HTMLButtonElement>('[data-action="add-toggle-item"]')!.click();
+
+    expect(body.scrollTop).toBe(180);
+    handle.dispose();
+    body.remove();
   });
 
   it('adds a new visual item from the add bar', () => {
