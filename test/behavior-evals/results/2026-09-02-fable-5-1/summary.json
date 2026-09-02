@@ -1,0 +1,14 @@
+{
+  "label": "risutoki routing: 27 skills, fable xhigh, 2026-09-02; rerun of 6 after Skill-tool wording and self-contained prompts; #7 bounded to a design-policy request",
+  "model": "fable",
+  "effort": "xhigh",
+  "max_turns": 2,
+  "max_turns_multi": 6,
+  "permission_mode": "dontAsk",
+  "cases": 26,
+  "passed": 26,
+  "failed": 0,
+  "errors": 0,
+  "total_cost_usd": 9.2109,
+  "failures": []
+}

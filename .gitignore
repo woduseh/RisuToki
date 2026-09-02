@@ -69,6 +69,9 @@ output/
 tmp/
 .tmp/
 
+# Live behavior-eval transcripts (summary.json stays tracked)
+test/behavior-evals/results/**/results.jsonl
+
 # Generated aggregate skill catalog
 .skill-catalog/
 # Retired generated catalog; sync removes it when present

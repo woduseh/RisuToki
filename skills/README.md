@@ -63,6 +63,7 @@ Every skill should make the first read decisive. Keep `SKILL.md` as the executio
 - Write positive contracts: state when a format, surface, or clarifying question is appropriate rather than only prohibiting it. Blanket prohibitions make current models under-deliver.
 - Where correctness depends on a RisuAI version, state the verified baseline and point at the reference so the model verifies instead of recalling.
 - Keep skills harness-neutral. Do not restate rules the Claude Code or Codex system prompt already supplies, such as progress updates, tool-call batching, or general autonomy, unless this repository changes them.
+- Routing is measured live by `test/behavior-evals/routing-cases.json`. When a description, a router trigger, or a shared rule changes, run the affected cases and change wording only after a failure reproduces twice.
 
 `npm run sync:skills` rebuilds `.skill-catalog/` from the tracked skill roots above so Codex (`.agents/skills`) and Claude Code (`.claude/skills`) see the same unified catalog. Gemini and GitHub Copilot Skill mirrors are no longer generated.
 

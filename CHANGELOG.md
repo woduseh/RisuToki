@@ -9,6 +9,16 @@
 
 ---
 
+## [3.2.1] - 2026-09-03
+
+### Added
+
+- Added `test/behavior-evals/`: 26 live skill-routing cases covering the 27-skill catalog, a README with the runner command, the scoring rule, and the quota policy, and the first recorded run on Claude Fable 5.1 at `xhigh` (26/26 cases engaged the intended skills after the wording and prompt fixes below; transcripts stay local, only `summary.json` is tracked).
+
+### Changed
+
+- The root `CLAUDE.md` now tells assistants to load the chosen skill with the Skill tool and to use `read_skill` only through the RisuToki MCP server. In the first measured run, 14 of 26 headless sessions searched for the absent `read_skill` MCP tool first, and five of them then failed to open any skill within the routing budget; after the change none of the re-measured sessions searched for it.
+
 ## [3.2.0] - 2026-09-02
 
 ### Added

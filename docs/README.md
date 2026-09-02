@@ -35,6 +35,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 - Success envelopes expose `artifacts.byte_size`; use it as a context-budget cue before asking for adjacent content.
 - `npm run test:evals` runs the deterministic static harness scenarios and declarative workflow matrix.
 - `npm run test:evals:replay` builds the MCP server and runs the measured 35-task canonical workflow replay against synthetic artifacts.
+- `test/behavior-evals/` holds the live skill-routing cases and recorded runs; it measures which skill a real model engages and is run manually, not by `npm test`. See its README for the runner, cost, and quota policy.
 - `npm run test:mcp:contracts` verifies tools/list and HTTP fingerprints; use `npm run test:mcp:contracts:update` only for an intentional contract change and review its change summary.
 - `guides/` is the default writable guide location for imported/user-created guide files and may be empty in the repo.
 - When both `.ts` and `.js` siblings exist under `src/lib/`, prefer the `.ts` source. The `.js` file is generated output.
