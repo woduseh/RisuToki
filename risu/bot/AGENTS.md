@@ -8,7 +8,7 @@ Assume the user trusts deliberate creative judgment. Creative choices need not c
 
 ## Delivery
 
-Produce only the surfaces the request names, and offer other useful surfaces such as a lorebook map, translation guide, or standing-image prompt in one line instead of writing them.
+Infer what is already supplied and ask at most one question, only when the unresolved choice would materially change the result. Produce only the surfaces the request names, and offer other useful surfaces such as a lorebook map, translation guide, or standing-image prompt in one line instead of writing them.
 
 ## Primary routes
 

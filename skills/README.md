@@ -46,7 +46,7 @@ related_tools: ['read_content', 'search_document', 'preview_edit', 'apply_edit',
 - `artifact_types`
 - `canonical_sources`
 
-The MCP `list_skills` response currently exposes `name`, `description`, `tags`, `relatedTools`, and `files`. Additional frontmatter is still useful for human routing and future tooling.
+The MCP `list_skills` response currently exposes `name`, `description`, `tags`, `relatedTools`, and `files`. `files` covers top-level Markdown plus `references/*.md`, and `read_skill` serves the latter as `references/<name>.md`; deeper directories are not served. Additional frontmatter is still useful for human routing and future tooling.
 
 ## Agent skill authoring standard
 
@@ -58,7 +58,7 @@ Every skill should make the first read decisive. Keep `SKILL.md` as the executio
 - Put decision boundaries before examples so the model can route without scanning the whole file.
 - Keep routing/evaluation cases in deterministic test fixtures, not in the runtime `SKILL.md` context.
 - In `related_tools`, list facade tools first (`inspect_document`, `read_content`, `search_document`, `analyze_content`, `validate_content`, `preview_edit`/`apply_edit`, `manage_items`/`manage_assets`/`manage_file`) and keep only the domain-specific granular tools that remain real fallback surfaces after them — list order signals priority. See `using-mcp-tools` for the facade-first routing contract.
-- Treat large reference files as opt-in depth, not required startup context.
+- Treat large reference files as opt-in depth, not required startup context. Put target, model, or platform profiles in the skill's `references/` directory so MCP clients can read them. A document outside the skill directory must live under a guide root (`risu/*/docs`), which MCP clients read through the guidance target's `guide` selector; do not point a skill at any other location.
 - Name the approval gate. When the editor dialog or a write gate confirms a mutation, say so, so a capable model applies a matching preview instead of asking permission in chat.
 - Write positive contracts: state when a format, surface, or clarifying question is appropriate rather than only prohibiting it. Blanket prohibitions make current models under-deliver.
 - Where correctness depends on a RisuAI version, state the verified baseline and point at the reference so the model verifies instead of recalling.

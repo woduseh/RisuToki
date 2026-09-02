@@ -304,10 +304,15 @@ export const facadeV1GuidanceTargetSchema = z
     kind: z.literal('guidance'),
     skill: z.string().min(1).optional(),
     document: z.string().min(1).optional(),
+    guide: z.string().min(1).optional(),
   })
   .refine((d) => d.document === undefined || d.skill !== undefined, {
     message: 'guidance document requires skill',
     path: ['skill'],
+  })
+  .refine((d) => d.guide === undefined || (d.skill === undefined && d.document === undefined), {
+    message: 'guidance guide cannot be combined with skill or document',
+    path: ['guide'],
   });
 
 export const facadeV1TargetSchema = z.discriminatedUnion('kind', [

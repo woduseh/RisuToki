@@ -49,8 +49,9 @@ import {
 } from './mcp-api-helpers';
 import { handleSurfaceRoute } from './mcp-surface-routes';
 import { canonicalizeLorebookFolderRefs, getFolderRef } from './lorebook-folders';
-import { inferSkillRootScope, type ResolvedSkillRoot, type SkillScope } from './content-roots';
-import { listSkillCatalogEntries, resolveSkillCatalogFile } from './skill-catalog';
+import { inferSkillRootScope, type ResolvedGuideRoot, type ResolvedSkillRoot, type SkillScope } from './content-roots';
+import { listGuideCatalogEntries, resolveGuideCatalogEntry } from './guide-catalog';
+import { isReadableSkillFileName, listSkillCatalogEntries, resolveSkillCatalogFile } from './skill-catalog';
 import { mcpSuccess, type McpErrorInfo, type McpSuccessOptions } from './mcp-response-envelope';
 import type { RuntimeMetadata } from './mcp-runtime-contract';
 import { extToMime, cloneJson } from './shared-utils';
@@ -174,6 +175,8 @@ export interface McpApiDeps {
 
   // skills directories
   getSkillRoots: () => string[];
+  /** Guide documents under the risu docs roots, readable through the guidance target's `guide` selector. */
+  getGuideRoots?: () => ResolvedGuideRoot[];
 
   // user data directory for sidecar state
   getUserDataPath: () => string;
@@ -332,6 +335,101 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
   // Shorthand to emit an MCP success response with envelope enrichment
   function jsonResSuccess(res: http.ServerResponse, payload: Record<string, unknown>, opts: McpSuccessOptions): void {
     jsonRes(res, mcpSuccess(payload, opts));
+  }
+
+  /** Serve a UTF-8 text document with optional max_bytes bounding and an opaque resume cursor. */
+  function serveBoundedUtf8Document(
+    res: http.ServerResponse,
+    url: URL,
+    spec: {
+      action: string;
+      noun: 'skill' | 'guide';
+      target: string;
+      binding: string;
+      content: string;
+      result: Record<string, unknown>;
+      toolName: string;
+      summaryPrefix: string;
+      artifacts: Record<string, unknown>;
+    },
+  ): void {
+    const capitalizedNoun = spec.noun === 'skill' ? 'Skill' : 'Guide';
+    const maxBytesValue = url.searchParams.get('max_bytes');
+    const requestedMaxBytes = maxBytesValue === null ? null : Number(maxBytesValue);
+    if (
+      requestedMaxBytes !== null &&
+      (!Number.isInteger(requestedMaxBytes) || requestedMaxBytes < 1 || requestedMaxBytes > SKILL_BOOTSTRAP_MAX_BYTES)
+    ) {
+      return mcpError(res, 400, {
+        action: spec.action,
+        message: 'Invalid max_bytes',
+        suggestion: `Use an integer max_bytes from 1 through ${SKILL_BOOTSTRAP_MAX_BYTES}.`,
+        target: spec.target,
+      });
+    }
+    const cursorValue = url.searchParams.get('cursor');
+    const offset = decodeSkillCursor('read', cursorValue, spec.binding);
+    const source = Buffer.from(spec.content, 'utf8');
+    if (offset === null || offset > source.length) {
+      return mcpError(res, 400, {
+        action: spec.action,
+        message: `Invalid ${spec.noun} cursor`,
+        suggestion: `Use the opaque next_cursor returned by ${spec.action}.`,
+        target: spec.target,
+      });
+    }
+    const prefix = source.subarray(0, offset).toString('utf8');
+    if (Buffer.byteLength(prefix, 'utf8') !== offset) {
+      return mcpError(res, 400, {
+        action: spec.action,
+        message: `${capitalizedNoun} cursor is not on a UTF-8 boundary`,
+        suggestion: `Use the opaque next_cursor returned by ${spec.action}.`,
+        target: spec.target,
+      });
+    }
+    const bounded = requestedMaxBytes !== null || cursorValue !== null;
+    const maxBytes = requestedMaxBytes ?? SKILL_BOOTSTRAP_MAX_BYTES;
+    const slice = bounded
+      ? utf8SliceAtBoundary(source, offset, maxBytes)
+      : { text: spec.content, nextOffset: source.length };
+    if (bounded && slice.nextOffset === offset && offset < source.length) {
+      return mcpError(res, 400, {
+        action: spec.action,
+        message: 'max_bytes is too small to include the next complete UTF-8 code point',
+        suggestion: 'Increase max_bytes to at least 4 and retry without changing the cursor.',
+        target: spec.target,
+      });
+    }
+    const nextCursor =
+      slice.nextOffset < source.length ? encodeSkillCursor('read', slice.nextOffset, spec.binding) : null;
+    const returnedBytes = Buffer.byteLength(slice.text, 'utf8');
+    return jsonResSuccess(
+      res,
+      {
+        ...spec.result,
+        content: slice.text,
+        ...(bounded
+          ? {
+              offset_bytes: offset,
+              returned_bytes: returnedBytes,
+              total_bytes: source.length,
+              max_bytes: maxBytes,
+              next_cursor: nextCursor,
+              truncated: nextCursor !== null,
+            }
+          : {}),
+      },
+      {
+        toolName: spec.toolName,
+        summary: `${spec.summaryPrefix} (${returnedBytes} bytes)`,
+        artifacts: {
+          ...spec.artifacts,
+          size: returnedBytes,
+          total_size: source.length,
+          next_cursor: nextCursor,
+        },
+      },
+    );
   }
 
   const externalDocumentReaders = createExternalDocumentReaders({
@@ -965,6 +1063,71 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       }
 
       // ----------------------------------------------------------------
+      // GET /guides — list guide documents (risu/*/docs) by catalog name
+      // GET /guides/:name — read one guide; :name is a single URL-encoded segment such as
+      //   prompts%2Ffamilies%2FMYTHOS.md, a repository path, or a unique file name
+      // ----------------------------------------------------------------
+      if (parts[0] === 'guides' && req.method === 'GET') {
+        const guideRoots = deps.getGuideRoots?.() ?? [];
+        const guideEntries = listGuideCatalogEntries(guideRoots);
+        if (!parts[1]) {
+          const guides = guideEntries.map((entry) => ({
+            name: entry.name,
+            path: `${entry.rootRelativePath.replace(/\\/g, '/')}/${entry.relativePathWithinRoot}`,
+            size_bytes: fs.statSync(entry.filePath).size,
+          }));
+          return jsonResSuccess(
+            res,
+            { count: guides.length, guides },
+            {
+              toolName: 'inspect_document',
+              summary: `Listed ${guides.length} guide documents`,
+              artifacts: { count: guides.length },
+            },
+          );
+        }
+        const guideName = decodeURIComponent(parts[1]);
+        if (guideName.includes('..') || guideName.includes('\\') || guideName.startsWith('/')) {
+          return mcpError(res, 400, {
+            action: 'read_guide',
+            message: 'Invalid guide name',
+            suggestion:
+              'Use a guide catalog name such as prompts/families/MYTHOS.md; ".." and absolute paths are not allowed.',
+            target: `guides:${guideName}`,
+          });
+        }
+        const entry = resolveGuideCatalogEntry(guideRoots, guideName);
+        if (!entry) {
+          const known = guideEntries.map((candidate) => candidate.name);
+          return mcpError(res, 404, {
+            action: 'read_guide',
+            message: `Guide not found: ${guideName}`,
+            suggestion:
+              known.length > 0 ? `Known guides: ${known.join(', ')}` : 'No guide roots are available in this runtime.',
+            target: `guides:${guideName}`,
+          });
+        }
+        const guideContent = fs.readFileSync(entry.filePath, 'utf-8');
+        return serveBoundedUtf8Document(res, url, {
+          action: 'read_guide',
+          noun: 'guide',
+          target: `guides:${entry.name}`,
+          binding: skillCursorBinding({
+            guide: entry.name,
+            content_sha256: crypto.createHash('sha256').update(guideContent, 'utf8').digest('hex'),
+          }),
+          content: guideContent,
+          result: {
+            guide: entry.name,
+            path: `${entry.rootRelativePath.replace(/\\/g, '/')}/${entry.relativePathWithinRoot}`,
+          },
+          toolName: 'inspect_document',
+          summaryPrefix: `Read guide ${entry.name}`,
+          artifacts: { guide: entry.name },
+        });
+      }
+
+      // ----------------------------------------------------------------
       // GET /skills — list available skill documents
       // ----------------------------------------------------------------
       if (parts[0] === 'skills' && !parts[1] && req.method === 'GET') {
@@ -1119,11 +1282,12 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             target: `skills:${skillName}:${fileName}`,
           });
         }
-        if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+        if (!isReadableSkillFileName(fileName)) {
           return mcpError(res, 400, {
             action: 'read_skill',
             message: 'Invalid file name',
-            suggestion: 'File name must not contain path separators or "..".',
+            suggestion:
+              'Use a top-level Markdown file name or references/<name>.md as reported by list_skills; ".." and other directories are not served.',
             target: `skills:${skillName}:${fileName}`,
           });
         }
@@ -1139,85 +1303,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             file: fileName,
             content_sha256: crypto.createHash('sha256').update(fullContent, 'utf8').digest('hex'),
           });
-          const maxBytesValue = url.searchParams.get('max_bytes');
-          const requestedMaxBytes = maxBytesValue === null ? null : Number(maxBytesValue);
-          if (
-            requestedMaxBytes !== null &&
-            (!Number.isInteger(requestedMaxBytes) ||
-              requestedMaxBytes < 1 ||
-              requestedMaxBytes > SKILL_BOOTSTRAP_MAX_BYTES)
-          ) {
-            return mcpError(res, 400, {
-              action: 'read_skill',
-              message: 'Invalid max_bytes',
-              suggestion: `Use an integer max_bytes from 1 through ${SKILL_BOOTSTRAP_MAX_BYTES}.`,
-              target: `skills:${skillName}:${fileName}`,
-            });
-          }
-          const cursorValue = url.searchParams.get('cursor');
-          const offset = decodeSkillCursor('read', cursorValue, cursorBinding);
-          const source = Buffer.from(fullContent, 'utf8');
-          if (offset === null || offset > source.length) {
-            return mcpError(res, 400, {
-              action: 'read_skill',
-              message: 'Invalid skill cursor',
-              suggestion: 'Use the opaque next_cursor returned by read_skill.',
-              target: `skills:${skillName}:${fileName}`,
-            });
-          }
-          const prefix = source.subarray(0, offset).toString('utf8');
-          if (Buffer.byteLength(prefix, 'utf8') !== offset) {
-            return mcpError(res, 400, {
-              action: 'read_skill',
-              message: 'Skill cursor is not on a UTF-8 boundary',
-              suggestion: 'Use the opaque next_cursor returned by read_skill.',
-              target: `skills:${skillName}:${fileName}`,
-            });
-          }
-          const bounded = requestedMaxBytes !== null || cursorValue !== null;
-          const maxBytes = requestedMaxBytes ?? SKILL_BOOTSTRAP_MAX_BYTES;
-          const slice = bounded
-            ? utf8SliceAtBoundary(source, offset, maxBytes)
-            : { text: fullContent, nextOffset: source.length };
-          if (bounded && slice.nextOffset === offset && offset < source.length) {
-            return mcpError(res, 400, {
-              action: 'read_skill',
-              message: 'max_bytes is too small to include the next complete UTF-8 code point',
-              suggestion: 'Increase max_bytes to at least 4 and retry without changing the cursor.',
-              target: `skills:${skillName}:${fileName}`,
-            });
-          }
-          const nextCursor =
-            slice.nextOffset < source.length ? encodeSkillCursor('read', slice.nextOffset, cursorBinding) : null;
-          return jsonResSuccess(
-            res,
-            {
-              skill: skillName,
-              file: fileName,
-              content: slice.text,
-              ...(bounded
-                ? {
-                    offset_bytes: offset,
-                    returned_bytes: Buffer.byteLength(slice.text, 'utf8'),
-                    total_bytes: source.length,
-                    max_bytes: maxBytes,
-                    next_cursor: nextCursor,
-                    truncated: nextCursor !== null,
-                  }
-                : {}),
-            },
-            {
-              toolName: 'read_skill',
-              summary: `Read skill ${skillName}/${fileName} (${Buffer.byteLength(slice.text, 'utf8')} bytes)`,
-              artifacts: {
-                skill: skillName,
-                file: fileName,
-                size: Buffer.byteLength(slice.text, 'utf8'),
-                total_size: source.length,
-                next_cursor: nextCursor,
-              },
-            },
-          );
+          return serveBoundedUtf8Document(res, url, {
+            action: 'read_skill',
+            noun: 'skill',
+            target: `skills:${skillName}:${fileName}`,
+            binding: cursorBinding,
+            content: fullContent,
+            result: { skill: skillName, file: fileName },
+            toolName: 'read_skill',
+            summaryPrefix: `Read skill ${skillName}/${fileName}`,
+            artifacts: { skill: skillName, file: fileName },
+          });
         } catch {
           return mcpError(res, 404, {
             action: 'read_skill',

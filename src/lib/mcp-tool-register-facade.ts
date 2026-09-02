@@ -103,6 +103,16 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
     withMergedRuntimeMetadata,
   } = deps;
   const { previewManageAssetsOperation, readManageAssetsOperation, applyManageAssetsOperation } = assets;
+
+  async function listGuideNames(): Promise<string[]> {
+    const guideData = await apiRequest('GET', '/guides');
+    if (isApiError(guideData)) return [];
+    const guides = (guideData as { guides?: unknown }).guides;
+    if (!Array.isArray(guides)) return [];
+    return guides
+      .map((entry) => (entry as { name?: unknown }).name)
+      .filter((name): name is string => typeof name === 'string');
+  }
   const {
     analyzeFacadeOperation,
     applyEditPostEditMetadata,
@@ -232,18 +242,23 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
       }
 
       if (target.kind === 'guidance') {
-        const routePath = target.skill
-          ? `/skills/${encodeURIComponent(target.skill)}${target.document ? `/${encodeURIComponent(target.document)}` : ''}`
-          : '/skills';
+        const routePath = target.guide
+          ? `/guides/${encodeURIComponent(target.guide)}`
+          : target.skill
+            ? `/skills/${encodeURIComponent(target.skill)}${target.document ? `/${encodeURIComponent(target.document)}` : ''}`
+            : '/skills';
         const data = await apiRequest('GET', routePath);
         if (isApiError(data)) return textResult(data);
-        const routes = [route(target.skill ? 'read_skill' : 'list_skills', 'GET', routePath)];
+        const routes = [
+          route(target.guide ? 'read_guide' : target.skill ? 'read_skill' : 'list_skills', 'GET', routePath),
+        ];
+        const guides = target.guide || target.skill ? undefined : await listGuideNames();
         return textResult(
           facadeEnvelope(
             'inspect_document',
             'read-only',
             target,
-            { guidance: data, routed_legacy: routes, touched_targets: ['guidance'] },
+            { guidance: data, ...(guides ? { guides } : {}), routed_legacy: routes, touched_targets: ['guidance'] },
             'Inspected guidance facade target',
             ['read_content'],
             { routed_tools: routes.map((entry) => entry.tool), touched_targets: ['guidance'] },
@@ -697,12 +712,16 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
         target.skill === 'plugin-v3' || target.skill === 'plugins-v3' || target.document === 'plugin-v3'
           ? 'writing-plugins-v3'
           : target.skill;
-      const routePath = requestedSkill
-        ? `/skills/${encodeURIComponent(requestedSkill)}${target.document && target.document !== 'plugin-v3' ? `/${encodeURIComponent(target.document)}` : ''}`
-        : '/skills';
+      const routePath = target.guide
+        ? `/guides/${encodeURIComponent(target.guide)}`
+        : requestedSkill
+          ? `/skills/${encodeURIComponent(requestedSkill)}${target.document && target.document !== 'plugin-v3' ? `/${encodeURIComponent(target.document)}` : ''}`
+          : '/skills';
       const data = await apiRequest('GET', routePath);
       if (isApiError(data)) return textResult(data);
-      const routes = [route(requestedSkill ? 'read_skill' : 'list_skills', 'GET', routePath)];
+      const routes = [
+        route(target.guide ? 'read_guide' : requestedSkill ? 'read_skill' : 'list_skills', 'GET', routePath),
+      ];
       return textResult(
         facadeEnvelope(
           'load_guidance',

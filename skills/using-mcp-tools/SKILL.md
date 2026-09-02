@@ -60,3 +60,5 @@ Load only when needed:
 - [`TOOL_REFERENCE.md`](TOOL_REFERENCE.md) for the complete legacy/granular catalog.
 - [`FILE_STRUCTURES.md`](FILE_STRUCTURES.md) for exact artifact shapes.
 - `docs/MCP_TOOL_SURFACE.md` and `docs/MCP_ERROR_CONTRACT.md` for profile and response contracts.
+
+When a skill points at a document outside its own directory, such as a family profile or field inventory under `risu/*/docs`, read it with `inspect_document` and `{ kind: "guidance", guide: "<name>" }`. The name may be the guide id (`prompts/families/MYTHOS.md`), the repository path the skill shows, or a unique file name; the guidance catalog (`{ kind: "guidance" }`) lists every guide name.

@@ -73,6 +73,13 @@ export function resolveGuideCatalogEntry(
     return exactMatch;
   }
 
+  const repositoryPathMatch = allEntries.find(
+    (entry) => normalizePath(path.join(entry.rootRelativePath, entry.relativePathWithinRoot)) === normalizedGuideName,
+  );
+  if (repositoryPathMatch) {
+    return repositoryPathMatch;
+  }
+
   if (!normalizedGuideName.includes('/')) {
     const basenameMatches = allEntries.filter(
       (entry) => path.posix.basename(entry.relativePathWithinRoot) === normalizedGuideName,

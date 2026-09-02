@@ -34,7 +34,7 @@ Treat contradiction as active fuel, not a problem requiring “deep down” reso
 
 Choose trope stance deliberately: play a recognizable pattern straight at full quality, or subvert one mechanism while keeping the surface legible. Use an anchor plus one clear deviation for compact bots; add reinforcing echoes only for long-form or cross-media recognition. Load `trope-library` when exact archetype beats matter.
 
-Infer information already provided. Ask no more than one unresolved question that would materially change the result.
+Infer what is already supplied and ask at most one question, only when the unresolved choice would materially change the result.
 
 ## Optional references
 

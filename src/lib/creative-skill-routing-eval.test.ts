@@ -3,12 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { resolveSkillRootDirs } from './content-roots';
+import { resolveGuideRootDirs, resolveSkillRootDirs } from './content-roots';
 import { listSkillCatalogEntries } from './skill-catalog';
 
 const ROOT = path.resolve(__dirname, '../..');
 const SKILL_ROOTS = resolveSkillRootDirs(ROOT);
 const CATALOG = listSkillCatalogEntries(SKILL_ROOTS);
+const GUIDE_ROOTS = resolveGuideRootDirs(ROOT);
 
 function read(relativePath: string) {
   return fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
@@ -102,14 +103,41 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
     expect(total).toBeLessThanOrEqual(24_000);
   });
 
-  it('keeps referenced Markdown files resolvable', () => {
+  it('keeps referenced Markdown files resolvable and in-skill references servable by read_skill', () => {
     for (const entry of CATALOG) {
       const source = skillSource(entry.name);
       for (const reference of markdownReferences(source)) {
         if (/^(?:https?:|#)/iu.test(reference)) continue;
         const relativePath = decodeURIComponent(reference.split('#', 1)[0]);
-        expect(fs.existsSync(path.resolve(entry.dirPath, relativePath)), `${entry.name}: ${reference}`).toBe(true);
+        const resolved = path.resolve(entry.dirPath, relativePath);
+        expect(fs.existsSync(resolved), `${entry.name}: ${reference}`).toBe(true);
+        const withinSkill = path.relative(entry.dirPath, resolved).replace(/\\/gu, '/');
+        if (withinSkill.startsWith('..')) {
+          const owner = CATALOG.find((candidate) => !path.relative(candidate.dirPath, resolved).startsWith('..'));
+          if (owner) {
+            const withinOwner = path.relative(owner.dirPath, resolved).replace(/\\/gu, '/');
+            expect(owner.files, `${entry.name}: ${reference} is not served by read_skill(${owner.name})`).toContain(
+              withinOwner,
+            );
+            continue;
+          }
+          const servedByGuideRoot = GUIDE_ROOTS.some(
+            (root) => !path.relative(root.absolutePath, resolved).startsWith('..'),
+          );
+          expect(servedByGuideRoot, `${entry.name}: ${reference} is outside every skill and guide root`).toBe(true);
+          continue;
+        }
+        expect(entry.files, `${entry.name}: ${reference} is not served by read_skill`).toContain(withinSkill);
       }
+    }
+  });
+
+  it('keeps the shared intake rule identical across bot composition guidance', () => {
+    const rule =
+      'Infer what is already supplied and ask at most one question, only when the unresolved choice would materially change the result.';
+    expect(read('risu/bot/AGENTS.md')).toContain(rule);
+    for (const skill of ['authoring-characters', 'authoring-desire', 'authoring-worlds', 'core-craft']) {
+      expect(skillSource(skill), skill).toContain(rule);
     }
   });
 
@@ -283,7 +311,7 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
   it('uses one material clarification instead of rigid questionnaires', () => {
     for (const skill of ['authoring-characters', 'authoring-desire']) {
       const source = skillSource(skill);
-      expect(source, skill).toContain('Ask at most one');
+      expect(source, skill).toMatch(/ask at most one/iu);
       expect(source, skill).not.toMatch(/always ask|ask all|five questions|question 1/iu);
     }
   });

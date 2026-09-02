@@ -13,6 +13,7 @@ import {
   type McpErrorEnvelope,
 } from './mcp-api-test-harness';
 import { useMcpApiTestDir } from './mcp-api-vitest-helpers';
+import { resolveGuideRootDirs } from './content-roots';
 
 const FIXED_SKILL_ROOT = MCP_API_FIXED_SKILL_ROOT;
 const TEST_DIR = useMcpApiTestDir('skills-routes');
@@ -316,6 +317,111 @@ description: 'Reference skill for file reads'
       );
 
       expect(blocked.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API skill references', () => {
+  it('lists and reads references/*.md while rejecting other nested paths', async () => {
+    const skillsDir = path.join(TEST_DIR, 'skills-references');
+    await fs.promises.rm(skillsDir, { recursive: true, force: true });
+    await writeSkillFixture(skillsDir, 'profile-skill', {
+      'SKILL.md': `---\nname: profile-skill\ndescription: 'Skill with a references directory'\n---\n\n# Profile Skill\n`,
+      'references/TARGET.md': '# Target profile\n',
+      'notes/HIDDEN.md': '# Not served\n',
+    });
+
+    const api = await startTestApiServer(createSearchFixture(), [], skillsDir);
+    try {
+      const list = await getJson<{ skills: Array<{ name: string; files: string[] }> }>(api.port, api.token, '/skills');
+      expect(list.status).toBe(200);
+      expect(list.data.skills[0]?.files).toEqual(['SKILL.md', 'references/TARGET.md']);
+
+      const detail = await getJson<{ file: string; content: string }>(
+        api.port,
+        api.token,
+        '/skills/profile-skill/references%2FTARGET.md',
+      );
+      expect(detail.status).toBe(200);
+      expect(detail.data).toMatchObject({ file: 'references/TARGET.md' });
+      expect(detail.data.content).toContain('# Target profile');
+
+      const hidden = await getJson<McpErrorEnvelope>(api.port, api.token, '/skills/profile-skill/notes%2FHIDDEN.md');
+      expect(hidden.status).toBe(400);
+      expect(hidden.data.error).toContain('Invalid file name');
+
+      const escaped = await getJson<McpErrorEnvelope>(
+        api.port,
+        api.token,
+        '/skills/profile-skill/references%2F..%2FSKILL.md',
+      );
+      expect(escaped.status).toBe(400);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
+
+describe('MCP API guide documents', () => {
+  it('lists guides and reads them by catalog name, repository path, or unique file name with bounded cursors', async () => {
+    const baseDir = path.join(TEST_DIR, 'guides-base');
+    await fs.promises.rm(baseDir, { recursive: true, force: true });
+    const commonDocs = path.join(baseDir, 'risu', 'common', 'docs');
+    const familyDocs = path.join(baseDir, 'risu', 'prompts', 'docs', 'families');
+    await fs.promises.mkdir(commonDocs, { recursive: true });
+    await fs.promises.mkdir(familyDocs, { recursive: true });
+    await fs.promises.writeFile(path.join(commonDocs, 'GUIDE.md'), '# Common guide\n', 'utf-8');
+    await fs.promises.writeFile(path.join(familyDocs, 'FAMILY.md'), '# Family profile\n\n한글 본문\n', 'utf-8');
+
+    const api = await startTestApiServer(createSearchFixture(), [], undefined, {
+      guideRoots: resolveGuideRootDirs(baseDir),
+    });
+    try {
+      const list = await getJson<{ count: number; guides: Array<{ name: string; path: string }> }>(
+        api.port,
+        api.token,
+        '/guides',
+      );
+      expect(list.status).toBe(200);
+      expect(list.data.guides.map((guide) => guide.name)).toEqual(['common/GUIDE.md', 'prompts/families/FAMILY.md']);
+      expect(list.data.guides[1]?.path).toBe('risu/prompts/docs/families/FAMILY.md');
+
+      for (const name of ['prompts/families/FAMILY.md', 'risu/prompts/docs/families/FAMILY.md', 'FAMILY.md']) {
+        const detail = await getJson<{ guide: string; content: string }>(
+          api.port,
+          api.token,
+          `/guides/${encodeURIComponent(name)}`,
+        );
+        expect(detail.status, name).toBe(200);
+        expect(detail.data.guide).toBe('prompts/families/FAMILY.md');
+        expect(detail.data.content).toContain('# Family profile');
+      }
+
+      const first = await getJson<{ content: string; next_cursor: string | null; truncated: boolean }>(
+        api.port,
+        api.token,
+        `/guides/${encodeURIComponent('prompts/families/FAMILY.md')}?max_bytes=20`,
+      );
+      expect(first.status).toBe(200);
+      expect(first.data.truncated).toBe(true);
+      const rest = await getJson<{ content: string; truncated: boolean }>(
+        api.port,
+        api.token,
+        `/guides/${encodeURIComponent('prompts/families/FAMILY.md')}?cursor=${encodeURIComponent(first.data.next_cursor ?? '')}`,
+      );
+      expect(rest.status).toBe(200);
+      expect(rest.data.truncated).toBe(false);
+      expect(first.data.content + rest.data.content).toBe('# Family profile\n\n한글 본문\n');
+
+      const traversal = await getJson<McpErrorEnvelope>(api.port, api.token, '/guides/..%2Fpackage.json');
+      expect(traversal.status).toBe(400);
+      expect(traversal.data.error).toContain('Invalid guide name');
+
+      const missing = await getJson<McpErrorEnvelope>(api.port, api.token, '/guides/NOPE.md');
+      expect(missing.status).toBe(404);
+      expect(missing.data.suggestion).toContain('common/GUIDE.md');
     } finally {
       await closeServer(api.server);
     }

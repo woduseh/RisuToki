@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup, type LoadedDocumentData } from '../charx-io';
-import { resolveSkillRootDirs } from './content-roots';
+import { resolveGuideRootDirs, resolveSkillRootDirs, type ResolvedGuideRoot } from './content-roots';
 import type { RuntimeMetadata } from './mcp-runtime-contract';
 import {
   combineCssSections,
@@ -150,6 +150,7 @@ export interface McpNoOpRecoveryEnvelope extends McpRecoveryEnvelope {
 }
 
 export interface TestDepsOverrides {
+  guideRoots?: ResolvedGuideRoot[];
   getSessionStatus?: () => TestSessionStatus | Promise<TestSessionStatus>;
   getRuntimeInfo?: () => RuntimeMetadata;
   parseLuaSections?: (lua: string) => Array<{ name: string; content: string }>;
@@ -352,9 +353,11 @@ export async function writeSkillFixture(
   const skillDir = path.join(rootDir, skillName);
   await fs.promises.mkdir(skillDir, { recursive: true });
   await Promise.all(
-    Object.entries(files).map(([fileName, content]) =>
-      fs.promises.writeFile(path.join(skillDir, fileName), content, 'utf-8'),
-    ),
+    Object.entries(files).map(async ([fileName, content]) => {
+      const filePath = path.join(skillDir, fileName);
+      await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.promises.writeFile(filePath, content, 'utf-8');
+    }),
   );
 }
 
@@ -445,6 +448,7 @@ export async function startTestApiServer(
         : skillRoots
           ? [skillRoots]
           : resolveSkillRootDirs(path.join(__dirname, '..', '..')).map((root) => root.absolutePath),
+    getGuideRoots: () => overrides?.guideRoots ?? resolveGuideRootDirs(path.join(__dirname, '..', '..')),
     getUserDataPath: () => overrides?.userDataPath ?? path.join(os.tmpdir(), 'risutoki-mcp-api-test-user-data'),
     getRuntimeInfo: overrides?.getRuntimeInfo,
     invalidateAssetsMapCache: overrides?.invalidateAssetsMapCache,

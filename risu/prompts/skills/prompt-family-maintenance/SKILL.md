@@ -16,6 +16,10 @@ related_tools:
 
 # Prompt Family Maintenance
 
+## Outcome
+
+Bring every derived variant of a prompt family into agreement with its canonical artifact and family contract, changing only what the approved decision requires and keeping justified divergences explicit.
+
 ## Workflow
 
 1. Read the relevant family profile under `../../docs/families/` when one exists, then identify the declared canonical artifact, every in-scope target, artifact type, current version, and allowed provider exceptions. Do not assume that a filename containing `Source` is canonical.
@@ -24,9 +28,13 @@ related_tools:
 4. If the intended behavior or family contract is unsettled, stop that decision and hand it to `prompt-family-development`.
 5. Plan the smallest synchronized change. Apply the canonical change first where possible, then named variants in a stable order while preserving only justified divergences.
 6. Use `writing-risup-presets` and structured tools for `.risup` item, order, range, or request-contract changes. Carry current identity, type, and preview guards for index-based edits.
-7. Recompare and validate parsing, CBS balance, reachable branches, control names, prefill/regex pairs, prompt item identity, family invariants, and version alignment.
+7. Recompare and run the validation below.
 
 For Mythos, read [MYTHOS.md](../../docs/families/MYTHOS.md). For Phēmē, read [PHEME.md](../../docs/families/PHEME.md). Load no unrelated family profile.
+
+## Validation
+
+Verify parsing, CBS balance, reachable branches, control names and UI labels, prefill/regex pairs, prompt item identity and order, family invariants, and version alignment across the canonical artifact and every changed variant. Name each remaining divergence and its reason.
 
 ## Output
 

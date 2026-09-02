@@ -12,11 +12,30 @@ export interface SkillCatalogEntry {
   readonly files: string[];
 }
 
-function getSkillMarkdownFiles(dirPath: string) {
+const SKILL_REFERENCE_DIR = 'references';
+const SKILL_FILE_NAME_PATTERN = /^[^/\\]+\.md$/u;
+
+/** Skill documents that `read_skill` serves: top-level `*.md` plus `references/*.md`, nothing deeper. */
+export function isReadableSkillFileName(fileName: string) {
+  if (fileName.includes('..') || fileName.includes('\\')) return false;
+  if (SKILL_FILE_NAME_PATTERN.test(fileName)) return true;
+  const prefix = `${SKILL_REFERENCE_DIR}/`;
+  return fileName.startsWith(prefix) && SKILL_FILE_NAME_PATTERN.test(fileName.slice(prefix.length));
+}
+
+function listMarkdownFileNames(dirPath: string) {
+  if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) return [];
   return fs
     .readdirSync(dirPath)
     .filter((fileName) => fileName.endsWith('.md'))
     .sort((a, b) => a.localeCompare(b));
+}
+
+function getSkillMarkdownFiles(dirPath: string) {
+  const references = listMarkdownFileNames(path.join(dirPath, SKILL_REFERENCE_DIR)).map(
+    (fileName) => `${SKILL_REFERENCE_DIR}/${fileName}`,
+  );
+  return [...listMarkdownFileNames(dirPath), ...references];
 }
 
 export function listSkillCatalogEntries(skillRoots: readonly ResolvedSkillRoot[]): SkillCatalogEntry[] {

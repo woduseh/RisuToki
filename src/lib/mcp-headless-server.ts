@@ -34,7 +34,7 @@ import {
   parseCssSections,
   parseLuaSections,
 } from './mcp-section-parser';
-import { resolveSkillRootDirs } from './content-roots';
+import { resolveGuideRootDirs, resolveSkillRootDirs } from './content-roots';
 
 export interface HeadlessMcpOptions {
   readonly filePath?: string;
@@ -253,6 +253,7 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
       mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,
       stringifyTriggerScripts,
       getSkillRoots: () => resolveSkillRootDirs(baseRoot).map((root) => root.absolutePath),
+      getGuideRoots: () => resolveGuideRootDirs(baseRoot),
       getUserDataPath: () => userDataPath,
       getRuntimeInfo: () => runtime,
       getCurrentFilePath: () => currentFilePath,

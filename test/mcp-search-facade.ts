@@ -1587,6 +1587,18 @@ export async function runStandaloneFacadeDogfood(): Promise<void> {
       max_bytes: 4096,
     });
     assert.deepEqual(routedTools(guidance), ['read_skill']);
+    const guidanceCatalog = await callJson(runtime, 'inspect_document', {
+      target: { kind: 'guidance' },
+      max_bytes: 16384,
+    });
+    assert.deepEqual(routedTools(guidanceCatalog), ['list_skills']);
+    assert.ok(JSON.stringify(guidanceCatalog).includes('prompts/families/MYTHOS.md'));
+    const guideRead = await callJson(runtime, 'inspect_document', {
+      target: { kind: 'guidance', guide: 'prompts/families/MYTHOS.md' },
+      max_bytes: 4096,
+    });
+    assert.deepEqual(routedTools(guideRead), ['read_guide']);
+    assert.match(JSON.stringify(guideRead), /Mythos Prompt Family Profile/);
 
     const externalInspect = await callJson(runtime, 'inspect_document', { target: externalTarget });
     assert.deepEqual(routedTools(externalInspect), ['inspect_external_file']);

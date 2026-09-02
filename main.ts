@@ -34,7 +34,7 @@ import { initAssetManager, invalidateAssetsMapCache } from './src/lib/asset-mana
 import { writeFileAtomicSync } from './src/lib/atomic-write';
 import { initAutosaveManager } from './src/lib/autosave-manager';
 import { resolveCloseWindowAction, shouldPromptForUnsavedClose } from './src/lib/close-window-policy';
-import { resolveSkillRootDirs } from './src/lib/content-roots';
+import { resolveGuideRootDirs, resolveSkillRootDirs } from './src/lib/content-roots';
 import { applyUpdates, initDataSerializer, serializeForRenderer } from './src/lib/data-serializer';
 import {
   extractDocumentToProject,
@@ -998,6 +998,7 @@ app.whenReady().then(() => {
     stringifyTriggerScripts,
     getSkillRoots: () =>
       resolveSkillRootDirs(app.isPackaged ? process.resourcesPath! : APP_ROOT).map((root) => root.absolutePath),
+    getGuideRoots: () => resolveGuideRootDirs(app.isPackaged ? process.resourcesPath! : APP_ROOT),
     getUserDataPath: () => app.getPath('userData'),
     getSessionStatus: getCurrentMcpSessionStatus,
     getCurrentFilePath: () => mainState.currentFilePath,

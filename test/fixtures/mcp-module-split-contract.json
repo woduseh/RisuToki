@@ -8,18 +8,18 @@
     },
     "authoring": {
       "toolCount": 175,
-      "rawBytes": 226512,
-      "sha256": "b67203d32baa67c8de42cd37801ec277f0fd47cd21d6b79451b5c46d2cb45831"
+      "rawBytes": 226552,
+      "sha256": "f53951488e515b4546e46ad011e63371584e8d2d3c59ef2e0477c9809fc010a4"
     },
     "advanced-full": {
       "toolCount": 203,
-      "rawBytes": 256545,
-      "sha256": "720c569c30ad0d9c1dda82cf9140eb2d6c1bc003056d4f5ee7496ed47dd60c0c"
+      "rawBytes": 256585,
+      "sha256": "c5b01cb47a22d267cb72c5615d4943f18abdbf002b6f0177503c68bdbefa6abb"
     },
     "readonly": {
       "toolCount": 108,
-      "rawBytes": 110095,
-      "sha256": "546962b24ae9f9f91c0b4d62ef15498b4aec5931cd657e6a0d5ad30961f12ab4"
+      "rawBytes": 110135,
+      "sha256": "4b1dbe7da6d3a3f0ff9c317d4ee2509cc4590b435b8a7455371188bb0eacb870"
     }
   },
   "http": {

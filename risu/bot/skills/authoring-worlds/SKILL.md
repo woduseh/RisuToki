@@ -24,7 +24,7 @@ Create a world that produces immediate scenes through pressures, norms, contradi
 9. Set knowledge horizons: what each group can know, infer, misunderstand, or never access. Prevent omniscient leakage.
 10. Contrast the result against the genre's default prediction and decide deliberately what stays familiar and what becomes the signature.
 
-Infer information already supplied. Ask at most one question only when a missing choice materially changes the world. Load `GENRE_PRESETS.md` for genre-specific starting lenses and `VALIDATION.md` for an extended review.
+Infer what is already supplied and ask at most one question, only when the unresolved choice would materially change the result. Load `GENRE_PRESETS.md` for genre-specific starting lenses and `VALIDATION.md` for an extended review.
 
 ## Output
 

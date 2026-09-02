@@ -803,6 +803,21 @@ describe('facade v1 contract schemas', () => {
     ).toBe(false);
   });
 
+  it('reads guide documents through the guidance target without mixing skill selectors', () => {
+    expect(
+      validateBody(
+        { target: { kind: 'guidance', guide: 'prompts/families/MYTHOS.md' } },
+        facadeV1LoadGuidanceBodySchema,
+      ).success,
+    ).toBe(true);
+    expect(
+      validateBody(
+        { target: { kind: 'guidance', guide: 'prompts/families/MYTHOS.md', skill: 'project-workflow' } },
+        facadeV1LoadGuidanceBodySchema,
+      ).success,
+    ).toBe(false);
+  });
+
   it('bounds read/search batches and max_bytes for context-safe facade calls', () => {
     const tooManySelectors = Array.from({ length: FACADE_V1_LIMITS.maxBatchItems + 1 }, (_, index) => ({
       family: 'field',

@@ -9,6 +9,18 @@
 
 ---
 
+## [3.2.0] - 2026-09-02
+
+### Added
+
+- `list_skills` now reports `references/*.md` files and `read_skill` serves them as `references/<name>.md`, so target and model profiles such as `references/ANIMA.md` are reachable through MCP instead of only through the filesystem.
+- The guidance target accepts `guide` to read documents under `risu/*/docs` by catalog name, repository path, or unique file name, and the guidance catalog lists guide names. Skills that point at family profiles, field inventories, plugin API references, or syntax guides are now fully readable by MCP-only clients. The `inspect_document` and `load_guidance` input schemas gained the optional `guide` field, and the MCP contract baseline was regenerated for it.
+
+### Changed
+
+- Unified the shared intake rule across the bot router and composition skills, and gave `prompt-family-maintenance` explicit Outcome and Validation sections.
+- Added guards against guidance drift: project-workflow reference copies must match their `docs/` originals apart from link paths, and every in-skill Markdown link must be a file `read_skill` can serve.
+
 ## [3.1.1] - 2026-09-02
 
 ### Changed

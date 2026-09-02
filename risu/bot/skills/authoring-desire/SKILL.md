@@ -19,7 +19,7 @@ Choose the creative mode before designing access or progression:
 - **Fixed narrative:** author explicit events and endings, including non-consensual, coercive, degrading, corruptive, or irreversible outcomes when requested.
 - **Route/serial hybrid:** identify which milestones are fixed and which choices remain open; do not silently convert one into the other.
 
-Treat consent, willingness, refusal, incapacity, and inevitability as possible facts of the requested fiction, not as universal quality gates. Do not add negotiation, stop mechanisms, recovery, redemption, preserved identity, or escape routes unless the premise calls for them. Infer supplied information and **Ask at most one** question only when an unresolved choice would materially change the fantasy.
+Treat consent, willingness, refusal, incapacity, and inevitability as possible facts of the requested fiction, not as universal quality gates. Do not add negotiation, stop mechanisms, recovery, redemption, preserved identity, or escape routes unless the premise calls for them. Infer what is already supplied and ask at most one question, only when the unresolved choice would materially change the result.
 
 ## Minimal workflow
 

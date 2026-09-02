@@ -21,7 +21,7 @@ Load optional references only for the current need: `CHARACTER_SCALES.md` for de
 
 ## Intake
 
-Infer all information already present and do not restart a questionnaire. **Ask at most one** question, only when an unresolved choice would materially change the character. Decide presentation, exact wording, secondary texture, and reasonable connective details yourself. Preserve user-established canon.
+Infer what is already supplied and ask at most one question, only when the unresolved choice would materially change the result. Do not restart a questionnaire. Decide presentation, exact wording, secondary texture, and reasonable connective details yourself. Preserve user-established canon.
 
 In Emergent RP, do not script `{{user}}`'s unprovided present action, dialogue, emotion, interpretation, or choice. This is an authorship boundary, not a content-softening rule: characters may pressure, deceive, threaten, coerce, overpower, or impose consequences when the requested premise calls for it. Preserve fixed persona facts and fixed-narrative beats that the user has already established.
 
