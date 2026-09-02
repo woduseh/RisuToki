@@ -9,6 +9,12 @@
 
 ---
 
+## [3.2.2] - 2026-09-03
+
+### Changed
+
+- Rewrote the bundled project guide `risu/common/docs/CLAUDE.md`, which the AI terminal attaches as the default `AGENTS.md` project guide for Codex, Copilot, and Antigravity sessions, from a 435-line granular-tool reference into a facade-first guide: `tools/list` as the source of truth, narrow reads, preview then apply with the editor confirmation as the approval gate, skill routing through `list_skills` and `read_skill`, and guide documents through the guidance target's `guide` selector. Field inventories and syntax cheat sheets moved out in favor of the skills and guides that carry them. The user-editable "프로젝트별 참고사항" section is preserved.
+
 ## [3.2.1] - 2026-09-03
 
 ### Added

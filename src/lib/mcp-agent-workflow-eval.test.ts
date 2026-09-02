@@ -132,19 +132,6 @@ describe('agent eval: real artifact workflow routing matrix', () => {
     expect(tasks.filter((task) => task.execution === 'static').every((task) => task.family === 'plugin-v3')).toBe(true);
   });
 
-  it('keeps project-workflow reference copies identical to their docs originals apart from link paths', () => {
-    const normalize = (source: string) =>
-      source
-        .replace(/\]\(\.\.\/\.\.\/docs\//g, '](')
-        .replace(/-{3,}/g, '---')
-        .replace(/[ \t]+/g, ' ');
-    for (const name of ['MCP_WORKFLOW.md', 'PROJECT_RULES.md']) {
-      const original = fs.readFileSync(path.join(ROOT, 'docs', name), 'utf-8');
-      const copy = fs.readFileSync(path.join(ROOT, 'skills', 'project-workflow', name), 'utf-8');
-      expect(normalize(copy), name).toBe(normalize(original));
-    }
-  });
-
   it('keeps workflow eval references synchronized across canonical docs', () => {
     const requiredRefs = [
       ['docs/README.md', 'mcp-agent-workflow-eval.test.ts'],

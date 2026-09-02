@@ -437,6 +437,52 @@ describe('agent guidance ownership and startup budget', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// Bundled project guide (risu/common/docs/CLAUDE.md)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('bundled project guide stays facade-first', () => {
+  const guidePath = path.join(ROOT, 'risu', 'common', 'docs', 'CLAUDE.md');
+  const guide = fs.readFileSync(guidePath, 'utf-8');
+
+  it('teaches the default facade workflow and the skill bootstrap tools', () => {
+    for (const tool of [
+      'inspect_document',
+      'read_content',
+      'preview_edit',
+      'apply_edit',
+      'validate_content',
+      'list_skills',
+      'read_skill',
+    ]) {
+      expect(guide, tool).toContain(`\`${tool}\``);
+    }
+    expect(guide).toContain('"kind": "guidance"');
+    expect(guide).toContain('"guide"');
+  });
+
+  it('does not present granular tools as the primary workflow', () => {
+    // Tool tables and call-style instructions for granular tools were the legacy failure mode.
+    expect(guide).not.toMatch(
+      /\|\s*`(?:list|read|write|add|delete|replace_in|insert_in)_(?:lua|css|field|fields|lorebook|regex)`/u,
+    );
+    expect(guide).not.toMatch(/(?:read|write)_field\(/u);
+  });
+
+  it('names only skills that exist in the catalog', () => {
+    const catalog = new Set(getSkillEntries().map((entry) => entry.name));
+    const named = [
+      ...guide.matchAll(/`((?:authoring|writing|prompt-family|file-structure|using-mcp)[a-z0-9-]*)`/gu),
+    ].map((match) => match[1]);
+    expect(named.length).toBeGreaterThan(10);
+    expect(named.filter((name) => !catalog.has(name))).toEqual([]);
+  });
+
+  it('stays within a bounded startup size', () => {
+    expect(countWords(guide)).toBeLessThanOrEqual(700);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 // 7. Canonical architecture and contributor workflow
 // ────────────────────────────────────────────────────────────────────────────
 
