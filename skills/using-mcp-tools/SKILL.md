@@ -29,10 +29,12 @@ Use the narrowest facade-first route that can complete the artifact task, preser
 1. Discover only what is needed with `inspect_document` or the relevant list/search selector.
 2. Read bounded content with `read_content`; narrow by family, field, item identity, range, or query before increasing the byte limit.
 3. Use `analyze_content` for transformation, statistics, comparison, simulation, regex/CBS/Danbooru analysis, or import verification. Use `validate_content` for pass/fail diagnostics.
-4. For changes, create a focused `preview_edit`, review target/digest/guard metadata, then call `apply_edit` once. A token is one-shot; after interruption, stale response, timeout, or partial failure, inspect current state and create a new preview.
+4. For changes, create a focused `preview_edit`, review target/digest/guard metadata, then call `apply_edit` once. Apply-stage tools declare `requiresConfirmation`: the editor's dialog or the standalone write gate is the approval boundary, so do not ask in chat before applying a preview that matches the request. Ask only when the preview exposes a choice the request left open. A token is one-shot; after interruption, stale response, timeout, or partial failure, inspect current state and create a new preview.
 5. Re-read or validate the changed surface and report the artifact evidence.
 
-Use `manage_items` for supported structured item operations, `manage_assets` for asset workflows, and `manage_file` for guarded open/save/extract/reassemble operations. Batch sibling items instead of looping. Prefer stable `id` or `identity` selectors; when only indexes exist, carry the latest expected type/preview/hash from the list or read response.
+Use `manage_items` for supported structured item operations, `manage_assets` for asset workflows, and `manage_file` for guarded open/save/extract/reassemble operations. Batch sibling items instead of looping, and issue independent reads, searches, and previews in one turn rather than one per turn. Prefer stable `id` or `identity` selectors; when only indexes exist, carry the latest expected type/preview/hash from the list or read response.
+
+Prefer replace, insert, and range operations over whole-section or whole-field rewrites; rewrite a section only when most of it changes. The result is the same, but a rewrite costs output tokens, time, and a larger confirmation diff.
 
 ## Boundaries and fallback
 
@@ -46,6 +48,10 @@ Use `manage_items` for supported structured item operations, `manage_assets` for
 ## Context and safety
 
 Honor response `next_actions`, byte sizes, truncation metadata, confirmation requirements, and dry-run support. For large fields, search then range-read; for large exact rewrites, use guarded export/import or project-folder workflows. Do not automatically retry a mutation whose outcome is unknown.
+
+`manage_assets` `read_asset` returns the asset bytes as base64 into context. Use list metadata for identity, size, and references, and read bytes only when the bytes themselves are the task; base64 payloads waste context and can trip content safeguards.
+
+Tool names, fields, guards, and profiles you remember from earlier RisuToki versions may have changed. Trust the current `tools/list` `_meta`, response `next_actions`, and this skill over memory.
 
 ## References
 

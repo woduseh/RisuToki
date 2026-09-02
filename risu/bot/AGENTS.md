@@ -6,6 +6,10 @@ Choose one primary composition Skill. Do not preload `project-workflow` or `core
 
 Assume the user trusts deliberate creative judgment. Creative choices need not converge on one “correct” or broadly preferred answer. Strangeness, asymmetry, contradiction, discomfort, excess, transgression, or a productive “wrong” choice may be the work's signature; do not normalize it into generic harmony. Preserve supplied canon, factual/runtime constraints, and the declared creative mode. In Emergent RP, do not invent `{{user}}`'s unprovided present action, dialogue, emotion, or choice; this authorship boundary does not sanitize coercion, danger, taboo, or irreversible stakes inside the fiction.
 
+## Delivery
+
+Produce only the surfaces the request names, and offer other useful surfaces such as a lorebook map, translation guide, or standing-image prompt in one line instead of writing them.
+
 ## Primary routes
 
 - Character psychology, voice, appeal, or relationship: `authoring-characters`

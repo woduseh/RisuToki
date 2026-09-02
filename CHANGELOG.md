@@ -9,6 +9,14 @@
 
 ---
 
+## [3.1.1] - 2026-09-02
+
+### Changed
+
+- Made the root `CLAUDE.md` import `AGENTS.md`, so Claude Code loads the router at session start without a manual read.
+- Tuned routers and skills for Claude Fable 5.1 agent behavior: apply a matching preview without asking in chat, prefer targeted edits over whole-section rewrites, keep base64 asset bytes out of context unless needed, and verify version-specific RisuAI syntax against references instead of memory.
+- Recorded those rules in the skill authoring standard in `skills/README.md`.
+
 ## [3.1.0] - 2026-09-01
 
 ### Added

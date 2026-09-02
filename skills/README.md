@@ -59,6 +59,10 @@ Every skill should make the first read decisive. Keep `SKILL.md` as the executio
 - Keep routing/evaluation cases in deterministic test fixtures, not in the runtime `SKILL.md` context.
 - In `related_tools`, list facade tools first (`inspect_document`, `read_content`, `search_document`, `analyze_content`, `validate_content`, `preview_edit`/`apply_edit`, `manage_items`/`manage_assets`/`manage_file`) and keep only the domain-specific granular tools that remain real fallback surfaces after them — list order signals priority. See `using-mcp-tools` for the facade-first routing contract.
 - Treat large reference files as opt-in depth, not required startup context.
+- Name the approval gate. When the editor dialog or a write gate confirms a mutation, say so, so a capable model applies a matching preview instead of asking permission in chat.
+- Write positive contracts: state when a format, surface, or clarifying question is appropriate rather than only prohibiting it. Blanket prohibitions make current models under-deliver.
+- Where correctness depends on a RisuAI version, state the verified baseline and point at the reference so the model verifies instead of recalling.
+- Keep skills harness-neutral. Do not restate rules the Claude Code or Codex system prompt already supplies, such as progress updates, tool-call batching, or general autonomy, unless this repository changes them.
 
 `npm run sync:skills` rebuilds `.skill-catalog/` from the tracked skill roots above so Codex (`.agents/skills`) and Claude Code (`.claude/skills`) see the same unified catalog. Gemini and GitHub Copilot Skill mirrors are no longer generated.
 
@@ -68,7 +72,7 @@ The catalog is **repo-root scoped in this repository**: Claude Code reads `.clau
 
 ### For AI assistants
 
-1. Let the root or nearest subtree router choose one primary Skill from the client-visible catalog.
+1. Let the root or nearest subtree router choose one primary Skill from the client-visible catalog. Claude Code loads the root `AGENTS.md` automatically through the `@AGENTS.md` import in `CLAUDE.md`.
 2. If discovery is still needed, call `list_skills` with the current `scopes`, a narrow `query`, and `detail: "summary"`; the no-argument call remains the full compatibility view.
 3. Read that Skill's `SKILL.md` first and load auxiliary references only when its routing rules expose a concrete need.
 

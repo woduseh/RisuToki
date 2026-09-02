@@ -14,6 +14,11 @@ Within this repository, prefer these repository-specific routes over semanticall
 
 Do not preload `project-workflow`, the full Skill catalog, or unrelated authoring Skills. Add a support Skill only when the primary route exposes a concrete cross-domain need.
 
+## Delivery
+
+- Artifact mutations run preview, then apply. The editor's confirmation dialog or the standalone write gate is the approval boundary, so apply a preview that matches the request without asking in chat.
+- Deliver only the surfaces the request names. Offer other useful surfaces in one line instead of producing them.
+
 ## Scope boundaries
 
 - `project-workflow` owns implementation discipline, repository versioning, documentation synchronization, validation, and release policy.

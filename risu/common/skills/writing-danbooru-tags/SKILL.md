@@ -11,7 +11,7 @@ related_tools:
 ## Workflow
 
 1. Read only the appearance details relevant to the image.
-2. Search candidate tags instead of inventing spellings or aliases.
+2. Search candidate tags instead of inventing spellings or aliases; recognizing a tag is not validation.
 3. Compose a set ordered from subject/framing through body, hair/face, clothing, pose/expression, props, lighting, and background.
 4. Validate the complete final set in one batch and resolve invalid or ambiguous results.
 5. Remove tags that do not materially change the image.

@@ -1,6 +1,5 @@
-# Risutoki + Claude Code — Charx/Risum/Risup Project Guide
+# RisuToki — Claude Code Entry
 
-> This file has been consolidated into `AGENTS.md`.
-> Claude Code, GitHub Copilot CLI, Codex, and other AI coding assistants should read **`AGENTS.md`**.
+@AGENTS.md
 
-For detailed syntax guides, use `list_skills` → `read_skill` and load the relevant MCP skill file on demand.
+The imported router above is the single source of truth for Claude Code, Codex, and other assistants. Let it choose one skill, then read that skill with `read_skill`; do not preload the catalog.
