@@ -37,6 +37,7 @@ These rules apply **automatically** when the task changes the repo itself — ev
 - When changing MCP contracts, taxonomy, section-parsing behavior, or workflow routing expectations, run `npm run test:evals` for deterministic declarations/harness checks, `npm run test:evals:replay` for measured MCP stdio behavior, and `npm run test:mcp:contracts` for public tools/list and HTTP fingerprints before the full validation suite.
 - Use `npm run test:mcp:contracts:update` only for an intentional public contract change; review the printed profile/case summary and record the change in `CHANGELOG.md`.
 - PRs do **not** run packaging (`electron-builder`); packaging runs only in the tag-release workflow.
+- Before uploading, the tag-release workflow verifies that `latest.yml` names installer files that exist in `release/` and contain no whitespace. GitHub stores assets with spaces under dotted names while `electron-updater` downloads the hyphenated name, so NSIS artifacts are named `${productName}-Setup-${version}.${ext}`.
 - Dependency updates are monitored weekly via `Dependabot` for npm and GitHub Actions.
 
 ---

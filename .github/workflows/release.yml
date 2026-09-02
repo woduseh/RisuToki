@@ -59,6 +59,23 @@ jobs:
       - name: Package (NSIS + Portable)
         run: npx electron-builder --win nsis portable --publish never
 
+      - name: Verify latest.yml names packaged files without whitespace
+        shell: pwsh
+        run: |
+          $latest = Get-Content release/latest.yml -Raw
+          if ($latest -notmatch '(?m)^path:\s*"?([^"\r\n]+?)"?\s*$') {
+            throw "release/latest.yml has no path entry"
+          }
+          $installer = $Matches[1]
+          foreach ($name in @($installer, "$installer.blockmap")) {
+            if ($name -match '\s') {
+              throw "'$name' contains whitespace; GitHub renames such assets and electron-updater downloads the hyphenated name"
+            }
+            if (-not (Test-Path (Join-Path 'release' $name))) {
+              throw "latest.yml points at '$name', which is not in release/"
+            }
+          }
+
       - name: Upload artifacts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:

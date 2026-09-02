@@ -9,6 +9,12 @@
 
 ---
 
+## [3.2.3] - 2026-09-03
+
+### Fixed
+
+- Installer artifacts are now named `RisuToki-Setup-<version>.exe`, so the file name that `electron-updater` derives from `latest.yml` matches the asset GitHub stores. Releases uploaded through `action-gh-release` had been stored as `RisuToki.Setup.<version>.exe` because GitHub replaces spaces with dots, which made in-app update downloads fail with 404. The release workflow now fails before uploading when `latest.yml` points at a file that is missing from `release/` or contains whitespace. The published v3.2.2 release was repaired by adding hyphenated copies of the installer and its blockmap.
+
 ## [3.2.2] - 2026-09-03
 
 ### Changed
