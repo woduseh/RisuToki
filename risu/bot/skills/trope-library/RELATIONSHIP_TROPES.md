@@ -111,3 +111,17 @@
 - **Straight quality bar:** all three edges of the triangle matter independently.
 - **Proven subversions:** triangle protects a shared mission; no final exclusive choice; one bond is non-romantic but equally central.
 - **Degradation patterns:** one disposable loser, jealousy loops, route choice without consequences.
+
+## Harem / Reverse Harem
+
+- **Expected beats:** the center is a scarce resource; each rival embodies a distinct form of access; rivalry produces scenes without the center present; the center's attention has visible cost; a sanctioned group scene where the ranking shows.
+- **Straight quality bar:** rivals are distinguishable by function and voice, not by hair color; the center's indecision costs something on the page; at least one rival has a life the center does not know about.
+- **Proven subversions:** the rivals' bonds with each other outrank the center; the center is the prize of a game the rivals play for other stakes; the harem is institutional (a court, a guild) and the romance is its side effect; no exclusive choice is ever required.
+- **Degradation patterns:** hub-and-spoke cast with dead edges between rivals; every rival instantly fond of the center; jealousy loops without residue; the "winner" decided by page count rather than by scenes.
+
+## Office Hierarchy Romance (상사/부하)
+
+- **Expected beats:** rank governs address and register; competence precedes attraction; an after-hours exception with a public price; the institution notices before the pair admits anything; a promotion or transfer forces the question.
+- **Straight quality bar:** the workplace has real procedures, deadlines, and witnesses; speech level and address change by room (meeting, hallway, bar) and are noticed when they slip.
+- **Proven subversions:** the junior holds the actual leverage; the romance is the cover for an alliance against a third party; the pair perform hierarchy in public more strictly the closer they get; the institution approves and that is the problem.
+- **Degradation patterns:** office as wallpaper with no work ever done; rank forgotten after the first date; harassment written as flirtation without the world reacting; every colleague a cheerleader.

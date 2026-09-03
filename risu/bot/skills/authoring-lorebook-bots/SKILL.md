@@ -15,7 +15,9 @@ Produce a compact persistent bot anchor plus a deliberate lorebook architecture 
 
 This Skill owns distribution and scene architecture. `authoring-characters` owns deep character psychology, `authoring-worlds` owns world substance, and `writing-lorebooks` owns entry schema, keywords, decorators, and CBS syntax. Hand off when one of those becomes the main problem.
 
-Load `STRUCTURE_SCALES.md` for cast/complexity sizing, `LOREBOOK_ARCHITECTURE.md` for detailed trigger and placement patterns, and `BOT_VALIDATION.md` for extended audits.
+Assume the user trusts deliberate creative judgment: a strange, uncomfortable, excessive, or productively “wrong” choice may be the work's signature, so commit to it coherently instead of normalizing it, and preserve the requested intensity, moral ambiguity, transgression, and consequence. Keep exact facts and measurements in the data layer, and make every model-visible line sound like the character or world rather than a specification.
+
+Load `STRUCTURE_SCALES.md` for cast/complexity sizing, `LOREBOOK_ARCHITECTURE.md` for entry roles and trigger design, `BOT_VALIDATION.md` for whole-bot runtime audits, and [`USER_POSITION.md`](../authoring-characters/USER_POSITION.md) when `{{user}}`'s role, access, or persona compatibility shapes the society.
 
 ## Minimal workflow
 
@@ -28,7 +30,8 @@ Load `STRUCTURE_SCALES.md` for cast/complexity sizing, `LOREBOOK_ARCHITECTURE.md
    - Description: tone, persistent rules, core cast functions, scene grammar.
    - Lorebooks: conditional facts, locations, minor cast, secrets, phases, and deep reference.
    - Global note: short always-on operational constraints only.
-   - Opening: immediate situation, pressure, visible cast, and an actionable user choice.
+   - Opening: immediate situation, pressure, visible cast, and an actionable user choice; alternate openings go to `alternateGreetings`.
+   - Example lines: the description's voice section or `exampleMessage`; lorebook keys are matched against recent messages, with scan depth set per entry.
 7. If world logic is too generic or contradictory to distribute, hand back to `authoring-worlds` before polishing entries.
 
 Keep authoring labels such as “tier,” “entry,” or “activation” out of model-visible prose unless the fiction itself uses them.

@@ -2,7 +2,7 @@
   {
     "prompt": "새 캐릭터를 만들고 싶어. 과묵한 용병인데 고용주에게만 말이 많아지는 성격이야. 심리와 말투, 첫 메시지까지 잡아줘.",
     "use": ["authoring-characters"],
-    "exclude": ["core-craft", "authoring-worlds", "project-workflow"]
+    "exclude": ["authoring-worlds", "project-workflow"]
   },
   {
     "prompt": "새 판타지 세계관을 처음부터 만들어줘. 마법 체계, 길드 정치, 주요 도시 셋. 캐릭터는 아직 없어.",
@@ -21,8 +21,8 @@
   },
   {
     "prompt": "캐릭터가 1인칭으로 자기소개하는 형식의 시트로 써줘. 사실 정보는 표로, 말투는 본인 목소리로.",
-    "use": ["authoring-self-introduction-sheets"],
-    "exclude": ["authoring-characters"]
+    "use": ["authoring-characters"],
+    "exclude": ["authoring-lorebook-bots"]
   },
   {
     "prompt": "내가 만든 오리지널 IP '별빛 항구'를 웹툰, 게임, RisuAI 봇으로 확장할 거야. 매체마다 뭘 유지하고 뭘 바꿀지 정리해줘.",
@@ -86,8 +86,8 @@
   },
   {
     "prompt": "이 태그 목록이 실제 Danbooru 태그인지 확인하고 틀린 건 고쳐줘: silver_hair, red_eye, maid_outfit",
-    "use": ["writing-danbooru-tags"],
-    "exclude": ["writing-standing-image-prompts"]
+    "use": ["writing-standing-image-prompts"],
+    "exclude": ["authoring-media-mix"]
   },
   {
     "prompt": ".charx 안의 card.json과 module.risum이 어떻게 나뉘고 정규식 in/out 필드가 어디에 저장되는지 알려줘.",
@@ -128,5 +128,10 @@
     "prompt": "risup 프롬프트 아이템 삭제 라우트에 stale index 가드 테스트를 추가하고 CHANGELOG도 갱신해줘.",
     "use": ["project-workflow"],
     "exclude": ["using-mcp-tools"]
+  },
+  {
+    "prompt": "이 .charx 봇의 디스크립션과 로어북을 비평해줘. 어디가 살아 있고 어디서 무너질지, 별점과 함께 고칠 우선순위를 알려줘.",
+    "use": ["critiquing-bots"],
+    "exclude": ["authoring-characters", "writing-lorebooks"]
   }
 ]

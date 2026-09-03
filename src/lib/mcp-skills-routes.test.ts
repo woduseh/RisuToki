@@ -264,7 +264,7 @@ related_tools:
             ]),
           }),
           expect.objectContaining({
-            name: 'writing-danbooru-tags',
+            name: 'writing-standing-image-prompts',
             tags: expect.arrayContaining(['danbooru', 'assets']),
             relatedTools: expect.arrayContaining([
               'analyze_content',

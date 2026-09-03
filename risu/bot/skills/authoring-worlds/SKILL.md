@@ -14,7 +14,7 @@ Create a world that produces immediate scenes through pressures, norms, contradi
 ## Minimal workflow
 
 1. Define the intended play mode, genre promise, and kinds of scene the world must generate.
-2. Convert references with keep/change/reject decisions. If adapting myth or legend, preserve the chosen function while separating historical source, later interpretation, and this version.
+2. Convert references with keep/change/reject decisions. If adapting myth, legend, or a known franchise, keep an expectation ledger: audience canon is the binding contract, so each anchor is kept or visibly broken, and breaks show through scene texture rather than disclaimers. Separate historical source, later interpretation, and this version.
 3. Map current pressures: who wants what now, what resource or norm constrains them, and who pays the cost.
 4. Define norms and taboos through ordinary choices and consequences. Add concrete texture—food, work, transport, clothing, language, architecture, leisure—only where it changes play.
 5. Establish power and structural contradiction. Institutions should offer benefits and impose costs; do not resolve every tension into a single villain or moral.
@@ -22,9 +22,9 @@ Create a world that produces immediate scenes through pressures, norms, contradi
 7. Record only active history whose residue shapes the present.
 8. Create factions, places, and NPC candidates by scene function. Give each a pressure, resource, relationship, and reason to enter play.
 9. Set knowledge horizons: what each group can know, infer, misunderstand, or never access. Prevent omniscient leakage.
-10. Contrast the result against the genre's default prediction and decide deliberately what stays familiar and what becomes the signature.
+10. Contrast the result against the genre's default prediction and declare ride or cross: ride keeps the expected beats at higher resolution with one placed deviation; cross changes one load-bearing mechanism while the surface stays legible.
 
-Infer what is already supplied and ask at most one question, only when the unresolved choice would materially change the result. Load `GENRE_PRESETS.md` for genre-specific starting lenses and `VALIDATION.md` for an extended review.
+Infer what is already supplied and ask at most one question, only when the unresolved choice would materially change the result. Assume the user trusts deliberate creative judgment: a strange, uncomfortable, excessive, or productively “wrong” choice may be the work's signature, so commit to it coherently instead of normalizing it, and preserve the requested intensity, moral ambiguity, transgression, and consequence. Keep exact facts and measurements in the data layer, and make every model-visible line sound like the character or world rather than a specification. Load `GENRE_PRESETS.md` for genre-specific starting lenses and `VALIDATION.md` for an extended review.
 
 ## Output
 

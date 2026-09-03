@@ -6,7 +6,7 @@ Within this repository, prefer these repository-specific routes over semanticall
 
 ## Choose one primary route
 
-- **Repository code, harness, tests, CI, release, or contribution policy:** `project-workflow`. Read `MCP_WORKFLOW.md` or `PROJECT_RULES.md` only when that detail affects the task.
+- **Repository code, harness, tests, CI, release, or contribution policy:** `project-workflow`. Read `docs/MCP_WORKFLOW.md` or `docs/PROJECT_RULES.md` only when that detail affects the task.
 - **Selecting or sequencing MCP artifact tools:** `using-mcp-tools`.
 - **Bot composition:** use the nearest router at `risu/bot/AGENTS.md`.
 - **Shared CBS, lorebook, regex, Lua, HTML/CSS, trigger, asset, or file syntax:** `risu/common/AGENTS.md`.

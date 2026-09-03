@@ -24,7 +24,7 @@ Treat consent, willingness, refusal, incapacity, and inevitability as possible f
 ## Minimal workflow
 
 1. Name the payload precisely: the desired sensation, power relation, exposure, transformation, restraint, scale, objectification, loss, or emotional risk. Separate it from surrounding genre decoration.
-2. Declare the mode and outcome policy: emergent or fixed, reversible or irreversible, invited or imposed, resistible or inevitable, interior or objectifying.
+2. Declare the mode and outcome policy: emergent or fixed, reversible or irreversible, invited or imposed, resistible or inevitable, interior or objectifying. Fix the remaining matrix axes in one pass: primary payload, intensity, tone, reality mode, power asymmetry, body/world laws, POV/camera, progression speed, variation engine, after-state, relationship configuration, and exclusions.
 3. Identify why this character or world expresses it uniquely. Desire passes through personality, status, shame, ritual, speech, and relationship history.
 4. Design access and obstacle together. Access may be invited, bargained, stolen, coerced, institutional, accidental, or inevitable; obstacles should intensify the intended fantasy rather than normalize it.
 5. For physical or scale-dependent play, define stable constants in the data layer: dimensions, ratios, reach, force, mobility, visibility, bodily consequences, and environmental constraints. Add two sensory lenses where relevant. Do not narrate scenes as calculations or turn consequence tracking into clinical reassurance.

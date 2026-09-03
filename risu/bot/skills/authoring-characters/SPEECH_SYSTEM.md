@@ -88,7 +88,7 @@ Every register benefits from these four elements:
 
 The model should imitate the **structure**, not recite the literal lines.
 
-On frontier target models, 3–5 lines per important register — varied across different scene pressures — is the sweet spot; pattern extraction is strong enough that more material helps. `[weak-model note]` If the target model starts parroting:
+On frontier target models, 3–5 lines per important register — varied across different scene pressures — is the sweet spot; pattern extraction is strong enough that more material helps. Place them in the description's voice section or in `exampleMessage`. On weaker target models, if parroting starts:
 
 - reduce the number of nearly identical lines
 - vary sentence length and topic
@@ -277,7 +277,7 @@ in formal settings, but not when tired or embarrassed.
 
 ## 7. Translation-Survivable Voice
 
-Bots are written in English but played through a translation layer. English voice design that relies on implicit social register dies in translation: English has no grammatical formality system, so anything not encoded explicitly cannot be rendered into Korean speech levels.
+Bots are usually written in English and often played through a translation layer. English voice design that relies on implicit social register dies in translation: English has no grammatical formality system, so anything not encoded explicitly cannot be rendered into Korean speech levels.
 
 ### Address-form state
 
@@ -305,7 +305,7 @@ Signature phrases survive translation only when marked as fixed: record the phra
 
 ### Handoff
 
-Every dedicated bot should ship a translation guide built from these states — see `writing-translation-guides`.
+Ship a translation guide built from these states (`writing-translation-guides`) or explicitly declare English-only output. The router offers the guide in one line; write it only when asked.
 
 ---
 

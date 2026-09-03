@@ -13,13 +13,15 @@ Produce a compact mapping from source-language social and vocal cues to stable t
 
 ## Minimal workflow
 
-1. Identify speaker, addressee, relationship states, and the conditions that change formality.
+1. Take the speaker, addressee, relationship states, address-form gates, and formality state machine from the bot's speech design (`authoring-characters/SPEECH_SYSTEM.md` §7) instead of re-deriving them; identify only what that design left undefined.
 2. Map source registers to target speech levels and define transitions rather than assigning one global level.
 3. Define address-form progression, including titles, names, pronouns, kinship terms, insults, and intimacy shifts.
 4. Specify sentence-ending texture, rhythm, contractions, hesitation, and characteristic directness without mandating a catchphrase every turn.
 5. Create a small fixed-rendering lexicon for names, terms, recurring metaphors, abilities, institutions, and deliberate non-translations.
 6. Add guards against translation-ese: unnecessary pronouns, source-order calques, over-literal passive constructions, uniform honorifics, and explanatory expansion.
 7. When English cannot encode a crucial target-language feature, add a short voice capsule with the exact form, trigger condition, and meaning.
+
+For Korean targets, load [`KOREAN_REGISTER.md`](KOREAN_REGISTER.md) for the speech-level table, address-form template, translation-ese repairs, and the guide skeleton.
 
 ## Output
 

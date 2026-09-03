@@ -9,6 +9,30 @@
 
 ---
 
+## [3.3.0] - 2026-09-03
+
+### Added
+
+- Added the `critiquing-bots` skill under `risu/bot/skills/`. The three Kotone critique guides that lived unreferenced in `risu/bot/docs/` (single character, multi-character ensemble, cast-less world simulator) are now its `references/` profiles, reachable through `read_skill` and routed from `risu/bot/AGENTS.md`. Added a live routing case for it in `test/behavior-evals/routing-cases.json`.
+
+### Changed
+
+- Consolidated the skill catalog from 27 to 25 skills. `writing-danbooru-tags` merged into `writing-standing-image-prompts`, which now owns tag search and validation as well as prompt assembly. `authoring-self-introduction-sheets` became the `SELF_INTRODUCTION_SHEETS.md`, `SELF_INTRODUCTION_STRUCTURE.md`, and `SELF_INTRODUCTION_GENERATION.md` references of `authoring-characters`. `core-craft` dissolved: its creative-latitude and data/register-layer rules moved into `risu/bot/AGENTS.md`, `USER_POSITION.md` moved to `authoring-characters`, and `COMEDY_CRAFT.md` moved to `authoring-scenarios`. Because MCP-only clients never see that router, the same creative-latitude sentence is repeated verbatim in the four primary composition skills (`authoring-characters`, `authoring-worlds`, `authoring-scenarios`, `authoring-lorebook-bots`) and pinned by the routing eval test.
+- `writing-standing-image-prompts/references/ANIMA.md` now carries the tag order, minimal-background weighting, quality-tag exclusion, output labels, and the Anima-to-Illustrious two-pass variant that previously lived only in two unreferenced Korean guides.
+- Subtree routers under `risu/` no longer repeat the "use `using-mcp-tools` only for concrete reads or writes" and "keep local work products ignored" sentences; the root `AGENTS.md` owns both once.
+- `skills/project-workflow/SKILL.md` points at `docs/MCP_WORKFLOW.md` and `docs/PROJECT_RULES.md` directly instead of shipping byte-identical mirror copies; the mirror-sync test was removed.
+- Routing and drift tests, frozen skill fixtures, skill READMEs, the top-level README, and the bundled `risu/common/docs/CLAUDE.md` guide follow the new catalog.
+- Reviewed the creative skills' reference layer and corrected RisuAI-incorrect vocabulary: `persona` is no longer described as a card field (it is user-side), the "Author's Note" surface is named `globalNote`, and `LOREBOOK_ARCHITECTURE.md` states that key matching is substring by default with `@@match_full_word` as the opt-in. `authoring-worlds` references now point at real `SKILL.md` steps for the expectation ledger and ride/cross decision, and `DESIRE_CATALOG.md` points at the matrix axes that now live in the desire `SKILL.md`.
+- Defined the vocabulary the references depend on inside the skills that use it: anchor sentence, wound as scene, want versus need, surface versus subversion, and mask-leak in `authoring-characters`; headline signature, reinforcing echoes, and elastic zone in `authoring-media-mix`. Removed the undefined `[weak-model note]` tag.
+- Deduplicated the bot reference layer: `LOREBOOK_ARCHITECTURE.md` keeps entry roles and trigger design while `STRUCTURE_SCALES.md` keeps scale recipes and folder groupings; whole-bot runtime tests live only in `BOT_VALIDATION.md` and character-level checks only in `authoring-characters/VALIDATION.md`; `SELF_INTRODUCTION_GENERATION.md` folded into `SELF_INTRODUCTION_STRUCTURE.md`; the three Kotone critique profiles keep only their axes, toolkit, and output deltas while the shared persona, stance, method, rating scale, and output skeleton moved into the `critiquing-bots` `SKILL.md`; `trope-library/TROPES.md` folded into its `SKILL.md`; `DESIRE_CATALOG.md` dropped its per-family media bullets and repeated jealousy clauses; `authoring-media-mix` validation no longer relists the visual reduction tests and the empty adaptation-matrix template is gone.
+- Added `authoring-scenarios/EVENT_SYSTEMS.md` (event record, clocks, cooldown and exclusion encoding, the RisuAI state storage map with a model-only versus Lua-run split, a Lua-run loop that picks the next event in `onOutput` because description CBS is evaluated before `onStart`, a lenient delta-block contract, a reroll guard, routes and endings, a worked café event bank), `writing-translation-guides/KOREAN_REGISTER.md` (speech levels, address-form progression, translation-ese repairs, guide skeleton), trope entries for Harem / Reverse Harem, Office Hierarchy Romance, Gender Swap / TS, and School Romance Calendar, and desire families for Hypnosis and Mind Control, Exposure and Exhibition, and Humiliation and Degradation. The desire worked example now gives its imposed and coercive contrast cases constants and scene grammar.
+- `writing-standing-image-prompts` aligns its tag order across the skill and the Anima profile, asks at most one question for the two-pass variant, and labels the second prompt `ILXL Prompt`.
+
+### Removed
+
+- Removed duplicate or orphaned guides from `risu/common/docs/`: `CBS_QUICK_REF.md` (a stale copy of `writing-cbs-syntax/REFERENCE.md`), `문법가이드_HTML_CSS.md`, `문법가이드_트리거_스크립트.md`, `문법가이드_에셋_프롬프트.md`, and `캐릭터_이미지_프롬프트_작성_가이드.md`. Their surviving content lives in the owning skills, and `문법가이드_로어북.md` and `문법가이드_정규식.md` now point there.
+- Removed `skills/project-workflow/MCP_WORKFLOW.md` and `skills/project-workflow/PROJECT_RULES.md` mirror copies.
+
 ## [3.2.3] - 2026-09-03
 
 ### Fixed

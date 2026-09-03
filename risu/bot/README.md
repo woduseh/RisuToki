@@ -5,7 +5,7 @@ Composition guidance for writing and improving `.charx` bots and character cards
 ## What lives here
 
 - `skills/` — bot composition skills
-- `docs/` — critique frameworks and bot-specific reference material
+- `docs/` — source guides for the self-introduction sheet form
 - `AGENTS.md` — thin routing surface for AI assistants
 - local bot project folders — ignored work products and references
 

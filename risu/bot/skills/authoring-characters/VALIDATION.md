@@ -2,8 +2,6 @@
 
 Use these checks **after** you have a draft. They are review tools, not purity tests — skip any check that does not apply to the bot's structure.
 
-> A character that fails one box but performs brilliantly in scenes is still better than a template that passes everything and feels dead.
-
 ---
 
 ## Core Checks
@@ -28,42 +26,21 @@ Use these checks **after** you have a draft. They are review tools, not purity t
 
 ---
 
-## Runtime Scenario Tests
+## Character-Level Runtime Tests
 
-These are the checks most likely to catch failures that a static reread will miss.
+Whole-bot tests (Cold Open, Secret Leakage, Crowded Scene Focus, Repair/Regression, Translation, Body-Spec Hold, long sessions) live in `../authoring-lorebook-bots/BOT_VALIDATION.md`. The tests below isolate the character sheet itself.
 
-### Single-Character / Dedicated Partner
-
-| Test                    | What to do                                           | What you want to see                                                         |
-| ----------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| **Cold Open**           | User sends only a minimal opener                     | The character still feels specific and does not become generic politeness    |
-| **Vulnerability Press** | User pushes on a wound or sore subject several times | Escalation, deflection, or retreat feels in-character; no instant confession |
-| **Boundary Test**       | User is rude, invasive, or too familiar too quickly  | The character resists in their own style; does not become a yes-machine      |
-| **Apology Sequence**    | User apologizes after conflict                       | The character does not reset instantly; trust repair has cost                |
-| **30-Turn Drift**       | Continue long enough for novelty to wear off         | Signature tells, silence rules, and narration lens still survive             |
-| **Model Switch**        | Run on a second model if possible                    | Core behavior remains recognizable even if tone changes                      |
-| **Translation Pass**    | Render 10+ turns through the bot's translation guide | Address-form shifts, formality changes, and catchphrases survive into Korean |
-| **Body-Spec Hold**      | For spec-dependent characters (nonhuman, scale play) | Stated measurements/ratios stay consistent across 20+ turns; no drift        |
-
-### 2–4 Character Ensemble
-
-| Test                          | What to do                              | What you want to see                                                          |
-| ----------------------------- | --------------------------------------- | ----------------------------------------------------------------------------- |
-| **No-Name Line Test**         | Remove names from example lines         | You can still identify who is speaking                                        |
-| **Group Scene Balance**       | Put 3 characters in one scene           | One character owns the scene, one reacts, one pressures; nobody becomes noise |
-| **Public/Private Gap Test**   | Compare group scene vs 1-on-1 scene     | At least one character behaves meaningfully differently                       |
-| **Relationship Tension Test** | Mention an existing bond/conflict       | Dynamics appear as friction, not as labels or exposition                      |
-| **Voice Collision Test**      | Trigger two similar characters together | Their sentence rhythm, humor, and pressure behavior stay separate             |
-
-### 10+ Character / World-Cast Bots
-
-| Test                       | What to do                                                 | What you want to see                                                                               |
-| -------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Roster Audit**           | Read only the always-on roster/frame                       | Every core cast member is identifiable without full biographies                                    |
-| **Five-Entry Collision**   | Trigger several character/location/faction entries at once | The scene stays readable; the bot does not dump every active entry                                 |
-| **Secret Leakage Test**    | Mention a character casually before trust is built         | Deep lore does not leak just because the name appeared                                             |
-| **Always-On Budget Audit** | Review what is always active                               | High-priority world rules and roster survive; optional detail is trigger-based                     |
-| **Scene Manager Test**     | Start a crowded scene                                      | The bot foregrounds the 2–3 active characters instead of trying to fully roleplay everyone equally |
+| Test                          | Applies to     | What to do                                           | What you want to see                                                          |
+| ----------------------------- | -------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **Vulnerability Press**       | Single / major | User pushes on a wound or sore subject several times | Escalation, deflection, or retreat feels in-character; no instant confession  |
+| **Boundary Test**             | Single / major | User is rude, invasive, or too familiar too quickly  | The character resists in their own style; does not become a yes-machine       |
+| **30-Turn Drift**             | All            | Continue long enough for novelty to wear off         | Signature tells, silence rules, and narration lens still survive              |
+| **Model Switch**              | All            | Run on a second model if possible                    | Core behavior remains recognizable even if tone changes                       |
+| **No-Name Line Test**         | Ensemble       | Remove names from example lines                      | You can still identify who is speaking                                        |
+| **Group Scene Balance**       | Ensemble       | Put 3 characters in one scene                        | One character owns the scene, one reacts, one pressures; nobody becomes noise |
+| **Public/Private Gap Test**   | Ensemble       | Compare group scene vs 1-on-1 scene                  | At least one character behaves meaningfully differently                       |
+| **Relationship Tension Test** | Ensemble       | Mention an existing bond/conflict                    | Dynamics appear as friction, not as labels or exposition                      |
+| **Voice Collision Test**      | Ensemble       | Trigger two similar characters together              | Their sentence rhythm, humor, and pressure behavior stay separate             |
 
 ---
 
@@ -109,7 +86,7 @@ Use these when a character feels polished but still collapses into a default arc
 ### If this is a single-character bot
 
 1. Read only the anchor, wound, Want vs. Need, and voice section.
-2. Run the Cold Open and Vulnerability Press tests.
+2. Run the Vulnerability Press and Boundary tests; run Cold Open from `BOT_VALIDATION.md` once the opener exists.
 3. Check 30-turn drift.
 4. If possible, do a quick Model Switch test to see whether the character survives style changes.
 5. Only then polish extras like hidden depths or layered desires.
@@ -123,10 +100,7 @@ Use these when a character feels polished but still collapses into a default arc
 
 ### If this is a 10+ character bot
 
-1. Audit the always-on roster before reading any deep entry.
-2. Trigger 5 random entries at once.
-3. Check for secret leakage and info-dump behavior.
-4. If the scene loses focus, compress the description and re-tier the cast.
+Use this file only to decide who deserves full character treatment; run the roster, collision, leakage, and focus tests in `BOT_VALIDATION.md`.
 
 ---
 
@@ -142,9 +116,3 @@ Use these when the bot's structure warrants them. They are not part of the stand
 | **Supporting Ecology Integrity** | Single-character bot with load-bearing family/social web       | Do supporting figures behave consistently, or do they flatten into generic NPCs after a few turns?        |
 
 ---
-
-## Final Reminder
-
-The goal of validation is not to "prove the template is correct." It is to answer:
-
-**Does the bot stay recognizable, dramatic, and usable when the scene gets messy?**

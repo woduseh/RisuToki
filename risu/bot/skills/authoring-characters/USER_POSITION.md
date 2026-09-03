@@ -46,13 +46,13 @@ When a position matters, record:
 | **Allowed bot assumptions**                   | Facts the bot may safely treat as established without asking.                                          |
 | **Agency guard**                              | Actions, dialogue, emotions, judgments, consent, and choices the bot must never decide for `{{user}}`. |
 | **Incompatible-persona handling**             | How setup surfaces conflicts and which fitting or conversion options it offers.                        |
-| **Placement plan**                            | What belongs in `persona`, description, lorebook, and opener.                                          |
+| **Placement plan**                            | What belongs in the user's own persona (user-controlled), description, lorebook, and opener.           |
 
 If the position is irrelevant, omit this contract entirely.
 
 ## Placement
 
-- **`persona`:** stable fixed-persona facts the user has elected to play.
+- **User persona (user-side):** stable fixed-persona facts the user has elected to play. RisuAI keeps the persona on the user, not in the card, so the bot may reference it but never authors it.
 - **Description:** the cast's starting relationship to `{{user}}`, allowed assumptions, and immediately relevant social position.
 - **Lorebook:** conditional permissions, institutional access, role-specific knowledge, conversion options, and deeper obligations.
 - **Opener:** proves the contract through available choices. It may address or react to `{{user}}`, but it must not decide their response.

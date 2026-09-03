@@ -67,7 +67,7 @@ The same bot degrades differently by model strength. Test on the weakest model t
 
 | Symptom on weaker models        | Structural mitigation                                           |
 | ------------------------------- | --------------------------------------------------------------- |
-| Parrots example lines verbatim  | Trim to 2–3 plainer lines per register `[weak-model note]`      |
+| Parrots example lines verbatim  | Trim to 2–3 plainer lines per register                          |
 | Card register bleeds into prose | Move specs out of prose surfaces into data-layer tables         |
 | Always-on overload, voices blur | Cut always-on budget; re-tier cast; push detail behind triggers |
 | Trigger collisions dump facts   | Narrow keys, add secondary conditions, split mega-entries       |

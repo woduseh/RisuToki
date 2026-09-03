@@ -6,23 +6,23 @@ Use these checks after drafting or when diagnosing a world that feels dry, gener
 
 ## Core Checks
 
-| Check                   | Question                                                                                                   | Fix if weak                                                                 |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| **Pressure value**      | Does every world fact change behavior, speech, sensation, conflict, or withholding?                        | Attach a scene consequence or remove it from play-facing text               |
-| **Sensory anchor**      | Are abstract claims paired with concrete sensory or behavioral evidence?                                   | Add gesture, smell, sound, street habit, ritual, clothing, or avoidance     |
-| **Texture quota**       | Does each structural rule have at least one texture pair?                                                  | Pair power/system/religion/class rules with daily-life manifestations       |
-| **Active present**      | Does the world describe what is happening now instead of future trajectory?                                | Replace "will become" with current pressure and observable instability      |
-| **Power contradiction** | Does authority have both official story and actual mechanism?                                              | Add the dirty edge and who knows it; keep it unresolved                     |
-| **System limits**       | Do magic, technology, or special rules have real costs and hard limits?                                    | Add cost, failure point, barred users, and cultural consequence             |
-| **Human-scale effects** | Do special rules change bodies, emotions, habits, intimacy, or ordinary choices without sounding clinical? | Translate rules into sensation, avoidance, ritual, gesture, and social cost |
-| **Active history**      | Does each historical event affect the present?                                                             | Rewrite as `event -> wound -> current manifestation` or move to deep notes  |
-| **Knowledge horizon**   | Does the draft block likely anachronisms or genre imports?                                                 | State what people know, misunderstand, and cannot conceptualize             |
-| **Contrast**            | Does it name the likely cliche/default misread?                                                            | Add precise differences from the expected default                           |
-| **Ride/cross declared** | If genre-framed, was riding vs. crossing chosen on purpose, with one placed deviation?                     | Declare the choice per Core Principle 5; budget the deviation               |
-| **Scene output**        | Can the world fill a 5–10 item Scene Generators list without straining?                                    | Strengthen pressures until collisions become inevitable                     |
-| **Constants hold**      | For special-physics worlds: are ratios/ranges fixed as exact data-layer values, not relative language?     | Build the constants table and interaction constraints (SKILL.md Step 7)     |
-| **Expectation ledger**  | For myth adaptations: are audience-canon anchors kept or deliberately, visibly broken?                     | Run Step 2.5; signal breaks through scene texture, not disclaimers          |
-| **Moral language**      | Are cultures or institutions described with author judgment?                                               | Replace "evil/corrupt/civilized/barbaric" with inhabitant behavior          |
+| Check                   | Question                                                                                                   | Fix if weak                                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Pressure value**      | Does every world fact change behavior, speech, sensation, conflict, or withholding?                        | Attach a scene consequence or remove it from play-facing text                      |
+| **Sensory anchor**      | Are abstract claims paired with concrete sensory or behavioral evidence?                                   | Add gesture, smell, sound, street habit, ritual, clothing, or avoidance            |
+| **Texture quota**       | Does each structural rule have at least one texture pair?                                                  | Pair power/system/religion/class rules with daily-life manifestations              |
+| **Active present**      | Does the world describe what is happening now instead of future trajectory?                                | Replace "will become" with current pressure and observable instability             |
+| **Power contradiction** | Does authority have both official story and actual mechanism?                                              | Add the dirty edge and who knows it; keep it unresolved                            |
+| **System limits**       | Do magic, technology, or special rules have real costs and hard limits?                                    | Add cost, failure point, barred users, and cultural consequence                    |
+| **Human-scale effects** | Do special rules change bodies, emotions, habits, intimacy, or ordinary choices without sounding clinical? | Translate rules into sensation, avoidance, ritual, gesture, and social cost        |
+| **Active history**      | Does each historical event affect the present?                                                             | Rewrite as `event -> wound -> current manifestation` or move to deep notes         |
+| **Knowledge horizon**   | Does the draft block likely anachronisms or genre imports?                                                 | State what people know, misunderstand, and cannot conceptualize                    |
+| **Contrast**            | Does it name the likely cliche/default misread?                                                            | Add precise differences from the expected default                                  |
+| **Ride/cross declared** | If genre-framed, was riding vs. crossing chosen on purpose, with one placed deviation?                     | Declare the choice per `SKILL.md` step 10; budget the deviation                    |
+| **Scene output**        | Can the world fill a 5–10 item Scene Generators list without straining?                                    | Strengthen pressures until collisions become inevitable                            |
+| **Constants hold**      | For special-physics worlds: are ratios/ranges fixed as exact data-layer values, not relative language?     | Fix constants per `SKILL.md` step 6; body-scale play belongs to `authoring-desire` |
+| **Expectation ledger**  | For myth adaptations: are audience-canon anchors kept or deliberately, visibly broken?                     | Run the ledger in `SKILL.md` step 2; signal breaks through scene texture           |
+| **Moral language**      | Are cultures or institutions described with author judgment?                                               | Replace "evil/corrupt/civilized/barbaric" with inhabitant behavior                 |
 
 ---
 
@@ -58,18 +58,3 @@ Use these as thought experiments before finalizing the world frame.
 | **Moral Labeling**         | "Cruel empire," "corrupt city," "barbaric tribe"                                                     | Model softens or moralizes                   | Write what inhabitants do and tolerate                                        |
 
 ---
-
-## Handoff Check
-
-After the world substance is strong, decide whether another skill should take over.
-
-| Need                                                                                 | Next skill                                                     |
-| ------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| Split world material into description, lorebook entries, globalNote, or firstMessage | `authoring-lorebook-bots`                                      |
-| Add exact lorebook keys, decorators, insertion position, or trigger depth            | `writing-lorebooks`                                            |
-| Expand a major NPC into a full roleplay character                                    | `authoring-characters` or `authoring-self-introduction-sheets` |
-| Add CBS, Lua, regex, HTML/CSS, trigger scripts, or asset prompts                     | The relevant shared syntax skill                               |
-
-## Final Reminder
-
-The world is ready when it gives the model instincts, not homework: how people move through it, what they avoid, what they misread, and what pressure follows them into ordinary scenes.

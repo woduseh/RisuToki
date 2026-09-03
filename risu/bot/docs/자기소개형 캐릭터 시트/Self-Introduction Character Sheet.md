@@ -6,7 +6,7 @@
 >
 > - Korean original: [자기소개형 캐릭터 시트 V4](./자기소개형%20캐릭터%20시트%20V4.md)
 > - Commentary: [Self-Introduction Character Sheet Guide](./Self-Introduction%20Character%20Sheet%20Guide.md)
-> - Skill wrapper: [authoring-self-introduction-sheets](../../skills/authoring-self-introduction-sheets/)
+> - Skill wrapper: [authoring-characters › SELF_INTRODUCTION_SHEETS.md](../../skills/authoring-characters/SELF_INTRODUCTION_SHEETS.md)
 
 ## Design Philosophy
 
@@ -159,7 +159,7 @@ It includes the Compact concerns, plus:
 
 For a field-by-field explanation of what each section teaches the model, see [Self-Introduction Character Sheet Guide](./Self-Introduction%20Character%20Sheet%20Guide.md).
 
-For agent-facing guidance on generating this style without treating the method as dogma, see [GENERATION_GUIDANCE.md](../../skills/authoring-self-introduction-sheets/GENERATION_GUIDANCE.md).
+For agent-facing guidance on generating this style without treating the method as dogma, see [SELF_INTRODUCTION_STRUCTURE.md](../../skills/authoring-characters/SELF_INTRODUCTION_STRUCTURE.md).
 
 ## Compact Prompt
 

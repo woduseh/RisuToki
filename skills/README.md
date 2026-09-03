@@ -6,10 +6,10 @@ Skill documents for agents working on **the RisuToki editor itself** — MCP wor
 
 ## Product skills
 
-| Skill                                 | Description                                                                                 | Files                                                   |
-| ------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| [project-workflow](project-workflow/) | Repository code, validation, documentation, versioning, and release workflow                | `SKILL.md` + `MCP_WORKFLOW.md` + `PROJECT_RULES.md`     |
-| [using-mcp-tools](using-mcp-tools/)   | MCP tool choice, batch-safe workflows, unopened-file probe/write routing, and anti-patterns | `SKILL.md` + `TOOL_REFERENCE.md` + `FILE_STRUCTURES.md` |
+| Skill                                 | Description                                                                                 | Files                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| [project-workflow](project-workflow/) | Repository code, validation, documentation, versioning, and release workflow                | `SKILL.md` (points at `docs/MCP_WORKFLOW.md` and `docs/PROJECT_RULES.md`) |
+| [using-mcp-tools](using-mcp-tools/)   | MCP tool choice, batch-safe workflows, unopened-file probe/write routing, and anti-patterns | `SKILL.md` + `TOOL_REFERENCE.md` + `FILE_STRUCTURES.md`                   |
 
 ## Authoring skills
 

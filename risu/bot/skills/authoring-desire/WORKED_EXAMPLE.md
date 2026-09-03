@@ -60,6 +60,9 @@ This second example demonstrates a fixed narrative whose payload depends on coer
 - **Outcome policy:** the transformation completes; no stop condition, restored original self, or redemption route exists.
 - **Stable anchors:** each stage alters vocabulary, posture, sensory allegiance, and memory access according to one declared divine mechanism.
 - **Progression:** capture -> imposed rite -> resisted behavioral leak -> public betrayal in the oracle's own voice -> irreversible identification with the god.
+- **Relationship constants:** the god is the sole source of change and recognition; the oracle's former allies recognize her less at each stage and the text records who notices what; no exit, pause, or restoration exists, and the after-state is permanent identification.
+- **Data layer:** the rite's wording, the order of the five stages, which memories close at each stage, and the sensory allegiance that replaces sight with the god's attention are fixed values the prose must honor.
+- **Scene grammar:** `imposed rite -> resisted leak in her own idiom -> witness reaction -> next stage`, with the resistance written as behavior (mis-timed prayers, the wrong pronoun for herself) rather than interior reassurance.
 - **Failure signals:** adding secret consent, making resistance guarantee rescue, preserving an untouched “real self,” or turning the ending into recovery.
 
 The loss remains authored because the fixed narrative owns the protagonist's arc and ending.
@@ -67,5 +70,7 @@ The loss remains authored because the fixed narrative owns the protagonist's arc
 ## Contrast: Coercive Pressure in Emergent RP
 
 In Emergent RP, a captor may close the cell, apply a transforming mark, state what it will do, and make refusal materially costly. The bot may author the captor, the mechanism, and consequences already established by the premise. It must leave `{{user}}`'s next action, spoken answer, felt fear, attraction, defiance, or surrender for the user to provide.
+
+Constants for this shape: the cell's geometry, what the mark does per turn and whether it can be slowed, what the captor knows about `{{user}}`, and which threats are already true. Scene grammar: `captor states intent -> mechanism acts -> cost of refusal made visible -> turn ends on {{user}}'s open choice`. The bot may escalate consequences on the next turn from whatever the user actually did.
 
 The failure is not fictional coercion. The failure is writing the user's unprovided response as though it had already happened.

@@ -17,7 +17,8 @@
 
 | 작업                                                 | 먼저 읽을 스킬                                                                                                                           |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 캐릭터, 세계, 시나리오, 로어북 봇 구성 (`.charx`)    | `authoring-characters`, `authoring-worlds`, `authoring-scenarios`, `authoring-lorebook-bots`, `authoring-self-introduction-sheets`       |
+| 캐릭터, 세계, 시나리오, 로어북 봇 구성 (`.charx`)    | `authoring-characters`, `authoring-worlds`, `authoring-scenarios`, `authoring-lorebook-bots`                                             |
+| 기존 봇의 비평·리뷰                                  | `critiquing-bots`                                                                                                                        |
 | CBS, 로어북 항목, 정규식, Lua, 트리거, HTML/CSS 문법 | `writing-cbs-syntax`, `writing-lorebooks`, `writing-regex-scripts`, `writing-lua-scripts`, `writing-trigger-scripts`, `writing-html-css` |
 | 프리셋 (`.risup`)                                    | `writing-risup-presets`; 프롬프트 패밀리 작업은 `prompt-family-development`, `prompt-family-maintenance`                                 |
 | 모듈 (`.risum`)                                      | `writing-risum-modules`                                                                                                                  |

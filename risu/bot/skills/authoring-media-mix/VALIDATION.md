@@ -5,7 +5,7 @@
 | Check              | Pass condition                                                                          |
 | ------------------ | --------------------------------------------------------------------------------------- |
 | Audience promise   | Every derivative delivers the same core feeling through a native carrier                |
-| Identity deletion  | Removing any claimed non-negotiable causes a specific, explainable loss                 |
+| Identity deletion  | Removing any must-not-drift element causes a specific, explainable loss                 |
 | Headline Signature | The work can be distinguished in one sentence without listing lore                      |
 | Reinforcing Echoes | Two to four choices support the signature across character, world, visual, or structure |
 | Elastic zone       | Medium-specific changes do not get mistaken for canon violations                        |
@@ -23,16 +23,7 @@
 
 ## Visual Checks
 
-Run the required tests from `VISUAL_IDENTITY.md`:
-
-1. solid-black silhouette
-2. three-color reduction
-3. SD conversion
-4. 32px icon
-5. group silhouette
-6. alternate-costume recognition
-
-Record which surfaces each character must pass. A prose-only side character does not need figure-ready design; a collectible lead does.
+Run the six reduction tests in `VISUAL_IDENTITY.md` §10 and record which surfaces each character must pass. A prose-only side character does not need figure-ready design; a collectible lead does.
 
 ## Drift and Formula Checks
 
@@ -52,5 +43,5 @@ Record which surfaces each character must pass. A prose-only side character does
 - A magical-girl lead remains identifiable in prose, black silhouette, transformation animation, RPG kit, and RP conversation.
 - A gacha faction shares one family resemblance while every unit remains individually readable.
 - A live-action adaptation loses impossible hair and effects but keeps status, gesture, prop function, and relationship pressure.
-- A myth retelling makes deliberate canon breaks visible through the variant ledger and early scene evidence.
+- A myth retelling makes deliberate canon breaks visible through its keep/change/reject decisions and early scene evidence.
 - A fixed 12-episode arc can coexist with an RP derivative that uses thresholds rather than forcing the finale.

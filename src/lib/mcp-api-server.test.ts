@@ -90,16 +90,9 @@ describe('MCP API structured error envelopes — global guards', () => {
       expect(
         list.data.skills.some(
           (skill) =>
-            skill.name === 'core-craft' &&
-            skill.files.includes('USER_POSITION.md') &&
-            skill.files.includes('COMEDY_CRAFT.md'),
-        ),
-      ).toBe(true);
-      expect(
-        list.data.skills.some(
-          (skill) =>
             skill.name === 'authoring-characters' &&
             skill.files.includes('APPEAL_PATTERNS.md') &&
+            skill.files.includes('USER_POSITION.md') &&
             skill.files.includes('WORKED_EXAMPLE.md'),
         ),
       ).toBe(true);
@@ -136,7 +129,7 @@ describe('MCP API structured error envelopes — global guards', () => {
       const userPosition = await getJson<{ content: string }>(
         api.port,
         api.token,
-        '/skills/core-craft/USER_POSITION.md',
+        '/skills/authoring-characters/USER_POSITION.md',
       );
       expect(userPosition.status).toBe(200);
       expect(userPosition.data.content).toContain('Compatibility-Bounded Persona');

@@ -4,8 +4,6 @@
 
 Use this file when the main question is **how to distribute description vs lorebook responsibility at a given bot scale**.
 
-> The recipes below are starting points drawn from common patterns, not rigid templates. Your bot may need more, less, or different structure depending on its goals and the model it runs on.
->
 > **Model-tier note:** always-on budgets are ranges keyed to the target model. Frontier models tolerate noticeably larger always-on stacks and entry sets; the conservative numbers in this file are safe floors, not ceilings.
 
 ---
@@ -18,7 +16,7 @@ Use this file when the main question is **how to distribute description vs loreb
 | **2–4 recurring characters**             | Group tension, thumbnails, scene mode        | Full profiles, pair dynamics, scene management      |
 | **10+ cast / world bot**                 | World tone, POV rules, core cast only        | Roster, factions, locations, relationships, secrets |
 
-If the question is "how do I write this character well?" start with `authoring-characters` for an explicit scaffolded sheet, or `authoring-self-introduction-sheets` for the self-introduction monologue method.
+If the question is "how do I write this character well?" start with `authoring-characters` for an explicit scaffolded sheet, or its `SELF_INTRODUCTION_SHEETS.md` reference for the self-introduction monologue method.
 
 ---
 
@@ -153,11 +151,7 @@ This is a structure-first problem. The patterns below reflect what works in many
 
 ### Cast tiering
 
-| Tier                | Description presence               | Lorebook depth |
-| ------------------- | ---------------------------------- | -------------- |
-| **Core cast**       | Yes                                | High           |
-| **Recurring cast**  | Usually no more than brief mention | Medium         |
-| **Background cast** | Usually none                       | Low            |
+Tier the cast with the table in `../authoring-characters/CHARACTER_SCALES.md` (core, recurring, background). Placement rule: core cast appears in the description with high lorebook depth; recurring cast gets at most a brief description mention with medium depth; background cast lives only in roster or low-depth entries.
 
 ### Common entry groups
 
@@ -273,10 +267,4 @@ When these appear, reduce always-on text and strengthen routing.
 
 ## Final Reminder
 
-At larger scales, your job is not to store everything.
-
-Your job is to decide:
-
-**what the model should always remember, what it should recall conditionally, and what it should not surface yet.**
-
-The scales and recipes here are reference points. The best bot at any scale is the one whose structure serves its specific vision — not the one that checks the most boxes.
+At larger scales the job is to decide **what the model should always remember, what it should recall conditionally, and what it should not surface yet.**

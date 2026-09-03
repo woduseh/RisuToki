@@ -4,9 +4,7 @@
 
 Use this file after reading `SKILL.md` when the main problem is **how much character depth to keep in the description at a given bot scale**.
 
-> The scale recipes below are strong defaults drawn from real reference bots. They are not the only way to build at each scale — treat them as starting points, not constraints.
->
-> **Model-tier note:** depth budgets are ranges, not constants. Frontier target models hold larger always-on casts and deeper sheets without attention collapse; the conservative ends of each recipe are `[weak-model note]` territory.
+> **Model-tier note:** depth budgets are ranges, not constants. Frontier target models hold larger always-on casts and deeper sheets without attention collapse; the conservative ends of each recipe are for weaker target models.
 
 ---
 
@@ -18,7 +16,7 @@ Use this file after reading `SKILL.md` when the main problem is **how much chara
 | **2–4 recurring characters**             | Give each character an expressive identity and shared group tension | Hold deeper backstory, pair dynamics, situational behavior  | Voice collision and cast blur                   |
 | **10+ world/cast**                       | Frame the world, roster, POV rules, and only the core cast          | Carry most character detail, relationships, and progression | Attention collapse, info-dumps, trigger pileups |
 
-If the structure is lorebook-heavy, pair this with `authoring-lorebook-bots`. If you want a minimal factual profile plus a self-introduction monologue instead of an explicit scaffolded sheet, use `authoring-self-introduction-sheets`.
+If the structure is lorebook-heavy, pair this with `authoring-lorebook-bots`. If you want a minimal factual profile plus a self-introduction monologue instead of an explicit scaffolded sheet, load `SELF_INTRODUCTION_SHEETS.md` from this Skill.
 
 ---
 
@@ -41,12 +39,12 @@ This is the most description-heavy case. The character **is** the experience.
 
 Single-character bots still benefit from lorebook layers when you need dynamic behavior:
 
-| Layer                    | Best home                                          | Why                                                                                      |
-| ------------------------ | -------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| **State**                | Lorebook / state-tracking surface                  | Relationship progression and regression are easier to gate than to keep always-on        |
-| **Reaction**             | Lorebook                                           | Topic-sensitive or environment-sensitive responses do not need to live in the main sheet |
-| **Deep reveal / secret** | Lorebook                                           | Lets discovery happen late instead of leaking in the first 5 turns                       |
-| **Direction**            | Post-history reminder / Author's Note-like surface | Short turn rules work better near the response point than inside the main description    |
+| Layer                    | Best home                         | Why                                                                                      |
+| ------------------------ | --------------------------------- | ---------------------------------------------------------------------------------------- |
+| **State**                | Lorebook / state-tracking surface | Relationship progression and regression are easier to gate than to keep always-on        |
+| **Reaction**             | Lorebook                          | Topic-sensitive or environment-sensitive responses do not need to live in the main sheet |
+| **Deep reveal / secret** | Lorebook                          | Lets discovery happen late instead of leaking in the first 5 turns                       |
+| **Direction**            | `globalNote`                      | Short turn rules work better near the response point than inside the main description    |
 
 ### Supporting ecology
 
@@ -125,13 +123,7 @@ Take the character names off their example lines.
 
 ### Opening-message rule
 
-Do not introduce every cast member equally. Pick:
-
-1. the scene owner
-2. one secondary presence
-3. the group tension
-
-The rest can enter later through lorebook activation or subsequent turns.
+Stage one scene owner, one secondary presence, and the group tension; the placement rule and its rationale live in `../authoring-lorebook-bots/STRUCTURE_SCALES.md`.
 
 ---
 

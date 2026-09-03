@@ -4,18 +4,17 @@ LLM-optimized skill bundles for reusable authoring domains.
 
 ## Skills
 
-| Skill                                                               | Description                                     | Files                           |
-| ------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------- |
-| [file-structure-reference](file-structure-reference/)               | `.charx` / `.risum` / `.risup` file structures  | `SKILL.md`                      |
-| [writing-cbs-syntax](writing-cbs-syntax/)                           | CBS template syntax and validation              | `SKILL.md` + `REFERENCE.md`     |
-| [writing-lua-scripts](writing-lua-scripts/)                         | Lua 5.4 trigger APIs and patterns               | `SKILL.md` + `API_REFERENCE.md` |
-| [writing-lorebooks](writing-lorebooks/)                             | Lorebook entry structure and activation rules   | `SKILL.md`                      |
-| [writing-regex-scripts](writing-regex-scripts/)                     | Regex script types and output patterns          | `SKILL.md`                      |
-| [writing-html-css](writing-html-css/)                               | HTML/CSS constraints and UI patterns            | `SKILL.md`                      |
-| [writing-restricted-wysiwyg-html](writing-restricted-wysiwyg-html/) | Target-aware HTML for sanitized paste editors   | `SKILL.md`, target profiles     |
-| [writing-trigger-scripts](writing-trigger-scripts/)                 | Trigger execution model and automation planning | `SKILL.md`                      |
-| [writing-standing-image-prompts](writing-standing-image-prompts/)   | Target-aware standing-image prompt pipeline     | `SKILL.md`, model profiles      |
-| [writing-danbooru-tags](writing-danbooru-tags/)                     | Danbooru tag discovery and validation           | `SKILL.md`                      |
+| Skill                                                               | Description                                                | Files                           |
+| ------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------- |
+| [file-structure-reference](file-structure-reference/)               | `.charx` / `.risum` / `.risup` file structures             | `SKILL.md`                      |
+| [writing-cbs-syntax](writing-cbs-syntax/)                           | CBS template syntax and validation                         | `SKILL.md` + `REFERENCE.md`     |
+| [writing-lua-scripts](writing-lua-scripts/)                         | Lua 5.4 trigger APIs and patterns                          | `SKILL.md` + `API_REFERENCE.md` |
+| [writing-lorebooks](writing-lorebooks/)                             | Lorebook entry structure and activation rules              | `SKILL.md`                      |
+| [writing-regex-scripts](writing-regex-scripts/)                     | Regex script types and output patterns                     | `SKILL.md`                      |
+| [writing-html-css](writing-html-css/)                               | HTML/CSS constraints and UI patterns                       | `SKILL.md`                      |
+| [writing-restricted-wysiwyg-html](writing-restricted-wysiwyg-html/) | Target-aware HTML for sanitized paste editors              | `SKILL.md`, target profiles     |
+| [writing-trigger-scripts](writing-trigger-scripts/)                 | Trigger execution model and automation planning            | `SKILL.md`                      |
+| [writing-standing-image-prompts](writing-standing-image-prompts/)   | Standing-image prompt pipeline and Danbooru tag validation | `SKILL.md`, model profiles      |
 
 ## Relationship to other skill locations
 

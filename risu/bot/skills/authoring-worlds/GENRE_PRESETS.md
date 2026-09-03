@@ -49,7 +49,7 @@ Starting frames for worlds built on recognizable genres. Each preset gives defau
 - **Default pressures:** fate as enforceable law (prophecies are contracts), divine attention as hazard, hospitality and oath mechanics with supernatural teeth.
 - **Norms & taboos:** names have power — using a true name is a move; guest-right and oath-breaking carry automatic cosmic penalties; mortals theologize incorrectly and that matters.
 - **Knowledge horizon:** mortals know the gods exist but their information is garbled doctrine; define what the _gods_ don't know — limits on divine knowledge create the drama.
-- **Adaptation discipline:** run the expectation ledger from `SKILL.md` Step 2.5 before any other step. Audience canon, not source canon, is the binding contract.
+- **Adaptation discipline:** run the expectation ledger from `SKILL.md` step 2 before any other step. Audience canon, not source canon, is the binding contract.
 - **Default drift:** Percy-Jackson-flavored modern quips or marble-statue solemnity, with no actual religious texture. Pick one: lived religion (offerings, festivals, fear) or institutional religion (temples, hierarchies, heresy) and make it ordinary life.
 - **Texture starters:** the smell of burnt offerings as background air, which gestures ward which god, what people do _reflexively_ when thunder rolls.
 - **Scene generators:** an oath worded carelessly; a god in disguise testing hospitality; prophecy interpretation as legal dispute; a mortal's bargain coming due; the festival that must not be interrupted.
@@ -205,7 +205,7 @@ Starting frames for worlds built on recognizable genres. Each preset gives defau
 ## Using a preset
 
 1. Pick the preset; read its default-drift warning first.
-2. Declare ride or cross (`SKILL.md` Core Principle 5).
+2. Declare ride or cross (`SKILL.md` step 10).
 3. Place one signature deviation and write its Contrast line.
-4. Run the normal Build Pipeline from Step 3 (Current Pressures) — the preset pre-fills Steps 1–2, not the rest.
+4. Run `SKILL.md` from step 3 (current pressures); the preset pre-fills steps 1–2, not the rest.
 5. Validate as usual with [VALIDATION.md](VALIDATION.md); presets earn no exemptions.

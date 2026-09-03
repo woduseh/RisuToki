@@ -14,7 +14,7 @@ Select a recognizable pattern, its expected audience promise, and a deliberate p
 ## Workflow
 
 1. Identify the pattern actually carrying the request: character, relationship, species/role, genre, or media convention.
-2. Load only the matching reference: `CHARACTER_TROPES.md`, `RELATIONSHIP_TROPES.md`, `SPECIES_ROLE_TROPES.md`, `MEDIA_CONVENTIONS.md`, or the broader `TROPES.md` index.
+2. Load only the matching catalog: `CHARACTER_TROPES.md` (individual surfaces and appeal engines), `RELATIONSHIP_TROPES.md` (pair, group, and bonded-object dynamics), `SPECIES_ROLE_TROPES.md` (species, vocation, and social position), or `MEDIA_CONVENTIONS.md` (plot, route, team, transformation, and franchise structures). Every entry lists expected beats, the straight quality bar, proven subversions, and degradation patterns. Management or simulator loops belong to `authoring-scenarios`; genre world presets such as 학원물, 던전, and 이세계 live in `authoring-worlds/GENRE_PRESETS.md`.
 3. Record expected beats, quality bar, common degradation, and one chosen stance:
    - **Play straight:** deliver the expected beats with specific, high-resolution execution.
    - **Subvert:** preserve legibility while changing one mechanism or consequence.

@@ -214,34 +214,18 @@ Use separate entries for:
 
 This prevents the classic failure where one trigger reveals the entire mystery stack at once.
 
-### 9. Continuity / Event-Summary Entries (optional)
+### 9. Continuity and Progression Entries (optional)
 
-In longer-running or progression-heavy bots, dedicated entries can track significant events, relationship milestones, or world-state changes that the bot should remember across scenes.
-
-Good uses:
-
-- recording relationship turning points so the bot can reference shared history
-- recording world events that shift the political or social landscape
-- maintaining a running summary of user decisions that affect the scenario
-
-Not every bot needs these. They shine most in bots designed for extended play or bots where cumulative history is a dramatic resource.
-
-Continuity entries should change the next scene, not merely archive the past. A good entry tells the bot what memory now affects: trust, suspicion, access, social risk, available locations, faction posture, or what a character refuses to repeat.
-
-**Automation option:** continuity can be written by the bot itself. A trigger script or Lua callback can record event residue via `upsertLocalLoreBook` (takes effect next turn) — e.g., after a confession scene, append a residue entry keyed to the relevant names. Design rule: automated entries must follow the same standard as manual ones (change future behavior, not archive the past), and need a pruning/compaction rule so residue does not accumulate into noise. See `writing-trigger-scripts` and `writing-lua-scripts` for mechanics.
-
-### 9.5. Progression / Reveal Entries (optional)
-
-Use when the bot needs relationship stages, world-state movement, secret reveal pacing, or user-choice residue.
+Use when the bot needs relationship stages, world-state movement, reveal pacing, or user-choice residue across scenes.
 
 Good contents:
 
 - **Relationship progression and regression** — what behavior changes after trust, betrayal, repair, intimacy, or public conflict
-- **World event progression** — what has shifted in the setting because time passed or the user acted
+- **World event progression** — what has shifted because time passed or the user acted
 - **Reveal stages** — public rumor, partial truth, personal confession, and hidden cause as separate layers
-- **User-choice residue** — decisions the user made that now constrain access, tone, allies, suspicion, or social cost
+- **User-choice residue** — decisions that now constrain access, tone, allies, suspicion, or social cost
 
-Avoid treating progression entries as scoreboards. They should describe response constraints and changed behavior.
+Write what the memory now affects, not an archive of the past. Avoid scoreboards; describe response constraints and changed behavior.
 
 ```text
 After {{user}} exposes the forged ration ledgers, dock clerks stop speaking freely near them.
@@ -250,19 +234,11 @@ The harbor still accepts their coin, but favors now require an intermediary.
 
 Regression is part of progression. Trust repair should have cost, delay, and visible behavior; do not let apologies reset state instantly unless the bot is designed for that.
 
-### 10. System / Directorial Entries (advanced, optional)
+**Automation option:** a trigger script or Lua callback can record residue via `upsertLocalLoreBook` (takes effect next turn). Automated entries follow the same standard as manual ones and need a pruning rule so residue does not accumulate into noise. See `writing-trigger-scripts` and `writing-lua-scripts`; for weighted event banks and where scenario state is stored, see `authoring-scenarios/EVENT_SYSTEMS.md`.
 
-In ambitious world bots or large-cast scenarios, some entries serve a **meta-narrative** function — they direct how the bot handles storytelling rather than adding world content.
+System, directorial, and focus-management entries for ambitious world bots are described under advanced optional patterns in `STRUCTURE_SCALES.md`.
 
-Examples:
-
-- **event dramaturgy** — entries that pace escalation, calibrate dramatic tension, or define event rhythms across sessions
-- **focus management** — entries that tell the bot how to foreground and background characters in crowded scenes, preventing attention spread
-- **user-context routing** — entries that adjust tone, cast availability, or scenario branches based on where the user is or what role they occupy
-
-These are power tools for complex designs. Most bots do not need them, and adding them to a bot that does not need them creates overhead without benefit.
-
-### 11. Knowledge Horizon Entries
+### 10. Knowledge Horizon Entries
 
 Use when the bot risks importing modern, genre-default, or out-of-setting assumptions.
 
@@ -284,44 +260,7 @@ No one in this setting has a concept of germs, atoms, DNA, or modern psychiatry.
 
 ## Architecture by Bot Scale
 
-### Single-Character Bot with Lorebook Support
-
-One common entry mix (adjust to fit your bot):
-
-- 1 state/reaction entry cluster
-- optional world-support entries
-- 1–2 deep reveal entries
-- optional location entries if the setting matters strongly
-
-Keep the emotional core in the description. Use lorebook to make it responsive.
-
-### 2–4 Character Ensemble
-
-One common entry mix (adjust to fit your bot):
-
-- 1 roster summary entry
-- 1 full profile per recurring character
-- 1 pair-dynamics entry per major relationship
-- 1 scene-management entry if group scenes are common
-- world/location entries as needed
-
-This scale is where pair-dynamics entries shine the most.
-
-Not every small ensemble needs complex scaffolding. If the cast works with short always-on dossiers and natural keyword triggers, that simplicity is a strength, not a gap. Do not replace living chemistry with extra layers just because the tools can support them.
-
-### 10+ Character / World Bot
-
-Common entry groups (most world bots will not need all of these):
-
-- 1 always-on roster summary
-- full profiles only for core cast
-- recurring cast as thumbnail or medium entries
-- scene-management entry
-- relationship cluster entries
-- world / faction / location entries
-- layered secret entries
-
-Do **not** build 15 protagonist-grade always-on entries unless the bot is explicitly designed for that load and the underlying model handles it well.
+Entry mixes per scale (single character, 2–4 ensemble, 10+ world bot), cast tiering, and folder groupings live in `STRUCTURE_SCALES.md`; this file owns entry roles and trigger design. Group folders by function, not noun type: for very large bots, Dynamics and Scenes folders are worth more than another pile of biographies.
 
 ---
 
@@ -331,11 +270,11 @@ Do **not** build 15 protagonist-grade always-on entries unless the bot is explic
 
 Triggers scan the chat log, so **user input language governs key design** — independent of the bot being written in English. Policy: English keys are mandatory; Korean, Japanese, and Chinese coverage is added per the recipes below when the bot supports those players.
 
-**The agglutination trap (Korean):** with whole-word matching, the key `미나` fails on `미나가`, `미나를`, `미나한테` — particles attach directly to the noun, so the "whole word" is never the bare name. Japanese and Chinese have the opposite problem: no spaces at all, so whole-word matching is meaningless and substring behavior governs.
+RisuAI matches keys as substrings by default; full-word matching is opt-in through the `@@match_full_word` decorator. Keep the default for Korean: particles attach directly to the noun (`미나가`, `미나를`, `미나한테`), so under full-word matching the key `미나` would never match. Japanese and Chinese have no spaces at all, so substring matching is the only workable mode there too.
 
 Recipes, in order of preference:
 
-1. **Dual plain keys, substring matching:** `key: "Mina, 미나"` with word-level matching off. Substring matching handles Korean particles and unspaced Japanese/Chinese natively. Watch for short keys that hide inside other words (e.g., a two-syllable Korean name that is also a common word) — lengthen or switch to regex.
+1. **Dual plain keys, default substring matching:** `key: "Mina, 미나"` without `@@match_full_word`. Substring matching handles Korean particles and unspaced Japanese/Chinese natively. Watch for short keys that hide inside other words (e.g., a two-syllable Korean name that is also a common word) — lengthen or switch to regex.
 2. **Regex keys for particle precision** (`useRegex: true`) when substring is too greedy:
 
 ```text
@@ -401,7 +340,7 @@ When a broad keyword is unavoidable, require a second condition.
 
 ### Decorator-Aware Activation Notes
 
-If your lorebook system supports insertion decorators or depth controls such as `@@depth`, `@@role`, or `@@position`, use them to refine already-good entry design — not to rescue weak structure.
+Use RisuAI's insertion decorators (`@@depth`, `@@role`, `@@position`) to refine already-good entry design — not to rescue weak structure.
 
 Good use:
 
@@ -415,41 +354,6 @@ Bad use:
 - using insertion priority to force irrelevant entries into every scene
 
 For exact decorator syntax, use `writing-lorebooks`.
-
----
-
-## Folder Organization
-
-Group by function, not just by noun type.
-
-```text
-World
-  - Current State
-  - Core Institutions
-  - Major Factions
-
-Cast
-  - Roster Summary
-  - Core Cast Profiles
-  - Recurring Cast Profiles
-
-Dynamics
-  - Pair Relationships
-  - Rivalries
-  - Shared Secrets
-
-Scenes
-  - Scene Management
-  - Social Rules
-  - Event Logic
-
-Secrets
-  - Public Rumors
-  - Mid-Depth Truths
-  - Hidden Causes
-```
-
-For very large bots, "Dynamics" and "Scenes" folders are often more valuable than yet another pile of biographies.
 
 ---
 
@@ -480,32 +384,25 @@ If your always-on stack becomes a second description, compress it.
 
 Ask these before calling the structure finished:
 
-| Check                 | Question                                                                   |
-| --------------------- | -------------------------------------------------------------------------- |
-| **Standalone**        | Can each important entry make sense alone?                                 |
-| **Voice match**       | Does activated lore sound like it belongs in the same bot?                 |
-| **Behavioral value**  | Does each entry change scene output, not just explain facts?               |
-| **Trigger depth**     | Are secrets and deep truths gated well enough?                             |
-| **Collision safety**  | What happens if 4–5 relevant entries activate together?                    |
-| **Cast tiering**      | Are only the truly central characters always visible?                      |
-| **Scene control**     | In a crowded scene, does the bot know where to focus?                      |
-| **Leak prevention**   | Can casual mentions accidentally unlock late-game information?             |
-| **Pressure value**    | Does each world entry change behavior, speech, sensation, or scene logic?  |
-| **Texture quota**     | Does each structural rule have at least one sensory or behavioral pair?    |
-| **Horizon guard**     | Are likely anachronisms or genre defaults explicitly blocked where needed? |
-| **Progression value** | Do state entries change future behavior instead of just recording events?  |
-| **Reveal staging**    | Are secrets split so casual mentions cannot unlock the whole truth stack?  |
-| **Regression/repair** | Do relationship setbacks and repairs carry cost instead of instant reset?  |
-| **Choice residue**    | Do important user choices leave constraints the bot can act on later?      |
+| Check                 | Question                                                                  |
+| --------------------- | ------------------------------------------------------------------------- |
+| **Standalone**        | Can each important entry make sense alone?                                |
+| **Voice match**       | Does activated lore sound like it belongs in the same bot?                |
+| **Behavioral value**  | Does each entry change scene output, not just explain facts?              |
+| **Trigger depth**     | Are secrets and deep truths gated well enough?                            |
+| **Collision safety**  | What happens if 4–5 relevant entries activate together?                   |
+| **Cast tiering**      | Are only the truly central characters always visible?                     |
+| **Scene control**     | In a crowded scene, does the bot know where to focus?                     |
+| **Leak prevention**   | Can casual mentions accidentally unlock late-game information?            |
+| **Progression value** | Do state entries change future behavior instead of just recording events? |
+| **Reveal staging**    | Are secrets split so casual mentions cannot unlock the whole truth stack? |
+| **Regression/repair** | Do relationship setbacks and repairs carry cost instead of instant reset? |
+| **Choice residue**    | Do important user choices leave constraints the bot can act on later?     |
 
 ---
 
 ## Final Rule
 
-Do not measure a lorebook by how much it contains.
-
-Measure it by how cleanly it answers:
+Do not measure a lorebook by how much it contains. Measure it by how cleanly it answers:
 
 **"When this scene changes, which information should wake up — and what should stay asleep?"**
-
-The roles, patterns, and structure outlines in this document are tools, not requirements. Use what serves your bot and leave the rest.

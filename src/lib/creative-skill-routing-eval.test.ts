@@ -46,19 +46,17 @@ const ROUTER_SKILLS: Record<string, readonly string[]> = {
     'writing-restricted-wysiwyg-html',
     'writing-trigger-scripts',
     'writing-standing-image-prompts',
-    'writing-danbooru-tags',
   ],
   'risu/bot/AGENTS.md': [
     'authoring-media-mix',
     'authoring-characters',
     'authoring-worlds',
-    'authoring-self-introduction-sheets',
     'authoring-lorebook-bots',
     'authoring-scenarios',
     'authoring-desire',
     'trope-library',
     'writing-translation-guides',
-    'core-craft',
+    'critiquing-bots',
   ],
   'risu/prompts/AGENTS.md': ['writing-risup-presets', 'prompt-family-development', 'prompt-family-maintenance'],
   'risu/modules/AGENTS.md': ['writing-risum-modules'],
@@ -66,9 +64,9 @@ const ROUTER_SKILLS: Record<string, readonly string[]> = {
 };
 
 describe('agent eval: deterministic Skill routing and context budgets', () => {
-  it('keeps the unified 27-Skill catalog unique', () => {
+  it('keeps the unified 25-Skill catalog unique', () => {
     const names = CATALOG.map((entry) => entry.name);
-    expect(names).toHaveLength(27);
+    expect(names).toHaveLength(25);
     expect(new Set(names).size).toBe(names.length);
   });
 
@@ -88,14 +86,7 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
       const source = skillSource(entry.name);
       const words = wordCount(source);
       total += words;
-      const cap =
-        entry.name === 'project-workflow'
-          ? 600
-          : entry.name === 'using-mcp-tools'
-            ? 900
-            : entry.name === 'core-craft'
-              ? 700
-              : 1_000;
+      const cap = entry.name === 'project-workflow' ? 600 : entry.name === 'using-mcp-tools' ? 900 : 1_000;
       expect(words, `${entry.name}: ${words}/${cap} words`).toBeLessThanOrEqual(cap);
       expect(source, `${entry.name}: runtime smoke table`).not.toMatch(/^## .*Smoke.*$/gimu);
       expect(source, `${entry.name}: user-specific absolute path`).not.toMatch(/[A-Za-z]:[\\/]Users[\\/]/u);
@@ -136,7 +127,21 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
     const rule =
       'Infer what is already supplied and ask at most one question, only when the unresolved choice would materially change the result.';
     expect(read('risu/bot/AGENTS.md')).toContain(rule);
-    for (const skill of ['authoring-characters', 'authoring-desire', 'authoring-worlds', 'core-craft']) {
+    for (const skill of ['authoring-characters', 'authoring-desire', 'authoring-worlds']) {
+      expect(skillSource(skill), skill).toContain(rule);
+    }
+  });
+
+  it('keeps the shared creative-latitude rule identical across MCP-visible primary composition Skills', () => {
+    // The bot router is invisible to MCP-only clients, so the rule it states is repeated verbatim here.
+    const rule =
+      "Assume the user trusts deliberate creative judgment: a strange, uncomfortable, excessive, or productively “wrong” choice may be the work's signature, so commit to it coherently instead of normalizing it, and preserve the requested intensity, moral ambiguity, transgression, and consequence.";
+    for (const skill of [
+      'authoring-characters',
+      'authoring-worlds',
+      'authoring-scenarios',
+      'authoring-lorebook-bots',
+    ]) {
       expect(skillSource(skill), skill).toContain(rule);
     }
   });
@@ -158,6 +163,12 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
     expect(standingImage).toContain('references/ANIMA.md');
     expect(skillDescription(restrictedHtml)).not.toContain('Arca');
     expect(restrictedHtml).toContain('references/ARCA_LIVE.md');
+
+    const critique = skillSource('critiquing-bots');
+    expect(skillDescription(critique)).not.toContain('Kotone');
+    for (const profile of ['KOTONE_CHARACTER', 'KOTONE_ENSEMBLE', 'KOTONE_SIMULATOR']) {
+      expect(critique).toContain(`references/${profile}.md`);
+    }
   });
 
   it('keeps root and representative authoring routes below their budgets', () => {
@@ -168,7 +179,7 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
       /prefer these repository-specific routes over semantically overlapping generic global Skills/iu,
     );
     expect(rootRouter).not.toMatch(/project-workflow.{0,80}(?:mandatory|every session)/isu);
-    expect(botRouter).not.toMatch(/core-craft.{0,80}(?:always|alongside)/isu);
+    expect(botRouter).not.toMatch(/\b(?:always|alongside)\b.{0,40}support Skill/isu);
 
     const representativeWords =
       wordCount(rootRouter) +
@@ -193,14 +204,13 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
     const supportRoutes = botRouter.match(/## Optional support routes([\s\S]*?)(?=\n## )/u)?.[1] ?? '';
 
     expect(primaryRoutes).toContain('`writing-translation-guides`');
-    for (const skill of ['authoring-desire', 'trope-library', 'core-craft']) {
+    for (const skill of ['authoring-desire', 'trope-library']) {
       expect(supportRoutes, skill).toContain(`\`${skill}\``);
     }
     expect(botRouter).not.toMatch(/only when the primary Skill explicitly hands off/iu);
-    expect(read('risu/bot/skills/trope-library/TROPES.md')).not.toMatch(/core-craft.+before loading entries/iu);
   });
 
-  it('keeps core-craft references semantic instead of pointing at removed numbered sections', () => {
+  it('keeps bot guidance free of references to the dissolved core-craft Skill', () => {
     const botSkillRoot = path.join(ROOT, 'risu', 'bot', 'skills');
     const pending = [botSkillRoot];
     const staleReferences: string[] = [];
@@ -212,7 +222,7 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
         const absolutePath = path.join(current, entry.name);
         if (entry.isDirectory()) {
           pending.push(absolutePath);
-        } else if (entry.name.endsWith('.md') && /`core-craft`\s*§\d/iu.test(fs.readFileSync(absolutePath, 'utf8'))) {
+        } else if (entry.name.endsWith('.md') && /core-craft/iu.test(fs.readFileSync(absolutePath, 'utf8'))) {
           staleReferences.push(path.relative(ROOT, absolutePath));
         }
       }
@@ -240,9 +250,10 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
     for (const [skill, handoff] of pairs) {
       expect(skillDescription(skillSource(skill)), `${skill} -> ${handoff}`).toContain(handoff);
     }
-    const coreDescription = skillDescription(skillSource('core-craft'));
-    expect(coreDescription).toContain('Support skill');
-    expect(coreDescription).toContain('return to the primary');
+    for (const support of ['authoring-desire', 'trope-library']) {
+      expect(skillDescription(skillSource(support)), support).toContain('Support skill');
+    }
+    expect(skillDescription(skillSource('critiquing-bots'))).toContain('authoring skill');
   });
 
   it('keeps RisuAI scripting layers distinct while exposing verified interoperability', () => {
@@ -270,21 +281,20 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
 
   it('preserves dark creative intent while separating RP authorship from content', () => {
     const botRouter = read('risu/bot/AGENTS.md');
-    const coreCraft = skillSource('core-craft');
     const characters = skillSource('authoring-characters');
-    const userPosition = read('risu/bot/skills/core-craft/USER_POSITION.md');
+    const userPosition = read('risu/bot/skills/authoring-characters/USER_POSITION.md');
 
     expect(botRouter).toContain('Creative choices need not converge on one “correct”');
     expect(botRouter).toContain('this authorship boundary does not sanitize coercion');
     expect(botRouter).not.toMatch(/normal safety boundaries|consent, user agency, or safety boundaries/iu);
-    expect(coreCraft).toContain('Art has no single optimal answer.');
-    expect(coreCraft).toContain(
+    expect(botRouter).toContain('Art has no single optimal answer.');
+    expect(botRouter).toContain(
       'Productive wrongness preserves chosen anchors and consequences; accidental incoherence loses them.',
     );
-    expect(coreCraft).toContain(
-      'Preserve the requested intensity, moral ambiguity, transgression, ugliness, and consequence.',
+    expect(botRouter).toContain(
+      'Preserve the requested intensity, moral ambiguity, transgression, ugliness, and consequence',
     );
-    expect(coreCraft).not.toMatch(/allowed dark material|normal safety boundaries/iu);
+    expect(botRouter).not.toMatch(/allowed dark material/iu);
     expect(characters).toContain('This is an authorship boundary, not a content-softening rule');
     expect(userPosition).not.toContain('breaks safety');
   });

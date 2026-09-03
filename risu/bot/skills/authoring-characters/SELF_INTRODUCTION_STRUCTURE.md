@@ -186,3 +186,24 @@ Move details out of the base sheet when they should only appear under conditions
 - location-sensitive behavior
 
 Those belong in lorebook or another conditional surface more than in the always-on sheet.
+
+## When to Bend the Method
+
+The rules above are strong defaults, not doctrine. Bend them on purpose when:
+
+- one signature habit is central enough to deserve always-on status
+- the character is genuinely plainspoken and would name feelings directly
+- an explicitly declared premise, role, or content constraint matters more than stylistic purity
+- a worldbuilding fact would become confusing if left implicit
+
+The point is not minimalism for its own sake; it is avoiding needless over-definition.
+
+## Converting an Older Sheet
+
+When refactoring a resume-style sheet, preserve the character and rebuild the information into the factual profile, the voiced self-introduction, and the generative closing instruction. Move psychology labels out of the profile and into what the monologue shows.
+
+## Failure Signals
+
+- **Still a trait list:** reduce labels and move the reading into the monologue; stop explaining the personality in third-person summary.
+- **Exposition instead of self-presentation:** reinforce the camera premise and let the character cut, dodge, brag, understate, or wander.
+- **Too much unsaid:** restore factual stability in the profile, make current circumstances clearer, and allow one or two more explicit signals when output turns vague instead of evocative.

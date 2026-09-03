@@ -14,7 +14,7 @@ Define an invariant creative promise and a set of medium-specific transformation
 ## Minimal workflow
 
 1. Declare the mode of each product: emergent RP, fixed narrative, route/serial hybrid, or franchise core.
-2. Write the IP core: audience promise, emotional engine, recognizable anchor, headline signature, and elements that must not drift.
+2. Write the IP core: audience promise, emotional engine, recognizable anchor, a headline signature (the one sentence that distinguishes the work without listing lore), two to four reinforcing echoes (choices across character, world, visual, or structure that support the signature), an elastic zone (medium-specific changes that are not canon violations), and the must-not-drift elements.
 3. Define character/world identity by functions and tensions rather than exhaustive canon.
 4. Build a visual identity from silhouette, shape language, palette, material, recurring motif, and transformation rules. Load `VISUAL_IDENTITY.md` only when this layer is material.
 5. Create an adaptation matrix for each medium: what it does best, what must remain invariant, what should change, and what must be omitted.
