@@ -1,47 +1,47 @@
 [
   {
     "prompt": "새 캐릭터를 만들고 싶어. 과묵한 용병인데 고용주에게만 말이 많아지는 성격이야. 심리와 말투, 첫 메시지까지 잡아줘.",
-    "use": ["authoring-characters"],
-    "exclude": ["authoring-worlds", "project-workflow"]
+    "use": ["authoring-bots"],
+    "exclude": ["project-workflow"]
   },
   {
     "prompt": "새 판타지 세계관을 처음부터 만들어줘. 마법 체계, 길드 정치, 주요 도시 셋. 캐릭터는 아직 없어.",
-    "use": ["authoring-worlds"],
-    "exclude": ["authoring-characters", "authoring-lorebook-bots"]
+    "use": ["authoring-bots"],
+    "exclude": []
   },
   {
     "prompt": "등장인물 12명이 나오는 학원 봇이야. 설명란과 로어북에 정보를 어떻게 나눠야 할지 구조를 잡아줘.",
-    "use": ["authoring-lorebook-bots"],
-    "exclude": ["writing-lorebooks", "authoring-characters"]
+    "use": ["authoring-bots"],
+    "exclude": ["writing-lorebooks"]
   },
   {
     "prompt": "하루 단위로 진행되는 카페 경영 시뮬레이션 봇을 만들어줘. 이벤트, 자원, 엔딩 분기가 필요해.",
-    "use": ["authoring-scenarios"],
-    "exclude": ["authoring-characters", "writing-trigger-scripts"]
+    "use": ["authoring-bots"],
+    "exclude": ["writing-trigger-scripts"]
   },
   {
     "prompt": "캐릭터가 1인칭으로 자기소개하는 형식의 시트로 써줘. 사실 정보는 표로, 말투는 본인 목소리로.",
-    "use": ["authoring-characters"],
-    "exclude": ["authoring-lorebook-bots"]
+    "use": ["authoring-bots"],
+    "exclude": []
   },
   {
     "prompt": "내가 만든 오리지널 IP '별빛 항구'를 웹툰, 게임, RisuAI 봇으로 확장할 거야. 매체마다 뭘 유지하고 뭘 바꿀지 정리해줘.",
-    "use": ["authoring-media-mix"],
-    "exclude": ["writing-standing-image-prompts", "authoring-characters"]
+    "use": ["authoring-bots"],
+    "exclude": ["writing-standing-image-prompts"]
   },
   {
     "prompt": "영어로 출력되는 이 봇의 대사를 한국어로 옮길 때 존댓말·반말 전환 규칙과 호칭 표를 만들어줘.",
     "use": ["writing-translation-guides"],
-    "exclude": ["authoring-characters"]
+    "exclude": ["authoring-bots"]
   },
   {
-    "prompt": "거대화 페티시가 중심인 캐릭터를 만들 거야. 어느 스킬로 시작하고 어떤 보조 스킬을 붙일지, 신체 비율과 물리 상수는 어디에 둘지 설계 방침만 정해줘. 시트는 아직 쓰지 마.",
-    "use": ["authoring-characters", "authoring-desire"],
-    "exclude": ["authoring-scenarios"]
+    "prompt": "거대화가 중심인 판타지 캐릭터를 만들 거야. 신체 비율과 물리 상수를 설정 어디에 둘지 설계 방침만 정해줘. 시트는 아직 쓰지 마.",
+    "use": ["authoring-bots"],
+    "exclude": []
   },
   {
     "prompt": "츤데레 클리셰를 정석대로 살리되 한 군데만 비틀고 싶어. 기대되는 비트와 흔한 실패 패턴을 알려줘.",
-    "use": ["trope-library"],
+    "use": ["authoring-bots"],
     "exclude": ["project-workflow"]
   },
   {
@@ -67,7 +67,7 @@
   {
     "prompt": "로어북 항목의 키워드, 폴더, @@depth 데코레이터 설정법을 알려줘.",
     "use": ["writing-lorebooks"],
-    "exclude": ["authoring-lorebook-bots"]
+    "exclude": ["authoring-bots"]
   },
   {
     "prompt": "봇 채팅에 상태창 UI를 HTML/CSS로 넣고 싶어. backgroundEmbedding에 스타일을 두는 방식으로.",
@@ -82,12 +82,12 @@
   {
     "prompt": "이 캐릭터의 스탠딩 이미지 프롬프트를 Anima 모델용으로 한 장 뽑아줘.",
     "use": ["writing-standing-image-prompts"],
-    "exclude": ["authoring-media-mix"]
+    "exclude": ["authoring-bots"]
   },
   {
     "prompt": "이 태그 목록이 실제 Danbooru 태그인지 확인하고 틀린 건 고쳐줘: silver_hair, red_eye, maid_outfit",
     "use": ["writing-standing-image-prompts"],
-    "exclude": ["authoring-media-mix"]
+    "exclude": ["authoring-bots"]
   },
   {
     "prompt": ".charx 안의 card.json과 module.risum이 어떻게 나뉘고 정규식 in/out 필드가 어디에 저장되는지 알려줘.",
@@ -97,22 +97,22 @@
   {
     "prompt": "RisuAI .risup 프리셋의 promptTemplate에 사고 과정 토글을 추가하고 formatingOrder를 맞추려면 어떤 항목을 어떻게 고쳐야 해?",
     "use": ["writing-risup-presets"],
-    "exclude": ["prompt-family-maintenance", "prompt-family-development"]
+    "exclude": ["prompt-family"]
   },
   {
-    "prompt": "Mythos 프롬프트 패밀리에 서사 강도 조절 모드를 새로 넣고 싶어. 기본 문장으로 갈지 CBS 토글로 갈지 결정부터 해줘.",
-    "use": ["prompt-family-development"],
-    "exclude": ["prompt-family-maintenance"]
+    "prompt": "Phēmē 프롬프트 패밀리에 서사 강도 조절 모드를 새로 넣고 싶어. 기본 문장으로 갈지 CBS 토글로 갈지 결정부터 해줘.",
+    "use": ["prompt-family"],
+    "exclude": []
   },
   {
-    "prompt": "Mythos 소스 프롬프트가 바뀌었어. Gemini 변형 .risup 두 개에 같은 변경을 반영하고 드리프트 확인해줘.",
-    "use": ["prompt-family-maintenance"],
-    "exclude": ["prompt-family-development"]
+    "prompt": "Phēmē 소스 프롬프트가 바뀌었어. Gemini 변형 .risup 두 개에 같은 변경을 반영하고 드리프트 확인해줘.",
+    "use": ["prompt-family"],
+    "exclude": []
   },
   {
     "prompt": "여러 캐릭터에서 재사용할 상태창 로어북+CSS 묶음을 .risum 모듈로 만들어줘.",
     "use": ["writing-risum-modules"],
-    "exclude": ["authoring-lorebook-bots"]
+    "exclude": ["authoring-bots"]
   },
   {
     "prompt": "RisuAI 플러그인 v3로 채팅 출력 후 특정 단어를 치환하는 스크립트를 짜줘.",
@@ -130,8 +130,8 @@
     "exclude": ["using-mcp-tools"]
   },
   {
-    "prompt": "이 .charx 봇의 디스크립션과 로어북을 비평해줘. 어디가 살아 있고 어디서 무너질지, 별점과 함께 고칠 우선순위를 알려줘.",
-    "use": ["critiquing-bots"],
-    "exclude": ["authoring-characters", "writing-lorebooks"]
+    "prompt": "봇 설정을 비평해줘: 주인공은 모든 기억을 정확히 보존하지만 어제 받은 편지의 내용은 아무 이유 없이 잊는다. 이 모순을 작품의 특징으로 살릴 방법과 수정 우선순위를 알려줘.",
+    "use": ["authoring-bots"],
+    "exclude": ["writing-lorebooks"]
   }
 ]

@@ -1,36 +1,15 @@
 ---
 name: project-workflow
-description: 'Use when changing RisuToki code, harnesses, tests, CI, documentation tied to behavior, versions, or releases. Primary skill for repository contribution work; hand MCP artifact operations to using-mcp-tools. Do not use when only authoring or inspecting a .charx, .risum, or .risup artifact.'
+description: 'Repository-specific release policy, validation commands, and source locations for RisuToki code or tooling changes. Artifact editing uses using-mcp-tools; bot and preset content uses the risu/ routes.'
 tags: ['workflow', 'project', 'contribution', 'release']
-related_tools: ['list_skills', 'read_skill']
 ---
 
-# Project Workflow
+# RisuToki Repository
 
-## Outcome
+- `docs/PROJECT_RULES.md`: versioning, CI, and release policy. Product and tooling changes need a semver bump and changelog entry; content authoring and documentation-only corrections do not.
+- `docs/MODULE_MAP.md`: source navigation. TypeScript is the source when generated JavaScript siblings exist.
+- `docs/MCP_WORKFLOW.md`: runtime modes and MCP startup.
 
-Deliver an in-scope repository change with the relevant documentation, version metadata, and validation evidence synchronized. This is not a session-start preload.
+Skill sources live in `skills/` and `risu/*/skills/`. `npm run sync:skills` rebuilds `.skill-catalog/` and the `.agents/skills` and `.claude/skills` discovery paths; edit the source files, not those generated paths.
 
-## Minimal workflow
-
-1. Inspect the nearest `AGENTS.md`, affected implementation, and current working-tree state.
-2. Define the smallest source, documentation, and test surfaces that must move together.
-3. Load only the supporting reference that affects the task:
-   - `docs/MCP_WORKFLOW.md` for runtime modes or MCP execution sequences.
-   - `docs/PROJECT_RULES.md` for semver, changelog, CI, and release details.
-4. Implement without overwriting unrelated user changes.
-5. Run proportionate checks and report what ran, what passed, and any remaining limit.
-
-For concrete artifact tool selection, hand off to `using-mcp-tools`. Authoring syntax and composition belong to the nearest `risu/*/AGENTS.md` route.
-
-## Repository rules
-
-- Changes to tracked source, product behavior, or workflow/tooling require a semver version update and a new top `CHANGELOG.md` entry. Update user-facing documentation when behavior changes.
-- Pure `.charx`/`.risum`/`.risup` authoring does not require a version bump. Documentation-only corrections that do not change product behavior also do not require one.
-- Keep `AGENTS.md`, docs, Skills, tests, and tool metadata synchronized when an MCP surface or routing contract changes.
-- PR validation covers lint, typecheck, tests, replay, the MCP contract baseline, and platform builds as documented in `docs/PROJECT_RULES.md`. MCP contract or routing changes also require the focused `npm run test:evals` check.
-- Packaging and publishing occur only for an explicitly authorized tag release.
-
-## Validation
-
-Choose checks by risk. At minimum, run focused tests for changed behavior and the repository's lint/type checks when applicable. For generated Skill discovery surfaces, run the canonical sync command and verify mirrors rather than editing generated copies directly.
+Use the checks appropriate to the changed surface in `docs/PROJECT_RULES.md`. Packaging and publishing belong to explicitly authorized tag releases.

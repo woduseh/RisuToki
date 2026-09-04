@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI Regex'
+  short_description: 'Configure regex transformations, stages, and special flags'
+  default_prompt: 'Use $writing-regex-scripts to implement or diagnose the requested RisuAI regex transformation.'

@@ -1,6 +1,6 @@
 ---
 name: writing-regex-scripts
-description: 'Use when creating or diagnosing RisuAI regex entries, capture substitutions, flags, processing stages, or special OUT actions. Primary skill for regex behavior; hand HTML/CBS details to their syntax skills. Do not use when the task is a structured trigger, Lua code, or text editing without regex.'
+description: 'Use for RisuAI regex entries, captures, flags, processing stages, and special OUT actions.'
 tags: ['regex', 'scripting', 'transformation']
 related_tools: ['read_content', 'analyze_content', 'preview_edit', 'apply_edit', 'manage_items', 'read_regex_batch']
 ---
@@ -20,19 +20,10 @@ Stages:
 - `editrequest`: RisuToki convenience alias accepted on input and normalized to `editprocess` on export.
 - `edittrans`: translation-output stage. Current RisuAI applies preset, then module, then character regex entries; it is separate from the ordinary send/display pipeline.
 
-## Minimal workflow
-
-1. Choose the stage from the intended visibility and persistence.
-2. Bound the pattern and test representative matches, non-matches, multiline/Unicode input, and repeated global matches.
-3. Use `$0`/`$&`, numbered, or named capture substitutions deliberately. Enable only required JavaScript flags.
-4. CBS in the IN pattern requires the dedicated IN-CBS parsing option. CBS in OUT is evaluated according to the regex pipeline; do not assume it receives `runVar` mutation permission.
-5. Minify HTML/CBS injected by `editdisplay` to one continuous line; put persistent CSS in `backgroundEmbedding`.
-6. Preview/apply with current identity or index guards and validate the final stage behavior.
+Capture substitutions support `$0`/`$&`, numbered, and named groups. CBS in the IN pattern requires the dedicated IN-CBS parsing option. CBS in OUT follows the regex pipeline and does not automatically receive `runVar` mutation permission. HTML/CBS injected by `editdisplay` must be one continuous line; persistent CSS belongs in `backgroundEmbedding`.
 
 Special OUT actions such as emotion display, inject, move-top, move-bottom, repeat-back, and execution `order` live in the `flag` metadata and have runtime-specific semantics; verify them in the existing entry or detailed syntax guide before use. In particular, inject is not arbitrary payload insertion. Translation regex supports custom flags, CBS preprocessing, ordering, move-top/move-bottom, and capture substitutions, but receives translation text rather than a saved chat message.
 
-## Boundaries and validation
+## References
 
 Hand CBS expression repair to `writing-cbs-syntax`, output markup to `writing-html-css`, and event/state orchestration to `writing-trigger-scripts` or `writing-lua-scripts`. Load `risu/common/docs/문법가이드_정규식.md` only for extended flags/examples. For mixed pipeline ordering, load `RUNTIME_INTEROP.md` from `writing-trigger-scripts` through the Skill reader.
-
-Check catastrophic backtracking risk, stage correctness, capture behavior, ordering, canonical `in`/`out` export, single-line display markup, and whether a render-only edit was incorrectly used for a model instruction.

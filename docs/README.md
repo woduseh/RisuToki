@@ -6,7 +6,6 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 
 | If you are...                                            | Read first                                                                    | Then read                                                |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------- |
-| starting a new session or onboarding                     | `read_skill("project-workflow")`                                              | `read_skill("using-mcp-tools")`                          |
 | working on authoring materials under `risu/`             | nearest `risu/{common,bot,prompts,modules,plugins}/AGENTS.md` or `README.md`  | matching `risu/.../skills/` + `risu/.../docs/` surfaces  |
 | editing `.charx` / `.risum` / `.risup` through MCP       | `read_skill("using-mcp-tools")` for task playbooks and validation rules       | `docs/MCP_TOOL_SURFACE.md`, `docs/MCP_ERROR_CONTRACT.md` |
 | recovering from an MCP tool failure or no-op             | `docs/MCP_ERROR_CONTRACT.md`                                                  | `docs/MCP_TOOL_SURFACE.md`                               |
@@ -17,7 +16,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 
 ## Core documents
 
-- **`docs/MCP_WORKFLOW.md`** — runtime modes, startup profile behavior, and the common execution sequence
+- **`docs/MCP_WORKFLOW.md`** — runtime modes and startup profile behavior
 - **`docs/MCP_TOOL_SURFACE.md`** — profile, facade coverage, MCP family, tool-boundary, and metadata contracts
 - **`docs/MCP_ERROR_CONTRACT.md`** — success / error / no-op response contracts and the recovery playbook
 - **`src/lib/mcp-agent-workflow-eval.test.ts`** — declarative workflow matrix, coverage invariants, optional local-corpus checks, and documentation guards
@@ -29,7 +28,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 ## Boundary notes
 
 - Root `AGENTS.md` is a compact **product-first** routing TOC. The nearest `risu/{scope}/AGENTS.md` handles authoring routing under `risu/`.
-- Guidance ownership is explicit: `AGENTS.md` owns startup/routing, `using-mcp-tools` owns tool choice/playbooks, `MCP_TOOL_SURFACE.md` owns profiles/coverage/contracts, and `MCP_WORKFLOW.md` owns runtime modes/common sequence.
+- Guidance ownership is explicit: `AGENTS.md` owns startup/routing, `using-mcp-tools` owns tool choice/playbooks, `MCP_TOOL_SURFACE.md` owns profiles/coverage/contracts, and `MCP_WORKFLOW.md` owns runtime modes/startup.
 - Root `skills/` now holds product/editor skills only. Shared and artifact-specific authoring skills live under `risu/common/skills/` and `risu/{bot,prompts,modules,plugins}/skills/`.
 - Built-in authoring docs live under `risu/common/docs/` and `risu/{bot,prompts,modules,plugins}/docs/`.
 - Success envelopes expose `artifacts.byte_size`; use it as a context-budget cue before asking for adjacent content.

@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI HTML and CSS'
+  short_description: 'Build markup for RisuAI rendering and background styles'
+  default_prompt: 'Use $writing-html-css to implement or repair the requested RisuAI markup and styles.'

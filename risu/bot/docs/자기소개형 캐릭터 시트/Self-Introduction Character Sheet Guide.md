@@ -6,7 +6,7 @@
 >
 > - Core document: [Self-Introduction Character Sheet](./Self-Introduction%20Character%20Sheet.md)
 > - Korean original commentary: [자기소개형 캐릭터 시트 해설](./자기소개형%20캐릭터%20시트%20해설.md)
-> - Skill wrapper: [authoring-characters › SELF_INTRODUCTION_SHEETS.md](../../skills/authoring-characters/SELF_INTRODUCTION_SHEETS.md)
+> - Skill wrapper: [authoring-bots › SELF_INTRODUCTION.md](../../skills/authoring-bots/SELF_INTRODUCTION.md)
 
 This guide explains **how each part of the sheet works on the model**.
 

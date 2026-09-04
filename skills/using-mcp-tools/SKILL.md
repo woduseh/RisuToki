@@ -1,6 +1,6 @@
 ---
 name: using-mcp-tools
-description: 'Use when selecting or sequencing RisuToki MCP reads, searches, previews, edits, validation, assets, or file operations. Primary skill for MCP artifact operations; hand content semantics to the relevant authoring skill. Do not use when drafting content without reading or mutating an artifact.'
+description: 'RisuToki MCP artifact operations: facade selection, guarded previews and writes, bounded reads, file and asset handling, and recovery. Content composition and syntax use the relevant risu/ skills.'
 tags: ['workflow', 'mcp', 'editing']
 related_tools:
   [
@@ -18,47 +18,35 @@ related_tools:
   ]
 ---
 
-# Using MCP Tools Safely
+# RisuToki MCP Contracts
 
-## Outcome
+## Tools and targets
 
-Use the narrowest facade-first route that can complete the artifact task, preserve stale guards and approval boundaries, and return focused validation evidence. This Skill selects tools; the relevant authoring Skill owns content quality and syntax.
+Use the current `tools/list` metadata and response `next_actions`. Prefer the facade family for the target surface; granular tools are fallbacks when the facade cannot express the operation. A known unsupported operation does not need a deliberately failing facade call.
 
-## Minimal workflow
+- `inspect_document`, `read_content`, and `search_document` provide structure and bounded content. Select by family, field, identity, or range; use truncation metadata and `artifacts.byte_size` to size follow-ups.
+- `analyze_content` handles transformations, statistics, comparisons, simulations, and import verification. `validate_content` returns pass/fail diagnostics.
+- `manage_items` handles structured item operations; `manage_assets` handles assets; `manage_file` handles guarded open/save/extract/reassemble operations.
+- Prefer stable `id` or `identity`; index-based edits need the current type/preview/hash guards. Batch sibling operations where supported.
+- Unopened and reference targets have facade routes; opening another active document is not a prerequisite to inspect them. References are read-only.
 
-1. Discover only what is needed with `inspect_document` or the relevant list/search selector.
-2. Read bounded content with `read_content`; narrow by family, field, item identity, range, or query before increasing the byte limit.
-3. Use `analyze_content` for transformation, statistics, comparison, simulation, regex/CBS/Danbooru analysis, or import verification. Use `validate_content` for pass/fail diagnostics.
-4. For changes, create a focused `preview_edit`, review target/digest/guard metadata, then call `apply_edit` once. Apply-stage tools declare `requiresConfirmation`: the editor's dialog or the standalone write gate is the approval boundary, so do not ask in chat before applying a preview that matches the request. Ask only when the preview exposes a choice the request left open. A token is one-shot; after interruption, stale response, timeout, or partial failure, inspect current state and create a new preview.
-5. Re-read or validate the changed surface and report the artifact evidence.
+## Mutation contract
 
-Use `manage_items` for supported structured item operations, `manage_assets` for asset workflows, and `manage_file` for guarded open/save/extract/reassemble operations. Batch sibling items instead of looping, and issue independent reads, searches, and previews in one turn rather than one per turn. Prefer stable `id` or `identity` selectors; when only indexes exist, carry the latest expected type/preview/hash from the list or read response.
+Create and inspect a matching preview, then apply it. The editor confirmation dialog or standalone write gate is the approval boundary; a requested mutation does not need another chat approval. `preview_token`, `operation_digest`, and stale guards bind the preview to its target. Tokens are consumed once, before the first mutation; after a stale response, timeout, interruption, or partial failure, inspect current state and generate a fresh preview. Never blindly retry a mutation with an unknown outcome.
 
-Prefer replace, insert, and range operations over whole-section or whole-field rewrites; rewrite a section only when most of it changes. The result is the same, but a rewrite costs output tokens, time, and a larger confirmation diff.
+Prefer focused replace/insert/range operations when they describe the change well. For large exact rewrites, guarded export/import or project-folder workflows avoid oversized responses. Verify the changed artifact with the relevant read, diff, or validator.
 
-## Boundaries and fallback
+Protected/deprecated `.charx` compatibility fields, legacy `.risup` prompt fields, reserved `.risum` `cjs`, and unsafe virtual script content are hidden and save-stripped. `hiddenFieldWarnings` reports existence only; it is not an alternate read route. `.risum` `mcpUrl` is preserved but read-only through normal mutation routes.
 
-- Do not broad-read or generic-write Lua, CSS, greetings, triggers, lorebooks, regex, or `.risup` prompt structures. Use their facade family first and dedicated granular tools only when a facade cannot express the operation or an exact legacy payload is required.
-- Prefer facade operations for unopened and reference files. Probe or external granular routes are fallbacks for unsupported shapes and diagnostics; do not switch the active document unnecessarily.
-- Use surface patch/replace only after dedicated families fail. Preserve JSON Patch semantics: array `add` inserts at `0..length`, `-` appends, while `replace` and `remove` require an existing index.
-- The protected/deprecated `.charx` compatibility fields, legacy `.risup` prompt fields, reserved `.risum` `cjs`, and unsafe virtual script content remain hidden and save-stripped. `hiddenFieldWarnings` proves existence only; never route around the policy. `.risum` `mcpUrl` is preserved but read-only through normal mutation routes.
-- For `.charx` upload, run export-compatibility validation. For imported `.risup` prompt text, verify with `analyze_content` action `verify_risup_prompt_import` using the same source.
-- If a needed operation is absent from the active profile, identify the smallest profile that covers it and state the fallback reason. Profile changes require an MCP restart.
+JSON Patch array `add` inserts at `0..length` and `-` appends; `replace` and `remove` require an existing index. For imported `.risup` prompt text, use `analyze_content` action `verify_risup_prompt_import` with the same source. For `.charx` upload, run export-compatibility validation.
 
-## Context and safety
+## Runtime and references
 
-Honor response `next_actions`, byte sizes, truncation metadata, confirmation requirements, and dry-run support. For large fields, search then range-read; for large exact rewrites, use guarded export/import or project-folder workflows. Do not automatically retry a mutation whose outcome is unknown.
+Profiles are registered at startup; changing profiles requires an MCP restart. `manage_assets` `read_asset` returns base64 into context; use metadata for identity and size unless the bytes themselves are needed.
 
-`manage_assets` `read_asset` returns the asset bytes as base64 into context. Use list metadata for identity, size, and references, and read bytes only when the bytes themselves are the task; base64 payloads waste context and can trip content safeguards.
+- [TOOL_REFERENCE.md](TOOL_REFERENCE.md): legacy/granular catalog.
+- [FILE_STRUCTURES.md](FILE_STRUCTURES.md): exact artifact shapes.
+- `docs/MCP_WORKFLOW.md`: runtime modes and startup.
+- `docs/MCP_TOOL_SURFACE.md` and `docs/MCP_ERROR_CONTRACT.md`: profile and response contracts.
 
-Tool names, fields, guards, and profiles you remember from earlier RisuToki versions may have changed. Trust the current `tools/list` `_meta`, response `next_actions`, and this skill over memory.
-
-## References
-
-Load only when needed:
-
-- [`TOOL_REFERENCE.md`](TOOL_REFERENCE.md) for the complete legacy/granular catalog.
-- [`FILE_STRUCTURES.md`](FILE_STRUCTURES.md) for exact artifact shapes.
-- `docs/MCP_TOOL_SURFACE.md` and `docs/MCP_ERROR_CONTRACT.md` for profile and response contracts.
-
-When a skill points at a document outside its own directory, such as a family profile or field inventory under `risu/*/docs`, read it with `inspect_document` and `{ kind: "guidance", guide: "<name>" }`. The name may be the guide id (`prompts/families/MYTHOS.md`), the repository path the skill shows, or a unique file name; the guidance catalog (`{ kind: "guidance" }`) lists every guide name.
+MCP reads of a guide outside its skill directory use `inspect_document` with `{ kind: "guidance", guide: "prompts/families/PHEME.md" }`. Guide ids, repository paths, and unique filenames are accepted; `{ kind: "guidance" }` lists available guide names.

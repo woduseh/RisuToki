@@ -78,69 +78,25 @@ describe('MCP API structured error envelopes — global guards', () => {
       expect(list.status).toBe(200);
       expect(list.data.count).toBeGreaterThan(0);
       expect(list.data.skills.some((skill) => skill.name === 'project-workflow')).toBe(true);
-      expect(
-        list.data.skills.some(
-          (skill) =>
-            skill.name === 'authoring-media-mix' &&
-            skill.files.includes('MEDIA_PROFILES.md') &&
-            skill.files.includes('VISUAL_IDENTITY.md') &&
-            skill.files.includes('VALIDATION.md'),
-        ),
-      ).toBe(true);
-      expect(
-        list.data.skills.some(
-          (skill) =>
-            skill.name === 'authoring-characters' &&
-            skill.files.includes('APPEAL_PATTERNS.md') &&
-            skill.files.includes('USER_POSITION.md') &&
-            skill.files.includes('WORKED_EXAMPLE.md'),
-        ),
-      ).toBe(true);
-      expect(
-        list.data.skills.some(
-          (skill) =>
-            skill.name === 'authoring-desire' &&
-            skill.files.includes('DESIRE_CATALOG.md') &&
-            skill.files.includes('WORKED_EXAMPLE.md'),
-        ),
-      ).toBe(true);
-      expect(
-        list.data.skills.some(
-          (skill) => skill.name === 'trope-library' && skill.files.includes('SPECIES_ROLE_TROPES.md'),
-        ),
-      ).toBe(true);
+      const botSkill = list.data.skills.find((skill) => skill.name === 'authoring-bots');
+      expect(botSkill?.files).toEqual(expect.arrayContaining(['SKILL.md', 'references/FORMAT.md']));
+      expect(list.data.count).toBe(list.data.skills.length);
 
       const detail = await getJson<{ content: string }>(api.port, api.token, '/skills/project-workflow');
       expect(detail.status).toBe(200);
       expect(detail.data.content).toContain('Project Workflow');
 
-      const mediaMix = await getJson<{ content: string }>(api.port, api.token, '/skills/authoring-media-mix');
-      expect(mediaMix.status).toBe(200);
-      expect(mediaMix.data.content).toContain('Media-Mix IP Authoring');
+      const bot = await getJson<{ content: string }>(api.port, api.token, '/skills/authoring-bots');
+      expect(bot.status).toBe(200);
+      expect(bot.data.content).toContain('Bot Authoring Fixture');
 
-      const visualIdentity = await getJson<{ content: string }>(
+      const reference = await getJson<{ content: string }>(
         api.port,
         api.token,
-        '/skills/authoring-media-mix/VISUAL_IDENTITY.md',
+        '/skills/authoring-bots/references%2FFORMAT.md',
       );
-      expect(visualIdentity.status).toBe(200);
-      expect(visualIdentity.data.content).toContain('32px icon');
-
-      const userPosition = await getJson<{ content: string }>(
-        api.port,
-        api.token,
-        '/skills/authoring-characters/USER_POSITION.md',
-      );
-      expect(userPosition.status).toBe(200);
-      expect(userPosition.data.content).toContain('Compatibility-Bounded Persona');
-
-      const speciesRoles = await getJson<{ content: string }>(
-        api.port,
-        api.token,
-        '/skills/trope-library/SPECIES_ROLE_TROPES.md',
-      );
-      expect(speciesRoles.status).toBe(200);
-      expect(speciesRoles.data.content).toContain('## Vampire');
+      expect(reference.status).toBe(200);
+      expect(reference.data.content).toContain('Synthetic nested reference');
     } finally {
       await closeServer(api.server);
     }

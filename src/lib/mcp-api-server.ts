@@ -1065,7 +1065,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // ----------------------------------------------------------------
       // GET /guides — list guide documents (risu/*/docs) by catalog name
       // GET /guides/:name — read one guide; :name is a single URL-encoded segment such as
-      //   prompts%2Ffamilies%2FMYTHOS.md, a repository path, or a unique file name
+      //   prompts%2Ffamilies%2FPHEME.md, a repository path, or a unique file name
       // ----------------------------------------------------------------
       if (parts[0] === 'guides' && req.method === 'GET') {
         const guideRoots = deps.getGuideRoots?.() ?? [];
@@ -1092,7 +1092,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             action: 'read_guide',
             message: 'Invalid guide name',
             suggestion:
-              'Use a guide catalog name such as prompts/families/MYTHOS.md; ".." and absolute paths are not allowed.',
+              'Use a guide catalog name such as prompts/families/PHEME.md; ".." and absolute paths are not allowed.',
             target: `guides:${guideName}`,
           });
         }

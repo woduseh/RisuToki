@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Prompt Family'
+  short_description: 'Design and synchronize Phēmē prompts'
+  default_prompt: 'Use $prompt-family to revise or review Phēmē and keep its canonical prompt and requested variants aligned.'

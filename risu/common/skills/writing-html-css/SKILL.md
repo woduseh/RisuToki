@@ -1,6 +1,6 @@
 ---
 name: writing-html-css
-description: 'Use when writing HTML/CSS for RisuAI backgroundEmbedding, lorebook content, regex display output, or CBS-rendered panels. Primary skill for RisuAI rendering constraints; hand sanitized paste-target output to writing-restricted-wysiwyg-html. Do not use when targeting a normal web frontend or HTML outside a RisuAI surface.'
+description: 'Use for HTML/CSS in RisuAI backgroundEmbedding, lorebooks, regex output, and CBS-rendered panels.'
 tags: ['html', 'css', 'ui']
 related_tools: ['read_content', 'preview_edit', 'apply_edit', 'manage_items', 'list_css', 'read_css']
 ---
@@ -19,16 +19,4 @@ Put persistent `<style>` blocks in `backgroundEmbedding`; do not inject them rep
 - Blank lines and even line breaks between connected HTML/CBS blocks can create paragraph/text nodes and break flex/grid. Return injected UI as one continuous line.
 - Do not use `<script>`; use Lua for logic. Avoid radio inputs with known parser issues.
 
-## Minimal workflow
-
-1. Identify the exact CSS and HTML surfaces and inspect existing source class names.
-2. Design a namespaced container and selectors in `backgroundEmbedding`.
-3. Build semantic HTML with CBS only where dynamic content or classes are required.
-4. Minify the injected HTML/CBS boundary while keeping source CSS readable.
-5. Preview representative states, including missing variables, long text, and mobile width.
-
 Load `writing-cbs-syntax` only for CBS behavior, `writing-regex-scripts` for regex-stage semantics, and `writing-lorebooks` for activation/placement. Use `writing-restricted-wysiwyg-html` for sanitized paste-only WYSIWYG targets.
-
-## Validation
-
-Check source/prefixed class consistency, selector scoping, absence of blank-line parser hazards, correct surface placement, safe dynamic values, responsive overflow, and whether display-only content is mistakenly relied on as model-visible instruction.

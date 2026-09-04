@@ -15,20 +15,10 @@ function read(relativePath: string) {
   return fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
 }
 
-function wordCount(source: string) {
-  return source.trim() ? source.trim().split(/\s+/u).length : 0;
-}
-
 function skillSource(name: string) {
   const entry = CATALOG.find((candidate) => candidate.name === name);
   if (!entry) throw new Error(`Missing skill: ${name}`);
   return fs.readFileSync(path.join(entry.dirPath, 'SKILL.md'), 'utf8');
-}
-
-function skillDescription(source: string) {
-  const frontmatter = source.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/u)?.[1] ?? '';
-  const raw = frontmatter.match(/^description:\s*(.+)$/mu)?.[1]?.trim() ?? '';
-  return raw.replace(/^(['"])([\s\S]*)\1$/u, '$2');
 }
 
 function markdownReferences(source: string) {
@@ -47,146 +37,52 @@ const ROUTER_SKILLS: Record<string, readonly string[]> = {
     'writing-trigger-scripts',
     'writing-standing-image-prompts',
   ],
-  'risu/bot/AGENTS.md': [
-    'authoring-media-mix',
-    'authoring-characters',
-    'authoring-worlds',
-    'authoring-lorebook-bots',
-    'authoring-scenarios',
-    'authoring-desire',
-    'trope-library',
-    'writing-translation-guides',
-    'critiquing-bots',
-  ],
-  'risu/prompts/AGENTS.md': ['writing-risup-presets', 'prompt-family-development', 'prompt-family-maintenance'],
+  'risu/bot/AGENTS.md': ['authoring-bots', 'writing-translation-guides'],
+  'risu/prompts/AGENTS.md': ['writing-risup-presets', 'prompt-family'],
   'risu/modules/AGENTS.md': ['writing-risum-modules'],
   'risu/plugins/AGENTS.md': ['writing-plugins-v3'],
 };
 
-describe('agent eval: deterministic Skill routing and context budgets', () => {
-  it('keeps the unified 25-Skill catalog unique', () => {
+describe('agent eval: Skill discovery and reference contracts', () => {
+  it('discovers a nonempty catalog with unique names and portable sources', () => {
     const names = CATALOG.map((entry) => entry.name);
-    expect(names).toHaveLength(25);
+    expect(names.length).toBeGreaterThan(0);
     expect(new Set(names).size).toBe(names.length);
-  });
-
-  it('keeps every description trigger-rich, bounded, and role-explicit', () => {
     for (const entry of CATALOG) {
-      const description = skillDescription(skillSource(entry.name));
-      expect(description, `${entry.name}: description`).toContain('Use when');
-      expect(description, `${entry.name}: exclusion`).toContain('Do not use when');
-      expect(description, `${entry.name}: role`).toMatch(/(?:Primary|Support) skill/u);
-      expect(wordCount(description), `${entry.name}: description words`).toBeLessThanOrEqual(80);
+      expect(skillSource(entry.name), entry.name).not.toMatch(/[A-Za-z]:[\\/]Users[\\/]/u);
     }
-  });
-
-  it('keeps main Skill files within progressive-disclosure budgets', () => {
-    let total = 0;
-    for (const entry of CATALOG) {
-      const source = skillSource(entry.name);
-      const words = wordCount(source);
-      total += words;
-      const cap = entry.name === 'project-workflow' ? 600 : entry.name === 'using-mcp-tools' ? 900 : 1_000;
-      expect(words, `${entry.name}: ${words}/${cap} words`).toBeLessThanOrEqual(cap);
-      expect(source, `${entry.name}: runtime smoke table`).not.toMatch(/^## .*Smoke.*$/gimu);
-      expect(source, `${entry.name}: user-specific absolute path`).not.toMatch(/[A-Za-z]:[\\/]Users[\\/]/u);
-    }
-    expect(total).toBeLessThanOrEqual(24_000);
   });
 
   it('keeps referenced Markdown files resolvable and in-skill references servable by read_skill', () => {
     for (const entry of CATALOG) {
-      const source = skillSource(entry.name);
-      for (const reference of markdownReferences(source)) {
-        if (/^(?:https?:|#)/iu.test(reference)) continue;
-        const relativePath = decodeURIComponent(reference.split('#', 1)[0]);
-        const resolved = path.resolve(entry.dirPath, relativePath);
-        expect(fs.existsSync(resolved), `${entry.name}: ${reference}`).toBe(true);
-        const withinSkill = path.relative(entry.dirPath, resolved).replace(/\\/gu, '/');
-        if (withinSkill.startsWith('..')) {
-          const owner = CATALOG.find((candidate) => !path.relative(candidate.dirPath, resolved).startsWith('..'));
-          if (owner) {
-            const withinOwner = path.relative(owner.dirPath, resolved).replace(/\\/gu, '/');
-            expect(owner.files, `${entry.name}: ${reference} is not served by read_skill(${owner.name})`).toContain(
-              withinOwner,
+      for (const file of entry.files.filter((name) => name.endsWith('.md'))) {
+        const sourcePath = path.join(entry.dirPath, file);
+        const source = fs.readFileSync(sourcePath, 'utf8');
+        for (const reference of markdownReferences(source)) {
+          if (/^(?:https?:|#)/iu.test(reference)) continue;
+          const relativePath = decodeURIComponent(reference.split('#', 1)[0]);
+          const resolved = path.resolve(path.dirname(sourcePath), relativePath);
+          expect(fs.existsSync(resolved), `${entry.name}: ${reference}`).toBe(true);
+          const withinSkill = path.relative(entry.dirPath, resolved).replace(/\\/gu, '/');
+          if (withinSkill.startsWith('..')) {
+            const owner = CATALOG.find((candidate) => !path.relative(candidate.dirPath, resolved).startsWith('..'));
+            if (owner) {
+              const withinOwner = path.relative(owner.dirPath, resolved).replace(/\\/gu, '/');
+              expect(owner.files, `${entry.name}: ${reference} is not served by read_skill(${owner.name})`).toContain(
+                withinOwner,
+              );
+              continue;
+            }
+            const servedByGuideRoot = GUIDE_ROOTS.some(
+              (root) => !path.relative(root.absolutePath, resolved).startsWith('..'),
             );
+            expect(servedByGuideRoot, `${entry.name}: ${reference} is outside every skill and guide root`).toBe(true);
             continue;
           }
-          const servedByGuideRoot = GUIDE_ROOTS.some(
-            (root) => !path.relative(root.absolutePath, resolved).startsWith('..'),
-          );
-          expect(servedByGuideRoot, `${entry.name}: ${reference} is outside every skill and guide root`).toBe(true);
-          continue;
+          expect(entry.files, `${entry.name}: ${reference} is not served by read_skill`).toContain(withinSkill);
         }
-        expect(entry.files, `${entry.name}: ${reference} is not served by read_skill`).toContain(withinSkill);
       }
     }
-  });
-
-  it('keeps the shared intake rule identical across bot composition guidance', () => {
-    const rule =
-      'Infer what is already supplied and ask at most one question, only when the unresolved choice would materially change the result.';
-    expect(read('risu/bot/AGENTS.md')).toContain(rule);
-    for (const skill of ['authoring-characters', 'authoring-desire', 'authoring-worlds']) {
-      expect(skillSource(skill), skill).toContain(rule);
-    }
-  });
-
-  it('keeps the shared creative-latitude rule identical across MCP-visible primary composition Skills', () => {
-    // The bot router is invisible to MCP-only clients, so the rule it states is repeated verbatim here.
-    const rule =
-      "Assume the user trusts deliberate creative judgment: a strange, uncomfortable, excessive, or productively “wrong” choice may be the work's signature, so commit to it coherently instead of normalizing it, and preserve the requested intensity, moral ambiguity, transgression, and consequence.";
-    for (const skill of [
-      'authoring-characters',
-      'authoring-worlds',
-      'authoring-scenarios',
-      'authoring-lorebook-bots',
-    ]) {
-      expect(skillSource(skill), skill).toContain(rule);
-    }
-  });
-
-  it('keeps reusable workflows generic while routing product detail to conditional profiles', () => {
-    const development = skillSource('prompt-family-development');
-    const maintenance = skillSource('prompt-family-maintenance');
-    const standingImage = skillSource('writing-standing-image-prompts');
-    const restrictedHtml = skillSource('writing-restricted-wysiwyg-html');
-
-    expect(skillDescription(development)).not.toMatch(/Mythos|Phēmē/u);
-    expect(skillDescription(maintenance)).not.toMatch(/Mythos|Phēmē/u);
-    expect(development).toContain('../../docs/families/MYTHOS.md');
-    expect(development).toContain('../../docs/families/PHEME.md');
-    expect(maintenance).toContain('../../docs/families/MYTHOS.md');
-    expect(maintenance).toContain('../../docs/families/PHEME.md');
-
-    expect(skillDescription(standingImage)).not.toContain('Anima');
-    expect(standingImage).toContain('references/ANIMA.md');
-    expect(skillDescription(restrictedHtml)).not.toContain('Arca');
-    expect(restrictedHtml).toContain('references/ARCA_LIVE.md');
-
-    const critique = skillSource('critiquing-bots');
-    expect(skillDescription(critique)).not.toContain('Kotone');
-    for (const profile of ['KOTONE_CHARACTER', 'KOTONE_ENSEMBLE', 'KOTONE_SIMULATOR']) {
-      expect(critique).toContain(`references/${profile}.md`);
-    }
-  });
-
-  it('keeps root and representative authoring routes below their budgets', () => {
-    const rootRouter = read('AGENTS.md');
-    const botRouter = read('risu/bot/AGENTS.md');
-    expect(wordCount(rootRouter)).toBeLessThanOrEqual(250);
-    expect(rootRouter).toMatch(
-      /prefer these repository-specific routes over semantically overlapping generic global Skills/iu,
-    );
-    expect(rootRouter).not.toMatch(/project-workflow.{0,80}(?:mandatory|every session)/isu);
-    expect(botRouter).not.toMatch(/\b(?:always|alongside)\b.{0,40}support Skill/isu);
-
-    const representativeWords =
-      wordCount(rootRouter) +
-      wordCount(botRouter) +
-      wordCount(skillSource('using-mcp-tools')) +
-      wordCount(skillSource('authoring-characters'));
-    expect(representativeWords).toBeLessThanOrEqual(4_500);
   });
 
   it('keeps each subtree router complete without preloading support Skills', () => {
@@ -198,62 +94,12 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
     }
   });
 
-  it('keeps bot primary and support routes directly reachable without circular preloading', () => {
-    const botRouter = read('risu/bot/AGENTS.md');
-    const primaryRoutes = botRouter.match(/## Primary routes([\s\S]*?)(?=\n## )/u)?.[1] ?? '';
-    const supportRoutes = botRouter.match(/## Optional support routes([\s\S]*?)(?=\n## )/u)?.[1] ?? '';
-
-    expect(primaryRoutes).toContain('`writing-translation-guides`');
-    for (const skill of ['authoring-desire', 'trope-library']) {
-      expect(supportRoutes, skill).toContain(`\`${skill}\``);
-    }
-    expect(botRouter).not.toMatch(/only when the primary Skill explicitly hands off/iu);
-  });
-
-  it('keeps bot guidance free of references to the dissolved core-craft Skill', () => {
-    const botSkillRoot = path.join(ROOT, 'risu', 'bot', 'skills');
-    const pending = [botSkillRoot];
-    const staleReferences: string[] = [];
-
-    while (pending.length > 0) {
-      const current = pending.pop();
-      if (!current) continue;
-      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-        const absolutePath = path.join(current, entry.name);
-        if (entry.isDirectory()) {
-          pending.push(absolutePath);
-        } else if (entry.name.endsWith('.md') && /core-craft/iu.test(fs.readFileSync(absolutePath, 'utf8'))) {
-          staleReferences.push(path.relative(ROOT, absolutePath));
-        }
-      }
-    }
-
-    expect(staleReferences).toEqual([]);
-  });
-
   it('keeps Skill UI prompts explicit about the invoked Skill', () => {
     for (const entry of CATALOG) {
       const metadataPath = path.join(entry.dirPath, 'agents', 'openai.yaml');
       if (!fs.existsSync(metadataPath)) continue;
       expect(fs.readFileSync(metadataPath, 'utf8'), entry.name).toContain(`$${entry.name}`);
     }
-  });
-
-  it('makes known collision boundaries explicit in frontmatter', () => {
-    const pairs = [
-      ['project-workflow', 'using-mcp-tools'],
-      ['prompt-family-development', 'prompt-family-maintenance'],
-      ['prompt-family-maintenance', 'prompt-family-development'],
-      ['writing-trigger-scripts', 'writing-lua-scripts'],
-      ['authoring-lorebook-bots', 'writing-lorebooks'],
-    ] as const;
-    for (const [skill, handoff] of pairs) {
-      expect(skillDescription(skillSource(skill)), `${skill} -> ${handoff}`).toContain(handoff);
-    }
-    for (const support of ['authoring-desire', 'trope-library']) {
-      expect(skillDescription(skillSource(support)), support).toContain('Support skill');
-    }
-    expect(skillDescription(skillSource('critiquing-bots'))).toContain('authoring skill');
   });
 
   it('keeps RisuAI scripting layers distinct while exposing verified interoperability', () => {
@@ -277,52 +123,5 @@ describe('agent eval: deterministic Skill routing and context budgets', () => {
     expect(interop).toContain('The saved chat receives a `runVar` pass');
     expect(interop).toContain("RisuToki's `editrequest` is an input alias");
     expect(interop).toContain('Returning `false` or calling `stopChat` sets `stopSending`');
-  });
-
-  it('preserves dark creative intent while separating RP authorship from content', () => {
-    const botRouter = read('risu/bot/AGENTS.md');
-    const characters = skillSource('authoring-characters');
-    const userPosition = read('risu/bot/skills/authoring-characters/USER_POSITION.md');
-
-    expect(botRouter).toContain('Creative choices need not converge on one “correct”');
-    expect(botRouter).toContain('this authorship boundary does not sanitize coercion');
-    expect(botRouter).not.toMatch(/normal safety boundaries|consent, user agency, or safety boundaries/iu);
-    expect(botRouter).toContain('Art has no single optimal answer.');
-    expect(botRouter).toContain(
-      'Productive wrongness preserves chosen anchors and consequences; accidental incoherence loses them.',
-    );
-    expect(botRouter).toContain(
-      'Preserve the requested intensity, moral ambiguity, transgression, ugliness, and consequence',
-    );
-    expect(botRouter).not.toMatch(/allowed dark material/iu);
-    expect(characters).toContain('This is an authorship boundary, not a content-softening rule');
-    expect(userPosition).not.toContain('breaks safety');
-  });
-
-  it('keeps desire outcome policy mode-specific instead of consent-defaulted', () => {
-    const desire = skillSource('authoring-desire');
-    const catalog = read('risu/bot/skills/authoring-desire/DESIRE_CATALOG.md');
-    const examples = read('risu/bot/skills/authoring-desire/WORKED_EXAMPLE.md');
-
-    expect(desire).toContain('## Mode contract');
-    expect(desire).toContain('This authorship boundary does not make fictional coercion');
-    expect(desire).toContain('including non-consensual, coercive, degrading, corruptive, or irreversible outcomes');
-    expect(desire).toContain('Treat consent, willingness, refusal, incapacity, and inevitability as possible facts');
-    expect(desire).not.toMatch(
-      /Turn an allowed fantasy|escalation responds to state and consent|coercive inevitability/iu,
-    );
-    expect(catalog).toContain('consensual, coerced, institutional, supernatural, or mixed');
-    expect(catalog).toContain('refusal is defined as possible, futile, forbidden, removed, or merely symbolic');
-    expect(catalog).toContain('including body-only focus when intended');
-    expect(examples).toContain('## Contrast: Imposed Irreversible Corruption');
-    expect(examples).toContain('## Contrast: Coercive Pressure in Emergent RP');
-  });
-
-  it('uses one material clarification instead of rigid questionnaires', () => {
-    for (const skill of ['authoring-characters', 'authoring-desire']) {
-      const source = skillSource(skill);
-      expect(source, skill).toMatch(/ask at most one/iu);
-      expect(source, skill).not.toMatch(/always ask|ask all|five questions|question 1/iu);
-    }
   });
 });

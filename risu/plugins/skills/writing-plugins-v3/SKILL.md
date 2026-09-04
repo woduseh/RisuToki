@@ -1,6 +1,6 @@
 ---
 name: writing-plugins-v3
-description: 'Use when creating, editing, reviewing, or debugging RisuAI Plugin API v3 JavaScript or TypeScript. Primary skill for plugin sandbox, async API, storage, UI, and permissions; hand emitted CBS/HTML syntax to common skills. Do not use when authoring .charx, .risum, .risup, Lua, or regex without plugin code.'
+description: 'Use for RisuAI Plugin API v3 JavaScript/TypeScript, sandbox, storage, UI, permissions, and hooks.'
 tags: ['plugin', 'v3', 'sandbox', 'api', 'javascript']
 related_tools: ['read_content', 'preview_edit', 'apply_edit']
 artifact_types: ['plugin-v3']
@@ -14,15 +14,9 @@ canonical_sources:
 
 Plugins run in a sandboxed iframe and communicate with the host across an async message boundary. Both `risuai` and its runtime alias `Risuai` are valid; prefer one spelling consistently within a plugin. Await API and safe-wrapper method calls, while reading cached properties such as `apiVersion` directly. Keep `//@api 3.0`; treat `//@name` as stable identity after release. Both plugins need matching `//@allowed-ipc` declarations for IPC.
 
-## Minimal workflow
+Use the iframe's normal `document` for plugin-owned UI. `getRootDocument()` provides async safe wrappers for host-DOM access. Data crossing this boundary must be structured-clone-safe; raw DOM nodes and functions do not cross it.
 
-1. Inspect the metadata header, declared permissions, and existing entry/cleanup lifecycle.
-2. Use an async IIFE or explicit async entry point with visible error handling.
-3. Build plugin-owned UI with the iframe's normal `document`. Call `getRootDocument()` only for necessary host-DOM access and use its async safe wrappers.
-4. Keep boundary data structured-clone-safe. Use safe setters/listeners; do not assume raw DOM nodes or functions cross the boundary.
-5. Choose storage deliberately: syncable/save-owned plugin storage, device-local string/JSON storage, arguments, or permission-gated database access.
-6. Register settings/buttons/providers/MCP/hooks with stable IDs where update/reload should replace prior registration. MCP identifiers begin with `plugin:`.
-7. Track listener/registration handles and clean them up on unload or replacement when the API supports it. This includes chat listeners and `SafeMutationObserver.disconnect()`.
+Storage choices differ in scope: syncable/save-owned plugin storage, device-local string/JSON storage, arguments, and permission-gated database access. Registrations use stable IDs for replacement on reload; MCP identifiers begin with `plugin:`. Keep handles for supported cleanup, including chat listeners and `SafeMutationObserver.disconnect()`.
 
 Keep metadata directives copyable: place only the directive and its value on each `//@...` line, with explanations outside the code block. Permission denial is a normal failure path; handle `null`, `false`, or rejected operations without assuming host access.
 
@@ -33,7 +27,3 @@ Output chat listeners run after output triggers and inlay processing. They recei
 Load `risu/plugins/docs/API_QUICKREF.md` for exact API signatures and `MIGRATION.md` only for legacy migration. Preserve upstream spelling where an API name intentionally contains a typo.
 
 If plugin hooks must be ordered against CBS, Lua, triggers, or regex, read `RUNTIME_INTEROP.md` from `writing-trigger-scripts` through the Skill reader rather than treating this Skill as the owner of those layers.
-
-## Validation
-
-Check metadata stability, awaited calls, rejected-promise paths, permissions, iframe versus host DOM choice, structured-clone compatibility, reload idempotence, cleanup, storage scope, and failure behavior when a capability is denied. Hand generated RisuAI HTML/CSS or CBS to its syntax Skill.

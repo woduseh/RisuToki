@@ -9,6 +9,23 @@
 
 ---
 
+## [3.4.0] - 2026-09-05
+
+### Added
+
+- Added `agents/openai.yaml` UI names, concise descriptions, and skill-specific invocation prompts for all maintained skills. Automatic invocation remains enabled by default.
+
+### Changed
+
+- Consolidated bot composition into `authoring-bots` plus `writing-translation-guides`, and prompt-family design and synchronization into `prompt-family`. Phēmē is the maintained family; existing local Mythos artifacts remain untouched.
+- Reduced agent guidance to project-specific formats, user creative preferences, artifact placement, and RisuAI runtime contracts. Removed generic workflows, arbitrary creative quotas, mandatory extra deliverables, and the shared RP user-role narration restriction. Preserved the self-introduction templates and detailed syntax/API references.
+- Simplified repository and MCP guidance, updated CLI/MCP discovery and examples, and replaced skill-count/wording assertions with discovery and reference-delivery checks. Live routing remains a diagnostic rather than a claim of output quality.
+- Updated the `read_skill` schema's example name to `authoring-bots`; tool names, arguments, and runtime behavior remain compatible.
+
+### Removed
+
+- Removed `critiquing-bots` and all Kotone persona profiles, retired Mythos management guidance, and the superseded creative and prompt-family skill entry points.
+
 ## [3.3.0] - 2026-09-03
 
 ### Added

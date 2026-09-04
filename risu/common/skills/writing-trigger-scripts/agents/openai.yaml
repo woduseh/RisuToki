@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI Triggers'
+  short_description: 'Configure structured triggers and event ordering in RisuAI'
+  default_prompt: 'Use $writing-trigger-scripts to implement or diagnose the requested structured RisuAI triggers.'

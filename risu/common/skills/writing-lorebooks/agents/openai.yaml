@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI Lorebooks'
+  short_description: 'Configure lorebook entries, keys, folders, and activation'
+  default_prompt: 'Use $writing-lorebooks to create or revise the requested lorebook entries and activation settings.'

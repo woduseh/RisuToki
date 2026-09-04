@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Character Image Prompts'
+  short_description: 'Write character image prompts and verify Danbooru tags'
+  default_prompt: 'Use $writing-standing-image-prompts to prepare the requested character image prompt or verify its tags.'

@@ -1,6 +1,6 @@
 ---
 name: file-structure-reference
-description: 'Use when exact .charx, .risum, .risup, lorebook, or regex field names and container boundaries affect a task. Primary skill for schema lookup; hand editing workflow to using-mcp-tools and content semantics to the matching authoring skill. Do not use when creative composition has no schema uncertainty.'
+description: 'Use for exact .charx, .risum, and .risup fields, containers, and export compatibility.'
 tags: ['reference', 'charx', 'risum', 'risup']
 related_tools: ['inspect_document', 'read_content']
 ---
@@ -31,6 +31,4 @@ Compatibility/deprecated fields are not normal RisuToki surfaces. Preserve the p
 
 Lorebook folder identity is the folder entry's normalized `key` (`folder:<uuid>`); child `folder` values use the same key. A lorebook `comment` may be a Lua lookup key, so renaming can break scripts. Exact item fields and mutation rules belong to `writing-lorebooks` and `writing-regex-scripts`.
 
-## Validation
-
-Confirm the detected artifact type before naming fields, preserve canonical export forms, and choose a dedicated family reader/writer. Load `using-mcp-tools/FILE_STRUCTURES.md` only when a complete JSON shape is required.
+Load `using-mcp-tools/FILE_STRUCTURES.md` for a complete JSON shape.

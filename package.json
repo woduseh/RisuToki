@@ -1,6 +1,6 @@
 {
   "name": "risutoki",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "Desktop editor and MCP workspace for RisuAI .charx, .risum, and .risup artifacts",
   "main": ".build/electron/main.js",
   "scripts": {

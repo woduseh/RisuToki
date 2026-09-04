@@ -1,7 +1,3 @@
-# Plugin Authoring — Router
+# Plugin Authoring
 
-Use `writing-plugins-v3` as the primary Skill for RisuAI Plugin API v3 work. Add `writing-html-css` or `writing-cbs-syntax` only when the plugin emits that syntax.
-
-Preserve the metadata header, especially `//@name` and `//@api 3.0`. `risuai` and `Risuai` are equivalent API v3 globals; use one spelling consistently. Await API and `SafeElement` method calls, but read cached properties such as `apiVersion` directly. Prefer the iframe's own `document`; use `getRootDocument()` only for necessary host-DOM access. Respect the sandbox boundary.
-
-Read `risu/plugins/docs/API_QUICKREF.md` for exact API details and `MIGRATION.md` only for legacy-plugin migration. Do not load bot, preset, or module workflows unless integration requires them.
+Use `writing-plugins-v3` for RisuAI Plugin API v3. Exact signatures are in `docs/API_QUICKREF.md`; `docs/MIGRATION.md` covers legacy migration. Generated CBS or RisuAI HTML uses the corresponding `risu/common` syntax skill.

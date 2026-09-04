@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI Plugin v3'
+  short_description: 'Build plugins using RisuAI v3 APIs and sandbox contracts'
+  default_prompt: 'Use $writing-plugins-v3 to implement or diagnose the requested RisuAI Plugin API v3 behavior.'

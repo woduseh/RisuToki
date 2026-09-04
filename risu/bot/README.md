@@ -1,25 +1,10 @@
-# risu/bot — Bot & Character Authoring
+# risu/bot
 
-Composition guidance for writing and improving `.charx` bots and character cards.
+Guidance for creating, revising, and reviewing RisuAI bots and character cards.
 
-## What lives here
+- [AGENTS.md](AGENTS.md): task routing.
+- [skills/](skills/README.md): bot artifact contracts and per-bot translation guides.
+- `docs/`: source templates and explanations for the self-introduction sheet format.
+- Local bot project folders: ignored user work products and references.
 
-- `skills/` — bot composition skills
-- `docs/` — source guides for the self-introduction sheet form
-- `AGENTS.md` — thin routing surface for AI assistants
-- local bot project folders — ignored work products and references
-
-## Scope boundary
-
-| Here                                                                                                                                               | Elsewhere                                                                                        |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Character/world composition, media-mix IP adaptation, visual identity, scenarios, desire architecture, lorebook-driven bot structure, bot critique | Shared syntax like CBS, lorebook schema, Lua APIs, regex, RisuAI HTML/CSS, and Arca/WYSIWYG HTML |
-
-## Start here
-
-- `AGENTS.md`
-- `skills/README.md`
-- `docs/`
-- `../common/skills/README.md`
-
-When a bot task depends on CBS/Lua/lorebook syntax details or Arca/WYSIWYG constraints, read the corresponding shared skill from `../common/skills/`.
+Exact RisuAI syntax and APIs belong to the [shared skills](../common/skills/README.md).

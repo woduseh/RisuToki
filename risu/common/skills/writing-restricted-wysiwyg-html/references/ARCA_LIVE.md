@@ -12,7 +12,3 @@ Read this profile only for Arca.live or an explicitly Arca-compatible paste targ
 - HTML comments are stripped. If durable section markers are required, use a zero-sized paragraph containing marker text.
 
 Content-bearing container backgrounds may be stripped by platform dark mode. Design on the native dark canvas, use readable text, borders, and shadows, and use empty decorative divs for color accents. `table bgcolor` does not bypass this behavior.
-
-## Validation focus
-
-Verify every forbidden tag, attribute, and property; dark-background contrast; mobile width; missing-image behavior; balanced tags; no dependency on stripped comments or backgrounds; and readable plain-text order.

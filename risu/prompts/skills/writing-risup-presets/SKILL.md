@@ -1,6 +1,6 @@
 ---
 name: writing-risup-presets
-description: 'Use when creating, editing, or reviewing .risup request assembly, promptTemplate items, formatingOrder, toggles, module integration, structured output, or model/sampling settings. Primary skill for preset composition; hand variant propagation to the matching sync skill. Do not use when the task is bot identity, reusable runtime modules, or plugin code.'
+description: 'RisuAI .risup request assembly, prompt items, ordering, toggles, module integration, model settings, and import contracts. Phēmē behavior and variant synchronization use prompt-family.'
 tags: ['preset', 'risup', 'prompt', 'template']
 related_tools: ['read_content', 'search_document', 'analyze_content', 'preview_edit', 'apply_edit', 'manage_items']
 artifact_types: ['risup']
@@ -14,38 +14,20 @@ canonical_sources:
   ]
 ---
 
-# Writing .risup Presets
+# .risup Contracts
 
-## Boundary
-
-A preset owns reusable model/request behavior: prompt assembly, provider adaptation, sampling/reasoning, structured output, and optional module activation. It does not own character identity, reusable lore/regex/Lua/CSS packs, or sandboxed plugin code.
-
-## Core surfaces
-
-- `promptTemplate` defines structured prompt items and dynamic channels.
-- `formatingOrder` places high-level runtime channels; it does not replace `promptTemplate`. Review both after structural changes.
-- `customPromptTemplateToggle` defines line-based UI controls; every CBS variable and UI label must match.
+- `promptTemplate` defines structured prompt items and dynamic channels. `formatingOrder` places high-level runtime channels; neither replaces the other.
+- `customPromptTemplateToggle` defines line-based UI controls. Keep declarations, labels, defaults, and CBS uses aligned when changing a control.
 - `templateDefaultVariables` supplies newline `key=value` defaults, subject to character/runtime precedence.
 - `moduleIntergration` lists module IDs the preset activates.
-- Model/provider, sampling/reasoning, stop/fallback, role replacement, schema/JSON extraction, and output controls form one explicit request contract.
+- Model/provider, sampling/reasoning, stop/fallback, role replacement, schema/JSON extraction, and output controls contribute to the assembled request.
 
-## Minimal workflow
+## Item and import semantics
 
-1. Inspect/list/search structured prompt items; do not bulk-read raw `promptTemplate` first.
-2. Read only target items and carry current identity/type/preview guards for index-based operations.
-3. Use preview/apply for focused writes and `manage_items` for add, reorder, copy-as-text, import, or snippet workflows.
-4. For large restructuring, export/copy as text, preserve item header metadata, keep every CBS block self-contained within one item, then import and verify with `analyze_content` action `verify_risup_prompt_import` using the same source.
-5. Compare related presets with structured analysis and preserve justified provider-specific prefill or request behavior.
-6. Re-read changed items and validate the affected order, imports, toggles, CBS, ranges, and request settings.
+Use the risup-prompt facade for item reads and edits. Index-based operations carry current identity/type/preview guards. Export/import preserves item header metadata; keep CBS blocks self-contained within each item, and verify imported text with `analyze_content` action `verify_risup_prompt_import` using the same source.
 
-Chat item ranges must be intentional, non-overlapping when split, and cover the desired history. Assistant prefill belongs in a separate `plain`/`assistant`/`normal` item at the intended turn boundary; do not bury it in a system block. Provider-native prefill shapes may differ and must remain explicit.
+Chat item ranges determine which history is sent; split ranges need the intended coverage without accidental overlap. Assistant prefill belongs in a separate `plain`/`assistant`/`normal` item at the intended turn boundary. Provider-native prefill shapes can differ.
 
-Preserve the parameter set advertised by the selected model instead of copying controls across providers. In current Gemini 3.x metadata, reasoning effort maps to provider thinking levels; `minimal` may be normalized to `low` for models that do not expose a minimal level. Do not rewrite it as a legacy thinking-token budget without checking the current provider adapter.
+Use the parameter set exposed by the current provider adapter. Reasoning effort and thinking-token budgets are different controls; do not translate one into the other from a model name alone.
 
-When renaming/removing toggles, discover all CBS references, update declarations and every use, search for the old name, and validate supported alternate branches. Use `writing-cbs-syntax` for exact expressions and `writing-risum-modules` only for module-pairing behavior.
-
-Load `risu/prompts/docs/PRESET_FIELDS.md` only for the complete field inventory. Use `prompt-family-development` for unsettled family behavior and `prompt-family-maintenance` for canonical-to-variant audit or application, regardless of whether the family is Mythos, Phēmē, or another reusable prompt line.
-
-## Validation
-
-For affected supported surfaces, verify item count/type/order, `formatingOrder` coverage, CBS balance, toggle/UI names, chat ranges, prefill role, module IDs, structured-output compatibility, sampling/model intent, and import round-trip fidelity. State any granular fallback reason.
+Exact fields live in `risu/prompts/docs/PRESET_FIELDS.md`. Use `prompt-family` for Phēmē behavior and variant alignment, `writing-cbs-syntax` for expression semantics, and `writing-risum-modules` for module activation.

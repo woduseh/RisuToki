@@ -1,4 +1,0 @@
-interface:
-  display_name: 'Prompt Family Development'
-  short_description: 'Design reusable prompt-family behavior contracts'
-  default_prompt: 'Use $prompt-family-development to design or evaluate this RisuAI prompt family and settle its shared behavior, controls, and provider exceptions.'

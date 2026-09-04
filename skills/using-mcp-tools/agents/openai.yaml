@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuToki MCP'
+  short_description: 'Inspect and edit RisuAI artifacts through guarded MCP tools'
+  default_prompt: 'Use $using-mcp-tools to carry out the requested artifact operation through RisuToki MCP.'

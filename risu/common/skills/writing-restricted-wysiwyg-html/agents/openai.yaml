@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Paste-Ready HTML'
+  short_description: 'Create HTML for editors that restrict styles and markup'
+  default_prompt: "Use $writing-restricted-wysiwyg-html to prepare the requested HTML for the target editor's restrictions."

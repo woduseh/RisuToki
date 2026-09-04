@@ -72,10 +72,9 @@ export async function runStandaloneToolProfileContract(): Promise<void> {
     const skills = await callJson(defaultProfile.runtime, 'list_skills', {});
     assert.ok(Number(skills.count) > 0);
     const skill = await callJson(defaultProfile.runtime, 'read_skill', { name: 'project-workflow' });
-    assert.match(String(skill.content), /Project Workflow/);
+    assert.match(String(skill.content), /name: project-workflow/);
     const scopedSkills = await callJson(defaultProfile.runtime, 'list_skills', {
       scopes: ['bot'],
-      query: 'authoring',
       detail: 'summary',
       limit: 1,
     });
@@ -85,7 +84,6 @@ export async function runStandaloneToolProfileContract(): Promise<void> {
     assert.equal(typeof scopedSkills.next_cursor, 'string');
     const nextScopedSkills = await callJson(defaultProfile.runtime, 'list_skills', {
       scopes: ['bot'],
-      query: 'authoring',
       detail: 'summary',
       limit: 1,
       cursor: scopedSkills.next_cursor,
@@ -99,7 +97,7 @@ export async function runStandaloneToolProfileContract(): Promise<void> {
       target: { kind: 'guidance', skill: 'project-workflow' },
     });
     assert.deepEqual(routedTools(guidanceInspect), ['read_skill']);
-    assert.match(JSON.stringify(guidanceInspect), /Project Workflow/);
+    assert.match(JSON.stringify(guidanceInspect), /name: project-workflow/);
 
     advancedProfile = await inspectProfile('advanced-full', 'advanced-full');
     assert.equal(advancedProfile.names.length, 203);
@@ -112,7 +110,7 @@ export async function runStandaloneToolProfileContract(): Promise<void> {
       target: { kind: 'guidance', skill: 'project-workflow' },
     });
     assert.deepEqual(routedTools(guidance), ['read_skill']);
-    assert.match(JSON.stringify(guidance), /Project Workflow/);
+    assert.match(JSON.stringify(guidance), /name: project-workflow/);
     assert.ok(
       defaultProfile.bytes <= advancedProfile.bytes * 0.2,
       'default tools/list should be at least 80% smaller than advanced-full',

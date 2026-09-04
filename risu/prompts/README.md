@@ -12,6 +12,8 @@ Only routing/docs/skills surfaces are tracked here. Local `.risup` work products
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `AGENTS.md`                             | Agent routing — what to read and in what order                                                                     |
 | `docs/PRESET_FIELDS.md`                 | Field inventory, prompt item types, toggle syntax, and `.risup` file format                                        |
+| `docs/families/PHEME.md`                | Maintained Phēmē family contract                                                                                   |
+| `skills/prompt-family/SKILL.md`         | Phēmē design and canonical-to-variant synchronization                                                              |
 | `skills/README.md`                      | Preset skill index                                                                                                 |
 | `skills/writing-risup-presets/SKILL.md` | Composition guide for promptTemplate, formatingOrder, toggles, module integration, structured output, and sampling |
 

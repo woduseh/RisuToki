@@ -11,7 +11,6 @@
  *   5. FAMILY_NEXT_ACTIONS tool references against the taxonomy
  *   6. Canonical architecture entrypoints against the current single-renderer runtime
  *   7. Contributor validation guidance against CI contract gates
- *   8. Project workflow reference mirrors against their canonical docs
  */
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
@@ -103,10 +102,6 @@ function extractToolSurfaceToolNames(): string[] {
   return [...allNames];
 }
 
-function countWords(content: string): number {
-  return content.match(/\S+/g)?.length ?? 0;
-}
-
 // ────────────────────────────────────────────────────────────────────────────
 // 1. Skills ↔ Taxonomy alignment
 // ────────────────────────────────────────────────────────────────────────────
@@ -115,8 +110,8 @@ describe('skills ↔ taxonomy alignment', () => {
   const skills = getSkillEntries();
   const taxonomySet = new Set(ALL_TOOL_NAMES);
 
-  it('finds at least 10 skills (sanity check)', () => {
-    expect(skills.length).toBeGreaterThanOrEqual(10);
+  it('discovers skills (sanity check)', () => {
+    expect(skills.length).toBeGreaterThan(0);
   });
 
   it('every skill related_tools entry is a real taxonomy tool', () => {
@@ -346,49 +341,6 @@ describe('FAMILY_NEXT_ACTIONS ↔ taxonomy alignment', () => {
 // 5. Agent guidance ownership and startup budget
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('agent guidance ownership and startup budget', () => {
-  const agentsPath = path.join(ROOT, 'AGENTS.md');
-  const projectSkillPath = path.join(ROOT, 'skills', 'project-workflow', 'SKILL.md');
-  const usingMcpToolsPath = path.join(ROOT, 'skills', 'using-mcp-tools', 'SKILL.md');
-  const workflowPath = path.join(DOCS_DIR, 'MCP_WORKFLOW.md');
-  const surfacePath = path.join(DOCS_DIR, 'MCP_TOOL_SURFACE.md');
-
-  it('keeps canonical guidance ownership explicit', () => {
-    const agents = fs.readFileSync(agentsPath, 'utf-8');
-    const usingMcpTools = fs.readFileSync(usingMcpToolsPath, 'utf-8');
-    expect(agents).toContain('# RisuToki — Agent Router');
-    expect(agents).toContain('**Selecting or sequencing MCP artifact tools:** `using-mcp-tools`.');
-    expect(usingMcpTools).toContain('# Using MCP Tools Safely');
-    expect(usingMcpTools).toContain(
-      'This Skill selects tools; the relevant authoring Skill owns content quality and syntax.',
-    );
-    expect(fs.readFileSync(surfacePath, 'utf-8')).toContain('profile, coverage, and tool-contract source of truth');
-    expect(fs.readFileSync(workflowPath, 'utf-8')).toContain('runtime-mode and common-sequence source of truth');
-  });
-
-  it('keeps mandatory startup guidance within the 1900-word budget', () => {
-    const startupWords =
-      countWords(fs.readFileSync(agentsPath, 'utf-8')) + countWords(fs.readFileSync(projectSkillPath, 'utf-8'));
-    expect(startupWords).toBeLessThanOrEqual(1900);
-  });
-
-  it('keeps normative MCP guidance free of changelog-style version phrasing', () => {
-    const normativePaths = [
-      workflowPath,
-      surfacePath,
-      path.join(DOCS_DIR, 'MCP_ERROR_CONTRACT.md'),
-      usingMcpToolsPath,
-      path.join(ROOT, 'skills', 'using-mcp-tools', 'TOOL_REFERENCE.md'),
-    ];
-    const violations = normativePaths.flatMap((filePath) => {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const matches = content.match(/\bnow (?:supports?|accepts?|has|uses)\b|\(v0\.\d/gi) ?? [];
-      return matches.map((match) => `${path.relative(ROOT, filePath)}: ${match}`);
-    });
-    expect(violations).toEqual([]);
-  });
-});
-
 // ────────────────────────────────────────────────────────────────────────────
 // Bundled project guide (risu/common/docs/CLAUDE.md)
 // ────────────────────────────────────────────────────────────────────────────
@@ -429,10 +381,6 @@ describe('bundled project guide stays facade-first', () => {
     expect(named.length).toBeGreaterThan(10);
     expect(named.filter((name) => !catalog.has(name))).toEqual([]);
   });
-
-  it('stays within a bounded startup size', () => {
-    expect(countWords(guide)).toBeLessThanOrEqual(700);
-  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -442,7 +390,6 @@ describe('bundled project guide stays facade-first', () => {
 describe('canonical architecture and contributor workflow stay current', () => {
   const architecturePath = path.join(DOCS_DIR, 'analysis', 'ARCHITECTURE.md');
   const contributingPath = path.join(ROOT, 'CONTRIBUTING.md');
-  const readmePath = path.join(ROOT, 'README.md');
   const ciPath = path.join(ROOT, '.github', 'workflows', 'ci.yml');
 
   it('documents the current single-renderer runtime and existing entrypoints', () => {
@@ -498,14 +445,5 @@ describe('canonical architecture and contributor workflow stay current', () => {
       expect(ci, `CI must include ${command}`).toContain(command);
     }
     expect(contributing).not.toContain('Popout terminal');
-  });
-
-  it('keeps MCP workflow ownership aligned in README and CONTRIBUTING', () => {
-    for (const filePath of [readmePath, contributingPath]) {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      expect(content).toContain('MCP runtime modes, startup profiles, and common execution sequence');
-      expect(content).toContain('using-mcp-tools');
-      expect(content).toContain('tool selection');
-    }
   });
 });

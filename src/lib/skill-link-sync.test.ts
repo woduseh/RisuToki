@@ -11,8 +11,8 @@ function makeProjectRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-skill-links-'));
   tempRoots.push(root);
 
-  fs.mkdirSync(path.join(root, 'skills', 'authoring-characters'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'skills', 'authoring-characters', 'SKILL.md'), '# skill placeholder\n', 'utf8');
+  fs.mkdirSync(path.join(root, 'skills', 'authoring-bots'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'skills', 'authoring-bots', 'SKILL.md'), '# skill placeholder\n', 'utf8');
   fs.mkdirSync(path.join(root, 'risu', 'common', 'skills', 'writing-cbs-syntax'), { recursive: true });
   fs.writeFileSync(
     path.join(root, 'risu', 'common', 'skills', 'writing-cbs-syntax', 'SKILL.md'),
@@ -141,7 +141,7 @@ describe('skill link sync', () => {
 
     for (const spec of specs) {
       expect(fs.realpathSync.native(spec.linkPath)).toBe(fs.realpathSync.native(spec.sourcePath));
-      expect(fs.existsSync(path.join(spec.linkPath, 'authoring-characters', 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(spec.linkPath, 'authoring-bots', 'SKILL.md'))).toBe(true);
       expect(fs.existsSync(path.join(spec.linkPath, 'writing-cbs-syntax', 'SKILL.md'))).toBe(true);
     }
   });
@@ -155,7 +155,7 @@ describe('skill link sync', () => {
     ensureProjectSkillLinks(root, { platform: process.platform });
 
     expect(fs.existsSync(legacyCatalog)).toBe(false);
-    expect(fs.existsSync(path.join(root, '.skill-catalog', 'authoring-characters', 'SKILL.md'))).toBe(true);
+    expect(fs.existsSync(path.join(root, '.skill-catalog', 'authoring-bots', 'SKILL.md'))).toBe(true);
   });
 
   it('keeps existing links stable even if existsSync would misreport them as missing', () => {
@@ -203,14 +203,14 @@ describe('skill link sync', () => {
 
     fs.rmSync(codexSpec.linkPath, { recursive: true, force: true });
     copyDirectoryAsPlainFiles(codexSpec.sourcePath, codexSpec.linkPath);
-    fs.writeFileSync(path.join(codexSpec.linkPath, 'authoring-characters', 'SKILL.md'), '# stale copy\n', 'utf8');
+    fs.writeFileSync(path.join(codexSpec.linkPath, 'authoring-bots', 'SKILL.md'), '# stale copy\n', 'utf8');
 
     const results = ensureProjectSkillLinks(root, { platform: process.platform });
 
     expect(results.map((result) => result.status)).toEqual(
       specs.map((spec) => (spec.linkPath === codexSpec.linkPath ? 'repaired' : 'ok')),
     );
-    expect(fs.readFileSync(path.join(codexSpec.linkPath, 'authoring-characters', 'SKILL.md'), 'utf8')).not.toBe(
+    expect(fs.readFileSync(path.join(codexSpec.linkPath, 'authoring-bots', 'SKILL.md'), 'utf8')).not.toBe(
       '# stale copy\n',
     );
   });

@@ -659,7 +659,7 @@ export function registerReferenceTools(server: McpToolServer, deps: ReferenceToo
     'read_skill',
     MCP_TOOL_DESCRIPTIONS['read_skill'],
     {
-      name: z.string().describe('스킬 이름 (예: writing-lua-scripts, authoring-characters)'),
+      name: z.string().describe('스킬 이름 (예: writing-lua-scripts, authoring-bots)'),
       file: z.string().optional().describe('읽을 파일명 (기본: SKILL.md). list_skills에서 확인한 파일명 사용.'),
       cursor: z.string().max(200).optional().describe('이전 응답의 불투명 next_cursor.'),
       max_bytes: z

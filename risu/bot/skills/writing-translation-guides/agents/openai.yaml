@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Bot Translation Guides'
+  short_description: 'Define character-specific names, register, and translations'
+  default_prompt: 'Use $writing-translation-guides to define the requested bot-specific translation choices.'

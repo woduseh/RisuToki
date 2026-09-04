@@ -805,14 +805,12 @@ describe('facade v1 contract schemas', () => {
 
   it('reads guide documents through the guidance target without mixing skill selectors', () => {
     expect(
-      validateBody(
-        { target: { kind: 'guidance', guide: 'prompts/families/MYTHOS.md' } },
-        facadeV1LoadGuidanceBodySchema,
-      ).success,
+      validateBody({ target: { kind: 'guidance', guide: 'prompts/families/PHEME.md' } }, facadeV1LoadGuidanceBodySchema)
+        .success,
     ).toBe(true);
     expect(
       validateBody(
-        { target: { kind: 'guidance', guide: 'prompts/families/MYTHOS.md', skill: 'project-workflow' } },
+        { target: { kind: 'guidance', guide: 'prompts/families/PHEME.md', skill: 'project-workflow' } },
         facadeV1LoadGuidanceBodySchema,
       ).success,
     ).toBe(false);

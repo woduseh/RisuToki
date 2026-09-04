@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI File Formats'
+  short_description: 'Look up CHARX, RISUM, and RISUP fields and containers'
+  default_prompt: 'Use $file-structure-reference to check the exact artifact fields and container structure needed for this task.'

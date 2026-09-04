@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI Lua'
+  short_description: 'Write Lua event handlers using RisuAI runtime APIs'
+  default_prompt: 'Use $writing-lua-scripts to implement or diagnose the requested RisuAI Lua behavior.'

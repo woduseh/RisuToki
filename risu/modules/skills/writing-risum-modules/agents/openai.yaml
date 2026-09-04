@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI Modules'
+  short_description: 'Compose RISUM modules with scoped activation and state'
+  default_prompt: 'Use $writing-risum-modules to create or revise the requested RisuAI module.'

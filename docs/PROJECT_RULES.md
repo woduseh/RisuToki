@@ -1,64 +1,36 @@
 # Project Rules
 
-Rules and workflows that apply across the entire project.
+## Versioning and delivery
 
----
+Tracked product or tooling changes include a semver update in `package.json` and `package-lock.json`, plus a new top `CHANGELOG.md` entry. Use MAJOR for breaking changes, MINOR for additions, and PATCH for compatible fixes. Refresh affected user-facing documentation and skill/tool discovery references.
 
-## 1. Documentation and versioning (mandatory for repo changes)
+Pure artifact authoring, documentation-only corrections that do not change behavior or contracts, and local guide organization do not require a version bump.
 
-Every feature improvement or bug fix **that modifies tracked RisuToki source code, product docs, or workflow/tooling files** must include the following updates.
+## Validation and releases
 
-1. **`package.json` version bump** — follow [Semantic Versioning](https://semver.org/)
-   - `MAJOR` (x.0.0): breaking changes
-   - `MINOR` (0.x.0): new features (backward-compatible)
-   - `PATCH` (0.0.x): bug fixes (backward-compatible)
-2. **`CHANGELOG.md` update** — use [Keep a Changelog](https://keepachangelog.com/) format
-   - Add the new version entry at the **top** of the file
-   - Use headings: `### Added` / `### Changed` / `### Fixed` / `### Removed`
-3. **`README.md` update** — refresh the relevant section when a change is user-visible
-4. **`AGENTS.md` and related routing docs update**
-   - When MCP tools, fields, workflows, or AI CLI routing change, update `AGENTS.md`, `docs/`, `skills/README.md`, and the affected `skills/*` files together
+Choose local checks by the changed behavior:
 
-These rules apply **automatically** when the task changes the repo itself — even without an explicit reminder.
+| Change                                | Relevant checks                                                                                |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| TypeScript or Vue                     | Focused tests, `npm run lint`, `npm run typecheck`                                             |
+| Skill sources or routing              | `npm run sync:skills`, skill discovery/reference and documentation tests, `npm run test:evals` |
+| MCP behavior or public tool contracts | Relevant tests, `npm run test:evals:replay`, `npm run test:mcp:contracts`                      |
+| Renderer or Electron integration      | Relevant renderer/Electron build                                                               |
 
-> **Scope exclusions.** The following do **not** require version bumps or changelog entries:
->
-> - Pure authoring work — creating or editing `.charx` / `.risum` / `.risup` content via the MCP tool (e.g., bot/prompt/module/plugin authoring under `risu/`).
-> - Documentation-only edits that do not alter product behavior or tool contracts.
-> - Importing, organizing, or referencing guide files that are not part of the product surface.
+Static skill checks verify discovery and delivery, not model quality. Live model comparisons are optional experiments described in `test/behavior-evals/README.md`, not a requirement for every wording edit.
 
----
+PR/push CI runs Ubuntu lint, typecheck, tests, workflow replay, MCP contracts, and renderer build, followed by Windows Electron and renderer builds. These are CI coverage, not an instruction to repeat successful local checks.
 
-## 2. Validation and release workflow
+Use `npm run test:mcp:contracts:update` only for an intentional public contract change; review its profile/case summary and describe the change in the changelog.
 
-- PR / push validation uses a **two-stage** process: Ubuntu validate + Windows build.
-  - Ubuntu: `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:evals:replay`, `npm run test:mcp:contracts`, `npm run build:renderer`
-  - Windows: `npm run build:electron`, `npm run build:renderer`
-- When changing MCP contracts, taxonomy, section-parsing behavior, or workflow routing expectations, run `npm run test:evals` for deterministic declarations/harness checks, `npm run test:evals:replay` for measured MCP stdio behavior, and `npm run test:mcp:contracts` for public tools/list and HTTP fingerprints before the full validation suite.
-- Use `npm run test:mcp:contracts:update` only for an intentional public contract change; review the printed profile/case summary and record the change in `CHANGELOG.md`.
-- PRs do **not** run packaging (`electron-builder`); packaging runs only in the tag-release workflow.
-- Before uploading, the tag-release workflow verifies that `latest.yml` names installer files that exist in `release/` and contain no whitespace. GitHub stores assets with spaces under dotted names while `electron-updater` downloads the hyphenated name, so NSIS artifacts are named `${productName}-Setup-${version}.${ext}`.
-- Dependency updates are monitored weekly via `Dependabot` for npm and GitHub Actions.
+Packaging and publishing run only for an explicitly authorized tag release. The tag workflow checks that `latest.yml` refers to existing installer files without whitespace; NSIS artifacts use `${productName}-Setup-${version}.${ext}` to avoid GitHub asset-name rewriting.
 
----
+## Source locations
 
-## 3. Guide file locations
+- `docs/README.md`: architecture, MCP, and recovery references.
+- `skills/` and `risu/*/skills/`: tracked skill sources.
+- `risu/*/docs/`: bundled authoring references.
+- `guides/`: imported or user-created guides.
+- Local artifact work products under `risu/` remain ignored.
 
-| Path                                                                    | Description                                                                            |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `docs/README.md`                                                        | Knowledge-base index for code work                                                     |
-| `docs/MODULE_MAP.md`                                                    | Module map for TypeScript source navigation                                            |
-| `docs/MCP_WORKFLOW.md`                                                  | MCP runtime modes, startup profiles, and common execution sequence                     |
-| `docs/MCP_TOOL_SURFACE.md`                                              | MCP profiles, facade coverage, tool families, behavior hints, and tool contracts       |
-| `docs/MCP_ERROR_CONTRACT.md`                                            | MCP success / error / no-op response contracts and recovery playbook                   |
-| `skills/`                                                               | Bundled product/editor skill docs                                                      |
-| `risu/common/skills/`, `risu/{bot,prompts,modules,plugins}/skills/`     | Bundled authoring skill docs; actual work products in the same subtrees remain ignored |
-| `risu/common/AGENTS.md`, `risu/{bot,prompts,modules,plugins}/AGENTS.md` | Subtree-specific authoring routers used by AI CLIs to choose the active workflow       |
-| `risu/common/docs/`, `risu/{bot,prompts,modules,plugins}/docs/`         | Bundled authoring docs and quick references                                            |
-| `guides/`                                                               | Default writable guide location for imported/user-authored guides                      |
-| `.skill-catalog/`                                                       | Generated aggregate CLI skill catalog rebuilt from the tracked skill roots             |
-| `.agents/skills`, `.claude/skills`                                      | Codex and Claude Code search paths backed by `.skill-catalog/`                         |
-
-> `npm run sync:skills` rebuilds `.skill-catalog/` from `skills/` plus the tracked `risu/*/skills/` roots, then repairs the Codex and Claude Code discovery paths (`.agents/skills`, `.claude/skills`). It removes the retired `.copilot-skill-catalog/`, prefers real symlinks on Windows, and falls back to junctions when symlinks are not available. If a path already exists as a managed checked-out directory copy, it refreshes that directory in place instead of failing. It silently skips if no tracked skill roots exist.
-
----
+`npm run sync:skills` rebuilds the generated `.skill-catalog/` from tracked skill roots and refreshes `.agents/skills` and `.claude/skills`. Windows uses symlinks when available and junctions otherwise; managed directory copies can also be refreshed. Edit canonical sources rather than generated discovery paths.

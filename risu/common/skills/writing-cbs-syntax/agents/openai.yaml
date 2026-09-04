@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI CBS'
+  short_description: 'Work with CBS expressions, variables, and evaluation rules'
+  default_prompt: 'Use $writing-cbs-syntax to write or diagnose the requested RisuAI CBS expressions.'

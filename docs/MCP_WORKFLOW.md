@@ -1,6 +1,6 @@
 # MCP Workflow Guide
 
-This document is the runtime-mode and common-sequence source of truth for RisuToki MCP sessions. It explains how a session starts and how work progresses across app-backed and standalone runtimes.
+This document is the runtime-mode and startup reference for RisuToki MCP sessions. It explains how a session starts and how work progresses across app-backed and standalone runtimes.
 
 Use the other canonical documents for details owned elsewhere:
 
@@ -16,7 +16,7 @@ Use the other canonical documents for details owned elsewhere:
 
 If documents overlap, follow the source that owns the concern in this table.
 
-The Vitest matrix keeps declared routes aligned with documentation. `npm run test:evals:replay` separately executes 12 scripted MCP stdio scenarios whose catalog mappings cover all 35 replayable workflow declarations. It measures deterministic server-contract behavior from actual responses; it does not execute the catalog prompts or claim model routing quality. The 2026-07-03 run completed in 29.521 seconds with every contract ratio at 1.0 and zero detected response-target mismatches.
+The Vitest matrix keeps declared routes aligned with documentation. `npm run test:evals:replay` separately executes 12 scripted MCP stdio scenarios whose catalog mappings cover all 35 replayable workflow declarations. It measures deterministic server-contract behavior from actual responses; it does not execute the catalog prompts or claim model routing quality.
 
 ## 1. Runtime Modes
 
@@ -67,19 +67,9 @@ Call `list_tool_profiles` to inspect profile membership, the active profile, reg
 
 The complete profile and coverage contract lives in [`docs/MCP_TOOL_SURFACE.md`](MCP_TOOL_SURFACE.md).
 
-## 3. Common Execution Sequence
+## 3. Artifact Operations
 
-Use this sequence for reads and edits:
-
-1. **Load only task-relevant guidance.** Use `project-workflow` for repository code, validation, or release work. Use `using-mcp-tools` for concrete MCP artifact reads or writes. Authoring work starts from the nearest subtree router and one primary authoring Skill.
-2. **Discover.** Use `list_tool_profiles` when profile state matters, then `inspect_document` for active, session, reference, or external preflight.
-3. **Read, search, or analyze narrowly.** Prefer bounded `read_content`, selector-based `search_document`, and `analyze_content`. Analysis owns transformation/statistics/simulation, including field/token counts and lorebook/regex behavior previews.
-4. **Validate or preview.** Use `validate_content` for pass/fail diagnostics, including compile-only Lua syntax and Danbooru `valid | invalid | unknown`; use `preview_edit` or the read/preview mode of `manage_items`, `manage_assets`, and `manage_file` before mutation.
-5. **Apply.** Reuse the returned `preview_token`, `operation_digest`, and stale guards once. `apply_edit` consumes its token before the first mutation; a partial batch failure requires inspection and a fresh preview.
-6. **Validate again.** Re-read the changed target or rerun the validator/diff that found the issue.
-7. **Summarize fallback.** If a granular route was necessary, add one line to the final task summary stating which facade selector or operation was unsupported. No separate log or commit-message record is required.
-
-Facade coverage is determined by behavior: when a facade accepts the selector or operation in preview/read mode, use that facade through apply. A facade rejection or an operation it cannot express is the routing signal for the matching granular family. The route-by-route matrix lives in [`docs/MCP_TOOL_SURFACE.md`](MCP_TOOL_SURFACE.md).
+Tool choice, preview/apply guards, bounded reads, and mutation recovery are documented in `skills/using-mcp-tools/SKILL.md`. The profile/coverage matrix lives in [MCP_TOOL_SURFACE.md](MCP_TOOL_SURFACE.md); response contracts live in [MCP_ERROR_CONTRACT.md](MCP_ERROR_CONTRACT.md).
 
 ## 4. Startup Without an Active Document
 
@@ -92,21 +82,7 @@ Guidance discovery is independent of document state:
 
 This allows standalone clients to bootstrap project guidance before choosing or opening an artifact.
 
-## 5. Shared Safety Rules
-
-- Prefer stable `id`, `identity`, or hash selectors over indexes when list responses provide them.
-- Treat a stale-target `409` as a successful safety catch: refresh the source list/read, rebuild the preview, and retry with current guards.
-- Prefer response `next_actions` over a generic family sequence.
-- Use `artifacts.byte_size` as a context-budget cue. Narrow subsequent reads when responses are already large.
-- `inspect_document`, `read_content`, `search_document`, `analyze_content`, and `validate_content` default to a byte-accurate 24 KB UTF-8 result cap. Root surface reads return an overview unless `include_raw` and an explicit `max_bytes` are both justified.
-- `inspect_document({kind:"reference"})` without an identifier returns a bounded inventory; add `reference_id` or `file_path` to inspect only one reference.
-- Protected `.charx` compatibility fields, `.risup` legacy prompt fields, and reserved `.risum` `cjs` remain hidden and save-stripped. `hiddenFieldWarnings` is an existence summary, not permission to recover values through another route.
-- References are read-only.
-- Batch related sibling reads or writes when a batch route exists.
-
-Exact tool-selection rules and task playbooks live in `read_skill("using-mcp-tools")`. Error and recovery behavior lives in [`docs/MCP_ERROR_CONTRACT.md`](MCP_ERROR_CONTRACT.md).
-
-## 6. Skill Discovery
+## 5. Skill Discovery
 
 The generated skill catalog is repository-root scoped:
 
@@ -117,4 +93,4 @@ The generated skill catalog is repository-root scoped:
 
 When the client-visible catalog does not already identify the Skill, use `list_skills` with the current `scopes`, a narrow `query`, and `detail: "summary"`. Existing no-argument calls retain the full compatibility view. Use the returned opaque `next_cursor` for catalog pages; `read_skill` uses its own cursor type with `max_bytes` for UTF-8-safe reference paging, and list/read cursors are intentionally not interchangeable.
 
-If MCP is unavailable, read `skills/project-workflow/SKILL.md` directly, then open only the supporting file needed for the task. If the generated catalog is empty, run `npm run sync:skills` and verify the tracked skill roots before falling back to repo-local docs.
+Without MCP, read the relevant source skill or reference from the filesystem. Missing MCP connectivity does not change an authoring task into repository development. If the generated catalog is missing, `npm run sync:skills` rebuilds it from the tracked roots.

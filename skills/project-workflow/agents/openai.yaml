@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuToki Development'
+  short_description: 'Repository rules, validation, and release references'
+  default_prompt: 'Use $project-workflow to handle this RisuToki repository change with its relevant project rules.'

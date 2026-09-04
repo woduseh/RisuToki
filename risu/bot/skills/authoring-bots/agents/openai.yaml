@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI Bot Authoring'
+  short_description: 'Create and review bots with project-specific formats'
+  default_prompt: 'Use $authoring-bots to create, revise, or review the requested bot content.'

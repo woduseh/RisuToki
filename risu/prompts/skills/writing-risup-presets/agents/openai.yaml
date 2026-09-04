@@ -1,0 +1,4 @@
+interface:
+  display_name: 'RisuAI Presets'
+  short_description: 'Configure RISUP prompt items, controls, and request settings'
+  default_prompt: 'Use $writing-risup-presets to create or revise the requested preset structure and request settings.'
