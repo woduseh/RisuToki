@@ -1,6 +1,6 @@
 # Preset Authoring
 
-- `prompt-family`: Phēmē behavior, modes, controls, and canonical-to-variant synchronization.
+- `prompt-family`: Phēmē behavior, modes, controls, common-source generation, and preset synchronization.
 - `writing-risup-presets`: `.risup` fields, prompt items, ordering, and request settings.
 
 Phēmē is the maintained successor to Mythos. Do not include historical Mythos artifacts in routine development or synchronization.

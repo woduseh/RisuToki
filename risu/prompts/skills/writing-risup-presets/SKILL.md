@@ -24,7 +24,9 @@ canonical_sources:
 
 ## Item and import semantics
 
-Use the risup-prompt facade for item reads and edits. Index-based operations carry current identity/type/preview guards. Export/import preserves item header metadata; keep CBS blocks self-contained within each item, and verify imported text with `analyze_content` action `verify_risup_prompt_import` using the same source.
+Use the risup-prompt facade for individual item reads and edits. Index-based operations carry current identity/type/preview guards. Export/import preserves item header metadata; keep CBS blocks self-contained within each item, and verify imported text with `analyze_content` action `verify_risup_prompt_import` using the same source.
+
+For Phēmē's generated variants, follow `prompt-family`: prepare the generator's field-write plans and apply them through MCP preview, then apply. Preserve preset fields outside those plans.
 
 Chat item ranges determine which history is sent; split ranges need the intended coverage without accidental overlap. Assistant prefill belongs in a separate `plain`/`assistant`/`normal` item at the intended turn boundary. Provider-native prefill shapes can differ.
 
