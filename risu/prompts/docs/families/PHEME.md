@@ -16,4 +16,6 @@ Use the current Phēmē document explicitly marked as the canonical Source and i
 
 ## Validation focus
 
-Check supported OOC, Roleplay, and Novel Writing state boundaries; Bot Type and persona assumptions; user-character-specific POV reachability; prompt-item metadata; CBS controls; context and cache placement; chat ranges; request-time cache settings; language and delivery seals; and version alignment. Keep ordinary creative controls after the stable cached prefix unless an approved architecture change says otherwise.
+Check supported OOC, Roleplay, and Novel Writing state boundaries; Bot Type and persona assumptions; user-character-specific POV reachability; prompt-item metadata; CBS controls; context and cache placement; chat ranges; request-time cache settings; language and delivery seals; and version alignment.
+
+Keep ordinary creative controls after the stable cached prefix. Moving those controls across that boundary requires explicit user approval covering that architectural change. An explicit request or prior approval for the same change satisfies this requirement; a general request to improve the preset does not. Prepare the proposed change and its impact before seeking missing approval, do not request the same approval again, and continue independent in-scope work.

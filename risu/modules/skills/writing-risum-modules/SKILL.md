@@ -33,4 +33,4 @@ A module is a reusable behavior/content pack that can attach lorebooks, regex, t
 
 Current character↔module conversion preserves the module icon, namespace, hide-icon setting, background embedding, assets, and custom toggles. Global-note replacement is carried through a constant lore entry marked `@@indicator replace_global_note`; accept legacy `@@indicator phi` only as an import compatibility marker.
 
-Load `risu/modules/docs/MODULE_FIELDS.md` only for the full field inventory. Hand exact embedded syntax to the matching common Skill.
+Load `risu/modules/docs/MODULE_FIELDS.md` only for the full field inventory. Continue the task using the matching common Skill for exact embedded syntax.

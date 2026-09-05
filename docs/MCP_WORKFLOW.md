@@ -93,4 +93,4 @@ The generated skill catalog is repository-root scoped:
 
 When the client-visible catalog does not already identify the Skill, use `list_skills` with the current `scopes`, a narrow `query`, and `detail: "summary"`. Existing no-argument calls retain the full compatibility view. Use the returned opaque `next_cursor` for catalog pages; `read_skill` uses its own cursor type with `max_bytes` for UTF-8-safe reference paging, and list/read cursors are intentionally not interchangeable.
 
-Without MCP, read the relevant source skill or reference from the filesystem. Missing MCP connectivity does not change an authoring task into repository development. If the generated catalog is missing, `npm run sync:skills` rebuilds it from the tracked roots.
+Without MCP, read the relevant source skill or reference from the filesystem. Follow the unavailable-MCP preparation and application boundaries in `skills/using-mcp-tools/SKILL.md`; missing connectivity does not change an authoring task into repository development. If the generated catalog is missing, `npm run sync:skills` rebuilds it from the tracked roots.

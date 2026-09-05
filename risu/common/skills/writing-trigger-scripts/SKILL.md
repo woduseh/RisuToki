@@ -9,7 +9,7 @@ related_tools: ['read_content', 'preview_edit', 'apply_edit', 'manage_items', 'l
 
 ## Mode boundary
 
-Structured/V2 triggers and Lua mode are alternative authoring modes. If the first trigger is a `triggerlua` wrapper, stop and use `writing-lua-scripts`; do not mix additional V1/V2 entries into that list.
+Structured/V2 triggers and Lua mode are alternative authoring modes. If the first trigger is a `triggerlua` wrapper, continue the task using `writing-lua-scripts`; do not mix additional V1/V2 entries into that list.
 
 Manual/button triggers use explicit invocation and matching trigger names. Trigger list order affects execution.
 

@@ -29,6 +29,6 @@ Display tags such as media, emotion, button, and markup helpers usually affect r
 
 At the verified RisuAI `2026.8.250` baseline, saved chat messages receive a `runVar` pass at send start and again after an assistant response is stored. That pass executes mutation tags and replaces the stored message with the fully parsed result; greetings, lorebook text, and ordinary display rendering do not gain mutation permission merely because they evaluate CBS. Nested expressions resolve inside-out, and a block implementation may evaluate nested arguments before discarding an unselected branch, so do not hide mutations inside conditional display text.
 
-## References and handoff
+## References and related syntax
 
-Load [`REFERENCE.md`](REFERENCE.md) only for the closed 170+ tag catalog, exact aliases, or an unlisted tag. For a genuinely mixed CBS/Lua/trigger/regex lifecycle problem, load [`RUNTIME_INTEROP.md`](../writing-trigger-scripts/RUNTIME_INTEROP.md). Hand HTML layout to `writing-html-css`, regex field behavior to `writing-regex-scripts`, lorebook activation to `writing-lorebooks`, and preset toggle ownership to `writing-risup-presets`.
+Load [`REFERENCE.md`](REFERENCE.md) only for the closed 170+ tag catalog, exact aliases, or an unlisted tag. For a genuinely mixed CBS/Lua/trigger/regex lifecycle problem, load [`RUNTIME_INTEROP.md`](../writing-trigger-scripts/RUNTIME_INTEROP.md). Continue the task using `writing-html-css` for HTML layout, `writing-regex-scripts` for regex field behavior, `writing-lorebooks` for lorebook activation, and `writing-risup-presets` for preset toggle ownership.

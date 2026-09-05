@@ -26,4 +26,4 @@ Special OUT actions such as emotion display, inject, move-top, move-bottom, repe
 
 ## References
 
-Hand CBS expression repair to `writing-cbs-syntax`, output markup to `writing-html-css`, and event/state orchestration to `writing-trigger-scripts` or `writing-lua-scripts`. Load `risu/common/docs/문법가이드_정규식.md` only for extended flags/examples. For mixed pipeline ordering, load `RUNTIME_INTEROP.md` from `writing-trigger-scripts` through the Skill reader.
+Continue the task using `writing-cbs-syntax` for CBS expression repair, `writing-html-css` for output markup, and `writing-trigger-scripts` or `writing-lua-scripts` for event/state orchestration. Load `risu/common/docs/문법가이드_정규식.md` only for extended flags/examples. For mixed pipeline ordering, load `RUNTIME_INTEROP.md` from `writing-trigger-scripts` through the Skill reader.

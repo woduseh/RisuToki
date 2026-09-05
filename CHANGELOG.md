@@ -9,6 +9,13 @@
 
 ---
 
+## [3.6.1] - 2026-09-05
+
+### Changed
+
+- Clarified agent guidance to include necessary dependent edits within authorized scope, reuse explicit approval for the same Phēmē cache architecture change, and continue work across syntax skill transitions.
+- Defined save-checkpoint recovery and unavailable-MCP preparation boundaries while preserving user drafts, preview/apply approval gates, and explicit reporting of pending application and verification.
+
 ## [3.6.0] - 2026-09-05
 
 ### Added
