@@ -1,4 +1,40 @@
 import { describe, expect, it } from 'vitest';
+import { searchTextBlock } from './mcp-search';
+
+describe('searchTextBlock', () => {
+  it.each([false, true])('counts all matches while bounding returned context (regex=%s)', (regex) => {
+    const content = 'skip\r\n'.repeat(1000) + 'Alpha\r\nalpha alpha\r\n'.repeat(1000);
+    const result = searchTextBlock(content, { query: 'alpha', regex, maxMatches: 2, contextChars: 2 });
+    expect(result.totalMatches).toBe(3000);
+    expect(result.matches).toEqual([
+      { match: 'Alpha', before: 'p\n', after: '\na', position: 5000, line: 1001 },
+      { match: 'alpha', before: 'a\n', after: ' a', position: 5006, line: 1002 },
+    ]);
+  });
+
+  it('counts non-overlapping literal matches and returns no matches for an empty literal', () => {
+    expect(searchTextBlock('aaaaa', { query: 'aa', maxMatches: 1 }).totalMatches).toBe(2);
+    expect(searchTextBlock('abc', { query: '' }).totalMatches).toBe(0);
+  });
+
+  it.each(['g', 'gu', 'gv'])('advances empty regex matches with %s flags', (flags) => {
+    const result = searchTextBlock('😀\nx', { query: '(?:)', regex: true, flags, maxMatches: 2 });
+    expect(result.totalMatches).toBe(flags === 'g' ? 5 : 4);
+    expect(result.matches.map((match) => match.position)).toEqual(flags === 'g' ? [0, 1] : [0, 2]);
+  });
+
+  it('preserves sticky matching and line numbers at newline boundaries', () => {
+    expect(searchTextBlock('aa ba', { query: 'a', regex: true, flags: 'y', maxMatches: 1 }).totalMatches).toBe(2);
+    const result = searchTextBlock('a\nb\n', { query: '^|$', regex: true, flags: 'gm' });
+    expect(result.matches.map(({ position, line }) => [position, line])).toEqual([
+      [0, 1],
+      [1, 1],
+      [2, 2],
+      [3, 2],
+      [4, 3],
+    ]);
+  });
+});
 
 interface SearchFixture {
   description?: string;

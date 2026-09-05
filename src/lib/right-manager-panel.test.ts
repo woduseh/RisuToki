@@ -145,6 +145,78 @@ describe('right-manager-panel', () => {
     expect(document.body.textContent).not.toContain('Shoto Todoroki');
   });
 
+  it('keeps full sibling positions for filtered entries and legacy folder aliases', () => {
+    const reorderLorebook = vi.fn();
+    initRightManagerPanel(
+      makeDeps({
+        getFileData: () => ({
+          lorebook: [
+            { mode: 'folder', key: 'folder:canonical', id: 'legacy', comment: 'Group' },
+            { comment: 'Hidden before', folder: 'legacy' },
+            { comment: 'Visible match', folder: 'folder:canonical' },
+            { comment: 'Hidden after', folder: 'folder:legacy' },
+          ],
+        }),
+        reorderLorebook,
+      }),
+    );
+    document.querySelector<HTMLButtonElement>('.manager-folder-arrow')!.click();
+    const input = clearLoreSearch();
+    input.value = 'Visible match';
+    input.dispatchEvent(new Event('input'));
+
+    const row = document.querySelector<HTMLElement>('.manager-lore-row')!;
+    expect(document.querySelectorAll('.manager-lore-row')).toHaveLength(1);
+    row.querySelector<HTMLButtonElement>('button[title="위로 이동"]')!.click();
+    row.querySelector<HTMLButtonElement>('button[title="아래로 이동"]')!.click();
+    expect(reorderLorebook.mock.calls).toEqual([
+      [2, 0, 'folder:canonical'],
+      [2, 2, 'folder:canonical'],
+    ]);
+  });
+
+  it('preserves separate move groups for unresolved folders displayed at root', () => {
+    const reorderLorebook = vi.fn();
+    initRightManagerPanel(
+      makeDeps({
+        getFileData: () => ({
+          lorebook: [
+            { comment: 'Root' },
+            { comment: 'Orphan first', folder: 'missing' },
+            { comment: 'Other orphan', folder: 'other' },
+            { comment: 'Orphan second', folder: 'folder:missing' },
+          ],
+        }),
+        reorderLorebook,
+      }),
+    );
+    const rows = document.querySelectorAll<HTMLElement>('.manager-lore-row');
+    expect(rows).toHaveLength(4);
+    expect(rows[0].querySelector<HTMLButtonElement>('button[title="아래로 이동"]')!.disabled).toBe(true);
+    rows[1].querySelector<HTMLButtonElement>('button[title="아래로 이동"]')!.click();
+    rows[3].querySelector<HTMLButtonElement>('button[title="위로 이동"]')!.click();
+    expect(reorderLorebook.mock.calls).toEqual([
+      [1, 1, 'folder:missing'],
+      [3, 0, 'folder:missing'],
+    ]);
+  });
+
+  it('bounds folder reads linearly when rendering a large lorebook', () => {
+    let folderReads = 0;
+    const count = 200;
+    const lorebook = Array.from({ length: count }, (_, index) => ({
+      comment: `Entry ${index}`,
+      get folder() {
+        folderReads++;
+        return 'missing';
+      },
+    }));
+    initRightManagerPanel(makeDeps({ getFileData: () => ({ lorebook }) }));
+
+    expect(document.querySelectorAll('.manager-lore-row')).toHaveLength(count);
+    expect(folderReads).toBeLessThanOrEqual(count * 4);
+  });
+
   it('keeps Korean IME search composition mounted until the composed value is ready', async () => {
     const deps = makeDeps({
       getFileData: () => ({

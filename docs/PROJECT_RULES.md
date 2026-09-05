@@ -10,6 +10,18 @@ Pure artifact authoring, documentation-only corrections that do not change behav
 
 Choose local checks by the changed behavior:
 
+`npm run validate` runs lint, typechecks, unit tests, and tooling tests. Use `npm run validate -- --test src/lib/mcp-search.test.ts` for a focused unit-test loop (repeat `--test` for multiple files). `--plan` lists the selected checks without running them; `--plan --json` provides the same plan for tools. For JSON-only stdout, use `npm run --silent validate -- --plan --json`. Test selection is available in the quick profile only. Each command has a five-minute timeout; `--timeout-ms` can override it (up to one hour).
+
+| Validation profile | Command                                 | Coverage                                                       |
+| ------------------ | --------------------------------------- | -------------------------------------------------------------- |
+| Quick              | `npm run validate`                      | Lint, typechecks, unit and tooling tests                       |
+| MCP                | `npm run validate -- --profile mcp`     | Shared build, MCP integration, workflow replay, contracts      |
+| CI                 | `npm run validate:ci`                   | All tests, lint, typechecks, replay, contracts, renderer build |
+| Full               | `npm run validate:full`                 | CI checks plus Electron build                                  |
+| Windows build      | `npm run validate -- --profile windows` | Tooling tests, Electron and renderer builds                    |
+
+`npm test` uses the test profile; `npm run build` uses the full profile. Each profile builds shared prerequisites once. The runner continues independent checks after a failure and skips checks whose prerequisites failed. Exit status determines success. Step logs and `report.json` are stored in `.build/validation/<runId>/`; `.build/validation/latest.json` identifies the latest report. Only one validation run may use a workspace at a time; the runner reports an existing lock instead of deleting it automatically.
+
 | Change                                | Relevant checks                                                                                |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
 | TypeScript or Vue                     | Focused tests, `npm run lint`, `npm run typecheck`                                             |
@@ -21,7 +33,7 @@ Static skill checks verify discovery and delivery, not model quality. Live model
 
 Default tests and replay use synthetic artifacts; local ignored user artifacts are excluded. `npm run test:corpus` explicitly enables read-only local corpus evaluation (`RISUTOKI_TEST_LOCAL_CORPUS=1`); run it only when that data access is within the task scope. Deterministic replay must pass every scenario; aggregate coverage metrics do not excuse a failed regression.
 
-PR/push CI runs Ubuntu lint, typecheck, tests, workflow replay, MCP contracts, and renderer build, followed by Windows Electron and renderer builds. These are CI coverage, not an instruction to repeat successful local checks.
+PR/push CI uses the CI profile on Ubuntu, followed by the Windows build profile. Both jobs retain validation reports and step logs, including failed runs. These are CI coverage, not an instruction to repeat successful local checks.
 
 Use `npm run test:mcp:contracts:update` only for an intentional public contract change; review its profile/case summary and describe the change in the changelog.
 

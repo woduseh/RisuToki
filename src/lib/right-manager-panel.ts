@@ -1,4 +1,4 @@
-import { getFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
+import { buildFolderRefAliasMap, getFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
 import Sortable from 'sortablejs';
 import { SHARED_OPTIONS } from './sidebar-dnd';
 import { planAssetBatchRename, type AssetBatchRenameMode, type AssetBatchRenameOperation } from './asset-batch-rename';
@@ -59,6 +59,12 @@ interface LoreFolderGroup {
   index: number;
   ref: string;
   children: Array<{ entry: LorebookEntryLike; index: number }>;
+}
+
+interface LoreMovePosition {
+  folderRef: string;
+  position: number;
+  siblings: number[];
 }
 
 const state = {
@@ -231,10 +237,14 @@ function entryMatchesFilters(entry: LorebookEntryLike): boolean {
 function getLoreGroups(lorebook: LorebookEntryLike[]): {
   folders: LoreFolderGroup[];
   rootEntries: Array<{ entry: LorebookEntryLike; index: number }>;
+  movePositions: Map<number, LoreMovePosition>;
 } {
   const folders: LoreFolderGroup[] = [];
   const lookup: Record<string, LoreFolderGroup> = {};
   const rootEntries: Array<{ entry: LorebookEntryLike; index: number }> = [];
+  const aliases = buildFolderRefAliasMap(lorebook);
+  const siblingGroups = new Map<string, number[]>();
+  const movePositions = new Map<number, LoreMovePosition>();
 
   lorebook.forEach((entry, index) => {
     if (entry.mode !== 'folder') return;
@@ -246,13 +256,17 @@ function getLoreGroups(lorebook: LorebookEntryLike[]): {
 
   lorebook.forEach((entry, index) => {
     if (entry.mode === 'folder') return;
-    const folderRef = resolveLorebookFolderRef(entry.folder, lorebook);
+    const folderRef = resolveLorebookFolderRef(entry.folder, aliases);
+    const siblings = siblingGroups.get(folderRef) ?? [];
+    siblingGroups.set(folderRef, siblings);
+    movePositions.set(index, { folderRef, position: siblings.length, siblings });
+    siblings.push(index);
     const folder = folderRef ? lookup[folderRef] : null;
     if (folder) folder.children.push({ entry, index });
     else rootEntries.push({ entry, index });
   });
 
-  return { folders, rootEntries };
+  return { folders, rootEntries, movePositions };
 }
 
 function setButtonActive(button: HTMLButtonElement, active: boolean): void {
@@ -436,7 +450,7 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
   const list = el('div', 'manager-list');
   body.appendChild(list);
 
-  const { folders, rootEntries } = getLoreGroups(lorebook);
+  const { folders, rootEntries, movePositions } = getLoreGroups(lorebook);
   const sortableContainers: HTMLElement[] = [];
   const renderEntries = (
     entries: Array<{ entry: LorebookEntryLike; index: number }>,
@@ -447,7 +461,7 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
     parent.dataset.managerLoreFolder = folderRef;
     sortableContainers.push(parent);
     for (const child of entries.filter((item) => entryMatchesFilters(item.entry))) {
-      parent.appendChild(createLoreRow(deps, child.entry, child.index));
+      parent.appendChild(createLoreRow(deps, child.entry, child.index, movePositions.get(child.index)!));
     }
   };
 
@@ -531,7 +545,12 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
   }
 }
 
-function createLoreRow(deps: RightManagerPanelDeps, entry: LorebookEntryLike, index: number): HTMLElement {
+function createLoreRow(
+  deps: RightManagerPanelDeps,
+  entry: LorebookEntryLike,
+  index: number,
+  movePosition: LoreMovePosition,
+): HTMLElement {
   const row = el('div', 'manager-lore-row');
   row.dataset.dndIdx = String(index);
   row.classList.toggle('selected', state.loreSelected.has(index));
@@ -574,15 +593,8 @@ function createLoreRow(deps: RightManagerPanelDeps, entry: LorebookEntryLike, in
   if (entry.useRegex || entry.mode === 'regex') tags.appendChild(el('span', 'manager-chip', '정규식'));
 
   const actions = el('div', 'manager-row-actions');
-  const lorebook = deps.getFileData()?.lorebook || [];
-  const folderRef = resolveLorebookFolderRef(entry.folder, lorebook);
-  const siblings = lorebook
-    .map((candidate, candidateIndex) => ({ entry: candidate, index: candidateIndex }))
-    .filter(
-      (candidate) =>
-        candidate.entry.mode !== 'folder' && resolveLorebookFolderRef(candidate.entry.folder, lorebook) === folderRef,
-    );
-  const siblingPosition = siblings.findIndex((candidate) => candidate.index === index);
+  // Positions include hidden siblings, so filtering never changes reorder targets.
+  const { folderRef, position: siblingPosition, siblings } = movePosition;
   const moveUp = makeToolbarButton('↑', '위로 이동', () => {
     if (siblingPosition > 0) deps.reorderLorebook(index, siblingPosition - 1, folderRef);
   });

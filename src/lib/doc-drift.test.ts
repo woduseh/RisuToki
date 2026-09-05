@@ -15,6 +15,7 @@
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createRequire } from 'node:module';
 import { resolveSkillRootDirs } from './content-roots';
 import { ALL_TOOL_NAMES, TOOL_FAMILIES } from './mcp-tool-taxonomy';
 import { FAMILY_NEXT_ACTIONS } from './mcp-response-envelope';
@@ -433,17 +434,37 @@ describe('canonical architecture and contributor workflow stay current', () => {
   it('keeps contributor validation and CI aligned on replay, contracts, and platform builds', () => {
     const contributing = fs.readFileSync(contributingPath, 'utf-8');
     const ci = fs.readFileSync(ciPath, 'utf-8');
-    const requiredCommands = [
-      'npm run test:evals:replay',
-      'npm run test:mcp:contracts',
-      'npm run build:electron',
-      'npm run build:renderer',
-    ];
-
-    for (const command of requiredCommands) {
-      expect(contributing, `CONTRIBUTING.md must include ${command}`).toContain(command);
-      expect(ci, `CI must include ${command}`).toContain(command);
+    const require = createRequire(path.join(ROOT, 'package.json'));
+    const { createPlan } = require('./build/validation-plan.js') as {
+      createPlan: (options: { profile: string }) => { steps: { id: string }[] };
+    };
+    const ciSteps = createPlan({ profile: 'ci' }).steps.map((step) => step.id);
+    const windowsSteps = createPlan({ profile: 'windows' }).steps.map((step) => step.id);
+    for (const step of [
+      'lint',
+      'typecheck-vue',
+      'typecheck-electron',
+      'typecheck-node',
+      'unit',
+      'tooling-tests',
+      'rpack',
+      'charx',
+      'references',
+      'mcp-tests',
+      'replay',
+      'contracts',
+      'renderer',
+    ]) {
+      expect(ciSteps, `CI profile must include ${step}`).toContain(step);
     }
+    expect(windowsSteps).toEqual(expect.arrayContaining(['electron', 'renderer']));
+    expect(ci).toContain('npm run validate:ci');
+    expect(ci).toContain('npm run validate -- --profile windows');
+    expect(contributing).toContain('npm run validate:full');
+    expect(contributing).toContain('.build/validation/');
+    expect(ci.match(/if: always\(\)/g)).toHaveLength(2);
+    expect(ci.match(/include-hidden-files: true/g)).toHaveLength(2);
+    expect(ci).toContain('.build/validation/**/report.json');
     expect(contributing).not.toContain('Popout terminal');
   });
 });

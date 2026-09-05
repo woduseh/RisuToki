@@ -172,22 +172,6 @@ function normalizeFlags(useRegex: boolean, flags?: string): string | undefined {
   return rawFlags.includes('g') ? rawFlags : `${rawFlags}g`;
 }
 
-function countLiteralMatches(content: string, query: string): number {
-  let totalMatches = 0;
-  let searchFrom = 0;
-  const queryLower = query.toLowerCase();
-  const contentLower = content.toLowerCase();
-
-  while (true) {
-    const pos = contentLower.indexOf(queryLower, searchFrom);
-    if (pos === -1) break;
-    totalMatches++;
-    searchFrom = pos + query.length;
-  }
-
-  return totalMatches;
-}
-
 export function searchTextBlock(contentInput: string, options: SearchTextBlockOptions): SearchTextBlockResult {
   const content = normalizeLF(contentInput);
   const query = normalizeLF(options.query);
@@ -197,42 +181,47 @@ export function searchTextBlock(contentInput: string, options: SearchTextBlockOp
   const maxMatches = clamp(Number(options.maxMatches) || 20, 1, 100);
   const matches: SearchMatch[] = [];
 
+  let totalMatches = 0;
+  let line = 1;
+  let nextNewline = content.indexOf('\n');
+  const collectMatch = (position: number, length: number): void => {
+    totalMatches++;
+    if (matches.length >= maxMatches) return;
+    // Match positions are ordered: scan each preceding newline only once.
+    while (nextNewline !== -1 && nextNewline < position) {
+      line++;
+      nextNewline = content.indexOf('\n', nextNewline + 1);
+    }
+    matches.push({
+      match: content.slice(position, position + length),
+      before: content.slice(Math.max(0, position - contextChars), position),
+      after: content.slice(position + length, position + length + contextChars),
+      position,
+      line,
+    });
+  };
+
   if (regex) {
     const re = new RegExp(query, flags);
     let match: RegExpExecArray | null;
     while ((match = re.exec(content)) !== null) {
-      const position = match.index;
-      const matchText = match[0];
-      const before = content.slice(Math.max(0, position - contextChars), position);
-      const after = content.slice(position + matchText.length, position + matchText.length + contextChars);
-      const line = content.slice(0, position).split('\n').length;
-      matches.push({ match: matchText, before, after, position, line });
-      if (matches.length >= maxMatches) break;
-      if (matchText.length === 0) re.lastIndex++;
+      collectMatch(match.index, match[0].length);
+      // exec does not advance empty matches. Unicode regexes must advance by
+      // a code point, or a position inside a surrogate pair can match again.
+      if (match[0].length === 0) {
+        const codePoint = content.codePointAt(re.lastIndex);
+        re.lastIndex += (re.unicode || flags?.includes('v')) && codePoint !== undefined && codePoint > 0xffff ? 2 : 1;
+      }
     }
-  } else {
-    let searchFrom = 0;
+  } else if (query.length > 0) {
     const queryLower = query.toLowerCase();
     const contentLower = content.toLowerCase();
-    while (matches.length < maxMatches) {
+    let searchFrom = 0;
+    while (true) {
       const position = contentLower.indexOf(queryLower, searchFrom);
       if (position === -1) break;
-      const matchText = content.slice(position, position + query.length);
-      const before = content.slice(Math.max(0, position - contextChars), position);
-      const after = content.slice(position + query.length, position + query.length + contextChars);
-      const line = content.slice(0, position).split('\n').length;
-      matches.push({ match: matchText, before, after, position, line });
+      collectMatch(position, query.length);
       searchFrom = position + query.length;
-    }
-  }
-
-  let totalMatches = matches.length;
-  if (matches.length >= maxMatches) {
-    if (regex) {
-      const allMatches = content.match(new RegExp(query, flags));
-      totalMatches = allMatches ? allMatches.length : matches.length;
-    } else {
-      totalMatches = countLiteralMatches(content, query);
     }
   }
 

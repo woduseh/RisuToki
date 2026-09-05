@@ -23,6 +23,19 @@ export default [
   },
   {
     ...js.configs.recommended,
+    files: ['build/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'commonjs',
+      globals: globals.node,
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+    },
+  },
+  {
+    ...js.configs.recommended,
     files: browserJsFiles,
     languageOptions: {
       ...js.configs.recommended.languageOptions,

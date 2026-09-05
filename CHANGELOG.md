@@ -9,6 +9,30 @@
 
 ---
 
+## [3.5.0] - 2026-09-05
+
+### Added
+
+- Added a local validation runner with quick/focused, test, MCP, CI, full, and Windows profiles; read-only human/JSON plans; per-step logs; and machine-readable reports under .build/validation.
+- Added regression coverage for validation dependency ordering, subprocess failure, timeout, interruption, corpus isolation, bounded diagnostics, and concurrent-run locks.
+
+### Changed
+
+- Shared Node/MCP builds once per validation run and routed npm test, npm run build, and CI through the same dependency plan. CI retains validation logs and reports on failure.
+- Documented the agent edit/validate loop, kept failed dependencies from executing stale outputs, and extended lint coverage to build tooling.
+
+### Fixed
+
+- Declared lint-staged as a locked development dependency and invoked its local CLI directly from the commit hook, avoiding implicit downloads during commits.
+
+## [3.4.3] - 2026-09-05
+
+### Fixed
+
+- Reduced RISUM save CPU and temporary memory by encoding payloads directly into the final buffer and sizing assets without encoding them.
+- Made text search count matches in one pass with bounded retained results and incremental line tracking; empty Unicode regex matches now advance safely across surrogate pairs.
+- Reused folder aliases and sibling positions during lorebook manager rendering, eliminating per-row collection scans while preserving filtered move order and legacy folder references.
+
 ## [3.4.2] - 2026-09-05
 
 ### Fixed

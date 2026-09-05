@@ -68,7 +68,7 @@ export function buildFolderInfoMap(entries: LorebookFolderEntryLike[]): Map<stri
   return map;
 }
 
-function buildFolderRefAliasMap(entries: LorebookFolderEntryLike[]): Map<string, string> {
+export function buildFolderRefAliasMap(entries: LorebookFolderEntryLike[]): Map<string, string> {
   const aliases = new Map<string, string>();
   for (const info of buildFolderInfoMap(entries).values()) {
     aliases.set(info.ref, info.ref);
