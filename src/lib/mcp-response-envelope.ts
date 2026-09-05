@@ -110,6 +110,7 @@ export const FAMILY_NEXT_ACTIONS: Record<ToolFamily, string[]> = {
  */
 export const TOOL_NEXT_ACTIONS: Partial<Record<keyof typeof TOOL_TAXONOMY, string[]>> = {
   inspect_document: ['read_content', 'search_document', 'preview_edit'],
+  evaluate_bot: ['read_content', 'preview_edit', 'validate_content', 'evaluate_bot'],
   read_content: ['search_document', 'preview_edit'],
   search_document: ['read_content', 'preview_edit'],
   validate_content: ['read_content', 'preview_edit'],

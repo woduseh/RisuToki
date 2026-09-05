@@ -2,24 +2,24 @@
   "schemaVersion": 1,
   "toolsList": {
     "facade-first": {
-      "toolCount": 13,
-      "rawBytes": 29484,
-      "sha256": "061922c7a6b5dac65d4e37c18243f792fb61354b1dabb8db6326ada2c434178a"
+      "toolCount": 14,
+      "rawBytes": 76725,
+      "sha256": "ce08ca4712682d04385b9ee20ee76a26d55693e553ea43357d970b35d39cd335"
     },
     "authoring": {
-      "toolCount": 175,
-      "rawBytes": 226552,
-      "sha256": "f53951488e515b4546e46ad011e63371584e8d2d3c59ef2e0477c9809fc010a4"
+      "toolCount": 176,
+      "rawBytes": 273822,
+      "sha256": "8a5d01d0cec4ab1c2f3dfd3c1636ff723263413887f08177c12c317cee82fbd2"
     },
     "advanced-full": {
-      "toolCount": 203,
-      "rawBytes": 256585,
-      "sha256": "c5b01cb47a22d267cb72c5615d4943f18abdbf002b6f0177503c68bdbefa6abb"
+      "toolCount": 204,
+      "rawBytes": 303855,
+      "sha256": "6b2c4cb2d6a29447577e10951b8b83168e8aab3bcb870b72b0ef4b1c7f6e5fe3"
     },
     "readonly": {
-      "toolCount": 108,
-      "rawBytes": 110135,
-      "sha256": "4b1dbe7da6d3a3f0ff9c317d4ee2509cc4590b435b8a7455371188bb0eacb870"
+      "toolCount": 109,
+      "rawBytes": 129402,
+      "sha256": "5f63eb613fb86d49a5c48c3089c109aa611113d4a429b6457033d8bc61b5270e"
     }
   },
   "http": {

@@ -594,6 +594,7 @@ export const TOOL_TAXONOMY: Record<string, ToolEntry> = {
   read_content: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
   search_document: { family: 'search', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
   analyze_content: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
+  evaluate_bot: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
   preview_edit: { family: 'surface', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
   apply_edit: { family: 'surface', hints: WRITE, surfaceKind: 'facade', recommendation: 'preferred' },
   validate_content: { family: 'surface', hints: RO_IDEMPOTENT, surfaceKind: 'facade', recommendation: 'preferred' },
@@ -986,6 +987,7 @@ export function getToolWorkflowStages(name: string): readonly ToolWorkflowStage[
   }
   if (
     name === 'read_content' ||
+    name === 'evaluate_bot' ||
     name === 'analyze_content' ||
     name === 'load_guidance' ||
     name === 'manage_items' ||
@@ -1001,6 +1003,7 @@ export function getToolWorkflowStages(name: string): readonly ToolWorkflowStage[
   }
   if (
     name === 'analyze_content' ||
+    name === 'evaluate_bot' ||
     toolNameHasSegment(name, 'validate') ||
     toolNameHasSegment(name, 'diff') ||
     toolNameHasSegment(name, 'simulate')

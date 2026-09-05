@@ -46,8 +46,12 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-field-access.ts` — MCP field name sets, document-type access rules, and field-read payload builders
 - `src/lib/mcp-tool-taxonomy.ts` — tool-family single source of truth
 - `src/lib/mcp-tool-descriptions.ts` — byte-stable MCP tool description catalog used by `tools/list`
-- `src/lib/mcp-compact-input.ts` — compact public schemas, detailed handler validation, and static `tools/list` byte budgets for the 13 default tools
+- `src/lib/mcp-compact-input.ts` — complete public input schemas, detailed handler validation, and static `tools/list` byte budgets for the 14 default tools
 - `src/lib/mcp-facade-runtime.ts` — shared facade preview stores, digests, target labels, and API-error helpers
+- `src/lib/mcp-document-create.ts` — empty artifact initialization and exclusive file creation
+- `src/lib/mcp-facade-read-range.ts` — bounded field pages and source-bound continuation cursors
+- `src/lib/mcp-field-range.ts` — shared source fingerprints and Unicode-safe field slicing
+- `src/lib/mcp-tool-register-evaluation.ts` — deterministic bot regression evaluation and tool registration
 - `src/lib/mcp-facade-content.ts` — facade reads, validation, analysis, reference routing, and response envelopes
 - `src/lib/mcp-facade-edit.ts` — guarded preview/apply planning for active and external facade edits
 - `src/lib/mcp-facade-edit-block.ts` — guarded field/lorebook `replace_block` preview and apply operations

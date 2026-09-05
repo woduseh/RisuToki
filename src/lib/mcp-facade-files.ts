@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { captureFileBaseline, FileConflictError } from './file-baseline';
+import { checkNewArtifactPath } from './mcp-document-create';
 
 import {
   extractDocumentToProject,
@@ -309,6 +310,29 @@ export function createFacadeFilesEngine({
     target: FacadeV1Target,
     operation: ManageFileOperation,
   ): Promise<ManageFilePlan | ApiErrorResult> {
+    if (operation.action === 'create_document') {
+      const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
+      if (isApiError(filePath)) return filePath;
+      try {
+        checkNewArtifactPath(filePath);
+      } catch (error) {
+        return facadeApiError(409, String(error), 'Choose an absent artifact path in an existing directory.');
+      }
+      return {
+        result: {
+          action: operation.action,
+          file_path: filePath,
+          name: operation.name,
+          description: operation.description ?? '',
+          output_state_digest: filePathStateDigest(filePath),
+        },
+        routes: [route('manage_file', 'POST', '/external/create')],
+        touched: [`external:${filePath}`],
+        requiredGuards: [
+          externalPathStateGuard('expected_output_state_digest', filePath, '/result/output_state_digest'),
+        ],
+      };
+    }
     if (operation.action === 'open_file') {
       const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
       if (isApiError(filePath)) return filePath;
@@ -657,13 +681,15 @@ export function createFacadeFilesEngine({
         actual = filePathStateDigest(filePath);
       } else if (name === 'expected_output_state_digest') {
         let outputPath =
-          operation.action === 'export_field'
-            ? operation.file_path
-            : operation.action === 'reassemble_project'
-              ? operation.output_path
-              : operation.action === 'export_lorebook'
-                ? operation.target_dir
-                : undefined;
+          operation.action === 'create_document'
+            ? (operation.file_path ?? (target.kind === 'external' ? target.file_path : undefined))
+            : operation.action === 'export_field'
+              ? operation.file_path
+              : operation.action === 'reassemble_project'
+                ? operation.output_path
+                : operation.action === 'export_lorebook'
+                  ? operation.target_dir
+                  : undefined;
         if (operation.action === 'extract_project') {
           if (operation.project_path) {
             outputPath = operation.project_path;
@@ -707,6 +733,16 @@ export function createFacadeFilesEngine({
       if (conflict) return conflict;
     }
 
+    if (operation.action === 'create_document') {
+      const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
+      if (isApiError(filePath)) return filePath;
+      const data = await apiRequest('POST', '/external/create', {
+        file_path: filePath,
+        name: operation.name,
+        description: operation.description,
+      });
+      return isApiError(data) ? data : { result: asRecord(data) ?? {}, routes: plan.routes, touched: plan.touched };
+    }
     if (operation.action === 'open_file') {
       const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
       if (isApiError(filePath)) return filePath;

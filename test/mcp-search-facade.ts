@@ -50,7 +50,7 @@ export async function runStandaloneFacadeDogfood(): Promise<void> {
     metrics.facadeToolListByteCost = metrics.toolListByteCost;
     assert.ok(
       metrics.toolListByteCost <= MCP_DEFAULT_TOOLS_LIST_MAX_BYTES,
-      'default tools/list should stay within a 42 KiB budget',
+      'default tools/list should stay within the detailed schema budget',
     );
     assertDefaultToolSchemas(tools.tools);
 
@@ -60,6 +60,7 @@ export async function runStandaloneFacadeDogfood(): Promise<void> {
       'search_document',
       'read_content',
       'analyze_content',
+      'evaluate_bot',
       'preview_edit',
       'apply_edit',
       'validate_content',

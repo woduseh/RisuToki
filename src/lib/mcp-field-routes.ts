@@ -1,4 +1,5 @@
 import * as http from 'http';
+import { fieldRangeFingerprint, safeFieldRange } from './mcp-field-range';
 import type { ZodType } from 'zod';
 
 import {
@@ -1373,21 +1374,29 @@ export async function handleFieldRoute(
           target: `field:${fieldName}`,
         });
       }
-      const content: string =
+      const rawContent: string =
         typeof currentData[fieldName] === 'string' ? currentData[fieldName] : String(currentData[fieldName] ?? '');
+      const facadeRange = url.searchParams.get('facade_range') === '1';
+      const content = facadeRange ? normalizeLF(rawContent) : rawContent;
       const MAX_RANGE_LENGTH = 10000;
       const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
       const length = Math.max(1, Math.min(Number(url.searchParams.get('length')) || 2000, MAX_RANGE_LENGTH));
-      const slice = content.slice(offset, offset + length);
+      const selected = facadeRange
+        ? safeFieldRange(content, offset, length)
+        : { offset, content: content.slice(offset, offset + length) };
+      const slice = selected.content;
       return jsonResSuccess(
         res,
         {
           field: fieldName,
           totalLength: content.length,
-          offset,
+          offset: selected.offset,
           length: slice.length,
           hasMore: offset + length < content.length,
           content: slice,
+          ...(facadeRange
+            ? { range_fingerprint: fieldRangeFingerprint(rawContent, deps.getCurrentFilePath?.() ?? null, fieldName) }
+            : {}),
         },
         {
           toolName: 'read_field_range',

@@ -1,4 +1,5 @@
 import * as http from 'http';
+import { fieldRangeFingerprint, safeFieldRange } from './mcp-field-range';
 
 import {
   MAX_RISUP_PROMPT_BATCH,
@@ -1319,11 +1320,16 @@ export async function handleReferenceRoute(
           target: `reference:${idx}:field:${fieldName}:range`,
         });
       }
-      const content = typeof refData[fieldName] === 'string' ? refData[fieldName] : String(refData[fieldName] ?? '');
+      const rawContent = typeof refData[fieldName] === 'string' ? refData[fieldName] : String(refData[fieldName] ?? '');
+      const facadeRange = url.searchParams.get('facade_range') === '1';
+      const content = facadeRange ? normalizeLF(rawContent) : rawContent;
       const MAX_RANGE_LENGTH = 10000;
       const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
       const length = Math.max(1, Math.min(Number(url.searchParams.get('length')) || 2000, MAX_RANGE_LENGTH));
-      const slice = content.slice(offset, offset + length);
+      const selected = facadeRange
+        ? safeFieldRange(content, offset, length)
+        : { offset, content: content.slice(offset, offset + length) };
+      const slice = selected.content;
 
       return jsonResSuccess(
         res,
@@ -1332,10 +1338,11 @@ export async function handleReferenceRoute(
           fileName: ref.fileName,
           field: fieldName,
           totalLength: content.length,
-          offset,
+          offset: selected.offset,
           length: slice.length,
           hasMore: offset + length < content.length,
           content: slice,
+          ...(facadeRange ? { range_fingerprint: fieldRangeFingerprint(rawContent, ref.filePath, fieldName) } : {}),
         },
         {
           toolName: 'read_reference_field_range',

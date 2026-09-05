@@ -1,4 +1,6 @@
 import * as path from 'path';
+import { open } from 'fs/promises';
+import { createHash } from 'crypto';
 
 import { addAssetReferences, deleteAssetReferences, renameAssetReferences, validateAssetFileName } from './asset-utils';
 import { compressAssetsToWebP, updateAssetReferences, type CharxAssetLike } from './image-compressor';
@@ -19,6 +21,38 @@ import type { FacadeV1Guard, FacadeV1Target, ManageAssetsFamily, ManageAssetsOpe
 import { cloneJson } from './shared-utils';
 
 type FacadeApiRequest = (method: string, urlPath: string, body?: Record<string, unknown>) => Promise<unknown>;
+export const MAX_SOURCE_ASSET_BYTES = 8 * 1024 * 1024;
+
+async function readSourceAsset(sourcePath: string): Promise<Buffer | ApiErrorResult> {
+  if (!path.isAbsolute(sourcePath)) {
+    return facadeApiError(400, 'source_path must be absolute', 'Provide an absolute local asset file path.');
+  }
+  let file: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    file = await open(sourcePath, 'r');
+    const stat = await file.stat();
+    if (!stat.isFile()) return facadeApiError(400, 'source_path must identify a regular file', 'Choose an asset file.');
+    if (stat.size > MAX_SOURCE_ASSET_BYTES)
+      return facadeApiError(413, 'Asset source exceeds 8 MiB', 'Resize or compress the asset first.');
+    // Read at most the limit plus one byte, even if the source grows after stat.
+    const bytes = Buffer.alloc(Math.min(stat.size + 1, MAX_SOURCE_ASSET_BYTES + 1));
+    let offset = 0;
+    while (offset < bytes.length) {
+      const read = await file.read(bytes, offset, bytes.length - offset, offset);
+      if (read.bytesRead === 0) break;
+      offset += read.bytesRead;
+    }
+    if (offset > stat.size)
+      return facadeApiError(409, 'Asset source changed while reading', 'Retry preview with a stable source file.');
+    return bytes.subarray(0, offset);
+  } catch (error) {
+    return facadeApiError(400, 'Cannot read asset source', 'Check source_path and file permissions.', {
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    await file?.close();
+  }
+}
 type ExternalSurfaceValueReader = (
   filePath: string,
   surfacePath: string,
@@ -888,6 +922,23 @@ export function createFacadeAssetsEngine({
     }
 
     if (operation.action === 'add_asset') {
+      if ((operation.base64 !== undefined) === (operation.source_path !== undefined)) {
+        return facadeApiError(
+          400,
+          'add_asset requires exactly one of base64 or source_path',
+          'Choose one asset input.',
+        );
+      }
+      let base64 = operation.base64 ?? '';
+      if (operation.source_path !== undefined) {
+        const source = await readSourceAsset(operation.source_path);
+        if (isApiError(source)) return source;
+        base64 = source.toString('base64');
+        const sourceHash = createHash('sha256').update(source).digest('hex');
+        requiredGuards.push(
+          buildGuard('expected_source_hash', sourceHash, '/guard_values/*', ['manage_assets'], '/required_guards/*'),
+        );
+      }
       if (context.family === 'charx') {
         const normalized = normalizeCharxAssetAdd(operation);
         if (isApiError(normalized)) return normalized;
@@ -900,7 +951,7 @@ export function createFacadeAssetsEngine({
             ['manage_assets'],
           );
         }
-        const size = Buffer.from(operation.base64, 'base64').length;
+        const size = Buffer.from(base64, 'base64').length;
         const summary: ManageAssetsSummary = {
           index: beforeCount,
           path: normalized.assetPath,
@@ -926,13 +977,13 @@ export function createFacadeAssetsEngine({
               tool: 'add_charx_asset',
               method: 'POST',
               path: '/asset/add',
-              body: { fileName: normalized.fileName, base64: operation.base64, folder: normalized.folder },
+              body: { fileName: normalized.fileName, base64, folder: normalized.folder },
             },
           };
         }
         const newAssets = [
           ...(context.assets as Record<string, unknown>[]),
-          { path: normalized.assetPath, data: assetBufferJsonFromBase64(operation.base64) },
+          { path: normalized.assetPath, data: assetBufferJsonFromBase64(base64) },
         ];
         const references = {
           assets: newAssets,
@@ -972,7 +1023,7 @@ export function createFacadeAssetsEngine({
 
       const normalized = normalizeRisumAssetAdd(operation);
       if (isApiError(normalized)) return normalized;
-      const size = Buffer.from(operation.base64, 'base64').length;
+      const size = Buffer.from(base64, 'base64').length;
       const summary: ManageAssetsSummary = {
         index: beforeCount,
         name: normalized.name,
@@ -998,7 +1049,7 @@ export function createFacadeAssetsEngine({
             tool: 'add_risum_asset',
             method: 'POST',
             path: '/risum-asset/add',
-            body: { name: normalized.name, path: normalized.path, base64: operation.base64 },
+            body: { name: normalized.name, path: normalized.path, base64 },
           },
         };
       }
@@ -1024,7 +1075,7 @@ export function createFacadeAssetsEngine({
           {
             op: 'replace',
             path: '/risumAssets',
-            value: [...context.assets, assetBufferJsonFromBase64(operation.base64)],
+            value: [...context.assets, assetBufferJsonFromBase64(base64)],
           },
           { op: 'replace', path: '/_moduleData', value: newModuleData },
         ],
@@ -1426,6 +1477,16 @@ export function createFacadeAssetsEngine({
     if (digestConflict) return digestConflict;
     const plan = await buildManageAssetsPlan(target, requestedFamily, operation, context);
     if (isApiError(plan)) return plan;
+
+    if (operation.action === 'add_asset' && operation.source_path !== undefined) {
+      const sourceConflict = checkManageAssetsGuardValue(
+        guardValues,
+        'expected_source_hash',
+        guardValue(plan.requiredGuards, 'expected_source_hash'),
+        'The asset source changed; run manage_assets preview again.',
+      );
+      if (sourceConflict) return sourceConflict;
+    }
 
     if (operation.action === 'delete_asset' || operation.action === 'rename_asset') {
       const summary = resolveManageAssetsSelector(context, operation.selector, operation.action);

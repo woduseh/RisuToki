@@ -9,6 +9,21 @@
 
 ---
 
+## [3.6.0] - 2026-09-05
+
+### Added
+
+- Added `evaluate_bot` to the default MCP surface for repeatable text, regex, and lorebook expectation checks, with source-change detection and explicit simulation limits; no LLM calls or roleplay-quality claims.
+- Added guarded `manage_file.create_document` for new CHARX/RISUM/RISUP files without an open document. App confirmation and the standalone write gate remain required; creation never overwrites existing files.
+- Added UTF-8-bounded, resumable `read_content` field ranges for active, external, and reference targets, with LF-normalized search offsets and stale cursor rejection.
+- Added `manage_assets.add_asset.source_path` to import local binary assets without base64 in the model context; file hashes bind preview to apply.
+
+### Changed
+
+- Completed the normal authoring transition to 14 `facade-first` tools. App-managed JSON/TOML configurations migrate broad profiles to `facade-first` while preserving read-only configurations. Explicit CLI/profile opt-ins retain `advanced-full` compatibility.
+- Publish actual action-specific input schemas rather than discriminator-only schemas. Required fields, selectors, and edit payloads are discoverable directly from tools/list. Increased schema budgets to 96 KiB overall and 24 KiB per tool to retain complete inputs; refreshed the intentional public contract baseline.
+- Added app-backed and headless MCP lifecycle coverage for creating, editing, evaluating, and reopening a synthetic bot without granular tools.
+
 ## [3.5.1] - 2026-09-05
 
 ### Changed

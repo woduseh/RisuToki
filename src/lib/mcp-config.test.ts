@@ -32,6 +32,7 @@ describe('Codex MCP config helpers', () => {
     expect(result).toContain('[mcp_servers.risutoki.env]');
     expect(result).toContain('TOKI_PORT = "39464"');
     expect(result).toContain('TOKI_TOKEN = "tok\\"en"');
+    expect(result).toContain('RISUTOKI_MCP_TOOL_PROFILE = "facade-first"');
     expect(result.endsWith('\n')).toBe(true);
   });
 
@@ -86,21 +87,31 @@ describe('Codex MCP config helpers', () => {
     expect(result.match(/^\[mcp_servers\.risutoki\.env\]$/gm)).toHaveLength(1);
   });
 
-  it('preserves a valid generated Codex tool profile selection', () => {
-    const existing = [
-      '[mcp_servers.risutoki]',
-      'command = "old-node"',
-      '',
-      '[mcp_servers.risutoki.env]',
-      'TOKI_PORT = "1"',
-      'TOKI_TOKEN = "old"',
-      'RISUTOKI_MCP_TOOL_PROFILE = "advanced-full"',
-    ].join('\n');
+  it.each(['advanced-full', 'authoring', 'full', 'advanced'])(
+    'migrates generated Codex profile %s to facade-first',
+    (profile) => {
+      const existing = [
+        '[mcp_servers.risutoki]',
+        'command = "old-node"',
+        '',
+        '[mcp_servers.risutoki.env]',
+        'TOKI_PORT = "1"',
+        'TOKI_TOKEN = "old"',
+        `RISUTOKI_MCP_TOOL_PROFILE = "${profile}"`,
+      ].join('\n');
 
+      const result = buildCodexMcpConfigToml(existing, codexOptions);
+
+      expect(result).toContain('RISUTOKI_MCP_TOOL_PROFILE = "facade-first"');
+      expect(result.match(/RISUTOKI_MCP_TOOL_PROFILE/g)).toHaveLength(1);
+    },
+  );
+
+  it.each(['"readonly"', "'readonly'"])('preserves a Codex read-only connection using %s', (profile) => {
+    const existing = `[mcp_servers.risutoki.env]\nRISUTOKI_MCP_TOOL_PROFILE = ${profile}\n`;
     const result = buildCodexMcpConfigToml(existing, codexOptions);
-
-    expect(result).toContain('RISUTOKI_MCP_TOOL_PROFILE = "advanced-full"');
-    expect(result.match(/RISUTOKI_MCP_TOOL_PROFILE/g)).toHaveLength(1);
+    expect(result).toContain('RISUTOKI_MCP_TOOL_PROFILE = "readonly"');
+    expect(buildCodexMcpConfigToml(result, codexOptions)).toBe(result);
   });
 
   it('writes an explicitly selected profile and normalizes aliases', () => {
@@ -112,13 +123,21 @@ describe('Codex MCP config helpers', () => {
     expect(result).toContain('RISUTOKI_MCP_TOOL_PROFILE = "advanced-full"');
   });
 
+  it.each(['"--tool-profile=readonly"', "'--tool-profile', 'readonly'"])(
+    'preserves Codex read-only restrictions supplied in startup args %s',
+    (args) => {
+      const existing = `[mcp_servers.risutoki]\nargs = ["old.js", ${args}]\n`;
+      expect(buildCodexMcpConfigToml(existing, codexOptions)).toContain('RISUTOKI_MCP_TOOL_PROFILE = "readonly"');
+    },
+  );
+
   it('normalizes supported profile aliases and rejects unknown values', () => {
     expect(normalizeMcpToolProfile(' FULL ')).toBe('advanced-full');
     expect(normalizeMcpToolProfile('authoring')).toBe('authoring');
     expect(normalizeMcpToolProfile('not-a-profile')).toBeUndefined();
   });
 
-  it('preserves a valid JSON profile while replacing generated connection values', () => {
+  it('migrates a legacy JSON profile while replacing generated connection values', () => {
     const result = mergeRisutokiJsonMcpConfig(
       {
         mcpServers: {
@@ -151,7 +170,7 @@ describe('Codex MCP config helpers', () => {
       env: {
         TOKI_PORT: '39464',
         TOKI_TOKEN: 'new-token',
-        RISUTOKI_MCP_TOOL_PROFILE: 'advanced-full',
+        RISUTOKI_MCP_TOOL_PROFILE: 'facade-first',
       },
     });
   });
@@ -176,10 +195,10 @@ describe('Codex MCP config helpers', () => {
       },
     );
 
-    expect(result.mcpServers.risutoki.env).not.toHaveProperty('RISUTOKI_MCP_TOOL_PROFILE');
+    expect(result.mcpServers.risutoki.env.RISUTOKI_MCP_TOOL_PROFILE).toBe('facade-first');
   });
 
-  it('creates a new JSON config without forcing an explicit profile', () => {
+  it('creates a new JSON config with an explicit facade-first profile', () => {
     const result = mergeRisutokiJsonMcpConfig(
       {},
       {
@@ -196,8 +215,26 @@ describe('Codex MCP config helpers', () => {
     expect(result.mcpServers.risutoki.env).toEqual({
       TOKI_PORT: '39464',
       TOKI_TOKEN: 'new-token',
+      RISUTOKI_MCP_TOOL_PROFILE: 'facade-first',
     });
   });
+
+  it('keeps JSON read-only restrictions through app-managed regeneration', () => {
+    const input = { mcpServers: { risutoki: { env: { RISUTOKI_MCP_TOOL_PROFILE: 'readonly' } } } };
+    const serverConfig = { command: 'node', env: { RISUTOKI_MCP_TOOL_PROFILE: 'facade-first' } };
+    const result = mergeRisutokiJsonMcpConfig(input, serverConfig);
+    expect(result.mcpServers.risutoki.env.RISUTOKI_MCP_TOOL_PROFILE).toBe('readonly');
+    expect(mergeRisutokiJsonMcpConfig(result, serverConfig)).toEqual(result);
+  });
+
+  it.each([['--tool-profile=readonly'], ['--tool-profile', 'readonly']])(
+    'preserves JSON read-only restrictions supplied in startup args %j',
+    (...args) => {
+      const input = { mcpServers: { risutoki: { args: ['old.js', ...args] } } };
+      const result = mergeRisutokiJsonMcpConfig(input, { command: 'node', args: ['new.js'] });
+      expect(result.mcpServers.risutoki.env.RISUTOKI_MCP_TOOL_PROFILE).toBe('readonly');
+    },
+  );
 
   it('removes only top-level RisuToki server tables', () => {
     const result = removeTopLevelCodexRisutokiServerTables(

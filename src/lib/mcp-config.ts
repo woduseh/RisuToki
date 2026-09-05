@@ -54,11 +54,28 @@ export function normalizeMcpToolProfile(value: unknown): string | undefined {
   return TOOL_PROFILE_NAMES.has(resolved) ? resolved : undefined;
 }
 
+// App-managed connections migrate legacy broad surfaces on every rewrite.
+// A read-only connection must never silently gain mutation tools.
+function managedToolProfile(existing: unknown): string {
+  return normalizeMcpToolProfile(existing) === 'readonly' ? 'readonly' : 'facade-first';
+}
+
+function hasReadonlyToolProfileArg(args: unknown): boolean {
+  if (!Array.isArray(args)) return false;
+  return args.some(
+    (arg, index) =>
+      (typeof arg === 'string' &&
+        arg.startsWith('--tool-profile=') &&
+        normalizeMcpToolProfile(arg.slice('--tool-profile='.length)) === 'readonly') ||
+      (arg === '--tool-profile' && normalizeMcpToolProfile(args[index + 1]) === 'readonly'),
+  );
+}
+
 function getRisutokiMcpServerConfig(toolProfile?: string): Record<string, any> | null {
   const port = deps.getApiPort();
   const token = deps.getApiToken();
   if (!port || !token) return null;
-  const normalizedToolProfile = normalizeMcpToolProfile(toolProfile);
+  const normalizedToolProfile = managedToolProfile(toolProfile);
   return {
     type: 'stdio',
     command: 'node',
@@ -66,7 +83,7 @@ function getRisutokiMcpServerConfig(toolProfile?: string): Record<string, any> |
     env: {
       TOKI_PORT: String(port),
       TOKI_TOKEN: token,
-      ...(normalizedToolProfile ? { RISUTOKI_MCP_TOOL_PROFILE: normalizedToolProfile } : {}),
+      RISUTOKI_MCP_TOOL_PROFILE: normalizedToolProfile,
     },
   };
 }
@@ -140,17 +157,31 @@ export function sanitizeCodexFeatures(content: string): string {
 
 function extractCodexToolProfile(content: string): string | undefined {
   let tableName: string | null = null;
+  let profile: string | undefined;
+  let readonlyArg = false;
   for (const line of content.split(/\r?\n/)) {
     const nextTableName = getTomlTableName(line);
     if (nextTableName) {
       tableName = nextTableName;
       continue;
     }
+    if (tableName === 'mcp_servers.risutoki' && /^\s*args\s*=/.test(line)) {
+      // Generated configs use a single-line array of TOML basic strings.
+      const args = (line.match(/"(?:\\.|[^"\\])*"|'[^']*'/g) ?? []).map((value) => {
+        if (value.startsWith("'")) return value.slice(1, -1);
+        try {
+          return JSON.parse(value);
+        } catch {
+          return value.slice(1, -1);
+        }
+      });
+      readonlyArg ||= hasReadonlyToolProfileArg(args);
+    }
     if (tableName !== 'mcp_servers.risutoki.env') continue;
-    const match = line.match(/^\s*RISUTOKI_MCP_TOOL_PROFILE\s*=\s*"([^"]+)"\s*(?:#.*)?$/);
-    if (match) return normalizeMcpToolProfile(match[1]);
+    const match = line.match(/^\s*RISUTOKI_MCP_TOOL_PROFILE\s*=\s*(["'])(.*?)\1\s*(?:#.*)?$/);
+    if (match) profile = normalizeMcpToolProfile(match[2]);
   }
-  return undefined;
+  return readonlyArg ? 'readonly' : profile;
 }
 
 function buildCodexMcpBlock(options: CodexMcpConfigOptions): string {
@@ -171,7 +202,8 @@ function buildCodexMcpBlock(options: CodexMcpConfigOptions): string {
 }
 
 export function buildCodexMcpConfigToml(existing: string, options: CodexMcpConfigOptions): string {
-  const toolProfile = normalizeMcpToolProfile(options.toolProfile) ?? extractCodexToolProfile(existing);
+  const toolProfile =
+    normalizeMcpToolProfile(options.toolProfile) ?? managedToolProfile(extractCodexToolProfile(existing));
   const preserved = sanitizeCodexFeatures(
     removeTopLevelCodexRisutokiServerTables(removeManagedCodexMcpBlock(existing)),
   ).trimEnd();
@@ -194,10 +226,12 @@ export function mergeRisutokiJsonMcpConfig(input: unknown, serverConfig: Record<
     existingServers.risutoki && typeof existingServers.risutoki === 'object' && !Array.isArray(existingServers.risutoki)
       ? existingServers.risutoki
       : {};
-  const toolProfile = normalizeMcpToolProfile(existingRisutoki.env?.RISUTOKI_MCP_TOOL_PROFILE);
+  const toolProfile = hasReadonlyToolProfileArg(existingRisutoki.args)
+    ? 'readonly'
+    : managedToolProfile(existingRisutoki.env?.RISUTOKI_MCP_TOOL_PROFILE);
   const nextEnv = {
     ...(serverConfig.env ?? {}),
-    ...(toolProfile ? { RISUTOKI_MCP_TOOL_PROFILE: toolProfile } : {}),
+    RISUTOKI_MCP_TOOL_PROFILE: toolProfile,
   };
   existing.mcpServers = {
     ...existingServers,

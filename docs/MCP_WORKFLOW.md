@@ -24,7 +24,7 @@ The Vitest matrix keeps declared routes aligned with documentation. `npm run tes
 
 The desktop app starts the local API and MCP stdio process, writes supported CLI configurations, and connects tools to the active editor document plus loaded references.
 
-- Generated JSON and TOML configuration updates preserve an existing valid `RISUTOKI_MCP_TOOL_PROFILE`.
+- Generated JSON and TOML configurations explicitly select `facade-first` and migrate older broad profiles on rewrite. Existing `readonly` configurations stay read-only. Manually configured CLI connections can still explicitly select `advanced-full` for compatibility.
 - The active tool profile is selected when the MCP process starts.
 - Changing profiles requires restarting the MCP server. Dynamic tool expansion is not supported.
 
@@ -42,7 +42,7 @@ node toki-mcp-server.js --standalone [--file <path>] [--ref <path>] [--allow-wri
 - `--user-data-dir` changes the standalone sidecar and diagnostics directory.
 - `RISUTOKI_MCP_FILE`, `RISUTOKI_MCP_REFS`, `RISUTOKI_MCP_ALLOW_WRITES`, `RISUTOKI_MCP_USER_DATA_DIR`, and `RISUTOKI_MCP_TOOL_PROFILE` are the environment-variable equivalents.
 
-The default registered profile is `facade-first` with 13 tools: 11 preferred facades plus `list_skills` and `read_skill`. `load_guidance` remains a legacy compatibility facade in non-default profiles. Use `--tool-profile advanced-full` or `RISUTOKI_MCP_TOOL_PROFILE=advanced-full` when a client needs every granular route.
+The default registered profile is `facade-first` with 14 tools: 12 preferred facades plus `list_skills` and `read_skill`. `load_guidance` remains a legacy compatibility facade in non-default profiles. Use `--tool-profile advanced-full` or `RISUTOKI_MCP_TOOL_PROFILE=advanced-full` when a client needs every granular route.
 
 `session_status` reports `allowWrites`, `userDataPath`, and `runtimeHealth`. Standalone process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` unless `--user-data-dir` changes the location. Diagnostics contain paths, timings, status, response sizes, and error summaries, not prompt or field bodies.
 

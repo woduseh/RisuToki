@@ -2,6 +2,7 @@
 // Replaces ad-hoc typeof chains with declarative validation.
 
 import { z } from 'zod';
+import { createDocumentFields } from './mcp-document-create';
 
 // ---------------------------------------------------------------------------
 // Reusable atoms
@@ -357,6 +358,9 @@ export const facadeV1ContentSelectorSchema = z.object({
     .optional(),
   path: z.string().min(1).optional(),
   include_raw: z.boolean().optional(),
+  offset: z.number().int().nonnegative().optional(),
+  length: z.number().int().positive().max(10000).optional(),
+  cursor: z.string().min(1).max(200).optional(),
   field: z.string().min(1).optional(),
   index: z.number().int().nonnegative().optional(),
   indices: z.array(z.number().int().nonnegative()).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
@@ -921,7 +925,12 @@ export const manageAssetsOperationSchema = z.discriminatedUnion('action', [
     fileName: z.string().min(1).optional(),
     path: z.string().optional(),
     folder: z.enum(['icon', 'other']).optional(),
-    base64: z.string().min(1),
+    base64: z.string().min(1).optional(),
+    source_path: z
+      .string()
+      .min(1)
+      .describe('Absolute local asset file path; maximum 8 MiB. Supply exactly one of source_path or base64.')
+      .optional(),
   }),
   z.object({
     action: z.literal('delete_asset'),
@@ -970,6 +979,16 @@ export const manageAssetsBodySchema = z
   })
   .superRefine((d, ctx) => {
     if (!d.operation || d.mode === 'apply') return;
+    if (
+      d.operation.action === 'add_asset' &&
+      (d.operation.base64 !== undefined) === (d.operation.source_path !== undefined)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'add_asset requires exactly one of base64 or source_path',
+        path: ['operation', 'source_path'],
+      });
+    }
     const readActions = new Set(['list_assets', 'read_asset']);
     const previewActions = new Set(['add_asset', 'delete_asset', 'rename_asset', 'compress_assets']);
     if (d.mode === 'read' && !readActions.has(d.operation.action)) {
@@ -1002,6 +1021,7 @@ export const manageAssetsBodySchema = z
 export type ManageAssetsBody = z.infer<typeof manageAssetsBodySchema>;
 
 export const manageFileOperationSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('create_document'), file_path: z.string().min(1).optional(), ...createDocumentFields }),
   z.object({
     action: z.literal('list_snapshots'),
     field: z.string().min(1),
@@ -1092,6 +1112,7 @@ export const manageFileBodySchema = z
     if (!d.operation || d.mode === 'apply') return;
     const readActions = new Set(['list_snapshots', 'project_tree']);
     const previewActions = new Set([
+      'create_document',
       'open_file',
       'save_current_file',
       'snapshot_field',
@@ -1116,7 +1137,11 @@ export const manageFileBodySchema = z
         path: ['operation', 'action'],
       });
     }
-    if (d.operation.action === 'open_file' && d.target.kind !== 'external' && !d.operation.file_path) {
+    if (
+      (d.operation.action === 'open_file' || d.operation.action === 'create_document') &&
+      d.target.kind !== 'external' &&
+      !d.operation.file_path
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'open_file requires target.kind="external" or operation.file_path',

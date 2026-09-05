@@ -416,6 +416,7 @@ describe('MCP Tool Taxonomy', () => {
     expect(TOOL_RECOMMENDATIONS).toEqual(['preferred', 'advanced', 'legacy']);
 
     const facadeNames = new Set([
+      'evaluate_bot',
       'inspect_document',
       'list_tool_profiles',
       'read_content',
@@ -560,6 +561,7 @@ describe('MCP Tool Taxonomy', () => {
     expect(facadeCatalog?.tools.map((tool) => tool.name)).toEqual([
       'analyze_content',
       'apply_edit',
+      'evaluate_bot',
       'inspect_document',
       'list_skills',
       'list_tool_profiles',

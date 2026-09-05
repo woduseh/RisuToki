@@ -54,6 +54,7 @@ import type { RuntimeMetadata } from './mcp-runtime-contract';
 import { buildToolSurfaceProfileCatalog } from './mcp-tool-taxonomy';
 import { MCP_TOOL_DESCRIPTIONS } from './mcp-tool-descriptions';
 import { parsePromptTemplate } from './risup-prompt-model';
+import { hasFieldRange } from './mcp-facade-read-range';
 
 const DEFAULT_FACADE_READ_MAX_BYTES = 24 * 1024;
 
@@ -371,6 +372,19 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
       const actualSelectors: FacadeV1ContentSelector[] =
         selectors && selectors.length > 0 ? selectors : [{ family: 'surface', path: '/' }];
       const effectiveMaxBytes = max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES;
+      if (actualSelectors.some(hasFieldRange)) {
+        if (actualSelectors.length !== 1)
+          return textResult(
+            facadeApiError(
+              400,
+              'Field ranges require one selector per request',
+              'Read each field range separately so its cursor and byte budget remain complete.',
+              undefined,
+              ['read_content'],
+            ),
+          );
+        return textResult(await content.readFacadeFieldRange(target, actualSelectors[0], effectiveMaxBytes));
+      }
       const results: unknown[] = [];
       const routes: FacadeRoute[] = [];
       const touchedTargets: string[] = [];
@@ -779,6 +793,17 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
       max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
     },
     safeToolHandler('preview_edit', async ({ target, operations, max_bytes }) => {
+      if (operations.some((operation) => hasFieldRange(operation.selector))) {
+        return textResult(
+          facadeApiError(
+            400,
+            'Read range selectors cannot constrain edits',
+            'Use offset/length/cursor only with read_content. Preview edits using their documented text anchors or field selectors.',
+            undefined,
+            ['read_content', 'preview_edit'],
+          ),
+        );
+      }
       cleanupFacadePreviews();
       const activeDocument = target.kind === 'active' ? await readActiveDocumentBinding() : undefined;
       if (isApiError(activeDocument)) return textResult(activeDocument);
@@ -1426,7 +1451,8 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
 
         if (body.mode === 'preview') {
           const activeDocument =
-            (body.target.kind === 'active' || body.target.kind === 'session') && body.operation!.action !== 'open_file'
+            (body.target.kind === 'active' || body.target.kind === 'session') &&
+            !['open_file', 'create_document'].includes(body.operation!.action)
               ? await readActiveDocumentBinding()
               : undefined;
           if (isApiError(activeDocument)) return textResult(activeDocument);

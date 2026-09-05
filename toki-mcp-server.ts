@@ -48,6 +48,7 @@ import { createFacadeFilesEngine } from './src/lib/mcp-facade-files';
 import { createDanbooruEngine } from './src/lib/mcp-danbooru-engine';
 import { registerAuthoringTools } from './src/lib/mcp-tool-register-authoring';
 import { registerFacadeTools } from './src/lib/mcp-tool-register-facade';
+import { registerEvaluationTools } from './src/lib/mcp-tool-register-evaluation';
 import { registerFieldTools } from './src/lib/mcp-tool-register-fields';
 import { registerReferenceTools } from './src/lib/mcp-tool-register-reference';
 import { registerRisupTools } from './src/lib/mcp-tool-register-risup';
@@ -582,7 +583,7 @@ server.tool = ((...args: unknown[]) => {
       }
     }
   }
-  const publicInputSchema = toolName ? getCompactInputSchema(toolName) : undefined;
+  const publicInputSchema = toolName ? getCompactInputSchema(toolName, wrappedArgs[2] as z.ZodRawShape) : undefined;
   if (
     toolName &&
     publicInputSchema &&
@@ -638,6 +639,7 @@ server.registerTool = ((...args: unknown[]) => {
   return result;
 }) as typeof server.registerTool;
 
+registerEvaluationTools(server, facadeContentEngine);
 registerFacadeTools(server, {
   apiRequest,
   assets: facadeAssetsEngine,

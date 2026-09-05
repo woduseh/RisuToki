@@ -12,6 +12,7 @@ import { runStandaloneFacadeDogfood } from './mcp-search-facade';
 import { runStandaloneManageFileDogfood } from './mcp-search-manage-file';
 import { runStandaloneManageItemsDogfood } from './mcp-search-manage-items';
 import { runStandaloneToolProfileContract } from './mcp-search-profile-contract';
+import { runBotLifecycle } from './mcp-bot-lifecycle';
 import { runStandaloneRealCorpusFacadeReadEval } from './mcp-search-real-corpus';
 import {
   assertSurfaceSummary,
@@ -689,6 +690,8 @@ import {
     assert.equal((reopenedPreset._presetData as Record<string, unknown>).openAIKey, undefined);
 
     console.log('search_all_fields MCP smoke test passed');
+    await runBotLifecycle(api);
+    console.log('app-backed and headless facade-first bot lifecycle passed');
     await runStandaloneToolProfileContract();
     console.log('standalone MCP tool profile contract passed');
     await runStandaloneFacadeDogfood();

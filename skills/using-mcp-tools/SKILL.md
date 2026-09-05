@@ -8,6 +8,7 @@ related_tools:
     'read_content',
     'search_document',
     'analyze_content',
+    'evaluate_bot',
     'preview_edit',
     'apply_edit',
     'validate_content',
@@ -26,6 +27,10 @@ Use the current `tools/list` metadata and response `next_actions`. Prefer the fa
 
 - `inspect_document`, `read_content`, and `search_document` provide structure and bounded content. Select by family, field, identity, or range; use truncation metadata and `artifacts.byte_size` to size follow-ups.
 - `analyze_content` handles transformations, statistics, comparisons, simulations, and import verification. `validate_content` returns pass/fail diagnostics.
+- `evaluate_bot` runs explicit field, regex, and lorebook regression cases on active or external documents. Use the same cases before and after a change; inspect per-case failures and simulation limits. It does not call an LLM or judge roleplay quality.
+- Start a new artifact with `manage_file` preview action `create_document`, an absolute destination ending in `.charx`, `.risum`, or `.risup`, and `name`; apply the returned token, digest, and guards. The parent directory must exist. Creation does not overwrite or switch the active document; inspect/edit the external target or explicitly open it afterwards.
+- To read a long field, use one `read_content` selector with `field`, `offset`, and `length`; continue with the same target/field plus the returned `cursor` instead of offset/length. Offsets count UTF-16 units after LF normalization, matching search results. Cursor expiry, a changed source, or a changed field requires a fresh read.
+- `manage_assets` add action accepts exactly one of `source_path` (absolute local file, at most 8 MiB) or `base64`. Prefer the path for generated/local assets and carry every preview guard; changed source bytes invalidate apply.
 - `manage_items` handles structured item operations; `manage_assets` handles assets; `manage_file` handles guarded open/save/extract/reassemble operations.
 - Prefer stable `id` or `identity`; index-based edits need the current type/preview/hash guards. Batch sibling operations where supported.
 - Unopened and reference targets have facade routes; opening another active document is not a prerequisite to inspect them. References are read-only.

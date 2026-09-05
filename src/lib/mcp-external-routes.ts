@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
+import { fieldRangeFingerprint, safeFieldRange } from './mcp-field-range';
 import { assertFileUnchanged, captureFileBaseline } from './file-baseline';
 import type { ZodType } from 'zod';
 import type { LoadedDocumentData } from '../charx-io';
@@ -50,6 +51,13 @@ import { searchTextBlock } from './mcp-search';
 import { fileStatMetadata } from './mcp-session-routes';
 import { parsePromptTemplate } from './risup-prompt-model';
 import { cloneJson, normalizeLF } from './shared-utils';
+import { z } from 'zod';
+import {
+  checkNewArtifactPath,
+  createArtifactExclusive,
+  createDocumentFields,
+  newArtifactData,
+} from './mcp-document-create';
 
 type JsonBody = Record<string, unknown>;
 type ParseBody = <T>(
@@ -242,6 +250,58 @@ export async function handleExternalRoute(
   } = routeDeps;
 
   async function dispatch(): Promise<void | false> {
+    if (req.method === 'POST' && parts.join('/') === 'external/create') {
+      const body = await readJsonBody(req, res, 'external/create', () => {});
+      if (!body) return;
+      const parsed = parseBody(res, body, z.object({ file_path: z.string().min(1), ...createDocumentFields }), {
+        action: 'create document',
+        target: 'external:new',
+      });
+      if (!parsed) return;
+      const release = await acquireFieldMutex(`create:${path.resolve(parsed.file_path)}`);
+      try {
+        const filePath = checkNewArtifactPath(parsed.file_path);
+        const allowed = await deps.askRendererConfirm(
+          'MCP 새 문서 생성',
+          `${filePath}\n이름: ${parsed.name}\n빈 문서를 새로 만들어요. 기존 문서는 덮어쓰지 않아요.`,
+        );
+        if (!allowed) {
+          mcpNoOp(
+            res,
+            { action: 'create document', target: filePath, message: 'Creation rejected' },
+            { rejected: true },
+          );
+          return;
+        }
+        createArtifactExclusive(filePath, newArtifactData(parsed.name, parsed.description), (destination, data) =>
+          deps.saveExternalDocument(destination, getExternalFileType(destination)!, data),
+        );
+        jsonResSuccess(
+          res,
+          { success: true, file_path: filePath, file_type: getExternalFileType(filePath), name: parsed.name },
+          {
+            toolName: 'manage_file',
+            summary: 'Created a new artifact',
+            nextActions: ['inspect_document', 'manage_file', 'preview_edit'],
+          },
+        );
+      } catch (error) {
+        mcpError(
+          res,
+          409,
+          {
+            action: 'create document',
+            target: parsed.file_path,
+            message: error instanceof Error ? error.message : String(error),
+            suggestion: 'Choose an absent destination in an existing directory and preview again.',
+          },
+          error,
+        );
+      } finally {
+        release();
+      }
+      return;
+    }
     // ----------------------------------------------------------------
     // POST /external/inspect — inspect an unopened file without switching the UI document
     // ----------------------------------------------------------------
@@ -689,27 +749,33 @@ export async function handleExternalRoute(
           target: `external:field:${fieldName}`,
         });
       }
-      const content =
+      const rawContent =
         typeof probe.data[fieldName] === 'string'
           ? (probe.data[fieldName] as string)
           : String(probe.data[fieldName] ?? '');
+      const facadeRange = (probe.body as Record<string, unknown>).facade_range === true;
+      const content = facadeRange ? normalizeLF(rawContent) : rawContent;
       const MAX_RANGE_LENGTH = 10000;
       const offset = Math.max(0, Number((probe.body as Record<string, unknown>).offset) || 0);
       const length = Math.max(
         1,
         Math.min(Number((probe.body as Record<string, unknown>).length) || 2000, MAX_RANGE_LENGTH),
       );
-      const slice = content.slice(offset, offset + length);
+      const selected = facadeRange
+        ? safeFieldRange(content, offset, length)
+        : { offset, content: content.slice(offset, offset + length) };
+      const slice = selected.content;
       return jsonResSuccess(
         res,
         {
           file_path: probe.filePath,
           field: fieldName,
-          offset,
+          offset: selected.offset,
           length: slice.length,
           requestedLength: length,
           totalLength: content.length,
           content: slice,
+          ...(facadeRange ? { range_fingerprint: fieldRangeFingerprint(rawContent, probe.filePath, fieldName) } : {}),
         },
         {
           toolName: 'external_read_field_range',

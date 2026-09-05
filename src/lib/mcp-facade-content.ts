@@ -31,6 +31,7 @@ import {
   type FacadeV1ToolMutability,
 } from './mcp-request-schemas';
 import { mcpSuccess } from './mcp-response-envelope';
+import { createFacadeFieldRangeReader } from './mcp-facade-read-range';
 
 interface DanbooruTagLike {
   id: number;
@@ -1866,7 +1867,23 @@ export function createFacadeContentEngine({
     };
   }
 
+  const readFacadeFieldRange = createFacadeFieldRangeReader({
+    apiRequest,
+    resolveReferenceIndex,
+    envelope: (target, result, routes) =>
+      facadeEnvelope(
+        'read_content',
+        'read-only',
+        target,
+        result,
+        'Read a guarded field range',
+        ['read_content', 'search_document'],
+        { count: 1, routed_tools: routes.map((entry) => entry.tool) },
+      ),
+  });
+
   return {
+    readFacadeFieldRange,
     hasRisupPromptImportContext,
     applyEditPostEditMetadata,
     boundFacadePayload,

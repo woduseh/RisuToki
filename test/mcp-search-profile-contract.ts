@@ -20,6 +20,7 @@ export async function runStandaloneToolProfileContract(): Promise<void> {
   const expectedFacadeTools = [
     'apply_edit',
     'analyze_content',
+    'evaluate_bot',
     'inspect_document',
     'list_tool_profiles',
     'manage_assets',
@@ -64,10 +65,10 @@ export async function runStandaloneToolProfileContract(): Promise<void> {
   try {
     defaultProfile = await inspectProfile(undefined, 'default');
     assert.deepEqual(defaultProfile.names, expectedDefaultTools);
-    assert.equal(defaultProfile.names.length, 13);
+    assert.equal(defaultProfile.names.length, 14);
     assert.ok(
       defaultProfile.bytes <= MCP_DEFAULT_TOOLS_LIST_MAX_BYTES,
-      'default tools/list should stay within a 42 KiB budget',
+      'default tools/list should stay within the detailed schema budget',
     );
     const skills = await callJson(defaultProfile.runtime, 'list_skills', {});
     assert.ok(Number(skills.count) > 0);
@@ -100,7 +101,7 @@ export async function runStandaloneToolProfileContract(): Promise<void> {
     assert.match(JSON.stringify(guidanceInspect), /name: project-workflow/);
 
     advancedProfile = await inspectProfile('advanced-full', 'advanced-full');
-    assert.equal(advancedProfile.names.length, 203);
+    assert.equal(advancedProfile.names.length, 204);
     assert.ok(advancedProfile.names.length > defaultProfile.names.length);
     assert.ok(advancedProfile.names.includes('read_field'));
     assert.ok(advancedProfile.names.includes('list_skills'));
@@ -112,8 +113,8 @@ export async function runStandaloneToolProfileContract(): Promise<void> {
     assert.deepEqual(routedTools(guidance), ['read_skill']);
     assert.match(JSON.stringify(guidance), /name: project-workflow/);
     assert.ok(
-      defaultProfile.bytes <= advancedProfile.bytes * 0.2,
-      'default tools/list should be at least 80% smaller than advanced-full',
+      defaultProfile.bytes <= advancedProfile.bytes * 0.4,
+      'default tools/list should be at least 60% smaller than advanced-full while publishing complete inputs',
     );
 
     authoringProfile = await inspectProfile('authoring', 'authoring');
