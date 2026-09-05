@@ -9,6 +9,15 @@
 
 ---
 
+## [3.5.1] - 2026-09-05
+
+### Changed
+
+- Removed unused direct-terminal chat implementation, legacy dark-theme application, and unused parser/asset/registration helpers; imported the shared section parser directly instead of a compatibility re-export.
+- Removed ignored theme editor options and redundant callback forwarding; retained the active theme and buffered chat paths.
+- Trimmed tests that only pinned source spelling, cosmetic CSS values, or unused code, while retaining runtime, packaging, accessibility, and layout regression checks.
+- Reduced Node compilation roots to actual CLI/test entrypoints and removed ineffective/default Vite options, duplicated dev flags, and an unused installer bitmap; copy Monaco assets once without flattened duplicates.
+
 ## [3.5.0] - 2026-09-05
 
 ### Added

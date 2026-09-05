@@ -3,13 +3,11 @@ import {
   getMediaAssetUrl,
   getMonacoBaseUrl,
   getMonacoLoaderUrl,
-  getTalkTitle,
   getVendorAssetUrl,
   getWasmoonRuntimeUrl,
   getXtermFitAddonUrl,
   getXtermRuntimeUrl,
   getXtermStylesheetUrl,
-  isDarkModeEnabled,
 } from './asset-runtime';
 
 describe('asset runtime helpers', () => {
@@ -24,24 +22,5 @@ describe('asset runtime helpers', () => {
     expect(getXtermRuntimeUrl()).toContain('/vendor/@xterm/xterm/lib/xterm.js');
     expect(getXtermFitAddonUrl()).toContain('/vendor/@xterm/addon-fit/lib/addon-fit.js');
     expect(getWasmoonRuntimeUrl()).toContain('/vendor/wasmoon/dist/index.js');
-  });
-
-  it('derives the talk title from the stored dark mode setting', () => {
-    localStorage.removeItem('toki-dark-mode');
-    localStorage.removeItem('toki-theme-id');
-    expect(isDarkModeEnabled()).toBe(false);
-    expect(getTalkTitle()).toBe('TokiTalk');
-
-    localStorage.setItem('toki-dark-mode', 'true');
-    expect(isDarkModeEnabled()).toBe(true);
-    expect(getTalkTitle()).toBe('ArisTalk');
-  });
-
-  it('derives the talk title from the stored theme id when present', () => {
-    localStorage.setItem('toki-dark-mode', 'true');
-    localStorage.setItem('toki-theme-id', 'yuuka');
-
-    expect(isDarkModeEnabled()).toBe(false);
-    expect(getTalkTitle()).toBe('YuukaTalk');
   });
 });

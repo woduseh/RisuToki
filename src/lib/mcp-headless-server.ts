@@ -33,7 +33,7 @@ import {
   detectLuaSection,
   parseCssSections,
   parseLuaSections,
-} from './mcp-section-parser';
+} from './section-parser';
 import { resolveGuideRootDirs, resolveSkillRootDirs } from './content-roots';
 
 export interface HeadlessMcpOptions {

@@ -44,7 +44,6 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-surface-routes.ts` — extracted active-document JSON surface route dispatcher
 - `src/lib/mcp-asset-routes.ts` — extracted charx/risum asset route dispatcher and WebP compression route
 - `src/lib/mcp-field-access.ts` — MCP field name sets, document-type access rules, and field-read payload builders
-- `src/lib/mcp-section-parser.ts` — compatibility re-export of the shared Lua/CSS section parser
 - `src/lib/mcp-tool-taxonomy.ts` — tool-family single source of truth
 - `src/lib/mcp-tool-descriptions.ts` — byte-stable MCP tool description catalog used by `tools/list`
 - `src/lib/mcp-compact-input.ts` — compact public schemas, detailed handler validation, and static `tools/list` byte budgets for the 13 default tools

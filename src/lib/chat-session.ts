@@ -10,13 +10,10 @@ interface ChoiceResult {
   text: string;
 }
 
-interface SharedChatOptions {
+interface BufferedChatOptions {
   applySelectedChoice(text: string, value: string): ChoiceResult;
   filterDisplayChatMessages(messages: ChatMessage[]): ChatMessage[];
   onUpdate?: () => void;
-}
-
-interface BufferedChatOptions extends SharedChatOptions {
   cleanTuiOutput(text: string): string;
   isAssistantWelcomeBanner(text: string): boolean;
   isSpinnerNoise(text: string): boolean;
@@ -25,16 +22,6 @@ interface BufferedChatOptions extends SharedChatOptions {
   stripAnsi(text: string): string;
   backgroundBufferMax?: number;
   backgroundResetMs?: number;
-}
-
-interface DirectChatOptions extends SharedChatOptions {
-  cleanTuiOutput(text: string): string;
-  finalizeDelayMs?: number;
-  isSpinnerNoise(text: string): boolean;
-  maxResponseMs?: number;
-  minChunkLength?: number;
-  removeCommandEcho(text: string, lastCommand: string): string;
-  stripAnsi(text: string): string;
 }
 
 interface ChatSessionState {
@@ -48,10 +35,6 @@ function cloneMessages(messages: ChatMessage[]): ChatMessage[] {
   return messages.map((message) => ({ ...message }));
 }
 
-function notify(onUpdate?: () => void): void {
-  onUpdate?.();
-}
-
 export function createBufferedTerminalChatSession({
   applySelectedChoice,
   backgroundBufferMax = 8000,
@@ -63,13 +46,13 @@ export function createBufferedTerminalChatSession({
   maxResponseMs = 4000,
   onUpdate,
   promptFinalizeMs = 500,
-  stripAnsi
+  stripAnsi,
 }: BufferedChatOptions) {
   const state: ChatSessionState = {
     active: false,
     isStreaming: false,
     messages: [],
-    waitForInput: true
+    waitForInput: true,
   };
 
   let backgroundBuffer = '';
@@ -103,7 +86,7 @@ export function createBufferedTerminalChatSession({
     maxTimer = setTimeout(() => {
       finalizeResponse();
     }, maxResponseMs);
-    notify(onUpdate);
+    onUpdate?.();
   }
 
   function finalizeResponse(): string {
@@ -124,7 +107,7 @@ export function createBufferedTerminalChatSession({
     state.waitForInput = true;
     clearBuffers();
     state.messages = filterDisplayChatMessages(state.messages);
-    notify(onUpdate);
+    onUpdate?.();
     return display;
   }
 
@@ -145,7 +128,7 @@ export function createBufferedTerminalChatSession({
         clearBuffers();
       }
 
-      notify(onUpdate);
+      onUpdate?.();
       return true;
     }
 
@@ -153,7 +136,7 @@ export function createBufferedTerminalChatSession({
       finalizeResponse();
     }
     state.active = false;
-    notify(onUpdate);
+    onUpdate?.();
     return false;
   }
 
@@ -169,7 +152,7 @@ export function createBufferedTerminalChatSession({
     state.messages.push({ type: 'user', text: trimmed });
     state.waitForInput = false;
     clearBuffers();
-    notify(onUpdate);
+    onUpdate?.();
     return true;
   }
 
@@ -227,7 +210,7 @@ export function createBufferedTerminalChatSession({
     state.messages.push({ type: 'user', text: value });
     state.waitForInput = false;
     clearBuffers();
-    notify(onUpdate);
+    onUpdate?.();
     return true;
   }
 
@@ -239,146 +222,6 @@ export function createBufferedTerminalChatSession({
     handleTerminalData,
     selectChoice,
     send,
-    setActive
-  };
-}
-
-export function createDirectTerminalChatSession({
-  applySelectedChoice,
-  cleanTuiOutput,
-  filterDisplayChatMessages,
-  finalizeDelayMs = 1500,
-  isSpinnerNoise,
-  maxResponseMs = 4000,
-  minChunkLength = 2,
-  onUpdate,
-  removeCommandEcho,
-  stripAnsi
-}: DirectChatOptions) {
-  const state: ChatSessionState = {
-    active: false,
-    isStreaming: false,
-    messages: [],
-    waitForInput: true
-  };
-
-  let buffer = '';
-  let finalizeTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastSentCommand = '';
-  let maxTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function clearTimers(): void {
-    if (finalizeTimer) clearTimeout(finalizeTimer);
-    if (maxTimer) clearTimeout(maxTimer);
-    finalizeTimer = null;
-    maxTimer = null;
-  }
-
-  function finalizeResponse(): string {
-    if (!state.isStreaming) return '';
-    state.isStreaming = false;
-    clearTimers();
-
-    let display = buffer;
-    if (lastSentCommand) {
-      display = removeCommandEcho(display, lastSentCommand);
-    }
-    display = cleanTuiOutput(display);
-
-    const lastMessage = state.messages[state.messages.length - 1];
-    if (lastMessage && lastMessage.type === 'system') {
-      lastMessage.text = display.trim();
-    }
-
-    buffer = '';
-    lastSentCommand = '';
-    state.messages = filterDisplayChatMessages(state.messages);
-    notify(onUpdate);
-    return display;
-  }
-
-  function setActive(active: boolean): boolean {
-    state.active = active;
-    if (active) {
-      buffer = '';
-      state.isStreaming = false;
-      state.waitForInput = true;
-      clearTimers();
-    } else if (state.isStreaming) {
-      finalizeResponse();
-    }
-    notify(onUpdate);
-    return state.active;
-  }
-
-  function send(text: string): boolean {
-    const trimmed = text.trim();
-    if (!trimmed) return false;
-
-    if (state.isStreaming) {
-      state.isStreaming = false;
-      buffer = '';
-      clearTimers();
-    }
-
-    state.messages.push({ type: 'user', text: trimmed });
-    lastSentCommand = trimmed;
-    state.waitForInput = false;
-    notify(onUpdate);
-    return true;
-  }
-
-  function handleTerminalData(rawData: string): void {
-    if (!state.active || state.waitForInput) return;
-
-    const text = stripAnsi(rawData);
-    if (!text || text.trim().length < minChunkLength) return;
-    if (isSpinnerNoise(text)) return;
-
-    buffer += text;
-
-    if (!state.isStreaming) {
-      state.isStreaming = true;
-      state.messages.push({ type: 'system', text: '' });
-      notify(onUpdate);
-      maxTimer = setTimeout(() => {
-        finalizeResponse();
-      }, maxResponseMs);
-    }
-
-    if (finalizeTimer) clearTimeout(finalizeTimer);
-    finalizeTimer = setTimeout(() => {
-      finalizeResponse();
-    }, finalizeDelayMs);
-  }
-
-  function selectChoice(value: string): boolean {
-    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
-      const message = state.messages[index];
-      if (message.type === 'system' && message.text) {
-        const selected = applySelectedChoice(message.text, value);
-        if (selected.applied) {
-          message.text = selected.text;
-          message._choiceMade = true;
-          break;
-        }
-      }
-    }
-
-    state.messages.push({ type: 'user', text: value });
-    lastSentCommand = value;
-    state.waitForInput = false;
-    notify(onUpdate);
-    return true;
-  }
-
-  return {
-    finalizeResponse,
-    getMessages: (): ChatMessage[] => cloneMessages(state.messages),
-    getState: () => ({ ...state }),
-    handleTerminalData,
-    selectChoice,
-    send,
-    setActive
+    setActive,
   };
 }

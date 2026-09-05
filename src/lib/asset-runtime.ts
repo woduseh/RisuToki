@@ -1,6 +1,3 @@
-import { readAppSettingsSnapshot } from './app-settings';
-import { getTalkTitleForTheme, isDarkTheme } from './theme-registry';
-
 function getBundledAssetUrl(baseDirectory: 'app-assets' | 'vendor', relativePath: string): string {
   const normalizedPath = relativePath.replace(/^\.\//, '');
   return new URL(`./${baseDirectory}/${normalizedPath}`, window.location.href).toString();
@@ -36,16 +33,6 @@ export function getXtermFitAddonUrl(): string {
 
 export function getWasmoonRuntimeUrl(): string {
   return getVendorAssetUrl('wasmoon/dist/index.js');
-}
-
-export function isDarkModeEnabled(): boolean {
-  const snapshot = readAppSettingsSnapshot();
-  return isDarkTheme(snapshot.themeId, snapshot.customTheme);
-}
-
-export function getTalkTitle(): string {
-  const snapshot = readAppSettingsSnapshot();
-  return getTalkTitleForTheme(snapshot.themeId, snapshot.customTheme);
 }
 
 export const toMediaAsset = getMediaAssetUrl;

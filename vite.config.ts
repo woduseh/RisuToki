@@ -91,10 +91,8 @@ export default defineConfig(({ command }) => ({
     viteStaticCopy({
       targets: [
         {
-          src: `${normalizePath(resolveInstalledAssetPath('monaco-editor', 'min/vs'))}/**/*`,
-          dest: 'vendor/monaco-editor/min/vs',
-          // @ts-expect-error Missing in vite-plugin-static-copy typings.
-          structured: true,
+          src: normalizePath(resolveInstalledAssetPath('monaco-editor', 'min/vs')),
+          dest: 'vendor/monaco-editor/min',
         },
         {
           src: normalizePath(resolveInstalledAssetPath('@xterm/xterm', 'css/xterm.css')),
@@ -135,8 +133,6 @@ export default defineConfig(({ command }) => ({
     extensions: ['.mts', '.ts', '.mjs', '.js', '.tsx', '.jsx', '.json'],
   },
   build: {
-    outDir: 'dist',
-    emptyOutDir: true,
     rollupOptions: {
       input: {
         main: resolve(rootDir, 'index.html'),

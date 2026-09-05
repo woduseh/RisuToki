@@ -1,11 +1,11 @@
 {
   "name": "risutoki",
-  "version": "3.5.0",
+  "version": "3.5.1",
   "description": "Desktop editor and MCP workspace for RisuAI .charx, .risum, and .risup artifacts",
   "main": ".build/electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
-    "dev:renderer": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:renderer": "vite",
     "dev:electron": "wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "dev:build": "npm run build:electron && npm run dev",
     "start:build": "npm run build:electron && npm run build:renderer && npm start",

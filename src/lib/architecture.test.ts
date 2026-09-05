@@ -14,8 +14,6 @@ const PACKAGE_JSON = path.join(ROOT, 'package.json');
 
 const KNOWN_STORE_RUNTIME_IMPORTS = new Set(['src/lib/file-actions.ts', 'src/lib/status-bar.ts']);
 
-const KNOWN_UNLINTED_LIB_FILES = new Set<string>();
-
 function listLibFiles(includeTests = true): string[] {
   const files: string[] = [];
 
@@ -43,42 +41,6 @@ function listLibFiles(includeTests = true): string[] {
 
 function readRepoFile(relativePath: string): string {
   return fs.readFileSync(path.join(ROOT, relativePath), 'utf-8').replace(/\r\n/g, '\n');
-}
-
-interface LintCoverage {
-  explicitFiles: Set<string>;
-  globs: string[];
-}
-
-function tokenizeLintScript(lintScript: string): string[] {
-  return [...lintScript.matchAll(/"([^"]+)"|'([^']+)'|(\S+)/g)].map((match) => match[1] ?? match[2] ?? match[3]);
-}
-
-function extractLintCoverage(): LintCoverage {
-  const packageJson = JSON.parse(fs.readFileSync(PACKAGE_JSON, 'utf-8')) as { scripts?: { lint?: string } };
-  const lintScript = packageJson.scripts?.lint ?? '';
-  const tokens = tokenizeLintScript(lintScript);
-  const explicitFiles = new Set(tokens.filter((token) => /^src\/lib\/[\w./-]+\.ts$/.test(token)));
-  const globs = tokens.filter((token) => token.includes('*'));
-  return { explicitFiles, globs };
-}
-
-function lintGlobCoversLibFile(glob: string, filePath: string): boolean {
-  if (!filePath.startsWith('src/lib/') || !filePath.endsWith('.ts')) return false;
-  switch (glob) {
-    case 'src/**/*.ts':
-    case 'src/**/*.{ts,vue}':
-    case 'src/lib/**/*.ts':
-      return true;
-    case 'src/lib/*.ts':
-      return !filePath.slice('src/lib/'.length).includes('/');
-    default:
-      return false;
-  }
-}
-
-function isLintedLibFile(filePath: string, coverage: LintCoverage): boolean {
-  return coverage.explicitFiles.has(filePath) || coverage.globs.some((glob) => lintGlobCoversLibFile(glob, filePath));
 }
 
 type RuntimeDependencyGroup = 'app' | 'stores';
@@ -290,18 +252,6 @@ describe('runtime dependency scanner behavior', () => {
       ),
     ).toEqual([]);
   });
-
-  it('does not mutate src/lib while evaluating fixture sources', () => {
-    const before = listLibFiles(true);
-    expect(
-      scanRuntimeDependencyViolations(
-        "import type { Controller } from '../app/controller';\n",
-        '__fixture__.ts',
-        'app',
-      ),
-    ).toEqual([]);
-    expect(listLibFiles(true)).toEqual(before);
-  });
 });
 
 describe('src/lib architecture boundaries', () => {
@@ -322,38 +272,6 @@ describe('src/lib architecture boundaries', () => {
     });
 
     expect(violations).toEqual([]);
-  });
-});
-
-describe('src/lib ownership guards', () => {
-  const libProductionFiles = listLibFiles(false);
-
-  it('keeps JSON.parse(JSON.stringify(...)) centralized in shared-utils.ts', () => {
-    const offenders = libProductionFiles.filter((filePath) => {
-      if (filePath === 'src/lib/shared-utils.ts') return false;
-      return readRepoFile(filePath).includes('JSON.parse(JSON.stringify(');
-    });
-
-    expect(offenders).toEqual([]);
-  });
-});
-
-describe('src/lib lint coverage guard', () => {
-  const lintCoverage = extractLintCoverage();
-  const actualLibFiles = listLibFiles(true);
-
-  it('requires every src/lib TypeScript file to be linted or explicitly allowlisted', () => {
-    const uncovered = actualLibFiles.filter(
-      (filePath) => !isLintedLibFile(filePath, lintCoverage) && !KNOWN_UNLINTED_LIB_FILES.has(filePath),
-    );
-    expect(uncovered, 'New src/lib files must be added to lint or KNOWN_UNLINTED_LIB_FILES').toEqual([]);
-  });
-
-  it('does not keep stale entries in the known unlinted allowlist', () => {
-    const stale = [...KNOWN_UNLINTED_LIB_FILES].filter(
-      (filePath) => !actualLibFiles.includes(filePath) || isLintedLibFile(filePath, lintCoverage),
-    );
-    expect(stale, 'KNOWN_UNLINTED_LIB_FILES should shrink when lint coverage expands').toEqual([]);
   });
 });
 

@@ -119,7 +119,7 @@ Renderer modules should call injected callbacks or `window.tokiAPI` when privile
 
 Modules such as `shared-utils.ts`, `section-parser.ts`, `cbs-parser.ts`, `cbs-evaluator.ts`, `content-simulation.ts`, and document-model helpers are designed to be reusable across renderer, main-process, test, or MCP contexts.
 
-`section-parser.ts` is the canonical Lua/CSS section grammar. `mcp-section-parser.ts` is a compatibility re-export.
+`section-parser.ts` is the canonical Lua/CSS section grammar.
 
 ---
 

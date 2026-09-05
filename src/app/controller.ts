@@ -55,7 +55,6 @@ import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
 import {
   disposeFormEditors,
-  getFormEditors,
   initFormEditor,
   showLoreEditor,
   showBooleanEditor,
@@ -2565,8 +2564,6 @@ async function handleAntigravityStart(): Promise<void> {
 
 function getThemeUiDeps() {
   return {
-    getEditorInstance: () => editorInstance as { updateOptions(opts: unknown): void } | null,
-    getFormEditors: () => getFormEditors() as Array<{ updateOptions(opts: unknown): void }>,
     getTerminal: () => terminalSessions.getTerminal() as { options: { theme: unknown } } | null,
   };
 }

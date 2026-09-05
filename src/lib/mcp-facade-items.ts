@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 
-import { combineCssSections, combineLuaSections, parseCssSections, parseLuaSections } from './mcp-section-parser';
+import { combineCssSections, combineLuaSections, parseCssSections, parseLuaSections } from './section-parser';
 import {
   asRecord,
   buildGuard,

@@ -5,11 +5,9 @@ import { applyTheme } from '../lib/dark-mode';
 import { refreshAvatarForDarkMode } from '../lib/avatar-ui';
 import { setStatus } from '../lib/status-bar';
 import { showSettingsPopup as renderSettingsPopup } from '../lib/settings-popup';
-import { getTheme, isDarkTheme, type CustomThemePalette, type ThemeId } from '../lib/theme-registry';
+import { getTheme, type CustomThemePalette, type ThemeId } from '../lib/theme-registry';
 
 export interface ThemeUiDeps {
-  getEditorInstance(): { updateOptions(opts: unknown): void } | null;
-  getFormEditors(): Array<{ updateOptions(opts: unknown): void }>;
   getTerminal(): { options: { theme: unknown } } | null;
 }
 
@@ -38,10 +36,7 @@ export function updateCustomTheme(theme: CustomThemePalette | null, deps: ThemeD
 
 export function refreshThemeUi(themeId: ThemeId, customTheme: CustomThemePalette | null, deps: ThemeUiDeps): void {
   const theme = getTheme(themeId, customTheme);
-  applyTheme(themeId, customTheme, {
-    editorInstance: deps.getEditorInstance(),
-    formEditors: deps.getFormEditors(),
-  });
+  applyTheme(themeId, customTheme);
 
   const titleEl = document.querySelector('.momo-title');
   if (titleEl) titleEl.textContent = theme.talkTitle;
@@ -51,8 +46,6 @@ export function refreshThemeUi(themeId: ThemeId, customTheme: CustomThemePalette
   if (term) {
     term.options.theme = theme.terminal;
   }
-
-  void isDarkTheme(themeId, customTheme);
 }
 
 // ---------------------------------------------------------------------------

@@ -171,10 +171,6 @@ export function disposeFormEditors(): void {
   formEditors = [];
 }
 
-export function getFormEditors(): FormEditor[] {
-  return formEditors.filter((editor): editor is FormEditor => 'updateOptions' in editor);
-}
-
 // ── Mini Monaco factory ──
 
 export function createMiniMonaco(

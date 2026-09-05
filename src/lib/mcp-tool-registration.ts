@@ -52,17 +52,6 @@ export const MCP_COMPACT_OUTPUT_SCHEMA = z
   })
   .catchall(z.unknown());
 
-export function structuredToolConfig<TInput extends Record<string, z.ZodType>>(
-  description: string,
-  inputSchema: TInput,
-) {
-  return {
-    description,
-    inputSchema,
-    outputSchema: MCP_COMPACT_OUTPUT_SCHEMA,
-  };
-}
-
 function parsedTextObject(result: McpToolResult): Record<string, unknown> {
   const text = result.content.find((item) => item.type === 'text')?.text;
   if (text === undefined) {

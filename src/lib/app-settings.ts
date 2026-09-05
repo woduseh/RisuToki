@@ -1,7 +1,6 @@
 import { parseStoredJson, storedAvatarStateSchema } from './stored-state-validation';
 import {
   DEFAULT_CUSTOM_THEME_PALETTE,
-  getDefaultRpModeForTheme,
   isDarkTheme,
   normalizeThemeId,
   parseCustomThemePalette,
@@ -144,10 +143,6 @@ function normalizeRecentItems(items: unknown[]): RecentItem[] {
 
 export function getDefaultRpModeForDarkMode(darkMode: boolean): RpMode {
   return darkMode ? 'aris' : 'toki';
-}
-
-export function getDefaultRpModeForThemeId(themeId: ThemeId, customTheme?: CustomThemePalette | null): RpMode {
-  return getDefaultRpModeForTheme(themeId, customTheme);
 }
 
 export function normalizeRpMode(value: string | null, darkMode: boolean): RpMode {

@@ -24,7 +24,7 @@ import {
   detectLuaSection as detectLuaSectionImpl,
   parseCssSections as parseCssSectionsImpl,
   parseLuaSections as parseLuaSectionsImpl,
-} from '../src/lib/mcp-section-parser';
+} from '../src/lib/section-parser';
 import { callJson, type McpCallJson, type StandaloneClientRuntime } from './mcp-test-client';
 
 export const PROJECT_ROOT = process.cwd();

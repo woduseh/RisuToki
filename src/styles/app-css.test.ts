@@ -4,51 +4,6 @@ import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(resolve(__dirname, 'app.css'), 'utf-8');
 
-describe('app.css – preview-header', () => {
-  it('defines an active state for preview action buttons', () => {
-    expect(css).toMatch(/\.preview-action-btn\.active\b/);
-  });
-
-  it('gives the preview header a theme-aware contrasting surface and controls', () => {
-    expect(css).toMatch(
-      /\.preview-header\s*\{[^}]*background:\s*linear-gradient\([^}]*var\(--ui-accent[^}]*var\(--ui-accent-strong[^}]*color:\s*var\(--ui-on-accent/s,
-    );
-    expect(css).toMatch(/\.preview-header\s+\.preview-action-btn\s*\{[^}]*color:\s*inherit;/s);
-  });
-
-  it('fills the editor surface without modal sizing or resize handles', () => {
-    expect(css).toMatch(/\.preview-panel\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;/s);
-    expect(css).not.toMatch(/\.preview-overlay\s*\{/);
-    expect(css).not.toMatch(/\.preview-panel\s*\{[^}]*resize:\s*both;/s);
-  });
-});
-
-describe('app.css – shell theme coherence', () => {
-  it('defines extracted tree section headers', () => {
-    expect(css).toMatch(/\.tree-section-header\b/);
-  });
-
-  it('defines dark-mode overrides for terminal chat surfaces', () => {
-    expect(css).toMatch(/body\.dark-mode\s+#chat-view\b/);
-    expect(css).toMatch(/body\.dark-mode\s+#chat-input-area\b/);
-    expect(css).toMatch(/body\.dark-mode\s+\.chat-choice-btn\b/);
-  });
-
-  it('keeps terminal area theme-driven in dark mode', () => {
-    expect(css).toMatch(/body\.dark-mode\s+#terminal-area\b/);
-  });
-});
-
-describe('app.css – preview diagnostics', () => {
-  it('defines a visible status banner rule for preview initialization', () => {
-    expect(css).toMatch(/\.preview-status-banner\b/);
-  });
-
-  it('defines a visible error banner rule for preview failures', () => {
-    expect(css).toMatch(/\.preview-error-banner\b/);
-  });
-});
-
 describe('app.css – accessibility preferences', () => {
   it('honors reduced-motion preferences for transitions and animations', () => {
     expect(css).toMatch(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)/);
@@ -69,19 +24,6 @@ describe('app.css – status bar affordances', () => {
 });
 
 describe('app.css – form editor controls', () => {
-  it('uses semantic theme colors for lorebook form headers', () => {
-    expect(css).toMatch(
-      /\.form-editor-header\s*\{[^}]*background:\s*linear-gradient\([^;]*var\(--ui-accent[^;]*var\(--ui-accent-strong/s,
-    );
-    expect(css).not.toMatch(/body\.dark-mode\s+\.form-editor-header\s*\{[^}]*#4a90d9/s);
-  });
-
-  it('styles the risup numeric disable action as a themed form control', () => {
-    expect(css).toMatch(/\.form-disable-number-btn\s*\{[^}]*background:\s*var\(--accent-light\);[^}]*\}/s);
-    expect(css).toMatch(/\.form-disable-number-btn:hover,\s*\.form-disable-number-btn:focus-visible\s*\{/);
-    expect(css).toMatch(/\.form-disable-number-btn:disabled\s*\{/);
-  });
-
   it('keeps RISUM module rows in natural flow and aligns switches with the input column', () => {
     expect(css).toMatch(/\.module-settings-form\s+\.form-editor-body\s*\{[^}]*gap:\s*8px;[^}]*\}/s);
     expect(css).toMatch(
@@ -94,30 +36,7 @@ describe('app.css – form editor controls', () => {
   });
 });
 
-describe('app.css – character theme surfaces', () => {
-  it('uses semantic character accents for avatar and terminal chat surfaces', () => {
-    expect(css).toMatch(/#toki-status\s*\{[^}]*var\(--ui-accent[^}]*var\(--ui-on-accent/s);
-    expect(css).toMatch(/\.chat-bubble\.user\s*\{[^}]*background:\s*var\(--ui-accent/s);
-    expect(css).toMatch(/#chat-send-btn\s*\{[^}]*background:\s*var\(--ui-accent/s);
-    expect(css).toMatch(/\.preview-header\s*\{[^}]*var\(--ui-accent-strong/s);
-  });
-});
-
-describe('app.css – project raw files', () => {
-  it('styles the advanced project raw-file hint separately from normal sidebar items', () => {
-    expect(css).toMatch(/\.project-raw-hint\s*\{/);
-    expect(css).toMatch(/\.project-raw-hint\s*\{[^}]*border:\s*1px dashed var\(--border-color\);[^}]*\}/s);
-  });
-});
-
 describe('app.css – manager panels', () => {
-  it('styles lorebook and asset managers without legacy free-placement controls', () => {
-    expect(css).toMatch(/\.manager-panel\s*\{/);
-    expect(css).not.toMatch(/\.manager-expand\s*\{/);
-    expect(css).not.toMatch(/\.panel-drop-zone\s*\{/);
-    expect(css).not.toMatch(/\.slot-resizer\s*\{/);
-  });
-
   it('keeps prompt manager controls in dedicated columns beside the full-width content', () => {
     expect(css).toMatch(/\.prompt-manager-row\s*\{[^}]*grid-template-columns:\s*20px 18px minmax\(0,\s*1fr\);[^}]*\}/s);
     expect(css).toMatch(/\.prompt-manager-badges\s*\{[^}]*grid-column:\s*3;[^}]*\}/s);

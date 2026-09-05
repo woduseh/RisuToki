@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  findMatchingClose,
   tokenize,
   parse,
   extractToggles,
@@ -9,26 +8,6 @@ import {
   extractToggleValues,
 } from './cbs-parser';
 import { evaluateWhenTag, resolve, generateCombinations } from './cbs-evaluator';
-
-// ── findMatchingClose ──
-
-describe('findMatchingClose', () => {
-  it('simple case', () => {
-    expect(findMatchingClose('{{hello}}', 0)).toBe(7);
-  });
-
-  it('nested once', () => {
-    expect(findMatchingClose('{{a{{b}}c}}', 0)).toBe(9);
-  });
-
-  it('nested twice', () => {
-    expect(findMatchingClose('{{a{{b{{c}}d}}e}}', 0)).toBe(15);
-  });
-
-  it('no match', () => {
-    expect(findMatchingClose('no braces', 0)).toBe(-1);
-  });
-});
 
 // ── resolveInnerExpressions ──
 

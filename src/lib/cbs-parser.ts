@@ -41,26 +41,6 @@ export interface ValidationResult {
 
 export type ToggleMap = Record<string, string>;
 
-/* ── Helpers ────────────────────────────────────────────── */
-
-export function findMatchingClose(text: string, start: number): number {
-  let depth = 0;
-  let i = start;
-  while (i < text.length - 1) {
-    if (text[i] === '{' && text[i + 1] === '{') {
-      depth++;
-      i += 2;
-    } else if (text[i] === '}' && text[i + 1] === '}') {
-      depth--;
-      if (depth === 0) return i;
-      i += 2;
-    } else {
-      i++;
-    }
-  }
-  return -1;
-}
-
 export function stripBraces(tag: string): string {
   if (tag.startsWith('{{') && tag.endsWith('}}')) {
     return tag.slice(2, -2);

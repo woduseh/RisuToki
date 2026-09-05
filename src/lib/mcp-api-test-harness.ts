@@ -16,7 +16,7 @@ import {
   detectLuaSection,
   parseCssSections,
   parseLuaSections,
-} from './mcp-section-parser';
+} from './section-parser';
 
 export interface SearchFixture {
   description?: string;
@@ -192,7 +192,7 @@ export interface TestDepsOverrides {
 export const MCP_API_TEST_DIR = path.join(__dirname, '..', '..', 'test', '_mcp-api-server-tmp');
 export const MCP_API_FIXED_SKILL_ROOT = path.join(__dirname, '..', '..', 'test', 'fixtures', 'skill-roots');
 
-// Defaults intentionally use the production section parsers from mcp-section-parser
+// Defaults intentionally use the production section parsers from section-parser
 // (same as the headless server) so harness behavior matches runtime behavior.
 // Tests that need custom section shapes can still inject overrides.
 

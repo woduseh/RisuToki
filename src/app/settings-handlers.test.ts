@@ -15,8 +15,6 @@ describe('settings-handlers', () => {
     writeRpMode('aris');
 
     changeTheme('yuuka', {
-      getEditorInstance: () => null,
-      getFormEditors: () => [],
       getTerminal: () => null,
       getThemeId: () => themeId,
       getCustomTheme: () => customTheme,
@@ -36,8 +34,6 @@ describe('settings-handlers', () => {
   it('does not require RP or dark-mode mutation callbacks in the theme contract', () => {
     const setThemeId = vi.fn();
     changeTheme('mika', {
-      getEditorInstance: () => null,
-      getFormEditors: () => [],
       getTerminal: () => null,
       getThemeId: () => 'toki',
       getCustomTheme: () => null,

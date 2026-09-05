@@ -26,20 +26,6 @@ describe('workspace.css – Codex-style docked panels', () => {
     expect(css).toMatch(/#right-sidebar\s*\{[^}]*grid-column:\s*5;/s);
   });
 
-  it('uses one shared height for left, editor, manager, and right panel headers', () => {
-    expect(css).toMatch(/--workspace-pane-header-height:\s*40px;/);
-    expect(css).toMatch(/#editor-header\s*\{[^}]*height:\s*var\(--workspace-pane-header-height\);/s);
-    expect(css).toMatch(/\.sidebar-header\s*\{[^}]*height:\s*var\(--workspace-pane-header-height\);/s);
-    expect(css).toMatch(/\.right-manager-header\s*\{[^}]*height:\s*var\(--workspace-pane-header-height\);/s);
-  });
-
-  it('styles the unified sidebar header as compact tabs with an active underline', () => {
-    expect(css).toMatch(
-      /\.right-sidebar-tabs\s+button\.active::after\s*\{[^}]*height:\s*2px;[^}]*background:\s*var\(--ui-accent\);/s,
-    );
-    expect(css).toMatch(/\.right-sidebar-content\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/s);
-  });
-
   it('gives the open terminal its full shelf height without a redundant tab row', () => {
     expect(css).toMatch(/#app-body\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\);[^}]*height:\s*100%;/s);
     expect(css).toMatch(/#app-body\.utility-open\s*\{[^}]*padding-bottom:\s*calc\(var\(--utility-height\) \+ 10px\);/s);

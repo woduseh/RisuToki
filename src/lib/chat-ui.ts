@@ -111,12 +111,6 @@ export function onChatData(rawData: string): void {
   deps.chatSession.handleTerminalData(rawData);
 }
 
-export function finalizeChatResponse(): void {
-  if (!deps) return;
-  deps.chatSession.finalizeResponse();
-  renderChatMessages();
-}
-
 export function feedBgBuffer(rawData: string): void {
   if (!deps) return;
   deps.chatSession.feedBackgroundData(rawData);

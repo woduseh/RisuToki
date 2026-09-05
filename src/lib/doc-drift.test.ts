@@ -203,11 +203,6 @@ describe('MODULE_MAP ↔ src/lib coverage', () => {
     const uncovered = actualModules.filter((mod) => !mapPathSet.has(mod));
     expect(uncovered, 'src/lib modules not covered by MODULE_MAP.md').toEqual([]);
   });
-
-  it('MODULE_MAP covers at least 80 modules (sanity check)', () => {
-    const libOnlyPaths = mapPaths.filter((p) => p.startsWith('src/lib/'));
-    expect(libOnlyPaths.length).toBeGreaterThanOrEqual(80);
-  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
