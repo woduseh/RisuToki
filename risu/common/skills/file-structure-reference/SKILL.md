@@ -31,4 +31,4 @@ Compatibility/deprecated fields are not normal RisuToki surfaces. Preserve the p
 
 Lorebook folder identity is the folder entry's normalized `key` (`folder:<uuid>`); child `folder` values use the same key. A lorebook `comment` may be a Lua lookup key, so renaming can break scripts. Exact item fields and mutation rules belong to `writing-lorebooks` and `writing-regex-scripts`.
 
-Load `using-mcp-tools/FILE_STRUCTURES.md` for a complete JSON shape.
+Load `using-mcp-tools/FILE_STRUCTURES.md` for detailed field-reference routes and their coverage limits.

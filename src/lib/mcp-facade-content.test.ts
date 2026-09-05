@@ -1,6 +1,45 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createFacadeContentEngine, type FacadeContentEngineDeps } from './mcp-facade-content';
+import type { FacadeV1ContentSelector } from './mcp-request-schemas';
+
+describe('reference item read selectors', () => {
+  function createReferenceEngine() {
+    const apiRequest = vi.fn(async () => ({ items: [{ id: 'p1', index: 0, preview: 'summary' }] }));
+    const engine = createFacadeContentEngine({
+      apiRequest,
+      danbooru: {},
+      items: {},
+      scriptStyle: {},
+    } as unknown as FacadeContentEngineDeps);
+    return { engine, apiRequest };
+  }
+
+  it.each<FacadeV1ContentSelector>([
+    { family: 'risup-prompt', id: 'p1' },
+    { family: 'lorebook', ids: ['entry-1'] },
+    { family: 'regex', identity: { comment: 'rule' } },
+    { family: 'greeting', greeting_type: 'alternate', index: 0, id: 'different-item' },
+  ])('rejects unsupported item identity instead of returning a list: %j', async (selector) => {
+    const { engine, apiRequest } = createReferenceEngine();
+    const result = await engine.readFacadeSelector({ kind: 'reference', reference_id: '0' }, selector);
+    expect(result).toMatchObject({ __apiError: true, status: 400, next_actions: ['read_content'] });
+    expect(apiRequest).not.toHaveBeenCalled();
+  });
+
+  it('keeps reference prompt listing and indexed reads available', async () => {
+    const { engine, apiRequest } = createReferenceEngine();
+    const target = { kind: 'reference' as const, reference_id: '0' };
+    await engine.readFacadeSelector(target, { family: 'risup-prompt' });
+    await engine.readFacadeSelector(target, { family: 'risup-prompt', index: 1 });
+    await engine.readFacadeSelector(target, { family: 'risup-prompt', indices: [1, 2] });
+    expect(apiRequest.mock.calls).toEqual([
+      ['GET', '/reference/0/risup/prompt-items'],
+      ['GET', '/reference/0/risup/prompt-item/1'],
+      ['POST', '/reference/0/risup/prompt-items/batch', { indices: [1, 2] }],
+    ]);
+  });
+});
 
 function createBoundingEngine() {
   return createFacadeContentEngine({

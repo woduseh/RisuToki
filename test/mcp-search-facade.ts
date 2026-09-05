@@ -54,6 +54,15 @@ export async function runStandaloneFacadeDogfood(): Promise<void> {
     );
     assertDefaultToolSchemas(tools.tools);
 
+    const unsupportedReferenceIdentity = await callJson(
+      runtime,
+      'read_content',
+      { target: presetReferenceTarget, selectors: [{ family: 'risup-prompt', id: 'unsupported-reference-id' }] },
+      { expectError: true },
+    );
+    assert.equal(unsupportedReferenceIdentity.status, 400);
+    assert.deepEqual(unsupportedReferenceIdentity.next_actions, ['read_content']);
+
     const expectedFacadeTools = [
       'inspect_document',
       'list_tool_profiles',
@@ -650,6 +659,10 @@ export async function runStandaloneFacadeDogfood(): Promise<void> {
       'missing field block preview data',
     );
     assert.equal(missingFieldPreviewData.success, false);
+    assert.equal(missingFieldBlockPreview.success, false);
+    assert.equal(missingFieldBlockPreview.outcome, 'unchanged');
+    assert.equal(nestedRecord(missingFieldBlockPreview.result, 'no-op preview result').applicable_count, 0);
+    assert.ok(!(missingFieldBlockPreview.next_actions as string[]).includes('apply_edit'));
     const missingFieldBlockApply = await callJson(runtime, 'apply_edit', {
       preview_token: previewToken(missingFieldBlockPreview, 'missing field block preview').preview_token,
       operation_digest: previewToken(missingFieldBlockPreview, 'missing field block preview').operation_digest,
@@ -666,6 +679,11 @@ export async function runStandaloneFacadeDogfood(): Promise<void> {
       'missing field block apply data',
     );
     assert.equal(missingFieldApplyData.success, false);
+    assert.equal(missingFieldBlockApply.success, false);
+    assert.equal(missingFieldBlockApply.outcome, 'unchanged');
+    assert.equal(nestedRecord(missingFieldBlockApply.result, 'no-op apply result').applied_count, 0);
+    assert.equal(nestedRecord(missingFieldBlockApply.result, 'no-op apply result').noop_count, 1);
+    assert.equal(nestedRecord(missingFieldBlockApply.artifacts, 'no-op apply artifacts').count, 0);
 
     const fieldBlockPreview = await callJson(runtime, 'preview_edit', {
       target: activeTarget,
@@ -846,6 +864,9 @@ export async function runStandaloneFacadeDogfood(): Promise<void> {
       'missing replace-all apply data',
     );
     assert.equal(missingReplaceAllApplyData.success, false);
+    assert.equal(missingReplaceAllApply.success, false);
+    assert.equal(missingReplaceAllApply.outcome, 'unchanged');
+    assert.equal(nestedRecord(missingReplaceAllApply.artifacts, 'no-op replace-all artifacts').count, 0);
 
     facadeOnlyCalls.push('preview_edit');
     const preview = await callJson(runtime, 'preview_edit', {

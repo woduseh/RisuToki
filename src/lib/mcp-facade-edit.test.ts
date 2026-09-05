@@ -1,18 +1,28 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 
+import { openCharx } from '../charx-io';
+import { closeServer, createExternalFixtureHelpers, postJson, startTestApiServer } from './mcp-api-test-harness';
+import { useMcpApiTestDir } from './mcp-api-vitest-helpers';
 import { createFacadeEditEngine, type FacadeEditEngineDeps } from './mcp-facade-edit';
-import { isApiError } from './mcp-facade-runtime';
-import type { FacadeV1EditOperation } from './mcp-request-schemas';
+import { facadeApiError, isApiError } from './mcp-facade-runtime';
+import { facadeV1EditOperationSchema, type FacadeV1EditOperation, type FacadeV1Target } from './mcp-request-schemas';
 
-function createPreviewEngine(response: unknown) {
-  const apiRequest = vi.fn(async () => response);
-  const engine = createFacadeEditEngine({
+const TEST_DIR = useMcpApiTestDir('facade-field-replace');
+const { createExternalCharxFixture } = createExternalFixtureHelpers(TEST_DIR);
+
+function createEditEngine(apiRequest: FacadeEditEngineDeps['apiRequest']) {
+  return createFacadeEditEngine({
     apiRequest,
     content: {},
     items: {},
     scriptStyle: { isScriptStyleFamily: () => false },
   } as unknown as FacadeEditEngineDeps);
-  return { ...engine, apiRequest };
+}
+
+function createPreviewEngine(response: unknown) {
+  const apiRequest = vi.fn(async () => response);
+  return { ...createEditEngine(apiRequest), apiRequest };
 }
 
 describe('ID-based edit previews', () => {
@@ -85,6 +95,90 @@ describe('ID-based edit previews', () => {
       );
       expect(result).toMatchObject({ __apiError: true, status: 409 });
       expect(engine.apiRequest).toHaveBeenCalledTimes(1);
+    }
+  });
+});
+
+const regexReplacement = {
+  source: 'FOO1 foo22 foo333suffix',
+  find: '\\bfoo(\\d+)\\b',
+  replace: 'bar$1',
+  options: { regex: true, flags: 'gi' },
+  expected: 'bar1 bar22 foo333suffix',
+  matches: ['FOO1', 'foo22'],
+};
+const literalReplacement = {
+  source: 'F.O foo f.o f.o',
+  find: 'f.o',
+  replace: '$1',
+  expected: 'F.O foo $1 $1',
+  matches: ['f.o', 'f.o'],
+};
+
+describe.each(['active', 'external'] as const)('%s field replacements through real HTTP routes', (kind) => {
+  it.each([
+    { name: 'regex matching, case-insensitive flags and capture replacement', ...regexReplacement, allowed: true },
+    { name: 'literal mode by default', ...literalReplacement, options: {}, allowed: true },
+    {
+      name: 'explicit literal mode even with regex flags',
+      ...literalReplacement,
+      options: { regex: false, flags: 'gi' },
+      allowed: true,
+    },
+    { name: 'confirmation refusal after a regex preview', ...regexReplacement, allowed: false },
+  ])('preserves $name in preview and apply', async ({ source, find, replace, options, expected, matches, allowed }) => {
+    const currentData = { description: source };
+    const external = kind === 'external' ? createExternalCharxFixture({ description: source }) : undefined;
+    const target: FacadeV1Target = external ? { kind: 'external', file_path: external.filePath } : { kind: 'active' };
+    const readContent = () => (external ? openCharx(external.filePath).description : currentData.description);
+    const confirm = vi.fn(async () => allowed);
+    const api = await startTestApiServer(currentData, [], undefined, {
+      userDataPath: TEST_DIR,
+      askRendererConfirm: confirm,
+    });
+    try {
+      const engine = createEditEngine(async (method, routePath, body) => {
+        expect(method).toBe('POST');
+        const response = await postJson<Record<string, unknown>>(api.port, api.token, routePath, body);
+        return response.status < 400
+          ? response.data
+          : facadeApiError(response.status, String(response.data.error), String(response.data.suggestion));
+      });
+      const operation = facadeV1EditOperationSchema.parse({
+        op: 'replace_text',
+        selector: { family: 'field', field: 'description' },
+        find,
+        replace,
+        ...options,
+      });
+
+      const preview = await engine.previewFacadeOperation(target, operation);
+      expect(preview).toMatchObject({
+        data: {
+          dryRun: true,
+          matchCount: matches.length,
+          newSize: expected.length,
+          previews: matches.map((match) => expect.objectContaining({ match })),
+        },
+      });
+      expect(readContent()).toBe(source);
+      expect(confirm).not.toHaveBeenCalled();
+      if (isApiError(preview)) throw new Error('Unexpected preview error');
+
+      const applied = await engine.applyFacadeOperation(target, operation, preview.requiredGuards);
+      if (allowed) {
+        expect(applied).toMatchObject({
+          data: { success: true, matchCount: matches.length, newSize: expected.length },
+        });
+        expect(readContent()).toBe(expected);
+      } else {
+        expect(applied).toMatchObject({ __apiError: true, status: 403 });
+        expect(readContent()).toBe(source);
+      }
+      expect(confirm).toHaveBeenCalledTimes(1);
+      if (external) expect(currentData.description).toBe(source);
+    } finally {
+      await closeServer(api.server);
     }
   });
 });

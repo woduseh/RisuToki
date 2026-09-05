@@ -616,7 +616,7 @@ async function runNoFileScenario(context: ScenarioContext): Promise<void> {
       { expectError: true, expectedStatus: 400, expectedRejection: true },
     );
     assert.equal(noFile.error, 'No file open');
-    assert.ok(array(noFile.next_actions, 'no-file next_actions').includes('open_file'));
+    assert.deepEqual(array(noFile.next_actions, 'no-file next_actions'), ['manage_file', 'inspect_document']);
 
     const target = { kind: 'external', file_path: fixtures.externalCharx };
     const openPreviewEnvelope = await scenarioCall(

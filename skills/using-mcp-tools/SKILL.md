@@ -56,7 +56,7 @@ Profiles are registered at startup; changing profiles requires an MCP restart. `
 If MCP is unavailable, read guidance from the filesystem and prepare the requested content or proposed changes. Direct editing of binary/container internals remains disallowed. Use a supported project-folder workflow only within its authorization and validation requirements; filesystem access must not bypass a readonly profile, write gate, or denied confirmation. If no authorized apply route is available, deliver the prepared changes and identify application and verification as pending.
 
 - [TOOL_REFERENCE.md](TOOL_REFERENCE.md): legacy/granular catalog.
-- [FILE_STRUCTURES.md](FILE_STRUCTURES.md): exact artifact shapes.
+- [FILE_STRUCTURES.md](FILE_STRUCTURES.md): field-reference routes and coverage limits.
 - `docs/MCP_WORKFLOW.md`: runtime modes and startup.
 - `docs/MCP_TOOL_SURFACE.md` and `docs/MCP_ERROR_CONTRACT.md`: profile and response contracts.
 

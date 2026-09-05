@@ -555,7 +555,8 @@ export function getFieldMutationBlock(
   if (rules.deprecatedFields.includes(fieldName)) {
     return {
       message: `"${fieldName}" 필드는 deprecated/비권장 필드라 수정할 수 없습니다.`,
-      suggestion: '최신 필드나 전용 구조화 도구를 사용하고 이 필드는 호환 읽기 용도로만 유지하세요.',
+      suggestion:
+        '비권장 필드는 일반 조회에서 숨겨지고 저장 시 제거됩니다. 지원되는 최신 필드나 전용 구조화 도구를 사용하세요.',
     };
   }
   if (rules.readOnlyFields.includes(fieldName)) {

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { getCompactInputSchema } from './mcp-compact-input';
 import type { FacadeApiRequest } from './mcp-facade-script-style';
-import { getToolAnnotations, getToolMeta } from './mcp-tool-taxonomy';
+import { getToolAnnotations, getToolMeta, TOOL_TAXONOMY, type ToolFamily } from './mcp-tool-taxonomy';
 
 export type McpToolResult = {
   content: Array<{ type: 'text'; text: string }>;
@@ -56,7 +56,10 @@ export function createMcpToolRegistrar(server: Pick<McpServer, 'registerTool'>, 
         return;
       }
       const publicInputSchema = getCompactInputSchema(name, shape);
-      const resultHandler = publicInputSchema ? withStructuredContentHandler(handler) : handler;
+      const registeredActionsHandler = withRegisteredNextActionsHandler(handler, names);
+      const resultHandler = publicInputSchema
+        ? withStructuredContentHandler(registeredActionsHandler)
+        : registeredActionsHandler;
       server.registerTool<typeof MCP_COMPACT_OUTPUT_SCHEMA, z.ZodObject<typeof shape>>(
         name,
         {
@@ -115,6 +118,117 @@ function parsedTextObject(result: McpToolResult): Record<string, unknown> {
       ...(result.isError ? { error: text } : { result: text }),
     };
   }
+}
+
+// These operations cross family boundaries or have a more specific facade than
+// a generic content read/edit. Uncovered operations deliberately have no fallback.
+const NEXT_ACTION_FACADE_OVERRIDES = new Map<string, string>(
+  Object.entries({
+    inspect_document: ['session_status', 'list_fields', 'list_surfaces', 'list_references', 'inspect_external_file'],
+    manage_file: ['open_file', 'save_current_file', 'export_field_to_file'],
+    manage_items: [
+      'export_risup_prompt_to_text',
+      'copy_risup_prompt_items_as_text',
+      'import_risup_prompt_from_text',
+      'list_risup_prompt_snippets',
+      'read_risup_prompt_snippet',
+      'save_risup_prompt_snippet',
+      'insert_risup_prompt_snippet',
+      'delete_risup_prompt_snippet',
+    ],
+    analyze_content: [
+      'get_field_stats',
+      'list_cbs_toggles',
+      'simulate_cbs',
+      'diff_cbs',
+      'tag_db_status',
+      'search_danbooru_tags',
+      'get_popular_danbooru_tags',
+      'diff_lorebook',
+      'diff_risup_prompt',
+      'validate_risup_prompt_import',
+    ],
+    search_document: [
+      'search_in_field',
+      'search_all_fields',
+      'external_search_in_field',
+      'search_in_reference_field',
+      'search_in_risup_prompt_items',
+    ],
+    validate_content: ['validate_cbs', 'validate_lorebook_keys', 'validate_danbooru_tags'],
+  }).flatMap(([facade, sources]) => sources.map((source): [string, string] => [source, facade])),
+);
+
+const NEXT_ACTION_CONTENT_FAMILIES = new Set<ToolFamily>([
+  'field',
+  'surface',
+  'lorebook',
+  'regex',
+  'greeting',
+  'trigger',
+  'lua',
+  'css',
+  'risup-prompt',
+  'reference',
+  'probe',
+  'external',
+]);
+
+function nextActionFacade(name: string): string | undefined {
+  if (!Object.hasOwn(TOOL_TAXONOMY, name)) return undefined;
+  const entry = TOOL_TAXONOMY[name];
+  if (entry.surfaceKind === 'facade') return undefined;
+  const override = NEXT_ACTION_FACADE_OVERRIDES.get(name);
+  if (override) return override;
+  if (['charx-asset', 'risum-asset', 'asset-compression'].includes(entry.family)) return 'manage_assets';
+  if (['snapshot', 'lorebook-io', 'folder-workspace'].includes(entry.family)) return 'manage_file';
+  if (NEXT_ACTION_CONTENT_FAMILIES.has(entry.family)) {
+    if (/^(?:external_)?(?:read|list|probe)_/.test(name)) return 'read_content';
+    if (/^(?:add|reorder)_/.test(name)) return 'manage_items';
+    if (/^(?:external_)?(?:write|replace|insert|delete|batch_delete)_/.test(name)) return 'preview_edit';
+  }
+  return undefined;
+}
+
+function withRegisteredNextActionsHandler<TArgs extends Record<string, unknown>>(
+  handler: McpToolHandler<TArgs>,
+  registeredNames: ReadonlySet<string>,
+): McpToolHandler<TArgs> {
+  return async (args, extra) => {
+    const result = await handler(args, extra);
+    const payload = parsedTextObject(result);
+    const originalNextActions = payload.next_actions;
+    if (!Array.isArray(originalNextActions)) return result;
+    const nextActions = new Set<string>();
+    for (const name of originalNextActions) {
+      if (typeof name !== 'string') continue;
+      if (registeredNames.has(name)) {
+        nextActions.add(name);
+        continue;
+      }
+      const facade = nextActionFacade(name);
+      if (
+        facade &&
+        registeredNames.has(facade) &&
+        TOOL_TAXONOMY[facade]?.surfaceKind === 'facade' &&
+        TOOL_TAXONOMY[facade]?.recommendation === 'preferred'
+      ) {
+        nextActions.add(facade);
+      }
+    }
+    const resolved = [...nextActions];
+    if (resolved.length === originalNextActions.length && resolved.every((name, i) => name === originalNextActions[i]))
+      return result;
+    const updatedPayload = { ...payload, next_actions: resolved };
+    const textIndex = result.content.findIndex((item) => item.type === 'text');
+    return {
+      ...result,
+      content: result.content.map((item, i) =>
+        i === textIndex ? { ...item, text: JSON.stringify(updatedPayload) } : item,
+      ),
+      ...(result.structuredContent ? { structuredContent: updatedPayload } : {}),
+    };
+  };
 }
 
 /** Preserve the existing text JSON while exposing the same object structurally. */

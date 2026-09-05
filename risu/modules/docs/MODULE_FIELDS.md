@@ -24,7 +24,7 @@
 | `mcp`                 | `{ url: string }`            | `undefined` | External MCP endpoint; managed separately/read-only in RisuToki |
 | `icon`                | `string`                     | `undefined` | Module icon/image data preserved by character↔module conversion |
 
-RisuToki preserves `cjs` for round-trip compatibility, but treats it as a reserved/hidden/read-only field. RisuToki also preserves `mcp.url` as `mcpUrl`, but treats it as read-only because MCP modules are managed separately from normal module authoring. New module runtime logic should use Lua triggers and supported module fields instead.
+RisuToki hides `cjs` from normal editing surfaces and strips it on save. RisuToki also preserves `mcp.url` as `mcpUrl`, but treats it as read-only because MCP modules are managed separately from normal module authoring. New module runtime logic should use Lua triggers and supported module fields instead.
 
 ## Field behavior notes
 

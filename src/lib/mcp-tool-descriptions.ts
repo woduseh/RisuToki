@@ -6,7 +6,7 @@ export const MCP_TOOL_DESCRIPTIONS = {
   list_tool_profiles:
     'Read-only catalog for MCP tool profiles, filtering status, registered/hidden counts, batch alternatives, and runtime health. tools/list defaults to facade-first; restart with --tool-profile=advanced-full for every granular route.',
   read_content:
-    'Read fields or structured items from active, external, or reference documents. Example selectors: [{family:"lorebook",id:"id-from-list"}] or [{family:"greeting",greeting_type:"alternate",index:0}]. Omit item identity to list that family. For a long string field use selector.offset/length (LF-normalized UTF-16 offsets, matching search positions), then selector.cursor from the returned next_cursor; do not combine cursor with offset/length. Defaults to a 24KB result cap; root surface reads return an overview unless include_raw=true and max_bytes is explicit.',
+    'Read fields or structured items from active, external, or reference documents. Example selectors: [{family:"lorebook",id:"id-from-list"}] or [{family:"greeting",greeting_type:"alternate",index:0}]. Reference item reads use index/indices; id/ids/identity are not supported for reference items. Omit item identity to list that family. For a long string field use selector.offset/length (LF-normalized UTF-16 offsets, matching search positions), then selector.cursor from the returned next_cursor; do not combine cursor with offset/length. Defaults to a 24KB result cap; root surface reads return an overview unless include_raw=true and max_bytes is explicit.',
   search_document:
     'Preferred facade v1 bounded search entrypoint. Use selector.family="field" for active/external/reference field searches or selector.family="risup-prompt" for prompt items. The legacy field argument and field="risup-prompt" magic value remain deprecated aliases. max_matches limits the total active-document result count, and responses default to a 24KB cap.',
   analyze_content:
@@ -50,7 +50,7 @@ export const MCP_TOOL_DESCRIPTIONS = {
   inspect_external_file:
     '에디터에 열지 않은 .charx/.risum/.risup 파일의 필드 인벤토리와 구조화 표면 개수를 빠르게 요약합니다. 읽기 전용.',
   external_write_field:
-    '에디터에 열지 않은 .charx/.risum/.risup 파일의 필드 값을 file_path 기준으로 직접 수정합니다. 현재 UI에 열려 있는 동일 파일은 거부되며, lorebook/regex/triggerScripts/groupOnlyGreetings 같은 구조화 표면도 raw field 단위로 갱신할 수 있습니다. 사용자 확인 필요.',
+    '에디터에 열지 않은 .charx/.risum/.risup 파일의 필드 값을 file_path 기준으로 직접 수정합니다. 현재 UI에 열려 있는 동일 파일은 거부되며, 해당 파일 형식이 지원하는 lorebook/regex/triggerScripts 같은 구조화 표면도 raw field 단위로 갱신할 수 있습니다. groupOnlyGreetings 및 비권장/예약/레거시 필드는 수정할 수 없으며 외부 쓰기로 이 제한을 우회할 수 없습니다. 사용자 확인 필요.',
   external_write_field_batch:
     '에디터에 열지 않은 .charx/.risum/.risup 파일의 여러 필드를 한 번에 수정합니다. 현재 UI에 열려 있는 동일 파일은 거부됩니다. 최대 20개 항목. 사용자 확인 필요.',
   external_search_in_field:

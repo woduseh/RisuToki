@@ -1,15 +1,11 @@
 # File Structures
 
-See `file-structure-reference` for the main human-readable schema guide.
+This appendix routes to supported field references; it does not contain a complete container schema.
 
-This appendix exists so `using-mcp-tools` can point to exact shapes without bloating its primary workflow document.
+- `.risup`: `risu/prompts/docs/PRESET_FIELDS.md`.
+- `.risum`: `risu/modules/docs/MODULE_FIELDS.md`.
+- `.charx`: inspect the relevant structured surface with `inspect_document` and bounded `read_content`, and retain export-compatibility validation.
 
-- `.charx` — ZIP container for character card + module + assets
-- `.risum` — module/package format for lorebooks, regex, Lua, assets
-- `.risup` — preset format for model configuration and prompt template state
+MCP clients can read the field guides with `inspect_document` using a guidance target and the guide's repository path.
 
-For exact field tables and JSON examples, read:
-
-```text
-read_skill("file-structure-reference")
-```
+Normalized editor surfaces are not a complete raw-container schema. State any remaining schema gap rather than following this reference back to the overview.

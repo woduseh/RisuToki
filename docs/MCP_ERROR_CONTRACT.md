@@ -45,9 +45,11 @@ Both `mcpError()` and `mcpNoOp()` responses include machine-readable recovery hi
 - `retryable` — whether a retry is permitted after following `retry_mode`; an unknown mutation outcome is never automatically retryable.
 - `retry_mode` — `never`, `backoff`, `refresh_then_retry`, or `inspect_outcome`.
 - `outcome` — `complete`, `not_started`, `unchanged`, `partial`, or `unknown`.
-- `next_actions` (string[]) — deterministic list of suggested follow-up MCP tool names. Success responses prefer explicit override → per-tool override → family default. Error/no-op responses derive from the `target` prefix using the MCP tool taxonomy family map. Special cases: `document:current` → `['open_file', 'list_references', 'session_status']`; unknown prefixes → `[]`.
+- `next_actions` (string[]) — suggested follow-up MCP tool names. Success responses prefer explicit override → per-tool override → family default. HTTP error/no-op responses derive from the `target` prefix using the MCP tool taxonomy family map. At the MCP response boundary, hidden tools map to supported facades and unavailable alternatives are omitted; registered granular names stay intact. For example, HTTP `document:current` hints `open_file`, `list_references`, and `session_status` become `manage_file` and `inspect_document` in the default profile. Unknown prefixes return `[]`.
 
 Stale/conflict `409` uses `refresh_then_retry/not_started`; transient read-only infrastructure failures use `backoff/not_started`; a mutation timeout, network interruption, cancellation after dispatch, or partial apply uses `inspect_outcome` with `unknown` or `partial`. Inspect the target and create a fresh preview instead of replaying the mutation.
+
+`apply_edit` preserves the original error and recovery fields in `details.cause` and retains recovery metadata at the top level. Earlier applied operations or partial effects inside the failed operation produce `partial/inspect_outcome`; a first operation with an unknown result remains `unknown/inspect_outcome`. `details.applied_count` excludes no-ops. A missing preview token may have expired, been consumed, or belonged to another server process; check prior results and current state, then preview only remaining changes.
 
 These fields are additive and do not replace existing fields.
 
@@ -69,6 +71,8 @@ Rules:
 - add the same recovery metadata that `mcpError()` exposes
 - preserve legacy route-local fields so older clients still work
 - do **not** broadcast renderer failure status for no-op results
+
+Facade edit responses preserve the original per-operation payloads. `preview_edit` adds `result.applicable_count` and `result.noop_count`; previews containing no-ops return `success: false` and recommend correcting selectors or text instead of applying unchanged work. `apply_edit` adds `result.applied_count` and `result.noop_count`, with `artifacts.count` counting applied operations only. All-no-op results use `unchanged/never`; a mix of applied edits and no-ops uses `partial/inspect_outcome` with `success: false`. These HTTP-200 responses remain readable through `result.previews[]` and `result.applied[]` for compatibility.
 
 ## 3. Current no-op catalog
 
@@ -99,16 +103,16 @@ Intentional exception:
 
 1. If `status >= 400`, treat the result as a hard failure. The MCP protocol-level `isError` flag and full structured envelope are preserved end-to-end. Follow `retry_mode`, not status alone. For indexed-write `409` conflicts, refresh the family list/read and carry the latest guard into a new preview.
 2. Infrastructure errors use HTTP-style `502`, `503`, or `504`. Read-only requests may use bounded backoff. A mutation failure after dispatch uses `inspect_outcome/unknown`; inspect current state and never replay it automatically.
-3. If `status === 200` and `success === false`, treat the result as a no-op (`retryable` is always `false`). Use the preserved route-local fields to recover:
+3. If `status === 200` and `success === false`, inspect `outcome`: `unchanged` is a no-op, while `partial` requires inspecting applied results before planning remaining edits. Neither is automatically retryable. Use the preserved route-local fields to recover:
    - `matchCount: 0` means the search string or regex needs adjustment
    - `startAnchorFoundAt` means the start anchor matched, but the end anchor did not
    - `results[]` shows which batch replacements were skipped
    - `errors[]` shows which batch insert items need repair
-4. If the result is a success envelope, prefer `next_actions` over free-form guessing. High-traffic tools may narrow the family defaults to a smaller per-tool set. Check `artifacts.byte_size` before asking for more data: if the response is already large, switch to narrower reads (`list_*`, `search_in_field`, `read_field_range`, per-item reads, or probes) instead of dumping adjacent surfaces. Successful lorebook, regex, greeting, and risup batch mutations may include `results[]` for per-entry verification without an immediate re-read.
+4. Treat `next_actions` as available options, not a required checklist or authorization for further changes. Select only follow-up work needed for the current request and remaining verification gaps. Check `artifacts.byte_size` before asking for more data: if the response is already large, switch to narrower reads (`list_*`, `search_in_field`, `read_field_range`, per-item reads, or probes) instead of dumping adjacent surfaces. Successful lorebook, regex, greeting, and risup batch mutations may include `results[]` for per-entry verification without an immediate re-read; sufficient existing evidence does not require another check.
 
 ## 6. MCP stdio structured compatibility
 
-The 13 default `facade-first` tools are registered with a compact common `outputSchema`. Each call returns the existing JSON string in `content` and the semantically identical parsed object in `structuredContent`; text-only clients remain compatible. Legacy-profile tools retain their existing `server.tool` registration and text response.
+The 14 default `facade-first` tools are registered with a compact common `outputSchema`. Each call returns the existing JSON string in `content` and the semantically identical parsed object in `structuredContent`; text-only clients remain compatible. Legacy-profile tools retain their existing `server.tool` registration and text response.
 
 This contract does not enable Programmatic Tool Calling or add an OpenAI-specific caller. Caller runtimes may opt into bounded read-only orchestration using the documented fields, while approval, preview/apply, and final validation remain direct.
 

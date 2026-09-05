@@ -59,6 +59,10 @@ export function getCompactInputSchema<TShape extends z.ZodRawShape>(
     max_bytes: 'Maximum UTF-8 result bytes, up to 65536. Follow truncation metadata with a narrower or resumed read.',
     cursor: 'Opaque next_cursor returned by the preceding page; copy exactly.',
   };
+  if (name === 'read_content') {
+    descriptions.selectors +=
+      ' Reference item reads support index/indices, not id/ids/identity; omit item identity to list the family.';
+  }
   return z.object(
     Object.fromEntries(
       Object.entries(inputShape).map(([key, schema]) => [

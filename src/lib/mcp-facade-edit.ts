@@ -317,7 +317,7 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
       return facadeApiError(
         400,
         'groupOnlyGreetings is read-only',
-        'groupOnlyGreetings is deprecated and kept only for compatibility reads. Use alternate greetings or supported current fields instead.',
+        'groupOnlyGreetings is deprecated, hidden from normal reads, and stripped on save. Use alternate greetings or supported current fields instead.',
         { selector: operation.selector },
       );
     }
@@ -1725,6 +1725,8 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
         ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
         find: operation.find,
         replace: typeof operation.replace === 'string' ? operation.replace : '',
+        regex: operation.regex,
+        flags: operation.flags,
         dry_run: true,
       });
       return isApiError(data)
@@ -2555,6 +2557,8 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
         ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
         find: operation.find,
         replace: typeof operation.replace === 'string' ? operation.replace : '',
+        regex: operation.regex,
+        flags: operation.flags,
       });
       return isApiError(data)
         ? data

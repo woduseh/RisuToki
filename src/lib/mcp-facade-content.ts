@@ -511,9 +511,11 @@ export function createFacadeContentEngine({
     nextActions: string[],
     artifacts: Record<string, unknown> = {},
     maxBytes?: number,
+    completion?: Record<string, unknown>,
   ) {
     const payload = mcpSuccess(
       {
+        ...completion,
         facade: {
           contract: FACADE_V1_CONTRACT_ID,
           version: 'v1',
@@ -772,6 +774,15 @@ export function createFacadeContentEngine({
     }
 
     if (target.kind === 'reference') {
+      if (selector.id !== undefined || selector.ids !== undefined || selector.identity !== undefined) {
+        return facadeApiError(
+          400,
+          'Reference item reads do not support id, ids, or identity selectors',
+          'Use read_content with the same reference target and family to list items, then read by index or indices. Remove id, ids, and identity.',
+          { selector, supported_item_selectors: ['index', 'indices'] },
+          ['read_content'],
+        );
+      }
       const index = await resolveReferenceIndex(target);
       if (typeof index !== 'number') return index;
       if (selector.family === 'lorebook') {

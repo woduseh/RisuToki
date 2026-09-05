@@ -97,7 +97,7 @@ Context-budget rule:
 - Use `inspect_document` before risky writes or after interruptions. Session inspection returns the full status payload in a bounded envelope; reference inspection without an identifier returns bounded inventory, while a supplied identifier returns only that reference. Use `session_status` / `list_references` for exact legacy top-level shapes.
 - When several write tools could solve the task, inspect tool `_meta` first so you know which route is facade/preferred, which supports `dry_run`, and which will pause for confirmation.
 - Prefer `list_reference_greetings` / `read_reference_greeting` / `read_reference_greeting_batch` and `list_reference_triggers` / `read_reference_trigger` / `read_reference_trigger_batch` over `read_reference_field("alternateGreetings")`, `read_reference_field("groupOnlyGreetings")`, or `read_reference_field("triggerScripts")`.
-- Run `npm run test:evals` for deterministic static harness scenarios and the declarative route matrix. Run `npm run test:evals:replay` to measure the canonical workflows through the built MCP stdio server.
+- For repository implementation, skill-routing, or evaluation changes, follow `docs/PROJECT_RULES.md` to select `npm run test:evals` and, when MCP runtime behavior is affected, `npm run test:evals:replay`. For artifact-only edits, use the relevant artifact read, diff, or validator.
 
 The top-level `error` field remains present for MCP bridge compatibility.
 

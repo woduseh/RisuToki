@@ -9,6 +9,16 @@
 
 ---
 
+## [3.6.6] - 2026-09-05
+
+### Fixed
+
+- Preserved unknown and partial mutation outcomes through `apply_edit` error wrapping, including the original cause. No-op edits now report accurate applied/no-op counts and incomplete outcomes instead of claiming every operation was applied; expired-token guidance checks prior effects before a new preview.
+- Limited MCP response follow-up tool names to the registered profile, retaining available granular routes and using supported facades for hidden routes.
+- Forwarded field replacement regex options in preview and apply, rejected unsupported reference item identities instead of returning a misleading list, and corrected external-field readonly guidance.
+- Aligned skill field references with save-stripping policy, separated artifact checks from repository validation, and replaced circular file-structure references with supported document routes.
+- Updated recovery and selector documentation and refreshed tool-catalog contract fingerprints for the corrected public guidance.
+
 ## [3.6.5] - 2026-09-05
 
 ### Fixed

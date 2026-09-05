@@ -539,7 +539,7 @@ Default order: `['main','description','personaPrompt','chats','lastChat','jailbr
 - Auth/export-sanitized fields are commonly blanked on export: `openAIKey`, `proxyKey`, `forceReplaceUrl`, `forceReplaceUrl2`, `textgenWebUIStreamURL`, and `textgenWebUIBlockingURL`.
 - `.risup` files in the wild may use gzip, zlib, or raw-deflate compression inside the msgpack/AES-GCM/RisuPack wrapper.
 - `promptTemplate`, `formatingOrder`, `bias`, and `localStopStrings` are native arrays/objects in the file; editors may expose them through structured JSON/text UIs.
-- RisuToki treats `mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, and `JinjaTemplate` as legacy prompt compatibility values: preserve them on disk, but prefer `promptTemplate`/`formatingOrder` for normal editing.
+- RisuToki treats `mainPrompt`, `jailbreak`, `globalNote`, `useInstructPrompt`, `instructChatTemplate`, and `JinjaTemplate` as legacy prompt compatibility values: hide them from normal editing surfaces and strip them on save; use `promptTemplate`/`formatingOrder` for normal editing.
 - RisuToki exposes selected advanced/provider values as JSON-backed fields: `promptSettings`, `customAPIFormat`, `openrouterProvider`, `seperateParameters`, `fallbackModels`, `seperateModels`, `modelTools`, `customFlags`, `dynamicOutput`, and `reverseProxyOobaArgs`. Invalid JSON should be rejected before save.
 - Unknown or unsupported `promptTemplate` item shapes should be preserved, not normalized away.
 - `PromptSettings` and other nested objects may round-trip even when a given editor does not surface every subfield directly.

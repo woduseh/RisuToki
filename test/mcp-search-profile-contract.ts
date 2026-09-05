@@ -66,6 +66,15 @@ export async function runStandaloneToolProfileContract(): Promise<void> {
     defaultProfile = await inspectProfile(undefined, 'default');
     assert.deepEqual(defaultProfile.names, expectedDefaultTools);
     assert.equal(defaultProfile.names.length, 14);
+    const noDocument = await callJson(
+      defaultProfile.runtime,
+      'inspect_document',
+      { target: { kind: 'active' } },
+      { expectError: true },
+    );
+    assert.equal(noDocument.status, 400);
+    assert.deepEqual(noDocument.next_actions, ['manage_file', 'inspect_document']);
+    assert.ok((noDocument.next_actions as string[]).every((name) => defaultProfile!.names.includes(name)));
     assert.ok(
       defaultProfile.bytes <= MCP_DEFAULT_TOOLS_LIST_MAX_BYTES,
       'default tools/list should stay within the detailed schema budget',

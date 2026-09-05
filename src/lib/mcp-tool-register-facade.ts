@@ -6,6 +6,7 @@ import type { FacadeEditEngine } from './mcp-facade-edit';
 import type { FacadeFilesEngine } from './mcp-facade-files';
 import type { FacadeItemsEngine } from './mcp-facade-items';
 import {
+  API_ERROR_KEY,
   asRecord,
   cleanupFacadePreviews,
   facadeApiError,
@@ -57,6 +58,10 @@ import { hasFieldRange } from './mcp-facade-read-range';
 import type { McpToolResult, McpToolServer, SafeToolHandler } from './mcp-tool-registration';
 
 const DEFAULT_FACADE_READ_MAX_BYTES = 24 * 1024;
+
+function isNoOpResult(data: unknown): boolean {
+  return asRecord(data)?.success === false;
+}
 
 type ToolProfileCatalogOptions = NonNullable<Parameters<typeof buildToolSurfaceProfileCatalog>[1]>;
 
@@ -802,9 +807,11 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
       const routes: FacadeRoute[] = [];
       const touchedTargets: string[] = [];
       const requiredGuards: FacadeV1Guard[] = [];
+      let noopCount = 0;
       for (const operation of operations) {
         const preview = await previewFacadeOperation(target, operation);
         if (isApiError(preview)) return textResult(preview);
+        if (isNoOpResult(preview.data)) noopCount++;
         if (preview.requiredGuards.length > 0) operation.guards = preview.requiredGuards;
         previews.push({ operation: operation.op, selector: operation.selector, data: preview.data });
         routes.push(...preview.routes);
@@ -833,6 +840,9 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
         boundFacadePayload(
           mcpSuccess(
             {
+              ...(noopCount > 0
+                ? { success: false, code: 'no_op', outcome: 'unchanged', retryable: false, retry_mode: 'never' }
+                : {}),
               facade: {
                 contract: FACADE_V1_CONTRACT_ID,
                 version: 'v1',
@@ -843,6 +853,8 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
               },
               result: {
                 previews,
+                applicable_count: operations.length - noopCount,
+                noop_count: noopCount,
                 routed_legacy: routes,
                 touched_targets: touchedTargets,
                 guard_values: requiredGuards,
@@ -856,8 +868,8 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             },
             {
               toolName: 'preview_edit',
-              summary: `Previewed ${operations.length} facade edit operation(s)`,
-              nextActions: ['apply_edit', 'read_content'],
+              summary: `Previewed ${operations.length} facade edit operation(s)${noopCount > 0 ? `; ${noopCount} no-op` : ''}`,
+              nextActions: noopCount > 0 ? ['read_content', 'search_document'] : ['apply_edit', 'read_content'],
               artifacts: {
                 count: operations.length,
                 routed_tools: routes.map((entry) => entry.tool),
@@ -889,7 +901,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
           facadeApiError(
             404,
             'Unknown or expired preview token',
-            'Preview tokens are one-shot, held only in this MCP server process memory, and expire after 10 minutes or when the server restarts. Run preview_edit again, then retry apply_edit with the new token.',
+            'Preview tokens are one-shot and expire after 10 minutes or a server restart. Check the prior apply result and current target first; use preview_edit for changes still needed, then apply the new token.',
           ),
         );
       }
@@ -910,21 +922,30 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
       const results: unknown[] = [];
       const routes: FacadeRoute[] = [];
       const touchedTargets: string[] = [];
+      const appliedOperations = [];
+      let noopCount = 0;
       for (let operationIndex = 0; operationIndex < entry.operations.length; operationIndex++) {
         const operation = entry.operations[operationIndex];
         const applied = await applyFacadeOperation(entry.target, operation, guard_values);
         if (isApiError(applied)) {
-          const cause = asRecord(applied) ?? {};
-          return textResult(
-            facadeApiError(
+          const cause: Record<string, unknown> = { ...applied };
+          delete cause[API_ERROR_KEY];
+          const partial =
+            appliedOperations.length > 0 || cause.outcome === 'partial' || asRecord(cause.details)?.partial === true;
+          return textResult({
+            ...cause,
+            ...facadeApiError(
               typeof cause.status === 'number' ? cause.status : 409,
               recordString(cause, 'error') ?? 'Facade edit operation failed',
-              recordString(cause, 'suggestion') ??
-                'Inspect the document state, then run preview_edit again before retrying.',
+              partial || cause.outcome === 'unknown'
+                ? 'Inspect prior results and the target state; preview only changes still needed. Do not replay the batch.'
+                : (recordString(cause, 'suggestion') ??
+                    'Inspect the document state, then run preview_edit again before retrying.'),
               {
                 preview_token_consumed: true,
-                partial: results.length > 0,
-                applied_count: results.length,
+                partial,
+                applied_count: appliedOperations.length,
+                noop_count: noopCount,
                 applied: results,
                 failed_operation: {
                   index: operationIndex,
@@ -932,17 +953,26 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
                   selector: operation.selector,
                 },
                 remaining_count: entry.operations.length - operationIndex - 1,
-                cause: cause.details ?? cause,
+                cause,
               },
               ['inspect_document', 'read_content', 'preview_edit'],
             ),
-          );
+            ...(partial
+              ? { code: 'partial_apply', outcome: 'partial', retryable: false, retry_mode: 'inspect_outcome' }
+              : {}),
+          });
         }
         results.push({ operation: operation.op, selector: operation.selector, data: applied.data });
+        if (isNoOpResult(applied.data)) noopCount++;
+        else appliedOperations.push(operation);
         routes.push(...applied.routes);
         touchedTargets.push(...applied.touched);
       }
-      const postEdit = applyEditPostEditMetadata(entry);
+      const appliedCount = appliedOperations.length;
+      const postEdit =
+        appliedCount > 0
+          ? applyEditPostEditMetadata({ ...entry, operations: appliedOperations })
+          : { nextActions: ['read_content', 'search_document'], artifacts: {} };
       return textResult(
         facadeEnvelope(
           'apply_edit',
@@ -950,21 +980,32 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
           target,
           {
             applied: results,
+            applied_count: appliedCount,
+            noop_count: noopCount,
             routed_legacy: routes,
             touched_targets: touchedTargets,
             guard_values: guard_values ?? entry.requiredGuards,
             preview_token,
             operation_digest,
           },
-          `Applied ${results.length} facade edit operation(s)`,
+          `Applied ${appliedCount} facade edit operation(s)${noopCount > 0 ? `; ${noopCount} no-op` : ''}`,
           postEdit.nextActions,
           {
-            count: results.length,
+            count: appliedCount,
             routed_tools: routes.map((routeEntry) => routeEntry.tool),
             touched_targets: touchedTargets,
             ...postEdit.artifacts,
           },
           max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
+          noopCount > 0
+            ? {
+                success: false,
+                code: appliedCount > 0 ? 'partial_apply' : 'no_op',
+                outcome: appliedCount > 0 ? 'partial' : 'unchanged',
+                retryable: false,
+                retry_mode: appliedCount > 0 ? 'inspect_outcome' : 'never',
+              }
+            : undefined,
         ),
       );
     }),
@@ -1125,7 +1166,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             facadeApiError(
               404,
               'Unknown or expired manage_items preview token',
-              'Preview tokens are one-shot, held only in this MCP server process memory, and expire after 10 minutes or when the server restarts. Run manage_items preview again, then retry apply with the new token.',
+              'Preview tokens are one-shot and expire after 10 minutes or a server restart. Check the prior apply result and current target first; use manage_items preview for changes still needed, then apply the new token.',
             ),
           );
         }
@@ -1318,7 +1359,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             facadeApiError(
               404,
               'Unknown or expired manage_assets preview token',
-              'Preview tokens are one-shot, held only in this MCP server process memory, and expire after 10 minutes or when the server restarts. Run manage_assets preview again, then retry apply with the new token.',
+              'Preview tokens are one-shot and expire after 10 minutes or a server restart. Check the prior apply result and current target first; use manage_assets preview for changes still needed, then apply the new token.',
             ),
           );
         }
@@ -1514,7 +1555,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             facadeApiError(
               404,
               'Unknown or expired manage_file preview token',
-              'Preview tokens are one-shot, held only in this MCP server process memory, and expire after 10 minutes or when the server restarts. Run manage_file preview again, then retry apply with the new token.',
+              'Preview tokens are one-shot and expire after 10 minutes or a server restart. Check the prior apply result and current target first; use manage_file preview for actions still needed, then apply the new token.',
             ),
           );
         }
